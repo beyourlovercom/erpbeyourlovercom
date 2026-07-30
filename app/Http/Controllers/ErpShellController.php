@@ -6,6 +6,18 @@ use Illuminate\View\View;
 
 class ErpShellController extends Controller
 {
+    public function showOrderList(): View
+    {
+        return $this->show('kol', 'kol/orders');
+    }
+
+    public function showOrderDetail(string $orderNumber): View
+    {
+        abort_unless($orderNumber === config('erp_orders.detail.order_number'), 404);
+
+        return $this->show('kol', 'kol/orders/'.$orderNumber);
+    }
+
     public function show(?string $module = null, ?string $path = null): View
     {
         $navigation = config('erp_navigation');
@@ -15,7 +27,9 @@ class ErpShellController extends Controller
         $currentPath = request()->path();
         $page = $this->findPage($currentModule['children'], $currentPath) ?? reset($currentModule['children']);
 
-        return view('erp.shell', compact('navigation', 'module', 'currentModule', 'page', 'currentPath'));
+        $orders = config('erp_orders.orders');
+        $order = config('erp_orders.detail');
+        return view('erp.shell', compact('navigation', 'module', 'currentModule', 'page', 'currentPath', 'orders', 'order'));
     }
 
     private function findPage(array $items, string $currentPath): ?array

@@ -23,6 +23,13 @@ class ErpNavigationTest extends TestCase
         $this->get('/accounting/expense-analysis/2026-execution')->assertOk()->assertSee('费用分析表')->assertSee('2026执行');
     }
 
+    public function test_order_list_and_detail_render_the_phase_two_skeleton(): void
+    {
+        $this->get('/kol/orders')->assertOk()->assertSee('网红订单')->assertSee('KOL26073001-007');
+        $this->get('/kol/orders/KOL26073001-007')->assertOk()->assertSee('客户详情')->assertSee('物流信息拆分')->assertSee('物流发货')->assertSee('操作记录');
+        $this->get('/kol/orders/INVALID-ORDER')->assertNotFound();
+    }
+
     private function paths(array $items): array
     {
         $paths = [];

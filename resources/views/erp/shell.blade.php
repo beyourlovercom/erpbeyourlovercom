@@ -36,7 +36,13 @@
     <main class="workspace">
         <header class="topbar"><div class="page-identity" title="{{ $currentModule['label'] }} / {{ $page['label'] }} / {{ $currentPath }}"><span class="identity-module">{{ $currentModule['icon'] }} {{ $currentModule['label'] }}</span><b>/</b><strong>{{ $page['label'] }}</strong><b>/</b><small>{{ $currentPath }}</small></div><div class="topbar-actions"><span class="prototype-badge">LOCAL PROTOTYPE</span><span class="avatar">A</span></div></header>
         <button class="reopen-sidebar" data-sidebar-toggle aria-label="展开模块导航">›</button>
-        <section class="content-area" aria-label="工作空间"></section>
+        <section class="content-area" aria-label="工作空间">
+            @if($currentPath === 'kol/orders')
+                @include('erp.partials.order-list', ['orders' => $orders])
+            @elseif(str_starts_with($currentPath, 'kol/orders/'))
+                @include('erp.partials.order-detail', ['order' => $order])
+            @endif
+        </section>
     </main>
 </div>
 </body></html>
