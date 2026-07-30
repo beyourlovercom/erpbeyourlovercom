@@ -34,9 +34,9 @@
         </div>
     </aside>
     <main class="workspace">
-        <header class="topbar"><div class="breadcrumbs"><span>BYL ERP</span><b>/</b><span>{{ $currentModule['label'] }}</span><b>/</b><strong>{{ $page['label'] }}</strong></div><div class="topbar-actions"><span class="prototype-badge">LOCAL PROTOTYPE</span><span class="avatar">A</span></div></header>
+        <header class="topbar"><div class="page-identity" title="{{ $currentModule['label'] }} / {{ $page['label'] }} / {{ $currentPath }}"><span class="identity-module">{{ $currentModule['icon'] }} {{ $currentModule['label'] }}</span><b>/</b><strong>{{ $page['label'] }}</strong><b>/</b><small>{{ $currentPath }}</small></div><div class="topbar-actions"><span class="prototype-badge">LOCAL PROTOTYPE</span><span class="avatar">A</span></div></header>
         <button class="reopen-sidebar" data-sidebar-toggle aria-label="展开模块导航">›</button>
-        <section class="content-area"><div class="eyebrow">{{ $currentModule['icon'] }} {{ $currentModule['label'] }}</div><h1>{{ $page['label'] }}</h1><p class="route-context">{{ request()->path() }}</p><div class="placeholder-panel"><div class="placeholder-icon">✦</div><div><h2>功能将在后续阶段实现</h2><p>这是 BYL ERP 的本地交互原型页面，用于验证导航结构与工作空间布局。</p></div><span class="phase-tag">PHASE 1</span></div></section>
+        <section class="content-area" aria-label="工作空间"></section>
     </main>
 </div>
 </body></html>
