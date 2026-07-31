@@ -10,6 +10,7 @@ export default defineConfig({
                 'resources/css/app.css',
                 'resources/js/app.js',
                 'resources/css/foundation.css',
+                'resources/css/shell.css',
                 'resources/js/app.ts',
             ],
             refresh: true,
