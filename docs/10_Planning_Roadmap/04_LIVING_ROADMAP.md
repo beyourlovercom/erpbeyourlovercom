@@ -18,6 +18,7 @@ Repository Governance = PASS
 001E Shared UI / E2E = WAITING
 001F Architecture Re-audit = WAITING
 Global Architecture Gate = FAIL
+Deployment = NO
 ```
 
 ## Fast-track objective
@@ -32,13 +33,12 @@ Maximum planning envelope: approximately 192 effective hours
 ## Immediate sequence
 
 ```text
-1. Review the prepared 001C application shell branch.
-2. Build bounded MVP1 application shell/runtime only after authorization.
+1. Review and freeze the 001C scope and acceptance criteria.
+2. Obtain Owner authorization to begin 001C implementation.
+3. Build the bounded MVP1 application shell/runtime.
 4. Build final-compatible order/shipment/sync/cost foundations.
 5. Build manual order and fulfillment workflow.
 6. Build manual website-sync queue.
-7. Build order analysis.
-8. Test, UAT and deploy MVP1.
 ```
 
 ## Incremental releases
