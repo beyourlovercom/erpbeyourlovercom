@@ -45,16 +45,5 @@ class FortifyServiceProvider extends ServiceProvider
         \Event::listen(Logout::class, fn (Logout $event) => AuditRecord::create(['actor_id' => $event->user?->getAuthIdentifier(), 'action' => 'auth.logout', 'entity_type' => $event->user ? get_class($event->user) : 'session', 'entity_id' => $event->user ? (string) $event->user->getAuthIdentifier() : null, 'source' => 'fortify', 'ip_address' => request()->ip(), 'user_agent' => request()->userAgent(), 'created_at' => now()]));
         \Event::listen(Failed::class, fn (Failed $event) => AuditRecord::create(['actor_id' => $event->user?->getAuthIdentifier(), 'action' => 'auth.login_failed', 'entity_type' => $event->user ? get_class($event->user) : 'credential', 'entity_id' => null, 'source' => 'fortify', 'ip_address' => request()->ip(), 'user_agent' => request()->userAgent(), 'created_at' => now()]));
 
-        RateLimiter::for('two-factor', function (Request $request) {
-            return Limit::perMinute(5)->by($request->session()->get('login.id'));
-        });
-
-        RateLimiter::for('passkeys', function (Request $request) {
-            $credentialId = $request->input('credential.id');
-
-            return Limit::perMinute(10)->by(
-                ($credentialId ?: $request->session()->getId()).'|'.$request->ip()
-            );
-        });
     }
 }
