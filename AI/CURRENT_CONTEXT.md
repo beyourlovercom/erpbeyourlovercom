@@ -12,8 +12,9 @@ status: architecture-migration-active
 ```text
 ERP-ARCH-MIGRATION-001B
 PR #1
-Status: OPEN / CHANGES REQUIRED
-Merge authorization: NO
+Status: MERGED
+Merge SHA: 5e100cc8e80480ecb6dbd1b38cbfbe9bddba12f4
+Merge authorization: COMPLETE
 ```
 
 ## Current repository baseline
@@ -21,8 +22,8 @@ Merge authorization: NO
 ```text
 001A Foundation Bootstrap = PASS
 Repository Governance = PASS
-001B Authentication / Authorization = remediation pending
-001C Application Shell = waiting
+001B Authentication / Authorization = MERGED
+001C Application Shell = current package
 001D Runtime / Audit / Sync Foundation = waiting
 001E Shared UI / E2E = waiting
 001F Architecture Re-audit = waiting
@@ -32,11 +33,9 @@ Global Architecture Gate = FAIL
 ## Immediate sequence
 
 ```text
-1. Complete PR #1 remediation.
-2. Re-review 001B.
-3. Obtain Owner merge authorization.
-4. Merge and synchronize main.
-5. Activate MVP1-oriented 001C work planning.
+1. Activate MVP1-oriented 001C work planning.
+2. Create and review the 001C application shell branch.
+3. Preserve the merged 001B baseline.
 ```
 
 ## Product direction

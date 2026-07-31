@@ -12,8 +12,8 @@ updated: 2026-07-31
 ```text
 001A Foundation Bootstrap = PASS
 Repository Governance = PASS
-001B Auth / Authorization = PR #1 open, changes required
-001C App Shell = waiting
+001B Auth / Authorization = MERGED (merge SHA: 5e100cc8e80480ecb6dbd1b38cbfbe9bddba12f4)
+001C App Shell = current package
 001D Runtime / Audit / Sync Foundation = waiting
 001E Shared UI / E2E = waiting
 001F Architecture Re-audit = waiting
