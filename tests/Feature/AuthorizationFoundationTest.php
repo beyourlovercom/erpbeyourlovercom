@@ -58,4 +58,15 @@ class AuthorizationFoundationTest extends TestCase
         $this->assertDatabaseHas('users', ['email' => 'owner@example.test']);
         $this->assertDatabaseMissing('audit_records', ['after->password' => 'a-strong-password-123']);
     }
+
+    public function test_application_auth_surfaces_have_no_public_registration_entry(): void
+    {
+        $welcome = file_get_contents(resource_path('views/welcome.blade.php'));
+        $login = file_get_contents(resource_path('js/Pages/Auth/Login.vue'));
+
+        foreach (["Route::has('register')", "route('register')", '>Register<', '注册账户', '创建公开账户'] as $forbidden) {
+            $this->assertStringNotContainsString($forbidden, $welcome);
+            $this->assertStringNotContainsString($forbidden, $login);
+        }
+    }
 }

@@ -17,7 +17,7 @@ const submit = () => form.post('/login')
           <label class="block text-sm text-slate-300">密码<div class="mt-2 flex rounded-lg border border-slate-700 bg-slate-950 focus-within:border-cyan-300 focus-within:ring-2 focus-within:ring-cyan-300/30"><input v-model="form.password" name="password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" required class="min-w-0 flex-1 bg-transparent px-3 py-3 text-sm outline-none"><button type="button" class="px-3 text-xs text-slate-400 focus:text-cyan-200" @click="showPassword = !showPassword">{{ showPassword ? '隐藏' : '显示' }}</button></div></label>
           <p v-if="form.errors.email || form.errors.password || page.props.errors?.email" class="text-sm text-rose-300" role="alert">邮箱或密码不正确，请重试。</p>
           <button type="submit" :disabled="form.processing" class="w-full rounded-lg bg-cyan-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50">{{ form.processing ? '验证中…' : '登录系统' }}</button>
-        </form><p class="mt-6 border-t border-slate-800 pt-5 text-xs text-slate-500">需要内部账户？ <span class="text-slate-300">申请开通账户</span>，由管理员完成配置。</p>
+        </form><p class="mt-6 border-t border-slate-800 pt-5 text-xs text-slate-500"><span class="text-slate-300">申请开通账户</span>：BYL ERP 账户由管理员统一创建，请联系系统管理员开通。</p>
       </section>
     </div>
   </main>

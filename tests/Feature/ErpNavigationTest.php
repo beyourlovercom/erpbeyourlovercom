@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\AuditRecord;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -80,6 +81,29 @@ class ErpNavigationTest extends TestCase
         $this->assertDatabaseHas('audit_records', ['action' => 'auth.login']);
         $this->post('/logout')->assertRedirect('/');
         $this->assertDatabaseHas('audit_records', ['action' => 'auth.logout']);
+    }
+
+    public function test_successful_login_regenerates_the_session_id(): void
+    {
+        auth()->logout();
+        $user = User::first();
+        $user->update(['password' => Hash::make('password')]);
+        $before = $this->app['session']->getId();
+        $this->post('/login', ['email' => $user->email, 'password' => 'password'])
+            ->assertRedirect('/dashboard');
+        $this->assertNotSame($before, $this->app['session']->getId());
+    }
+
+    public function test_login_is_rate_limited_after_five_failed_attempts(): void
+    {
+        auth()->logout();
+        $user = User::first();
+        RateLimiter::clear(strtolower($user->email).'|127.0.0.1');
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $this->post('/login', ['email' => $user->email, 'password' => 'wrong-password']);
+        }
+        $this->post('/login', ['email' => $user->email, 'password' => 'wrong-password'])
+            ->assertStatus(429);
     }
 
     private function paths(array $items): array
