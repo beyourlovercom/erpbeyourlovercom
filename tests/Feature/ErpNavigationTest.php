@@ -3,10 +3,30 @@
 namespace Tests\Feature;
 
 use Inertia\Testing\AssertableInertia as Assert;
+use App\Models\Permission;
+use App\Models\Role;
+use App\Models\User;
+use App\Models\AuditRecord;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ErpNavigationTest extends TestCase
 {
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $permission = Permission::create(['key' => 'prototype.view', 'label' => 'Prototype']);
+        $dashboardPermission = Permission::create(['key' => 'dashboard.view', 'label' => 'Dashboard']);
+        $foundationPermission = Permission::create(['key' => 'architecture.foundation.view', 'label' => 'Foundation']);
+        $role = Role::create(['key' => 'admin', 'label' => 'Admin']);
+        $role->permissions()->attach([$permission->id, $dashboardPermission->id, $foundationPermission->id]);
+        $user = User::factory()->create(['is_active' => true]);
+        $user->roles()->attach($role);
+        $this->actingAs($user);
+    }
     public function test_every_declared_navigation_path_is_available(): void
     {
         foreach ($this->paths(config('erp_navigation')) as $path) $this->get($path)->assertOk();
@@ -40,6 +60,26 @@ class ErpNavigationTest extends TestCase
                 ->where('status', 'ARCHITECTURE VALIDATION')
                 ->missing('user')
                 ->missing('orders'));
+    }
+
+    public function test_guest_root_redirects_to_login_and_authenticated_root_to_dashboard(): void
+    {
+        auth()->logout();
+        $this->get('/')->assertInertia(fn (Assert $page) => $page->component('Auth/Login'));
+        $this->actingAs(User::first())->get('/')->assertRedirectToRoute('dashboard');
+    }
+
+    public function test_login_rejects_inactive_user_and_logs_out_authenticated_user(): void
+    {
+        auth()->logout();
+        $user = User::first();
+        $user->update(['is_active' => false]);
+        $this->post('/login', ['email' => $user->email, 'password' => 'password'])->assertSessionHasErrors('email');
+        $user->update(['is_active' => true, 'password' => Hash::make('password')]);
+        $this->post('/login', ['email' => $user->email, 'password' => 'password'])->assertRedirect('/dashboard');
+        $this->assertDatabaseHas('audit_records', ['action' => 'auth.login']);
+        $this->post('/logout')->assertRedirect('/');
+        $this->assertDatabaseHas('audit_records', ['action' => 'auth.logout']);
     }
 
     private function paths(array $items): array
