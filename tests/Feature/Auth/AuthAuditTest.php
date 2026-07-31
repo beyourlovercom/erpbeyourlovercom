@@ -1,0 +1,39 @@
+<?php
+
+namespace Tests\Feature\Auth;
+
+use App\Models\AuditRecord;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Tests\TestCase;
+
+class AuthAuditTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_failed_login_audit_excludes_credentials_and_request_secrets(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('correct-password')]);
+        $this->withHeaders(['Authorization' => 'Bearer secret-token'])
+            ->post('/login', ['email' => $user->email, 'password' => 'wrong-password', 'password_confirmation' => 'confirm']);
+        $audit = AuditRecord::where('action', 'auth.login_failed')->latest('id')->firstOrFail();
+        $text = json_encode($audit->toArray());
+        foreach (['wrong-password', 'confirm', $this->app['session']->getId(), 'secret-token', 'password_confirmation'] as $secret) {
+            $this->assertStringNotContainsString($secret, $text);
+        }
+        $this->assertStringNotContainsString('email', json_encode($audit->after));
+    }
+
+    public function test_inactive_user_login_is_generic_and_audited_without_secrets(): void
+    {
+        $user = User::factory()->create(['is_active' => false, 'password' => Hash::make('inactive-secret')]);
+        $response = $this->post('/login', ['email' => $user->email, 'password' => 'inactive-secret', 'password_confirmation' => 'inactive-secret']);
+        $response->assertSessionHasErrors('email');
+        $this->assertStringNotContainsString('inactive', json_encode(session()->all()));
+        $audit = AuditRecord::where('action', 'auth.login_failed')->latest('id')->firstOrFail();
+        foreach (['inactive-secret', 'password_confirmation', session()->getId()] as $secret) {
+            $this->assertStringNotContainsString($secret, json_encode($audit->toArray()));
+        }
+    }
+}
