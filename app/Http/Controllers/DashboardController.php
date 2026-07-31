@@ -10,9 +10,6 @@ class DashboardController extends Controller
 {
     public function __invoke(Request $request): Response
     {
-        return Inertia::render('Dashboard/Index', [
-            'user' => $request->user()->only(['id', 'name', 'email']),
-            'permissions' => ['viewDashboard' => true],
-        ]);
+        return Inertia::render('Dashboard/Index');
     }
 }
