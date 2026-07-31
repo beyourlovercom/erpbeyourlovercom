@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class ErpNavigationTest extends TestCase
@@ -28,6 +29,17 @@ class ErpNavigationTest extends TestCase
         $this->get('/kol/orders')->assertOk()->assertSee('网红订单')->assertSee('KOL26073001-007');
         $this->get('/kol/orders/KOL26073001-007')->assertOk()->assertSee('客户详情')->assertSee('物流信息拆分')->assertSee('物流发货')->assertSee('操作记录');
         $this->get('/kol/orders/INVALID-ORDER')->assertNotFound();
+    }
+
+    public function test_architecture_foundation_is_an_inertia_page_with_safe_props(): void
+    {
+        $this->get('/architecture/foundation')
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Architecture/Foundation')
+                ->where('title', 'BYL ERP Foundation')
+                ->where('status', 'ARCHITECTURE VALIDATION')
+                ->missing('user')
+                ->missing('orders'));
     }
 
     private function paths(array $items): array
