@@ -22,6 +22,12 @@ Added:
 
 Current implementation status was not changed.
 
+## 2026-07-31 — 001B merged / 001C prepared
+
+- 001B Authentication / Authorization merged in PR #1 at `5e100cc8e80480ecb6dbd1b38cbfbe9bddba12f4`.
+- 001C application shell branch prepared; implementation not started.
+- Global Architecture Gate remains FAIL; deployment remains NO.
+
 ## Change entry format
 
 ```text

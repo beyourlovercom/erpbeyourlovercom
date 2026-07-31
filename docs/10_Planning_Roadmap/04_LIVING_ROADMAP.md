@@ -10,13 +10,13 @@ updated: 2026-07-31
 ## Current status
 
 ```text
-001A Foundation Bootstrap = PASS
+001A Foundation Bootstrap = MERGED / PASS
 Repository Governance = PASS
-001B Auth / Authorization = PR #1 open, changes required
-001C App Shell = waiting
-001D Runtime / Audit / Sync Foundation = waiting
-001E Shared UI / E2E = waiting
-001F Architecture Re-audit = waiting
+001B Auth / Authorization = MERGED (merge SHA: 5e100cc8e80480ecb6dbd1b38cbfbe9bddba12f4)
+001C App Shell = CURRENT (branch prepared; implementation not started)
+001D Runtime / Audit / Sync Foundation = WAITING
+001E Shared UI / E2E = WAITING
+001F Architecture Re-audit = WAITING
 Global Architecture Gate = FAIL
 ```
 
@@ -32,9 +32,8 @@ Maximum planning envelope: approximately 192 effective hours
 ## Immediate sequence
 
 ```text
-1. Complete 001B remediation.
-2. Re-review and merge 001B.
-3. Build bounded MVP1 application shell/runtime.
+1. Review the prepared 001C application shell branch.
+2. Build bounded MVP1 application shell/runtime only after authorization.
 4. Build final-compatible order/shipment/sync/cost foundations.
 5. Build manual order and fulfillment workflow.
 6. Build manual website-sync queue.
