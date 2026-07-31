@@ -67,14 +67,38 @@ class AppShellNavigationTest extends TestCase
             ->where('shellNavigation.0.path', '/sync'));
     }
 
-    public function test_colliding_legacy_root_paths_preserve_both_permission_contracts(): void
+    public function test_only_exact_legacy_root_path_collisions_fall_back_for_prototype_users(): void
     {
-        $formalUser = $this->userWith(['inventory.view']);
-        $this->actingAs($formalUser)->get('/inventory')->assertInertia(fn (Assert $page) => $page
-            ->component('Shell/Placeholder')->where('module.key', 'inventory'));
-
         $prototypeUser = $this->userWith(['prototype.view'], 'prototype-operator');
-        $this->actingAs($prototypeUser)->get('/inventory')->assertOk()->assertViewIs('erp.shell');
+        foreach (['/inventory', '/procurement', '/products', '/guides'] as $path) {
+            $this->actingAs($prototypeUser)->get($path)->assertOk()->assertViewIs('erp.shell');
+        }
+        foreach (['/logistics', '/customers', '/kol', '/accounting', '/settings', '/sync'] as $path) {
+            $this->actingAs($prototypeUser)->get($path)->assertForbidden();
+        }
+    }
+
+    public function test_formal_permissions_always_render_the_corresponding_vue_placeholder(): void
+    {
+        $permissionsByPath = [
+            '/logistics' => 'logistics.view', '/sync' => 'sync.view', '/customers' => 'customers.view',
+            '/kol' => 'kol.view', '/inventory' => 'inventory.view', '/procurement' => 'procurement.view',
+            '/products' => 'products.view', '/guides' => 'guides.view', '/accounting' => 'accounting.view',
+            '/settings' => 'system.permissions.manage',
+        ];
+        $user = $this->userWith(array_values($permissionsByPath), 'formal-operator');
+        foreach ($permissionsByPath as $path => $permission) {
+            $this->actingAs($user)->get($path)->assertInertia(fn (Assert $page) => $page
+                ->component('Shell/Placeholder')->where('module.key', trim($path, '/')));
+        }
+    }
+
+    public function test_users_without_formal_or_prototype_permission_receive_forbidden_for_all_modules(): void
+    {
+        $user = $this->userWith([], 'restricted-operator');
+        foreach (['/logistics', '/sync', '/customers', '/kol', '/inventory', '/procurement', '/products', '/guides', '/accounting', '/settings'] as $path) {
+            $this->actingAs($user)->get($path)->assertForbidden();
+        }
     }
 
     public function test_super_admin_can_access_all_formal_modules(): void
