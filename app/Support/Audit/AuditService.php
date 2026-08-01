@@ -122,7 +122,14 @@ final class AuditService
 
     private function isSensitiveKey(string $key): bool
     {
-        $normalized = Str::snake(str_replace(['.', '-'], '_', strtolower($key)));
+        $withAcronymBoundaries = preg_replace('/([A-Z]+)([A-Z][a-z])/', '$1_$2', $key);
+        $withWordBoundaries = preg_replace('/([a-z0-9])([A-Z])/', '$1_$2', $withAcronymBoundaries ?? $key);
+        $normalized = Str::of($withWordBoundaries ?? $key)
+            ->replace(['.', '-'], '_')
+            ->lower()
+            ->replaceMatches('/_+/', '_')
+            ->trim('_')
+            ->toString();
 
         if (in_array($normalized, self::SENSITIVE_KEYS, true)) {
             return true;

@@ -22,6 +22,18 @@ class AuditRecord extends Model
         return new ImmutableAuditBuilder($query);
     }
 
+    public function save(array $options = []): never
+    {
+        throw new LogicException($this->exists
+            ? 'Audit records are immutable.'
+            : 'Audit records must be created through AuditService.');
+    }
+
+    public function delete(): never
+    {
+        throw new LogicException('Audit records are immutable.');
+    }
+
     protected static function booted(): void
     {
         static::creating(fn () => throw new LogicException('Audit records must be created through AuditService.'));

@@ -98,6 +98,30 @@ class AuditFoundationTest extends TestCase
         }
     }
 
+    public function test_camel_case_sensitive_keys_are_removed_recursively(): void
+    {
+        $this->assertSensitiveKeysAreRemoved([
+            'apiKey',
+            'privateKey',
+            'clientSecret',
+            'accessToken',
+            'refreshToken',
+            'authorizationHeader',
+            'sessionId',
+            'requestPayload',
+        ]);
+    }
+
+    public function test_pascal_case_sensitive_keys_are_removed_recursively(): void
+    {
+        $this->assertSensitiveKeysAreRemoved(['APIKey', 'PrivateKey']);
+    }
+
+    public function test_snake_kebab_and_dotted_sensitive_keys_are_removed_recursively(): void
+    {
+        $this->assertSensitiveKeysAreRemoved(['api_key', 'api-key', 'api.key']);
+    }
+
     public function test_audit_records_are_immutable_through_model_update_and_delete(): void
     {
         $record = app(AuditService::class)->record(
@@ -141,6 +165,85 @@ class AuditFoundationTest extends TestCase
             'entity_type' => 'security',
             'source' => 'untrusted',
         ]);
+    }
+
+    public function test_save_quietly_cannot_create_an_audit_record(): void
+    {
+        $record = new AuditRecord([
+            'action' => 'security.quiet_create',
+            'entity_type' => 'security',
+            'source' => 'untrusted',
+        ]);
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('Audit records must be created through AuditService.');
+
+        $record->saveQuietly();
+    }
+
+    public function test_update_quietly_cannot_modify_an_audit_record(): void
+    {
+        $record = $this->auditRecord('security.quiet_update');
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('Audit records are immutable.');
+
+        $record->updateQuietly(['reason' => 'changed']);
+    }
+
+    public function test_delete_quietly_cannot_delete_an_audit_record(): void
+    {
+        $record = $this->auditRecord('security.quiet_delete');
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('Audit records are immutable.');
+
+        $record->deleteQuietly();
+    }
+
+    public function test_force_create_quietly_cannot_create_an_audit_record(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('Audit records must be created through AuditService.');
+
+        AuditRecord::query()->forceCreateQuietly([
+            'action' => 'security.force_quiet_create',
+            'entity_type' => 'security',
+            'source' => 'untrusted',
+        ]);
+    }
+
+    public function test_without_events_cannot_create_an_audit_record(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('Audit records must be created through AuditService.');
+
+        AuditRecord::withoutEvents(fn () => AuditRecord::create([
+            'action' => 'security.eventless_create',
+            'entity_type' => 'security',
+            'source' => 'untrusted',
+        ]));
+    }
+
+    public function test_without_events_cannot_save_an_audit_record(): void
+    {
+        $record = $this->auditRecord('security.eventless_save');
+        $record->reason = 'changed';
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('Audit records are immutable.');
+
+        AuditRecord::withoutEvents(fn () => $record->save());
+    }
+
+    public function test_without_events_cannot_delete_an_audit_record(): void
+    {
+        $record = $this->auditRecord('security.eventless_delete');
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('Audit records are immutable.');
+
+        AuditRecord::withoutEvents(fn () => $record->delete());
     }
 
     public function test_audit_records_are_immutable_through_bulk_update_and_delete(): void
@@ -315,5 +418,41 @@ class AuditFoundationTest extends TestCase
         $user->roles()->attach($role);
 
         return $user;
+    }
+
+    /** @param list<string> $keys */
+    private function assertSensitiveKeysAreRemoved(array $keys): void
+    {
+        $metadata = ['safe' => 'kept', 'nested' => ['safeNested' => 'also-kept']];
+        $forbiddenValues = [];
+
+        foreach ($keys as $index => $key) {
+            $value = 'forbidden-value-'.$index;
+            $metadata['nested'][$key] = $value;
+            $forbiddenValues[] = $value;
+        }
+
+        $record = app(AuditService::class)->record(
+            AuditActor::system(AuditSource::InternalSystem),
+            'security.key_normalization_checked',
+            'security',
+            after: $metadata,
+        );
+
+        $this->assertSame(['safe' => 'kept', 'nested' => ['safeNested' => 'also-kept']], $record->after);
+        $serialized = json_encode($record->fresh()->toArray(), JSON_THROW_ON_ERROR);
+
+        foreach ([...$keys, ...$forbiddenValues] as $forbidden) {
+            $this->assertStringNotContainsString($forbidden, $serialized);
+        }
+    }
+
+    private function auditRecord(string $action): AuditRecord
+    {
+        return app(AuditService::class)->record(
+            AuditActor::system(AuditSource::InternalSystem),
+            $action,
+            'security',
+        );
     }
 }
