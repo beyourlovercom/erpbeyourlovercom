@@ -89,3 +89,9 @@ Planning foundation must not be mixed into PR #1.
 001C is accepted and merged. 001D becomes the current prepared architecture package, but implementation still requires separate Owner authorization. Global Architecture Gate remains FAIL; no Migration or deployment is authorized.
 
 Formal Work Packages are stored under `docs/60_Codex_Operations/work-packages/` and named `<WORK-PACKAGE-ID>.md`, beginning with `ERP-ARCH-MIGRATION-001D`. Work Logs retain `docs/60_Codex_Operations/logs/YYYY-MM-DD_<WORK-PACKAGE-ID>.md`.
+
+## D-020 001D scope freeze and ordered execution split
+
+001D is split into `ERP-ARCH-MIGRATION-001D-A` Runtime Foundation, `ERP-ARCH-MIGRATION-001D-B` Audit Foundation and `ERP-ARCH-MIGRATION-001D-C` Sync Outbox Foundation, executed in that order. The split grants no implementation authorization; 001D-A remains prepared with authorization NO, while 001D-B and 001D-C remain waiting.
+
+Redis is the Queue and Cache baseline. Current Session configuration is preserved without a forced Redis migration. Laravel Scheduler is the runtime scheduling foundation; production cron remains a documentation contract only. The existing 001B audit foundation must be preserved and extended additively, and Sync Outbox remains provider-independent integration intent rather than business truth. Migration file authoring may be authorized within a future subpackage, but Migration execution requires separate explicit authorization. External APIs, Sync UI, Order, Shipment and deployment remain excluded.
