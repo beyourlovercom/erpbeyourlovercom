@@ -64,8 +64,8 @@ class SyncOutboxSchemaContractTest extends TestCase
         $columns = collect(Schema::getColumns('sync_outbox'))->keyBy('name');
 
         $this->assertSame('pending', trim((string) $columns['status']['default'], "'\""));
-        $this->assertSame('0', (string) $columns['attempts']['default']);
-        $this->assertSame('3', (string) $columns['max_attempts']['default']);
+        $this->assertSame('0', $this->normalizeDefault($columns['attempts']['default']));
+        $this->assertSame('3', $this->normalizeDefault($columns['max_attempts']['default']));
         $this->assertSame('current_timestamp', strtolower(trim((string) $columns['available_at']['default'], "()'\"")));
         $this->assertTrue($columns['id']['auto_increment']);
 
@@ -120,5 +120,10 @@ class SyncOutboxSchemaContractTest extends TestCase
             $this->assertFalse($index['primary']);
             $this->assertFalse($index['unique']);
         }
+    }
+
+    private function normalizeDefault(mixed $default): string
+    {
+        return trim((string) $default, " \t\n\r\0\x0B'\"()");
     }
 }

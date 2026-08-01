@@ -2,7 +2,7 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-ARCH-MIGRATION-001D-C
-status: migration-file-remediation-complete-pending-independent-review
+status: sqlite-schema-test-remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -14,7 +14,7 @@ standard_version: 1.1
 ```text
 ID: ERP-ARCH-MIGRATION-001D-C
 TITLE: Sync Outbox Foundation
-STATUS: CURRENT / MIGRATION FILE REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
+STATUS: CURRENT / SQLITE SCHEMA TEST REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
 IMPLEMENTATION_AUTHORIZATION: YES
 IMPLEMENTATION_BASE_SHA: e2247fcaaae690c94ef07d45c8807ce749de1b46
 BRANCH: feature/erp-arch-migration-001d-c-sync-outbox-foundation
@@ -194,6 +194,22 @@ PINT_AUTHORIZED_FILES: PASS
 DIFF_CHECK: PASS
 ```
 
+## SQLite Schema Test Remediation
+
+```text
+SQLITE_VERSION: 3.53.3
+FAILED_ASSERTION: attempts.default expected string 0; SQLite public Schema API returned quoted string '0'
+ROOT_CAUSE: Test normalization did not remove SQLite's outer whitespace, quotes and parentheses from numeric default values
+REMEDIATION: attempts.default and max_attempts.default use one bounded outer-character normalization before exact comparison with strings 0 and 3
+UNCHANGED_CONTRACTS: fields, types, nullable rules, primary/auto-increment and all unique/ordinary index assertions remain unchanged
+MYSQL_VALIDATION: NOT CLAIMED / NOT RUN IN THIS REMEDIATION
+MIGRATION_FILE: UNCHANGED
+PHP_SYNTAX: PASS
+PINT: PASS
+SQLITE_SCHEMA_TEST: PASS / 3 tests / 82 assertions
+DIFF_CHECK: PASS
+```
+
 ## Rollback and Historical Data Impact
 
 The forward Migration creates an empty additive table, so existing users, audit history, queue jobs and application data are unchanged. The rollback is structurally reversible but destructive to outbox intent rows; it must not run against populated environments without an explicit retention/export decision. No existing historical data needs transformation or backfill.
@@ -267,11 +283,11 @@ The planning value reconciles to `2.5 + 9 + 3.5 + 3 = 18` hours. The range recon
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS BY main@e2247fc → 001D-C CURRENT / MIGRATION FILE REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E WAITING → 001F WAITING
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS BY main@e2247fc → 001D-C CURRENT / SQLITE SCHEMA TEST REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E WAITING → 001F WAITING
 COMPLETED_PHASES: 001A, 001B, 001C, 001D-A, 001D-B
-CURRENT_PHASE: 001D-C Sync Outbox Foundation Migration file re-review
+CURRENT_PHASE: 001D-C Sync Outbox Foundation SQLite Schema test re-review
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001D-C
-PACKAGE_STATUS: MIGRATION FILE REMEDIATION COMPLETE / MIGRATION EXECUTION NO / MERGE AUTHORIZATION NO
+PACKAGE_STATUS: SQLITE SCHEMA TEST REMEDIATION COMPLETE / MYSQL VALIDATION NOT RUN / MERGE AUTHORIZATION NO
 WAITING_PHASES: 001E, 001F
 BASELINE: main@e2247fcaaae690c94ef07d45c8807ce749de1b46
 GITHUB_STATE: PR #12 merged into main at authorized Base; no 001D-C implementation PR authorized before schema gate resolution
