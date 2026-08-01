@@ -2,7 +2,7 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-ARCH-MIGRATION-001D-C
-status: migration-file-authored-pending-independent-review
+status: migration-file-remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -14,7 +14,7 @@ standard_version: 1.1
 ```text
 ID: ERP-ARCH-MIGRATION-001D-C
 TITLE: Sync Outbox Foundation
-STATUS: CURRENT / MIGRATION FILE AUTHORED / PENDING INDEPENDENT REVIEW
+STATUS: CURRENT / MIGRATION FILE REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
 IMPLEMENTATION_AUTHORIZATION: YES
 IMPLEMENTATION_BASE_SHA: e2247fcaaae690c94ef07d45c8807ce749de1b46
 BRANCH: feature/erp-arch-migration-001d-c-sync-outbox-foundation
@@ -92,10 +92,10 @@ Create one provider-independent table named `sync_outbox`:
 | `id` | `BIGINT UNSIGNED` | NO | auto increment | primary key |
 | `idempotency_key` | `VARCHAR(191)` | NO | none | globally unique logical-intent key |
 | `operation` | `VARCHAR(100)` | NO | none | stable provider-independent operation key |
-| `aggregate_type` | `VARCHAR(100)` | YES | `NULL` | future domain aggregate type; no foreign key |
-| `aggregate_id` | `VARCHAR(191)` | YES | `NULL` | future aggregate identifier; no business truth |
-| `provider_key` | `VARCHAR(100)` | YES | `NULL` | future adapter key; no adapter implemented here |
-| `connection_key` | `VARCHAR(191)` | YES | `NULL` | opaque future connection reference; no credentials |
+| `aggregate_type` | `VARCHAR(64)` | YES | `NULL` | future domain aggregate type; no foreign key |
+| `aggregate_id` | `VARCHAR(127)` | YES | `NULL` | future aggregate identifier; no business truth |
+| `provider_key` | `VARCHAR(64)` | YES | `NULL` | future adapter key; no adapter implemented here |
+| `connection_key` | `VARCHAR(127)` | YES | `NULL` | opaque future connection reference; no credentials |
 | `payload` | `JSON` | YES | `NULL` | normalized safe integration intent; secrets prohibited by Service |
 | `status` | `VARCHAR(20)` | NO | `pending` | Service-enforced: pending / processing / completed / failed |
 | `attempts` | `SMALLINT UNSIGNED` | NO | `0` | incremented atomically on claim |
@@ -124,6 +124,13 @@ INDEX sync_outbox_lock_token_index (lock_token)
 ```
 
 Idempotency is global and exact: two enqueue requests with the same normalized `idempotency_key` resolve to the existing intent rather than create a second row. No partial indexes, generated columns or database-specific check constraints are proposed; allowed status and attempt bounds are enforced by the Model/Service contract and tests.
+
+Both composite string indexes use a conservative total of 191 characters:
+
+```text
+(aggregate_type 64 + aggregate_id 127) × 4 utf8mb4 bytes = 764 bytes maximum
+(provider_key 64 + connection_key 127) × 4 utf8mb4 bytes = 764 bytes maximum
+```
 
 ### Status, Lock and Retry Contract
 
@@ -160,11 +167,32 @@ If required Audit creation fails, the enclosing state transaction rolls back. Th
 
 ## MySQL Compatibility
 
-- uses Laravel Blueprint types supported by MySQL 8 and MySQL 5.7 where JSON is available;
-- `VARCHAR(191)` keeps the unique idempotency index within conservative `utf8mb4` index limits;
+- authors Laravel Blueprint types intended for MySQL 8 and MySQL 5.7 where native JSON is available;
+- the unique idempotency key is `VARCHAR(191)` and each composite string index totals 191 characters / 764 bytes under `utf8mb4`;
 - uses no partial indexes, generated columns, check constraints, `SKIP LOCKED` dependency or provider-specific SQL;
-- nullable timestamp fields and `CURRENT_TIMESTAMP` on `available_at` are MySQL-compatible;
+- the SQLite Schema test verifies the Laravel schema contract through public Schema APIs only;
+- SQLite does not reliably preserve/report MySQL `VARCHAR` lengths, unsigned integer physical attributes, native JSON storage, MySQL timestamp defaults or physical index byte construction;
+- MySQL physical column types, defaults, auto-increment behavior and index creation remain UNVERIFIED;
+- those physical properties must be verified in an isolated MySQL environment only after separate Migration Execution authorization;
 - claim/recovery correctness relies on ordinary transactions and `SELECT ... FOR UPDATE` semantics exposed by Laravel.
+
+The current non-executed authoring review does not claim complete MySQL compatibility.
+
+## Migration File Remediation Evidence
+
+```text
+PREVIOUS_HEAD: 61041c6e3214cac7bd320f07e0da53d80f140aef
+REVIEW_RESULT: CHANGES REQUIRED
+COMPOSITE_INDEX_LENGTH_REMEDIATION: COMPLETE / 191 characters and 764 utf8mb4 bytes per composite key
+SCHEMA_CONTRACT_REMEDIATION: COMPLETE / authored assertions expanded
+SQLITE_SCHEMA_SCOPE: Laravel public Schema API contract only
+MYSQL_PHYSICAL_SCHEMA_VALIDATION: PENDING SEPARATE MIGRATION EXECUTION AUTHORIZATION
+SCHEMA_TEST_EXECUTION: NOT RUN
+MIGRATION_EXECUTION: NOT RUN
+PHP_SYNTAX: PASS
+PINT_AUTHORIZED_FILES: PASS
+DIFF_CHECK: PASS
+```
 
 ## Rollback and Historical Data Impact
 
@@ -239,11 +267,11 @@ The planning value reconciles to `2.5 + 9 + 3.5 + 3 = 18` hours. The range recon
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS BY main@e2247fc → 001D-C CURRENT / MIGRATION FILE AUTHORED / PENDING INDEPENDENT REVIEW → 001E WAITING → 001F WAITING
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS BY main@e2247fc → 001D-C CURRENT / MIGRATION FILE REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E WAITING → 001F WAITING
 COMPLETED_PHASES: 001A, 001B, 001C, 001D-A, 001D-B
-CURRENT_PHASE: 001D-C Sync Outbox Foundation Migration file independent review
+CURRENT_PHASE: 001D-C Sync Outbox Foundation Migration file re-review
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001D-C
-PACKAGE_STATUS: IMPLEMENTATION AUTHORIZATION YES / MIGRATION FILE AUTHORING COMPLETE / MIGRATION EXECUTION NO
+PACKAGE_STATUS: MIGRATION FILE REMEDIATION COMPLETE / MIGRATION EXECUTION NO / MERGE AUTHORIZATION NO
 WAITING_PHASES: 001E, 001F
 BASELINE: main@e2247fcaaae690c94ef07d45c8807ce749de1b46
 GITHUB_STATE: PR #12 merged into main at authorized Base; no 001D-C implementation PR authorized before schema gate resolution

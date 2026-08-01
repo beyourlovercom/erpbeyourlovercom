@@ -12,10 +12,10 @@ return new class extends Migration
             $table->id();
             $table->string('idempotency_key', 191)->unique();
             $table->string('operation', 100);
-            $table->string('aggregate_type', 100)->nullable();
-            $table->string('aggregate_id', 191)->nullable();
-            $table->string('provider_key', 100)->nullable();
-            $table->string('connection_key', 191)->nullable();
+            $table->string('aggregate_type', 64)->nullable();
+            $table->string('aggregate_id', 127)->nullable();
+            $table->string('provider_key', 64)->nullable();
+            $table->string('connection_key', 127)->nullable();
             $table->json('payload')->nullable();
             $table->string('status', 20)->default('pending');
             $table->unsignedSmallInteger('attempts')->default(0);
