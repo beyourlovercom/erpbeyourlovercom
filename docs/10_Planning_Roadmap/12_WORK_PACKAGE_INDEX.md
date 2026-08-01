@@ -9,18 +9,22 @@ version: 1.0
 ## Active
 
 ```text
-ERP-ARCH-MIGRATION-001D
-Runtime / Audit / Sync Foundation
-Status: CURRENT / IN PROGRESS
+ERP-ARCH-MIGRATION-001E
+Shared UI / Browser E2E
+Status: NEXT / PREPARED / IMPLEMENTATION NOT STARTED
+Owner implementation authorization: NO
+Dependency change authorization: NO
 
-ERP-ARCH-MIGRATION-001D-B
-Audit Foundation
-Status: CURRENT / IMPLEMENTATION COMPLETE / PENDING GITHUB INDEPENDENT REVIEW
-Owner implementation authorization: YES
-Implementation base: 0720a47ddc8825b9506ab28651fa07a8c1994e62
+ERP-ARCH-MIGRATION-001E-A
+Shared UI and Design Tokens
+Status: PREPARED / AUTHORIZATION NO
 
-ERP-ARCH-MIGRATION-001D-C
-Sync Outbox Foundation
+ERP-ARCH-MIGRATION-001E-B
+Browser E2E Foundation
+Status: WAITING
+
+ERP-ARCH-MIGRATION-001E-C
+Authentication / Permission / App Shell E2E
 Status: WAITING
 ```
 
@@ -39,6 +43,24 @@ Status: MERGED / PASS
 PR: #9
 Accepted Head: 3d8f92b701370db41bed0df707183207f6924dd5
 Main SHA: 50803c3fcd51e9f8b3485f4fb57565154a284bf7
+
+ERP-ARCH-MIGRATION-001D-B
+Audit Foundation
+Status: MERGED / PASS
+PR: #12
+Accepted Head: 953d1b07d48f975a5f1098069927ae9a680ebc7d
+Main SHA: e2247fcaaae690c94ef07d45c8807ce749de1b46
+
+ERP-ARCH-MIGRATION-001D-C
+Sync Outbox Foundation
+Status: MERGED / PASS
+PR: #13
+Accepted Head: e4bc57b7a3f0edbe84ccfde63d02d9135a4875e3
+Main SHA: 548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
+
+ERP-ARCH-MIGRATION-001D
+Runtime / Audit / Sync Foundation
+Status: COMPLETE / PASS
 ```
 
 ## Planned fast-track packages

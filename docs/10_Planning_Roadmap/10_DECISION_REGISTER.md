@@ -113,3 +113,11 @@ ERP-ARCH-MIGRATION-001D-B becomes the current prepared Audit Foundation package 
 The Owner authorized ERP-ARCH-MIGRATION-001D-B implementation from `main@0720a47ddc8825b9506ab28651fa07a8c1994e62`, including one Audit Service, explicit user and trusted-system actors, correlated structured metadata, recursive sensitive-field removal, immutable application writes, security-critical failure handling and separately authorized audit viewing.
 
 The existing 001B `audit_records` schema contains all required fields, so the exact proposed schema delta is NONE. No Migration file was created or modified and no Migration was executed. ERP-ARCH-MIGRATION-001D-C remains WAITING, merge requires a separate Owner decision after GitHub independent review, Global Architecture Gate remains FAIL, and deployment remains NO. Architecture conflict: NONE.
+
+## D-024 001D completion and 001E preparation split
+
+PR #13 was independently reviewed, accepted at Head `e4bc57b7a3f0edbe84ccfde63d02d9135a4875e3` and squash merged as main commit `548d53f1eae2ec14eea7261d3a101c1f2fda0dcc`. Together with accepted 001D-A and 001D-B, ERP-ARCH-MIGRATION-001D is COMPLETE / PASS.
+
+ERP-ARCH-MIGRATION-001E becomes NEXT / PREPARED / IMPLEMENTATION NOT STARTED and is split into 001E-A Shared UI and Design Tokens, 001E-B Browser E2E Foundation and 001E-C Authentication / Permission / App Shell E2E. This decision authorizes governance and preparation only. It does not authorize implementation, Playwright installation, dependency or lock-file changes, Workflow changes, Migration, UAT, deployment or 001F.
+
+The accepted 001D evidence remains bounded: real-MySQL two-connection Sync Outbox claim concurrency is UNVERIFIED; MySQL 5.7 is UNVERIFIED; Dev, Staging and Production Migration execution was NOT RUN. Global Architecture Gate remains FAIL. Architecture conflict: NONE.

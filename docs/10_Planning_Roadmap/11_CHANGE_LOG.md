@@ -91,6 +91,30 @@ Documents updated: AI/CURRENT_CONTEXT.md; docs/10_Planning_Roadmap/04_LIVING_ROA
 
 ## Change entry format
 
+## 2026-08-01 — 001D closed / 001E prepared
+
+```text
+Owner decision: Accept PR #13 and authorize 001D closure records plus 001E preparation only.
+Decision: D-024 — 001D completion and 001E preparation split.
+Previous state: 001D-C implementation complete pending independent review; 001D remained in progress; 001E waiting.
+New state: 001D-A, 001D-B and 001D-C MERGED / PASS; parent 001D COMPLETE / PASS; 001E NEXT / PREPARED / IMPLEMENTATION NOT STARTED; 001F WAITING.
+PR #13: MERGED; accepted Head e4bc57b7a3f0edbe84ccfde63d02d9135a4875e3; main squash SHA 548d53f1eae2ec14eea7261d3a101c1f2fda0dcc.
+Reason: Close the completed Runtime / Audit / Sync architecture foundation and freeze the next Shared UI / Browser E2E package before any implementation.
+Affected modules: Governance, Runtime, Audit, Sync Outbox, Shared UI planning and Browser E2E planning.
+Affected Work Packages: ERP-ARCH-MIGRATION-001D; ERP-ARCH-MIGRATION-001D-C; ERP-ARCH-MIGRATION-001E.
+Evidence limits retained: real-MySQL two-connection claim concurrency UNVERIFIED; MySQL 5.7 UNVERIFIED; Dev/Staging/Production Migration NOT RUN.
+Dependency impact: NONE; Playwright is proposed only and not installed.
+Application code: NO CHANGE.
+Workflow change: NO.
+Estimate impact: 001D retains its issued 35–54h / 45h planning estimate; prepared 001E is frozen at 40–62h / 51h planning value pending separate authorization.
+Architecture conflict: NONE.
+Global Architecture Gate: FAIL.
+Migration: NO.
+UAT: NO.
+Deployment: NO.
+Documents updated: AI/CURRENT_CONTEXT.md; docs/10_Planning_Roadmap/04_LIVING_ROADMAP.md; docs/10_Planning_Roadmap/10_DECISION_REGISTER.md; docs/10_Planning_Roadmap/11_CHANGE_LOG.md; docs/10_Planning_Roadmap/12_WORK_PACKAGE_INDEX.md; docs/10_Planning_Roadmap/13_PROGRAM_ROADMAP_AND_HOURS.md; docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001D.md; docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001D-C.md; docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001E.md; docs/60_Codex_Operations/logs/2026-08-01_ERP-ARCH-MIGRATION-001D.md.
+```
+
 ## 2026-08-01 — 001D-B Audit Foundation implemented pending review
 
 ```text
