@@ -11,7 +11,19 @@ version: 1.0
 ```text
 ERP-ARCH-MIGRATION-001D
 Runtime / Audit / Sync Foundation
-Status: PREPARED / OWNER IMPLEMENTATION AUTHORIZATION NO
+Status: CURRENT / PREPARED
+
+ERP-ARCH-MIGRATION-001D-A
+Runtime Foundation
+Status: PREPARED / AUTHORIZATION NO
+
+ERP-ARCH-MIGRATION-001D-B
+Audit Foundation
+Status: WAITING
+
+ERP-ARCH-MIGRATION-001D-C
+Sync Outbox Foundation
+Status: WAITING
 ```
 
 ## Completed architecture packages

@@ -22,6 +22,119 @@ DEPLOYMENT_AUTHORIZATION: NO
 
 This file is an implementation-planning contract only. It does not authorize repository changes, application code, schema creation, Migration execution or deployment.
 
+## Frozen Execution Split
+
+Execution order is mandatory:
+
+```text
+ERP-ARCH-MIGRATION-001D-A
+Runtime Foundation
+Status: PREPARED / OWNER IMPLEMENTATION AUTHORIZATION NO
+Estimate: 12–18 effective hours (planning value 15 hours)
+
+→ ERP-ARCH-MIGRATION-001D-B
+Audit Foundation
+Status: WAITING
+Estimate: 9–14 effective hours (planning value 12 hours)
+
+→ ERP-ARCH-MIGRATION-001D-C
+Sync Outbox Foundation
+Status: WAITING
+Estimate: 14–22 effective hours (planning value 18 hours)
+```
+
+No subpackage becomes authorized merely by this split. Each subpackage requires separate Owner implementation authorization. Migration file authoring, Migration execution, merge and deployment remain separate gates.
+
+### ERP-ARCH-MIGRATION-001D-A — Runtime Foundation
+
+Scope:
+
+- Redis connection and configuration validation;
+- Redis-backed cache foundation;
+- Redis Queue foundation;
+- named queues and job conventions;
+- Laravel Scheduler foundation;
+- runtime health service;
+- authorized internal health endpoint or command;
+- safe failure and redaction behaviour;
+- isolated automated tests.
+
+Explicit exclusions:
+
+- Audit schema or service changes beyond compatibility inspection;
+- `sync_outbox`;
+- Order;
+- Shipment;
+- Sync UI;
+- external APIs;
+- deployment.
+
+### ERP-ARCH-MIGRATION-001D-B — Audit Foundation
+
+Scope:
+
+- inspect and preserve the 001B `audit_records` foundation;
+- additive compatibility changes only;
+- one Audit Service boundary;
+- actor, source and request correlation;
+- before/after metadata;
+- sensitive-field rejection;
+- immutable audit behaviour;
+- system actor contract;
+- isolated automated tests.
+
+Explicit exclusions:
+
+- replacement or destructive rewrite of existing audit history;
+- Sync Outbox;
+- business workflows;
+- external APIs;
+- deployment.
+
+### ERP-ARCH-MIGRATION-001D-C — Sync Outbox Foundation
+
+Scope:
+
+- generic provider-independent `sync_outbox` schema;
+- model and service contract;
+- pending, processing, completed and failed states;
+- idempotency key;
+- bounded attempts and backoff metadata;
+- lock and stale-processing recovery contract;
+- failure-safe audit linkage;
+- isolated automated tests.
+
+Explicit exclusions:
+
+- external provider adapters;
+- WooCommerce;
+- Shopify;
+- actual API calls;
+- manual Sync UI;
+- batch orchestration;
+- Order and Shipment business implementation;
+- deployment.
+
+## Frozen Technical Decisions
+
+```text
+QUEUE_DRIVER: Redis
+CACHE_DRIVER: Redis
+SESSION_DRIVER: Preserve current configuration; no forced Redis session migration in 001D.
+SCHEDULER: Laravel Scheduler foundation.
+LOCAL_SCHEDULER: php artisan schedule:work may be used for isolated local validation.
+PRODUCTION_CRON: Contract documentation only; no configuration or deployment in 001D.
+HEALTH_CHECK: Runtime health service exposed through CLI and/or a system-permission-protected internal JSON endpoint. No public detailed health data.
+AUDIT_SCHEMA: Preserve and incrementally extend the existing 001B audit foundation. No destructive replacement.
+SYNC_OUTBOX: Provider-independent infrastructure table and service. It is integration intent, not business truth.
+EXTERNAL_API: NO
+SYNC_UI: NO
+ORDER_AND_SHIPMENT: NO
+MIGRATION_FILE_AUTHORING: May be separately authorized inside each implementation subpackage.
+MIGRATION_EXECUTION: NO unless separately and explicitly authorized.
+DEPLOYMENT: NO
+```
+
 ## Purpose
 
 Prepare the bounded runtime, audit and synchronization infrastructure required by the mandatory Laravel modular-monolith architecture without implementing order, shipment or business workflows.
@@ -209,20 +322,17 @@ Migration commands are excluded unless a later package contains explicit Migrati
 - premature sync-outbox coupling could leak later business scope into 001D;
 - migration rollback may be constrained by retained audit history.
 
-## Preliminary Effective-Hours Estimate
+## Frozen Effective-Hours Estimate
 
 ```text
-Preflight and contract freeze: 3–5h (planning value 4h)
-Runtime / Redis / Queue / Scheduler foundation: 10–16h (planning value 13h)
-Audit service and compatibility: 7–11h (planning value 9h)
-Sync-outbox foundation: 8–14h (planning value 11h)
-Automated validation: 6–10h (planning value 8h)
-Remediation buffer: 4–8h (planning value 6h)
-Estimated effective hours: 51h
-Estimate range: 38–64 effective hours
+ERP-ARCH-MIGRATION-001D-A: 12–18h (planning value 15h)
+ERP-ARCH-MIGRATION-001D-B: 9–14h (planning value 12h)
+ERP-ARCH-MIGRATION-001D-C: 14–22h (planning value 18h)
+Estimated effective hours: 45h
+Estimate range: 35–54 effective hours
 ```
 
-This estimate is preliminary and confers no authorization.
+The combined planning value is `15 + 12 + 18 = 45` hours and the combined range is `12 + 9 + 14 = 35` through `18 + 14 + 22 = 54` hours. This estimate confers no authorization.
 
 ## Final Preparation Verdict
 
@@ -241,28 +351,28 @@ PHASE_MAP:
 001E Shared UI / Browser E2E          WAITING
 001F Architecture Re-audit            WAITING
 COMPLETED_PHASES: 001A, 001B, 001C
-CURRENT_PHASE: 001D Runtime / Audit / Sync preparation
+CURRENT_PHASE: 001D Runtime / Audit / Sync scope freeze
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001D
-PACKAGE_STATUS: PREPARED / OWNER IMPLEMENTATION AUTHORIZATION NO
+PACKAGE_STATUS: SCOPE FROZEN / 001D-A PREPARED / OWNER IMPLEMENTATION AUTHORIZATION NO
 WAITING_PHASES: 001E, 001F
-BASELINE: main@ba1638277bac5d333ee693d627a41ca9c950c565
-GITHUB_STATE: 001C PR #5 MERGED; 001D implementation PR does not exist
+BASELINE: main@704c64fdadc457ad87711f70a6bb6de7dc8eb587
+GITHUB_STATE: 001C PR #5 and 001D preparation PR #7 MERGED; 001D implementation PR does not exist
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: Owner reviews and freezes 001D scope, then separately authorizes implementation
-EVIDENCE_AS_OF: 2026-08-01; repository governance and GitHub PR #5
+NEXT_DEPENDENCY: Owner reviews the frozen split, then separately authorizes ERP-ARCH-MIGRATION-001D-A
+EVIDENCE_AS_OF: 2026-08-01; repository governance, GitHub PR #7 and frozen 001D scope
 ```
 
 ## Estimated Codex Hours
 
 ```text
-PREFLIGHT_AND_SCOPE: 3-5 hours
-CORE_EXECUTION: 25-41 hours
-TEST_AND_VALIDATION: 6-10 hours
-REMEDIATION_BUFFER: 4-8 hours
-ESTIMATED_EFFECTIVE_HOURS: 51 hours
-ESTIMATE_RANGE: 38-64 effective hours
-ESTIMATE_BASIS: planning values 4 + 33 + 8 + 6 hours; bounded runtime, audit and sync-outbox foundation with isolated automated validation
+PREFLIGHT_AND_SCOPE: 3-5 hours (planning value 4 hours)
+CORE_EXECUTION: 23-34 hours (planning value 29 hours)
+TEST_AND_VALIDATION: 5-8 hours (planning value 6 hours)
+REMEDIATION_BUFFER: 4-7 hours (planning value 6 hours)
+ESTIMATED_EFFECTIVE_HOURS: 45 hours
+ESTIMATE_RANGE: 35-54 effective hours
+ESTIMATE_BASIS: planning values 4 + 29 + 6 + 6 hours; reconciled to 001D-A 15 hours, 001D-B 12 hours and 001D-C 18 hours, with combined ranges of 35-54 hours
 OWNER_REVIEW: EXCLUDED
 MERGE: EXCLUDED
 MIGRATION: EXCLUDED
