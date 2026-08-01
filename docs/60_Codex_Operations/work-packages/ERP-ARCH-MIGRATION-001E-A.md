@@ -2,7 +2,7 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-ARCH-MIGRATION-001E-A
-status: preflight-complete-pending-independent-review
+status: preflight-remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -14,8 +14,8 @@ standard_version: 1.1
 ```text
 ID: ERP-ARCH-MIGRATION-001E-A
 TITLE: Shared UI and Design Tokens
-STATUS: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
-GOVERNANCE_BASELINE: 6c644136d54f6b9c343b5a377d8ec111b5f5100e
+STATUS: PREFLIGHT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
+GOVERNANCE_BASELINE: eb6b4c425551bd60401fa20c85ee139f3d0e4785
 APPLICATION_BASELINE: main@548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
 PARENT_PACKAGE: ERP-ARCH-MIGRATION-001E
 PREFLIGHT_AUTHORIZATION: YES / COMPLETE
@@ -175,16 +175,30 @@ Tailwind palette values are the installed Tailwind 4 values (OKLCH in `node_modu
   --byl-shell-sidebar-width: 220px;
   --byl-shell-topbar-height: 76px;
   --byl-content-reading-width: 760px;
-  --byl-breakpoint-shell-narrow: 800px;
   --byl-motion-fast: 150ms;
   --byl-motion-shell: 180ms;
   --byl-motion-ease: ease;
   --byl-shadow-card: 0 4px 18px rgb(32 49 59 / 0.04);
   --byl-shadow-elevated: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  --byl-shadow-foundation: 0 25px 50px -12px rgb(8 51 68 / 0.20);
 }
 ```
 
 Only values used by the frozen active consumers are included. New scale values require consumer evidence and review. Under `@media (prefers-reduced-motion: reduce)`, nonessential component and shell transition duration resolves to `0ms`; no JavaScript mirror is permitted.
+
+### Structural breakpoint contract
+
+```text
+SHELL_NARROW_BREAKPOINT: 800px
+CLASSIFICATION: STRUCTURAL CSS CONTRACT
+TOKEN_CLASSIFICATION: NOT A CSS CUSTOM-PROPERTY TOKEN
+SOURCE_LOCATION: resources/css/shell.css
+IMPLEMENTATION_FORM: @media (max-width: 800px)
+```
+
+`800px` remains a frozen layout contract, but it is not part of `tokens.css` and must never be written as `var(--byl-breakpoint-shell-narrow)`. Ordinary CSS custom properties cannot be used directly as media-query conditions, and this package authorizes no custom media, PostCSS plugin, Tailwind configuration, Vite configuration or dependency change. The literal structural breakpoint does not create a second semantic design-token source.
+
+The Token inventory contains no other value intended for use as a media-query condition. Login's existing `@media (max-width: 1024px)` and `@media (prefers-reduced-motion: reduce)` remain local structural/environment contracts expressed directly in their media queries; neither becomes a CSS custom-property token.
 
 ### Color primitives
 
@@ -205,6 +219,7 @@ Only values used by the frozen active consumers are included. New scale values r
   --byl-color-shell-border-subtle: #dce4e7;
   --byl-color-shell-border-control: #71818a;
   --byl-color-shell-accent: #277d78;
+  --byl-color-shell-accent-hover: #174b50;
   --byl-color-shell-focus: #277d78;
   --byl-color-shell-backdrop: rgb(7 21 29 / 0.70);
 
@@ -252,6 +267,7 @@ The current low-contrast `#87959d`, `#71818a` as text, `#819099`, `#7b8b94`, sla
   --byl-border-subtle: var(--byl-color-shell-border-subtle, #dce4e7);
   --byl-border-control: var(--byl-color-shell-border-control, #71818a);
   --byl-accent: var(--byl-color-shell-accent, #277d78);
+  --byl-accent-hover: var(--byl-color-shell-accent-hover, #174b50);
   --byl-accent-ink: var(--byl-color-white, #ffffff);
   --byl-focus-ring: var(--byl-color-shell-focus, #277d78);
   --byl-danger: #be123c;
@@ -265,6 +281,7 @@ The current low-contrast `#87959d`, `#71818a` as text, `#819099`, `#7b8b94`, sla
   --byl-text-muted: var(--byl-color-auth-text-muted, #94a3b8);
   --byl-border-control: var(--byl-color-auth-border, #64748b);
   --byl-accent: var(--byl-color-auth-accent, #67e8f9);
+  --byl-accent-hover: var(--byl-color-auth-accent-hover, #a5f3fc);
   --byl-accent-ink: var(--byl-color-auth-accent-ink, #020617);
   --byl-focus-ring: var(--byl-color-auth-focus, #67e8f9);
   --byl-danger: var(--byl-color-auth-danger, #fda4af);
@@ -422,6 +439,72 @@ interface EmptyStateProps {
 
 `Dashboard/Index.vue`, `AuthenticatedLayout.vue`, `GlobalNavigation.vue` and `ModuleSidebar.vue` require no implementation edit. Their tests remain regression gates. Scoped Login decoration geometry may remain component-local only when it references the frozen decoration primitives; it may not redeclare semantic colors.
 
+### Login semantic Tailwind migration contract
+
+| Current class/value | Frozen implementation mapping |
+|---|---|
+| root `bg-[#07111f]` | `bg-[var(--byl-canvas)]` |
+| `text-slate-100` | `text-[var(--byl-text)]` |
+| `text-slate-300` | `text-[var(--byl-text-secondary)]` |
+| `text-slate-400` | `text-[var(--byl-text-muted)]` |
+| `text-slate-500` | `text-[var(--byl-text-muted)]` |
+| `text-cyan-300` | `text-[var(--byl-accent)]` |
+| `text-cyan-200` | `text-[var(--byl-accent)]` |
+| `text-rose-300` | `UiAlert tone="error"` resolving through `var(--byl-danger)` |
+| `bg-slate-950` | `bg-[var(--byl-surface)]` |
+| `border-slate-700` | `border-[var(--byl-border-control)]` |
+| `border-slate-800` | `border-[var(--byl-border-subtle)]` |
+| `focus:border-cyan-300` | `focus:border-[var(--byl-focus-ring)]` |
+| `focus:ring-cyan-300/30` | opaque `focus:ring-[var(--byl-focus-ring)]` using the approved focus width/offset contract |
+| `focus-within:border-cyan-300` | `focus-within:border-[var(--byl-focus-ring)]` |
+| `focus-within:ring-cyan-300/30` | opaque `focus-within:ring-[var(--byl-focus-ring)]` using the approved focus width/offset contract |
+| `hover:bg-cyan-200` | `hover:bg-[var(--byl-accent-hover)]` |
+| primary-action `text-slate-950` | `text-[var(--byl-accent-ink)]` |
+
+Login body text, labels, helper copy, errors, control surfaces, control boundaries, state colors and focus treatment must resolve through BYL Tokens. Tailwind remains permitted for structure, layout, width, spacing, typography scale and responsive display only. Grid, orbit, node, glow and line decoration may use the named auth decoration primitives. No page-local semantic color may remain or be added.
+
+### Foundation semantic Tailwind migration contract
+
+| Current class/value | Frozen implementation mapping |
+|---|---|
+| page/body `bg-slate-950` | root `data-byl-theme="dark"` plus `bg-[var(--byl-canvas)]` |
+| `bg-slate-900/80` | `bg-[var(--byl-color-foundation-surface)]` |
+| `border-slate-800` | `border-[var(--byl-color-foundation-border)]` |
+| `text-white` | `text-[var(--byl-text)]` |
+| `text-slate-300` | `text-[var(--byl-text-secondary)]` |
+| `text-cyan-300` | `text-[var(--byl-accent)]` |
+| `text-cyan-200` | `text-[var(--byl-accent)]` |
+| `border-cyan-400/50` | `border-[var(--byl-color-foundation-action-border)]` |
+| `hover:bg-cyan-400/10` | `hover:bg-[var(--byl-color-foundation-action-hover)]` |
+| `shadow-cyan-950/20` | `box-shadow: var(--byl-shadow-foundation)` |
+| cyan focus ring and offset | opaque `var(--byl-focus-ring)` with frozen focus width and offset |
+
+Foundation keeps `data-byl-theme="dark"`. All semantic colors resolve through `tokens.css`; Tailwind retains only structural, layout and typography-scale utilities. No `@theme` mirror, TypeScript color object or component-local semantic palette is permitted.
+
+### Login loading-copy contract
+
+```vue
+<UiButton
+    type="submit"
+    tone="primary"
+    :loading="form.processing"
+>
+    登录系统
+
+    <template #loading>
+        验证中…
+    </template>
+</UiButton>
+```
+
+```text
+NORMAL_TEXT: 登录系统
+LOADING_TEXT: 验证中…
+GENERIC_UI_BUTTON_LOADING_FALLBACK: 处理中…
+LOGIN_OVERRIDE_REQUIRED: YES
+POST_BEHAVIOR: form.post('/login') UNCHANGED
+```
+
 ## 6. Final File Boundary
 
 ```text
@@ -532,7 +615,10 @@ EmptyState.test.ts
 Login.test.ts
 - preserves email/password fields, approved account copy, no registration and robots meta
 - proves FormField/TextInput associations and password visibility behavior
-- proves submit calls form.post('/login') with processing disabled/loading state
+- proves the non-processing submit displays `登录系统`
+- proves `form.processing=true` displays `验证中…` and does not display the generic `处理中…` fallback
+- proves processing keeps the submit button disabled and `aria-busy`
+- proves submit still calls form.post('/login')
 - renders the exact generic server error through UiAlert without internal-state disclosure
 
 AuthenticatedLayout.test.ts
@@ -602,6 +688,8 @@ OWNER_REVIEW: EXCLUDED
 
 This confirms, rather than expands, the parent's 16–24h planning allocation. The estimate is not authorization.
 
+The page-level Login and Foundation semantic Tailwind mappings frozen by remediation are already included in `TOKEN_SOURCE_AND_CSS_MIGRATION` and `CONSUMER_MIGRATION`. They add no file, component or estimate scope; the 16–24h range and 20h planning value remain unchanged.
+
 ## 12. Rollback Checkpoints
 
 ```text
@@ -620,6 +708,8 @@ Each implementation checkpoint must be independently revertible. Revert consumer
 
 ```text
 ARCHITECTURE_CONFLICT: NONE WITH EVIDENCE
+BREAKPOINT_TOKEN_CONFLICT: RESOLVED
+BREAKPOINT_CLASSIFICATION: STRUCTURAL CSS CONTRACT
 TOKEN_SOURCE_CONFLICT: NONE; one CSS semantic source only
 CONSUMER_CONFLICT: NONE; all five components have active consumers
 DEPENDENCY_CONFLICT: NONE; current Vue/Vite/Tailwind/Vitest stack is sufficient
@@ -650,20 +740,20 @@ DEPLOYMENT: NOT INCLUDED
 ## Preflight Verdict
 
 ```text
-FINAL_PREFLIGHT_VERDICT: ERP_ARCH_MIGRATION_001E_A_PREFLIGHT_COMPLETE_PENDING_INDEPENDENT_REVIEW
+FINAL_PREFLIGHT_VERDICT: ERP_ARCH_MIGRATION_001E_A_PREFLIGHT_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
 ```
 
 ## PROJECT POSITION
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS → 001D-C MERGED / PASS → 001D COMPLETE / PASS → 001E-A PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED → 001E-B WAITING → 001E-C WAITING → 001F WAITING
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS → 001D-C MERGED / PASS → 001D COMPLETE / PASS → 001E-A PREFLIGHT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED → 001E-B WAITING → 001E-C WAITING → 001F WAITING
 COMPLETED_PHASES: 001A, 001B, 001C, 001D-A, 001D-B, 001D-C, 001D
 CURRENT_PHASE: 001E-A Preflight review gate
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-A
-PACKAGE_STATUS: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION AUTHORIZATION NO
+PACKAGE_STATUS: PREFLIGHT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION AUTHORIZATION NO
 WAITING_PHASES: 001E-A implementation, 001E-B, 001E-C, 001F
-BASELINE: governance Head 6c644136d54f6b9c343b5a377d8ec111b5f5100e based on main@548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
+BASELINE: remediation-authorized governance Head eb6b4c425551bd60401fa20c85ee139f3d0e4785 based on main@548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
 GITHUB_STATE: governance branch only; no PR; no 001E implementation branch or PR
 SOURCE_CONFLICTS: NONE WITH EVIDENCE; current accessibility failures are frozen implementation corrections, not competing architecture facts
 GLOBAL_GATE: FAIL
@@ -701,10 +791,10 @@ REMEDIATION_BUFFER: 0.25–0.5h; planning value 0.5h
 ESTIMATED_EFFECTIVE_HOURS: 3h
 ESTIMATE_RANGE: 2–4 effective hours
 ESTIMATE_BASIS: issued Preflight estimate; planning values 0.75 + 1 + 0.75 + 0.5 = 3h
-ACTUAL_EFFECTIVE_HOURS: 1.5h
-ACTUAL_HOURS_BREAKDOWN: repository and visual inventory 0.4h; token and contrast contract 0.4h; component/consumer/test boundary 0.4h; governance update and validation 0.3h
-VARIANCE: -1.5h / -50% against 3h planning value
-VARIANCE_REASON: active consumer surface was bounded and repository evidence was locally available; no implementation or browser setup was authorized
+ACTUAL_EFFECTIVE_HOURS: 1.9h
+ACTUAL_HOURS_BREAKDOWN: repository and visual inventory 0.4h; token and contrast contract 0.4h; component/consumer/test boundary 0.4h; initial governance update and validation 0.3h; limited governance remediation and validation 0.4h
+VARIANCE: -1.1h / -36.7% against 3h planning value
+VARIANCE_REASON: active consumer surface was bounded and repository evidence was locally available; remediation corrected contracts without implementation or browser setup
 OWNER_REVIEW: EXCLUDED
 MERGE: EXCLUDED
 MIGRATION: EXCLUDED

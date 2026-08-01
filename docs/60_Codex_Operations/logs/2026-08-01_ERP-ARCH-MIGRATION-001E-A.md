@@ -2,7 +2,7 @@
 type: byl-erp-work-log
 date: 2026-08-01
 work_package: ERP-ARCH-MIGRATION-001E-A
-status: preflight-complete-pending-independent-review
+status: preflight-remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -15,7 +15,8 @@ standard_version: 1.1
 WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-A
 AUTHORIZATION_TYPE: PREFLIGHT ONLY
 AUTHORIZED_GOVERNANCE_HEAD: 6c644136d54f6b9c343b5a377d8ec111b5f5100e
-RESULT: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW
+REMEDIATION_AUTHORIZED_HEAD: eb6b4c425551bd60401fa20c85ee139f3d0e4785
+RESULT: PREFLIGHT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
 IMPLEMENTATION_AUTHORIZATION: NO
 APPLICATION_CODE_CHANGE: NO
 CSS_CHANGE: NO
@@ -41,6 +42,28 @@ DEPLOYMENT: NO
 - froze component/consumer Vitest coverage and explicitly retained jsdom browser limitations;
 - required a bounded Owner visual check before merge authorization, classified separately from UAT;
 - confirmed the 001E-A implementation range as 16–24 effective hours, planning value 20h.
+
+## Limited Governance Remediation
+
+```text
+BREAKPOINT_TOKEN_CONFLICT: RESOLVED
+BREAKPOINT_CLASSIFICATION: STRUCTURAL CSS CONTRACT
+SHELL_NARROW_BREAKPOINT: 800px / @media (max-width: 800px)
+REMOVED_BREAKPOINT_VARIABLE: --byl-breakpoint-shell-narrow
+LOGIN_SEMANTIC_TAILWIND_MAP: FROZEN
+FOUNDATION_SEMANTIC_TAILWIND_MAP: FROZEN
+LOGIN_LOADING_COPY: PRESERVED
+NORMAL_TEXT: 登录系统
+LOADING_TEXT: 验证中…
+GENERIC_UI_BUTTON_LOADING_FALLBACK: 处理中…
+LOGIN_OVERRIDE_REQUIRED: YES
+IMPLEMENTATION_ESTIMATE: UNCHANGED / 16–24h / 20h
+APPLICATION_CODE_CHANGE: NO
+CSS_CHANGE: NO
+DEPENDENCY_CHANGE: NO
+```
+
+The remediation removed the invalid plan to represent a media-query condition as a CSS custom property. The `800px` shell breakpoint remains a literal structural contract in `resources/css/shell.css`; no custom-media facility, plugin, configuration or dependency is planned. The Login and Foundation maps now remove Tailwind slate/cyan/rose utilities as semantic color facts while retaining Tailwind for structural utilities.
 
 ## Contrast Result
 
@@ -96,7 +119,7 @@ MIGRATION: NO
 ## Verdict
 
 ```text
-FINAL_STATUS: ERP_ARCH_MIGRATION_001E_A_PREFLIGHT_COMPLETE_PENDING_INDEPENDENT_REVIEW
+FINAL_STATUS: ERP_ARCH_MIGRATION_001E_A_PREFLIGHT_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
 NEXT_GATE: independent Preflight review, then separate Owner implementation authorization
 ```
 
@@ -104,13 +127,13 @@ NEXT_GATE: independent Preflight review, then separate Owner implementation auth
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED → 001E-B WAITING → 001E-C WAITING → 001F WAITING
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A PREFLIGHT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED → 001E-B WAITING → 001E-C WAITING → 001F WAITING
 COMPLETED_PHASES: 001A, 001B, 001C, 001D-A, 001D-B, 001D-C, 001D
 CURRENT_PHASE: 001E-A Preflight review gate
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-A
-PACKAGE_STATUS: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION AUTHORIZATION NO
+PACKAGE_STATUS: PREFLIGHT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION AUTHORIZATION NO
 WAITING_PHASES: 001E-A implementation, 001E-B, 001E-C, 001F
-BASELINE: governance Head 6c644136d54f6b9c343b5a377d8ec111b5f5100e based on main@548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
+BASELINE: remediation-authorized governance Head eb6b4c425551bd60401fa20c85ee139f3d0e4785 based on main@548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
 GITHUB_STATE: governance branch only; no PR; no 001E implementation branch or PR
 SOURCE_CONFLICTS: NONE WITH EVIDENCE; current accessibility failures are recorded as bounded implementation corrections
 GLOBAL_GATE: FAIL
@@ -148,10 +171,10 @@ REMEDIATION_BUFFER: 0.25–0.5h; planning value 0.5h
 ESTIMATED_EFFECTIVE_HOURS: 3h
 ESTIMATE_RANGE: 2–4 effective hours
 ESTIMATE_BASIS: issued Preflight estimate; planning values 0.75 + 1 + 0.75 + 0.5 = 3h
-ACTUAL_EFFECTIVE_HOURS: 1.5h
-ACTUAL_HOURS_BREAKDOWN: repository and visual inventory 0.4h; token and contrast contract 0.4h; component/consumer/test boundary 0.4h; governance update and validation 0.3h
-VARIANCE: -1.5h / -50% against 3h planning value
-VARIANCE_REASON: active consumer surface was bounded and repository evidence was locally available; no implementation or browser setup was authorized
+ACTUAL_EFFECTIVE_HOURS: 1.9h
+ACTUAL_HOURS_BREAKDOWN: repository and visual inventory 0.4h; token and contrast contract 0.4h; component/consumer/test boundary 0.4h; initial governance update and validation 0.3h; limited governance remediation and validation 0.4h
+VARIANCE: -1.1h / -36.7% against 3h planning value
+VARIANCE_REASON: active consumer surface was bounded and repository evidence was locally available; remediation corrected contracts without implementation or browser setup
 OWNER_REVIEW: EXCLUDED
 MERGE: EXCLUDED
 MIGRATION: EXCLUDED
