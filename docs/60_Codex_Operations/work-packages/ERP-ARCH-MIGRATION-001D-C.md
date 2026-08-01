@@ -2,7 +2,7 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-ARCH-MIGRATION-001D-C
-status: sqlite-schema-test-remediation-complete-pending-independent-review
+status: isolated-mysql-validation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -14,12 +14,12 @@ standard_version: 1.1
 ```text
 ID: ERP-ARCH-MIGRATION-001D-C
 TITLE: Sync Outbox Foundation
-STATUS: CURRENT / SQLITE SCHEMA TEST REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
+STATUS: CURRENT / ISOLATED MYSQL MIGRATION VALIDATION COMPLETE / PENDING INDEPENDENT REVIEW
 IMPLEMENTATION_AUTHORIZATION: YES
 IMPLEMENTATION_BASE_SHA: e2247fcaaae690c94ef07d45c8807ce749de1b46
 BRANCH: feature/erp-arch-migration-001d-c-sync-outbox-foundation
 MIGRATION_FILE_AUTHORING: YES / COMPLETE
-MIGRATION_EXECUTION: NO
+MIGRATION_EXECUTION: YES / ISOLATED TEST ENVIRONMENT COMPLETE / PERSISTENT ENVIRONMENTS NO
 MERGE_AUTHORIZATION: NO
 DEPLOYMENT_AUTHORIZATION: NO
 ```
@@ -172,11 +172,11 @@ If required Audit creation fails, the enclosing state transaction rolls back. Th
 - uses no partial indexes, generated columns, check constraints, `SKIP LOCKED` dependency or provider-specific SQL;
 - the SQLite Schema test verifies the Laravel schema contract through public Schema APIs only;
 - SQLite does not reliably preserve/report MySQL `VARCHAR` lengths, unsigned integer physical attributes, native JSON storage, MySQL timestamp defaults or physical index byte construction;
-- MySQL physical column types, defaults, auto-increment behavior and index creation remain UNVERIFIED;
-- those physical properties must be verified in an isolated MySQL environment only after separate Migration Execution authorization;
+- MySQL 8.4.11 physical column types, defaults, auto-increment behavior and index creation are VERIFIED in one disposable isolated environment;
+- MySQL 5.7 remains UNVERIFIED and is not claimed;
 - claim/recovery correctness relies on ordinary transactions and `SELECT ... FOR UPDATE` semantics exposed by Laravel.
 
-The current non-executed authoring review does not claim complete MySQL compatibility.
+The validation proves the frozen contract on MySQL 8.4.11 only. It does not prove MySQL 5.7 compatibility or authorize any persistent-environment Migration execution.
 
 ## Migration File Remediation Evidence
 
@@ -208,6 +208,42 @@ PHP_SYNTAX: PASS
 PINT: PASS
 SQLITE_SCHEMA_TEST: PASS / 3 tests / 82 assertions
 DIFF_CHECK: PASS
+```
+
+## Isolated MySQL Migration Validation
+
+```text
+AUTHORIZED_HEAD: 84d1806c45174d7734529447db88e37afebf1d4f
+MYSQL_VERSION: MySQL Community 8.4.11
+MYSQL_HOST: localhost / disposable Unix socket only
+MYSQL_PORT: DISABLED / skip-networking=1
+MYSQL_DATABASE: random disposable byl_001dc_rerun_* database
+MYSQL_CHARACTER_SET: utf8mb4
+MYSQL_COLLATION: utf8mb4_unicode_ci
+PRE_VALIDATION_TABLES: 0
+ISOLATION_EVIDENCE: fresh mktemp datadir; fresh random database; no TCP; no shared service/config/data
+FIRST_UP: PASS
+FIRST_UP_WARNING_COUNT: 0 / same Laravel PDO connection / direct diagnostic query
+PHYSICAL_SCHEMA_VALIDATION: PASS / all 21 columns, types, lengths, defaults, nullable, primary and auto-increment contracts
+TABLE_ENGINE: InnoDB
+ROW_FORMAT: Dynamic
+TABLE_COLLATION: utf8mb4_unicode_ci
+INDEX_VALIDATION: PASS / primary, unique and all five ordinary indexes with exact order and no prefix truncation
+INDEX_LENGTH_RESULT: each composite string key is 191 utf8mb4 characters / 764 maximum bytes / SUB_PART NULL
+DOWN: PASS / sync_outbox absent / no other table existed or changed
+DOWN_WARNING_COUNT: 0
+SECOND_UP: PASS
+SECOND_UP_WARNING_COUNT: 0
+SCHEMA_SNAPSHOT_COMPARISON: IDENTICAL
+SQLITE_SCHEMA_TEST: PASS / 3 tests / 82 assertions
+FULL_PHP_TEST_SUITE: PASS / 83 tests / 682 assertions
+AUTHORIZED_FILES_PINT: PASS
+REPOSITORY_WIDE_PINT: FAIL / 14 pre-existing baseline files
+PRE_EXISTING_FAILURES: unchanged 001B/001C formatting debt including historical migrations, models, controllers, tests and routes
+NEW_PINT_FAILURES: NONE
+DIFF_CHECK: PASS
+TEMP_ENVIRONMENT_CLEANED: YES / database, datadir, socket, log, verifier, server binary and process removed
+DEV_STAGING_PRODUCTION_SHARED_DATABASE_CONTACT: NONE
 ```
 
 ## Rollback and Historical Data Impact
@@ -264,7 +300,7 @@ vendor/bin/pint --test <changed PHP files>
 git diff --check
 ```
 
-Migration commands are excluded until separately authorized.
+Further Migration execution is excluded unless separately re-authorized for another bounded environment or purpose.
 
 ## Frozen Estimate
 
@@ -283,18 +319,18 @@ The planning value reconciles to `2.5 + 9 + 3.5 + 3 = 18` hours. The range recon
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS BY main@e2247fc → 001D-C CURRENT / SQLITE SCHEMA TEST REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E WAITING → 001F WAITING
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS BY main@e2247fc → 001D-C CURRENT / ISOLATED MYSQL VALIDATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E WAITING → 001F WAITING
 COMPLETED_PHASES: 001A, 001B, 001C, 001D-A, 001D-B
-CURRENT_PHASE: 001D-C Sync Outbox Foundation SQLite Schema test re-review
+CURRENT_PHASE: 001D-C Sync Outbox Foundation isolated Migration validation review
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001D-C
-PACKAGE_STATUS: SQLITE SCHEMA TEST REMEDIATION COMPLETE / MYSQL VALIDATION NOT RUN / MERGE AUTHORIZATION NO
+PACKAGE_STATUS: MYSQL 8.4.11 VALIDATED / MYSQL 5.7 UNVERIFIED / MODEL AND SERVICE NOT STARTED / MERGE AUTHORIZATION NO
 WAITING_PHASES: 001E, 001F
 BASELINE: main@e2247fcaaae690c94ef07d45c8807ce749de1b46
 GITHUB_STATE: PR #12 merged into main at authorized Base; no 001D-C implementation PR authorized before schema gate resolution
 SOURCE_CONFLICTS: Main Current Context and parent 001D package still describe 001D-B pending and 001D-C waiting; Git main Head and this explicit Owner authorization supersede those stale execution-status statements for this package
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: Independent review of the authored Migration Head; Migration execution remains separately prohibited
+NEXT_DEPENDENCY: Independent review of isolated Migration evidence; Owner separately authorizes any Model/Service continuation
 EVIDENCE_AS_OF: 2026-08-01; origin/main, repository governance, parent 001D package and explicit Owner authorization
 ```
 
@@ -329,9 +365,9 @@ ESTIMATE_RANGE: 14–22h
 ESTIMATE_BASIS: planning values 2.5 + 9 + 3.5 + 3 = 18h; lower bounds total 14h; upper bounds total 22h
 OWNER_REVIEW: EXCLUDED
 MERGE: EXCLUDED
-MIGRATION: INCLUDED — FILE AUTHORING ONLY
+MIGRATION: INCLUDED — FILE AUTHORING AND ISOLATED VALIDATION ONLY
 MIGRATION_FILE_AUTHORING: INCLUDED
-MIGRATION_EXECUTION: EXCLUDED
+MIGRATION_EXECUTION: INCLUDED — ISOLATED TEST ENVIRONMENT ONLY
 UAT: EXCLUDED
 DEPLOYMENT: EXCLUDED
 ```
