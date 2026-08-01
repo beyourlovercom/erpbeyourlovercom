@@ -7,7 +7,73 @@ standard_version: 1.1
 
 # Codex Task Template
 
-Define Work Package identity, repository/base, authorization, prohibited actions, exact scope, acceptance criteria, validation, commit/PR rules and final verdict before the mandatory footer. The task must end with these three modules exactly.
+## WORK PACKAGE
+
+```text
+ID:
+TITLE:
+STATUS:
+OWNER_AUTHORIZATION:
+STANDARD_ID: LARGE-PROJECT-EXEC-001
+STANDARD_VERSION:
+```
+
+## REPOSITORY
+
+```text
+REMOTE:
+LOCAL_WORKTREE:
+TARGET_BRANCH:
+```
+
+## BASELINE
+
+```text
+BASE_BRANCH: main
+BASE_SHA:
+BASE_VERIFIED_AT:
+```
+
+## AUTHORIZED ACTIONS
+
+- List every authorized action.
+
+## PROHIBITED ACTIONS
+
+- List explicit hard gates and out-of-scope operations.
+
+## SCOPE
+
+- List the only files, modules and behavior in scope.
+
+## ACCEPTANCE CRITERIA
+
+- Define observable completion criteria.
+
+## VALIDATION
+
+```text
+REQUIRED_COMMANDS:
+EXPECTED_EVIDENCE:
+HARD_GATES:
+```
+
+## COMMIT / PR RULES
+
+```text
+COMMIT_MESSAGE:
+PR_TITLE:
+PR_BASE:
+PR_DRAFT_STATE:
+MERGE_AUTHORIZED:
+```
+
+## FINAL REPORT FORMAT
+
+```text
+REQUIRED_FIELDS:
+ALLOWED_FINAL_VERDICT:
+```
 
 ## PROJECT POSITION
 

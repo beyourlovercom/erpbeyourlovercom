@@ -50,16 +50,16 @@ ESTIMATE_METHOD:
 ## ESTIMATED CODEX HOURS
 
 ```text
-PREFLIGHT_AND_SCOPE: <issued component estimate>
-CORE_EXECUTION: <issued component estimate>
-TEST_AND_VALIDATION: <issued component estimate>
-REMEDIATION_BUFFER: <issued component estimate>
+PREFLIGHT_AND_SCOPE: <issued range and issued planning value>
+CORE_EXECUTION: <issued range and issued planning value>
+TEST_AND_VALIDATION: <issued range and issued planning value>
+REMEDIATION_BUFFER: <issued range and issued planning value>
 ESTIMATED_EFFECTIVE_HOURS: <issued value; never rewritten>
 ESTIMATE_RANGE: <issued range>
-ESTIMATE_BASIS: <issued basis and arithmetic>
+ESTIMATE_BASIS: <reproduce the issued component planning values and arithmetic explicitly>
 ACTUAL_EFFECTIVE_HOURS: <productive in-scope time>
 ACTUAL_HOURS_BREAKDOWN: <productive-hours distribution>
-VARIANCE: <actual minus estimate; signed hours and percentage; zero explicit>
+VARIANCE: <VARIANCE_HOURS = ACTUAL_EFFECTIVE_HOURS - ESTIMATED_EFFECTIVE_HOURS; VARIANCE_PERCENT = VARIANCE_HOURS / ESTIMATED_EFFECTIVE_HOURS * 100; report signed hours and percentage; zero explicit>
 VARIANCE_REASON: <evidence-based; NONE only for zero variance>
 OWNER_REVIEW: INCLUDED|EXCLUDED
 MERGE: INCLUDED|EXCLUDED

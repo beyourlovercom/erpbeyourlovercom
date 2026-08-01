@@ -18,6 +18,14 @@ Version: 1.1
 
 This repository-local standard governs every formal BYL ERP task: implementation, remediation, documentation, validation, Migration preparation/execution, UAT and deployment preparation. Exploration must become a complete formal package before repository mutation, commit, PR work, Migration, UAT or deployment.
 
+## Repository-Local Implementation
+
+This file is the BYL ERP repository's local implementation of `LARGE-PROJECT-EXEC-001`. It directly governs only the BYL ERP repository.
+
+Other projects must install this standard or a project-adapted implementation in their own repositories. Each repository implementation governs that project's facts, authorization gates and execution constraints.
+
+Merging this standard does not automatically govern another repository, and no task or report may claim otherwise.
+
 ## Version Transition
 
 - version 1.1 becomes effective when its governance PR merges;
@@ -166,6 +174,21 @@ VARIANCE_REASON: <evidence-based; NONE only for zero variance>
 
 The issued estimate is never retrospectively rewritten. Missing actual hours or variance makes the final report incomplete and merge readiness FAIL.
 
+Variance is calculated as:
+
+```text
+VARIANCE_HOURS = ACTUAL_EFFECTIVE_HOURS - ESTIMATED_EFFECTIVE_HOURS
+VARIANCE_PERCENT = VARIANCE_HOURS / ESTIMATED_EFFECTIVE_HOURS * 100
+```
+
+Positive variance means over estimate; negative variance means under estimate; zero variance must be reported explicitly. Every non-zero variance requires an evidence-based explanation.
+
 ## Downstream Activity Inclusion
 
-`OWNER_REVIEW`, `MERGE`, `MIGRATION`, `UAT` and `DEPLOYMENT` are mandatory INCLUDED/EXCLUDED fields. INCLUDED means estimated Codex work is in scope; it does not grant authorization. Owner waiting time is always excluded. No downstream activity is inferred from another.
+`OWNER_REVIEW`, `MERGE`, `MIGRATION`, `UAT` and `DEPLOYMENT` are mandatory INCLUDED/EXCLUDED fields. `INCLUDED` means estimated Codex work is in scope; it never grants authorization. Any activity lacking its required explicit Owner authorization must be `EXCLUDED`.
+
+`MERGE`, `MIGRATION`, `UAT` and `DEPLOYMENT` may be marked `INCLUDED` only when the package contains the required explicit Owner authorization, bounded scope, acceptance criteria and validation contract for that activity.
+
+Owner waiting time is always excluded from effective hours, including when preparation for Owner review is included. Manual stakeholder UAT time and passive deployment observation are excluded unless the package defines measurable authorized Codex work for them.
+
+No downstream activity is inferred from another: Owner review does not imply Merge; Merge does not imply Migration; Migration does not imply UAT; UAT does not imply Deployment.

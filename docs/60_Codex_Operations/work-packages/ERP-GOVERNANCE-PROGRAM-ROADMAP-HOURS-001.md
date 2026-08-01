@@ -68,6 +68,16 @@ PR10_CURRENT_D021: UNMERGED / NOT REPOSITORY TRUTH
 DECISION_NUMBER_AFTER_REBASE: D-022
 ```
 
+## Remediation
+
+```text
+REMEDIATION_ID: ERP-GOVERNANCE-PROGRAM-ROADMAP-HOURS-001-REMEDIATION-001
+ROOT_CAUSE: Version 1.1 rewrite unintentionally removed the structured task scaffold and several version 1.0 downstream-authorization safeguards.
+REMEDIATION: Restore the task scaffold, repository-local boundary, downstream inclusion gates and variance formulas while preserving all version 1.1 additions.
+PR: #11
+PREVIOUS_HEAD: 2e79cfec3109dcf3f56f014359fdb410d491ed30
+```
+
 ## Final Report Contract
 
 Report standard/version effects, Program and current-track contracts, Roadmap Hours and unknown rules, actual ledger, PR #10 status, D-021/D-022 rule, exact eleven-file diff and all prohibition statuses. The final report must use the version 1.1 three-module footer and include actual hours and variance.
