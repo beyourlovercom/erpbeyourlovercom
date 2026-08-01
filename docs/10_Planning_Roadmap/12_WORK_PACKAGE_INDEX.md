@@ -11,15 +11,11 @@ version: 1.0
 ```text
 ERP-ARCH-MIGRATION-001D
 Runtime / Audit / Sync Foundation
-Status: CURRENT / PREPARED
-
-ERP-ARCH-MIGRATION-001D-A
-Runtime Foundation
-Status: PREPARED / AUTHORIZATION NO
+Status: CURRENT / IN PROGRESS
 
 ERP-ARCH-MIGRATION-001D-B
 Audit Foundation
-Status: WAITING
+Status: CURRENT / PREPARED / AUTHORIZATION NO
 
 ERP-ARCH-MIGRATION-001D-C
 Sync Outbox Foundation
@@ -34,6 +30,13 @@ Application Shell
 Status: MERGED / PASS
 PR: #5
 Main SHA: ba1638277bac5d333ee693d627a41ca9c950c565
+
+ERP-ARCH-MIGRATION-001D-A
+Runtime Foundation
+Status: MERGED / PASS
+PR: #9
+Accepted Head: 3d8f92b701370db41bed0df707183207f6924dd5
+Main SHA: 50803c3fcd51e9f8b3485f4fb57565154a284bf7
 ```
 
 ## Planned fast-track packages

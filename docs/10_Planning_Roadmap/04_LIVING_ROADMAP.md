@@ -40,7 +40,10 @@ Program sequence, estimate classification and remaining-hours evidence are maint
 Repository Governance = PASS
 001B Auth / Authorization = MERGED (merge SHA: 5e100cc8e80480ecb6dbd1b38cbfbe9bddba12f4)
 001C App Shell = MERGED / PASS (PR #5; main commit: ba1638277bac5d333ee693d627a41ca9c950c565)
-001D Runtime / Audit / Sync Foundation = CURRENT / PREPARED / IMPLEMENTATION NOT STARTED
+001D Runtime / Audit / Sync Foundation = CURRENT / IN PROGRESS
+001D-A Runtime Foundation = MERGED / PASS
+001D-B Audit Foundation = CURRENT / PREPARED / IMPLEMENTATION NOT STARTED
+001D-C Sync Outbox Foundation = WAITING
 001E Shared UI / Browser E2E = WAITING
 001F Architecture Re-audit = WAITING
 Global Architecture Gate = FAIL
@@ -59,9 +62,9 @@ Maximum planning envelope: approximately 192 effective hours
 ## Immediate sequence
 
 ```text
-1. Review and freeze 001D scope and acceptance criteria.
-2. Obtain Owner authorization before 001D implementation.
-3. Do not begin 001E or business MVP packages.
+1. Review the prepared 001D-B Audit Foundation package.
+2. Obtain separate Owner implementation authorization.
+3. Do not begin 001D-C, 001E or business MVP packages.
 ```
 
 ## Incremental releases
