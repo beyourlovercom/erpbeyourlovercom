@@ -7,6 +7,32 @@ updated: 2026-08-01
 
 # Living Roadmap
 
+## Program Roadmap
+
+```text
+Architecture Migration / Global Architecture Gate
+→ MVP1 Manual Fulfillment / Tencent Docs Replacement
+→ MVP1.1 WooCommerce Inbound
+→ MVP1.2 Single Tracking Outbound
+→ MVP1.3 Sync Orchestration
+→ Customer / Lead Pilot
+→ Product / Media
+→ WordPress Product and Image Sync
+→ Content / SEO
+→ Posts / Pages
+→ GA4 / GSC / Cloudflare
+→ Google Docs Publishing
+→ Full Order Workspace
+→ Logistics OS
+→ KOL OS and Social Providers
+→ Inventory and Procurement
+→ Accounting / ROI Expansion
+→ Shopify and Additional Integrations
+→ Dev UAT and Production Hardening
+```
+
+Program sequence, estimate classification and remaining-hours evidence are maintained in [[13_PROGRAM_ROADMAP_AND_HOURS]].
+
 ## Current status
 
 ```text

@@ -2,167 +2,193 @@
 type: codex-governance-standard
 project: BYL ERP
 standard_id: LARGE-PROJECT-EXEC-001
-version: 1.0
+version: 1.1
 ---
 
 # Large Project Codex Execution Standard
 
-## Standard identification
+## Standard Identification
 
 ```text
 Standard ID: LARGE-PROJECT-EXEC-001
+Version: 1.1
 ```
 
 ## Applicability
 
-This standard applies to every formal Codex execution package that authorizes work in the BYL ERP repository, including implementation, remediation, documentation, validation, migration execution or preparation, UAT support and deployment preparation.
+This repository-local standard governs every formal BYL ERP task: implementation, remediation, documentation, validation, Migration preparation/execution, UAT and deployment preparation. Exploration must become a complete formal package before repository mutation, commit, PR work, Migration, UAT or deployment.
 
-Exploration that does not authorize repository changes may use a shorter prompt. It becomes a formal execution package before Codex may modify files, create commits, open or update a PR, run a migration, conduct UAT or deploy.
-
-## Repository-local implementation
+## Repository-Local Implementation
 
 This file is the BYL ERP repository's local implementation of `LARGE-PROJECT-EXEC-001`. It directly governs only the BYL ERP repository.
 
-Other large projects must install the same standard or a project-adapted implementation in their own repositories. ChatGPT global instructions are responsible for chat-level output consistency; each repository standard is responsible for that project's facts, governance gates and Codex execution constraints.
+Other projects must install this standard or a project-adapted implementation in their own repositories. Each repository implementation governs that project's facts, authorization gates and execution constraints.
 
-Merging the PR that introduces this file does not automatically govern any other repository, and no report may claim that it does.
+Merging this standard does not automatically govern another repository, and no task or report may claim otherwise.
 
-## Task package completeness gate
+## Version Transition
 
-A formal execution package is executable only when it contains the required scope, authority, prohibitions, acceptance criteria, validation and repository rules, and ends with the mandatory footer defined below.
+- version 1.1 becomes effective when its governance PR merges;
+- it applies to every formal task issued afterward and every open/unmerged task or PR reviewed afterward;
+- historical merged packages remain governed by their issued version and are not retroactively invalidated;
+- open PR #10 must be rebased or updated and comply with 1.1 before merge;
+- PR #10's unmerged D-021 is not repository truth and must become D-022 because this governance package occupies D-021.
 
-If either footer module is missing, incomplete, out of order or followed by any additional semantic content:
+## Completeness Gates
+
+A formal package must contain scope, authority, prohibitions, acceptance criteria, validation, repository rules and the mandatory footer. A final report must contain task results and the same footer.
 
 ```text
-TASK_PACKAGE = INCOMPLETE
-EXECUTION = PROHIBITED
+TASK_PACKAGE = INCOMPLETE when any mandatory footer module is missing, incomplete, inconsistent, incorrectly ordered or followed by semantic content.
+EXECUTION = PROHIBITED for an incomplete task package.
+FINAL_REPORT = INCOMPLETE when its footer or actual/variance evidence is incomplete.
+MERGE_READINESS = FAIL for an incomplete final report.
 ```
 
-Codex must report the completeness failure and must not infer the missing content.
+Pure Markdown fence closures may follow the final field; semantic content may not.
 
-## Mandatory command footer
+## Mandatory Footer Order and Fields
 
-Every formal Codex execution command must end with these two top-level modules in this exact order:
+Every formal task and final report must end with these modules in this exact order:
 
 ```text
 PROJECT POSITION
-PHASE_MAP: <complete repository-derived sequence; prefix the current phase with →>
-COMPLETED_PHASES: <repository-derived completed phases>
-CURRENT_PHASE: <repository-derived value>
-CURRENT_WORK_PACKAGE: <repository-derived value>
-PACKAGE_STATUS: <repository- and GitHub-derived value>
-WAITING_PHASES: <repository-derived waiting phases>
-BASELINE: <origin/main SHA or explicitly authorized baseline>
-GITHUB_STATE: <verified PR, branch and merge state relevant to the package>
-GLOBAL_GATE: <repository-derived value>
+PROGRAM_ROADMAP: <complete top-level BYL ERP delivery sequence>
+CURRENT_TRACK_PHASE_MAP: <complete current track/subphase sequence>
+COMPLETED_PHASES:
+CURRENT_PHASE:
+CURRENT_WORK_PACKAGE:
+PACKAGE_STATUS:
+WAITING_PHASES:
+BASELINE:
+GITHUB_STATE:
+SOURCE_CONFLICTS: <all evidenced conflicts or NONE WITH EVIDENCE>
+GLOBAL_GATE:
 PRODUCTION_DEPLOYMENT_STATUS: YES|NO|PARTIAL|UNKNOWN WITH EVIDENCE
-NEXT_DEPENDENCY: <repository-derived value>
-EVIDENCE_AS_OF: <timestamp and sources checked>
+NEXT_DEPENDENCY:
+EVIDENCE_AS_OF:
+
+ROADMAP HOURS
+CURRENT_PACKAGE_ESTIMATE: <planning value and range; must match final module>
+KNOWN_CURRENT_TRACK_REMAINING: <frozen non-overlapping packages only>
+ARCHITECTURE_GATE_REMAINING: <remaining estimate or UNKNOWN WITH EVIDENCE>
+MVP1_TOTAL_ESTIMATE: <total estimate>
+MVP1_PLANNING_BASELINE: <total planning value>
+MVP1_MAXIMUM_ENVELOPE: <maximum total envelope>
+MVP1_REMAINING: <remaining estimate or UNKNOWN WITH EVIDENCE>
+POST_MVP_KNOWN_INCREMENT: <incremental estimate>
+LONG_TERM_CUMULATIVE_RANGE: <cumulative horizons; never summed>
+PROGRAM_REMAINING: <remaining estimate or UNKNOWN WITH EVIDENCE>
+COMPLETED_ACTUAL_EFFECTIVE_HOURS: <accepted Work Log ledger or UNKNOWN WITH EVIDENCE>
+ESTIMATE_CONFIDENCE:
+ESTIMATE_AS_OF:
+ESTIMATE_METHOD:
 
 ESTIMATED CODEX HOURS
-PREFLIGHT_AND_SCOPE: <hours or hour range>
-CORE_EXECUTION: <hours or hour range>
-TEST_AND_VALIDATION: <hours or hour range>
-REMEDIATION_BUFFER: <hours or hour range>
-ESTIMATED_EFFECTIVE_HOURS: <single planning value in hours>
-ESTIMATE_RANGE: <lower-upper effective hours>
-ESTIMATE_BASIS: <scope, assumptions and comparable evidence>
+PREFLIGHT_AND_SCOPE:
+CORE_EXECUTION:
+TEST_AND_VALIDATION:
+REMEDIATION_BUFFER:
+ESTIMATED_EFFECTIVE_HOURS:
+ESTIMATE_RANGE:
+ESTIMATE_BASIS:
 OWNER_REVIEW: INCLUDED|EXCLUDED
 MERGE: INCLUDED|EXCLUDED
 MIGRATION: INCLUDED|EXCLUDED
+MIGRATION_FILE_AUTHORING: INCLUDED|EXCLUDED (optional detail)
+MIGRATION_EXECUTION: INCLUDED|EXCLUDED (optional detail)
 UAT: INCLUDED|EXCLUDED
 DEPLOYMENT: INCLUDED|EXCLUDED
 ```
 
-`ESTIMATED CODEX HOURS` must be the final semantic module. No new explanation, command, note, attachment, status, question or other semantic content may follow its fields.
+`ESTIMATED CODEX HOURS` is always the final semantic module. Optional Migration detail fields may not replace mandatory `MIGRATION`.
 
-Markdown code-fence closures and other purely syntactic formatting closures are allowed after the final field. A normal closing fence does not count as additional content and must not cause `TASK_PACKAGE = INCOMPLETE`.
+## Project Position Contract
 
-## Dynamic project position
+`PROGRAM_ROADMAP` and `CURRENT_TRACK_PHASE_MAP` are distinct and mandatory. The Program Roadmap is the complete top-level sequence in `docs/10_Planning_Roadmap/13_PROGRAM_ROADMAP_AND_HOURS.md`; the current Architecture map cannot replace it. The current-track map must contain all completed/current/waiting subphases and agree with the status fields.
 
-`PROJECT POSITION` is a point-in-time operational summary, not copied boilerplate. Before issuing or executing a package, Codex must derive it from all of the following:
+Project Position derives from `AI/CURRENT_CONTEXT.md`, Living Roadmap, document 13, the active Work Package and current Git/GitHub state. GitHub governs mutable PR/merge facts; main governs merged repository documentation; open PR content is pending and not repository truth.
 
-1. `AI/CURRENT_CONTEXT.md`;
-2. `docs/10_Planning_Roadmap/04_LIVING_ROADMAP.md`;
-3. the current activated Work Package and its acceptance criteria;
-4. current Git and GitHub state, including `origin/main`, the package branch, PR state, review state and merge state where relevant.
+When sources conflict, preserve every evidenced value in `SOURCE_CONFLICTS`, identify source authority and stop at the applicable gate. Never silently select stale Markdown or unmerged content. Empty categories use `NONE WITH EVIDENCE`; unverifiable facts use `UNKNOWN WITH EVIDENCE`, never invented facts.
 
-`PHASE_MAP` must show the complete phase sequence present in the current repository Roadmap, not merely the current package. It must include completed, current and waiting phases, use `→` to mark the current phase, and agree with the separately reported `COMPLETED_PHASES`, `CURRENT_PHASE` and `WAITING_PHASES`. These fields remain mandatory when a category is empty and must then state `NONE WITH EVIDENCE` rather than invent a phase. `GLOBAL_GATE` must remain a separate field and must not be folded into a phase label.
+`GLOBAL_GATE` remains separate. `PRODUCTION_DEPLOYMENT_STATUS` independently reports actual production state and is distinct from estimate inclusion.
 
-When the project has no numbered phases, `PHASE_MAP` must use its actual Milestone or Work Package sequence. Codex must not invent phases, infer an unevidenced sequence or renumber repository facts.
+## Program Roadmap
 
-`PRODUCTION_DEPLOYMENT_STATUS` must independently report the current production state as `YES`, `NO`, `PARTIAL` or `UNKNOWN WITH EVIDENCE`. `UNKNOWN WITH EVIDENCE` must identify what was checked and why the status remains unverifiable. This current-state field is distinct from `DEPLOYMENT: INCLUDED|EXCLUDED`, which only declares whether deployment work is included in the package estimate. Neither field may substitute for the other.
-
-Repository `main` is the project truth. Current GitHub state governs facts that can change outside the checked-out files, such as whether a PR is open, merged or closed. A stale branch, cached output or earlier chat statement must not override current `origin/main` or verified GitHub state.
-
-If sources conflict, Codex must state the conflict in `PROJECT POSITION`, preserve each evidenced state, and stop at the applicable governance gate. Codex must not silently select an old value.
-
-`UNKNOWN` is not a generic placeholder. It may be used only when a required fact cannot be verified after checking every authoritative source available to the task. The field must identify the unavailable fact and the failed or missing evidence. Codex must never invent an `UNKNOWN` state for a fact that is verifiable, and must never replace an evidenced state with `UNKNOWN` to avoid resolving a conflict.
-
-## Estimated Codex hours
-
-Each package must provide at least these four effort components:
-
-- `PREFLIGHT_AND_SCOPE`;
-- `CORE_EXECUTION`;
-- `TEST_AND_VALIDATION`;
-- `REMEDIATION_BUFFER`.
-
-Every component must contain hours or an hour range. `REMEDIATION_BUFFER` must remain independently visible and must not be hidden in `CORE_EXECUTION`. A package may add task-specific components, but every additional component becomes part of the same total reconciliation.
-
-Each package must also provide both:
-
-- `ESTIMATED_EFFECTIVE_HOURS`: the positive single planning value used for variance;
-- `ESTIMATE_RANGE`: the credible low-to-high range for the authorized scope.
-
-`ESTIMATED_EFFECTIVE_HOURS` must equal the sum of the planning values for every component. `ESTIMATE_RANGE` must equal the sum of every component's lower bounds through the sum of every component's upper bounds. When a component is expressed only as a range, `ESTIMATE_BASIS` must identify the planning value selected within that range for the single-value total.
-
-The package must make the arithmetic auditable. It must not provide only a total or total range, omit a required component, exclude an added component from the sum, or publish totals inconsistent with the displayed components. An inconsistent breakdown makes the package incomplete.
-
-The estimate must be prepared from the bounded scope, acceptance criteria, required validation, repository condition, identified risks and comparable completed work when available. It must not include unauthorized follow-on work.
-
-An estimate is a planning statement, not authorization. Owner authorization, merge authorization, migration authorization, UAT authorization and deployment authorization remain separate gates.
-
-## Effective hours
-
-Effective hours are productive execution time spent on the authorized package. They include applicable repository inspection, planning, implementation, documentation, automated validation, review remediation and final reporting.
-
-Effective hours exclude idle or elapsed wall-clock time, waiting for Owner review or authorization, external approval delays, account-access delays, unrelated outages and idle UAT waiting. Owner waiting time must never be included in any estimate component. Effective hours are neither token usage nor the duration between task creation and completion.
-
-Actual effective hours must record only completed in-scope productive work. Time spent on rejected or repeated work remains actual effort and must be explained in the variance reason.
-
-## Downstream activity inclusion
-
-Every package must explicitly mark `OWNER_REVIEW`, `MERGE`, `MIGRATION`, `UAT` and `DEPLOYMENT` as `INCLUDED` or `EXCLUDED` in `ESTIMATED CODEX HOURS`.
-
-- `INCLUDED` means the package scope and estimate include Codex's authorized execution work for that activity. It does not grant the authorization itself.
-- `EXCLUDED` means neither the activity nor its execution effort is part of the package.
-- Owner waiting time is always excluded from effective hours, even when preparation for Owner review is included.
-- Merge, Migration, UAT and Deployment may be marked `INCLUDED` only when their required authorization, acceptance criteria and validation are explicitly present in the package.
-- Manual stakeholder UAT time and deployment observation time are excluded unless the package explicitly defines measurable Codex work for them.
-
-No downstream activity may be inferred from a parent activity. For example, Owner Review does not imply Merge; Merge does not imply Migration; Migration does not imply UAT; and UAT does not imply Deployment.
-
-## Estimate and actual variance
-
-The final report must record:
+The BYL ERP top-level sequence is:
 
 ```text
-ESTIMATED_EFFECTIVE_HOURS: <the package planning value>
-ACTUAL_EFFECTIVE_HOURS: <productive hours actually used>
-ACTUAL_HOURS_BREAKDOWN: <optional productive-hours distribution by component>
-VARIANCE: <actual minus estimated hours; signed, with percentage>
-VARIANCE_REASON: <scope, risk, rework or efficiency explanation>
-FINAL_VERDICT: <authorized verdict>
+Architecture Migration / Global Architecture Gate
+→ MVP1 Manual Fulfillment / Tencent Docs Replacement
+→ MVP1.1 WooCommerce Inbound
+→ MVP1.2 Single Tracking Outbound
+→ MVP1.3 Sync Orchestration
+→ Customer / Lead Pilot
+→ Product / Media
+→ WordPress Product and Image Sync
+→ Content / SEO
+→ Posts / Pages
+→ GA4 / GSC / Cloudflare
+→ Google Docs Publishing
+→ Full Order Workspace
+→ Logistics OS
+→ KOL OS and Social Providers
+→ Inventory and Procurement
+→ Accounting / ROI Expansion
+→ Shopify and Additional Integrations
+→ Dev UAT and Production Hardening
 ```
 
-The estimate copied into the final report must be the issued package value. It must not be retrospectively rewritten to match actual effort. If an Owner-approved scope change requires re-estimation, retain the original estimate, record the approved revised estimate and its evidence in the work log, and calculate final variance against the latest approved estimate.
+The current Architecture track separately shows 001A through 001F, including 001D-A/B/C where applicable.
 
-Calculate variance as:
+## Roadmap Hours Contract
+
+Document 13 is the estimate-classification and actual-ledger source. Every number is labeled total, remaining, incremental, cumulative, planning value, range or actual effort.
+
+- `CURRENT_PACKAGE_ESTIMATE` agrees with `ESTIMATED_EFFECTIVE_HOURS` and `ESTIMATE_RANGE`;
+- known track remaining includes only frozen non-overlapping packages;
+- a total estimate is not automatically remaining;
+- remaining effort requires accepted actuals, an overlap map and documented subtraction;
+- cumulative horizons are never summed;
+- components are not added to cumulative values already containing them;
+- unknown is never converted to zero;
+- `UNKNOWN WITH EVIDENCE` states checked sources, missing data and why arithmetic is unsafe;
+- completed actual hours derive only from accepted Work Logs, never PR elapsed time, timestamps, tokens or chat memory.
+
+## Current Package Estimate
+
+Every package retains separate `PREFLIGHT_AND_SCOPE`, `CORE_EXECUTION`, `TEST_AND_VALIDATION` and `REMEDIATION_BUFFER`. Components contain ranges and auditable planning values. `ESTIMATED_EFFECTIVE_HOURS` equals all planning values; `ESTIMATE_RANGE` equals all lower through all upper bounds. Estimates do not confer authorization.
+
+## Effective and Actual Hours
+
+Effective hours are productive in-scope work. They exclude waiting, external approval delays, access delays, unrelated outages and idle UAT. Rejected/repeated in-scope work remains actual effort and requires explanation.
+
+The final `ESTIMATED CODEX HOURS` module retains the issued estimate and additionally includes:
+
+```text
+ACTUAL_EFFECTIVE_HOURS:
+ACTUAL_HOURS_BREAKDOWN:
+VARIANCE: <actual minus estimate; signed hours and percentage; zero explicit>
+VARIANCE_REASON: <evidence-based; NONE only for zero variance>
+```
+
+The issued estimate is never retrospectively rewritten. Missing actual hours or variance makes the final report incomplete and merge readiness FAIL.
+
+Variance is calculated as:
 
 ```text
 VARIANCE_HOURS = ACTUAL_EFFECTIVE_HOURS - ESTIMATED_EFFECTIVE_HOURS
 VARIANCE_PERCENT = VARIANCE_HOURS / ESTIMATED_EFFECTIVE_HOURS * 100
 ```
 
-Positive variance is over estimate; negative variance is under estimate. `VARIANCE_REASON` is mandatory whenever variance is non-zero and must describe evidence rather than assign an unexplained label.
+Positive variance means over estimate; negative variance means under estimate; zero variance must be reported explicitly. Every non-zero variance requires an evidence-based explanation.
+
+## Downstream Activity Inclusion
+
+`OWNER_REVIEW`, `MERGE`, `MIGRATION`, `UAT` and `DEPLOYMENT` are mandatory INCLUDED/EXCLUDED fields. `INCLUDED` means estimated Codex work is in scope; it never grants authorization. Any activity lacking its required explicit Owner authorization must be `EXCLUDED`.
+
+`MERGE`, `MIGRATION`, `UAT` and `DEPLOYMENT` may be marked `INCLUDED` only when the package contains the required explicit Owner authorization, bounded scope, acceptance criteria and validation contract for that activity.
+
+Owner waiting time is always excluded from effective hours, including when preparation for Owner review is included. Manual stakeholder UAT time and passive deployment observation are excluded unless the package defines measurable authorized Codex work for them.
+
+No downstream activity is inferred from another: Owner review does not imply Merge; Merge does not imply Migration; Migration does not imply UAT; UAT does not imply Deployment.

@@ -56,6 +56,22 @@ Architecture conflict: NONE.
 Documents updated: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001D.md; docs/10_Planning_Roadmap/10_DECISION_REGISTER.md; docs/10_Planning_Roadmap/11_CHANGE_LOG.md; docs/10_Planning_Roadmap/12_WORK_PACKAGE_INDEX.md.
 ```
 
+## 2026-08-01 — Program Roadmap and Roadmap Hours governance
+
+```text
+Owner decision: Upgrade LARGE-PROJECT-EXEC-001 to version 1.1 and require complete Program Roadmap and Roadmap Hours reporting.
+Previous standard: Version 1.0 required only a current phase map and current-package estimate; final-report template was incomplete.
+Identified deficiencies: Program Roadmap and current track were conflated; remaining/total/cumulative estimates lacked mandatory classification; UNKNOWN evidence and final-report actual/variance gates were incomplete.
+New state: Version 1.1 requires PROJECT POSITION → ROADMAP HOURS → ESTIMATED CODEX HOURS; Program and track maps are distinct; actual hours and variance are mandatory in final reports.
+PR #10 transition requirement: PR #10 remains open and unchanged here; after this governance PR merges it must be rebased/remediated under 1.1, and its unmerged D-021 must become D-022.
+Application code: NO CHANGE.
+Migration: NO.
+Deployment: NO.
+Global Architecture Gate: FAIL.
+Architecture conflict: NONE.
+Documents updated: AI/LARGE_PROJECT_EXECUTION_STANDARD.md; CODEX_ENTRYPOINT.md; docs/60_Codex_Operations/CODEX_TASK_TEMPLATE.md; docs/60_Codex_Operations/CODEX_FINAL_REPORT_TEMPLATE.md; docs/10_Planning_Roadmap/00_COMMAND_CENTER.md; docs/10_Planning_Roadmap/04_LIVING_ROADMAP.md; docs/10_Planning_Roadmap/09_EFFECTIVE_HOURS.md; docs/10_Planning_Roadmap/10_DECISION_REGISTER.md; docs/10_Planning_Roadmap/11_CHANGE_LOG.md; docs/10_Planning_Roadmap/13_PROGRAM_ROADMAP_AND_HOURS.md; docs/60_Codex_Operations/work-packages/ERP-GOVERNANCE-PROGRAM-ROADMAP-HOURS-001.md.
+```
+
 ## Change entry format
 
 ```text

@@ -2,15 +2,70 @@
 type: codex-final-report-template
 project: BYL ERP
 standard_id: LARGE-PROJECT-EXEC-001
+standard_version: 1.1
 ---
 
 # Codex Final Report Template
 
+Task-specific results and `FINAL_VERDICT` precede this footer. The report must end with these three modules exactly; nothing semantic follows the final field.
+
+## PROJECT POSITION
+
 ```text
-ESTIMATED_EFFECTIVE_HOURS: <issued package planning value>
-ACTUAL_EFFECTIVE_HOURS: <productive hours actually used>
-ACTUAL_HOURS_BREAKDOWN: <optional productive-hours distribution by component>
-VARIANCE: <actual minus estimated hours; signed, with percentage>
-VARIANCE_REASON: <scope, risk, rework or efficiency explanation>
-FINAL_VERDICT: <authorized verdict>
+PROGRAM_ROADMAP: <complete top-level BYL ERP sequence>
+CURRENT_TRACK_PHASE_MAP: <complete current track sequence>
+COMPLETED_PHASES:
+CURRENT_PHASE:
+CURRENT_WORK_PACKAGE:
+PACKAGE_STATUS:
+WAITING_PHASES:
+BASELINE:
+GITHUB_STATE:
+SOURCE_CONFLICTS:
+GLOBAL_GATE:
+PRODUCTION_DEPLOYMENT_STATUS: YES|NO|PARTIAL|UNKNOWN WITH EVIDENCE
+NEXT_DEPENDENCY:
+EVIDENCE_AS_OF:
+```
+
+## ROADMAP HOURS
+
+```text
+CURRENT_PACKAGE_ESTIMATE:
+KNOWN_CURRENT_TRACK_REMAINING:
+ARCHITECTURE_GATE_REMAINING:
+MVP1_TOTAL_ESTIMATE:
+MVP1_PLANNING_BASELINE:
+MVP1_MAXIMUM_ENVELOPE:
+MVP1_REMAINING:
+POST_MVP_KNOWN_INCREMENT:
+LONG_TERM_CUMULATIVE_RANGE:
+PROGRAM_REMAINING:
+COMPLETED_ACTUAL_EFFECTIVE_HOURS:
+ESTIMATE_CONFIDENCE:
+ESTIMATE_AS_OF:
+ESTIMATE_METHOD:
+```
+
+## ESTIMATED CODEX HOURS
+
+```text
+PREFLIGHT_AND_SCOPE: <issued range and issued planning value>
+CORE_EXECUTION: <issued range and issued planning value>
+TEST_AND_VALIDATION: <issued range and issued planning value>
+REMEDIATION_BUFFER: <issued range and issued planning value>
+ESTIMATED_EFFECTIVE_HOURS: <issued value; never rewritten>
+ESTIMATE_RANGE: <issued range>
+ESTIMATE_BASIS: <reproduce the issued component planning values and arithmetic explicitly>
+ACTUAL_EFFECTIVE_HOURS: <productive in-scope time>
+ACTUAL_HOURS_BREAKDOWN: <productive-hours distribution>
+VARIANCE: <VARIANCE_HOURS = ACTUAL_EFFECTIVE_HOURS - ESTIMATED_EFFECTIVE_HOURS; VARIANCE_PERCENT = VARIANCE_HOURS / ESTIMATED_EFFECTIVE_HOURS * 100; report signed hours and percentage; zero explicit>
+VARIANCE_REASON: <evidence-based; NONE only for zero variance>
+OWNER_REVIEW: INCLUDED|EXCLUDED
+MERGE: INCLUDED|EXCLUDED
+MIGRATION: INCLUDED|EXCLUDED
+MIGRATION_FILE_AUTHORING: INCLUDED|EXCLUDED (optional; cannot replace MIGRATION)
+MIGRATION_EXECUTION: INCLUDED|EXCLUDED (optional; cannot replace MIGRATION)
+UAT: INCLUDED|EXCLUDED
+DEPLOYMENT: INCLUDED|EXCLUDED
 ```

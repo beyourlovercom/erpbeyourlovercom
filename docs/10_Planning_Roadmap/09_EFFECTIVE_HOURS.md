@@ -47,18 +47,21 @@ Current MVP1 estimate:
 
 ```text
 122–190h
+Classification: total estimate
 ```
 
 Planning baseline:
 
 ```text
 166h
+Classification: total planning baseline
 ```
 
 Maximum planning envelope:
 
 ```text
 192h
+Classification: maximum total planning envelope
 ```
 
 One-month delivery requires approximately:
@@ -75,11 +78,12 @@ WooCommerce inbound and single outbound beyond MVP1:
 
 ```text
 approximately +68–120h
+Classification: post-MVP incremental estimate
 ```
 
 ## Long-term ranges
 
-These remain planning ranges, not commitments:
+These remain cumulative planning ranges, not additive components or commitments:
 
 - architecture foundation: 235–402h from earlier full-path estimate;
 - first highly automated operations MVP: 603–1,018h cumulative;
@@ -88,3 +92,13 @@ These remain planning ranges, not commitments:
 - all expansion: 1,819–3,146h cumulative.
 
 The one-month fast track intentionally narrows the initial architecture and feature implementation while preserving final-compatible models.
+
+## Estimate Classification Rules
+
+- a total estimate is not the same as a remaining estimate;
+- cumulative ranges must never be added together;
+- an incremental estimate must not be added to a cumulative estimate that already includes it;
+- remaining effort requires accepted actual-hours evidence and a documented non-overlapping scope map;
+- unknown remaining values use `UNKNOWN WITH EVIDENCE`, never zero or an inferred subtraction;
+- completed actual hours derive only from accepted repository Work Logs;
+- the authoritative progress ledger and classification snapshot is [[13_PROGRAM_ROADMAP_AND_HOURS]].
