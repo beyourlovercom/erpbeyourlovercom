@@ -391,7 +391,7 @@ GITHUB_STATE: PR #13 MERGED; accepted Head e4bc57b7a3f0edbe84ccfde63d02d9135a487
 SOURCE_CONFLICTS: NONE WITH EVIDENCE; accepted and merged facts agree. Real-MySQL two-connection concurrency and MySQL 5.7 remain explicitly unverified.
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: Independent review of 001D closure and 001E preparation; separate Owner authorization before 001E implementation
+NEXT_DEPENDENCY: Independent review of remediated 001E preparation; separate Owner authorization for 001E-A Preflight only
 EVIDENCE_AS_OF: 2026-08-01; GitHub PR #13, origin/main and accepted implementation evidence
 ```
 
@@ -399,8 +399,8 @@ EVIDENCE_AS_OF: 2026-08-01; GitHub PR #13, origin/main and accepted implementati
 
 ```text
 CURRENT_PACKAGE_ESTIMATE: 18h planning value; 14–22h issued 001D-C range
-KNOWN_CURRENT_TRACK_REMAINING: 40–62h; planning value 51h for frozen 001E only; 001F remains unknown and excluded
-ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE; 001E is frozen but 001F lacks a frozen estimate
+KNOWN_CURRENT_TRACK_REMAINING: 40–62h parent 001E planning range; child implementation estimates require Preflight confirmation; 001F excluded
+ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE; child Preflights and 001F estimate are incomplete
 MVP1_TOTAL_ESTIMATE: 122–190h total estimate
 MVP1_PLANNING_BASELINE: 166h total planning value
 MVP1_MAXIMUM_ENVELOPE: 192h maximum total envelope

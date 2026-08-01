@@ -46,6 +46,9 @@ The Program Roadmap is the top-level delivery sequence. It must not be replaced 
 001D-B Audit Foundation               MERGED / PASS BY PR #12
 001D-C Sync Outbox Foundation         MERGED / PASS BY PR #13
 → 001E Shared UI / Browser E2E        NEXT / PREPARED / IMPLEMENTATION NOT STARTED
+001E-A Shared UI / Design Tokens      PREFLIGHT REQUIRED / IMPLEMENTATION NOT READY
+001E-B Browser E2E Foundation         WAITING
+001E-C Auth / Permission / Shell E2E  WAITING
 001F Architecture Re-audit            WAITING
 Global Architecture Gate              FAIL
 ```
@@ -64,9 +67,10 @@ EVIDENCE_LIMITS: real-MySQL two-connection claim concurrency and MySQL 5.7 remai
 | Metric | Value | Classification | Evidence / Qualification |
 |---|---:|---|---|
 | `001D_TOTAL_ESTIMATE` | 35–54h; planning value 45h | completed issued total estimate | Frozen and completed parent 001D package; not remaining |
-| `001E_ESTIMATE` | 40–62h; planning value 51h | known remaining component estimate | Frozen 001E-A/B/C package; implementation not authorized |
+| `001E_PARENT_PLANNING_ESTIMATE` | 40–62h; planning value 51h | parent-level planning estimate | Preliminary allocation across 001E-A/B/C; child implementation estimates require their own Preflights |
+| `001E_A_PREFLIGHT_ESTIMATE` | 2–4h; planning value 3h | next bounded Preflight estimate | Governance/evidence work only; implementation not ready or authorized |
 | `001F_ESTIMATE` | UNKNOWN WITH EVIDENCE | unknown remaining component | No frozen package estimate exists |
-| `KNOWN_CURRENT_TRACK_REMAINING` | 40–62h; planning value 51h | known remaining component | Frozen 001E only; excludes unknown 001F |
+| `KNOWN_CURRENT_TRACK_REMAINING` | 40–62h; planning value 51h | parent planning range | Child implementation estimates unconfirmed; excludes unknown 001F |
 | `ARCHITECTURE_GATE_REMAINING` | UNKNOWN WITH EVIDENCE | unknown remaining total | 001E is known, but 001F is unestimated and cannot be safely added |
 | `MVP1_TOTAL_ESTIMATE` | 122–190h | total estimate | Effective Hours source; not automatically remaining |
 | `MVP1_PLANNING_BASELINE` | 166h | total planning value | Effective Hours source |
@@ -115,7 +119,7 @@ Future rows may be added only from accepted repository Work Logs. PR elapsed tim
 
 ```text
 HIGH: quoted repository total and cumulative ranges; issued 001D estimate
-MEDIUM: frozen 001E-A/B/C bottom-up estimate before implementation preflights
+MEDIUM: parent 001E-A/B/C planning allocation and bounded 001E-A Preflight estimate
 LOW / UNKNOWN: project and Architecture Gate remaining totals because 001F and actual-ledger overlap remain incomplete
 ESTIMATE_AS_OF: 2026-08-01
 ESTIMATE_METHOD: repository source classification; no subtraction without accepted actuals; no addition of cumulative or overlapping ranges

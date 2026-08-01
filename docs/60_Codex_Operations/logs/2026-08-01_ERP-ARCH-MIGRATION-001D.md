@@ -57,7 +57,7 @@ These limits do not reverse the accepted bounded package results, but they remai
 
 ```text
 ERP-ARCH-MIGRATION-001E: NEXT / PREPARED / IMPLEMENTATION NOT STARTED
-001E-A: PREPARED / AUTHORIZATION NO
+001E-A: PREFLIGHT REQUIRED / IMPLEMENTATION NOT READY
 001E-B: WAITING
 001E-C: WAITING
 001F: WAITING
@@ -88,7 +88,7 @@ FINAL_VERDICT: ERP_ARCH_MIGRATION_001D_COMPLETE_PASS
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS → 001D-C MERGED / PASS → 001D COMPLETE / PASS → 001E-A PREPARED / AUTHORIZATION NO → 001E-B WAITING → 001E-C WAITING → 001F WAITING
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS → 001D-C MERGED / PASS → 001D COMPLETE / PASS → 001E-A PREFLIGHT REQUIRED / IMPLEMENTATION NOT READY → 001E-B WAITING → 001E-C WAITING → 001F WAITING
 COMPLETED_PHASES: 001A, 001B, 001C, 001D-A, 001D-B, 001D-C, 001D
 CURRENT_PHASE: 001E Shared UI / Browser E2E preparation
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001D
@@ -99,7 +99,7 @@ GITHUB_STATE: PR #9, PR #12 and PR #13 MERGED; closure preparation branch pushed
 SOURCE_CONFLICTS: NONE WITH EVIDENCE for merge state; actual-hours ledger remains incomplete because 001D-A records no accepted actual value
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: Independent review of the closure and 001E preparation; separate Owner authorization before 001E-A implementation
+NEXT_DEPENDENCY: Independent review of the remediated 001E preparation; separate Owner authorization for 001E-A Preflight only
 EVIDENCE_AS_OF: 2026-08-01; GitHub merge metadata, authorized main and accepted subpackage records
 ```
 
@@ -107,7 +107,7 @@ EVIDENCE_AS_OF: 2026-08-01; GitHub merge metadata, authorized main and accepted 
 
 ```text
 CURRENT_PACKAGE_ESTIMATE: 45h planning value; 35–54h issued total 001D range
-KNOWN_CURRENT_TRACK_REMAINING: 40–62h; planning value 51h for frozen 001E only
+KNOWN_CURRENT_TRACK_REMAINING: 40–62h parent 001E planning range; child implementation estimates require Preflight confirmation
 ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE; 001F lacks a frozen estimate
 MVP1_TOTAL_ESTIMATE: 122–190h total estimate
 MVP1_PLANNING_BASELINE: 166h total planning value
@@ -117,7 +117,7 @@ POST_MVP_KNOWN_INCREMENT: approximately 68–120h incremental beyond MVP1
 LONG_TERM_CUMULATIVE_RANGE: 235–402h through 1,819–3,146h; cumulative non-additive horizons
 PROGRAM_REMAINING: UNKNOWN WITH EVIDENCE; cumulative horizons, 001F estimate and project-wide actual ledger are incomplete
 COMPLETED_ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE; 001D-A has no accepted actual value, while 001D-B records 3h and 001D-C records 4.8h
-ESTIMATE_CONFIDENCE: HIGH for issued 001D and frozen 001E estimates; LOW / UNKNOWN for Architecture Gate and program remaining
+ESTIMATE_CONFIDENCE: HIGH for issued 001D; LOW / MEDIUM for parent 001E planning before child Preflights; LOW / UNKNOWN for Architecture Gate and program remaining
 ESTIMATE_AS_OF: 2026-08-01
 ESTIMATE_METHOD: accepted package records and frozen non-overlapping estimates; no unsafe subtraction from incomplete actuals
 ```

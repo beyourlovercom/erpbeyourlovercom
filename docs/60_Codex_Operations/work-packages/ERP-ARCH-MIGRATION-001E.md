@@ -43,17 +43,17 @@ This package freezes scope and evidence only. It does not authorize implementati
 
 ### ERP-ARCH-MIGRATION-001E-A — Shared UI and Design Tokens
 
-Status: PREPARED / OWNER IMPLEMENTATION AUTHORIZATION NO.
+Status: PREFLIGHT REQUIRED / IMPLEMENTATION NOT READY.
 
 Planned scope:
 
 - one documented token layer for typography, spacing, colors, borders, radius, shadow, focus, density and motion;
-- accessible, typed shared primitives: Button, FormField, TextInput, Select, Checkbox, StatusBadge, Alert, Toast, Modal, Drawer, Dropdown, EmptyState, TableShell, PageHeader and PageToolbar;
+- exact first-wave primitives with current consumers: UiButton, FormField, TextInput, UiAlert and EmptyState;
 - component-level Vitest contracts for props, events, slots, disabled/error states and keyboard semantics;
 - bounded adoption by authentication and App Shell surfaces only after explicit authorization;
 - preservation of server authorization and existing Inertia routing contracts.
 
-Planned estimate: 16–24 effective hours; planning value 20 hours.
+Parent planning allocation: 16–24 effective hours; planning value 20 hours. This is not a frozen implementation estimate. The independent 001E-A Preflight must confirm or replace it before implementation authorization.
 
 ### ERP-ARCH-MIGRATION-001E-B — Browser E2E Foundation
 
@@ -65,7 +65,7 @@ Planned scope:
 - `playwright.config` and a repository-local `tests/e2e` structure;
 - repository-external runtime secrets and an isolated temporary Laravel test instance;
 - isolated disposable test database and deterministic synthetic users;
-- failure-only screenshots, traces and videos;
+- failure artifacts under the authentication-specific upload prohibition and verifiable-redaction gates below;
 - local `npm run test:e2e` command;
 - separately authorized GitHub Actions design and artifact retention.
 
@@ -226,17 +226,9 @@ Playwright is the proposed tool for 001E-B because it provides maintained Chromi
 
 Selection remains a proposal. The implementation package must verify the then-current compatible version, lock-file delta, Node compatibility and browser cache size before Owner dependency authorization. Cypress, Selenium and Vitest Browser Mode are not selected because the required authentication, multi-page navigation, trace and cross-browser contracts map directly to Playwright's first-party runner; this is not evidence that Playwright is already installed.
 
-## Proposed Shared Component Contracts
+## Shared Component Boundary
 
-- Button: semantic button/link distinction, variants, sizes, loading and disabled state;
-- FormField: label, description, required and error association;
-- TextInput, Select and Checkbox: forwarded native attributes, IDs and invalid-state semantics;
-- StatusBadge: finite semantic tone map, text always present;
-- Alert and Toast: appropriate live-region behavior without duplicate announcements;
-- Modal, Drawer and Dropdown: labeling, keyboard navigation, focus entry/containment/return, Escape and inert background;
-- EmptyState: heading, description and optional action slots;
-- TableShell: caption/heading contract, responsive overflow and loading/empty/error states;
-- PageHeader and PageToolbar: consistent title, breadcrumbs, actions and filter landmarks.
+The independent [[ERP-ARCH-MIGRATION-001E-A]] package is authoritative for the first implementation boundary. Only UiButton, FormField, TextInput, UiAlert and EmptyState are first-wave candidates because each has a named current consumer. Select, Checkbox, StatusBadge, Toast, Modal, Drawer, Dropdown, TableShell, PageHeader and PageToolbar are parent-level future candidates only; they are excluded from 001E-A until a later consumer-driven Preflight.
 
 ## Proposed Files
 
@@ -245,10 +237,8 @@ Exact paths require subpackage preflight. Expected changes are bounded to:
 ```text
 001E-A:
 resources/css/tokens.css
-resources/css/components.css
-resources/js/Components/UI/*.vue
-resources/js/Components/UI/*.test.ts
-bounded adoption in Login and App Shell files only
+five component files and five component tests under resources/js/Components/UI/
+bounded Login, TopBar, Foundation, Placeholder and shell token adoption defined by ERP-ARCH-MIGRATION-001E-A
 
 001E-B:
 package.json
@@ -298,9 +288,12 @@ VIDEO: retain-on-failure
 LOCAL_RETENTION: temporary run directory; cleanable after diagnosis
 CI_RETENTION_PROPOSAL: 7 days for failed runs only
 SUCCESS_ARTIFACTS: not retained by default
+AUTHENTICATION_TRACE_UPLOAD: PROHIBITED until a verifiable sanitization and artifact-scan contract is implemented and independently reviewed
+AUTHENTICATION_VIDEO_UPLOAD: PROHIBITED until a verifiable sanitization and artifact-scan contract is implemented and independently reviewed
+AUTHENTICATION_SCREENSHOT_UPLOAD: PROHIBITED unless masking, synthetic-data-only proof and pre-upload verification all pass
 ```
 
-Artifacts must not contain passwords, authorization headers, cookies, Session IDs, CSRF tokens, storage-state files, database credentials or real personal data. Authentication fields are synthetic; trace/network attachment review and redaction are mandatory before upload. Playwright storage state must remain repository-external and must never be uploaded as a generic artifact.
+Artifacts must not contain passwords, authorization headers, cookies, Session IDs, CSRF tokens, storage-state files, database credentials or real personal data. Authentication fields are synthetic, but synthetic values do not make Session or credential artifacts safe. Until a repeatable sanitization process and automated artifact scan can prove those fields absent, authentication traces and videos remain local-only, repository-external and are deleted after diagnosis; CI must not upload them. Authentication screenshots remain local-only unless sensitive regions are deterministically masked and the pre-upload scan passes. Playwright storage state must remain repository-external and must never be uploaded.
 
 ## CI Design Proposal
 
@@ -312,7 +305,7 @@ Subject to separate Workflow authorization:
 4. run existing PHP and Vitest gates before browser tests;
 5. build assets and start Laravel plus Vite through Playwright WebServer contracts;
 6. run E2E with bounded workers, timeout and retry policy;
-7. upload failure-only redacted artifacts for seven days;
+7. upload only artifact classes that pass the approved scan; never upload authentication traces/videos before the verifiable sanitization gate;
 8. always stop servers and remove database, credentials and artifacts not selected for retention.
 
 The first implementation may gate on Chromium only for deterministic foundation proof; Firefox/WebKit expansion requires evidence and Owner scope approval. No CI workflow exists or is modified in this package.
@@ -334,14 +327,16 @@ The first implementation may gate on Chromium only for deterministic foundation 
 
 ```text
 1. Owner reviews this frozen parent package.
-2. Owner separately authorizes 001E-A application/CSS implementation.
-3. 001E-A is implemented, independently reviewed and accepted.
-4. Owner separately authorizes Playwright dependency and 001E-B implementation.
-5. Owner separately authorizes isolated E2E Migration execution and any Workflow file.
-6. 001E-B is implemented, independently reviewed and accepted.
-7. Owner separately authorizes 001E-C test implementation.
-8. 001E-C is implemented, independently reviewed and accepted.
-9. Parent 001E closure is reviewed before any 001F authorization.
+2. Owner separately authorizes the independent 001E-A Preflight only.
+3. Preflight confirms the token source, consumers, file delta, migration order, tests and implementation estimate.
+4. Owner separately authorizes 001E-A application/CSS implementation against the reviewed Preflight Head.
+5. 001E-A is implemented, independently reviewed and accepted.
+6. Owner separately authorizes Playwright dependency and 001E-B implementation.
+7. Owner separately authorizes isolated E2E Migration execution and any Workflow file.
+8. 001E-B is implemented, independently reviewed and accepted.
+9. Owner separately authorizes 001E-C test implementation.
+10. 001E-C is implemented, independently reviewed and accepted.
+11. Parent 001E closure is reviewed before any 001F authorization.
 ```
 
 ## Test Plan
@@ -401,6 +396,8 @@ The first implementation may gate on Chromium only for deterministic foundation 
 - this preparation commit changes governance Markdown only;
 - the current UI, token, test, browser, dependency and CI evidence is accurately recorded;
 - 001E-A/B/C have ordered, non-overlapping scopes and separate Owner gates;
+- 001E-A remains Preflight-required and its child implementation estimate remains unconfirmed;
+- authentication Trace/Video upload remains prohibited until verifiable sanitization and scanning are independently accepted;
 - Playwright is proposed but not installed;
 - no package/lock, Workflow, application, CSS, Migration, UAT or deployment change occurs;
 - Global Architecture Gate remains FAIL and 001F remains WAITING;
@@ -410,6 +407,7 @@ The first implementation may gate on Chromium only for deterministic foundation 
 
 ```text
 001E_PARENT_SCOPE_ACCEPTANCE: REQUIRED
+001E_A_PREFLIGHT_AUTHORIZATION: REQUIRED
 001E_A_IMPLEMENTATION_AUTHORIZATION: REQUIRED
 001E_B_DEPENDENCY_CHANGE_AUTHORIZATION: REQUIRED
 001E_B_IMPLEMENTATION_AUTHORIZATION: REQUIRED
@@ -422,14 +420,15 @@ DEPLOYMENT_AUTHORIZATION: NOT INCLUDED
 001F_AUTHORIZATION: NOT INCLUDED
 ```
 
-## Frozen Effective-Hours Estimate
+## Parent Planning Estimate
 
 ```text
-001E-A: 16–24h; planning value 20h
-001E-B: 12–18h; planning value 15h
-001E-C: 12–20h; planning value 16h
+001E-A PARENT PLANNING ALLOCATION: 16–24h; planning value 20h; implementation estimate requires 001E-A Preflight confirmation
+001E-B PARENT PLANNING ALLOCATION: 12–18h; planning value 15h; implementation estimate requires 001E-B Preflight confirmation
+001E-C PARENT PLANNING ALLOCATION: 12–20h; planning value 16h; implementation estimate requires 001E-C Preflight confirmation
 TOTAL_RANGE: 40–62 effective hours
 TOTAL_PLANNING_VALUE: 51 effective hours
+CLASSIFICATION: parent-level planning estimate only; not an authorized or frozen child implementation estimate
 ```
 
 ## Preparation Verdict
@@ -442,26 +441,26 @@ FINAL_PREPARATION_VERDICT: ERP_ARCH_MIGRATION_001E_PREPARED_IMPLEMENTATION_NOT_A
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS → 001D-C MERGED / PASS → 001D COMPLETE / PASS → 001E-A PREPARED / AUTHORIZATION NO → 001E-B WAITING → 001E-C WAITING → 001F WAITING
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS → 001D-C MERGED / PASS → 001D COMPLETE / PASS → 001E-A PREFLIGHT REQUIRED / IMPLEMENTATION NOT READY → 001E-B WAITING → 001E-C WAITING → 001F WAITING
 COMPLETED_PHASES: 001A, 001B, 001C, 001D-A, 001D-B, 001D-C, 001D
 CURRENT_PHASE: 001E Shared UI / Browser E2E preparation
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E
 PACKAGE_STATUS: PREPARED / IMPLEMENTATION NOT STARTED / OWNER AUTHORIZATION NO
-WAITING_PHASES: 001E-A implementation, 001E-B, 001E-C, 001F
+WAITING_PHASES: 001E-A Preflight authorization, 001E-A implementation, 001E-B, 001E-C, 001F
 BASELINE: main@548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
 GITHUB_STATE: PR #13 MERGED; this governance preparation branch has no PR
 SOURCE_CONFLICTS: NONE WITH EVIDENCE; GitHub and authorized main agree. Browser E2E capability is absent and no dependency or Workflow is authorized.
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: Independent review, then separate Owner decision on 001E-A implementation authorization
+NEXT_DEPENDENCY: Independent review, then separate Owner decision on 001E-A Preflight authorization; implementation remains unauthorized
 EVIDENCE_AS_OF: 2026-08-01; authorized main, repository source/config/test inventory and GitHub PR #9/#12/#13
 ```
 
 ## ROADMAP HOURS
 
 ```text
-CURRENT_PACKAGE_ESTIMATE: 51h planning value; 40–62h range for frozen 001E-A/B/C
-KNOWN_CURRENT_TRACK_REMAINING: 40–62h; planning value 51h for frozen 001E only
+CURRENT_PACKAGE_ESTIMATE: 51h planning value; 40–62h parent-level planning range for 001E-A/B/C; child implementation estimates require their own Preflights
+KNOWN_CURRENT_TRACK_REMAINING: 40–62h parent planning range for 001E only; not a sum of frozen child implementation estimates
 ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE; 001F lacks a frozen estimate and cannot be safely added
 MVP1_TOTAL_ESTIMATE: 122–190h total estimate
 MVP1_PLANNING_BASELINE: 166h total planning value
@@ -471,7 +470,7 @@ POST_MVP_KNOWN_INCREMENT: approximately 68–120h incremental beyond MVP1
 LONG_TERM_CUMULATIVE_RANGE: 235–402h through 1,819–3,146h; cumulative non-additive horizons
 PROGRAM_REMAINING: UNKNOWN WITH EVIDENCE; cumulative horizons, 001F estimate and project-wide actual ledger are incomplete
 COMPLETED_ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE; 001D-A lacks an accepted actual-hours value, preventing a complete architecture ledger
-ESTIMATE_CONFIDENCE: MEDIUM for frozen 001E planning before implementation preflights; LOW / UNKNOWN for Architecture Gate and program remaining
+ESTIMATE_CONFIDENCE: LOW / MEDIUM for parent planning allocation before child Preflights; LOW / UNKNOWN for Architecture Gate and program remaining
 ESTIMATE_AS_OF: 2026-08-01
 ESTIMATE_METHOD: bottom-up non-overlapping subpackage ranges; no subtraction from cumulative or incomplete actual ledgers
 ```
@@ -485,7 +484,7 @@ TEST_AND_VALIDATION: 7–11h; planning value 9h
 REMEDIATION_BUFFER: 4–8h; planning value 6h
 ESTIMATED_EFFECTIVE_HOURS: 51h
 ESTIMATE_RANGE: 40–62 effective hours
-ESTIMATE_BASIS: planning values 4 + 32 + 9 + 6 = 51h; lower bounds 3 + 26 + 7 + 4 = 40h; upper bounds 5 + 38 + 11 + 8 = 62h; reconciled to 001E-A 20h, 001E-B 15h and 001E-C 16h
+ESTIMATE_BASIS: parent planning allocation only; planning values 4 + 32 + 9 + 6 = 51h and range 40–62h; each child must issue a confirmed implementation estimate after its own Preflight
 OWNER_REVIEW: EXCLUDED
 MERGE: EXCLUDED
 MIGRATION: EXCLUDED

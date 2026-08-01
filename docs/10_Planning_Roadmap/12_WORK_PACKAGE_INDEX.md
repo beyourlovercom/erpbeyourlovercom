@@ -17,7 +17,10 @@ Dependency change authorization: NO
 
 ERP-ARCH-MIGRATION-001E-A
 Shared UI and Design Tokens
-Status: PREPARED / AUTHORIZATION NO
+Status: PREFLIGHT REQUIRED / IMPLEMENTATION NOT READY
+Preflight authorization: NO
+Implementation authorization: NO
+Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001E-A.md
 
 ERP-ARCH-MIGRATION-001E-B
 Browser E2E Foundation

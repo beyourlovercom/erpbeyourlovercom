@@ -368,7 +368,7 @@ GITHUB_STATE: PR #9, PR #12 and PR #13 MERGED; this closure branch has no PR
 SOURCE_CONFLICTS: NONE WITH EVIDENCE; GitHub merge facts and authorized main agree. Evidence limitations remain explicitly unverified.
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: Independent review of the 001D closure and 001E preparation; separate Owner authorization before 001E-A implementation
+NEXT_DEPENDENCY: Independent review of remediated 001E preparation; separate Owner authorization for 001E-A Preflight only
 EVIDENCE_AS_OF: 2026-08-01; GitHub PR #9/#12/#13, origin/main and accepted subpackage Work Logs
 ```
 
@@ -376,8 +376,8 @@ EVIDENCE_AS_OF: 2026-08-01; GitHub PR #9/#12/#13, origin/main and accepted subpa
 
 ```text
 CURRENT_PACKAGE_ESTIMATE: 45h planning value; 35–54h range; total 001D track estimate
-KNOWN_CURRENT_TRACK_REMAINING: 40–62h; planning value 51h for frozen 001E only; 001F remains unknown and excluded
-ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE; 001E is frozen at 40–62h but 001F lacks a frozen estimate
+KNOWN_CURRENT_TRACK_REMAINING: 40–62h parent 001E planning range; child implementation estimates require Preflight confirmation; 001F excluded
+ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE; 001E parent planning exists but child Preflights and 001F estimate are incomplete
 MVP1_TOTAL_ESTIMATE: 122–190h total estimate
 MVP1_PLANNING_BASELINE: 166h total planning value
 MVP1_MAXIMUM_ENVELOPE: 192h maximum total envelope
@@ -386,7 +386,7 @@ POST_MVP_KNOWN_INCREMENT: approximately 68–120h incremental beyond MVP1
 LONG_TERM_CUMULATIVE_RANGE: 235–402h through 1,819–3,146h; cumulative non-additive horizons
 PROGRAM_REMAINING: UNKNOWN WITH EVIDENCE; cumulative horizons and project-wide actual ledger are incomplete
 COMPLETED_ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE; 001D-A has no accepted actual-hours value, while 001D-B records 3h and 001D-C records 4.8h
-ESTIMATE_CONFIDENCE: HIGH for issued 001D and frozen 001E estimates; LOW / UNKNOWN for Architecture Gate and program remaining
+ESTIMATE_CONFIDENCE: HIGH for issued 001D; LOW / MEDIUM for parent 001E planning before child Preflights; LOW / UNKNOWN for Architecture Gate and program remaining
 ESTIMATE_AS_OF: 2026-08-01
 ESTIMATE_METHOD: repository classification; no unsafe subtraction; no cumulative or overlapping aggregation
 ```

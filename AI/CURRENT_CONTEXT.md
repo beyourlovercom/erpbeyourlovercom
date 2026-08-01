@@ -17,6 +17,12 @@ Owner implementation authorization: NO
 Dependency change authorization: NO
 Deployment: NO
 
+ERP-ARCH-MIGRATION-001E-A
+Title: Shared UI and Design Tokens
+Status: PREFLIGHT REQUIRED / IMPLEMENTATION NOT READY
+Preflight authorization: NO
+Implementation authorization: NO
+
 Previous package:
 ERP-ARCH-MIGRATION-001D Runtime / Audit / Sync Foundation
 Status: COMPLETE / PASS
@@ -66,8 +72,9 @@ Production Deployment = NO
 
 ```text
 1. Independently review the 001D closure and 001E preparation governance branch.
-2. Owner separately decides whether to authorize ERP-ARCH-MIGRATION-001E-A implementation and dependency changes.
-3. Do not implement 001E, begin 001F, run Migration/UAT, deploy or begin business MVP packages without separate authorization.
+2. Owner separately decides whether to authorize the bounded ERP-ARCH-MIGRATION-001E-A Preflight only.
+3. Do not authorize or begin 001E-A implementation until its Preflight freezes the token map, component APIs, file delta, tests and confirmed implementation estimate.
+4. Do not implement 001E-B/C, begin 001F, run Migration/UAT, deploy or begin business MVP packages without separate authorization.
 ```
 
 ## Product direction
