@@ -33,11 +33,11 @@ class RuntimeFoundationTest extends TestCase
         $this->assertStringContainsString("env('REDIS_QUEUE_BLOCK_FOR', 5)", $queueSource);
         $this->assertStringContainsString("'after_commit' => true", $queueSource);
         $this->assertSame(2.0, config('database.redis.default.timeout'));
-        $this->assertSame(2.0, config('database.redis.default.read_timeout'));
+        $this->assertSame(6.0, config('database.redis.default.read_timeout'));
         $this->assertSame(2.0, config('database.redis.cache.timeout'));
-        $this->assertSame(2.0, config('database.redis.cache.read_timeout'));
+        $this->assertSame(6.0, config('database.redis.cache.read_timeout'));
         $this->assertStringContainsString("env('REDIS_CONNECT_TIMEOUT', 2.0)", $databaseSource);
-        $this->assertStringContainsString("env('REDIS_READ_TIMEOUT', 2.0)", $databaseSource);
+        $this->assertStringContainsString("env('REDIS_READ_TIMEOUT', 6.0)", $databaseSource);
         $this->assertStringContainsString("env('SESSION_DRIVER', 'database')", $sessionSource);
     }
 

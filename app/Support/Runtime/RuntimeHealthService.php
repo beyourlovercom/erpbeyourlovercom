@@ -58,14 +58,38 @@ class RuntimeHealthService
     /** @return array{status: 'ok'|'degraded', code: string} */
     private function queueContractResult(): array
     {
+        $connection = $this->config->get('queue.connections.redis.connection');
+        $queue = $this->config->get('queue.connections.redis.queue');
         $retryAfter = $this->config->get('queue.connections.redis.retry_after');
         $blockFor = $this->config->get('queue.connections.redis.block_for');
+        $afterCommit = $this->config->get('queue.connections.redis.after_commit');
+        $connectionConfiguration = is_string($connection)
+            ? $this->config->get("database.redis.{$connection}")
+            : null;
+        $readTimeout = is_array($connectionConfiguration)
+            ? ($connectionConfiguration['read_timeout'] ?? null)
+            : null;
         $names = array_map(fn (QueueName $queue): string => $queue->value, QueueName::cases());
-        $valid = is_int($retryAfter)
+        $backoff = QueueJobConvention::BackoffSeconds;
+        $valid = is_array($connectionConfiguration)
+            && is_string($queue)
+            && trim($queue) !== ''
+            && in_array($queue, $names, true)
+            && is_int($retryAfter)
             && is_int($blockFor)
             && $retryAfter > 0
             && $blockFor > 0
-            && $blockFor < $retryAfter
+            && is_numeric($readTimeout)
+            && (float) $readTimeout > $blockFor
+            && $retryAfter > QueueJobConvention::TimeoutSeconds
+            && QueueJobConvention::Tries > 0
+            && $backoff !== []
+            && collect($backoff)->every(
+                fn (mixed $seconds): bool => is_int($seconds)
+                    && $seconds > 0
+                    && $seconds <= QueueJobConvention::TimeoutSeconds,
+            )
+            && $afterCommit === true
             && count($names) === count(array_unique($names))
             && collect($names)->every(fn (string $name): bool => trim($name) !== '');
 

@@ -91,7 +91,14 @@ class RuntimeHealthServiceTest extends TestCase
             'queue misconfigured' => [['queue.default' => 'database'], [], 'queue_configuration', 'expected_redis'],
             'cache misconfigured' => [['cache.default' => 'database'], [], 'cache_configuration', 'expected_redis'],
             'retry is unbounded' => [['queue.connections.redis.retry_after' => 0], [], 'queue_contract', 'invalid'],
-            'blocking exceeds retry' => [['queue.connections.redis.block_for' => 90], [], 'queue_contract', 'invalid'],
+            'read timeout equals blocking duration' => [['database.redis.default.read_timeout' => 5], [], 'queue_contract', 'invalid'],
+            'read timeout is below blocking duration' => [['database.redis.default.read_timeout' => 4.5], [], 'queue_contract', 'invalid'],
+            'retry equals job timeout' => [['queue.connections.redis.retry_after' => 60], [], 'queue_contract', 'invalid'],
+            'retry is below job timeout' => [['queue.connections.redis.retry_after' => 59], [], 'queue_contract', 'invalid'],
+            'after commit disabled' => [['queue.connections.redis.after_commit' => false], [], 'queue_contract', 'invalid'],
+            'queue connection missing' => [['queue.connections.redis.connection' => 'missing'], [], 'queue_contract', 'invalid'],
+            'queue name empty' => [['queue.connections.redis.queue' => ''], [], 'queue_contract', 'invalid'],
+            'queue name undeclared' => [['queue.connections.redis.queue' => 'sync'], [], 'queue_contract', 'invalid'],
         ];
     }
 
@@ -121,9 +128,18 @@ class RuntimeHealthServiceTest extends TestCase
             'cache' => ['default' => 'redis'],
             'queue' => [
                 'default' => 'redis',
-                'connections' => ['redis' => ['retry_after' => 90, 'block_for' => 5]],
+                'connections' => ['redis' => [
+                    'connection' => 'default',
+                    'queue' => 'default',
+                    'retry_after' => 90,
+                    'block_for' => 5,
+                    'after_commit' => true,
+                ]],
             ],
-            'database' => ['redis' => ['client' => 'phpredis']],
+            'database' => ['redis' => [
+                'client' => 'phpredis',
+                'default' => ['read_timeout' => 6.0],
+            ]],
         ], $this->nested($overrides)));
         $capability = $this->createMock(RedisClientCapability::class);
         $capability->method('code')->willReturnCallback(
