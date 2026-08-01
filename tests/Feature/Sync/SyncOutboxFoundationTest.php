@@ -163,6 +163,85 @@ class SyncOutboxFoundationTest extends TestCase
         $this->assertDatabaseCount('audit_records', 0);
     }
 
+    public function test_enqueue_rejects_non_frozen_payload_types_at_every_depth(): void
+    {
+        $resource = fopen('php://memory', 'r');
+        $stringable = new class implements \Stringable
+        {
+            public function __toString(): string
+            {
+                return 'implicitly-serializable-secret';
+            }
+        };
+        $generator = (function (): \Generator {
+            yield 'safe';
+        })();
+        $invalidValues = [
+            (object) ['token' => 'secret'],
+            ['nested' => (object) ['safe' => true]],
+            ['nested' => $stringable],
+            ['nested' => static fn (): string => 'secret'],
+            ['nested' => $resource],
+            ['nested' => new \ArrayIterator(['safe'])],
+            ['nested' => $generator],
+            ['nested' => new \DateTimeImmutable('2026-08-01')],
+            ['nested' => SyncOutboxStatus::Pending],
+            ['nested' => NAN],
+            ['nested' => INF],
+            ['nested' => -INF],
+        ];
+
+        try {
+            foreach ($invalidValues as $index => $value) {
+                try {
+                    $this->service()->enqueue($this->intent([
+                        'idempotency_key' => 'invalid-payload-type-'.$index,
+                        'payload' => ['metadata' => $value],
+                    ]));
+                    $this->fail('A non-frozen nested payload value should be rejected.');
+                } catch (SyncOutboxWriteException $exception) {
+                    $this->assertSame('Invalid sync outbox payload.', $exception->getMessage());
+                    $this->assertDatabaseMissing('sync_outbox', [
+                        'idempotency_key' => 'invalid-payload-type-'.$index,
+                    ]);
+                }
+            }
+        } finally {
+            fclose($resource);
+        }
+
+        $this->assertDatabaseCount('sync_outbox', 0);
+        $this->assertDatabaseCount('audit_records', 0);
+    }
+
+    public function test_enqueue_accepts_deep_payloads_containing_only_frozen_types(): void
+    {
+        $payload = [
+            'level_one' => [
+                'level_two' => [
+                    'list' => ['value', 42, 1.5, true, false, null],
+                    'map' => ['second' => 2, 'first' => 1],
+                ],
+            ],
+        ];
+
+        $record = $this->service()->enqueue($this->intent([
+            'idempotency_key' => 'valid-deep-frozen-payload',
+            'payload' => $payload,
+        ]));
+
+        $this->assertSame([
+            'level_one' => [
+                'level_two' => [
+                    'list' => ['value', 42, 1.5, true, false, null],
+                    'map' => ['first' => 1, 'second' => 2],
+                ],
+            ],
+        ], $record->payload);
+        $this->assertDatabaseCount('sync_outbox', 1);
+        $this->assertDatabaseCount('audit_records', 1);
+    }
+
     public function test_enqueue_validates_lengths_and_attempt_bounds(): void
     {
         $invalid = [
@@ -292,6 +371,69 @@ class SyncOutboxFoundationTest extends TestCase
             }
 
             CarbonImmutable::setTestNow($retried->available_at);
+        }
+    }
+
+    public function test_failure_summaries_conservatively_redact_high_risk_credentials(): void
+    {
+        $cases = [
+            ['Authorization: Basic abc123', ['abc123', 'Basic']],
+            ['Authorization=Basic equal-secret', ['equal-secret']],
+            ['Bearer bearer-secret', ['bearer-secret']],
+            ['password="two word secret"', ['two word secret']],
+            ["password='single quoted secret'", ['single quoted secret']],
+            ['password: two word secret', ['two word secret']],
+            ['cookie=session=abc; user=1', ['session=abc', 'user=1']],
+            ['Set-Cookie: session=set-cookie-secret; Path=/; HttpOnly', ['set-cookie-secret']],
+            ['api_key=api-secret', ['api-secret']],
+            ['client_secret: very secret value', ['very secret value']],
+            ['access_token=access-secret', ['access-secret']],
+            ['refresh_token=refresh-secret', ['refresh-secret']],
+            ['private_key=private-secret', ['private-secret']],
+            ['https://user:url-password@example.com/path', ['user', 'url-password']],
+            ['mysql:host=localhost;password=db-secret;database=erp', ['db-secret']],
+        ];
+
+        foreach ($cases as $index => [$message, $secrets]) {
+            $record = $this->service()->enqueue($this->intent([
+                'idempotency_key' => 'redaction-case-'.$index,
+            ]));
+            $claimed = $this->service()->claim($record->id);
+            $retried = $this->service()->retry($record->id, $claimed->lock_token, 'remote_error', $message);
+
+            $this->assertSame('Sensitive error details were redacted.', $retried->last_error_message);
+            foreach ($secrets as $secret) {
+                $this->assertStringNotContainsString($secret, $retried->last_error_message);
+            }
+        }
+    }
+
+    public function test_failure_summaries_remove_lock_tokens_stack_frames_and_controls(): void
+    {
+        $record = $this->service()->enqueue($this->intent(['idempotency_key' => 'redact-lock-token']));
+        $claimed = $this->service()->claim($record->id);
+        $retried = $this->service()->retry(
+            $record->id,
+            $claimed->lock_token,
+            'remote_error',
+            "Remote failure {$claimed->lock_token}",
+        );
+
+        $this->assertSame('Sensitive error details were redacted.', $retried->last_error_message);
+        $this->assertStringNotContainsString($claimed->lock_token, $retried->last_error_message);
+
+        $record = $this->service()->enqueue($this->intent(['idempotency_key' => 'redact-stack-trace']));
+        $claimed = $this->service()->claim($record->id);
+        $retried = $this->service()->retry(
+            $record->id,
+            $claimed->lock_token,
+            'remote_error',
+            "Remote failure\nStack trace:\n#0 /app/Secret.php(1): secret-frame\n#1 {main}\x00",
+        );
+
+        $this->assertSame('Remote failure', $retried->last_error_message);
+        foreach (['Stack trace', 'Secret.php', 'secret-frame', '#0', "\n", "\x00"] as $forbidden) {
+            $this->assertStringNotContainsString($forbidden, $retried->last_error_message);
         }
     }
 
@@ -489,6 +631,63 @@ class SyncOutboxFoundationTest extends TestCase
         } catch (AuditWriteException) {
             $this->assertSame(SyncOutboxStatus::Processing, $stale->fresh()->status);
             $this->assertSame($stale->lock_token, $stale->fresh()->lock_token);
+        }
+    }
+
+    public function test_audit_failure_rolls_back_every_retry_field(): void
+    {
+        $record = $this->service()->enqueue($this->intent(['idempotency_key' => 'rollback-retry']));
+        $claimed = $this->service()->claim($record->id)->fresh();
+        $auditCount = AuditRecord::count();
+        $this->failAuditWrites();
+
+        try {
+            $this->service()->retry(
+                $claimed->id,
+                $claimed->lock_token,
+                'remote_failure',
+                'Remote failure.',
+            );
+            $this->fail('Retry should roll back when Audit fails.');
+        } catch (AuditWriteException) {
+            $after = $claimed->fresh();
+            $this->assertSame(SyncOutboxStatus::Processing, $after->status);
+            $this->assertSame($claimed->attempts, $after->attempts);
+            $this->assertSame($claimed->lock_token, $after->lock_token);
+            $this->assertTrue($claimed->locked_at->equalTo($after->locked_at));
+            $this->assertTrue($claimed->available_at->equalTo($after->available_at));
+            $this->assertSame($claimed->last_error_code, $after->last_error_code);
+            $this->assertSame($claimed->last_error_message, $after->last_error_message);
+            $this->assertNull($after->failed_at);
+            $this->assertNull($after->completed_at);
+            $this->assertSame($auditCount, AuditRecord::count());
+        }
+    }
+
+    public function test_audit_failure_rolls_back_every_fail_field(): void
+    {
+        $record = $this->service()->enqueue($this->intent(['idempotency_key' => 'rollback-fail']));
+        $claimed = $this->service()->claim($record->id)->fresh();
+        $auditCount = AuditRecord::count();
+        $this->failAuditWrites();
+
+        try {
+            $this->service()->fail(
+                $claimed->id,
+                $claimed->lock_token,
+                'remote_failure',
+                'Remote failure.',
+            );
+            $this->fail('Failure transition should roll back when Audit fails.');
+        } catch (AuditWriteException) {
+            $after = $claimed->fresh();
+            $this->assertSame(SyncOutboxStatus::Processing, $after->status);
+            $this->assertSame($claimed->lock_token, $after->lock_token);
+            $this->assertTrue($claimed->locked_at->equalTo($after->locked_at));
+            $this->assertNull($after->failed_at);
+            $this->assertSame($claimed->last_error_code, $after->last_error_code);
+            $this->assertSame($claimed->last_error_message, $after->last_error_message);
+            $this->assertSame($auditCount, AuditRecord::count());
         }
     }
 

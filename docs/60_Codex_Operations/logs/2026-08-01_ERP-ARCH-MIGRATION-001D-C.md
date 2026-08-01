@@ -79,9 +79,9 @@ MYSQL_5_7_STATUS: UNVERIFIED
 
 ```text
 SQLITE_SCHEMA_TEST: PASS / included in focused and full suites
-SYNC_SCHEMA_AND_FOUNDATION: PASS / 24 tests / 318 assertions
+SYNC_SCHEMA_AND_FOUNDATION: PASS / 30 tests / 406 assertions
 AUDIT_AUTH_PROVISIONING_REGRESSION: PASS / 30 tests / 179 assertions
-FULL_PHP_TEST_SUITE: PASS / 104 tests / 918 assertions
+FULL_PHP_TEST_SUITE: PASS / 110 tests / 1006 assertions
 FRONTEND_TESTS: PASS / 5 files / 11 tests
 COMPOSER: PASS
 ROUTES: PASS / 59 routes
@@ -100,11 +100,12 @@ DIFF_CHECK: PASS
 - `SyncOutbox` is a read-only entity with exact casts and Model/Builder write rejection, including quiet and event-disabled paths;
 - `SyncOutboxService` owns enqueue, claim, complete, retry, fail and bounded stale recovery;
 - idempotency compares canonical intent and retains the database unique constraint as the concurrent final defense;
+- payload values are recursively frozen to arrays, strings, integers, finite floats, booleans and null before canonicalization; implicit object serialization is rejected;
 - claims use a transaction, row lock, UUID owner token and conditional state/attempt update;
 - retry uses deterministic capped 5/15/30-second backoff without jitter;
-- error summaries remove controls, credentials, lock tokens and stack traces before bounded persistence;
+- high-risk credential structures and lock tokens replace the complete error summary with safe generic text; stack frames and controls are removed before bounded persistence;
 - every state transition writes required `sync:outbox` Audit in the same transaction;
-- injected Audit failure tests prove enqueue, claim, complete and stale recovery rollback;
+- injected Audit failure tests prove enqueue, claim, complete, retry, fail and stale recovery rollback, including complete retry/fail field snapshots;
 - stale recovery is batch-bounded and produces pending or failed, never completed.
 
 ```text
@@ -113,6 +114,25 @@ SQLITE_EVIDENCE: conditional mutation and sequential duplicate-claim rejection o
 NEXT_GATE_IF_REQUIRED: separate Owner authorization for isolated MySQL concurrency testing
 MIGRATION_MODIFICATION: NONE
 EXTERNAL_PROVIDER_API_UI_BUSINESS_SCOPE: NONE
+```
+
+## Independent Review Remediation Evidence
+
+```text
+REMEDIATION_BASE_HEAD: c47e7a1ac0a8d5e67e42991ee9c331c191ff6ee5
+REVIEW_RESULT: CHANGES REQUIRED
+PAYLOAD_RECURSIVE_TYPE_FREEZE: PASS
+NESTED_OBJECT_REJECTION: PASS / stdClass, Stringable, Closure, resource, Traversable, Generator, DateTime and Enum
+NON_FINITE_FLOAT_REJECTION: PASS / NAN, INF and -INF
+LEGAL_DEEP_PAYLOAD: PASS
+ERROR_REDACTION: PASS / conservative full-summary replacement for credential structures; lock token, stack and control cleanup covered
+RETRY_AUDIT_ROLLBACK: PASS / every required mutable and terminal field unchanged; Audit count unchanged
+FAIL_AUDIT_ROLLBACK: PASS / every required mutable and terminal field unchanged; Audit count unchanged
+AUTHORIZED_FILES_PINT: PASS
+REPOSITORY_WIDE_PINT: FAIL / same 14 pre-existing files
+NEW_PINT_FAILURES: NONE
+MIGRATION_MODEL_STATUS_AUDIT_FOUNDATION_MODIFICATION: NONE
+REAL_MYSQL_TWO_CONNECTION_CLAIM_CONCURRENCY: UNVERIFIED
 ```
 
 ## Cleanup and Boundaries
@@ -138,7 +158,7 @@ GLOBAL_ARCHITECTURE_GATE: FAIL
 ## Final Verdict
 
 ```text
-FINAL_VERDICT: ERP_ARCH_MIGRATION_001D_C_IMPLEMENTATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
+FINAL_VERDICT: ERP_ARCH_MIGRATION_001D_C_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
 ```
 
 ## PROJECT POSITION
@@ -189,9 +209,9 @@ REMEDIATION_BUFFER: 2–4h; planning value 3h
 ESTIMATED_EFFECTIVE_HOURS: 18h
 ESTIMATE_RANGE: 14–22h
 ESTIMATE_BASIS: planning values 2.5 + 9 + 3.5 + 3 = 18h; lower bounds total 14h; upper bounds total 22h
-ACTUAL_EFFECTIVE_HOURS: 4h recorded 001D-C effort through this implementation Head
-ACTUAL_HOURS_BREAKDOWN: schema/Migration validation 1.5h; Model/Status/Service implementation 1.3h; automated tests and remediation 0.8h; governance evidence 0.4h
-VARIANCE: -14h / -77.8% against the issued 18h package estimate
+ACTUAL_EFFECTIVE_HOURS: 4.8h recorded 001D-C effort through this remediation Head
+ACTUAL_HOURS_BREAKDOWN: schema/Migration validation 1.5h; Model/Status/Service implementation 1.3h; automated tests and remediation 1.4h; governance evidence 0.6h
+VARIANCE: -13.2h / -73.3% against the issued 18h package estimate
 VARIANCE_REASON: Existing Migration, Audit Service and runtime backoff contracts were reusable; provider, UI, Job and business integrations remain intentionally excluded
 OWNER_REVIEW: EXCLUDED
 MERGE: EXCLUDED

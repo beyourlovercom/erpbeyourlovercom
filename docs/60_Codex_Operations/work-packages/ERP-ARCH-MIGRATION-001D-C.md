@@ -295,11 +295,12 @@ STATUS_ENUM: PASS / pending, processing, completed, failed only
 MODEL_CONTRACT: PASS / sync_outbox mapping, exact casts, immutable datetimes and read-only Service boundary
 SERVICE_CONTRACT: PASS / enqueue, claim, complete, retry, fail and bounded recoverStale
 IDEMPOTENCY: PASS / canonical intent reuse, conflict rejection and database unique defense
+PAYLOAD_TYPE_BOUNDARY: PASS / every level accepts arrays, strings, integers, finite floats, booleans and null only; objects, callables, resources, Traversable values and non-finite floats are rejected before canonicalization
 LOCK_CONTRACT: PASS / UUID ownership token, conditional mutation and repeated claim rejection
 BACKOFF: PASS / deterministic 5, 15, 30, 30-second capped sequence
-ERROR_SAFETY: PASS / control cleanup, credential redaction, stack-trace removal and 100/500-character bounds
+ERROR_SAFETY: PASS / high-risk credential structures and lock tokens replace the complete summary; stack frames and controls are removed; persisted summaries remain bounded to 500 characters
 AUDIT_SOURCE: sync:outbox / trusted system actor
-AUDIT_ATOMICITY: PASS / every state write and required Audit share one database transaction; injected Audit failure rolls back
+AUDIT_ATOMICITY: PASS / every state write and required Audit share one database transaction; injected Audit failure rolls back enqueue, claim, complete, retry, fail and stale recovery
 STALE_RECOVERY: PASS / bounded batch, pending or failed only, never completed
 SQLITE_CONCURRENCY_EVIDENCE: conditional update and sequential duplicate claim rejection only
 REAL_MYSQL_TWO_CONNECTION_CLAIM_CONCURRENCY: UNVERIFIED / requires a separate Owner gate if demanded
@@ -308,9 +309,9 @@ MODEL_SERVICE_SCOPE_EXPANSION: NONE
 ```
 
 ```text
-SYNC_FOCUSED_TESTS: PASS / Schema + Foundation 24 tests / 318 assertions
+SYNC_FOCUSED_TESTS: PASS / Schema + Foundation 30 tests / 406 assertions
 AUDIT_AUTH_PROVISIONING_REGRESSION: PASS / 30 tests / 179 assertions
-FULL_PHP_TEST_SUITE: PASS / 104 tests / 918 assertions
+FULL_PHP_TEST_SUITE: PASS / 110 tests / 1006 assertions
 FRONTEND_TESTS: PASS / 5 files / 11 tests
 COMPOSER: PASS
 ROUTES: PASS / 59 routes
@@ -320,6 +321,22 @@ AUTHORIZED_FILES_PINT: PASS
 REPOSITORY_WIDE_PINT: FAIL / same 14 pre-existing baseline files
 NEW_PINT_FAILURES: NONE
 DIFF_CHECK: PASS
+```
+
+## Independent Review Remediation Evidence
+
+```text
+REMEDIATION_BASE_HEAD: c47e7a1ac0a8d5e67e42991ee9c331c191ff6ee5
+REVIEW_RESULT: CHANGES REQUIRED
+PAYLOAD_RECURSIVE_TYPE_FREEZE: COMPLETE / validation precedes canonicalization and sensitive-key inspection
+OBJECT_SERIALIZATION_BYPASS: REJECTED / stdClass, Stringable, Closure, resource, Traversable, Generator, DateTime and Enum coverage
+NON_FINITE_FLOATS: REJECTED / NAN, INF and -INF coverage
+LEGAL_DEEP_PAYLOAD: PASS
+ERROR_SUMMARY_REDACTION: COMPLETE / Authorization, Bearer, password, cookies, API keys, secrets, tokens, private keys, URL userinfo, DSN passwords, lock tokens, stack frames and controls covered
+RETRY_AUDIT_FAILURE_ROLLBACK: PASS / status, attempts, lock, availability, error and terminal fields unchanged; no failed Audit persisted
+FAIL_AUDIT_FAILURE_ROLLBACK: PASS / processing lock, error and terminal fields unchanged; no failed Audit persisted
+MIGRATION_MODEL_STATUS_AUDIT_FOUNDATION_MODIFICATION: NONE
+REAL_MYSQL_TWO_CONNECTION_CLAIM_CONCURRENCY: UNVERIFIED
 ```
 
 ## Validation Plan
@@ -340,7 +357,7 @@ Further Migration execution is excluded unless separately re-authorized for anot
 ## Implementation Verdict
 
 ```text
-FINAL_VERDICT: ERP_ARCH_MIGRATION_001D_C_IMPLEMENTATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
+FINAL_VERDICT: ERP_ARCH_MIGRATION_001D_C_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
 ```
 
 ## Frozen Estimate

@@ -298,6 +298,7 @@ final class SyncOutboxService
         if ($payload !== null && ! is_array($payload)) {
             throw SyncOutboxWriteException::invalid('payload');
         }
+        $this->assertFrozenPayloadTypes($payload);
         $payload = $payload === null ? null : $this->canonicalizePayload($payload);
         $this->assertSafePayload($payload);
 
@@ -468,19 +469,63 @@ final class SyncOutboxService
 
     private function sanitizeErrorMessage(string $errorMessage, string $lockToken): string
     {
-        $sanitized = str_replace($lockToken, '[REDACTED]', $errorMessage);
-        $sanitized = preg_replace('/\bStack trace:.*$/isu', '', $sanitized) ?? '';
-        $sanitized = preg_replace('/(?:^|\R)#\d+\s.*$/su', '', $sanitized) ?? '';
-        $sanitized = preg_replace('/\bBearer\s+\S+/iu', 'Bearer [REDACTED]', $sanitized) ?? '';
-        $sanitized = preg_replace(
-            '/\b(password|password_confirmation|token|authorization|cookie|secret|api[_-]?key|private[_-]?key)\s*[:=]\s*[^\s,;]+/iu',
-            '$1=[REDACTED]',
-            $sanitized,
-        ) ?? '';
+        $withoutStack = preg_replace('/(?:\bStack trace\s*:|(?:^|\R)\s*#\d+\s).*/isu', '', $errorMessage) ?? '';
+
+        if ($this->containsSensitiveErrorDetails($withoutStack, $lockToken)) {
+            return 'Sensitive error details were redacted.';
+        }
+
+        $sanitized = $withoutStack;
         $sanitized = preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $sanitized) ?? '';
         $sanitized = preg_replace('/\s+/u', ' ', trim($sanitized)) ?? '';
 
         return mb_substr($sanitized, 0, 500);
+    }
+
+    private function containsSensitiveErrorDetails(string $message, string $lockToken): bool
+    {
+        if ($lockToken !== '' && str_contains($message, $lockToken)) {
+            return true;
+        }
+
+        $patterns = [
+            '/\bauthorization\s*[:=]/iu',
+            '/\bbearer\s+\S+/iu',
+            '/\b(?:set-)?cookie\s*[:=]/iu',
+            '/\b(?:password(?:_confirmation)?|token|secret|api[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|private[_-]?key|credential)\s*[:=]/iu',
+            '~\b[a-z][a-z0-9+.-]*://[^\s/:@]+:[^\s/@]+@~iu',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $message) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function assertFrozenPayloadTypes(mixed $value): void
+    {
+        if (is_array($value)) {
+            foreach ($value as $key => $nested) {
+                if (! is_int($key) && ! is_string($key)) {
+                    throw SyncOutboxWriteException::invalid('payload');
+                }
+
+                $this->assertFrozenPayloadTypes($nested);
+            }
+
+            return;
+        }
+
+        if (is_float($value) && ! is_finite($value)) {
+            throw SyncOutboxWriteException::invalid('payload');
+        }
+
+        if (! is_string($value) && ! is_int($value) && ! is_float($value) && ! is_bool($value) && $value !== null) {
+            throw SyncOutboxWriteException::invalid('payload');
+        }
     }
 
     /** @param array<mixed> $payload */
