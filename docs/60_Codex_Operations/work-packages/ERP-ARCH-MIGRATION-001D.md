@@ -4,6 +4,7 @@ project: BYL ERP
 work_package: ERP-ARCH-MIGRATION-001D
 status: in-progress
 standard_id: LARGE-PROJECT-EXEC-001
+standard_version: 1.1
 ---
 
 # ERP-ARCH-MIGRATION-001D — Runtime / Audit / Sync Foundation
@@ -343,33 +344,45 @@ The combined planning value is `15 + 12 + 18 = 45` hours and the combined range 
 FINAL_PREPARATION_VERDICT: 001D_SCOPE_READY_FOR_OWNER_REVIEW
 ```
 
-## Project Position
+## PROJECT POSITION
 
 ```text
-PHASE_MAP:
-001A Foundation Bootstrap             MERGED / PASS
-001B Authentication / Authorization   MERGED / PASS
-001C Application Shell                MERGED / PASS
-→ 001D Runtime / Audit / Sync         CURRENT / IN PROGRESS
-   001D-A Runtime Foundation          MERGED / PASS
-   → 001D-B Audit Foundation          PREPARED / IMPLEMENTATION NOT STARTED
-   001D-C Sync Outbox Foundation      WAITING
-001E Shared UI / Browser E2E          WAITING
-001F Architecture Re-audit            WAITING
+PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B CURRENT / PREPARED / IMPLEMENTATION NOT STARTED → 001D-C WAITING → 001E WAITING → 001F WAITING
 COMPLETED_PHASES: 001A, 001B, 001C, 001D-A
 CURRENT_PHASE: 001D-B Audit Foundation preparation
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001D
 PACKAGE_STATUS: 001D-A MERGED / 001D-B PREPARED / OWNER IMPLEMENTATION AUTHORIZATION NO
 WAITING_PHASES: 001D-C, 001E, 001F
-BASELINE: main@50803c3fcd51e9f8b3485f4fb57565154a284bf7
-GITHUB_STATE: PR #9 MERGED / CLOSED; no 001D-B implementation PR exists
+BASELINE: main@d8b08cac5fefff0a6cdc66388bee5ad2a383c70b
+GITHUB_STATE: PR #9 MERGED / CLOSED; PR #11 MERGED / CLOSED; PR #10 OPEN / NON-DRAFT / UNMERGED; no 001D-B implementation PR exists
+SOURCE_CONFLICTS: GitHub confirms 001D-A merged; main transition documents remain stale until PR #10 merges; this rebased PR contains the pending 001D-B preparation transition
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
 NEXT_DEPENDENCY: Owner reviews the prepared 001D-B package and separately decides implementation and Migration-file-authoring authorization
-EVIDENCE_AS_OF: 2026-08-01; repository governance, merged PR #9 and frozen 001D order
+EVIDENCE_AS_OF: 2026-08-01; repository governance, merged PR #9, origin/main and frozen 001D order
 ```
 
-## Estimated Codex Hours
+## ROADMAP HOURS
+
+```text
+CURRENT_PACKAGE_ESTIMATE: 45h planning value; 35–54h range; total 001D track estimate
+KNOWN_CURRENT_TRACK_REMAINING: 23–36h; planning value 30h; 001D-B + 001D-C only
+ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE; 001E and 001F lack frozen estimates
+MVP1_TOTAL_ESTIMATE: 122–190h total estimate
+MVP1_PLANNING_BASELINE: 166h total planning value
+MVP1_MAXIMUM_ENVELOPE: 192h maximum total envelope
+MVP1_REMAINING: UNKNOWN WITH EVIDENCE; accepted actual-hours ledger and overlap map are incomplete
+POST_MVP_KNOWN_INCREMENT: approximately 68–120h incremental beyond MVP1
+LONG_TERM_CUMULATIVE_RANGE: 235–402h through 1,819–3,146h; cumulative non-additive horizons
+PROGRAM_REMAINING: UNKNOWN WITH EVIDENCE; cumulative horizons and project-wide actual ledger are incomplete
+COMPLETED_ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE; accepted project-wide Work Log ledger is incomplete
+ESTIMATE_CONFIDENCE: HIGH for quoted totals; MEDIUM for 001D-B/C sum; LOW / UNKNOWN for remaining totals
+ESTIMATE_AS_OF: 2026-08-01
+ESTIMATE_METHOD: repository classification; no unsafe subtraction; no cumulative or overlapping aggregation
+```
+
+## ESTIMATED CODEX HOURS
 
 ```text
 PREFLIGHT_AND_SCOPE: 3-5 hours (planning value 4 hours)

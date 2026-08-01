@@ -76,6 +76,7 @@ Documents updated: AI/LARGE_PROJECT_EXECUTION_STANDARD.md; CODEX_ENTRYPOINT.md; 
 
 ```text
 Owner decision: Accepted and merged PR #9; prepare 001D-B only.
+Decision: D-022 — 001D-A completion and 001D-B preparation.
 Previous state: 001D-A implementation complete and pending merge; 001D-B waiting.
 New state: 001D-A MERGED / PASS; 001D-B CURRENT / PREPARED / IMPLEMENTATION NOT STARTED; Owner implementation authorization NO.
 Reason: Continue the frozen 001D-A → 001D-B → 001D-C execution order.
