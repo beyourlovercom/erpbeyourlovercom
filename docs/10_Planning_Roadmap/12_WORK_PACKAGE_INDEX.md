@@ -9,8 +9,19 @@ version: 1.0
 ## Active
 
 ```text
-ERP-ARCH-MIGRATION-001B
-PR #1 remediation
+ERP-ARCH-MIGRATION-001D
+Runtime / Audit / Sync Foundation
+Status: PREPARED / OWNER IMPLEMENTATION AUTHORIZATION NO
+```
+
+## Completed architecture packages
+
+```text
+ERP-ARCH-MIGRATION-001C
+Application Shell
+Status: MERGED / PASS
+PR: #5
+Main SHA: ba1638277bac5d333ee693d627a41ca9c950c565
 ```
 
 ## Planned fast-track packages

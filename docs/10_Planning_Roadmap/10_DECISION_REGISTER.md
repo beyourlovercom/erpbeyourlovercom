@@ -2,7 +2,7 @@
 type: decision-register
 project: BYL ERP
 version: 1.0
-updated: 2026-07-31
+updated: 2026-08-01
 ---
 
 # Decision Register
@@ -83,3 +83,9 @@ Repository Markdown is the source of truth. Obsidian reads the repository; no du
 ## D-018 Documentation branch
 
 Planning foundation must not be mixed into PR #1.
+
+## D-019 001C closure, 001D preparation and Operations paths
+
+001C is accepted and merged. 001D becomes the current prepared architecture package, but implementation still requires separate Owner authorization. Global Architecture Gate remains FAIL; no Migration or deployment is authorized.
+
+Formal Work Packages are stored under `docs/60_Codex_Operations/work-packages/` and named `<WORK-PACKAGE-ID>.md`, beginning with `ERP-ARCH-MIGRATION-001D`. Work Logs retain `docs/60_Codex_Operations/logs/YYYY-MM-DD_<WORK-PACKAGE-ID>.md`.

@@ -2,7 +2,7 @@
 type: living-roadmap
 project: BYL ERP
 version: 1.0
-updated: 2026-07-31
+updated: 2026-08-01
 ---
 
 # Living Roadmap
@@ -13,9 +13,9 @@ updated: 2026-07-31
 001A Foundation Bootstrap = MERGED / PASS
 Repository Governance = PASS
 001B Auth / Authorization = MERGED (merge SHA: 5e100cc8e80480ecb6dbd1b38cbfbe9bddba12f4)
-001C App Shell = CURRENT (branch prepared; implementation not started)
-001D Runtime / Audit / Sync Foundation = WAITING
-001E Shared UI / E2E = WAITING
+001C App Shell = MERGED / PASS (PR #5; main commit: ba1638277bac5d333ee693d627a41ca9c950c565)
+001D Runtime / Audit / Sync Foundation = CURRENT / PREPARED / IMPLEMENTATION NOT STARTED
+001E Shared UI / Browser E2E = WAITING
 001F Architecture Re-audit = WAITING
 Global Architecture Gate = FAIL
 Deployment = NO
@@ -33,12 +33,9 @@ Maximum planning envelope: approximately 192 effective hours
 ## Immediate sequence
 
 ```text
-1. Review and freeze the 001C scope and acceptance criteria.
-2. Obtain Owner authorization to begin 001C implementation.
-3. Build the bounded MVP1 application shell/runtime.
-4. Build final-compatible order/shipment/sync/cost foundations.
-5. Build manual order and fulfillment workflow.
-6. Build manual website-sync queue.
+1. Review and freeze 001D scope and acceptance criteria.
+2. Obtain Owner authorization before 001D implementation.
+3. Do not begin 001E or business MVP packages.
 ```
 
 ## Incremental releases
