@@ -2,7 +2,7 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-ARCH-MIGRATION-001D
-status: prepared
+status: in-progress
 standard_id: LARGE-PROJECT-EXEC-001
 ---
 
@@ -13,8 +13,8 @@ standard_id: LARGE-PROJECT-EXEC-001
 ```text
 ID: ERP-ARCH-MIGRATION-001D
 TITLE: Runtime / Audit / Sync Foundation
-STATUS: PREPARED / IMPLEMENTATION NOT STARTED
-OWNER_IMPLEMENTATION_AUTHORIZATION: NO
+STATUS: CURRENT / IN PROGRESS
+OWNER_IMPLEMENTATION_AUTHORIZATION: SUBPACKAGE-SPECIFIC
 MERGE_AUTHORIZATION: NO
 MIGRATION_AUTHORIZATION: NO
 DEPLOYMENT_AUTHORIZATION: NO
@@ -29,15 +29,18 @@ Execution order is mandatory:
 ```text
 ERP-ARCH-MIGRATION-001D-A
 Runtime Foundation
-Status: PREPARED / OWNER IMPLEMENTATION AUTHORIZATION NO
+Status: MERGED / PASS
+PR: #9
+Accepted Head: 3d8f92b701370db41bed0df707183207f6924dd5
+Main SHA: 50803c3fcd51e9f8b3485f4fb57565154a284bf7
 Estimate: 12–18 effective hours (planning value 15 hours)
 
 → ERP-ARCH-MIGRATION-001D-B
 Audit Foundation
-Status: WAITING
+Status: PREPARED / OWNER IMPLEMENTATION AUTHORIZATION NO
 Estimate: 9–14 effective hours (planning value 12 hours)
 
-→ ERP-ARCH-MIGRATION-001D-C
+ERP-ARCH-MIGRATION-001D-C
 Sync Outbox Foundation
 Status: WAITING
 Estimate: 14–22 effective hours (planning value 18 hours)
@@ -347,20 +350,23 @@ PHASE_MAP:
 001A Foundation Bootstrap             MERGED / PASS
 001B Authentication / Authorization   MERGED / PASS
 001C Application Shell                MERGED / PASS
-→ 001D Runtime / Audit / Sync         PREPARED / IMPLEMENTATION NOT STARTED
+→ 001D Runtime / Audit / Sync         CURRENT / IN PROGRESS
+   001D-A Runtime Foundation          MERGED / PASS
+   → 001D-B Audit Foundation          PREPARED / IMPLEMENTATION NOT STARTED
+   001D-C Sync Outbox Foundation      WAITING
 001E Shared UI / Browser E2E          WAITING
 001F Architecture Re-audit            WAITING
-COMPLETED_PHASES: 001A, 001B, 001C
-CURRENT_PHASE: 001D Runtime / Audit / Sync scope freeze
+COMPLETED_PHASES: 001A, 001B, 001C, 001D-A
+CURRENT_PHASE: 001D-B Audit Foundation preparation
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001D
-PACKAGE_STATUS: SCOPE FROZEN / 001D-A PREPARED / OWNER IMPLEMENTATION AUTHORIZATION NO
-WAITING_PHASES: 001E, 001F
-BASELINE: main@704c64fdadc457ad87711f70a6bb6de7dc8eb587
-GITHUB_STATE: 001C PR #5 and 001D preparation PR #7 MERGED; 001D implementation PR does not exist
+PACKAGE_STATUS: 001D-A MERGED / 001D-B PREPARED / OWNER IMPLEMENTATION AUTHORIZATION NO
+WAITING_PHASES: 001D-C, 001E, 001F
+BASELINE: main@50803c3fcd51e9f8b3485f4fb57565154a284bf7
+GITHUB_STATE: PR #9 MERGED / CLOSED; no 001D-B implementation PR exists
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: Owner reviews the frozen split, then separately authorizes ERP-ARCH-MIGRATION-001D-A
-EVIDENCE_AS_OF: 2026-08-01; repository governance, GitHub PR #7 and frozen 001D scope
+NEXT_DEPENDENCY: Owner reviews the prepared 001D-B package and separately decides implementation and Migration-file-authoring authorization
+EVIDENCE_AS_OF: 2026-08-01; repository governance, merged PR #9 and frozen 001D order
 ```
 
 ## Estimated Codex Hours

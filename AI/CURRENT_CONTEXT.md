@@ -11,19 +11,23 @@ status: architecture-migration-active
 
 ```text
 ERP-ARCH-MIGRATION-001D
-Status: PREPARED / IMPLEMENTATION NOT STARTED
-Owner implementation authorization: NO
+Status: CURRENT / IN PROGRESS
 Deployment: NO
-```
 
-## Previous package
+ERP-ARCH-MIGRATION-001D-A
+Status: MERGED / PASS
+PR: #9
+Accepted Head: 3d8f92b701370db41bed0df707183207f6924dd5
+Main Squash Commit: 50803c3fcd51e9f8b3485f4fb57565154a284bf7
 
-```text
-001C Application Shell = MERGED / PASS
-001C PR = #5
-001C accepted Head = cd0723a474d7e75c3b98b526403015f0ec42e11f
-001C main squash commit = ba1638277bac5d333ee693d627a41ca9c950c565
-001C merge authorization = COMPLETE
+ERP-ARCH-MIGRATION-001D-B
+Status: CURRENT / PREPARED / IMPLEMENTATION NOT STARTED
+Owner implementation authorization: NO
+
+ERP-ARCH-MIGRATION-001D-C
+Status: WAITING
+
+LIVE_REDIS_PROBE: UNAVAILABLE / NOT CLAIMED
 ```
 
 ## Current repository baseline
@@ -33,7 +37,10 @@ Deployment: NO
 Repository Governance = PASS
 001B Authentication / Authorization = MERGED / PASS
 001C Application Shell = MERGED / PASS
-001D Runtime / Audit / Sync Foundation = CURRENT / PREPARED / IMPLEMENTATION NOT STARTED
+001D Runtime / Audit / Sync Foundation = CURRENT / IN PROGRESS
+001D-A Runtime Foundation = MERGED / PASS
+001D-B Audit Foundation = CURRENT / PREPARED / IMPLEMENTATION NOT STARTED
+001D-C Sync Outbox Foundation = WAITING
 001E Shared UI / Browser E2E = WAITING
 001F Architecture Re-audit = WAITING
 Global Architecture Gate = FAIL
@@ -43,9 +50,9 @@ Production Deployment = NO
 ## Immediate sequence
 
 ```text
-1. Review and freeze 001D scope and acceptance criteria.
-2. Obtain Owner authorization before 001D implementation.
-3. Do not begin 001E or business MVP packages.
+1. Review the prepared 001D-B Audit Foundation package.
+2. Obtain separate Owner implementation authorization.
+3. Do not begin 001D-C, 001E or business MVP packages.
 ```
 
 ## Product direction

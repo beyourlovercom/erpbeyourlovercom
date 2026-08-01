@@ -2,7 +2,7 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-ARCH-MIGRATION-001D-A
-status: implementation-authorized
+status: merged
 standard_id: LARGE-PROJECT-EXEC-001
 ---
 
@@ -13,15 +13,45 @@ standard_id: LARGE-PROJECT-EXEC-001
 ```text
 ID: ERP-ARCH-MIGRATION-001D-A
 TITLE: Runtime Foundation
-STATUS: IMPLEMENTATION AUTHORIZED / IN PROGRESS
-OWNER_IMPLEMENTATION_AUTHORIZATION: YES
+STATUS: MERGED / PASS
+OWNER_IMPLEMENTATION_AUTHORIZATION: COMPLETE
 MIGRATION_FILE_AUTHORING: NO
 MIGRATION_EXECUTION: NO
 DEPENDENCY_CHANGE: NO
-MERGE_AUTHORIZATION: NO
+MERGE_AUTHORIZATION: COMPLETE
 DEPLOYMENT_AUTHORIZATION: NO
 BASE_SHA: 652f339c52e0fd2b820d059d55dae39c1f493ee7
 BRANCH: feature/erp-arch-migration-001d-a-runtime-foundation
+PR: #9
+ACCEPTED_HEAD: 3d8f92b701370db41bed0df707183207f6924dd5
+MAIN_SQUASH_COMMIT: 50803c3fcd51e9f8b3485f4fb57565154a284bf7
+MERGED_AT: 2026-08-01T05:02:42Z
+```
+
+## Completion
+
+```text
+Redis Cache default: ESTABLISHED
+Redis Queue default: ESTABLISHED
+Session driver: DATABASE / UNCHANGED
+Queue names: default, runtime
+Redis connect timeout: 2.0
+Redis read timeout: 6.0
+Redis queue block_for: 5
+Job timeout: 60
+Redis queue retry_after: 90
+Protected Runtime Health endpoint: COMPLETE
+Runtime Health CLI command: COMPLETE
+Five-minute Scheduler event: COMPLETE
+Redacted degraded behaviour: PASS
+LIVE_REDIS_PROBE: UNAVAILABLE / NOT CLAIMED
+Migration file: NONE
+Migration execution: NOT RUN
+Dependency change: NONE
+Audit Foundation: NOT IMPLEMENTED
+Sync Outbox: NOT IMPLEMENTED
+External API: NONE
+Deployment: NO
 ```
 
 ## Frozen Scope
@@ -119,23 +149,23 @@ PHASE_MAP:
 001A Foundation Bootstrap             MERGED / PASS
 001B Authentication / Authorization   MERGED / PASS
 001C Application Shell                MERGED / PASS
-→ 001D Runtime / Audit / Sync         IMPLEMENTATION IN PROGRESS
-   → 001D-A Runtime Foundation        OWNER IMPLEMENTATION AUTHORIZED
-   001D-B Audit Foundation            WAITING
+→ 001D Runtime / Audit / Sync         IN PROGRESS
+   001D-A Runtime Foundation          MERGED / PASS
+   → 001D-B Audit Foundation          PREPARED / IMPLEMENTATION NOT STARTED
    001D-C Sync Outbox Foundation      WAITING
 001E Shared UI / Browser E2E          WAITING
 001F Architecture Re-audit            WAITING
-COMPLETED_PHASES: 001A, 001B, 001C
-CURRENT_PHASE: 001D-A Runtime Foundation
+COMPLETED_PHASES: 001A, 001B, 001C, 001D-A
+CURRENT_PHASE: 001D-B Audit Foundation preparation
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001D-A
-PACKAGE_STATUS: OWNER IMPLEMENTATION AUTHORIZED / MERGE NOT AUTHORIZED
-WAITING_PHASES: 001D-B, 001D-C, 001E, 001F
-BASELINE: main@652f339c52e0fd2b820d059d55dae39c1f493ee7
-GITHUB_STATE: PR #8 MERGED / CLOSED; no 001D-A implementation PR existed at authorization time
+PACKAGE_STATUS: MERGED / PASS
+WAITING_PHASES: 001D-C, 001E, 001F
+BASELINE: main@50803c3fcd51e9f8b3485f4fb57565154a284bf7
+GITHUB_STATE: PR #9 MERGED / CLOSED; accepted Head 3d8f92b701370db41bed0df707183207f6924dd5
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: complete 001D-A, open one bounded PR and return it for independent review
-EVIDENCE_AS_OF: 2026-08-01; merged PR #8, frozen 001D Work Package and verified runtime baseline
+NEXT_DEPENDENCY: Owner reviews the prepared 001D-B package and separately authorizes implementation if accepted
+EVIDENCE_AS_OF: 2026-08-01; merged PR #9, accepted runtime validation and governance transition
 ```
 
 ## Estimated Codex Hours

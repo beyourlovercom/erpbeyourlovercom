@@ -72,6 +72,22 @@ Architecture conflict: NONE.
 Documents updated: AI/LARGE_PROJECT_EXECUTION_STANDARD.md; CODEX_ENTRYPOINT.md; docs/60_Codex_Operations/CODEX_TASK_TEMPLATE.md; docs/60_Codex_Operations/CODEX_FINAL_REPORT_TEMPLATE.md; docs/10_Planning_Roadmap/00_COMMAND_CENTER.md; docs/10_Planning_Roadmap/04_LIVING_ROADMAP.md; docs/10_Planning_Roadmap/09_EFFECTIVE_HOURS.md; docs/10_Planning_Roadmap/10_DECISION_REGISTER.md; docs/10_Planning_Roadmap/11_CHANGE_LOG.md; docs/10_Planning_Roadmap/13_PROGRAM_ROADMAP_AND_HOURS.md; docs/60_Codex_Operations/work-packages/ERP-GOVERNANCE-PROGRAM-ROADMAP-HOURS-001.md.
 ```
 
+## 2026-08-01 — 001D-A merged / 001D-B prepared
+
+```text
+Owner decision: Accepted and merged PR #9; prepare 001D-B only.
+Previous state: 001D-A implementation complete and pending merge; 001D-B waiting.
+New state: 001D-A MERGED / PASS; 001D-B CURRENT / PREPARED / IMPLEMENTATION NOT STARTED; Owner implementation authorization NO.
+Reason: Continue the frozen 001D-A → 001D-B → 001D-C execution order.
+Affected modules: Runtime, Audit.
+Affected Work Packages: ERP-ARCH-MIGRATION-001D; ERP-ARCH-MIGRATION-001D-A; ERP-ARCH-MIGRATION-001D-B.
+Estimate impact: 001D-B remains 9–14 effective hours with planning value 12 hours. No overall architecture estimate expansion.
+Architecture conflict: NONE.
+Global Architecture Gate: FAIL.
+Deployment: NO.
+Documents updated: AI/CURRENT_CONTEXT.md; docs/10_Planning_Roadmap/04_LIVING_ROADMAP.md; docs/10_Planning_Roadmap/10_DECISION_REGISTER.md; docs/10_Planning_Roadmap/11_CHANGE_LOG.md; docs/10_Planning_Roadmap/12_WORK_PACKAGE_INDEX.md; docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001D.md; docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001D-A.md; docs/60_Codex_Operations/logs/2026-08-01_ERP-ARCH-MIGRATION-001D-A.md; docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001D-B.md.
+```
+
 ## Change entry format
 
 ```text
