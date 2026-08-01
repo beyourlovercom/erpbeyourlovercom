@@ -13,6 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withCommands([
         App\Console\Commands\CreateErpUser::class,
+        App\Console\Commands\RuntimeHealthCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [

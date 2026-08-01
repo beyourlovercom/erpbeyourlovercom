@@ -3,6 +3,7 @@
 use App\Http\Controllers\ErpShellController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\RuntimeHealthController;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Support\LegacyErpNavigationPaths;
 use Inertia\Inertia;
@@ -12,6 +13,9 @@ use Illuminate\Support\Facades\Gate;
 Route::get('/', [AuthController::class, 'root'])->name('root');
 Route::get('/login', [AuthController::class, 'login'])->middleware('guest')->name('login');
 Route::middleware(['auth', 'can:dashboard.view'])->get('/dashboard', DashboardController::class)->name('dashboard');
+Route::get('/system/runtime/health', RuntimeHealthController::class)
+    ->middleware(['auth', 'can:system.permissions.manage'])
+    ->name('system.runtime.health');
 $shellModules = collect(config('erp_shell_navigation'))->where('placeholder', true);
 $legacyPathSupport = app(LegacyErpNavigationPaths::class);
 $legacyPaths = $legacyPathSupport->all(config('erp_navigation'));
