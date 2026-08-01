@@ -23,6 +23,10 @@ class LogoutSessionTest extends TestCase
         $this->assertNotSame($sessionId, session()->getId());
         $this->get('/dashboard')->assertRedirect('/login');
         $audit = AuditRecord::where('action', 'auth.logout')->latest('id')->firstOrFail();
+        $this->assertSame($user->id, $audit->actor_id);
+        $this->assertSame(['state' => 'authenticated'], $audit->before);
+        $this->assertSame(['state' => 'guest'], $audit->after);
+        $this->assertSame('logout_requested', $audit->reason);
         $this->assertStringNotContainsString($sessionId, json_encode($audit->toArray()));
         $this->assertStringNotContainsString('verification-marker', json_encode($audit->toArray()));
     }

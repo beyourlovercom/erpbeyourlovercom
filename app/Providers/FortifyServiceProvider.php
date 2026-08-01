@@ -2,14 +2,18 @@
 
 namespace App\Providers;
 
-use Illuminate\Cache\RateLimiting\Limit;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Facades\Hash;
+use App\Models\User;
+use App\Support\Audit\AuditActor;
+use App\Support\Audit\AuditService;
+use App\Support\Audit\AuditSource;
+use App\Support\Audit\AuditWriteException;
+use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
-use Illuminate\Auth\Events\Failed;
-use App\Models\AuditRecord;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Laravel\Fortify\Fortify;
@@ -31,7 +35,8 @@ class FortifyServiceProvider extends ServiceProvider
     {
         Fortify::loginView(fn () => inertia('Auth/Login'));
         Fortify::authenticateUsing(function ($request) {
-            $user = \App\Models\User::where('email', $request->email)->first();
+            $user = User::where('email', $request->email)->first();
+
             return $user && $user->is_active && Hash::check($request->password, $user->password) ? $user : null;
         });
 
@@ -41,9 +46,65 @@ class FortifyServiceProvider extends ServiceProvider
             return Limit::perMinute(5)->by($throttleKey);
         });
 
-        \Event::listen(Login::class, fn (Login $event) => AuditRecord::create(['actor_id' => $event->user->getAuthIdentifier(), 'action' => 'auth.login', 'entity_type' => get_class($event->user), 'entity_id' => (string) $event->user->getAuthIdentifier(), 'source' => 'fortify', 'ip_address' => request()->ip(), 'user_agent' => request()->userAgent(), 'created_at' => now()]));
-        \Event::listen(Logout::class, fn (Logout $event) => AuditRecord::create(['actor_id' => $event->user?->getAuthIdentifier(), 'action' => 'auth.logout', 'entity_type' => $event->user ? get_class($event->user) : 'session', 'entity_id' => $event->user ? (string) $event->user->getAuthIdentifier() : null, 'source' => 'fortify', 'ip_address' => request()->ip(), 'user_agent' => request()->userAgent(), 'created_at' => now()]));
-        \Event::listen(Failed::class, fn (Failed $event) => AuditRecord::create(['actor_id' => $event->user?->getAuthIdentifier(), 'action' => 'auth.login_failed', 'entity_type' => $event->user ? get_class($event->user) : 'credential', 'entity_id' => null, 'source' => 'fortify', 'ip_address' => request()->ip(), 'user_agent' => request()->userAgent(), 'created_at' => now()]));
+        \Event::listen(Login::class, function (Login $event): void {
+            /** @var User $user */
+            $user = $event->user;
+            try {
+                app(AuditService::class)->record(
+                    AuditActor::user($user, AuditSource::Fortify),
+                    'auth.login',
+                    User::class,
+                    $user->getAuthIdentifier(),
+                    after: ['state' => 'authenticated'],
+                    reason: 'credentials_accepted',
+                );
+            } catch (AuditWriteException $exception) {
+                request()->session()->invalidate();
+                auth()->guard()->forgetUser();
+
+                throw $exception;
+            }
+        });
+
+        \Event::listen(Logout::class, function (Logout $event): void {
+            /** @var User|null $user */
+            $user = $event->user;
+            $actor = $user
+                ? AuditActor::user($user, AuditSource::Fortify)
+                : AuditActor::system(AuditSource::Fortify);
+
+            try {
+                app(AuditService::class)->record(
+                    $actor,
+                    'auth.logout',
+                    $user ? User::class : 'session',
+                    $user?->getAuthIdentifier(),
+                    before: ['state' => 'authenticated'],
+                    after: ['state' => 'guest'],
+                    reason: 'logout_requested',
+                );
+            } catch (AuditWriteException $exception) {
+                request()->session()->invalidate();
+                auth()->guard()->forgetUser();
+
+                throw $exception;
+            }
+        });
+
+        \Event::listen(Failed::class, function (Failed $event): void {
+            /** @var User|null $user */
+            $user = $event->user;
+            $actor = $user
+                ? AuditActor::user($user, AuditSource::Fortify)
+                : AuditActor::system(AuditSource::Fortify);
+
+            app(AuditService::class)->record(
+                $actor,
+                'auth.login_failed',
+                $user ? User::class : 'credential',
+                reason: 'credentials_rejected',
+            );
+        });
 
     }
 }

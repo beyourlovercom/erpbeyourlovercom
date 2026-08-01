@@ -34,6 +34,10 @@ class CreateErpUserCommandTest extends TestCase
         $user = User::where('email', 'owner@example.test')->firstOrFail();
         $this->assertTrue(Hash::check($secret, $user->password));
         $this->assertNotSame($secret, $user->password);
+        $audit = AuditRecord::where('action', 'user.created')->firstOrFail();
+        $this->assertNull($audit->actor_id);
+        $this->assertSame('erp:user:create', $audit->source);
+        $this->assertSame('administrator_provisioning', $audit->reason);
         $this->assertStringNotContainsString($secret, json_encode(AuditRecord::all()->toArray()));
     }
 }
