@@ -91,6 +91,24 @@ Documents updated: AI/CURRENT_CONTEXT.md; docs/10_Planning_Roadmap/04_LIVING_ROA
 
 ## Change entry format
 
+## 2026-08-01 — 001D-B Audit Foundation implemented pending review
+
+```text
+Owner decision: Authorize bounded ERP-ARCH-MIGRATION-001D-B implementation, tests, commit, push and a new independent-review PR.
+Decision: D-023 — 001D-B Audit Foundation implementation authorization.
+Previous state: 001D-B CURRENT / PREPARED / IMPLEMENTATION NOT STARTED; authorization NO.
+New state: 001D-B CURRENT / IMPLEMENTATION COMPLETE / PENDING GITHUB INDEPENDENT REVIEW; authorization YES; merge authorization NO.
+Reason: Establish the frozen Audit Foundation before 001D-C.
+Affected modules: Audit, authentication audit hooks, provisioning audit hook, audit authorization.
+Affected Work Packages: ERP-ARCH-MIGRATION-001D-B.
+Schema impact: NONE; the existing 13-field audit_records schema is sufficient.
+Estimate impact: Issued estimate remains 9–14 effective hours with planning value 12 hours; actual productive effort recorded as 3 hours.
+Architecture conflict: NONE.
+Global Architecture Gate: FAIL.
+Deployment: NO.
+Documents updated: AI/CURRENT_CONTEXT.md; docs/10_Planning_Roadmap/04_LIVING_ROADMAP.md; docs/10_Planning_Roadmap/10_DECISION_REGISTER.md; docs/10_Planning_Roadmap/11_CHANGE_LOG.md; docs/10_Planning_Roadmap/12_WORK_PACKAGE_INDEX.md; docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001D-B.md; docs/60_Codex_Operations/logs/2026-08-01_ERP-ARCH-MIGRATION-001D-B.md.
+```
+
 ```text
 Date:
 Owner decision:

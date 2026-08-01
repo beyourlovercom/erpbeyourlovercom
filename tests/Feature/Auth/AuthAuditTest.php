@@ -18,6 +18,9 @@ class AuthAuditTest extends TestCase
         $this->withHeaders(['Authorization' => 'Bearer secret-token'])
             ->post('/login', ['email' => $user->email, 'password' => 'wrong-password', 'password_confirmation' => 'confirm']);
         $audit = AuditRecord::where('action', 'auth.login_failed')->latest('id')->firstOrFail();
+        $this->assertSame('fortify', $audit->source);
+        $this->assertSame('credentials_rejected', $audit->reason);
+        $this->assertNotNull($audit->request_id);
         $text = json_encode($audit->toArray());
         foreach (['wrong-password', 'confirm', $this->app['session']->getId(), 'secret-token', 'password_confirmation'] as $secret) {
             $this->assertStringNotContainsString($secret, $text);
@@ -32,6 +35,9 @@ class AuthAuditTest extends TestCase
         $response->assertSessionHasErrors('email');
         $this->assertStringNotContainsString('inactive', json_encode(session()->all()));
         $audit = AuditRecord::where('action', 'auth.login_failed')->latest('id')->firstOrFail();
+        $this->assertNull($audit->actor_id);
+        $this->assertSame('credential', $audit->entity_type);
+        $this->assertSame('credentials_rejected', $audit->reason);
         foreach (['inactive-secret', 'password_confirmation', session()->getId()] as $secret) {
             $this->assertStringNotContainsString($secret, json_encode($audit->toArray()));
         }

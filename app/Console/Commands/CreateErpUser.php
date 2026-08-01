@@ -2,9 +2,11 @@
 
 namespace App\Console\Commands;
 
-use App\Models\AuditRecord;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\Audit\AuditActor;
+use App\Support\Audit\AuditService;
+use App\Support\Audit\AuditSource;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -14,9 +16,10 @@ use Illuminate\Validation\Rule;
 class CreateErpUser extends Command
 {
     protected $signature = 'erp:user:create';
+
     protected $description = 'Create an internal ERP user with an approved role';
 
-    public function handle(): int
+    public function handle(AuditService $audit): int
     {
         $name = $this->ask('Name');
         $email = strtolower(trim($this->ask('Email')));
@@ -30,8 +33,27 @@ class CreateErpUser extends Command
             'password_confirmation' => ['required', 'same:password'],
             'roleKey' => ['required', Rule::in(['super_admin', 'admin', 'manager', 'operator'])],
         ], ['password.confirmed' => 'Password confirmation does not match.']);
-        if ($validator->fails()) { foreach ($validator->errors()->all() as $error) $this->error($error); return self::FAILURE; }
-        DB::transaction(function () use ($name, $email, $password, $roleKey): void { $user = User::create(['name' => $name, 'email' => $email, 'password' => Hash::make($password), 'is_active' => true]); $user->roles()->attach(Role::where('key', $roleKey)->firstOrFail()); AuditRecord::create(['actor_id' => null, 'action' => 'user.created', 'entity_type' => User::class, 'entity_id' => (string) $user->id, 'after' => ['name' => $name, 'email' => $email, 'role' => $roleKey], 'source' => 'erp:user:create', 'created_at' => now()]); });
-        $this->info('ERP user created.'); return self::SUCCESS;
+        if ($validator->fails()) {
+            foreach ($validator->errors()->all() as $error) {
+                $this->error($error);
+            }
+
+            return self::FAILURE;
+        }
+        DB::transaction(function () use ($audit, $name, $email, $password, $roleKey): void {
+            $user = User::create(['name' => $name, 'email' => $email, 'password' => Hash::make($password), 'is_active' => true]);
+            $user->roles()->attach(Role::where('key', $roleKey)->firstOrFail());
+            $audit->record(
+                AuditActor::system(AuditSource::UserProvisioning),
+                'user.created',
+                User::class,
+                $user->id,
+                after: ['name' => $name, 'email' => $email, 'role' => $roleKey],
+                reason: 'administrator_provisioning',
+            );
+        });
+        $this->info('ERP user created.');
+
+        return self::SUCCESS;
     }
 }

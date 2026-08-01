@@ -11,6 +11,7 @@ enum AuthorizationKeys: string
     case DashboardView = 'dashboard.view';
     case PrototypeView = 'prototype.view';
     case FoundationView = 'architecture.foundation.view';
+    case AuditView = 'audit.view';
     case PermissionsManage = 'system.permissions.manage';
     case LogisticsView = 'logistics.view';
     case SyncView = 'sync.view';

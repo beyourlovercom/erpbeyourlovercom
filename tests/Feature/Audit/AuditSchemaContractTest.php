@@ -4,6 +4,9 @@ namespace Tests\Feature\Audit;
 
 use App\Models\AuditRecord;
 use App\Models\User;
+use App\Support\Audit\AuditActor;
+use App\Support\Audit\AuditService;
+use App\Support\Audit\AuditSource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -28,10 +31,26 @@ class AuditSchemaContractTest extends TestCase
     {
         $user = User::factory()->create();
         foreach (['auth.login', 'auth.login_failed', 'auth.logout', 'user.created'] as $action) {
-            $record = AuditRecord::create(['actor_id' => $user->id, 'action' => $action, 'entity_type' => User::class, 'before' => ['state' => 'old'], 'after' => ['state' => 'new'], 'source' => 'test']);
+            $record = app(AuditService::class)->record(
+                AuditActor::user($user, AuditSource::InternalSystem),
+                $action,
+                User::class,
+                before: ['state' => 'old'],
+                after: ['state' => 'new'],
+            );
             $this->assertIsArray($record->fresh()->before);
             $this->assertIsArray($record->fresh()->after);
         }
         $this->assertDatabaseMissing('audit_records', ['password' => 'anything']);
+    }
+
+    public function test_audit_foundation_requires_no_schema_migration(): void
+    {
+        $this->assertSame(
+            ['id', 'actor_id', 'action', 'entity_type', 'entity_id', 'before', 'after', 'source', 'request_id', 'ip_address', 'user_agent', 'reason', 'created_at'],
+            Schema::getColumnListing('audit_records'),
+        );
+        $this->assertInstanceOf(AuditService::class, app(AuditService::class));
+        $this->assertSame([], glob(database_path('migrations/*audit_foundation*')));
     }
 }
