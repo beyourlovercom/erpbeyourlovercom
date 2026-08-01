@@ -1,0 +1,269 @@
+---
+type: byl-erp-work-package
+project: BYL ERP
+work_package: ERP-ARCH-MIGRATION-001D-C
+status: migration-authoring-authorization-required
+standard_id: LARGE-PROJECT-EXEC-001
+standard_version: 1.1
+---
+
+# ERP-ARCH-MIGRATION-001D-C — Sync Outbox Foundation
+
+## Work Package
+
+```text
+ID: ERP-ARCH-MIGRATION-001D-C
+TITLE: Sync Outbox Foundation
+STATUS: CURRENT / SCHEMA AUDIT COMPLETE / MIGRATION FILE AUTHORING AUTHORIZATION REQUIRED
+IMPLEMENTATION_AUTHORIZATION: YES
+IMPLEMENTATION_BASE_SHA: e2247fcaaae690c94ef07d45c8807ce749de1b46
+BRANCH: feature/erp-arch-migration-001d-c-sync-outbox-foundation
+MIGRATION_FILE_AUTHORING: NO
+MIGRATION_EXECUTION: NO
+MERGE_AUTHORIZATION: NO
+DEPLOYMENT_AUTHORIZATION: NO
+```
+
+## Frozen Scope
+
+- provider-independent `sync_outbox` infrastructure;
+- explicit pending, processing, completed and failed states;
+- unique idempotency key contract;
+- bounded attempts and deterministic backoff metadata;
+- available, locked and stale-processing recovery semantics;
+- failure-safe Audit correlation;
+- Model and Service contracts;
+- isolated automated tests.
+
+## Explicit Exclusions
+
+- WooCommerce, Shopify or any external provider/API;
+- Sync UI or batch orchestration;
+- Order, Shipment or other business truth models/tables;
+- ERP-ARCH-MIGRATION-001E;
+- UAT or deployment.
+
+## Migration Gate
+
+If the current schema does not completely satisfy the frozen scope, execution stops before any Migration file is created. The exact schema evidence and proposed delta must be reported for separate Owner Migration File Authoring authorization. Migration execution remains separately prohibited.
+
+## Schema Audit Result
+
+Repository Migration inventory contains only Laravel users/session, cache, queue jobs, roles/permissions and `audit_records` schemas. There is no `sync_outbox` Migration, Model, Service or Job. The local SQLite schema likewise contains no sync/outbox table. Laravel `jobs` is a queue transport table and cannot represent persistent integration intent, logical idempotency, the approved state machine or stale lock recovery.
+
+```text
+REUSABLE_SYNC_OUTBOX_TABLE: NO
+SCHEMA_RESULT: REQUIRED TABLE ABSENT
+MIGRATION_REQUIRED: YES
+MIGRATION_FILE_CREATED_OR_MODIFIED: NO
+MIGRATION_EXECUTION: NOT RUN
+```
+
+## Proposed Schema Delta
+
+Create one provider-independent table named `sync_outbox`:
+
+| Column | MySQL type | Nullable | Default | Contract |
+|---|---|---:|---|---|
+| `id` | `BIGINT UNSIGNED` | NO | auto increment | primary key |
+| `idempotency_key` | `VARCHAR(191)` | NO | none | globally unique logical-intent key |
+| `operation` | `VARCHAR(100)` | NO | none | stable provider-independent operation key |
+| `aggregate_type` | `VARCHAR(100)` | YES | `NULL` | future domain aggregate type; no foreign key |
+| `aggregate_id` | `VARCHAR(191)` | YES | `NULL` | future aggregate identifier; no business truth |
+| `provider_key` | `VARCHAR(100)` | YES | `NULL` | future adapter key; no adapter implemented here |
+| `connection_key` | `VARCHAR(191)` | YES | `NULL` | opaque future connection reference; no credentials |
+| `payload` | `JSON` | YES | `NULL` | normalized safe integration intent; secrets prohibited by Service |
+| `status` | `VARCHAR(20)` | NO | `pending` | Service-enforced: pending / processing / completed / failed |
+| `attempts` | `SMALLINT UNSIGNED` | NO | `0` | incremented atomically on claim |
+| `max_attempts` | `SMALLINT UNSIGNED` | NO | `3` | bounded by Service contract |
+| `available_at` | `TIMESTAMP` | NO | `CURRENT_TIMESTAMP` | first/retry eligibility time |
+| `locked_at` | `TIMESTAMP` | YES | `NULL` | processing lock acquisition time |
+| `lock_token` | `CHAR(36)` | YES | `NULL` | UUID lock owner token |
+| `last_attempted_at` | `TIMESTAMP` | YES | `NULL` | most recent claim time |
+| `completed_at` | `TIMESTAMP` | YES | `NULL` | terminal completion time |
+| `failed_at` | `TIMESTAMP` | YES | `NULL` | terminal exhaustion/failure time |
+| `last_error_code` | `VARCHAR(100)` | YES | `NULL` | stable non-secret error key |
+| `last_error_message` | `VARCHAR(500)` | YES | `NULL` | bounded sanitized diagnostic summary |
+| `created_at` | `TIMESTAMP` | YES | `NULL` | Laravel created timestamp |
+| `updated_at` | `TIMESTAMP` | YES | `NULL` | Laravel updated timestamp |
+
+### Indexes and Constraints
+
+```text
+PRIMARY KEY (id)
+UNIQUE KEY sync_outbox_idempotency_key_unique (idempotency_key)
+INDEX sync_outbox_claim_index (status, available_at)
+INDEX sync_outbox_stale_index (status, locked_at)
+INDEX sync_outbox_aggregate_index (aggregate_type, aggregate_id)
+INDEX sync_outbox_provider_connection_index (provider_key, connection_key)
+INDEX sync_outbox_lock_token_index (lock_token)
+```
+
+Idempotency is global and exact: two enqueue requests with the same normalized `idempotency_key` resolve to the existing intent rather than create a second row. No partial indexes, generated columns or database-specific check constraints are proposed; allowed status and attempt bounds are enforced by the Model/Service contract and tests.
+
+### Status, Lock and Retry Contract
+
+```text
+pending -> processing -> completed
+pending -> processing -> pending (retry with future available_at)
+pending -> processing -> failed (attempts exhausted or terminal safe failure)
+processing(stale) -> pending (attempts remaining)
+processing(stale) -> failed (attempts exhausted)
+```
+
+Claiming uses a database transaction and row lock, requires `status=pending`, `available_at<=now` and `attempts<max_attempts`, then atomically sets processing state, UUID `lock_token`, `locked_at`, `last_attempted_at` and increments attempts. Retry clears lock fields and calculates bounded backoff. Completion/failure requires the matching lock token and clears lock fields. Stale recovery compares `locked_at` with an application-defined cutoff and never marks work completed.
+
+### Audit Association
+
+No `audit_record_id` column or cross-table foreign key is proposed. Every state transition calls the existing required `AuditService` inside the same database transaction with:
+
+```text
+entity_type = App\Models\SyncOutbox
+entity_id = sync_outbox.id
+action = sync.outbox.<transition>
+source = trusted system source dedicated to sync outbox
+before / after = sanitized state metadata only
+reason = stable transition reason key
+```
+
+If required Audit creation fails, the enclosing state transaction rolls back. This preserves failure safety without making mutable outbox state own immutable audit history.
+
+## Proposed Migration Plan
+
+`up()` creates only `sync_outbox` with the exact columns, defaults, unique constraint and indexes above. It does not create provider, Order, Shipment or business tables and does not seed rows.
+
+`down()` drops only `sync_outbox`. An authorized rollback must first stop consumers and preserve any required pending/failed intent externally; immutable `audit_records` history remains untouched and may retain logical entity references after rollback.
+
+## MySQL Compatibility
+
+- uses Laravel Blueprint types supported by MySQL 8 and MySQL 5.7 where JSON is available;
+- `VARCHAR(191)` keeps the unique idempotency index within conservative `utf8mb4` index limits;
+- uses no partial indexes, generated columns, check constraints, `SKIP LOCKED` dependency or provider-specific SQL;
+- nullable timestamp fields and `CURRENT_TIMESTAMP` on `available_at` are MySQL-compatible;
+- claim/recovery correctness relies on ordinary transactions and `SELECT ... FOR UPDATE` semantics exposed by Laravel.
+
+## Rollback and Historical Data Impact
+
+The forward Migration creates an empty additive table, so existing users, audit history, queue jobs and application data are unchanged. The rollback is structurally reversible but destructive to outbox intent rows; it must not run against populated environments without an explicit retention/export decision. No existing historical data needs transformation or backfill.
+
+## Expected Implementation Files After Separate Authorization
+
+```text
+database/migrations/<timestamp>_create_sync_outbox_table.php
+app/Models/SyncOutbox.php
+app/Support/Sync/SyncOutboxStatus.php
+app/Support/Sync/SyncOutboxService.php
+app/Support/Sync/SyncOutboxWriteException.php
+app/Support/Audit/AuditSource.php
+tests/Feature/Sync/SyncOutboxFoundationTest.php
+docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001D-C.md
+docs/60_Codex_Operations/logs/<date>_ERP-ARCH-MIGRATION-001D-C.md
+```
+
+Exact application file count may shrink if a separate exception class is unnecessary. No UI, provider adapter, business Model, dependency or deployment file is proposed.
+
+## Required Contracts
+
+- outbox rows express integration intent, never business truth;
+- state transitions are explicit, deterministic and auditable;
+- idempotency prevents duplicate logical intent;
+- attempts and backoff are bounded;
+- processing locks have ownership and stale-recovery semantics;
+- failure summaries exclude secrets and complete payloads;
+- audit failure behavior never falsely marks work complete;
+- no provider-specific behavior enters the foundation.
+
+## Acceptance Criteria
+
+- the actual current schema is inspected before implementation;
+- schema fields, types, defaults, nullability and indexes are frozen;
+- Model and Service enforce the approved state machine and idempotency;
+- stale processing can safely return to an eligible state;
+- failure and completion transitions are Audit-correlated;
+- isolated tests cover state, locking, retry, idempotency and Audit failure;
+- no prohibited provider, UI, business, Migration execution or deployment scope appears.
+
+## Validation Plan
+
+```text
+composer validate --no-check-publish
+php artisan route:list
+php artisan test --compact
+npm run test
+npm run typecheck
+npm run build
+vendor/bin/pint --test <changed PHP files>
+git diff --check
+```
+
+Migration commands are excluded until separately authorized.
+
+## Frozen Estimate
+
+```text
+Preflight, scope and schema audit: 2–3h; planning value 2.5h
+Core schema/application implementation: 7–11h; planning value 9h
+Automated tests and validation: 3–4h; planning value 3.5h
+Remediation buffer: 2–4h; planning value 3h
+Estimated effective hours: 18h
+Estimate range: 14–22h
+```
+
+The planning value reconciles to `2.5 + 9 + 3.5 + 3 = 18` hours. The range reconciles to `2 + 7 + 3 + 2 = 14` through `3 + 11 + 4 + 4 = 22` hours.
+
+## PROJECT POSITION
+
+```text
+PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS BY main@e2247fc → 001D-C CURRENT / SCHEMA AUDIT COMPLETE / MIGRATION FILE AUTHORING AUTHORIZATION REQUIRED → 001E WAITING → 001F WAITING
+COMPLETED_PHASES: 001A, 001B, 001C, 001D-A, 001D-B
+CURRENT_PHASE: 001D-C Sync Outbox Foundation Migration authoring gate
+CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001D-C
+PACKAGE_STATUS: IMPLEMENTATION AUTHORIZATION YES / MIGRATION REQUIRED / MIGRATION FILE AUTHORING NO
+WAITING_PHASES: 001E, 001F
+BASELINE: main@e2247fcaaae690c94ef07d45c8807ce749de1b46
+GITHUB_STATE: PR #12 merged into main at authorized Base; no 001D-C implementation PR authorized before schema gate resolution
+SOURCE_CONFLICTS: Main Current Context and parent 001D package still describe 001D-B pending and 001D-C waiting; Git main Head and this explicit Owner authorization supersede those stale execution-status statements for this package
+GLOBAL_GATE: FAIL
+PRODUCTION_DEPLOYMENT_STATUS: NO
+NEXT_DEPENDENCY: Owner separately authorizes or rejects the exact proposed Migration File Authoring delta
+EVIDENCE_AS_OF: 2026-08-01; origin/main, repository governance, parent 001D package and explicit Owner authorization
+```
+
+## ROADMAP HOURS
+
+```text
+CURRENT_PACKAGE_ESTIMATE: 18h planning value; 14–22h issued 001D-C range
+KNOWN_CURRENT_TRACK_REMAINING: 14–22h; planning value 18h for frozen 001D-C only, pending schema gate and acceptance
+ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE; 001E and 001F lack frozen estimates
+MVP1_TOTAL_ESTIMATE: 122–190h total estimate
+MVP1_PLANNING_BASELINE: 166h total planning value
+MVP1_MAXIMUM_ENVELOPE: 192h maximum total envelope
+MVP1_REMAINING: UNKNOWN WITH EVIDENCE; accepted actual-hours ledger and overlap map are incomplete
+POST_MVP_KNOWN_INCREMENT: approximately 68–120h incremental beyond MVP1
+LONG_TERM_CUMULATIVE_RANGE: 235–402h through 1,819–3,146h; cumulative non-additive horizons
+PROGRAM_REMAINING: UNKNOWN WITH EVIDENCE; cumulative horizons and project-wide actual ledger are incomplete
+COMPLETED_ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE; accepted project-wide Work Log ledger is incomplete
+ESTIMATE_CONFIDENCE: HIGH for issued 001D-C estimate; LOW / UNKNOWN for Architecture Gate and program remaining
+ESTIMATE_AS_OF: 2026-08-01
+ESTIMATE_METHOD: frozen parent-package component estimate; no unsafe subtraction or cumulative aggregation
+```
+
+## ESTIMATED CODEX HOURS
+
+```text
+PREFLIGHT_AND_SCOPE: 2–3h; planning value 2.5h
+CORE_EXECUTION: 7–11h; planning value 9h
+TEST_AND_VALIDATION: 3–4h; planning value 3.5h
+REMEDIATION_BUFFER: 2–4h; planning value 3h
+ESTIMATED_EFFECTIVE_HOURS: 18h
+ESTIMATE_RANGE: 14–22h
+ESTIMATE_BASIS: planning values 2.5 + 9 + 3.5 + 3 = 18h; lower bounds total 14h; upper bounds total 22h
+OWNER_REVIEW: EXCLUDED
+MERGE: EXCLUDED
+MIGRATION: EXCLUDED
+MIGRATION_FILE_AUTHORING: EXCLUDED
+MIGRATION_EXECUTION: EXCLUDED
+UAT: EXCLUDED
+DEPLOYMENT: EXCLUDED
+```
