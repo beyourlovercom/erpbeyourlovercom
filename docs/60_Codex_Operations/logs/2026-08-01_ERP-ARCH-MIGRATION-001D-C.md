@@ -2,18 +2,19 @@
 type: byl-erp-work-log
 date: 2026-08-01
 work_package: ERP-ARCH-MIGRATION-001D-C
-status: isolated-mysql-validation-complete-pending-independent-review
+status: implementation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
 
-# ERP-ARCH-MIGRATION-001D-C Isolated Migration Validation Log
+# ERP-ARCH-MIGRATION-001D-C Implementation Log
 
 ## Package Evidence
 
 ```text
 WORK_PACKAGE: ERP-ARCH-MIGRATION-001D-C
 VALIDATED_HEAD: 84d1806c45174d7734529447db88e37afebf1d4f
+IMPLEMENTATION_BASE_HEAD: a3732b3b478fc5c7730cd2f6fcd4d6f0c2e781a4
 BRANCH: feature/erp-arch-migration-001d-c-sync-outbox-foundation
 MIGRATION_EXECUTION_AUTHORIZATION: YES / ISOLATED TEST ENVIRONMENTS ONLY
 MERGE_AUTHORIZATION: NO
@@ -77,13 +78,41 @@ MYSQL_5_7_STATUS: UNVERIFIED
 ## Automated Validation
 
 ```text
-SQLITE_SCHEMA_TEST: PASS / 3 tests / 82 assertions
-FULL_PHP_TEST_SUITE: PASS / 83 tests / 682 assertions
+SQLITE_SCHEMA_TEST: PASS / included in focused and full suites
+SYNC_SCHEMA_AND_FOUNDATION: PASS / 24 tests / 318 assertions
+AUDIT_AUTH_PROVISIONING_REGRESSION: PASS / 30 tests / 179 assertions
+FULL_PHP_TEST_SUITE: PASS / 104 tests / 918 assertions
+FRONTEND_TESTS: PASS / 5 files / 11 tests
+COMPOSER: PASS
+ROUTES: PASS / 59 routes
+TYPECHECK: PASS
+BUILD: PASS
 AUTHORIZED_FILES_PINT: PASS
 REPOSITORY_WIDE_PINT: FAIL / 14 known pre-existing baseline files
 PRE_EXISTING_FAILURES: historical 001B/001C migrations, bootstrap files, models, support/controller files, tests and routes
 NEW_PINT_FAILURES: NONE
 DIFF_CHECK: PASS
+```
+
+## Model Status Service Evidence
+
+- `SyncOutboxStatus` contains only pending, processing, completed and failed;
+- `SyncOutbox` is a read-only entity with exact casts and Model/Builder write rejection, including quiet and event-disabled paths;
+- `SyncOutboxService` owns enqueue, claim, complete, retry, fail and bounded stale recovery;
+- idempotency compares canonical intent and retains the database unique constraint as the concurrent final defense;
+- claims use a transaction, row lock, UUID owner token and conditional state/attempt update;
+- retry uses deterministic capped 5/15/30-second backoff without jitter;
+- error summaries remove controls, credentials, lock tokens and stack traces before bounded persistence;
+- every state transition writes required `sync:outbox` Audit in the same transaction;
+- injected Audit failure tests prove enqueue, claim, complete and stale recovery rollback;
+- stale recovery is batch-bounded and produces pending or failed, never completed.
+
+```text
+REAL_MYSQL_TWO_CONNECTION_CLAIM_CONCURRENCY: UNVERIFIED
+SQLITE_EVIDENCE: conditional mutation and sequential duplicate-claim rejection only
+NEXT_GATE_IF_REQUIRED: separate Owner authorization for isolated MySQL concurrency testing
+MIGRATION_MODIFICATION: NONE
+EXTERNAL_PROVIDER_API_UI_BUSINESS_SCOPE: NONE
 ```
 
 ## Cleanup and Boundaries
@@ -109,25 +138,25 @@ GLOBAL_ARCHITECTURE_GATE: FAIL
 ## Final Verdict
 
 ```text
-FINAL_VERDICT: ISOLATED_MYSQL_MIGRATION_VALIDATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
+FINAL_VERDICT: ERP_ARCH_MIGRATION_001D_C_IMPLEMENTATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
 ```
 
 ## PROJECT POSITION
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS → 001D-C CURRENT / ISOLATED MYSQL VALIDATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E WAITING → 001F WAITING
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS → 001D-C CURRENT / IMPLEMENTATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E WAITING → 001F WAITING
 COMPLETED_PHASES: 001A, 001B, 001C, 001D-A, 001D-B
-CURRENT_PHASE: 001D-C isolated Migration validation review
+CURRENT_PHASE: 001D-C implementation review
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001D-C
-PACKAGE_STATUS: MYSQL 8.4.11 VERIFIED / MYSQL 5.7 UNVERIFIED / MODEL AND SERVICE NOT STARTED
+PACKAGE_STATUS: MODEL STATUS SERVICE IMPLEMENTATION COMPLETE / MYSQL 8.4.11 SCHEMA VERIFIED / MERGE AUTHORIZATION NO
 WAITING_PHASES: 001E, 001F
 BASELINE: main@e2247fcaaae690c94ef07d45c8807ce749de1b46
 GITHUB_STATE: validation branch pushed; no 001D-C PR created
 SOURCE_CONFLICTS: Main governance still predates this separately authorized 001D-C work; current branch evidence is pending independent review
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: Independent review; Owner separately decides Model/Service continuation
+NEXT_DEPENDENCY: Independent implementation review; separate Owner gate for real-MySQL concurrency validation if required
 EVIDENCE_AS_OF: 2026-08-01; disposable MySQL 8.4.11 execution, SQLite/PHP tests and repository diff
 ```
 
@@ -160,10 +189,10 @@ REMEDIATION_BUFFER: 2–4h; planning value 3h
 ESTIMATED_EFFECTIVE_HOURS: 18h
 ESTIMATE_RANGE: 14–22h
 ESTIMATE_BASIS: planning values 2.5 + 9 + 3.5 + 3 = 18h; lower bounds total 14h; upper bounds total 22h
-ACTUAL_EFFECTIVE_HOURS: 1.5h incremental for this isolated MySQL validation task; not a complete 001D-C actual
-ACTUAL_HOURS_BREAKDOWN: isolation/tooling 0.6h; same-connection up/down/up and physical inspection 0.5h; automated validation 0.2h; cleanup and governance evidence 0.2h
-VARIANCE: -16.5h / -91.7% against the full 18h package estimate; partial milestone only
-VARIANCE_REASON: This Work Log records one validation milestone while Model/Service implementation and independent remediation remain incomplete; the full package estimate is intentionally retained
+ACTUAL_EFFECTIVE_HOURS: 4h recorded 001D-C effort through this implementation Head
+ACTUAL_HOURS_BREAKDOWN: schema/Migration validation 1.5h; Model/Status/Service implementation 1.3h; automated tests and remediation 0.8h; governance evidence 0.4h
+VARIANCE: -14h / -77.8% against the issued 18h package estimate
+VARIANCE_REASON: Existing Migration, Audit Service and runtime backoff contracts were reusable; provider, UI, Job and business integrations remain intentionally excluded
 OWNER_REVIEW: EXCLUDED
 MERGE: EXCLUDED
 MIGRATION: INCLUDED — ISOLATED VALIDATION ONLY
