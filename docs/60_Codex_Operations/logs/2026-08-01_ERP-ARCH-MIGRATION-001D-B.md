@@ -2,7 +2,7 @@
 type: byl-erp-work-log
 date: 2026-08-01
 work_package: ERP-ARCH-MIGRATION-001D-B
-status: implementation-complete-pending-independent-review
+status: security-remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -57,6 +57,22 @@ Pint: PASS
 Diff check: PASS
 ```
 
+## Security Remediation Evidence
+
+```text
+PREVIOUS_HEAD: de1bbf5227acebeafa2ba7ab6b5a949f7bdcc7ad
+NEW_HEAD: a51e6b59e5a66ace844bb7fecfcc2b204e07e2d8 (security implementation commit)
+BLOCKER_1_STATUS: REMEDIATED — sensitive-key normalization preserves camel-case and acronym word boundaries before lowercase snake-case comparison
+BLOCKER_2_STATUS: REMEDIATED — AuditRecord save/delete hard boundaries block quiet and event-disabled mutation paths without relying on model events
+NEW_TESTS: 10 independent tests — 3 normalization groups and 7 quiet/event-disabled bypass paths
+FOCUSED_TESTS: PASS — 30 tests / 179 assertions
+FULL_VALIDATION_RESULTS: PHP 80 tests / 600 assertions; Frontend 5 files / 11 tests; Composer, 59 routes, typecheck and build PASS
+PINT_RESULT: Changed remediation PHP files PASS; repository-wide Pint FAIL on 14 pre-existing baseline files outside authorized remediation scope
+GIT_FSCK: PASS — one non-fatal dangling tree reported
+DIFF_CHECK: PASS
+WORKTREE_STATUS: CLEAN AFTER REMEDIATION COMMITS
+```
+
 ## Boundary Evidence
 
 ```text
@@ -74,7 +90,7 @@ GLOBAL_ARCHITECTURE_GATE: FAIL
 ## Final Verdict
 
 ```text
-FINAL_VERDICT: IMPLEMENTATION_COMPLETE_PENDING_GITHUB_INDEPENDENT_REVIEW
+FINAL_VERDICT: SECURITY_REMEDIATION_COMPLETE_PENDING_GITHUB_INDEPENDENT_REVIEW
 ```
 
 ## PROJECT POSITION
