@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useAttrs } from 'vue'
 
 defineOptions({ inheritAttrs: false })
 
@@ -19,14 +19,25 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{ dismiss: [] }>()
+const attrs = useAttrs()
 const effectiveLive = computed<UiAlertLive>(() => props.live ?? (props.tone === 'error' ? 'assertive' : 'polite'))
-const effectiveRole = computed(() => effectiveLive.value === 'off' ? undefined : props.tone === 'error' ? 'alert' : 'status')
+const callerRole = computed(() => typeof attrs.role === 'string' ? attrs.role : undefined)
+const effectiveRole = computed(() => {
+    if (effectiveLive.value === 'off') {
+        return callerRole.value === 'region' ? 'region' : undefined
+    }
+
+    return effectiveLive.value === 'assertive' ? 'alert' : 'status'
+})
+const filteredAttrs = computed(() => Object.fromEntries(
+    Object.entries(attrs).filter(([name]) => name !== 'aria-live' && (name === 'id' || name === 'class' || name === 'style' || name.startsWith('aria-') || name.startsWith('data-'))),
+))
 const toneLabel = computed(() => ({ info: '信息', success: '成功', warning: '警告', error: '错误' })[props.tone])
 </script>
 
 <template>
     <div
-        v-bind="$attrs"
+        v-bind="filteredAttrs"
         class="ui-alert"
         :class="`ui-alert--${tone}`"
         :role="effectiveRole"

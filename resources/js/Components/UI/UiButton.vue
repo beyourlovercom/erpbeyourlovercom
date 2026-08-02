@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useAttrs } from 'vue'
 
 defineOptions({ inheritAttrs: false })
 
@@ -21,7 +21,12 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{ click: [event: MouseEvent] }>()
+const attrs = useAttrs()
 const unavailable = computed(() => props.disabled || props.loading)
+const allowedAttributeNames = new Set(['id', 'name', 'value', 'form', 'autofocus', 'class', 'style'])
+const filteredAttrs = computed(() => Object.fromEntries(
+    Object.entries(attrs).filter(([name]) => allowedAttributeNames.has(name) || name.startsWith('aria-') || name.startsWith('data-')),
+))
 
 const activate = (event: MouseEvent) => {
     if (unavailable.value) {
@@ -36,7 +41,7 @@ const activate = (event: MouseEvent) => {
 
 <template>
     <button
-        v-bind="$attrs"
+        v-bind="filteredAttrs"
         class="ui-button"
         :class="[`ui-button--${tone}`, `ui-button--${size}`]"
         :type="type"

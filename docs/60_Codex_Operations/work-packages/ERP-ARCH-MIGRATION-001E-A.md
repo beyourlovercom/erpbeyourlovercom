@@ -2,7 +2,7 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-ARCH-MIGRATION-001E-A
-status: implementation-complete-pending-independent-review
+status: component-contract-remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -14,7 +14,7 @@ standard_version: 1.1
 ```text
 ID: ERP-ARCH-MIGRATION-001E-A
 TITLE: Shared UI and Design Tokens
-STATUS: IMPLEMENTATION COMPLETE / PENDING INDEPENDENT REVIEW
+STATUS: COMPONENT CONTRACT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
 GOVERNANCE_BASELINE: eb6b4c425551bd60401fa20c85ee139f3d0e4785
 APPLICATION_BASELINE: main@548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
 PARENT_PACKAGE: ERP-ARCH-MIGRATION-001E
@@ -44,7 +44,7 @@ LOGIN_SEMANTIC_COLOR_SCAN: PASS / no slate, cyan or rose semantic utility remain
 FOUNDATION_SEMANTIC_COLOR_SCAN: PASS / no slate, cyan or rose semantic utility remains
 BREAKPOINT_VARIABLE_SCAN: PASS / --byl-breakpoint-shell-narrow absent
 SHELL_NARROW_BREAKPOINT: @media (max-width: 800px) preserved
-FRONTEND_TESTS: PASS / 10 files / 48 tests
+FRONTEND_TESTS: PASS / 10 files / 57 tests
 TYPECHECK: PASS
 BUILD: PASS
 FULL_PHP_TEST_SUITE: PASS / 110 tests / 1006 assertions
@@ -61,6 +61,37 @@ DEPLOYMENT: NO
 ```
 
 The Login retains POST `/login`, approved copy, password reveal, no registration and robots metadata. Its submit text is `登录系统`, changes to `验证中…` during processing, never renders the generic `处理中…` fallback, and remains disabled with `aria-busy`. TopBar retains POST logout, toggle events and `aria-expanded`. Existing hidden-navigation focus contracts remain passing.
+
+## Component Contract Remediation Result
+
+```text
+AUTHORIZED_HEAD: 5c2902dedf1ab43702ec1c5ad104fd5a9bb71c36
+ATTRIBUTE_ALLOWLISTS: IMPLEMENTED FOR ALL FIVE COMPONENTS
+DIRECT_UNFILTERED_ATTR_BINDING: REMOVED
+UI_BUTTON_REJECTED: formaction, formmethod, formenctype, formtarget and all unfrozen attributes
+FORM_FIELD_REJECTED: id, role, tabindex, event listeners and all unfrozen attributes
+TEXT_INPUT_REJECTED: form, formaction, tabindex, event listeners and all unfrozen attributes
+EMPTY_STATE_REJECTED: role, tabindex, event listeners, unfrozen aria and all unfrozen attributes
+UI_ALERT_ROLE_AND_LIVE: EXTRACTED FROM ORDINARY ATTRS / SAFE DEFAULTS AUTHORITATIVE
+FORM_FIELD_SLOT_ONLY_DESCRIPTION: SUPPORTED
+FORM_FIELD_SLOT_ONLY_ERROR: SUPPORTED / role=alert / invalid=true
+FOCUSED_COMPONENT_TESTS: PASS / 5 files / 41 tests
+FULL_FRONTEND_TESTS: PASS / 10 files / 57 tests
+CSS_TOKEN_CHANGE: NO
+CONSUMER_CHANGE: NO
+DEPENDENCY_CHANGE: NO
+LOCK_FILE_CHANGE: NO
+WORKFLOW_CHANGE: NO
+PHP_CHANGE: NO
+MIGRATION: NO
+PR: NO
+MERGE: NO
+OWNER_VISUAL_CHECK: NOT RUN
+UAT: NO
+DEPLOYMENT: NO
+```
+
+`UiAlert` preserves `role="region"` only for `live="off"`, supplies `status/polite` when polite has no role, supplies `alert/assertive` for default error behavior, and rejects a caller `alert` role that conflicts with polite behavior. Component-owned `type`, `disabled`, `aria-disabled`, `aria-busy`, `id`, `value`, `readonly` and `aria-invalid` remain authoritative.
 
 ## Purpose and Architecture Position
 
@@ -770,18 +801,18 @@ DEPLOYMENT: NOT INCLUDED
 ## Preflight Verdict
 
 ```text
-FINAL_IMPLEMENTATION_VERDICT: ERP_ARCH_MIGRATION_001E_A_IMPLEMENTATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
+FINAL_IMPLEMENTATION_VERDICT: ERP_ARCH_MIGRATION_001E_A_COMPONENT_CONTRACT_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
 ```
 
 ## PROJECT POSITION
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS → 001D-C MERGED / PASS → 001D COMPLETE / PASS → 001E-A IMPLEMENTATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E-B WAITING → 001E-C WAITING → 001F WAITING
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS → 001D-C MERGED / PASS → 001D COMPLETE / PASS → 001E-A COMPONENT CONTRACT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E-B WAITING → 001E-C WAITING → 001F WAITING
 COMPLETED_PHASES: 001A, 001B, 001C, 001D-A, 001D-B, 001D-C, 001D
 CURRENT_PHASE: 001E-A implementation review gate
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-A
-PACKAGE_STATUS: IMPLEMENTATION COMPLETE / PENDING INDEPENDENT REVIEW / MERGE AUTHORIZATION NO
+PACKAGE_STATUS: COMPONENT CONTRACT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW / MERGE AUTHORIZATION NO
 WAITING_PHASES: 001E-A independent review and Owner visual check, 001E-B, 001E-C, 001F
 BASELINE: implementation-authorized Head 7cef9e3d8b238d591f42013a43c0b17426ab5ab5 based on main@548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
 GITHUB_STATE: implementation branch pushed after validation; no PR; no merge
@@ -821,10 +852,10 @@ REMEDIATION_BUFFER: 2–3h; planning value 2.5h
 ESTIMATED_EFFECTIVE_HOURS: 20h
 ESTIMATE_RANGE: 16–24 effective hours
 ESTIMATE_BASIS: confirmed bounded implementation estimate; planning values 3.5 + 10.5 + 3.5 + 2.5 = 20h
-ACTUAL_EFFECTIVE_HOURS: 4.5h implementation; 6.4h cumulative including 1.9h Preflight and governance remediation
-ACTUAL_HOURS_BREAKDOWN: tokens and CSS 1h; five components 1.25h; consumer migration 0.75h; component and regression tests 0.75h; full validation, governance record and bounded remediation 0.75h
-VARIANCE: -15.5h / -77.5% against 20h implementation planning value
-VARIANCE_REASON: frozen contracts, existing test infrastructure and tightly bounded consumers reduced discovery and integration effort; Owner visual review remains excluded and not performed
+ACTUAL_EFFECTIVE_HOURS: 5.2h implementation including component remediation; 7.1h cumulative including 1.9h Preflight and governance remediation
+ACTUAL_HOURS_BREAKDOWN: tokens and CSS 1h; five components 1.25h; consumer migration 0.75h; initial component and regression tests 0.75h; initial full validation and governance record 0.75h; attribute/role/slot remediation and validation 0.7h
+VARIANCE: -14.8h / -74% against 20h implementation planning value
+VARIANCE_REASON: frozen contracts, existing test infrastructure and tightly bounded consumers reduced discovery and integration effort; limited remediation stayed inside existing components; Owner visual review remains excluded and not performed
 OWNER_REVIEW: EXCLUDED
 MERGE: EXCLUDED
 MIGRATION: EXCLUDED

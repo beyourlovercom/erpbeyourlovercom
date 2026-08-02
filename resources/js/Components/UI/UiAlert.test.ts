@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import UiAlert from './UiAlert.vue'
 
 describe('UiAlert', () => {
@@ -34,5 +34,33 @@ describe('UiAlert', () => {
         const wrapper = mount(UiAlert, { props: { live: 'off' }, slots: { default: '静态信息' } })
         expect(wrapper.attributes('role')).toBeUndefined()
         expect(wrapper.attributes('aria-live')).toBeUndefined()
+    })
+
+    it('preserves a caller region role when live is off', () => {
+        const wrapper = mount(UiAlert, { props: { live: 'off' }, attrs: { role: 'region' }, slots: { default: '静态区域' } })
+        expect(wrapper.attributes('role')).toBe('region')
+        expect(wrapper.attributes('aria-live')).toBeUndefined()
+    })
+
+    it('rejects a caller alert role that conflicts with polite live behavior', () => {
+        const wrapper = mount(UiAlert, { props: { live: 'polite' }, attrs: { role: 'alert', 'aria-live': 'assertive' }, slots: { default: '礼貌通知' } })
+        expect(wrapper.attributes('role')).toBe('status')
+        expect(wrapper.attributes('aria-live')).toBe('polite')
+    })
+
+    it('filters role, live and other unfrozen root attributes before final binding', async () => {
+        const click = vi.fn()
+        const wrapper = mount(UiAlert, {
+            props: { live: 'polite' },
+            attrs: { role: 'button', 'aria-live': 'assertive', tabindex: '0', title: 'unfrozen', 'data-test': 'alert', onClick: click },
+            slots: { default: '通知' },
+        })
+        expect(wrapper.attributes('role')).toBe('status')
+        expect(wrapper.attributes('aria-live')).toBe('polite')
+        expect(wrapper.attributes('tabindex')).toBeUndefined()
+        expect(wrapper.attributes('title')).toBeUndefined()
+        expect(wrapper.attributes('data-test')).toBe('alert')
+        await wrapper.trigger('click')
+        expect(click).not.toHaveBeenCalled()
     })
 })
