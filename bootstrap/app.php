@@ -1,5 +1,10 @@
 <?php
 
+use App\Console\Commands\CreateErpUser;
+use App\Console\Commands\RuntimeHealthCommand;
+use App\Http\Middleware\ApplyLocalAdminBypass;
+use App\Http\Middleware\HandleInertiaRequests;
+use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -12,13 +17,18 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withCommands([
-        App\Console\Commands\CreateErpUser::class,
-        App\Console\Commands\RuntimeHealthCommand::class,
+        CreateErpUser::class,
+        RuntimeHealthCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
-            App\Http\Middleware\HandleInertiaRequests::class,
+            ApplyLocalAdminBypass::class,
+            HandleInertiaRequests::class,
         ]);
+        $middleware->prependToPriorityList(
+            AuthenticatesRequests::class,
+            ApplyLocalAdminBypass::class,
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
