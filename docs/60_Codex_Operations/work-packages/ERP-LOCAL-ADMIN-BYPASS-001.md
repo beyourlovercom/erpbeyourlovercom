@@ -2,7 +2,7 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-LOCAL-ADMIN-BYPASS-001
-status: preflight-complete-pending-independent-review
+status: preflight-remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -14,11 +14,12 @@ standard_version: 1.1
 ```text
 ID: ERP-LOCAL-ADMIN-BYPASS-001
 TITLE: Local-Only Administrator Bypass
-STATUS: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
+STATUS: PREFLIGHT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
 AUTHORIZED_BASE: 28d6e99b952c1afff42cf4defb93008d3c618844
+REMEDIATION_BASE_HEAD: d2b24d62e123f2a0df108d7104a2e05422a3b32f
 SOURCE_BRANCH: feature/erp-arch-migration-001e-a-shared-ui-design-tokens
 PREFLIGHT_BRANCH: docs/erp-local-admin-bypass-001-preflight
-AUTHORIZATION_TYPE: PREFLIGHT ONLY
+AUTHORIZATION_TYPE: GOVERNANCE REMEDIATION ONLY
 MODE: LOCAL_ADMIN_BYPASS
 DEFAULT: OFF
 ENVIRONMENT: local ONLY
@@ -152,6 +153,56 @@ The real `.env` must never be committed or modified by Codex. `.env.example` is 
 - a production/staging build must create its own configuration cache with its actual environment and must never promote a local cached configuration artifact;
 - implementation tests must use an external temporary `APP_CONFIG_CACHE` path and delete it afterward; repository `bootstrap/cache/config.php` must not be created or changed.
 
+## Request-Level Local Boundary
+
+The bypass remains inert when `erp_local.admin_bypass.enabled` is false. Normal Fortify, guest, auth, Gate and route behavior continues unchanged in that state. Once the operator requests bypass by setting the frozen configuration flag to Boolean `true`, every condition below is mandatory:
+
+```text
+APP_ENV: exact local
+CONFIG_ENABLED: true
+ALLOWED_HOSTS: erp.b, localhost, 127.0.0.1, ::1
+CLIENT_IP: direct peer loopback 127.0.0.1 or ::1 only
+ACTIVE_EXISTING_USER: required
+```
+
+Host comparison is case-insensitive after lowercasing and removal of IPv6 URL brackets, then exact against the allowlist. Subdomains, suffix matches, wildcard hosts and arbitrary ports do not expand the allowlist. The client boundary uses the direct server peer address from `REMOTE_ADDR`; `X-Forwarded-For`, `Forwarded` and other proxy-derived headers may not establish loopback status for this security decision.
+
+The middleware must evaluate the enabled flag, exact environment, Host, direct peer IP and preexisting authentication-state boundary before validating the email or querying `users`. If any of those pre-query boundaries fails after bypass has been requested:
+
+```text
+HTTP_STATUS: 503
+USER_QUERY: NO
+GUARD_SET_USER: NO
+REQUEST_MARKER: NO
+AUDIT_WRITE: NO
+ROUTE_CONTINUATION: NO
+```
+
+`ACTIVE_EXISTING_USER` is necessarily established by the one bounded identity lookup after every pre-query boundary passes. Missing or inactive is therefore a post-query failure, but still produces 503 with no guard assignment, marker, Audit write or route continuation. The contract must not claim that database-backed identity existence was proven without a query.
+
+The exact Host and direct-loopback checks are defense-in-depth against a locally generated cached configuration artifact being promoted into another runtime with `app.env=local` and bypass enabled. They do not authorize promotion of such an artifact; promotion remains prohibited.
+
+## Preexisting Web Authentication Session
+
+The bypass may not silently replace an existing real web authentication state. Because the middleware runs after `StartSession`, it must check for the `web` guard authentication session key and recaller cookie before any User lookup or `setUser()` call. The guard key and recaller name may be inspected, but the guard User must not be resolved during this check because resolution could query the database.
+
+If either authentication session state or a recaller cookie exists:
+
+```text
+PREEXISTING_WEB_AUTH_SESSION: 503 / FAIL CLOSED
+SESSION_DELETE: NO
+SESSION_INVALIDATE: NO
+COOKIE_DELETE: NO
+LOGOUT_EVENT: NO
+AUDIT_WRITE: NO
+USER_QUERY: NO
+USER_OVERRIDE: NO
+REQUEST_MARKER: NO
+ROUTE_CONTINUATION: NO
+```
+
+The Owner must clear the `erp.b` browser authentication cookie before entering bypass mode. The middleware must not automate that destructive transition.
+
 ## Proposed Middleware Contract
 
 New `ApplyLocalAdminBypass` is a dedicated web middleware. It is the only component permitted to activate the request marker.
@@ -168,14 +219,17 @@ USER / ROLE MUTATION: NO
 Request algorithm:
 
 1. If `erp_local.admin_bypass.enabled` is false, call the next middleware without any side effect.
-2. If enabled and `app()->environment('local')` is false, return an explicit 503 before looking up or setting a User.
-3. Normalize and validate the configured email. Invalid or empty configuration returns the same generic unavailable 503 as a missing user.
-4. Read the existing User by email. Do not create or update anything.
-5. Missing or inactive User returns `503 Local administrator bypass is unavailable.`
-6. Call `Auth::guard('web')->setUser($user)` and set the request marker.
-7. For `POST /logout` / route `logout`, return a redirect to `/dashboard` without entering Fortify's logout controller.
-8. Otherwise call the next middleware.
-9. In a `finally` block, call `forgetUser()` and remove the request marker to avoid leaking request identity in long-running workers.
+2. If enabled and `app()->environment('local')` is false, return an explicit 503 before any User query.
+3. Normalize and compare the request Host against the exact allowlist; return 503 before any User query on failure.
+4. Read the direct peer address from `REMOTE_ADDR` and require exact `127.0.0.1` or `::1`; return 503 before any User query on failure.
+5. Inspect the `web` guard session-key presence and recaller-cookie presence without resolving the guard User; return 503 before any User query if either exists.
+6. Normalize and validate the configured email. Invalid or empty configuration returns the same generic unavailable 503 as a missing user.
+7. Read the existing User by email. Do not create or update anything.
+8. Missing or inactive User returns `503 Local administrator bypass is unavailable.`
+9. Call `Auth::guard('web')->setUser($user)` and set the request marker.
+10. For `POST /logout` / route `logout`, return a redirect to `/dashboard` without entering Fortify's logout controller.
+11. Otherwise call the next middleware.
+12. In a `finally` block, call `forgetUser()` and remove the request marker on normal responses and downstream exceptions to avoid leaking request identity in long-running workers.
 
 The middleware may not write the session authentication key, regenerate the session, set a remember cookie, dispatch Login/Logout/Failed explicitly, call AuditService or mutate the database.
 
@@ -213,6 +267,17 @@ OTHERWISE:
 ```
 
 The request marker is essential: `local + config enabled` alone must not grant CLI, queue, console or non-web authorization.
+
+Before inspecting the local marker, `Gate::before` must establish an HTTP request context without invoking the global `request()` helper prematurely:
+
+```text
+1. app()->bound('request') === true
+2. app('request') instanceof Illuminate\Http\Request
+3. only then inspect the request marker and request User
+4. otherwise return null
+```
+
+This preserves normal Gate evaluation and prevents CLI, Queue, Scheduler, Command or request-less test processes from throwing or receiving local bypass authorization. The existing super-admin decision remains available independently of this local-request branch.
 
 ### Required navigation alignment
 
@@ -253,13 +318,13 @@ No new Audit action is proposed. The local bypass does not call AuditService. Or
 
 | Environment | Config disabled | Config enabled |
 |---|---|---|
-| `local` | normal authentication | bypass may activate only with valid active User |
+| `local` | normal authentication | bypass may activate only with approved Host, direct loopback peer, no preexisting web authentication state and valid active User |
 | `development` / Dev | normal authentication | explicit 503 |
 | `testing` | normal authentication | explicit 503 |
 | `staging` | normal authentication | explicit 503 |
 | `production` | normal authentication | explicit 503 |
 
-The non-local result must not silently ignore the bad switch. It must not set a User, mark the request, query the configured bypass User, write Audit, create a User or proceed to the requested route.
+The non-local, unapproved-Host, non-loopback and preexisting-session results must not silently ignore the bad switch. They must not set a User, mark the request, query the configured bypass User, write Audit, create a User or proceed to the requested route.
 
 ## Missing and Inactive User Behavior
 
@@ -308,7 +373,7 @@ Any additional application path requires a new Owner decision.
 
 ## Exact Feature Test Contract
 
-Proposed `tests/Feature/Auth/LocalAdminBypassTest.php` methods:
+Proposed `tests/Feature/Auth/LocalAdminBypassTest.php` contains exactly 20 independent methods:
 
 1. `test_bypass_is_disabled_by_default_and_guest_contract_is_unchanged`
    - environment local, config default false;
@@ -339,6 +404,18 @@ Proposed `tests/Feature/Auth/LocalAdminBypassTest.php` methods:
     - proves long-running process cleanup contract.
 14. `test_cached_configuration_uses_frozen_values_and_requires_rebuild`
     - external temporary `APP_CONFIG_CACHE`; cache built with production + enabled still returns 503; cleanup verified; repository cache untouched.
+15. `test_enabled_bypass_fails_closed_for_unapproved_host_before_user_query`
+    - enabled local request on an unapproved Host returns 503; a query listener proves `users` was not queried; guard and marker remain unset.
+16. `test_enabled_bypass_fails_closed_for_non_loopback_client_before_user_query`
+    - approved Host with a non-loopback direct peer returns 503 before any `users` query, identity assignment, marker or route continuation.
+17. `test_locally_cached_enabled_configuration_fails_closed_on_production_host`
+    - an external cached configuration containing `app.env=local` and enabled bypass still returns 503 on a production Host and performs no identity work.
+18. `test_gate_without_http_request_returns_null_without_exception_or_local_authorization`
+    - an unbound/non-HTTP request context does not throw, returns `null` from the local bypass branch and preserves ordinary Gate evaluation.
+19. `test_existing_web_auth_session_fails_closed_without_override_logout_or_audit`
+    - a pre-seeded web guard session key or recaller cookie returns 503 unchanged, without User resolution, invalidation, Logout event, Audit, marker or override.
+20. `test_guard_user_and_request_marker_are_cleared_when_downstream_throws`
+    - a test-only downstream exception path proves `finally` forgets the in-memory guard User and removes the marker before the exception leaves the middleware.
 
 Tests use `RefreshDatabase` only against Laravel's isolated test database and may create fixtures there. Runtime middleware tests must assert no mutation caused by the request. No Dev, shared, Staging or Production database is authorized.
 
@@ -369,7 +446,11 @@ The immediate operational kill switch is default-off configuration. Code rollbac
 
 - `setUser()` fires Laravel's `Authenticated` event even though it does not fire `Login`; future listeners on `Authenticated` must be reviewed before implementation or later addition.
 - a locally generated cached configuration artifact must never be promoted to another environment;
+- Host and direct-peer checks must remain exact; proxy headers must never manufacture loopback eligibility;
+- the boundary is defense-in-depth against promoted local cache, not permission to deploy a local cache;
 - inserting middleware before CSRF would weaken the logout path, so append order is a hard contract;
+- resolving the guard User while checking preexisting session state could query or override identity and is prohibited;
+- request-less Gate execution must return `null` from the local branch before touching request state;
 - forgetting the request marker check in `Gate::before` could grant non-web local processes;
 - failing to clear the in-memory guard could leak identity under long-running workers;
 - Gate-only route changes without `ErpShellNavigation` alignment would create hidden navigation and inconsistent authorization;
@@ -394,10 +475,10 @@ DEPLOYMENT: EXCLUDED
 ## Preflight Verdict
 
 ```text
-PROPOSED_ARCHITECTURE: ACCEPTABLE WITH FROZEN GATE/NAVIGATION ALIGNMENT AND REQUEST CLEANUP
+PROPOSED_ARCHITECTURE: ACCEPTABLE WITH FROZEN HOST/LOOPBACK/SESSION BOUNDARIES, REQUEST-SAFE GATE, NAVIGATION ALIGNMENT AND CLEANUP
 ARCHITECTURE_CONFLICT: NONE AFTER INCLUDING ErpShellNavigation IN THE FILE BOUNDARY
 IMPLEMENTATION_AUTHORIZATION: NO
-FINAL_STATUS: ERP_LOCAL_ADMIN_BYPASS_001_PREFLIGHT_COMPLETE_PENDING_INDEPENDENT_REVIEW
+FINAL_STATUS: ERP_LOCAL_ADMIN_BYPASS_001_PREFLIGHT_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
 ```
 
 ## PROJECT POSITION
@@ -408,7 +489,7 @@ CURRENT_TRACK_PHASE_MAP: 001A–001D MERGED / PASS → 001E-A IMPLEMENTATION REM
 COMPLETED_PHASES: 001A, 001B, 001C, 001D
 CURRENT_PHASE: local development support Preflight alongside 001E-A review gate
 CURRENT_WORK_PACKAGE: ERP-LOCAL-ADMIN-BYPASS-001
-PACKAGE_STATUS: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION AUTHORIZATION NO
+PACKAGE_STATUS: PREFLIGHT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION AUTHORIZATION NO
 WAITING_PHASES: local bypass implementation, 001E-A review/visual check, 001E-B, 001E-C, 001F
 BASELINE: 28d6e99b952c1afff42cf4defb93008d3c618844
 GITHUB_STATE: documentation-only Preflight branch; no PR; no implementation branch or PR
@@ -443,10 +524,10 @@ REMEDIATION_BUFFER: 0.1–0.3h; planning value 0.2h
 ESTIMATED_EFFECTIVE_HOURS: 2h
 ESTIMATE_RANGE: 1.4–2.7 effective hours
 ESTIMATE_BASIS: read-only repository/framework audit, architecture freeze and two governance records
-ACTUAL_EFFECTIVE_HOURS: 1.6h
-ACTUAL_HOURS_BREAKDOWN: repository and middleware evidence 0.4h; event/config-cache analysis 0.3h; Gate/navigation conflict analysis 0.3h; test/file/rollback contract 0.4h; governance validation 0.2h
-VARIANCE: -0.4h / -20% against 2h planning value
-VARIANCE_REASON: framework source and existing authentication tests provided direct evidence; no implementation or environment mutation was authorized
+ACTUAL_EFFECTIVE_HOURS: 2h
+ACTUAL_HOURS_BREAKDOWN: repository and middleware evidence 0.4h; event/config-cache analysis 0.3h; Gate/navigation conflict analysis 0.3h; original test/file/rollback contract 0.4h; request Host/IP/session/Gate remediation 0.4h; governance validation 0.2h
+VARIANCE: 0h / 0% against 2h planning value
+VARIANCE_REASON: remediation used the frozen middleware order and Laravel guard/request contracts; no implementation or environment mutation was authorized
 OWNER_REVIEW: EXCLUDED
 MERGE: EXCLUDED
 MIGRATION: EXCLUDED
