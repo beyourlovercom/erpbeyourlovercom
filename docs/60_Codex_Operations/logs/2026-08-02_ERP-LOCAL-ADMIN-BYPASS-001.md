@@ -2,7 +2,7 @@
 type: byl-erp-work-log
 date: 2026-08-02
 work_package: ERP-LOCAL-ADMIN-BYPASS-001
-status: preflight-complete-pending-independent-review
+status: preflight-remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -13,9 +13,10 @@ standard_version: 1.1
 
 ```text
 AUTHORIZED_BASE: 28d6e99b952c1afff42cf4defb93008d3c618844
+REMEDIATION_BASE_HEAD: d2b24d62e123f2a0df108d7104a2e05422a3b32f
 SOURCE_BRANCH: feature/erp-arch-migration-001e-a-shared-ui-design-tokens
 PREFLIGHT_BRANCH: docs/erp-local-admin-bypass-001-preflight
-AUTHORIZATION_TYPE: PREFLIGHT ONLY
+AUTHORIZATION_TYPE: GOVERNANCE REMEDIATION ONLY
 CODE_CHANGE: NO
 CONFIG_CHANGE: NO
 ENV_CHANGE: NO
@@ -78,6 +79,28 @@ LOGOUT POST: middleware intercept after CSRF before Fortify destroy
 CLEANUP: forget guard User and remove marker in finally
 ```
 
+## Governance Remediation
+
+The request-level boundary is now frozen as follows:
+
+```text
+APP_ENV: exact local
+CONFIG_ENABLED: true
+ALLOWED_HOSTS: erp.b, localhost, 127.0.0.1, ::1
+CLIENT_IP_SOURCE: direct server peer REMOTE_ADDR; forwarded headers excluded
+CLIENT_IP_ALLOWED: 127.0.0.1 or ::1 only
+ACTIVE_EXISTING_USER: required
+BOUNDARY_ORDER: config → environment → Host → direct peer IP → existing auth state → email → User query
+```
+
+When bypass is enabled, any failed environment, Host, direct peer, preexisting authentication-state or identity condition returns 503 without route continuation. Environment, Host, peer and authentication-state failures occur before any `users` query, guard assignment, request marker or Audit write. Active existing identity is necessarily determined by one bounded User query after all pre-query boundaries pass; missing or inactive then fails without guard assignment, marker, Audit or route continuation. When bypass is disabled, normal authentication behavior continues unchanged.
+
+Host matching is normalized then exact; wildcard and suffix matching are prohibited. The loopback decision ignores proxy-derived forwarding headers. Together these boundaries prevent a cached local `app.env=local` plus enabled bypass configuration from activating after accidental promotion to a production Host or non-loopback request. Promotion itself remains prohibited.
+
+Gate local-bypass evaluation must first prove `app()->bound('request')` and that the resolved object is an `Illuminate\Http\Request`. Without both, the local branch returns `null`, does not throw and grants nothing to CLI, Queue, Scheduler, Command or request-less test execution.
+
+An existing `web` guard authentication session key or recaller cookie returns 503 before User resolution. The middleware does not delete or invalidate the session, delete cookies, dispatch Logout, write Audit, override the User or set the marker. The Owner clears the `erp.b` browser cookie manually before bypass use.
+
 ## Configuration Decision
 
 ```text
@@ -104,13 +127,28 @@ NO CHANGE: routes, Fortify, User, AuthController, Audit, schema, dependencies, w
 
 ## Test Contract
 
-Fourteen independent Feature tests are frozen for default-off behavior, root/login/auth/Gate/Inertia/navigation behavior, Login/Logout/Audit absence, missing/inactive/invalid identity, four non-local environment cases, normal Fortify regression, request cleanup and external temporary config-cache behavior.
+Exactly 20 independent Feature tests are frozen. The original 14 cover default-off behavior, root/login/auth/Gate/Inertia/navigation behavior, Login/Logout/Audit absence, missing/inactive/invalid identity, four non-local environment cases, normal Fortify regression, request cleanup and external temporary config-cache behavior.
+
+The six remediation tests are:
+
+```text
+test_enabled_bypass_fails_closed_for_unapproved_host_before_user_query
+test_enabled_bypass_fails_closed_for_non_loopback_client_before_user_query
+test_locally_cached_enabled_configuration_fails_closed_on_production_host
+test_gate_without_http_request_returns_null_without_exception_or_local_authorization
+test_existing_web_auth_session_fails_closed_without_override_logout_or_audit
+test_guard_user_and_request_marker_are_cleared_when_downstream_throws
+```
 
 ## Risks Retained
 
 - `setUser()` fires `Authenticated`, though not `Login`;
 - local cached configuration must never be deployed elsewhere;
+- approved Host and direct peer loopback checks must precede User lookup and must not trust forwarded headers;
+- promoted local cache remains prohibited and is additionally blocked by the request-level Host/IP boundary;
 - middleware must remain after CSRF and before Inertia/route authentication;
+- existing real authentication state must fail closed without resolution, deletion, invalidation or override;
+- request-less Gate calls must return `null` from the local branch;
 - request marker and guard must be cleared for long-running workers;
 - local bypass Audit suppression makes the mode invalid for UAT or production evidence.
 
@@ -132,7 +170,7 @@ PR: NO
 ## Verdict
 
 ```text
-FINAL_STATUS: ERP_LOCAL_ADMIN_BYPASS_001_PREFLIGHT_COMPLETE_PENDING_INDEPENDENT_REVIEW
+FINAL_STATUS: ERP_LOCAL_ADMIN_BYPASS_001_PREFLIGHT_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
 NEXT_GATE: independent Preflight review, then separate Owner implementation authorization
 ```
 
@@ -144,7 +182,7 @@ CURRENT_TRACK_PHASE_MAP: 001A–001D MERGED / PASS → 001E-A IMPLEMENTATION REM
 COMPLETED_PHASES: 001A, 001B, 001C, 001D
 CURRENT_PHASE: local development support Preflight alongside 001E-A review gate
 CURRENT_WORK_PACKAGE: ERP-LOCAL-ADMIN-BYPASS-001
-PACKAGE_STATUS: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION AUTHORIZATION NO
+PACKAGE_STATUS: PREFLIGHT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION AUTHORIZATION NO
 WAITING_PHASES: local bypass implementation, 001E-A review/visual check, 001E-B, 001E-C, 001F
 BASELINE: 28d6e99b952c1afff42cf4defb93008d3c618844
 GITHUB_STATE: documentation-only Preflight branch; no PR; no implementation branch or PR
@@ -179,10 +217,10 @@ REMEDIATION_BUFFER: 0.1–0.3h; planning value 0.2h
 ESTIMATED_EFFECTIVE_HOURS: 2h
 ESTIMATE_RANGE: 1.4–2.7 effective hours
 ESTIMATE_BASIS: read-only repository/framework audit, architecture freeze and two governance records
-ACTUAL_EFFECTIVE_HOURS: 1.6h
-ACTUAL_HOURS_BREAKDOWN: repository and middleware evidence 0.4h; event/config-cache analysis 0.3h; Gate/navigation conflict analysis 0.3h; test/file/rollback contract 0.4h; governance validation 0.2h
-VARIANCE: -0.4h / -20% against 2h planning value
-VARIANCE_REASON: framework source and existing tests provided direct evidence; no implementation or environment mutation was authorized
+ACTUAL_EFFECTIVE_HOURS: 2h
+ACTUAL_HOURS_BREAKDOWN: repository and middleware evidence 0.4h; event/config-cache analysis 0.3h; Gate/navigation conflict analysis 0.3h; original test/file/rollback contract 0.4h; request Host/IP/session/Gate remediation 0.4h; governance validation 0.2h
+VARIANCE: 0h / 0% against 2h planning value
+VARIANCE_REASON: remediation used the frozen middleware order and Laravel guard/request contracts; no implementation or environment mutation was authorized
 OWNER_REVIEW: EXCLUDED
 MERGE: EXCLUDED
 MIGRATION: EXCLUDED
