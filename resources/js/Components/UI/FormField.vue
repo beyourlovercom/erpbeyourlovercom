@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useAttrs, useSlots } from 'vue'
 
 defineOptions({ inheritAttrs: false })
 
@@ -15,27 +15,34 @@ const props = withDefaults(defineProps<{
     required: false,
 })
 
+const attrs = useAttrs()
+const slots = useSlots()
+const filteredAttrs = computed(() => Object.fromEntries(
+    Object.entries(attrs).filter(([name]) => name === 'class' || name === 'style' || name.startsWith('aria-') || name.startsWith('data-')),
+))
+const hasDescription = computed(() => props.description !== undefined || Boolean(slots.description))
+const hasError = computed(() => props.error !== undefined || Boolean(slots.error))
 const descriptionId = computed(() => `${props.id}-description`)
 const errorId = computed(() => `${props.id}-error`)
 const describedBy = computed(() => [
-    props.description ? descriptionId.value : undefined,
-    props.error ? errorId.value : undefined,
+    hasDescription.value ? descriptionId.value : undefined,
+    hasError.value ? errorId.value : undefined,
 ].filter(Boolean).join(' ') || undefined)
 </script>
 
 <template>
-    <div v-bind="$attrs" class="form-field">
+    <div v-bind="filteredAttrs" class="form-field">
         <label class="form-field__label" :for="id">
             <slot name="label">{{ label }}</slot>
             <span v-if="required" class="form-field__required">
                 <span aria-hidden="true"> *</span><span class="form-field__sr-only">（必填）</span>
             </span>
         </label>
-        <slot :control-id="id" :described-by="describedBy" :invalid="Boolean(error)" />
-        <p v-if="description" :id="descriptionId" class="form-field__description">
+        <slot :control-id="id" :described-by="describedBy" :invalid="hasError" />
+        <p v-if="hasDescription" :id="descriptionId" class="form-field__description">
             <slot name="description">{{ description }}</slot>
         </p>
-        <p v-if="error" :id="errorId" class="form-field__error" role="alert">
+        <p v-if="hasError" :id="errorId" class="form-field__error" role="alert">
             <slot name="error">{{ error }}</slot>
         </p>
     </div>

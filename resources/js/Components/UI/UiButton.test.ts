@@ -56,4 +56,38 @@ describe('UiButton', () => {
         expect(overridden.text()).toBe('验证中…')
         expect(overridden.text()).not.toContain('处理中…')
     })
+
+    it('rejects form override and all other unfrozen attributes', async () => {
+        const mouseover = vi.fn()
+        const button = mount(UiButton, {
+            attrs: {
+                formaction: '/unsafe',
+                formmethod: 'get',
+                formenctype: 'text/plain',
+                formtarget: '_blank',
+                tabindex: '4',
+                title: 'unfrozen',
+                onMouseover: mouseover,
+            },
+        }).get('button')
+        expect(button.attributes('formaction')).toBeUndefined()
+        expect(button.attributes('formmethod')).toBeUndefined()
+        expect(button.attributes('formenctype')).toBeUndefined()
+        expect(button.attributes('formtarget')).toBeUndefined()
+        expect(button.attributes('tabindex')).toBeUndefined()
+        expect(button.attributes('title')).toBeUndefined()
+        await button.trigger('mouseover')
+        expect(mouseover).not.toHaveBeenCalled()
+    })
+
+    it('keeps component-owned type and availability attributes authoritative', () => {
+        const button = mount(UiButton, {
+            props: { type: 'submit', loading: true },
+            attrs: { type: 'reset', disabled: false, 'aria-disabled': 'false', 'aria-busy': 'false' },
+        }).get('button')
+        expect(button.attributes('type')).toBe('submit')
+        expect(button.attributes('disabled')).toBeDefined()
+        expect(button.attributes('aria-disabled')).toBe('true')
+        expect(button.attributes('aria-busy')).toBe('true')
+    })
 })

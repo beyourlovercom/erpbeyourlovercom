@@ -47,4 +47,24 @@ describe('TextInput', () => {
         expect(handlers.onChange).toHaveBeenCalledOnce()
         expect(handlers.onBlur).toHaveBeenCalledOnce()
     })
+
+    it('rejects attributes and event listeners outside the frozen input contract', async () => {
+        const keydown = vi.fn()
+        const input = mount(TextInput, {
+            props: { id: 'safe-id', modelValue: '', type: 'email', disabled: true, readonly: true, invalid: true },
+            attrs: { id: 'unsafe-id', type: 'text', value: 'unsafe', disabled: false, readonly: false, 'aria-invalid': 'false', form: 'unsafe', formaction: '/unsafe', tabindex: '3', title: 'unfrozen', onKeydown: keydown },
+        }).get('input')
+        expect(input.attributes('id')).toBe('safe-id')
+        expect(input.attributes('type')).toBe('email')
+        expect(input.element.value).toBe('')
+        expect(input.attributes('disabled')).toBeDefined()
+        expect(input.attributes('readonly')).toBeDefined()
+        expect(input.attributes('aria-invalid')).toBe('true')
+        expect(input.attributes('form')).toBeUndefined()
+        expect(input.attributes('formaction')).toBeUndefined()
+        expect(input.attributes('tabindex')).toBeUndefined()
+        expect(input.attributes('title')).toBeUndefined()
+        await input.trigger('keydown')
+        expect(keydown).not.toHaveBeenCalled()
+    })
 })

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed, useAttrs } from 'vue'
+
 defineOptions({ inheritAttrs: false })
 
 type TextInputType = 'text' | 'email' | 'password'
@@ -24,6 +26,24 @@ const emit = defineEmits<{
     focus: [event: FocusEvent]
     blur: [event: FocusEvent]
 }>()
+const attrs = useAttrs()
+const allowedAttributeNames = new Set([
+    'name',
+    'autocomplete',
+    'required',
+    'placeholder',
+    'minlength',
+    'maxlength',
+    'pattern',
+    'inputmode',
+    'autocapitalize',
+    'spellcheck',
+    'class',
+    'style',
+])
+const filteredAttrs = computed(() => Object.fromEntries(
+    Object.entries(attrs).filter(([name]) => allowedAttributeNames.has(name) || name.startsWith('aria-') || name.startsWith('data-')),
+))
 
 const onInput = (event: Event) => {
     emit('update:modelValue', (event.target as HTMLInputElement).value)
@@ -34,7 +54,7 @@ const onInput = (event: Event) => {
 <template>
     <div class="text-input">
         <input
-            v-bind="$attrs"
+            v-bind="filteredAttrs"
             class="text-input__control"
             :id="id"
             :value="modelValue"

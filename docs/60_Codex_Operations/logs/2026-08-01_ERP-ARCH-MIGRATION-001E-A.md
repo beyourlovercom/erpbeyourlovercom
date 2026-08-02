@@ -2,7 +2,7 @@
 type: byl-erp-work-log
 date: 2026-08-01
 work_package: ERP-ARCH-MIGRATION-001E-A
-status: implementation-complete-pending-independent-review
+status: component-contract-remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -19,7 +19,7 @@ REMEDIATION_AUTHORIZED_HEAD: eb6b4c425551bd60401fa20c85ee139f3d0e4785
 RESULT: PREFLIGHT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
 IMPLEMENTATION_AUTHORIZED_HEAD: 7cef9e3d8b238d591f42013a43c0b17426ab5ab5
 IMPLEMENTATION_BRANCH: feature/erp-arch-migration-001e-a-shared-ui-design-tokens
-IMPLEMENTATION_RESULT: COMPLETE / PENDING INDEPENDENT REVIEW
+IMPLEMENTATION_RESULT: COMPONENT CONTRACT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
 IMPLEMENTATION_AUTHORIZATION: YES / COMPLETE
 APPLICATION_CODE_CHANGE: YES / BOUNDED
 CSS_CHANGE: YES / BOUNDED
@@ -80,7 +80,7 @@ LOGIN_TOKEN_MIGRATION: COMPLETE
 FOUNDATION_TOKEN_MIGRATION: COMPLETE
 SHELL_TOKEN_MIGRATION: COMPLETE
 LOGIN_LOADING_COPY: 登录系统 → 验证中… / generic 处理中… not rendered
-COMPONENT_AND_CONSUMER_TESTS: PASS / 10 files / 48 tests
+COMPONENT_AND_CONSUMER_TESTS: PASS / 10 files / 57 tests
 TYPECHECK: PASS
 BUILD: PASS
 COMPOSER_VALIDATE: PASS
@@ -101,6 +101,35 @@ DEPLOYMENT: NO
 ```
 
 The implementation added exactly the eleven frozen files, modified the ten frozen application/test files and updated only these two authorized governance records. It did not touch the legacy prototype CSS or views, dependency manifests, build/test configuration, workflows, PHP or database Migration files.
+
+## Component Contract Remediation Evidence
+
+```text
+REMEDIATION_AUTHORIZED_HEAD: 5c2902dedf1ab43702ec1c5ad104fd5a9bb71c36
+ATTRIBUTE_ALLOWLISTS: UiButton, FormField, TextInput, UiAlert and EmptyState IMPLEMENTED
+UNAPPROVED_ATTRIBUTE_FORWARDING: REJECTED BY IMPLEMENTATION AND NEGATIVE TESTS
+UI_ALERT_CALLER_ROLE: SAFE COMPATIBILITY CONTRACT IMPLEMENTED
+UI_ALERT_ROLE_CASES: off+region; polite default; error default; polite+alert conflict PASS
+FORM_FIELD_SLOT_ONLY: description and error presence controls elements, describedBy, invalid and alert role
+FOCUSED_COMPONENT_TESTS: PASS / 5 files / 41 tests
+FULL_FRONTEND_TESTS: PASS / 10 files / 57 tests
+TOKENS_CSS: UNCHANGED
+LOGIN: UNCHANGED
+FOUNDATION: UNCHANGED
+SHELL_CSS: UNCHANGED
+TOPBAR: UNCHANGED
+PLACEHOLDER: UNCHANGED
+DEPENDENCY_CHANGE: NO
+LOCK_FILE_CHANGE: NO
+WORKFLOW_CHANGE: NO
+PHP_CHANGE: NO
+MIGRATION: NO
+OWNER_VISUAL_CHECK: NOT RUN
+PR: NO
+MERGE: NO
+UAT: NO
+DEPLOYMENT: NO
+```
 
 ## Contrast Result
 
@@ -156,7 +185,7 @@ MIGRATION: NO
 ## Verdict
 
 ```text
-FINAL_STATUS: ERP_ARCH_MIGRATION_001E_A_IMPLEMENTATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
+FINAL_STATUS: ERP_ARCH_MIGRATION_001E_A_COMPONENT_CONTRACT_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
 NEXT_GATE: independent implementation review and required Owner visual check before separate merge authorization
 ```
 
@@ -164,11 +193,11 @@ NEXT_GATE: independent implementation review and required Owner visual check bef
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A IMPLEMENTATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E-B WAITING → 001E-C WAITING → 001F WAITING
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A COMPONENT CONTRACT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E-B WAITING → 001E-C WAITING → 001F WAITING
 COMPLETED_PHASES: 001A, 001B, 001C, 001D-A, 001D-B, 001D-C, 001D
 CURRENT_PHASE: 001E-A implementation review gate
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-A
-PACKAGE_STATUS: IMPLEMENTATION COMPLETE / PENDING INDEPENDENT REVIEW / MERGE AUTHORIZATION NO
+PACKAGE_STATUS: COMPONENT CONTRACT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW / MERGE AUTHORIZATION NO
 WAITING_PHASES: 001E-A independent review and Owner visual check, 001E-B, 001E-C, 001F
 BASELINE: implementation-authorized Head 7cef9e3d8b238d591f42013a43c0b17426ab5ab5 based on main@548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
 GITHUB_STATE: implementation branch pushed after validation; no PR; no merge
@@ -208,10 +237,10 @@ REMEDIATION_BUFFER: 2–3h; planning value 2.5h
 ESTIMATED_EFFECTIVE_HOURS: 20h
 ESTIMATE_RANGE: 16–24 effective hours
 ESTIMATE_BASIS: confirmed bounded implementation estimate; planning values 3.5 + 10.5 + 3.5 + 2.5 = 20h
-ACTUAL_EFFECTIVE_HOURS: 4.5h implementation; 6.4h cumulative including 1.9h Preflight and governance remediation
-ACTUAL_HOURS_BREAKDOWN: tokens and CSS 1h; five components 1.25h; consumer migration 0.75h; component and regression tests 0.75h; full validation, governance record and bounded remediation 0.75h
-VARIANCE: -15.5h / -77.5% against 20h implementation planning value
-VARIANCE_REASON: frozen contracts, existing test infrastructure and tightly bounded consumers reduced discovery and integration effort; Owner visual review remains excluded and not performed
+ACTUAL_EFFECTIVE_HOURS: 5.2h implementation including component remediation; 7.1h cumulative including 1.9h Preflight and governance remediation
+ACTUAL_HOURS_BREAKDOWN: tokens and CSS 1h; five components 1.25h; consumer migration 0.75h; initial component and regression tests 0.75h; initial full validation and governance record 0.75h; attribute/role/slot remediation and validation 0.7h
+VARIANCE: -14.8h / -74% against 20h implementation planning value
+VARIANCE_REASON: frozen contracts, existing test infrastructure and tightly bounded consumers reduced discovery and integration effort; limited remediation stayed inside existing components; Owner visual review remains excluded and not performed
 OWNER_REVIEW: EXCLUDED
 MERGE: EXCLUDED
 MIGRATION: EXCLUDED

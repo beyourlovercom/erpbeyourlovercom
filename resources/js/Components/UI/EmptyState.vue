@@ -15,12 +15,15 @@ const props = withDefaults(defineProps<{
 })
 
 const attrs = useAttrs()
+const filteredAttrs = computed(() => Object.fromEntries(
+    Object.entries(attrs).filter(([name]) => name === 'id' || name === 'aria-labelledby' || name === 'class' || name === 'style' || name.startsWith('data-')),
+))
 const headingTag = computed(() => `h${props.headingLevel}` as 'h2' | 'h3')
 const headingId = computed(() => typeof attrs['aria-labelledby'] === 'string' ? attrs['aria-labelledby'] : undefined)
 </script>
 
 <template>
-    <section v-bind="$attrs" class="empty-state">
+    <section v-bind="filteredAttrs" class="empty-state">
         <div v-if="$slots.icon" class="empty-state__icon"><slot name="icon" /></div>
         <p v-if="eyebrow" class="empty-state__eyebrow">{{ eyebrow }}</p>
         <component :is="headingTag" :id="headingId" class="empty-state__title">{{ title }}</component>
