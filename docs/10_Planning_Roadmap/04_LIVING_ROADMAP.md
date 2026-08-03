@@ -2,7 +2,7 @@
 type: living-roadmap
 project: BYL ERP
 version: 1.0
-updated: 2026-08-01
+updated: 2026-08-03
 ---
 
 # Living Roadmap
@@ -44,9 +44,12 @@ Repository Governance = PASS
 001D-A Runtime Foundation = MERGED / PASS (PR #9; main commit: 50803c3fcd51e9f8b3485f4fb57565154a284bf7)
 001D-B Audit Foundation = MERGED / PASS (PR #12; main commit: e2247fcaaae690c94ef07d45c8807ce749de1b46)
 001D-C Sync Outbox Foundation = MERGED / PASS (PR #13; accepted Head: e4bc57b7a3f0edbe84ccfde63d02d9135a4875e3; main commit: 548d53f1eae2ec14eea7261d3a101c1f2fda0dcc)
-001E Shared UI / Browser E2E = NEXT / PREPARED / IMPLEMENTATION NOT STARTED
-001E-A Shared UI and Design Tokens = PREFLIGHT REQUIRED / IMPLEMENTATION NOT READY
-001E-B Browser E2E Foundation = WAITING
+001E Shared UI / Browser E2E = IN PROGRESS
+001E-A Shared UI and Design Tokens = MERGED / PASS (PR #17; accepted Head: e46fb54a1b41a1efa620b4af3646e104ff7bcbbc; main commit: 442a3a872628764fecb7209049d2daf752624e9a)
+ERP-LOCAL-ADMIN-BYPASS-001 = MERGED / PASS (PR #16; accepted Head: 6b63229b7d776104a5736334de639d9b20fb69f3; main commit: 55ba7320a7046deb04a03abd99053ccd7b7ed11e)
+ERP-SHELL-ACCOUNT-DOCK-001 = MERGED / PASS / OWNER VISUAL ACCEPTANCE PASS (PR #15; accepted Head: 0cac340443d47591b7e242ebe051fb4407d0a986; main commit: 32d7244b9b1c6d1fb0cf8863cb9af694e7acc10f)
+ERP-MENU-BASELINE-001 = MERGED / PASS (PR #14; accepted Head: 6d5595e879778895105215dc98b1f740521b6f1a; main commit: 493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8)
+001E-B Browser E2E Foundation = PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
 001E-C Authentication / Permission / App Shell E2E = WAITING
 001F Architecture Re-audit = WAITING
 Global Architecture Gate = FAIL
@@ -65,10 +68,10 @@ Maximum planning envelope: approximately 192 effective hours
 ## Immediate sequence
 
 ```text
-1. Independently review the 001D closure record and frozen 001E preparation package.
-2. Owner separately decides whether to authorize the bounded 001E-A Preflight only.
-3. Keep 001E-A implementation blocked until its Preflight confirms the token map, component APIs, file delta, tests and implementation estimate.
-4. Keep 001E-B/C, 001F, Migration, UAT, deployment and business MVP packages blocked until their explicit gates.
+1. Independently review the 001E-A closure and frozen 001E-B Preflight package.
+2. Owner separately decides the 001E-B dependency, lock-file, browser-install, disposable-E2E-Migration, Workflow and implementation gates.
+3. Keep 001E-B implementation blocked until every required gate is explicitly granted.
+4. Keep 001E-C, 001F, UAT, deployment and business MVP packages blocked until their explicit gates.
 ```
 
 The accepted 001D-C evidence remains bounded: real-MySQL two-connection claim concurrency and MySQL 5.7 are unverified, and no Dev, Staging or Production Migration was run.

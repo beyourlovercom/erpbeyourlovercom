@@ -2,12 +2,30 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-LOCAL-ADMIN-BYPASS-001
-status: implementation-complete-pending-independent-review
+status: merged-pass
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
 
 # ERP-LOCAL-ADMIN-BYPASS-001 — Local-Only Administrator Bypass
+
+## Current Accepted Status
+
+```text
+STATUS: MERGED / PASS
+PR: #16
+ACCEPTED_HEAD: 6b63229b7d776104a5736334de639d9b20fb69f3
+MAIN_SQUASH_COMMIT: 55ba7320a7046deb04a03abd99053ccd7b7ed11e
+MERGED_AT: 2026-08-03T04:41:37Z
+DEFAULT: OFF
+ENVIRONMENT: local ONLY
+DATABASE_MUTATION: NO
+MIGRATION: NO
+UAT: NO
+DEPLOYMENT: NO
+```
+
+The bounded preflight and implementation record below is retained unchanged as historical evidence.
 
 ## Work Package
 

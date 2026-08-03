@@ -11,20 +11,15 @@ version: 1.0
 ```text
 ERP-ARCH-MIGRATION-001E
 Shared UI / Browser E2E
-Status: NEXT / PREPARED / IMPLEMENTATION NOT STARTED
+Status: IN PROGRESS
 Owner implementation authorization: NO
 Dependency change authorization: NO
 
-ERP-ARCH-MIGRATION-001E-A
-Shared UI and Design Tokens
-Status: PREFLIGHT REQUIRED / IMPLEMENTATION NOT READY
-Preflight authorization: NO
-Implementation authorization: NO
-Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001E-A.md
-
 ERP-ARCH-MIGRATION-001E-B
 Browser E2E Foundation
-Status: WAITING
+Status: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
+Dependency / lock / browser / Workflow / disposable Migration gates: REQUIRED / NOT GRANTED
+Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001E-B.md
 
 ERP-ARCH-MIGRATION-001E-C
 Authentication / Permission / App Shell E2E
@@ -64,6 +59,35 @@ Main SHA: 548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
 ERP-ARCH-MIGRATION-001D
 Runtime / Audit / Sync Foundation
 Status: COMPLETE / PASS
+
+ERP-ARCH-MIGRATION-001E-A
+Shared UI and Design Tokens
+Status: MERGED / PASS
+PR: #17
+Accepted Head: e46fb54a1b41a1efa620b4af3646e104ff7bcbbc
+Main SHA: 442a3a872628764fecb7209049d2daf752624e9a
+```
+
+## Completed supporting packages
+
+```text
+ERP-LOCAL-ADMIN-BYPASS-001
+Status: MERGED / PASS
+PR: #16
+Accepted Head: 6b63229b7d776104a5736334de639d9b20fb69f3
+Main SHA: 55ba7320a7046deb04a03abd99053ccd7b7ed11e
+
+ERP-SHELL-ACCOUNT-DOCK-001
+Status: MERGED / PASS / OWNER VISUAL ACCEPTANCE PASS
+PR: #15
+Accepted Head: 0cac340443d47591b7e242ebe051fb4407d0a986
+Main SHA: 32d7244b9b1c6d1fb0cf8863cb9af694e7acc10f
+
+ERP-MENU-BASELINE-001
+Status: MERGED / PASS
+PR: #14
+Accepted Head: 6d5595e879778895105215dc98b1f740521b6f1a
+Main SHA: 493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8
 ```
 
 ## Planned fast-track packages

@@ -2,12 +2,29 @@
 type: byl-erp-work-log
 date: 2026-08-03
 work_package: ERP-SHELL-ACCOUNT-DOCK-001
-status: implementation-complete-pending-independent-review
+status: merged-pass
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
 
 # ERP-SHELL-ACCOUNT-DOCK-001 Work Log
+
+## Current Accepted Status
+
+```text
+STATUS: MERGED / PASS
+PR: #15
+ACCEPTED_HEAD: 0cac340443d47591b7e242ebe051fb4407d0a986
+MAIN_SQUASH_COMMIT: 32d7244b9b1c6d1fb0cf8863cb9af694e7acc10f
+MERGED_AT: 2026-08-03T05:10:56Z
+OWNER_VISUAL_ACCEPTANCE: PASS
+MIGRATION: NO
+DATABASE_MUTATION: NO
+UAT: NO
+DEPLOYMENT: NO
+```
+
+Earlier entries remain the historical evidence as recorded at their original review gates.
 
 ## Authorization
 

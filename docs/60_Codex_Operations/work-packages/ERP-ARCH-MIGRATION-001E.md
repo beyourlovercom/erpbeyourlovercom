@@ -2,7 +2,7 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-ARCH-MIGRATION-001E
-status: prepared-implementation-not-started
+status: in-progress-001e-b-preflight-complete-pending-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -14,8 +14,8 @@ standard_version: 1.1
 ```text
 ID: ERP-ARCH-MIGRATION-001E
 TITLE: Shared UI / Browser E2E
-STATUS: NEXT / PREPARED / IMPLEMENTATION NOT STARTED
-BASELINE: main@548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
+STATUS: IN PROGRESS / 001E-A MERGED / 001E-B PREFLIGHT COMPLETE PENDING REVIEW
+BASELINE: main@493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8
 OWNER_IMPLEMENTATION_AUTHORIZATION: NO
 DEPENDENCY_CHANGE_AUTHORIZATION: NO
 APPLICATION_CODE_CHANGE_AUTHORIZATION: NO
@@ -26,6 +26,39 @@ DEPLOYMENT_AUTHORIZATION: NO
 ```
 
 This package freezes scope and evidence only. It does not authorize implementation or installation.
+
+## Current Accepted Snapshot
+
+```text
+ERP-ARCH-MIGRATION-001E-A: MERGED / PASS
+PR #17: MERGED
+ACCEPTED_HEAD: e46fb54a1b41a1efa620b4af3646e104ff7bcbbc
+MAIN_SQUASH_COMMIT: 442a3a872628764fecb7209049d2daf752624e9a
+
+ERP-LOCAL-ADMIN-BYPASS-001: MERGED / PASS
+PR #16: MERGED
+ACCEPTED_HEAD: 6b63229b7d776104a5736334de639d9b20fb69f3
+MAIN_SQUASH_COMMIT: 55ba7320a7046deb04a03abd99053ccd7b7ed11e
+
+ERP-SHELL-ACCOUNT-DOCK-001: MERGED / PASS
+PR #15: MERGED
+ACCEPTED_HEAD: 0cac340443d47591b7e242ebe051fb4407d0a986
+MAIN_SQUASH_COMMIT: 32d7244b9b1c6d1fb0cf8863cb9af694e7acc10f
+OWNER_VISUAL_ACCEPTANCE: PASS
+
+ERP-MENU-BASELINE-001: MERGED / PASS
+PR #14: MERGED
+ACCEPTED_HEAD: 6d5595e879778895105215dc98b1f740521b6f1a
+MAIN_SQUASH_COMMIT: 493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8
+
+ERP-ARCH-MIGRATION-001E-B: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
+ERP-ARCH-MIGRATION-001E-C: WAITING
+ERP-ARCH-MIGRATION-001F: WAITING
+GLOBAL_ARCHITECTURE_GATE: FAIL
+DEPLOYMENT: NO
+```
+
+The earlier preparation inventory below is retained as historical evidence. The accepted post-merge state above and the independent [[ERP-ARCH-MIGRATION-001E-B]] package are authoritative for current execution.
 
 ## Purpose and Architecture Position
 
@@ -43,7 +76,7 @@ This package freezes scope and evidence only. It does not authorize implementati
 
 ### ERP-ARCH-MIGRATION-001E-A — Shared UI and Design Tokens
 
-Status: PREFLIGHT REQUIRED / IMPLEMENTATION NOT READY.
+Status: MERGED / PASS by PR #17.
 
 Planned scope:
 
@@ -53,11 +86,11 @@ Planned scope:
 - bounded adoption by authentication and App Shell surfaces only after explicit authorization;
 - preservation of server authorization and existing Inertia routing contracts.
 
-Parent planning allocation: 16–24 effective hours; planning value 20 hours. This is not a frozen implementation estimate. The independent 001E-A Preflight must confirm or replace it before implementation authorization.
+Accepted implementation estimate: 16–24 effective hours; planning value 20 hours. Accepted actual evidence is retained in the 001E-A Work Package and Work Log.
 
 ### ERP-ARCH-MIGRATION-001E-B — Browser E2E Foundation
 
-Status: WAITING. It cannot begin before 001E-A acceptance and separate dependency/Workflow authorization.
+Status: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED. Dependency, lock-file, browser-install, Workflow, disposable-E2E-Migration and implementation gates remain separate and ungranted.
 
 Planned scope:
 
@@ -69,7 +102,7 @@ Planned scope:
 - local `npm run test:e2e` command;
 - separately authorized GitHub Actions design and artifact retention.
 
-Planned estimate: 12–18 effective hours; planning value 15 hours.
+Confirmed implementation estimate: 12–18 effective hours; planning value 15 hours. Owner review and merge are excluded.
 
 ### ERP-ARCH-MIGRATION-001E-C — Authentication / Permission / App Shell E2E
 
@@ -326,17 +359,15 @@ The first implementation may gate on Chromium only for deterministic foundation 
 ## Implementation Order
 
 ```text
-1. Owner reviews this frozen parent package.
-2. Owner separately authorizes the independent 001E-A Preflight only.
-3. Preflight confirms the token source, consumers, file delta, migration order, tests and implementation estimate.
-4. Owner separately authorizes 001E-A application/CSS implementation against the reviewed Preflight Head.
-5. 001E-A is implemented, independently reviewed and accepted.
-6. Owner separately authorizes Playwright dependency and 001E-B implementation.
-7. Owner separately authorizes isolated E2E Migration execution and any Workflow file.
-8. 001E-B is implemented, independently reviewed and accepted.
-9. Owner separately authorizes 001E-C test implementation.
-10. 001E-C is implemented, independently reviewed and accepted.
-11. Parent 001E closure is reviewed before any 001F authorization.
+1. 001E-A and its supporting packages are accepted and merged.
+2. Independent review evaluates the frozen 001E-B Preflight.
+3. Owner separately authorizes the exact Playwright dependency and package-lock delta.
+4. Owner separately authorizes Chromium installation and disposable E2E Migration execution.
+5. Owner separately authorizes 001E-B implementation and, if desired, the candidate Workflow file.
+6. 001E-B is implemented, independently reviewed and accepted.
+7. Owner separately authorizes 001E-C Preflight and implementation.
+8. 001E-C is implemented, independently reviewed and accepted.
+9. Parent 001E closure is reviewed before any 001F authorization.
 ```
 
 ## Test Plan
@@ -434,33 +465,33 @@ CLASSIFICATION: parent-level planning estimate only; not an authorized or frozen
 ## Preparation Verdict
 
 ```text
-FINAL_PREPARATION_VERDICT: ERP_ARCH_MIGRATION_001E_PREPARED_IMPLEMENTATION_NOT_AUTHORIZED
+FINAL_PREPARATION_VERDICT: ERP_ARCH_MIGRATION_001E_A_CLOSED_001E_B_PREFLIGHT_COMPLETE_PENDING_INDEPENDENT_REVIEW
 ```
 
 ## PROJECT POSITION
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS → 001D-C MERGED / PASS → 001D COMPLETE / PASS → 001E-A PREFLIGHT REQUIRED / IMPLEMENTATION NOT READY → 001E-B WAITING → 001E-C WAITING → 001F WAITING
-COMPLETED_PHASES: 001A, 001B, 001C, 001D-A, 001D-B, 001D-C, 001D
-CURRENT_PHASE: 001E Shared UI / Browser E2E preparation
-CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E
-PACKAGE_STATUS: PREPARED / IMPLEMENTATION NOT STARTED / OWNER AUTHORIZATION NO
-WAITING_PHASES: 001E-A Preflight authorization, 001E-A implementation, 001E-B, 001E-C, 001F
-BASELINE: main@548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
-GITHUB_STATE: PR #13 MERGED; this governance preparation branch has no PR
-SOURCE_CONFLICTS: NONE WITH EVIDENCE; GitHub and authorized main agree. Browser E2E capability is absent and no dependency or Workflow is authorized.
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A MERGED / PASS → 001E-B PREFLIGHT COMPLETE / PENDING REVIEW / IMPLEMENTATION NOT AUTHORIZED → 001E-C WAITING → 001F WAITING
+COMPLETED_PHASES: 001A, 001B, 001C, 001D-A, 001D-B, 001D-C, 001D, 001E-A
+CURRENT_PHASE: 001E-B Browser E2E Foundation Preflight review
+CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-B
+PACKAGE_STATUS: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
+WAITING_PHASES: 001E-B implementation gates, 001E-C, 001F
+BASELINE: main@493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8
+GITHUB_STATE: PR #14, #15, #16 and #17 MERGED; governance Draft PR pending creation
+SOURCE_CONFLICTS: NONE WITH EVIDENCE; GitHub and authorized main agree. Browser E2E capability remains absent and no dependency, browser binary or Workflow is authorized.
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: Independent review, then separate Owner decision on 001E-A Preflight authorization; implementation remains unauthorized
-EVIDENCE_AS_OF: 2026-08-01; authorized main, repository source/config/test inventory and GitHub PR #9/#12/#13
+NEXT_DEPENDENCY: Independent 001E-B Preflight review, then separate Owner decisions for dependency, lock, browser, disposable Migration, Workflow and implementation gates
+EVIDENCE_AS_OF: 2026-08-03; authorized main, repository source/config/test inventory, official Playwright documentation and merged PR #14/#15/#16/#17
 ```
 
 ## ROADMAP HOURS
 
 ```text
-CURRENT_PACKAGE_ESTIMATE: 51h planning value; 40–62h parent-level planning range for 001E-A/B/C; child implementation estimates require their own Preflights
-KNOWN_CURRENT_TRACK_REMAINING: 40–62h parent planning range for 001E only; not a sum of frozen child implementation estimates
+CURRENT_PACKAGE_ESTIMATE: 15h planning value; confirmed 12–18h range for 001E-B implementation and validation; implementation not authorized
+KNOWN_CURRENT_TRACK_REMAINING: 24–38h parent allocation for non-overlapping 001E-B/C; planning value 31h; excludes unknown 001F
 ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE; 001F lacks a frozen estimate and cannot be safely added
 MVP1_TOTAL_ESTIMATE: 122–190h total estimate
 MVP1_PLANNING_BASELINE: 166h total planning value
@@ -470,21 +501,21 @@ POST_MVP_KNOWN_INCREMENT: approximately 68–120h incremental beyond MVP1
 LONG_TERM_CUMULATIVE_RANGE: 235–402h through 1,819–3,146h; cumulative non-additive horizons
 PROGRAM_REMAINING: UNKNOWN WITH EVIDENCE; cumulative horizons, 001F estimate and project-wide actual ledger are incomplete
 COMPLETED_ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE; 001D-A lacks an accepted actual-hours value, preventing a complete architecture ledger
-ESTIMATE_CONFIDENCE: LOW / MEDIUM for parent planning allocation before child Preflights; LOW / UNKNOWN for Architecture Gate and program remaining
-ESTIMATE_AS_OF: 2026-08-01
-ESTIMATE_METHOD: bottom-up non-overlapping subpackage ranges; no subtraction from cumulative or incomplete actual ledgers
+ESTIMATE_CONFIDENCE: MEDIUM for frozen 001E-B implementation boundary; LOW / UNKNOWN for Architecture Gate and program remaining
+ESTIMATE_AS_OF: 2026-08-03
+ESTIMATE_METHOD: repository/toolchain inventory, exact file delta, lifecycle/security contracts and non-overlapping parent allocation
 ```
 
 ## ESTIMATED CODEX HOURS
 
 ```text
-PREFLIGHT_AND_SCOPE: 3–5h; planning value 4h
-CORE_EXECUTION: 26–38h; planning value 32h
-TEST_AND_VALIDATION: 7–11h; planning value 9h
-REMEDIATION_BUFFER: 4–8h; planning value 6h
-ESTIMATED_EFFECTIVE_HOURS: 51h
-ESTIMATE_RANGE: 40–62 effective hours
-ESTIMATE_BASIS: parent planning allocation only; planning values 4 + 32 + 9 + 6 = 51h and range 40–62h; each child must issue a confirmed implementation estimate after its own Preflight
+PREFLIGHT_AND_SCOPE: 1–2h; planning value 1.5h
+CORE_EXECUTION: 5–7h; planning value 6h
+TEST_AND_VALIDATION: 4–6h; planning value 5h
+REMEDIATION_BUFFER: 2–3h; planning value 2.5h
+ESTIMATED_EFFECTIVE_HOURS: 15h
+ESTIMATE_RANGE: 12–18 effective hours
+ESTIMATE_BASIS: confirmed 001E-B child estimate; planning values 1.5 + 6 + 5 + 2.5 = 15h; no implementation authorized
 OWNER_REVIEW: EXCLUDED
 MERGE: EXCLUDED
 MIGRATION: EXCLUDED

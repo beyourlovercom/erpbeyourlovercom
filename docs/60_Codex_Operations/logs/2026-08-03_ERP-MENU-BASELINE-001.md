@@ -2,12 +2,30 @@
 type: byl-erp-work-log
 date: 2026-08-03
 work_package: ERP-MENU-BASELINE-001
-status: slug-remediation-complete-pending-independent-review
+status: merged-pass
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
 
 # ERP-MENU-BASELINE-001 Work Log
+
+## Current Accepted Status
+
+```text
+STATUS: MERGED / PASS
+PR: #14
+ACCEPTED_HEAD: 6d5595e879778895105215dc98b1f740521b6f1a
+MAIN_SQUASH_COMMIT: 493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8
+MERGED_AT: 2026-08-03T05:50:32Z
+MENU_IMPACT: NO CHANGE AFTER ACCEPTANCE
+APPROVED_MENU_CHECK: PASS
+MIGRATION: NO
+DATABASE_MUTATION: NO
+UAT: NO
+DEPLOYMENT: NO
+```
+
+Earlier entries remain the historical evidence as recorded at their original review gates.
 
 ## Authorization
 

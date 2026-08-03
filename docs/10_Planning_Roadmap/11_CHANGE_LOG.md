@@ -170,3 +170,26 @@ Estimate impact:
 Architecture conflict:
 Documents updated:
 ```
+
+## 2026-08-03 — 001E-A and supporting packages closed / 001E-B Preflight frozen
+
+```text
+Owner decision: Close the accepted 001E-A, Local Admin Bypass, Account Dock and Menu Baseline packages; authorize 001E-B Preflight and one Draft governance PR only.
+Decision: D-026 — 001E-A closure and 001E-B Browser E2E Preflight.
+Previous state: 001E-A implementation/remediation awaited final merged governance status; 001E-B was WAITING.
+New state: 001E-A, ERP-LOCAL-ADMIN-BYPASS-001, ERP-SHELL-ACCOUNT-DOCK-001 and ERP-MENU-BASELINE-001 are MERGED / PASS; 001E-B is PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED.
+Accepted evidence: PR #17 Head e46fb54a1b41a1efa620b4af3646e104ff7bcbbc → main 442a3a872628764fecb7209049d2daf752624e9a; PR #16 Head 6b63229b7d776104a5736334de639d9b20fb69f3 → main 55ba7320a7046deb04a03abd99053ccd7b7ed11e; PR #15 Head 0cac340443d47591b7e242ebe051fb4407d0a986 → main 32d7244b9b1c6d1fb0cf8863cb9af694e7acc10f with Owner Visual Acceptance PASS; PR #14 Head 6d5595e879778895105215dc98b1f740521b6f1a → main 493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8.
+001E-B proposal: exact @playwright/test 1.62.1; first-wave Chromium only; repository-external runtime directory; disposable SQLite; synthetic users; no authentication Trace/Video uploads and no initial E2E artifact uploads.
+Owner gates: dependency, package-lock, browser install, Workflow, disposable E2E Migration execution and implementation are REQUIRED / NOT GRANTED.
+Application code: NO CHANGE.
+Menu impact: NO; approved baseline check PASS.
+Dependency / lock / browser install: NO CHANGE / NOT RUN.
+Workflow: NO CHANGE.
+Migration / database: NO / NO CHANGE.
+UAT / deployment: NO / NO.
+001E-C / 001F: WAITING / WAITING.
+Estimate impact: 001E-A is completed; known 001E remaining becomes the non-overlapping 001E-B/C parent allocation of 24–38h, planning value 31h. 001E-B confirms 12–18h, planning value 15h; 001F remains unknown.
+Architecture conflict: NONE.
+Global Architecture Gate: FAIL.
+Documents updated: AI/CURRENT_CONTEXT.md; Roadmap, Decision Register, Change Log, Work Package Index, Program Roadmap and Hours; parent/child Work Packages and accepted Work Logs.
+```

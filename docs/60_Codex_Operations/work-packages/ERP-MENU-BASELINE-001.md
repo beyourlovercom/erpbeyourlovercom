@@ -2,12 +2,29 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-MENU-BASELINE-001
-status: slug-remediation-complete-pending-independent-review
+status: merged-pass
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
 
 # ERP-MENU-BASELINE-001 — Approved Menu Baseline
+
+## Current Accepted Status
+
+```text
+STATUS: MERGED / PASS
+PR: #14
+ACCEPTED_HEAD: 6d5595e879778895105215dc98b1f740521b6f1a
+MAIN_SQUASH_COMMIT: 493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8
+MERGED_AT: 2026-08-03T05:50:32Z
+MENU_BASELINE_VERSION: 1.0
+MIGRATION: NO
+DATABASE_MUTATION: NO
+UAT: NO
+DEPLOYMENT: NO
+```
+
+The original implementation and slug-remediation record below is retained unchanged as historical evidence.
 
 ## Work Package
 
