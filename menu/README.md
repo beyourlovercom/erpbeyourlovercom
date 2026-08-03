@@ -4,6 +4,22 @@
 
 This baseline does not govern level-3 pages, detail pages, tabs, filters or saved views. It does not introduce a registry, schema service, tree builder, Artisan command, CI workflow or admin editor.
 
+## Current lifecycle state
+
+```text
+MENU_PROJECT: TEMPORARILY CLOSED / CURRENTLY COMPLETE
+LEVEL_1_MENU: 11 / OWNER APPROVED
+LEVEL_2_MENU: 0 / INTENTIONALLY DEFERRED
+ACTIVE_MENU_IMPLEMENTATION: NO
+MENU_ROADMAP_REMAINING: 0 CODEX
+```
+
+The current Menu project is temporarily closed after the accepted Level-1 UI, Account Dock and Menu Baseline work. The absence of approved Level-2 items is deliberate and does not require speculative implementation.
+
+A future task that adds, removes, renames, reorders or otherwise changes a Level-2 menu must reopen Menu work through a new, bounded Menu Change Work Package. That package must identify the affected business module and obtain explicit Owner authorization before changing any governed value.
+
+See `menu/STATUS.md` for the closure record and reopen trigger.
+
 ## Mandatory read gate
 
 Before any task changes or may change one of the following, Codex must read in order:
@@ -11,6 +27,7 @@ Before any task changes or may change one of the following, Codex must read in o
 1. `/AGENTS.md`
 2. `/menu/README.md`
 3. `/menu/APPROVED_MENU.json`
+4. `/menu/STATUS.md`
 
 Governed changes include:
 
