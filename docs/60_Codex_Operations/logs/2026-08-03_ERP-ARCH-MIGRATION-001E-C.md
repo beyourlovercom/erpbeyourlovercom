@@ -121,11 +121,11 @@ CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001F-A
 WAITING_PHASES: 001F
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
+```
 
 ## Current closure
 
 PR #22 merged at accepted Head `2844d8f2f9214a3fb058e546eb92751e49cbe5af` with main squash commit `3218473b1cfc93f098a2e9607aabe9adb16bcf0d`. Local Chromium evidence passed: Foundation Smoke 1, 001E-C Browser Tests 15 and Complete Browser Run 16. GitHub Actions Browser E2E was not implemented or run. Earlier remediation status is historical evidence only.
-```
 
 ## ROADMAP HOURS
 

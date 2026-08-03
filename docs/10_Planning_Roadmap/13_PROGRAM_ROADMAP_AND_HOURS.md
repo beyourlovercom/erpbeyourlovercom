@@ -62,6 +62,9 @@ GITHUB_FACT: PR #21 and PR #22 are merged; main is 3218473b1cfc93f098a2e9607aabe
 GOVERNANCE_FACT: 001E is COMPLETE / PASS; 001E-B and 001E-C are MERGED / PASS / CLOSED; 001F-A is IMPLEMENTED / PENDING INDEPENDENT REVIEW.
 SOURCE_CONFLICTS: historical pre-merge snapshots are retained as history only; current status is corrected here.
 EVIDENCE_LIMITS: real-MySQL two-connection claim concurrency, live Redis, Queue Worker, Scheduler and Dev Migration remain unverified.
+```
+
+## Current Architecture Migration Estimate
 
 ```text
 001F_B_TO_F_ESTIMATE: 12–24h
@@ -69,7 +72,6 @@ PLANNING_VALUE: 18h
 ARCHITECTURE_MIGRATION_REMAINING: approximately 5–9 Codex / 12–24h
 CLASSIFICATION: planning estimate only
 ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
-```
 ```
 
 ## Initial Hours Snapshot
