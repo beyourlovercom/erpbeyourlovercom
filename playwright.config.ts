@@ -15,7 +15,12 @@ const port = new URL(baseURL).port;
 
 export default defineConfig({
     testDir: './tests/e2e',
-    testMatch: ['foundation/**/*.spec.ts'],
+    testMatch: [
+        'foundation/**/*.spec.ts',
+        'auth/**/*.spec.ts',
+        'authorization/**/*.spec.ts',
+        'shell/**/*.spec.ts',
+    ],
     fullyParallel: false,
     workers: 1,
     retries: 0,
