@@ -11,19 +11,31 @@ version: 1.0
 ```text
 ERP-ARCH-MIGRATION-001E
 Shared UI / Browser E2E
-Status: IN PROGRESS
-Owner implementation authorization: NO
-Dependency change authorization: NO
+Status: COMPLETE / PASS
 
 ERP-ARCH-MIGRATION-001E-B
 Browser E2E Foundation
-Status: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
-Dependency / lock / browser / Workflow / disposable Migration gates: REQUIRED / NOT GRANTED
+Status: MERGED / PASS / CLOSED
+PR: #21; Main SHA: 4b9fbb0deacdfc02439fb947398b87c148602c75
 Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001E-B.md
 
 ERP-ARCH-MIGRATION-001E-C
 Authentication / Permission / App Shell E2E
-Status: WAITING
+Status: MERGED / PASS / CLOSED
+PR: #22; Accepted Head: 2844d8f2f9214a3fb058e546eb92751e49cbe5af
+Main SHA: 3218473b1cfc93f098a2e9607aabe9adb16bcf0d
+
+ERP-ARCH-MIGRATION-001F
+Architecture Re-audit
+Status: ACTIVE / PREFLIGHT REVIEWED
+
+ERP-ARCH-MIGRATION-001F-A
+Governance Status Correction & Gate Scope Freeze
+Status: CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW
+DEDICATED_WORK_PACKAGE_FILE: NOT CREATED / OUTSIDE AUTHORIZED FILE BOUNDARY
+
+ERP-ARCH-MIGRATION-001F-B through 001F-F
+Status: PROPOSED / NOT AUTHORIZED
 ```
 
 ## Completed architecture packages

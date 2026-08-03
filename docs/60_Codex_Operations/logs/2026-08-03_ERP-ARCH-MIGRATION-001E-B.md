@@ -286,15 +286,15 @@ The prior evidence wording is narrowed accordingly: no test now reads the develo
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A MERGED / PASS → 001E-B PR #21 CLEAN-CLONE REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E-C WAITING → 001F WAITING
-CURRENT_PHASE: 001E-B Browser E2E Foundation implementation review
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A MERGED / PASS → 001E-B MERGED / PASS / CLOSED → 001E-C MERGED / PASS / CLOSED → 001F ACTIVE / PREFLIGHT REVIEWED
+CURRENT_PHASE: 001F Architecture Re-audit
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-B
-PACKAGE_STATUS: PR #21 CLEAN-CLONE REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
-BASELINE: main@05290700afc94153378c0ca4fafe0c69eab80544
-GITHUB_STATE: PR #21 OPEN / DRAFT / PENDING INDEPENDENT REVIEW
+PACKAGE_STATUS: MERGED / PASS / COMPLETE / CLOSED
+BASELINE: main@3218473b1cfc93f098a2e9607aabe9adb16bcf0d
+GITHUB_STATE: PR #21 MERGED
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: independent implementation review; merge remains separately gated
+NEXT_DEPENDENCY: 001F-A independent review; 001F-B through 001F-F separate authorization
 EVIDENCE_AS_OF: 2026-08-03; local implementation and disposable browser/database validation
 ```
 
@@ -335,5 +335,9 @@ DEPLOYMENT: EXCLUDED
 ## Verdict
 
 ```text
-FINAL_STATUS: PR_21_CLEAN_CLONE_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
+FINAL_STATUS: MERGED / PASS / COMPLETE / CLOSED
+
+## Current closure
+
+PR #21 merged at accepted Head `3b67586cafd2b4af3e248e3079719cb73b4e4163` with main squash commit `4b9fbb0deacdfc02439fb947398b87c148602c75`. Local Chromium evidence is accepted; GitHub Actions Browser E2E was not implemented or run. Earlier review/remediation entries are historical evidence only.
 ```

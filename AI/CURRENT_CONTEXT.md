@@ -12,7 +12,7 @@ status: architecture-migration-active
 ```text
 ERP-ARCH-MIGRATION-001E
 Title: Shared UI / Browser E2E
-Status: IN PROGRESS / 001E-A MERGED / 001E-B PREFLIGHT COMPLETE PENDING REVIEW
+Status: COMPLETE / PASS / 001F ACTIVE / PREFLIGHT REVIEWED
 Owner implementation authorization: NO
 Dependency change authorization: NO
 Deployment: NO
@@ -26,13 +26,12 @@ Main Squash Commit: 442a3a872628764fecb7209049d2daf752624e9a
 
 ERP-ARCH-MIGRATION-001E-B
 Title: Browser E2E Foundation
-Status: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
-Dependency change authorization: REQUIRED / NOT GRANTED
-Package-lock change authorization: REQUIRED / NOT GRANTED
-Browser install authorization: REQUIRED / NOT GRANTED
-Workflow change authorization: REQUIRED / NOT GRANTED
-Disposable E2E Migration execution authorization: REQUIRED / NOT GRANTED
-Implementation authorization: NOT GRANTED
+Status: MERGED / PASS / COMPLETE / CLOSED
+PR: #21
+Accepted Head: 3b67586cafd2b4af3e248e3079719cb73b4e4163
+Main Squash Commit: 4b9fbb0deacdfc02439fb947398b87c148602c75
+Dependency: @playwright/test@1.62.1; Chromium Headless Shell
+Evidence: local Chromium only; GitHub Actions Browser E2E not implemented or run
 
 ERP-LOCAL-ADMIN-BYPASS-001
 Status: MERGED / PASS
@@ -92,11 +91,13 @@ Repository Governance = PASS
 001D-A Runtime Foundation = MERGED / PASS
 001D-B Audit Foundation = MERGED / PASS
 001D-C Sync Outbox Foundation = MERGED / PASS
-001E Shared UI / Browser E2E = IN PROGRESS
+001E Shared UI / Browser E2E = COMPLETE / PASS
 001E-A Shared UI / Design Tokens = MERGED / PASS
-001E-B Browser E2E Foundation = PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
-001E-C Authentication / Permission / App Shell E2E = WAITING
-001F Architecture Re-audit = WAITING
+001E-B Browser E2E Foundation = MERGED / PASS / CLOSED
+001E-C Authentication / Permission / App Shell E2E = MERGED / PASS / CLOSED
+001F Architecture Re-audit = ACTIVE / PREFLIGHT REVIEWED
+001F-A Governance Status Correction & Gate Scope Freeze = IMPLEMENTED / PENDING INDEPENDENT REVIEW
+001F-B Modular Boundary Decision / Remediation = PROPOSED / NOT AUTHORIZED
 Global Architecture Gate = FAIL
 Production Deployment = NO
 ```
@@ -104,10 +105,10 @@ Production Deployment = NO
 ## Immediate sequence
 
 ```text
-1. Independently review the 001E-A closure and 001E-B Preflight governance PR.
-2. Owner separately decides dependency, lock-file, browser-install, disposable-E2E-Migration, Workflow and 001E-B implementation gates.
-3. Keep 001E-B implementation blocked until every required gate is explicitly granted against the reviewed Preflight Head.
-4. Keep 001E-C, 001F, UAT, deployment and business MVP packages blocked until their separate authorizations.
+1. Independently review the 001F-A governance correction.
+2. Resolve the modular boundary, MySQL concurrency, Redis/Queue/Scheduler and Dev Migration gates in separate authorized packages.
+3. Complete the final 001F re-audit before declaring the Global Architecture Gate passed.
+4. Keep MVP1, UAT and deployment blocked until their explicit gates.
 ```
 
 ## Product direction

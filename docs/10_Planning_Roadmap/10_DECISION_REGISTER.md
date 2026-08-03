@@ -133,3 +133,19 @@ The accepted 001D evidence remains bounded: real-MySQL two-connection Sync Outbo
 PR #17 is MERGED / PASS at accepted Head `e46fb54a1b41a1efa620b4af3646e104ff7bcbbc` and main squash commit `442a3a872628764fecb7209049d2daf752624e9a`. Supporting packages are also MERGED / PASS: Local Admin Bypass PR #16 at accepted Head `6b63229b7d776104a5736334de639d9b20fb69f3` and main commit `55ba7320a7046deb04a03abd99053ccd7b7ed11e`; Account Dock PR #15 at accepted Head `0cac340443d47591b7e242ebe051fb4407d0a986` and main commit `32d7244b9b1c6d1fb0cf8863cb9af694e7acc10f`, with Owner Visual Acceptance PASS; Menu Baseline PR #14 at accepted Head `6d5595e879778895105215dc98b1f740521b6f1a` and main commit `493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8`.
 
 001E-B Browser E2E Foundation is frozen at Preflight only. The proposed dependency is exact `@playwright/test@1.62.1`, Chromium-only for the first implementation, with repository-external runtime state, a disposable SQLite database, synthetic users and fail-closed artifact handling. Authentication traces and videos remain prohibited from upload; initial 001E-B uploads no E2E artifacts. Dependency, package-lock, browser installation, Workflow, disposable E2E Migration execution and implementation each require a separate Owner grant. No application, menu, package, lock, Workflow, Migration, database, UAT or deployment change is authorized here. 001E-C and 001F remain WAITING, Global Architecture Gate remains FAIL, and architecture conflict is NONE.
+
+## D-027 001E closure and 001F-A governance correction
+
+PR #21 (`3b67586cafd2b4af3e248e3079719cb73b4e4163` → `4b9fbb0deacdfc02439fb947398b87c148602c75`) and PR #22 (`2844d8f2f9214a3fb058e546eb92751e49cbe5af` → `3218473b1cfc93f098a2e9607aabe9adb16bcf0d`) are merged. 001E-B and 001E-C are MERGED / PASS / CLOSED; 001E is COMPLETE / PASS. 001F is ACTIVE / PREFLIGHT REVIEWED and 001F-A is IMPLEMENTED / PENDING INDEPENDENT REVIEW. Historical pending-review text in child records is retained as history only. Global Architecture Gate remains FAIL. Architecture conflict: NONE.
+
+## D-028 MySQL support baseline
+
+MySQL 8.x is the supported baseline; MySQL Community 8.4.11 is the verified isolated reference for Migration up/down/up and physical Schema contracts. Real two-connection Sync Outbox claim concurrency remains UNVERIFIED and is a Global Gate blocker. MySQL 5.7 is OUT OF SCOPE / NOT SUPPORTED BASELINE and is not a current blocker; any future 5.7 requirement requires a new Architecture Decision and Compatibility Work Package. Current code must not be described as MySQL 5.7 compatible.
+
+## D-029 Browser and environment evidence gates
+
+Local Chromium Browser E2E is ACCEPTED LOCAL ARCHITECTURE EVIDENCE. GitHub Actions Browser E2E is NOT REQUIRED for the current Global Architecture Gate and remains future CI hardening requiring separate Owner authorization; no remote PASS is claimed. Disposable MySQL 8 validation is required and passed for the bounded Schema contract. Dev Migration is a Global Gate and MVP1 integration blocker; Staging Migration blocks UAT; Production Migration plan/rehearsal blocks deployment; Production real Migration is only a separately authorized deployment action.
+
+## D-030 001F gate scope
+
+The remaining 001F sequence is 001F-B Modular Boundary Decision / Remediation, 001F-C MySQL Concurrency Validation, 001F-D Redis / Queue / Scheduler Runtime Validation, 001F-E Dev Migration Validation and 001F-F Final Architecture Gate Re-audit. These packages are proposed and not authorized. Global Architecture Gate remains FAIL; MVP1 remains NOT STARTED and at 0% business completion.
