@@ -2,7 +2,7 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-ARCH-MIGRATION-001E-B
-status: remediation-complete-pending-independent-review
+status: clean-clone-remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -14,7 +14,7 @@ standard_version: 1.1
 ```text
 ID: ERP-ARCH-MIGRATION-001E-B
 TITLE: Browser E2E Foundation
-STATUS: PR #21 REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
+STATUS: PR #21 CLEAN-CLONE REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
 BASELINE: main@05290700afc94153378c0ca4fafe0c69eab80544
 PARENT_PACKAGE: ERP-ARCH-MIGRATION-001E
 PREDECESSOR: ERP-ARCH-MIGRATION-001E-A MERGED / PASS
@@ -432,6 +432,24 @@ REAL_DATABASE_CHANGE: NO
 
 Before Migration, the runner now boots Laravel through the same E2E environment in a read-only runtime-preflight mode. It verifies the effective `testing` environment, `sqlite` default, configured SQLite path, PDO `main` database identity, disabled local-admin bypass and external Bootstrap cache paths. Provisioning repeats the effective PDO identity check after Migration and before inserting synthetic users. Contract fixtures prove stale config cache, MySQL, nonfresh shared SQLite and the repository SQLite path fail closed without changing the repository database.
 
+## PR #21 Clean-clone Remediation
+
+```text
+INDEPENDENT_REVIEW_RESULT: CHANGES_REQUIRED
+REVIEWED_HEAD: d3f3cc6edf237eabdf424a7019c3f8580192c3d1
+ONLY_BLOCKER: contract test depended on ignored local database/database.sqlite
+PHP_REPOSITORY_PATH_FIXTURE: tracked composer.json
+FIXTURE_PRECHECK: size and mtimeMs recorded
+FAIL_CLOSED_STAGE: raw repository-path boundary before Laravel connection or Migration
+FIXTURE_POSTCHECK: size and mtimeMs unchanged
+JAVASCRIPT_LOGICAL_PATH_CONTRACT: database/database.sqlite remains rejected without existence check
+UNTRACKED_SQLITE_DEPENDENCY: REMOVED
+DATABASE_SQLITE_CREATE_DELETE_MODIFY: NO
+CLEAN_CLONE_CONTRACT: PASS
+```
+
+The test suite no longer stats, opens or otherwise depends on `database/database.sqlite`. The PHP boundary test uses tracked `composer.json`, which is guaranteed in a clean clone, and confirms the file is rejected before Laravel database boot while its size and modification time remain identical. The JavaScript path contract still submits the logical repository SQLite path directly to the path guard; its assertion does not require that file to exist.
+
 ## Rollback
 
 - revert the single bounded 001E-B implementation commit;
@@ -499,11 +517,11 @@ DEPLOYMENT: EXCLUDED
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A MERGED / PASS → 001E-B PR #21 REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E-C WAITING → 001F WAITING
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A MERGED / PASS → 001E-B PR #21 CLEAN-CLONE REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E-C WAITING → 001F WAITING
 COMPLETED_PHASES: 001A, 001B, 001C, 001D, 001E-A
 CURRENT_PHASE: 001E-B Browser E2E Foundation implementation review
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-B
-PACKAGE_STATUS: PR #21 REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
+PACKAGE_STATUS: PR #21 CLEAN-CLONE REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
 WAITING_PHASES: 001E-C, 001F
 BASELINE: main@05290700afc94153378c0ca4fafe0c69eab80544
 GITHUB_STATE: PR #21 OPEN / DRAFT / PENDING INDEPENDENT REVIEW
@@ -552,5 +570,5 @@ DEPLOYMENT: EXCLUDED
 ## Verdict
 
 ```text
-FINAL_STATUS: PR_21_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
+FINAL_STATUS: PR_21_CLEAN_CLONE_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
 ```

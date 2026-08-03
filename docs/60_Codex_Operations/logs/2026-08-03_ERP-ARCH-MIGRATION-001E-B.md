@@ -2,7 +2,7 @@
 type: byl-erp-work-log
 date: 2026-08-03
 work_package: ERP-ARCH-MIGRATION-001E-B
-status: remediation-complete-pending-independent-review
+status: clean-clone-remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -261,16 +261,35 @@ FOUNDATION_SMOKE: PASS / 1 Chromium test / external requests 0
 REMEDIATION_RESULT: COMPLETE / PENDING INDEPENDENT REVIEW
 ```
 
-The Laravel runtime-preflight runs before `php artisan migrate` using the exact environment later passed to Migration. The provisioner repeats effective PDO identity after Migration. The repository database file was checked read-only before and after its rejection fixture and retained identical size and modification time. No MySQL connection, shared SQLite mutation, repository database mutation or Migration-file change occurred.
+The Laravel runtime-preflight runs before `php artisan migrate` using the exact environment later passed to Migration. The provisioner repeats effective PDO identity after Migration. A tracked repository fixture is checked before and after path rejection and retains identical size and modification time. No MySQL connection, shared SQLite mutation, repository database mutation or Migration-file change occurred.
+
+## PR #21 Clean-clone Remediation
+
+```text
+INDEPENDENT_REVIEW_RESULT: CHANGES_REQUIRED
+REVIEWED_HEAD: d3f3cc6edf237eabdf424a7019c3f8580192c3d1
+ONLY_BLOCKER: PHP path-rejection fixture depended on ignored local database/database.sqlite
+TRACKED_REPOSITORY_FIXTURE: composer.json
+TRACKED_FIXTURE_EXISTS_IN_CLEAN_CLONE: YES
+TRACKED_FIXTURE_SIZE_AND_MTIME_BEFORE_AFTER: IDENTICAL
+REJECTION_STAGE: raw database-path boundary before Laravel connection and Migration
+DATABASE_DATABASE_SQLITE_STAT_OPEN_CREATE_DELETE_MODIFY: NO
+JAVASCRIPT_LOGICAL_PATH_REJECTION: database/database.sqlite retained without existence dependency
+UNTRACKED_SQLITE_DEPENDENCY_REMOVED: YES
+CLEAN_CLONE_CONTRACT: PASS
+REMEDIATION_SCOPE: one test file plus this Work Log and Work Package
+```
+
+The prior evidence wording is narrowed accordingly: no test now reads the developer-local SQLite file. The immutable repository-file proof uses tracked `composer.json`; the JavaScript guard continues to reject the logical repository SQLite path solely by resolved parent/path identity. This remains valid when `database/database.sqlite` is absent in a clean clone.
 
 ## PROJECT POSITION
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A MERGED / PASS → 001E-B PR #21 REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E-C WAITING → 001F WAITING
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A MERGED / PASS → 001E-B PR #21 CLEAN-CLONE REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E-C WAITING → 001F WAITING
 CURRENT_PHASE: 001E-B Browser E2E Foundation implementation review
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-B
-PACKAGE_STATUS: PR #21 REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
+PACKAGE_STATUS: PR #21 CLEAN-CLONE REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
 BASELINE: main@05290700afc94153378c0ca4fafe0c69eab80544
 GITHUB_STATE: PR #21 OPEN / DRAFT / PENDING INDEPENDENT REVIEW
 GLOBAL_GATE: FAIL
@@ -316,5 +335,5 @@ DEPLOYMENT: EXCLUDED
 ## Verdict
 
 ```text
-FINAL_STATUS: PR_21_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
+FINAL_STATUS: PR_21_CLEAN_CLONE_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
 ```

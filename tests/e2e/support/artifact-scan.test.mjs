@@ -140,7 +140,7 @@ test('external run root and loopback URL contracts fail closed', async () => {
     await rm(external, { recursive: true });
 });
 
-test('database safety gate accepts only a fresh external disposable SQLite file', async () => {
+test('database safety gate accepts only fresh external SQLite and rejects the logical repository path without a file dependency', async () => {
     const runRoot = await temporaryDirectory();
     await mkdir(path.join(runRoot, 'database'));
     const databasePath = path.join(runRoot, 'database', 'e2e.sqlite');
@@ -207,18 +207,18 @@ test('Laravel runtime preflight verifies effective SQLite identity and rejects s
     assert.notEqual(mysql.status, 0);
     assert.match(mysql.stderr, /safety gate failed: connection/);
 
-    const repositoryDatabase = path.join(REPOSITORY_ROOT, 'database', 'database.sqlite');
-    const repositoryDatabaseBefore = await stat(repositoryDatabase);
+    const trackedRepositoryFixture = path.join(REPOSITORY_ROOT, 'composer.json');
+    const trackedRepositoryFixtureBefore = await stat(trackedRepositoryFixture);
     const repositoryPath = spawnSync('php', command, {
         cwd: REPOSITORY_ROOT,
         encoding: 'utf8',
-        env: { ...environment, DB_DATABASE: repositoryDatabase },
+        env: { ...environment, DB_DATABASE: trackedRepositoryFixture },
     });
-    const repositoryDatabaseAfter = await stat(repositoryDatabase);
+    const trackedRepositoryFixtureAfter = await stat(trackedRepositoryFixture);
     assert.notEqual(repositoryPath.status, 0);
     assert.match(repositoryPath.stderr, /safety gate failed: database path/);
-    assert.equal(repositoryDatabaseAfter.size, repositoryDatabaseBefore.size);
-    assert.equal(repositoryDatabaseAfter.mtimeMs, repositoryDatabaseBefore.mtimeMs);
+    assert.equal(trackedRepositoryFixtureAfter.size, trackedRepositoryFixtureBefore.size);
+    assert.equal(trackedRepositoryFixtureAfter.mtimeMs, trackedRepositoryFixtureBefore.mtimeMs);
 
     await writeFile(databasePath, 'shared-database-canary');
     const shared = spawnSync('php', command, { cwd: REPOSITORY_ROOT, encoding: 'utf8', env: environment });
