@@ -2,10 +2,11 @@ import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-    REPOSITORY_ROOT,
+    assertNotAborted,
     assertRuntimeEnvironment,
     cleanupDisposableRun,
     createDisposableRun,
+    resolveLocalPlaywrightCli,
     runManagedChild,
 } from './e2e-environment.mjs';
 
@@ -40,6 +41,7 @@ async function runLifecycleFixture(mode, controlPath) {
 }
 
 async function runFoundation() {
+    const playwrightCli = resolveLocalPlaywrightCli();
     activeRun = await createDisposableRun();
     const { browserCache, databasePath, env, runRoot } = activeRun;
 
@@ -49,11 +51,20 @@ async function runFoundation() {
     process.stdout.write('E2E_RUN_ROOT_OUTSIDE_REPOSITORY=true\n');
 
     assertRuntimeEnvironment(env, runRoot);
+    assertNotAborted(abortController.signal);
     await runManagedChild('npm', ['run', 'build'], { env, signal: abortController.signal });
+    assertNotAborted(abortController.signal);
+    await runManagedChild('php', ['tests/e2e/support/provision-users.php', '--runtime-preflight'], {
+        env,
+        signal: abortController.signal,
+    });
+    assertNotAborted(abortController.signal);
     await runManagedChild('php', ['artisan', 'migrate', '--force'], { env, signal: abortController.signal });
     assertRuntimeEnvironment(env, runRoot, { allowPopulatedDatabase: true });
+    assertNotAborted(abortController.signal);
     await runManagedChild('php', ['tests/e2e/support/provision-users.php'], { env, signal: abortController.signal });
-    await runManagedChild('npx', ['playwright', 'test', '--project=chromium'], {
+    assertNotAborted(abortController.signal);
+    await runManagedChild(process.execPath, [playwrightCli, 'test', '--project=chromium'], {
         env,
         signal: abortController.signal,
         timeout: 120_000,

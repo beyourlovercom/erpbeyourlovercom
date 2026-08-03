@@ -2,7 +2,7 @@
 type: byl-erp-work-log
 date: 2026-08-03
 work_package: ERP-ARCH-MIGRATION-001E-B
-status: implementation-complete-pending-independent-review
+status: remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -176,7 +176,7 @@ SYNTHETIC_USERS: 3 / disposable only
 ERP_LOCAL_ADMIN_BYPASS: false
 FOUNDATION_SMOKE: PASS / 1 Chromium test
 FOUNDATION_SMOKE_EXTERNAL_REQUESTS: 0
-ENVIRONMENT_AND_ARTIFACT_CONTRACTS: PASS / 10 tests
+ENVIRONMENT_AND_ARTIFACT_CONTRACTS: PASS / 15 tests
 SCREENSHOT: off
 TRACE: off
 VIDEO: off
@@ -217,7 +217,7 @@ GITHUB_ACTIONS: UNCHANGED
 COMPOSER_VALIDATE: PASS
 PHP_TESTS: PASS / 134 tests / 1322 assertions
 FRONTEND_TESTS: PASS / 12 files / 71 tests
-E2E_CONTRACT_TESTS: PASS / 10 tests
+E2E_CONTRACT_TESTS: PASS / 15 tests
 E2E_FOUNDATION_SMOKE: PASS / 1 Chromium test
 APPLICATION_TYPECHECK: PASS
 E2E_TYPECHECK: PASS
@@ -232,14 +232,45 @@ DISPOSABLE_RUN_ROOTS_AFTER_TEST: NONE
 
 Repository-wide Pint reported only unchanged baseline files outside this package, including existing Migrations, models, routes and legacy Shell tests. The sole changed PHP file, `tests/e2e/support/provision-users.php`, passed focused Pint and syntax validation. These existing formatting findings were not modified because this package prohibits application and Migration changes.
 
+## PR #21 Independent Review Remediation
+
+```text
+INDEPENDENT_REVIEW_RESULT: CHANGES_REQUIRED
+REVIEWED_HEAD: 6a4bc9647885040e3caaf1fcbb6fe40aaa63d2cc
+ISSUE_1: Laravel effective config and database identity were not proven before Migration
+ISSUE_2: an already-aborted AbortSignal could reach spawn
+ISSUE_3: Cookie variants and aggregate/nested ZIP budgets were incomplete
+ISSUE_4: npx allowed a package-download fallback when starting Playwright
+LARAVEL_RUNTIME_PREFLIGHT: PASS
+PRE_MIGRATION_EFFECTIVE_ENVIRONMENT: testing
+PRE_MIGRATION_EFFECTIVE_CONNECTION: sqlite
+PRE_MIGRATION_CONFIGURED_DATABASE_PATH: validated external database/e2e.sqlite
+PRE_MIGRATION_PDO_MAIN_PATH: validated external database/e2e.sqlite
+POST_BOOT_PROVISIONING_PDO_PATH: validated again before inserts
+ERP_LOCAL_ADMIN_BYPASS_EFFECTIVE: false
+BOOTSTRAP_CACHE_PATHS: repository-external run root only
+ACTIVE_CONFIG_ROUTE_EVENT_CACHE: rejected before Laravel Kernel bootstrap
+MYSQL_SHARED_OR_REPOSITORY_DATABASE: rejected before connection or Migration
+PRE_ABORTED_SIGNAL_CHILD_SPAWN: NO
+LOCAL_PLAYWRIGHT_CLI: exact repository-installed @playwright/test 1.62.1
+NPM_NETWORK_FALLBACK: NO
+COOKIE_FIXTURES: cookie / setCookie / sessionCookie PASS
+ZIP_BUDGET_FIXTURES: multi-entry aggregate / nested cumulative PASS
+E2E_CONTRACT_TESTS: PASS / 15 tests
+FOUNDATION_SMOKE: PASS / 1 Chromium test / external requests 0
+REMEDIATION_RESULT: COMPLETE / PENDING INDEPENDENT REVIEW
+```
+
+The Laravel runtime-preflight runs before `php artisan migrate` using the exact environment later passed to Migration. The provisioner repeats effective PDO identity after Migration. The repository database file was checked read-only before and after its rejection fixture and retained identical size and modification time. No MySQL connection, shared SQLite mutation, repository database mutation or Migration-file change occurred.
+
 ## PROJECT POSITION
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A MERGED / PASS → 001E-B LOCAL FOUNDATION IMPLEMENTED / PENDING INDEPENDENT REVIEW → 001E-C WAITING → 001F WAITING
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A MERGED / PASS → 001E-B PR #21 REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E-C WAITING → 001F WAITING
 CURRENT_PHASE: 001E-B Browser E2E Foundation implementation review
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-B
-PACKAGE_STATUS: LOCAL FOUNDATION IMPLEMENTED / PENDING INDEPENDENT REVIEW
+PACKAGE_STATUS: PR #21 REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
 BASELINE: main@05290700afc94153378c0ca4fafe0c69eab80544
 GITHUB_STATE: PR #21 OPEN / DRAFT / PENDING INDEPENDENT REVIEW
 GLOBAL_GATE: FAIL
@@ -285,5 +316,5 @@ DEPLOYMENT: EXCLUDED
 ## Verdict
 
 ```text
-FINAL_STATUS: ERP_ARCH_MIGRATION_001E_B_LOCAL_FOUNDATION_IMPLEMENTED_PENDING_INDEPENDENT_REVIEW
+FINAL_STATUS: PR_21_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
 ```

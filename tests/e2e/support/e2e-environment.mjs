@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, open, realpath, rm, stat } from 'node:fs/promises';
-import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -23,6 +23,42 @@ function requireAbsolutePath(value, name) {
     }
 
     return path.resolve(value);
+}
+
+export function assertNotAborted(signal) {
+    if (signal?.aborted) {
+        throw new Error('E2E execution was aborted before starting a child process.');
+    }
+}
+
+export function resolveLocalPlaywrightCli(repositoryRoot = REPOSITORY_ROOT) {
+    const packageRoot = path.join(repositoryRoot, 'node_modules', '@playwright', 'test');
+    const packageFile = path.join(packageRoot, 'package.json');
+    const cliFile = path.join(packageRoot, 'cli.js');
+
+    if (!existsSync(packageFile) || !existsSync(cliFile)) {
+        throw new Error('The exact local Playwright CLI is not installed.');
+    }
+
+    const packageEntry = lstatSync(packageFile);
+    const cliEntry = lstatSync(cliFile);
+    if (!packageEntry.isFile() || packageEntry.isSymbolicLink() || !cliEntry.isFile() || cliEntry.isSymbolicLink()) {
+        throw new Error('The local Playwright CLI must use regular repository-installed files.');
+    }
+
+    const resolvedPackageRoot = realpathSync.native(packageRoot);
+    const resolvedPackageFile = realpathSync.native(packageFile);
+    const resolvedCliFile = realpathSync.native(cliFile);
+    if (!isWithin(resolvedPackageRoot, resolvedPackageFile) || !isWithin(resolvedPackageRoot, resolvedCliFile)) {
+        throw new Error('The local Playwright CLI escaped its installed package.');
+    }
+
+    const metadata = JSON.parse(readFileSync(resolvedPackageFile, 'utf8'));
+    if (metadata.version !== '1.62.1') {
+        throw new Error('The local Playwright CLI version must be exactly 1.62.1.');
+    }
+
+    return resolvedCliFile;
 }
 
 export function assertExternalRunRoot(value, { requireEmpty = true } = {}) {
@@ -114,6 +150,20 @@ export function assertRuntimeEnvironment(env, runRoot, { allowPopulatedDatabase 
         throw new Error('Only a direct disposable SQLite connection is allowed.');
     }
 
+    const cacheRoot = path.join(resolvedRoot, 'bootstrap', 'cache');
+    const expectedCachePaths = {
+        APP_CONFIG_CACHE: path.join(cacheRoot, 'config.php'),
+        APP_EVENTS_CACHE: path.join(cacheRoot, 'events.php'),
+        APP_PACKAGES_CACHE: path.join(cacheRoot, 'packages.php'),
+        APP_ROUTES_CACHE: path.join(cacheRoot, 'routes-v7.php'),
+        APP_SERVICES_CACHE: path.join(cacheRoot, 'services.php'),
+    };
+    for (const [name, expected] of Object.entries(expectedCachePaths)) {
+        if (env[name] !== expected) {
+            throw new Error(`${name} must be isolated inside the external run root.`);
+        }
+    }
+
     const requestedDatabasePath = requireAbsolutePath(env.DB_DATABASE, 'DB_DATABASE');
     const databasePath = path.join(realpathSync.native(path.dirname(requestedDatabasePath)), path.basename(requestedDatabasePath));
     const expectedPath = path.join(resolvedRoot, 'database', 'e2e.sqlite');
@@ -171,8 +221,8 @@ export async function createDisposableRun() {
             throw new Error('Generated run root is inside the Git worktree.');
         }
 
-        for (const directory of ['database', 'auth', 'artifacts', 'report', 'logs', 'pids', 'secrets']) {
-            await mkdir(path.join(resolvedRoot, directory), { mode: 0o700 });
+        for (const directory of ['database', 'auth', 'artifacts', 'report', 'logs', 'pids', 'secrets', 'bootstrap/cache']) {
+            await mkdir(path.join(resolvedRoot, directory), { mode: 0o700, recursive: true });
         }
 
         const databasePath = path.join(resolvedRoot, 'database', 'e2e.sqlite');
@@ -185,6 +235,11 @@ export async function createDisposableRun() {
             APP_ENV: 'testing',
             APP_DEBUG: 'false',
             APP_KEY: `base64:${randomBytes(32).toString('base64')}`,
+            APP_CONFIG_CACHE: path.join(resolvedRoot, 'bootstrap', 'cache', 'config.php'),
+            APP_EVENTS_CACHE: path.join(resolvedRoot, 'bootstrap', 'cache', 'events.php'),
+            APP_PACKAGES_CACHE: path.join(resolvedRoot, 'bootstrap', 'cache', 'packages.php'),
+            APP_ROUTES_CACHE: path.join(resolvedRoot, 'bootstrap', 'cache', 'routes-v7.php'),
+            APP_SERVICES_CACHE: path.join(resolvedRoot, 'bootstrap', 'cache', 'services.php'),
             APP_URL: `http://127.0.0.1:${port}`,
             BYL_E2E_BASE_URL: `http://127.0.0.1:${port}`,
             BYL_E2E_DISPOSABLE: 'true',
@@ -221,6 +276,8 @@ export async function cleanupDisposableRun(runRoot) {
 
 export async function runManagedChild(command, args, options = {}) {
     const { env = process.env, signal, timeout = 0 } = options;
+    assertNotAborted(signal);
+
     const child = spawn(command, args, {
         cwd: REPOSITORY_ROOT,
         detached: process.platform !== 'win32',

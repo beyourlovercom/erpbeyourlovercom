@@ -5,11 +5,12 @@ import { inflateRawSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_ARCHIVE_UNCOMPRESSED_BYTES = 6 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES = 200;
 const allowedTextExtensions = new Set(['.txt', '.json', '.html', '.xml', '.md', '.csv']);
 const forbiddenExtensions = new Set(['.db', '.sqlite', '.sqlite3', '.har', '.log', '.env', '.png', '.jpg', '.jpeg', '.webm']);
 const forbiddenName = /(?:storage[-_.]?state|runtime[-_.]?env|secret|password|session|cookie|csrf|xsrf|authorization)/i;
-const sensitiveContent = /(?:password(?:_confirmation)?|authorization|bearer\s+[a-z0-9._~+\/-]+|set-cookie|cookie\s*[:=]|session(?:_id)?|xsrf|csrf|app_key|database_(?:url|password)|private[_-]?key)/i;
+const sensitiveContent = /(?:password(?:_confirmation)?|authorization|bearer\s+[a-z0-9._~+\/-]+|["']?(?:cookie|set[-_]?cookie|session[-_]?cookie)["']?\s*[:=]|set-cookie|session(?:_id)?|xsrf|csrf|app_key|database_(?:url|password)|private[_-]?key)/i;
 const emailPattern = /[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
 
 function assertSafeName(name) {
@@ -35,9 +36,11 @@ function scanText(buffer, { allowedEmailDomain, secretValues }) {
             throw new Error('Artifact contains a configured canary secret.');
         }
     }
-    for (const email of text.match(emailPattern) ?? []) {
-        if (!email.toLowerCase().endsWith(`@${allowedEmailDomain.toLowerCase()}`)) {
-            throw new Error('Artifact contains a non-synthetic email address.');
+    if (text.includes('@')) {
+        for (const email of text.match(emailPattern) ?? []) {
+            if (!email.toLowerCase().endsWith(`@${allowedEmailDomain.toLowerCase()}`)) {
+                throw new Error('Artifact contains a non-synthetic email address.');
+            }
         }
     }
 }
@@ -52,14 +55,13 @@ function findEndOfCentralDirectory(buffer) {
     throw new Error('ZIP central directory is missing.');
 }
 
-function readZipEntries(buffer) {
+function* readZipEntries(buffer) {
     const end = findEndOfCentralDirectory(buffer);
     const entryCount = buffer.readUInt16LE(end + 10);
     let offset = buffer.readUInt32LE(end + 16);
 
     if (entryCount > MAX_ARCHIVE_ENTRIES) throw new Error('ZIP has too many entries.');
 
-    const entries = [];
     for (let index = 0; index < entryCount; index++) {
         if (buffer.readUInt32LE(offset) !== 0x02014b50) throw new Error('ZIP central directory is invalid.');
         const flags = buffer.readUInt16LE(offset + 8);
@@ -82,22 +84,13 @@ function readZipEntries(buffer) {
         const localNameLength = buffer.readUInt16LE(localOffset + 26);
         const localExtraLength = buffer.readUInt16LE(localOffset + 28);
         const dataOffset = localOffset + 30 + localNameLength + localExtraLength;
-        const compressed = buffer.subarray(dataOffset, dataOffset + compressedSize);
-        let content;
-
-        if (compression === 0) content = compressed;
-        else if (compression === 8) content = inflateRawSync(compressed, { maxOutputLength: MAX_FILE_BYTES });
-        else throw new Error('Unsupported ZIP compression method.');
-
-        if (content.length !== size) throw new Error('ZIP entry size does not match metadata.');
-        entries.push({ content, name });
+        if (dataOffset + compressedSize > buffer.length) throw new Error('ZIP entry data is truncated.');
+        yield { compressedSize, compression, dataOffset, name, size };
         offset += 46 + nameLength + extraLength + commentLength;
     }
-
-    return entries;
 }
 
-function scanBuffer(name, buffer, options, depth = 0) {
+function scanBuffer(name, buffer, options, depth = 0, archiveBudget = { uncompressedBytes: 0 }) {
     assertSafeName(name);
     if (buffer.length > MAX_FILE_BYTES) throw new Error('Artifact is oversized.');
 
@@ -106,7 +99,22 @@ function scanBuffer(name, buffer, options, depth = 0) {
 
     if (extension === '.zip') {
         if (depth >= 2) throw new Error('Nested ZIP depth is prohibited.');
-        for (const entry of readZipEntries(buffer)) scanBuffer(entry.name, entry.content, options, depth + 1);
+        for (const entry of readZipEntries(buffer)) {
+            archiveBudget.uncompressedBytes += entry.size;
+            if (archiveBudget.uncompressedBytes > MAX_ARCHIVE_UNCOMPRESSED_BYTES) {
+                throw new Error('ZIP cumulative uncompressed size exceeds the safety budget.');
+            }
+
+            const compressed = buffer.subarray(entry.dataOffset, entry.dataOffset + entry.compressedSize);
+            let content;
+
+            if (entry.compression === 0) content = compressed;
+            else if (entry.compression === 8) content = inflateRawSync(compressed, { maxOutputLength: MAX_FILE_BYTES });
+            else throw new Error('Unsupported ZIP compression method.');
+
+            if (content.length !== entry.size) throw new Error('ZIP entry size does not match metadata.');
+            scanBuffer(entry.name, content, options, depth + 1, archiveBudget);
+        }
 
         return;
     }
