@@ -2,7 +2,7 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-ARCH-MIGRATION-001D
-status: in-progress
+status: complete-pass
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -14,14 +14,14 @@ standard_version: 1.1
 ```text
 ID: ERP-ARCH-MIGRATION-001D
 TITLE: Runtime / Audit / Sync Foundation
-STATUS: CURRENT / IN PROGRESS
+STATUS: COMPLETE / PASS
 OWNER_IMPLEMENTATION_AUTHORIZATION: SUBPACKAGE-SPECIFIC
-MERGE_AUTHORIZATION: NO
-MIGRATION_AUTHORIZATION: NO
+MERGE_STATUS: ALL THREE SUBPACKAGES MERGED
+MIGRATION_STATUS: ISOLATED 001D-C VALIDATION ONLY / DEV STAGING PRODUCTION NOT RUN
 DEPLOYMENT_AUTHORIZATION: NO
 ```
 
-This file is an implementation-planning contract only. It does not authorize repository changes, application code, schema creation, Migration execution or deployment.
+This file is the closure record for the three independently authorized and reviewed 001D subpackages. It grants no new implementation, Migration, UAT or deployment authorization.
 
 ## Frozen Execution Split
 
@@ -38,16 +38,27 @@ Estimate: 12–18 effective hours (planning value 15 hours)
 
 → ERP-ARCH-MIGRATION-001D-B
 Audit Foundation
-Status: PREPARED / OWNER IMPLEMENTATION AUTHORIZATION NO
+Status: MERGED / PASS
+PR: #12
+Accepted Head: 953d1b07d48f975a5f1098069927ae9a680ebc7d
+Main SHA: e2247fcaaae690c94ef07d45c8807ce749de1b46
 Estimate: 9–14 effective hours (planning value 12 hours)
 
-ERP-ARCH-MIGRATION-001D-C
+→ ERP-ARCH-MIGRATION-001D-C
 Sync Outbox Foundation
-Status: WAITING
+Status: MERGED / PASS
+PR: #13
+Accepted Head: e4bc57b7a3f0edbe84ccfde63d02d9135a4875e3
+Main SHA: 548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
 Estimate: 14–22 effective hours (planning value 18 hours)
+
+ACCEPTED_EVIDENCE_LIMITS:
+REAL_MYSQL_TWO_CONNECTION_CLAIM_CONCURRENCY: UNVERIFIED
+MYSQL_5.7: UNVERIFIED
+DEV / STAGING / PRODUCTION MIGRATION: NOT RUN
 ```
 
-No subpackage becomes authorized merely by this split. Each subpackage requires separate Owner implementation authorization. Migration file authoring, Migration execution, merge and deployment remain separate gates.
+Each subpackage was separately authorized, independently reviewed and merged. The evidence limits above remain active and are not converted to PASS by parent closure.
 
 ### ERP-ARCH-MIGRATION-001D-A — Runtime Foundation
 
@@ -256,16 +267,14 @@ Plan final-compatible fields for aggregate reference, operation, provider/connec
 - retries use bounded backoff and preserve last safe failure information;
 - completion requires a future authorized provider/application service, not direct model-side effects.
 
-## Acceptance Criteria for Future Implementation
+## Closure Acceptance Evidence
 
-- Redis, Queue and Scheduler configuration is validated with safe failure behaviour;
-- audit service persists approved metadata and rejects sensitive fields;
-- sync-outbox foundation supports deterministic pending, processing, completed and failed infrastructure states;
-- authorization protects runtime, audit and sync surfaces;
-- migrations have reviewed up/down behaviour but are not executed without authorization;
-- no business Order, Shipment, UI or external adapter behaviour is introduced;
-- all automated tests, route validation, typecheck/build where affected and diff checks pass;
-- no production mutation or deployment occurs.
+- 001D-A Runtime Foundation is MERGED / PASS through PR #9;
+- 001D-B Audit Foundation is MERGED / PASS through PR #12;
+- 001D-C Sync Outbox Foundation is MERGED / PASS through PR #13;
+- no business Order, Shipment, Sync UI or external adapter behaviour was introduced;
+- no Dev, Staging or Production Migration, UAT or deployment occurred;
+- Global Architecture Gate remains FAIL until 001E and 001F complete their separate gates.
 
 ## PHP Test Plan
 
@@ -338,37 +347,37 @@ Estimate range: 35–54 effective hours
 
 The combined planning value is `15 + 12 + 18 = 45` hours and the combined range is `12 + 9 + 14 = 35` through `18 + 14 + 22 = 54` hours. This estimate confers no authorization.
 
-## Final Preparation Verdict
+## Final Closure Verdict
 
 ```text
-FINAL_PREPARATION_VERDICT: 001D_SCOPE_READY_FOR_OWNER_REVIEW
+FINAL_VERDICT: ERP_ARCH_MIGRATION_001D_COMPLETE_PASS
 ```
 
 ## PROJECT POSITION
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B CURRENT / PREPARED / IMPLEMENTATION NOT STARTED → 001D-C WAITING → 001E WAITING → 001F WAITING
-COMPLETED_PHASES: 001A, 001B, 001C, 001D-A
-CURRENT_PHASE: 001D-B Audit Foundation preparation
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS → 001D-C MERGED / PASS → 001D COMPLETE / PASS → 001E NEXT / PREPARED / IMPLEMENTATION NOT STARTED → 001F WAITING
+COMPLETED_PHASES: 001A, 001B, 001C, 001D-A, 001D-B, 001D-C, 001D
+CURRENT_PHASE: 001E Shared UI / Browser E2E preparation
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001D
-PACKAGE_STATUS: 001D-A MERGED / 001D-B PREPARED / OWNER IMPLEMENTATION AUTHORIZATION NO
-WAITING_PHASES: 001D-C, 001E, 001F
-BASELINE: main@d8b08cac5fefff0a6cdc66388bee5ad2a383c70b
-GITHUB_STATE: PR #9 MERGED / CLOSED; PR #11 MERGED / CLOSED; PR #10 OPEN / NON-DRAFT / UNMERGED; no 001D-B implementation PR exists
-SOURCE_CONFLICTS: GitHub confirms 001D-A merged; main transition documents remain stale until PR #10 merges; this rebased PR contains the pending 001D-B preparation transition
+PACKAGE_STATUS: COMPLETE / PASS; all three subpackages merged
+WAITING_PHASES: 001E implementation, 001F
+BASELINE: main@548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
+GITHUB_STATE: PR #9, PR #12 and PR #13 MERGED; this closure branch has no PR
+SOURCE_CONFLICTS: NONE WITH EVIDENCE; GitHub merge facts and authorized main agree. Evidence limitations remain explicitly unverified.
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: Owner reviews the prepared 001D-B package and separately decides implementation and Migration-file-authoring authorization
-EVIDENCE_AS_OF: 2026-08-01; repository governance, merged PR #9, origin/main and frozen 001D order
+NEXT_DEPENDENCY: Independent review of remediated 001E preparation; separate Owner authorization for 001E-A Preflight only
+EVIDENCE_AS_OF: 2026-08-01; GitHub PR #9/#12/#13, origin/main and accepted subpackage Work Logs
 ```
 
 ## ROADMAP HOURS
 
 ```text
 CURRENT_PACKAGE_ESTIMATE: 45h planning value; 35–54h range; total 001D track estimate
-KNOWN_CURRENT_TRACK_REMAINING: 23–36h; planning value 30h; 001D-B + 001D-C only
-ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE; 001E and 001F lack frozen estimates
+KNOWN_CURRENT_TRACK_REMAINING: 40–62h parent 001E planning range; child implementation estimates require Preflight confirmation; 001F excluded
+ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE; 001E parent planning exists but child Preflights and 001F estimate are incomplete
 MVP1_TOTAL_ESTIMATE: 122–190h total estimate
 MVP1_PLANNING_BASELINE: 166h total planning value
 MVP1_MAXIMUM_ENVELOPE: 192h maximum total envelope
@@ -376,8 +385,8 @@ MVP1_REMAINING: UNKNOWN WITH EVIDENCE; accepted actual-hours ledger and overlap 
 POST_MVP_KNOWN_INCREMENT: approximately 68–120h incremental beyond MVP1
 LONG_TERM_CUMULATIVE_RANGE: 235–402h through 1,819–3,146h; cumulative non-additive horizons
 PROGRAM_REMAINING: UNKNOWN WITH EVIDENCE; cumulative horizons and project-wide actual ledger are incomplete
-COMPLETED_ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE; accepted project-wide Work Log ledger is incomplete
-ESTIMATE_CONFIDENCE: HIGH for quoted totals; MEDIUM for 001D-B/C sum; LOW / UNKNOWN for remaining totals
+COMPLETED_ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE; 001D-A has no accepted actual-hours value, while 001D-B records 3h and 001D-C records 4.8h
+ESTIMATE_CONFIDENCE: HIGH for issued 001D; LOW / MEDIUM for parent 001E planning before child Preflights; LOW / UNKNOWN for Architecture Gate and program remaining
 ESTIMATE_AS_OF: 2026-08-01
 ESTIMATE_METHOD: repository classification; no unsafe subtraction; no cumulative or overlapping aggregation
 ```
@@ -392,6 +401,10 @@ REMEDIATION_BUFFER: 4-7 hours (planning value 6 hours)
 ESTIMATED_EFFECTIVE_HOURS: 45 hours
 ESTIMATE_RANGE: 35-54 effective hours
 ESTIMATE_BASIS: planning values 4 + 29 + 6 + 6 hours; reconciled to 001D-A 15 hours, 001D-B 12 hours and 001D-C 18 hours, with combined ranges of 35-54 hours
+ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE; 001D-A actual was not recorded, preventing a complete parent total
+ACTUAL_HOURS_BREAKDOWN: 001D-A UNKNOWN WITH EVIDENCE; 001D-B 3h; 001D-C 4.8h
+VARIANCE: UNKNOWN WITH EVIDENCE; incomplete accepted actual ledger prevents safe arithmetic against 45h
+VARIANCE_REASON: Historical 001D-A Work Log explicitly records no productive actual-hours value
 OWNER_REVIEW: EXCLUDED
 MERGE: EXCLUDED
 MIGRATION: EXCLUDED

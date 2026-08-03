@@ -41,11 +41,14 @@ The Program Roadmap is the top-level delivery sequence. It must not be replaced 
 001A Foundation Bootstrap             MERGED / PASS
 001B Authentication / Authorization   MERGED / PASS
 001C Application Shell                MERGED / PASS
-001D Runtime / Audit / Sync           IN PROGRESS BY GITHUB EVIDENCE
+001D Runtime / Audit / Sync           COMPLETE / PASS
 001D-A Runtime Foundation             MERGED / PASS BY PR #9
-→ 001D-B Audit Foundation             TRANSITION HELD IN OPEN PR #10
-001D-C Sync Outbox Foundation         WAITING
-001E Shared UI / Browser E2E          WAITING
+001D-B Audit Foundation               MERGED / PASS BY PR #12
+001D-C Sync Outbox Foundation         MERGED / PASS BY PR #13
+→ 001E Shared UI / Browser E2E        NEXT / PREPARED / IMPLEMENTATION NOT STARTED
+001E-A Shared UI / Design Tokens      PREFLIGHT REQUIRED / IMPLEMENTATION NOT READY
+001E-B Browser E2E Foundation         WAITING
+001E-C Auth / Permission / Shell E2E  WAITING
 001F Architecture Re-audit            WAITING
 Global Architecture Gate              FAIL
 ```
@@ -53,22 +56,22 @@ Global Architecture Gate              FAIL
 ## Source Conflict Snapshot
 
 ```text
-GITHUB_FACT: 001D-A PR #9 is MERGED / PASS.
-MAIN_GOVERNANCE_FACT: AI/CURRENT_CONTEXT.md and related main documents remain stale until PR #10 is updated and merged.
-OPEN_PR_FACT: PR #10 contains the pending transition to 001D-B preparation.
-CONFLICT_HANDLING: Preserve all three facts. GitHub governs PR/merge state; main governs merged repository documentation; unmerged PR #10 is pending content and not repository truth.
+GITHUB_FACT: PR #9, PR #12 and PR #13 are merged; main is 548d53f1eae2ec14eea7261d3a101c1f2fda0dcc.
+GOVERNANCE_FACT: 001D is COMPLETE / PASS; 001E is prepared with implementation authorization NO.
+SOURCE_CONFLICTS: NONE WITH EVIDENCE for merge state and current package order.
+EVIDENCE_LIMITS: real-MySQL two-connection claim concurrency and MySQL 5.7 remain unverified; Dev/Staging/Production Migration was not run.
 ```
 
 ## Initial Hours Snapshot
 
 | Metric | Value | Classification | Evidence / Qualification |
 |---|---:|---|---|
-| `001D-B_TOTAL_ESTIMATE` | 9–14h; planning value 12h | remaining component estimate | Frozen parent 001D package |
-| `001D-C_TOTAL_ESTIMATE` | 14–22h; planning value 18h | remaining component estimate | Frozen parent 001D package |
-| `KNOWN_001D_REMAINING` | 23–36h; planning value 30h | known remaining component sum | 001D-B + 001D-C only; excludes 001E and 001F |
-| `001E_ESTIMATE` | UNKNOWN WITH EVIDENCE | unknown remaining component | No frozen package estimate exists |
+| `001D_TOTAL_ESTIMATE` | 35–54h; planning value 45h | completed issued total estimate | Frozen and completed parent 001D package; not remaining |
+| `001E_PARENT_PLANNING_ESTIMATE` | 40–62h; planning value 51h | parent-level planning estimate | Preliminary allocation across 001E-A/B/C; child implementation estimates require their own Preflights |
+| `001E_A_PREFLIGHT_ESTIMATE` | 2–4h; planning value 3h | next bounded Preflight estimate | Governance/evidence work only; implementation not ready or authorized |
 | `001F_ESTIMATE` | UNKNOWN WITH EVIDENCE | unknown remaining component | No frozen package estimate exists |
-| `ARCHITECTURE_GATE_REMAINING` | UNKNOWN WITH EVIDENCE | unknown remaining total | Known component floor is 23–36h, but 001E and 001F are unestimated |
+| `KNOWN_CURRENT_TRACK_REMAINING` | 40–62h; planning value 51h | parent planning range | Child implementation estimates unconfirmed; excludes unknown 001F |
+| `ARCHITECTURE_GATE_REMAINING` | UNKNOWN WITH EVIDENCE | unknown remaining total | 001E is known, but 001F is unestimated and cannot be safely added |
 | `MVP1_TOTAL_ESTIMATE` | 122–190h | total estimate | Effective Hours source; not automatically remaining |
 | `MVP1_PLANNING_BASELINE` | 166h | total planning value | Effective Hours source |
 | `MVP1_MAXIMUM_ENVELOPE` | 192h | maximum total planning envelope | Living Roadmap and Effective Hours sources |
@@ -93,7 +96,11 @@ These are alternative cumulative horizons, not additive components. They must ne
 
 | WORK_PACKAGE | STATUS | ESTIMATED_EFFECTIVE_HOURS | ACTUAL_EFFECTIVE_HOURS | SCOPE_CLASSIFICATION | INCLUDED_IN_MVP1_TOTAL | EVIDENCE |
 |---|---|---:|---:|---|---|---|
-| Project-wide accepted ledger | INCOMPLETE | UNKNOWN WITH EVIDENCE | UNKNOWN WITH EVIDENCE | actual-effort ledger | UNKNOWN WITH EVIDENCE | Existing accepted Work Logs do not yet provide complete actual hours and overlap classification |
+| ERP-ARCH-MIGRATION-001D-A | MERGED / PASS | 12–18h; planning value 15h | UNKNOWN WITH EVIDENCE | architecture component | UNKNOWN WITH EVIDENCE | Accepted Work Log explicitly records no productive actual-hours value |
+| ERP-ARCH-MIGRATION-001D-B | MERGED / PASS | 9–14h; planning value 12h | 3h | architecture component | UNKNOWN WITH EVIDENCE | Accepted 001D-B Work Log |
+| ERP-ARCH-MIGRATION-001D-C | MERGED / PASS | 14–22h; planning value 18h | 4.8h | architecture component | UNKNOWN WITH EVIDENCE | Accepted 001D-C Work Log through remediation Head |
+| ERP-ARCH-MIGRATION-001D | COMPLETE / PASS | 35–54h; planning value 45h | UNKNOWN WITH EVIDENCE | parent aggregate; do not add to component rows | UNKNOWN WITH EVIDENCE | 001D-A missing actual prevents safe parent aggregation |
+| Project-wide accepted ledger | INCOMPLETE | UNKNOWN WITH EVIDENCE | UNKNOWN WITH EVIDENCE | actual-effort ledger | UNKNOWN WITH EVIDENCE | Historical accepted packages and architecture/MVP1 overlap classification remain incomplete |
 
 Future rows may be added only from accepted repository Work Logs. PR elapsed time, commit timestamps, token use and chat-only values are prohibited as actual-hours evidence.
 
@@ -111,9 +118,9 @@ Future rows may be added only from accepted repository Work Logs. PR elapsed tim
 ## Estimate Confidence
 
 ```text
-HIGH: quoted repository total and cumulative ranges
-MEDIUM: known 001D-B/C component sum
-LOW / UNKNOWN: project and Architecture Gate remaining totals
-ESTIMATE_AS_OF: 2026-08-01 13:33 +08:00
+HIGH: quoted repository total and cumulative ranges; issued 001D estimate
+MEDIUM: parent 001E-A/B/C planning allocation and bounded 001E-A Preflight estimate
+LOW / UNKNOWN: project and Architecture Gate remaining totals because 001F and actual-ledger overlap remain incomplete
+ESTIMATE_AS_OF: 2026-08-01
 ESTIMATE_METHOD: repository source classification; no subtraction without accepted actuals; no addition of cumulative or overlapping ranges
 ```
