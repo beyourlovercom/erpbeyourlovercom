@@ -1,0 +1,69 @@
+import { mount } from '@vue/test-utils'
+import { describe, expect, it, vi } from 'vitest'
+import GlobalNavigation from './GlobalNavigation.vue'
+
+vi.mock('@inertiajs/vue3', () => ({
+  Link: { props: ['href'], template: '<a :href="href"><slot /></a>' },
+  router: { post: vi.fn() },
+}))
+
+const user = { id: 1, name: 'Test User', email: 'test@example.com' }
+const defaults = [
+  ['dashboard', 'Dashboard', '📊'], ['logistics', '物流', '🚚'], ['sync', '同步', '🔄'],
+  ['customers', '客户', '👥'], ['kol', '网红', '⭐'], ['inventory', '库存', '📦'],
+  ['procurement', '外采', '🛒'], ['products', '产品', '🏷️'], ['guides', '指南', '📖'],
+  ['accounting', '会计', '🧾'], ['settings', '设置', '⚙️'],
+].map(([key, label, emoji]) => ({ key, label, emoji, path: key === 'dashboard' ? '/dashboard' : `/${key}`, route: key, placeholder: key !== 'dashboard', children: [] }))
+
+describe('GlobalNavigation', () => {
+  it('renders every default emoji beside its label without exposing emoji to accessibility APIs', () => {
+    const wrapper = mount(GlobalNavigation, { props: { items: defaults, currentPath: '/inventory', mobileHidden: false, user } })
+    const links = wrapper.findAll('.shell-primary-link')
+    expect(links).toHaveLength(11)
+    links.forEach((link, index) => {
+      expect(link.get('.shell-primary-emoji').text()).toBe(defaults[index].emoji)
+      expect(link.get('.shell-primary-emoji').attributes('aria-hidden')).toBe('true')
+      expect(link.text()).toContain(defaults[index].label)
+    })
+    expect(wrapper.get('a[href="/inventory"]').classes()).toContain('is-active')
+    expect(wrapper.get('a[href="/inventory"]').attributes('aria-current')).toBe('page')
+  })
+
+  it('keeps a fixed empty emoji slot and visible label when emoji is absent', () => {
+    const item = { ...defaults[0], emoji: null }
+    const wrapper = mount(GlobalNavigation, { props: { items: [item], currentPath: '/dashboard', mobileHidden: false, user } })
+    expect(wrapper.get('.shell-primary-emoji').text()).toBe('')
+    expect(wrapper.get('.shell-primary-emoji').attributes('aria-hidden')).toBe('true')
+    expect(wrapper.get('.shell-primary-link').text()).toContain('Dashboard')
+  })
+
+  it('accepts optional emoji throughout recursive child navigation data', () => {
+    const nested = {
+      ...defaults[2],
+      children: [{
+        key: 'pending', label: '待处理', emoji: '⏳', path: '/sync/pending', route: 'sync.pending', placeholder: false,
+        children: [{ key: 'retry', label: '重试', emoji: null, path: '/sync/pending/retry', route: 'sync.retry', placeholder: false, children: [] }],
+      }],
+    }
+    const wrapper = mount(GlobalNavigation, { props: { items: [nested], currentPath: '/sync', mobileHidden: false, user } })
+    expect(wrapper.props('items')[0].children[0].emoji).toBe('⏳')
+    expect(wrapper.props('items')[0].children[0].children[0].emoji).toBeNull()
+    expect(wrapper.get('.shell-primary-link').text()).toContain('同步')
+  })
+
+  it('places the account dock after the independently scrollable primary links', () => {
+    const wrapper = mount(GlobalNavigation, { props: { items: defaults, currentPath: '/dashboard', mobileHidden: false, user } })
+    const navigation = wrapper.get('.shell-primary-nav').element
+    expect(navigation.children[0].classList).toContain('shell-brand')
+    expect(navigation.children[1].classList).toContain('shell-primary-links')
+    expect(navigation.children[2].classList).toContain('shell-account-dock')
+    expect(wrapper.get('.shell-account-trigger .shell-account-avatar').text()).toBe('TU')
+  })
+
+  it('makes the full navigation including account entry inert when mobile-hidden', () => {
+    const wrapper = mount(GlobalNavigation, { props: { items: defaults, currentPath: '/dashboard', mobileHidden: true, user } })
+    expect(wrapper.get('nav').attributes('inert')).toBeDefined()
+    expect(wrapper.get('nav').attributes('aria-hidden')).toBe('true')
+    expect(wrapper.find('.shell-account-trigger').exists()).toBe(true)
+  })
+})
