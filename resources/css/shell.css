@@ -233,7 +233,7 @@
 @media (max-width: 800px) {
     .authenticated-shell,
     .authenticated-shell.sidebar-collapsed {
-        grid-template-columns: 0 0 minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .shell-primary-nav {

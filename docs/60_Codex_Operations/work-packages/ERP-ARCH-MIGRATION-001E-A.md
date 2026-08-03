@@ -2,7 +2,7 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-ARCH-MIGRATION-001E-A
-status: component-contract-remediation-complete-pending-independent-review
+status: shell-layout-remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -14,9 +14,9 @@ standard_version: 1.1
 ```text
 ID: ERP-ARCH-MIGRATION-001E-A
 TITLE: Shared UI and Design Tokens
-STATUS: COMPONENT CONTRACT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
+STATUS: 800PX SHELL LAYOUT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
 GOVERNANCE_BASELINE: eb6b4c425551bd60401fa20c85ee139f3d0e4785
-APPLICATION_BASELINE: main@548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
+APPLICATION_BASELINE: main@592b9732c09902cb2803f3b62f5686075619849d
 PARENT_PACKAGE: ERP-ARCH-MIGRATION-001E
 PREFLIGHT_AUTHORIZATION: YES / COMPLETE
 IMPLEMENTATION_AUTHORIZATION: YES / COMPLETE
@@ -44,17 +44,18 @@ LOGIN_SEMANTIC_COLOR_SCAN: PASS / no slate, cyan or rose semantic utility remain
 FOUNDATION_SEMANTIC_COLOR_SCAN: PASS / no slate, cyan or rose semantic utility remains
 BREAKPOINT_VARIABLE_SCAN: PASS / --byl-breakpoint-shell-narrow absent
 SHELL_NARROW_BREAKPOINT: @media (max-width: 800px) preserved
-FRONTEND_TESTS: PASS / 10 files / 57 tests
+FRONTEND_TESTS: PASS / 10 files / 58 tests
 TYPECHECK: PASS
 BUILD: PASS
 FULL_PHP_TEST_SUITE: PASS / 110 tests / 1006 assertions
-OWNER_VISUAL_CHECK: NOT RUN / REQUIRED BEFORE MERGE AUTHORIZATION
+CODEX_VISUAL_REMEDIATION_CHECK: PASS / 799px, 800px and 801px
+OWNER_VISUAL_CHECK: NOT PERFORMED / REQUIRED BEFORE MERGE AUTHORIZATION
 DEPENDENCY_CHANGE: NO
 LOCK_FILE_CHANGE: NO
 WORKFLOW_CHANGE: NO
 PHP_CHANGE: NO
 MIGRATION: NO
-PR: NO
+PR: #17 / OPEN / DRAFT
 MERGE: NO
 UAT: NO
 DEPLOYMENT: NO
@@ -92,6 +93,44 @@ DEPLOYMENT: NO
 ```
 
 `UiAlert` preserves `role="region"` only for `live="off"`, supplies `status/polite` when polite has no role, supplies `alert/assertive` for default error behavior, and rejects a caller `alert` role that conflicts with polite behavior. Component-owned `type`, `disabled`, `aria-disabled`, `aria-busy`, `id`, `value`, `readonly` and `aria-invalid` remain authoritative.
+
+## 800px Shell Layout Remediation Result
+
+```text
+AUTHORIZED_HEAD: 561caa0109d8388c02dd24602464f640b1442eb1
+AUTHORIZED_BASE: main@592b9732c09902cb2803f3b62f5686075619849d
+PR: #17 / OPEN / DRAFT
+VISUAL_FINDING: max-width 800px placed .shell-workspace in a zero-width Grid column
+ROOT_CAUSE: narrow Grid retained two zero-width columns after fixed Rail and hidden Sidebar left normal Grid flow
+REMOVED_RULE: grid-template-columns: 0 0 minmax(0, 1fr)
+NARROW_RULE: grid-template-columns: minmax(0, 1fr)
+BREAKPOINT: @media (max-width: 800px) / UNCHANGED
+REGRESSION_CONTRACT: AuthenticatedLayout.test.ts rejects the former two-zero-column rule and requires one workspace column
+FOCUSED_LAYOUT_TESTS: PASS / 1 file / 7 tests
+FULL_FRONTEND_TESTS: PASS / 10 files / 58 tests
+FULL_PHP_TEST_SUITE: PASS / 110 tests / 1006 assertions
+COMPOSER_VALIDATE: PASS
+TYPECHECK: PASS
+BUILD: PASS
+800PX_WORKSPACE: PASS / 800px wide / horizontal overflow false
+799PX_WORKSPACE: PASS / 799px wide / horizontal overflow false
+801PX_DESKTOP: PASS / 92px Rail / 220px Sidebar / 489px Workspace
+NAV_CLOSED: PASS / inert=true / aria-hidden=true / translated outside viewport
+NAV_OPEN: PASS / 220px drawer / inert=false / aria-hidden=false / full-viewport Backdrop
+BROWSER_CONSOLE: PASS / no warning or error
+VISUAL_EVIDENCE: repository-external temporary screenshots only / not committed
+OWNER_VISUAL_ACCEPTANCE: NOT PERFORMED
+DEPENDENCY_CHANGE: NO
+LOCK_FILE_CHANGE: NO
+WORKFLOW_CHANGE: NO
+PHP_CHANGE: NO
+MIGRATION: NO
+MERGE: NO
+UAT: NO
+DEPLOYMENT: NO
+```
+
+The remediation changes only narrow-screen Grid placement. It preserves the literal `800px` breakpoint, desktop columns, navigation drawer, Backdrop and hidden-navigation accessibility state. Owner visual acceptance remains a separate gate.
 
 ## Purpose and Architecture Position
 
@@ -682,8 +721,9 @@ Login.test.ts
 - renders the exact generic server error through UiAlert without internal-state disclosure
 
 AuthenticatedLayout.test.ts
-- preserves current five navigation/accessibility behaviors
+- preserves the existing navigation/accessibility behaviors
 - proves all TopBar shared buttons retain aria-expanded, emits and POST logout
+- requires a single narrow-screen workspace Grid column and rejects the former two-zero-column rule
 
 Foundation.test.ts
 - preserves typed props and acknowledgement state through UiButton
@@ -801,21 +841,21 @@ DEPLOYMENT: NOT INCLUDED
 ## Preflight Verdict
 
 ```text
-FINAL_IMPLEMENTATION_VERDICT: ERP_ARCH_MIGRATION_001E_A_COMPONENT_CONTRACT_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
+FINAL_IMPLEMENTATION_VERDICT: PR_17_800PX_SHELL_LAYOUT_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
 ```
 
 ## PROJECT POSITION
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS → 001D-C MERGED / PASS → 001D COMPLETE / PASS → 001E-A COMPONENT CONTRACT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E-B WAITING → 001E-C WAITING → 001F WAITING
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS → 001D-C MERGED / PASS → 001D COMPLETE / PASS → 001E-A 800PX SHELL LAYOUT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E-B WAITING → 001E-C WAITING → 001F WAITING
 COMPLETED_PHASES: 001A, 001B, 001C, 001D-A, 001D-B, 001D-C, 001D
 CURRENT_PHASE: 001E-A implementation review gate
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-A
-PACKAGE_STATUS: COMPONENT CONTRACT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW / MERGE AUTHORIZATION NO
+PACKAGE_STATUS: 800PX SHELL LAYOUT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW / MERGE AUTHORIZATION NO
 WAITING_PHASES: 001E-A independent review and Owner visual check, 001E-B, 001E-C, 001F
-BASELINE: implementation-authorized Head 7cef9e3d8b238d591f42013a43c0b17426ab5ab5 based on main@548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
-GITHUB_STATE: implementation branch pushed after validation; no PR; no merge
+BASELINE: remediation-authorized Head 561caa0109d8388c02dd24602464f640b1442eb1 based on main@592b9732c09902cb2803f3b62f5686075619849d
+GITHUB_STATE: PR #17 open / Draft / remediation commit pushed / independent review pending / no merge
 SOURCE_CONFLICTS: NONE WITH EVIDENCE; current accessibility failures are frozen implementation corrections, not competing architecture facts
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO

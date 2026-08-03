@@ -2,7 +2,7 @@
 type: byl-erp-work-log
 date: 2026-08-01
 work_package: ERP-ARCH-MIGRATION-001E-A
-status: component-contract-remediation-complete-pending-independent-review
+status: shell-layout-remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -19,7 +19,7 @@ REMEDIATION_AUTHORIZED_HEAD: eb6b4c425551bd60401fa20c85ee139f3d0e4785
 RESULT: PREFLIGHT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
 IMPLEMENTATION_AUTHORIZED_HEAD: 7cef9e3d8b238d591f42013a43c0b17426ab5ab5
 IMPLEMENTATION_BRANCH: feature/erp-arch-migration-001e-a-shared-ui-design-tokens
-IMPLEMENTATION_RESULT: COMPONENT CONTRACT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
+IMPLEMENTATION_RESULT: 800PX SHELL LAYOUT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
 IMPLEMENTATION_AUTHORIZATION: YES / COMPLETE
 APPLICATION_CODE_CHANGE: YES / BOUNDED
 CSS_CHANGE: YES / BOUNDED
@@ -80,7 +80,7 @@ LOGIN_TOKEN_MIGRATION: COMPLETE
 FOUNDATION_TOKEN_MIGRATION: COMPLETE
 SHELL_TOKEN_MIGRATION: COMPLETE
 LOGIN_LOADING_COPY: 登录系统 → 验证中… / generic 处理中… not rendered
-COMPONENT_AND_CONSUMER_TESTS: PASS / 10 files / 57 tests
+COMPONENT_AND_CONSUMER_TESTS: PASS / 10 files / 58 tests
 TYPECHECK: PASS
 BUILD: PASS
 COMPOSER_VALIDATE: PASS
@@ -88,13 +88,14 @@ ROUTE_LIST: PASS / 59 routes
 FULL_PHP_TEST_SUITE: PASS / 110 tests / 1006 assertions
 SEMANTIC_COLOR_SCAN: PASS
 DIFF_CHECK: PASS
-OWNER_VISUAL_CHECK: NOT RUN / REQUIRED BEFORE MERGE AUTHORIZATION
+CODEX_VISUAL_REMEDIATION_CHECK: PASS / 799px, 800px and 801px
+OWNER_VISUAL_CHECK: NOT PERFORMED / REQUIRED BEFORE MERGE AUTHORIZATION
 DEPENDENCY_CHANGE: NO
 LOCK_FILE_CHANGE: NO
 WORKFLOW_CHANGE: NO
 PHP_CHANGE: NO
 MIGRATION: NO
-PR: NO
+PR: #17 / OPEN / DRAFT
 MERGE: NO
 UAT: NO
 DEPLOYMENT: NO
@@ -130,6 +131,43 @@ MERGE: NO
 UAT: NO
 DEPLOYMENT: NO
 ```
+
+## 800px Shell Layout Remediation Evidence
+
+```text
+AUTHORIZED_HEAD: 561caa0109d8388c02dd24602464f640b1442eb1
+AUTHORIZED_BASE: main@592b9732c09902cb2803f3b62f5686075619849d
+VISUAL_DEFECT: .shell-workspace width 0 at max-width 800px
+ROOT_CAUSE: fixed Rail and hidden Sidebar left Grid flow while the narrow template retained two leading zero-width columns
+REMOVED_RULE: grid-template-columns: 0 0 minmax(0, 1fr)
+REPLACEMENT_RULE: grid-template-columns: minmax(0, 1fr)
+BREAKPOINT_VALUE: 800px / UNCHANGED
+REGRESSION_TEST: AuthenticatedLayout.test.ts reads the real shell.css and enforces one narrow workspace column
+FOCUSED_LAYOUT_TESTS: PASS / 1 file / 7 tests
+FULL_FRONTEND_TESTS: PASS / 10 files / 58 tests
+FULL_PHP_TEST_SUITE: PASS / 110 tests / 1006 assertions
+COMPOSER_VALIDATE: PASS
+TYPECHECK: PASS
+BUILD: PASS
+DIFF_CHECK: PASS
+800PX: PASS / columns=800px / workspace=800px / horizontal overflow=false
+799PX: PASS / columns=799px / workspace=799px / horizontal overflow=false
+801PX: PASS / columns=92px 220px 489px / horizontal overflow=false
+NAV_CLOSED: PASS / inert=true / aria-hidden=true / drawer translated outside viewport
+NAV_OPEN: PASS / inert=false / aria-hidden=false / drawer=220px / Backdrop covers viewport
+BROWSER_CONSOLE: PASS / no warning or error
+VISUAL_EVIDENCE: repository-external temporary directory / not committed
+OWNER_VISUAL_ACCEPTANCE: NOT PERFORMED
+DEPENDENCY_CHANGE: NO
+LOCK_FILE_CHANGE: NO
+WORKFLOW_CHANGE: NO
+MIGRATION: NO
+DATABASE_MUTATION: NO
+UAT: NO
+DEPLOYMENT: NO
+```
+
+The remediation preserves the literal `800px` breakpoint, desktop Rail and Sidebar dimensions, drawer and Backdrop behavior, and the existing inert/`aria-hidden` contract. It changes no route, permission, authentication, dependency, workflow or database behavior.
 
 ## Contrast Result
 
@@ -174,9 +212,9 @@ ACCESSIBILITY_REMEDIATION: REQUIRED WITHIN FROZEN IMPLEMENTATION SCOPE
 ```text
 GIT_DIFF_CHECK: PASS
 GIT_FSCK_FULL: PASS
-CHANGED_PATH_BOUNDARY: PASS / TWO AUTHORIZED MARKDOWN FILES ONLY
+CHANGED_PATH_BOUNDARY: PASS / FOUR AUTHORIZED REMEDIATION FILES ONLY
 APPLICATION_CODE_CHANGE: NO
-CSS_CHANGE: NO
+CSS_CHANGE: YES / BOUNDED TO NARROW GRID PLACEMENT
 DEPENDENCY_CHANGE: NO
 WORKFLOW_CHANGE: NO
 MIGRATION: NO
@@ -185,7 +223,7 @@ MIGRATION: NO
 ## Verdict
 
 ```text
-FINAL_STATUS: ERP_ARCH_MIGRATION_001E_A_COMPONENT_CONTRACT_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
+FINAL_STATUS: PR_17_800PX_SHELL_LAYOUT_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
 NEXT_GATE: independent implementation review and required Owner visual check before separate merge authorization
 ```
 
@@ -193,14 +231,14 @@ NEXT_GATE: independent implementation review and required Owner visual check bef
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A COMPONENT CONTRACT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E-B WAITING → 001E-C WAITING → 001F WAITING
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A 800PX SHELL LAYOUT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E-B WAITING → 001E-C WAITING → 001F WAITING
 COMPLETED_PHASES: 001A, 001B, 001C, 001D-A, 001D-B, 001D-C, 001D
 CURRENT_PHASE: 001E-A implementation review gate
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-A
-PACKAGE_STATUS: COMPONENT CONTRACT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW / MERGE AUTHORIZATION NO
+PACKAGE_STATUS: 800PX SHELL LAYOUT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW / MERGE AUTHORIZATION NO
 WAITING_PHASES: 001E-A independent review and Owner visual check, 001E-B, 001E-C, 001F
-BASELINE: implementation-authorized Head 7cef9e3d8b238d591f42013a43c0b17426ab5ab5 based on main@548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
-GITHUB_STATE: implementation branch pushed after validation; no PR; no merge
+BASELINE: remediation-authorized Head 561caa0109d8388c02dd24602464f640b1442eb1 based on main@592b9732c09902cb2803f3b62f5686075619849d
+GITHUB_STATE: PR #17 open / Draft / remediation commit pushed / independent review pending / no merge
 SOURCE_CONFLICTS: NONE WITH EVIDENCE; current accessibility failures are recorded as bounded implementation corrections
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
