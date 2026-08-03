@@ -84,6 +84,24 @@ COMPATIBILITY_CONCLUSION: COMPATIBLE WITH CURRENT NODE / INSTALLATION NOT PERFOR
 RECHECK_GATE: npm dist-tag and official system requirements must be rechecked at the authorized implementation Head
 ```
 
+Independent-review remediation re-ran the exact read-only Registry queries against `https://registry.npmjs.org/`:
+
+```text
+NPM_QUERY_TIME_UTC: 2026-08-03T06:25:50Z
+REGISTRY: https://registry.npmjs.org/
+PACKAGE_METADATA_VERSION: 1.62.1
+DIST_TAG_LATEST: 1.62.1
+ENGINES_NODE: >=20
+REGISTRY_LAST_MODIFIED: 2026-08-03T06:18:52.127Z
+PLAYWRIGHT_1_62_1_PUBLISHED_AT: 2026-07-30T16:36:55.324Z
+PLAYWRIGHT_1_62_1_EXACT_RESOLUTION: PASS / "1.62.1"
+PLAYWRIGHT_1_62_0_PUBLISHED_AT: 2026-07-24T21:57:02.325Z
+PLAYWRIGHT_1_62_0_EXACT_RESOLUTION: PASS / "1.62.0"
+FINAL_PROPOSED_PLAYWRIGHT_VERSION: exact @playwright/test@1.62.1
+```
+
+The official Microsoft Playwright GitHub release independently records `v1.62.1` as published at `2026-07-30T16:35:55Z`: <https://github.com/microsoft/playwright/releases/tag/v1.62.1>. A public documentation page that still displays `1.62.0` is a separately deployed documentation snapshot or release presentation and can lag a patch release. It is not package-resolution evidence. The npm Registry `latest` tag, exact-version endpoint and official GitHub release agree that `1.62.1` is published and resolvable. No dependency or browser binary was installed while collecting this evidence.
+
 Official evidence:
 
 - <https://playwright.dev/docs/intro>
@@ -422,7 +440,7 @@ CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-B
 PACKAGE_STATUS: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
 WAITING_PHASES: 001E-B implementation gates, 001E-C, 001F
 BASELINE: main@493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8
-GITHUB_STATE: PR #14, #15, #16 and #17 MERGED; governance Draft PR pending creation
+GITHUB_STATE: PR #14, #15, #16 and #17 MERGED; PR #19 OPEN / DRAFT / PENDING INDEPENDENT REMEDIATION REVIEW
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
 NEXT_DEPENDENCY: independent Preflight review, then separate Owner authorization for every frozen 001E-B gate

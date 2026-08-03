@@ -48,6 +48,41 @@ PACKAGE_LOCK_CHANGED: NO
 
 Read-only npm metadata reported `@playwright/test` latest `1.62.1`, engine `node >=20`; official Playwright documentation supports current Node 22.x, 24.x and 26.x. No dependency or browser was installed.
 
+## Independent Review Remediation
+
+```text
+INDEPENDENT_REVIEW_RESULT: CHANGES_REQUIRED
+REVIEWED_HEAD: fd41de3d81f207f3904d900361f45351efd53622
+ISSUE_1: exact Playwright version evidence conflict
+ISSUE_2: stale PR creation state
+REMEDIATION_RESULT: Registry and official-release evidence confirm 1.62.1; complete metadata was recorded and stale PR state was corrected
+FINAL_PROPOSED_PLAYWRIGHT_VERSION: exact @playwright/test@1.62.1
+NPM_METADATA_AS_OF: 2026-08-03T06:25:50Z
+PR_STATE: PR #19 OPEN / DRAFT
+```
+
+Exact read-only evidence:
+
+```text
+QUERY_TIME_UTC: 2026-08-03T06:25:50Z
+REGISTRY: https://registry.npmjs.org/
+COMMAND_1: npm view @playwright/test version dist-tags engines time --json
+PACKAGE_METADATA_VERSION: 1.62.1
+DIST_TAG_LATEST: 1.62.1
+ENGINES_NODE: >=20
+REGISTRY_LAST_MODIFIED: 2026-08-03T06:18:52.127Z
+PLAYWRIGHT_1_62_1_PUBLISHED_AT: 2026-07-30T16:36:55.324Z
+COMMAND_2: npm view @playwright/test@1.62.1 version --json
+PLAYWRIGHT_1_62_1_RESOLVABLE: YES / "1.62.1"
+PLAYWRIGHT_1_62_0_PUBLISHED_AT: 2026-07-24T21:57:02.325Z
+COMMAND_3: npm view @playwright/test@1.62.0 version --json
+PLAYWRIGHT_1_62_0_RESOLVABLE: YES / "1.62.0"
+DEPENDENCY_INSTALL: NO
+BROWSER_DOWNLOAD: NO
+```
+
+Microsoft's official GitHub release independently records `v1.62.1` at `2026-07-30T16:35:55Z`: <https://github.com/microsoft/playwright/releases/tag/v1.62.1>. The public documentation page observed at `1.62.0` is a separately deployed documentation snapshot or release presentation that can lag patch publication; it does not determine exact npm package availability. Registry `latest`, both exact-version queries and the official GitHub release are mutually consistent, so the proposal remains `1.62.1`.
+
 ## Frozen Result
 
 ```text
@@ -112,7 +147,7 @@ CURRENT_PHASE: 001E-B Browser E2E Foundation Preflight review
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-B
 PACKAGE_STATUS: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
 BASELINE: main@493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8
-GITHUB_STATE: governance Draft PR pending creation
+GITHUB_STATE: PR #19 OPEN / DRAFT / PENDING INDEPENDENT REMEDIATION REVIEW
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
 NEXT_DEPENDENCY: independent review followed by separate Owner grants for each implementation gate
