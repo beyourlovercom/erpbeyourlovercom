@@ -2,14 +2,14 @@
 type: byl-erp-work-log
 date: 2026-08-03
 work_package: ERP-ARCH-MIGRATION-001E-C
-status: implementation-complete-pending-independent-review
+status: merged-pass-complete-closed
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
 
 # ERP-ARCH-MIGRATION-001E-C Work Log
 
-## Authorization and boundary
+## HISTORICAL RECORD — Authorization, Implementation and Review
 
 ```text
 AUTHORIZED_BASE: origin/main@4b9fbb0deacdfc02439fb947398b87c148602c75
@@ -94,26 +94,30 @@ Unauthorized-response validation now loads the approved menu markers from `menu/
 
 Final repository validation is recorded in the implementation commit and Draft PR evidence. Required gates include Composer validation, full PHP with command-scoped bypass disabled, full Vitest, both TypeScript checks, Build, menu baseline, E2E safety contracts, 16-test browser run, formatting/syntax, diff check and Git fsck.
 
-## Review state
+## Historical Review State
 
 ```text
 STATUS: MERGED / PASS / COMPLETE / CLOSED
 PR: DRAFT / PENDING CREATION AT THIS LOG REVISION
 MARK_READY: NO
 MERGE: NO
-001F: WAITING
+001F: WAITING (HISTORICAL)
 MVP1: NOT STARTED
 UAT: NO
 DEPLOYMENT: NO
 GLOBAL_ARCHITECTURE_GATE: FAIL
 ```
 
+## CURRENT CLOSED STATUS
+
+PR #22 is MERGED / PASS / COMPLETE / CLOSED. Accepted Head: `2844d8f2f9214a3fb058e546eb92751e49cbe5af`; Main Squash Commit: `3218473b1cfc93f098a2e9607aabe9adb16bcf0d`; 001F is ACTIVE / PREFLIGHT REVIEWED.
+
 ## PROJECT POSITION
 
 ```text
 PHASE_MAP: 001A MERGED / PASS → 001B MERGED → 001C MERGED → 001D COMPLETE / PASS → 001E-A MERGED / PASS → 001E-B MERGED / PASS / CLOSED → 001E-C MERGED / PASS / CLOSED → 001F ACTIVE / PREFLIGHT REVIEWED
 CURRENT_PHASE: 001F Architecture Re-audit
-CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-C
+CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001F-A
 WAITING_PHASES: 001F
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
@@ -127,7 +131,7 @@ PR #22 merged at accepted Head `2844d8f2f9214a3fb058e546eb92751e49cbe5af` with m
 
 ```text
 001E_C_CONFIRMED_ESTIMATE: 12–20 effective hours; planning value 16h
-ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE
+ARCHITECTURE_GATE_REMAINING: 12–24h planning estimate for 001F-B through 001F-F; actual hours unknown with evidence
 MVP1_REMAINING: UNKNOWN
 PROGRAM_REMAINING: UNKNOWN
 ```

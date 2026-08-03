@@ -62,6 +62,14 @@ GITHUB_FACT: PR #21 and PR #22 are merged; main is 3218473b1cfc93f098a2e9607aabe
 GOVERNANCE_FACT: 001E is COMPLETE / PASS; 001E-B and 001E-C are MERGED / PASS / CLOSED; 001F-A is IMPLEMENTED / PENDING INDEPENDENT REVIEW.
 SOURCE_CONFLICTS: historical pre-merge snapshots are retained as history only; current status is corrected here.
 EVIDENCE_LIMITS: real-MySQL two-connection claim concurrency, live Redis, Queue Worker, Scheduler and Dev Migration remain unverified.
+
+```text
+001F_B_TO_F_ESTIMATE: 12–24h
+PLANNING_VALUE: 18h
+ARCHITECTURE_MIGRATION_REMAINING: approximately 5–9 Codex / 12–24h
+CLASSIFICATION: planning estimate only
+ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
+```
 ```
 
 ## Initial Hours Snapshot
@@ -73,7 +81,9 @@ EVIDENCE_LIMITS: real-MySQL two-connection claim concurrency, live Redis, Queue 
 | `001E_B_CONFIRMED_ESTIMATE` | 12–18h; planning value 15h | confirmed child implementation estimate | Accepted bounded implementation estimate; package merged and closed |
 | `001F_ESTIMATE` | 5–9 Codex; 12–24h planning range | planning estimate only | 001F-B through 001F-F remain unimplemented and unauthorized |
 | `KNOWN_CURRENT_TRACK_REMAINING` | 12–24h; planning value 18h | non-overlapping 001F-B/F planning range | 001E is complete; remaining work is Architecture Migration only |
-| `ARCHITECTURE_GATE_REMAINING` | UNKNOWN WITH EVIDENCE | unknown remaining total | 001E is known, but 001F is unestimated and cannot be safely added |
+| `001F_B_TO_F_ESTIMATE` | 12–24h | planning estimate only | planning value 18h; actual hours unknown with evidence |
+| `ARCHITECTURE_MIGRATION_REMAINING` | approximately 5–9 Codex / 12–24h | planning estimate only | 001F-B through 001F-F; no guaranteed gate completion time |
+| `ARCHITECTURE_GATE_REMAINING` | 12–24h planning estimate | planning estimate only | actual hours unknown with evidence; completion is not guaranteed within this range |
 | `MVP1_TOTAL_ESTIMATE` | 122–190h | total estimate | Effective Hours source; not automatically remaining |
 | `MVP1_PLANNING_BASELINE` | 166h | total planning value | Effective Hours source |
 | `MVP1_MAXIMUM_ENVELOPE` | 192h | maximum total planning envelope | Living Roadmap and Effective Hours sources |

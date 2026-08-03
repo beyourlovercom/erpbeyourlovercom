@@ -2,7 +2,7 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-ARCH-MIGRATION-001E-B
-status: clean-clone-remediation-complete-pending-independent-review
+status: merged-pass-complete-closed
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -18,7 +18,7 @@ STATUS: MERGED / PASS / COMPLETE / CLOSED
 PR: #21
 ACCEPTED_HEAD: 3b67586cafd2b4af3e248e3079719cb73b4e4163
 MAIN_SQUASH_COMMIT: 4b9fbb0deacdfc02439fb947398b87c148602c75
-BASELINE: main@3218473b1cfc93f098a2e9607aabe9adb16bcf0d
+BASELINE: main@05290700afc94153378c0ca4fafe0c69eab80544
 PARENT_PACKAGE: ERP-ARCH-MIGRATION-001E
 PREDECESSOR: ERP-ARCH-MIGRATION-001E-A MERGED / PASS
 MENU_IMPACT: NO
@@ -37,7 +37,13 @@ DEPLOYMENT: NO
 GLOBAL_ARCHITECTURE_GATE: FAIL
 ```
 
-This document preserves the reviewed Preflight contract and records the bounded local implementation authorized after PR #19 merged. It does not authorize Workflow changes, 001E-C, merge, UAT or deployment.
+## CURRENT CLOSED STATUS
+
+PR #21 is MERGED / PASS / COMPLETE / CLOSED. Accepted Head: `3b67586cafd2b4af3e248e3079719cb73b4e4163`; Main Squash Commit: `4b9fbb0deacdfc02439fb947398b87c148602c75`. The original implementation baseline remains `main@05290700afc94153378c0ca4fafe0c69eab80544`; the later main commit is not this package's original baseline. Current Owner Gates have no pending 001E-B authorization item. 001F is ACTIVE / PREFLIGHT REVIEWED; UAT and deployment are NO.
+
+## HISTORICAL RECORD — Preflight, Authorization, Review and Remediation
+
+The following Preflight, Owner Gate, Review and Remediation material is historical evidence and does not describe the current package state.
 
 ## Purpose and Architecture Position
 
@@ -493,7 +499,7 @@ BROWSER_INSTALL_AUTHORIZATION: GRANTED / external Chromium cache only
 WORKFLOW_CHANGE_AUTHORIZATION: REQUIRED / NOT GRANTED
 DISPOSABLE_E2E_MIGRATION_EXECUTION_AUTHORIZATION: GRANTED / fresh external SQLite only
 IMPLEMENTATION_AUTHORIZATION: GRANTED / bounded local 001E-B foundation only
-MERGE_AUTHORIZATION: NOT GRANTED
+MERGE_AUTHORIZATION: NOT GRANTED (HISTORICAL)
 UAT_AUTHORIZATION: NOT GRANTED
 DEPLOYMENT_AUTHORIZATION: NOT GRANTED
 ```
@@ -523,7 +529,7 @@ PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manu
 CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A MERGED / PASS → 001E-B MERGED / PASS / CLOSED → 001E-C MERGED / PASS / CLOSED → 001F ACTIVE / PREFLIGHT REVIEWED
 COMPLETED_PHASES: 001A, 001B, 001C, 001D, 001E-A, 001E-B, 001E-C
 CURRENT_PHASE: 001F Architecture Re-audit
-CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-B
+CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001F-A
 PACKAGE_STATUS: MERGED / PASS / COMPLETE / CLOSED
 WAITING_PHASES: 001F-B through 001F-F
 BASELINE: main@05290700afc94153378c0ca4fafe0c69eab80544
@@ -537,9 +543,9 @@ EVIDENCE_AS_OF: 2026-08-03; local implementation, disposable SQLite Migration, C
 ## ROADMAP HOURS
 
 ```text
-CURRENT_PACKAGE_ESTIMATE: 12–18h; planning value 15h; implementation complete pending independent review
-KNOWN_CURRENT_TRACK_REMAINING: 24–38h; planning value 31h for the accepted 001E-B/C parent allocation; not reduced until 001E-B is independently accepted and merged; excludes unknown 001F
-ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE; 001E-C and unestimated 001F remain incomplete
+CURRENT_PACKAGE_ESTIMATE: 12–18h; planning value 15h; historical accepted implementation estimate
+KNOWN_CURRENT_TRACK_REMAINING: 12–24h; planning value 18h for proposed 001F-B through 001F-F; 001E is complete
+ARCHITECTURE_GATE_REMAINING: 12–24h planning estimate for 001F-B through 001F-F; actual hours unknown with evidence
 MVP1_TOTAL_ESTIMATE: 122–190h total estimate
 MVP1_PLANNING_BASELINE: 166h total planning value
 MVP1_MAXIMUM_ENVELOPE: 192h maximum total envelope

@@ -2,14 +2,18 @@
 type: byl-erp-work-package
 work_package: ERP-ARCH-MIGRATION-001E-C
 title: Auth / Permission / App Shell Browser E2E
-status: implementation-complete-pending-independent-review
+status: merged-pass-complete-closed
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
 
 # ERP-ARCH-MIGRATION-001E-C — Auth / Permission / App Shell Browser E2E
 
-## Position and authorization
+## CURRENT CLOSED STATUS
+
+PR #22 is MERGED / PASS / COMPLETE / CLOSED. Accepted Head: `2844d8f2f9214a3fb058e546eb92751e49cbe5af`; Main Squash Commit: `3218473b1cfc93f098a2e9607aabe9adb16bcf0d`; 001F is ACTIVE / PREFLIGHT REVIEWED.
+
+## HISTORICAL RECORD — Position, Authorization, Implementation and Review
 
 ```text
 AUTHORIZED_BASE: origin/main@4b9fbb0deacdfc02439fb947398b87c148602c75
@@ -18,7 +22,7 @@ IMPLEMENTATION_AUTHORIZATION: GRANTED / bounded local Browser E2E only
 PLAYWRIGHT_CONFIG_CHANGE: GRANTED / testMatch only
 DISPOSABLE_SQLITE_MIGRATION_EXECUTION: GRANTED / fresh external SQLite only
 SYNTHETIC_USER_CREATION: GRANTED / disposable external SQLite only
-MERGE_AUTHORIZATION: NOT GRANTED
+MERGE_AUTHORIZATION: NOT GRANTED (HISTORICAL)
 WORKFLOW_CHANGE: NO
 UAT: NO
 DEPLOYMENT: NO
@@ -166,26 +170,26 @@ The first implementation run failed safely because the broad password-label loca
 
 Revert this package's single implementation commit. That removes the new specifications and helpers and restores the Foundation-only `testMatch`; the accepted 001E-B Runner, Provisioner, dependency, browser cache and database safety contracts remain intact.
 
-## Review gates
+## Historical Review Gates
 
 ```text
-CURRENT_STATUS: MERGED / PASS / COMPLETE / CLOSED
+CURRENT_STATUS: MERGED / PASS / COMPLETE / CLOSED (historical snapshot)
 MARK_READY: NOT AUTHORIZED
 MERGE: NOT AUTHORIZED
 WORKFLOW: NOT AUTHORIZED
-001F: WAITING
+001F: WAITING (HISTORICAL)
 MVP1: NOT STARTED
 UAT: NO
 DEPLOYMENT: NO
 GLOBAL_ARCHITECTURE_GATE: FAIL
 ```
 
-## PROJECT POSITION
+## CURRENT PROJECT POSITION
 
 ```text
 PHASE_MAP: 001A MERGED / PASS → 001B MERGED → 001C MERGED → 001D COMPLETE / PASS → 001E-A MERGED / PASS → 001E-B MERGED / PASS / CLOSED → 001E-C MERGED / PASS / CLOSED → 001F ACTIVE / PREFLIGHT REVIEWED
 CURRENT_PHASE: 001F Architecture Re-audit
-CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-C
+CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001F-A
 PACKAGE_STATUS: MERGED / PASS / COMPLETE / CLOSED
 PR: #22
 ACCEPTED_HEAD: 2844d8f2f9214a3fb058e546eb92751e49cbe5af
@@ -198,7 +202,7 @@ PRODUCTION_DEPLOYMENT_STATUS: NO
 
 ```text
 001E_C_CONFIRMED_ESTIMATE: 12–20 effective hours; planning value 16h
-ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE; 001F remains incomplete
+ARCHITECTURE_GATE_REMAINING: 12–24h planning estimate for 001F-B through 001F-F; actual hours unknown with evidence
 MVP1_REMAINING: UNKNOWN
 PROGRAM_REMAINING: UNKNOWN
 ```

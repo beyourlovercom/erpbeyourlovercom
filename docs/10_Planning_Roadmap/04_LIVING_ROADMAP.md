@@ -76,7 +76,7 @@ Maximum planning envelope: approximately 192 effective hours
 4. Keep MVP1, UAT and deployment blocked until their explicit gates.
 ```
 
-The accepted 001D-C evidence remains bounded: real-MySQL two-connection claim concurrency and MySQL 5.7 are unverified, and no Dev, Staging or Production Migration was run.
+The accepted 001D-C evidence remains bounded: real-MySQL two-connection claim concurrency is a Global Gate blocker and no Dev Migration was run. MySQL 5.7 is outside the current supported baseline, does not block the Global Gate, and current code is not declared compatible; future support requires a new Architecture Decision and Compatibility Work Package. Staging Migration remains a UAT blocker, and Production Migration planning/rehearsal remains a deployment blocker.
 
 ## Incremental releases
 
