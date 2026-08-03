@@ -74,7 +74,5 @@ test('login exposes labels, keyboard order, visible focus and alert semantics', 
     await password.fill(`${user.password}-wrong`);
     await submit.click();
     await expect(page.getByRole('alert')).toContainText('邮箱或密码不正确，请重试。');
-    await expect(email).not.toHaveAttribute('aria-describedby', /.+/u);
-    await expect(password).not.toHaveAttribute('aria-describedby', /.+/u);
     await guard.assertClean();
 });

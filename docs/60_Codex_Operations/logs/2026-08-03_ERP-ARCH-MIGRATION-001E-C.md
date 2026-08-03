@@ -74,6 +74,22 @@ All cookies and passwords remained process-memory-only. No cookie value, passwor
 
 The initial run exposed a locator ambiguity because the password label also matched the show-password button. The input selector was narrowed to the real password control. Expected 403 document navigation also produced browser-generated console errors; authorization status checks were therefore moved to the Playwright request context sharing the same Browser Context cookies. This preserves real Fortify authentication and real HTTP 403/404 verification without suppressing or ignoring browser errors.
 
+## Independent review remediation
+
+```text
+INDEPENDENT_REVIEW_RESULT: CHANGES_REQUIRED
+REVIEWED_HEAD: bf67138a2509d7227ea01a806e97b5b0a1156760
+ISSUE_1: negative aria-describedby assertions would solidify a known accessibility gap
+ISSUE_2: the App Shell absence assertion targeted an unchanged Login page rather than the real 403 body
+ACCESSIBILITY_REMEDIATION: negative assertions removed; labels, names, keyboard order, focus and alert contracts retained
+AUTHORIZATION_REMEDIATION: real dashboard/settings 403 bodies inspected for Shell, menu, Super Admin and sensitive markers
+RESPONSE_BODY_OUTPUT: NO / fixed failure messages only
+```
+
+The missing field-to-error `aria-describedby` association is documented as a pre-existing non-blocking gap; not asserted as required behavior. The remediation changes no application component.
+
+Unauthorized-response validation now loads the approved menu markers from `menu/APPROVED_MENU.json` and rejects their labels and URLs in each real 403 response. It also rejects App Shell and explicit Super Admin markers. The previous assertion against a Page that had not navigated to the 403 response was removed.
+
 ## Validation record
 
 Final repository validation is recorded in the implementation commit and Draft PR evidence. Required gates include Composer validation, full PHP with command-scoped bypass disabled, full Vitest, both TypeScript checks, Build, menu baseline, E2E safety contracts, 16-test browser run, formatting/syntax, diff check and Git fsck.

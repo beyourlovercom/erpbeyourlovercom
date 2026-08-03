@@ -1,7 +1,19 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { expect, test, type APIResponse } from '@playwright/test';
 import { authenticateUnauthorizedThroughFortify, loginThroughUi, syntheticUsers } from '../support/auth-helpers';
 import { installBrowserGuards } from '../support/browser-guards';
 
+type ApprovedMenuItem = {
+    label_zh: string;
+    url: string;
+};
+
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+const approvedMenu = JSON.parse(
+    readFileSync(path.join(repositoryRoot, 'menu/APPROVED_MENU.json'), 'utf8'),
+) as { items: ApprovedMenuItem[] };
 const SENSITIVE_ERROR_MARKERS = [
     /SQLSTATE/iu,
     /(?:Exception|Error)\s+in\s+\/[^\s]+/iu,
@@ -11,14 +23,31 @@ const SENSITIVE_ERROR_MARKERS = [
     /DB_PASSWORD/iu,
     /stack trace/iu,
 ];
+const APP_SHELL_MARKERS = [
+    'ERP主导航',
+    'shellNavigation',
+    'authenticated-shell',
+    'shell-primary-nav',
+    'shell-account-dock',
+];
+const SUPER_ADMIN_MARKERS = ['super_admin', 'super-admin', 'Super Admin'];
+const APPROVED_MENU_MARKERS = approvedMenu.items.flatMap((item) => [item.label_zh, item.url]);
 
-async function expectSafeErrorResponse(response: APIResponse, status: 403 | 404): Promise<void> {
+function assertBodyExcludes(body: string, markers: Array<RegExp | string>, failureMessage: string): void {
+    for (const marker of markers) {
+        const matched = typeof marker === 'string' ? body.includes(marker) : marker.test(body);
+
+        if (matched) throw new Error(failureMessage);
+    }
+}
+
+async function expectSafeErrorResponse(response: APIResponse, status: 403 | 404): Promise<string> {
     expect(response.status()).toBe(status);
     const text = await response.text();
 
-    for (const marker of SENSITIVE_ERROR_MARKERS) {
-        expect(text).not.toMatch(marker);
-    }
+    assertBodyExcludes(text, SENSITIVE_ERROR_MARKERS, 'Error response disclosed a prohibited sensitive marker.');
+
+    return text;
 }
 
 test('super admin can access the permission-protected dashboard', async ({ context, page }) => {
@@ -36,9 +65,14 @@ test('active unauthorized user authenticates but receives real 403 responses', a
     const loginStatus = await authenticateUnauthorizedThroughFortify(context, syntheticUsers().unauthorized);
 
     expect(loginStatus).toBe(302);
-    await expectSafeErrorResponse(await context.request.get('/dashboard'), 403);
-    await expectSafeErrorResponse(await context.request.get('/settings'), 403);
-    await expect(page.getByRole('navigation', { name: 'ERP主导航' })).toHaveCount(0);
+    const dashboardBody = await expectSafeErrorResponse(await context.request.get('/dashboard'), 403);
+    const settingsBody = await expectSafeErrorResponse(await context.request.get('/settings'), 403);
+
+    for (const body of [dashboardBody, settingsBody]) {
+        assertBodyExcludes(body, APP_SHELL_MARKERS, 'Unauthorized response exposed an App Shell marker.');
+        assertBodyExcludes(body, APPROVED_MENU_MARKERS, 'Unauthorized response exposed an approved menu marker.');
+        assertBodyExcludes(body, SUPER_ADMIN_MARKERS, 'Unauthorized response exposed a Super Admin marker.');
+    }
     await guard.assertClean();
 });
 

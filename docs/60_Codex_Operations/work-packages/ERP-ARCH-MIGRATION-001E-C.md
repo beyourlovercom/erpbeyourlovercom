@@ -124,7 +124,21 @@ Expected 403/404 responses are inspected through the Playwright request context 
 
 Browser tests prove login labels/accessibility names, the basic Tab sequence, visible focus, live alert semantics, navigation landmark, menu accessible names and Account Dock keyboard behavior without adding an accessibility dependency.
 
-The existing login error is exposed as an assertive `role="alert"`, but it is not directly attached to the email or password control through `aria-describedby`. This pre-existing gap is recorded and asserted as current behavior; it is not an 001E-C failure and no application component was changed.
+The existing login error is exposed as an assertive `role="alert"`, but it is not directly attached to the email or password control through `aria-describedby`. This is documented as a pre-existing non-blocking gap; not asserted as required behavior. It is not an 001E-C failure and no application component was changed.
+
+## Independent review remediation
+
+```text
+INDEPENDENT_REVIEW_RESULT: CHANGES_REQUIRED
+REVIEWED_HEAD: bf67138a2509d7227ea01a806e97b5b0a1156760
+ISSUE_1: accessibility gap was incorrectly frozen by negative browser assertions
+ISSUE_2: unauthorized navigation absence was asserted against a page that had not rendered the 403 response
+REMEDIATION: bounded tests and evidence only
+```
+
+The negative `aria-describedby` assertions were removed while label, accessible-name, Tab-order, visible-focus and alert checks remain. The gap remains documentation only, allowing a future accessibility fix without breaking 001E-C.
+
+The Unauthorized User test now inspects the actual `/dashboard` and `/settings` 403 response bodies. Both bodies must exclude App Shell markers, every approved menu label and URL loaded from `menu/APPROVED_MENU.json`, explicit Super Admin markers and the existing sensitive-disclosure markers. Failures use fixed messages and never print or persist the response body.
 
 ## Implementation evidence
 
