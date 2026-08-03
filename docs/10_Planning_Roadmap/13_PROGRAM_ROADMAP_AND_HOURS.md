@@ -45,21 +45,33 @@ The Program Roadmap is the top-level delivery sequence. It must not be replaced 
 001D-A Runtime Foundation             MERGED / PASS BY PR #9
 001D-B Audit Foundation               MERGED / PASS BY PR #12
 001D-C Sync Outbox Foundation         MERGED / PASS BY PR #13
-→ 001E Shared UI / Browser E2E        IN PROGRESS
+→ 001E Shared UI / Browser E2E        COMPLETE / PASS
 001E-A Shared UI / Design Tokens      MERGED / PASS BY PR #17
-001E-B Browser E2E Foundation         PREFLIGHT COMPLETE / PENDING REVIEW / IMPLEMENTATION NOT AUTHORIZED
-001E-C Auth / Permission / Shell E2E  WAITING
-001F Architecture Re-audit            WAITING
+001E-B Browser E2E Foundation         MERGED / PASS / CLOSED
+001E-C Auth / Permission / Shell E2E  MERGED / PASS / CLOSED
+001F Architecture Re-audit            ACTIVE / PREFLIGHT REVIEWED
+001F-A Governance Status Correction   IMPLEMENTED / PENDING INDEPENDENT REVIEW
+001F-B through 001F-F                 PROPOSED / NOT AUTHORIZED
 Global Architecture Gate              FAIL
 ```
 
 ## Source Conflict Snapshot
 
 ```text
-GITHUB_FACT: PR #14 through PR #17 are merged; main is 493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8.
-GOVERNANCE_FACT: 001D is COMPLETE / PASS; 001E-A and its supporting packages are MERGED / PASS; 001E-B Preflight is complete pending review with implementation authorization NO.
-SOURCE_CONFLICTS: NONE WITH EVIDENCE for merge state and current package order.
-EVIDENCE_LIMITS: real-MySQL two-connection claim concurrency and MySQL 5.7 remain unverified; Dev/Staging/Production Migration was not run.
+GITHUB_FACT: PR #21 and PR #22 are merged; main is 3218473b1cfc93f098a2e9607aabe9adb16bcf0d.
+GOVERNANCE_FACT: 001E is COMPLETE / PASS; 001E-B and 001E-C are MERGED / PASS / CLOSED; 001F-A is IMPLEMENTED / PENDING INDEPENDENT REVIEW.
+SOURCE_CONFLICTS: historical pre-merge snapshots are retained as history only; current status is corrected here.
+EVIDENCE_LIMITS: real-MySQL two-connection claim concurrency, live Redis, Queue Worker, Scheduler and Dev Migration remain unverified.
+```
+
+## Current Architecture Migration Estimate
+
+```text
+001F_B_TO_F_ESTIMATE: 12–24h
+PLANNING_VALUE: 18h
+ARCHITECTURE_MIGRATION_REMAINING: approximately 5–9 Codex / 12–24h
+CLASSIFICATION: planning estimate only
+ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
 ```
 
 ## Initial Hours Snapshot
@@ -68,10 +80,12 @@ EVIDENCE_LIMITS: real-MySQL two-connection claim concurrency and MySQL 5.7 remai
 |---|---:|---|---|
 | `001D_TOTAL_ESTIMATE` | 35–54h; planning value 45h | completed issued total estimate | Frozen and completed parent 001D package; not remaining |
 | `001E_PARENT_PLANNING_ESTIMATE` | 40–62h; planning value 51h | parent-level original planning estimate | Original allocation across 001E-A/B/C; not remaining |
-| `001E_B_CONFIRMED_ESTIMATE` | 12–18h; planning value 15h | confirmed child implementation estimate | Preflight-complete estimate; implementation not authorized |
-| `001F_ESTIMATE` | UNKNOWN WITH EVIDENCE | unknown remaining component | No frozen package estimate exists |
-| `KNOWN_CURRENT_TRACK_REMAINING` | 24–38h; planning value 31h | non-overlapping 001E-B/C parent allocation | 001E-A is complete; excludes unknown 001F; 001E-C still needs its own Preflight |
-| `ARCHITECTURE_GATE_REMAINING` | UNKNOWN WITH EVIDENCE | unknown remaining total | 001E is known, but 001F is unestimated and cannot be safely added |
+| `001E_B_CONFIRMED_ESTIMATE` | 12–18h; planning value 15h | confirmed child implementation estimate | Accepted bounded implementation estimate; package merged and closed |
+| `001F_ESTIMATE` | 5–9 Codex; 12–24h planning range | planning estimate only | 001F-B through 001F-F remain unimplemented and unauthorized |
+| `KNOWN_CURRENT_TRACK_REMAINING` | 12–24h; planning value 18h | non-overlapping 001F-B/F planning range | 001E is complete; remaining work is Architecture Migration only |
+| `001F_B_TO_F_ESTIMATE` | 12–24h | planning estimate only | planning value 18h; actual hours unknown with evidence |
+| `ARCHITECTURE_MIGRATION_REMAINING` | approximately 5–9 Codex / 12–24h | planning estimate only | 001F-B through 001F-F; no guaranteed gate completion time |
+| `ARCHITECTURE_GATE_REMAINING` | 12–24h planning estimate | planning estimate only | actual hours unknown with evidence; completion is not guaranteed within this range |
 | `MVP1_TOTAL_ESTIMATE` | 122–190h | total estimate | Effective Hours source; not automatically remaining |
 | `MVP1_PLANNING_BASELINE` | 166h | total planning value | Effective Hours source |
 | `MVP1_MAXIMUM_ENVELOPE` | 192h | maximum total planning envelope | Living Roadmap and Effective Hours sources |

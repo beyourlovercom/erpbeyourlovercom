@@ -68,8 +68,27 @@ Application code: NO CHANGE.
 Migration: NO.
 Deployment: NO.
 Global Architecture Gate: FAIL.
+
+```
+
+## 2026-08-03 — 001E closed and 001F-A gate scope frozen
+
+```text
+Owner decision: Correct merged 001E closure status and freeze 001F-A gate scope under one bounded remediation.
+Review result: CHANGES_REQUIRED; PR #23 remediation.
+Previous state: 001E-B/C current summaries conflicted with merged Git state; 001F hours and gate classifications were inconsistent.
+New state: 001E-B/C MERGED / PASS / COMPLETE / CLOSED; 001F-A IMPLEMENTED / PENDING INDEPENDENT REVIEW; Global Architecture Gate remains FAIL.
+Reason: Align current governance with accepted PR #21/#22 evidence without rewriting historical records.
+Affected modules: Governance and Architecture Migration status only.
+Affected Work Packages: ERP-ARCH-MIGRATION-001E-B; ERP-ARCH-MIGRATION-001E-C; ERP-ARCH-MIGRATION-001F-A governance scope.
+Estimate impact: 001F-B through 001F-F remains 12–24h, planning value 18h; actual hours UNKNOWN WITH EVIDENCE; no completion-time guarantee.
 Architecture conflict: NONE.
-Documents updated: AI/LARGE_PROJECT_EXECUTION_STANDARD.md; CODEX_ENTRYPOINT.md; docs/60_Codex_Operations/CODEX_TASK_TEMPLATE.md; docs/60_Codex_Operations/CODEX_FINAL_REPORT_TEMPLATE.md; docs/10_Planning_Roadmap/00_COMMAND_CENTER.md; docs/10_Planning_Roadmap/04_LIVING_ROADMAP.md; docs/10_Planning_Roadmap/09_EFFECTIVE_HOURS.md; docs/10_Planning_Roadmap/10_DECISION_REGISTER.md; docs/10_Planning_Roadmap/11_CHANGE_LOG.md; docs/10_Planning_Roadmap/13_PROGRAM_ROADMAP_AND_HOURS.md; docs/60_Codex_Operations/work-packages/ERP-GOVERNANCE-PROGRAM-ROADMAP-HOURS-001.md.
+Application code: NO CHANGE.
+Dependency / package-lock / Workflow / Migration / database: NO CHANGE.
+UAT: NO.
+Deployment: NO.
+Global Architecture Gate: FAIL.
+Documents updated for PR #23 scope: AI/CURRENT_CONTEXT.md; docs/10_Planning_Roadmap/04_LIVING_ROADMAP.md; docs/10_Planning_Roadmap/10_DECISION_REGISTER.md; docs/10_Planning_Roadmap/11_CHANGE_LOG.md; docs/10_Planning_Roadmap/12_WORK_PACKAGE_INDEX.md; docs/10_Planning_Roadmap/13_PROGRAM_ROADMAP_AND_HOURS.md; docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001E-B.md; docs/60_Codex_Operations/logs/2026-08-03_ERP-ARCH-MIGRATION-001E-B.md; docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001E-C.md; docs/60_Codex_Operations/logs/2026-08-03_ERP-ARCH-MIGRATION-001E-C.md. This remediation changes only the eight files authorized above; no standards, templates or Command Center files.
 ```
 
 ## 2026-08-01 — 001D-A merged / 001D-B prepared
