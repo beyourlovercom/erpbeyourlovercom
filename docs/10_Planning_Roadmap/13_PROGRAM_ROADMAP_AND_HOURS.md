@@ -52,6 +52,9 @@ The Program Roadmap is the top-level delivery sequence. It must not be replaced 
 001F Architecture Re-audit            ACTIVE / PREFLIGHT REVIEWED
 001F-A Governance Status Correction   IMPLEMENTED / PENDING INDEPENDENT REVIEW
 001F-B through 001F-F                 PROPOSED / NOT AUTHORIZED
+001F-B Modular Boundary Decision      COMPLETE / REVIEWED / OPTION A1 APPROVED
+001F-B1 Module Architecture Contract CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW
+001F-B2 through 001F-B5                PROPOSED / NOT AUTHORIZED
 Global Architecture Gate              FAIL
 ```
 
@@ -86,6 +89,7 @@ ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
 | `001F_B_TO_F_ESTIMATE` | 12–24h | planning estimate only | planning value 18h; actual hours unknown with evidence |
 | `ARCHITECTURE_MIGRATION_REMAINING` | approximately 5–9 Codex / 12–24h | planning estimate only | 001F-B through 001F-F; no guaranteed gate completion time |
 | `ARCHITECTURE_GATE_REMAINING` | 12–24h planning estimate | planning estimate only | actual hours unknown with evidence; completion is not guaranteed within this range |
+| `001F_B2_TO_B5_ESTIMATE` | 20–40h; planning value 30h | planning estimate only | excludes 001F-C through 001F-F; actual hours unknown with evidence |
 | `MVP1_TOTAL_ESTIMATE` | 122–190h | total estimate | Effective Hours source; not automatically remaining |
 | `MVP1_PLANNING_BASELINE` | 166h | total planning value | Effective Hours source |
 | `MVP1_MAXIMUM_ENVELOPE` | 192h | maximum total planning envelope | Living Roadmap and Effective Hours sources |

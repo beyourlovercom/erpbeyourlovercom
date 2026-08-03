@@ -212,3 +212,17 @@ Architecture conflict: NONE.
 Global Architecture Gate: FAIL.
 Documents updated: AI/CURRENT_CONTEXT.md; Roadmap, Decision Register, Change Log, Work Package Index, Program Roadmap and Hours; parent/child Work Packages and accepted Work Logs.
 ```
+
+## 2026-08-03 — 001F-B1 module contract frozen
+
+```text
+Owner decision: Approve RECOMMEND_OPTION_A1 and freeze the v1.1 physical module contract.
+Decision: D-031 — Adopt A1 Physical Module Contract for Architecture Standard v1.1.
+Previous state: 001F-B was reviewed but lacked an executable physical module contract.
+New state: 001F-B COMPLETE / REVIEWED / OPTION A1 APPROVED; 001F-B1 CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW; B2-B5 PROPOSED / NOT AUTHORIZED.
+Standard: BYL-ERP-ARCH-001 v1.1 effective 2026-08-03; v1.0 did not explicitly require app/Modules/**.
+Migration policy: historical database/migrations remain in place; no application or directory migration in B1.
+Estimate impact: B2 1–2 Codex / 4–8h; B3 1–2 / 5–10h; B4 1–2 / 6–12h; B5 1–2 / 5–10h; combined 4–8 Codex / 20–40h; planning value 30h; actual hours UNKNOWN WITH EVIDENCE.
+Global Architecture Gate: FAIL. MVP1: NOT STARTED / 0%. UAT: NO. Deployment: NO.
+Documents updated: exactly 7 existing authorized Markdown files and 2 new B1 Markdown files; no application, dependency, namespace, provider, route, migration, database, test or workflow changes.
+```

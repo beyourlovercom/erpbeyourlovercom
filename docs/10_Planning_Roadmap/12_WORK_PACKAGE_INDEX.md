@@ -36,6 +36,19 @@ DEDICATED_WORK_PACKAGE_FILE: NOT CREATED / OUTSIDE AUTHORIZED FILE BOUNDARY
 
 ERP-ARCH-MIGRATION-001F-B through 001F-F
 Status: PROPOSED / NOT AUTHORIZED
+
+ERP-ARCH-MIGRATION-001F-B
+Modular Boundary Decision / Remediation
+Status: COMPLETE / REVIEWED / OPTION A1 APPROVED
+
+ERP-ARCH-MIGRATION-001F-B1
+Module Architecture Contract & Decision Freeze
+Status: CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW
+Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-B1.md
+Work Log: docs/60_Codex_Operations/logs/2026-08-03_ERP-ARCH-MIGRATION-001F-B1.md
+
+ERP-ARCH-MIGRATION-001F-B2 through 001F-B5
+Status: PROPOSED / NOT AUTHORIZED
 ```
 
 ## Completed architecture packages

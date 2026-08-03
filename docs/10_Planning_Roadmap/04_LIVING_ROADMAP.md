@@ -78,6 +78,8 @@ Maximum planning envelope: approximately 192 effective hours
 
 The accepted 001D-C evidence remains bounded: real-MySQL two-connection claim concurrency is a Global Gate blocker and no Dev Migration was run. MySQL 5.7 is outside the current supported baseline, does not block the Global Gate, and current code is not declared compatible; future support requires a new Architecture Decision and Compatibility Work Package. Staging Migration remains a UAT blocker, and Production Migration planning/rehearsal remains a deployment blocker.
 
+001F-B Preflight: COMPLETE / REVIEWED / OPTION A1 APPROVED. 001F-B1 Module Architecture Contract & Decision Freeze: CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW. 001F-B2 through 001F-B5: PROPOSED / NOT AUTHORIZED. The v1.1 `app/Modules/**` contract is forward-effective; no module code or directory exists yet. MVP1 remains NOT STARTED / 0%.
+
 ## Incremental releases
 
 ### MVP1 — Manual Fulfillment on Final Core
