@@ -6,10 +6,15 @@
         "build": "vite build",
         "dev": "vite",
         "test": "vitest run",
-        "typecheck": "vue-tsc --noEmit"
+        "test:e2e": "node tests/e2e/support/run-e2e.mjs",
+        "test:e2e:contracts": "node --test tests/e2e/support/artifact-scan.test.mjs",
+        "test:e2e:direct": "playwright test --project=chromium",
+        "typecheck": "vue-tsc --noEmit",
+        "typecheck:e2e": "tsc --noEmit -p tsconfig.e2e.json"
     },
     "devDependencies": {
         "@inertiajs/vue3": "^3.6.1",
+        "@playwright/test": "1.62.1",
         "@tailwindcss/vite": "^4.0.0",
         "@types/node": "^26.1.2",
         "@vitejs/plugin-vue": "^6.0.8",

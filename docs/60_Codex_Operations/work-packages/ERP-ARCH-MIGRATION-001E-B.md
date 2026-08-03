@@ -2,7 +2,7 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-ARCH-MIGRATION-001E-B
-status: preflight-complete-pending-independent-review
+status: clean-clone-remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -14,26 +14,27 @@ standard_version: 1.1
 ```text
 ID: ERP-ARCH-MIGRATION-001E-B
 TITLE: Browser E2E Foundation
-STATUS: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
-BASELINE: main@493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8
+STATUS: PR #21 CLEAN-CLONE REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
+BASELINE: main@05290700afc94153378c0ca4fafe0c69eab80544
 PARENT_PACKAGE: ERP-ARCH-MIGRATION-001E
 PREDECESSOR: ERP-ARCH-MIGRATION-001E-A MERGED / PASS
 MENU_IMPACT: NO
 APPROVED_MENU_CHECK: PASS
 APPLICATION_CODE_CHANGE: NO
-DEPENDENCY_CHANGE: NO
-PACKAGE_LOCK_CHANGE: NO
-BROWSER_INSTALL: NO
+DEPENDENCY_CHANGE: YES / exact @playwright/test@1.62.1 only
+PACKAGE_LOCK_CHANGE: YES / exact dependency resolution only
+BROWSER_INSTALL: YES / Chromium Headless Shell in repository-external versioned cache
 WORKFLOW_CHANGE: NO
-MIGRATION: NO
-DATABASE_CHANGE: NO
-TEST_USER_CREATION: NO
+MIGRATION_FILE_CHANGE: NO
+MIGRATION_EXECUTION: DISPOSABLE EXTERNAL SQLITE ONLY
+PERSISTENT_DATABASE_CHANGE: NO
+TEST_USER_CREATION: DISPOSABLE SYNTHETIC USERS ONLY
 UAT: NO
 DEPLOYMENT: NO
 GLOBAL_ARCHITECTURE_GATE: FAIL
 ```
 
-This document freezes the proposed 001E-B implementation boundary. It does not grant any implementation or execution gate.
+This document preserves the reviewed Preflight contract and records the bounded local implementation authorized after PR #19 merged. It does not authorize Workflow changes, 001E-C, merge, UAT or deployment.
 
 ## Purpose and Architecture Position
 
@@ -41,7 +42,7 @@ This document freezes the proposed 001E-B implementation boundary. It does not g
 
 ```text
 001E-A MERGED / PASS
-→ 001E-B Browser E2E Foundation PREFLIGHT COMPLETE / IMPLEMENTATION NOT AUTHORIZED
+→ 001E-B Browser E2E Foundation IMPLEMENTED / PENDING INDEPENDENT REVIEW
 → 001E-C WAITING
 → 001F WAITING
 ```
@@ -177,7 +178,7 @@ SHARED_DATABASE_ALLOWED: NO
 MYSQL: optional future isolated parity run only with separate authorization
 ```
 
-The runner must compare the resolved SQLite path with `BYL_E2E_RUN_ROOT`, require a nonexistent or empty file and reject URLs, sockets, network hosts and the repository database path. Migration execution is necessary to create the disposable schema but remains blocked until the Owner separately grants `DISPOSABLE_E2E_MIGRATION_EXECUTION_AUTHORIZATION`. No Migration file change is proposed.
+The runner compares the resolved SQLite path with `BYL_E2E_RUN_ROOT`, requires a new empty regular file and rejects URLs, sockets, network hosts and the repository database path. The Owner granted disposable E2E Migration execution for this implementation, and the existing Migrations ran only against that validated file. No Migration file changed.
 
 ## Synthetic Test Users
 
@@ -228,7 +229,7 @@ The stricter initial policy replaces the parent's provisional retain-on-failure 
 
 ## Artifact Sensitive-data Scan Contract
 
-`tests/e2e/support/artifact-scan.mjs` is proposed as a fail-closed scanner. Before any future upload it must:
+`tests/e2e/support/artifact-scan.mjs` implements a fail-closed scanner. Before any future upload it must:
 
 1. resolve and confine every candidate to the external artifact root;
 2. reject symlinks, device files, sockets, unknown extensions and oversized files;
@@ -276,9 +277,9 @@ The future config must:
 - reject non-loopback base URLs and all external requests;
 - never load real `.env` secrets into reporter metadata.
 
-## Proposed npm Scripts and Commands
+## Implemented npm Scripts and Commands
 
-Proposed `package.json` additions, not yet authorized:
+Implemented `package.json` additions:
 
 ```text
 test:e2e                 node tests/e2e/support/run-e2e.mjs
@@ -287,7 +288,7 @@ test:e2e:direct          playwright test --project=chromium
 typecheck:e2e            tsc --noEmit -p tsconfig.e2e.json
 ```
 
-Proposed local sequence after all gates are granted:
+Validated local sequence under the granted gates:
 
 ```text
 npm ci
@@ -323,9 +324,9 @@ WORKFLOW_REQUIRED_FOR_MERGE_GATE: OWNER DECISION
 WORKFLOW_CHANGE_AUTHORIZATION: REQUIRED / NOT GRANTED
 ```
 
-## Exact Proposed File Delta
+## Exact Implemented File Delta
 
-Base 001E-B implementation, all requiring separate authorization:
+Bounded 001E-B implementation:
 
 ```text
 MODIFY package.json
@@ -341,13 +342,13 @@ ADD tests/e2e/support/provision-users.php
 ADD tests/e2e/support/run-e2e.mjs
 ```
 
-Optional, separately gated:
+Still excluded and separately gated:
 
 ```text
 ADD .github/workflows/browser-e2e.yml
 ```
 
-No `.gitignore` delta is required because all runtime/auth/artifact paths are repository-external. No application, CSS, menu, Vite config, PHP application, route, Migration or database configuration file is proposed.
+No `.gitignore` delta was required because all runtime/auth/artifact paths are repository-external. No application, CSS, menu, Vite config, PHP application, route, Migration or database configuration file changed.
 
 ## Test Matrix
 
@@ -365,6 +366,89 @@ No `.gitignore` delta is required because all runtime/auth/artifact paths are re
 | Existing regression | Composer validation, full PHP, full Vitest, typecheck, build and diff check pass |
 
 001E-C later owns valid/invalid/inactive login, logout Session invalidation, permissions, 403/404, Shell interaction and authenticated accessibility flows.
+
+## Implementation Evidence
+
+```text
+AUTHORIZED_BASE: main@05290700afc94153378c0ca4fafe0c69eab80544
+DEPENDENCY: exact @playwright/test@1.62.1
+PACKAGE_LOCK: bounded npm lockfile v3 resolution
+BROWSER: Google Chrome for Testing 151.0.7922.34 / Chromium Headless Shell revision 1234
+BROWSER_CACHE: /Users/a/Library/Caches/byl-erp/playwright/1.62.1
+RUN_ROOT: fresh owner-only operating-system temporary directory per run
+RUN_ROOT_OUTSIDE_REPOSITORY: PASS
+DATABASE: fresh external database/e2e.sqlite per run
+DISPOSABLE_MIGRATION: PASS / existing Migrations only
+SYNTHETIC_USERS: 3 / active super-admin, active unauthorized, inactive
+LOCAL_ADMIN_BYPASS: false
+PROJECTS: chromium only
+WORKERS: 1
+REUSE_EXISTING_SERVER: false
+SCREENSHOT_TRACE_VIDEO: off / off / off
+STORAGE_STATE: not generated
+EXTERNAL_BROWSER_REQUESTS: 0
+FOUNDATION_SMOKE: PASS / 1 test
+ENVIRONMENT_AND_ARTIFACT_CONTRACTS: PASS / 15 tests
+CLEANUP: PASS on success, failure, timeout and signal
+WORKFLOW_CHANGE: NO
+```
+
+Validation at the implementation Head before publication:
+
+```text
+COMPOSER_VALIDATE: PASS
+PHP_TESTS: PASS / 134 tests / 1322 assertions
+FRONTEND_TESTS: PASS / 12 files / 71 tests
+E2E_CONTRACT_TESTS: PASS / 15 tests
+E2E_FOUNDATION_SMOKE: PASS / 1 Chromium test
+APPLICATION_TYPECHECK: PASS
+E2E_TYPECHECK: PASS
+BUILD: PASS
+AUTHORIZED_PHP_FILE_PINT: PASS
+APPROVED_MENU_BASELINE: PASS / 4 tests / 213 assertions
+REPOSITORY_WIDE_PINT: PRE-EXISTING BASELINE FAILURES ONLY / no changed PHP file failure
+```
+
+The first real run exposed two test-harness integration defects without touching application behavior: the PHP bootstrap needed Composer autoload before Laravel boot, and the smoke selectors needed to match the current password control and Inertia v3 page payload contract. Both were corrected within the approved E2E support/test files; subsequent Foundation Smoke passed with the external runtime removed.
+
+## PR #21 Independent Review Remediation
+
+```text
+INDEPENDENT_REVIEW_RESULT: CHANGES_REQUIRED
+REVIEWED_HEAD: 6a4bc9647885040e3caaf1fcbb6fe40aaa63d2cc
+REMEDIATION_SCOPE: four bounded E2E safety contracts
+LARAVEL_EFFECTIVE_CONFIG_GATE: PASS
+PRE_MIGRATION_DATABASE_IDENTITY: PASS
+POST_BOOT_DATABASE_IDENTITY: PASS
+CONFIG_CACHE_ISOLATION: PASS / all cache paths external; active config, route and event caches rejected
+PRE_ABORTED_SIGNAL: PASS / no child spawn
+LOCAL_PLAYWRIGHT_CLI: PASS / repository-installed @playwright/test 1.62.1 only
+NPM_NETWORK_FALLBACK: PROHIBITED / runtime uses the resolved local CLI through the current Node executable
+COOKIE_SCAN: PASS / cookie, setCookie and sessionCookie fixtures
+ZIP_TOTAL_BUDGET: PASS / aggregate and nested declared-size budgets enforced before inflate
+MIGRATION_FILE_CHANGE: NO
+REAL_DATABASE_CHANGE: NO
+```
+
+Before Migration, the runner now boots Laravel through the same E2E environment in a read-only runtime-preflight mode. It verifies the effective `testing` environment, `sqlite` default, configured SQLite path, PDO `main` database identity, disabled local-admin bypass and external Bootstrap cache paths. Provisioning repeats the effective PDO identity check after Migration and before inserting synthetic users. Contract fixtures prove stale config cache, MySQL, nonfresh shared SQLite and the repository SQLite path fail closed without changing the repository database.
+
+## PR #21 Clean-clone Remediation
+
+```text
+INDEPENDENT_REVIEW_RESULT: CHANGES_REQUIRED
+REVIEWED_HEAD: d3f3cc6edf237eabdf424a7019c3f8580192c3d1
+ONLY_BLOCKER: contract test depended on ignored local database/database.sqlite
+PHP_REPOSITORY_PATH_FIXTURE: tracked composer.json
+FIXTURE_PRECHECK: size and mtimeMs recorded
+FAIL_CLOSED_STAGE: raw repository-path boundary before Laravel connection or Migration
+FIXTURE_POSTCHECK: size and mtimeMs unchanged
+JAVASCRIPT_LOGICAL_PATH_CONTRACT: database/database.sqlite remains rejected without existence check
+UNTRACKED_SQLITE_DEPENDENCY: REMOVED
+DATABASE_SQLITE_CREATE_DELETE_MODIFY: NO
+CLEAN_CLONE_CONTRACT: PASS
+```
+
+The test suite no longer stats, opens or otherwise depends on `database/database.sqlite`. The PHP boundary test uses tracked `composer.json`, which is guaranteed in a clean clone, and confirms the file is rejected before Laravel database boot while its size and modification time remain identical. The JavaScript path contract still submits the logical repository SQLite path directly to the path guard; its assertion does not require that file to exist.
 
 ## Rollback
 
@@ -400,12 +484,12 @@ No `.gitignore` delta is required because all runtime/auth/artifact paths are re
 ## Owner Gates
 
 ```text
-DEPENDENCY_CHANGE_AUTHORIZATION: REQUIRED / NOT GRANTED
-PACKAGE_LOCK_CHANGE_AUTHORIZATION: REQUIRED / NOT GRANTED
-BROWSER_INSTALL_AUTHORIZATION: REQUIRED / NOT GRANTED
+DEPENDENCY_CHANGE_AUTHORIZATION: GRANTED / exact @playwright/test@1.62.1 only
+PACKAGE_LOCK_CHANGE_AUTHORIZATION: GRANTED / exact dependency resolution only
+BROWSER_INSTALL_AUTHORIZATION: GRANTED / external Chromium cache only
 WORKFLOW_CHANGE_AUTHORIZATION: REQUIRED / NOT GRANTED
-DISPOSABLE_E2E_MIGRATION_EXECUTION_AUTHORIZATION: REQUIRED / NOT GRANTED
-IMPLEMENTATION_AUTHORIZATION: NOT GRANTED
+DISPOSABLE_E2E_MIGRATION_EXECUTION_AUTHORIZATION: GRANTED / fresh external SQLite only
+IMPLEMENTATION_AUTHORIZATION: GRANTED / bounded local 001E-B foundation only
 MERGE_AUTHORIZATION: NOT GRANTED
 UAT_AUTHORIZATION: NOT GRANTED
 DEPLOYMENT_AUTHORIZATION: NOT GRANTED
@@ -433,25 +517,25 @@ DEPLOYMENT: EXCLUDED
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A MERGED / PASS → 001E-B PREFLIGHT COMPLETE / PENDING REVIEW / IMPLEMENTATION NOT AUTHORIZED → 001E-C WAITING → 001F WAITING
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A MERGED / PASS → 001E-B PR #21 CLEAN-CLONE REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E-C WAITING → 001F WAITING
 COMPLETED_PHASES: 001A, 001B, 001C, 001D, 001E-A
-CURRENT_PHASE: 001E-B Browser E2E Foundation Preflight review
+CURRENT_PHASE: 001E-B Browser E2E Foundation implementation review
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-B
-PACKAGE_STATUS: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
-WAITING_PHASES: 001E-B implementation gates, 001E-C, 001F
-BASELINE: main@493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8
-GITHUB_STATE: PR #14, #15, #16 and #17 MERGED; PR #19 OPEN / DRAFT / PENDING INDEPENDENT REMEDIATION REVIEW
+PACKAGE_STATUS: PR #21 CLEAN-CLONE REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
+WAITING_PHASES: 001E-C, 001F
+BASELINE: main@05290700afc94153378c0ca4fafe0c69eab80544
+GITHUB_STATE: PR #21 OPEN / DRAFT / PENDING INDEPENDENT REVIEW
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: independent Preflight review, then separate Owner authorization for every frozen 001E-B gate
-EVIDENCE_AS_OF: 2026-08-03; repository/toolchain audit, npm read-only metadata and official Playwright documentation
+NEXT_DEPENDENCY: independent implementation review; Owner merge authorization remains separate
+EVIDENCE_AS_OF: 2026-08-03; local implementation, disposable SQLite Migration, Chromium smoke and regression validation
 ```
 
 ## ROADMAP HOURS
 
 ```text
-CURRENT_PACKAGE_ESTIMATE: 12–18h; planning value 15h; confirmed future 001E-B implementation estimate, not authorized
-KNOWN_CURRENT_TRACK_REMAINING: 24–38h; planning value 31h for non-overlapping 001E-B/C parent allocation; excludes unknown 001F
+CURRENT_PACKAGE_ESTIMATE: 12–18h; planning value 15h; implementation complete pending independent review
+KNOWN_CURRENT_TRACK_REMAINING: 24–38h; planning value 31h for the accepted 001E-B/C parent allocation; not reduced until 001E-B is independently accepted and merged; excludes unknown 001F
 ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE; 001E-C and unestimated 001F remain incomplete
 MVP1_TOTAL_ESTIMATE: 122–190h total estimate
 MVP1_PLANNING_BASELINE: 166h total planning value
@@ -475,10 +559,10 @@ TEST_AND_VALIDATION: 4–6h; planning value 5h
 REMEDIATION_BUFFER: 2–3h; planning value 2.5h
 ESTIMATED_EFFECTIVE_HOURS: 15h
 ESTIMATE_RANGE: 12–18 effective hours
-ESTIMATE_BASIS: confirmed future 001E-B implementation estimate; no implementation authorization granted
+ESTIMATE_BASIS: completed bounded local 001E-B implementation; independent review and merge excluded
 OWNER_REVIEW: EXCLUDED
 MERGE: EXCLUDED
-MIGRATION: EXCLUDED FROM THIS PREFLIGHT; disposable execution requires separate authorization
+MIGRATION: disposable external SQLite execution included and completed; persistent environments excluded
 UAT: EXCLUDED
 DEPLOYMENT: EXCLUDED
 ```
@@ -486,5 +570,5 @@ DEPLOYMENT: EXCLUDED
 ## Verdict
 
 ```text
-FINAL_STATUS: ERP_ARCH_MIGRATION_001E_B_PREFLIGHT_COMPLETE_PENDING_INDEPENDENT_REVIEW
+FINAL_STATUS: PR_21_CLEAN_CLONE_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
 ```

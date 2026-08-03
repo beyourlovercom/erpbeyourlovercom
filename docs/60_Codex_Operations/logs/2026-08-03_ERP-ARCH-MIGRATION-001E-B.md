@@ -2,12 +2,14 @@
 type: byl-erp-work-log
 date: 2026-08-03
 work_package: ERP-ARCH-MIGRATION-001E-B
-status: preflight-complete-pending-independent-review
+status: clean-clone-remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
 
 # ERP-ARCH-MIGRATION-001E-B Preflight Log
+
+This log preserves the accepted Preflight evidence and continues with the subsequently authorized local implementation.
 
 ## Authorization
 
@@ -26,6 +28,21 @@ UAT: NO
 DEPLOYMENT: NO
 MENU_IMPACT: NO
 APPROVED_MENU_CHECK: PASS
+```
+
+## Implementation Authorization
+
+```text
+AUTHORIZED_BASE: main@05290700afc94153378c0ca4fafe0c69eab80544
+DEPENDENCY_CHANGE_AUTHORIZATION: GRANTED / exact @playwright/test@1.62.1 only
+PACKAGE_LOCK_CHANGE_AUTHORIZATION: GRANTED / exact dependency resolution only
+BROWSER_INSTALL_AUTHORIZATION: GRANTED / repository-external versioned Chromium cache only
+DISPOSABLE_E2E_MIGRATION_EXECUTION_AUTHORIZATION: GRANTED / new external SQLite per run only
+IMPLEMENTATION_AUTHORIZATION: GRANTED / bounded local 001E-B foundation only
+WORKFLOW_CHANGE_AUTHORIZATION: NOT GRANTED
+MERGE_AUTHORIZATION: NOT GRANTED
+UAT: NO
+DEPLOYMENT: NO
 ```
 
 ## Repository Evidence
@@ -138,26 +155,153 @@ DISPOSABLE_E2E_MIGRATION_EXECUTION_AUTHORIZATION: REQUIRED / NOT GRANTED
 IMPLEMENTATION_AUTHORIZATION: NOT GRANTED
 ```
 
+The block above is the historical Preflight gate state recorded for PR #19. The later implementation authorization is recorded separately above and governs this implementation entry.
+
+## Local Foundation Implementation
+
+```text
+IMPLEMENTATION_RESULT: COMPLETE / PENDING INDEPENDENT REVIEW
+DEPENDENCY: exact @playwright/test@1.62.1
+PACKAGE_LOCK_DELTA: @playwright/test, playwright, playwright-core and optional platform fsevents resolution only
+BROWSER_VERSION: Google Chrome for Testing 151.0.7922.34
+BROWSER_SCOPE: Chromium Headless Shell revision 1234 only
+BROWSER_CACHE: /Users/a/Library/Caches/byl-erp/playwright/1.62.1
+BROWSER_CACHE_OUTSIDE_REPOSITORY: PASS
+RUN_ROOT: fresh owner-only operating-system temporary directory
+RUN_ROOT_OUTSIDE_REPOSITORY: PASS
+DATABASE_PATH: <run-root>/database/e2e.sqlite
+DATABASE_SAFETY_GATE: PASS
+DISPOSABLE_MIGRATION: PASS / existing Migrations only
+SYNTHETIC_USERS: 3 / disposable only
+ERP_LOCAL_ADMIN_BYPASS: false
+FOUNDATION_SMOKE: PASS / 1 Chromium test
+FOUNDATION_SMOKE_EXTERNAL_REQUESTS: 0
+ENVIRONMENT_AND_ARTIFACT_CONTRACTS: PASS / 15 tests
+SCREENSHOT: off
+TRACE: off
+VIDEO: off
+STORAGE_STATE: not generated
+UPLOAD: none
+CLEANUP: PASS / success, failure, timeout and signal
+PUBLIC_HOT: absent
+WORKFLOW_CHANGE: NO
+```
+
+The first real disposable run safely exposed a missing Composer-autoload bootstrap in the test-only provisioner. The second run exposed selectors that did not match the current password control and Inertia v3 page payload. Both failures cleaned the external run root, and both fixes stayed inside the approved E2E support/test boundary. The subsequent run passed and removed its database, generated secrets, reports and artifacts.
+
+## Implementation File Boundary
+
+```text
+MODIFY package.json
+MODIFY package-lock.json
+ADD playwright.config.ts
+ADD tsconfig.e2e.json
+ADD tests/e2e/README.md
+ADD tests/e2e/foundation/smoke.spec.ts
+ADD tests/e2e/support/artifact-scan.mjs
+ADD tests/e2e/support/artifact-scan.test.mjs
+ADD tests/e2e/support/e2e-environment.mjs
+ADD tests/e2e/support/provision-users.php
+ADD tests/e2e/support/run-e2e.mjs
+UPDATE this Work Log
+UPDATE ERP-ARCH-MIGRATION-001E-B Work Package
+APPLICATION_CODE: UNCHANGED
+MENU: UNCHANGED
+MIGRATION_FILES: UNCHANGED
+GITHUB_ACTIONS: UNCHANGED
+```
+
+## Validation Evidence
+
+```text
+COMPOSER_VALIDATE: PASS
+PHP_TESTS: PASS / 134 tests / 1322 assertions
+FRONTEND_TESTS: PASS / 12 files / 71 tests
+E2E_CONTRACT_TESTS: PASS / 15 tests
+E2E_FOUNDATION_SMOKE: PASS / 1 Chromium test
+APPLICATION_TYPECHECK: PASS
+E2E_TYPECHECK: PASS
+BUILD: PASS
+AUTHORIZED_PHP_FILE_PINT: PASS
+APPROVED_MENU_BASELINE: PASS / 4 tests / 213 assertions
+REPOSITORY_WIDE_PINT: FAIL / 13 unchanged baseline files only
+REPOSITORY_WIDE_PINT_NEW_FAILURES: NONE
+PUBLIC_HOT: ABSENT
+DISPOSABLE_RUN_ROOTS_AFTER_TEST: NONE
+```
+
+Repository-wide Pint reported only unchanged baseline files outside this package, including existing Migrations, models, routes and legacy Shell tests. The sole changed PHP file, `tests/e2e/support/provision-users.php`, passed focused Pint and syntax validation. These existing formatting findings were not modified because this package prohibits application and Migration changes.
+
+## PR #21 Independent Review Remediation
+
+```text
+INDEPENDENT_REVIEW_RESULT: CHANGES_REQUIRED
+REVIEWED_HEAD: 6a4bc9647885040e3caaf1fcbb6fe40aaa63d2cc
+ISSUE_1: Laravel effective config and database identity were not proven before Migration
+ISSUE_2: an already-aborted AbortSignal could reach spawn
+ISSUE_3: Cookie variants and aggregate/nested ZIP budgets were incomplete
+ISSUE_4: npx allowed a package-download fallback when starting Playwright
+LARAVEL_RUNTIME_PREFLIGHT: PASS
+PRE_MIGRATION_EFFECTIVE_ENVIRONMENT: testing
+PRE_MIGRATION_EFFECTIVE_CONNECTION: sqlite
+PRE_MIGRATION_CONFIGURED_DATABASE_PATH: validated external database/e2e.sqlite
+PRE_MIGRATION_PDO_MAIN_PATH: validated external database/e2e.sqlite
+POST_BOOT_PROVISIONING_PDO_PATH: validated again before inserts
+ERP_LOCAL_ADMIN_BYPASS_EFFECTIVE: false
+BOOTSTRAP_CACHE_PATHS: repository-external run root only
+ACTIVE_CONFIG_ROUTE_EVENT_CACHE: rejected before Laravel Kernel bootstrap
+MYSQL_SHARED_OR_REPOSITORY_DATABASE: rejected before connection or Migration
+PRE_ABORTED_SIGNAL_CHILD_SPAWN: NO
+LOCAL_PLAYWRIGHT_CLI: exact repository-installed @playwright/test 1.62.1
+NPM_NETWORK_FALLBACK: NO
+COOKIE_FIXTURES: cookie / setCookie / sessionCookie PASS
+ZIP_BUDGET_FIXTURES: multi-entry aggregate / nested cumulative PASS
+E2E_CONTRACT_TESTS: PASS / 15 tests
+FOUNDATION_SMOKE: PASS / 1 Chromium test / external requests 0
+REMEDIATION_RESULT: COMPLETE / PENDING INDEPENDENT REVIEW
+```
+
+The Laravel runtime-preflight runs before `php artisan migrate` using the exact environment later passed to Migration. The provisioner repeats effective PDO identity after Migration. A tracked repository fixture is checked before and after path rejection and retains identical size and modification time. No MySQL connection, shared SQLite mutation, repository database mutation or Migration-file change occurred.
+
+## PR #21 Clean-clone Remediation
+
+```text
+INDEPENDENT_REVIEW_RESULT: CHANGES_REQUIRED
+REVIEWED_HEAD: d3f3cc6edf237eabdf424a7019c3f8580192c3d1
+ONLY_BLOCKER: PHP path-rejection fixture depended on ignored local database/database.sqlite
+TRACKED_REPOSITORY_FIXTURE: composer.json
+TRACKED_FIXTURE_EXISTS_IN_CLEAN_CLONE: YES
+TRACKED_FIXTURE_SIZE_AND_MTIME_BEFORE_AFTER: IDENTICAL
+REJECTION_STAGE: raw database-path boundary before Laravel connection and Migration
+DATABASE_DATABASE_SQLITE_STAT_OPEN_CREATE_DELETE_MODIFY: NO
+JAVASCRIPT_LOGICAL_PATH_REJECTION: database/database.sqlite retained without existence dependency
+UNTRACKED_SQLITE_DEPENDENCY_REMOVED: YES
+CLEAN_CLONE_CONTRACT: PASS
+REMEDIATION_SCOPE: one test file plus this Work Log and Work Package
+```
+
+The prior evidence wording is narrowed accordingly: no test now reads the developer-local SQLite file. The immutable repository-file proof uses tracked `composer.json`; the JavaScript guard continues to reject the logical repository SQLite path solely by resolved parent/path identity. This remains valid when `database/database.sqlite` is absent in a clean clone.
+
 ## PROJECT POSITION
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A MERGED / PASS → 001E-B PREFLIGHT COMPLETE / PENDING REVIEW / IMPLEMENTATION NOT AUTHORIZED → 001E-C WAITING → 001F WAITING
-CURRENT_PHASE: 001E-B Browser E2E Foundation Preflight review
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D COMPLETE / PASS → 001E-A MERGED / PASS → 001E-B PR #21 CLEAN-CLONE REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E-C WAITING → 001F WAITING
+CURRENT_PHASE: 001E-B Browser E2E Foundation implementation review
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-B
-PACKAGE_STATUS: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
-BASELINE: main@493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8
-GITHUB_STATE: PR #19 OPEN / DRAFT / PENDING INDEPENDENT REMEDIATION REVIEW
+PACKAGE_STATUS: PR #21 CLEAN-CLONE REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
+BASELINE: main@05290700afc94153378c0ca4fafe0c69eab80544
+GITHUB_STATE: PR #21 OPEN / DRAFT / PENDING INDEPENDENT REVIEW
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: independent review followed by separate Owner grants for each implementation gate
-EVIDENCE_AS_OF: 2026-08-03
+NEXT_DEPENDENCY: independent implementation review; merge remains separately gated
+EVIDENCE_AS_OF: 2026-08-03; local implementation and disposable browser/database validation
 ```
 
 ## ROADMAP HOURS
 
 ```text
-CURRENT_PACKAGE_ESTIMATE: 12–18h; planning value 15h for future 001E-B implementation; not authorized
+CURRENT_PACKAGE_ESTIMATE: 12–18h; planning value 15h; implementation complete pending independent review
 KNOWN_CURRENT_TRACK_REMAINING: 24–38h; planning value 31h for 001E-B/C parent allocation; excludes unknown 001F
 ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE
 MVP1_REMAINING: UNKNOWN WITH EVIDENCE
@@ -191,5 +335,5 @@ DEPLOYMENT: EXCLUDED
 ## Verdict
 
 ```text
-FINAL_STATUS: ERP_ARCH_MIGRATION_001E_A_CLOSED_001E_B_PREFLIGHT_COMPLETE_PENDING_INDEPENDENT_REVIEW
+FINAL_STATUS: PR_21_CLEAN_CLONE_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
 ```
