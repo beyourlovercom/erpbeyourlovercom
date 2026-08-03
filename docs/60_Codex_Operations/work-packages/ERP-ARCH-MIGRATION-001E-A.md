@@ -2,7 +2,7 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-ARCH-MIGRATION-001E-A
-status: preflight-remediation-complete-pending-independent-review
+status: shell-layout-remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -14,14 +14,15 @@ standard_version: 1.1
 ```text
 ID: ERP-ARCH-MIGRATION-001E-A
 TITLE: Shared UI and Design Tokens
-STATUS: PREFLIGHT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
+STATUS: 800PX SHELL LAYOUT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
 GOVERNANCE_BASELINE: eb6b4c425551bd60401fa20c85ee139f3d0e4785
-APPLICATION_BASELINE: main@548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
+APPLICATION_BASELINE: main@592b9732c09902cb2803f3b62f5686075619849d
 PARENT_PACKAGE: ERP-ARCH-MIGRATION-001E
 PREFLIGHT_AUTHORIZATION: YES / COMPLETE
-IMPLEMENTATION_AUTHORIZATION: NO
-APPLICATION_CODE_CHANGE: NO
-CSS_CHANGE: NO
+IMPLEMENTATION_AUTHORIZATION: YES / COMPLETE
+IMPLEMENTATION_BRANCH: feature/erp-arch-migration-001e-a-shared-ui-design-tokens
+APPLICATION_CODE_CHANGE: YES / BOUNDED
+CSS_CHANGE: YES / BOUNDED
 DEPENDENCY_CHANGE: NO
 LOCK_FILE_CHANGE: NO
 PLAYWRIGHT: NO
@@ -31,7 +32,105 @@ UAT: NO
 DEPLOYMENT: NO
 ```
 
-This document freezes the 001E-A implementation contract from repository evidence. It authorizes no implementation. Independent review and a separate Owner implementation authorization remain mandatory.
+This document freezes the 001E-A contract and records its bounded implementation result. Independent review, the required Owner visual check and separate merge authorization remain mandatory.
+
+## Implementation Result
+
+```text
+TOKENS_SOURCE: resources/css/tokens.css / UNIQUE
+COMPONENTS_IMPLEMENTED: UiButton, FormField, TextInput, UiAlert, EmptyState
+CONSUMERS_MIGRATED: Login, TopBar, Foundation, Placeholder, App Shell CSS
+LOGIN_SEMANTIC_COLOR_SCAN: PASS / no slate, cyan or rose semantic utility remains
+FOUNDATION_SEMANTIC_COLOR_SCAN: PASS / no slate, cyan or rose semantic utility remains
+BREAKPOINT_VARIABLE_SCAN: PASS / --byl-breakpoint-shell-narrow absent
+SHELL_NARROW_BREAKPOINT: @media (max-width: 800px) preserved
+FRONTEND_TESTS: PASS / 10 files / 58 tests
+TYPECHECK: PASS
+BUILD: PASS
+FULL_PHP_TEST_SUITE: PASS / 110 tests / 1006 assertions
+CODEX_VISUAL_REMEDIATION_CHECK: PASS / 799px, 800px and 801px
+OWNER_VISUAL_CHECK: NOT PERFORMED / REQUIRED BEFORE MERGE AUTHORIZATION
+DEPENDENCY_CHANGE: NO
+LOCK_FILE_CHANGE: NO
+WORKFLOW_CHANGE: NO
+PHP_CHANGE: NO
+MIGRATION: NO
+PR: #17 / OPEN / DRAFT
+MERGE: NO
+UAT: NO
+DEPLOYMENT: NO
+```
+
+The Login retains POST `/login`, approved copy, password reveal, no registration and robots metadata. Its submit text is `登录系统`, changes to `验证中…` during processing, never renders the generic `处理中…` fallback, and remains disabled with `aria-busy`. TopBar retains POST logout, toggle events and `aria-expanded`. Existing hidden-navigation focus contracts remain passing.
+
+## Component Contract Remediation Result
+
+```text
+AUTHORIZED_HEAD: 5c2902dedf1ab43702ec1c5ad104fd5a9bb71c36
+ATTRIBUTE_ALLOWLISTS: IMPLEMENTED FOR ALL FIVE COMPONENTS
+DIRECT_UNFILTERED_ATTR_BINDING: REMOVED
+UI_BUTTON_REJECTED: formaction, formmethod, formenctype, formtarget and all unfrozen attributes
+FORM_FIELD_REJECTED: id, role, tabindex, event listeners and all unfrozen attributes
+TEXT_INPUT_REJECTED: form, formaction, tabindex, event listeners and all unfrozen attributes
+EMPTY_STATE_REJECTED: role, tabindex, event listeners, unfrozen aria and all unfrozen attributes
+UI_ALERT_ROLE_AND_LIVE: EXTRACTED FROM ORDINARY ATTRS / SAFE DEFAULTS AUTHORITATIVE
+FORM_FIELD_SLOT_ONLY_DESCRIPTION: SUPPORTED
+FORM_FIELD_SLOT_ONLY_ERROR: SUPPORTED / role=alert / invalid=true
+FOCUSED_COMPONENT_TESTS: PASS / 5 files / 41 tests
+FULL_FRONTEND_TESTS: PASS / 10 files / 57 tests
+CSS_TOKEN_CHANGE: NO
+CONSUMER_CHANGE: NO
+DEPENDENCY_CHANGE: NO
+LOCK_FILE_CHANGE: NO
+WORKFLOW_CHANGE: NO
+PHP_CHANGE: NO
+MIGRATION: NO
+PR: NO
+MERGE: NO
+OWNER_VISUAL_CHECK: NOT RUN
+UAT: NO
+DEPLOYMENT: NO
+```
+
+`UiAlert` preserves `role="region"` only for `live="off"`, supplies `status/polite` when polite has no role, supplies `alert/assertive` for default error behavior, and rejects a caller `alert` role that conflicts with polite behavior. Component-owned `type`, `disabled`, `aria-disabled`, `aria-busy`, `id`, `value`, `readonly` and `aria-invalid` remain authoritative.
+
+## 800px Shell Layout Remediation Result
+
+```text
+AUTHORIZED_HEAD: 561caa0109d8388c02dd24602464f640b1442eb1
+AUTHORIZED_BASE: main@592b9732c09902cb2803f3b62f5686075619849d
+PR: #17 / OPEN / DRAFT
+VISUAL_FINDING: max-width 800px placed .shell-workspace in a zero-width Grid column
+ROOT_CAUSE: narrow Grid retained two zero-width columns after fixed Rail and hidden Sidebar left normal Grid flow
+REMOVED_RULE: grid-template-columns: 0 0 minmax(0, 1fr)
+NARROW_RULE: grid-template-columns: minmax(0, 1fr)
+BREAKPOINT: @media (max-width: 800px) / UNCHANGED
+REGRESSION_CONTRACT: AuthenticatedLayout.test.ts rejects the former two-zero-column rule and requires one workspace column
+FOCUSED_LAYOUT_TESTS: PASS / 1 file / 7 tests
+FULL_FRONTEND_TESTS: PASS / 10 files / 58 tests
+FULL_PHP_TEST_SUITE: PASS / 110 tests / 1006 assertions
+COMPOSER_VALIDATE: PASS
+TYPECHECK: PASS
+BUILD: PASS
+800PX_WORKSPACE: PASS / 800px wide / horizontal overflow false
+799PX_WORKSPACE: PASS / 799px wide / horizontal overflow false
+801PX_DESKTOP: PASS / 92px Rail / 220px Sidebar / 489px Workspace
+NAV_CLOSED: PASS / inert=true / aria-hidden=true / translated outside viewport
+NAV_OPEN: PASS / 220px drawer / inert=false / aria-hidden=false / full-viewport Backdrop
+BROWSER_CONSOLE: PASS / no warning or error
+VISUAL_EVIDENCE: repository-external temporary screenshots only / not committed
+OWNER_VISUAL_ACCEPTANCE: NOT PERFORMED
+DEPENDENCY_CHANGE: NO
+LOCK_FILE_CHANGE: NO
+WORKFLOW_CHANGE: NO
+PHP_CHANGE: NO
+MIGRATION: NO
+MERGE: NO
+UAT: NO
+DEPLOYMENT: NO
+```
+
+The remediation changes only narrow-screen Grid placement. It preserves the literal `800px` breakpoint, desktop columns, navigation drawer, Backdrop and hidden-navigation accessibility state. Owner visual acceptance remains a separate gate.
 
 ## Purpose and Architecture Position
 
@@ -622,8 +721,9 @@ Login.test.ts
 - renders the exact generic server error through UiAlert without internal-state disclosure
 
 AuthenticatedLayout.test.ts
-- preserves current five navigation/accessibility behaviors
+- preserves the existing navigation/accessibility behaviors
 - proves all TopBar shared buttons retain aria-expanded, emits and POST logout
+- requires a single narrow-screen workspace Grid column and rejects the former two-zero-column rule
 
 Foundation.test.ts
 - preserves typed props and acknowledgement state through UiButton
@@ -723,10 +823,11 @@ The accessibility findings change specific semantic values but do not conflict w
 ## Owner Gates
 
 ```text
-INDEPENDENT_PREFLIGHT_REVIEW: REQUIRED NEXT
-001E_A_IMPLEMENTATION_AUTHORIZATION: REQUIRED AFTER REVIEW
-APPLICATION_CODE_CHANGE_AUTHORIZATION: NO / NOT YET GRANTED
-CSS_CHANGE_AUTHORIZATION: NO / NOT YET GRANTED
+INDEPENDENT_IMPLEMENTATION_REVIEW: REQUIRED NEXT
+OWNER_VISUAL_CHECK: REQUIRED BEFORE MERGE AUTHORIZATION / NOT RUN
+001E_A_IMPLEMENTATION_AUTHORIZATION: YES / CONSUMED
+APPLICATION_CODE_CHANGE_AUTHORIZATION: YES / BOUNDED / COMPLETE
+CSS_CHANGE_AUTHORIZATION: YES / BOUNDED / COMPLETE
 DEPENDENCY_CHANGE: NOT INCLUDED
 PLAYWRIGHT: NOT INCLUDED
 WORKFLOW_CHANGE: NOT INCLUDED
@@ -740,32 +841,32 @@ DEPLOYMENT: NOT INCLUDED
 ## Preflight Verdict
 
 ```text
-FINAL_PREFLIGHT_VERDICT: ERP_ARCH_MIGRATION_001E_A_PREFLIGHT_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
+FINAL_IMPLEMENTATION_VERDICT: PR_17_800PX_SHELL_LAYOUT_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
 ```
 
 ## PROJECT POSITION
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS → 001D-C MERGED / PASS → 001D COMPLETE / PASS → 001E-A PREFLIGHT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED → 001E-B WAITING → 001E-C WAITING → 001F WAITING
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS → 001B MERGED / PASS → 001C MERGED / PASS → 001D-A MERGED / PASS → 001D-B MERGED / PASS → 001D-C MERGED / PASS → 001D COMPLETE / PASS → 001E-A 800PX SHELL LAYOUT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW → 001E-B WAITING → 001E-C WAITING → 001F WAITING
 COMPLETED_PHASES: 001A, 001B, 001C, 001D-A, 001D-B, 001D-C, 001D
-CURRENT_PHASE: 001E-A Preflight review gate
+CURRENT_PHASE: 001E-A implementation review gate
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001E-A
-PACKAGE_STATUS: PREFLIGHT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION AUTHORIZATION NO
-WAITING_PHASES: 001E-A implementation, 001E-B, 001E-C, 001F
-BASELINE: remediation-authorized governance Head eb6b4c425551bd60401fa20c85ee139f3d0e4785 based on main@548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
-GITHUB_STATE: governance branch only; no PR; no 001E implementation branch or PR
+PACKAGE_STATUS: 800PX SHELL LAYOUT REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW / MERGE AUTHORIZATION NO
+WAITING_PHASES: 001E-A independent review and Owner visual check, 001E-B, 001E-C, 001F
+BASELINE: remediation-authorized Head 561caa0109d8388c02dd24602464f640b1442eb1 based on main@592b9732c09902cb2803f3b62f5686075619849d
+GITHUB_STATE: PR #17 open / Draft / remediation commit pushed / independent review pending / no merge
 SOURCE_CONFLICTS: NONE WITH EVIDENCE; current accessibility failures are frozen implementation corrections, not competing architecture facts
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: Independent review of this Preflight, then separate Owner authorization for 001E-A implementation
-EVIDENCE_AS_OF: 2026-08-01; active Vue/CSS consumers, installed Tailwind source, build/test configuration and contrast calculations
+NEXT_DEPENDENCY: Independent implementation review and required Owner visual check before separate merge authorization
+EVIDENCE_AS_OF: 2026-08-02; bounded implementation diff, PHP/frontend tests, typecheck, production build and static scans
 ```
 
 ## ROADMAP HOURS
 
 ```text
-CURRENT_PACKAGE_ESTIMATE: 20h planning value; confirmed 16–24h implementation range after Preflight
+CURRENT_PACKAGE_ESTIMATE: 20h planning value; confirmed 16–24h implementation range
 KNOWN_CURRENT_TRACK_REMAINING: 40–62h parent 001E planning range; 001E-B/C estimates still require their own Preflights
 ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE; 001E-B/C and 001F are incomplete
 MVP1_TOTAL_ESTIMATE: 122–190h total estimate
@@ -776,25 +877,25 @@ POST_MVP_KNOWN_INCREMENT: approximately 68–120h incremental beyond MVP1
 LONG_TERM_CUMULATIVE_RANGE: 235–402h through 1,819–3,146h; cumulative non-additive horizons
 PROGRAM_REMAINING: UNKNOWN WITH EVIDENCE; Architecture Gate and project-wide actual ledger are incomplete
 COMPLETED_ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE; project-wide accepted actual-hours ledger remains incomplete
-ESTIMATE_CONFIDENCE: HIGH for bounded 001E-A implementation after this Preflight; LOW for remaining Architecture Gate
-ESTIMATE_AS_OF: 2026-08-01
+ESTIMATE_CONFIDENCE: HIGH for completed bounded 001E-A implementation; LOW for remaining Architecture Gate
+ESTIMATE_AS_OF: 2026-08-02
 ESTIMATE_METHOD: file-level inventory, five frozen component contracts, consumer migration map, test contract and evidenced remediation allowance
 ```
 
 ## ESTIMATED CODEX HOURS
 
 ```text
-PREFLIGHT_AND_SCOPE: 0.5–1h; planning value 0.75h
-CORE_EXECUTION: 0.75–1.5h; planning value 1h
-TEST_AND_VALIDATION: 0.5–1h; planning value 0.75h
-REMEDIATION_BUFFER: 0.25–0.5h; planning value 0.5h
-ESTIMATED_EFFECTIVE_HOURS: 3h
-ESTIMATE_RANGE: 2–4 effective hours
-ESTIMATE_BASIS: issued Preflight estimate; planning values 0.75 + 1 + 0.75 + 0.5 = 3h
-ACTUAL_EFFECTIVE_HOURS: 1.9h
-ACTUAL_HOURS_BREAKDOWN: repository and visual inventory 0.4h; token and contrast contract 0.4h; component/consumer/test boundary 0.4h; initial governance update and validation 0.3h; limited governance remediation and validation 0.4h
-VARIANCE: -1.1h / -36.7% against 3h planning value
-VARIANCE_REASON: active consumer surface was bounded and repository evidence was locally available; remediation corrected contracts without implementation or browser setup
+PREFLIGHT_AND_SCOPE: 3–4h; planning value 3.5h
+CORE_EXECUTION: 8–13h; planning value 10.5h
+TEST_AND_VALIDATION: 3–4h; planning value 3.5h
+REMEDIATION_BUFFER: 2–3h; planning value 2.5h
+ESTIMATED_EFFECTIVE_HOURS: 20h
+ESTIMATE_RANGE: 16–24 effective hours
+ESTIMATE_BASIS: confirmed bounded implementation estimate; planning values 3.5 + 10.5 + 3.5 + 2.5 = 20h
+ACTUAL_EFFECTIVE_HOURS: 5.2h implementation including component remediation; 7.1h cumulative including 1.9h Preflight and governance remediation
+ACTUAL_HOURS_BREAKDOWN: tokens and CSS 1h; five components 1.25h; consumer migration 0.75h; initial component and regression tests 0.75h; initial full validation and governance record 0.75h; attribute/role/slot remediation and validation 0.7h
+VARIANCE: -14.8h / -74% against 20h implementation planning value
+VARIANCE_REASON: frozen contracts, existing test infrastructure and tightly bounded consumers reduced discovery and integration effort; limited remediation stayed inside existing components; Owner visual review remains excluded and not performed
 OWNER_REVIEW: EXCLUDED
 MERGE: EXCLUDED
 MIGRATION: EXCLUDED

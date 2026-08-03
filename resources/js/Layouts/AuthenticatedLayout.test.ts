@@ -1,7 +1,10 @@
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { router } from '@inertiajs/vue3'
 import AuthenticatedLayout from './AuthenticatedLayout.vue'
+const shellCss = readFileSync(resolve(process.cwd(), 'resources/css/shell.css'), 'utf8')
 let currentUrl = '/sync'
 const items = [{ key: 'dashboard', label: 'Dashboard', path: '/dashboard', route: 'dashboard', placeholder: false, children: [] }, { key: 'sync', label: '同步', path: '/sync', route: 'shell.sync', placeholder: true, children: [{ key: 'pending', label: '待处理', path: '/sync/pending', route: 'sync.pending', placeholder: true, children: [] }] }]
 vi.mock('@inertiajs/vue3', () => ({ Link: { props: ['href'], template: '<a :href="href"><slot /></a>' }, router: { post: vi.fn() }, usePage: () => ({ url: currentUrl, props: { auth: { user: { id: 1, name: 'Owner', email: 'owner@example.test' } }, shellNavigation: items } }) }))
@@ -9,6 +12,7 @@ describe('authenticated layout', () => {
   beforeEach(() => { currentUrl = '/sync'; vi.clearAllMocks() })
   it('renders navigation, top bar, identity, slot and active routes', () => { currentUrl = '/sync/pending'; const wrapper = mount(AuthenticatedLayout, { props: { title: '同步', breadcrumbs: ['BYL ERP', '同步'] }, slots: { default: '<p>页面内容</p>' } }); expect(wrapper.find('[aria-label="ERP主导航"]').exists()).toBe(true); expect(wrapper.text()).toContain('Owner'); expect(wrapper.text()).toContain('页面内容'); expect(wrapper.find('a[href="/sync"]').attributes('aria-current')).toBe('page'); expect(wrapper.find('a[href="/sync/pending"]').attributes('aria-current')).toBe('page') })
   it('posts logout and toggles desktop and narrow-screen navigation accessibly', async () => { const wrapper = mount(AuthenticatedLayout, { props: { title: '同步', breadcrumbs: ['同步'] } }); expect(wrapper.find('[aria-label="收起模块导航"]').attributes('aria-expanded')).toBe('true'); await wrapper.find('[aria-label="收起模块导航"]').trigger('click'); expect(wrapper.find('[aria-label="展开模块导航"]').attributes('aria-expanded')).toBe('false'); expect(wrapper.classes()).toContain('sidebar-collapsed'); expect(wrapper.find('[aria-label="打开导航"]').attributes('aria-expanded')).toBe('false'); await wrapper.find('[aria-label="打开导航"]').trigger('click'); expect(wrapper.find('[aria-label="关闭导航"]').attributes('aria-expanded')).toBe('true'); expect(wrapper.classes()).toContain('mobile-nav-open'); await wrapper.find('.shell-mobile-backdrop').trigger('click'); expect(wrapper.classes()).not.toContain('mobile-nav-open'); await wrapper.find('.shell-logout').trigger('click'); expect(router.post).toHaveBeenCalledWith('/logout') })
+  it('renders TopBar controls through UiButton without changing native behavior', () => { const wrapper = mount(AuthenticatedLayout, { props: { title: '同步', breadcrumbs: ['同步'] } }); const controls = wrapper.findAll('.shell-topbar button'); expect(controls).toHaveLength(3); expect(controls.every((control) => control.classes().includes('ui-button'))).toBe(true); expect(wrapper.find('.shell-logout').attributes('type')).toBe('button') })
   it('does not fabricate unauthorized navigation', () => { const wrapper = mount(AuthenticatedLayout, { props: { title: '同步', breadcrumbs: ['同步'] } }); expect(wrapper.text()).toContain('同步'); expect(wrapper.text()).not.toContain('设置') })
   it('removes child navigation from interaction while collapsed and restores it', async () => {
     currentUrl = '/sync/pending'
@@ -36,5 +40,11 @@ describe('authenticated layout', () => {
     expect(wrapper.find('[aria-label="关闭导航"]').attributes('aria-expanded')).toBe('true')
     wrapper.unmount()
     window.matchMedia = originalMatchMedia
+  })
+  it('keeps the 800px shell breakpoint on one workspace grid column', () => {
+    expect(shellCss).toContain('@media (max-width: 800px)')
+    expect(shellCss).toMatch(/\.authenticated-shell,\s*\.authenticated-shell\.sidebar-collapsed\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\);\s*\}/)
+    expect(shellCss).not.toMatch(/@media \(max-width: 800px\)[\s\S]*grid-template-columns:\s*0\s+0\s+minmax\(0, 1fr\)/)
+    expect(shellCss).toContain('grid-template-columns: var(--byl-shell-rail-width) var(--byl-shell-sidebar-width) minmax(0, 1fr);')
   })
 })
