@@ -1,7 +1,7 @@
 ---
 type: current-context
 project: BYL ERP
-updated: 2026-08-01
+updated: 2026-08-03
 status: architecture-migration-active
 ---
 
@@ -12,16 +12,46 @@ status: architecture-migration-active
 ```text
 ERP-ARCH-MIGRATION-001E
 Title: Shared UI / Browser E2E
-Status: NEXT / PREPARED / IMPLEMENTATION NOT STARTED
+Status: IN PROGRESS / 001E-A MERGED / 001E-B PREFLIGHT COMPLETE PENDING REVIEW
 Owner implementation authorization: NO
 Dependency change authorization: NO
 Deployment: NO
 
 ERP-ARCH-MIGRATION-001E-A
 Title: Shared UI and Design Tokens
-Status: PREFLIGHT REQUIRED / IMPLEMENTATION NOT READY
-Preflight authorization: NO
-Implementation authorization: NO
+Status: MERGED / PASS
+PR: #17
+Accepted Head: e46fb54a1b41a1efa620b4af3646e104ff7bcbbc
+Main Squash Commit: 442a3a872628764fecb7209049d2daf752624e9a
+
+ERP-ARCH-MIGRATION-001E-B
+Title: Browser E2E Foundation
+Status: PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
+Dependency change authorization: REQUIRED / NOT GRANTED
+Package-lock change authorization: REQUIRED / NOT GRANTED
+Browser install authorization: REQUIRED / NOT GRANTED
+Workflow change authorization: REQUIRED / NOT GRANTED
+Disposable E2E Migration execution authorization: REQUIRED / NOT GRANTED
+Implementation authorization: NOT GRANTED
+
+ERP-LOCAL-ADMIN-BYPASS-001
+Status: MERGED / PASS
+PR: #16
+Accepted Head: 6b63229b7d776104a5736334de639d9b20fb69f3
+Main Squash Commit: 55ba7320a7046deb04a03abd99053ccd7b7ed11e
+
+ERP-SHELL-ACCOUNT-DOCK-001
+Status: MERGED / PASS
+PR: #15
+Accepted Head: 0cac340443d47591b7e242ebe051fb4407d0a986
+Main Squash Commit: 32d7244b9b1c6d1fb0cf8863cb9af694e7acc10f
+Owner Visual Acceptance: PASS
+
+ERP-MENU-BASELINE-001
+Status: MERGED / PASS
+PR: #14
+Accepted Head: 6d5595e879778895105215dc98b1f740521b6f1a
+Main Squash Commit: 493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8
 
 Previous package:
 ERP-ARCH-MIGRATION-001D Runtime / Audit / Sync Foundation
@@ -62,7 +92,10 @@ Repository Governance = PASS
 001D-A Runtime Foundation = MERGED / PASS
 001D-B Audit Foundation = MERGED / PASS
 001D-C Sync Outbox Foundation = MERGED / PASS
-001E Shared UI / Browser E2E = NEXT / PREPARED / IMPLEMENTATION NOT STARTED
+001E Shared UI / Browser E2E = IN PROGRESS
+001E-A Shared UI / Design Tokens = MERGED / PASS
+001E-B Browser E2E Foundation = PREFLIGHT COMPLETE / PENDING INDEPENDENT REVIEW / IMPLEMENTATION NOT AUTHORIZED
+001E-C Authentication / Permission / App Shell E2E = WAITING
 001F Architecture Re-audit = WAITING
 Global Architecture Gate = FAIL
 Production Deployment = NO
@@ -71,10 +104,10 @@ Production Deployment = NO
 ## Immediate sequence
 
 ```text
-1. Independently review the 001D closure and 001E preparation governance branch.
-2. Owner separately decides whether to authorize the bounded ERP-ARCH-MIGRATION-001E-A Preflight only.
-3. Do not authorize or begin 001E-A implementation until its Preflight freezes the token map, component APIs, file delta, tests and confirmed implementation estimate.
-4. Do not implement 001E-B/C, begin 001F, run Migration/UAT, deploy or begin business MVP packages without separate authorization.
+1. Independently review the 001E-A closure and 001E-B Preflight governance PR.
+2. Owner separately decides dependency, lock-file, browser-install, disposable-E2E-Migration, Workflow and 001E-B implementation gates.
+3. Keep 001E-B implementation blocked until every required gate is explicitly granted against the reviewed Preflight Head.
+4. Keep 001E-C, 001F, UAT, deployment and business MVP packages blocked until their separate authorizations.
 ```
 
 ## Product direction

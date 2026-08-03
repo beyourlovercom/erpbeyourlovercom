@@ -2,7 +2,7 @@
 type: program-roadmap-hours
 project: BYL ERP
 version: 1.0
-updated: 2026-08-01
+updated: 2026-08-03
 ---
 
 # Program Roadmap and Hours
@@ -45,9 +45,9 @@ The Program Roadmap is the top-level delivery sequence. It must not be replaced 
 001D-A Runtime Foundation             MERGED / PASS BY PR #9
 001D-B Audit Foundation               MERGED / PASS BY PR #12
 001D-C Sync Outbox Foundation         MERGED / PASS BY PR #13
-→ 001E Shared UI / Browser E2E        NEXT / PREPARED / IMPLEMENTATION NOT STARTED
-001E-A Shared UI / Design Tokens      PREFLIGHT REQUIRED / IMPLEMENTATION NOT READY
-001E-B Browser E2E Foundation         WAITING
+→ 001E Shared UI / Browser E2E        IN PROGRESS
+001E-A Shared UI / Design Tokens      MERGED / PASS BY PR #17
+001E-B Browser E2E Foundation         PREFLIGHT COMPLETE / PENDING REVIEW / IMPLEMENTATION NOT AUTHORIZED
 001E-C Auth / Permission / Shell E2E  WAITING
 001F Architecture Re-audit            WAITING
 Global Architecture Gate              FAIL
@@ -56,8 +56,8 @@ Global Architecture Gate              FAIL
 ## Source Conflict Snapshot
 
 ```text
-GITHUB_FACT: PR #9, PR #12 and PR #13 are merged; main is 548d53f1eae2ec14eea7261d3a101c1f2fda0dcc.
-GOVERNANCE_FACT: 001D is COMPLETE / PASS; 001E is prepared with implementation authorization NO.
+GITHUB_FACT: PR #14 through PR #17 are merged; main is 493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8.
+GOVERNANCE_FACT: 001D is COMPLETE / PASS; 001E-A and its supporting packages are MERGED / PASS; 001E-B Preflight is complete pending review with implementation authorization NO.
 SOURCE_CONFLICTS: NONE WITH EVIDENCE for merge state and current package order.
 EVIDENCE_LIMITS: real-MySQL two-connection claim concurrency and MySQL 5.7 remain unverified; Dev/Staging/Production Migration was not run.
 ```
@@ -67,10 +67,10 @@ EVIDENCE_LIMITS: real-MySQL two-connection claim concurrency and MySQL 5.7 remai
 | Metric | Value | Classification | Evidence / Qualification |
 |---|---:|---|---|
 | `001D_TOTAL_ESTIMATE` | 35–54h; planning value 45h | completed issued total estimate | Frozen and completed parent 001D package; not remaining |
-| `001E_PARENT_PLANNING_ESTIMATE` | 40–62h; planning value 51h | parent-level planning estimate | Preliminary allocation across 001E-A/B/C; child implementation estimates require their own Preflights |
-| `001E_A_PREFLIGHT_ESTIMATE` | 2–4h; planning value 3h | next bounded Preflight estimate | Governance/evidence work only; implementation not ready or authorized |
+| `001E_PARENT_PLANNING_ESTIMATE` | 40–62h; planning value 51h | parent-level original planning estimate | Original allocation across 001E-A/B/C; not remaining |
+| `001E_B_CONFIRMED_ESTIMATE` | 12–18h; planning value 15h | confirmed child implementation estimate | Preflight-complete estimate; implementation not authorized |
 | `001F_ESTIMATE` | UNKNOWN WITH EVIDENCE | unknown remaining component | No frozen package estimate exists |
-| `KNOWN_CURRENT_TRACK_REMAINING` | 40–62h; planning value 51h | parent planning range | Child implementation estimates unconfirmed; excludes unknown 001F |
+| `KNOWN_CURRENT_TRACK_REMAINING` | 24–38h; planning value 31h | non-overlapping 001E-B/C parent allocation | 001E-A is complete; excludes unknown 001F; 001E-C still needs its own Preflight |
 | `ARCHITECTURE_GATE_REMAINING` | UNKNOWN WITH EVIDENCE | unknown remaining total | 001E is known, but 001F is unestimated and cannot be safely added |
 | `MVP1_TOTAL_ESTIMATE` | 122–190h | total estimate | Effective Hours source; not automatically remaining |
 | `MVP1_PLANNING_BASELINE` | 166h | total planning value | Effective Hours source |
@@ -100,6 +100,10 @@ These are alternative cumulative horizons, not additive components. They must ne
 | ERP-ARCH-MIGRATION-001D-B | MERGED / PASS | 9–14h; planning value 12h | 3h | architecture component | UNKNOWN WITH EVIDENCE | Accepted 001D-B Work Log |
 | ERP-ARCH-MIGRATION-001D-C | MERGED / PASS | 14–22h; planning value 18h | 4.8h | architecture component | UNKNOWN WITH EVIDENCE | Accepted 001D-C Work Log through remediation Head |
 | ERP-ARCH-MIGRATION-001D | COMPLETE / PASS | 35–54h; planning value 45h | UNKNOWN WITH EVIDENCE | parent aggregate; do not add to component rows | UNKNOWN WITH EVIDENCE | 001D-A missing actual prevents safe parent aggregation |
+| ERP-ARCH-MIGRATION-001E-A | MERGED / PASS | 16–24h; planning value 20h | 7.1h cumulative | architecture component | UNKNOWN WITH EVIDENCE | Accepted 001E-A Work Log including Preflight and implementation |
+| ERP-LOCAL-ADMIN-BYPASS-001 | MERGED / PASS | 8–12h; planning value 10h | 4.3h implementation | supporting local-only package | NO | Accepted Local Admin Bypass Work Log |
+| ERP-SHELL-ACCOUNT-DOCK-001 | MERGED / PASS | 5–8h; planning value 6.5h | 4.8h | supporting App Shell package | UNKNOWN WITH EVIDENCE | Accepted Account Dock Work Log; Owner visual acceptance PASS |
+| ERP-MENU-BASELINE-001 | MERGED / PASS | 3–5h; planning value 4h | 3.2h | governance baseline | NO | Accepted Menu Baseline Work Log |
 | Project-wide accepted ledger | INCOMPLETE | UNKNOWN WITH EVIDENCE | UNKNOWN WITH EVIDENCE | actual-effort ledger | UNKNOWN WITH EVIDENCE | Historical accepted packages and architecture/MVP1 overlap classification remain incomplete |
 
 Future rows may be added only from accepted repository Work Logs. PR elapsed time, commit timestamps, token use and chat-only values are prohibited as actual-hours evidence.

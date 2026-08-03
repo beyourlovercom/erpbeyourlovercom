@@ -2,7 +2,7 @@
 type: decision-register
 project: BYL ERP
 version: 1.0
-updated: 2026-08-01
+updated: 2026-08-03
 ---
 
 # Decision Register
@@ -127,3 +127,9 @@ The accepted 001D evidence remains bounded: real-MySQL two-connection Sync Outbo
 001E-A is not implementation-ready. Its status is `PREFLIGHT REQUIRED / IMPLEMENTATION NOT READY`, and a separate Work Package freezes one proposed semantic token source (`resources/css/tokens.css`), five first-wave components with actual consumers, bounded candidate files, migration/test contracts and a Preflight-only estimate. The parent 16–24h allocation remains planning-only until the child Preflight confirms or replaces the implementation estimate.
 
 001E-B authentication traces and videos cannot be uploaded until a repeatable sanitization process and automated artifact scan are implemented and independently reviewed. Authentication screenshots are also local-only unless deterministic masking, synthetic-data proof and pre-upload verification pass. This decision authorizes governance remediation only; application/CSS implementation, dependencies, Playwright, Workflow, Migration, PR, UAT, deployment and 001F remain unauthorized. Architecture conflict: NONE. Global Architecture Gate: FAIL.
+
+## D-026 001E-A closure and 001E-B Browser E2E Preflight
+
+PR #17 is MERGED / PASS at accepted Head `e46fb54a1b41a1efa620b4af3646e104ff7bcbbc` and main squash commit `442a3a872628764fecb7209049d2daf752624e9a`. Supporting packages are also MERGED / PASS: Local Admin Bypass PR #16 at accepted Head `6b63229b7d776104a5736334de639d9b20fb69f3` and main commit `55ba7320a7046deb04a03abd99053ccd7b7ed11e`; Account Dock PR #15 at accepted Head `0cac340443d47591b7e242ebe051fb4407d0a986` and main commit `32d7244b9b1c6d1fb0cf8863cb9af694e7acc10f`, with Owner Visual Acceptance PASS; Menu Baseline PR #14 at accepted Head `6d5595e879778895105215dc98b1f740521b6f1a` and main commit `493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8`.
+
+001E-B Browser E2E Foundation is frozen at Preflight only. The proposed dependency is exact `@playwright/test@1.62.1`, Chromium-only for the first implementation, with repository-external runtime state, a disposable SQLite database, synthetic users and fail-closed artifact handling. Authentication traces and videos remain prohibited from upload; initial 001E-B uploads no E2E artifacts. Dependency, package-lock, browser installation, Workflow, disposable E2E Migration execution and implementation each require a separate Owner grant. No application, menu, package, lock, Workflow, Migration, database, UAT or deployment change is authorized here. 001E-C and 001F remain WAITING, Global Architecture Gate remains FAIL, and architecture conflict is NONE.

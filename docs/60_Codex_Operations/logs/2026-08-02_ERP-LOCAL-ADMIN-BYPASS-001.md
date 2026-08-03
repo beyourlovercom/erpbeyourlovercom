@@ -2,12 +2,28 @@
 type: byl-erp-work-log
 date: 2026-08-02
 work_package: ERP-LOCAL-ADMIN-BYPASS-001
-status: implementation-complete-pending-independent-review
+status: merged-pass
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
 
 # ERP-LOCAL-ADMIN-BYPASS-001 Preflight Log
+
+## Current Accepted Status
+
+```text
+STATUS: MERGED / PASS
+PR: #16
+ACCEPTED_HEAD: 6b63229b7d776104a5736334de639d9b20fb69f3
+MAIN_SQUASH_COMMIT: 55ba7320a7046deb04a03abd99053ccd7b7ed11e
+MERGED_AT: 2026-08-03T04:41:37Z
+MIGRATION: NO
+DATABASE_MUTATION: NO
+UAT: NO
+DEPLOYMENT: NO
+```
+
+Earlier entries remain the historical evidence as recorded at their original review gates.
 
 ## Authorization
 
