@@ -48,12 +48,32 @@ Historical migrations remain centrally loaded and unchanged. Existing table owne
 
 B2 must establish the minimal skeleton and boundary tests. B3/B4 migrate stable foundations with wrappers. B5 handles Shell/Dashboard routes and wrapper cleanup. No B2–B5 implementation is authorized by B1.
 
+## Provider Future Policy
+
+B2 evaluates `App\Modules\ModulesServiceProvider`, registered only in `bootstrap/providers.php`, and registers only existing module Providers. Providers handle bindings, routes, Policy/Gate, configuration and Infrastructure assembly; they contain no business rules. Existing AppServiceProvider Audit/Gate bindings migrate in stages, with registration order protected by automated tests.
+
+## Route Future Policy
+
+`TARGET_MODULE_ROUTE_PATH: app/Modules/<Module>/Experience/Routes/web.php`. Module Providers load routes while URL, name, middleware and Permission Key remain unchanged. `routes/web.php` remains a compatibility entry. Domain/Infrastructure cannot register routes; Shell legacy dynamic routes are B5 scope; Orders/Logistics routes await MVP1 authorization.
+
+## Frontend Boundary
+
+Frontend directories need not mirror backend modules. Shared UI remains in `resources/js/Components`, Layouts in `resources/js/Layouts`, domain pages in `resources/js/Pages/<Domain>`, Shell/Dashboard are Experience, and frontend must not copy Domain rules. B2 does not automatically refactor frontend.
+
+## Wrapper Removal Contract
+
+Each wrapper records its Canonical Module Class and removal condition, adds no business rule, preserves Route/Permission/table/Cast/relation/serialization contracts, and never creates two active implementations writing one table. B5 owns cleanup.
+
+## Architecture Test Contract
+
+B2 must verify Domain bans on Illuminate/Facade/Controller/Request/Route/Inertia/Eloquent/other module internals; Application bans on other module Infrastructure; public Contract/Action/Event/Query-only cross-module calls; Provider rule isolation; registered Support; framework-free Shared; unchanged historical Migration paths; no Orders/Logistics before MVP1; and unchanged Route Name, Permission Key and Menu baseline. PHPStan/Deptrac or other dependencies require separate Owner authorization.
+
 ## Verification and Gates
 
 Future architecture tests must reject forbidden Domain/Application dependencies, private cross-module imports, impure Providers, unregistered Support classes, impure Shared classes, route ownership violations, migration path changes, premature Orders/Logistics code and unauthorized route/permission/menu changes. Existing Composer `App\` → `app/` mapping is sufficient by default; no Provider, Route, Composer, frontend or Migration change is part of B1.
 
 ```text
-OWNER_GATE_B1_READ_ONLY: GRANTED
+001F_B1_DOCUMENTATION_IMPLEMENTATION: GRANTED
 MODULAR_BOUNDARY_IMPLEMENTATION: REQUIRED / NOT GRANTED
 NAMESPACE_MIGRATION: REQUIRED / NOT GRANTED
 COMPOSER_AUTOLOAD_CHANGE: REQUIRED / NOT GRANTED
