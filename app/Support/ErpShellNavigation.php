@@ -3,17 +3,14 @@
 namespace App\Support;
 
 use App\Models\User;
+use Illuminate\Support\Facades\Gate;
 
 class ErpShellNavigation
 {
     public function for(User $user): array
     {
-        $user->loadMissing('roles.permissions');
-        $isSuperAdmin = $user->roles->contains('key', AuthorizationKeys::SuperAdmin->value);
-        $permissions = $user->roles->flatMap->permissions->pluck('key')->unique();
-
         return collect(config('erp_shell_navigation'))
-            ->filter(fn (array $item) => $isSuperAdmin || $permissions->contains($item['permission']))
+            ->filter(fn (array $item) => Gate::forUser($user)->allows($item['permission']))
             ->map(fn (array $item) => [
                 'key' => $item['key'],
                 'label' => $item['label'],
