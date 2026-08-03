@@ -46,6 +46,13 @@ class ApprovedMenuBaselineTest extends TestCase
             $this->assertSame(self::REQUIRED_FIELDS, array_keys($item), self::MISMATCH.': fields for '.($item['code'] ?? 'unknown'));
             $this->assertContains($item['level'], [1, 2], self::MISMATCH.': invalid level for '.$item['code']);
             $this->assertNotSame('', trim($item['label_zh']), self::MISMATCH.': empty label for '.$item['code']);
+            $this->assertIsString($item['slug'], self::MISMATCH.': slug type for '.$item['code']);
+            $this->assertNotSame('', $item['slug'], self::MISMATCH.': empty slug for '.$item['code']);
+            $this->assertMatchesRegularExpression('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $item['slug'], self::MISMATCH.': slug format for '.$item['code']);
+            $this->assertFalse(str_starts_with($item['slug'], '/'), self::MISMATCH.': slug begins with slash for '.$item['code']);
+            $this->assertStringNotContainsString('/', $item['slug'], self::MISMATCH.': slug contains slash for '.$item['code']);
+            $this->assertStringNotContainsString(' ', $item['slug'], self::MISMATCH.': slug contains spaces for '.$item['code']);
+            $this->assertSame(basename(trim($item['url'], '/')), $item['slug'], self::MISMATCH.': slug does not match URL for '.$item['code']);
             $this->assertNotSame('', trim($item['function_zh']), self::MISMATCH.': empty function for '.$item['code']);
             $this->assertContains($item['status'], self::STATUSES, self::MISMATCH.': invalid status for '.$item['code']);
             $this->assertIsInt($item['progress'], self::MISMATCH.': progress type for '.$item['code']);
@@ -117,6 +124,7 @@ class ApprovedMenuBaselineTest extends TestCase
             'parent_code' => $item['parent_code'],
             'level' => $item['level'],
             'label_zh' => $item['label_zh'],
+            'slug' => $item['slug'],
             'url' => $item['url'],
             'route' => $item['route'],
             'permission' => $item['permission'],
@@ -138,6 +146,7 @@ class ApprovedMenuBaselineTest extends TestCase
                 'parent_code' => $parentCode,
                 'level' => $level,
                 'label_zh' => $item['label'],
+                'slug' => basename(trim($item['path'], '/')),
                 'url' => $item['path'],
                 'route' => $item['route'],
                 'permission' => $item['permission'],

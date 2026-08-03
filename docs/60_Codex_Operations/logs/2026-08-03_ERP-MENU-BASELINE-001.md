@@ -2,7 +2,7 @@
 type: byl-erp-work-log
 date: 2026-08-03
 work_package: ERP-MENU-BASELINE-001
-status: implementation-complete-pending-independent-review
+status: slug-remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -43,11 +43,27 @@ BASELINE_COMPARISON_TEST: INSTALLED / LEVEL 1 AND 2 ONLY
 
 The JSON records the exact Owner-approved labels, URLs, routes, permissions, Emoji and Chinese function descriptions. No prototype route was promoted into a level-2 baseline.
 
+## Independent Review Remediation
+
+```text
+INDEPENDENT_REVIEW_RESULT: CHANGES_REQUIRED
+REVIEWED_HEAD: 5f79814ce72e02f254d17a533c4606efe5f8adc1
+REMEDIATION_BASE: 5f79814ce72e02f254d17a533c4606efe5f8adc1
+REMEDIATION:
+- Slug added explicitly to AGENTS gate
+- Slug added explicitly to README governance
+- Slug format validation added
+- Slug-to-URL consistency added
+- Slug added to runtime baseline comparison
+APPROVED_MENU_JSON: UNCHANGED
+RUNTIME_MENU_CONFIG: UNCHANGED
+```
+
 ## Validation
 
 ```text
-BASELINE_TEST: 4 tests / 136 assertions / PASS
-PHP_TESTS: 134 tests / 1245 assertions / PASS
+BASELINE_TEST: 4 tests / 213 assertions / PASS
+PHP_TESTS: 134 tests / 1322 assertions / PASS
 FRONTEND_TESTS: 12 files / 70 tests / PASS
 TYPECHECK: PASS
 BUILD: PASS
@@ -78,19 +94,19 @@ VARIANCE: -0.8h / -20%
 ## Verdict
 
 ```text
-FINAL_STATUS: ERP_MENU_BASELINE_001_IMPLEMENTATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
-NEXT_GATE: independent review; PR remains unauthorized
+FINAL_STATUS: ERP_MENU_BASELINE_001_SLUG_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
+NEXT_GATE: independent remediation review; PR remains unauthorized
 ```
 
 ## PROJECT POSITION
 
 ```text
 CURRENT_WORK_PACKAGE: ERP-MENU-BASELINE-001
-PACKAGE_STATUS: IMPLEMENTATION COMPLETE / PENDING INDEPENDENT REVIEW
+PACKAGE_STATUS: SLUG REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
 BASELINE: 8fe6ba786af1d794b63819ea94aaa45cecd1e1e4
 GITHUB_STATE: implementation branch only; no PR
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: independent review and separate Owner PR authorization
+NEXT_DEPENDENCY: independent remediation review and separate Owner PR authorization
 EVIDENCE_AS_OF: 2026-08-03
 ```

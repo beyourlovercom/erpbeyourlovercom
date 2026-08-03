@@ -2,7 +2,7 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-MENU-BASELINE-001
-status: implementation-complete-pending-independent-review
+status: slug-remediation-complete-pending-independent-review
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 ---
@@ -14,7 +14,7 @@ standard_version: 1.1
 ```text
 ID: ERP-MENU-BASELINE-001
 TITLE: Approved Menu Baseline
-STATUS: IMPLEMENTATION COMPLETE / PENDING INDEPENDENT REVIEW
+STATUS: SLUG GOVERNANCE REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
 AUTHORIZED_BASE: 8fe6ba786af1d794b63819ea94aaa45cecd1e1e4
 SOURCE_BRANCH: feature/erp-shell-account-dock-001
 IMPLEMENTATION_BRANCH: feature/erp-menu-baseline-001
@@ -62,7 +62,7 @@ The approved Chinese function descriptions are stored verbatim in `APPROVED_MENU
 
 ## Governance Gate
 
-`AGENTS.md` requires every task that may affect a governed menu to read `menu/README.md` and `menu/APPROVED_MENU.json` before changing labels, Emoji, URLs, routes, permissions, parent relationships, order, function scope, status or progress.
+`AGENTS.md` requires every task that may affect a governed menu to read `menu/README.md` and `menu/APPROVED_MENU.json` before changing labels, Emoji, slugs, URLs, routes, permissions, parent relationships, order, function scope, status or progress.
 
 Without explicit Owner authorization, any conflict stops with:
 
@@ -71,6 +71,22 @@ MENU_BASELINE_CHANGE_REQUIRES_OWNER_APPROVAL
 ```
 
 With authorization, the approved JSON, runtime configuration, automated test and Work Package/change record must change together.
+
+## Independent Review Remediation
+
+```text
+INDEPENDENT_REVIEW_RESULT: CHANGES_REQUIRED
+REVIEWED_HEAD: 5f79814ce72e02f254d17a533c4606efe5f8adc1
+REMEDIATION_BASE: 5f79814ce72e02f254d17a533c4606efe5f8adc1
+REMEDIATION:
+- Slug added explicitly to AGENTS gate
+- Slug added explicitly to README governance
+- Slug format validation added
+- Slug-to-URL consistency added
+- Slug added to runtime baseline comparison
+APPROVED_MENU_JSON: UNCHANGED
+RUNTIME_MENU_CONFIG: UNCHANGED
+```
 
 ## Automated Contract
 
@@ -81,12 +97,13 @@ With authorization, the approved JSON, runtime configuration, automated test and
 - validates all required fields and allowed status values;
 - validates unique code, URL and sibling sort;
 - validates parent/level integrity and non-empty label/function;
+- validates Slug type, non-empty value, lowercase kebab-case format, absence of slash/space and equality to the final URL segment;
 - validates integer progress from 0 through 100;
 - requires exactly 11 level-1 and zero level-2 items now;
 - requires all 11 approved Emoji and order;
 - recursively flattens runtime navigation only through level 2;
 - ignores level 3 and deeper structures;
-- compares code/key, parent, level, label, URL/path, route, permission, Emoji and sibling sort;
+- compares code/key, parent, level, label, derived Slug, URL/path, route, permission, Emoji and sibling sort;
 - includes `APPROVED_MENU_BASELINE_MISMATCH` in mismatch assertions;
 - never accesses or mutates the database.
 
@@ -107,8 +124,8 @@ Runtime menu, Account Dock, TopBar, Emoji UI, routes, permissions, application c
 ## Validation Evidence
 
 ```text
-BASELINE_TEST: 4 tests / 136 assertions / PASS
-FULL_PHP: 134 tests / 1245 assertions / PASS
+BASELINE_TEST: 4 tests / 213 assertions / PASS
+FULL_PHP: 134 tests / 1322 assertions / PASS
 FRONTEND: 12 files / 70 tests / PASS
 TYPECHECK: PASS
 BUILD: PASS
@@ -142,7 +159,7 @@ OWNER_REVIEW / MERGE / UAT / DEPLOYMENT: EXCLUDED
 ## Verdict
 
 ```text
-FINAL_STATUS: ERP_MENU_BASELINE_001_IMPLEMENTATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
+FINAL_STATUS: ERP_MENU_BASELINE_001_SLUG_REMEDIATION_COMPLETE_PENDING_INDEPENDENT_REVIEW
 NEXT_GATE: independent review; PR remains unauthorized
 ```
 
@@ -150,11 +167,11 @@ NEXT_GATE: independent review; PR remains unauthorized
 
 ```text
 CURRENT_WORK_PACKAGE: ERP-MENU-BASELINE-001
-PACKAGE_STATUS: IMPLEMENTATION COMPLETE / PENDING INDEPENDENT REVIEW
+PACKAGE_STATUS: SLUG REMEDIATION COMPLETE / PENDING INDEPENDENT REVIEW
 BASELINE: 8fe6ba786af1d794b63819ea94aaa45cecd1e1e4
 GITHUB_STATE: implementation branch only; no PR
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: independent review and separate Owner PR authorization
+NEXT_DEPENDENCY: independent remediation review and separate Owner PR authorization
 EVIDENCE_AS_OF: 2026-08-03
 ```

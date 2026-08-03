@@ -15,6 +15,8 @@ Before any task changes or may change one of the following, Codex must read in o
 Governed changes include:
 
 - adding, deleting or renaming a level-1 or level-2 menu;
+- changing a level-1 menu slug;
+- changing a level-2 menu slug;
 - changing level-1 or level-2 order, Emoji, URL, route or permission;
 - moving a level-2 item to another parent;
 - changing governed menu function scope, completion status or progress.
