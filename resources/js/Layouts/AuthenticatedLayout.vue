@@ -29,10 +29,10 @@ const activeItem = computed(() => page.props.shellNavigation.find((item) => item
 <template>
   <div class="authenticated-shell" :class="{ 'mobile-nav-open': mobileOpen, 'sidebar-collapsed': !sidebarExpanded }">
     <div class="shell-mobile-backdrop" aria-hidden="true" @click="mobileOpen = false"></div>
-    <GlobalNavigation :items="page.props.shellNavigation" :current-path="currentPath" :mobile-hidden="isNarrowScreen && !mobileOpen" />
+    <GlobalNavigation :items="page.props.shellNavigation" :current-path="currentPath" :mobile-hidden="isNarrowScreen && !mobileOpen" :user="page.props.auth.user" />
     <ModuleSidebar :item="activeItem" :current-path="currentPath" :collapsed="!sidebarExpanded" />
     <div class="shell-workspace">
-      <TopBar :user="page.props.auth.user" :title="title" :breadcrumbs="breadcrumbs" :sidebar-expanded="sidebarExpanded" :mobile-expanded="mobileOpen" @toggle-sidebar="sidebarExpanded = !sidebarExpanded" @toggle-mobile="mobileOpen = !mobileOpen" />
+      <TopBar :title="title" :breadcrumbs="breadcrumbs" :sidebar-expanded="sidebarExpanded" :mobile-expanded="mobileOpen" @toggle-sidebar="sidebarExpanded = !sidebarExpanded" @toggle-mobile="mobileOpen = !mobileOpen" />
       <main id="main-content" class="shell-content" tabindex="-1"><slot /></main>
     </div>
   </div>
