@@ -317,3 +317,15 @@ Scope: Identity canonical boundary implemented; compatibility aliases/wrappers r
 Current state: 001F-B3 IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS. B4 is next and is preparing read-only Preflight.
 Closure PR: pending creation.
 ```
+
+## 2026-08-05 — 001F-B3 closed / 001F-B4 activated under continuous authorization
+
+```text
+001F-B3 Closure PR: #31 merged; main closure SHA 0af914ebf8fc9f94b18e63e008fd78739bba6811.
+Current state: 001F-B3 COMPLETE / PASS / CLOSED.
+New state: 001F-B4 Runtime / Audit / Sync Boundary Migration PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED.
+B4 preflight evidence: Runtime, Audit and Sync ownership audit; provider, route, migration, table, wrapper and compatibility review; menu baseline read and PASS.
+B4 estimate: 6–12h; planning value 9h. Known B4–B5 remaining: 11–22h; planning value 16.5h.
+Global Architecture Gate: FAIL. MVP1: NOT STARTED / 0%. UAT: NO. Staging Migration: NO. Production Migration: NO. Production Deployment: NO.
+Documents added: B4 Work Package and Work Log. Documents updated: Current Context, Living Roadmap, Work Package Index, Program Roadmap and Hours, Change Log.
+```
