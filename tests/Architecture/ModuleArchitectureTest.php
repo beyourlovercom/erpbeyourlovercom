@@ -24,6 +24,31 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/ModulesServiceProvider.php',
     ];
 
+    private const ROUTE_NAMES = [
+        'accounting.actual-2025', 'accounting.cost-calculation', 'accounting.execution-2026',
+        'accounting.forecast-2027', 'accounting.kol-commissions', 'accounting.monthly',
+        'accounting.optimization', 'accounting.order-costs', 'accounting.variance',
+        'architecture.foundation', 'customers.orders', 'customers.orders.create',
+        'customers.orders.mine', 'dashboard', 'guides.manuals', 'guides.videos',
+        'inventory.files', 'inventory.warehouses', 'kol.orders', 'kol.orders.create',
+        'kol.orders.mine', 'kol.orders.show', 'kol.orders.team', 'login', 'login.store',
+        'logistics.awaiting-tracking', 'logistics.exceptions', 'logistics.in-transit',
+        'logistics.pending', 'logout', 'password.confirm.store', 'password.confirmation',
+        'procurement.files', 'procurement.records', 'products.sku-aliases', 'products.skus',
+        'root', 'settings.audit-logs', 'settings.roles-permissions', 'settings.statuses',
+        'settings.users', 'settings.warehouses', 'shell.accounting', 'shell.customers',
+        'shell.guides', 'shell.inventory', 'shell.kol', 'shell.logistics', 'shell.procurement',
+        'shell.products', 'shell.settings', 'shell.sync', 'storage.local', 'storage.local.upload',
+        'system.audit-records.index', 'system.runtime.health',
+    ];
+
+    private const PERMISSION_KEYS = [
+        'accounting.view', 'architecture.foundation.view', 'audit.view', 'customers.view',
+        'dashboard.view', 'guides.view', 'inventory.view', 'kol.view', 'logistics.view',
+        'procurement.view', 'products.view', 'prototype.view', 'sync.view',
+        'system.permissions.manage',
+    ];
+
     private const SUPPORT_FILES = [
         'app/Support/Audit/AuditActor.php', 'app/Support/Audit/AuditService.php',
         'app/Support/Audit/AuditSource.php', 'app/Support/Audit/AuditWriteException.php',
@@ -82,21 +107,24 @@ final class ModuleArchitectureTest extends TestCase
     public function test_frozen_module_and_support_boundaries(): void
     {
         self::assertSame([], $this->subdirectoriesUnder($this->path('app/Modules')));
-        $this->assertFixedFileSet(self::MODULE_FILES, 'MOD-001', 'app/Modules');
+        self::assertSame(self::MODULE_FILES, $this->allFilesUnder($this->path('app/Modules')));
         $this->assertFixedFileSet(self::SUPPORT_FILES, 'SUPPORT-001', 'app/Support');
         self::assertDirectoryDoesNotExist($this->path('app/Shared'));
     }
 
     public function test_layer_scans_are_limited_to_module_layer_directories(): void
     {
-        $files = $this->moduleLayerFiles();
-        self::assertSame([], $files);
-        self::assertNotContains('app/Domain/Accidental.php', $files);
-        self::assertNotContains('app/Application/Accidental.php', $files);
-        self::assertNotContains('app/Infrastructure/Accidental.php', $files);
-        self::assertSame([], $this->tokenizerViolations('DOM-001', $files, $this->domForbidden()));
-        self::assertSame([], $this->tokenizerViolations('APP-001', $files, $this->appForbidden()));
-        self::assertSame([], $this->tokenizerViolations('INF-001', $files, ['Infrastructure']));
+        $domainFiles = $this->moduleLayerFiles('Domain');
+        $applicationFiles = $this->moduleLayerFiles('Application');
+        $infrastructureDependencyFiles = [...$domainFiles, ...$applicationFiles];
+        self::assertSame([], $domainFiles);
+        self::assertSame([], $applicationFiles);
+        self::assertSame([], $infrastructureDependencyFiles);
+        self::assertNotContains('app/Modules/Future/Providers/Provider.php', $domainFiles);
+        self::assertNotContains('app/Modules/Future/Providers/Provider.php', $applicationFiles);
+        self::assertSame([], $this->tokenizerViolations('DOM-001', $domainFiles, $this->domForbidden()));
+        self::assertSame([], $this->tokenizerViolations('APP-001', $applicationFiles, $this->appForbidden()));
+        self::assertSame([], $this->tokenizerViolations('INF-001', $infrastructureDependencyFiles, ['Infrastructure']));
     }
 
     public function test_domain_application_and_infrastructure_rules_have_allowed_and_violating_fixtures(): void
@@ -116,10 +144,14 @@ final class ModuleArchitectureTest extends TestCase
         self::assertSame([3, 4], array_column($appViolations, 'LINE'));
         self::assertSame(['App\\Modules\\Orders\\Infrastructure\\SqlOrderReader', 'App\\Modules\\Logistics\\Application\\Internal\\CarrierLookup'], array_column($appViolations, 'SYMBOL_OR_DEPENDENCY'));
 
-        $infraBad = "<?php\nnamespace App\\Modules\\Orders\\Infrastructure;\nuse App\\Modules\\Orders\\Domain\\Order;\nuse App\\Modules\\Logistics\\Application\\Contracts\\CarrierReader;\nfinal class SqlOrderReader {}\n";
-        $infraViolations = $this->sourceViolations('INF-001', 'app/Modules/Orders/Infrastructure/SqlOrderReader.php', $infraBad, ['App\\Modules\\Orders\\Domain', 'App\\Modules\\Logistics\\Application']);
-        self::assertCount(2, $infraViolations);
-        self::assertSame(['INF-001', 'INF-001'], array_column($infraViolations, 'RULE_ID'));
+        $domainInfraBad = "<?php\nnamespace App\\Modules\\Orders\\Domain;\nuse App\\Modules\\Orders\\Infrastructure\\EloquentOrder;\nfinal class Order {}\n";
+        $domainInfraViolations = $this->sourceViolations('INF-001', 'app/Modules/Orders/Domain/Order.php', $domainInfraBad, ['Infrastructure']);
+        self::assertSame(['INF-001'], array_column($domainInfraViolations, 'RULE_ID'));
+        $appInfraBad = "<?php\nnamespace App\\Modules\\Orders\\Application;\nuse App\\Modules\\Orders\\Infrastructure\\SqlOrderRepository;\nfinal class Handler {}\n";
+        $appInfraViolations = $this->sourceViolations('INF-001', 'app/Modules/Orders/Application/Handler.php', $appInfraBad, ['Infrastructure']);
+        self::assertSame(['INF-001'], array_column($appInfraViolations, 'RULE_ID'));
+        $infraAllowed = "<?php\nnamespace App\\Modules\\Orders\\Infrastructure;\nuse App\\Modules\\Orders\\Domain\\Order;\nuse App\\Modules\\Orders\\Application\\Contracts\\OrderRepository;\nfinal class EloquentOrderRepository implements OrderRepository {}\n";
+        self::assertSame([], $this->sourceViolations('INF-001', 'app/Modules/Orders/Infrastructure/EloquentOrderRepository.php', $infraAllowed, ['Infrastructure']));
     }
 
     public function test_provider_rule_collects_real_sources_and_rejects_forbidden_fixture(): void
@@ -177,7 +209,12 @@ PHP;
             self::assertFileExists($this->path($path));
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
+        self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
         self::assertSame('bd2da50aaf6178abed7feb11016cf28d731996f53c3260f9a4a7654aed3fbffd', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame(self::ROUTE_NAMES, $this->routeNames(), 'COMPAT-001 route names changed');
+        $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, \App\Support\AuthorizationKeys::cases())));
+        sort($permissionKeys);
+        self::assertSame(self::PERMISSION_KEYS, $permissionKeys, 'COMPAT-001 permission keys changed');
         $appProvider = (string) file_get_contents($this->path('app/Providers/AppServiceProvider.php'));
         foreach (['AuditWriter::class', 'Gate::before', 'Gate::define', 'AuthorizationKeys::cases'] as $evidence) {
             self::assertStringContainsString($evidence, $appProvider);
@@ -188,17 +225,15 @@ PHP;
     }
 
     /** @return list<string> */
-    private function moduleLayerFiles(): array
+    private function moduleLayerFiles(string $layer): array
     {
         $files = [];
         foreach (glob($this->path('app/Modules/*'), GLOB_ONLYDIR) ?: [] as $module) {
-            foreach (['Domain', 'Application', 'Infrastructure', 'Providers'] as $layer) {
-                $directory = $module.'/'.$layer;
-                if (! is_dir($directory)) continue;
-                $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS));
-                foreach ($iterator as $file) if ($file->isFile() && $file->getExtension() === 'php') {
-                    $files[] = str_replace($this->path().'/', '', $file->getPathname());
-                }
+            $directory = $module.'/'.$layer;
+            if (! is_dir($directory)) continue;
+            $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS));
+            foreach ($iterator as $file) if ($file->isFile() && $file->getExtension() === 'php') {
+                $files[] = str_replace($this->path().'/', '', $file->getPathname());
             }
         }
         sort($files);
@@ -222,9 +257,13 @@ PHP;
         $tokens = token_get_all($source);
         $usePrefix = '';
         $inUse = false;
+        $inNamespace = false;
         $braceDepth = 0;
         foreach ($tokens as $tokenIndex => $token) {
             if (! is_array($token)) {
+                if ($inNamespace && $token === ';') {
+                    $inNamespace = false;
+                }
                 if ($inUse && $token === '{') {
                     $braceDepth = 1;
                 } elseif ($inUse && $token === '}' && $braceDepth > 0) {
@@ -237,6 +276,13 @@ PHP;
             }
             [$type, $text, $line] = $token;
             if (in_array($type, [T_COMMENT, T_DOC_COMMENT, T_CONSTANT_ENCAPSED_STRING, T_ENCAPSED_AND_WHITESPACE], true)) {
+                continue;
+            }
+            if ($type === T_NAMESPACE) {
+                $inNamespace = true;
+                continue;
+            }
+            if ($inNamespace) {
                 continue;
             }
             if ($type === T_USE) {
@@ -327,6 +373,18 @@ PHP;
     }
 
     /** @return list<string> */
+    private function allFilesUnder(string $directory): array
+    {
+        if (is_file($directory)) return [str_replace($this->path().'/', '', $directory)];
+        if (! is_dir($directory)) return [];
+        $files = [];
+        $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS));
+        foreach ($iterator as $file) if ($file->isFile()) $files[] = str_replace($this->path().'/', '', $file->getPathname());
+        sort($files);
+        return $files;
+    }
+
+    /** @return list<string> */
     private function subdirectoriesUnder(string $directory): array
     {
         $directories = [];
@@ -345,5 +403,18 @@ PHP;
     private function path(string $relative = ''): string
     {
         return dirname(__DIR__, 2).($relative === '' ? '' : '/'.$relative);
+    }
+
+    /** @return list<string> */
+    private function routeNames(): array
+    {
+        $application = require $this->path('bootstrap/app.php');
+        $application->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+        $names = array_values(array_filter(array_map(
+            fn (\Illuminate\Routing\Route $route): ?string => $route->getName(),
+            $application->make('router')->getRoutes()->getRoutes(),
+        ), fn (?string $name): bool => $name !== null));
+        sort($names);
+        return $names;
     }
 }
