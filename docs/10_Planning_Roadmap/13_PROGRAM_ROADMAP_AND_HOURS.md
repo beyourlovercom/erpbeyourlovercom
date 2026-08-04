@@ -50,16 +50,19 @@ The Program Roadmap is the top-level delivery sequence. It must not be replaced 
 001E-B Browser E2E Foundation         MERGED / PASS / CLOSED
 001E-C Auth / Permission / Shell E2E  MERGED / PASS / CLOSED
 001F Architecture Re-audit            ACTIVE / PREFLIGHT REVIEWED
-001F-A Governance Status Correction   IMPLEMENTED / PENDING INDEPENDENT REVIEW
-001F-B through 001F-F                 PROPOSED / NOT AUTHORIZED
+001F-A Governance Status Correction   COMPLETE / CLOSED
+001F-B Modular Boundary Decision      COMPLETE / REVIEWED / OPTION A1 APPROVED
+001F-B1 Module Architecture Contract CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW
+001F-B2 through 001F-B5                PROPOSED / NOT AUTHORIZED
+001F-C through 001F-F                 PROPOSED / NOT AUTHORIZED
 Global Architecture Gate              FAIL
 ```
 
 ## Source Conflict Snapshot
 
 ```text
-GITHUB_FACT: PR #21 and PR #22 are merged; main is 3218473b1cfc93f098a2e9607aabe9adb16bcf0d.
-GOVERNANCE_FACT: 001E is COMPLETE / PASS; 001E-B and 001E-C are MERGED / PASS / CLOSED; 001F-A is IMPLEMENTED / PENDING INDEPENDENT REVIEW.
+GITHUB_FACT: PR #21 and PR #22 are merged; current main is the authorized 001F-A squash base `70b492772eedc993e5790d563c9c261cb0b1e0b7`; earlier package squash SHAs remain historical evidence.
+GOVERNANCE_FACT: 001E is COMPLETE / PASS; 001E-B and 001E-C are MERGED / PASS / CLOSED; 001F-A is COMPLETE / CLOSED.
 SOURCE_CONFLICTS: historical pre-merge snapshots are retained as history only; current status is corrected here.
 EVIDENCE_LIMITS: real-MySQL two-connection claim concurrency, live Redis, Queue Worker, Scheduler and Dev Migration remain unverified.
 ```
@@ -67,12 +70,14 @@ EVIDENCE_LIMITS: real-MySQL two-connection claim concurrency, live Redis, Queue 
 ## Current Architecture Migration Estimate
 
 ```text
-001F_B_TO_F_ESTIMATE: 12–24h
-PLANNING_VALUE: 18h
-ARCHITECTURE_MIGRATION_REMAINING: approximately 5–9 Codex / 12–24h
-CLASSIFICATION: planning estimate only
+001F_B2_TO_B5_KNOWN_ESTIMATE: 4–8 Codex / 20–40h
+CURRENT_B2_TO_B5_PLANNING_VALUE: 30h
+001F_C_TO_001F_F_ESTIMATE: UNKNOWN WITH EVIDENCE
+TOTAL_ARCHITECTURE_MIGRATION_REMAINING: UNKNOWN WITH EVIDENCE
 ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
 ```
+
+Historical estimate: `001F_B_TO_F_ESTIMATE: SUPERSEDED / NOT CURRENT` and `PLANNING_VALUE: 18h` are retained only as historical evidence.
 
 ## Initial Hours Snapshot
 
@@ -81,11 +86,11 @@ ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
 | `001D_TOTAL_ESTIMATE` | 35–54h; planning value 45h | completed issued total estimate | Frozen and completed parent 001D package; not remaining |
 | `001E_PARENT_PLANNING_ESTIMATE` | 40–62h; planning value 51h | parent-level original planning estimate | Original allocation across 001E-A/B/C; not remaining |
 | `001E_B_CONFIRMED_ESTIMATE` | 12–18h; planning value 15h | confirmed child implementation estimate | Accepted bounded implementation estimate; package merged and closed |
-| `001F_ESTIMATE` | 5–9 Codex; 12–24h planning range | planning estimate only | 001F-B through 001F-F remain unimplemented and unauthorized |
-| `KNOWN_CURRENT_TRACK_REMAINING` | 12–24h; planning value 18h | non-overlapping 001F-B/F planning range | 001E is complete; remaining work is Architecture Migration only |
-| `001F_B_TO_F_ESTIMATE` | 12–24h | planning estimate only | planning value 18h; actual hours unknown with evidence |
-| `ARCHITECTURE_MIGRATION_REMAINING` | approximately 5–9 Codex / 12–24h | planning estimate only | 001F-B through 001F-F; no guaranteed gate completion time |
-| `ARCHITECTURE_GATE_REMAINING` | 12–24h planning estimate | planning estimate only | actual hours unknown with evidence; completion is not guaranteed within this range |
+| `001F_B2_TO_B5_KNOWN_ESTIMATE` | 4–8 Codex / 20–40h; planning value 30h | planning estimate only | B2-B5 only |
+| `001F_C_TO_001F_F_ESTIMATE` | UNKNOWN WITH EVIDENCE | planning estimate only | not yet estimated |
+| `TOTAL_ARCHITECTURE_MIGRATION_REMAINING` | UNKNOWN WITH EVIDENCE | planning estimate only | no completion-time guarantee |
+| `ACTUAL_HOURS` | UNKNOWN WITH EVIDENCE | actual-hours status | no fabricated actuals |
+| `001F_B2_TO_B5_ESTIMATE` | SUPERSEDED / see `001F_B2_TO_B5_KNOWN_ESTIMATE` | historical planning estimate | excludes 001F-C through 001F-F; current estimate is recorded above |
 | `MVP1_TOTAL_ESTIMATE` | 122–190h | total estimate | Effective Hours source; not automatically remaining |
 | `MVP1_PLANNING_BASELINE` | 166h | total planning value | Effective Hours source |
 | `MVP1_MAXIMUM_ENVELOPE` | 192h | maximum total planning envelope | Living Roadmap and Effective Hours sources |

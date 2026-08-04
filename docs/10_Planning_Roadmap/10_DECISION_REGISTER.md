@@ -149,3 +149,7 @@ Local Chromium Browser E2E is ACCEPTED LOCAL ARCHITECTURE EVIDENCE. GitHub Actio
 ## D-030 001F gate scope
 
 The remaining 001F sequence is 001F-B Modular Boundary Decision / Remediation, 001F-C MySQL Concurrency Validation, 001F-D Redis / Queue / Scheduler Runtime Validation, 001F-E Dev Migration Validation and 001F-F Final Architecture Gate Re-audit. These packages are proposed and not authorized. Global Architecture Gate remains FAIL; MVP1 remains NOT STARTED and at 0% business completion.
+
+## D-031 Adopt A1 Physical Module Contract for Architecture Standard v1.1
+
+Owner reviewed 001F-B and selected `RECOMMEND_OPTION_A1`. Standard ID is `BYL-ERP-ARCH-001`; v1.0 did not explicitly require `app/Modules/**`; v1.1 now adopts that path as a forward-effective physical module contract. B1 freezes the contract only; historical migrations remain in place, `App\Support` is legacy compatibility rather than Shared Kernel, default Composer PSR-4 remains sufficient, and B2 establishes the skeleton and automated boundary tests. B3, B4 and B5 remain staged and unauthorized. Global Architecture Gate remains FAIL; MVP1 remains NOT STARTED / 0%; no application, namespace, provider, route, migration or database change is authorized.

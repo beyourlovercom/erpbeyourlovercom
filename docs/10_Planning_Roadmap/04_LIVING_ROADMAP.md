@@ -52,7 +52,7 @@ ERP-MENU-BASELINE-001 = MERGED / PASS (PR #14; accepted Head: 6d5595e87977889510
 001E-B Browser E2E Foundation = MERGED / PASS / CLOSED (PR #21; main: 4b9fbb0deacdfc02439fb947398b87c148602c75)
 001E-C Authentication / Permission / App Shell E2E = MERGED / PASS / CLOSED (PR #22; main: 3218473b1cfc93f098a2e9607aabe9adb16bcf0d)
 001F Architecture Re-audit = ACTIVE / PREFLIGHT REVIEWED
-001F-A Governance Status Correction & Gate Scope Freeze = IMPLEMENTED / PENDING INDEPENDENT REVIEW
+001F-A Governance Status Correction & Gate Scope Freeze = COMPLETE / CLOSED (PR #23; accepted Head: f327910941dc0b6107bfaf40f5803b1448544ce4; main: 70b492772eedc993e5790d563c9c261cb0b1e0b7)
 001F-B through 001F-F = PROPOSED / NOT AUTHORIZED
 Global Architecture Gate = FAIL
 Deployment = NO
@@ -77,6 +77,8 @@ Maximum planning envelope: approximately 192 effective hours
 ```
 
 The accepted 001D-C evidence remains bounded: real-MySQL two-connection claim concurrency is a Global Gate blocker and no Dev Migration was run. MySQL 5.7 is outside the current supported baseline, does not block the Global Gate, and current code is not declared compatible; future support requires a new Architecture Decision and Compatibility Work Package. Staging Migration remains a UAT blocker, and Production Migration planning/rehearsal remains a deployment blocker.
+
+001F-B Preflight: COMPLETE / REVIEWED / OPTION A1 APPROVED. 001F-B1 Module Architecture Contract & Decision Freeze: CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW. 001F-B2 through 001F-B5: PROPOSED / NOT AUTHORIZED. The v1.1 `app/Modules/**` contract is forward-effective; no module code or directory exists yet. MVP1 remains NOT STARTED / 0%.
 
 ## Incremental releases
 

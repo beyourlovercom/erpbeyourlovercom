@@ -100,8 +100,10 @@ Repository Governance = PASS
 001E-B Browser E2E Foundation = MERGED / PASS / CLOSED
 001E-C Authentication / Permission / App Shell E2E = MERGED / PASS / CLOSED
 001F Architecture Re-audit = ACTIVE / PREFLIGHT REVIEWED
-001F-A Governance Status Correction & Gate Scope Freeze = IMPLEMENTED / PENDING INDEPENDENT REVIEW
-001F-B Modular Boundary Decision / Remediation = PROPOSED / NOT AUTHORIZED
+001F-A Governance Status Correction & Gate Scope Freeze = COMPLETE / CLOSED (PR #23; accepted Head f327910941dc0b6107bfaf40f5803b1448544ce4; main 70b492772eedc993e5790d563c9c261cb0b1e0b7)
+001F-B Modular Boundary Decision / Remediation = COMPLETE / REVIEWED / OPTION A1 APPROVED
+001F-B1 Module Architecture Contract & Decision Freeze = CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW
+001F-B2 through 001F-B5 = PROPOSED / NOT AUTHORIZED
 Global Architecture Gate = FAIL
 Production Deployment = NO
 ```
