@@ -173,6 +173,9 @@ final class ModuleArchitectureTest extends TestCase
         $matching = "<?php\nnamespace App\\Modules\\Orders\\Domain;\nfinal class Order {}\n";
         self::assertSame([], $this->sourceViolations('DOM-001', 'app/Modules/Orders/Domain/Order.php', $matching, $this->domForbidden()));
 
+        $nested = "<?php\nnamespace App\\Modules\\Orders\\Domain\\ValueObjects;\nfinal class Money {}\n";
+        self::assertSame([], $this->sourceViolations('DOM-001', 'app/Modules/Orders/Domain/ValueObjects/Money.php', $nested, $this->domForbidden()));
+
         $wrongModule = "<?php\nnamespace App\\Modules\\Billing\\Domain;\nfinal class Order {}\n";
         $wrongModuleViolations = $this->sourceViolations('DOM-001', 'app/Modules/Orders/Domain/Order.php', $wrongModule, $this->domForbidden());
         self::assertSame(['DOM-001'], array_column($wrongModuleViolations, 'RULE_ID'));
@@ -183,6 +186,13 @@ final class ModuleArchitectureTest extends TestCase
         self::assertSame(['DOM-001'], array_column($wrongLayerViolations, 'RULE_ID'));
         self::assertSame('App\\Modules\\Orders\\Infrastructure', $wrongLayerViolations[0]['SYMBOL_OR_DEPENDENCY']);
         self::assertSame(['RULE_ID', 'FILE', 'LINE', 'SYMBOL_OR_DEPENDENCY', 'REASON'], array_keys($wrongLayerViolations[0]));
+
+        $missing = "<?php\nfinal class Order {}\n";
+        $missingViolations = $this->sourceViolations('DOM-001', 'app/Modules/Orders/Domain/Order.php', $missing, $this->domForbidden());
+        self::assertSame(['DOM-001'], array_column($missingViolations, 'RULE_ID'));
+        self::assertSame(1, $missingViolations[0]['LINE']);
+        self::assertSame('MISSING_NAMESPACE', $missingViolations[0]['SYMBOL_OR_DEPENDENCY']);
+        self::assertSame('module file must declare a namespace matching its module layer path', $missingViolations[0]['REASON']);
     }
 
     public function test_provider_rule_collects_real_sources_and_rejects_forbidden_fixture(): void
@@ -416,7 +426,7 @@ PHP;
                     $namespace .= '\\';
                 }
             }
-            if ($namespace !== $expected) {
+            if ($namespace !== $expected && ! str_starts_with($namespace, $expected.'\\')) {
                 return [[
                     'RULE_ID' => $ruleId,
                     'FILE' => $file,
@@ -427,7 +437,13 @@ PHP;
             }
             return [];
         }
-        return [];
+        return [[
+            'RULE_ID' => $ruleId,
+            'FILE' => $file,
+            'LINE' => 1,
+            'SYMBOL_OR_DEPENDENCY' => 'MISSING_NAMESPACE',
+            'REASON' => 'module file must declare a namespace matching its module layer path',
+        ]];
     }
 
     /** @return list<string> */
