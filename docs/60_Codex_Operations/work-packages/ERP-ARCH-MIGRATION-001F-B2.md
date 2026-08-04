@@ -9,6 +9,10 @@ standard_version: 1.1
 
 # ERP-ARCH-MIGRATION-001F-B2 — Module Skeleton & Automated Boundary Enforcement
 
+## Historical PR #26 Approved Implementation Contract
+
+HISTORICAL PRE-MERGE STATE — BEGIN
+
 ## Scope and Authorization
 
 ```text
@@ -293,6 +297,8 @@ MIGRATION_EXECUTION: EXCLUDED
 UAT: EXCLUDED
 DEPLOYMENT: EXCLUDED
 ```
+
+HISTORICAL PRE-MERGE STATE — END
 
 ## Implementation Completion and Post-Merge Closure
 
