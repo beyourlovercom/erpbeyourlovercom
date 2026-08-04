@@ -286,7 +286,21 @@ FULL_SUITE_NO_NEW_REGRESSION: PASS
 SOURCE_BRANCH_DELETED: NO
 UAT: NO
 DEPLOYMENT: NO
-POST_MERGE_CLOSURE: PR #28 OPEN / DRAFT / PENDING REVIEW
+POST_MERGE_CLOSURE: PR #28 MERGED / PASS / CLOSED
+POST_MERGE_CLOSURE_SQUASH: b2bc2d6e25699bc93b6ef352bc20f593c1cacd56
 ```
 
-B2 implementation is `IMPLEMENTED / PASS / MERGED`; the current docs-only closure remains pending independent review. B3 through B5 and 001F-C through 001F-F remain proposed and unauthorized.
+B2 implementation and docs-only closure are `COMPLETE / PASS / CLOSED`; B3 is the next active package under continuous authorization. B4 through B5 and 001F-C through 001F-F remain not started.
+
+## 2026-08-05 — 001F-B2 closed / 001F-B3 activated under continuous authorization
+
+```text
+Owner continuous authorization: ERP-ARCH-MIGRATION-001F-CONTINUOUS-20260805.
+New state: 001F-B2 COMPLETE / PASS / CLOSED after PR #28 merged; closure main SHA b2bc2d6e25699bc93b6ef352bc20f593c1cacd56.
+Current state: 001F-B3 Identity & Access Boundary Migration PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED.
+Evidence: B3 read-only audit covered Identity models, Fortify, Gate, local bypass, auth routes/controller, provisioning command, Audit boundary, Provider manifest, architecture tests, auth tests and approved menu baseline.
+Baseline: Architecture 16 tests / 171 assertions / PASS; auth-focused baseline 29 tests / 157 assertions / 4 failures / 1 error, retained for comparison.
+Menu impact: NO; approved baseline check PASS.
+Global Architecture Gate: FAIL. MVP1: NOT STARTED / 0%. UAT: NO. Staging Migration: NO. Production Migration: NO. Production Deployment: NO.
+Documents updated: AI/CURRENT_CONTEXT.md; Living Roadmap; Change Log; Work Package Index; Program Roadmap and Hours; B2 Work Package; B2 Work Log; new B3 Work Package and Work Log.
+```
