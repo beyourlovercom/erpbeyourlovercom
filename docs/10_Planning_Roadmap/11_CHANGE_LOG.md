@@ -219,10 +219,31 @@ Documents updated: AI/CURRENT_CONTEXT.md; Roadmap, Decision Register, Change Log
 Owner decision: Approve RECOMMEND_OPTION_A1 and freeze the v1.1 physical module contract.
 Decision: D-031 — Adopt A1 Physical Module Contract for Architecture Standard v1.1.
 Previous state: 001F-B was reviewed but lacked an executable physical module contract.
-New state: 001F-B COMPLETE / REVIEWED / OPTION A1 APPROVED; 001F-B1 CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW; B2-B5 PROPOSED / NOT AUTHORIZED.
+HISTORICAL PRE-MERGE STATE: New state: 001F-B COMPLETE / REVIEWED / OPTION A1 APPROVED; 001F-B1 CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW; B2-B5 PROPOSED / NOT AUTHORIZED.
 Standard: BYL-ERP-ARCH-001 v1.1 effective 2026-08-03; v1.0 did not explicitly require app/Modules/**.
 Migration policy: historical database/migrations remain in place; no application or directory migration in B1.
 Estimate impact: B2 1–2 Codex / 4–8h; B3 1–2 / 5–10h; B4 1–2 / 6–12h; B5 1–2 / 5–10h; combined 4–8 Codex / 20–40h; planning value 30h; actual hours UNKNOWN WITH EVIDENCE.
 Global Architecture Gate: FAIL. MVP1: NOT STARTED / 0%. UAT: NO. Deployment: NO.
 Documents updated: exactly 7 existing authorized Markdown files and 2 new B1 Markdown files; no application, dependency, namespace, provider, route, migration, database, test or workflow changes.
+```
+
+## 2026-08-04 — 001F-B1 post-merge closure
+
+```text
+Owner decision: Close 001F-B1 after substantive review and remediate authority-file status consistency.
+Decision: D-031 remains unchanged; no new D-XXX required.
+HISTORICAL PRE-MERGE STATE: PR #24 merged B1 contract into main, but 001F-B1 was still recorded as CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW across Current Context, Living Roadmap, Work Package Index, Program Roadmap and Hours, and the B1 Work Package. PR #25 opened as Draft closure.
+New state: 001F-B1 COMPLETE / PASS / CLOSED; PR #24 accepted Head f26b510b499ffef95e1723eb19d12bac84c93718; main squash b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f; closure PR #25.
+001F-B2 Module Skeleton & Automated Boundary Enforcement: PREFLIGHT COMPLETE / IMPLEMENTATION NOT STARTED.
+001F-B3 through 001F-B5 and 001F-C through 001F-F: PROPOSED / NOT AUTHORIZED.
+Reason: Unify authoritative status records after merge; transition to B2 formalization.
+Review status: INDEPENDENT_REVIEW: UNAVAILABLE / REVIEWER RETURNED EMPTY TASK_RESULT; SUBSTANTIVE_REVIEW: KIMI ORCHESTRATOR DETERMINISTIC GIT AND DOCUMENT REVIEW COMPLETED; SUBSTANTIVE_REVIEW_RESULT: PASS_WITH_NON_BLOCKING_FINDINGS; GITHUB_INDEPENDENT_REVIEW: CHANGES REQUIRED IDENTIFIED AND REMEDIATED IN PR #25; OWNER_CLOSURE_DECISION: GRANTED.
+Owner decision basis: Owner explicitly authorized Codex Luna to complete B1 closure after reviewing the available substantive evidence and the reviewer-unavailable condition.
+Application code: NO CHANGE.
+Dependency / package-lock / Workflow / Migration / database: NO CHANGE.
+UAT: NO.
+Deployment: NO.
+Global Architecture Gate: FAIL.
+MVP1: NOT STARTED / 0%.
+Documents updated: AI/CURRENT_CONTEXT.md; docs/10_Planning_Roadmap/04_LIVING_ROADMAP.md; docs/10_Planning_Roadmap/11_CHANGE_LOG.md; docs/10_Planning_Roadmap/12_WORK_PACKAGE_INDEX.md; docs/10_Planning_Roadmap/13_PROGRAM_ROADMAP_AND_HOURS.md; docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-B1.md; docs/60_Codex_Operations/logs/2026-08-03_ERP-ARCH-MIGRATION-001F-B1.md.
 ```

@@ -2,7 +2,7 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-ARCH-MIGRATION-001F-B1
-status: current-implemented-pending-independent-review
+status: complete-pass-closed
 standard_id: BYL-ERP-ARCH-001
 standard_version: 1.1
 ---
@@ -15,7 +15,11 @@ standard_version: 1.1
 AUTHORIZED_BASE: origin/main@70b492772eedc993e5790d563c9c261cb0b1e0b7
 DECISION: D-031 — Adopt A1 Physical Module Contract for Architecture Standard v1.1
 RECOMMENDATION: RECOMMEND_OPTION_A1
-STATUS: CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW
+STATUS: COMPLETE / PASS / CLOSED
+CONTRACT_PR: #24
+B1_ACCEPTED_HEAD: f26b510b499ffef95e1723eb19d12bac84c93718
+B1_MAIN_SQUASH: b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f
+CLOSURE_PR: #25
 IMPLEMENTATION: NO APPLICATION OR MODULE CODE
 GLOBAL_ARCHITECTURE_GATE: FAIL
 MVP1: NOT STARTED / 0%
@@ -125,12 +129,13 @@ Rollback is documentation-only: revert the B1 commit. No application, namespace,
 
 ```text
 CURRENT_TRACK: ERP Architecture Migration
-CURRENT_PHASE: 001F-B1 Module Architecture Contract
-NEXT: B2–B5 proposed / not authorized
+PREVIOUS_PHASE: 001F-B1 Module Architecture Contract & Decision Freeze (historical)
+CURRENT_PHASE: 001F-B2 Module Skeleton & Automated Boundary Enforcement (PREFLIGHT COMPLETE / IMPLEMENTATION NOT STARTED)
+NEXT: B2 formal Work Package and Draft PR
 GLOBAL_GATE: FAIL
 MVP1: NOT STARTED / 0%
 UAT: NO
 DEPLOYMENT: NO
 ```
 
-FINAL_STATUS: `ERP_ARCH_MIGRATION_001F_B1_IMPLEMENTED_PENDING_INDEPENDENT_REVIEW`
+FINAL_STATUS: `ERP_ARCH_MIGRATION_001F_B1_COMPLETE_PASS_CLOSED`
