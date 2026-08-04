@@ -34,7 +34,7 @@ The B1 Work Package is the contract source for module ownership, layer direction
 AUTHORIZED_FILE_BOUNDARY: PASS / exact 9 Markdown files
 STANDARD_ID_AND_VERSION: PASS
 DECISION_ID: PASS / D-031 only; D-027–D-030 unchanged
-STATUS_CONSISTENCY: PASS / B1 current; B2–B5 proposed/not authorized
+STATUS_CONSISTENCY: PASS / (historical) B1 current; B2–B5 proposed/not authorized
 GLOBAL_GATE: FAIL
 MVP1: NOT STARTED / 0%
 MARKDOWN_FENCES: PASS
