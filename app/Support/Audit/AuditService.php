@@ -3,13 +3,14 @@
 namespace App\Support\Audit;
 
 use App\Models\AuditRecord;
+use App\Modules\Identity\Application\Contracts\AuditRecorder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Throwable;
 
-final class AuditService
+final class AuditService implements AuditRecorder
 {
     /** @var list<string> */
     private const SENSITIVE_KEYS = [

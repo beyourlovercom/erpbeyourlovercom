@@ -4,8 +4,8 @@ namespace Tests\Architecture;
 
 use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
+use App\Modules\Identity\Providers\IdentityServiceProvider;
 use App\Providers\AppServiceProvider;
-use App\Providers\FortifyServiceProvider;
 use Illuminate\Support\ServiceProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -20,8 +20,36 @@ final class ModuleArchitectureTest extends TestCase
     private const BASELINE = '7e1f0a7dbaa2b686be552c3683680121fa6f09c5';
 
     private const MODULE_FILES = [
+        'app/Modules/Identity/Application/AuthorizationKeys.php',
+        'app/Modules/Identity/Application/Contracts/AuditRecorder.php',
+        'app/Modules/Identity/Application/DataScope.php',
+        'app/Modules/Identity/Experience/Console/Commands/CreateErpUser.php',
+        'app/Modules/Identity/Experience/Controllers/AuthController.php',
+        'app/Modules/Identity/Experience/Fortify/IdentityFortify.php',
+        'app/Modules/Identity/Experience/Middleware/ApplyLocalAdminBypass.php',
+        'app/Modules/Identity/Experience/Routes/web.php',
+        'app/Modules/Identity/Infrastructure/Models/Permission.php',
+        'app/Modules/Identity/Infrastructure/Models/Role.php',
+        'app/Modules/Identity/Infrastructure/Models/User.php',
+        'app/Modules/Identity/Providers/IdentityServiceProvider.php',
         'app/Modules/ModuleManifest.php',
         'app/Modules/ModulesServiceProvider.php',
+    ];
+
+    private const MODULE_DIRECTORIES = [
+        'app/Modules/Identity',
+        'app/Modules/Identity/Application',
+        'app/Modules/Identity/Application/Contracts',
+        'app/Modules/Identity/Experience',
+        'app/Modules/Identity/Experience/Console',
+        'app/Modules/Identity/Experience/Console/Commands',
+        'app/Modules/Identity/Experience/Controllers',
+        'app/Modules/Identity/Experience/Fortify',
+        'app/Modules/Identity/Experience/Middleware',
+        'app/Modules/Identity/Experience/Routes',
+        'app/Modules/Identity/Infrastructure',
+        'app/Modules/Identity/Infrastructure/Models',
+        'app/Modules/Identity/Providers',
     ];
 
     private const ROUTE_NAMES = [
@@ -106,7 +134,7 @@ final class ModuleArchitectureTest extends TestCase
 
     public function test_frozen_module_and_support_boundaries(): void
     {
-        self::assertSame([], $this->subdirectoriesUnder($this->path('app/Modules')));
+        self::assertSame(self::MODULE_DIRECTORIES, $this->subdirectoriesUnder($this->path('app/Modules')));
         self::assertSame(self::MODULE_FILES, $this->allFilesUnder($this->path('app/Modules')));
         $this->assertFixedFileSet(self::SUPPORT_FILES, 'SUPPORT-001', 'app/Support');
         self::assertDirectoryDoesNotExist($this->path('app/Shared'));
@@ -118,8 +146,12 @@ final class ModuleArchitectureTest extends TestCase
         $applicationFiles = $this->moduleLayerFiles('Application');
         $infrastructureDependencyFiles = [...$domainFiles, ...$applicationFiles];
         self::assertSame([], $domainFiles);
-        self::assertSame([], $applicationFiles);
-        self::assertSame([], $infrastructureDependencyFiles);
+        self::assertSame([
+            'app/Modules/Identity/Application/AuthorizationKeys.php',
+            'app/Modules/Identity/Application/Contracts/AuditRecorder.php',
+            'app/Modules/Identity/Application/DataScope.php',
+        ], $applicationFiles);
+        self::assertSame($applicationFiles, $infrastructureDependencyFiles);
         self::assertNotContains('app/Modules/Future/Providers/Provider.php', $domainFiles);
         self::assertNotContains('app/Modules/Future/Providers/Provider.php', $applicationFiles);
         self::assertSame([], $this->tokenizerViolations('DOM-001', $domainFiles, $this->domForbidden()));
@@ -257,12 +289,12 @@ PHP;
         sort($permissionKeys);
         self::assertSame(self::PERMISSION_KEYS, $permissionKeys, 'COMPAT-001 permission keys changed');
         $appProvider = (string) file_get_contents($this->path('app/Providers/AppServiceProvider.php'));
-        foreach (['AuditWriter::class', 'Gate::before', 'Gate::define', 'AuthorizationKeys::cases'] as $evidence) {
-            self::assertStringContainsString($evidence, $appProvider);
-        }
+        self::assertStringContainsString('AuditWriter::class', $appProvider);
+        $identityFortify = (string) file_get_contents($this->path('app/Modules/Identity/Experience/Fortify/IdentityFortify.php'));
+        foreach (['Gate::before', 'Gate::define', 'AuthorizationKeys::cases'] as $evidence) self::assertStringContainsString($evidence, $identityFortify);
         self::assertSame(ServiceProvider::class, get_parent_class(ModulesServiceProvider::class));
-        self::assertSame([], ModuleManifest::providers());
-        self::assertSame([AppServiceProvider::class, ModulesServiceProvider::class, FortifyServiceProvider::class], require $this->path('bootstrap/providers.php'));
+        self::assertSame([IdentityServiceProvider::class], ModuleManifest::providers());
+        self::assertSame([AppServiceProvider::class, ModulesServiceProvider::class], require $this->path('bootstrap/providers.php'));
     }
 
     /** @return list<string> */
@@ -461,7 +493,7 @@ PHP;
     /** @return list<string> */
     private function providerForbidden(): array
     {
-        return ['filesystem', 'glob', 'scandir', 'Finder', 'convention', 'Route', 'Migration', 'View', 'Event', 'Queue', 'Schedule', 'Redis', 'Orders', 'Logistics', '$name'];
+        return ['filesystem', 'glob', 'scandir', 'Finder', 'convention', 'Route::', 'Migration', 'View', 'Event', 'Queue', 'Schedule', 'Redis', 'Orders', 'Logistics', '$name'];
     }
 
     /** @return list<array{RULE_ID:string,FILE:string,LINE:int,SYMBOL_OR_DEPENDENCY:string,REASON:string}> */

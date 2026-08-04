@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Controllers\ErpShellController;
-use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\AuditRecordController;
 use App\Http\Controllers\RuntimeHealthController;
@@ -11,8 +10,6 @@ use Inertia\Inertia;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Gate;
 
-Route::get('/', [AuthController::class, 'root'])->name('root');
-Route::get('/login', [AuthController::class, 'login'])->middleware('guest')->name('login');
 Route::middleware(['auth', 'can:dashboard.view'])->get('/dashboard', DashboardController::class)->name('dashboard');
 Route::get('/system/runtime/health', RuntimeHealthController::class)
     ->middleware(['auth', 'can:system.permissions.manage'])

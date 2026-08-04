@@ -4,8 +4,8 @@ namespace Tests\Architecture;
 
 use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
+use App\Modules\Identity\Providers\IdentityServiceProvider;
 use App\Providers\AppServiceProvider;
-use App\Providers\FortifyServiceProvider;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 use LogicException;
@@ -27,11 +27,11 @@ final class ModuleProviderTest extends TestCase
         self::assertSame(ServiceProvider::class, get_parent_class(ModulesServiceProvider::class));
     }
 
-    public function test_manifest_starts_empty_and_empty_registration_does_not_register(): void
+    public function test_manifest_registers_identity_and_invalid_registration_fails_fast(): void
     {
-        self::assertSame([], ModuleManifest::providers());
+        self::assertSame([IdentityServiceProvider::class], ModuleManifest::providers());
         $application = $this->createMock(Application::class);
-        $application->expects(self::never())->method('register');
+        $application->expects(self::once())->method('register')->with(IdentityServiceProvider::class);
         $provider = new ModulesServiceProvider($application);
         $provider->register();
         self::assertSame([], ModuleManifest::validate([]));
@@ -58,15 +58,15 @@ final class ModuleProviderTest extends TestCase
         self::assertSame([
             AppServiceProvider::class,
             ModulesServiceProvider::class,
-            FortifyServiceProvider::class,
-        ], ModuleManifest::validate([AppServiceProvider::class, ModulesServiceProvider::class, FortifyServiceProvider::class]));
+            IdentityServiceProvider::class,
+        ], ModuleManifest::validate([AppServiceProvider::class, ModulesServiceProvider::class, IdentityServiceProvider::class]));
     }
 
     public function test_bootstrap_provider_order_and_existing_providers_are_frozen(): void
     {
-        self::assertSame([AppServiceProvider::class, ModulesServiceProvider::class, FortifyServiceProvider::class], require dirname(__DIR__, 2).'/bootstrap/providers.php');
+        self::assertSame([AppServiceProvider::class, ModulesServiceProvider::class], require dirname(__DIR__, 2).'/bootstrap/providers.php');
         self::assertTrue(class_exists(AppServiceProvider::class));
-        self::assertTrue(class_exists(FortifyServiceProvider::class));
+        self::assertTrue(class_exists(IdentityServiceProvider::class));
     }
 
     public function test_provider_sources_are_empty_of_business_dependencies(): void

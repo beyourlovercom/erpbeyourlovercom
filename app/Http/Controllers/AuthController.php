@@ -2,20 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
-use Inertia\Inertia;
-use Inertia\Response;
-
-class AuthController extends Controller
+class AuthController extends \App\Modules\Identity\Experience\Controllers\AuthController
 {
-    public function login(): Response
-    {
-        return Inertia::render('Auth/Login');
-    }
-
-    public function root(Request $request): Response|RedirectResponse
-    {
-        return $request->user() ? redirect()->route('dashboard') : Inertia::render('Auth/Login');
-    }
 }
