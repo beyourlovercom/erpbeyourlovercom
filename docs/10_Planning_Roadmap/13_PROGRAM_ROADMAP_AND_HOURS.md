@@ -62,9 +62,10 @@ Global Architecture Gate              FAIL
 ## Source Conflict Snapshot
 
 ```text
-GITHUB_FACT: PR #24 merged 001F-B1 contract into main at b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f; PR #25 is the open Draft closure PR remediating status consistency.
+GITHUB_FACT: PR #24 merged the B1 contract into main at b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f.
+GOVERNANCE_CLOSURE_FACT: PR #25 is the B1 governance closure PR.
 GOVERNANCE_FACT: 001F-B1 is COMPLETE / PASS / CLOSED; 001F-B2 is PREFLIGHT COMPLETE / IMPLEMENTATION NOT STARTED; 001F-B3-B5 and 001F-C-F are PROPOSED / NOT AUTHORIZED.
-SOURCE_CONFLICTS: NONE WITH EVIDENCE after PR #25 remediation.
+SOURCE_CONFLICTS: NONE WITH EVIDENCE
 EVIDENCE_LIMITS: real-MySQL two-connection claim concurrency, live Redis, Queue Worker, Scheduler and Dev Migration remain unverified.
 ```
 

@@ -126,11 +126,11 @@ Production Deployment = NO
 ## Immediate sequence
 
 ```text
-1. Complete GitHub independent review and Owner merge authorization for PR #25 (B1 closure).
-2. Formalize the already-completed B2 Preflight into a formal Work Package and Draft PR.
-3. Resolve the modular boundary, MySQL concurrency, Redis/Queue/Scheduler and Dev Migration gates in separate authorized packages.
-4. Complete the final 001F re-audit before declaring the Global Architecture Gate passed.
-5. Keep MVP1, UAT and deployment blocked until their explicit gates.
+1. Formalize the completed B2 Preflight into a formal B2 Work Package and Draft PR.
+2. Obtain separate Owner authorization before B2 implementation.
+3. Continue remaining Architecture Gate packages separately.
+4. Keep Global Architecture Gate FAIL.
+5. Keep MVP1, UAT and Deployment blocked.
 ```
 
 ## Product direction

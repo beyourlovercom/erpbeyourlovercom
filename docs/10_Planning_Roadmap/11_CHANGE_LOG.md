@@ -219,7 +219,7 @@ Documents updated: AI/CURRENT_CONTEXT.md; Roadmap, Decision Register, Change Log
 Owner decision: Approve RECOMMEND_OPTION_A1 and freeze the v1.1 physical module contract.
 Decision: D-031 — Adopt A1 Physical Module Contract for Architecture Standard v1.1.
 Previous state: 001F-B was reviewed but lacked an executable physical module contract.
-New state: 001F-B COMPLETE / REVIEWED / OPTION A1 APPROVED; 001F-B1 CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW; B2-B5 PROPOSED / NOT AUTHORIZED.
+HISTORICAL PRE-MERGE STATE: New state: 001F-B COMPLETE / REVIEWED / OPTION A1 APPROVED; 001F-B1 CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW; B2-B5 PROPOSED / NOT AUTHORIZED.
 Standard: BYL-ERP-ARCH-001 v1.1 effective 2026-08-03; v1.0 did not explicitly require app/Modules/**.
 Migration policy: historical database/migrations remain in place; no application or directory migration in B1.
 Estimate impact: B2 1–2 Codex / 4–8h; B3 1–2 / 5–10h; B4 1–2 / 6–12h; B5 1–2 / 5–10h; combined 4–8 Codex / 20–40h; planning value 30h; actual hours UNKNOWN WITH EVIDENCE.
@@ -232,7 +232,7 @@ Documents updated: exactly 7 existing authorized Markdown files and 2 new B1 Mar
 ```text
 Owner decision: Close 001F-B1 after substantive review and remediate authority-file status consistency.
 Decision: D-031 remains unchanged; no new D-XXX required.
-Previous state: PR #24 merged B1 contract into main, but 001F-B1 was still recorded as CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW across Current Context, Living Roadmap, Work Package Index, Program Roadmap and Hours, and the B1 Work Package. PR #25 opened as Draft closure.
+HISTORICAL PRE-MERGE STATE: PR #24 merged B1 contract into main, but 001F-B1 was still recorded as CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW across Current Context, Living Roadmap, Work Package Index, Program Roadmap and Hours, and the B1 Work Package. PR #25 opened as Draft closure.
 New state: 001F-B1 COMPLETE / PASS / CLOSED; PR #24 accepted Head f26b510b499ffef95e1723eb19d12bac84c93718; main squash b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f; closure PR #25.
 001F-B2 Module Skeleton & Automated Boundary Enforcement: PREFLIGHT COMPLETE / IMPLEMENTATION NOT STARTED.
 001F-B3 through 001F-B5 and 001F-C through 001F-F: PROPOSED / NOT AUTHORIZED.

@@ -74,10 +74,10 @@ Maximum planning envelope: approximately 192 effective hours
 ## Immediate sequence
 
 ```text
-1. Complete GitHub independent review and Owner merge authorization for B1 closure PR #25.
-2. Formalize the already-completed B2 Preflight into a formal Work Package and Draft PR.
-3. Resolve the remaining Architecture Gate blockers in separately authorized 001F-B2 through 001F-E packages.
-4. Complete 001F-F final re-audit before Global Architecture Gate closure.
+1. Prepare and review the B2 formal Work Package.
+2. Obtain separate Owner authorization before B2 implementation.
+3. Resolve the remaining Architecture Gate blockers in separately authorized packages.
+4. Complete the final 001F re-audit before Global Architecture Gate closure.
 5. Keep MVP1, UAT and deployment blocked until their explicit gates.
 ```
 

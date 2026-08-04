@@ -74,8 +74,10 @@ OWNER_DECISION_BASIS: Owner explicitly authorized Codex Luna to complete B1 clos
 001F_B1_DOCUMENTATION_IMPLEMENTATION: GRANTED
 001F_B1_CLOSURE_IMPLEMENTATION: COMPLETE
 001F_B1_STATUS: COMPLETE / PASS / CLOSED
-PR_25: OPEN DRAFT / AWAITING FINAL GITHUB INDEPENDENT REVIEW AND OWNER MERGE AUTHORIZATION
+PR_25:
+B1 GOVERNANCE CLOSURE PR
 001F_B2_IMPLEMENTATION: NOT AUTHORIZED
+B2_IMPLEMENTATION_AUTHORIZATION: NOT GRANTED
 001F_B2_PREFLIGHT: PREFLIGHT COMPLETE / IMPLEMENTATION NOT STARTED
 001F_C: NOT AUTHORIZED
 MVP1: NOT AUTHORIZED
@@ -93,7 +95,7 @@ B1_CONTRACT_PR: #24
 B1_IMPLEMENTATION_ACCEPTED_HEAD: f26b510b499ffef95e1723eb19d12bac84c93718
 B1_MAIN_SQUASH: b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f
 B1_CLOSURE_PR: #25
-AUTHORIZED_FILE_BOUNDARY: 7 Markdown files (Current Context, Living Roadmap, Change Log, Work Package Index, Program Roadmap and Hours, B1 Work Package, B1 Work Log)
+AUTHORIZED_FILE_BOUNDARY: 8 Markdown files (Current Context, System Architecture, Living Roadmap, Change Log, Work Package Index, Program Roadmap and Hours, B1 Work Package, B1 Work Log)
 PROGRAM_ROADMAP_STATUS: 001F-B1 COMPLETE / PASS / CLOSED; 001F-B2 PREFLIGHT COMPLETE / IMPLEMENTATION NOT STARTED; B3–B5 and 001F-C–F PROPOSED / NOT AUTHORIZED
 SUPERSEDED_18H_STATUS: explicitly SUPERSEDED / NOT CURRENT
 RISKS_AND_ACCEPTANCE_CRITERIA: retained unchanged
@@ -103,7 +105,7 @@ B1_STATUS: COMPLETE / PASS / CLOSED
 MERGE: NOT AUTHORIZED
 ```
 
-The final closure remediation corrects the Living Roadmap 001F-B grouping, updates all authoritative status files (Current Context, Living Roadmap, Change Log, Work Package Index, Program Roadmap and Hours, B1 Work Package, B1 Work Log) to the PR #25 merge target state, records the review and Owner closure decision status, retains the LARGE-PROJECT-EXEC-001 v1.1 footer, and does not change implementation scope.
+The final closure remediation corrects the System Architecture execution order and Living Roadmap 001F-B grouping, updates all authoritative status files (Current Context, System Architecture, Living Roadmap, Change Log, Work Package Index, Program Roadmap and Hours, B1 Work Package, B1 Work Log) to the PR #25 merge target state, records the review and Owner closure decision status, retains the LARGE-PROJECT-EXEC-001 v1.1 footer, and does not change implementation scope.
 
 FINAL_STATUS: `ERP_ARCH_MIGRATION_001F_B1_COMPLETE_PASS_CLOSED`
 
@@ -153,15 +155,18 @@ CURRENT_TRACK_PHASE_MAP:
 Global Architecture Gate = FAIL
 
 COMPLETED_PHASES: 001A, 001B, 001C, 001D, 001E, 001F-A, 001F-B, 001F-B1
-CURRENT_PHASE: 001F-B2 Module Skeleton & Automated Boundary Enforcement
+CURRENT_PHASE: 001F-B2 FORMAL WORK PACKAGE PREPARATION
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001F-B2
 PACKAGE_STATUS: PREFLIGHT COMPLETE / IMPLEMENTATION NOT STARTED
 BASELINE: origin/main@b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f
-GITHUB_STATE: PR #24 MERGED; PR #25 OPEN DRAFT
+GITHUB_STATE: PR #24 MERGED; PR #25 B1 GOVERNANCE CLOSURE PR
 SOURCE_CONFLICTS: NONE WITH EVIDENCE
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: GitHub independent review PASS and Owner merge authorization for PR #25; then formalize B2 Work Package
+NEXT_DEPENDENCY: Formalize B2 Preflight into a docs-only Work Package PR and obtain separate Owner implementation authorization.
+IMPLEMENTATION_AGENT: Kimi Orchestrator
+INTENDED_BUILDER: xshoow-builder / openai-api/gpt-5.6-luna
+BUILDER_TASK_RESULT: UNAVAILABLE
 EVIDENCE_AS_OF: 2026-08-04
 ```
 
