@@ -53,7 +53,10 @@ ERP-MENU-BASELINE-001 = MERGED / PASS (PR #14; accepted Head: 6d5595e87977889510
 001E-C Authentication / Permission / App Shell E2E = MERGED / PASS / CLOSED (PR #22; main: 3218473b1cfc93f098a2e9607aabe9adb16bcf0d)
 001F Architecture Re-audit = ACTIVE / PREFLIGHT REVIEWED
 001F-A Governance Status Correction & Gate Scope Freeze = COMPLETE / CLOSED (PR #23; accepted Head: f327910941dc0b6107bfaf40f5803b1448544ce4; main: 70b492772eedc993e5790d563c9c261cb0b1e0b7)
-001F-B through 001F-F = PROPOSED / NOT AUTHORIZED
+001F-B Modular Boundary Decision / Remediation = COMPLETE / REVIEWED / OPTION A1 APPROVED
+001F-B1 Module Architecture Contract & Decision Freeze = CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW (PR #24; accepted Head: f26b510b499ffef95e1723eb19d12bac84c93718; main: b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f)
+001F-B2 through 001F-B5 = PROPOSED / NOT AUTHORIZED
+001F-C through 001F-F = PROPOSED / NOT AUTHORIZED
 Global Architecture Gate = FAIL
 Deployment = NO
 ```
