@@ -2,7 +2,7 @@
 type: byl-erp-work-package
 project: BYL ERP
 work_package: ERP-ARCH-MIGRATION-001F-B2
-status: formalized-pending-github-review
+status: formalized-approved-implementation-not-started
 standard_id: BYL-ERP-ARCH-001
 standard_version: 1.1
 ---
@@ -16,7 +16,8 @@ AUTHORIZED_BASE: origin/main@9ed96acdd2e78ba49c5f57f469e4046fb2074cab
 ARCHITECTURE_STANDARD: BYL-ERP-ARCH-001 v1.1
 DECISION: D-031 remains unchanged
 RECOMMENDATION: RECOMMEND_B2_S2
-STATUS: PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION NOT STARTED
+STATUS: FORMALIZED / APPROVED / IMPLEMENTATION NOT STARTED
+B2_WORK_PACKAGE_PR: #26
 IMPLEMENTATION_AUTHORIZATION: NOT GRANTED
 SOURCE: Codex completed read-only B2 Preflight
 IMPLEMENTATION_AGENT: Kimi Orchestrator
@@ -60,7 +61,9 @@ Implementation is expected at `app/Modules/ModulesServiceProvider.php` in a sepa
 
 ### Module Manifest
 
-Implementation is expected at `app/Modules/ModuleManifest.php`, or an equivalent minimal registration contract approved within this package.
+MODULE_MANIFEST_PATH: `app/Modules/ModuleManifest.php`
+
+B2 implementation may create only `app/Modules/ModuleManifest.php` for the module manifest. It may not substitute another class name, interface, configuration file or registration contract. Any alternative must first amend the formal Work Package and receive separate GitHub review and Owner authorization; the current B2 implementation authorization does not cover such a change.
 
 - Use an explicit static array of registered existing module Providers.
 - Preserve a deterministic Provider order.
@@ -175,7 +178,7 @@ MIGRATION_EXECUTION: PROHIBITED
 
 ## Future Implementation Acceptance Criteria
 
-B2 implementation may be marked PASS only when all of the following are evidenced: the exact module-root contract exists; `ModulesServiceProvider` and a minimal manifest exist; only one approved Provider is added to `bootstrap/providers.php`; Provider order is App → Modules → Fortify; existing bindings and Gates remain in place; the manifest is explicit and fail-fast; empty registration works; Architecture Tests pass; no third-party architecture dependency, namespace, route, permission, menu, migration, database, frontend or Orders/Logistics business implementation changes occur; Global Architecture Gate remains FAIL; MVP1 remains NOT STARTED / 0%; and B3 has separate Owner authorization.
+B2 implementation may be marked PASS only when all of the following are evidenced: the exact module-root contract exists; `ModulesServiceProvider` and `app/Modules/ModuleManifest.php` exist; only one approved Provider is added to `bootstrap/providers.php`; Provider order is App → Modules → Fortify; existing bindings and Gates remain in place; the manifest is explicit and fail-fast; empty registration works; Architecture Tests pass; no third-party architecture dependency, namespace, route, permission, menu, migration, database, frontend or Orders/Logistics business implementation changes occur; Global Architecture Gate remains FAIL; MVP1 remains NOT STARTED / 0%; and B3 remains NOT AUTHORIZED after B2 completion and requires separate future Owner authorization.
 
 ## Risks
 
@@ -240,15 +243,15 @@ DEPLOYMENT: NOT AUTHORIZED
 
 ```text
 CURRENT_TRACK: ERP Architecture Migration
-CURRENT_PHASE: 001F-B2 Work Package Formalization
+CURRENT_PHASE: 001F-B2 IMPLEMENTATION AWAITING OWNER AUTHORIZATION
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001F-B2
-PACKAGE_STATUS: FORMALIZED / PENDING GITHUB REVIEW / IMPLEMENTATION NOT STARTED
+PACKAGE_STATUS: FORMALIZED / APPROVED / IMPLEMENTATION NOT STARTED
 BASELINE: origin/main@9ed96acdd2e78ba49c5f57f469e4046fb2074cab
-GITHUB_STATE: PR #25 MERGED; B2 Draft PR PENDING CREATION
+GITHUB_STATE: PR #25 MERGED; PR #26 B2 WORK PACKAGE PR
 SOURCE_CONFLICTS: NONE WITH EVIDENCE
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: GitHub review of the B2 docs-only Draft PR; separate Owner authorization before B2 implementation
+NEXT_DEPENDENCY: Separate Owner authorization for ERP-ARCH-MIGRATION-001F-B2 implementation.
 EVIDENCE_AS_OF: 2026-08-04
 ```
 

@@ -52,7 +52,8 @@ Work Log: docs/60_Codex_Operations/logs/2026-08-03_ERP-ARCH-MIGRATION-001F-B1.md
 
 ERP-ARCH-MIGRATION-001F-B2
 Module Skeleton & Automated Boundary Enforcement
-Status: FORMALIZED / PENDING GITHUB REVIEW / IMPLEMENTATION NOT STARTED
+Status: FORMALIZED / APPROVED / IMPLEMENTATION NOT STARTED
+Work Package PR: #26
 Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-B2.md
 Work Log: docs/60_Codex_Operations/logs/2026-08-04_ERP-ARCH-MIGRATION-001F-B2.md
 
