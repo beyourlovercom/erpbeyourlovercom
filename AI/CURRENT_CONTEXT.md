@@ -2,7 +2,7 @@
 type: current-context
 project: BYL ERP
 updated: 2026-08-04
-status: b1-closed-b2-preflight-complete
+status: b1-closed-b2-work-package-formalized
 ---
 
 # Current Context
@@ -116,7 +116,7 @@ Repository Governance = PASS
 001F-A Governance Status Correction & Gate Scope Freeze = COMPLETE / CLOSED (PR #23; accepted Head f327910941dc0b6107bfaf40f5803b1448544ce4; main 70b492772eedc993e5790d563c9c261cb0b1e0b7)
 001F-B Modular Boundary Decision / Remediation = COMPLETE / REVIEWED / OPTION A1 APPROVED
 001F-B1 Module Architecture Contract & Decision Freeze = COMPLETE / PASS / CLOSED (PR #24; accepted Head f26b510b499ffef95e1723eb19d12bac84c93718; main b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f; closure PR #25)
-001F-B2 Module Skeleton & Automated Boundary Enforcement = PREFLIGHT COMPLETE / IMPLEMENTATION NOT STARTED
+001F-B2 Module Skeleton & Automated Boundary Enforcement = PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION NOT STARTED / IMPLEMENTATION NOT AUTHORIZED
 001F-B3 through 001F-B5 = PROPOSED / NOT AUTHORIZED
 001F-C through 001F-F = PROPOSED / NOT AUTHORIZED
 Global Architecture Gate = FAIL
@@ -126,7 +126,7 @@ Production Deployment = NO
 ## Immediate sequence
 
 ```text
-1. Formalize the completed B2 Preflight into a formal B2 Work Package and Draft PR.
+1. Complete GitHub review of the B2 docs-only Draft PR.
 2. Obtain separate Owner authorization before B2 implementation.
 3. Continue remaining Architecture Gate packages separately.
 4. Keep Global Architecture Gate FAIL.

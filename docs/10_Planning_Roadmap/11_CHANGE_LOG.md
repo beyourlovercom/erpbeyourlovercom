@@ -247,3 +247,21 @@ Global Architecture Gate: FAIL.
 MVP1: NOT STARTED / 0%.
 Documents updated: AI/CURRENT_CONTEXT.md; docs/10_Planning_Roadmap/04_LIVING_ROADMAP.md; docs/10_Planning_Roadmap/11_CHANGE_LOG.md; docs/10_Planning_Roadmap/12_WORK_PACKAGE_INDEX.md; docs/10_Planning_Roadmap/13_PROGRAM_ROADMAP_AND_HOURS.md; docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-B1.md; docs/60_Codex_Operations/logs/2026-08-03_ERP-ARCH-MIGRATION-001F-B1.md.
 ```
+
+## 2026-08-04 — 001F-B2 Work Package formalization
+
+```text
+Owner authorization: Formalize the completed B2 read-only Preflight into a docs-only Work Package and Draft PR. B2 application implementation remains unauthorized.
+Authorized base: origin/main@9ed96acdd2e78ba49c5f57f469e4046fb2074cab; B1 closure PR #25 is MERGED / COMPLETE / PASS / CLOSED.
+Decision: D-031 remains unchanged; no new D-XXX required.
+Source: Codex completed read-only B2 Preflight; no full Preflight repeat was performed.
+Recommendation: RECOMMEND_B2_S2.
+New state: 001F-B2 PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION NOT STARTED / IMPLEMENTATION NOT AUTHORIZED; status is FORMALIZED / PENDING GITHUB REVIEW.
+Contract: empty-directory-free skeleton; no app/Modules, app/Shared or candidate module directories in formalization; explicit static Provider manifest; App → Modules → Fortify order; fail-fast missing Provider behavior; existing AppServiceProvider duties remain unchanged.
+Application code: NO CHANGE.
+Provider, test, dependency, route, permission, menu, migration, database, frontend and workflow changes: NO CHANGE.
+Global Architecture Gate: FAIL.
+MVP1: NOT STARTED / 0%.
+Documents added: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-B2.md; docs/60_Codex_Operations/logs/2026-08-04_ERP-ARCH-MIGRATION-001F-B2.md.
+Documents updated: AI/CURRENT_CONTEXT.md; docs/10_Planning_Roadmap/04_LIVING_ROADMAP.md; docs/10_Planning_Roadmap/11_CHANGE_LOG.md; docs/10_Planning_Roadmap/12_WORK_PACKAGE_INDEX.md; docs/10_Planning_Roadmap/13_PROGRAM_ROADMAP_AND_HOURS.md.
+```
