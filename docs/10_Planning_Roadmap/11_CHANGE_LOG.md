@@ -286,7 +286,7 @@ FULL_SUITE_NO_NEW_REGRESSION: PASS
 SOURCE_BRANCH_DELETED: NO
 UAT: NO
 DEPLOYMENT: NO
-POST_MERGE_CLOSURE: OPEN / DRAFT / PENDING REVIEW
+POST_MERGE_CLOSURE: PR #28 OPEN / DRAFT / PENDING REVIEW
 ```
 
 B2 implementation is `IMPLEMENTED / PASS / MERGED`; the current docs-only closure remains pending independent review. B3 through B5 and 001F-C through 001F-F remain proposed and unauthorized.
