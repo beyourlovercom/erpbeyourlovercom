@@ -304,3 +304,16 @@ Menu impact: NO; approved baseline check PASS.
 Global Architecture Gate: FAIL. MVP1: NOT STARTED / 0%. UAT: NO. Staging Migration: NO. Production Migration: NO. Production Deployment: NO.
 Documents updated: AI/CURRENT_CONTEXT.md; Living Roadmap; Change Log; Work Package Index; Program Roadmap and Hours; B2 Work Package; B2 Work Log; new B3 Work Package and Work Log.
 ```
+
+## 2026-08-05 — 001F-B3 implementation merge / closure in progress
+
+```text
+Owner continuous authorization: ERP-ARCH-MIGRATION-001F-CONTINUOUS-20260805.
+B3 Work Package PR: #29; main squash 6ad69f0fdac9a2bd2a65c9ac220ff022c062a0ed.
+B3 Implementation PR: #30; accepted Head 90b18665e5f797eb2b8f0cd91d3b3baeb8073595; main squash 906fea71b1d598de3b38ae89b34a33142cec0982.
+Final independent review: PASS at 90b18665e5f797eb2b8f0cd91d3b3baeb8073595.
+Validation: Architecture 16/172 PASS; B3 focused 55/317 PASS; full PHPUnit 150/1494 PASS with ERP_LOCAL_ADMIN_BYPASS=false; Vitest 71 PASS; application and E2E typechecks PASS; build PASS; safety contracts 15 PASS; disposable Browser E2E 16 PASS with zero external requests and cleanup PASS; route/menu/diff/fsck checks PASS.
+Scope: Identity canonical boundary implemented; compatibility aliases/wrappers retained; no migrations or menu changes; Orders and Logistics not created; MVP1 NOT STARTED / 0%; Global Architecture Gate FAIL; UAT NO; Staging Migration NO; Production Migration NO; Production Deployment NO.
+Current state: 001F-B3 IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS. B4 is next and is preparing read-only Preflight.
+Closure PR: pending creation.
+```

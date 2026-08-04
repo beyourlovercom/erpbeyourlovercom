@@ -1,8 +1,8 @@
 ---
 type: current-context
 project: BYL ERP
-updated: 2026-08-04
-status: b1-closed-b2-work-package-formalized
+updated: 2026-08-05
+status: b3-implementation-merged-b3-closure-in-progress
 ---
 
 # Current Context
@@ -62,7 +62,11 @@ Closure PR: #25
 Current / next package:
 ERP-ARCH-MIGRATION-001F-B3
 Title: Identity & Access Boundary Migration
-Status: PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
+Status: IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS
+Work Package PR: #29
+Implementation PR: #30
+Accepted Head: 90b18665e5f797eb2b8f0cd91d3b3baeb8073595
+Main Squash: 906fea71b1d598de3b38ae89b34a33142cec0982
 
 Previous package:
 ERP-ARCH-MIGRATION-001D Runtime / Audit / Sync Foundation
@@ -124,11 +128,12 @@ B2_MAIN_SQUASH_COMMIT: 6df005f8e0e59c877d95fcf41fb5c507c507378f
 B2_MERGED_AT: 2026-08-04T13:24:22Z
 B2_CLOSURE_PR: #28
 B2_CLOSURE_SQUASH: b2bc2d6e25699bc93b6ef352bc20f593c1cacd56
-CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-B3 READ-ONLY PREFLIGHT / WORK PACKAGE
-GITHUB_STATE: PR #28 MERGED; B3 Work Package PR not yet created
-NEXT_DEPENDENCY: Independent B3 Work Package review and merge
-001F-B3 = PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
-001F-B4 through 001F-B5 = PROPOSED / NOT AUTHORIZED
+CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-B3 POST-MERGE CLOSURE
+GITHUB_STATE: PR #28 MERGED; B3 Work Package PR #29 MERGED; B3 Implementation PR #30 MERGED; B3 Closure PR pending creation
+NEXT_DEPENDENCY: Independent B3 post-merge Closure review and merge
+001F-B3 = IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS
+001F-B4 = NEXT / PREPARING READ-ONLY PREFLIGHT
+001F-B5 and 001F-C through 001F-F = PROPOSED / NOT STARTED
 001F-C through 001F-F = PROPOSED / NOT AUTHORIZED
 Global Architecture Gate = FAIL
 Production Deployment = NO
