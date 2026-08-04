@@ -2,7 +2,7 @@
 type: living-roadmap
 project: BYL ERP
 version: 1.0
-updated: 2026-08-03
+updated: 2026-08-04
 ---
 
 # Living Roadmap
@@ -54,8 +54,9 @@ ERP-MENU-BASELINE-001 = MERGED / PASS (PR #14; accepted Head: 6d5595e87977889510
 001F Architecture Re-audit = ACTIVE / PREFLIGHT REVIEWED
 001F-A Governance Status Correction & Gate Scope Freeze = COMPLETE / CLOSED (PR #23; accepted Head: f327910941dc0b6107bfaf40f5803b1448544ce4; main: 70b492772eedc993e5790d563c9c261cb0b1e0b7)
 001F-B Modular Boundary Decision / Remediation = COMPLETE / REVIEWED / OPTION A1 APPROVED
-001F-B1 Module Architecture Contract & Decision Freeze = CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW (PR #24; accepted Head: f26b510b499ffef95e1723eb19d12bac84c93718; main: b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f)
-001F-B2 through 001F-B5 = PROPOSED / NOT AUTHORIZED
+001F-B1 Module Architecture Contract & Decision Freeze = COMPLETE / PASS / CLOSED (PR #24; accepted Head: f26b510b499ffef95e1723eb19d12bac84c93718; main: b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f; closure PR #25)
+001F-B2 Module Skeleton & Automated Boundary Enforcement = PREFLIGHT COMPLETE / IMPLEMENTATION NOT STARTED
+001F-B3 through 001F-B5 = PROPOSED / NOT AUTHORIZED
 001F-C through 001F-F = PROPOSED / NOT AUTHORIZED
 Global Architecture Gate = FAIL
 Deployment = NO
@@ -73,15 +74,16 @@ Maximum planning envelope: approximately 192 effective hours
 ## Immediate sequence
 
 ```text
-1. Independently review 001F-A.
-2. Resolve the remaining Architecture Gate blockers in separately authorized 001F-B through 001F-E packages.
-3. Complete 001F-F final re-audit before Global Architecture Gate closure.
-4. Keep MVP1, UAT and deployment blocked until their explicit gates.
+1. Complete GitHub independent review and Owner merge authorization for B1 closure PR #25.
+2. Formalize the already-completed B2 Preflight into a formal Work Package and Draft PR.
+3. Resolve the remaining Architecture Gate blockers in separately authorized 001F-B2 through 001F-E packages.
+4. Complete 001F-F final re-audit before Global Architecture Gate closure.
+5. Keep MVP1, UAT and deployment blocked until their explicit gates.
 ```
 
 The accepted 001D-C evidence remains bounded: real-MySQL two-connection claim concurrency is a Global Gate blocker and no Dev Migration was run. MySQL 5.7 is outside the current supported baseline, does not block the Global Gate, and current code is not declared compatible; future support requires a new Architecture Decision and Compatibility Work Package. Staging Migration remains a UAT blocker, and Production Migration planning/rehearsal remains a deployment blocker.
 
-001F-B Preflight: COMPLETE / REVIEWED / OPTION A1 APPROVED. 001F-B1 Module Architecture Contract & Decision Freeze: CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW. 001F-B2 through 001F-B5: PROPOSED / NOT AUTHORIZED. The v1.1 `app/Modules/**` contract is forward-effective; no module code or directory exists yet. MVP1 remains NOT STARTED / 0%.
+001F-B Modular Boundary Decision / Remediation: COMPLETE / REVIEWED / OPTION A1 APPROVED. 001F-B1 Module Architecture Contract & Decision Freeze: COMPLETE / PASS / CLOSED (PR #24; closure PR #25). 001F-B2 Module Skeleton & Automated Boundary Enforcement: PREFLIGHT COMPLETE / IMPLEMENTATION NOT STARTED. 001F-B3 through 001F-B5 and 001F-C through 001F-F: PROPOSED / NOT AUTHORIZED. The v1.1 `app/Modules/**` contract is forward-effective; no module code or directory exists yet. MVP1 remains NOT STARTED / 0%.
 
 ## Incremental releases
 

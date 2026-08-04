@@ -43,11 +43,18 @@ Status: COMPLETE / REVIEWED / OPTION A1 APPROVED
 
 ERP-ARCH-MIGRATION-001F-B1
 Module Architecture Contract & Decision Freeze
-Status: CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW
+Status: COMPLETE / PASS / CLOSED
+PR: #24 (contract); closure PR #25
+Accepted Head: f26b510b499ffef95e1723eb19d12bac84c93718
+Main Squash: b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f
 Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-B1.md
 Work Log: docs/60_Codex_Operations/logs/2026-08-03_ERP-ARCH-MIGRATION-001F-B1.md
 
-ERP-ARCH-MIGRATION-001F-B2 through 001F-B5
+ERP-ARCH-MIGRATION-001F-B2
+Module Skeleton & Automated Boundary Enforcement
+Status: PREFLIGHT COMPLETE / IMPLEMENTATION NOT STARTED
+
+ERP-ARCH-MIGRATION-001F-B3 through 001F-B5
 Status: PROPOSED / NOT AUTHORIZED
 
 ERP-ARCH-MIGRATION-001F-C through 001F-F

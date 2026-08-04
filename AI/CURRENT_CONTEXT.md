@@ -1,8 +1,8 @@
 ---
 type: current-context
 project: BYL ERP
-updated: 2026-08-03
-status: architecture-migration-active
+updated: 2026-08-04
+status: b1-closed-b2-preflight-complete
 ---
 
 # Current Context
@@ -50,6 +50,19 @@ Status: MERGED / PASS
 PR: #14
 Accepted Head: 6d5595e879778895105215dc98b1f740521b6f1a
 Main Squash Commit: 493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8
+
+ERP-ARCH-MIGRATION-001F-B1
+Title: Module Architecture Contract & Decision Freeze
+Status: COMPLETE / PASS / CLOSED
+PR: #24
+Accepted Head: f26b510b499ffef95e1723eb19d12bac84c93718
+Main Squash Commit: b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f
+Closure PR: #25
+
+Current / next package:
+ERP-ARCH-MIGRATION-001F-B2
+Title: Module Skeleton & Automated Boundary Enforcement
+Status: PREFLIGHT COMPLETE / IMPLEMENTATION NOT STARTED
 
 Previous package:
 ERP-ARCH-MIGRATION-001D Runtime / Audit / Sync Foundation
@@ -102,8 +115,10 @@ Repository Governance = PASS
 001F Architecture Re-audit = ACTIVE / PREFLIGHT REVIEWED
 001F-A Governance Status Correction & Gate Scope Freeze = COMPLETE / CLOSED (PR #23; accepted Head f327910941dc0b6107bfaf40f5803b1448544ce4; main 70b492772eedc993e5790d563c9c261cb0b1e0b7)
 001F-B Modular Boundary Decision / Remediation = COMPLETE / REVIEWED / OPTION A1 APPROVED
-001F-B1 Module Architecture Contract & Decision Freeze = CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW
-001F-B2 through 001F-B5 = PROPOSED / NOT AUTHORIZED
+001F-B1 Module Architecture Contract & Decision Freeze = COMPLETE / PASS / CLOSED (PR #24; accepted Head f26b510b499ffef95e1723eb19d12bac84c93718; main b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f; closure PR #25)
+001F-B2 Module Skeleton & Automated Boundary Enforcement = PREFLIGHT COMPLETE / IMPLEMENTATION NOT STARTED
+001F-B3 through 001F-B5 = PROPOSED / NOT AUTHORIZED
+001F-C through 001F-F = PROPOSED / NOT AUTHORIZED
 Global Architecture Gate = FAIL
 Production Deployment = NO
 ```
@@ -111,10 +126,11 @@ Production Deployment = NO
 ## Immediate sequence
 
 ```text
-1. Independently review the 001F-A governance correction.
-2. Resolve the modular boundary, MySQL concurrency, Redis/Queue/Scheduler and Dev Migration gates in separate authorized packages.
-3. Complete the final 001F re-audit before declaring the Global Architecture Gate passed.
-4. Keep MVP1, UAT and deployment blocked until their explicit gates.
+1. Complete GitHub independent review and Owner merge authorization for PR #25 (B1 closure).
+2. Formalize the already-completed B2 Preflight into a formal Work Package and Draft PR.
+3. Resolve the modular boundary, MySQL concurrency, Redis/Queue/Scheduler and Dev Migration gates in separate authorized packages.
+4. Complete the final 001F re-audit before declaring the Global Architecture Gate passed.
+5. Keep MVP1, UAT and deployment blocked until their explicit gates.
 ```
 
 ## Product direction

@@ -2,7 +2,7 @@
 type: program-roadmap-hours
 project: BYL ERP
 version: 1.0
-updated: 2026-08-03
+updated: 2026-08-04
 ---
 
 # Program Roadmap and Hours
@@ -52,8 +52,9 @@ The Program Roadmap is the top-level delivery sequence. It must not be replaced 
 001F Architecture Re-audit            ACTIVE / PREFLIGHT REVIEWED
 001F-A Governance Status Correction   COMPLETE / CLOSED
 001F-B Modular Boundary Decision      COMPLETE / REVIEWED / OPTION A1 APPROVED
-001F-B1 Module Architecture Contract CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW
-001F-B2 through 001F-B5                PROPOSED / NOT AUTHORIZED
+001F-B1 Module Architecture Contract COMPLETE / PASS / CLOSED (PR #24; closure PR #25)
+001F-B2 Module Skeleton & Automated Boundary Enforcement PREFLIGHT COMPLETE / IMPLEMENTATION NOT STARTED
+001F-B3 through 001F-B5                PROPOSED / NOT AUTHORIZED
 001F-C through 001F-F                 PROPOSED / NOT AUTHORIZED
 Global Architecture Gate              FAIL
 ```
@@ -61,9 +62,9 @@ Global Architecture Gate              FAIL
 ## Source Conflict Snapshot
 
 ```text
-GITHUB_FACT: PR #21 and PR #22 are merged; current main is the authorized 001F-A squash base `70b492772eedc993e5790d563c9c261cb0b1e0b7`; earlier package squash SHAs remain historical evidence.
-GOVERNANCE_FACT: 001E is COMPLETE / PASS; 001E-B and 001E-C are MERGED / PASS / CLOSED; 001F-A is COMPLETE / CLOSED.
-SOURCE_CONFLICTS: historical pre-merge snapshots are retained as history only; current status is corrected here.
+GITHUB_FACT: PR #24 merged 001F-B1 contract into main at b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f; PR #25 is the open Draft closure PR remediating status consistency.
+GOVERNANCE_FACT: 001F-B1 is COMPLETE / PASS / CLOSED; 001F-B2 is PREFLIGHT COMPLETE / IMPLEMENTATION NOT STARTED; 001F-B3-B5 and 001F-C-F are PROPOSED / NOT AUTHORIZED.
+SOURCE_CONFLICTS: NONE WITH EVIDENCE after PR #25 remediation.
 EVIDENCE_LIMITS: real-MySQL two-connection claim concurrency, live Redis, Queue Worker, Scheduler and Dev Migration remain unverified.
 ```
 
