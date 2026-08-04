@@ -56,4 +56,19 @@ DEPLOYMENT: NOT AUTHORIZED
 MERGE: NOT AUTHORIZED
 ```
 
+## Final Contract Closure Remediation
+
+```text
+OLD_HEAD: 2cd4b38a07981f40bf38f6fcf1ffe2f3f89bf0e9
+NEW_HEAD: PENDING COMMIT
+AUTHORIZED_FILE_BOUNDARY: 3 Markdown files
+PROGRAM_ROADMAP_STATUS: 001F-B split from 001F-C through 001F-F; B1 remains current
+SUPERSEDED_18H_STATUS: explicitly SUPERSEDED / NOT CURRENT
+RISKS_AND_ACCEPTANCE_CRITERIA: ADDED
+DECISION_IDS: D-027–D-031 unchanged
+MERGE: NOT AUTHORIZED
+```
+
+The final closure remediation corrects the current estimate vocabulary and records the B1 contract risks and acceptance criteria without changing implementation scope.
+
 FINAL_STATUS: `ERP_ARCH_MIGRATION_001F_B1_IMPLEMENTED_PENDING_INDEPENDENT_REVIEW`

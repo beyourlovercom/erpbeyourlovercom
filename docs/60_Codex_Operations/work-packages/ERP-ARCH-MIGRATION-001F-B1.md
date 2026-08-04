@@ -100,6 +100,27 @@ ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
 
 Rollback is documentation-only: revert the B1 commit. No application, namespace, provider, route, migration, database or frontend state is changed.
 
+## Risks
+
+- Architecture Test rules may produce false positives or false negatives.
+- ModulesServiceProvider registration order may regress during future migration.
+- Compatibility wrappers and canonical classes may drift in behavior.
+- `App\\Shared` or `App\\Support` may evolve into a God Layer.
+- Route Name, Middleware or Permission Key migrations may regress.
+- Eloquent relations, casts and serialization may lose compatibility.
+- Orders or Logistics business implementation may be created before MVP1 authorization.
+
+## Acceptance Criteria
+
+- BYL-ERP-ARCH-001 v1.1 contract is complete and v1.0 historical facts remain unchanged.
+- `app/Modules` and `app/Shared` do not yet exist.
+- Provider, Route, Frontend, Wrapper, Shared and Architecture Test contracts are frozen.
+- Historical Migration paths remain unchanged.
+- B2–B5 and 001F-C remain unauthorized; Global Architecture Gate remains FAIL.
+- MVP1 remains NOT STARTED / 0%.
+- No application, namespace, provider, route, frontend, test, dependency, workflow, migration or database changes occur.
+- Ready and Merge may be requested only after independent review PASS.
+
 ## Project Position
 
 ```text

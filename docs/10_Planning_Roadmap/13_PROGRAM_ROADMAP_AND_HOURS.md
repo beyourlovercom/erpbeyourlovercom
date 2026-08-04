@@ -51,10 +51,10 @@ The Program Roadmap is the top-level delivery sequence. It must not be replaced 
 001E-C Auth / Permission / Shell E2E  MERGED / PASS / CLOSED
 001F Architecture Re-audit            ACTIVE / PREFLIGHT REVIEWED
 001F-A Governance Status Correction   COMPLETE / CLOSED
-001F-B through 001F-F                 PROPOSED / NOT AUTHORIZED
 001F-B Modular Boundary Decision      COMPLETE / REVIEWED / OPTION A1 APPROVED
 001F-B1 Module Architecture Contract CURRENT / IMPLEMENTED / PENDING INDEPENDENT REVIEW
 001F-B2 through 001F-B5                PROPOSED / NOT AUTHORIZED
+001F-C through 001F-F                 PROPOSED / NOT AUTHORIZED
 Global Architecture Gate              FAIL
 ```
 
@@ -70,12 +70,14 @@ EVIDENCE_LIMITS: real-MySQL two-connection claim concurrency, live Redis, Queue 
 ## Current Architecture Migration Estimate
 
 ```text
-001F_B_TO_F_ESTIMATE: SUPERSEDED / see current B2-B5 and C-F fields
-PLANNING_VALUE: 18h
-ARCHITECTURE_MIGRATION_REMAINING: SUPERSEDED / UNKNOWN WITH EVIDENCE
-CLASSIFICATION: planning estimate only
+001F_B2_TO_B5_KNOWN_ESTIMATE: 4–8 Codex / 20–40h
+CURRENT_B2_TO_B5_PLANNING_VALUE: 30h
+001F_C_TO_001F_F_ESTIMATE: UNKNOWN WITH EVIDENCE
+TOTAL_ARCHITECTURE_MIGRATION_REMAINING: UNKNOWN WITH EVIDENCE
 ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
 ```
+
+Historical estimate: `001F_B_TO_F_ESTIMATE: SUPERSEDED / NOT CURRENT` and `PLANNING_VALUE: 18h` are retained only as historical evidence.
 
 ## Initial Hours Snapshot
 
