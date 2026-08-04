@@ -55,15 +55,18 @@ ERP-MENU-BASELINE-001 = MERGED / PASS (PR #14; accepted Head: 6d5595e87977889510
 001F-A Governance Status Correction & Gate Scope Freeze = COMPLETE / CLOSED (PR #23; accepted Head: f327910941dc0b6107bfaf40f5803b1448544ce4; main: 70b492772eedc993e5790d563c9c261cb0b1e0b7)
 001F-B Modular Boundary Decision / Remediation = COMPLETE / REVIEWED / OPTION A1 APPROVED
 001F-B1 Module Architecture Contract & Decision Freeze = COMPLETE / PASS / CLOSED (PR #24; accepted Head: f26b510b499ffef95e1723eb19d12bac84c93718; main: b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f; closure PR #25)
-001F-B2 Module Skeleton & Automated Boundary Enforcement = IMPLEMENTED / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS
+001F-B2 Module Skeleton & Automated Boundary Enforcement = COMPLETE / PASS / CLOSED (Work Package PR #26; Implementation PR #27; Closure PR #28; main closure b2bc2d6e25699bc93b6ef352bc20f593c1cacd56)
 B2_WORK_PACKAGE_PR: #26
 B2_IMPLEMENTATION_PR: #27
 B2_ACCEPTED_HEAD: fe6512f655944e7668c1786899f06880af049f29
 B2_MAIN_SQUASH_COMMIT: 6df005f8e0e59c877d95fcf41fb5c507c507378f
-CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-B2 POST-MERGE CLOSURE
-GITHUB_STATE: PR #27 MERGED; closure PR #28 OPEN / DRAFT / PENDING REVIEW
-NEXT_DEPENDENCY: Independent document review and separate Owner authorization to Ready and Merge the B2 closure PR.
-001F-B3 through 001F-B5 = PROPOSED / NOT AUTHORIZED
+B2_CLOSURE_PR: #28
+B2_CLOSURE_SQUASH: b2bc2d6e25699bc93b6ef352bc20f593c1cacd56
+CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-B3 READ-ONLY PREFLIGHT / WORK PACKAGE
+GITHUB_STATE: PR #28 MERGED; B3 Work Package PR not yet created
+NEXT_DEPENDENCY: Independent B3 Work Package review and merge
+001F-B3 = PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
+001F-B4 through 001F-B5 = PROPOSED / NOT AUTHORIZED
 001F-C through 001F-F = PROPOSED / NOT AUTHORIZED
 Global Architecture Gate = FAIL
 Deployment = NO
@@ -81,8 +84,8 @@ Maximum planning envelope: approximately 192 effective hours
 ## Immediate sequence
 
 ```text
-1. Complete independent review of the B2 post-merge closure PR.
-2. Obtain separate Owner authorization to Ready and Merge the B2 closure PR.
+1. Complete independent review and merge the B3 Work Package.
+2. Implement, review, merge and close B3 before starting B4.
 3. Resolve the remaining Architecture Gate blockers in separately authorized packages.
 4. Complete the final 001F re-audit before Global Architecture Gate closure.
 5. Keep MVP1, UAT and deployment blocked until their explicit gates.
@@ -90,7 +93,7 @@ Maximum planning envelope: approximately 192 effective hours
 
 The accepted 001D-C evidence remains bounded: real-MySQL two-connection claim concurrency is a Global Gate blocker and no Dev Migration was run. MySQL 5.7 is outside the current supported baseline, does not block the Global Gate, and current code is not declared compatible; future support requires a new Architecture Decision and Compatibility Work Package. Staging Migration remains a UAT blocker, and Production Migration planning/rehearsal remains a deployment blocker.
 
-001F-B Modular Boundary Decision / Remediation: COMPLETE / REVIEWED / OPTION A1 APPROVED. 001F-B1 Module Architecture Contract & Decision Freeze: COMPLETE / PASS / CLOSED (PR #24; closure PR #25). 001F-B2 Module Skeleton & Automated Boundary Enforcement: IMPLEMENTED / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS. B2 Work Package PR: #26; implementation PR: #27; main squash: 6df005f8e0e59c877d95fcf41fb5c507c507378f. 001F-B3 through 001F-B5 and 001F-C through 001F-F: PROPOSED / NOT AUTHORIZED. The v1.1 `app/Modules/**` contract is forward-effective and B2 implementation is merged. MVP1 remains NOT STARTED / 0%.
+001F-B Modular Boundary Decision / Remediation: COMPLETE / REVIEWED / OPTION A1 APPROVED. 001F-B1 Module Architecture Contract & Decision Freeze: COMPLETE / PASS / CLOSED (PR #24; closure PR #25). 001F-B2 Module Skeleton & Automated Boundary Enforcement: COMPLETE / PASS / CLOSED (Work Package PR #26; Implementation PR #27; Closure PR #28; main closure b2bc2d6e25699bc93b6ef352bc20f593c1cacd56). 001F-B3 Identity & Access Boundary Migration: PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED. B4-B5 and 001F-C through 001F-F remain proposed and not started. The v1.1 `app/Modules/**` contract is forward-effective and MVP1 remains NOT STARTED / 0%.
 
 ## Incremental releases
 

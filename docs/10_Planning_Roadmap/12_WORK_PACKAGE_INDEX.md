@@ -52,7 +52,7 @@ Work Log: docs/60_Codex_Operations/logs/2026-08-03_ERP-ARCH-MIGRATION-001F-B1.md
 
 ERP-ARCH-MIGRATION-001F-B2
 Module Skeleton & Automated Boundary Enforcement
-Status: IMPLEMENTED / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS
+Status: COMPLETE / PASS / CLOSED
 Work Package PR: #26
 Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-B2.md
 Work Log: docs/60_Codex_Operations/logs/2026-08-04_ERP-ARCH-MIGRATION-001F-B2.md
@@ -60,9 +60,16 @@ B2 Work Package PR: #26
 B2 Implementation PR: #27
 Accepted Head: fe6512f655944e7668c1786899f06880af049f29
 Main Squash: 6df005f8e0e59c877d95fcf41fb5c507c507378f
-Closure PR: #28 OPEN / DRAFT / PENDING REVIEW
+Closure PR: #28; Main Closure SHA: b2bc2d6e25699bc93b6ef352bc20f593c1cacd56
 
-ERP-ARCH-MIGRATION-001F-B3 through 001F-B5
+ERP-ARCH-MIGRATION-001F-B3
+Identity & Access Boundary Migration
+Status: PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
+Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-B3.md
+Work Log: docs/60_Codex_Operations/logs/2026-08-05_ERP-ARCH-MIGRATION-001F-B3.md
+Work Package PR: NOT CREATED
+
+ERP-ARCH-MIGRATION-001F-B4 through 001F-B5
 Status: PROPOSED / NOT AUTHORIZED
 
 ERP-ARCH-MIGRATION-001F-C through 001F-F
