@@ -2,6 +2,7 @@
 
 namespace App\Modules;
 
+use App\Modules\Identity\Providers\IdentityServiceProvider;
 use Illuminate\Support\ServiceProvider;
 use LogicException;
 
@@ -12,7 +13,7 @@ final class ModuleManifest
      */
     public static function providers(): array
     {
-        return [];
+        return [IdentityServiceProvider::class];
     }
 
     /**

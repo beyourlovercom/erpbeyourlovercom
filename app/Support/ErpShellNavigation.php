@@ -2,7 +2,7 @@
 
 namespace App\Support;
 
-use App\Models\User;
+use App\Modules\Identity\Infrastructure\Models\User;
 use Illuminate\Support\Facades\Gate;
 
 class ErpShellNavigation
