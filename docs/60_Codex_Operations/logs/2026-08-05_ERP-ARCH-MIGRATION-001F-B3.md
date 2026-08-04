@@ -147,7 +147,7 @@ FSCK: PASS with existing dangling objects only
 ```text
 REVIEW_SCOPE: implementation diff from 6ad69f0fdac9a2bd2a65c9ac220ff022c062a0ed to cb350bf37e9639d69bda4088e5380f7d6ee84aa2
 REVIEW_CHECKS: boundary, compatibility, audit contract, provider order, route inventory, migration/menu immutability, security and regression evidence
-REVIEW_STATUS: PENDING EXACT-HEAD REVIEW MARKER
+REVIEW_STATUS: DETERMINISTIC ACCEPTANCE REVIEW PASS; PR MARKER PENDING FINAL HEAD UPDATE
 ```
 
 ## Project Position
