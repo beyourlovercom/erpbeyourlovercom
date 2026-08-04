@@ -130,17 +130,17 @@ final class ModuleArchitectureTest extends TestCase
     public function test_domain_application_and_infrastructure_rules_have_allowed_and_violating_fixtures(): void
     {
         $domainAllowed = "<?php\nnamespace App\\Modules\\Orders\\Domain;\nuse App\\Modules\\Orders\\Domain\\Order;\nfinal class Policy {}\n";
-        self::assertSame([], $this->sourceViolations('DOM-001', 'app/Modules/Orders/Domain/Policy.php', $domainAllowed, $this->domForbidden('Orders')));
+        self::assertSame([], $this->sourceViolations('DOM-001', 'app/Modules/Orders/Domain/Policy.php', $domainAllowed, $this->domForbidden()));
         $domainBad = "<?php\nnamespace App\\Modules\\Orders\\Domain;\nuse Illuminate\\Support\\Facades\\Route;\nuse App\\Modules\\Logistics\\Infrastructure\\Carrier;\n#[App\\Modules\\Orders\\Providers\\Marker]\nfinal class Policy {}\n";
-        $domainViolations = $this->sourceViolations('DOM-001', 'app/Modules/Orders/Domain/Policy.php', $domainBad, $this->domForbidden('Orders'));
+        $domainViolations = $this->sourceViolations('DOM-001', 'app/Modules/Orders/Domain/Policy.php', $domainBad, $this->domForbidden());
         self::assertSame(['DOM-001', 'DOM-001', 'DOM-001'], array_column($domainViolations, 'RULE_ID'));
         self::assertSame([3, 4, 5], array_column($domainViolations, 'LINE'));
         self::assertSame(['Illuminate\\Support\\Facades\\Route', 'App\\Modules\\Logistics\\Infrastructure\\Carrier', 'App\\Modules\\Orders\\Providers\\Marker'], array_column($domainViolations, 'SYMBOL_OR_DEPENDENCY'));
 
         $appAllowed = "<?php\nnamespace App\\Modules\\Orders\\Application;\nuse App\\Modules\\Orders\\Application\\Contracts\\OrderReader;\nuse App\\Modules\\Orders\\Application\\Actions\\PlaceOrder;\nfinal class Handler {}\n";
-        self::assertSame([], $this->sourceViolations('APP-001', 'app/Modules/Orders/Application/Handler.php', $appAllowed, $this->appForbidden('Orders')));
+        self::assertSame([], $this->sourceViolations('APP-001', 'app/Modules/Orders/Application/Handler.php', $appAllowed, $this->appForbidden()));
         $appBad = "<?php\nnamespace App\\Modules\\Orders\\Application;\nuse App\\Modules\\Orders\\Infrastructure\\SqlOrderReader;\nuse App\\Modules\\Logistics\\Application\\Internal\\CarrierLookup;\nfinal class Handler {}\n";
-        $appViolations = $this->sourceViolations('APP-001', 'app/Modules/Orders/Application/Handler.php', $appBad, $this->appForbidden('Orders'));
+        $appViolations = $this->sourceViolations('APP-001', 'app/Modules/Orders/Application/Handler.php', $appBad, $this->appForbidden());
         self::assertSame([3, 4], array_column($appViolations, 'LINE'));
         self::assertSame(['App\\Modules\\Orders\\Infrastructure\\SqlOrderReader', 'App\\Modules\\Logistics\\Application\\Internal\\CarrierLookup'], array_column($appViolations, 'SYMBOL_OR_DEPENDENCY'));
 
@@ -152,6 +152,37 @@ final class ModuleArchitectureTest extends TestCase
         self::assertSame(['INF-001'], array_column($appInfraViolations, 'RULE_ID'));
         $infraAllowed = "<?php\nnamespace App\\Modules\\Orders\\Infrastructure;\nuse App\\Modules\\Orders\\Domain\\Order;\nuse App\\Modules\\Orders\\Application\\Contracts\\OrderRepository;\nfinal class EloquentOrderRepository implements OrderRepository {}\n";
         self::assertSame([], $this->sourceViolations('INF-001', 'app/Modules/Orders/Infrastructure/EloquentOrderRepository.php', $infraAllowed, ['Infrastructure']));
+    }
+
+    public function test_cross_module_rules_are_derived_from_the_current_module_name(): void
+    {
+        $ordersDomainBilling = "<?php\nnamespace App\\Modules\\Orders\\Domain;\nuse App\\Modules\\Billing\\Domain\\Invoice;\nfinal class Order {}\n";
+        $domainViolations = $this->sourceViolations('DOM-001', 'app/Modules/Orders/Domain/Order.php', $ordersDomainBilling, $this->domForbidden());
+        self::assertSame(['App\\Modules\\Billing\\Domain\\Invoice'], array_column($domainViolations, 'SYMBOL_OR_DEPENDENCY'));
+
+        $ordersApplicationBillingInternal = "<?php\nnamespace App\\Modules\\Orders\\Application;\nuse App\\Modules\\Billing\\Application\\Internal\\BillingHandler;\nfinal class Handler {}\n";
+        $internalViolations = $this->sourceViolations('APP-001', 'app/Modules/Orders/Application/Handler.php', $ordersApplicationBillingInternal, $this->appForbidden());
+        self::assertSame(['App\\Modules\\Billing\\Application\\Internal\\BillingHandler'], array_column($internalViolations, 'SYMBOL_OR_DEPENDENCY'));
+
+        $ordersApplicationBillingContract = "<?php\nnamespace App\\Modules\\Orders\\Application;\nuse App\\Modules\\Billing\\Application\\Contracts\\InvoiceReader;\nfinal class Handler {}\n";
+        self::assertSame([], $this->sourceViolations('APP-001', 'app/Modules/Orders/Application/Handler.php', $ordersApplicationBillingContract, $this->appForbidden()));
+    }
+
+    public function test_module_namespace_must_match_its_file_path(): void
+    {
+        $matching = "<?php\nnamespace App\\Modules\\Orders\\Domain;\nfinal class Order {}\n";
+        self::assertSame([], $this->sourceViolations('DOM-001', 'app/Modules/Orders/Domain/Order.php', $matching, $this->domForbidden()));
+
+        $wrongModule = "<?php\nnamespace App\\Modules\\Billing\\Domain;\nfinal class Order {}\n";
+        $wrongModuleViolations = $this->sourceViolations('DOM-001', 'app/Modules/Orders/Domain/Order.php', $wrongModule, $this->domForbidden());
+        self::assertSame(['DOM-001'], array_column($wrongModuleViolations, 'RULE_ID'));
+        self::assertSame('App\\Modules\\Billing\\Domain', $wrongModuleViolations[0]['SYMBOL_OR_DEPENDENCY']);
+
+        $wrongLayer = "<?php\nnamespace App\\Modules\\Orders\\Infrastructure;\nfinal class Order {}\n";
+        $wrongLayerViolations = $this->sourceViolations('DOM-001', 'app/Modules/Orders/Domain/Order.php', $wrongLayer, $this->domForbidden());
+        self::assertSame(['DOM-001'], array_column($wrongLayerViolations, 'RULE_ID'));
+        self::assertSame('App\\Modules\\Orders\\Infrastructure', $wrongLayerViolations[0]['SYMBOL_OR_DEPENDENCY']);
+        self::assertSame(['RULE_ID', 'FILE', 'LINE', 'SYMBOL_OR_DEPENDENCY', 'REASON'], array_keys($wrongLayerViolations[0]));
     }
 
     public function test_provider_rule_collects_real_sources_and_rejects_forbidden_fixture(): void
@@ -253,7 +284,8 @@ PHP;
     /** @param list<string> $forbidden @return list<array{RULE_ID:string,FILE:string,LINE:int,SYMBOL_OR_DEPENDENCY:string,REASON:string}> */
     private function sourceViolations(string $ruleId, string $file, string $source, array $forbidden): array
     {
-        $records = [];
+        $records = $this->namespaceViolations($ruleId, $file, $source);
+        $forbidden = [...$forbidden, ...$this->moduleBoundaryForbidden($ruleId, $file)];
         $tokens = token_get_all($source);
         $usePrefix = '';
         $inUse = false;
@@ -311,7 +343,10 @@ PHP;
                 if ($nextToken === '{' || (is_array($nextToken) && $nextToken[0] === T_NS_SEPARATOR)) continue;
             }
             foreach ($forbidden as $dependency) {
-                if ($this->matchesDependency($symbol, $dependency)) {
+                $matches = $dependency === 'App\\Modules\\'
+                    ? $this->matchesModuleBoundary($ruleId, $file, $symbol)
+                    : $this->matchesDependency($symbol, $dependency);
+                if ($matches) {
                     $records[] = ['RULE_ID' => $ruleId, 'FILE' => $file, 'LINE' => $line, 'SYMBOL_OR_DEPENDENCY' => $symbol, 'REASON' => 'forbidden namespace/use/FQN/group-use/attribute dependency'];
                     break;
                 }
@@ -325,16 +360,86 @@ PHP;
         return $symbol === trim($dependency, '\\') || str_starts_with($symbol, trim($dependency, '\\').'\\') || str_contains($symbol, $dependency);
     }
 
-    /** @return list<string> */
-    private function domForbidden(?string $module = null): array
+    private function matchesModuleBoundary(string $ruleId, string $file, string $symbol): bool
     {
-        return ['Illuminate\\', 'Facade', 'Controller', 'Request', 'Route', 'Inertia', 'Eloquent', 'Infrastructure', 'Experience', 'Providers', 'App\\Modules\\'.($module === null ? '__other__' : ($module === 'Orders' ? 'Logistics' : 'Orders')).'\\'];
+        if (! preg_match('#^app/Modules/([^/]+)/(Domain|Application)/#', $file, $fileMatches)) {
+            return false;
+        }
+        if (! preg_match('#^App\\\\Modules\\\\([^\\\\]+)\\\\(.+)$#', $symbol, $symbolMatches)) {
+            return false;
+        }
+        if ($symbolMatches[1] === $fileMatches[1]) {
+            return false;
+        }
+        return $ruleId === 'DOM-001'
+            || ($ruleId === 'APP-001' && str_starts_with($symbolMatches[2], 'Application\\Internal\\'));
     }
 
     /** @return list<string> */
-    private function appForbidden(?string $module = null): array
+    private function moduleBoundaryForbidden(string $ruleId, string $file): array
     {
-        return ['Infrastructure', 'App\\Modules\\'.($module === null ? '__other__' : ($module === 'Orders' ? 'Logistics' : 'Orders')).'\\Application\\Internal'];
+        if (! preg_match('#^app/Modules/([^/]+)/(Domain|Application)/#', $file, $matches)) {
+            return [];
+        }
+        $module = $matches[1];
+        if ($ruleId === 'DOM-001') {
+            return ['App\\Modules\\'];
+        }
+        if ($ruleId === 'APP-001') {
+            return ['App\\Modules\\'];
+        }
+        return [];
+    }
+
+    /** @return list<array{RULE_ID:string,FILE:string,LINE:int,SYMBOL_OR_DEPENDENCY:string,REASON:string}> */
+    private function namespaceViolations(string $ruleId, string $file, string $source): array
+    {
+        if (! preg_match('#^app/Modules/([^/]+)/(Domain|Application|Infrastructure|Providers)/#', $file, $matches)) {
+            return [];
+        }
+        $expected = 'App\\Modules\\'.$matches[1].'\\'.$matches[2];
+        $tokens = token_get_all($source);
+        foreach ($tokens as $index => $token) {
+            if (! is_array($token) || $token[0] !== T_NAMESPACE) {
+                continue;
+            }
+            $namespace = '';
+            $line = $token[2];
+            for ($cursor = $index + 1; isset($tokens[$cursor]); $cursor++) {
+                $part = $tokens[$cursor];
+                if ($part === ';' || $part === '{') {
+                    break;
+                }
+                if (is_array($part) && in_array($part[0], [T_STRING, T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED], true)) {
+                    $namespace .= trim($part[1], '\\');
+                } elseif ($part === '\\') {
+                    $namespace .= '\\';
+                }
+            }
+            if ($namespace !== $expected) {
+                return [[
+                    'RULE_ID' => $ruleId,
+                    'FILE' => $file,
+                    'LINE' => $line,
+                    'SYMBOL_OR_DEPENDENCY' => $namespace,
+                    'REASON' => 'declared namespace does not match module file path',
+                ]];
+            }
+            return [];
+        }
+        return [];
+    }
+
+    /** @return list<string> */
+    private function domForbidden(): array
+    {
+        return ['Illuminate\\', 'Facade', 'Controller', 'Request', 'Route', 'Inertia', 'Eloquent', 'Infrastructure', 'Experience', 'Providers'];
+    }
+
+    /** @return list<string> */
+    private function appForbidden(): array
+    {
+        return ['Infrastructure'];
     }
 
     /** @return list<string> */
