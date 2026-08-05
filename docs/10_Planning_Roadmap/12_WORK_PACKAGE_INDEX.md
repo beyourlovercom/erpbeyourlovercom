@@ -75,15 +75,19 @@ Closure PR: #31; Main Closure SHA: 0af914ebf8fc9f94b18e63e008fd78739bba6811
 
 ERP-ARCH-MIGRATION-001F-B4
 Runtime / Audit / Sync Boundary Migration
-Status: IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS
+Status: COMPLETE / PASS / CLOSED
 Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-B4.md
 Work Log: docs/60_Codex_Operations/logs/2026-08-05_ERP-ARCH-MIGRATION-001F-B4.md
 Work Package PR: #32; Main Squash: 2a445ca6daffda8b79347b663218bf9f7c3e8d1b
 Implementation PR: #33; Accepted Head: 403152de84b85ead62d48d2a9c2135e759f007e1; Main Squash: ee9908c57cabbe4ac93b3628d28154601d96a4c1
-Closure PR: pending creation
+Closure PR: #34; Main Closure SHA: 26e22150f4f729aaf321a71e052a3602df9aec61
 
 ERP-ARCH-MIGRATION-001F-B5
-Status: PROPOSED / NOT STARTED
+Shell / Dashboard Boundary & Compatibility Cleanup
+Status: PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
+Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-B5.md
+Work Log: docs/60_Codex_Operations/logs/2026-08-05_ERP-ARCH-MIGRATION-001F-B5.md
+Work Package PR: pending creation
 
 ERP-ARCH-MIGRATION-001F-C through 001F-F
 Status: PROPOSED / NOT AUTHORIZED
