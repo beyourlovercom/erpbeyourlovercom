@@ -2,7 +2,7 @@
 type: current-context
 project: BYL ERP
 updated: 2026-08-05
-status: global-architecture-gate-pass-mvp1-preflight
+status: global-architecture-gate-pass-mvp1-fulfillment-active
 ---
 
 # Current Context
@@ -60,10 +60,10 @@ Main Squash Commit: b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f
 Closure PR: #25
 
 Current / next package:
-MVP1-ORDER-CORE-001
-Title: Order, item, address and external references
+MVP1-FULFILLMENT-001
+Title: Shipment and logistics manual workflow
 Status: ACTIVE / IMPLEMENTATION
-Work Package: docs/60_Codex_Operations/work-packages/MVP1-ORDER-CORE-001.md
+Work Package: docs/60_Codex_Operations/work-packages/MVP1-FULFILLMENT-001.md
 Owner Authorization: BYL-ERP-001F-TO-MVP1-LOCAL-UAT-20260805
 
 Previous package:
@@ -132,8 +132,8 @@ B2_MERGED_AT: 2026-08-04T13:24:22Z
 B2_CLOSURE_PR: #28
 B2_CLOSURE_SQUASH: b2bc2d6e25699bc93b6ef352bc20f593c1cacd56
 CURRENT_PHASE: MVP1 IMPLEMENTATION
-GITHUB_STATE: MVP1 preflight PR #53, Foundation Work Package PR #54, Implementation PR #55 and Closure PR #56 MERGED; main 6ebddab0ab3204044d83df0fea11e4e28b9ec3f5
-NEXT_DEPENDENCY: MVP1-ORDER-CORE-001
+GITHUB_STATE: MVP1 preflight PR #53, Foundation Work Package PR #54, Implementation PR #55, Closure PR #56 and Order Core Implementation PR #59 MERGED; main 5ce98ad34b4adac0e931e348bfce0961e3d4bfd6; Order Core Closure pending
+NEXT_DEPENDENCY: MVP1-FULFILLMENT-001
 001F-B3 = COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811)
 001F-B4 = COMPLETE / PASS / CLOSED (Work Package PR #32; Implementation PR #33; Closure PR #34; main closure 26e22150f4f729aaf321a71e052a3602df9aec61)
 001F-B5 = COMPLETE / PASS / CLOSED (Work Package PR #35; Implementation PR #36; Closure PR #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be)
@@ -142,16 +142,16 @@ NEXT_DEPENDENCY: MVP1-ORDER-CORE-001
 001F-E = COMPLETE / PASS / CLOSED (Work Package PR #45; Implementation PR #46; Closure PR #47; main closure d56bc76fb1d86b990a4999ebc20d26cd48365c94)
 001F-F = COMPLETE / PASS / CLOSED (Work Package PR #48; Implementation PR #49; Closure PR #50; final SHA record PR #51; main a13becbefe1272ffb59cb2d78369df544e68ca97)
 Global Architecture Gate = PASS
-MVP1 = AUTHORIZED / FOUNDATION CLOSED / ORDER CORE ACTIVE
+MVP1 = AUTHORIZED / FOUNDATION CLOSED / ORDER CORE CLOSED / FULFILLMENT ACTIVE
 Production Deployment = NO
 ```
 
 ## Immediate sequence
 
 ```text
-1. Complete the 001F final closure record.
-2. Freeze MVP1 contracts, routes, permissions and local runtime plan.
-3. Execute MVP1 packages in the approved order.
+1. Complete MVP1 Order Core post-merge closure record.
+2. Execute MVP1 Fulfillment, Manual Sync and Finance packages in the approved order.
+3. Complete local UAT Release and stop before human UAT.
 4. Keep Remote Dev and Production untouched.
 5. Stop at LOCAL_HUMAN_UAT_READY before human UAT.
 ```

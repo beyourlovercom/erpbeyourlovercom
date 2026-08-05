@@ -110,6 +110,18 @@ Documents updated: AI/CURRENT_CONTEXT.md; docs/10_Planning_Roadmap/04_LIVING_ROA
 
 ## Change entry format
 
+## 2026-08-05 — MVP1 Order Core implementation merged / closure in progress
+
+```text
+Implementation PR: #59 merged after independent exact-head review PASS at 3956f206e63dc77142f0d353f2ad3cede3816a19; main squash 5ce98ad34b4adac0e931e348bfce0961e3d4bfd6.
+Scope: Orders single truth, address snapshots, items, controlled sources/statuses, correction, bounded Logistics shipment transition, Manual Sync queue, order-level Finance analysis, local synthetic UAT seeder and related tests.
+Validation: focused workflow 4/56 PASS; Architecture 16/201 PASS; full PHPUnit 156/1567 PASS with 2 intentional isolated-runtime skips and 1 pre-existing risky test; Vitest 71 PASS; typechecks/build PASS; Browser E2E 16/16 PASS with disposable SQLite cleanup PASS; local MySQL 8.4.11 migration/seed/backup/restore PASS; local Redis 8.10 PASS.
+Local UAT evidence: byl_erp_local_uat on 127.0.0.1:13306; backup SHA-256 e4e998f7f8b2fa1b5ee9510b5c79bc6cef98aa0617579f8bffa8e00282445593; UAT access remains local-only and human UAT is NOT STARTED.
+Current state: MVP1-ORDER-CORE-001 COMPLETE / PASS / MERGED; post-merge closure in progress; MVP1-FULFILLMENT-001 current.
+MENU_IMPACT: NO. APPROVED_MENU_CHECK: PASS. Remote Dev: NO. Production: NO. SSH: NO. Deployment: NO.
+Actual effective hours: 4.5h against issued 13h planning value; variance -8.5h / -65.38% because restored implementation reduced new implementation scope and remediation remained bounded.
+```
+
 ## 2026-08-05 — 001F-E and 001F-F architecture closure
 
 ```text

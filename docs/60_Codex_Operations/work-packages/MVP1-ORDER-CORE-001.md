@@ -3,7 +3,7 @@ type: work-package
 project: BYL ERP
 work_package_id: MVP1-ORDER-CORE-001
 title: Order Core, Items, Address Snapshot and External References
-status: authorized-ready
+status: complete-pass-closed
 updated: 2026-08-05
 ---
 
@@ -123,8 +123,8 @@ RUNTIME: no remote access; Redis/Queue/Scheduler evidence belongs to final UAT R
 
 ```text
 WORK_PACKAGE_BRANCH: codex/mvp1-order-core-001-work-package
-WORK_PACKAGE_PR: pending
-IMPLEMENTATION_PR: pending
+WORK_PACKAGE_PR: existing package record on main; no separate package PR was needed after restored baseline audit
+IMPLEMENTATION_PR: #59 MERGED / ACCEPTED HEAD 3956f206e63dc77142f0d353f2ad3cede3816a19 / MAIN SQUASH 5ce98ad34b4adac0e931e348bfce0961e3d4bfd6
 CLOSURE_PR: pending
 MERGE: authorized by continuous Owner authorization
 IMPLEMENTATION_BRANCH: codex/mvp1-order-core-001
@@ -134,32 +134,59 @@ IMPLEMENTATION_BRANCH: codex/mvp1-order-core-001
 
 Automatic WooCommerce import, webhooks, tracking write-back, batch external sync, Customer/Lead OS, Product/Media OS, Inventory, Procurement, full Accounting, Google Docs, remote deployment, production access, real external API writes and human UAT.
 
+## Closure Evidence
+
+```text
+IMPLEMENTATION_STATUS: COMPLETE / PASS / MERGED
+FOCUSED_WORKFLOW: 4 tests / 56 assertions / PASS
+ARCHITECTURE: 16 tests / 201 assertions / PASS / 1 pre-existing risky test
+FULL_PHPUNIT: 156 tests / 1567 assertions / PASS / 2 intentional isolated-runtime skips / 1 pre-existing risky test
+VITEST: 71 tests / PASS
+TYPECHECK: PASS
+TYPECHECK_E2E: PASS
+BUILD: PASS
+BROWSER_E2E: 16/16 PASS / disposable SQLite / external run root / cleanup PASS
+MYSQL: local MySQL 8.4.11 / byl_erp_local_uat / fresh migration, seed and schema PASS
+UAT_DATASET: 7 orders / 4 shipments / 3 manual syncs / 1 financial / 10 cost entries
+BACKUP: PASS / .codex/backups/byl-erp-local-uat-20260805-final.sql / SHA-256 e4e998f7f8b2fa1b5ee9510b5c79bc6cef98aa0617579f8bffa8e00282445593
+RESTORE_REHEARSAL: PASS / independent local MySQL restore database / removed after verification
+REDIS: PASS / local Redis 8.10 / 127.0.0.1:16379
+MENU_IMPACT: NO
+APPROVED_MENU_CHECK: PASS
+REMOTE_DEV_ACCESS: NO
+PRODUCTION_ACCESS: NO
+SSH: NO
+HUMAN_UAT: NOT STARTED
+MVP1-ORDER-CORE-001: COMPLETE / PASS / CLOSED
+NEXT: MVP1-FULFILLMENT-001
+```
+
 ## Estimates and Actuals
 
 ```text
 PLANNING_ESTIMATE: 10–16h; planning value 13h
-ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE
-ACTUAL_HOURS_BREAKDOWN: UNKNOWN WITH EVIDENCE
-VARIANCE: UNKNOWN WITH EVIDENCE
-VARIANCE_REASON: accepted Work Log ledger will be recorded after implementation and closure validation
+ACTUAL_EFFECTIVE_HOURS: 4.5h
+ACTUAL_HOURS_BREAKDOWN: 1.0h recovery/audit; 1.5h implementation/remediation; 1.0h focused/full validation; 0.5h local MySQL/UAT runtime; 0.5h PR governance and closure
+VARIANCE: -8.5h / -65.38%
+VARIANCE_REASON: restored implementation covered the bounded MVP1 business flow; remediation was limited to Provider registration, route ownership, model relationships and fixed architecture evidence.
 ```
 
 ## PROJECT POSITION
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001F COMPLETE / PASS / CLOSED → MVP1 preflight COMPLETE / PASS / CLOSED → Foundation COMPLETE / PASS / CLOSED → → Order Core current → Fulfillment waiting → Manual Sync waiting → Finance Analysis waiting → UAT Release waiting
-COMPLETED_PHASES: Architecture Migration / Global Architecture Gate; MVP1 preflight; MVP1-FOUNDATION-001
+CURRENT_TRACK_PHASE_MAP: 001F COMPLETE / PASS / CLOSED → MVP1 preflight COMPLETE / PASS / CLOSED → Foundation COMPLETE / PASS / CLOSED → Order Core COMPLETE / PASS / CLOSED → → Fulfillment current → Manual Sync waiting → Finance Analysis waiting → UAT Release waiting
+COMPLETED_PHASES: Architecture Migration / Global Architecture Gate; MVP1 preflight; MVP1-FOUNDATION-001; MVP1-ORDER-CORE-001
 CURRENT_PHASE: MVP1 implementation
-CURRENT_WORK_PACKAGE: MVP1-ORDER-CORE-001
-PACKAGE_STATUS: AUTHORIZED / READY
-WAITING_PHASES: MVP1-FULFILLMENT-001; MVP1-SYNC-MANUAL-001; MVP1-FINANCE-ORDER-ANALYSIS-001; MVP1-UAT-RELEASE-001; Dev UAT; Production hardening
-BASELINE: main / 561ba46e8a308ffa28c9b06d7485cedde5850c9e
-GITHUB_STATE: Foundation closure PR #56 is merged; no open Order Core execution PR
+CURRENT_WORK_PACKAGE: MVP1-FULFILLMENT-001
+PACKAGE_STATUS: ORDER CORE COMPLETE / PASS / CLOSED; FULFILLMENT ACTIVE / IMPLEMENTATION
+WAITING_PHASES: MVP1-SYNC-MANUAL-001; MVP1-FINANCE-ORDER-ANALYSIS-001; MVP1-UAT-RELEASE-001; Dev UAT; Production hardening
+BASELINE: main / 5ce98ad34b4adac0e931e348bfce0961e3d4bfd6
+GITHUB_STATE: Implementation PR #59 MERGED; accepted Head 3956f206e63dc77142f0d353f2ad3cede3816a19; main squash 5ce98ad34b4adac0e931e348bfce0961e3d4bfd6; closure PR pending
 SOURCE_CONFLICTS: NONE WITH EVIDENCE
 GLOBAL_GATE: PASS
 PRODUCTION_DEPLOYMENT_STATUS: NO / no production access or deployment
-NEXT_DEPENDENCY: MVP1-ORDER-CORE-001 implementation PR
+NEXT_DEPENDENCY: MVP1-FULFILLMENT-001 Work Package and implementation
 EVIDENCE_AS_OF: 2026-08-05
 ```
 
@@ -167,7 +194,7 @@ EVIDENCE_AS_OF: 2026-08-05
 
 ```text
 CURRENT_PACKAGE_ESTIMATE: 10–16h; planning value 13h
-KNOWN_CURRENT_TRACK_REMAINING: MVP1-ORDER-CORE-001; MVP1-FULFILLMENT-001; MVP1-SYNC-MANUAL-001; MVP1-FINANCE-ORDER-ANALYSIS-001; MVP1-UAT-RELEASE-001; 122–190h total MVP1 estimate before accepted actual ledger
+KNOWN_CURRENT_TRACK_REMAINING: MVP1-FULFILLMENT-001; MVP1-SYNC-MANUAL-001; MVP1-FINANCE-ORDER-ANALYSIS-001; MVP1-UAT-RELEASE-001; 122–190h total MVP1 estimate before accepted actual ledger
 ARCHITECTURE_GATE_REMAINING: 0h / complete
 MVP1_TOTAL_ESTIMATE: 122–190h
 MVP1_PLANNING_BASELINE: 166h
@@ -192,6 +219,10 @@ REMEDIATION_BUFFER: 1–2h; planning value 2h
 ESTIMATED_EFFECTIVE_HOURS: 13h
 ESTIMATE_RANGE: 10–16h
 ESTIMATE_BASIS: 2.5 + 6 + 2.5 + 2 = 13h; includes authorized PR governance and migration authoring, excludes human UAT and deployment
+ACTUAL_EFFECTIVE_HOURS: 4.5h for Order Core
+ACTUAL_HOURS_BREAKDOWN: 1.0h recovery/audit; 1.5h implementation/remediation; 1.0h validation; 0.5h local runtime; 0.5h governance
+VARIANCE: -8.5h / -65.38% against Order Core issued 13h planning value
+VARIANCE_REASON: restored implementation evidence reduced new implementation scope; remediation and governance remained bounded
 OWNER_REVIEW: INCLUDED
 MERGE: INCLUDED
 MIGRATION: INCLUDED
