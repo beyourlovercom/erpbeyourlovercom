@@ -340,3 +340,14 @@ Validation: Architecture 16/175 PASS; focused 88/755 PASS; full PHPUnit 150/1497
 Current state: B4 IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS; B5 remains next read-only Preflight.
 Global Architecture Gate: FAIL. MVP1: NOT STARTED / 0%. UAT: NO. Deployment: NO.
 ```
+
+## 2026-08-05 — 001F-B4 closed / 001F-B5 preflight formalized
+
+```text
+B4 Closure PR: #34 merged; main closure SHA 26e22150f4f729aaf321a71e052a3602df9aec61.
+Current state: B4 COMPLETE / PASS / CLOSED.
+New state: B5 Shell / Dashboard Boundary & Compatibility Cleanup PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED.
+B5 preflight: app-level Shell/Dashboard controllers, navigation helpers, route closures and legacy prototype paths audited; approved menu baseline read and unchanged.
+No B5 implementation, migration, database operation, UAT or deployment occurs in this Work Package.
+Global Architecture Gate: FAIL. MVP1: NOT STARTED / 0%.
+```
