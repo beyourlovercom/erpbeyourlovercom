@@ -3,7 +3,7 @@ type: work-package
 project: BYL ERP
 work_package_id: MVP1-FULFILLMENT-001
 title: Bounded Shipment and Logistics Manual Workflow
-status: active-implementation
+status: complete-pass-closed
 updated: 2026-08-05
 ---
 
@@ -86,6 +86,7 @@ GET  /logistics                         shell.logistics
 GET  /logistics/pending                 logistics.pending
 GET  /logistics/orders/{order}/payload  logistics.payload
 POST /logistics/orders/{order}/ship     logistics.ship
+POST /logistics/orders/{order}/reopen   logistics.reopen
 ```
 
 The desktop-first UI supports the pending queue, recipient/full/tracking copy actions, carrier/tracking entry, shipped time, note and mark-shipped action. No production mock data is introduced.
@@ -116,9 +117,9 @@ BOUNDARY: no SSH, Remote Dev, Production, external API write, real email or huma
 
 ```text
 WORK_PACKAGE_BRANCH: codex/mvp1-fulfillment-001-work-package
-WORK_PACKAGE_PR: pending
+WORK_PACKAGE_PR: #62 MERGED / MAIN f7c131433f3ed042b7f0a2f9dab1928742f9b347
 IMPLEMENTATION_EVIDENCE: inherited bounded Logistics implementation from PR #59 / main 5ce98ad34b4adac0e931e348bfce0961e3d4bfd6
-IMPLEMENTATION_PR: pending package-specific remediation review
+IMPLEMENTATION_PR: #63 MERGED / ACCEPTED HEAD 22ded98dc9cd056ac4456aadd62d819de7a47290 / MAIN 65345c03bfed3c8b30dec56dec3444ab8b175b20
 CLOSURE_PR: pending
 MERGE: authorized by continuous Owner authorization
 ```
@@ -132,7 +133,10 @@ Full Logistics OS, warehouse management, inventory, procurement, carrier APIs, t
 ```text
 PLANNING_ESTIMATE: 8–14h; planning value 11h
 ESTIMATE_BASIS: 2.5h scope and inherited implementation audit; 5h bounded remediation and UI/test closure; 2.5h validation; 1h governance buffer
-ACTUAL_EFFECTIVE_HOURS: pending accepted Work Log ledger
+ACTUAL_EFFECTIVE_HOURS: 3.5h
+ACTUAL_HOURS_BREAKDOWN: 0.5h package audit; 1.5h remediation; 1.0h validation; 0.5h governance
+VARIANCE: -7.5h / -68.18%
+VARIANCE_REASON: PR #59 already contained the bounded implementation; this package required targeted hardening, regression coverage and governance.
 ```
 
 ## PROJECT POSITION
@@ -143,14 +147,14 @@ CURRENT_TRACK_PHASE_MAP: 001F COMPLETE / PASS / CLOSED → MVP1 preflight COMPLE
 COMPLETED_PHASES: Architecture Migration / Global Architecture Gate; MVP1 preflight; MVP1-FOUNDATION-001; MVP1-ORDER-CORE-001
 CURRENT_PHASE: MVP1 implementation
 CURRENT_WORK_PACKAGE: MVP1-FULFILLMENT-001
-PACKAGE_STATUS: ACTIVE / IMPLEMENTATION
+PACKAGE_STATUS: COMPLETE / PASS / CLOSED
 WAITING_PHASES: MVP1-SYNC-MANUAL-001; MVP1-FINANCE-ORDER-ANALYSIS-001; MVP1-UAT-RELEASE-001; Dev UAT; Production hardening
-BASELINE: main / fb8a4f97ad743f7dbce611b05394986ffea1a7e5
-GITHUB_STATE: Order Core Work Package PR #58, Implementation PR #59, Closure PR #60 and Post-Merge Closure PR #61 MERGED; main fb8a4f97ad743f7dbce611b05394986ffea1a7e5; Fulfillment Work Package PR pending
+BASELINE: main / 65345c03bfed3c8b30dec56dec3444ab8b175b20
+GITHUB_STATE: Fulfillment Work Package PR #62 and Implementation PR #63 MERGED; Closure PR pending; main 65345c03bfed3c8b30dec56dec3444ab8b175b20
 SOURCE_CONFLICTS: NONE WITH EVIDENCE
 GLOBAL_GATE: PASS
 PRODUCTION_DEPLOYMENT_STATUS: NO / no production access or deployment
-NEXT_DEPENDENCY: MVP1-FULFILLMENT-001 implementation review
+NEXT_DEPENDENCY: Fulfillment post-merge Closure PR
 EVIDENCE_AS_OF: 2026-08-05
 ```
 
@@ -167,7 +171,7 @@ MVP1_REMAINING: UNKNOWN WITH EVIDENCE / accepted actual ledger and package overl
 POST_MVP_KNOWN_INCREMENT: approximately 68–120h beyond MVP1
 LONG_TERM_CUMULATIVE_RANGE: 235–402h; 603–1,018h; 1,059–1,802h; 1,595–2,714h; 1,819–3,146h
 PROGRAM_REMAINING: UNKNOWN WITH EVIDENCE / long-term overlap ledger incomplete
-COMPLETED_ACTUAL_EFFECTIVE_HOURS: 6.0h accepted for Foundation; 4.5h accepted for Order Core; project-wide ledger incomplete
+COMPLETED_ACTUAL_EFFECTIVE_HOURS: 14.0h accepted across Foundation, Order Core and Fulfillment; project-wide ledger incomplete
 ESTIMATE_CONFIDENCE: MEDIUM / inherited implementation reduces new code scope but package contract and final evidence remain bounded
 ESTIMATE_AS_OF: 2026-08-05
 ESTIMATE_METHOD: frozen MVP1 contract, current architecture boundary and inherited PR #59 implementation evidence
