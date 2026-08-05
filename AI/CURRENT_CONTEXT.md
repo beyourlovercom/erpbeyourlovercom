@@ -60,12 +60,11 @@ Main Squash Commit: b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f
 Closure PR: #25
 
 Current / next package:
-ERP-ARCH-MIGRATION-001F-B4
-Title: Runtime / Audit / Sync Boundary Migration
-Status: IMPLEMENTATION IN PROGRESS / FOCUSED VALIDATION PASSING
-Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-B4.md
-Work Log: docs/60_Codex_Operations/logs/2026-08-05_ERP-ARCH-MIGRATION-001F-B4.md
-Base SHA: 2a445ca6daffda8b79347b663218bf9f7c3e8d1b
+ERP-ARCH-MIGRATION-001F-B5
+Title: Shell / Dashboard Boundary & Compatibility Cleanup
+Status: READ-ONLY PREFLIGHT NEXT
+Predecessor: ERP-ARCH-MIGRATION-001F-B4 COMPLETE / PASS / CLOSED
+Base SHA: ee9908c57cabbe4ac93b3628d28154601d96a4c1
 
 Previous package:
 ERP-ARCH-MIGRATION-001D Runtime / Audit / Sync Foundation
@@ -127,11 +126,11 @@ B2_MAIN_SQUASH_COMMIT: 6df005f8e0e59c877d95fcf41fb5c507c507378f
 B2_MERGED_AT: 2026-08-04T13:24:22Z
 B2_CLOSURE_PR: #28
 B2_CLOSURE_SQUASH: b2bc2d6e25699bc93b6ef352bc20f593c1cacd56
-CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-B4 IMPLEMENTATION
-GITHUB_STATE: PR #32 MERGED; B4 implementation branch active; implementation PR pending creation
-NEXT_DEPENDENCY: B4 implementation validation and independent review
+CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-B4 POST-MERGE CLOSURE
+GITHUB_STATE: PR #32 MERGED; PR #33 MERGED; B4 closure PR pending creation
+NEXT_DEPENDENCY: B4 post-merge closure review and merge; then B5 read-only Preflight
 001F-B3 = COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811)
-001F-B4 = IMPLEMENTATION IN PROGRESS / FOCUSED VALIDATION PASSING
+001F-B4 = IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS (Work Package PR #32; Implementation PR #33; accepted Head 403152de84b85ead62d48d2a9c2135e759f007e1; main squash ee9908c57cabbe4ac93b3628d28154601d96a4c1)
 001F-B5 and 001F-C through 001F-F = PROPOSED / NOT STARTED
 001F-C through 001F-F = PROPOSED / NOT AUTHORIZED
 Global Architecture Gate = FAIL
@@ -141,7 +140,7 @@ Production Deployment = NO
 ## Immediate sequence
 
 ```text
-1. Complete B4 implementation independent review, merge and closure.
+1. Review and merge B4 post-merge closure.
 2. Execute B5 Work Package, implementation and closure under the same authorization.
 3. Continue remaining Architecture Gate packages separately.
 4. Keep Global Architecture Gate FAIL.

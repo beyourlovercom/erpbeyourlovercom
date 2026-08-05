@@ -329,3 +329,14 @@ B4 estimate: 6–12h; planning value 9h. Known B4–B5 remaining: 11–22h; plan
 Global Architecture Gate: FAIL. MVP1: NOT STARTED / 0%. UAT: NO. Staging Migration: NO. Production Migration: NO. Production Deployment: NO.
 Documents added: B4 Work Package and Work Log. Documents updated: Current Context, Living Roadmap, Work Package Index, Program Roadmap and Hours, Change Log.
 ```
+
+## 2026-08-05 — 001F-B4 implementation merged / post-merge closure opened
+
+```text
+Implementation PR: #33 merged after final independent review PASS at 403152de84b85ead62d48d2a9c2135e759f007e1.
+Main squash: ee9908c57cabbe4ac93b3628d28154601d96a4c1.
+Scope: canonical Runtime, Audit and Sync boundaries with compatibility wrappers and deterministic providers; no menu or migration change.
+Validation: Architecture 16/175 PASS; focused 88/755 PASS; full PHPUnit 150/1497 PASS; Vitest 71 PASS; typechecks/build PASS; Browser E2E 16 PASS with disposable external SQLite cleanup PASS.
+Current state: B4 IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS; B5 remains next read-only Preflight.
+Global Architecture Gate: FAIL. MVP1: NOT STARTED / 0%. UAT: NO. Deployment: NO.
+```
