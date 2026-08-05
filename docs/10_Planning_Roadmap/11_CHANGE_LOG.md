@@ -385,3 +385,13 @@ Validation: isolated MySQL 8.4.11 two-connection claim concurrency 1/20 PASS; fu
 Current state: C IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS; D is next after closure.
 Global Architecture Gate: FAIL. No migration file, real database, menu, UAT or deployment change.
 ```
+
+## 2026-08-05 — 001F-C closed / 001F-D preflight formalized
+
+```text
+C Closure PR: #40 merged; main closure SHA 63d1d2d3923d531b032d092eeb87d792f82eabaa.
+Current state: C COMPLETE / PASS / CLOSED.
+New state: D Redis / Queue / Scheduler Runtime Validation PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED.
+D preflight: existing Runtime health and sole bounded scheduler event reviewed; Redis 8.10 installed locally but not started as a service. D confines validation to a disposable external Redis instance and deterministic Runtime-only behavior.
+Global Architecture Gate: FAIL. MVP1: NOT STARTED / 0%. No Migration, database, UAT or deployment action occurs in this Work Package.
+```

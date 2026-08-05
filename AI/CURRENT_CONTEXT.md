@@ -2,7 +2,7 @@
 type: current-context
 project: BYL ERP
 updated: 2026-08-05
-status: c-post-merge-closure-in-progress
+status: d-preflight-complete-work-package-formalized
 ---
 
 # Current Context
@@ -63,7 +63,9 @@ Current / next package:
 ERP-ARCH-MIGRATION-001F-D
 Title: Redis / Queue / Scheduler Runtime Validation
 Status: READ-ONLY PREFLIGHT NEXT
-Predecessor: C implementation merged at main f939c15f9e84adcfa45aefce28a09e1026f00dca
+Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-D.md
+Work Log: docs/60_Codex_Operations/logs/2026-08-05_ERP-ARCH-MIGRATION-001F-D.md
+Base SHA: 63d1d2d3923d531b032d092eeb87d792f82eabaa
 
 Previous package:
 ERP-ARCH-MIGRATION-001D Runtime / Audit / Sync Foundation
@@ -125,14 +127,15 @@ B2_MAIN_SQUASH_COMMIT: 6df005f8e0e59c877d95fcf41fb5c507c507378f
 B2_MERGED_AT: 2026-08-04T13:24:22Z
 B2_CLOSURE_PR: #28
 B2_CLOSURE_SQUASH: b2bc2d6e25699bc93b6ef352bc20f593c1cacd56
-CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-C POST-MERGE CLOSURE
-GITHUB_STATE: C Work Package PR #38 MERGED; C Implementation PR #39 MERGED; C closure PR pending creation
-NEXT_DEPENDENCY: C post-merge closure review and merge; then D read-only preflight
+CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-D READ-ONLY PREFLIGHT / WORK PACKAGE
+GITHUB_STATE: C Closure PR #40 MERGED; D Work Package PR pending creation
+NEXT_DEPENDENCY: independent D Work Package review and merge
 001F-B3 = COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811)
 001F-B4 = COMPLETE / PASS / CLOSED (Work Package PR #32; Implementation PR #33; Closure PR #34; main closure 26e22150f4f729aaf321a71e052a3602df9aec61)
 001F-B5 = COMPLETE / PASS / CLOSED (Work Package PR #35; Implementation PR #36; Closure PR #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be)
-001F-C = IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS (Work Package PR #38; Implementation PR #39; accepted Head 8a11ae851743db5c3d9835ce2be2ddfb6036e0f9; main squash f939c15f9e84adcfa45aefce28a09e1026f00dca)
-001F-D through 001F-F = PROPOSED / NOT STARTED / NOT AUTHORIZED
+001F-C = COMPLETE / PASS / CLOSED (Work Package PR #38; Implementation PR #39; Closure PR #40; main closure 63d1d2d3923d531b032d092eeb87d792f82eabaa)
+001F-D = PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
+001F-E through 001F-F = PROPOSED / NOT STARTED / NOT AUTHORIZED
 Global Architecture Gate = FAIL
 Production Deployment = NO
 ```
@@ -140,8 +143,8 @@ Production Deployment = NO
 ## Immediate sequence
 
 ```text
-1. Review and merge the C post-merge closure.
-2. Execute D read-only preflight under the same authorization.
+1. Review and merge the D Work Package.
+2. Execute D runtime validation under the same authorization.
 3. Continue remaining Architecture Gate packages separately.
 4. Keep Global Architecture Gate FAIL.
 5. Keep MVP1, UAT and Deployment blocked.
