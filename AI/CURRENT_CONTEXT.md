@@ -2,7 +2,7 @@
 type: current-context
 project: BYL ERP
 updated: 2026-08-05
-status: d-preflight-complete-work-package-formalized
+status: global-architecture-gate-pass-mvp1-preflight
 ---
 
 # Current Context
@@ -60,14 +60,11 @@ Main Squash Commit: b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f
 Closure PR: #25
 
 Current / next package:
-ERP-ARCH-MIGRATION-001F-D
-Title: Redis / Queue / Scheduler Runtime Validation
-Status: IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS
-Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-D.md
-Work Log: docs/60_Codex_Operations/logs/2026-08-05_ERP-ARCH-MIGRATION-001F-D.md
-Implementation PR: #42
-Accepted Head: 35bf66da9e98455074fc24ba5f9cd4081cdb9f81
-Main Squash Commit: 6fbd4b751a057ab2060a3f191df7ddf2dc0ab5a7
+MVP1 preflight
+Title: Manual Fulfillment / Tencent Docs Replacement
+Status: AUTHORIZED / PREFLIGHT IN PROGRESS / 0%
+Work Package: pending MVP1 preflight records
+Owner Authorization: BYL-ERP-001F-TO-MVP1-LOCAL-UAT-20260805
 
 Previous package:
 ERP-ARCH-MIGRATION-001D Runtime / Audit / Sync Foundation
@@ -96,13 +93,13 @@ REAL_MYSQL_TWO_CONNECTION_CLAIM_CONCURRENCY: PASS / isolated MySQL 8.4.11 eviden
 MYSQL_SUPPORTED_BASELINE: MySQL 8.x
 MYSQL_8_VALIDATED_REFERENCE: MySQL Community 8.4.11
 MYSQL_5_7: OUT OF SCOPE / NOT SUPPORTED BASELINE / NOT A GLOBAL GATE BLOCKER
-LOCAL_DEVELOPMENT_MIGRATION: UNVERIFIED / GLOBAL GATE AND MVP1 INTEGRATION BLOCKER
+LOCAL_DEVELOPMENT_MIGRATION: PASS / local MySQL 8.4.11 / E closed
 LOCAL_APPLICATION_URL: http://erp.b
 LOCAL_APPLICATION_PATH: /Users/a/AI/007/erpbeyourlovercom
 REMOTE_DEV_DEPLOYMENT: NOT PERFORMED / NOT IN 001F-E SCOPE
 REMOTE_DEV_URL: https://deverp.beyourlover.com
 PRODUCTION_URL: https://erp.beyourlover.com
-STAGING_MIGRATION: UNVERIFIED / UAT BLOCKER
+STAGING_MIGRATION: NOT IN CONTRACT / remote access prohibited
 PRODUCTION_MIGRATION_PLAN_AND_REHEARSAL: UNVERIFIED / DEPLOYMENT BLOCKER
 PRODUCTION_REAL_MIGRATION: NOT RUN / NOT AUTHORIZED / NOT A GLOBAL GATE OR MVP1 START PREREQUISITE
 ```
@@ -122,7 +119,7 @@ Repository Governance = PASS
 001E-A Shared UI / Design Tokens = MERGED / PASS
 001E-B Browser E2E Foundation = MERGED / PASS / CLOSED
 001E-C Authentication / Permission / App Shell E2E = MERGED / PASS / CLOSED
-001F Architecture Re-audit = ACTIVE / PREFLIGHT REVIEWED
+001F Architecture Re-audit = COMPLETE / PASS / CLOSED
 001F-A Governance Status Correction & Gate Scope Freeze = COMPLETE / CLOSED (PR #23; accepted Head f327910941dc0b6107bfaf40f5803b1448544ce4; main 70b492772eedc993e5790d563c9c261cb0b1e0b7)
 001F-B Modular Boundary Decision / Remediation = COMPLETE / REVIEWED / OPTION A1 APPROVED
 001F-B1 Module Architecture Contract & Decision Freeze = COMPLETE / PASS / CLOSED (PR #24; accepted Head f26b510b499ffef95e1723eb19d12bac84c93718; main b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f; closure PR #25)
@@ -134,28 +131,29 @@ B2_MAIN_SQUASH_COMMIT: 6df005f8e0e59c877d95fcf41fb5c507c507378f
 B2_MERGED_AT: 2026-08-04T13:24:22Z
 B2_CLOSURE_PR: #28
 B2_CLOSURE_SQUASH: b2bc2d6e25699bc93b6ef352bc20f593c1cacd56
-CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-E LOCAL DEVELOPMENT MIGRATION VALIDATION / SCOPE REMEDIATION
-GITHUB_STATE: E scope remediation PR #44 MERGED; E Work Package formalization in progress
-NEXT_DEPENDENCY: merge E local-only Work Package; then local identity and backup/reconstructability gate
+CURRENT_PHASE: MVP1 PREFLIGHT
+GITHUB_STATE: 001F-F implementation PR #49 merged; final closure PR pending
+NEXT_DEPENDENCY: merge 001F final closure; then MVP1 preflight gate
 001F-B3 = COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811)
 001F-B4 = COMPLETE / PASS / CLOSED (Work Package PR #32; Implementation PR #33; Closure PR #34; main closure 26e22150f4f729aaf321a71e052a3602df9aec61)
 001F-B5 = COMPLETE / PASS / CLOSED (Work Package PR #35; Implementation PR #36; Closure PR #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be)
 001F-C = COMPLETE / PASS / CLOSED (Work Package PR #38; Implementation PR #39; Closure PR #40; main closure 63d1d2d3923d531b032d092eeb87d792f82eabaa)
 001F-D = COMPLETE / PASS / CLOSED (Work Package PR #41; Implementation PR #42; Closure PR #43; main closure 9df4a5631b3e96b3984d1c91d1335bc416528584)
-001F-E = LOCAL DEVELOPMENT MIGRATION VALIDATION / SCOPE REMEDIATION IN PROGRESS
-001F-F = PROPOSED / NOT STARTED / NOT AUTHORIZED
-Global Architecture Gate = FAIL
+001F-E = COMPLETE / PASS / CLOSED (Work Package PR #45; Implementation PR #46; Closure PR #47; main closure d56bc76fb1d86b990a4999ebc20d26cd48365c94)
+001F-F = IMPLEMENTATION COMPLETE / PASS / MERGED / FINAL CLOSURE IN PROGRESS (Work Package PR #48; Implementation PR #49)
+Global Architecture Gate = PENDING FINAL CLOSURE
+MVP1 = AUTHORIZED / PREFLIGHT / 0%
 Production Deployment = NO
 ```
 
 ## Immediate sequence
 
 ```text
-1. Merge the E local-scope remediation.
-2. Execute E only against `http://erp.b` after the local identity and backup/reconstructability gate.
-3. Continue remaining Architecture Gate packages separately.
-4. Keep Global Architecture Gate FAIL.
-5. Keep MVP1, UAT and Deployment blocked.
+1. Complete the 001F final closure record.
+2. Freeze MVP1 contracts, routes, permissions and local runtime plan.
+3. Execute MVP1 packages in the approved order.
+4. Keep Remote Dev and Production untouched.
+5. Stop at LOCAL_HUMAN_UAT_READY before human UAT.
 ```
 
 ## Product direction

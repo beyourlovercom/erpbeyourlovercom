@@ -110,6 +110,18 @@ Documents updated: AI/CURRENT_CONTEXT.md; docs/10_Planning_Roadmap/04_LIVING_ROA
 
 ## Change entry format
 
+## 2026-08-05 — 001F-E and 001F-F architecture closure
+
+```text
+Owner decision: Continuous authorization BYL-ERP-001F-TO-MVP1-LOCAL-UAT-20260805 permits local E completion, final F audit, governance closure and MVP1 preflight within the stated prohibitions.
+New state: 001F-E COMPLETE / PASS / CLOSED through PR #47; 001F-F implementation COMPLETE / PASS / MERGED through PR #49; final closure is this package; Global Architecture Gate becomes PASS after this closure merges; MVP1 becomes AUTHORIZED / PREFLIGHT / 0%.
+Evidence: local MySQL 8.4.11 migration, backup/restore, local Redis 8.10, full regression, menu/route/permission checks, secret scan and Browser E2E 16/16 with 0 external requests.
+Architecture conflict: NONE WITH EVIDENCE.
+Remote Dev access: NO. Production access: NO. SSH: NO. Human UAT: NOT STARTED.
+Application behavior: no change in this closure package.
+Migration: no new migration execution in F; E local validation remains local-only.
+```
+
 ## 2026-08-01 — 001E preparation remediated / 001E-A Preflight required
 
 ```text
