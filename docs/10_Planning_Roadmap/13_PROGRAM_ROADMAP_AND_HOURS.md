@@ -79,7 +79,7 @@ EVIDENCE_LIMITS: GitHub self-approval is unavailable for the repository owner ac
 ```text
 001F_B2_TO_B5_KNOWN_ESTIMATE: 4–8 Codex / 20–40h
 CURRENT_B2_TO_B5_PLANNING_VALUE: 30h
-CURRENT_PACKAGE: MVP1-PREFLIGHT-001
+CURRENT_PACKAGE: MVP1-ORDER-CORE-001
 B5_CLOSURE_PR: #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be
 E_CURRENT_DEPENDENCY: CLOSED through PR #47.
 001F_F_ESTIMATE: 5–9h; planning value 7h; completed and closed
