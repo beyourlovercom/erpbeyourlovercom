@@ -62,14 +62,15 @@ B2_ACCEPTED_HEAD: fe6512f655944e7668c1786899f06880af049f29
 B2_MAIN_SQUASH_COMMIT: 6df005f8e0e59c877d95fcf41fb5c507c507378f
 B2_CLOSURE_PR: #28
 B2_CLOSURE_SQUASH: b2bc2d6e25699bc93b6ef352bc20f593c1cacd56
-CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-C POST-MERGE CLOSURE
-GITHUB_STATE: C Work Package PR #38 MERGED; C Implementation PR #39 MERGED; C closure PR pending creation
-NEXT_DEPENDENCY: C post-merge closure review and merge; then D read-only preflight
+CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-D READ-ONLY PREFLIGHT / WORK PACKAGE
+GITHUB_STATE: C Closure PR #40 MERGED; D Work Package PR pending creation
+NEXT_DEPENDENCY: independent D Work Package review and merge
 001F-B3 = COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811)
 001F-B4 = COMPLETE / PASS / CLOSED (Closure PR #34; main closure 26e22150f4f729aaf321a71e052a3602df9aec61)
 001F-B5 = COMPLETE / PASS / CLOSED
-001F-C = IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS
-001F-D through 001F-F = PROPOSED / NOT STARTED / NOT AUTHORIZED
+001F-C = COMPLETE / PASS / CLOSED
+001F-D = PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
+001F-E through 001F-F = PROPOSED / NOT STARTED / NOT AUTHORIZED
 Global Architecture Gate = FAIL
 Deployment = NO
 ```
@@ -95,7 +96,7 @@ Maximum planning envelope: approximately 192 effective hours
 
 The accepted 001D-C evidence remains bounded: real-MySQL two-connection claim concurrency is a Global Gate blocker and no Dev Migration was run. MySQL 5.7 is outside the current supported baseline, does not block the Global Gate, and current code is not declared compatible; future support requires a new Architecture Decision and Compatibility Work Package. Staging Migration remains a UAT blocker, and Production Migration planning/rehearsal remains a deployment blocker.
 
-001F-B Modular Boundary Decision / Remediation: COMPLETE / REVIEWED / OPTION A1 APPROVED. 001F-B1 Module Architecture Contract & Decision Freeze: COMPLETE / PASS / CLOSED (PR #24; closure PR #25). 001F-B2 Module Skeleton & Automated Boundary Enforcement: COMPLETE / PASS / CLOSED (Work Package PR #26; Implementation PR #27; Closure PR #28; main closure b2bc2d6e25699bc93b6ef352bc20f593c1cacd56). 001F-B3 Identity & Access Boundary Migration: COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811). 001F-B4 Runtime / Audit / Sync Boundary Migration: COMPLETE / PASS / CLOSED (Work Package PR #32; Implementation PR #33; Closure PR #34; main closure 26e22150f4f729aaf321a71e052a3602df9aec61). 001F-B5 Shell / Dashboard Boundary & Compatibility Cleanup: COMPLETE / PASS / CLOSED (Work Package PR #35; Implementation PR #36; Closure PR #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be). 001F-C MySQL Two-Connection Concurrency Validation: IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS (Work Package PR #38; Implementation PR #39; main squash f939c15f9e84adcfa45aefce28a09e1026f00dca). 001F-D through 001F-F remain proposed and not started. The v1.1 `app/Modules/**` contract is forward-effective and MVP1 remains NOT STARTED / 0%.
+001F-B Modular Boundary Decision / Remediation: COMPLETE / REVIEWED / OPTION A1 APPROVED. 001F-B1 Module Architecture Contract & Decision Freeze: COMPLETE / PASS / CLOSED (PR #24; closure PR #25). 001F-B2 Module Skeleton & Automated Boundary Enforcement: COMPLETE / PASS / CLOSED (Work Package PR #26; Implementation PR #27; Closure PR #28; main closure b2bc2d6e25699bc93b6ef352bc20f593c1cacd56). 001F-B3 Identity & Access Boundary Migration: COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811). 001F-B4 Runtime / Audit / Sync Boundary Migration: COMPLETE / PASS / CLOSED (Work Package PR #32; Implementation PR #33; Closure PR #34; main closure 26e22150f4f729aaf321a71e052a3602df9aec61). 001F-B5 Shell / Dashboard Boundary & Compatibility Cleanup: COMPLETE / PASS / CLOSED (Work Package PR #35; Implementation PR #36; Closure PR #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be). 001F-C MySQL Two-Connection Concurrency Validation: COMPLETE / PASS / CLOSED (Work Package PR #38; Implementation PR #39; Closure PR #40; main closure 63d1d2d3923d531b032d092eeb87d792f82eabaa). 001F-D Redis / Queue / Scheduler Runtime Validation: PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED. 001F-E through 001F-F remain proposed and not started. The v1.1 `app/Modules/**` contract is forward-effective and MVP1 remains NOT STARTED / 0%.
 
 ## Incremental releases
 
