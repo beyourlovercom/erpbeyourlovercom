@@ -63,7 +63,7 @@ B2_MAIN_SQUASH_COMMIT: 6df005f8e0e59c877d95fcf41fb5c507c507378f
 B2_CLOSURE_PR: #28
 B2_CLOSURE_SQUASH: b2bc2d6e25699bc93b6ef352bc20f593c1cacd56
 CURRENT_PHASE: MVP1 IMPLEMENTATION
-GITHUB_STATE: MVP1 preflight PR #53, Foundation Work Package PR #54, Implementation PR #55 and Closure PR #56 MERGED; main pending closure sync
+GITHUB_STATE: MVP1 preflight PR #53, Foundation Work Package PR #54, Implementation PR #55 and Closure PR #56 MERGED; main 6ebddab0ab3204044d83df0fea11e4e28b9ec3f5
 NEXT_DEPENDENCY: MVP1-ORDER-CORE-001
 001F-B3 = COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811)
 001F-B4 = COMPLETE / PASS / CLOSED (Closure PR #34; main closure 26e22150f4f729aaf321a71e052a3602df9aec61)
@@ -73,7 +73,7 @@ NEXT_DEPENDENCY: MVP1-ORDER-CORE-001
 001F-E = COMPLETE / PASS / CLOSED (PRs #45, #46, #47; main closure d56bc76fb1d86b990a4999ebc20d26cd48365c94)
 001F-F = COMPLETE / PASS / CLOSED (PRs #48, #49, #50, #51; main a13becbefe1272ffb59cb2d78369df544e68ca97)
 Global Architecture Gate = PASS
-MVP1 = AUTHORIZED / FOUNDATION CLOSED / ORDER CORE NEXT
+MVP1 = AUTHORIZED / FOUNDATION CLOSED / ORDER CORE ACTIVE
 Deployment = NO
 ```
 
@@ -89,7 +89,7 @@ Maximum planning envelope: approximately 192 effective hours
 ## Immediate sequence
 
 ```text
-1. Implement MVP1 packages in the approved order.
+1. Implement MVP1 packages in the approved order, beginning with Order Core.
 2. Prepare local MySQL UAT and synthetic data.
 3. Stop at LOCAL_HUMAN_UAT_READY before human UAT.
 ```
