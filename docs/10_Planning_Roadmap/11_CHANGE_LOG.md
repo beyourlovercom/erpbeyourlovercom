@@ -363,3 +363,14 @@ Validation: Architecture 16/177 PASS; route/menu 23/484 PASS; full PHPUnit 150/1
 Current state: B5 IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS; 001F-C is next after closure.
 Global Architecture Gate: FAIL. MVP1: NOT STARTED / 0%. Migration: no file change or real database operation. UAT: NO. Deployment: NO.
 ```
+
+## 2026-08-05 — 001F-B5 closed / 001F-C preflight formalized
+
+```text
+B5 Closure PR: #37 merged; main closure SHA a5035cbe0e8d4aed0bf1683c1081b4417f8936be.
+Current state: B5 COMPLETE / PASS / CLOSED.
+New state: C MySQL Two-Connection Concurrency Validation PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED.
+C preflight: existing Sync claim state machine and historical isolated MySQL 8.4.11 schema evidence reviewed. MySQL Community 8.4.11 is available keg-only; existing local MariaDB and all shared targets are explicitly excluded.
+No C implementation, Migration execution, database operation, UAT or deployment occurs in this Work Package.
+Global Architecture Gate: FAIL. MVP1: NOT STARTED / 0%.
+```
