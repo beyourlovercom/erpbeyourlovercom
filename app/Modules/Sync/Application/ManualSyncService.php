@@ -42,6 +42,9 @@ final class ManualSyncService
                 ['order_id' => $order->getKey()],
                 ['website_sync_status' => ManualSyncStatus::Pending],
             );
+            if ($sync->website_sync_status === ManualSyncStatus::Completed) {
+                return $sync->fresh(['order', 'operator']);
+            }
             $before = $sync->only(['website_sync_status', 'synced_at', 'synced_by', 'sync_note']);
             $sync->fill([
                 'website_sync_status' => ManualSyncStatus::Completed,
@@ -62,6 +65,9 @@ final class ManualSyncService
                 ['order_id' => $order->getKey()],
                 ['website_sync_status' => ManualSyncStatus::Pending],
             );
+            if ($sync->website_sync_status === ManualSyncStatus::Pending && $sync->synced_at === null && $sync->synced_by === null && $sync->sync_note === $note) {
+                return $sync->fresh(['order', 'operator']);
+            }
             $before = $sync->only(['website_sync_status', 'synced_at', 'synced_by', 'sync_note']);
             $sync->fill([
                 'website_sync_status' => ManualSyncStatus::Pending,
@@ -82,6 +88,9 @@ final class ManualSyncService
                 ['order_id' => $order->getKey()],
                 ['website_sync_status' => ManualSyncStatus::Pending],
             );
+            if ($sync->website_sync_status === ManualSyncStatus::Returned && $sync->synced_at === null && $sync->synced_by === null && $sync->sync_note === $note) {
+                return $sync->fresh(['order', 'operator']);
+            }
             $before = $sync->only(['website_sync_status', 'synced_at', 'synced_by', 'sync_note']);
             $sync->fill([
                 'website_sync_status' => ManualSyncStatus::Returned,

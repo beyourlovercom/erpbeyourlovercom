@@ -88,11 +88,55 @@ final class Mvp1WorkflowTest extends TestCase
 
     public function test_restricted_role_cannot_mutate_orders_fulfillment_or_sync(): void
     {
+        $owner = $this->userWith(['orders.view', 'orders.create', 'orders.edit', 'logistics.view', 'logistics.operate', 'sync.view', 'sync.operate', 'analysis.view']);
+        $this->actingAs($owner)->post('/customers/orders', $this->orderPayload())->assertRedirect();
+        $order = Order::query()->firstOrFail();
         $restricted = $this->userWith(['orders.view']);
         $this->actingAs($restricted)->get('/customers/orders')->assertOk();
         $this->actingAs($restricted)->post('/customers/orders', $this->orderPayload())->assertForbidden();
         $this->actingAs($restricted)->get('/logistics/pending')->assertForbidden();
+        $this->actingAs($restricted)->post('/logistics/orders/'.$order->id.'/reopen')->assertForbidden();
         $this->actingAs($restricted)->get('/sync')->assertForbidden();
+        $this->actingAs($restricted)->get('/accounting/order-costs')->assertForbidden();
+    }
+
+    public function test_repeated_fulfillment_and_sync_operations_are_idempotent_and_reopen_is_audited(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create', 'orders.edit', 'logistics.view', 'logistics.operate', 'sync.view', 'sync.operate']);
+        $this->actingAs($user)->post('/customers/orders', $this->orderPayload())->assertRedirect();
+        $order = Order::query()->firstOrFail();
+        $shipmentPayload = ['carrier' => 'Synthetic Carrier', 'tracking_number' => 'SYNTH-IDEMPOTENT', 'shipped_at' => '2026-08-05T08:00:00Z'];
+
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/ship', $shipmentPayload)->assertRedirect();
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/ship', $shipmentPayload)->assertRedirect();
+        $this->assertDatabaseCount('manual_syncs', 1);
+        $this->assertSame(1, \App\Modules\Audit\Infrastructure\Models\AuditRecord::query()->where('action', 'shipment.marked_shipped')->count());
+
+        $this->actingAs($user)->post('/sync/orders/'.$order->id.'/complete', ['sync_note' => 'Same note'])->assertRedirect();
+        $this->actingAs($user)->post('/sync/orders/'.$order->id.'/complete', ['sync_note' => 'Same note'])->assertRedirect();
+        $this->assertSame(1, \App\Modules\Audit\Infrastructure\Models\AuditRecord::query()->where('action', 'manual_sync.completed')->count());
+
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/reopen', ['logistics_note' => 'Correction'])->assertRedirect();
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/reopen', ['logistics_note' => 'Correction'])->assertRedirect();
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'order_status' => 'pending_shipment']);
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'shipment_status' => 'pending', 'tracking_number' => null]);
+        $this->assertDatabaseHas('manual_syncs', ['order_id' => $order->id, 'website_sync_status' => 'pending']);
+        $this->assertSame(1, \App\Modules\Audit\Infrastructure\Models\AuditRecord::query()->where('action', 'shipment.reopened')->count());
+        $this->assertSame(1, \App\Modules\Audit\Infrastructure\Models\AuditRecord::query()->where('action', 'manual_sync.reopened')->count());
+    }
+
+    public function test_analysis_preserves_decimal_precision_and_uses_shared_filters_for_csv(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create', 'analysis.view']);
+        $this->actingAs($user)->post('/customers/orders', $this->orderPayload())->assertRedirect();
+        $order = Order::query()->firstOrFail();
+        $costs = array_fill_keys(['product_cost', 'warehouse_cost', 'first_mile_cost', 'overseas_handling_cost', 'last_mile_cost', 'kol_commission', 'payment_fee', 'customs_tax', 'refund_replacement_loss', 'other_variable_cost'], '0.01');
+
+        $this->actingAs($user)->put('/accounting/order-costs/'.$order->id, ['amount_paid' => '0.30', 'refund_amount' => '0.00', ...$costs])->assertRedirect();
+        $this->actingAs($user)->get('/accounting/order-costs?completeness=complete')->assertInertia(fn (Assert $page) => $page->where('orders.0.summary.net_revenue', '0.30')->where('orders.0.summary.total_cost', '0.10')->where('orders.0.summary.contribution_profit', '0.20')->where('orders.0.summary.margin', '0.6666'));
+        $csv = $this->actingAs($user)->get('/accounting/order-costs/export?completeness=complete')->streamedContent();
+        $this->assertStringContainsString('Margin', $csv);
+        $this->assertStringContainsString('0.20', $csv);
     }
 
     private function orderPayload(): array
@@ -111,7 +155,7 @@ final class Mvp1WorkflowTest extends TestCase
     {
         $role = Role::create(['key' => 'mvp1-'.uniqid(), 'label' => 'MVP1 Test Role']);
         foreach ($permissions as $permission) {
-            $role->permissions()->create(['key' => $permission, 'label' => $permission]);
+            $role->permissions()->firstOrCreate(['key' => $permission], ['label' => $permission]);
         }
         $user = User::factory()->create(['is_active' => true]);
         $user->roles()->attach($role);
