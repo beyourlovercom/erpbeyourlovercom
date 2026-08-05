@@ -39,7 +39,33 @@ shasum -a 256 .codex/backups/byl-erp-local-uat-*.sql
 ## 人工结论
 
 ```text
-HUMAN_UAT_STATUS: NOT STARTED
-OWNER_DECISION: <Owner填写>
+HUMAN_UAT_STATUS: IN PROGRESS
+LOGIN_GATE: PASS
+HUMAN_UAT_FIRST_FINDING: RESOLVED / WEB_PHP_REDIS_EXTENSION_NOT_LOADED
+OWNER_DECISION: Continue local human UAT
 AUTOMATED_ACCEPTANCE: 不等同于人工 UAT PASS
+```
+
+## 本次本地登录修复记录（2026-08-05）
+
+```text
+STATUS: RESOLVED / LOGIN GATE PASS / HUMAN UAT CONTINUES
+ROOT_CAUSE: Web nginx connects to the old Valet PHP-FPM workers; CLI and new FPM configuration load PhpRedis, but the existing workers still report Class "Redis" not found.
+WEB_SERVER_STACK: Homebrew nginx + Laravel Valet PHP-FPM pool
+WEB_PHP_BINARY: /opt/homebrew/Cellar/php@8.3/8.3.32/bin/php (PHP 8.3.32)
+WEB_PHP_INI: /opt/homebrew/etc/php/8.3/php.ini; scanned /opt/homebrew/etc/php/8.3/conf.d/99-redis.ini
+REDIS_SO: /opt/homebrew/lib/php/pecl/20230831/redis.so; PHP API 20230831; arm64; mode 755
+FPM: old master PID 244 exited; new master PID 68450; workers 68480 68482; socket /Users/a/.config/valet/valet83.sock
+COMMAND: brew services restart php@8.3
+OUTPUT: Successfully stopped; Successfully started; later FPM log: Another FPM instance seems to already listen on /Users/a/.config/valet/valet83.sock; FPM initialization failed
+EXIT: 0 for brew restart, but new instance failed to bind and old workers remained
+COMMAND: valet restart
+OUTPUT: sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper
+EXIT: 1
+WEB_RESULT: GET /login = 200; POST /login redirected to /dashboard; MVP1 Orders, Logistics, Manual Sync and Finance pages opened
+WEB_SAPI_RESULT: PHP 8.3.32 fpm-fcgi; php.ini and 99-redis.ini loaded; extension_loaded(redis)=true; class_exists(Redis)=true; redis version 6.3.0
+CLI_RESULT: redis loaded; class_exists(Redis)=true; Redis PING 127.0.0.1:16379=true; queue:work --once exit 0; schedule:list exit 0
+LOCAL_DB_RESULT: admin@erp.b is_active=true, role=uat_owner_admin, password Hash check=true
+SAFE_SHA: d423e1f5fc97ec0969dd27aae107f9a34a979e62
+RECOVERY: Owner opens an interactive local terminal, runs `sudo valet restart` (or restarts the system Valet PHP 8.3 FPM service), confirms new FPM master/worker PIDs and the socket listener, then re-runs Web SAPI Redis diagnostics and browser POST /login to /dashboard. Do not change QUEUE_CONNECTION or REDIS_CLIENT.
 ```

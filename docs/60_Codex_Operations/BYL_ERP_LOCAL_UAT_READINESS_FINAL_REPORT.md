@@ -53,14 +53,17 @@ UAT_CHECKLIST: docs/70_UAT/MVP1_LOCAL_UAT_CHECKLIST.md
 UAT_DATASET: docs/70_UAT/MVP1_LOCAL_UAT_DATASET.md
 UAT_RESET_COMMAND: php artisan migrate:fresh --force && php artisan db:seed --class=Database\\Seeders\\LocalUatSeeder --force
 KNOWN_LIMITS: docs/70_UAT/MVP1_LOCAL_UAT_KNOWN_LIMITS.md
-LOCAL_MAIN: 90eb704e0cf45fd17f35efacaff3ac08c9110673
-ORIGIN_MAIN: 90eb704e0cf45fd17f35efacaff3ac08c9110673
+LOCAL_MAIN: d423e1f5fc97ec0969dd27aae107f9a34a979e62
+ORIGIN_MAIN: d423e1f5fc97ec0969dd27aae107f9a34a979e62
 WORKTREE_CLEAN: PASS / final documentation committed
 REMOTE_DEV_ACCESS: NO
 PRODUCTION_ACCESS: NO
-HUMAN_UAT_STATUS: NOT STARTED
-COMPLETION_MARKER: NOT CREATED
-NEXT_REQUIRED_ACTION: Owner performs local human UAT
+HUMAN_UAT_STATUS: IN PROGRESS
+LOGIN_GATE: PASS
+HUMAN_UAT_FIRST_FINDING: RESOLVED / WEB_PHP_REDIS_EXTENSION_NOT_LOADED
+LOGIN_GATE_EVIDENCE: GET /login = 200; POST /login redirects to /dashboard; Web SAPI Redis probe passes; authenticated MVP1 pages open; no new Class "Redis" not found entry
+REMEDIATION_BLOCKER: `brew services restart php@8.3` exited 0 but its replacement FPM failed to bind `/Users/a/.config/valet/valet83.sock` because old master PID 244 remained; `valet restart` exited 1 because sudo requires an interactive password
+NEXT_REQUIRED_ACTION: Owner continues local human UAT; Login Gate is not the full Human UAT result
 ```
 
 ## PROJECT POSITION
