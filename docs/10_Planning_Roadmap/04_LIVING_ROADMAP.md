@@ -51,7 +51,7 @@ ERP-SHELL-ACCOUNT-DOCK-001 = MERGED / PASS / OWNER VISUAL ACCEPTANCE PASS (PR #1
 ERP-MENU-BASELINE-001 = MERGED / PASS (PR #14; accepted Head: 6d5595e879778895105215dc98b1f740521b6f1a; main commit: 493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8)
 001E-B Browser E2E Foundation = MERGED / PASS / CLOSED (PR #21; main: 4b9fbb0deacdfc02439fb947398b87c148602c75)
 001E-C Authentication / Permission / App Shell E2E = MERGED / PASS / CLOSED (PR #22; main: 3218473b1cfc93f098a2e9607aabe9adb16bcf0d)
-001F Architecture Re-audit = ACTIVE / PREFLIGHT REVIEWED
+001F Architecture Re-audit = COMPLETE / PASS / CLOSED
 001F-A Governance Status Correction & Gate Scope Freeze = COMPLETE / CLOSED (PR #23; accepted Head: f327910941dc0b6107bfaf40f5803b1448544ce4; main: 70b492772eedc993e5790d563c9c261cb0b1e0b7)
 001F-B Modular Boundary Decision / Remediation = COMPLETE / REVIEWED / OPTION A1 APPROVED
 001F-B1 Module Architecture Contract & Decision Freeze = COMPLETE / PASS / CLOSED (PR #24; accepted Head: f26b510b499ffef95e1723eb19d12bac84c93718; main: b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f; closure PR #25)
@@ -62,17 +62,18 @@ B2_ACCEPTED_HEAD: fe6512f655944e7668c1786899f06880af049f29
 B2_MAIN_SQUASH_COMMIT: 6df005f8e0e59c877d95fcf41fb5c507c507378f
 B2_CLOSURE_PR: #28
 B2_CLOSURE_SQUASH: b2bc2d6e25699bc93b6ef352bc20f593c1cacd56
-CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-E LOCAL DEVELOPMENT MIGRATION VALIDATION / SCOPE REMEDIATION
-GITHUB_STATE: D Closure PR #43 MERGED; E local-scope remediation in progress
-NEXT_DEPENDENCY: merge E scope remediation; then E local-only Work Package
+CURRENT_PHASE: MVP1 PREFLIGHT
+GITHUB_STATE: 001F-F implementation PR #49 merged; final closure PR pending
+NEXT_DEPENDENCY: final 001F closure; then MVP1 preflight gate
 001F-B3 = COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811)
 001F-B4 = COMPLETE / PASS / CLOSED (Closure PR #34; main closure 26e22150f4f729aaf321a71e052a3602df9aec61)
 001F-B5 = COMPLETE / PASS / CLOSED
 001F-C = COMPLETE / PASS / CLOSED
 001F-D = COMPLETE / PASS / CLOSED (Work Package PR #41; Implementation PR #42; Closure PR #43; main closure 9df4a5631b3e96b3984d1c91d1335bc416528584)
-001F-E = LOCAL DEVELOPMENT MIGRATION VALIDATION / SCOPE REMEDIATION IN PROGRESS
-001F-F = PROPOSED / NOT STARTED / NOT AUTHORIZED
-Global Architecture Gate = FAIL
+001F-E = COMPLETE / PASS / CLOSED (PRs #45, #46, #47; main closure d56bc76fb1d86b990a4999ebc20d26cd48365c94)
+001F-F = IMPLEMENTATION COMPLETE / PASS / MERGED / FINAL CLOSURE IN PROGRESS (PRs #48, #49)
+Global Architecture Gate = PENDING FINAL CLOSURE
+MVP1 = AUTHORIZED / PREFLIGHT / 0%
 Deployment = NO
 ```
 
@@ -88,16 +89,16 @@ Maximum planning envelope: approximately 192 effective hours
 ## Immediate sequence
 
 ```text
-1. Complete independent review and merge the B3 Work Package.
-2. Implement, review, merge and close B3 before starting B4.
-3. Resolve the remaining Architecture Gate blockers in separately authorized packages.
-4. Complete the final 001F re-audit before Global Architecture Gate closure.
-5. Keep MVP1, UAT and deployment blocked until their explicit gates.
+1. Complete the final 001F closure record.
+2. Complete MVP1 preflight and freeze shared business contracts.
+3. Implement MVP1 packages in the approved order.
+4. Prepare local MySQL UAT and synthetic data.
+5. Stop at LOCAL_HUMAN_UAT_READY before human UAT.
 ```
 
 The accepted 001D-C evidence remains bounded: real-MySQL two-connection claim concurrency is a Global Gate blocker and no Dev Migration was run. MySQL 5.7 is outside the current supported baseline, does not block the Global Gate, and current code is not declared compatible; future support requires a new Architecture Decision and Compatibility Work Package. Staging Migration remains a UAT blocker, and Production Migration planning/rehearsal remains a deployment blocker.
 
-001F-B Modular Boundary Decision / Remediation: COMPLETE / REVIEWED / OPTION A1 APPROVED. 001F-B1 Module Architecture Contract & Decision Freeze: COMPLETE / PASS / CLOSED (PR #24; closure PR #25). 001F-B2 Module Skeleton & Automated Boundary Enforcement: COMPLETE / PASS / CLOSED (Work Package PR #26; Implementation PR #27; Closure PR #28; main closure b2bc2d6e25699bc93b6ef352bc20f593c1cacd56). 001F-B3 Identity & Access Boundary Migration: COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811). 001F-B4 Runtime / Audit / Sync Boundary Migration: COMPLETE / PASS / CLOSED (Work Package PR #32; Implementation PR #33; Closure PR #34; main closure 26e22150f4f729aaf321a71e052a3602df9aec61). 001F-B5 Shell / Dashboard Boundary & Compatibility Cleanup: COMPLETE / PASS / CLOSED (Work Package PR #35; Implementation PR #36; Closure PR #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be). 001F-C MySQL Two-Connection Concurrency Validation: COMPLETE / PASS / CLOSED (Work Package PR #38; Implementation PR #39; Closure PR #40; main closure 63d1d2d3923d531b032d092eeb87d792f82eabaa). 001F-D Redis / Queue / Scheduler Runtime Validation: COMPLETE / PASS / CLOSED (Work Package PR #41; Implementation PR #42; Closure PR #43; main closure 9df4a5631b3e96b3984d1c91d1335bc416528584). 001F-E is authorized only for local `http://erp.b` migration validation; remote Dev, Staging and Production are excluded. 001F-F remains proposed and not started. The v1.1 `app/Modules/**` contract is forward-effective and MVP1 remains NOT STARTED / 0%.
+001F-B Modular Boundary Decision / Remediation: COMPLETE / REVIEWED / OPTION A1 APPROVED. 001F-B1 Module Architecture Contract & Decision Freeze: COMPLETE / PASS / CLOSED (PR #24; closure PR #25). 001F-B2 Module Skeleton & Automated Boundary Enforcement: COMPLETE / PASS / CLOSED (Work Package PR #26; Implementation PR #27; Closure PR #28; main closure b2bc2d6e25699bc93b6ef352bc20f593c1cacd56). 001F-B3 Identity & Access Boundary Migration: COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811). 001F-B4 Runtime / Audit / Sync Boundary Migration: COMPLETE / PASS / CLOSED (Work Package PR #32; Implementation PR #33; Closure PR #34; main closure 26e22150f4f729aaf321a71e052a3602df9aec61). 001F-B5 Shell / Dashboard Boundary & Compatibility Cleanup: COMPLETE / PASS / CLOSED (Work Package PR #35; Implementation PR #36; Closure PR #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be). 001F-C MySQL Two-Connection Concurrency Validation: COMPLETE / PASS / CLOSED (Work Package PR #38; Implementation PR #39; Closure PR #40; main closure 63d1d2d3923d531b032d092eeb87d792f82eabaa). 001F-D Redis / Queue / Scheduler Runtime Validation: COMPLETE / PASS / CLOSED (Work Package PR #41; Implementation PR #42; Closure PR #43; main closure 9df4a5631b3e96b3984d1c91d1335bc416528584). 001F-E is complete for local `http://erp.b` migration validation; remote Dev, Staging and Production remain excluded. 001F-F final audit is complete pending its closure record. The v1.1 `app/Modules/**` contract is verified and MVP1 is AUTHORIZED / PREFLIGHT / 0%.
 
 ## Incremental releases
 
