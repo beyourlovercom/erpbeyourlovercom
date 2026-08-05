@@ -132,7 +132,7 @@ B2_MERGED_AT: 2026-08-04T13:24:22Z
 B2_CLOSURE_PR: #28
 B2_CLOSURE_SQUASH: b2bc2d6e25699bc93b6ef352bc20f593c1cacd56
 CURRENT_PHASE: MVP1 IMPLEMENTATION
-GITHUB_STATE: MVP1 preflight PR #53, Foundation Work Package PR #54, Implementation PR #55, Closure PR #56, Order Core Implementation PR #59, Order Core Closure PR #60, Order Core Post-Merge Closure PR #61, Fulfillment Work Package PR #62, Implementation PR #63 and Closure PR #64 MERGED; main closure 518de20b91c401354ecca66f20a17dc95f5e1cf8; Fulfillment Post-Merge Closure pending
+GITHUB_STATE: MVP1 preflight PR #53, Foundation Work Package PR #54, Implementation PR #55, Closure PR #56, Order Core Implementation PR #59, Order Core Closure PR #60, Order Core Post-Merge Closure PR #61, Fulfillment Work Package PR #62, Implementation PR #63, Closure PR #64 and Post-Merge Closure PR #65 MERGED; main 4d6b36c42e7dda05cb4a6e396a84afdb45b4ab3b; Manual Sync Work Package pending
 NEXT_DEPENDENCY: MVP1-FULFILLMENT-001
 001F-B3 = COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811)
 001F-B4 = COMPLETE / PASS / CLOSED (Work Package PR #32; Implementation PR #33; Closure PR #34; main closure 26e22150f4f729aaf321a71e052a3602df9aec61)
@@ -149,8 +149,8 @@ Production Deployment = NO
 ## Immediate sequence
 
 ```text
-1. Complete MVP1 Fulfillment post-merge Closure.
-2. Formalize MVP1 Manual Sync, then Finance packages.
+1. Complete MVP1 Manual Sync Work Package and implementation review.
+2. Formalize and close MVP1 Finance Analysis, then UAT Release.
 3. Complete local UAT Release and stop before human UAT.
 4. Keep Remote Dev and Production untouched.
 5. Stop at LOCAL_HUMAN_UAT_READY before human UAT.
