@@ -63,12 +63,42 @@ DATABASE: NO
 ## Project Position
 
 ```text
-CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-B5 READ-ONLY PREFLIGHT / WORK PACKAGE
-PACKAGE_STATUS: PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
-WORK_PACKAGE_PR: PENDING CREATION
-INDEPENDENT_REVIEW: PENDING
+CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-B5 IMPLEMENTATION
+PACKAGE_STATUS: IMPLEMENTATION COMPLETE / PENDING INDEPENDENT REVIEW
+WORK_PACKAGE_PR: #35 MERGED
+WORK_PACKAGE_MAIN_SQUASH_COMMIT: 330f23ecc145d6205b786edfbfb57b5979ac074a
+IMPLEMENTATION_BRANCH: feature/erp-arch-migration-001f-b5-shell-dashboard
+INDEPENDENT_REVIEW: PENDING AT IMPLEMENTATION HEAD
 GLOBAL_ARCHITECTURE_GATE: FAIL
 MVP1: NOT STARTED / 0%
 UAT: NO
 DEPLOYMENT: NO
 ```
+
+## Implementation Evidence
+
+```text
+CANONICAL_OWNERS: Dashboard controller/routes/provider moved to App\Modules\Dashboard; Shell navigation, legacy path helper, controllers/routes/provider moved to App\Modules\Shell
+COMPATIBILITY: App\Http\Controllers\DashboardController, App\Http\Controllers\ErpShellController, App\Support\ErpShellNavigation and App\Support\LegacyErpNavigationPaths remain thin class aliases
+ROUTE_COMPOSITION: routes/web.php contains only the architecture foundation route; Dashboard and Shell routes are module-owned and preserve names, URLs, auth middleware and permission checks
+LEGACY_PROTOTYPE: /kol/orders and legacy erp.shell composition remain under Shell compatibility; no Orders or Logistics module was created
+MENU: approved 11-item baseline unchanged; no runtime navigation configuration changed
+ARCHITECTURE: 16 tests / 177 assertions / PASS with ERP_LOCAL_ADMIN_BYPASS=false
+ROUTE_AND_MENU: 23 tests / 484 assertions / PASS with ERP_LOCAL_ADMIN_BYPASS=false
+FULL_PHPUNIT: 150 tests / 1499 assertions / PASS with ERP_LOCAL_ADMIN_BYPASS=false
+VITEST: 12 files / 71 tests / PASS
+APPLICATION_TYPECHECK: PASS
+E2E_TYPECHECK: PASS
+BUILD: PASS
+BROWSER_E2E: 16 tests / PASS using Chromium, external disposable SQLite and cleanup PASS
+COMPOSER_VALIDATE: PASS
+PINT: changed PHP files / PASS
+DIFF_CHECK: PASS
+FSCK: PASS WITH PRE-EXISTING DANGLING OBJECTS ONLY
+MIGRATION: NO FILE CHANGE; Browser E2E used only its authorized external disposable SQLite migration lifecycle
+DATABASE: NO REAL DATABASE CHANGE
+UAT: NO
+DEPLOYMENT: NO
+```
+
+FINAL_STATUS: `B5_IMPLEMENTATION_COMPLETE_PENDING_INDEPENDENT_REVIEW`
