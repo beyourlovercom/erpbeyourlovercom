@@ -3,7 +3,7 @@ type: work-package
 project: BYL ERP
 work_package_id: ERP-ARCH-MIGRATION-001F-B5
 title: Shell / Dashboard Boundary & Compatibility Cleanup
-status: preflight-complete-work-package-formalized-implementation-authorized
+status: implementation-complete-pass-merged-post-merge-closure-in-progress
 updated: 2026-08-05
 ---
 
@@ -102,10 +102,28 @@ Rollback is a revert of the B5 implementation squash commit. No database rollbac
 ## Project Position
 
 ```text
-CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-B5 READ-ONLY PREFLIGHT / WORK PACKAGE
-PACKAGE_STATUS: PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
-PREDECESSOR: B4 COMPLETE / PASS / CLOSED through Closure PR #34 at main 26e22150f4f729aaf321a71e052a3602df9aec61
-NEXT_DEPENDENCY: Independent B5 Work Package review and merge
+CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-B5 POST-MERGE CLOSURE
+PACKAGE_STATUS: IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS
+WORK_PACKAGE_PR: #35; MAIN_SQUASH: 330f23ecc145d6205b786edfbfb57b5979ac074a
+IMPLEMENTATION_PR: #36; ACCEPTED_HEAD: 010b62d8601843d406acc322a93a4a7f4e290bd9; MAIN_SQUASH: 1e876120285e988a46123742928c4307bcde934b
+NEXT_DEPENDENCY: B5 post-merge closure review and merge; then 001F-C
 GLOBAL_GATE: FAIL
 MVP1: NOT STARTED / 0%
 ```
+
+## Implementation Completion
+
+```text
+B5_IMPLEMENTATION_PR: #36
+B5_ACCEPTED_HEAD: 010b62d8601843d406acc322a93a4a7f4e290bd9
+B5_MAIN_SQUASH_COMMIT: 1e876120285e988a46123742928c4307bcde934b
+B5_MERGED_AT: 2026-08-05T01:12:52Z
+FINAL_INDEPENDENT_REVIEW: PASS at 010b62d8601843d406acc322a93a4a7f4e290bd9
+VALIDATION: Architecture 16/177 PASS; route/menu 23/484 PASS; full PHPUnit 150/1499 PASS; Vitest 71 PASS; typechecks/build PASS; Browser E2E 16 PASS with external disposable SQLite cleanup PASS
+MIGRATION: NO FILE CHANGE / no real database operation
+MENU_IMPACT: NO
+UAT: NO
+DEPLOYMENT: NO
+```
+
+FINAL_STATUS: `B5_IMPLEMENTATION_COMPLETE_PASS_MERGED_POST_MERGE_CLOSURE_IN_PROGRESS`

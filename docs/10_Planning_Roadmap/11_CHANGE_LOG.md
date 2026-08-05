@@ -351,3 +351,15 @@ B5 preflight: app-level Shell/Dashboard controllers, navigation helpers, route c
 No B5 implementation, migration, database operation, UAT or deployment occurs in this Work Package.
 Global Architecture Gate: FAIL. MVP1: NOT STARTED / 0%.
 ```
+
+## 2026-08-05 — 001F-B5 implementation merged / post-merge closure opened
+
+```text
+Work Package PR: #35 merged; main squash 330f23ecc145d6205b786edfbfb57b5979ac074a.
+Implementation PR: #36 merged after final independent review PASS at 010b62d8601843d406acc322a93a4a7f4e290bd9.
+Main squash: 1e876120285e988a46123742928c4307bcde934b.
+Scope: canonical Shell and Dashboard modules with compatibility aliases and module-owned routes; route, permission, approved menu and legacy prototype contracts preserved.
+Validation: Architecture 16/177 PASS; route/menu 23/484 PASS; full PHPUnit 150/1499 PASS; Vitest 71 PASS; typechecks/build PASS; Browser E2E 16 PASS with external disposable SQLite cleanup PASS.
+Current state: B5 IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS; 001F-C is next after closure.
+Global Architecture Gate: FAIL. MVP1: NOT STARTED / 0%. Migration: no file change or real database operation. UAT: NO. Deployment: NO.
+```
