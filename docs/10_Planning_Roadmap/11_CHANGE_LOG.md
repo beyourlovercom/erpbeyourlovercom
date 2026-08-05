@@ -374,3 +374,14 @@ C preflight: existing Sync claim state machine and historical isolated MySQL 8.4
 No C implementation, Migration execution, database operation, UAT or deployment occurs in this Work Package.
 Global Architecture Gate: FAIL. MVP1: NOT STARTED / 0%.
 ```
+
+## 2026-08-05 — 001F-C implementation merged / post-merge closure opened
+
+```text
+Work Package PR: #38 merged; main squash 1cd76e0f178c3a95e71bb48d4762a198858b5524.
+Implementation PR: #39 merged after final independent review PASS at 8a11ae851743db5c3d9835ce2be2ddfb6036e0f9.
+Main squash: f939c15f9e84adcfa45aefce28a09e1026f00dca.
+Validation: isolated MySQL 8.4.11 two-connection claim concurrency 1/20 PASS; full PHPUnit 150 passed plus one intentional isolated-environment skip; Vitest 71 PASS; typechecks/build and Browser E2E 16 PASS.
+Current state: C IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS; D is next after closure.
+Global Architecture Gate: FAIL. No migration file, real database, menu, UAT or deployment change.
+```
