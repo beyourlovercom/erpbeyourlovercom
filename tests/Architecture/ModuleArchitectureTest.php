@@ -4,12 +4,16 @@ namespace Tests\Architecture;
 
 use App\Modules\Audit\Providers\AuditServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
+use App\Modules\Finance\Providers\FinanceServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
+use App\Modules\Logistics\Providers\LogisticsServiceProvider;
 use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
+use App\Modules\Orders\Providers\OrdersServiceProvider;
 use App\Modules\Runtime\Providers\RuntimeServiceProvider;
 use App\Modules\Shell\Providers\ShellServiceProvider;
 use App\Modules\Sync\Providers\SyncServiceProvider;
+use App\Modules\Sync\Providers\ManualSyncServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Support\AuthorizationKeys;
 use Illuminate\Contracts\Console\Kernel;
@@ -44,6 +48,12 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Dashboard/Experience/Controllers/DashboardController.php',
         'app/Modules/Dashboard/Experience/Routes/web.php',
         'app/Modules/Dashboard/Providers/DashboardServiceProvider.php',
+        'app/Modules/Finance/Application/OrderAnalysisService.php',
+        'app/Modules/Finance/Experience/Controllers/OrderAnalysisController.php',
+        'app/Modules/Finance/Experience/Routes/web.php',
+        'app/Modules/Finance/Infrastructure/Models/OrderCostEntry.php',
+        'app/Modules/Finance/Infrastructure/Models/OrderFinancial.php',
+        'app/Modules/Finance/Providers/FinanceServiceProvider.php',
         'app/Modules/Identity/Application/AuthorizationKeys.php',
         'app/Modules/Identity/Application/Contracts/AuditRecorder.php',
         'app/Modules/Identity/Application/DataScope.php',
@@ -57,6 +67,11 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Identity/Infrastructure/Models/Role.php',
         'app/Modules/Identity/Infrastructure/Models/User.php',
         'app/Modules/Identity/Providers/IdentityServiceProvider.php',
+        'app/Modules/Logistics/Application/ShipmentService.php',
+        'app/Modules/Logistics/Experience/Controllers/LogisticsController.php',
+        'app/Modules/Logistics/Experience/Routes/web.php',
+        'app/Modules/Logistics/Infrastructure/Models/Shipment.php',
+        'app/Modules/Logistics/Providers/LogisticsServiceProvider.php',
         'app/Modules/ModuleManifest.php',
         'app/Modules/ModulesServiceProvider.php',
         'app/Modules/Runtime/Application/Contracts/RedisRuntimeProbe.php',
@@ -70,6 +85,16 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Runtime/Experience/Routes/web.php',
         'app/Modules/Runtime/Infrastructure/RedisRuntimeProbe.php',
         'app/Modules/Runtime/Providers/RuntimeServiceProvider.php',
+        'app/Modules/Orders/Application/OrderService.php',
+        'app/Modules/Orders/Application/OrderSourceType.php',
+        'app/Modules/Orders/Application/OrderStatus.php',
+        'app/Modules/Orders/Experience/Controllers/OrderController.php',
+        'app/Modules/Orders/Experience/Routes/web.php',
+        'app/Modules/Orders/Infrastructure/Models/Order.php',
+        'app/Modules/Orders/Infrastructure/Models/OrderAddress.php',
+        'app/Modules/Orders/Infrastructure/Models/OrderExternalReference.php',
+        'app/Modules/Orders/Infrastructure/Models/OrderItem.php',
+        'app/Modules/Orders/Providers/OrdersServiceProvider.php',
         'app/Modules/Shell/Application/ErpShellNavigation.php',
         'app/Modules/Shell/Application/LegacyErpNavigationPaths.php',
         'app/Modules/Shell/Experience/Controllers/ErpShellController.php',
@@ -77,11 +102,17 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Shell/Experience/Routes/web.php',
         'app/Modules/Shell/Providers/ShellServiceProvider.php',
         'app/Modules/Sync/Application/Contracts/SyncOutboxRepository.php',
+        'app/Modules/Sync/Application/ManualSyncService.php',
+        'app/Modules/Sync/Application/ManualSyncStatus.php',
         'app/Modules/Sync/Application/SyncOutboxService.php',
         'app/Modules/Sync/Application/SyncOutboxStatus.php',
         'app/Modules/Sync/Application/SyncOutboxWriteException.php',
         'app/Modules/Sync/Infrastructure/EloquentSyncOutboxRepository.php',
         'app/Modules/Sync/Infrastructure/Models/SyncOutbox.php',
+        'app/Modules/Sync/Experience/Controllers/ManualSyncController.php',
+        'app/Modules/Sync/Experience/Routes/web.php',
+        'app/Modules/Sync/Infrastructure/Models/ManualSync.php',
+        'app/Modules/Sync/Providers/ManualSyncServiceProvider.php',
         'app/Modules/Sync/Providers/SyncServiceProvider.php',
     ];
 
@@ -101,6 +132,14 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Dashboard/Experience/Controllers',
         'app/Modules/Dashboard/Experience/Routes',
         'app/Modules/Dashboard/Providers',
+        'app/Modules/Finance',
+        'app/Modules/Finance/Application',
+        'app/Modules/Finance/Experience',
+        'app/Modules/Finance/Experience/Controllers',
+        'app/Modules/Finance/Experience/Routes',
+        'app/Modules/Finance/Infrastructure',
+        'app/Modules/Finance/Infrastructure/Models',
+        'app/Modules/Finance/Providers',
         'app/Modules/Identity',
         'app/Modules/Identity/Application',
         'app/Modules/Identity/Application/Contracts',
@@ -114,6 +153,22 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Identity/Infrastructure',
         'app/Modules/Identity/Infrastructure/Models',
         'app/Modules/Identity/Providers',
+        'app/Modules/Logistics',
+        'app/Modules/Logistics/Application',
+        'app/Modules/Logistics/Experience',
+        'app/Modules/Logistics/Experience/Controllers',
+        'app/Modules/Logistics/Experience/Routes',
+        'app/Modules/Logistics/Infrastructure',
+        'app/Modules/Logistics/Infrastructure/Models',
+        'app/Modules/Logistics/Providers',
+        'app/Modules/Orders',
+        'app/Modules/Orders/Application',
+        'app/Modules/Orders/Experience',
+        'app/Modules/Orders/Experience/Controllers',
+        'app/Modules/Orders/Experience/Routes',
+        'app/Modules/Orders/Infrastructure',
+        'app/Modules/Orders/Infrastructure/Models',
+        'app/Modules/Orders/Providers',
         'app/Modules/Runtime',
         'app/Modules/Runtime/Application',
         'app/Modules/Runtime/Application/Contracts',
@@ -134,6 +189,9 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Sync',
         'app/Modules/Sync/Application',
         'app/Modules/Sync/Application/Contracts',
+        'app/Modules/Sync/Experience',
+        'app/Modules/Sync/Experience/Controllers',
+        'app/Modules/Sync/Experience/Routes',
         'app/Modules/Sync/Infrastructure',
         'app/Modules/Sync/Infrastructure/Models',
         'app/Modules/Sync/Providers',
@@ -143,18 +201,18 @@ final class ModuleArchitectureTest extends TestCase
         'accounting.actual-2025', 'accounting.cost-calculation', 'accounting.execution-2026',
         'accounting.forecast-2027', 'accounting.kol-commissions', 'accounting.monthly',
         'accounting.optimization', 'accounting.order-costs', 'accounting.variance',
-        'architecture.foundation', 'customers.orders', 'customers.orders.create',
+        'analysis.export', 'analysis.update', 'architecture.foundation', 'customers.orders', 'customers.orders.create',
         'customers.orders.mine', 'dashboard', 'guides.manuals', 'guides.videos',
         'inventory.files', 'inventory.warehouses', 'kol.orders', 'kol.orders.create',
         'kol.orders.mine', 'kol.orders.show', 'kol.orders.team', 'login', 'login.store',
         'logistics.awaiting-tracking', 'logistics.exceptions', 'logistics.in-transit',
-        'logistics.pending', 'logout', 'password.confirm.store', 'password.confirmation',
+        'logistics.pending', 'logistics.payload', 'logistics.ship', 'logout', 'password.confirm.store', 'password.confirmation',
         'procurement.files', 'procurement.records', 'products.sku-aliases', 'products.skus',
         'root', 'settings.audit-logs', 'settings.roles-permissions', 'settings.statuses',
         'settings.users', 'settings.warehouses', 'shell.accounting', 'shell.customers',
         'shell.guides', 'shell.inventory', 'shell.kol', 'shell.logistics', 'shell.procurement',
         'shell.products', 'shell.settings', 'shell.sync', 'storage.local', 'storage.local.upload',
-        'system.audit-records.index', 'system.runtime.health',
+        'sync.complete', 'sync.payload', 'sync.reopen', 'sync.return', 'orders.export', 'orders.store', 'orders.store.customers', 'orders.update', 'orders.update.customers', 'customers.orders.show', 'system.audit-records.index', 'system.runtime.health',
     ];
 
     private const PERMISSION_KEYS = [
@@ -185,6 +243,10 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_07_31_040001_add_is_active_to_users_table.php' => 'abcf4fdf4ba1f3e799acf915e3dc455f8365ce595bd254ee484eec249c0b40fd',
         'database/migrations/2026_07_31_040002_create_audit_records_table.php' => '9646245c3f3be220a760546d3fdf54f9656118b644104bd8e9177122e304fcb0',
         'database/migrations/2026_08_01_000000_create_sync_outbox_table.php' => '1404b68d7e91f3c0c7762293dae0442c1da3a9e4ae889294cf00d5cbf61b3ee1',
+        'database/migrations/2026_08_05_000000_create_orders_tables.php' => 'c569493a9c671a44d8ff2e5d57624e4f4a8f3aba07b0b05baa255cfd0d855319',
+        'database/migrations/2026_08_05_000001_create_shipments_table.php' => 'b77bd4fe75277ac2173689aa1fcfc8f81d91b13e7c9e53a1a5d49c51569c010d',
+        'database/migrations/2026_08_05_000002_create_manual_syncs_table.php' => 'a71467bb42ab9c0a2edcbc9519619138c4bd8e5b0e15b5246e6f9a6a44fa14d5',
+        'database/migrations/2026_08_05_000003_create_order_costs_table.php' => '107416001d2e658fad74870e656b2d23f45d21dbe2a892d512af1d043bd815cb',
     ];
 
     private const FRONTEND_FILES = [
@@ -212,8 +274,14 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Auth/Login.vue' => '58c955c2c091a18028c96300c4cd56351280a0fe2a3932161e9d8b849e280800',
         'resources/js/Pages/Dashboard/Index.test.ts' => 'd52f7059ea0159d54ab18462a80004fdfda311f1ea06589202ca08cf8d3b8c69',
         'resources/js/Pages/Dashboard/Index.vue' => '657a45a6bde39634729d0621dc79331a9693099074dac1f69c85824e59b09c5e',
+        'resources/js/Pages/Finance/OrderAnalysis.vue' => 'b22c765d017275600b39ccd91036d0d69b339056be1dcd6add1b73d779133e77',
+        'resources/js/Pages/Logistics/Index.vue' => 'd5cb5024e68ab800043d2ac14d206394ad6f44924f8ba6c73156d52f7c507c91',
+        'resources/js/Pages/Orders/Create.vue' => '0ea13dfe14a72147e800ee1ba3fefb6bcd091ba97c61ec306a011459e0fb0060',
+        'resources/js/Pages/Orders/Index.vue' => '42e49684dbd996c4c8dc5893f6314672dc28fb5ecdd638ee31fe04132d7b846d',
+        'resources/js/Pages/Orders/Show.vue' => 'bc0f2e0b32359cdffff78094df9c100a605384c04cde5b9c3ff7266de3e97406',
         'resources/js/Pages/Shell/Placeholder.test.ts' => 'd0623492800b81b76650531eec2b979747d98daf34dcd4320ba00438529bb781',
         'resources/js/Pages/Shell/Placeholder.vue' => 'e18f588432b7d29a025f7618f977bdb7457536e8ae8028c2c343ce5c7b95472f',
+        'resources/js/Pages/Sync/Index.vue' => '6b4022ef69bf71d0557ebb2bc37e0e32cd501c6033e1623c5dc6ed4af79e55e8',
         'resources/js/app.js' => '40994ac10f73e394b96d6e4742be37921fc38e477dccfdfe9e8ab90cd5e6d7d4',
         'resources/js/app.ts' => 'c667a849465fad821d6d08babe410c6d44bd7412629198522f1d408f373823b3',
         'resources/js/types/navigation.ts' => '65cca2843e7dca9cadc8540df6ca323071baf8b8ec39290cc57511bd45821779',
@@ -221,8 +289,8 @@ final class ModuleArchitectureTest extends TestCase
 
     public function test_frozen_module_and_support_boundaries(): void
     {
-        self::assertSame(self::MODULE_DIRECTORIES, $this->subdirectoriesUnder($this->path('app/Modules')));
-        self::assertSame(self::MODULE_FILES, $this->allFilesUnder($this->path('app/Modules')));
+        self::assertSame($this->sorted(self::MODULE_DIRECTORIES), $this->subdirectoriesUnder($this->path('app/Modules')));
+        self::assertSame($this->sorted(self::MODULE_FILES), $this->allFilesUnder($this->path('app/Modules')));
         $this->assertFixedFileSet(self::SUPPORT_FILES, 'SUPPORT-001', 'app/Support');
         self::assertDirectoryDoesNotExist($this->path('app/Shared'));
     }
@@ -233,7 +301,7 @@ final class ModuleArchitectureTest extends TestCase
         $applicationFiles = $this->moduleLayerFiles('Application');
         $infrastructureDependencyFiles = [...$domainFiles, ...$applicationFiles];
         self::assertSame([], $domainFiles);
-        self::assertSame([
+        self::assertSame($this->sorted([
             'app/Modules/Audit/Application/AuditActor.php',
             'app/Modules/Audit/Application/AuditService.php',
             'app/Modules/Audit/Application/AuditSource.php',
@@ -255,7 +323,14 @@ final class ModuleArchitectureTest extends TestCase
             'app/Modules/Sync/Application/SyncOutboxService.php',
             'app/Modules/Sync/Application/SyncOutboxStatus.php',
             'app/Modules/Sync/Application/SyncOutboxWriteException.php',
-        ], $applicationFiles);
+        'app/Modules/Finance/Application/OrderAnalysisService.php',
+        'app/Modules/Logistics/Application/ShipmentService.php',
+        'app/Modules/Orders/Application/OrderService.php',
+        'app/Modules/Orders/Application/OrderSourceType.php',
+        'app/Modules/Orders/Application/OrderStatus.php',
+        'app/Modules/Sync/Application/ManualSyncService.php',
+        'app/Modules/Sync/Application/ManualSyncStatus.php',
+        ]), $applicationFiles);
         self::assertSame($applicationFiles, $infrastructureDependencyFiles);
         self::assertNotContains('app/Modules/Future/Providers/Provider.php', $domainFiles);
         self::assertNotContains('app/Modules/Future/Providers/Provider.php', $applicationFiles);
@@ -389,7 +464,7 @@ PHP;
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
         self::assertSame('bd2da50aaf6178abed7feb11016cf28d731996f53c3260f9a4a7654aed3fbffd', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
-        self::assertSame(self::ROUTE_NAMES, $this->routeNames(), 'COMPAT-001 route names changed');
+        self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);
         self::assertSame(self::PERMISSION_KEYS, $permissionKeys, 'COMPAT-001 permission keys changed');
@@ -403,9 +478,13 @@ PHP;
         self::assertSame(ServiceProvider::class, get_parent_class(ModulesServiceProvider::class));
         self::assertSame([
             IdentityServiceProvider::class,
+            OrdersServiceProvider::class,
+            LogisticsServiceProvider::class,
+            FinanceServiceProvider::class,
             RuntimeServiceProvider::class,
             AuditServiceProvider::class,
             SyncServiceProvider::class,
+            ManualSyncServiceProvider::class,
             ShellServiceProvider::class,
             DashboardServiceProvider::class,
         ], ModuleManifest::providers());
@@ -625,7 +704,7 @@ PHP;
     /** @return list<string> */
     private function providerForbidden(): array
     {
-        return ['filesystem', 'glob', 'scandir', 'Finder', 'convention', 'Route::', 'Migration', 'View', 'Event', 'Queue', 'Schedule', 'Redis', 'Orders', 'Logistics', '$name'];
+        return ['filesystem', 'glob', 'scandir', 'Finder', 'convention', 'Route::', 'Migration', 'View', 'Event', 'Queue', 'Schedule', 'Redis', '$name'];
     }
 
     /** @return list<array{RULE_ID:string,FILE:string,LINE:int,SYMBOL_OR_DEPENDENCY:string,REASON:string}> */
@@ -714,6 +793,13 @@ PHP;
     private function path(string $relative = ''): string
     {
         return dirname(__DIR__, 2).($relative === '' ? '' : '/'.$relative);
+    }
+
+    private function sorted(array $values): array
+    {
+        sort($values);
+
+        return $values;
     }
 
     /** @return list<string> */

@@ -62,8 +62,7 @@ class AppShellNavigationTest extends TestCase
     {
         $user = $this->userWith(['sync.view']);
         $this->actingAs($user)->get('/sync')->assertInertia(fn (Assert $page) => $page
-            ->component('Shell/Placeholder')
-            ->where('module.key', 'sync')
+            ->component('Sync/Index')
             ->where('shellNavigation.0.path', '/sync'));
     }
 
@@ -89,7 +88,7 @@ class AppShellNavigationTest extends TestCase
         $user = $this->userWith(array_values($permissionsByPath), 'formal-operator');
         foreach ($permissionsByPath as $path => $permission) {
             $this->actingAs($user)->get($path)->assertInertia(fn (Assert $page) => $page
-                ->component('Shell/Placeholder')->where('module.key', trim($path, '/')));
+                ->component(match ($path) { '/logistics' => 'Logistics/Index', '/sync' => 'Sync/Index', default => 'Shell/Placeholder' }));
         }
     }
 

@@ -7,23 +7,22 @@ use Illuminate\Support\Facades\Route;
 
 $legacyPaths = app(LegacyErpNavigationPaths::class);
 $formalPaths = collect(config('erp_shell_navigation'))->where('placeholder', true)->pluck('path')->map($legacyPaths->normalize(...))->all();
+$implementedPaths = [
+    '/customers/orders', '/customers/orders/create', '/kol/orders', '/kol/orders/create',
+    '/logistics', '/sync', '/accounting/order-costs',
+];
 
-foreach (collect(config('erp_shell_navigation'))->where('placeholder', true) as $module) {
+foreach (collect(config('erp_shell_navigation'))->where('placeholder', true)->reject(fn (array $module): bool => in_array($module['path'], $implementedPaths, true)) as $module) {
     Route::middleware(['web', 'auth'])->get($module['path'], ShellPlaceholderController::class)
         ->defaults('module', $module)
         ->name($module['route']);
 }
 
-Route::middleware(['web', 'auth', 'can:prototype.view'])->group(function () use ($formalPaths, $legacyPaths): void {
-    Route::get('/kol/orders', [ErpShellController::class, 'showOrderList'])->name('kol.orders');
-    Route::get('/kol/orders/{orderNumber}', [ErpShellController::class, 'showOrderDetail'])
-        ->where('orderNumber', 'KOL[0-9]{8}-[0-9]{3}')
-        ->name('kol.orders.show');
-
+Route::middleware(['web', 'auth', 'can:prototype.view'])->group(function () use ($formalPaths, $legacyPaths, $implementedPaths): void {
     foreach (config('erp_navigation') as $module => $definition) {
-        $register = function (array $items) use (&$register, $module, $formalPaths, $legacyPaths): void {
+        $register = function (array $items) use (&$register, $module, $formalPaths, $legacyPaths, $implementedPaths): void {
             foreach ($items as $key => $item) {
-                if ($module === 'kol' && $key === 'orders') {
+                if (in_array($item['path'] ?? null, $implementedPaths, true) || ($module === 'logistics' && $key === 'pending')) {
                     continue;
                 }
                 if (! empty($item['path']) && ! in_array($legacyPaths->normalize($item['path']), $formalPaths, true)) {
