@@ -58,12 +58,34 @@ DATABASE: no real database access
 ## Project Position
 
 ```text
-CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-C READ-ONLY PREFLIGHT / WORK PACKAGE
-PACKAGE_STATUS: PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
-WORK_PACKAGE_PR: PENDING CREATION
-INDEPENDENT_REVIEW: PENDING
+CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-C IMPLEMENTATION
+PACKAGE_STATUS: IMPLEMENTATION COMPLETE / PENDING INDEPENDENT REVIEW
+WORK_PACKAGE_PR: #38 MERGED
+WORK_PACKAGE_MAIN_SQUASH_COMMIT: 1cd76e0f178c3a95e71bb48d4762a198858b5524
+IMPLEMENTATION_BRANCH: feature/erp-arch-migration-001f-c-mysql-concurrency
+INDEPENDENT_REVIEW: PENDING AT IMPLEMENTATION HEAD
 GLOBAL_ARCHITECTURE_GATE: FAIL
 MVP1: NOT STARTED / 0%
 UAT: NO
 DEPLOYMENT: NO
 ```
+
+## Implementation Evidence
+
+```text
+MYSQL_SERVER: MySQL Community 8.4.11 / Homebrew / absolute keg-only binary
+ISOLATION: fresh /tmp run root; fresh datadir; Unix socket; skip-networking=1; random byl_001fc_* database; no existing MariaDB contact
+SERVER_IDENTITY: version 8.4.11; port 0; utf8mb4; utf8mb4_0900_ai_ci; REPEATABLE-READ
+CONCURRENCY_TEST: 1 test / 20 assertions / PASS
+TWO_CONNECTIONS: separate forked connections with distinct MySQL CONNECTION_ID values
+CLAIM_RESULT: exactly one claimant succeeds; exactly one existing SyncOutboxWriteException rejection; resulting row processing with attempts=1, lock token and locked_at present
+CLEANUP: pass/fail/signal trap removes test run root; manual pre-harness smoke instance stopped and moved to Trash
+MIGRATION: existing migrations ran only against disposable isolated MySQL; no migration file change
+REAL_DATABASE_CHANGE: NO
+MENU_IMPACT: NO
+APPROVED_MENU_CHECK: PASS
+UAT: NO
+DEPLOYMENT: NO
+```
+
+FINAL_STATUS: `C_IMPLEMENTATION_COMPLETE_PENDING_INDEPENDENT_REVIEW`
