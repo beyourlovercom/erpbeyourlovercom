@@ -40,6 +40,7 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Audit/Infrastructure/ImmutableAuditBuilder.php',
         'app/Modules/Audit/Infrastructure/Models/AuditRecord.php',
         'app/Modules/Audit/Providers/AuditServiceProvider.php',
+        'app/Modules/Dashboard/Application/DashboardMetrics.php',
         'app/Modules/Dashboard/Experience/Controllers/DashboardController.php',
         'app/Modules/Dashboard/Experience/Routes/web.php',
         'app/Modules/Dashboard/Providers/DashboardServiceProvider.php',
@@ -50,6 +51,7 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Identity/Experience/Controllers/AuthController.php',
         'app/Modules/Identity/Experience/Fortify/IdentityFortify.php',
         'app/Modules/Identity/Experience/Middleware/ApplyLocalAdminBypass.php',
+        'app/Modules/Identity/Experience/Middleware/RequireAnyPermission.php',
         'app/Modules/Identity/Experience/Routes/web.php',
         'app/Modules/Identity/Infrastructure/Models/Permission.php',
         'app/Modules/Identity/Infrastructure/Models/Role.php',
@@ -94,6 +96,7 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Audit/Infrastructure/Models',
         'app/Modules/Audit/Providers',
         'app/Modules/Dashboard',
+        'app/Modules/Dashboard/Application',
         'app/Modules/Dashboard/Experience',
         'app/Modules/Dashboard/Experience/Controllers',
         'app/Modules/Dashboard/Experience/Routes',
@@ -155,9 +158,9 @@ final class ModuleArchitectureTest extends TestCase
     ];
 
     private const PERMISSION_KEYS = [
-        'accounting.view', 'architecture.foundation.view', 'audit.view', 'customers.view',
-        'dashboard.view', 'guides.view', 'inventory.view', 'kol.view', 'logistics.view',
-        'procurement.view', 'products.view', 'prototype.view', 'sync.view',
+        'accounting.view', 'analysis.view', 'architecture.foundation.view', 'audit.view', 'customers.view',
+        'dashboard.view', 'guides.view', 'inventory.view', 'kol.view', 'logistics.operate', 'logistics.view',
+        'orders.create', 'orders.edit', 'orders.view', 'procurement.view', 'products.view', 'prototype.view', 'sync.operate', 'sync.view',
         'system.permissions.manage',
     ];
 
@@ -207,8 +210,8 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Architecture/Foundation.vue' => '0f3f96bd3ad9a5b68fa7fe5a78e20a1e0e92f4d2e6806ef30697fda64941aa70',
         'resources/js/Pages/Auth/Login.test.ts' => 'c6e17ad55beceaa7613b0a073165a3b82881f09d86ab3612682f61444349de43',
         'resources/js/Pages/Auth/Login.vue' => '58c955c2c091a18028c96300c4cd56351280a0fe2a3932161e9d8b849e280800',
-        'resources/js/Pages/Dashboard/Index.test.ts' => '343324a3f14c6f5b9fe89107b534d6cae9359497fe1f0bfd4c52bc5e6dd691bb',
-        'resources/js/Pages/Dashboard/Index.vue' => '4d888ec7c6098548380fc3cacc63b97d3b83f5acc0a3e8fed7a07bd506cecd7a',
+        'resources/js/Pages/Dashboard/Index.test.ts' => 'd52f7059ea0159d54ab18462a80004fdfda311f1ea06589202ca08cf8d3b8c69',
+        'resources/js/Pages/Dashboard/Index.vue' => '657a45a6bde39634729d0621dc79331a9693099074dac1f69c85824e59b09c5e',
         'resources/js/Pages/Shell/Placeholder.test.ts' => 'd0623492800b81b76650531eec2b979747d98daf34dcd4320ba00438529bb781',
         'resources/js/Pages/Shell/Placeholder.vue' => 'e18f588432b7d29a025f7618f977bdb7457536e8ae8028c2c343ce5c7b95472f',
         'resources/js/app.js' => '40994ac10f73e394b96d6e4742be37921fc38e477dccfdfe9e8ab90cd5e6d7d4',
@@ -237,6 +240,7 @@ final class ModuleArchitectureTest extends TestCase
             'app/Modules/Audit/Application/AuditWriteException.php',
             'app/Modules/Audit/Application/Contracts/AuditRecorder.php',
             'app/Modules/Audit/Application/Contracts/AuditWriter.php',
+            'app/Modules/Dashboard/Application/DashboardMetrics.php',
             'app/Modules/Identity/Application/AuthorizationKeys.php',
             'app/Modules/Identity/Application/Contracts/AuditRecorder.php',
             'app/Modules/Identity/Application/DataScope.php',
