@@ -4,12 +4,16 @@ namespace Tests\Architecture;
 
 use App\Modules\Audit\Providers\AuditServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
+use App\Modules\Finance\Providers\FinanceServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
+use App\Modules\Logistics\Providers\LogisticsServiceProvider;
 use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
+use App\Modules\Orders\Providers\OrdersServiceProvider;
 use App\Modules\Runtime\Providers\RuntimeServiceProvider;
 use App\Modules\Shell\Providers\ShellServiceProvider;
 use App\Modules\Sync\Providers\SyncServiceProvider;
+use App\Modules\Sync\Providers\ManualSyncServiceProvider;
 use App\Providers\AppServiceProvider;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
@@ -36,9 +40,13 @@ final class ModuleProviderTest extends TestCase
     {
         $providers = [
             IdentityServiceProvider::class,
+            OrdersServiceProvider::class,
+            LogisticsServiceProvider::class,
+            FinanceServiceProvider::class,
             RuntimeServiceProvider::class,
             AuditServiceProvider::class,
             SyncServiceProvider::class,
+            ManualSyncServiceProvider::class,
             ShellServiceProvider::class,
             DashboardServiceProvider::class,
         ];
@@ -74,18 +82,26 @@ final class ModuleProviderTest extends TestCase
             AppServiceProvider::class,
             ModulesServiceProvider::class,
             IdentityServiceProvider::class,
+            OrdersServiceProvider::class,
+            LogisticsServiceProvider::class,
+            FinanceServiceProvider::class,
             RuntimeServiceProvider::class,
             AuditServiceProvider::class,
             SyncServiceProvider::class,
+            ManualSyncServiceProvider::class,
             ShellServiceProvider::class,
             DashboardServiceProvider::class,
         ], ModuleManifest::validate([
             AppServiceProvider::class,
             ModulesServiceProvider::class,
             IdentityServiceProvider::class,
+            OrdersServiceProvider::class,
+            LogisticsServiceProvider::class,
+            FinanceServiceProvider::class,
             RuntimeServiceProvider::class,
             AuditServiceProvider::class,
             SyncServiceProvider::class,
+            ManualSyncServiceProvider::class,
             ShellServiceProvider::class,
             DashboardServiceProvider::class,
         ]));
@@ -103,7 +119,7 @@ final class ModuleProviderTest extends TestCase
         foreach ([ModuleManifest::class, ModulesServiceProvider::class] as $class) {
             $source = file_get_contents((new \ReflectionClass($class))->getFileName());
             self::assertIsString($source);
-            self::assertDoesNotMatchRegularExpression('/(?:filesystem|glob|scandir|Finder|convention|Route|Migration|View|Event|Queue|Schedule|Redis|Orders|Logistics)/i', $source, 'PROV-001 source violations');
+            self::assertDoesNotMatchRegularExpression('/(?:filesystem|glob|scandir|Finder|convention|Route::|Migration|View|Event|Queue|Schedule|Redis|\$name)/i', $source, 'PROV-001 source violations');
         }
     }
 

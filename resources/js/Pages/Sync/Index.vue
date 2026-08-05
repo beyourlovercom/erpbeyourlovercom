@@ -1,0 +1,14 @@
+<script setup lang="ts">
+import { Head, router } from '@inertiajs/vue3'
+import { reactive } from 'vue'
+import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+type Order = { id: number; internal_order_number: string; recipient_name: string; status: string; synced_at: string | null; synced_by: number | null; tracking_number: string | null; source_type: string }
+const props = defineProps<{ orders: Order[]; filters: { status?: string; search?: string } }>()
+const filters = reactive({ status: props.filters.status ?? '', search: props.filters.search ?? '' })
+const submit = () => router.get('/sync', filters, { preserveState: true, replace: true })
+const update = (id: number, action: string) => router.post(`/sync/orders/${id}/${action}`, {})
+const copy = async (id: number) => { const response = await fetch(`/sync/orders/${id}/payload`, { headers: { Accept: 'application/json' } }); await navigator.clipboard.writeText(JSON.stringify(await response.json(), null, 2)) }
+</script>
+<template>
+  <Head title="同步 · BYL ERP" /><AuthenticatedLayout title="同步" :breadcrumbs="['BYL ERP', '同步']"><section class="mvp-page"><div class="mvp-page-heading"><div><p class="mvp-kicker">人工同步</p><h2>同步</h2><p>在外部网站手工更新后，回到这里记录结果。</p></div></div><form class="mvp-toolbar" @submit.prevent="submit"><input v-model="filters.search" placeholder="搜索订单号或收件人" aria-label="搜索同步"><select v-model="filters.status" aria-label="同步状态"><option value="">全部状态</option><option value="pending">待同步</option><option value="completed">已完成</option><option value="needs_confirmation">待确认</option><option value="returned">已退回</option><option value="failed">失败</option></select><button class="mvp-button mvp-button-primary">筛选</button></form><div class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th>订单号</th><th>来源</th><th>收件人</th><th>追踪号</th><th>状态</th><th>完成时间</th><th>操作</th></tr></thead><tbody><tr v-for="order in props.orders" :key="order.id"><td>{{ order.internal_order_number }}</td><td>{{ order.source_type }}</td><td>{{ order.recipient_name }}</td><td>{{ order.tracking_number ?? '—' }}</td><td><span class="mvp-status">{{ order.status }}</span></td><td>{{ order.synced_at ?? '—' }}</td><td class="mvp-actions"><button class="mvp-button" @click="copy(order.id)">复制网站 payload</button><button v-if="order.status !== 'completed'" class="mvp-button mvp-button-primary" @click="update(order.id, 'complete')">标记完成</button><button v-if="order.status === 'completed'" class="mvp-button" @click="update(order.id, 'reopen')">重开</button><button v-if="order.status !== 'returned'" class="mvp-button" @click="update(order.id, 'return')">退回更正</button></td></tr><tr v-if="props.orders.length === 0"><td colspan="7" class="mvp-empty">暂无同步记录</td></tr></tbody></table></div></section></AuthenticatedLayout>
+</template>

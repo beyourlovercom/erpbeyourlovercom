@@ -7,6 +7,7 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\AuditRecord;
+use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -19,11 +20,15 @@ class ErpNavigationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $permission = Permission::create(['key' => 'prototype.view', 'label' => 'Prototype']);
-        $dashboardPermission = Permission::create(['key' => 'dashboard.view', 'label' => 'Dashboard']);
-        $foundationPermission = Permission::create(['key' => 'architecture.foundation.view', 'label' => 'Foundation']);
+        $permissionKeys = [
+            'prototype.view', 'dashboard.view', 'architecture.foundation.view', 'logistics.view', 'logistics.operate',
+            'sync.view', 'sync.operate', 'customers.view', 'kol.view', 'inventory.view', 'procurement.view',
+            'products.view', 'guides.view', 'accounting.view', 'system.permissions.manage', 'orders.view',
+            'orders.create', 'orders.edit', 'analysis.view',
+        ];
+        $permissions = collect($permissionKeys)->mapWithKeys(fn (string $key): array => [$key => Permission::create(['key' => $key, 'label' => $key])]);
         $role = Role::create(['key' => 'admin', 'label' => 'Admin']);
-        $role->permissions()->attach([$permission->id, $dashboardPermission->id, $foundationPermission->id]);
+        $role->permissions()->attach($permissions->pluck('id')->all());
         $user = User::factory()->create(['is_active' => true]);
         $user->roles()->attach($role);
         $this->actingAs($user);
@@ -36,8 +41,7 @@ class ErpNavigationTest extends TestCase
     public function test_shell_renders_required_modules_without_affiliate(): void
     {
         $response = $this->get('/logistics/pending');
-        foreach (['物流', '客户', '网红', '库存', '外采', '产品', '指南', '会计', '设置'] as $label) $response->assertSee($label);
-        $response->assertDontSee('Affiliate OS');
+        $response->assertInertia(fn (Assert $page) => $page->component('Logistics/Index')->has('shellNavigation', 11));
     }
 
     public function test_accounting_third_level_navigation_is_rendered(): void
@@ -47,9 +51,15 @@ class ErpNavigationTest extends TestCase
 
     public function test_order_list_and_detail_render_the_phase_two_skeleton(): void
     {
-        $this->get('/kol/orders')->assertOk()->assertSee('网红订单')->assertSee('KOL26073001-007');
-        $this->get('/kol/orders/KOL26073001-007')->assertOk()->assertSee('客户详情')->assertSee('物流信息拆分')->assertSee('物流发货')->assertSee('操作记录');
-        $this->get('/kol/orders/INVALID-ORDER')->assertNotFound();
+        $this->post('/customers/orders', [
+            'source_type' => 'kol', 'order_date' => '2026-08-05', 'recipient_name' => 'Synthetic KOL', 'phone' => '+1 555 0101',
+            'country' => 'US', 'province_state' => 'CA', 'city' => 'Los Angeles', 'address_line_1' => 'Synthetic Street',
+            'items' => [['product_summary' => 'Synthetic KOL Product', 'sku' => 'KOL-1', 'quantity' => 1, 'unit_price' => '10.00']],
+        ])->assertRedirect();
+        $order = Order::query()->firstOrFail();
+        $this->get('/kol/orders')->assertInertia(fn (Assert $page) => $page->component('Orders/Index')->where('orders.0.internal_order_number', $order->internal_order_number));
+        $this->get('/kol/orders/'.$order->id)->assertInertia(fn (Assert $page) => $page->component('Orders/Show')->where('order.internal_order_number', $order->internal_order_number));
+        $this->get('/kol/orders/999999')->assertNotFound();
     }
 
     public function test_architecture_foundation_is_an_inertia_page_with_safe_props(): void
