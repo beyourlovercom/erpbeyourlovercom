@@ -84,10 +84,12 @@ Closure PR: #34; Main Closure SHA: 26e22150f4f729aaf321a71e052a3602df9aec61
 
 ERP-ARCH-MIGRATION-001F-B5
 Shell / Dashboard Boundary & Compatibility Cleanup
-Status: PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
+Status: IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS
 Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-B5.md
 Work Log: docs/60_Codex_Operations/logs/2026-08-05_ERP-ARCH-MIGRATION-001F-B5.md
-Work Package PR: pending creation
+Work Package PR: #35; Main Squash: 330f23ecc145d6205b786edfbfb57b5979ac074a
+Implementation PR: #36; Accepted Head: 010b62d8601843d406acc322a93a4a7f4e290bd9; Main Squash: 1e876120285e988a46123742928c4307bcde934b
+Closure PR: pending creation
 
 ERP-ARCH-MIGRATION-001F-C through 001F-F
 Status: PROPOSED / NOT AUTHORIZED

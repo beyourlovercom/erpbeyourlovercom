@@ -2,7 +2,7 @@
 type: current-context
 project: BYL ERP
 updated: 2026-08-05
-status: b4-implementation-in-progress
+status: b5-post-merge-closure-in-progress
 ---
 
 # Current Context
@@ -62,10 +62,12 @@ Closure PR: #25
 Current / next package:
 ERP-ARCH-MIGRATION-001F-B5
 Title: Shell / Dashboard Boundary & Compatibility Cleanup
-Status: PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
+Status: IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS
 Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-B5.md
 Work Log: docs/60_Codex_Operations/logs/2026-08-05_ERP-ARCH-MIGRATION-001F-B5.md
-Base SHA: ee9908c57cabbe4ac93b3628d28154601d96a4c1
+Implementation PR: #36
+Accepted Head: 010b62d8601843d406acc322a93a4a7f4e290bd9
+Main Squash Commit: 1e876120285e988a46123742928c4307bcde934b
 
 Previous package:
 ERP-ARCH-MIGRATION-001D Runtime / Audit / Sync Foundation
@@ -127,12 +129,12 @@ B2_MAIN_SQUASH_COMMIT: 6df005f8e0e59c877d95fcf41fb5c507c507378f
 B2_MERGED_AT: 2026-08-04T13:24:22Z
 B2_CLOSURE_PR: #28
 B2_CLOSURE_SQUASH: b2bc2d6e25699bc93b6ef352bc20f593c1cacd56
-CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-B5 READ-ONLY PREFLIGHT / WORK PACKAGE
-GITHUB_STATE: B4 Closure PR #34 MERGED; B5 Work Package PR pending creation
-NEXT_DEPENDENCY: Independent B5 Work Package review and merge
+CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-B5 POST-MERGE CLOSURE
+GITHUB_STATE: B5 Work Package PR #35 MERGED; B5 Implementation PR #36 MERGED; B5 closure PR pending creation
+NEXT_DEPENDENCY: B5 post-merge closure review and merge; then 001F-C MySQL two-connection concurrency validation
 001F-B3 = COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811)
 001F-B4 = COMPLETE / PASS / CLOSED (Work Package PR #32; Implementation PR #33; Closure PR #34; main closure 26e22150f4f729aaf321a71e052a3602df9aec61)
-001F-B5 = PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
+001F-B5 = IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS (Work Package PR #35; Implementation PR #36; accepted Head 010b62d8601843d406acc322a93a4a7f4e290bd9; main squash 1e876120285e988a46123742928c4307bcde934b)
 001F-C through 001F-F = PROPOSED / NOT STARTED
 001F-C through 001F-F = PROPOSED / NOT AUTHORIZED
 Global Architecture Gate = FAIL
@@ -142,8 +144,8 @@ Production Deployment = NO
 ## Immediate sequence
 
 ```text
-1. Review and merge the B5 Work Package.
-2. Execute B5 Work Package, implementation and closure under the same authorization.
+1. Review and merge the B5 post-merge closure.
+2. Execute 001F-C MySQL two-connection concurrency validation under the same authorization.
 3. Continue remaining Architecture Gate packages separately.
 4. Keep Global Architecture Gate FAIL.
 5. Keep MVP1, UAT and Deployment blocked.
