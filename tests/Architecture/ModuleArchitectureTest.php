@@ -281,7 +281,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Orders/Show.vue' => '7ea993e5745667b160cd81ef9997a5df890c53aadfa20e567b028f6bee68aa6f',
         'resources/js/Pages/Shell/Placeholder.test.ts' => 'd0623492800b81b76650531eec2b979747d98daf34dcd4320ba00438529bb781',
         'resources/js/Pages/Shell/Placeholder.vue' => 'e18f588432b7d29a025f7618f977bdb7457536e8ae8028c2c343ce5c7b95472f',
-        'resources/js/Pages/Sync/Index.vue' => '6b4022ef69bf71d0557ebb2bc37e0e32cd501c6033e1623c5dc6ed4af79e55e8',
+        'resources/js/Pages/Sync/Index.vue' => '127b59b51cfef855410b60002fe82737e349dbd51f4b40e753fc4f7ba92e06c8',
         'resources/js/app.js' => '40994ac10f73e394b96d6e4742be37921fc38e477dccfdfe9e8ab90cd5e6d7d4',
         'resources/js/app.ts' => 'c667a849465fad821d6d08babe410c6d44bd7412629198522f1d408f373823b3',
         'resources/js/types/navigation.ts' => '65cca2843e7dca9cadc8540df6ca323071baf8b8ec39290cc57511bd45821779',

@@ -139,6 +139,17 @@ final class Mvp1WorkflowTest extends TestCase
         $this->assertStringContainsString('0.20', $csv);
     }
 
+    public function test_manual_sync_cannot_complete_an_unshipped_order(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create', 'sync.view', 'sync.operate']);
+        $this->actingAs($user)->post('/customers/orders', $this->orderPayload())->assertRedirect();
+        $order = Order::query()->firstOrFail();
+
+        $this->actingAs($user)->post('/sync/orders/'.$order->id.'/complete', ['sync_note' => 'Should fail'])->assertStatus(500);
+        $this->assertDatabaseMissing('manual_syncs', ['order_id' => $order->id, 'website_sync_status' => 'completed']);
+        $this->assertDatabaseMissing('audit_records', ['action' => 'manual_sync.completed']);
+    }
+
     private function orderPayload(): array
     {
         return [

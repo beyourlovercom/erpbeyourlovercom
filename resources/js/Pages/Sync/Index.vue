@@ -6,7 +6,7 @@ type Order = { id: number; internal_order_number: string; recipient_name: string
 const props = defineProps<{ orders: Order[]; filters: { status?: string; search?: string } }>()
 const filters = reactive({ status: props.filters.status ?? '', search: props.filters.search ?? '' })
 const submit = () => router.get('/sync', filters, { preserveState: true, replace: true })
-const update = (id: number, action: string) => router.post(`/sync/orders/${id}/${action}`, {})
+const update = (id: number, action: string) => router.post(`/sync/orders/${id}/${action}`, { sync_note: window.prompt('备注（可选）') ?? '' })
 const copy = async (id: number) => { const response = await fetch(`/sync/orders/${id}/payload`, { headers: { Accept: 'application/json' } }); await navigator.clipboard.writeText(JSON.stringify(await response.json(), null, 2)) }
 </script>
 <template>
