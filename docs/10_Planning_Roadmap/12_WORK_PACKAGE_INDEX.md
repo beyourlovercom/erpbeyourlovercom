@@ -217,16 +217,13 @@ Implementation PR: #63; Accepted Head: 22ded98dc9cd056ac4456aadd62d819de7a47290;
 Closure PR: #64; Main Closure SHA: 518de20b91c401354ecca66f20a17dc95f5e1cf8
 Owner Authorization: BYL-ERP-001F-TO-MVP1-LOCAL-UAT-20260805
 
-MVP1-FULFILLMENT-001
-Shipment and logistics manual workflow
-Status: ACTIVE / WORK PACKAGE
-Work Package: docs/60_Codex_Operations/work-packages/MVP1-FULFILLMENT-001.md
-Work Log: docs/60_Codex_Operations/logs/2026-08-05_MVP1-FULFILLMENT-001.md
-Work Package: pending
-Owner Authorization: BYL-ERP-001F-TO-MVP1-LOCAL-UAT-20260805
-
 MVP1-SYNC-MANUAL-001
 Manual website-sync outbox and UI
+Status: ACTIVE / WORK PACKAGE
+Work Package: pending
+Work Log: pending
+Work Package: pending
+Owner Authorization: BYL-ERP-001F-TO-MVP1-LOCAL-UAT-20260805
 
 MVP1-FINANCE-ORDER-ANALYSIS-001
 Order-level cost and profit
