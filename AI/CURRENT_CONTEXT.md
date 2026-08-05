@@ -62,10 +62,12 @@ Closure PR: #25
 Current / next package:
 ERP-ARCH-MIGRATION-001F-D
 Title: Redis / Queue / Scheduler Runtime Validation
-Status: READ-ONLY PREFLIGHT NEXT
+Status: IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS
 Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-D.md
 Work Log: docs/60_Codex_Operations/logs/2026-08-05_ERP-ARCH-MIGRATION-001F-D.md
-Base SHA: 63d1d2d3923d531b032d092eeb87d792f82eabaa
+Implementation PR: #42
+Accepted Head: 35bf66da9e98455074fc24ba5f9cd4081cdb9f81
+Main Squash Commit: 6fbd4b751a057ab2060a3f191df7ddf2dc0ab5a7
 
 Previous package:
 ERP-ARCH-MIGRATION-001D Runtime / Audit / Sync Foundation
@@ -89,8 +91,8 @@ PR: #13
 Accepted Head: e4bc57b7a3f0edbe84ccfde63d02d9135a4875e3
 Main Squash Commit: 548d53f1eae2ec14eea7261d3a101c1f2fda0dcc
 
-LIVE_REDIS_PROBE: UNAVAILABLE / NOT CLAIMED
-REAL_MYSQL_TWO_CONNECTION_CLAIM_CONCURRENCY: UNVERIFIED / GLOBAL GATE BLOCKER
+LIVE_REDIS_PROBE: PASS / disposable Redis 8.10 evidence
+REAL_MYSQL_TWO_CONNECTION_CLAIM_CONCURRENCY: PASS / isolated MySQL 8.4.11 evidence
 MYSQL_SUPPORTED_BASELINE: MySQL 8.x
 MYSQL_8_VALIDATED_REFERENCE: MySQL Community 8.4.11
 MYSQL_5_7: OUT OF SCOPE / NOT SUPPORTED BASELINE / NOT A GLOBAL GATE BLOCKER
@@ -127,14 +129,14 @@ B2_MAIN_SQUASH_COMMIT: 6df005f8e0e59c877d95fcf41fb5c507c507378f
 B2_MERGED_AT: 2026-08-04T13:24:22Z
 B2_CLOSURE_PR: #28
 B2_CLOSURE_SQUASH: b2bc2d6e25699bc93b6ef352bc20f593c1cacd56
-CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-D READ-ONLY PREFLIGHT / WORK PACKAGE
-GITHUB_STATE: C Closure PR #40 MERGED; D Work Package PR pending creation
-NEXT_DEPENDENCY: independent D Work Package review and merge
+CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-D POST-MERGE CLOSURE
+GITHUB_STATE: D Work Package PR #41 MERGED; D Implementation PR #42 MERGED
+NEXT_DEPENDENCY: D post-merge closure review and merge; then E Dev Migration validation
 001F-B3 = COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811)
 001F-B4 = COMPLETE / PASS / CLOSED (Work Package PR #32; Implementation PR #33; Closure PR #34; main closure 26e22150f4f729aaf321a71e052a3602df9aec61)
 001F-B5 = COMPLETE / PASS / CLOSED (Work Package PR #35; Implementation PR #36; Closure PR #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be)
 001F-C = COMPLETE / PASS / CLOSED (Work Package PR #38; Implementation PR #39; Closure PR #40; main closure 63d1d2d3923d531b032d092eeb87d792f82eabaa)
-001F-D = PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
+001F-D = IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS
 001F-E through 001F-F = PROPOSED / NOT STARTED / NOT AUTHORIZED
 Global Architecture Gate = FAIL
 Production Deployment = NO
@@ -143,8 +145,8 @@ Production Deployment = NO
 ## Immediate sequence
 
 ```text
-1. Review and merge the D Work Package.
-2. Execute D runtime validation under the same authorization.
+1. Review and merge the D post-merge closure.
+2. Execute E Dev Migration validation only after the fail-closed target identity and backup gate.
 3. Continue remaining Architecture Gate packages separately.
 4. Keep Global Architecture Gate FAIL.
 5. Keep MVP1, UAT and Deployment blocked.

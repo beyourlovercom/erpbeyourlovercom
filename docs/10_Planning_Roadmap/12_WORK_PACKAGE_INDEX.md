@@ -102,10 +102,11 @@ Closure PR: #40; Main Closure SHA: 63d1d2d3923d531b032d092eeb87d792f82eabaa
 
 ERP-ARCH-MIGRATION-001F-D
 Redis / Queue / Scheduler Runtime Validation
-Status: PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
+Status: IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS
 Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-D.md
 Work Log: docs/60_Codex_Operations/logs/2026-08-05_ERP-ARCH-MIGRATION-001F-D.md
-Work Package PR: pending creation
+Work Package PR: #41; Main Squash: e760e032cb6854e086bc0189bc76f0134266deba
+Implementation PR: #42; Accepted Head: 35bf66da9e98455074fc24ba5f9cd4081cdb9f81; Main Squash: 6fbd4b751a057ab2060a3f191df7ddf2dc0ab5a7
 
 ERP-ARCH-MIGRATION-001F-E through 001F-F
 Status: PROPOSED / NOT AUTHORIZED
