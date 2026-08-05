@@ -38,6 +38,10 @@ final class ManualSyncService
     public function complete(Model $order, ?Authenticatable $actor, ?string $note = null): Model
     {
         return DB::transaction(function () use ($order, $actor, $note): Model {
+            $order->loadMissing('shipment');
+            if ($order->shipment?->shipment_status !== 'shipped') {
+                throw new \DomainException('Only shipped orders can be marked as manually synced.');
+            }
             $sync = $order->manualSync()->lockForUpdate()->firstOrCreate(
                 ['order_id' => $order->getKey()],
                 ['website_sync_status' => ManualSyncStatus::Pending],
