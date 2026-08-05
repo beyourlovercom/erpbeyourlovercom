@@ -10,10 +10,6 @@ final class RuntimeServiceProvider extends ServiceProvider
     {
         $this->app->bind('App\\Modules\\Runtime\\Application\\Contracts\\RedisRuntimeProbe', 'App\\Modules\\Runtime\\Infrastructure\\RedisRuntimeProbe');
         $this->app->bind(
-            'App\\Support\\Runtime\\RuntimeHealthService',
-            'App\\Modules\\Runtime\\Application\\RuntimeHealthService',
-        );
-        $this->app->bind(
             'App\\Modules\\Runtime\\Application\\RuntimeHealthService',
             fn ($container) => $container->make('App\\Support\\Runtime\\RuntimeHealthService'),
         );
