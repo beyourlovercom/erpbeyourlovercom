@@ -1,0 +1,125 @@
+---
+type: codex-final-report
+project: BYL ERP
+status: local-human-uat-ready
+updated: 2026-08-05
+---
+
+# BYL_ERP_LOCAL_UAT_READINESS_FINAL_REPORT
+
+```text
+FINAL_STATUS: LOCAL_HUMAN_UAT_READY
+001F_STATUS: COMPLETE / PASS / CLOSED
+GLOBAL_ARCHITECTURE_GATE: PASS
+001F_E_IMPLEMENTATION_PR: #46
+001F_E_CLOSURE_PR: #47
+001F_F_PR: #49
+001F_FINAL_CLOSURE_PR: #50 / final SHA record #51
+MVP1_PREFLIGHT_GATE: PASS
+MVP1_FOUNDATION_STATUS: COMPLETE / PASS / CLOSED
+MVP1_ORDER_CORE_STATUS: COMPLETE / PASS / CLOSED
+MVP1_FULFILLMENT_STATUS: COMPLETE / PASS / CLOSED
+MVP1_SYNC_MANUAL_STATUS: COMPLETE / PASS / CLOSED / PR #67
+MVP1_FINANCE_ANALYSIS_STATUS: COMPLETE / PASS / CLOSED
+MVP1_UAT_RELEASE_STATUS: COMPLETE / PASS / CLOSED
+LOCAL_URL: http://erp.b
+LOCAL_DATABASE_ENGINE: MySQL
+LOCAL_DATABASE_VERSION: 8.4.11
+MIGRATION_STATUS: PASS
+BACKUP_STATUS: PASS
+RESTORE_STATUS: PASS
+UAT_SEED_STATUS: PASS
+DASHBOARD: automated evidence PASS
+ORDERS: automated evidence PASS
+LOGISTICS: automated evidence PASS
+MANUAL_SYNC: automated evidence PASS
+ORDER_ANALYSIS: automated evidence PASS
+CSV: automated evidence PASS
+AUDIT: automated evidence PASS
+PERMISSIONS: automated evidence PASS
+PHPUNIT: 157 passed / 2 skipped / 1 risky
+VITEST: 71 passed
+TYPECHECK: PASS
+BUILD: PASS
+BROWSER_E2E: 16 passed / 0 external requests / cleanup PASS
+REDIS: PONG; PHP Redis extension 6.3.0 loaded
+QUEUE: PASS / exit 0
+SCHEDULER: PASS / exit 0
+MENU: PASS
+ROUTES: PASS
+SECRET_SCAN: PASS
+UAT_ACCESS_FILE: .codex/byl-erp-local-uat-access.txt
+UAT_CHECKLIST: docs/70_UAT/MVP1_LOCAL_UAT_CHECKLIST.md
+UAT_DATASET: docs/70_UAT/MVP1_LOCAL_UAT_DATASET.md
+UAT_RESET_COMMAND: php artisan migrate:fresh --force && php artisan db:seed --class=Database\\Seeders\\LocalUatSeeder --force
+KNOWN_LIMITS: docs/70_UAT/MVP1_LOCAL_UAT_KNOWN_LIMITS.md
+LOCAL_MAIN: 90eb704e0cf45fd17f35efacaff3ac08c9110673
+ORIGIN_MAIN: 90eb704e0cf45fd17f35efacaff3ac08c9110673
+WORKTREE_CLEAN: PASS / final documentation committed
+REMOTE_DEV_ACCESS: NO
+PRODUCTION_ACCESS: NO
+HUMAN_UAT_STATUS: NOT STARTED
+COMPLETION_MARKER: NOT CREATED
+NEXT_REQUIRED_ACTION: Owner performs local human UAT
+```
+
+## PROJECT POSITION
+
+```text
+PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Manual Fulfillment / Tencent Docs Replacement → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Customer / Lead Pilot → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Dev UAT and Production Hardening
+CURRENT_TRACK_PHASE_MAP: 001F CLOSED → MVP1 preflight CLOSED → Foundation CLOSED → Order Core CLOSED → Fulfillment CLOSED → Manual Sync CLOSED → Finance Analysis CLOSED → UAT Release blocked before ready
+COMPLETED_PHASES: 001F; MVP1 preflight; Foundation; Order Core; Fulfillment; Manual Sync; Finance Analysis
+CURRENT_PHASE: MVP1 UAT release
+CURRENT_WORK_PACKAGE: MVP1-UAT-RELEASE-001
+PACKAGE_STATUS: HISTORICAL BLOCKED RECORD / RESOLVED
+WAITING_PHASES: Owner local human UAT
+BASELINE: main / e8c6f7e3fe916671ecff265df4bd94b067ccd601
+GITHUB_STATE: no open execution PR
+SOURCE_CONFLICTS: NONE WITH EVIDENCE
+GLOBAL_GATE: PASS
+PRODUCTION_DEPLOYMENT_STATUS: NO
+NEXT_DEPENDENCY: Owner local human UAT
+EVIDENCE_AS_OF: 2026-08-05
+```
+
+## ROADMAP HOURS
+
+```text
+CURRENT_PACKAGE_ESTIMATE: 12–20h; planning value 16h
+KNOWN_CURRENT_TRACK_REMAINING: runtime rerun and UAT readiness closure
+ARCHITECTURE_GATE_REMAINING: 0h / complete
+MVP1_TOTAL_ESTIMATE: 122–190h
+MVP1_PLANNING_BASELINE: 166h
+MVP1_MAXIMUM_ENVELOPE: 192h
+MVP1_REMAINING: UNKNOWN WITH EVIDENCE
+POST_MVP_KNOWN_INCREMENT: approximately 68–120h
+LONG_TERM_CUMULATIVE_RANGE: 235–402h; 603–1,018h; 1,059–1,802h; 1,595–2,714h; 1,819–3,146h
+PROGRAM_REMAINING: UNKNOWN WITH EVIDENCE
+COMPLETED_ACTUAL_EFFECTIVE_HOURS: 18.5h for recorded MVP1 packages
+ESTIMATE_CONFIDENCE: MEDIUM
+ESTIMATE_AS_OF: 2026-08-05
+ESTIMATE_METHOD: repository package records and verified local evidence
+```
+
+## ESTIMATED CODEX HOURS
+
+```text
+PREFLIGHT_AND_SCOPE: 3h
+CORE_EXECUTION: 7h
+TEST_AND_VALIDATION: 4h
+REMEDIATION_BUFFER: 2h
+ESTIMATED_EFFECTIVE_HOURS: 16h
+ESTIMATE_RANGE: 12–20h
+ESTIMATE_BASIS: 3 + 7 + 4 + 2 = 16h issued UAT release estimate
+ACTUAL_EFFECTIVE_HOURS: 2.5h
+ACTUAL_HOURS_BREAKDOWN: 1.25h database evidence; 0.75h automated validation; 0.5h governance records
+VARIANCE: -13.5h / -84.4%
+VARIANCE_REASON: inherited application and seed implementation reduced execution scope; runtime extension remains external setup
+OWNER_REVIEW: INCLUDED
+MERGE: INCLUDED
+MIGRATION: INCLUDED
+MIGRATION_FILE_AUTHORING: INHERITED
+MIGRATION_EXECUTION: INCLUDED
+UAT: EXCLUDED
+DEPLOYMENT: EXCLUDED
+```
