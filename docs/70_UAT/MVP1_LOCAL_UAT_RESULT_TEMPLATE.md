@@ -1,0 +1,36 @@
+# MVP1 本地 UAT 结果模板
+
+```text
+PROJECT: BYL ERP
+ENVIRONMENT: LOCAL UAT
+URL: http://erp.b
+DATABASE: byl_erp_local_uat / local MySQL 8.4.x
+UAT_ACCESS_FILE: .codex/byl-erp-local-uat-access.txt
+CHECKLIST: docs/70_UAT/MVP1_LOCAL_UAT_CHECKLIST.md
+DATASET: docs/70_UAT/MVP1_LOCAL_UAT_DATASET.md
+STARTED_AT:
+ENDED_AT:
+OWNER:
+```
+
+## 结果
+
+逐项复制 Checklist 的场景并填写：
+
+```text
+SCENARIO_ID:
+ACTUAL_RESULT:
+PASS_FAIL:
+EVIDENCE:
+DEFECT_ID:
+RETEST_RESULT:
+```
+
+## 最终决定
+
+```text
+AUTOMATED_ACCEPTANCE: <repository evidence>
+HUMAN_UAT_STATUS: <Owner填写 NOT STARTED / PASS / FAIL>
+OWNER_SIGN_OFF:
+KNOWN_LIMITS_REFERENCE: docs/70_UAT/MVP1_LOCAL_UAT_KNOWN_LIMITS.md
+```
