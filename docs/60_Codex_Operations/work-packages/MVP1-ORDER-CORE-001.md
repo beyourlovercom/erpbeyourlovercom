@@ -125,7 +125,7 @@ RUNTIME: no remote access; Redis/Queue/Scheduler evidence belongs to final UAT R
 WORK_PACKAGE_BRANCH: codex/mvp1-order-core-001-work-package
 WORK_PACKAGE_PR: existing package record on main; no separate package PR was needed after restored baseline audit
 IMPLEMENTATION_PR: #59 MERGED / ACCEPTED HEAD 3956f206e63dc77142f0d353f2ad3cede3816a19 / MAIN SQUASH 5ce98ad34b4adac0e931e348bfce0961e3d4bfd6
-CLOSURE_PR: #60 OPEN / REVIEW REQUIRED / exact Head verified from GitHub immediately before review
+CLOSURE_PR: #60 MERGED / MAIN CLOSURE fb58cb14c3aa2c998abc1a4d4b2aab2e3634db26
 MERGE: authorized by continuous Owner authorization
 IMPLEMENTATION_BRANCH: codex/mvp1-order-core-001
 ```
@@ -182,7 +182,7 @@ CURRENT_WORK_PACKAGE: MVP1-FULFILLMENT-001
 PACKAGE_STATUS: ORDER CORE COMPLETE / PASS / CLOSED; FULFILLMENT ACTIVE / IMPLEMENTATION
 WAITING_PHASES: MVP1-SYNC-MANUAL-001; MVP1-FINANCE-ORDER-ANALYSIS-001; MVP1-UAT-RELEASE-001; Dev UAT; Production hardening
 BASELINE: main / 5ce98ad34b4adac0e931e348bfce0961e3d4bfd6
-GITHUB_STATE: Implementation PR #59 MERGED; accepted Head 3956f206e63dc77142f0d353f2ad3cede3816a19; main squash 5ce98ad34b4adac0e931e348bfce0961e3d4bfd6; Closure PR #60 OPEN / REVIEW REQUIRED / exact Head verified from GitHub immediately before review
+GITHUB_STATE: Implementation PR #59 and Closure PR #60 MERGED; accepted implementation Head 3956f206e63dc77142f0d353f2ad3cede3816a19; implementation main squash 5ce98ad34b4adac0e931e348bfce0961e3d4bfd6; closure main squash fb58cb14c3aa2c998abc1a4d4b2aab2e3634db26
 SOURCE_CONFLICTS: NONE WITH EVIDENCE
 GLOBAL_GATE: PASS
 PRODUCTION_DEPLOYMENT_STATUS: NO / no production access or deployment
