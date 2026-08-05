@@ -3,7 +3,7 @@ type: work-package
 project: BYL ERP
 work_package_id: ERP-ARCH-MIGRATION-001F-C
 title: MySQL Two-Connection Concurrency Validation
-status: preflight-complete-work-package-formalized-implementation-authorized
+status: implementation-complete-pending-independent-review
 updated: 2026-08-05
 ---
 
@@ -104,10 +104,38 @@ Rollback is a revert of the implementation squash commit. No persistent schema o
 ## Project Position
 
 ```text
-CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-C READ-ONLY PREFLIGHT / WORK PACKAGE
-PACKAGE_STATUS: PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
-PREDECESSOR: B5 COMPLETE / PASS / CLOSED through Closure PR #37 at main a5035cbe0e8d4aed0bf1683c1081b4417f8936be
-NEXT_DEPENDENCY: independent C Work Package review and merge
+CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-C IMPLEMENTATION
+PACKAGE_STATUS: IMPLEMENTATION COMPLETE / PENDING INDEPENDENT REVIEW
+WORK_PACKAGE_PR: #38; MAIN_SQUASH: 1cd76e0f178c3a95e71bb48d4762a198858b5524
+IMPLEMENTATION_BRANCH: feature/erp-arch-migration-001f-c-mysql-concurrency
+NEXT_DEPENDENCY: independent C implementation review and merge
 GLOBAL_GATE: FAIL
 MVP1: NOT STARTED / 0%
 ```
+
+## Implementation Completion
+
+```text
+MYSQL_TWO_CONNECTION_HARNESS: tests/Feature/Sync/run-mysql-two-connection-concurrency.sh
+MYSQL_VERSION: 8.4.11 / Homebrew
+ISOLATION: external fresh datadir and random database, Unix socket only, port 0, skip-networking=1
+CONCURRENCY_EVIDENCE: separate forked PDO connections; distinct CONNECTION_ID values; 1 claimant succeeds and 1 is rejected; final row processing with attempts=1 and unique lock token
+MYSQL_VALIDATION: 1 test / 20 assertions / PASS
+FULL_PHPUNIT: 151 tests / 150 passed / 1 intentional isolated-environment skip / 1499 assertions / PASS
+VITEST: 12 files / 71 tests / PASS
+TYPECHECK: application and E2E / PASS
+BUILD: PASS
+BROWSER_E2E: 16 tests / PASS with external disposable SQLite cleanup
+COMPOSER: PASS
+PINT: changed PHP / PASS
+DIFF_CHECK: PASS
+FSCK: PASS with pre-existing dangling objects only
+MIGRATION: existing migrations executed only in disposable isolated MySQL; no migration file change
+REAL_DATABASE_CHANGE: NO
+MENU_IMPACT: NO
+APPROVED_MENU_CHECK: PASS
+UAT: NO
+DEPLOYMENT: NO
+```
+
+FINAL_STATUS: `C_IMPLEMENTATION_COMPLETE_PENDING_INDEPENDENT_REVIEW`
