@@ -204,7 +204,7 @@ Status: COMPLETE / PASS / CLOSED
 Work Package: docs/60_Codex_Operations/work-packages/MVP1-ORDER-CORE-001.md
 Work Log: docs/60_Codex_Operations/logs/2026-08-05_MVP1-ORDER-CORE-001.md
 Implementation PR: #59; Accepted Head: 3956f206e63dc77142f0d353f2ad3cede3816a19; Main Squash: 5ce98ad34b4adac0e931e348bfce0961e3d4bfd6
-Closure PR: #60 OPEN / REVIEW PASS / Head fdcddbf26ab617fc3758d2657abc84ff6c75bcaa
+Closure PR: #60 OPEN / REVIEW REQUIRED / Head cc2b81073f5fb594d33cca6b71fb104747ae1af9
 
 Current / next package:
 MVP1-FULFILLMENT-001
