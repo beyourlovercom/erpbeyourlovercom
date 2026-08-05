@@ -176,6 +176,10 @@ PROVIDERS: Explicit deterministic order through ModuleManifest; one Audit writer
 MIGRATION: No migration files changed or executed
 FOCUSED_VALIDATION: 82 tests / 662 assertions / PASS with ERP_LOCAL_ADMIN_BYPASS=false
 POST_REVIEW_FOCUSED_VALIDATION: 63 tests / 604 assertions / PASS with ERP_LOCAL_ADMIN_BYPASS=false
+INDEPENDENT_REVIEW_FINDING: Application SyncOutboxService directly imported the private Infrastructure model, violating APP-001
+INDEPENDENT_REVIEW_REMEDIATION: SyncOutboxRepository Application Contract with Infrastructure implementation; Application service now depends only on the contract and generic Eloquent Model
+POST_REMEDIATION_ARCHITECTURE: 16 tests / 175 assertions / PASS with ERP_LOCAL_ADMIN_BYPASS=false
+POST_REMEDIATION_SYNC: 30 tests / 406 assertions / PASS with ERP_LOCAL_ADMIN_BYPASS=false
 FULL_PHPUNIT: 150 tests / 1497 assertions / PASS with ERP_LOCAL_ADMIN_BYPASS=false
 VITEST: 71 tests / PASS
 APPLICATION_TYPECHECK: PASS

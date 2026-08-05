@@ -6,9 +6,10 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Runtime\Application\QueueJobConvention;
-use App\Modules\Sync\Infrastructure\Models\SyncOutbox;
+use App\Modules\Sync\Application\Contracts\SyncOutboxRepository;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -20,20 +21,20 @@ final class SyncOutboxService
 
     private const int MaximumRecoveryBatch = 100;
 
-    public function __construct(private readonly AuditRecorder $audit) {}
+    public function __construct(
+        private readonly AuditRecorder $audit,
+        private readonly SyncOutboxRepository $outbox,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $intent
      */
-    public function enqueue(array $intent): SyncOutbox
+    public function enqueue(array $intent): Model
     {
         $normalized = $this->normalizeIntent($intent);
 
-        return DB::transaction(function () use ($normalized): SyncOutbox {
-            $existing = SyncOutbox::query()
-                ->where('idempotency_key', $normalized['idempotency_key'])
-                ->lockForUpdate()
-                ->first();
+        return DB::transaction(function () use ($normalized): Model {
+            $existing = $this->outbox->findByIdempotencyKeyForUpdate($normalized['idempotency_key']);
 
             if ($existing) {
                 $this->assertSameIntent($existing, $normalized);
@@ -65,10 +66,8 @@ final class SyncOutboxService
                 'updated_at' => $now,
             ]);
 
-            $record = SyncOutbox::query()
-                ->where('idempotency_key', $normalized['idempotency_key'])
-                ->lockForUpdate()
-                ->firstOrFail();
+            $record = $this->outbox->findByIdempotencyKeyForUpdate($normalized['idempotency_key'])
+                ?? throw new \LogicException('Sync outbox record was not created.');
 
             if ($inserted === 0) {
                 $this->assertSameIntent($record, $normalized);
@@ -87,9 +86,9 @@ final class SyncOutboxService
         });
     }
 
-    public function claim(int $id): SyncOutbox
+    public function claim(int $id): Model
     {
-        return DB::transaction(function () use ($id): SyncOutbox {
+        return DB::transaction(function () use ($id): Model {
             $record = $this->lockedRecord($id);
             $now = CarbonImmutable::now()->startOfSecond();
 
@@ -123,9 +122,9 @@ final class SyncOutboxService
         });
     }
 
-    public function complete(int $id, string $lockToken): SyncOutbox
+    public function complete(int $id, string $lockToken): Model
     {
-        return DB::transaction(function () use ($id, $lockToken): SyncOutbox {
+        return DB::transaction(function () use ($id, $lockToken): Model {
             $record = $this->lockedProcessingRecord($id, $lockToken);
             $before = $this->auditMetadata($record);
             $now = CarbonImmutable::now()->startOfSecond();
@@ -151,9 +150,9 @@ final class SyncOutboxService
         });
     }
 
-    public function retry(int $id, string $lockToken, string $errorCode, string $errorMessage): SyncOutbox
+    public function retry(int $id, string $lockToken, string $errorCode, string $errorMessage): Model
     {
-        return DB::transaction(function () use ($id, $lockToken, $errorCode, $errorMessage): SyncOutbox {
+        return DB::transaction(function () use ($id, $lockToken, $errorCode, $errorMessage): Model {
             $record = $this->lockedProcessingRecord($id, $lockToken);
 
             if ($record->attempts >= $record->max_attempts) {
@@ -187,9 +186,9 @@ final class SyncOutboxService
         });
     }
 
-    public function fail(int $id, string $lockToken, string $errorCode, string $errorMessage): SyncOutbox
+    public function fail(int $id, string $lockToken, string $errorCode, string $errorMessage): Model
     {
-        return DB::transaction(function () use ($id, $lockToken, $errorCode, $errorMessage): SyncOutbox {
+        return DB::transaction(function () use ($id, $lockToken, $errorCode, $errorMessage): Model {
             $record = $this->lockedProcessingRecord($id, $lockToken);
             $before = $this->auditMetadata($record);
             $now = CarbonImmutable::now()->startOfSecond();
@@ -215,7 +214,7 @@ final class SyncOutboxService
         });
     }
 
-    /** @return Collection<int, SyncOutbox> */
+    /** @return Collection<int, Model> */
     public function recoverStale(DateTimeInterface $cutoff, int $limit): Collection
     {
         if ($limit < 1 || $limit > self::MaximumRecoveryBatch) {
@@ -230,9 +229,9 @@ final class SyncOutboxService
             ->limit($limit)
             ->pluck('id');
 
-        return $ids->map(function (int $id) use ($staleCutoff): ?SyncOutbox {
-            return DB::transaction(function () use ($id, $staleCutoff): ?SyncOutbox {
-                $record = SyncOutbox::query()->whereKey($id)->lockForUpdate()->first();
+        return $ids->map(function (int $id) use ($staleCutoff): ?Model {
+            return DB::transaction(function () use ($id, $staleCutoff): ?Model {
+                $record = $this->outbox->findByIdForUpdate($id);
 
                 if (! $record
                     || $record->status !== SyncOutboxStatus::Processing
@@ -332,7 +331,7 @@ final class SyncOutboxService
     }
 
     /** @param array<string, mixed> $intent */
-    private function assertSameIntent(SyncOutbox $record, array $intent): void
+    private function assertSameIntent(Model $record, array $intent): void
     {
         $matches = $record->operation === $intent['operation']
             && $record->aggregate_type === $intent['aggregate_type']
@@ -357,9 +356,9 @@ final class SyncOutboxService
         return $this->canonicalizePayload($stored) === $requested;
     }
 
-    private function lockedRecord(int $id): SyncOutbox
+    private function lockedRecord(int $id): Model
     {
-        $record = SyncOutbox::query()->whereKey($id)->lockForUpdate()->first();
+        $record = $this->outbox->findByIdForUpdate($id);
 
         if (! $record) {
             throw SyncOutboxWriteException::transitionNotAllowed();
@@ -368,7 +367,7 @@ final class SyncOutboxService
         return $record;
     }
 
-    private function lockedProcessingRecord(int $id, string $lockToken): SyncOutbox
+    private function lockedProcessingRecord(int $id, string $lockToken): Model
     {
         $record = $this->lockedRecord($id);
 
@@ -383,9 +382,9 @@ final class SyncOutboxService
         return $record;
     }
 
-    private function readRecord(int $id): SyncOutbox
+    private function readRecord(int $id): Model
     {
-        return SyncOutbox::query()->findOrFail($id);
+        return $this->outbox->findOrFail($id);
     }
 
     private function assertSingleMutation(int $affected): void
@@ -395,7 +394,7 @@ final class SyncOutboxService
         }
     }
 
-    private function auditTransition(SyncOutbox $record, string $action, ?array $before, string $reason): void
+    private function auditTransition(Model $record, string $action, ?array $before, string $reason): void
     {
         $this->audit->record(
             AuditActor::system(AuditSource::SyncOutbox),
@@ -409,7 +408,7 @@ final class SyncOutboxService
     }
 
     /** @return array<string, mixed> */
-    private function auditMetadata(SyncOutbox $record): array
+    private function auditMetadata(Model $record): array
     {
         return [
             'status' => $record->status->value,
