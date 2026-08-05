@@ -200,6 +200,18 @@ Work Package PR: #54; Implementation PR: #55; Closure PR: #56; Main Closure SHA:
 
 MVP1-ORDER-CORE-001
 Order, item, address and external references
+Status: COMPLETE / PASS / CLOSED
+Work Package: docs/60_Codex_Operations/work-packages/MVP1-ORDER-CORE-001.md
+Work Log: docs/60_Codex_Operations/logs/2026-08-05_MVP1-ORDER-CORE-001.md
+Implementation PR: #59; Accepted Head: 3956f206e63dc77142f0d353f2ad3cede3816a19; Main Squash: 5ce98ad34b4adac0e931e348bfce0961e3d4bfd6
+Closure PR: #60 OPEN / REVIEW REQUIRED / exact Head verified from GitHub immediately before review
+
+Current / next package:
+MVP1-FULFILLMENT-001
+Shipment and logistics manual workflow
+Status: ACTIVE / IMPLEMENTATION
+Work Package: docs/60_Codex_Operations/work-packages/MVP1-FULFILLMENT-001.md
+Owner Authorization: BYL-ERP-001F-TO-MVP1-LOCAL-UAT-20260805
 
 MVP1-FULFILLMENT-001
 Shipment and logistics manual workflow
