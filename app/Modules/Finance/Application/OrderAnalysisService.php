@@ -33,7 +33,7 @@ final class OrderAnalysisService
                 'financials' => $financials->toArray(),
                 'costs' => $order->costEntries()->get()->toArray(),
             ];
-            $financials->fill(array_intersect_key($attributes, array_flip(self::FINANCIAL_FIELDS)))->save();
+            $financials->fill(array_intersect_key($attributes, array_flip([...self::FINANCIAL_FIELDS, 'currency'])))->save();
 
             foreach (self::COST_FIELDS as $field) {
                 if (! array_key_exists($field, $attributes)) {
@@ -92,7 +92,7 @@ final class OrderAnalysisService
             'completeness' => 'complete', 'profit_status' => 'confirmed',
             'net_revenue' => $this->money($netRevenueCents), 'total_cost' => $this->money($totalCostCents),
             'contribution_profit' => $this->money($profitCents),
-            'margin' => $netRevenueCents === 0 ? null : round($profitCents / $netRevenueCents, 4),
+            'margin' => $netRevenueCents === 0 ? null : bcdiv((string) $profitCents, (string) $netRevenueCents, 4),
         ];
     }
 
@@ -101,9 +101,30 @@ final class OrderAnalysisService
         return [...self::FINANCIAL_FIELDS, ...self::COST_FIELDS];
     }
 
+    public function values(Model $order): array
+    {
+        $financials = $order->relationLoaded('financials') ? $order->financials : $order->financials()->first();
+        $entries = $order->relationLoaded('costEntries') ? $order->costEntries : $order->costEntries()->get();
+        $values = [];
+        foreach (self::FINANCIAL_FIELDS as $field) {
+            $values[$field] = $financials?->{$field};
+        }
+        $byType = $entries->keyBy('cost_type');
+        foreach (self::COST_FIELDS as $field) {
+            $values[$field] = $byType->get($field)?->amount;
+        }
+
+        return $values;
+    }
+
     private function cents(mixed $amount): int
     {
-        return (int) round(((float) $amount) * 100);
+        $value = trim((string) $amount);
+        if (! preg_match('/^\+?(?<whole>\d+)(?:\.(?<fraction>\d{1,2}))?$/D', $value, $matches)) {
+            throw new \UnexpectedValueException('Financial amounts must be decimal values with at most two fractional digits.');
+        }
+
+        return ((int) $matches['whole'] * 100) + (int) str_pad($matches['fraction'] ?? '', 2, '0');
     }
 
     private function money(int $cents): string

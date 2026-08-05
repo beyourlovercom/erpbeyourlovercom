@@ -35,6 +35,14 @@ final class LogisticsController
         return back()->with('success', '已标记发货，已生成待同步任务');
     }
 
+    public function reopen(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    {
+        $data = $request->validate(['logistics_note' => ['nullable', 'string', 'max:5000']]);
+        $this->shipments->reopen($order, $request->user(), $data['logistics_note'] ?? null);
+
+        return back()->with('success', '发货已重开，可修正后重新发货');
+    }
+
     public function payload(Order $order): \Illuminate\Http\JsonResponse
     {
         $order->load(['address', 'items', 'shipment']);
