@@ -148,7 +148,11 @@ Local Chromium Browser E2E is ACCEPTED LOCAL ARCHITECTURE EVIDENCE. GitHub Actio
 
 ## D-030 001F gate scope
 
-The remaining 001F sequence is 001F-B Modular Boundary Decision / Remediation, 001F-C MySQL Concurrency Validation, 001F-D Redis / Queue / Scheduler Runtime Validation, 001F-E Dev Migration Validation and 001F-F Final Architecture Gate Re-audit. These packages are proposed and not authorized. Global Architecture Gate remains FAIL; MVP1 remains NOT STARTED and at 0% business completion.
+HISTORICAL DECISION-TIME STATE: the remaining 001F sequence was 001F-B Modular Boundary Decision / Remediation, 001F-C MySQL Concurrency Validation, 001F-D Redis / Queue / Scheduler Runtime Validation, 001F-E Dev Migration Validation and 001F-F Final Architecture Gate Re-audit. At that point these packages were proposed and not authorized. The current status is recorded by later package closures and D-032. Global Architecture Gate remains FAIL; MVP1 remains NOT STARTED and at 0% business completion.
+
+## D-032 001F-E local development environment scope
+
+The current 001F-E contract supersedes the earlier remote-Dev assumption. `http://erp.b` at `/Users/a/AI/007/erpbeyourlovercom` is the only permitted 001F-E validation target. `https://deverp.beyourlover.com` is Remote Dev and `https://erp.beyourlover.com` is Production; neither may be accessed, deployed to, migrated or synchronized during 001F-E. The earlier fail-closed result is a historical safety record, not a code defect. A local identity and backup/reconstructability gate remains mandatory before any local database mutation. Global Architecture Gate remains FAIL; MVP1 remains NOT STARTED / 0%.
 
 ## D-031 Adopt A1 Physical Module Contract for Architecture Standard v1.1
 

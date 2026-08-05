@@ -96,7 +96,12 @@ REAL_MYSQL_TWO_CONNECTION_CLAIM_CONCURRENCY: PASS / isolated MySQL 8.4.11 eviden
 MYSQL_SUPPORTED_BASELINE: MySQL 8.x
 MYSQL_8_VALIDATED_REFERENCE: MySQL Community 8.4.11
 MYSQL_5_7: OUT OF SCOPE / NOT SUPPORTED BASELINE / NOT A GLOBAL GATE BLOCKER
-DEV_MIGRATION: UNVERIFIED / GLOBAL GATE AND MVP1 INTEGRATION BLOCKER
+LOCAL_DEVELOPMENT_MIGRATION: UNVERIFIED / GLOBAL GATE AND MVP1 INTEGRATION BLOCKER
+LOCAL_APPLICATION_URL: http://erp.b
+LOCAL_APPLICATION_PATH: /Users/a/AI/007/erpbeyourlovercom
+REMOTE_DEV_DEPLOYMENT: NOT PERFORMED / NOT IN 001F-E SCOPE
+REMOTE_DEV_URL: https://deverp.beyourlover.com
+PRODUCTION_URL: https://erp.beyourlover.com
 STAGING_MIGRATION: UNVERIFIED / UAT BLOCKER
 PRODUCTION_MIGRATION_PLAN_AND_REHEARSAL: UNVERIFIED / DEPLOYMENT BLOCKER
 PRODUCTION_REAL_MIGRATION: NOT RUN / NOT AUTHORIZED / NOT A GLOBAL GATE OR MVP1 START PREREQUISITE
@@ -129,15 +134,16 @@ B2_MAIN_SQUASH_COMMIT: 6df005f8e0e59c877d95fcf41fb5c507c507378f
 B2_MERGED_AT: 2026-08-04T13:24:22Z
 B2_CLOSURE_PR: #28
 B2_CLOSURE_SQUASH: b2bc2d6e25699bc93b6ef352bc20f593c1cacd56
-CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-D POST-MERGE CLOSURE
-GITHUB_STATE: D Work Package PR #41 MERGED; D Implementation PR #42 MERGED
-NEXT_DEPENDENCY: D post-merge closure review and merge; then E Dev Migration validation
+CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-E LOCAL DEVELOPMENT MIGRATION VALIDATION / SCOPE REMEDIATION
+GITHUB_STATE: D Closure PR #43 MERGED; E local-scope remediation in progress
+NEXT_DEPENDENCY: merge E scope remediation; then E local-only Work Package
 001F-B3 = COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811)
 001F-B4 = COMPLETE / PASS / CLOSED (Work Package PR #32; Implementation PR #33; Closure PR #34; main closure 26e22150f4f729aaf321a71e052a3602df9aec61)
 001F-B5 = COMPLETE / PASS / CLOSED (Work Package PR #35; Implementation PR #36; Closure PR #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be)
 001F-C = COMPLETE / PASS / CLOSED (Work Package PR #38; Implementation PR #39; Closure PR #40; main closure 63d1d2d3923d531b032d092eeb87d792f82eabaa)
-001F-D = IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS
-001F-E through 001F-F = PROPOSED / NOT STARTED / NOT AUTHORIZED
+001F-D = COMPLETE / PASS / CLOSED (Work Package PR #41; Implementation PR #42; Closure PR #43; main closure 9df4a5631b3e96b3984d1c91d1335bc416528584)
+001F-E = LOCAL DEVELOPMENT MIGRATION VALIDATION / SCOPE REMEDIATION IN PROGRESS
+001F-F = PROPOSED / NOT STARTED / NOT AUTHORIZED
 Global Architecture Gate = FAIL
 Production Deployment = NO
 ```
@@ -145,8 +151,8 @@ Production Deployment = NO
 ## Immediate sequence
 
 ```text
-1. Review and merge the D post-merge closure.
-2. Execute E Dev Migration validation only after the fail-closed target identity and backup gate.
+1. Merge the E local-scope remediation.
+2. Execute E only against `http://erp.b` after the local identity and backup/reconstructability gate.
 3. Continue remaining Architecture Gate packages separately.
 4. Keep Global Architecture Gate FAIL.
 5. Keep MVP1, UAT and Deployment blocked.

@@ -406,3 +406,13 @@ Validation: isolated Redis 8.10 cache, health, real queue worker, deterministic 
 Current state: D IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS; E is next after closure.
 Global Architecture Gate: FAIL. No migration, real database, menu, UAT or deployment change.
 ```
+
+## 2026-08-05 — 001F-E local environment scope remediation
+
+```text
+Current environment contract: LOCAL http://erp.b at /Users/a/AI/007/erpbeyourlovercom; REMOTE_DEV https://deverp.beyourlover.com; PRODUCTION https://erp.beyourlover.com.
+001F-E is Local Development Migration Validation only. Remote server access, remote deployment, remote database access, remote migration, Staging, UAT and Production remain excluded.
+HISTORICAL SAFETY RECORD: the earlier fail-closed result was correct under an incorrect remote-Dev assumption; no remote connection, remote database access, remote migration or Production access was attempted.
+Current state: E scope remediation in progress; local identity and backup/reconstructability gates remain mandatory before any local database mutation.
+Global Architecture Gate: FAIL. MVP1: NOT STARTED / 0%.
+```

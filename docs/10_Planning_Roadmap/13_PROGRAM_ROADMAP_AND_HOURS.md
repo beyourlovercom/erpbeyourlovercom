@@ -58,8 +58,9 @@ The Program Roadmap is the top-level delivery sequence. It must not be replaced 
 001F-B4 Runtime / Audit / Sync Boundary Migration COMPLETE / PASS / CLOSED
 001F-B5 Shell / Dashboard Boundary & Compatibility Cleanup COMPLETE / PASS / CLOSED (PR #37)
 001F-C MySQL Two-Connection Concurrency Validation COMPLETE / PASS / CLOSED (PR #40)
-001F-D Redis / Queue / Scheduler Runtime Validation IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS
-001F-E through 001F-F                 PROPOSED / NOT AUTHORIZED
+001F-D Redis / Queue / Scheduler Runtime Validation COMPLETE / PASS / CLOSED
+001F-E Local Development Migration Validation SCOPE REMEDIATION IN PROGRESS / LOCAL ONLY
+001F-F                                 PROPOSED / NOT AUTHORIZED
 Global Architecture Gate              FAIL
 ```
 
@@ -68,9 +69,9 @@ Global Architecture Gate              FAIL
 ```text
 GITHUB_FACT: PR #24 merged the B1 contract into main at b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f.
 GOVERNANCE_CLOSURE_FACT: PR #25 is the B1 governance closure PR.
-GOVERNANCE_FACT: 001F-B1 is COMPLETE / PASS / CLOSED; 001F-B2 is COMPLETE / PASS / CLOSED through PR #28; B3 is COMPLETE / PASS / CLOSED through PR #31; B4 is COMPLETE / PASS / CLOSED through PR #34; B5 is COMPLETE / PASS / CLOSED through PR #37; C is COMPLETE / PASS / CLOSED through PR #40; D Work Package is formalized and implementation-authorized; E-F are not started.
+GOVERNANCE_FACT: 001F-B1 is COMPLETE / PASS / CLOSED; 001F-B2 is COMPLETE / PASS / CLOSED through PR #28; B3 is COMPLETE / PASS / CLOSED through PR #31; B4 is COMPLETE / PASS / CLOSED through PR #34; B5 is COMPLETE / PASS / CLOSED through PR #37; C is COMPLETE / PASS / CLOSED through PR #40; D is COMPLETE / PASS / CLOSED through PR #43; E is local-scope remediation in progress; F is not started.
 SOURCE_CONFLICTS: NONE WITH EVIDENCE
-EVIDENCE_LIMITS: real-MySQL two-connection claim concurrency, live Redis, Queue Worker, Scheduler and Dev Migration remain unverified.
+EVIDENCE_LIMITS: local development migration validation remains unverified. Remote Dev, Staging and Production are outside current 001F-E scope.
 ```
 
 ## Current Architecture Migration Estimate
@@ -78,9 +79,9 @@ EVIDENCE_LIMITS: real-MySQL two-connection claim concurrency, live Redis, Queue 
 ```text
 001F_B2_TO_B5_KNOWN_ESTIMATE: 4–8 Codex / 20–40h
 CURRENT_B2_TO_B5_PLANNING_VALUE: 30h
-CURRENT_PACKAGE: ERP-ARCH-MIGRATION-001F-D / POST-MERGE CLOSURE
+CURRENT_PACKAGE: ERP-ARCH-MIGRATION-001F-E / LOCAL DEVELOPMENT SCOPE REMEDIATION
 B5_CLOSURE_PR: #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be
-D_CURRENT_DEPENDENCY: post-merge closure review and merge; then E Dev Migration validation.
+E_CURRENT_DEPENDENCY: local-only Work Package, then local identity and backup/reconstructability gate.
 001F_C_TO_001F_F_ESTIMATE: UNKNOWN WITH EVIDENCE
 TOTAL_ARCHITECTURE_MIGRATION_REMAINING: UNKNOWN WITH EVIDENCE
 ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
