@@ -2,7 +2,7 @@
 
 namespace App\Http\Middleware;
 
-use App\Support\ErpShellNavigation;
+use App\Modules\Shell\Application\ErpShellNavigation;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 

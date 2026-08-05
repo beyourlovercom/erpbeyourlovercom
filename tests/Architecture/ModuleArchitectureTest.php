@@ -2,13 +2,18 @@
 
 namespace Tests\Architecture;
 
+use App\Modules\Audit\Providers\AuditServiceProvider;
+use App\Modules\Dashboard\Providers\DashboardServiceProvider;
+use App\Modules\Identity\Providers\IdentityServiceProvider;
 use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
-use App\Modules\Identity\Providers\IdentityServiceProvider;
 use App\Modules\Runtime\Providers\RuntimeServiceProvider;
-use App\Modules\Audit\Providers\AuditServiceProvider;
+use App\Modules\Shell\Providers\ShellServiceProvider;
 use App\Modules\Sync\Providers\SyncServiceProvider;
 use App\Providers\AppServiceProvider;
+use App\Support\AuthorizationKeys;
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Routing\Route;
 use Illuminate\Support\ServiceProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -35,6 +40,9 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Audit/Infrastructure/ImmutableAuditBuilder.php',
         'app/Modules/Audit/Infrastructure/Models/AuditRecord.php',
         'app/Modules/Audit/Providers/AuditServiceProvider.php',
+        'app/Modules/Dashboard/Experience/Controllers/DashboardController.php',
+        'app/Modules/Dashboard/Experience/Routes/web.php',
+        'app/Modules/Dashboard/Providers/DashboardServiceProvider.php',
         'app/Modules/Identity/Application/AuthorizationKeys.php',
         'app/Modules/Identity/Application/Contracts/AuditRecorder.php',
         'app/Modules/Identity/Application/DataScope.php',
@@ -59,6 +67,12 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Runtime/Experience/Routes/web.php',
         'app/Modules/Runtime/Infrastructure/RedisRuntimeProbe.php',
         'app/Modules/Runtime/Providers/RuntimeServiceProvider.php',
+        'app/Modules/Shell/Application/ErpShellNavigation.php',
+        'app/Modules/Shell/Application/LegacyErpNavigationPaths.php',
+        'app/Modules/Shell/Experience/Controllers/ErpShellController.php',
+        'app/Modules/Shell/Experience/Controllers/ShellPlaceholderController.php',
+        'app/Modules/Shell/Experience/Routes/web.php',
+        'app/Modules/Shell/Providers/ShellServiceProvider.php',
         'app/Modules/Sync/Application/Contracts/SyncOutboxRepository.php',
         'app/Modules/Sync/Application/SyncOutboxService.php',
         'app/Modules/Sync/Application/SyncOutboxStatus.php',
@@ -78,6 +92,11 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Audit/Infrastructure',
         'app/Modules/Audit/Infrastructure/Models',
         'app/Modules/Audit/Providers',
+        'app/Modules/Dashboard',
+        'app/Modules/Dashboard/Experience',
+        'app/Modules/Dashboard/Experience/Controllers',
+        'app/Modules/Dashboard/Experience/Routes',
+        'app/Modules/Dashboard/Providers',
         'app/Modules/Identity',
         'app/Modules/Identity/Application',
         'app/Modules/Identity/Application/Contracts',
@@ -101,6 +120,12 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Runtime/Experience/Routes',
         'app/Modules/Runtime/Infrastructure',
         'app/Modules/Runtime/Providers',
+        'app/Modules/Shell',
+        'app/Modules/Shell/Application',
+        'app/Modules/Shell/Experience',
+        'app/Modules/Shell/Experience/Controllers',
+        'app/Modules/Shell/Experience/Routes',
+        'app/Modules/Shell/Providers',
         'app/Modules/Sync',
         'app/Modules/Sync/Application',
         'app/Modules/Sync/Application/Contracts',
@@ -218,6 +243,8 @@ final class ModuleArchitectureTest extends TestCase
             'app/Modules/Runtime/Application/QueueName.php',
             'app/Modules/Runtime/Application/RedisClientCapability.php',
             'app/Modules/Runtime/Application/RuntimeHealthService.php',
+            'app/Modules/Shell/Application/ErpShellNavigation.php',
+            'app/Modules/Shell/Application/LegacyErpNavigationPaths.php',
             'app/Modules/Sync/Application/Contracts/SyncOutboxRepository.php',
             'app/Modules/Sync/Application/SyncOutboxService.php',
             'app/Modules/Sync/Application/SyncOutboxStatus.php',
@@ -357,20 +384,24 @@ PHP;
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
         self::assertSame('bd2da50aaf6178abed7feb11016cf28d731996f53c3260f9a4a7654aed3fbffd', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame(self::ROUTE_NAMES, $this->routeNames(), 'COMPAT-001 route names changed');
-        $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, \App\Support\AuthorizationKeys::cases())));
+        $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);
         self::assertSame(self::PERMISSION_KEYS, $permissionKeys, 'COMPAT-001 permission keys changed');
         $appProvider = (string) file_get_contents($this->path('app/Providers/AppServiceProvider.php'));
         $auditProvider = (string) file_get_contents($this->path('app/Modules/Audit/Providers/AuditServiceProvider.php'));
         self::assertStringContainsString('AuditWriter::class', $auditProvider);
         $identityFortify = (string) file_get_contents($this->path('app/Modules/Identity/Experience/Fortify/IdentityFortify.php'));
-        foreach (['Gate::before', 'Gate::define', 'AuthorizationKeys::cases'] as $evidence) self::assertStringContainsString($evidence, $identityFortify);
+        foreach (['Gate::before', 'Gate::define', 'AuthorizationKeys::cases'] as $evidence) {
+            self::assertStringContainsString($evidence, $identityFortify);
+        }
         self::assertSame(ServiceProvider::class, get_parent_class(ModulesServiceProvider::class));
         self::assertSame([
             IdentityServiceProvider::class,
             RuntimeServiceProvider::class,
             AuditServiceProvider::class,
             SyncServiceProvider::class,
+            ShellServiceProvider::class,
+            DashboardServiceProvider::class,
         ], ModuleManifest::providers());
         self::assertSame([AppServiceProvider::class, ModulesServiceProvider::class], require $this->path('bootstrap/providers.php'));
     }
@@ -381,13 +412,18 @@ PHP;
         $files = [];
         foreach (glob($this->path('app/Modules/*'), GLOB_ONLYDIR) ?: [] as $module) {
             $directory = $module.'/'.$layer;
-            if (! is_dir($directory)) continue;
+            if (! is_dir($directory)) {
+                continue;
+            }
             $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS));
-            foreach ($iterator as $file) if ($file->isFile() && $file->getExtension() === 'php') {
-                $files[] = str_replace($this->path().'/', '', $file->getPathname());
+            foreach ($iterator as $file) {
+                if ($file->isFile() && $file->getExtension() === 'php') {
+                    $files[] = str_replace($this->path().'/', '', $file->getPathname());
+                }
             }
         }
         sort($files);
+
         return $files;
     }
 
@@ -398,6 +434,7 @@ PHP;
         foreach ($files as $file) {
             $records = [...$records, ...$this->sourceViolations($ruleId, $file, (string) file_get_contents($this->path($file)), $forbidden)];
         }
+
         return $records;
     }
 
@@ -424,6 +461,7 @@ PHP;
                     $inUse = false;
                     $usePrefix = '';
                 }
+
                 continue;
             }
             [$type, $text, $line] = $token;
@@ -432,6 +470,7 @@ PHP;
             }
             if ($type === T_NAMESPACE) {
                 $inNamespace = true;
+
                 continue;
             }
             if ($inNamespace) {
@@ -447,7 +486,7 @@ PHP;
             } elseif (in_array($type, [T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED, T_STRING], true) || (defined('T_NAME_RELATIVE') && $type === T_NAME_RELATIVE)) {
                 $symbol = trim($text, "\\ \t\r\n");
                 if ($inUse && $braceDepth > 0 && $usePrefix !== '' && $type !== T_STRING) {
-                    $symbol = trim($usePrefix, "\\").'\\'.$symbol;
+                    $symbol = trim($usePrefix, '\\').'\\'.$symbol;
                 }
                 if ($inUse && $braceDepth === 0 && $type !== T_STRING) {
                     $usePrefix = trim($text, "\\ \t\r\n");
@@ -458,9 +497,13 @@ PHP;
             }
             if ($inUse && $braceDepth === 0 && $type !== T_STRING) {
                 $nextIndex = $tokenIndex + 1;
-                while (isset($tokens[$nextIndex]) && is_array($tokens[$nextIndex]) && $tokens[$nextIndex][0] === T_WHITESPACE) $nextIndex++;
+                while (isset($tokens[$nextIndex]) && is_array($tokens[$nextIndex]) && $tokens[$nextIndex][0] === T_WHITESPACE) {
+                    $nextIndex++;
+                }
                 $nextToken = $tokens[$nextIndex] ?? null;
-                if ($nextToken === '{' || (is_array($nextToken) && $nextToken[0] === T_NS_SEPARATOR)) continue;
+                if ($nextToken === '{' || (is_array($nextToken) && $nextToken[0] === T_NS_SEPARATOR)) {
+                    continue;
+                }
             }
             foreach ($forbidden as $dependency) {
                 $matches = $dependency === 'App\\Modules\\'
@@ -472,6 +515,7 @@ PHP;
                 }
             }
         }
+
         return $records;
     }
 
@@ -491,6 +535,7 @@ PHP;
         if ($symbolMatches[1] === $fileMatches[1]) {
             return false;
         }
+
         return $ruleId === 'DOM-001'
             || ($ruleId === 'APP-001' && str_starts_with($symbolMatches[2], 'Application\\Internal\\'));
     }
@@ -508,6 +553,7 @@ PHP;
         if ($ruleId === 'APP-001') {
             return ['App\\Modules\\'];
         }
+
         return [];
     }
 
@@ -545,8 +591,10 @@ PHP;
                     'REASON' => 'declared namespace does not match module file path',
                 ]];
             }
+
             return [];
         }
+
         return [[
             'RULE_ID' => $ruleId,
             'FILE' => $file,
@@ -581,13 +629,16 @@ PHP;
         foreach (glob($this->path('app/Modules/*/Providers'), GLOB_ONLYDIR) ?: [] as $directory) {
             $files = [...$files, ...$this->filesUnder($directory)];
         }
+
         return $this->tokenizerViolations('PROV-001', $files, $this->providerForbidden());
     }
 
     /** @param list<string> $expected */
     private function assertFixedFileSet(array $expected, string $ruleId, string $directory): void
     {
-        foreach ($expected as $path) self::assertFileExists($this->path($path));
+        foreach ($expected as $path) {
+            self::assertFileExists($this->path($path));
+        }
         self::assertSame($expected, $this->filesUnder($this->path($directory)), $ruleId.' baseline file set changed');
     }
 
@@ -595,23 +646,41 @@ PHP;
     private function filesUnder(string $directory): array
     {
         $files = [];
-        if (is_file($directory)) return [str_replace($this->path().'/', '', $directory)];
-        if (! is_dir($directory)) return [];
+        if (is_file($directory)) {
+            return [str_replace($this->path().'/', '', $directory)];
+        }
+        if (! is_dir($directory)) {
+            return [];
+        }
         $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS));
-        foreach ($iterator as $file) if ($file->isFile() && $file->getExtension() === 'php') $files[] = str_replace($this->path().'/', '', $file->getPathname());
+        foreach ($iterator as $file) {
+            if ($file->isFile() && $file->getExtension() === 'php') {
+                $files[] = str_replace($this->path().'/', '', $file->getPathname());
+            }
+        }
         sort($files);
+
         return $files;
     }
 
     /** @return list<string> */
     private function allFilesUnder(string $directory): array
     {
-        if (is_file($directory)) return [str_replace($this->path().'/', '', $directory)];
-        if (! is_dir($directory)) return [];
+        if (is_file($directory)) {
+            return [str_replace($this->path().'/', '', $directory)];
+        }
+        if (! is_dir($directory)) {
+            return [];
+        }
         $files = [];
         $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS));
-        foreach ($iterator as $file) if ($file->isFile()) $files[] = str_replace($this->path().'/', '', $file->getPathname());
+        foreach ($iterator as $file) {
+            if ($file->isFile()) {
+                $files[] = str_replace($this->path().'/', '', $file->getPathname());
+            }
+        }
         sort($files);
+
         return $files;
     }
 
@@ -620,8 +689,13 @@ PHP;
     {
         $directories = [];
         $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::SELF_FIRST);
-        foreach ($iterator as $file) if ($file->isDir()) $directories[] = str_replace($this->path().'/', '', $file->getPathname());
+        foreach ($iterator as $file) {
+            if ($file->isDir()) {
+                $directories[] = str_replace($this->path().'/', '', $file->getPathname());
+            }
+        }
         sort($directories);
+
         return $directories;
     }
 
@@ -640,12 +714,13 @@ PHP;
     private function routeNames(): array
     {
         $application = require $this->path('bootstrap/app.php');
-        $application->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+        $application->make(Kernel::class)->bootstrap();
         $names = array_values(array_filter(array_map(
-            fn (\Illuminate\Routing\Route $route): ?string => $route->getName(),
+            fn (Route $route): ?string => $route->getName(),
             $application->make('router')->getRoutes()->getRoutes(),
         ), fn (?string $name): bool => $name !== null));
         sort($names);
+
         return $names;
     }
 }

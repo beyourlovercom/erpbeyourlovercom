@@ -2,9 +2,11 @@
 
 namespace App\Modules;
 
+use App\Modules\Audit\Providers\AuditServiceProvider;
+use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
 use App\Modules\Runtime\Providers\RuntimeServiceProvider;
-use App\Modules\Audit\Providers\AuditServiceProvider;
+use App\Modules\Shell\Providers\ShellServiceProvider;
 use App\Modules\Sync\Providers\SyncServiceProvider;
 use Illuminate\Support\ServiceProvider;
 use LogicException;
@@ -21,11 +23,13 @@ final class ModuleManifest
             RuntimeServiceProvider::class,
             AuditServiceProvider::class,
             SyncServiceProvider::class,
+            ShellServiceProvider::class,
+            DashboardServiceProvider::class,
         ];
     }
 
     /**
-     * @param list<class-string> $providers
+     * @param  list<class-string>  $providers
      * @return list<class-string<ServiceProvider>>
      */
     public static function validate(array $providers): array

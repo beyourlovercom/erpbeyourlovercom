@@ -2,11 +2,13 @@
 
 namespace Tests\Architecture;
 
+use App\Modules\Audit\Providers\AuditServiceProvider;
+use App\Modules\Dashboard\Providers\DashboardServiceProvider;
+use App\Modules\Identity\Providers\IdentityServiceProvider;
 use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
-use App\Modules\Identity\Providers\IdentityServiceProvider;
 use App\Modules\Runtime\Providers\RuntimeServiceProvider;
-use App\Modules\Audit\Providers\AuditServiceProvider;
+use App\Modules\Shell\Providers\ShellServiceProvider;
 use App\Modules\Sync\Providers\SyncServiceProvider;
 use App\Providers\AppServiceProvider;
 use Illuminate\Contracts\Foundation\Application;
@@ -37,6 +39,8 @@ final class ModuleProviderTest extends TestCase
             RuntimeServiceProvider::class,
             AuditServiceProvider::class,
             SyncServiceProvider::class,
+            ShellServiceProvider::class,
+            DashboardServiceProvider::class,
         ];
         self::assertSame($providers, ModuleManifest::providers());
         $application = $this->createMock(Application::class);
@@ -73,6 +77,8 @@ final class ModuleProviderTest extends TestCase
             RuntimeServiceProvider::class,
             AuditServiceProvider::class,
             SyncServiceProvider::class,
+            ShellServiceProvider::class,
+            DashboardServiceProvider::class,
         ], ModuleManifest::validate([
             AppServiceProvider::class,
             ModulesServiceProvider::class,
@@ -80,6 +86,8 @@ final class ModuleProviderTest extends TestCase
             RuntimeServiceProvider::class,
             AuditServiceProvider::class,
             SyncServiceProvider::class,
+            ShellServiceProvider::class,
+            DashboardServiceProvider::class,
         ]));
     }
 

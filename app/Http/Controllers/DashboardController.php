@@ -2,14 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Inertia\Inertia;
-use Inertia\Response;
+use App\Modules\Dashboard\Experience\Controllers\DashboardController;
 
-class DashboardController extends Controller
-{
-    public function __invoke(Request $request): Response
-    {
-        return Inertia::render('Dashboard/Index');
-    }
-}
+class_alias(DashboardController::class, __NAMESPACE__.'\\DashboardController');
