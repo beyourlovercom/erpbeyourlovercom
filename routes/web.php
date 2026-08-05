@@ -2,8 +2,6 @@
 
 use App\Http\Controllers\ErpShellController;
 use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\AuditRecordController;
-use App\Http\Controllers\RuntimeHealthController;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Support\LegacyErpNavigationPaths;
 use Inertia\Inertia;
@@ -11,12 +9,6 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Gate;
 
 Route::middleware(['auth', 'can:dashboard.view'])->get('/dashboard', DashboardController::class)->name('dashboard');
-Route::get('/system/runtime/health', RuntimeHealthController::class)
-    ->middleware(['auth', 'can:system.permissions.manage'])
-    ->name('system.runtime.health');
-Route::get('/system/audit-records', AuditRecordController::class)
-    ->middleware(['auth', 'can:audit.view'])
-    ->name('system.audit-records.index');
 $shellModules = collect(config('erp_shell_navigation'))->where('placeholder', true);
 $legacyPathSupport = app(LegacyErpNavigationPaths::class);
 $legacyPaths = $legacyPathSupport->all(config('erp_navigation'));

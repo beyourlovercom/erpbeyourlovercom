@@ -5,6 +5,9 @@ namespace Tests\Architecture;
 use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
+use App\Modules\Runtime\Providers\RuntimeServiceProvider;
+use App\Modules\Audit\Providers\AuditServiceProvider;
+use App\Modules\Sync\Providers\SyncServiceProvider;
 use App\Providers\AppServiceProvider;
 use Illuminate\Support\ServiceProvider;
 use PHPUnit\Framework\TestCase;
@@ -20,6 +23,18 @@ final class ModuleArchitectureTest extends TestCase
     private const BASELINE = '7e1f0a7dbaa2b686be552c3683680121fa6f09c5';
 
     private const MODULE_FILES = [
+        'app/Modules/Audit/Application/AuditActor.php',
+        'app/Modules/Audit/Application/AuditService.php',
+        'app/Modules/Audit/Application/AuditSource.php',
+        'app/Modules/Audit/Application/AuditWriteException.php',
+        'app/Modules/Audit/Application/Contracts/AuditRecorder.php',
+        'app/Modules/Audit/Application/Contracts/AuditWriter.php',
+        'app/Modules/Audit/Experience/Controllers/AuditRecordController.php',
+        'app/Modules/Audit/Experience/Routes/web.php',
+        'app/Modules/Audit/Infrastructure/EloquentAuditWriter.php',
+        'app/Modules/Audit/Infrastructure/ImmutableAuditBuilder.php',
+        'app/Modules/Audit/Infrastructure/Models/AuditRecord.php',
+        'app/Modules/Audit/Providers/AuditServiceProvider.php',
         'app/Modules/Identity/Application/AuthorizationKeys.php',
         'app/Modules/Identity/Application/Contracts/AuditRecorder.php',
         'app/Modules/Identity/Application/DataScope.php',
@@ -34,9 +49,35 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Identity/Providers/IdentityServiceProvider.php',
         'app/Modules/ModuleManifest.php',
         'app/Modules/ModulesServiceProvider.php',
+        'app/Modules/Runtime/Application/Contracts/RedisRuntimeProbe.php',
+        'app/Modules/Runtime/Application/QueueJobConvention.php',
+        'app/Modules/Runtime/Application/QueueName.php',
+        'app/Modules/Runtime/Application/RedisClientCapability.php',
+        'app/Modules/Runtime/Application/RuntimeHealthService.php',
+        'app/Modules/Runtime/Experience/Console/Commands/RuntimeHealthCommand.php',
+        'app/Modules/Runtime/Experience/Controllers/RuntimeHealthController.php',
+        'app/Modules/Runtime/Experience/Routes/web.php',
+        'app/Modules/Runtime/Infrastructure/RedisRuntimeProbe.php',
+        'app/Modules/Runtime/Providers/RuntimeServiceProvider.php',
+        'app/Modules/Sync/Application/Contracts/SyncOutboxRepository.php',
+        'app/Modules/Sync/Application/SyncOutboxService.php',
+        'app/Modules/Sync/Application/SyncOutboxStatus.php',
+        'app/Modules/Sync/Application/SyncOutboxWriteException.php',
+        'app/Modules/Sync/Infrastructure/EloquentSyncOutboxRepository.php',
+        'app/Modules/Sync/Infrastructure/Models/SyncOutbox.php',
+        'app/Modules/Sync/Providers/SyncServiceProvider.php',
     ];
 
     private const MODULE_DIRECTORIES = [
+        'app/Modules/Audit',
+        'app/Modules/Audit/Application',
+        'app/Modules/Audit/Application/Contracts',
+        'app/Modules/Audit/Experience',
+        'app/Modules/Audit/Experience/Controllers',
+        'app/Modules/Audit/Experience/Routes',
+        'app/Modules/Audit/Infrastructure',
+        'app/Modules/Audit/Infrastructure/Models',
+        'app/Modules/Audit/Providers',
         'app/Modules/Identity',
         'app/Modules/Identity/Application',
         'app/Modules/Identity/Application/Contracts',
@@ -50,6 +91,22 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Identity/Infrastructure',
         'app/Modules/Identity/Infrastructure/Models',
         'app/Modules/Identity/Providers',
+        'app/Modules/Runtime',
+        'app/Modules/Runtime/Application',
+        'app/Modules/Runtime/Application/Contracts',
+        'app/Modules/Runtime/Experience',
+        'app/Modules/Runtime/Experience/Console',
+        'app/Modules/Runtime/Experience/Console/Commands',
+        'app/Modules/Runtime/Experience/Controllers',
+        'app/Modules/Runtime/Experience/Routes',
+        'app/Modules/Runtime/Infrastructure',
+        'app/Modules/Runtime/Providers',
+        'app/Modules/Sync',
+        'app/Modules/Sync/Application',
+        'app/Modules/Sync/Application/Contracts',
+        'app/Modules/Sync/Infrastructure',
+        'app/Modules/Sync/Infrastructure/Models',
+        'app/Modules/Sync/Providers',
     ];
 
     private const ROUTE_NAMES = [
@@ -147,9 +204,24 @@ final class ModuleArchitectureTest extends TestCase
         $infrastructureDependencyFiles = [...$domainFiles, ...$applicationFiles];
         self::assertSame([], $domainFiles);
         self::assertSame([
+            'app/Modules/Audit/Application/AuditActor.php',
+            'app/Modules/Audit/Application/AuditService.php',
+            'app/Modules/Audit/Application/AuditSource.php',
+            'app/Modules/Audit/Application/AuditWriteException.php',
+            'app/Modules/Audit/Application/Contracts/AuditRecorder.php',
+            'app/Modules/Audit/Application/Contracts/AuditWriter.php',
             'app/Modules/Identity/Application/AuthorizationKeys.php',
             'app/Modules/Identity/Application/Contracts/AuditRecorder.php',
             'app/Modules/Identity/Application/DataScope.php',
+            'app/Modules/Runtime/Application/Contracts/RedisRuntimeProbe.php',
+            'app/Modules/Runtime/Application/QueueJobConvention.php',
+            'app/Modules/Runtime/Application/QueueName.php',
+            'app/Modules/Runtime/Application/RedisClientCapability.php',
+            'app/Modules/Runtime/Application/RuntimeHealthService.php',
+            'app/Modules/Sync/Application/Contracts/SyncOutboxRepository.php',
+            'app/Modules/Sync/Application/SyncOutboxService.php',
+            'app/Modules/Sync/Application/SyncOutboxStatus.php',
+            'app/Modules/Sync/Application/SyncOutboxWriteException.php',
         ], $applicationFiles);
         self::assertSame($applicationFiles, $infrastructureDependencyFiles);
         self::assertNotContains('app/Modules/Future/Providers/Provider.php', $domainFiles);
@@ -289,11 +361,17 @@ PHP;
         sort($permissionKeys);
         self::assertSame(self::PERMISSION_KEYS, $permissionKeys, 'COMPAT-001 permission keys changed');
         $appProvider = (string) file_get_contents($this->path('app/Providers/AppServiceProvider.php'));
-        self::assertStringContainsString('AuditWriter::class', $appProvider);
+        $auditProvider = (string) file_get_contents($this->path('app/Modules/Audit/Providers/AuditServiceProvider.php'));
+        self::assertStringContainsString('AuditWriter::class', $auditProvider);
         $identityFortify = (string) file_get_contents($this->path('app/Modules/Identity/Experience/Fortify/IdentityFortify.php'));
         foreach (['Gate::before', 'Gate::define', 'AuthorizationKeys::cases'] as $evidence) self::assertStringContainsString($evidence, $identityFortify);
         self::assertSame(ServiceProvider::class, get_parent_class(ModulesServiceProvider::class));
-        self::assertSame([IdentityServiceProvider::class], ModuleManifest::providers());
+        self::assertSame([
+            IdentityServiceProvider::class,
+            RuntimeServiceProvider::class,
+            AuditServiceProvider::class,
+            SyncServiceProvider::class,
+        ], ModuleManifest::providers());
         self::assertSame([AppServiceProvider::class, ModulesServiceProvider::class], require $this->path('bootstrap/providers.php'));
     }
 

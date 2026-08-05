@@ -3,12 +3,12 @@
 namespace App\Modules\Identity\Experience\Fortify;
 
 use App\Modules\Identity\Application\AuthorizationKeys;
+use App\Modules\Audit\Application\AuditActor;
+use App\Modules\Audit\Application\AuditSource;
+use App\Modules\Audit\Application\AuditWriteException;
+use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Identity\Experience\Middleware\ApplyLocalAdminBypass;
 use App\Modules\Identity\Infrastructure\Models\User;
-use App\Support\Audit\AuditActor;
-use App\Modules\Identity\Application\Contracts\AuditRecorder;
-use App\Support\Audit\AuditSource;
-use App\Support\Audit\AuditWriteException;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;

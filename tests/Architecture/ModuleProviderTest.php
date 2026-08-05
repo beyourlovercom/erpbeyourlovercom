@@ -5,6 +5,9 @@ namespace Tests\Architecture;
 use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
+use App\Modules\Runtime\Providers\RuntimeServiceProvider;
+use App\Modules\Audit\Providers\AuditServiceProvider;
+use App\Modules\Sync\Providers\SyncServiceProvider;
 use App\Providers\AppServiceProvider;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
@@ -27,11 +30,19 @@ final class ModuleProviderTest extends TestCase
         self::assertSame(ServiceProvider::class, get_parent_class(ModulesServiceProvider::class));
     }
 
-    public function test_manifest_registers_identity_and_invalid_registration_fails_fast(): void
+    public function test_manifest_registers_modules_and_invalid_registration_fails_fast(): void
     {
-        self::assertSame([IdentityServiceProvider::class], ModuleManifest::providers());
+        $providers = [
+            IdentityServiceProvider::class,
+            RuntimeServiceProvider::class,
+            AuditServiceProvider::class,
+            SyncServiceProvider::class,
+        ];
+        self::assertSame($providers, ModuleManifest::providers());
         $application = $this->createMock(Application::class);
-        $application->expects(self::once())->method('register')->with(IdentityServiceProvider::class);
+        $application->expects(self::exactly(count($providers)))
+            ->method('register')
+            ->with(self::callback(fn (string $provider): bool => in_array($provider, $providers, true)));
         $provider = new ModulesServiceProvider($application);
         $provider->register();
         self::assertSame([], ModuleManifest::validate([]));
@@ -59,7 +70,17 @@ final class ModuleProviderTest extends TestCase
             AppServiceProvider::class,
             ModulesServiceProvider::class,
             IdentityServiceProvider::class,
-        ], ModuleManifest::validate([AppServiceProvider::class, ModulesServiceProvider::class, IdentityServiceProvider::class]));
+            RuntimeServiceProvider::class,
+            AuditServiceProvider::class,
+            SyncServiceProvider::class,
+        ], ModuleManifest::validate([
+            AppServiceProvider::class,
+            ModulesServiceProvider::class,
+            IdentityServiceProvider::class,
+            RuntimeServiceProvider::class,
+            AuditServiceProvider::class,
+            SyncServiceProvider::class,
+        ]));
     }
 
     public function test_bootstrap_provider_order_and_existing_providers_are_frozen(): void

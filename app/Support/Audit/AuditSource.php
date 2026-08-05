@@ -2,10 +2,4 @@
 
 namespace App\Support\Audit;
 
-enum AuditSource: string
-{
-    case Fortify = 'fortify';
-    case InternalSystem = 'system';
-    case UserProvisioning = 'erp:user:create';
-    case SyncOutbox = 'sync:outbox';
-}
+class_alias(\App\Modules\Audit\Application\AuditSource::class, __NAMESPACE__.'\\AuditSource');
