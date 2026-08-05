@@ -27,7 +27,7 @@ Main SHA: 3218473b1cfc93f098a2e9607aabe9adb16bcf0d
 
 ERP-ARCH-MIGRATION-001F
 Architecture Re-audit
-Status: COMPLETE / PASS / FINAL CLOSURE IN PROGRESS
+Status: COMPLETE / PASS / CLOSED
 
 ERP-ARCH-MIGRATION-001F-A
 Governance Status Correction & Gate Scope Freeze
@@ -118,8 +118,8 @@ Work Log: docs/60_Codex_Operations/logs/2026-08-05_ERP-ARCH-MIGRATION-001F-E.md
 Work Package PR: #45; Implementation PR: #46; Closure PR: #47; Main Closure SHA: d56bc76fb1d86b990a4999ebc20d26cd48365c94
 
 ERP-ARCH-MIGRATION-001F-F
-Status: IMPLEMENTATION COMPLETE / PASS / MERGED / FINAL CLOSURE IN PROGRESS
-Work Package PR: #48; Implementation PR: #49
+Status: COMPLETE / PASS / CLOSED
+Work Package PR: #48; Implementation PR: #49; Closure PR: #50; final SHA record PR: #51; Main SHA: a13becbefe1272ffb59cb2d78369df544e68ca97
 Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-F.md
 Work Log: docs/60_Codex_Operations/logs/2026-08-05_ERP-ARCH-MIGRATION-001F-F.md
 ```

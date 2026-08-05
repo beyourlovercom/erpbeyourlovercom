@@ -49,7 +49,7 @@ The Program Roadmap is the top-level delivery sequence. It must not be replaced 
 001E-A Shared UI / Design Tokens      MERGED / PASS BY PR #17
 001E-B Browser E2E Foundation         MERGED / PASS / CLOSED
 001E-C Auth / Permission / Shell E2E  MERGED / PASS / CLOSED
-001F Architecture Re-audit            COMPLETE / PASS / FINAL CLOSURE IN PROGRESS
+001F Architecture Re-audit            COMPLETE / PASS / CLOSED
 001F-A Governance Status Correction   COMPLETE / CLOSED
 001F-B Modular Boundary Decision      COMPLETE / REVIEWED / OPTION A1 APPROVED
 001F-B1 Module Architecture Contract COMPLETE / PASS / CLOSED (PR #24; closure PR #25)
@@ -60,8 +60,8 @@ The Program Roadmap is the top-level delivery sequence. It must not be replaced 
 001F-C MySQL Two-Connection Concurrency Validation COMPLETE / PASS / CLOSED (PR #40)
 001F-D Redis / Queue / Scheduler Runtime Validation COMPLETE / PASS / CLOSED
 001F-E Local Development Migration Validation COMPLETE / PASS / CLOSED
-001F-F                                 IMPLEMENTATION COMPLETE / PASS / MERGED / CLOSURE IN PROGRESS
-Global Architecture Gate              PENDING FINAL CLOSURE
+001F-F                                 COMPLETE / PASS / CLOSED (PRs #48, #49, #50, #51; main a13becbefe1272ffb59cb2d78369df544e68ca97)
+Global Architecture Gate              PASS
 ```
 
 ## Source Conflict Snapshot
@@ -69,7 +69,7 @@ Global Architecture Gate              PENDING FINAL CLOSURE
 ```text
 GITHUB_FACT: PR #24 merged the B1 contract into main at b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f.
 GOVERNANCE_CLOSURE_FACT: PR #25 is the B1 governance closure PR.
-GOVERNANCE_FACT: 001F-B1 is COMPLETE / PASS / CLOSED; 001F-B2 is COMPLETE / PASS / CLOSED through PR #28; B3 is COMPLETE / PASS / CLOSED through PR #31; B4 is COMPLETE / PASS / CLOSED through PR #34; B5 is COMPLETE / PASS / CLOSED through PR #37; C is COMPLETE / PASS / CLOSED through PR #40; D is COMPLETE / PASS / CLOSED through PR #43; E is COMPLETE / PASS / CLOSED through PR #47; F implementation is merged through PR #49 and final closure is in progress.
+GOVERNANCE_FACT: 001F-B1 is COMPLETE / PASS / CLOSED; 001F-B2 is COMPLETE / PASS / CLOSED through PR #28; B3 is COMPLETE / PASS / CLOSED through PR #31; B4 is COMPLETE / PASS / CLOSED through PR #34; B5 is COMPLETE / PASS / CLOSED through PR #37; C is COMPLETE / PASS / CLOSED through PR #40; D is COMPLETE / PASS / CLOSED through PR #43; E is COMPLETE / PASS / CLOSED through PR #47; F is COMPLETE / PASS / CLOSED through PR #50 and final SHA record PR #51; main is a13becbefe1272ffb59cb2d78369df544e68ca97.
 SOURCE_CONFLICTS: Historical pre-merge status text remains in older records; current GitHub and merged closure records are authoritative.
 EVIDENCE_LIMITS: GitHub self-approval is unavailable for the repository owner account; exact-head review basis is recorded. Remote Dev, Staging and Production remain outside contract.
 ```
@@ -79,11 +79,11 @@ EVIDENCE_LIMITS: GitHub self-approval is unavailable for the repository owner ac
 ```text
 001F_B2_TO_B5_KNOWN_ESTIMATE: 4–8 Codex / 20–40h
 CURRENT_B2_TO_B5_PLANNING_VALUE: 30h
-CURRENT_PACKAGE: ERP-ARCH-MIGRATION-001F-F / FINAL CLOSURE
+CURRENT_PACKAGE: MVP1-PREFLIGHT-001
 B5_CLOSURE_PR: #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be
 E_CURRENT_DEPENDENCY: CLOSED through PR #47.
-001F_F_ESTIMATE: 5–9h; planning value 7h
-TOTAL_ARCHITECTURE_MIGRATION_REMAINING: 0h after F closure
+001F_F_ESTIMATE: 5–9h; planning value 7h; completed and closed
+TOTAL_ARCHITECTURE_MIGRATION_REMAINING: 0h / complete
 ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
 ```
 
