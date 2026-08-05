@@ -222,7 +222,9 @@ Manual website-sync outbox and UI
 Status: ACTIVE / WORK PACKAGE
 Work Package: pending
 Work Log: pending
-Work Package: pending
+Work Package: docs/60_Codex_Operations/work-packages/MVP1-SYNC-MANUAL-001.md
+Work Log: docs/60_Codex_Operations/logs/2026-08-05_MVP1-SYNC-MANUAL-001.md
+Work Package PR: pending
 Owner Authorization: BYL-ERP-001F-TO-MVP1-LOCAL-UAT-20260805
 
 MVP1-FINANCE-ORDER-ANALYSIS-001
