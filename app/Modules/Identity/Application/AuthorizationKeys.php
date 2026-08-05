@@ -22,4 +22,10 @@ enum AuthorizationKeys: string
     case ProductsView = 'products.view';
     case GuidesView = 'guides.view';
     case AccountingView = 'accounting.view';
+    case OrdersView = 'orders.view';
+    case OrdersCreate = 'orders.create';
+    case OrdersEdit = 'orders.edit';
+    case LogisticsOperate = 'logistics.operate';
+    case SyncOperate = 'sync.operate';
+    case AnalysisView = 'analysis.view';
 }
