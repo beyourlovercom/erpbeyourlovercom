@@ -2,7 +2,7 @@
 type: current-context
 project: BYL ERP
 updated: 2026-08-05
-status: b5-post-merge-closure-in-progress
+status: c-preflight-complete-work-package-formalized
 ---
 
 # Current Context
@@ -60,14 +60,12 @@ Main Squash Commit: b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f
 Closure PR: #25
 
 Current / next package:
-ERP-ARCH-MIGRATION-001F-B5
-Title: Shell / Dashboard Boundary & Compatibility Cleanup
-Status: IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS
-Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-B5.md
-Work Log: docs/60_Codex_Operations/logs/2026-08-05_ERP-ARCH-MIGRATION-001F-B5.md
-Implementation PR: #36
-Accepted Head: 010b62d8601843d406acc322a93a4a7f4e290bd9
-Main Squash Commit: 1e876120285e988a46123742928c4307bcde934b
+ERP-ARCH-MIGRATION-001F-C
+Title: MySQL Two-Connection Concurrency Validation
+Status: PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
+Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-C.md
+Work Log: docs/60_Codex_Operations/logs/2026-08-05_ERP-ARCH-MIGRATION-001F-C.md
+Base SHA: a5035cbe0e8d4aed0bf1683c1081b4417f8936be
 
 Previous package:
 ERP-ARCH-MIGRATION-001D Runtime / Audit / Sync Foundation
@@ -129,14 +127,14 @@ B2_MAIN_SQUASH_COMMIT: 6df005f8e0e59c877d95fcf41fb5c507c507378f
 B2_MERGED_AT: 2026-08-04T13:24:22Z
 B2_CLOSURE_PR: #28
 B2_CLOSURE_SQUASH: b2bc2d6e25699bc93b6ef352bc20f593c1cacd56
-CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-B5 POST-MERGE CLOSURE
-GITHUB_STATE: B5 Work Package PR #35 MERGED; B5 Implementation PR #36 MERGED; B5 closure PR pending creation
-NEXT_DEPENDENCY: B5 post-merge closure review and merge; then 001F-C MySQL two-connection concurrency validation
+CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-C READ-ONLY PREFLIGHT / WORK PACKAGE
+GITHUB_STATE: B5 Closure PR #37 MERGED; C Work Package PR pending creation
+NEXT_DEPENDENCY: independent C Work Package review and merge
 001F-B3 = COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811)
 001F-B4 = COMPLETE / PASS / CLOSED (Work Package PR #32; Implementation PR #33; Closure PR #34; main closure 26e22150f4f729aaf321a71e052a3602df9aec61)
-001F-B5 = IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS (Work Package PR #35; Implementation PR #36; accepted Head 010b62d8601843d406acc322a93a4a7f4e290bd9; main squash 1e876120285e988a46123742928c4307bcde934b)
-001F-C through 001F-F = PROPOSED / NOT STARTED
-001F-C through 001F-F = PROPOSED / NOT AUTHORIZED
+001F-B5 = COMPLETE / PASS / CLOSED (Work Package PR #35; Implementation PR #36; Closure PR #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be)
+001F-C = PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
+001F-D through 001F-F = PROPOSED / NOT STARTED / NOT AUTHORIZED
 Global Architecture Gate = FAIL
 Production Deployment = NO
 ```
@@ -144,8 +142,8 @@ Production Deployment = NO
 ## Immediate sequence
 
 ```text
-1. Review and merge the B5 post-merge closure.
-2. Execute 001F-C MySQL two-connection concurrency validation under the same authorization.
+1. Review and merge the C Work Package.
+2. Execute C MySQL two-connection concurrency validation under the same authorization.
 3. Continue remaining Architecture Gate packages separately.
 4. Keep Global Architecture Gate FAIL.
 5. Keep MVP1, UAT and Deployment blocked.
