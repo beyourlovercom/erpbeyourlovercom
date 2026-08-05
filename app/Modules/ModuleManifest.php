@@ -3,6 +3,9 @@
 namespace App\Modules;
 
 use App\Modules\Identity\Providers\IdentityServiceProvider;
+use App\Modules\Runtime\Providers\RuntimeServiceProvider;
+use App\Modules\Audit\Providers\AuditServiceProvider;
+use App\Modules\Sync\Providers\SyncServiceProvider;
 use Illuminate\Support\ServiceProvider;
 use LogicException;
 
@@ -13,7 +16,12 @@ final class ModuleManifest
      */
     public static function providers(): array
     {
-        return [IdentityServiceProvider::class];
+        return [
+            IdentityServiceProvider::class,
+            RuntimeServiceProvider::class,
+            AuditServiceProvider::class,
+            SyncServiceProvider::class,
+        ];
     }
 
     /**

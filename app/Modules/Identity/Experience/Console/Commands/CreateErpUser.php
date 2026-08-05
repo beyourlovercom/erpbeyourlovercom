@@ -4,9 +4,9 @@ namespace App\Modules\Identity\Experience\Console\Commands;
 
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
-use App\Support\Audit\AuditActor;
-use App\Modules\Identity\Application\Contracts\AuditRecorder;
-use App\Support\Audit\AuditSource;
+use App\Modules\Audit\Application\AuditActor;
+use App\Modules\Audit\Application\AuditSource;
+use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;

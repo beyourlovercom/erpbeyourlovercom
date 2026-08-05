@@ -2,7 +2,7 @@
 type: current-context
 project: BYL ERP
 updated: 2026-08-05
-status: b3-implementation-merged-b3-closure-in-progress
+status: b4-implementation-in-progress
 ---
 
 # Current Context
@@ -62,10 +62,10 @@ Closure PR: #25
 Current / next package:
 ERP-ARCH-MIGRATION-001F-B4
 Title: Runtime / Audit / Sync Boundary Migration
-Status: PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
+Status: IMPLEMENTATION IN PROGRESS / FOCUSED VALIDATION PASSING
 Work Package: docs/60_Codex_Operations/work-packages/ERP-ARCH-MIGRATION-001F-B4.md
 Work Log: docs/60_Codex_Operations/logs/2026-08-05_ERP-ARCH-MIGRATION-001F-B4.md
-Base SHA: 0af914ebf8fc9f94b18e63e008fd78739bba6811
+Base SHA: 2a445ca6daffda8b79347b663218bf9f7c3e8d1b
 
 Previous package:
 ERP-ARCH-MIGRATION-001D Runtime / Audit / Sync Foundation
@@ -127,11 +127,11 @@ B2_MAIN_SQUASH_COMMIT: 6df005f8e0e59c877d95fcf41fb5c507c507378f
 B2_MERGED_AT: 2026-08-04T13:24:22Z
 B2_CLOSURE_PR: #28
 B2_CLOSURE_SQUASH: b2bc2d6e25699bc93b6ef352bc20f593c1cacd56
-CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-B4 READ-ONLY PREFLIGHT / WORK PACKAGE
-GITHUB_STATE: PR #31 MERGED; B4 Work Package PR pending creation
-NEXT_DEPENDENCY: Independent B4 Work Package review and merge
+CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-B4 IMPLEMENTATION
+GITHUB_STATE: PR #32 MERGED; B4 implementation branch active; implementation PR pending creation
+NEXT_DEPENDENCY: B4 implementation validation and independent review
 001F-B3 = COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811)
-001F-B4 = PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
+001F-B4 = IMPLEMENTATION IN PROGRESS / FOCUSED VALIDATION PASSING
 001F-B5 and 001F-C through 001F-F = PROPOSED / NOT STARTED
 001F-C through 001F-F = PROPOSED / NOT AUTHORIZED
 Global Architecture Gate = FAIL
@@ -141,8 +141,8 @@ Production Deployment = NO
 ## Immediate sequence
 
 ```text
-1. Complete independent review and merge the B3 Work Package.
-2. Implement, review, merge and close B3 before starting B4.
+1. Complete B4 implementation independent review, merge and closure.
+2. Execute B5 Work Package, implementation and closure under the same authorization.
 3. Continue remaining Architecture Gate packages separately.
 4. Keep Global Architecture Gate FAIL.
 5. Keep MVP1, UAT and Deployment blocked.

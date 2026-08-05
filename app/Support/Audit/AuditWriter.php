@@ -2,10 +2,4 @@
 
 namespace App\Support\Audit;
 
-use App\Models\AuditRecord;
-
-interface AuditWriter
-{
-    /** @param array<string, mixed> $attributes */
-    public function write(array $attributes): AuditRecord;
-}
+class_alias(\App\Modules\Audit\Application\Contracts\AuditWriter::class, __NAMESPACE__.'\\AuditWriter');

@@ -2,22 +2,4 @@
 
 namespace App\Support\Audit;
 
-use Illuminate\Contracts\Auth\Authenticatable;
-
-final readonly class AuditActor
-{
-    private function __construct(
-        public ?int $userId,
-        public AuditSource $source,
-    ) {}
-
-    public static function user(Authenticatable $user, AuditSource $source): self
-    {
-        return new self((int) $user->getAuthIdentifier(), $source);
-    }
-
-    public static function system(AuditSource $source): self
-    {
-        return new self(null, $source);
-    }
-}
+class_alias(\App\Modules\Audit\Application\AuditActor::class, __NAMESPACE__.'\\AuditActor');

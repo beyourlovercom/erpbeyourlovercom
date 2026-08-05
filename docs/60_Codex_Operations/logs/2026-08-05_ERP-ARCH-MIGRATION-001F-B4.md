@@ -3,7 +3,7 @@ type: work-log
 project: BYL ERP
 work_package_id: ERP-ARCH-MIGRATION-001F-B4
 updated: 2026-08-05
-status: preflight-complete-work-package-formalized
+status: implementation-in-progress-focused-validation-passing
 ---
 
 # ERP-ARCH-MIGRATION-001F-B4 Work Log
@@ -12,10 +12,10 @@ status: preflight-complete-work-package-formalized
 
 ```text
 OWNER_CONTINUOUS_AUTHORIZATION_ID: ERP-ARCH-MIGRATION-001F-CONTINUOUS-20260805
-BASE_SHA: 0af914ebf8fc9f94b18e63e008fd78739bba6811
-BRANCH: main read-only preflight; Work Package branch pending creation
-PHASE: READ-ONLY PREFLIGHT
-IMPLEMENTATION: NOT STARTED ON PREFLIGHT
+BASE_SHA: 2a445ca6daffda8b79347b663218bf9f7c3e8d1b
+BRANCH: feature/erp-arch-migration-001f-b4-runtime-audit-sync
+PHASE: IMPLEMENTATION
+IMPLEMENTATION: IN PROGRESS
 MENU_IMPACT: NO
 APPROVED_MENU_CHECK: PASS
 ```
@@ -65,7 +65,7 @@ menu/APPROVED_MENU.json
 ## Baseline Evidence
 
 ```text
-MAIN_HEAD: 0af914ebf8fc9f94b18e63e008fd78739bba6811
+MAIN_HEAD: 2a445ca6daffda8b79347b663218bf9f7c3e8d1b
 B3_CLOSURE: PR #31 merged at main 0af914ebf8fc9f94b18e63e008fd78739bba6811
 ARCHITECTURE: B3 exact-head architecture suite 16 tests / 172 assertions / PASS
 MENU_BASELINE: PASS; approved JSON unchanged
@@ -111,18 +111,18 @@ DEPLOYMENT: NO
 
 ```text
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate -> MVP1 Manual Fulfillment / Tencent Docs Replacement -> MVP1.1 WooCommerce Inbound -> MVP1.2 Single Tracking Outbound -> MVP1.3 Sync Orchestration -> Customer / Lead Pilot -> Product / Media -> WordPress Product and Image Sync -> Content / SEO -> Posts / Pages -> GA4 / GSC / Cloudflare -> Google Docs Publishing -> Full Order Workspace -> Logistics OS -> KOL OS and Social Providers -> Inventory and Procurement -> Accounting / ROI Expansion -> Shopify and Additional Integrations -> Dev UAT and Production Hardening
-CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS -> 001B MERGED / PASS -> 001C MERGED / PASS -> 001D COMPLETE / PASS -> 001E COMPLETE / PASS -> 001F-A COMPLETE / CLOSED -> 001F-B1 COMPLETE / CLOSED -> 001F-B2 COMPLETE / CLOSED -> 001F-B3 COMPLETE / PASS / CLOSED -> 001F-B4 PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED -> 001F-B5 PROPOSED / NOT STARTED -> 001F-C PROPOSED -> 001F-D PROPOSED -> 001F-E PROPOSED -> 001F-F PROPOSED -> Global Architecture Gate FAIL
+CURRENT_TRACK_PHASE_MAP: 001A MERGED / PASS -> 001B MERGED / PASS -> 001C MERGED / PASS -> 001D COMPLETE / PASS -> 001E COMPLETE / PASS -> 001F-A COMPLETE / CLOSED -> 001F-B1 COMPLETE / CLOSED -> 001F-B2 COMPLETE / CLOSED -> 001F-B3 COMPLETE / PASS / CLOSED -> 001F-B4 IMPLEMENTATION IN PROGRESS / FOCUSED VALIDATION PASSING -> 001F-B5 PROPOSED / NOT STARTED -> 001F-C PROPOSED -> 001F-D PROPOSED -> 001F-E PROPOSED -> 001F-F PROPOSED -> Global Architecture Gate FAIL
 COMPLETED_PHASES: 001A, 001B, 001C, 001D, 001E, 001F-A, 001F-B1, 001F-B2, 001F-B3
-CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-B4 READ-ONLY PREFLIGHT / WORK PACKAGE
+CURRENT_PHASE: ERP-ARCH-MIGRATION-001F-B4 IMPLEMENTATION
 CURRENT_WORK_PACKAGE: ERP-ARCH-MIGRATION-001F-B4
-PACKAGE_STATUS: PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
+PACKAGE_STATUS: IMPLEMENTATION IN PROGRESS / FOCUSED VALIDATION PASSING
 WAITING_PHASES: 001F-B5, 001F-C, 001F-D, 001F-E, 001F-F
-BASELINE: origin/main@0af914ebf8fc9f94b18e63e008fd78739bba6811
-GITHUB_STATE: B3 Closure PR #31 MERGED; B4 Work Package PR pending creation
+BASELINE: origin/main@2a445ca6daffda8b79347b663218bf9f7c3e8d1b
+GITHUB_STATE: B4 Work Package PR #32 MERGED; implementation PR pending creation
 SOURCE_CONFLICTS: NONE WITH EVIDENCE
 GLOBAL_GATE: FAIL
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: Independent B4 Work Package review and merge
+NEXT_DEPENDENCY: B4 implementation validation and independent review
 EVIDENCE_AS_OF: 2026-08-05
 ```
 
@@ -166,4 +166,27 @@ UAT: EXCLUDED
 DEPLOYMENT: EXCLUDED
 ```
 
-FINAL_STATUS: `B4_PREFLIGHT_COMPLETE_WORK_PACKAGE_FORMALIZED_IMPLEMENTATION_AUTHORIZED`
+## Implementation Evidence
+
+```text
+CANONICAL_MODULES: Runtime, Audit and Sync created under app/Modules/**
+COMPATIBILITY: Legacy App\Support and App\Models symbols are thin class aliases
+ROUTES: Runtime and Audit routes moved to module route files; URL/name/middleware/permission preserved
+PROVIDERS: Explicit deterministic order through ModuleManifest; one Audit writer binding preserved
+MIGRATION: No migration files changed or executed
+FOCUSED_VALIDATION: 82 tests / 662 assertions / PASS with ERP_LOCAL_ADMIN_BYPASS=false
+POST_REVIEW_FOCUSED_VALIDATION: 63 tests / 604 assertions / PASS with ERP_LOCAL_ADMIN_BYPASS=false
+FULL_PHPUNIT: 150 tests / 1497 assertions / PASS with ERP_LOCAL_ADMIN_BYPASS=false
+VITEST: 71 tests / PASS
+APPLICATION_TYPECHECK: PASS
+E2E_TYPECHECK: PASS
+BUILD: PASS
+BROWSER_E2E: 16 tests / PASS; disposable external SQLite and browser runtime cleaned up
+COMPOSER_VALIDATE: PASS
+DIFF_CHECK: PASS
+FSCK: PASS WITH PRE-EXISTING DANGLING OBJECTS ONLY
+GLOBAL_GATE: FAIL
+MVP1: NOT STARTED / 0%
+```
+
+FINAL_STATUS: `B4_IMPLEMENTATION_IN_PROGRESS_FOCUSED_VALIDATION_PASSING`

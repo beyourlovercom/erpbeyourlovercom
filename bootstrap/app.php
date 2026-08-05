@@ -1,7 +1,7 @@
 <?php
 
 use App\Modules\Identity\Experience\Console\Commands\CreateErpUser;
-use App\Console\Commands\RuntimeHealthCommand;
+use App\Modules\Runtime\Experience\Console\Commands\RuntimeHealthCommand;
 use App\Modules\Identity\Experience\Middleware\ApplyLocalAdminBypass;
 use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
