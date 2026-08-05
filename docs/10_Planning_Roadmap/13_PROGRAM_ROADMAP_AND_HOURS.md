@@ -58,7 +58,7 @@ The Program Roadmap is the top-level delivery sequence. It must not be replaced 
 001F-B4 Runtime / Audit / Sync Boundary Migration COMPLETE / PASS / CLOSED
 001F-B5 Shell / Dashboard Boundary & Compatibility Cleanup COMPLETE / PASS / CLOSED (PR #37)
 001F-C MySQL Two-Connection Concurrency Validation COMPLETE / PASS / CLOSED (PR #40)
-001F-D Redis / Queue / Scheduler Runtime Validation PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / IMPLEMENTATION AUTHORIZED
+001F-D Redis / Queue / Scheduler Runtime Validation IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS
 001F-E through 001F-F                 PROPOSED / NOT AUTHORIZED
 Global Architecture Gate              FAIL
 ```
@@ -78,9 +78,9 @@ EVIDENCE_LIMITS: real-MySQL two-connection claim concurrency, live Redis, Queue 
 ```text
 001F_B2_TO_B5_KNOWN_ESTIMATE: 4–8 Codex / 20–40h
 CURRENT_B2_TO_B5_PLANNING_VALUE: 30h
-CURRENT_PACKAGE: ERP-ARCH-MIGRATION-001F-D / READ-ONLY PREFLIGHT / WORK PACKAGE
+CURRENT_PACKAGE: ERP-ARCH-MIGRATION-001F-D / POST-MERGE CLOSURE
 B5_CLOSURE_PR: #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be
-D_CURRENT_DEPENDENCY: independent Work Package review and merge.
+D_CURRENT_DEPENDENCY: post-merge closure review and merge; then E Dev Migration validation.
 001F_C_TO_001F_F_ESTIMATE: UNKNOWN WITH EVIDENCE
 TOTAL_ARCHITECTURE_MIGRATION_REMAINING: UNKNOWN WITH EVIDENCE
 ACTUAL_HOURS: UNKNOWN WITH EVIDENCE

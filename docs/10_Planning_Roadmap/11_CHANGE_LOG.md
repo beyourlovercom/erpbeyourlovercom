@@ -395,3 +395,14 @@ New state: D Redis / Queue / Scheduler Runtime Validation PREFLIGHT COMPLETE / W
 D preflight: existing Runtime health and sole bounded scheduler event reviewed; Redis 8.10 installed locally but not started as a service. D confines validation to a disposable external Redis instance and deterministic Runtime-only behavior.
 Global Architecture Gate: FAIL. MVP1: NOT STARTED / 0%. No Migration, database, UAT or deployment action occurs in this Work Package.
 ```
+
+## 2026-08-05 — 001F-D implementation merged / post-merge closure opened
+
+```text
+Work Package PR: #41 merged; main squash e760e032cb6854e086bc0189bc76f0134266deba.
+Implementation PR: #42 merged after final independent review PASS at 35bf66da9e98455074fc24ba5f9cd4081cdb9f81.
+Main squash: 6fbd4b751a057ab2060a3f191df7ddf2dc0ab5a7.
+Validation: isolated Redis 8.10 cache, health, real queue worker, deterministic retry and existing scheduler event PASS; full PHPUnit 150 passed plus two isolated-environment skips; Vitest 71 PASS; typechecks/build and Browser E2E 16 PASS.
+Current state: D IMPLEMENTATION COMPLETE / PASS / MERGED / POST-MERGE CLOSURE IN PROGRESS; E is next after closure.
+Global Architecture Gate: FAIL. No migration, real database, menu, UAT or deployment change.
+```
