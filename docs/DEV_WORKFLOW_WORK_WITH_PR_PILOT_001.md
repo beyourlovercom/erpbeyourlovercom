@@ -17,7 +17,7 @@ The Owner authorizes the Work Package, base, worktree, file boundary, and valida
 
 ## Prohibitions
 
-The pilot does not authorize Migration, Deploy, Remote Dev, or Production activity. It also does not authorize business-code changes, credential handling, dependency changes, configuration changes, deletion, commit, push, or PR creation.
+The pilot does not authorize Migration, Deploy, Remote Dev, Production, business-code changes, credential handling, dependency changes, configuration changes, marking the PR Ready, merging the PR, or deleting existing branches or worktrees. The pilot explicitly authorizes one documentation-only commit, push, and one Draft PR from docs/work-with-pr-pilot-001 to main.
 
 ## Pilot Verification Steps
 
@@ -35,8 +35,8 @@ Manual QA evidence consists of the exact file path, changed-file list, section h
 
 ## Rollback Method
 
-Before Owner acceptance, discard the uncommitted documentation file from the authorized worktree if rollback is requested. No commit, push, deletion of tracked files, or other repository operation is part of this pilot.
+The Draft PR may be closed before merge; the pilot branch and worktree are retained; deleting the branch or worktree requires separate Owner authorization; reset --hard, git clean, and force push are not allowed.
 
 ## Final Pilot State
 
-The documentation record exists as a Draft PR in the authorized worktree. Validation is local only, and the Owner merge gate is waiting. No CI, review, deployment, or production result is asserted unless separately observed and recorded by the Owner.
+The authorized branch has been committed and pushed. Delivery through exactly one Draft PR targeting main is pending. The Owner merge gate remains waiting. CI and review results must not be asserted until directly observed.
