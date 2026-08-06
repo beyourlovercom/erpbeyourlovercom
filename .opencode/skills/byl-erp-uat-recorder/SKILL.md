@@ -50,9 +50,9 @@ UAT state:
 HUMAN_UAT_STATUS: IN PROGRESS
 UAT_GATE: CHANGES REQUIRED
 
-## Fail-closed UAT Git binding
+## UAT workflow guardrail
 
-Before any write, verify every binding below:
+Before any write, verify every workflow binding below:
 
 ALLOWED_REPOSITORY:
 beyourlovercom/erpbeyourlovercom
@@ -320,6 +320,13 @@ REOPENED / DEFECT FOUND
 9. Push the existing UAT documentation branch.
 10. Keep the UAT documentation PR OPEN and DRAFT.
 11. Never merge it.
+
+The default secret scan is advisory validation for the trusted local-agent
+workflow. It checks staged, unstaged, and untracked paths for obvious
+passwords, tokens, cookies, sessions, private keys, and local credentials.
+It is not a sandbox, permission boundary, or repository isolation mechanism.
+Do not pass a pre-filtered list when the goal is to review the complete local
+change set.
 
 ## Safety
 
