@@ -8,7 +8,7 @@ REPORTED_AT: 2026-08-05
 REPORTED_BY: Owner / local human UAT
 HUMAN_UAT_STATUS: IN PROGRESS
 UAT_GATE: CHANGES REQUIRED
-OPEN_DEFECTS: 4
+OPEN_DEFECTS: 5
 LOGIN_GATE: PASS
 OWNER_DECISION: Continue defect discovery and remediation
 AUTOMATED_ACCEPTANCE: PASS does not equal Human UAT PASS
@@ -167,7 +167,7 @@ CLOSURE_STATUS: OPEN / root-cause classification pending; split required if two 
 ```text
 HUMAN_UAT_STATUS: IN PROGRESS
 UAT_GATE: CHANGES REQUIRED
-OPEN_DEFECTS: 4
+OPEN_DEFECTS: 5
 LOGIN_GATE: PASS
 OWNER_DECISION: Continue defect discovery and remediation
 AUTOMATED_ACCEPTANCE: PASS does not equal Human UAT PASS
@@ -185,4 +185,49 @@ GIT_DIFF_CHECK: REQUIRED
 SECRET_SCAN: REQUIRED
 FORBIDDEN_ARTIFACTS: passwords; cookies; tokens; sessions; .env files; local database files
 REMOTE_OR_PRODUCTION_EVIDENCE: NONE
+```
+
+## MVP1-UAT-FINDING-005
+
+```text
+FINDING_ID: MVP1-UAT-FINDING-005
+STATUS: NEEDS_OWNER_DECISION
+UAT_SCENARIO: UAT-04 / UAT-05 / UAT-06 / UAT-07 / UAT-08 / UAT-09
+SEVERITY: HIGH
+TITLE: 订单详情页未实现原订单履约工作台的信息架构
+REPORTED_AT: 2026-08-06
+REPORTED_BY: Owner / local human UAT
+ACTUAL_RESULT: |
+  The current page shows order number/source/date/status, recipient address snapshot,
+  simple product info, simple fulfillment/sync status, address correction, and raw
+  audit events. The approved design workspaces are absent: pending queue,
+  pending/shipped/exception switching, prev/next order, complete customer/site order
+  info, product amount totals, warehouse/carrier/tracking/ship time, save draft/
+  confirm shipped/mark pickup/defer shipment, logistics parsing/copy, manual website
+  sync, business notes, and readable full timeline. The left context says 当前模块：客户
+  while the body is order detail and says customer module later. Raw audit events
+  order.updated/order.created/actor 4 are not human-readable names/actions.
+EXPECTED_RESULT: |
+  Preserve Order/Fulfillment/Manual Sync backend boundaries while presenting a unified
+  order fulfillment workspace with queue/quick switching, customer/order info,
+  products/amounts, shipping, copy/address parsing, manual site sync, business notes,
+  and readable activity log; no second order source of truth.
+OWNER_DECISION: |
+  A restore full combined workspace;
+  B keep backend split and restore unified frontend workspace;
+  C accept basic detail page and formally retire original design baseline.
+RECOMMENDATION: B
+EVIDENCE: |
+  Two supplied screenshot references are placeholders; evidence is not supplied and
+  is pending Owner-provided redacted static screenshots. No repository-relative paths
+  are recorded. Owner confirms screenshots contain synthetic data only and must contain
+  no real PII or credentials.
+CONTRACT_REFERENCE: Owner-supplied finding for UAT-04 through UAT-09; original order fulfillment workspace design baseline
+ROOT_CAUSE: PENDING Owner decision and remediation review
+AFFECTED_FILES: PENDING
+FIX_BRANCH: PENDING
+FIX_PR: PENDING
+AUTOMATED_TESTS: PENDING; documentation-only recording in this session
+OWNER_RETEST: PENDING
+CLOSURE_STATUS: OPEN / NEEDS_OWNER_DECISION
 ```

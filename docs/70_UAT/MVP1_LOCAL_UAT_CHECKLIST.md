@@ -25,12 +25,12 @@ shasum -a 256 .codex/backups/byl-erp-local-uat-*.sql
 | UAT-01 | Owner/Admin | 登录、打开 Dashboard、退出 | 登录成功；真实计数显示；退出后需重新登录 |  |  |  |  |  |
 | UAT-02 | Owner/Admin | 创建 Website 订单，填写多个 Item、地址、负责人 | 订单号唯一；保存快照；审计记录生成 |  |  |  |  |  |
 | UAT-03 | Owner/Admin | 创建 KOL 与 Manual Other 订单 | 来源和状态正确；列表可筛选 |  |  |  |  |  |
-| UAT-04 | Owner/Admin | 搜索、筛选、打开详情并修正地址/Item | 服务端校验；订单、地址、Item 一次性更新；审计记录生成 |  |  |  |  |  |
-| UAT-05 | Logistics Operator | 打开发货队列，复制收件人/完整发货/Tracking | 复制格式稳定；只显示允许字段 |  |  |  |  |  |
-| UAT-06 | Logistics Operator | 填 Carrier、Tracking、发货时间并标记发货 | 状态变为 shipped；Manual Sync 只创建一条 pending |  |  |  |  |  |
-| UAT-07 | Logistics Operator | 打开同步队列并复制 Website payload | 不调用外部 API；payload 可人工复制 |  |  |  |  |  |
-| UAT-08 | Owner/Admin | 人工更新网站后标记 completed | 记录 actor、时间和备注 |  |  |  |  |  |
-| UAT-09 | Owner/Admin | Reopen、Return、Correction | 状态可纠正；重复操作不重复创建记录 |  |  |  |  |  |
+| UAT-04 | Owner/Admin | 搜索、筛选、打开详情并修正地址/Item | 服务端校验；订单、地址、Item 一次性更新；审计记录生成 |  |  |  | MVP1-UAT-FINDING-005 |  |
+| UAT-05 | Logistics Operator | 打开发货队列，复制收件人/完整发货/Tracking | 复制格式稳定；只显示允许字段 |  |  |  | MVP1-UAT-FINDING-005 |  |
+| UAT-06 | Logistics Operator | 填 Carrier、Tracking、发货时间并标记发货 | 状态变为 shipped；Manual Sync 只创建一条 pending |  |  |  | MVP1-UAT-FINDING-005 |  |
+| UAT-07 | Logistics Operator | 打开同步队列并复制 Website payload | 不调用外部 API；payload 可人工复制 |  |  |  | MVP1-UAT-FINDING-005 |  |
+| UAT-08 | Owner/Admin | 人工更新网站后标记 completed | 记录 actor、时间和备注 |  |  |  | MVP1-UAT-FINDING-005 |  |
+| UAT-09 | Owner/Admin | Reopen、Return、Correction | 状态可纠正；重复操作不重复创建记录 |  |  |  | MVP1-UAT-FINDING-005 |  |
 | UAT-10 | Owner/Admin | 填完整成本并查看 Order Analysis | 服务端计算 Revenue、Cost、Profit、Margin |  |  |  |  |  |
 | UAT-11 | Owner/Admin | 查看缺失成本订单并导出 CSV | 未完整成本不得显示 confirmed profit；CSV 与筛选一致 |  |  |  |  |  |
 | UAT-12 | Restricted Operator | 打开订单并尝试创建、发货、同步、分析 | 允许/禁止与权限合同一致；禁止操作返回 403 |  |  |  |  |  |
