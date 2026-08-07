@@ -449,3 +449,20 @@ HISTORICAL SAFETY RECORD: the earlier fail-closed result was correct under an in
 Current state: E scope remediation in progress; local identity and backup/reconstructability gates remain mandatory before any local database mutation.
 Global Architecture Gate: FAIL. MVP1: NOT STARTED / 0%.
 ```
+
+## 2026-08-07 — Parallel Work Package / Worktree / Delivery PR governance
+
+```text
+Owner decision: Remediate PR #79 into the final BYL ERP parallel-development model.
+Decision: D-033 — Parallel Work Package / Worktree / Delivery PR governance.
+Previous state: PR #79 proposed the four parallel rules but `ONE_WORK_PACKAGE_ONE_BRANCH_ONE_PR` was unqualified against the repository's historical Work Package PR → Implementation PR → Closure PR topology; lifecycle and post-merge closure rules were incomplete; the governance PR lacked its own formal Work Package/evidence record and canonical decision/change entries.
+New state after remediation: `PARALLEL-WORK-EXEC-001` v1.1 explicitly allows multiple active Work Packages, PRs, OpenCode sessions and dedicated worktrees when Parallelization Preflight passes. Newly activated packages after effective merge use one Work Package → one branch → one Draft delivery PR across contract, implementation, validation, remediation and final pre-merge evidence. Historical merged packages remain valid; legacy active packages with an issued multi-PR contract may finish under that contract.
+Post-merge rule: the original Work Package terminates its repository mutation at merge; no second Closure PR is created under the same new Work Package identity merely to record the merge SHA. Genuine post-merge repository mutation requires a separately identified Work Package with its own branch/worktree/PR.
+Parallel page work: independent Dashboard / Orders / Settings-style page repairs may run concurrently through separate OpenCode sessions and dedicated worktrees when scopes/dependencies are bounded. Shared App Shell, navigation, design tokens, shared components, common routes/permissions/schema/test infrastructure must be extracted first unless a declared stacked dependency is explicitly authorized.
+Mandatory rules retained: ONE_WORK_PACKAGE_ONE_BRANCH_ONE_PR; ONE_ACTIVE_AGENT_ONE_WORKTREE; PARALLEL_PR_MUST_NOT_HAVE_UNDECLARED_DEPENDENCIES; COMMON_FOUNDATION_CHANGES_MUST_BE_EXTRACTED_BEFORE_PAGE-LEVEL_PARALLELIZATION.
+Work Package: ERP-GOV-PARALLEL-001.
+PR: #79 remains Draft pending exact-head remediation re-review; merge authorization NO.
+Application code: NO CHANGE. Schema/Migration: NO CHANGE / NOT RUN. Dependency/lock: NO CHANGE. Remote Dev/Production: NOT ACCESSED. UAT: NO. Deployment: NO.
+Architecture conflict: NONE. Global Architecture Gate remains PASS per current repository context.
+Documents updated/added within bounded governance scope: AGENTS.md; CODEX_ENTRYPOINT.md; AI/PARALLEL_WORK_EXECUTION_STANDARD.md; AI/REPOSITORY_MANIFEST.md; Decision Register; Change Log; ERP-GOV-PARALLEL-001 Work Package; ERP-GOV-PARALLEL-001 Work Log.
+```

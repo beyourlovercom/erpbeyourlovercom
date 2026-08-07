@@ -2,7 +2,7 @@
 type: decision-register
 project: BYL ERP
 version: 1.0
-updated: 2026-08-03
+updated: 2026-08-07
 ---
 
 # Decision Register
@@ -157,3 +157,26 @@ The current 001F-E contract supersedes the earlier remote-Dev assumption. `http:
 ## D-031 Adopt A1 Physical Module Contract for Architecture Standard v1.1
 
 Owner reviewed 001F-B and selected `RECOMMEND_OPTION_A1`. Standard ID is `BYL-ERP-ARCH-001`; v1.0 did not explicitly require `app/Modules/**`; v1.1 now adopts that path as a forward-effective physical module contract. B1 freezes the contract only; historical migrations remain in place, `App\Support` is legacy compatibility rather than Shared Kernel, default Composer PSR-4 remains sufficient, and B2 establishes the skeleton and automated boundary tests. B3, B4 and B5 remain staged and unauthorized. Global Architecture Gate remains FAIL; MVP1 remains NOT STARTED / 0%; no application, namespace, provider, route, migration or database change is authorized.
+
+## D-033 Parallel Work Package / Worktree / Delivery PR governance
+
+Owner authorized remediation of PR #79 into the final parallel execution model for BYL ERP.
+
+`PARALLEL-WORK-EXEC-001` v1.1 is adopted prospectively when the governance PR containing it merges to `main`. Multiple active Work Packages, Pull Requests, OpenCode sessions and dedicated Git worktrees are explicitly allowed when each candidate Work Package passes the Parallelization Preflight Gate.
+
+The mandatory rules are:
+
+1. `ONE_WORK_PACKAGE_ONE_BRANCH_ONE_PR`
+2. `ONE_ACTIVE_AGENT_ONE_WORKTREE`
+3. `PARALLEL_PR_MUST_NOT_HAVE_UNDECLARED_DEPENDENCIES`
+4. `COMMON_FOUNDATION_CHANGES_MUST_BE_EXTRACTED_BEFORE_PAGE-LEVEL_PARALLELIZATION`
+
+For newly activated Work Packages after the standard becomes effective, one bounded Work Package maps to one delivery branch and one delivery PR. The same Draft delivery PR carries the Work Package contract, implementation, validation, remediation and final pre-merge evidence. Separate Work Package / Implementation / Closure PRs are not created for the same new Work Package identity.
+
+Historical merged packages remain valid and are not retroactively invalidated. A legacy active Work Package with an already-issued contract that explicitly uses separate Work Package / Implementation / Closure PRs may finish under that contract. A material re-scope after the new standard becomes effective must become a new Work Package under the new model.
+
+A merge SHA becoming repository truth does not require a second Closure PR under the same new Work Package identity. If repository mutation is genuinely required after merge, it must be a separately identified closure-correction or remediation Work Package with its own branch, worktree and PR.
+
+Independent page-level repairs such as Dashboard, Orders and Settings may run concurrently through separate OpenCode sessions and dedicated worktrees when scopes and dependencies are bounded. Shared App Shell, navigation, design tokens, common components, routes, permissions, schema primitives or test infrastructure required by multiple downstream pages must be extracted first unless Owner explicitly authorizes a declared stacked dependency.
+
+This decision changes governance only. It authorizes no application implementation, Migration, UAT, deployment or Production access, and it does not authorize merge of PR #79. Architecture conflict: NONE; Global Architecture Gate remains PASS per current repository context.
