@@ -8,10 +8,10 @@
 - Baseline Branch: `main`
 - Baseline SHA: `f5d028ae45620b7b476aca97c363197b265cfa24`
 - Working Branch: `feature/mvp1-uat-remediation-auth-home-001`
-- CURRENT_PHASE: `OWNER_UAT_HANDOFF`
-- PACKAGE_STATUS: `READY_FOR_OWNER_UAT`
+- CURRENT_PHASE: `COMPLETE`
+- PACKAGE_STATUS: `PASS_AUTH_HOME_READY_FOR_OWNER_UAT`
 - LAST_COMPLETED_GATE: `LOCAL_RUNTIME_VERIFICATION`
-- NEXT_ACTION: `Create authorized local commits, then Owner executes the local Auth/Home UAT checklist.`
+- NEXT_ACTION: `Owner executes the local Auth/Home UAT checklist.`
 
 ## Frozen Contract
 
@@ -97,7 +97,9 @@ None.
 
 ## Current Commit
 
-Pending authorized local commits.
+- `783c853 fix(auth): default persistent active sessions`
+- `f2629bb test(auth): cover default persistent login`
+- `5bf841e test(e2e): support local system Chrome`
 
 ## Owner UAT Steps
 
