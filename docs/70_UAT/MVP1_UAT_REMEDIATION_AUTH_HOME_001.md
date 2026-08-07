@@ -100,6 +100,7 @@ None.
 - `783c853 fix(auth): default persistent active sessions`
 - `f2629bb test(auth): cover default persistent login`
 - `5bf841e test(e2e): support local system Chrome`
+- `99ecbc7 docs(uat): record auth home handoff`
 
 ## Owner UAT Steps
 
