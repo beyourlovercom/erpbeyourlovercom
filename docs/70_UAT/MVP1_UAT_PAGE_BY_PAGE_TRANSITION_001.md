@@ -63,7 +63,7 @@ BLOCKERS: NONE
 ## Local Commits
 
 ```text
-LOCAL_COMMITS: TBD
+LOCAL_COMMITS: f2e13d5 docs(uat): establish page-by-page UAT governance; pending final evidence commit
 ```
 
 ## Next Owner Action
