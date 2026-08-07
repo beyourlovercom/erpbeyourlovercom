@@ -6,7 +6,7 @@ import TextInput from '../../Components/UI/TextInput.vue'
 import UiAlert from '../../Components/UI/UiAlert.vue'
 import UiButton from '../../Components/UI/UiButton.vue'
 
-const form = useForm({ email: '', password: '', remember: false })
+const form = useForm({ email: '', password: '' })
 const page = usePage<{ errors?: Record<string, string> }>()
 const showPassword = ref(false)
 const submit = () => form.post('/login')

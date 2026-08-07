@@ -12,12 +12,55 @@ test('guest dashboard access redirects to the real login page', async ({ context
     await guard.assertClean();
 });
 
+test('guest root and login render the same login page without a remember control', async ({ context, page }) => {
+    const guard = await installBrowserGuards(context, page);
+
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: '登录系统' })).toBeVisible();
+    await expect(page.locator('input[name="remember"]')).toHaveCount(0);
+    await page.goto('/login');
+    await expect(page.getByRole('button', { name: '登录系统' })).toBeVisible();
+    await expect(page.locator('input[name="remember"]')).toHaveCount(0);
+    await guard.assertClean();
+});
+
 test('active super admin signs in through Fortify and reaches dashboard', async ({ context, page }) => {
     const guard = await installBrowserGuards(context, page);
 
     await loginThroughUi(page, syntheticUsers().authorized);
 
     await expect(page.getByRole('heading', { name: 'BYL ERP 应用工作台' })).toBeVisible();
+    await guard.assertClean();
+});
+
+test('login defaults to a secure 30-day persistent cookie without client password storage', async ({ browser, context, page }) => {
+    const guard = await installBrowserGuards(context, page);
+
+    await loginThroughUi(page, syntheticUsers().authorized);
+    const persistentCookie = (await context.cookies()).find((cookie) => cookie.name.startsWith('remember_'));
+
+    expect(persistentCookie).toBeDefined();
+    expect(persistentCookie?.httpOnly).toBe(true);
+    expect(persistentCookie?.sameSite).toBe('Lax');
+    expect(persistentCookie?.path).toBe('/');
+    expect((persistentCookie?.expires ?? 0) - Date.now() / 1000).toBeGreaterThan(29 * 24 * 60 * 60);
+    expect(persistentCookie?.value).not.toContain(syntheticUsers().authorized.password);
+    await expect(page.evaluate(() => ({ local: localStorage.getItem('password'), session: sessionStorage.getItem('password') }))).resolves.toEqual({ local: null, session: null });
+
+    const restartedContext = await browser.newContext();
+    const restartedPage = await restartedContext.newPage();
+    const restartedGuard = await installBrowserGuards(restartedContext, restartedPage);
+
+    try {
+        await restartedContext.addCookies(await context.cookies());
+        await restartedPage.goto('/');
+        await expect(restartedPage).toHaveURL(/\/dashboard$/u);
+        await restartedGuard.assertClean();
+    } finally {
+        await restartedContext.clearCookies();
+        await restartedContext.close();
+    }
+
     await guard.assertClean();
 });
 
