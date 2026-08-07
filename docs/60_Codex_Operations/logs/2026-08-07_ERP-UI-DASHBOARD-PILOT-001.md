@@ -97,9 +97,22 @@ FRONTEND_TEST_SCRIPT: PASS / 12 files and 73 tests passed
 TYPECHECK: PASS / vue-tsc --noEmit
 BUILD: PASS / vite production build
 GIT_DIFF_CHECK: PASS / no whitespace errors
-VISUAL_BROWSER_QA: BLOCKED / http://erp.b/dashboard redirected to http://erp.b/login because no authenticated browser session was available; no screenshot or click evidence claimed
-OWNER_UAT_READY: NO / authenticated browser session required for Dashboard visual QA and Owner UAT
-REMAINING_GATE: authenticated visual/browser QA and independent review; Owner merge authorization remains required.
+RUNTIME_HYDRATION: PASS / LOCAL_ONLY / composer install from composer.lock; package manifests and lock files unchanged
+COMPOSER_INSTALL: PASS / vendor/autoload.php restored; no dependency delta
+COMPOSER_JSON_CHANGED: NO
+COMPOSER_LOCK_CHANGED: NO
+DEPENDENCY_DELTA: NONE
+DASHBOARD_WORKTREE_RUNTIME: PASS / http://127.0.0.1:18081 from this worktree; existing erp.b runtime was not used as evidence
+AUTHENTICATED_SESSION: PASS / existing local-only ERP_LOCAL_ADMIN_BYPASS for UAT Owner/Admin; no auth code or .env change
+VISUAL_BROWSER_QA: PASS / authenticated Dashboard verified at 1440, 1280, 1100, 801, 800 and 375 CSS px
+VISUAL_WIDTHS: 1440 / 1280 / 1100 / <=800 regression (800, 375)
+HORIZONTAL_OVERFLOW: NO / document scrollWidth matched clientWidth at every width
+SHELL_REGRESSION: NO / global navigation, module navigation, TopBar and account dock remained intact
+BROWSER_CONSOLE: PASS / zero errors and zero warnings
+BUSINESS_CONTRACT_CHANGED: NO / four metric links and real local UAT values remained intact
+OWNER_UAT_READY: YES / Owner manual visual/UAT remains not performed
+OWNER_UAT: NOT_PERFORMED
+REMAINING_GATE: Owner manual visual/UAT review and merge authorization; no implementation defect found.
 ```
 
 ## Changed-File Audit
@@ -140,11 +153,11 @@ CURRENT_WORK_PACKAGE: ERP-UI-DASHBOARD-PILOT-001
 PACKAGE_STATUS: IMPLEMENTATION COMPLETE / VALIDATION EVIDENCE RECORDED / DRAFT PR DELIVERY
 WAITING_PHASES: MVP1 Manual Sync; MVP1 Finance Analysis; MVP1 UAT Release; Dev UAT; Production Hardening
 BASELINE: feature/erp-ui-dashboard-pilot-001 at 8da010651ddd1f664d8099f4b1319cc18865cf1c; base main; verified 2026-08-07
-GITHUB_STATE: Draft PR #81 is OPEN / DRAFT on feature/erp-ui-dashboard-pilot-001 at 7340873; merge not performed.
+GITHUB_STATE: Draft PR #81 is OPEN / DRAFT on feature/erp-ui-dashboard-pilot-001 at 49dcbf5; merge not performed.
 SOURCE_CONFLICTS: NONE WITH EVIDENCE / governance and roadmap sources checked; Owner authorization is recorded for this package on 2026-08-07.
 GLOBAL_GATE: PASS / repository context and Program Roadmap record the Global Architecture Gate as PASS.
 PRODUCTION_DEPLOYMENT_STATUS: NO / no production deployment evidence; deployment and production access are prohibited.
-NEXT_DEPENDENCY: Authenticated visual/browser QA, independent review and Owner merge authorization; code validation is complete.
+NEXT_DEPENDENCY: Owner manual visual/UAT review, independent review and merge authorization; code validation is complete.
 EVIDENCE_AS_OF: 2026-08-07
 ```
 
