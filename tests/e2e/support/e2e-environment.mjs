@@ -134,6 +134,13 @@ export function assertBrowserCache(value) {
     return resolved;
 }
 
+export function resolveE2eBrowserMode(value) {
+    if (value === undefined || value === '') return 'bundled';
+    if (value === 'chrome') return 'chrome';
+
+    throw new Error('BYL_E2E_BROWSER must be "chrome" when explicitly set.');
+}
+
 export function assertRuntimeEnvironment(env, runRoot, { allowPopulatedDatabase = false } = {}) {
     const resolvedRoot = assertExternalRunRoot(runRoot, { requireEmpty: false });
 
@@ -205,7 +212,10 @@ export async function findAvailableLoopbackPort() {
 }
 
 export async function createDisposableRun() {
-    const browserCache = assertBrowserCache(process.env.PLAYWRIGHT_BROWSERS_PATH);
+    const browserMode = resolveE2eBrowserMode(process.env.BYL_E2E_BROWSER);
+    const browserCache = browserMode === 'bundled'
+        ? assertBrowserCache(process.env.PLAYWRIGHT_BROWSERS_PATH)
+        : undefined;
     const root = await mkdtemp(path.join(tmpdir(), 'byl-erp-e2e-'));
 
     try {
@@ -254,7 +264,7 @@ export async function createDisposableRun() {
             ERP_LOCAL_ADMIN_BYPASS: 'false',
             LOG_CHANNEL: 'stderr',
             MAIL_MAILER: 'array',
-            PLAYWRIGHT_BROWSERS_PATH: browserCache,
+            ...(browserCache ? { PLAYWRIGHT_BROWSERS_PATH: browserCache } : {}),
             QUEUE_CONNECTION: 'sync',
             SESSION_DRIVER: 'database',
         };
@@ -262,7 +272,7 @@ export async function createDisposableRun() {
         assertRuntimeEnvironment(env, resolvedRoot);
         assertLoopbackBaseUrl(env.BYL_E2E_BASE_URL);
 
-        return { browserCache, databasePath, env, port, runId, runRoot: resolvedRoot };
+        return { browserCache, browserMode, databasePath, env, port, runId, runRoot: resolvedRoot };
     } catch (error) {
         if (existsSync(root)) await rm(root, { recursive: true, force: false, maxRetries: 2 });
         throw error;
