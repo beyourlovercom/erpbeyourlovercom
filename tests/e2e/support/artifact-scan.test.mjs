@@ -13,6 +13,7 @@ import {
     assertRuntimeEnvironment,
     cleanupDisposableRun,
     resolveLocalPlaywrightCli,
+    resolveE2eBrowserMode,
     runManagedChild,
 } from './e2e-environment.mjs';
 
@@ -263,6 +264,12 @@ test('missing local Playwright CLI fails closed without an npm network fallback'
     const fakeRepository = await temporaryDirectory();
     assert.throws(() => resolveLocalPlaywrightCli(fakeRepository), /local Playwright CLI is not installed/);
     await rm(fakeRepository, { recursive: true });
+});
+
+test('explicit system Chrome mode bypasses only the bundled browser cache contract', () => {
+    assert.equal(resolveE2eBrowserMode('chrome'), 'chrome');
+    assert.equal(resolveE2eBrowserMode(undefined), 'bundled');
+    assert.throws(() => resolveE2eBrowserMode('firefox'), /BYL_E2E_BROWSER/);
 });
 
 test('an already-aborted signal starts no child process and the disposable run root is cleaned', async () => {

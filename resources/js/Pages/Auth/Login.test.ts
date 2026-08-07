@@ -28,6 +28,7 @@ describe('login page', () => {
         expect(wrapper.text()).toContain('BYL ERP 账户由管理员统一创建，请联系系统管理员开通。')
         expect(wrapper.find('a[href*="register"]').exists()).toBe(false)
         expect(wrapper.find('form[action*="register"]').exists()).toBe(false)
+        expect(wrapper.find('input[name="remember"]').exists()).toBe(false)
         expect(wrapper.get('meta[name="robots"]').attributes('content')).toBe('noindex, nofollow')
         expect(wrapper.get('main').attributes('data-byl-theme')).toBe('dark')
     })
@@ -48,6 +49,7 @@ describe('login page', () => {
         expect(submit.attributes('disabled')).toBeUndefined()
         await wrapper.get('form').trigger('submit')
         expect(post).toHaveBeenCalledWith('/login')
+        expect(form).not.toHaveProperty('remember')
     })
 
     it('uses the approved Login loading copy and accessibility state', () => {

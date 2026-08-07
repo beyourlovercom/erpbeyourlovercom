@@ -4,10 +4,12 @@ import {
     assertExternalRunRoot,
     assertLoopbackBaseUrl,
     assertRuntimeEnvironment,
+    resolveE2eBrowserMode,
 } from './tests/e2e/support/e2e-environment.mjs';
 
 const runRoot = assertExternalRunRoot(process.env.BYL_E2E_RUN_ROOT, { requireEmpty: false });
 const baseURL = assertLoopbackBaseUrl(process.env.BYL_E2E_BASE_URL);
+const browserMode = resolveE2eBrowserMode(process.env.BYL_E2E_BROWSER);
 
 assertRuntimeEnvironment(process.env, runRoot, { allowPopulatedDatabase: true });
 
@@ -43,6 +45,7 @@ export default defineConfig({
             use: {
                 ...devices['Desktop Chrome'],
                 browserName: 'chromium',
+                ...(browserMode === 'chrome' ? { channel: 'chrome' } : {}),
             },
         },
     ],

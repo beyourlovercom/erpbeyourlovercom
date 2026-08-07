@@ -80,7 +80,6 @@ export async function authenticateUnauthorizedThroughFortify(
         form: {
             email: credentials.email,
             password: credentials.password,
-            remember: '0',
         },
         headers: {
             Origin: process.env.BYL_E2E_BASE_URL ?? '',

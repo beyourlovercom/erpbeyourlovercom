@@ -19,12 +19,19 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Laravel\Fortify\Fortify;
+use Laravel\Fortify\Actions\CanonicalizeUsername;
+use Laravel\Fortify\Actions\PrepareAuthenticatedSession;
 
 final class IdentityFortify
 {
     public static function boot(): void
     {
         Fortify::loginView(fn () => inertia('Auth/Login'));
+        Fortify::authenticateThrough(fn () => [
+            CanonicalizeUsername::class,
+            AttemptPersistentAuthentication::class,
+            PrepareAuthenticatedSession::class,
+        ]);
         Fortify::authenticateUsing(function ($request) {
             $user = User::where('email', $request->email)->first();
 
