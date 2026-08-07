@@ -6,9 +6,10 @@
 WORK_PACKAGE: MVP1_UAT_PAGE_BY_PAGE_TRANSITION_001
 BASELINE_BRANCH: main
 BASELINE_SHA: ed77cbdc8c52f57aa72a512a0733167670027f0f
+CURRENT_MAIN_AT_PR_CREATION: 8da010651ddd1f664d8099f4b1319cc18865cf1c
 WORKING_BRANCH: docs/mvp1-uat-page-by-page-transition-001
-CURRENT_PHASE: LOCAL_READY_FOR_PR
-PACKAGE_STATUS: COMPLETE / LOCAL_READY_FOR_PR
+CURRENT_PHASE: DRAFT_PR_REMEDIATION
+PACKAGE_STATUS: IN_REVIEW / CHANGES_REQUIRED
 LEGACY_PR: #73
 LEGACY_PR_HEAD: db5d515c6474a1681585c6c8497a7a244184cf8e
 LEGACY_FINDINGS_DISCOVERED: 5
@@ -16,6 +17,12 @@ LEGACY_FINDINGS_MIGRATED: 5
 AUTH_HOME_REMEDIATION: #78 / ed77cbdc8c52f57aa72a512a0733167670027f0f
 NEW_GOVERNANCE_MODEL: ONE_PAGE_ONE_WORK_PACKAGE_ONE_BRANCH_ONE_PR
 PR73_TARGET_STATE: CLOSED_UNMERGED_AFTER_MIGRATION_PR_MERGE
+PR: #80
+PR_STATE: OPEN / DRAFT
+PR_HEAD: 3b3ce89fd26858405316412b5c042a31b7be310c
+PARALLEL_DEPENDENCY_STATUS: INDEPENDENT
+PR79_CONFLICT: NO
+NO_REBASE_REQUIRED: YES
 ```
 
 ## Scope and Evidence
@@ -63,12 +70,12 @@ BLOCKERS: NONE
 ## Local Commits
 
 ```text
-LOCAL_COMMITS: f2e13d5 docs(uat): establish page-by-page UAT governance; pending final evidence commit
+LOCAL_COMMITS: f2e13d5 docs(uat): establish page-by-page UAT governance; 3b3ce89 docs(uat): record migration evidence; remediation commit TBD
 ```
 
 ## Next Owner Action
 
 ```text
-NEXT_OWNER_ACTION: Review migration result and authorize Push + Draft PR
+NEXT_OWNER_ACTION: Independent read-only re-review of exact PR #80 HEAD after remediation push
 PR73_CLOSURE_GATE: After every Finding is migrated, this Finding Index and the governance document are merged to main, and the Owner separately authorizes PR #73 closure as CLOSED_UNMERGED.
 ```
