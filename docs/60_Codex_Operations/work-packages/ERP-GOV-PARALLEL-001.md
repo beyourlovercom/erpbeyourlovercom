@@ -5,7 +5,7 @@ work_package_id: ERP-GOV-PARALLEL-001
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.1
 supplement: PARALLEL-WORK-EXEC-001 v1.1 proposed in this package
-status: IMPLEMENTED / PENDING RE-REVIEW
+status: REMEDIATION COMPLETE / PENDING INDEPENDENT RE-REVIEW
 ---
 
 # ERP-GOV-PARALLEL-001 — Parallel Work Package / Worktree / Dependency Governance
@@ -15,7 +15,7 @@ status: IMPLEMENTED / PENDING RE-REVIEW
 ```text
 ID: ERP-GOV-PARALLEL-001
 TITLE: Parallel Work Package / Worktree / Dependency Governance
-STATUS: IMPLEMENTED / PENDING RE-REVIEW
+STATUS: REMEDIATION COMPLETE / PENDING INDEPENDENT RE-REVIEW
 OWNER_AUTHORIZATION: Owner explicitly requested PR #79 remediation into the final parallel model on 2026-08-07.
 STANDARD_ID: LARGE-PROJECT-EXEC-001
 STANDARD_VERSION: 1.1
@@ -34,8 +34,11 @@ DELIVERY_PR: #79
 
 ```text
 BASE_BRANCH: main
-BASE_SHA: f5d028ae45620b7b476aca97c363197b265cfa24
-BASE_VERIFIED_AT: PR #79 creation / GitHub evidence 2026-08-07
+ORIGINAL_PR_BASE_SHA: f5d028ae45620b7b476aca97c363197b265cfa24
+BASE_SHA: ed77cbdc8c52f57aa72a512a0733167670027f0f
+BASE_TRANSITION_REASON: PR #78 merged after PR #79 was opened; #79 was rebuilt on current main without carrying stale base content forward.
+BASE_SYNC_EVIDENCE: compare current main → PR branch = ahead_by 1 / behind_by 0 after synchronization
+BASE_VERIFIED_AT: 2026-08-07
 DEPENDENCIES: NONE
 DEPENDENCY_TYPE: NONE
 DEPENDENCY_STATUS: NONE
@@ -52,7 +55,8 @@ FOUNDATION_CHANGE_REQUIRED: NO
 - Define the prospective Draft delivery PR lifecycle, dependency declaration, shared-foundation extraction, merge behavior and post-merge closure behavior.
 - Update agent/entrypoint/repository governance references required to make the standard discoverable and enforceable.
 - Add this bounded Work Package, evidence log, Decision Register entry and Change Log entry.
-- Keep PR #79 Draft until remediation is complete and re-reviewed.
+- Synchronize the PR to current main if an intervening merge occurs, preserving unrelated merged work.
+- Keep PR #79 Draft until remediation is complete and independently re-reviewed.
 
 ## PROHIBITED ACTIONS
 
@@ -94,7 +98,8 @@ docs/60_Codex_Operations/logs/2026-08-07_ERP-GOV-PARALLEL-001.md
 7. Parallel PR dependency declaration and shared-foundation extraction gates remain mandatory.
 8. Independent page repairs are explicitly documented as a valid parallel OpenCode use case when the preflight gate passes.
 9. The Owner decision is recorded in the canonical Decision Register and Change Log.
-10. PR #79 remains Draft pending remediation re-review; merge remains unauthorized.
+10. Intervening main changes are preserved and the PR is synchronized when required; no unrelated merged work is overwritten.
+11. PR #79 remains Draft pending independent remediation re-review; merge remains unauthorized.
 
 ## VALIDATION
 
@@ -107,26 +112,27 @@ REQUIRED_CHECKS:
 - confirm prospective single Delivery PR lifecycle exists
 - confirm post-merge closure rule exists
 - confirm Decision Register + Change Log + Work Package + Work Log evidence exists
-- confirm application/schema/dependency files are untouched
-- confirm PR remains Draft before re-review
-EXPECTED_EVIDENCE: GitHub exact-head diff and PR metadata
+- confirm application/schema/dependency files are untouched by PR #79
+- confirm current main is an ancestor of the PR branch after synchronization
+- confirm PR remains Draft before independent re-review
+EXPECTED_EVIDENCE: GitHub exact-head diff, changed-file set, compare and PR metadata
 HARD_GATES: no merge; no app/migration/deployment mutation
 ```
 
 ## COMMIT / PR RULES
 
 ```text
-COMMIT_MESSAGE: docs(governance): remediate parallel execution model
+COMMIT_MESSAGE: docs(governance): finalize parallel execution model
 PR_TITLE: docs(governance): add parallel Work Package / Worktree / dependency rules
 PR_BASE: main
-PR_DRAFT_STATE: DRAFT THROUGH REMEDIATION; may become Ready only after remediation re-review PASS
+PR_DRAFT_STATE: DRAFT THROUGH REMEDIATION; may become Ready only after independent remediation re-review PASS
 MERGE_AUTHORIZED: NO
 ```
 
 ## FINAL REPORT FORMAT
 
 ```text
-REQUIRED_FIELDS: exact Head SHA; changed files; review result; four-rule check; transition check; delivery lifecycle check; post-merge closure check; prohibited-scope check; actual effective hours and variance
+REQUIRED_FIELDS: exact Head SHA from PR metadata; changed files; review result; four-rule check; transition check; delivery lifecycle check; post-merge closure check; current-main ancestry check; prohibited-scope check; actual effective hours and variance
 ALLOWED_FINAL_VERDICT: PASS / CHANGES_REQUIRED / BLOCKED
 ```
 
@@ -138,14 +144,14 @@ CURRENT_TRACK_PHASE_MAP: Architecture Migration COMPLETE / PASS → MVP1 Manual 
 COMPLETED_PHASES: Architecture Migration / Global Architecture Gate; MVP1 Foundation; MVP1 Order Core; MVP1 Fulfillment per current repository evidence
 CURRENT_PHASE: MVP1 Manual Fulfillment / governance hardening side-track
 CURRENT_WORK_PACKAGE: ERP-GOV-PARALLEL-001
-PACKAGE_STATUS: IMPLEMENTED / PENDING RE-REVIEW
-WAITING_PHASES: PR #79 remediation re-review; Owner merge authorization if PASS
-BASELINE: main@f5d028ae45620b7b476aca97c363197b265cfa24 for PR #79
-GITHUB_STATE: PR #79 OPEN / DRAFT; remediation in progress
-SOURCE_CONFLICTS: Historical multi-PR Work Package topology conflicts with an unqualified one-PR rule; resolved prospectively by explicit grandfathering and forward-effective transition in this package
+PACKAGE_STATUS: REMEDIATION COMPLETE / PENDING INDEPENDENT RE-REVIEW
+WAITING_PHASES: independent re-review of PR #79; Owner merge authorization if PASS
+BASELINE: main@ed77cbdc8c52f57aa72a512a0733167670027f0f; original PR base f5d028ae45620b7b476aca97c363197b265cfa24 retained as history
+GITHUB_STATE: PR #79 OPEN / DRAFT; synchronized to current main; compare shows ahead_by 1 / behind_by 0 before final evidence-only Work Package update
+SOURCE_CONFLICTS: Historical multi-PR Work Package topology conflict resolved prospectively by explicit grandfathering; intervening PR #78 main movement preserved by branch rebuild on current main
 GLOBAL_GATE: PASS per current repository context; this governance package does not change the architecture gate
 PRODUCTION_DEPLOYMENT_STATUS: NO WITH EVIDENCE — governance/docs-only PR; Production untouched
-NEXT_DEPENDENCY: remediation re-review of PR #79 exact Head
+NEXT_DEPENDENCY: independent remediation re-review of PR #79 exact Head
 EVIDENCE_AS_OF: 2026-08-07
 ```
 
