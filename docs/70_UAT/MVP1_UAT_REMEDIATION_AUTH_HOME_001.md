@@ -4,14 +4,21 @@
 
 - Work Package: `MVP1_UAT_REMEDIATION_AUTH_HOME_001`
 - Contract: `BYL-ERP-AUTH-HOME-001`
-- Contract Status: `OWNER_APPROVED`
+- Contract Status: `OWNER_APPROVED / IMPLEMENTED / OWNER_UAT_PASS`
 - Baseline Branch: `main`
 - Baseline SHA: `f5d028ae45620b7b476aca97c363197b265cfa24`
 - Working Branch: `feature/mvp1-uat-remediation-auth-home-001`
-- CURRENT_PHASE: `COMPLETE`
-- PACKAGE_STATUS: `PASS_AUTH_HOME_READY_FOR_OWNER_UAT`
+- CURRENT_PHASE: `OWNER_UAT_COMPLETE`
+- PACKAGE_STATUS: `COMPLETE / PASS / READY_FOR_PR`
 - LAST_COMPLETED_GATE: `LOCAL_RUNTIME_VERIFICATION`
-- NEXT_ACTION: `Owner executes the local Auth/Home UAT checklist.`
+- OWNER_UAT_STATUS: `PASS`
+- OWNER_UAT_RESULT: `PASS`
+- OWNER_UAT_DATE: `2026-08-07`
+- LOCAL_REMEDIATION_STATUS: `CLOSED_PASS`
+- PR_STATUS: `NOT_CREATED`
+- PUSH_STATUS: `NOT_ATTEMPTED`
+- NEXT_PHASE: `READY_FOR_OWNER_AUTHORIZED_PUSH_AND_DRAFT_PR`
+- NEXT_ACTION: `Await Owner authorization to push the remediation branch and create a Draft PR.`
 
 ## Frozen Contract
 
@@ -89,7 +96,8 @@
 ## Known Limits
 
 - Browser restart and simulated elapsed-time checks can be automated through a fresh browser context and cookie-expiry assertions; they do not claim a completed human next-day test.
-- Owner UAT has not been executed by OpenCode.
+- The Owner completed local UAT on `2026-08-07` and confirmed all frozen Auth/Home contract items PASS: guest routes, default dashboard entry, absent Remember Me control, persistent login after complete browser restart, logout invalidation, Back/Refresh protection, inactive-user rejection, and no client plaintext password storage.
+- The unrelated local `GET /favicon.ico` 404 remains outside this Work Package.
 
 ## Blocker
 
@@ -101,6 +109,7 @@ None.
 - `f2629bb test(auth): cover default persistent login`
 - `5bf841e test(e2e): support local system Chrome`
 - `99ecbc7 docs(uat): record auth home handoff`
+- `0c87457 docs(uat): finalize auth home evidence`
 
 ## Owner UAT Steps
 
@@ -114,6 +123,17 @@ None.
 8. Confirm a controlled inactive test account receives the same generic login failure as invalid credentials.
 9. In Chrome DevTools, inspect cookies, Local Storage, and Session Storage; confirm no password value is present. Do not copy cookie values into UAT evidence.
 10. Record Owner actual results and redacted screenshots in the formal UAT process. Do not mark the formal finding closed from this work package.
+
+## Owner UAT Closure
+
+- OWNER_UAT_STATUS: `PASS`
+- OWNER_UAT_RESULT: `PASS`
+- Owner confirmation date: `2026-08-07`
+- Browser runtime: system Google Chrome via repository-local Playwright `1.62.1` using explicit `BYL_E2E_BROWSER=chrome`.
+- Schema Delta: `NONE`
+- Dependency Delta: `NONE`
+- Auth/Home frozen contract: satisfied.
+- Formal UAT files and PR #73 remain unchanged. This `CLOSED_PASS` status closes only local remediation and Owner UAT; it does not indicate merge, release, or Production completion.
 
 ## Rollback
 
