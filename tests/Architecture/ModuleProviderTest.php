@@ -3,6 +3,7 @@
 namespace Tests\Architecture;
 
 use App\Modules\Audit\Providers\AuditServiceProvider;
+use App\Modules\Customers\Providers\CustomersServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Finance\Providers\FinanceServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
@@ -49,6 +50,7 @@ final class ModuleProviderTest extends TestCase
             ManualSyncServiceProvider::class,
             ShellServiceProvider::class,
             DashboardServiceProvider::class,
+            CustomersServiceProvider::class,
         ];
         self::assertSame($providers, ModuleManifest::providers());
         $application = $this->createMock(Application::class);
@@ -91,6 +93,7 @@ final class ModuleProviderTest extends TestCase
             ManualSyncServiceProvider::class,
             ShellServiceProvider::class,
             DashboardServiceProvider::class,
+            CustomersServiceProvider::class,
         ], ModuleManifest::validate([
             AppServiceProvider::class,
             ModulesServiceProvider::class,
@@ -104,6 +107,7 @@ final class ModuleProviderTest extends TestCase
             ManualSyncServiceProvider::class,
             ShellServiceProvider::class,
             DashboardServiceProvider::class,
+            CustomersServiceProvider::class,
         ]));
     }
 
