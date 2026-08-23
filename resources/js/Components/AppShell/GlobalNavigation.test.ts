@@ -75,4 +75,11 @@ describe('GlobalNavigation', () => {
     expect(wrapper.find('a[href="/sync/pending"]').exists()).toBe(false)
     expect(wrapper.get('.shell-primary-link').attributes('title')).toBe('同步')
   })
+
+  it('removes shell-primary-label elements from the DOM entirely when collapsed', async () => {
+    const wrapper = mount(GlobalNavigation, { props: { items: defaults, currentPath: '/dashboard', mobileHidden: false, collapsed: false, user } })
+    expect(wrapper.findAll('.shell-primary-label')).toHaveLength(defaults.length)
+    await wrapper.setProps({ collapsed: true })
+    expect(wrapper.findAll('.shell-primary-label')).toHaveLength(0)
+  })
 })

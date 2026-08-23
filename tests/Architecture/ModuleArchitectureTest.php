@@ -252,10 +252,10 @@ final class ModuleArchitectureTest extends TestCase
     ];
 
     private const FRONTEND_FILES = [
-        'resources/js/Components/AppShell/GlobalNavigation.test.ts' => '91253308c632b12ff2bba6647292ae52262a3e1e8f869b165e9dda13fa0eec90',
+        'resources/js/Components/AppShell/GlobalNavigation.test.ts' => '25bf606205e618134d9462a14ef3f4ebcce618f2d90921695c82535e7a23bd5b',
         'resources/js/Components/AppShell/GlobalNavigation.vue' => 'd770da59371440e8b4108aaa4116f50f07baa0b1980292d203a7936d702bf6dc',
         'resources/js/Components/AppShell/ModuleSidebar.vue' => '127f19089943410e88558a4f4fe07f7003c318c353b29582d526bdfcd64bc5a4',
-        'resources/js/Components/AppShell/NavigationItem.vue' => '6182c3ae18e0ac1aa6885f213c707f3ec940560b284970c2894a977d9e58762a',
+        'resources/js/Components/AppShell/NavigationItem.vue' => '1ea9e18299adabedf19cc74a044657b76d56887b021264ec64f8a60fb932245f',
         'resources/js/Components/AppShell/TopBar.vue' => '8ee9469043fa193fa2a3435331cfd4b656fc9cd27950e6138d5ea66e56ca6e3e',
         'resources/js/Components/AppShell/UserAccountMenu.test.ts' => 'cbad0690b0c251c28ce7ee9644eb2de5699fc80065f8bc10d4fe1125d65dd687',
         'resources/js/Components/AppShell/UserAccountMenu.vue' => '2ae335eacc6146873ffcf857d829a7c30d1136555e1339f500966c5dd7797367',
