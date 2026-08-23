@@ -72,11 +72,11 @@ CURRENT_WORK_PACKAGE: ERP-VERIFICATION-TIER-POLICY-001
 PACKAGE_STATUS: OWNER_POLICY_APPROVED / GOVERNANCE_PR_PENDING
 WAITING_PHASES: ERP-INQUIRY-M1.1 through ERP-INQUIRY-M1.9
 BASELINE: main@02ce87dba5ede14d791b646b7cbe976a12064cae
-GITHUB_STATE: governance/erp-verification-tier-policy-001; Draft PR pending creation
+GITHUB_STATE: governance/erp-verification-tier-policy-001; Draft PR #88 OPEN / NOT MERGED
 SOURCE_CONFLICTS: NONE WITH EVIDENCE — this package intentionally supersedes the prior default that normal regression remained on the China Mac
 GLOBAL_GATE: OWNER MERGE AUTHORIZATION REQUIRED
 PRODUCTION_DEPLOYMENT_STATUS: NO WITH EVIDENCE — governance-only package
-NEXT_DEPENDENCY: Draft PR review and explicit Owner merge authorization
+NEXT_DEPENDENCY: PR #88 review and explicit Owner merge authorization
 EVIDENCE_AS_OF: 2026-08-23
 
 ROADMAP HOURS
