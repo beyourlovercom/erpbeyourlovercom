@@ -2,7 +2,7 @@
 type: current-context
 project: BYL ERP
 updated: 2026-08-23
-status: inquiry-m1-role-governance-alignment
+status: inquiry-m1-contract-accepted-next-company
 ---
 
 # Current Context
@@ -29,7 +29,9 @@ Claude and Codex do not design, diagnose, select architecture, decide root cause
 PR_82_LOCAL_BASELINE_AUDIT: MERGED
 BASELINE_MERGE_SHA: faa45f9620211f3c398dde7f30c1a886313ced14
 PR_83_ROADMAP_REVISION: MERGED
-CURRENT_MAIN_SHA: c5fb481b5e8c97eca709b12371b644013eee46ec
+PR_84_EXECUTION_ROLE_ALIGNMENT: MERGED
+PR_85_INQUIRY_M1_CONTRACT: MERGED / OWNER APPROVED
+CURRENT_MAIN_SHA: 02ce87dba5ede14d791b646b7cbe976a12064cae
 ARCHITECTURE_FOUNDATION: COMPLETE / PASS
 GLOBAL_ARCHITECTURE_GATE: PASS
 LOCAL_RUNTIME: http://erp.b
@@ -59,9 +61,9 @@ The five migrated Human UAT findings remain open. This Roadmap revision does not
 
 ```text
 CURRENT_PROGRAM_MILESTONE: ERP-INQUIRY-M1
-CURRENT_GOVERNANCE_WORK_PACKAGE: ERP-GOV-EXECUTION-ROLE-ALIGNMENT-001
-CURRENT_ACTIVITY: EXECUTION ROLE / ENTRYPOINT ALIGNMENT / NO PRODUCT IMPLEMENTATION
-NEXT_AFTER_GOVERNANCE_MERGE: ERP-INQUIRY-M1.0 ARCHITECTURE & DATA CONTRACT
+CURRENT_GOVERNANCE_WORK_PACKAGE: ERP-GOV-INQUIRY-M1.0-ACCEPTANCE-SYNC-001
+CURRENT_ACTIVITY: RECORD OWNER ACCEPTANCE / SYNC CANONICAL STATUS / NO PRODUCT IMPLEMENTATION
+NEXT_PRODUCT_WORK_PACKAGE: ERP-INQUIRY-M1.1-COMPANY-001 / NOT YET ACTIVATED
 ```
 
 ERP-INQUIRY-M1 sequence:
@@ -100,12 +102,11 @@ PRODUCTION/REMOTE DIRECT FIX BY CODEX: FORBIDDEN
 ## Immediate sequence
 
 ```text
-1. Complete and merge ERP-GOV-EXECUTION-ROLE-ALIGNMENT-001 after Owner review.
-2. GPT Web performs repository-grounded design of ERP-INQUIRY-M1.0.
-3. Freeze Company / Contact / Case / Inbound Message ownership, identity, dedupe, status, timeline, API and migration contracts.
-4. Split implementation into bounded Work Packages.
-5. US Claude implements approved tasks and pushes to GitHub.
-6. China Codex tests exact GitHub revisions on erp.b and returns evidence only.
-7. GPT Web diagnoses failures and issues remediation instructions.
-8. Owner UAT and merge gates apply.
+1. Record Owner acceptance of ERP-INQUIRY-M1.0 and synchronize canonical status/estimate sources.
+2. GPT Web prepares ERP-INQUIRY-M1.1-COMPANY-001 as the first bounded Claude implementation Work Package.
+3. Owner explicitly authorizes that implementation package before Claude writes product code or Migration files.
+4. US Claude implements the approved package and pushes the exact branch/PR to GitHub.
+5. China Codex tests the exact GitHub revision on erp.b and returns evidence only.
+6. GPT Web diagnoses failures and issues bounded remediation instructions.
+7. Owner UAT and merge gates apply.
 ```

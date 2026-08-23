@@ -204,3 +204,11 @@ Decision: add `AI/EXECUTION_ROLE_MODEL.md` as the role-authority overlay; add `C
 Historical Codex/OpenCode implementation records remain valid historical evidence. The legacy `ESTIMATED CODEX HOURS` footer label remains temporarily schema-compatible in `LARGE-PROJECT-EXEC-001` v1.2 but does not grant Codex implementation authority. New packages must explicitly declare `EXECUTION_PROVIDER`.
 
 This decision changes governance and entrypoints only. It authorizes no product implementation, schema Migration, external Email/WhatsApp connection, remote deployment or Production access. After this governance package merges, GPT Web proceeds to `ERP-INQUIRY-M1.0` architecture/data/API contract design.
+
+## D-036 Accept and freeze ERP-INQUIRY-M1.0 contract
+
+Owner explicitly approved all six M1.0 decision gates on 2026-08-23: Case number `CASE-YYYYMMDD-<id>`; WhatsApp continuation default 72h; `/customers` as Inquiry Inbox landing page; permissions `customers.operate` and `channels.manage`; serial M1.1→M1.9 default sequence; and the 86–150h / 116h planning estimate classification.
+
+PR #85 merged the design contract to `main` as `02ce87dba5ede14d791b646b7cbe976a12064cae`. The contract is now the frozen design authority for ERP-INQUIRY-M1 unless a later Owner-approved design revision supersedes it.
+
+This acceptance does not itself authorize product implementation, Migration execution, Email connection, WhatsApp registration, remote deployment or Production access. The next bounded product package is `ERP-INQUIRY-M1.1-COMPANY-001`, and it requires separate explicit Owner implementation authorization before Claude writes product code or Migration files.

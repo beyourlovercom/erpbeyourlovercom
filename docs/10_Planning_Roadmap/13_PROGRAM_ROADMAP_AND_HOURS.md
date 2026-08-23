@@ -82,14 +82,15 @@ EVIDENCE_LIMITS: GitHub self-approval is unavailable for the repository owner ac
 ```text
 001F_B2_TO_B5_KNOWN_ESTIMATE: 4–8 Codex / 20–40h
 CURRENT_B2_TO_B5_PLANNING_VALUE: 30h
-CURRENT_PACKAGE: ERP-GOV-EXECUTION-ROLE-ALIGNMENT-001
+CURRENT_PACKAGE: ERP-GOV-INQUIRY-M1.0-ACCEPTANCE-SYNC-001 / governance-only post-merge sync
 B5_CLOSURE_PR: #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be
 E_CURRENT_DEPENDENCY: CLOSED through PR #47.
 001F_F_ESTIMATE: 5–9h; planning value 7h; completed and closed
 TOTAL_ARCHITECTURE_MIGRATION_REMAINING: 0h / complete
 ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
-CURRENT_GOVERNANCE_PACKAGE_ESTIMATE: 2–4h / planning value 3h / GPT_WEB governance-only
-ERP_INQUIRY_M1_ESTIMATE: UNKNOWN WITH EVIDENCE / architecture, data and channel contracts are not yet frozen
+CURRENT_GOVERNANCE_PACKAGE_ESTIMATE: 1–2h / planning value 1.5h / GPT_WEB governance-only
+ERP_INQUIRY_M1_ESTIMATE: 86–150h / planning value 116h / M1.1–M1.9 implementation / Owner-approved M1.0 contract
+ERP_INQUIRY_M1_1_COMPANY_ESTIMATE: 6–10h / planning value 8h / next bounded implementation package
 MVP1_HUMAN_UAT_FINDINGS_OPEN: 5
 ```
 
@@ -111,7 +112,8 @@ Historical estimate: `001F_B_TO_F_ESTIMATE: SUPERSEDED / NOT CURRENT` and `PLANN
 | `MVP1_PLANNING_BASELINE` | 166h | total planning value | Effective Hours source |
 | `MVP1_MAXIMUM_ENVELOPE` | 192h | maximum total planning envelope | Living Roadmap and Effective Hours sources |
 | `MVP1_REMAINING` | UNKNOWN WITH EVIDENCE | unknown remaining total | Accepted actual-hours ledger and proven architecture/MVP1 overlap map are incomplete |
-| `ERP_INQUIRY_M1_ESTIMATE` | UNKNOWN WITH EVIDENCE | new milestone estimate | M1.0 architecture/data/API contract must be frozen before a safe implementation estimate is issued |
+| `ERP_INQUIRY_M1_ESTIMATE` | 86–150h; planning value 116h | milestone implementation estimate | Owner-approved M1.0 contract; M1.1–M1.9 non-overlapping child ranges |
+| `ERP_INQUIRY_M1_1_COMPANY_ESTIMATE` | 6–10h; planning value 8h | next bounded child estimate | M1.1 Company only; implementation not yet authorized |
 | `POST_MVP_KNOWN_INCREMENT` | approximately 68–120h beyond MVP1 | incremental estimate | WooCommerce inbound plus single outbound |
 | `PROGRAM_REMAINING` | UNKNOWN WITH EVIDENCE | unknown remaining total | Long-term ranges are cumulative; actuals and overlap mapping are incomplete |
 | `COMPLETED_ACTUAL_EFFECTIVE_HOURS` | UNKNOWN WITH EVIDENCE | unknown actual effort | Accepted Work Logs do not yet provide a complete project-wide ledger; chat memory is not evidence |

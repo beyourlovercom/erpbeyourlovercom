@@ -2,7 +2,7 @@
 type: work-package
 project: BYL ERP
 work_package_id: ERP-INQUIRY-M1.0-CONTRACT-001
-status: DRAFT / OWNER REVIEW REQUIRED
+status: COMPLETE / OWNER APPROVED / MERGED
 standard_id: LARGE-PROJECT-EXEC-001
 standard_version: 1.2
 execution_provider: GPT_WEB
@@ -120,14 +120,14 @@ CURRENT_TRACK_PHASE_MAP: → M1.0 Architecture/Data/API Contract → M1.1 Compan
 COMPLETED_PHASES: Architecture Foundation; MVP1 implementation; Local Baseline Reconciliation; Roadmap Revision; Execution Role Alignment
 CURRENT_PHASE: ERP-INQUIRY-M1.0 ARCHITECTURE / DATA / API CONTRACT
 CURRENT_WORK_PACKAGE: ERP-INQUIRY-M1.0-CONTRACT-001
-PACKAGE_STATUS: DRAFT / OWNER REVIEW REQUIRED
+PACKAGE_STATUS: COMPLETE / OWNER APPROVED / MERGED THROUGH PR #85
 WAITING_PHASES: M1.1–M1.9 and remote milestone release
 BASELINE: main@655655dffd0cd71d5d2dec2872cf597aedf1c104
 GITHUB_STATE: PR #84 merged; design branch docs/erp-inquiry-m1-contract-001 active; delivery PR not yet merged
-SOURCE_CONFLICTS: AI/CURRENT_CONTEXT.md still records the prior governance package as current until this design package is approved/merged; no product-code conflict identified
+SOURCE_CONFLICTS: NONE WITH EVIDENCE; post-merge canonical synchronization is tracked by ERP-GOV-INQUIRY-M1.0-ACCEPTANCE-SYNC-001
 GLOBAL_GATE: PASS
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: Owner review/approval of M1.0 contract, then M1.1 Company Work Package definition
+NEXT_DEPENDENCY: ERP-INQUIRY-M1.1-COMPANY-001 Work Package definition and separate Owner implementation authorization
 EVIDENCE_AS_OF: 2026-08-23
 ```
 
