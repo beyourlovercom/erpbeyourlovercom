@@ -189,3 +189,57 @@ CODEX_MUTATION = PROHIBITED
 OWNER_UAT = NOT RUN
 MERGE = NOT AUTHORIZED
 ```
+
+## R2 — Owner UAT remediation (2026-08-23, US Claude Code)
+
+```text
+TRIGGER: PR #87 Owner UAT = CHANGES REQUIRED
+R2_IMPLEMENTATION = AUTHORIZED / MERGE NOT AUTHORIZED
+START_HEAD = bee763d13c0bdd288a30cf2f87da06c5bc444260
+```
+
+Scope executed (see Section 17 of the Work Package for the bounded file-boundary revision this round relied on):
+
+```text
+1. config/erp_shell_navigation.php: restored full legacy Level-2/Level-3 hierarchy as one runtime menu tree;
+   app/Modules/Shell/Application/ErpShellNavigation.php: pass through a `group` flag for non-link entries.
+2. resources/js/Pages/Dashboard/Index.vue + Index.test.ts: Dashboard canonical/TopBar/breadcrumb/title label -> 仪表盘.
+3. resources/js/Components/AppShell/NavigationItem.vue + resources/css/shell.css: collapsed Level-1
+   .shell-primary-label stays in the DOM (clipped, non-wrapping, no rail growth); .shell-child-links stays
+   removed from the DOM/interaction while collapsed; non-link group rendering added for 费用分析表.
+4. menu/APPROVED_MENU.json + tests/Feature/ApprovedMenuBaselineTest.php: 32 Level-2 entries Owner-approved,
+   byte-verified against runtime; URL-uniqueness narrowed to the four approved parent/child landing pairs.
+5. tests/Architecture/ModuleArchitectureTest.php: FE-001 frontend hash sync (6 files) + menu hash sync.
+6. tests/Feature/AppShellNavigationTest.php, resources/js/Components/AppShell/GlobalNavigation.test.ts,
+   resources/js/Layouts/AuthenticatedLayout.test.ts, tests/e2e/shell/app-shell.spec.ts: coverage for restored
+   children, non-link group + nested children, and collapsed-label/child-link DOM contract.
+```
+
+Validation (all green on this exact revision, prior to the final commit):
+
+```text
+npm test -- --run GlobalNavigation.test.ts AuthenticatedLayout.test.ts Dashboard/Index.test.ts = 3 files / 20 tests PASS
+npm test (full) = 12 files / 78 tests PASS
+npm run typecheck = PASS (vue-tsc --noEmit, no output)
+npm run build = PASS
+php artisan test = PASS / 165 tests, 163 passed, 2 skipped (pre-existing), 1 risky (pre-existing,
+  ModuleArchitectureTest error/exception-handler cleanup notice, unrelated to this change), 2265 assertions
+php artisan test --testsuite=Architecture = PASS / 16 tests
+php artisan test tests/Feature/ApprovedMenuBaselineTest.php = PASS / 4 tests / 809 assertions
+php artisan test tests/Feature/AppShellNavigationTest.php tests/Feature/ErpNavigationTest.php = PASS / 21 tests
+npm run typecheck:e2e = PASS
+npm run test:e2e = PASS / 19 tests (required PLAYWRIGHT_BROWSERS_PATH=<external>/1.62.1 per tests/e2e/README.md;
+  browsers were not pre-installed on this runtime and were installed locally to obtain this result)
+git diff --check = PASS (no whitespace errors)
+```
+
+A standalone PHP script cross-checked the flattened `config/erp_shell_navigation.php` runtime tree against
+`menu/APPROVED_MENU.json` field-by-field (code/parent_code/level/label_zh/slug/url/route/permission/emoji/sort)
+for all 43 governed Level-1+Level-2 entries: exact match, confirming `ApprovedMenuBaselineTest`'s own comparison
+before running PHPUnit.
+
+```text
+R2_MERGE = NOT AUTHORIZED
+R2_DEPLOYMENT = NOT AUTHORIZED
+R2_OWNER_UAT = NOT YET RE-RUN
+```

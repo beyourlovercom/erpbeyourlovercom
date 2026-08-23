@@ -426,6 +426,36 @@ MERGE = NOT AUTHORIZED
 DEPLOYMENT = NOT AUTHORIZED
 ```
 
+## 17. R2 bounded revision — Owner UAT remediation (2026-08-23)
+
+Owner UAT on the R1 delivery (PR #87) returned `CHANGES REQUIRED`. Owner authorized a bounded R2 revision that explicitly widens the file boundary defined in Section 9 for this one round only:
+
+```text
+R2_TRIGGER: Owner UAT CHANGES REQUIRED on PR #87
+R2_AUTHORIZATION: IMPLEMENTATION AUTHORIZED / MERGE NOT AUTHORIZED
+R2_ADDITIONAL_ALLOWED_FILES:
+  config/erp_shell_navigation.php
+  menu/APPROVED_MENU.json
+  resources/js/Pages/Dashboard/Index.vue (literal display-name strings only)
+  resources/js/Pages/Dashboard/Index.test.ts
+  tests/Architecture/ModuleArchitectureTest.php (frontend + menu hash/file-set synchronization, in addition to the prior FE-001 exception)
+  tests/e2e/shell/app-shell.spec.ts (already listed in Section 9)
+```
+
+R2 scope, bounded to three defects raised in UAT:
+
+1. **Restored secondary navigation.** `config/erp_shell_navigation.php` gained the full legacy Level-2/Level-3 hierarchy (`config/erp_navigation.php` remains legacy evidence/route-compat only; `ErpShellNavigation` still reads a single runtime source). Child `permission` values were derived from each child's actual registered route middleware (real permission where implemented, `prototype.view` for legacy-only routes, parent's own permission where a child intentionally shares its parent's landing route/URL — `库存总览`, `外采总览`, `产品索引`, `全部教程`). No route or permission was added, renamed or removed; `tests/Architecture/ModuleArchitectureTest.php`'s frozen `ROUTE_NAMES`/`PERMISSION_KEYS` COMPAT-001 assertions pass unchanged.
+2. **Dashboard localization.** Canonical `dashboard` label plus the Dashboard page's visible TopBar/breadcrumb text and browser title changed from `Dashboard` to `仪表盘`. Key/slug/path/route/permission are unchanged. Dashboard layout, metrics and PR #81 redesign scope were not touched.
+3. **Collapsed-rail Level-1 labels.** `bee763d` (R1's fix for a since-superseded e2e expectation) had removed `.shell-primary-label` from the DOM entirely when collapsed. Owner UAT requires the emoji + Chinese label to remain visible (clipped, non-wrapping) inside the fixed 92px rail; only child links (`.shell-child-links`) are removed from the DOM/interaction while collapsed. `NavigationItem.vue` and `resources/css/shell.css` were reverted to this contract; `tests/e2e/shell/app-shell.spec.ts` was updated to match (it previously asserted zero `.shell-primary-label` elements collapsed — that assertion is now `levelOneMenu.length`).
+
+`menu/APPROVED_MENU.json` governance was explicitly expanded by Owner for this round only: `governed_levels` remains `[1, 2]`; the 32 confirmed Level-2 entries (including the non-link `费用分析表` group, which carries `route: null` and is never registered as a Laravel route) are now Owner-approved and byte-verified against the runtime config (`tests/Feature/ApprovedMenuBaselineTest.php::test_runtime_level_one_and_two_menu_matches_the_owner_approved_baseline`). Level-3 children of `费用分析表` render at runtime but are intentionally excluded from the governed baseline, consistent with the existing schema. The URL-uniqueness assertion was narrowed to allow exactly the four Owner-approved parent/child landing-URL pairs named above; no other duplicate URL is permitted.
+
+```text
+R2_VALIDATION: see Section 12 command list; R2 run recorded in the 2026-08-23 work log
+R2_MERGE: NOT AUTHORIZED
+R2_DEPLOYMENT: NOT AUTHORIZED
+```
+
 PROJECT POSITION
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate [COMPLETE] → MVP1 Existing Operations / Tencent Docs Replacement [IMPLEMENTATION COMPLETE; HUMAN UAT REMEDIATION OPEN] → ERP-INQUIRY-M1 B2B Inquiry Foundation [CURRENT] → ERP-INQUIRY-M1 Local Milestone UAT → Milestone-gated Remote Release to erp.beyourlover.com → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Production Hardening / Expansion
 CURRENT_TRACK_PHASE_MAP: ERP-INQUIRY-M1.0 CONTRACT MERGED → ERP-APP-SHELL-NAVIGATION-REMEDIATION-001 PREFLIGHT COMPLETE / CURRENT FOUNDATION REMEDIATION → ERP-INQUIRY-M1.1 Company → M1.2 Contact → M1.3 Case → M1.4 Inbound Message → M1.5 Inquiry Inbox → M1.6 Email → M1.7 WhatsApp → M1.8 Dashboard → M1.9 Local Milestone UAT

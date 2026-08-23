@@ -76,10 +76,35 @@ describe('GlobalNavigation', () => {
     expect(wrapper.get('.shell-primary-link').attributes('title')).toBe('同步')
   })
 
-  it('removes shell-primary-label elements from the DOM entirely when collapsed', async () => {
+  it('keeps Level-1 shell-primary-label elements in the DOM when collapsed', async () => {
     const wrapper = mount(GlobalNavigation, { props: { items: defaults, currentPath: '/dashboard', mobileHidden: false, collapsed: false, user } })
     expect(wrapper.findAll('.shell-primary-label')).toHaveLength(defaults.length)
     await wrapper.setProps({ collapsed: true })
-    expect(wrapper.findAll('.shell-primary-label')).toHaveLength(0)
+    expect(wrapper.findAll('.shell-primary-label')).toHaveLength(defaults.length)
+    defaults.forEach((item, index) => expect(wrapper.findAll('.shell-primary-label')[index].text()).toBe(item.label))
+  })
+
+  it('removes shell-child-links from the DOM and interaction entirely when collapsed', async () => {
+    const nested = { ...defaults[2], children: [{ key: 'pending', label: '待处理', emoji: null, path: '/sync/pending', route: 'sync.pending', placeholder: false, children: [] }] }
+    const wrapper = mount(GlobalNavigation, { props: { items: [nested], currentPath: '/sync/pending', mobileHidden: false, collapsed: false, user } })
+    expect(wrapper.find('.shell-child-links').exists()).toBe(true)
+    await wrapper.setProps({ collapsed: true })
+    expect(wrapper.find('.shell-child-links').exists()).toBe(false)
+    expect(wrapper.find('a[href="/sync/pending"]').exists()).toBe(false)
+  })
+
+  it('renders a non-link group label whose real children render recursively and remain active-detectable', () => {
+    const group = {
+      key: 'expense-analysis', label: '费用分析表', emoji: null, path: '/accounting/expense-analysis', route: null, placeholder: false, group: true,
+      children: [{ key: 'actual-2025', label: '2025实际', emoji: null, path: '/accounting/expense-analysis/2025-actual', route: 'accounting.actual-2025', placeholder: false, children: [] }],
+    }
+    const accounting = { ...defaults[9], children: [group] }
+    const wrapper = mount(GlobalNavigation, { props: { items: [accounting], currentPath: '/accounting/expense-analysis/2025-actual', mobileHidden: false, collapsed: false, user } })
+    expect(wrapper.find('a[href="/accounting/expense-analysis"]').exists()).toBe(false)
+    expect(wrapper.find('.shell-primary-link-group').exists()).toBe(true)
+    expect(wrapper.get('.shell-primary-link-group').text()).toContain('费用分析表')
+    const childLink = wrapper.get('a[href="/accounting/expense-analysis/2025-actual"]')
+    expect(childLink.classes()).toContain('is-active')
+    expect(childLink.attributes('aria-current')).toBe('page')
   })
 })

@@ -51,11 +51,39 @@ class AppShellNavigationTest extends TestCase
         $user = $this->userWith(['dashboard.view', 'logistics.view']);
         $response = $this->actingAs($user)->get('/dashboard');
         $response->assertInertia(fn (Assert $page) => $page
-            ->where('shellNavigation.0.label', 'Dashboard')
+            ->where('shellNavigation.0.label', '仪表盘')
             ->where('shellNavigation.1.label', '物流')
             ->missing('shellNavigation.2'));
         $this->actingAs($user)->get('/sync')->assertForbidden();
         $this->actingAs($user)->get('/settings')->assertForbidden();
+    }
+
+    public function test_restored_legacy_children_are_emitted_and_gated_by_their_own_permission(): void
+    {
+        $user = $this->userWith(['dashboard.view', 'logistics.view'], 'operator-without-prototype');
+        $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
+            ->has('shellNavigation.1.children', 1)
+            ->where('shellNavigation.1.children.0.key', 'logistics-pending')
+            ->where('shellNavigation.1.children.0.label', '待发货'));
+
+        $withPrototype = $this->userWith(['dashboard.view', 'logistics.view', 'prototype.view'], 'operator-with-prototype');
+        $this->actingAs($withPrototype)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
+            ->has('shellNavigation.1.children', 4)
+            ->where('shellNavigation.1.children.1.label', '已发待单号')
+            ->where('shellNavigation.1.children.2.label', '运输中')
+            ->where('shellNavigation.1.children.3.label', '异常订单'));
+    }
+
+    public function test_accounting_expense_analysis_group_is_non_link_with_real_nested_children(): void
+    {
+        $user = $this->userWith(['dashboard.view', 'accounting.view', 'analysis.view', 'prototype.view']);
+        $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
+            ->has('shellNavigation.1.children', 4)
+            ->where('shellNavigation.1.children.2.key', 'accounting-expense-analysis')
+            ->where('shellNavigation.1.children.2.group', true)
+            ->where('shellNavigation.1.children.2.route', null)
+            ->has('shellNavigation.1.children.2.children', 6)
+            ->where('shellNavigation.1.children.2.children.0.label', '2025实际'));
     }
 
     public function test_sync_permission_controls_route_and_navigation_item(): void

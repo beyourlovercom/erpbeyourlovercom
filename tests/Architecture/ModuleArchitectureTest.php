@@ -252,10 +252,10 @@ final class ModuleArchitectureTest extends TestCase
     ];
 
     private const FRONTEND_FILES = [
-        'resources/js/Components/AppShell/GlobalNavigation.test.ts' => '25bf606205e618134d9462a14ef3f4ebcce618f2d90921695c82535e7a23bd5b',
+        'resources/js/Components/AppShell/GlobalNavigation.test.ts' => '49d9b31f8a296a545117a6593de4eba26126c5a9865b5df9c39b6dd5688d5e49',
         'resources/js/Components/AppShell/GlobalNavigation.vue' => 'd770da59371440e8b4108aaa4116f50f07baa0b1980292d203a7936d702bf6dc',
         'resources/js/Components/AppShell/ModuleSidebar.vue' => '127f19089943410e88558a4f4fe07f7003c318c353b29582d526bdfcd64bc5a4',
-        'resources/js/Components/AppShell/NavigationItem.vue' => '1ea9e18299adabedf19cc74a044657b76d56887b021264ec64f8a60fb932245f',
+        'resources/js/Components/AppShell/NavigationItem.vue' => 'a01afcb25099612ce549b48f3504f998c3ab71a112576e88792c5c1f99f4ead2',
         'resources/js/Components/AppShell/TopBar.vue' => '8ee9469043fa193fa2a3435331cfd4b656fc9cd27950e6138d5ea66e56ca6e3e',
         'resources/js/Components/AppShell/UserAccountMenu.test.ts' => 'cbad0690b0c251c28ce7ee9644eb2de5699fc80065f8bc10d4fe1125d65dd687',
         'resources/js/Components/AppShell/UserAccountMenu.vue' => '2ae335eacc6146873ffcf857d829a7c30d1136555e1339f500966c5dd7797367',
@@ -269,14 +269,14 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Components/UI/UiAlert.vue' => 'e3e6ee0e127ae0911efce1bb1d1cb873146cf77220c9c9156a86b968b03b519f',
         'resources/js/Components/UI/UiButton.test.ts' => '126bc019e025164dc901b9c21986aa370fedf26da3d1618c90d7c60791797bf8',
         'resources/js/Components/UI/UiButton.vue' => '7ae624f92c56911ce58b60ae54c54625e85837666ca6b9882ac04be32c718113',
-        'resources/js/Layouts/AuthenticatedLayout.test.ts' => 'c9cb7b3499ae71d12ddd0275803f0bb11dd2c4a8a31475ad69d1f518b3b3525e',
+        'resources/js/Layouts/AuthenticatedLayout.test.ts' => 'f43ad24ee595b6203987fd69746a9a3eae98f0e5619e70c19a91b5e3555d3fde',
         'resources/js/Layouts/AuthenticatedLayout.vue' => '50423cdd09161ce7cf36aade3f0375231571af27671dc7fc3055623442a80d2b',
         'resources/js/Pages/Architecture/Foundation.test.ts' => '68898785345d5cc641bcc8b3f165527a94c912e33c5f1941554a9a28aad97a1c',
         'resources/js/Pages/Architecture/Foundation.vue' => '0f3f96bd3ad9a5b68fa7fe5a78e20a1e0e92f4d2e6806ef30697fda64941aa70',
         'resources/js/Pages/Auth/Login.test.ts' => '937fcfd44e8348130d7abded4669263142d4cfc423f3ac4d87cee2a7889eec65',
         'resources/js/Pages/Auth/Login.vue' => '203bd9c4dc2ae13b8f5e185c4ebebcb5a4b4a088ae43eaf868b62cddf73d8901',
-        'resources/js/Pages/Dashboard/Index.test.ts' => 'd52f7059ea0159d54ab18462a80004fdfda311f1ea06589202ca08cf8d3b8c69',
-        'resources/js/Pages/Dashboard/Index.vue' => '657a45a6bde39634729d0621dc79331a9693099074dac1f69c85824e59b09c5e',
+        'resources/js/Pages/Dashboard/Index.test.ts' => '27c63e094fcdec28a0e5677508723e149c90a5130efb98d4448fa2b7f51b4ae4',
+        'resources/js/Pages/Dashboard/Index.vue' => '0c28a768afcaa181b54ab01c4ec08457a04f7ed98e5ba3b52a041d98492bc2bb',
         'resources/js/Pages/Finance/OrderAnalysis.vue' => '96216f9ce4b67dd10bc4627c7e09703c1752c030110425509839d9aaab25d0aa',
         'resources/js/Pages/Logistics/Index.vue' => 'd5cb5024e68ab800043d2ac14d206394ad6f44924f8ba6c73156d52f7c507c91',
         'resources/js/Pages/Orders/Create.vue' => '0ea13dfe14a72147e800ee1ba3fefb6bcd091ba97c61ec306a011459e0fb0060',
@@ -287,7 +287,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Sync/Index.vue' => '127b59b51cfef855410b60002fe82737e349dbd51f4b40e753fc4f7ba92e06c8',
         'resources/js/app.js' => '40994ac10f73e394b96d6e4742be37921fc38e477dccfdfe9e8ab90cd5e6d7d4',
         'resources/js/app.ts' => 'c667a849465fad821d6d08babe410c6d44bd7412629198522f1d408f373823b3',
-        'resources/js/types/navigation.ts' => '65cca2843e7dca9cadc8540df6ca323071baf8b8ec39290cc57511bd45821779',
+        'resources/js/types/navigation.ts' => '31e51f9100ce60a20831007af9c48d412b3aeaee487c5ffa99a15006dcd6e1c3',
     ];
 
     public function test_frozen_module_and_support_boundaries(): void
@@ -466,7 +466,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('bd2da50aaf6178abed7feb11016cf28d731996f53c3260f9a4a7654aed3fbffd', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('452406a1070ed29353684a39c70afc6d5d59cb9d39f7d0effa0752ba081994dd', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);

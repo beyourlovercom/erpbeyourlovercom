@@ -36,11 +36,10 @@ class ApprovedMenuBaselineTest extends TestCase
     {
         $items = $this->baseline()['items'];
         $codes = array_column($items, 'code');
-        $urls = array_column($items, 'url');
         $levelOneCodes = array_column(array_filter($items, fn (array $item) => $item['level'] === 1), 'code');
 
         $this->assertSameSize(array_unique($codes), $codes, self::MISMATCH.': duplicate code');
-        $this->assertSameSize(array_unique($urls), $urls, self::MISMATCH.': duplicate URL');
+        $this->assertUrlSharingIsLimitedToApprovedParentChildLandingPairs($items);
 
         foreach ($items as $item) {
             $this->assertSame(self::REQUIRED_FIELDS, array_keys($item), self::MISMATCH.': fields for '.($item['code'] ?? 'unknown'));
@@ -80,7 +79,7 @@ class ApprovedMenuBaselineTest extends TestCase
         $levelTwo = collect($items)->where('level', 2)->values();
 
         $this->assertCount(11, $levelOne, self::MISMATCH.': level-1 count');
-        $this->assertCount(0, $levelTwo, self::MISMATCH.': fabricated level-2 item');
+        $this->assertCount(32, $levelTwo, self::MISMATCH.': R2 owner-approved level-2 count');
         $this->assertSame(
             ['dashboard', 'logistics', 'sync', 'customers', 'kol', 'inventory', 'procurement', 'products', 'guides', 'accounting', 'settings'],
             $levelOne->pluck('code')->all(),
@@ -100,6 +99,22 @@ class ApprovedMenuBaselineTest extends TestCase
         $runtime = $this->flattenRuntime(config('erp_shell_navigation'));
 
         $this->assertSame($approved, $runtime, self::MISMATCH.': runtime menu differs from Owner approval');
+    }
+
+    private function assertUrlSharingIsLimitedToApprovedParentChildLandingPairs(array $items): void
+    {
+        foreach (collect($items)->groupBy('url') as $url => $group) {
+            if ($group->count() === 1) {
+                continue;
+            }
+
+            $this->assertCount(2, $group, self::MISMATCH.': URL shared by more than a parent/child landing pair for '.$url);
+            $this->assertSame([1, 2], $group->pluck('level')->sort()->values()->all(), self::MISMATCH.': shared URL must be a level-1/level-2 pair for '.$url);
+
+            $parent = $group->firstWhere('level', 1);
+            $child = $group->firstWhere('level', 2);
+            $this->assertSame($parent['code'], $child['parent_code'], self::MISMATCH.': shared URL child must belong to the sharing parent for '.$url);
+        }
     }
 
     /** @throws JsonException */

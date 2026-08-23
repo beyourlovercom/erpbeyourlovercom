@@ -118,6 +118,11 @@
     font-weight: var(--byl-font-weight-bold);
 }
 
+.shell-primary-link-group {
+    cursor: default;
+    opacity: 0.85;
+}
+
 .shell-child-links {
     display: grid;
     gap: var(--byl-space-4);
@@ -139,13 +144,20 @@
     justify-content: center;
 }
 
-.shell-primary-nav.is-collapsed .shell-brand span,
-.shell-primary-nav.is-collapsed .shell-primary-label {
+.shell-primary-nav.is-collapsed .shell-brand span {
     display: none;
 }
 
+.shell-primary-nav.is-collapsed .shell-primary-label {
+    display: block;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+}
+
 .shell-primary-nav.is-collapsed .shell-primary-link {
-    justify-content: center;
+    justify-content: flex-start;
     padding-left: var(--byl-space-8);
     padding-right: var(--byl-space-8);
 }
