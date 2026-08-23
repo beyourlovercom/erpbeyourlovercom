@@ -2,7 +2,7 @@
 type: execution-governance-standard
 project: BYL ERP
 standard_id: LARGE-PROJECT-EXEC-001
-version: 1.2
+version: 1.3
 ---
 
 # Large Project Execution Standard
@@ -11,7 +11,7 @@ version: 1.2
 
 ```text
 Standard ID: LARGE-PROJECT-EXEC-001
-Version: 1.2
+Version: 1.3
 ```
 
 ## Applicability
@@ -24,6 +24,58 @@ This repository-local standard governs every formal BYL ERP task: implementation
 
 The legacy footer label `ESTIMATED CODEX HOURS` is retained in this standard version only as a repository schema compatibility label for existing package templates. It does not authorize Codex implementation. For a new implementation package, the Work Package must explicitly declare `EXECUTION_PROVIDER: CLAUDE_CODE`; for a test-only package, `EXECUTION_PROVIDER: CODEX_CLI`; for GPT-authored governance/design mutation, `EXECUTION_PROVIDER: GPT_WEB`.
 
+## Verification Tier Contract
+
+`AI/EXECUTION_ROLE_MODEL.md` defines the host roles. This standard defines how much verification each host performs.
+
+### Daily development default
+
+For ordinary implementation/remediation work, the default is:
+
+```text
+US implementation host = ONE complete package verification
+China verification host = exact-SHA smoke only
+DUPLICATE_FULL_SUITE_ON_BOTH_HOSTS = NO BY DEFAULT
+```
+
+The US full verification must be run on the merge-candidate revision before or immediately before push and must satisfy the active Work Package validation contract. A package may require PHPUnit, Vitest, typecheck, build, Architecture/Menu checks, System Chrome E2E, MySQL/Redis/runtime checks, or other bounded validation.
+
+After push, China Codex verifies the exact GitHub revision with a bounded smoke contract. Daily smoke normally contains:
+
+- exact requested SHA / branch identity;
+- clean tracked Git state;
+- China `http://erp.b` reachability when the task has runtime impact;
+- one or a few task-critical focused assertions appropriate to the change.
+
+China must not rerun the same entire PHPUnit + frontend + build + browser suite merely because the US host already ran it successfully.
+
+### Full dual-host verification triggers
+
+Full independent verification on both hosts is required for milestone/release candidates and may be required for high-risk changes. High-risk triggers include migration/schema/database changes, PHP/MySQL/Redis/runtime/environment changes, authentication/authorization/security changes, browser/runtime compatibility concerns, deployment/release tooling changes, cross-machine reproducibility concerns, a smoke failure escalated by GPT, or explicit GPT/Owner direction.
+
+When a full dual-host trigger exists:
+
+```text
+US FULL VERIFICATION
+        ↓ push exact revision
+CHINA FULL INDEPENDENT VERIFICATION
+        ↓
+OWNER / MERGE / RELEASE GATE
+```
+
+A China smoke failure is evidence, not authorization to expand scope. Codex stops and returns raw evidence. GPT determines whether the next step is a focused rerun, full China verification, or a bounded Claude remediation.
+
+Every newly activated implementation/remediation Work Package must state its verification classification in the validation section as one of:
+
+```text
+VERIFICATION_TIER = DAILY
+VERIFICATION_TIER = MILESTONE_RELEASE
+VERIFICATION_TIER = HIGH_RISK
+VERIFICATION_TIER = OWNER_OVERRIDE
+```
+
+If omitted in a newly activated package after version 1.3 becomes effective, the default is `DAILY`; omission does not silently escalate to dual-host full verification. Historical/open packages do not need retrospective rewrites solely for this field; GPT/Owner may apply the version 1.3 policy prospectively to their remaining verification gates.
+
 ## Repository-Local Implementation
 
 This file is the BYL ERP repository's local implementation of `LARGE-PROJECT-EXEC-001`. It directly governs only the BYL ERP repository.
@@ -34,10 +86,10 @@ Merging this standard does not automatically govern another repository, and no t
 
 ## Version Transition
 
-- version 1.2 becomes effective when its governance PR merges;
+- version 1.3 becomes effective when its governance PR merges;
 - it applies to every newly activated formal task and every open/unmerged task reviewed afterward unless an explicit grandfather rule applies;
 - historical merged packages remain governed by their issued version and are not retroactively invalidated;
-- version 1.2 adds the D-034 execution-role overlay and current Program Roadmap without rewriting historical evidence;
+- version 1.3 retains the D-034 execution-role overlay and adds the Owner-approved asymmetric verification-tier policy without rewriting historical evidence;
 - historical Codex/OpenCode implementation references remain history only and cannot override `AI/EXECUTION_ROLE_MODEL.md`;
 - the legacy `ESTIMATED CODEX HOURS` footer name remains temporarily schema-compatible, but new packages must declare their actual `EXECUTION_PROVIDER`.
 
