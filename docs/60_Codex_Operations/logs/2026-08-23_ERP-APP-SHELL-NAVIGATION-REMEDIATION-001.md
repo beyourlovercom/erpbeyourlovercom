@@ -243,3 +243,24 @@ R2_MERGE = NOT AUTHORIZED
 R2_DEPLOYMENT = NOT AUTHORIZED
 R2_OWNER_UAT = NOT YET RE-RUN
 ```
+
+
+## R2 closure — Owner UAT PASS / Merge Gate (2026-08-23)
+
+```text
+VALIDATED_PRODUCT_HEAD = 795d3a5ac565c68a5c8b9cc7bd173d2272d45b5c
+US_FULL_LOCAL_VERIFICATION = PASS
+CHINA_EXACT_REVISION_VERIFICATION = PASS
+CHINA_BROWSER_E2E = 19 / 19 PASS
+CHINA_HTTP_ERP_B = 200
+OWNER_VISUAL_UAT_R2 = PASS
+MVP1-UAT-DEFECT-001 = REMEDIATION PASS / MERGE PENDING
+CURRENT_MAIN = 9f64c00faf79c6c59ea9ff2a3bd5befa740ba6f6
+CURRENT_MAIN_OVERLAP_WITH_PR87 = NONE
+MERGE_TREE_CONFLICTS = NONE
+MERGE_GATE = PASS / READY FOR EXPLICIT OWNER MERGE AUTHORIZATION
+MERGE = NOT YET AUTHORIZED
+DEPLOYMENT = NOT AUTHORIZED
+```
+
+The Owner's second visual UAT confirmed the restored Level-2 navigation, `仪表盘` label, fixed-width collapsed Level-1 emoji + Chinese labels, hidden child interaction while collapsed, and stable expand/collapse layout on `http://erp.b`. The closure documentation commit contains governance/evidence changes only and does not alter the validated product tree.

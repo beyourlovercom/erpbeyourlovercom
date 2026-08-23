@@ -3,7 +3,7 @@ type: work-package
 project: BYL ERP
 work_package_id: ERP-APP-SHELL-NAVIGATION-REMEDIATION-001
 title: App Shell / Navigation Remediation
-status: IMPLEMENTATION AUTHORIZED / CLAUDE EXECUTION ACTIVE
+status: OWNER UAT PASS / MERGE GATE
 execution_provider: CLAUDE_CODE
 design_authority: GPT_WEB
 test_provider: CODEX_CLI
@@ -399,7 +399,7 @@ Rollback is a revert of this Work Package's product commit(s). No database rollb
 ## 15. Dependency declaration
 
 ```text
-BASELINE: main@02ce87dba5ede14d791b646b7cbe976a12064cae
+BASELINE: delivery base main@02ce87dba5ede14d791b646b7cbe976a12064cae; current main@9f64c00faf79c6c59ea9ff2a3bd5befa740ba6f6; validated product head 795d3a5ac565c68a5c8b9cc7bd173d2272d45b5c
 DEPENDENCIES: merged current-main Shell architecture; merged Menu Baseline; source WIP branch is evidence only
 DEPENDENCY_TYPE: MERGED_PR
 DEPENDENCY_STATUS: SATISFIED
@@ -414,14 +414,17 @@ OPEN_PR_86: independent only while shared Roadmap/context files are not edited b
 
 The Owner has authorized the read-only/current-main re-audit and formal Work Package definition.
 
-The Owner has **authorized Claude implementation** under this Work Package on 2026-08-23. This authorization covers only the bounded implementation scope defined in this document and does not authorize merge, deployment, or Owner UAT closure.
+The Owner authorized Claude implementation under this Work Package on 2026-08-23. R2 implementation and all required automated verification completed, and the Owner completed the second visual UAT on 2026-08-23 with `PASS`. This authorizes formal closure evaluation and the Merge Gate only; the actual merge still requires a separate explicit Owner merge authorization.
 
 ```text
 PREFLIGHT = COMPLETE
 WORK_PACKAGE = FORMALIZED
-CLAUDE_IMPLEMENTATION = AUTHORIZED
+CLAUDE_IMPLEMENTATION = COMPLETE
 CODEX_PRODUCT_MUTATION = PROHIBITED
-OWNER_UAT = NOT YET AUTHORIZED
+CHINA_CODEX_EXACT_REVISION = PASS
+OWNER_UAT = PASS
+MVP1-UAT-DEFECT-001 = REMEDIATION PASS / MERGE PENDING
+MERGE_GATE = AUTHORIZED FOR EVALUATION
 MERGE = NOT AUTHORIZED
 DEPLOYMENT = NOT AUTHORIZED
 ```
@@ -456,20 +459,48 @@ R2_MERGE: NOT AUTHORIZED
 R2_DEPLOYMENT: NOT AUTHORIZED
 ```
 
+## 18. Owner UAT PASS / Merge Gate evidence (2026-08-23)
+
+Validated product revision before closure-only documentation:
+
+```text
+VALIDATED_PRODUCT_HEAD = 795d3a5ac565c68a5c8b9cc7bd173d2272d45b5c
+US_FULL_LOCAL_VERIFICATION = PASS
+CHINA_EXACT_REVISION_VERIFICATION = PASS
+OWNER_VISUAL_UAT_R2 = PASS
+MVP1-UAT-DEFECT-001 = REMEDIATION PASS
+```
+
+China exact-revision evidence on `795d3a5...`: focused frontend 20/20 PASS; full frontend 78/78 PASS; typecheck PASS; build PASS; full PHP 165 tests / 163 passed / 2 skipped / 1 risky / 2265 assertions; Architecture 16/16 PASS; Approved Menu Baseline 4/4 PASS; App Shell Navigation 21/21 PASS; E2E typecheck PASS; Browser E2E 19/19 PASS with cleanup PASS; `http://erp.b` HTTP 200; final Git state clean.
+
+Owner visual UAT then confirmed the R2 requirements in the China runtime: restored secondary navigation, `仪表盘` localization, fixed-width collapsed rail retaining emoji + Chinese Level-1 labels, hidden/non-interactive child navigation while collapsed, and stable expand/collapse layout behavior.
+
+Current `main` advanced after the package baseline to `9f64c00faf79c6c59ea9ff2a3bd5befa740ba6f6` only through the asymmetric verification-tier governance change. Its changed files (`AI/EXECUTION_ROLE_MODEL.md`, `AI/LARGE_PROJECT_EXECUTION_STANDARD.md`, `docs/60_Codex_Operations/work-packages/ERP-VERIFICATION-TIER-POLICY-001.md`) do not overlap PR #87 changed files. A read-only `git merge-tree` check reports no conflict markers. Open Draft PR #81 remains a later Dashboard-owner rebase concern, not a current-main merge blocker for #87.
+
+```text
+MERGE_GATE_PRODUCT = PASS
+MERGE_GATE_TESTS = PASS
+MERGE_GATE_OWNER_UAT = PASS
+MERGE_GATE_CURRENT_MAIN_CONFLICT = NONE WITH EVIDENCE
+MERGE_GATE_RESULT = PASS / READY FOR EXPLICIT OWNER MERGE AUTHORIZATION
+MERGE = NOT YET AUTHORIZED
+DEPLOYMENT = NOT AUTHORIZED
+```
+
 PROJECT POSITION
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate [COMPLETE] → MVP1 Existing Operations / Tencent Docs Replacement [IMPLEMENTATION COMPLETE; HUMAN UAT REMEDIATION OPEN] → ERP-INQUIRY-M1 B2B Inquiry Foundation [CURRENT] → ERP-INQUIRY-M1 Local Milestone UAT → Milestone-gated Remote Release to erp.beyourlover.com → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Production Hardening / Expansion
-CURRENT_TRACK_PHASE_MAP: ERP-INQUIRY-M1.0 CONTRACT MERGED → ERP-APP-SHELL-NAVIGATION-REMEDIATION-001 PREFLIGHT COMPLETE / CURRENT FOUNDATION REMEDIATION → ERP-INQUIRY-M1.1 Company → M1.2 Contact → M1.3 Case → M1.4 Inbound Message → M1.5 Inquiry Inbox → M1.6 Email → M1.7 WhatsApp → M1.8 Dashboard → M1.9 Local Milestone UAT
+CURRENT_TRACK_PHASE_MAP: ERP-INQUIRY-M1.0 CONTRACT MERGED → ERP-APP-SHELL-NAVIGATION-REMEDIATION-001 IMPLEMENTATION/VERIFICATION/OWNER UAT COMPLETE / MERGE GATE → ERP-INQUIRY-M1.1 Company → M1.2 Contact → M1.3 Case → M1.4 Inbound Message → M1.5 Inquiry Inbox → M1.6 Email → M1.7 WhatsApp → M1.8 Dashboard → M1.9 Local Milestone UAT
 COMPLETED_PHASES: Architecture Foundation; Global Architecture Gate; MVP1 implementation; ERP-INQUIRY-M1.0 contract design/merge
-CURRENT_PHASE: Shared App Shell / Navigation foundation remediation before new Inquiry UI dependency
+CURRENT_PHASE: App Shell / Navigation remediation closure and Merge Gate
 CURRENT_WORK_PACKAGE: ERP-APP-SHELL-NAVIGATION-REMEDIATION-001
-PACKAGE_STATUS: PREFLIGHT COMPLETE / WORK PACKAGE FORMALIZED / OWNER IMPLEMENTATION AUTHORIZATION REQUIRED
-WAITING_PHASES: Claude implementation; China exact-revision test; Owner visual UAT; ERP-INQUIRY-M1.1 onward per Owner sequence
-BASELINE: main@02ce87dba5ede14d791b646b7cbe976a12064cae
-GITHUB_STATE: source WIP preserved at feature/byl-erp-ui-application-shell-001@53d2b79; new delivery branch feature/erp-app-shell-navigation-remediation-001; Draft delivery PR to be opened from this package
-SOURCE_CONFLICTS: PR #81 owns Dashboard/Index.vue also touched by legacy WIP, so Dashboard delta is excluded; PR #86 contains unmerged canonical Roadmap/context synchronization, so shared Roadmap/context edits are deferred; source WIP has one newly introduced Vitest localStorage test failure on current-main replay
+PACKAGE_STATUS: IMPLEMENTATION COMPLETE / VERIFICATION PASS / OWNER UAT PASS / MERGE GATE PASS
+WAITING_PHASES: explicit Owner merge authorization for PR #87; then ERP-INQUIRY-M1.1 onward per Owner sequence
+BASELINE: delivery base main@02ce87dba5ede14d791b646b7cbe976a12064cae; current main@9f64c00faf79c6c59ea9ff2a3bd5befa740ba6f6; validated product head 795d3a5ac565c68a5c8b9cc7bd173d2272d45b5c
+GITHUB_STATE: PR #87 on feature/erp-app-shell-navigation-remediation-001; validated product head 795d3a5ac565c68a5c8b9cc7bd173d2272d45b5c; Owner UAT PASS; closure-only documentation follows on the same PR; current main 9f64c00 has no overlapping changed files
+SOURCE_CONFLICTS: current main 9f64c00 changes only verification-governance files and has no overlap with PR #87; open Draft PR #81 also touches Dashboard/Index.vue and must reconcile after #87, but does not block #87 against current main; historical source-WIP localStorage test issue was remediated and validated
 GLOBAL_GATE: PASS
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: Owner implementation authorization for this Work Package
+NEXT_DEPENDENCY: explicit Owner merge authorization for PR #87
 EVIDENCE_AS_OF: 2026-08-23 Asia/Hong_Kong
 
 ROADMAP HOURS
@@ -484,7 +515,7 @@ POST_MVP_KNOWN_INCREMENT: approximately 68–120h beyond MVP1
 LONG_TERM_CUMULATIVE_RANGE: 235–402h architecture foundation; 603–1,018h first highly automated operations MVP; 1,059–1,802h product/SEO growth layer; 1,595–2,714h full core ERP; 1,819–3,146h all expansion
 PROGRAM_REMAINING: UNKNOWN WITH EVIDENCE
 COMPLETED_ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE
-ESTIMATE_CONFIDENCE: MEDIUM; source patch replays cleanly and scope is bounded, but exact browser/UAT remediation evidence is not yet complete
+ESTIMATE_CONFIDENCE: HIGH for technical closure; implementation, dual-host validation, browser E2E and Owner visual UAT are complete; actual-hours ledger remains separately UNKNOWN WITH EVIDENCE
 ESTIMATE_AS_OF: 2026-08-23
 ESTIMATE_METHOD: current-main replay audit of preserved WIP + baseline/replayed focused tests + declared open-PR overlap exclusions; no elapsed-time inference
 

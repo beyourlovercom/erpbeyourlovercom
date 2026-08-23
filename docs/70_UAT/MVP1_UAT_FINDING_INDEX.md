@@ -37,14 +37,15 @@ PAGE_CLASSIFICATION_STATUS: READ_ONLY_AUDIT_COMPLETE / FOUNDATION_REMEDIATION_RE
 TITLE: 二级菜单折叠后页面布局错乱
 SEVERITY: HIGH
 ORIGINAL_STATUS: REPORTED
-CURRENT_STATUS: PLANNING
+CURRENT_STATUS: REMEDIATION_COMPLETE / OWNER_UAT_PASS / MERGE_PENDING
 TARGET_WORK_PACKAGE: ERP-APP-SHELL-NAVIGATION-REMEDIATION-001
 REMEDIATION_BRANCH: feature/erp-app-shell-navigation-remediation-001
-REMEDIATION_PR: #87 / DRAFT
-OWNER_UAT: REQUIRED / NOT RUN
-MERGE_SHA: TBD
-CLOSURE_STATUS: OPEN
-NOTES: UAT scenario is UAT-02 / UAT-04 on Orders. GPT current-main re-audit on 2026-08-23 confirmed the preserved legacy App Shell WIP is relevant and replayable onto main without product-file conflicts, but the original UAT root cause is not declared closed. The new bounded remediation package must retest Orders list/create/detail across expanded/collapsed and responsive Shell states; closure requires exact-revision China-local evidence plus Owner visual UAT PASS.
+REMEDIATION_PR: #87 / MERGE_GATE_PASS
+VALIDATED_HEAD: 795d3a5ac565c68a5c8b9cc7bd173d2272d45b5c
+OWNER_UAT: PASS / 2026-08-23
+MERGE_SHA: PENDING EXPLICIT OWNER MERGE AUTHORIZATION
+CLOSURE_STATUS: REMEDIATION_PASS / MERGE_PENDING
+NOTES: UAT-02 / UAT-04 App Shell remediation completed in PR #87. Exact product revision 795d3a5ac565c68a5c8b9cc7bd173d2272d45b5c passed US full verification, China exact-revision verification including 19/19 Browser E2E and http://erp.b HTTP 200, and Owner second visual UAT PASS on 2026-08-23. Final CLOSED state and MERGE_SHA are recorded only after explicit Owner merge authorization and successful merge.
 ```
 
 ### MVP1-UAT-DEFECT-002
