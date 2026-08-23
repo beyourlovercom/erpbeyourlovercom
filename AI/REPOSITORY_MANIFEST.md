@@ -1,7 +1,7 @@
 ---
 type: repository-manifest
 project: BYL ERP
-version: 1.2
+version: 1.3
 ---
 
 # Repository Manifest
@@ -11,10 +11,13 @@ version: 1.2
 ```text
 Name: erpbeyourlovercom
 Remote: git@github.com:beyourlovercom/erpbeyourlovercom.git
-Local: /Users/a/AI/007/erpbeyourlovercom
+Local test checkout: /Users/a/AI/007/erpbeyourlovercom
 Default branch: main
+Primary local runtime: http://erp.b
+Remote milestone target: https://erp.beyourlover.com
 ```
 
+GitHub `main` is the unique repository source of truth and the only code synchronization path between development and test machines.
 ## Mandatory architecture
 
 ```text
@@ -36,6 +39,16 @@ No SSR
 No independent JWT SPA
 ```
 
+## Mandatory role and execution governance
+
+```text
+AI/EXECUTION_ROLE_MODEL.md
+AI/LARGE_PROJECT_EXECUTION_STANDARD.md
+AI/PARALLEL_WORK_EXECUTION_STANDARD.md
+CLAUDE_ENTRYPOINT.md
+CODEX_ENTRYPOINT.md
+AI/CURRENT_CONTEXT.md
+```
 ## Planning locations
 
 ```text
@@ -44,23 +57,21 @@ docs/60_Codex_Operations/
 AI/CURRENT_CONTEXT.md
 ```
 
-## Mandatory execution governance
+## Current execution model
 
-```text
-AI/LARGE_PROJECT_EXECUTION_STANDARD.md
-AI/PARALLEL_WORK_EXECUTION_STANDARD.md
-```
+- GPT Web + Owner own architecture, design, diagnosis, root cause and next-step decisions.
+- US Mac Claude Code implements only Owner/GPT-approved Work Packages.
+- China Mac Codex CLI tests exact GitHub revisions and returns evidence only.
+- Codex does not modify tracked files, fix code, commit, push or open implementation PRs.
+- Claude does not invent architecture, diagnose root cause, widen scope or choose the next Work Package.
+- Normal development validation remains on China Mac `http://erp.b`.
+- Remote `https://erp.beyourlover.com` is milestone-gated and not a normal debugging environment.
 
-## Current repository governance
+## Repository governance
 
 - `main` is the merge target and repository truth.
-- Multiple active Work Packages, Pull Requests, OpenCode sessions and dedicated Git worktrees are allowed when `PARALLEL-WORK-EXEC-001` preflight gates pass.
-- For newly activated Work Packages after `PARALLEL-WORK-EXEC-001` becomes effective, each bounded Work Package maps to one delivery branch and one delivery PR.
-- Historical merged packages remain valid; legacy active packages explicitly grandfathered by an already-issued multi-PR contract may finish under that contract.
-- Each simultaneously active repository-mutating agent uses a dedicated worktree.
-- Parallel PR dependencies must be explicitly declared.
-- Shared foundation changes required by multiple page/module packages must be extracted before page-level parallelization unless Owner explicitly authorizes a declared stacked dependency.
-- New Work Packages use one Draft delivery PR across contract, implementation, validation, remediation and final pre-merge evidence; separate Work Package / Implementation / Closure PRs are not created for the same new Work Package identity.
-- A genuine post-merge repository mutation requires a new separately identified Work Package rather than another PR under the original new Work Package identity.
-- Owner authorization is required before merge.
-- Documentation work must not contaminate unrelated implementation PRs.
+- New implementation Work Packages use one Work Package → one branch → one Draft delivery PR.
+- Each simultaneously active Claude implementation stream uses a dedicated worktree.
+- Parallel dependencies must be explicit; shared foundations are extracted first unless Owner authorizes a stacked dependency.
+- Owner authorization is required before merge or remote deployment.
+- Documentation/design work must not contaminate unrelated implementation PRs.

@@ -237,9 +237,16 @@ Readiness PRs: #70, #71, #72; Human UAT findings migrated by PR #80
 
 ERP-GOV-INQUIRY-ROADMAP-REVISION-001
 Roadmap revision promoting B2B Inquiry Foundation to current business milestone
-Status: AUTHORIZED / ACTIVE / DRAFT DELIVERY PR
+Status: COMPLETE / PASS / MERGED
+PR: #83; Main SHA: c5fb481b5e8c97eca709b12371b644013eee46ec
 Work Package: docs/60_Codex_Operations/work-packages/ERP-GOV-INQUIRY-ROADMAP-REVISION-001.md
 Work Log: docs/60_Codex_Operations/logs/2026-08-23_ERP-GOV-INQUIRY-ROADMAP-REVISION-001.md
+
+ERP-GOV-EXECUTION-ROLE-ALIGNMENT-001
+Role/entrypoint alignment for GPT + Claude + Codex operating model
+Status: ACTIVE / GOVERNANCE ONLY / DRAFT DELIVERY PR
+Work Package: docs/60_Codex_Operations/work-packages/ERP-GOV-EXECUTION-ROLE-ALIGNMENT-001.md
+Work Log: docs/60_Codex_Operations/logs/2026-08-23_ERP-GOV-EXECUTION-ROLE-ALIGNMENT-001.md
 
 ERP-INQUIRY-M1
 B2B Inquiry Foundation

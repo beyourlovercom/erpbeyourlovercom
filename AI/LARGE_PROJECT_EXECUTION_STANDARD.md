@@ -1,22 +1,28 @@
 ---
-type: codex-governance-standard
+type: execution-governance-standard
 project: BYL ERP
 standard_id: LARGE-PROJECT-EXEC-001
-version: 1.1
+version: 1.2
 ---
 
-# Large Project Codex Execution Standard
+# Large Project Execution Standard
 
 ## Standard Identification
 
 ```text
 Standard ID: LARGE-PROJECT-EXEC-001
-Version: 1.1
+Version: 1.2
 ```
 
 ## Applicability
 
 This repository-local standard governs every formal BYL ERP task: implementation, remediation, documentation, validation, Migration preparation/execution, UAT and deployment preparation. Exploration must become a complete formal package before repository mutation, commit, PR work, Migration, UAT or deployment.
+
+## Execution Role Authority
+
+`AI/EXECUTION_ROLE_MODEL.md` is the forward-effective authority for who may design, implement, test and diagnose. GPT Web + Owner own design/diagnosis; US Claude Code implements approved Work Packages; China Codex CLI performs test/verification/evidence only. Historical Codex/OpenCode implementation records remain historical evidence and do not grant present implementation authority.
+
+The legacy footer label `ESTIMATED CODEX HOURS` is retained in this standard version only as a repository schema compatibility label for existing package templates. It does not authorize Codex implementation. For a new implementation package, the Work Package must explicitly declare `EXECUTION_PROVIDER: CLAUDE_CODE`; for a test-only package, `EXECUTION_PROVIDER: CODEX_CLI`; for GPT-authored governance/design mutation, `EXECUTION_PROVIDER: GPT_WEB`.
 
 ## Repository-Local Implementation
 
@@ -28,11 +34,12 @@ Merging this standard does not automatically govern another repository, and no t
 
 ## Version Transition
 
-- version 1.1 becomes effective when its governance PR merges;
-- it applies to every formal task issued afterward and every open/unmerged task or PR reviewed afterward;
+- version 1.2 becomes effective when its governance PR merges;
+- it applies to every newly activated formal task and every open/unmerged task reviewed afterward unless an explicit grandfather rule applies;
 - historical merged packages remain governed by their issued version and are not retroactively invalidated;
-- open PR #10 must be rebased or updated and comply with 1.1 before merge;
-- PR #10's unmerged D-021 is not repository truth and must become D-022 because this governance package occupies D-021.
+- version 1.2 adds the D-034 execution-role overlay and current Program Roadmap without rewriting historical evidence;
+- historical Codex/OpenCode implementation references remain history only and cannot override `AI/EXECUTION_ROLE_MODEL.md`;
+- the legacy `ESTIMATED CODEX HOURS` footer name remains temporarily schema-compatible, but new packages must declare their actual `EXECUTION_PROVIDER`.
 
 ## Completeness Gates
 
@@ -118,12 +125,14 @@ When sources conflict, preserve every evidenced value in `SOURCE_CONFLICTS`, ide
 The BYL ERP top-level sequence is:
 
 ```text
-Architecture Migration / Global Architecture Gate
-→ MVP1 Manual Fulfillment / Tencent Docs Replacement
+Architecture Migration / Global Architecture Gate [COMPLETE]
+→ MVP1 Existing Operations / Tencent Docs Replacement [IMPLEMENTATION COMPLETE; HUMAN UAT REMEDIATION OPEN]
+→ ERP-INQUIRY-M1 B2B Inquiry Foundation [CURRENT]
+→ ERP-INQUIRY-M1 Local Milestone UAT
+→ Milestone-gated Remote Release to erp.beyourlover.com
 → MVP1.1 WooCommerce Inbound
 → MVP1.2 Single Tracking Outbound
 → MVP1.3 Sync Orchestration
-→ Customer / Lead Pilot
 → Product / Media
 → WordPress Product and Image Sync
 → Content / SEO
@@ -136,7 +145,7 @@ Architecture Migration / Global Architecture Gate
 → Inventory and Procurement
 → Accounting / ROI Expansion
 → Shopify and Additional Integrations
-→ Dev UAT and Production Hardening
+→ Production Hardening / Expansion
 ```
 
 The current Architecture track separately shows 001A through 001F, including 001D-A/B/C where applicable.

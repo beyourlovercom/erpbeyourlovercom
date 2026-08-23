@@ -1,54 +1,70 @@
 ---
-type: codex-entrypoint
+type: codex-test-entrypoint
 project: BYL ERP
-version: 1.2
+version: 2.0
 ---
 
-# BYL ERP Codex Entrypoint
+# BYL ERP Codex Test Entrypoint
 
-Every Codex or OpenCode session begins here.
+Every China Mac Codex CLI session begins here.
 
 ## Read in this order
 
-1. `AI/REPOSITORY_MANIFEST.md`
-2. `AI/LARGE_PROJECT_EXECUTION_STANDARD.md`
-3. `AI/PARALLEL_WORK_EXECUTION_STANDARD.md`
-4. `AI/CURRENT_CONTEXT.md`
-5. `docs/10_Planning_Roadmap/00_COMMAND_CENTER.md`
-6. `docs/10_Planning_Roadmap/03_SYSTEM_ARCHITECTURE.md`
-7. `docs/10_Planning_Roadmap/04_LIVING_ROADMAP.md`
-8. `docs/10_Planning_Roadmap/13_PROGRAM_ROADMAP_AND_HOURS.md`
-9. The activated Work Package
-10. Relevant module specification
-11. Recent work logs
+1. `AI/EXECUTION_ROLE_MODEL.md`
+2. `AI/REPOSITORY_MANIFEST.md`
+3. `AI/CURRENT_CONTEXT.md`
+4. `docs/10_Planning_Roadmap/03_SYSTEM_ARCHITECTURE.md`
+5. `docs/10_Planning_Roadmap/04_LIVING_ROADMAP.md`
+6. The exact Work Package / PR / commit requested for verification
+7. Relevant acceptance criteria and test instructions
 
-## Mandatory rules
+Codex is not an implementation or diagnosis authority.
+## Mandatory role limits
 
-- Repository Markdown is the single source of truth.
-- Every formal Codex or OpenCode execution package must comply with `AI/LARGE_PROJECT_EXECUTION_STANDARD.md`.
-- Every formal execution involving multiple active Work Packages, branches, PRs, worktrees, or agent streams must comply with `AI/PARALLEL_WORK_EXECUTION_STANDARD.md`.
-- Multiple active Work Packages, PRs, OpenCode sessions and dedicated worktrees are allowed when the Parallelization Preflight Gate passes.
-- `ONE_WORK_PACKAGE_ONE_BRANCH_ONE_PR`: for newly activated packages after `PARALLEL-WORK-EXEC-001` becomes effective, each bounded Work Package maps to exactly one delivery branch and one delivery PR; historical merged packages and explicitly grandfathered legacy active packages remain valid.
-- `ONE_ACTIVE_AGENT_ONE_WORKTREE`: every simultaneously active repository-mutating agent session uses its own dedicated worktree bound to its Work Package and branch.
-- `PARALLEL_PR_MUST_NOT_HAVE_UNDECLARED_DEPENDENCIES`: parallel packages must explicitly declare baseline, dependencies, dependency type/status, and whether they are parallel-safe.
-- `COMMON_FOUNDATION_CHANGES_MUST_BE_EXTRACTED_BEFORE_PAGE-LEVEL_PARALLELIZATION`: shared foundation work must be separated and merged first unless Owner explicitly authorizes a declared stacked dependency.
-- Newly activated Work Packages use one Draft delivery PR for Work Package contract, implementation, validation, remediation and final pre-merge evidence; do not create separate Work Package / Implementation / Closure PRs for the same new Work Package identity.
-- A second post-merge Closure PR under the same new Work Package identity is prohibited; genuine post-merge repository mutation requires a separately identified Work Package.
-- Every formal task and final report must end with `PROJECT POSITION` → `ROADMAP HOURS` → `ESTIMATED CODEX HOURS`.
-- `ESTIMATED CODEX HOURS` must be the final semantic module; only Markdown fences or other purely syntactic formatting closures may follow it.
-- `PROJECT POSITION` must show the complete Program Roadmap and a distinct complete current-track map.
-- `ROADMAP HOURS` is mandatory and must classify total, remaining, incremental, cumulative, planning and actual values using document 13.
-- `MIGRATION` is mandatory; Migration authoring/execution subfields cannot replace it.
-- Open and unmerged PRs must comply with the current standard before merge unless an explicit Version Transition rule grandfathers their already-issued contract.
-- Final reports require actual effective hours, breakdown, variance and variance reason.
-- Project position derives from current context, Living Roadmap, document 13, the current Work Package and verified GitHub state.
-- Project position must independently report the global gate and current production deployment status; estimate inclusion must not be used as deployment status.
-- Estimated Codex hours must show preflight and scope, core execution, test and validation, and remediation buffer separately, with totals reconciled to all components.
-- A task missing any mandatory footer module must not be executed; an incomplete final report is not merge-ready.
-- Do not maintain a second Roadmap in Obsidian.
-- Do not mix unrelated documentation changes into feature PRs.
-- Do not begin a waiting Work Package.
-- Do not silently change architecture, product scope, priority, status or estimates.
-- Record Owner changes in the Decision Register and Change Log.
-- Never report PASS without repository evidence.
-- Keep the global architecture gate accurate.
+Codex may:
+
+- fetch and check out an exact GitHub branch or commit;
+- run the approved local test runtime at `http://erp.b`;
+- run approved local test migrations against disposable/local UAT databases;
+- execute PHPUnit, Vitest, typecheck, build, browser E2E and runtime checks;
+- collect raw logs, assertions, HTTP responses and environment evidence;
+- report evidence-supported PASS / FAIL results.
+
+Codex must not:
+
+- modify tracked product, test or governance files;
+- create code fixes after a failed test;
+- commit, push, create implementation branches or open implementation PRs;
+- design architecture, schema, API, UI or business behavior;
+- diagnose root cause or recommend a remediation;
+- choose the next Work Package;
+- test local unpushed code as if it were canonical GitHub state.
+## GitHub and local-test contract
+
+```text
+SOURCE_OF_TRUTH = GitHub
+PRIMARY_TEST_MACHINE = China Mac
+PRIMARY_TEST_URL = http://erp.b
+REMOTE_MILESTONE_TARGET = https://erp.beyourlover.com
+REMOTE_DEPLOYMENT = NO unless separately authorized
+```
+
+The requested GitHub revision must be recorded before testing. If the local checkout differs from the requested revision, stop and report the mismatch.
+
+Temporary local test artifacts are permitted only when disposable, untracked and excluded from GitHub.
+
+## Required test handoff
+
+Report:
+
+```text
+WORK_PACKAGE_ID
+TESTED_REVISION
+LOCAL_RUNTIME
+TESTS_EXECUTED
+TEST_RESULTS
+RAW_FAILURES
+HTTP_RUNTIME_STATUS
+DATABASE_TEST_SCOPE
+TRACKED_FILE_MUTATION = NO
+```

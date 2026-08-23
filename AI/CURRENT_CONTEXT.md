@@ -2,7 +2,7 @@
 type: current-context
 project: BYL ERP
 updated: 2026-08-23
-status: baseline-reconciled-inquiry-m1-roadmap-current
+status: inquiry-m1-role-governance-alignment
 ---
 
 # Current Context
@@ -28,6 +28,8 @@ Claude and Codex do not design, diagnose, select architecture, decide root cause
 ```text
 PR_82_LOCAL_BASELINE_AUDIT: MERGED
 BASELINE_MERGE_SHA: faa45f9620211f3c398dde7f30c1a886313ced14
+PR_83_ROADMAP_REVISION: MERGED
+CURRENT_MAIN_SHA: c5fb481b5e8c97eca709b12371b644013eee46ec
 ARCHITECTURE_FOUNDATION: COMPLETE / PASS
 GLOBAL_ARCHITECTURE_GATE: PASS
 LOCAL_RUNTIME: http://erp.b
@@ -57,9 +59,9 @@ The five migrated Human UAT findings remain open. This Roadmap revision does not
 
 ```text
 CURRENT_PROGRAM_MILESTONE: ERP-INQUIRY-M1
-CURRENT_GOVERNANCE_WORK_PACKAGE: ERP-GOV-INQUIRY-ROADMAP-REVISION-001
-CURRENT_ACTIVITY: ROADMAP REVISION / NO PRODUCT IMPLEMENTATION
-NEXT_AFTER_ROADMAP_MERGE: ERP-INQUIRY-M1.0 ARCHITECTURE & DATA CONTRACT
+CURRENT_GOVERNANCE_WORK_PACKAGE: ERP-GOV-EXECUTION-ROLE-ALIGNMENT-001
+CURRENT_ACTIVITY: EXECUTION ROLE / ENTRYPOINT ALIGNMENT / NO PRODUCT IMPLEMENTATION
+NEXT_AFTER_GOVERNANCE_MERGE: ERP-INQUIRY-M1.0 ARCHITECTURE & DATA CONTRACT
 ```
 
 ERP-INQUIRY-M1 sequence:
@@ -98,7 +100,7 @@ PRODUCTION/REMOTE DIRECT FIX BY CODEX: FORBIDDEN
 ## Immediate sequence
 
 ```text
-1. Complete and merge ERP-GOV-INQUIRY-ROADMAP-REVISION-001 after Owner review.
+1. Complete and merge ERP-GOV-EXECUTION-ROLE-ALIGNMENT-001 after Owner review.
 2. GPT Web performs repository-grounded design of ERP-INQUIRY-M1.0.
 3. Freeze Company / Contact / Case / Inbound Message ownership, identity, dedupe, status, timeline, API and migration contracts.
 4. Split implementation into bounded Work Packages.

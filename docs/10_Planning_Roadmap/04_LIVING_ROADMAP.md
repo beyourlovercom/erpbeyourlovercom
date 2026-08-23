@@ -51,7 +51,7 @@ Local Baseline Reconciliation = COMPLETE / PR #82 MERGED / main faa45f9620211f3c
 Primary Local Runtime = http://erp.b / China Mac
 GitHub = UNIQUE SOURCE OF TRUTH
 CURRENT_PHASE = ERP-INQUIRY-M1 ROADMAP / ARCHITECTURE
-CURRENT_WORK_PACKAGE = ERP-GOV-INQUIRY-ROADMAP-REVISION-001
+CURRENT_WORK_PACKAGE = ERP-GOV-EXECUTION-ROLE-ALIGNMENT-001
 NEXT_AFTER_MERGE = ERP-INQUIRY-M1.0 Architecture & Data Contract
 Remote Milestone Target = https://erp.beyourlover.com
 Deployment = NO / MILESTONE GATED
@@ -69,7 +69,7 @@ Remote-release rule: https://erp.beyourlover.com is updated only after a stable 
 ## Immediate sequence
 
 ```text
-1. Merge ERP-GOV-INQUIRY-ROADMAP-REVISION-001 after Owner approval.
+1. Merge ERP-GOV-EXECUTION-ROLE-ALIGNMENT-001 after Owner approval.
 2. GPT Web freezes ERP-INQUIRY-M1.0 architecture, data and API contracts.
 3. GPT Web splits bounded implementation Work Packages.
 4. US Mac Claude Code implements approved Work Packages and pushes to GitHub.

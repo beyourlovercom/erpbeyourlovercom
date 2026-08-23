@@ -2,7 +2,7 @@
 type: repository-governance-standard
 project: BYL ERP
 standard_id: PARALLEL-WORK-EXEC-001
-version: 1.1
+version: 1.2
 status: MANDATORY_SUPPLEMENT
 parent_standard: LARGE-PROJECT-EXEC-001
 effective_when: MERGED_TO_MAIN
@@ -14,7 +14,7 @@ effective_when: MERGED_TO_MAIN
 
 ```text
 Standard ID: PARALLEL-WORK-EXEC-001
-Version: 1.1
+Version: 1.2
 Parent Standard: LARGE-PROJECT-EXEC-001
 Status: MANDATORY_SUPPLEMENT
 Effective: when the governance PR containing this version is merged to main
@@ -22,18 +22,22 @@ Effective: when the governance PR containing this version is merged to main
 
 ## Purpose
 
-This standard enables multiple BYL ERP Work Packages, OpenCode sessions, branches, worktrees and Pull Requests to run concurrently without sharing mutable execution state or hiding dependencies.
+This standard enables multiple BYL ERP Work Packages, Claude Code implementation sessions, branches, worktrees and Pull Requests to run concurrently without sharing mutable execution state or hiding dependencies.
 
 Parallel execution is explicitly allowed. This standard does not impose a one-PR-at-a-time project limit.
 
 ```text
 MULTIPLE_ACTIVE_WORK_PACKAGES = ALLOWED
 MULTIPLE_ACTIVE_PRS = ALLOWED
-MULTIPLE_OPENCODE_SESSIONS = ALLOWED
+MULTIPLE_CLAUDE_IMPLEMENTATION_SESSIONS = ALLOWED
 MULTIPLE_DEDICATED_WORKTREES = ALLOWED
 ```
 
 Parallel execution never weakens existing Owner gates, scope boundaries, validation requirements, merge authorization, Migration authorization, UAT authorization, deployment authorization, or repository-truth rules.
+
+## Execution Role Boundary
+
+`AI/EXECUTION_ROLE_MODEL.md` governs agent roles. Parallel repository mutation applies to Claude Code implementation streams (and explicitly authorized GPT governance/design branches), not to Codex test sessions. Codex remains test/verification/evidence only and must not mutate tracked files or create implementation PRs.
 
 ## Applicability
 
@@ -84,7 +88,7 @@ A Git worktree is the execution-isolation boundary for an active agent. It does 
 For active implementation, the expected binding is:
 
 ```text
-ONE ACTIVE AGENT SESSION
+ONE ACTIVE CLAUDE IMPLEMENTATION SESSION
         ↕
 ONE DEDICATED WORKTREE
         ↕
@@ -155,7 +159,7 @@ WORK_PACKAGE_BRANCH_PR_BOUNDARY = FAIL
 
 ### 2. ONE_ACTIVE_AGENT_ONE_WORKTREE
 
-Every simultaneously active repository-mutating agent session must operate in its own dedicated Git worktree bound to its assigned Work Package and branch.
+Every simultaneously active Claude Code implementation session must operate in its own dedicated Git worktree bound to its assigned Work Package and branch. GPT governance/design mutations must also use a separate bound branch/worktree when concurrent with implementation.
 
 Required behavior:
 
@@ -286,9 +290,9 @@ There is no repository-wide rule that only one PR may be active. The gate decide
 Independent page repairs are a valid parallel use case:
 
 ```text
-OpenCode A → Worktree A → Dashboard Work Package → Branch A → PR A
-OpenCode B → Worktree B → Orders Work Package    → Branch B → PR B
-OpenCode C → Worktree C → Settings Work Package  → Branch C → PR C
+Claude A → Worktree A → Dashboard Work Package → Branch A → PR A
+Claude B → Worktree B → Orders Work Package    → Branch B → PR B
+Claude C → Worktree C → Settings Work Package  → Branch C → PR C
 ```
 
 This is permitted when the packages have bounded file scopes, declared dependencies and no unresolved shared-foundation requirement.
