@@ -48,8 +48,8 @@
     --byl-focus-width: 3px;
     --byl-focus-offset: 2px;
     --byl-control-min-height: 36px;
-    --byl-shell-rail-width: 92px;
-    --byl-shell-sidebar-width: 220px;
+    --byl-shell-rail-width: 208px;
+    --byl-shell-sidebar-width: 60px;
     --byl-shell-topbar-height: 76px;
     --byl-content-reading-width: 760px;
     --byl-motion-fast: 150ms;
