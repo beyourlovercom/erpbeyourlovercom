@@ -272,6 +272,20 @@ tests/e2e/shell/app-shell.spec.ts
 
 Governance/evidence files for this same Work Package may also be updated on this delivery branch.
 
+GPT Web bounded scope revision (2026-08-23):
+
+```text
+tests/Architecture/ModuleArchitectureTest.php
+```
+
+is additionally authorized **only** to synchronize the existing `FRONTEND_FILES` frozen frontend file-set/hash baseline with this Work Package's already-authorized Shell changes. The allowed edit is limited to:
+
+- replacing hashes for frontend files changed by this Work Package;
+- adding `resources/js/Components/AppShell/NavigationItem.vue` with its exact SHA-256 hash;
+- preserving all other architecture assertions, route contracts, permission contracts, module boundaries, migration hashes, menu hash and test semantics unchanged.
+
+This is a test-baseline synchronization, not a new product or architecture redesign.
+
 Explicit exclusions:
 
 ```text
@@ -304,7 +318,7 @@ Claude Code implementation must:
 7. preserve all approved menu and permission contracts;
 8. preserve Account Dock / logout / mobile inertness behavior;
 9. make no unrelated visual redesign;
-10. stop and return raw implementation facts if an unlisted file becomes necessary.
+10. stop and return raw implementation facts if any file outside the authorized scope (including the bounded `tests/Architecture/ModuleArchitectureTest.php` baseline-sync exception above) becomes necessary.
 
 Claude must not diagnose root cause, alter architecture, select a different design, expand scope, merge, deploy or perform Owner UAT.
 
