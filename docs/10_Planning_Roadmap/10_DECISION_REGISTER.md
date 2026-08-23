@@ -2,7 +2,7 @@
 type: decision-register
 project: BYL ERP
 version: 1.0
-updated: 2026-08-07
+updated: 2026-08-23
 ---
 
 # Decision Register
@@ -180,3 +180,15 @@ A merge SHA becoming repository truth does not require a second Closure PR under
 Independent page-level repairs such as Dashboard, Orders and Settings may run concurrently through separate OpenCode sessions and dedicated worktrees when scopes and dependencies are bounded. Shared App Shell, navigation, design tokens, common components, routes, permissions, schema primitives or test infrastructure required by multiple downstream pages must be extracted first unless Owner explicitly authorizes a declared stacked dependency.
 
 This decision changes governance only. It authorizes no application implementation, Migration, UAT, deployment or Production access, and it does not authorize merge of PR #79. Architecture conflict: NONE; Global Architecture Gate remains PASS per current repository context.
+
+## D-034 Promote ERP-INQUIRY-M1 to current business milestone and adopt local-first dual-machine execution
+
+Owner approved the reconciled local baseline in PR #82 and authorized the Roadmap revision that promotes B2B Inquiry Foundation ahead of the previously scheduled WooCommerce / tracking / sync expansion. PR #82 merged to `main` as `faa45f9620211f3c398dde7f30c1a886313ced14`.
+
+The revised sequence is: completed Architecture Foundation → existing MVP1 operations with Human UAT remediation still open → `ERP-INQUIRY-M1` as the current business milestone → local Milestone UAT → milestone-gated remote release to `https://erp.beyourlover.com` → WooCommerce inbound / tracking outbound / sync orchestration and later modules. This reprioritization does not delete the later roadmap and does not close any of the five migrated Human UAT findings.
+
+`ERP-INQUIRY-M1` is decomposed as M1.0 Architecture/Data/API Contract, M1.1 Company, M1.2 Contact, M1.3 Case, M1.4 Inbound Message, M1.5 Inquiry Inbox, M1.6 Email Intake, M1.7 WhatsApp Intake, M1.8 Yesterday/Waiting Dashboard and M1.9 Local Milestone UAT. No child Work Package is activated merely by this decision.
+
+Development authority is frozen as follows: GPT Web + Owner perform all architecture, design, diagnosis, root-cause analysis and next-step decisions; US Mac Claude Code performs implementation only; China Mac Codex performs test, verification and evidence only. GitHub is the unique source of truth and the only code synchronization path. The China Mac `http://erp.b` is the primary local runtime/test environment. `https://erp.beyourlover.com` is a milestone remote target and is not used for normal development debugging.
+
+This decision authorizes governance/Roadmap synchronization only. It authorizes no product implementation, schema Migration, external Email/WhatsApp connection, remote deployment, production access or merge of unrelated open PRs. The next product activity after this Roadmap revision merges is GPT-authored `ERP-INQUIRY-M1.0` architecture/data/API contract design. `ERP-INQUIRY-M1` implementation hours remain `UNKNOWN WITH EVIDENCE` until that contract is frozen.

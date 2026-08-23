@@ -219,22 +219,35 @@ Owner Authorization: BYL-ERP-001F-TO-MVP1-LOCAL-UAT-20260805
 
 MVP1-SYNC-MANUAL-001
 Manual website-sync outbox and UI
-Status: ACTIVE / WORK PACKAGE
-Work Package: pending
-Work Log: pending
+Status: COMPLETE / PASS / CLOSED
 Work Package: docs/60_Codex_Operations/work-packages/MVP1-SYNC-MANUAL-001.md
 Work Log: docs/60_Codex_Operations/logs/2026-08-05_MVP1-SYNC-MANUAL-001.md
-Work Package PR: pending
+Work Package PR: #66; Implementation PR: #67; Closure PR: #69
 Owner Authorization: BYL-ERP-001F-TO-MVP1-LOCAL-UAT-20260805
 
 MVP1-FINANCE-ORDER-ANALYSIS-001
 Order-level cost and profit
+Status: COMPLETE / PASS / CLOSED
+Closure PR: #68; implementation evidence inherited from PR #63
 
 MVP1-UAT-RELEASE-001
 Tests, migration, backup, UAT and release
+Status: AUTOMATED READINESS PASS / HUMAN UAT CHANGES REQUIRED / 5 FINDINGS OPEN
+Readiness PRs: #70, #71, #72; Human UAT findings migrated by PR #80
+
+ERP-GOV-INQUIRY-ROADMAP-REVISION-001
+Roadmap revision promoting B2B Inquiry Foundation to current business milestone
+Status: AUTHORIZED / ACTIVE / DRAFT DELIVERY PR
+Work Package: docs/60_Codex_Operations/work-packages/ERP-GOV-INQUIRY-ROADMAP-REVISION-001.md
+Work Log: docs/60_Codex_Operations/logs/2026-08-23_ERP-GOV-INQUIRY-ROADMAP-REVISION-001.md
+
+ERP-INQUIRY-M1
+B2B Inquiry Foundation
+Status: CURRENT MILESTONE / ARCHITECTURE NOT YET FROZEN / IMPLEMENTATION NOT STARTED
+Children planned, not activated: M1.0 Contract; M1.1 Company; M1.2 Contact; M1.3 Case; M1.4 Inbound Message; M1.5 Inquiry Inbox; M1.6 Email Intake; M1.7 WhatsApp Intake; M1.8 Yesterday/Waiting Dashboard; M1.9 Local Milestone UAT
 ```
 
-## Post-MVP
+## Post-Inquiry planned milestones
 
 ```text
 MVP1.1-WOOCOMMERCE-INBOUND-001

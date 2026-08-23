@@ -466,3 +466,20 @@ Application code: NO CHANGE. Schema/Migration: NO CHANGE / NOT RUN. Dependency/l
 Architecture conflict: NONE. Global Architecture Gate remains PASS per current repository context.
 Documents updated/added within bounded governance scope: AGENTS.md; CODEX_ENTRYPOINT.md; AI/PARALLEL_WORK_EXECUTION_STANDARD.md; AI/REPOSITORY_MANIFEST.md; Decision Register; Change Log; ERP-GOV-PARALLEL-001 Work Package; ERP-GOV-PARALLEL-001 Work Log.
 ```
+
+## 2026-08-23 — Local baseline accepted and ERP-INQUIRY-M1 promoted to current milestone
+
+```text
+Owner decision: approve PR #82 Local Baseline Audit and proceed with Roadmap revision.
+Baseline merge: PR #82 → main faa45f9620211f3c398dde7f30c1a886313ced14.
+Previous program sequence: MVP1 → WooCommerce inbound → tracking outbound → sync orchestration → Customer / Lead Pilot.
+New program sequence: completed Architecture → existing MVP1 operations with 5 Human UAT findings still open → ERP-INQUIRY-M1 current → local milestone UAT → milestone-gated erp.beyourlover.com release → WooCommerce / tracking / sync and later expansion.
+Business reason: the immediate operational requirement is automatic Email / WhatsApp inquiry capture and a daily waiting-to-handle view, not WooCommerce-first expansion.
+ERP-INQUIRY-M1 children planned: M1.0 Contract; M1.1 Company; M1.2 Contact; M1.3 Case; M1.4 Inbound Message; M1.5 Inquiry Inbox; M1.6 Email Intake; M1.7 WhatsApp Intake; M1.8 Yesterday/Waiting Dashboard; M1.9 Local Milestone UAT.
+Execution model: GPT Web + Owner design/diagnosis; US Claude implementation only; China Codex test/evidence only; GitHub unique source; China http://erp.b primary local runtime/test; erp.beyourlover.com milestone-only remote target.
+Existing ERP is retained; no Jutdo fork/Filament rebuild. Jutdo remains reference/reusable foundation only.
+MVP1 Human UAT: 5 migrated findings remain OPEN; this change does not close them.
+Estimate impact: ERP-INQUIRY-M1 estimate UNKNOWN WITH EVIDENCE until M1.0 contracts are frozen. Program remaining remains UNKNOWN WITH EVIDENCE.
+Application code: NO CHANGE. Schema/Migration: NO CHANGE / NOT RUN. External channel connection: NO. Remote deployment: NO. Production access: NO.
+Decision: D-034.
+```
