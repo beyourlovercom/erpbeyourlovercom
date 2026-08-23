@@ -2,7 +2,7 @@
 type: living-roadmap
 project: BYL ERP
 version: 1.0
-updated: 2026-08-05
+updated: 2026-08-23
 ---
 
 # Living Roadmap
@@ -10,12 +10,14 @@ updated: 2026-08-05
 ## Program Roadmap
 
 ```text
-Architecture Migration / Global Architecture Gate
-→ MVP1 Manual Fulfillment / Tencent Docs Replacement
+Architecture Migration / Global Architecture Gate [COMPLETE]
+→ MVP1 Existing Operations / Tencent Docs Replacement [IMPLEMENTATION COMPLETE; HUMAN UAT REMEDIATION OPEN]
+→ ERP-INQUIRY-M1 B2B Inquiry Foundation [CURRENT]
+→ ERP-INQUIRY-M1 Local Milestone UAT
+→ Milestone Remote Release / https://erp.beyourlover.com
 → MVP1.1 WooCommerce Inbound
 → MVP1.2 Single Tracking Outbound
 → MVP1.3 Sync Orchestration
-→ Customer / Lead Pilot
 → Product / Media
 → WordPress Product and Image Sync
 → Content / SEO
@@ -28,7 +30,7 @@ Architecture Migration / Global Architecture Gate
 → Inventory and Procurement
 → Accounting / ROI Expansion
 → Shopify and Additional Integrations
-→ Dev UAT and Production Hardening
+→ Production Hardening
 ```
 
 Program sequence, estimate classification and remaining-hours evidence are maintained in [[13_PROGRAM_ROADMAP_AND_HOURS]].
@@ -36,71 +38,52 @@ Program sequence, estimate classification and remaining-hours evidence are maint
 ## Current status
 
 ```text
-001A Foundation Bootstrap = MERGED / PASS
-Repository Governance = PASS
-001B Auth / Authorization = MERGED (merge SHA: 5e100cc8e80480ecb6dbd1b38cbfbe9bddba12f4)
-001C App Shell = MERGED / PASS (PR #5; main commit: ba1638277bac5d333ee693d627a41ca9c950c565)
-001D Runtime / Audit / Sync Foundation = COMPLETE / PASS
-001D-A Runtime Foundation = MERGED / PASS (PR #9; main commit: 50803c3fcd51e9f8b3485f4fb57565154a284bf7)
-001D-B Audit Foundation = MERGED / PASS (PR #12; main commit: e2247fcaaae690c94ef07d45c8807ce749de1b46)
-001D-C Sync Outbox Foundation = MERGED / PASS (PR #13; accepted Head: e4bc57b7a3f0edbe84ccfde63d02d9135a4875e3; main commit: 548d53f1eae2ec14eea7261d3a101c1f2fda0dcc)
-001E Shared UI / Browser E2E = COMPLETE / PASS
-001E-A Shared UI and Design Tokens = MERGED / PASS (PR #17; accepted Head: e46fb54a1b41a1efa620b4af3646e104ff7bcbbc; main commit: 442a3a872628764fecb7209049d2daf752624e9a)
-ERP-LOCAL-ADMIN-BYPASS-001 = MERGED / PASS (PR #16; accepted Head: 6b63229b7d776104a5736334de639d9b20fb69f3; main commit: 55ba7320a7046deb04a03abd99053ccd7b7ed11e)
-ERP-SHELL-ACCOUNT-DOCK-001 = MERGED / PASS / OWNER VISUAL ACCEPTANCE PASS (PR #15; accepted Head: 0cac340443d47591b7e242ebe051fb4407d0a986; main commit: 32d7244b9b1c6d1fb0cf8863cb9af694e7acc10f)
-ERP-MENU-BASELINE-001 = MERGED / PASS (PR #14; accepted Head: 6d5595e879778895105215dc98b1f740521b6f1a; main commit: 493f32ce7bf1be4368a7e9f97de9ecf9f9c9c9d8)
-001E-B Browser E2E Foundation = MERGED / PASS / CLOSED (PR #21; main: 4b9fbb0deacdfc02439fb947398b87c148602c75)
-001E-C Authentication / Permission / App Shell E2E = MERGED / PASS / CLOSED (PR #22; main: 3218473b1cfc93f098a2e9607aabe9adb16bcf0d)
-001F Architecture Re-audit = COMPLETE / PASS / CLOSED
-001F-A Governance Status Correction & Gate Scope Freeze = COMPLETE / CLOSED (PR #23; accepted Head: f327910941dc0b6107bfaf40f5803b1448544ce4; main: 70b492772eedc993e5790d563c9c261cb0b1e0b7)
-001F-B Modular Boundary Decision / Remediation = COMPLETE / REVIEWED / OPTION A1 APPROVED
-001F-B1 Module Architecture Contract & Decision Freeze = COMPLETE / PASS / CLOSED (PR #24; accepted Head: f26b510b499ffef95e1723eb19d12bac84c93718; main: b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f; closure PR #25)
-001F-B2 Module Skeleton & Automated Boundary Enforcement = COMPLETE / PASS / CLOSED (Work Package PR #26; Implementation PR #27; Closure PR #28; main closure b2bc2d6e25699bc93b6ef352bc20f593c1cacd56)
-B2_WORK_PACKAGE_PR: #26
-B2_IMPLEMENTATION_PR: #27
-B2_ACCEPTED_HEAD: fe6512f655944e7668c1786899f06880af049f29
-B2_MAIN_SQUASH_COMMIT: 6df005f8e0e59c877d95fcf41fb5c507c507378f
-B2_CLOSURE_PR: #28
-B2_CLOSURE_SQUASH: b2bc2d6e25699bc93b6ef352bc20f593c1cacd56
-CURRENT_PHASE: MVP1 IMPLEMENTATION
-GITHUB_STATE: MVP1 preflight PR #53, Foundation Work Package PR #54, Implementation PR #55, Closure PR #56, Order Core Implementation PR #59, Order Core Closure PR #60, Order Core Post-Merge Closure PR #61, Fulfillment Work Package PR #62, Implementation PR #63, Closure PR #64 and Post-Merge Closure PR #65 MERGED; main 4d6b36c42e7dda05cb4a6e396a84afdb45b4ab3b; Manual Sync Work Package pending
-NEXT_DEPENDENCY: MVP1-FULFILLMENT-001
-001F-B3 = COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811)
-001F-B4 = COMPLETE / PASS / CLOSED (Closure PR #34; main closure 26e22150f4f729aaf321a71e052a3602df9aec61)
-001F-B5 = COMPLETE / PASS / CLOSED
-001F-C = COMPLETE / PASS / CLOSED
-001F-D = COMPLETE / PASS / CLOSED (Work Package PR #41; Implementation PR #42; Closure PR #43; main closure 9df4a5631b3e96b3984d1c91d1335bc416528584)
-001F-E = COMPLETE / PASS / CLOSED (PRs #45, #46, #47; main closure d56bc76fb1d86b990a4999ebc20d26cd48365c94)
-001F-F = COMPLETE / PASS / CLOSED (PRs #48, #49, #50, #51; main a13becbefe1272ffb59cb2d78369df544e68ca97)
+Architecture Foundation = COMPLETE / PASS
 Global Architecture Gate = PASS
-MVP1 = AUTHORIZED / FOUNDATION CLOSED / ORDER CORE CLOSED / FULFILLMENT ACTIVE
-Deployment = NO
+MVP1 Foundation = COMPLETE / PASS / CLOSED
+MVP1 Order Core = COMPLETE / PASS / CLOSED
+MVP1 Fulfillment = COMPLETE / PASS / CLOSED
+MVP1 Manual Sync = COMPLETE / PASS / CLOSED
+MVP1 Finance / Order Analysis = COMPLETE / PASS / CLOSED
+MVP1 Automated UAT Readiness = PASS
+MVP1 Human UAT = CHANGES REQUIRED / 5 LEGACY FINDINGS OPEN
+Local Baseline Reconciliation = COMPLETE / PR #82 MERGED / main faa45f9620211f3c398dde7f30c1a886313ced14
+Primary Local Runtime = http://erp.b / China Mac
+GitHub = UNIQUE SOURCE OF TRUTH
+CURRENT_PHASE = ERP-INQUIRY-M1 ROADMAP / ARCHITECTURE
+CURRENT_WORK_PACKAGE = ERP-GOV-INQUIRY-ROADMAP-REVISION-001
+NEXT_AFTER_MERGE = ERP-INQUIRY-M1.0 Architecture & Data Contract
+Remote Milestone Target = https://erp.beyourlover.com
+Deployment = NO / MILESTONE GATED
 ```
 
-## Fast-track objective
+## Current business objective
 
 ```text
-Target calendar: approximately one month
-Target: replace Tencent Docs manual fulfillment workflow
-Planning baseline: approximately 166 effective hours
-Maximum planning envelope: approximately 192 effective hours
+Primary objective: automatically capture Email and WhatsApp inquiries into ERP.
+Primary user outcome: see yesterday-new inquiries, current waiting-to-handle inquiries, and the underlying Company / Contact / Case timeline.
+Local-first rule: normal development validation remains on China Mac at http://erp.b.
+Remote-release rule: https://erp.beyourlover.com is updated only after a stable Milestone passes local regression and Owner UAT.
 ```
 
 ## Immediate sequence
 
 ```text
-1. Implement MVP1 packages in the approved order, beginning with Order Core.
-2. Prepare local MySQL UAT and synthetic data.
-3. Stop at LOCAL_HUMAN_UAT_READY before human UAT.
+1. Merge ERP-GOV-INQUIRY-ROADMAP-REVISION-001 after Owner approval.
+2. GPT Web freezes ERP-INQUIRY-M1.0 architecture, data and API contracts.
+3. GPT Web splits bounded implementation Work Packages.
+4. US Mac Claude Code implements approved Work Packages and pushes to GitHub.
+5. China Mac Codex tests exact GitHub revisions on http://erp.b and returns evidence only.
+6. GPT Web performs all design, diagnosis and root-cause analysis.
+7. Owner performs UAT / merge authorization.
+8. Only after ERP-INQUIRY-M1 Milestone PASS, deploy the frozen GitHub revision to https://erp.beyourlover.com.
 ```
 
-The accepted 001D-C evidence remains bounded: real-MySQL two-connection claim concurrency is a Global Gate blocker and no Dev Migration was run. MySQL 5.7 is outside the current supported baseline, does not block the Global Gate, and current code is not declared compatible; future support requires a new Architecture Decision and Compatibility Work Package. Staging Migration remains a UAT blocker, and Production Migration planning/rehearsal remains a deployment blocker.
-
-001F-B Modular Boundary Decision / Remediation: COMPLETE / REVIEWED / OPTION A1 APPROVED. 001F-B1 Module Architecture Contract & Decision Freeze: COMPLETE / PASS / CLOSED (PR #24; closure PR #25). 001F-B2 Module Skeleton & Automated Boundary Enforcement: COMPLETE / PASS / CLOSED (Work Package PR #26; Implementation PR #27; Closure PR #28; main closure b2bc2d6e25699bc93b6ef352bc20f593c1cacd56). 001F-B3 Identity & Access Boundary Migration: COMPLETE / PASS / CLOSED (Work Package PR #29; Implementation PR #30; Closure PR #31; main closure 0af914ebf8fc9f94b18e63e008fd78739bba6811). 001F-B4 Runtime / Audit / Sync Boundary Migration: COMPLETE / PASS / CLOSED (Work Package PR #32; Implementation PR #33; Closure PR #34; main closure 26e22150f4f729aaf321a71e052a3602df9aec61). 001F-B5 Shell / Dashboard Boundary & Compatibility Cleanup: COMPLETE / PASS / CLOSED (Work Package PR #35; Implementation PR #36; Closure PR #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be). 001F-C MySQL Two-Connection Concurrency Validation: COMPLETE / PASS / CLOSED (Work Package PR #38; Implementation PR #39; Closure PR #40; main closure 63d1d2d3923d531b032d092eeb87d792f82eabaa). 001F-D Redis / Queue / Scheduler Runtime Validation: COMPLETE / PASS / CLOSED (Work Package PR #41; Implementation PR #42; Closure PR #43; main closure 9df4a5631b3e96b3984d1c91d1335bc416528584). 001F-E is complete for local `http://erp.b` migration validation; remote Dev, Staging and Production remain excluded. 001F-F final audit is complete and closed through PRs #50/#51. The v1.1 `app/Modules/**` contract is verified. MVP1 preflight is COMPLETE / PASS / CLOSED; MVP1-FOUNDATION-001 is COMPLETE / PASS / CLOSED; MVP1-ORDER-CORE-001 is COMPLETE / PASS / CLOSED through PR #59; MVP1-FULFILLMENT-001 is current.
+Architecture migration and its Global Gate are closed. MySQL 8.x remains the supported database baseline. Historical architecture evidence is retained in its Work Packages and logs; it is no longer a current blocker. Remote deployment remains milestone-gated and is not part of normal development.
 
 ## Incremental releases
 
-### MVP1 — Manual Fulfillment on Final Core
+### MVP1 — Existing Operations on Final Core
 
 - manual website/KOL order entry;
 - shipment work queue;
@@ -109,6 +92,20 @@ The accepted 001D-C evidence remains bounded: real-MySQL two-connection claim co
 - manual website-sync queue;
 - order-level cost and profit;
 - audit and export.
+
+### ERP-INQUIRY-M1 — B2B Inquiry Foundation
+
+- M1.0 Inquiry architecture / data / API contract;
+- M1.1 Company;
+- M1.2 Contact;
+- M1.3 Case;
+- M1.4 Inbound Message;
+- M1.5 Inquiry Inbox;
+- M1.6 Email Intake;
+- M1.7 WhatsApp Intake;
+- M1.8 Yesterday / Waiting Dashboard;
+- M1.9 Local Milestone UAT;
+- milestone-gated remote release to `erp.beyourlover.com`.
 
 ### MVP1.1 — WooCommerce Inbound
 
@@ -136,20 +133,19 @@ The accepted 001D-C evidence remains bounded: real-MySQL two-connection claim co
 
 ## Post-MVP modules
 
-1. Customer / Lead Pilot.
-2. Product / Media.
-3. WordPress products and images.
-4. Content / SEO.
-5. Posts / Pages.
-6. GA4 / GSC / Cloudflare.
-7. Google Docs publishing.
-8. Full Order Workspace.
-9. Logistics OS.
-10. KOL OS and social providers.
-11. Inventory and procurement.
-12. Accounting / ROI expansion.
-13. Shopify and additional integrations.
-14. Dev UAT and Production hardening.
+1. Product / Media.
+2. WordPress products and images.
+3. Content / SEO.
+4. Posts / Pages.
+5. GA4 / GSC / Cloudflare.
+6. Google Docs publishing.
+7. Full Order Workspace.
+8. Logistics OS.
+9. KOL OS and social providers.
+10. Inventory and procurement.
+11. Accounting / ROI expansion.
+12. Shopify and additional integrations.
+13. Production hardening.
 
 ## Change rule
 

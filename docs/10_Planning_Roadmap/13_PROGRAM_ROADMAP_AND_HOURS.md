@@ -2,7 +2,7 @@
 type: program-roadmap-hours
 project: BYL ERP
 version: 1.0
-updated: 2026-08-05
+updated: 2026-08-23
 ---
 
 # Program Roadmap and Hours
@@ -12,12 +12,14 @@ This document is the repository source of truth for the complete Program Roadmap
 ## Program Roadmap
 
 ```text
-Architecture Migration / Global Architecture Gate
-→ MVP1 Manual Fulfillment / Tencent Docs Replacement
+Architecture Migration / Global Architecture Gate [COMPLETE]
+→ MVP1 Existing Operations / Tencent Docs Replacement [IMPLEMENTATION COMPLETE; HUMAN UAT REMEDIATION OPEN]
+→ ERP-INQUIRY-M1 B2B Inquiry Foundation [CURRENT]
+→ ERP-INQUIRY-M1 Local Milestone UAT
+→ Milestone Remote Release / erp.beyourlover.com
 → MVP1.1 WooCommerce Inbound
 → MVP1.2 Single Tracking Outbound
 → MVP1.3 Sync Orchestration
-→ Customer / Lead Pilot
 → Product / Media
 → WordPress Product and Image Sync
 → Content / SEO
@@ -30,7 +32,7 @@ Architecture Migration / Global Architecture Gate
 → Inventory and Procurement
 → Accounting / ROI Expansion
 → Shopify and Additional Integrations
-→ Dev UAT and Production Hardening
+→ Production Hardening
 ```
 
 The Program Roadmap is the top-level delivery sequence. It must not be replaced by the current Architecture track or a single Work Package map.
@@ -69,22 +71,25 @@ Global Architecture Gate              PASS
 ```text
 GITHUB_FACT: PR #24 merged the B1 contract into main at b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f.
 GOVERNANCE_CLOSURE_FACT: PR #25 is the B1 governance closure PR.
-GOVERNANCE_FACT: 001F-B1 is COMPLETE / PASS / CLOSED; 001F-B2 is COMPLETE / PASS / CLOSED through PR #28; B3 is COMPLETE / PASS / CLOSED through PR #31; B4 is COMPLETE / PASS / CLOSED through PR #34; B5 is COMPLETE / PASS / CLOSED through PR #37; C is COMPLETE / PASS / CLOSED through PR #40; D is COMPLETE / PASS / CLOSED through PR #43; E is COMPLETE / PASS / CLOSED through PR #47; F is COMPLETE / PASS / CLOSED through PR #50 and final SHA record PR #51; main is a13becbefe1272ffb59cb2d78369df544e68ca97.
+GOVERNANCE_FACT: 001F-B1 through 001F-F are COMPLETE / PASS / CLOSED; architecture closure main SHA was a13becbefe1272ffb59cb2d78369df544e68ca97.
+CURRENT_REPOSITORY_BASELINE: PR #82 baseline audit merged to main as faa45f9620211f3c398dde7f30c1a886313ced14.
 SOURCE_CONFLICTS: Historical pre-merge status text remains in older records; current GitHub and merged closure records are authoritative.
 EVIDENCE_LIMITS: GitHub self-approval is unavailable for the repository owner account; exact-head review basis is recorded. Remote Dev, Staging and Production remain outside contract.
 ```
 
-## Current Architecture Migration Estimate
+## Current Program Position and Estimate
 
 ```text
 001F_B2_TO_B5_KNOWN_ESTIMATE: 4–8 Codex / 20–40h
 CURRENT_B2_TO_B5_PLANNING_VALUE: 30h
-CURRENT_PACKAGE: MVP1-ORDER-CORE-001
+CURRENT_PACKAGE: ERP-GOV-INQUIRY-ROADMAP-REVISION-001
 B5_CLOSURE_PR: #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be
 E_CURRENT_DEPENDENCY: CLOSED through PR #47.
 001F_F_ESTIMATE: 5–9h; planning value 7h; completed and closed
 TOTAL_ARCHITECTURE_MIGRATION_REMAINING: 0h / complete
 ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
+ERP_INQUIRY_M1_ESTIMATE: UNKNOWN WITH EVIDENCE / architecture, data and channel contracts are not yet frozen
+MVP1_HUMAN_UAT_FINDINGS_OPEN: 5
 ```
 
 Historical estimate: `001F_B_TO_F_ESTIMATE: SUPERSEDED / NOT CURRENT` and `PLANNING_VALUE: 18h` are retained only as historical evidence.
@@ -97,14 +102,15 @@ Historical estimate: `001F_B_TO_F_ESTIMATE: SUPERSEDED / NOT CURRENT` and `PLANN
 | `001E_PARENT_PLANNING_ESTIMATE` | 40–62h; planning value 51h | parent-level original planning estimate | Original allocation across 001E-A/B/C; not remaining |
 | `001E_B_CONFIRMED_ESTIMATE` | 12–18h; planning value 15h | confirmed child implementation estimate | Accepted bounded implementation estimate; package merged and closed |
 | `001F_B2_TO_B5_KNOWN_ESTIMATE` | 4–8 Codex / 20–40h; planning value 30h | planning estimate only | B2-B5 only |
-| `001F_C_TO_001F_F_ESTIMATE` | UNKNOWN WITH EVIDENCE | planning estimate only | not yet estimated |
-| `TOTAL_ARCHITECTURE_MIGRATION_REMAINING` | UNKNOWN WITH EVIDENCE | planning estimate only | no completion-time guarantee |
+| `001F_C_TO_001F_F_ESTIMATE` | SUPERSEDED / COMPLETE | historical planning estimate | 001F-C through 001F-F are closed; not a remaining estimate |
+| `TOTAL_ARCHITECTURE_MIGRATION_REMAINING` | 0h / complete | remaining estimate | Global Architecture Gate is PASS and 001F is closed |
 | `ACTUAL_HOURS` | UNKNOWN WITH EVIDENCE | actual-hours status | no fabricated actuals |
 | `001F_B2_TO_B5_ESTIMATE` | SUPERSEDED / see `001F_B2_TO_B5_KNOWN_ESTIMATE` | historical planning estimate | excludes 001F-C through 001F-F; current estimate is recorded above |
 | `MVP1_TOTAL_ESTIMATE` | 122–190h | total estimate | Effective Hours source; not automatically remaining |
 | `MVP1_PLANNING_BASELINE` | 166h | total planning value | Effective Hours source |
 | `MVP1_MAXIMUM_ENVELOPE` | 192h | maximum total planning envelope | Living Roadmap and Effective Hours sources |
 | `MVP1_REMAINING` | UNKNOWN WITH EVIDENCE | unknown remaining total | Accepted actual-hours ledger and proven architecture/MVP1 overlap map are incomplete |
+| `ERP_INQUIRY_M1_ESTIMATE` | UNKNOWN WITH EVIDENCE | new milestone estimate | M1.0 architecture/data/API contract must be frozen before a safe implementation estimate is issued |
 | `POST_MVP_KNOWN_INCREMENT` | approximately 68–120h beyond MVP1 | incremental estimate | WooCommerce inbound plus single outbound |
 | `PROGRAM_REMAINING` | UNKNOWN WITH EVIDENCE | unknown remaining total | Long-term ranges are cumulative; actuals and overlap mapping are incomplete |
 | `COMPLETED_ACTUAL_EFFECTIVE_HOURS` | UNKNOWN WITH EVIDENCE | unknown actual effort | Accepted Work Logs do not yet provide a complete project-wide ledger; chat memory is not evidence |
