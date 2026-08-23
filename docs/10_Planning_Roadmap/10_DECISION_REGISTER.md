@@ -192,3 +192,15 @@ The revised sequence is: completed Architecture Foundation → existing MVP1 ope
 Development authority is frozen as follows: GPT Web + Owner perform all architecture, design, diagnosis, root-cause analysis and next-step decisions; US Mac Claude Code performs implementation only; China Mac Codex performs test, verification and evidence only. GitHub is the unique source of truth and the only code synchronization path. The China Mac `http://erp.b` is the primary local runtime/test environment. `https://erp.beyourlover.com` is a milestone remote target and is not used for normal development debugging.
 
 This decision authorizes governance/Roadmap synchronization only. It authorizes no product implementation, schema Migration, external Email/WhatsApp connection, remote deployment, production access or merge of unrelated open PRs. The next product activity after this Roadmap revision merges is GPT-authored `ERP-INQUIRY-M1.0` architecture/data/API contract design. `ERP-INQUIRY-M1` implementation hours remain `UNKNOWN WITH EVIDENCE` until that contract is frozen.
+
+## D-035 Enforce GPT / Claude / Codex execution-role separation in repository entrypoints
+
+Owner-approved D-034 established the operating model: GPT Web + Owner perform architecture/design/diagnosis; US Claude Code implements; China Codex CLI tests exact GitHub revisions on `http://erp.b`; GitHub is the unique synchronization source.
+
+Repository audit after PR #83 found current entrypoints and governance standards still contained forward-looking Codex/OpenCode implementation instructions and an embedded pre-Inquiry Program Roadmap. Those instructions conflict with D-034 if applied to newly activated work.
+
+Decision: add `AI/EXECUTION_ROLE_MODEL.md` as the role-authority overlay; add `CLAUDE_ENTRYPOINT.md`; convert `CODEX_ENTRYPOINT.md` to test/verification-only; update `AGENTS.md`, repository manifest and current governance standards so Codex cannot mutate tracked files, fix code, design or diagnose, while Claude cannot invent architecture, diagnose root cause or choose the next Work Package.
+
+Historical Codex/OpenCode implementation records remain valid historical evidence. The legacy `ESTIMATED CODEX HOURS` footer label remains temporarily schema-compatible in `LARGE-PROJECT-EXEC-001` v1.2 but does not grant Codex implementation authority. New packages must explicitly declare `EXECUTION_PROVIDER`.
+
+This decision changes governance and entrypoints only. It authorizes no product implementation, schema Migration, external Email/WhatsApp connection, remote deployment or Production access. After this governance package merges, GPT Web proceeds to `ERP-INQUIRY-M1.0` architecture/data/API contract design.

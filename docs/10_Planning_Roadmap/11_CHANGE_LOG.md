@@ -483,3 +483,22 @@ Estimate impact: ERP-INQUIRY-M1 estimate UNKNOWN WITH EVIDENCE until M1.0 contra
 Application code: NO CHANGE. Schema/Migration: NO CHANGE / NOT RUN. External channel connection: NO. Remote deployment: NO. Production access: NO.
 Decision: D-034.
 ```
+
+## 2026-08-23 — Execution-role governance alignment after Inquiry roadmap merge
+
+```text
+Owner decision basis: D-034 operating model and explicit approval of PR #83.
+Roadmap merge: PR #83 → main c5fb481b5e8c97eca709b12371b644013eee46ec.
+Audit finding: current AGENTS / CODEX_ENTRYPOINT / Large Project / Parallel Work standards still contained forward-looking Codex/OpenCode implementation assumptions and an embedded pre-Inquiry Program Roadmap.
+New governance package: ERP-GOV-EXECUTION-ROLE-ALIGNMENT-001.
+New authority overlay: AI/EXECUTION_ROLE_MODEL.md.
+New implementation entrypoint: CLAUDE_ENTRYPOINT.md.
+Codex entrypoint: converted to China-local test / verification / evidence only.
+Claude: implementation only; no architecture, diagnosis, root-cause or next-Work-Package authority.
+GPT Web + Owner: architecture, design, diagnosis and next-step authority.
+GitHub: unique source of truth and machine-to-machine code synchronization path.
+China local runtime: http://erp.b.
+Remote target: https://erp.beyourlover.com remains milestone-gated only.
+Product code / Migration / external channels / deployment: NO CHANGE.
+Decision: D-035.
+```

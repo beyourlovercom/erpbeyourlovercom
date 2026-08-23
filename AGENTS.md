@@ -1,23 +1,23 @@
 # REPOSITORY EXECUTION GOVERNANCE GATE
 
-Before any formal repository-mutating task, every agent must read:
+Before any formal task, read:
 
-- `CODEX_ENTRYPOINT.md`
+- `AI/EXECUTION_ROLE_MODEL.md`
+- `AI/REPOSITORY_MANIFEST.md`
 - `AI/LARGE_PROJECT_EXECUTION_STANDARD.md`
 - `AI/PARALLEL_WORK_EXECUTION_STANDARD.md`
+- `AI/CURRENT_CONTEXT.md`
 
-Parallel execution is allowed when its preflight passes. Multiple active Work Packages, PRs, OpenCode sessions and dedicated worktrees may exist concurrently.
+Role authority is fixed:
 
-Parallel execution must obey all of the following mandatory rules:
+- GPT Web + Owner: architecture, design, diagnosis, root cause and next-step decisions.
+- US Claude Code: implementation only on an approved Work Package.
+- China Codex CLI: test, verification and evidence only on exact GitHub revisions.
+- GitHub: unique source of truth and only code synchronization path.
 
-1. `ONE_WORK_PACKAGE_ONE_BRANCH_ONE_PR`
-2. `ONE_ACTIVE_AGENT_ONE_WORKTREE`
-3. `PARALLEL_PR_MUST_NOT_HAVE_UNDECLARED_DEPENDENCIES`
-4. `COMMON_FOUNDATION_CHANGES_MUST_BE_EXTRACTED_BEFORE_PAGE-LEVEL_PARALLELIZATION`
+Codex must not modify tracked files, fix failures, commit, push, open implementation PRs, design or diagnose. Claude must not invent architecture, diagnose root cause, widen scope or choose the next Work Package.
 
-`ONE_WORK_PACKAGE_ONE_BRANCH_ONE_PR` is forward-effective for newly activated Work Packages after `PARALLEL-WORK-EXEC-001` becomes effective. Historical merged packages and legacy active packages explicitly grandfathered by that standard remain valid.
-
-If the required Work Package / branch / worktree / dependency evidence is missing or inconsistent, stop at the applicable governance gate instead of silently widening scope or sharing execution state.
+Parallel implementation is allowed only under `PARALLEL-WORK-EXEC-001`. Each active implementation stream must obey `ONE_WORK_PACKAGE_ONE_BRANCH_ONE_PR`, `ONE_ACTIVE_AGENT_ONE_WORKTREE`, declared dependencies and shared-foundation extraction rules.
 
 # MENU BASELINE GATE
 
