@@ -3,7 +3,7 @@ type: work-package
 project: BYL ERP
 work_package_id: ERP-APP-SHELL-NAVIGATION-REMEDIATION-001
 title: App Shell / Navigation Remediation
-status: PREFLIGHT COMPLETE / OWNER IMPLEMENTATION AUTHORIZATION REQUIRED
+status: IMPLEMENTATION AUTHORIZED / CLAUDE EXECUTION ACTIVE
 execution_provider: CLAUDE_CODE
 design_authority: GPT_WEB
 test_provider: CODEX_CLI
@@ -400,12 +400,12 @@ OPEN_PR_86: independent only while shared Roadmap/context files are not edited b
 
 The Owner has authorized the read-only/current-main re-audit and formal Work Package definition.
 
-The Owner has **not yet authorized Claude implementation** under this new Work Package.
+The Owner has **authorized Claude implementation** under this Work Package on 2026-08-23. This authorization covers only the bounded implementation scope defined in this document and does not authorize merge, deployment, or Owner UAT closure.
 
 ```text
 PREFLIGHT = COMPLETE
 WORK_PACKAGE = FORMALIZED
-CLAUDE_IMPLEMENTATION = NOT AUTHORIZED
+CLAUDE_IMPLEMENTATION = AUTHORIZED
 CODEX_PRODUCT_MUTATION = PROHIBITED
 OWNER_UAT = NOT YET AUTHORIZED
 MERGE = NOT AUTHORIZED
