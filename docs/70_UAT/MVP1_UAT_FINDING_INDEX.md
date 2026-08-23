@@ -33,18 +33,18 @@ PAGE: CROSS_PAGE
 PAGE_ROUTE_OR_CANONICAL_PAGE_ID: CROSS_PAGE
 PAGE_SCOPE: Orders list/create/detail
 FOUNDATION_CANDIDATE: APP_SHELL
-PAGE_CLASSIFICATION_STATUS: REQUIRES_READ_ONLY_AUDIT
+PAGE_CLASSIFICATION_STATUS: READ_ONLY_AUDIT_COMPLETE / FOUNDATION_REMEDIATION_REQUIRED
 TITLE: 二级菜单折叠后页面布局错乱
 SEVERITY: HIGH
 ORIGINAL_STATUS: REPORTED
 CURRENT_STATUS: PLANNING
-TARGET_WORK_PACKAGE: TBD
-REMEDIATION_BRANCH: TBD
-REMEDIATION_PR: TBD
-OWNER_UAT: TBD
+TARGET_WORK_PACKAGE: ERP-APP-SHELL-NAVIGATION-REMEDIATION-001
+REMEDIATION_BRANCH: feature/erp-app-shell-navigation-remediation-001
+REMEDIATION_PR: PENDING DRAFT DELIVERY PR
+OWNER_UAT: REQUIRED / NOT RUN
 MERGE_SHA: TBD
 CLOSURE_STATUS: OPEN
-NOTES: UAT scenario is UAT-02 / UAT-04 on Orders. Root cause remains unknown; PR #73 requires inspection of App Shell collapsed-width, content-grid, and responsive layout contracts during remediation.
+NOTES: UAT scenario is UAT-02 / UAT-04 on Orders. GPT current-main re-audit on 2026-08-23 confirmed the preserved legacy App Shell WIP is relevant and replayable onto main without product-file conflicts, but the original UAT root cause is not declared closed. The new bounded remediation package must retest Orders list/create/detail across expanded/collapsed and responsive Shell states; closure requires exact-revision China-local evidence plus Owner visual UAT PASS.
 ```
 
 ### MVP1-UAT-DEFECT-002
