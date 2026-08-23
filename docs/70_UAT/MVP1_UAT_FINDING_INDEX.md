@@ -37,15 +37,15 @@ PAGE_CLASSIFICATION_STATUS: READ_ONLY_AUDIT_COMPLETE / FOUNDATION_REMEDIATION_RE
 TITLE: 二级菜单折叠后页面布局错乱
 SEVERITY: HIGH
 ORIGINAL_STATUS: REPORTED
-CURRENT_STATUS: REMEDIATION_COMPLETE / OWNER_UAT_PASS / MERGE_PENDING
+CURRENT_STATUS: MERGED_CLOSED
 TARGET_WORK_PACKAGE: ERP-APP-SHELL-NAVIGATION-REMEDIATION-001
 REMEDIATION_BRANCH: feature/erp-app-shell-navigation-remediation-001
-REMEDIATION_PR: #87 / MERGE_GATE_PASS
+REMEDIATION_PR: #87 / MERGED
 VALIDATED_HEAD: 795d3a5ac565c68a5c8b9cc7bd173d2272d45b5c
 OWNER_UAT: PASS / 2026-08-23
-MERGE_SHA: PENDING EXPLICIT OWNER MERGE AUTHORIZATION
-CLOSURE_STATUS: REMEDIATION_PASS / MERGE_PENDING
-NOTES: UAT-02 / UAT-04 App Shell remediation completed in PR #87. Exact product revision 795d3a5ac565c68a5c8b9cc7bd173d2272d45b5c passed US full verification, China exact-revision verification including 19/19 Browser E2E and http://erp.b HTTP 200, and Owner second visual UAT PASS on 2026-08-23. Final CLOSED state and MERGE_SHA are recorded only after explicit Owner merge authorization and successful merge.
+MERGE_SHA: 31bd84100ecb14cc1db809733e4a981a8a312c95
+CLOSURE_STATUS: CLOSED
+NOTES: UAT-02 / UAT-04 App Shell remediation completed in PR #87. Exact product revision 795d3a5ac565c68a5c8b9cc7bd173d2272d45b5c passed US full verification, China exact-revision verification including 19/19 Browser E2E and http://erp.b HTTP 200, and Owner second visual UAT PASS on 2026-08-23. PR #87 was explicitly Owner-authorized and squash-merged to main at 31bd84100ecb14cc1db809733e4a981a8a312c95; this finding is formally CLOSED.
 ```
 
 ### MVP1-UAT-DEFECT-002
