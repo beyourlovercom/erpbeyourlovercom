@@ -30,7 +30,7 @@ test('authenticated shell matches the approved level-one menu baseline', async (
     await expect(navigation).toBeVisible();
     await expect(links).toHaveCount(levelOneMenu.length);
     expect(levelOneMenu).toHaveLength(11);
-    expect(levelTwoMenu).toHaveLength(0);
+    expect(levelTwoMenu).toHaveLength(32);
 
     for (const [index, expected] of levelOneMenu.entries()) {
         const link = links.nth(index);
@@ -41,7 +41,21 @@ test('authenticated shell matches the approved level-one menu baseline', async (
         await expect(link).toHaveAccessibleName(new RegExp(expected.label_zh, 'u'));
     }
 
-    await expect(page.locator('.shell-module-link')).toHaveCount(0);
+    await expect(page.locator('.shell-module-sidebar')).toHaveCount(0);
+    await guard.assertClean();
+});
+
+test('sidebar collapse persists and keeps authorized child routes in the shell', async ({ context, page }) => {
+    const guard = await installBrowserGuards(context, page);
+
+    await loginThroughUi(page, syntheticUsers().authorized);
+    const navigation = page.getByRole('navigation', { name: 'ERP主导航' });
+    await navigation.getByRole('button', { name: '收起导航' }).click();
+    await expect(navigation.getByRole('button', { name: '展开导航' })).toBeVisible();
+    await expect(navigation.locator('.shell-primary-label')).toHaveCount(levelOneMenu.length);
+    await expect(navigation.locator('.shell-child-links')).toHaveCount(0);
+    await page.reload();
+    await expect(navigation.getByRole('button', { name: '展开导航' })).toBeVisible();
     await guard.assertClean();
 });
 

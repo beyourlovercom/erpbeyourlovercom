@@ -29,6 +29,7 @@ final class ErpShellNavigation
             'path' => $item['path'],
             'route' => $item['route'],
             'placeholder' => $item['placeholder'],
+            'group' => $item['group'] ?? false,
             'children' => $children,
         ];
     }

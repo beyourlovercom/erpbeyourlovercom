@@ -3,8 +3,9 @@ export type ShellNavigationItem = {
     label: string
     emoji?: string | null
     path: string
-    route: string
+    route: string | null
     placeholder: boolean
+    group?: boolean
     children: ShellNavigationItem[]
 }
 

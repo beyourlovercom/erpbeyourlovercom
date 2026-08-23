@@ -5,8 +5,8 @@ import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 defineProps<{ metrics: Record<'pending_orders' | 'pending_shipment' | 'shipped_pending_sync' | 'completed_today', number> }>()
 </script>
 <template>
-  <Head title="Dashboard · BYL ERP" />
-  <AuthenticatedLayout title="Dashboard" :breadcrumbs="['BYL ERP', 'Dashboard']">
+  <Head title="仪表盘 · BYL ERP" />
+  <AuthenticatedLayout title="仪表盘" :breadcrumbs="['BYL ERP', '仪表盘']">
     <section class="mvp-page">
       <div class="mvp-page-heading"><div><p class="mvp-kicker">业务工作台</p><h2>BYL ERP 应用工作台</h2><p>订单、发货和人工同步状态集中在这里。</p></div></div>
       <div class="mvp-stat-grid">
