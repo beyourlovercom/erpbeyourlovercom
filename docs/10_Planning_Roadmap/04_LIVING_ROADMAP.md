@@ -46,9 +46,10 @@ MVP1 Fulfillment = COMPLETE / PASS / CLOSED
 MVP1 Manual Sync = COMPLETE / PASS / CLOSED
 MVP1 Finance / Order Analysis = COMPLETE / PASS / CLOSED
 MVP1 Automated UAT Readiness = PASS
-MVP1 Human UAT = CHANGES REQUIRED / 5 LEGACY FINDINGS OPEN
+MVP1 Human UAT = CHANGES REQUIRED / 4 LEGACY FINDINGS OPEN / DEFECT-001 CLOSED BY PR #87
 Local Baseline Reconciliation = COMPLETE / PR #82 MERGED / main faa45f9620211f3c398dde7f30c1a886313ced14
-Primary Local Runtime = http://erp.b / China Mac
+US Local Runtime = http://erp.b / primary full verification
+China Local Runtime = http://erp.b / exact-SHA smoke by default
 GitHub = UNIQUE SOURCE OF TRUTH
 CURRENT_PHASE = ERP-INQUIRY-M1 / CONTRACT ACCEPTED / IMPLEMENTATION PREPARATION
 CURRENT_WORK_PACKAGE = ERP-GOV-INQUIRY-M1.0-ACCEPTANCE-SYNC-001
@@ -74,7 +75,7 @@ Remote-release rule: https://erp.beyourlover.com is updated only after a stable 
 3. GPT Web prepares the bounded ERP-INQUIRY-M1.1 Company implementation Work Package.
 4. Owner explicitly authorizes the M1.1 implementation package.
 5. US Mac Claude Code implements only that approved scope and pushes to GitHub.
-6. China Mac Codex tests exact GitHub revisions on http://erp.b and returns evidence only.
+6. China Mac Codex performs the required exact-SHA verification tier on http://erp.b (daily smoke by default; full independent verification when milestone/release/high-risk or explicitly escalated) and returns evidence only.
 7. GPT Web performs all diagnosis/root-cause analysis; Owner performs UAT / merge authorization.
 8. Only after ERP-INQUIRY-M1 Milestone PASS, deploy the frozen GitHub revision to https://erp.beyourlover.com.
 ```

@@ -91,7 +91,7 @@ ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
 CURRENT_GOVERNANCE_PACKAGE_ESTIMATE: 1–2h / planning value 1.5h / GPT_WEB governance-only
 ERP_INQUIRY_M1_ESTIMATE: 86–150h / planning value 116h / M1.1–M1.9 implementation / Owner-approved M1.0 contract
 ERP_INQUIRY_M1_1_COMPANY_ESTIMATE: 6–10h / planning value 8h / next bounded implementation package
-MVP1_HUMAN_UAT_FINDINGS_OPEN: 5
+MVP1_HUMAN_UAT_FINDINGS_OPEN: 4
 ```
 
 Historical estimate: `001F_B_TO_F_ESTIMATE: SUPERSEDED / NOT CURRENT` and `PLANNING_VALUE: 18h` are retained only as historical evidence.

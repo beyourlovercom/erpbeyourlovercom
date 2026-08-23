@@ -4,7 +4,7 @@ project: BYL ERP
 work_package_id: ERP-GOV-INQUIRY-M1.0-ACCEPTANCE-SYNC-001
 status: DRAFT / OWNER MERGE APPROVAL REQUIRED
 execution_provider: GPT_WEB
-baseline: main@02ce87dba5ede14d791b646b7cbe976a12064cae
+baseline: original main@02ce87dba5ede14d791b646b7cbe976a12064cae; rebased current main@1c4079204cc38f3523cbccdcd729d100362202fe
 ---
 
 # ERP-GOV-INQUIRY-M1.0-ACCEPTANCE-SYNC-001
@@ -56,9 +56,9 @@ CURRENT_PHASE: M1.0 acceptance synchronization
 CURRENT_WORK_PACKAGE: ERP-GOV-INQUIRY-M1.0-ACCEPTANCE-SYNC-001
 PACKAGE_STATUS: DRAFT / GOVERNANCE ONLY
 WAITING_PHASES: M1.1–M1.9
-BASELINE: main@02ce87dba5ede14d791b646b7cbe976a12064cae
-GITHUB_STATE: PR #85 merged; this package pending Draft PR
-SOURCE_CONFLICTS: stale post-merge status/estimate fields being corrected by this package
+BASELINE: original main@02ce87dba5ede14d791b646b7cbe976a12064cae; rebased current main@1c4079204cc38f3523cbccdcd729d100362202fe
+GITHUB_STATE: PR #85 merged; PR #86 rebased cleanly onto current main 1c4079204cc38f3523cbccdcd729d100362202fe; governance-only Merge Gate preparation
+SOURCE_CONFLICTS: stale post-merge status/estimate fields being corrected by this package; PR #87 is merged and MVP1-UAT-DEFECT-001 is CLOSED; remaining legacy findings = 4
 GLOBAL_GATE: PASS
 PRODUCTION_DEPLOYMENT_STATUS: NO
 NEXT_DEPENDENCY: Owner merge approval, then prepare M1.1 Company Work Package
