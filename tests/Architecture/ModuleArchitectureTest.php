@@ -3,6 +3,7 @@
 namespace Tests\Architecture;
 
 use App\Modules\Audit\Providers\AuditServiceProvider;
+use App\Modules\Customers\Providers\CustomersServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Finance\Providers\FinanceServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
@@ -44,6 +45,14 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Audit/Infrastructure/ImmutableAuditBuilder.php',
         'app/Modules/Audit/Infrastructure/Models/AuditRecord.php',
         'app/Modules/Audit/Providers/AuditServiceProvider.php',
+        'app/Modules/Customers/Application/CompanyService.php',
+        'app/Modules/Customers/Domain/CountryCodeNormalizer.php',
+        'app/Modules/Customers/Domain/Exceptions/InvalidCompanyAttributeException.php',
+        'app/Modules/Customers/Domain/WebsiteDomainNormalizer.php',
+        'app/Modules/Customers/Experience/Controllers/CompanyController.php',
+        'app/Modules/Customers/Experience/Routes/web.php',
+        'app/Modules/Customers/Infrastructure/Models/Company.php',
+        'app/Modules/Customers/Providers/CustomersServiceProvider.php',
         'app/Modules/Dashboard/Application/DashboardMetrics.php',
         'app/Modules/Dashboard/Experience/Controllers/DashboardController.php',
         'app/Modules/Dashboard/Experience/Routes/web.php',
@@ -128,6 +137,16 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Audit/Infrastructure',
         'app/Modules/Audit/Infrastructure/Models',
         'app/Modules/Audit/Providers',
+        'app/Modules/Customers',
+        'app/Modules/Customers/Application',
+        'app/Modules/Customers/Domain',
+        'app/Modules/Customers/Domain/Exceptions',
+        'app/Modules/Customers/Experience',
+        'app/Modules/Customers/Experience/Controllers',
+        'app/Modules/Customers/Experience/Routes',
+        'app/Modules/Customers/Infrastructure',
+        'app/Modules/Customers/Infrastructure/Models',
+        'app/Modules/Customers/Providers',
         'app/Modules/Dashboard',
         'app/Modules/Dashboard/Application',
         'app/Modules/Dashboard/Experience',
@@ -203,7 +222,10 @@ final class ModuleArchitectureTest extends TestCase
         'accounting.actual-2025', 'accounting.cost-calculation', 'accounting.execution-2026',
         'accounting.forecast-2027', 'accounting.kol-commissions', 'accounting.monthly',
         'accounting.optimization', 'accounting.order-costs', 'accounting.variance',
-        'analysis.export', 'analysis.update', 'architecture.foundation', 'customers.orders', 'customers.orders.create',
+        'analysis.export', 'analysis.update', 'architecture.foundation',
+        'customers.companies', 'customers.companies.archive', 'customers.companies.create', 'customers.companies.edit',
+        'customers.companies.restore', 'customers.companies.show', 'customers.companies.store', 'customers.companies.update',
+        'customers.orders', 'customers.orders.create',
         'customers.orders.mine', 'dashboard', 'guides.manuals', 'guides.videos',
         'inventory.files', 'inventory.warehouses', 'kol.orders', 'kol.orders.create',
         'kol.orders.mine', 'kol.orders.show', 'kol.orders.team', 'login', 'login.store',
@@ -218,7 +240,7 @@ final class ModuleArchitectureTest extends TestCase
     ];
 
     private const PERMISSION_KEYS = [
-        'accounting.view', 'analysis.view', 'architecture.foundation.view', 'audit.view', 'customers.view',
+        'accounting.view', 'analysis.view', 'architecture.foundation.view', 'audit.view', 'customers.operate', 'customers.view',
         'dashboard.view', 'guides.view', 'inventory.view', 'kol.view', 'logistics.operate', 'logistics.view',
         'orders.create', 'orders.edit', 'orders.view', 'procurement.view', 'products.view', 'prototype.view', 'sync.operate', 'sync.view',
         'system.permissions.manage',
@@ -249,6 +271,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_05_000001_create_shipments_table.php' => 'b77bd4fe75277ac2173689aa1fcfc8f81d91b13e7c9e53a1a5d49c51569c010d',
         'database/migrations/2026_08_05_000002_create_manual_syncs_table.php' => 'a71467bb42ab9c0a2edcbc9519619138c4bd8e5b0e15b5246e6f9a6a44fa14d5',
         'database/migrations/2026_08_05_000003_create_order_costs_table.php' => '107416001d2e658fad74870e656b2d23f45d21dbe2a892d512af1d043bd815cb',
+        'database/migrations/2026_08_23_000000_create_companies_table.php' => '860faaca4a5c8f2654164798fc4d9717df2f291642f4c5754a1fda22ac652401',
     ];
 
     private const FRONTEND_FILES = [
@@ -275,6 +298,12 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Architecture/Foundation.vue' => '0f3f96bd3ad9a5b68fa7fe5a78e20a1e0e92f4d2e6806ef30697fda64941aa70',
         'resources/js/Pages/Auth/Login.test.ts' => '937fcfd44e8348130d7abded4669263142d4cfc423f3ac4d87cee2a7889eec65',
         'resources/js/Pages/Auth/Login.vue' => '203bd9c4dc2ae13b8f5e185c4ebebcb5a4b4a088ae43eaf868b62cddf73d8901',
+        'resources/js/Pages/Customers/Companies/Create.test.ts' => '2221b8d4e063e0615a97af14e6fbb738022fd44b55080a6fa6fa8c14d500e198',
+        'resources/js/Pages/Customers/Companies/Create.vue' => '568e82d1d2587204b48319443d0d7958e2d053be901288ac02bdee2a58c68bb8',
+        'resources/js/Pages/Customers/Companies/Edit.vue' => '7ffbcb6d19a43a59a0f27b37057f411c315644148cc57237e6f232ebc02b547f',
+        'resources/js/Pages/Customers/Companies/Index.test.ts' => 'ab4d2c8f2e3f751daab6b8f980607251e31f67eb646539e593755386823713ab',
+        'resources/js/Pages/Customers/Companies/Index.vue' => '7e7e164c6a1800d48f9440053c4238beffb932075f4b65053eb1a3e4f43d4add',
+        'resources/js/Pages/Customers/Companies/Show.vue' => 'ec15baa7f74a287f7b8ab5b9c672da090b5031c0a8a055a9ccdcba5f28698b19',
         'resources/js/Pages/Dashboard/Index.test.ts' => '27c63e094fcdec28a0e5677508723e149c90a5130efb98d4448fa2b7f51b4ae4',
         'resources/js/Pages/Dashboard/Index.vue' => '0c28a768afcaa181b54ab01c4ec08457a04f7ed98e5ba3b52a041d98492bc2bb',
         'resources/js/Pages/Finance/OrderAnalysis.vue' => '96216f9ce4b67dd10bc4627c7e09703c1752c030110425509839d9aaab25d0aa',
@@ -303,7 +332,11 @@ final class ModuleArchitectureTest extends TestCase
         $domainFiles = $this->moduleLayerFiles('Domain');
         $applicationFiles = $this->moduleLayerFiles('Application');
         $infrastructureDependencyFiles = [...$domainFiles, ...$applicationFiles];
-        self::assertSame([], $domainFiles);
+        self::assertSame($this->sorted([
+            'app/Modules/Customers/Domain/CountryCodeNormalizer.php',
+            'app/Modules/Customers/Domain/Exceptions/InvalidCompanyAttributeException.php',
+            'app/Modules/Customers/Domain/WebsiteDomainNormalizer.php',
+        ]), $domainFiles);
         self::assertSame($this->sorted([
             'app/Modules/Audit/Application/AuditActor.php',
             'app/Modules/Audit/Application/AuditService.php',
@@ -326,6 +359,7 @@ final class ModuleArchitectureTest extends TestCase
             'app/Modules/Sync/Application/SyncOutboxService.php',
             'app/Modules/Sync/Application/SyncOutboxStatus.php',
             'app/Modules/Sync/Application/SyncOutboxWriteException.php',
+        'app/Modules/Customers/Application/CompanyService.php',
         'app/Modules/Finance/Application/OrderAnalysisService.php',
         'app/Modules/Logistics/Application/ShipmentService.php',
         'app/Modules/Orders/Application/OrderService.php',
@@ -334,7 +368,7 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Sync/Application/ManualSyncService.php',
         'app/Modules/Sync/Application/ManualSyncStatus.php',
         ]), $applicationFiles);
-        self::assertSame($applicationFiles, $infrastructureDependencyFiles);
+        self::assertSame($this->sorted([...$domainFiles, ...$applicationFiles]), $this->sorted($infrastructureDependencyFiles));
         self::assertNotContains('app/Modules/Future/Providers/Provider.php', $domainFiles);
         self::assertNotContains('app/Modules/Future/Providers/Provider.php', $applicationFiles);
         self::assertSame([], $this->tokenizerViolations('DOM-001', $domainFiles, $this->domForbidden()));
@@ -490,6 +524,7 @@ PHP;
             ManualSyncServiceProvider::class,
             ShellServiceProvider::class,
             DashboardServiceProvider::class,
+            CustomersServiceProvider::class,
         ], ModuleManifest::providers());
         self::assertSame([AppServiceProvider::class, ModulesServiceProvider::class], require $this->path('bootstrap/providers.php'));
     }
