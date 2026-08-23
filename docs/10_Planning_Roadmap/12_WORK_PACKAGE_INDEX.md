@@ -244,14 +244,28 @@ Work Log: docs/60_Codex_Operations/logs/2026-08-23_ERP-GOV-INQUIRY-ROADMAP-REVIS
 
 ERP-GOV-EXECUTION-ROLE-ALIGNMENT-001
 Role/entrypoint alignment for GPT + Claude + Codex operating model
-Status: ACTIVE / GOVERNANCE ONLY / DRAFT DELIVERY PR
+Status: COMPLETE / PASS / MERGED
+PR: #84; Main SHA: 655655dffd0cd71d5d2dec2872cf597aedf1c104
 Work Package: docs/60_Codex_Operations/work-packages/ERP-GOV-EXECUTION-ROLE-ALIGNMENT-001.md
 Work Log: docs/60_Codex_Operations/logs/2026-08-23_ERP-GOV-EXECUTION-ROLE-ALIGNMENT-001.md
 
+ERP-INQUIRY-M1.0-CONTRACT-001
+Inquiry architecture/data/API contract
+Status: COMPLETE / OWNER APPROVED / MERGED
+PR: #85; Main SHA: 02ce87dba5ede14d791b646b7cbe976a12064cae
+Work Package: docs/60_Codex_Operations/work-packages/ERP-INQUIRY-M1.0-CONTRACT-001.md
+Work Log: docs/60_Codex_Operations/logs/2026-08-23_ERP-INQUIRY-M1.0-CONTRACT-001.md
+
+ERP-GOV-INQUIRY-M1.0-ACCEPTANCE-SYNC-001
+Post-merge canonical status/estimate synchronization for Owner-approved M1.0
+Status: ACTIVE / GOVERNANCE ONLY / DRAFT DELIVERY PR
+Work Package: docs/60_Codex_Operations/work-packages/ERP-GOV-INQUIRY-M1.0-ACCEPTANCE-SYNC-001.md
+Work Log: docs/60_Codex_Operations/logs/2026-08-23_ERP-GOV-INQUIRY-M1.0-ACCEPTANCE-SYNC-001.md
+
 ERP-INQUIRY-M1
 B2B Inquiry Foundation
-Status: CURRENT MILESTONE / ARCHITECTURE NOT YET FROZEN / IMPLEMENTATION NOT STARTED
-Children planned, not activated: M1.0 Contract; M1.1 Company; M1.2 Contact; M1.3 Case; M1.4 Inbound Message; M1.5 Inquiry Inbox; M1.6 Email Intake; M1.7 WhatsApp Intake; M1.8 Yesterday/Waiting Dashboard; M1.9 Local Milestone UAT
+Status: CURRENT MILESTONE / M1.0 CONTRACT FROZEN / IMPLEMENTATION NOT STARTED
+Children: M1.0 COMPLETE; M1.1 Company NEXT / NOT ACTIVATED; M1.2 Contact WAITING; M1.3 Case WAITING; M1.4 Inbound Message WAITING; M1.5 Inquiry Inbox WAITING; M1.6 Email Intake WAITING; M1.7 WhatsApp Intake WAITING; M1.8 Yesterday/Waiting Dashboard WAITING; M1.9 Local Milestone UAT WAITING
 ```
 
 ## Post-Inquiry planned milestones

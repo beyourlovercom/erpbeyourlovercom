@@ -502,3 +502,11 @@ Remote target: https://erp.beyourlover.com remains milestone-gated only.
 Product code / Migration / external channels / deployment: NO CHANGE.
 Decision: D-035.
 ```
+
+## 2026-08-23 — ERP-INQUIRY-M1.0 Owner acceptance / canonical sync
+
+Owner approved all six ERP-INQUIRY-M1.0 gates. PR #85 merged to `main` as `02ce87dba5ede14d791b646b7cbe976a12064cae`.
+
+Canonical sources are synchronized from `OWNER REVIEW REQUIRED / estimate unknown` to `OWNER APPROVED / FROZEN`, with ERP-INQUIRY-M1 implementation estimate `86–150h`, planning value `116h`, and M1.1 Company `6–10h`, planning value `8h`.
+
+No product code, Migration, database data, dependencies, Email/WhatsApp connection or remote environment is changed. The next product Work Package is M1.1 Company and remains implementation-unauthorized until separate Owner approval.

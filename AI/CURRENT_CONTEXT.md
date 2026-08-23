@@ -2,7 +2,7 @@
 type: current-context
 project: BYL ERP
 updated: 2026-08-23
-status: inquiry-m1-role-governance-alignment
+status: inquiry-m1-contract-accepted-next-company
 ---
 
 # Current Context
@@ -15,8 +15,10 @@ DESIGN_DIAGNOSIS_AUTHORITY: GPT Web + Owner
 IMPLEMENTATION_PROVIDER: US Mac / Claude Code / implementation only
 TEST_PROVIDER: China Mac / Codex CLI / test, verification and evidence only
 SOURCE_OF_TRUTH: GitHub / beyourlovercom/erpbeyourlovercom
-PRIMARY_LOCAL_RUNTIME: http://erp.b
-PRIMARY_TEST_ENVIRONMENT: China Mac
+US_LOCAL_RUNTIME: http://erp.b
+CHINA_LOCAL_RUNTIME: http://erp.b
+PRIMARY_FULL_VERIFICATION_HOST: US Mac
+DAILY_CHINA_VERIFICATION: EXACT_SHA_SMOKE_BY_DEFAULT
 REMOTE_MILESTONE_TARGET: https://erp.beyourlover.com
 AICC_IN_ERP_EXECUTION_CHAIN: NO
 ```
@@ -29,7 +31,9 @@ Claude and Codex do not design, diagnose, select architecture, decide root cause
 PR_82_LOCAL_BASELINE_AUDIT: MERGED
 BASELINE_MERGE_SHA: faa45f9620211f3c398dde7f30c1a886313ced14
 PR_83_ROADMAP_REVISION: MERGED
-CURRENT_MAIN_SHA: c5fb481b5e8c97eca709b12371b644013eee46ec
+PR_84_EXECUTION_ROLE_ALIGNMENT: MERGED
+PR_85_INQUIRY_M1_CONTRACT: MERGED / OWNER APPROVED
+CURRENT_MAIN_SHA: 1c4079204cc38f3523cbccdcd729d100362202fe
 ARCHITECTURE_FOUNDATION: COMPLETE / PASS
 GLOBAL_ARCHITECTURE_GATE: PASS
 LOCAL_RUNTIME: http://erp.b
@@ -50,18 +54,18 @@ MVP1_MANUAL_SYNC: COMPLETE / PASS / CLOSED
 MVP1_FINANCE_ORDER_ANALYSIS: COMPLETE / PASS / CLOSED
 MVP1_AUTOMATED_UAT_READINESS: PASS
 MVP1_HUMAN_UAT: CHANGES REQUIRED
-LEGACY_HUMAN_UAT_FINDINGS_OPEN: 5
+LEGACY_HUMAN_UAT_FINDINGS_OPEN: 4
 ```
 
-The five migrated Human UAT findings remain open. This Roadmap revision does not close, reinterpret or silently supersede them. They may proceed as separate bounded remediation packages when prioritized and when no undeclared shared-foundation dependency conflicts with the current Inquiry milestone.
+Five legacy Human UAT findings were migrated. `MVP1-UAT-DEFECT-001` is now formally CLOSED after PR #87 merge and Owner UAT PASS; four legacy findings remain open. They may proceed as separate bounded remediation packages when prioritized and when no undeclared shared-foundation dependency conflicts with the current Inquiry milestone.
 
 ## Current milestone
 
 ```text
 CURRENT_PROGRAM_MILESTONE: ERP-INQUIRY-M1
-CURRENT_GOVERNANCE_WORK_PACKAGE: ERP-GOV-EXECUTION-ROLE-ALIGNMENT-001
-CURRENT_ACTIVITY: EXECUTION ROLE / ENTRYPOINT ALIGNMENT / NO PRODUCT IMPLEMENTATION
-NEXT_AFTER_GOVERNANCE_MERGE: ERP-INQUIRY-M1.0 ARCHITECTURE & DATA CONTRACT
+CURRENT_GOVERNANCE_WORK_PACKAGE: ERP-GOV-INQUIRY-M1.0-ACCEPTANCE-SYNC-001
+CURRENT_ACTIVITY: RECORD OWNER ACCEPTANCE / SYNC CANONICAL STATUS / NO PRODUCT IMPLEMENTATION
+NEXT_PRODUCT_WORK_PACKAGE: ERP-INQUIRY-M1.1-COMPANY-001 / NOT YET ACTIVATED
 ```
 
 ERP-INQUIRY-M1 sequence:
@@ -100,12 +104,11 @@ PRODUCTION/REMOTE DIRECT FIX BY CODEX: FORBIDDEN
 ## Immediate sequence
 
 ```text
-1. Complete and merge ERP-GOV-EXECUTION-ROLE-ALIGNMENT-001 after Owner review.
-2. GPT Web performs repository-grounded design of ERP-INQUIRY-M1.0.
-3. Freeze Company / Contact / Case / Inbound Message ownership, identity, dedupe, status, timeline, API and migration contracts.
-4. Split implementation into bounded Work Packages.
-5. US Claude implements approved tasks and pushes to GitHub.
-6. China Codex tests exact GitHub revisions on erp.b and returns evidence only.
-7. GPT Web diagnoses failures and issues remediation instructions.
-8. Owner UAT and merge gates apply.
+1. Record Owner acceptance of ERP-INQUIRY-M1.0 and synchronize canonical status/estimate sources.
+2. GPT Web prepares ERP-INQUIRY-M1.1-COMPANY-001 as the first bounded Claude implementation Work Package.
+3. Owner explicitly authorizes that implementation package before Claude writes product code or Migration files.
+4. US Claude implements the approved package and pushes the exact branch/PR to GitHub.
+5. China Codex performs the required exact-SHA verification tier on erp.b (daily smoke by default; full independent verification only for milestone/release/high-risk or explicit escalation) and returns evidence only.
+6. GPT Web diagnoses failures and issues bounded remediation instructions.
+7. Owner UAT and merge gates apply.
 ```
