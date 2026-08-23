@@ -252,10 +252,11 @@ final class ModuleArchitectureTest extends TestCase
     ];
 
     private const FRONTEND_FILES = [
-        'resources/js/Components/AppShell/GlobalNavigation.test.ts' => '2f8997692e36f62b3cc435dc7a3e850cc79d5b3f1ae27c6a1a8e86e54954281f',
-        'resources/js/Components/AppShell/GlobalNavigation.vue' => 'e40b18415f2c88afd5a43b7f2da0870df45e29ddbab7006bf1d07c581de566ef',
+        'resources/js/Components/AppShell/GlobalNavigation.test.ts' => '91253308c632b12ff2bba6647292ae52262a3e1e8f869b165e9dda13fa0eec90',
+        'resources/js/Components/AppShell/GlobalNavigation.vue' => 'd770da59371440e8b4108aaa4116f50f07baa0b1980292d203a7936d702bf6dc',
         'resources/js/Components/AppShell/ModuleSidebar.vue' => '127f19089943410e88558a4f4fe07f7003c318c353b29582d526bdfcd64bc5a4',
-        'resources/js/Components/AppShell/TopBar.vue' => 'f9c86085dfdf784a6351de332a014fb254310f40d8dfdb28c9d2ee702d3a205a',
+        'resources/js/Components/AppShell/NavigationItem.vue' => '6182c3ae18e0ac1aa6885f213c707f3ec940560b284970c2894a977d9e58762a',
+        'resources/js/Components/AppShell/TopBar.vue' => '8ee9469043fa193fa2a3435331cfd4b656fc9cd27950e6138d5ea66e56ca6e3e',
         'resources/js/Components/AppShell/UserAccountMenu.test.ts' => 'cbad0690b0c251c28ce7ee9644eb2de5699fc80065f8bc10d4fe1125d65dd687',
         'resources/js/Components/AppShell/UserAccountMenu.vue' => '2ae335eacc6146873ffcf857d829a7c30d1136555e1339f500966c5dd7797367',
         'resources/js/Components/UI/EmptyState.test.ts' => '4fda8290eb407fe9313f32d5a5ac0f802cbb668797af87b9cb3c7f856e528b18',
@@ -268,8 +269,8 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Components/UI/UiAlert.vue' => 'e3e6ee0e127ae0911efce1bb1d1cb873146cf77220c9c9156a86b968b03b519f',
         'resources/js/Components/UI/UiButton.test.ts' => '126bc019e025164dc901b9c21986aa370fedf26da3d1618c90d7c60791797bf8',
         'resources/js/Components/UI/UiButton.vue' => '7ae624f92c56911ce58b60ae54c54625e85837666ca6b9882ac04be32c718113',
-        'resources/js/Layouts/AuthenticatedLayout.test.ts' => '73e5a9fd5e94af7a3b32068c4dba490ceac4c17719bc011fec962760dfe42549',
-        'resources/js/Layouts/AuthenticatedLayout.vue' => '1c5ce16e05b745efe8543d59f7fac82d363fb15adb16dc24009ab8f71e589438',
+        'resources/js/Layouts/AuthenticatedLayout.test.ts' => 'c9cb7b3499ae71d12ddd0275803f0bb11dd2c4a8a31475ad69d1f518b3b3525e',
+        'resources/js/Layouts/AuthenticatedLayout.vue' => '50423cdd09161ce7cf36aade3f0375231571af27671dc7fc3055623442a80d2b',
         'resources/js/Pages/Architecture/Foundation.test.ts' => '68898785345d5cc641bcc8b3f165527a94c912e33c5f1941554a9a28aad97a1c',
         'resources/js/Pages/Architecture/Foundation.vue' => '0f3f96bd3ad9a5b68fa7fe5a78e20a1e0e92f4d2e6806ef30697fda64941aa70',
         'resources/js/Pages/Auth/Login.test.ts' => '937fcfd44e8348130d7abded4669263142d4cfc423f3ac4d87cee2a7889eec65',
