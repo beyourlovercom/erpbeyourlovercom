@@ -3,7 +3,7 @@ type: work-package
 project: BYL ERP
 work_package_id: ERP-INQUIRY-M1.1-COMPANY-001
 title: ERP Inquiry M1.1 — Company Master Data Foundation
-status: US IMPLEMENTATION + US VERIFICATION COMPLETE / AWAITING CHINA VERIFICATION AND OWNER UAT
+status: US IMPLEMENTATION + US VERIFICATION COMPLETE (INCLUDING BOUNDED RESTORE UAT FOLLOW-UP) / AWAITING CHINA VERIFICATION AND OWNER RE-UAT
 execution_provider: CLAUDE_CODE
 design_authority: GPT_WEB
 test_provider: CODEX_CLI
@@ -350,15 +350,36 @@ Owner `PASS` is required before Merge Gate.
 ```text
 BRANCH = feature/erp-inquiry-m1-1-company-001
 PR = single lifecycle Draft PR (#89)
-CLAUDE_IMPLEMENTATION = COMPLETE (authorized via Owner comment on PR #89, 2026-08-23; see work log)
-US_VERIFICATION = PASS (see docs/60_Codex_Operations/logs/2026-08-23_ERP-INQUIRY-M1.1-COMPANY-001.md)
+CLAUDE_IMPLEMENTATION = COMPLETE (initial scope authorized via Owner comment on PR #89, 2026-08-23; restore/取消归档
+                          UAT follow-up authorized via Owner comment "OWNER UAT FOLLOW-UP — COMPANY RESTORE / 取消归档
+                          AUTHORIZED (2026-08-23)"; see work log)
+US_VERIFICATION = PASS (initial scope and restore follow-up; see
+                          docs/60_Codex_Operations/logs/2026-08-23_ERP-INQUIRY-M1.1-COMPANY-001.md)
 CHINA_VERIFICATION = NOT RUN
-OWNER_UAT = NOT RUN
+EXISTING_ARCHIVE_OWNER_UAT = PASS
+RESTORE_OWNER_RE_UAT = PENDING
 MERGE = NOT AUTHORIZED
 DEPLOYMENT = NOT AUTHORIZED
 ```
 
 The same Draft PR is used from Work Package definition through implementation, verification, Owner UAT and Merge Gate. Do not create a second implementation PR for this Work Package.
+
+## 14a. Owner UAT follow-up — Company restore / 取消归档 (bounded remediation)
+
+The Owner's first UAT on `http://erp.b` reported `EXISTING_ARCHIVE_OWNER_UAT = PASS` for the archive flow defined in Section 13, then identified a missing lifecycle gap: an archived Company could not be restored/unarchived. This was authorized as a bounded UAT remediation inside this same lifecycle PR #89 via the Owner comment `OWNER UAT FOLLOW-UP — COMPANY RESTORE / 取消归档 AUTHORIZED (2026-08-23)`, posted at commit `902cc4b153c7daff9bbac8e43d5c2f3046f26c0e`.
+
+Added within the frozen M1.1 scope, no schema change:
+
+```text
+POST /customers/companies/{company}/restore   (route: customers.companies.restore, permission: customers.operate)
+CompanyService::restore()                      mirrors archive(); clears archived_at; idempotent no-op (no mutation,
+                                                 no audit record) when the Company is already active
+Audit event company.restored                   before/after evidence, reason code 'company_restored'
+UI 取消归档 action                              Archived-only Company list rows and archived Company detail page;
+                                                 hidden for active Companies
+```
+
+This remediation does not mark Owner UAT PASS for restore. Re-UAT of restore by the Owner remains outstanding.
 
 ## 15. Estimate
 
@@ -377,10 +398,12 @@ M1.0 ACCEPTANCE SYNC = MERGED BY PR #86
 CURRENT MAIN BASELINE = 7308f81af3660acff3bcec5d843dbe83cfbf14a6
 M1.1 WORK PACKAGE = DEFINED
 M1.1 DRAFT DELIVERY BRANCH = CREATED
-CLAUDE IMPLEMENTATION = COMPLETE (bounded M1.1 Company scope; authorized via Owner comment on PR #89)
-US VERIFICATION = PASS
+CLAUDE IMPLEMENTATION = COMPLETE (bounded M1.1 Company scope; authorized via Owner comment on PR #89;
+                          restore/取消归档 UAT follow-up authorized and implemented per Section 14a)
+US VERIFICATION = PASS (initial scope and restore follow-up)
 CHINA TEST = NOT RUN
-OWNER UAT = NOT RUN
+EXISTING_ARCHIVE_OWNER_UAT = PASS
+RESTORE_OWNER_RE_UAT = PENDING
 MERGE = NOT AUTHORIZED
 DEPLOYMENT = NOT AUTHORIZED
 ```

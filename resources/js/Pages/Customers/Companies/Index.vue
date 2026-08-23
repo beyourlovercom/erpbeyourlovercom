@@ -7,6 +7,7 @@ type Company = { id: number; name: string; legal_name: string | null; website_do
 const props = defineProps<{ companies: Company[]; filters: Record<string, string>; owners: { id: number; name: string }[]; canOperate: boolean }>()
 const filters = reactive({ search: props.filters.search ?? '', country_code: props.filters.country_code ?? '', owner_id: props.filters.owner_id ?? '', archived: props.filters.archived ?? '' })
 const submit = () => router.get('/customers/companies', filters, { preserveState: true, replace: true })
+const restore = (company: Company) => { if (window.confirm(`确认取消归档公司「${company.name}」？`)) router.post(`/customers/companies/${company.id}/restore`) }
 </script>
 <template>
   <Head title="公司 · BYL ERP" />
@@ -34,7 +35,7 @@ const submit = () => router.get('/customers/companies', filters, { preserveState
               <td>{{ company.registration_number ?? '—' }}</td>
               <td>{{ company.owner?.name ?? '—' }}</td>
               <td><span class="mvp-status">{{ company.archived_at ? '已归档' : company.status }}</span></td>
-              <td><Link :href="`/customers/companies/${company.id}`">查看</Link></td>
+              <td><Link :href="`/customers/companies/${company.id}`">查看</Link> <button v-if="canOperate && company.archived_at" class="mvp-button" type="button" @click="restore(company)">取消归档</button></td>
             </tr>
             <tr v-if="companies.length === 0"><td colspan="7" class="mvp-empty">暂无符合条件的公司</td></tr>
           </tbody>

@@ -48,4 +48,32 @@ describe('company index page', () => {
         expect(wrapper.text()).toContain('Active Co')
         expect(wrapper.text()).toContain('已归档')
     })
+
+    it('shows the restore action only for archived companies when the viewer can operate', () => {
+        const wrapper = mount(Index, {
+            props: {
+                ...baseProps,
+                canOperate: true,
+                companies: [
+                    { id: 1, name: 'Active Co', legal_name: null, website_domain_normalized: null, country_code: null, registration_number: null, owner: null, status: 'prospect', archived_at: null },
+                    { id: 2, name: 'Archived Co', legal_name: null, website_domain_normalized: null, country_code: null, registration_number: null, owner: null, status: 'prospect', archived_at: '2026-08-23T00:00:00Z' },
+                ],
+            },
+        })
+        const buttons = wrapper.findAll('button').filter((button) => button.text() === '取消归档')
+        expect(buttons).toHaveLength(1)
+    })
+
+    it('hides the restore action for read-only viewers even on archived companies', () => {
+        const wrapper = mount(Index, {
+            props: {
+                ...baseProps,
+                canOperate: false,
+                companies: [
+                    { id: 2, name: 'Archived Co', legal_name: null, website_domain_normalized: null, country_code: null, registration_number: null, owner: null, status: 'prospect', archived_at: '2026-08-23T00:00:00Z' },
+                ],
+            },
+        })
+        expect(wrapper.findAll('button').some((button) => button.text() === '取消归档')).toBe(false)
+    })
 })

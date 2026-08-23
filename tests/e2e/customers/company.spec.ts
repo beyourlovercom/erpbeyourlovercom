@@ -36,6 +36,24 @@ test('authorized user can create, view, edit and archive a Company end to end', 
 
     await page.goto('/customers/companies?archived=only');
     await expect(page.getByRole('link', { name: 'E2E Synthetic Company' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '取消归档' })).toBeVisible();
+
+    await page.getByRole('link', { name: 'E2E Synthetic Company' }).click();
+    await expect(page).toHaveURL(/\/customers\/companies\/\d+$/u);
+    await expect(page.getByRole('button', { name: '编辑' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '归档', exact: true })).toHaveCount(0);
+
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.getByRole('button', { name: '取消归档' }).click();
+    await expect(page).toHaveURL(/\/customers\/companies\/\d+$/u);
+    await expect(page.getByRole('button', { name: '取消归档' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '归档', exact: true })).toBeVisible();
+
+    await page.goto('/customers/companies');
+    await expect(page.getByRole('link', { name: 'E2E Synthetic Company' })).toBeVisible();
+
+    await page.goto('/customers/companies?archived=only');
+    await expect(page.getByText('暂无符合条件的公司', { exact: true })).toBeVisible();
 
     await guard.assertClean();
 });

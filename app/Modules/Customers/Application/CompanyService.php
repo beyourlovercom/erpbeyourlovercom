@@ -104,6 +104,24 @@ final class CompanyService
         });
     }
 
+    public function restore(Model $company, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($company, $actor): Model {
+            $locked = $company->newQuery()->whereKey($company->getKey())->lockForUpdate()->firstOrFail();
+
+            if ($locked->archived_at === null) {
+                return $locked;
+            }
+
+            $before = $this->auditData($locked);
+            $locked->forceFill(['archived_at' => null])->save();
+            $after = $this->auditData($locked);
+            $this->record($actor, 'company.restored', $locked, before: $before, after: $after, reason: 'company_restored');
+
+            return $locked->fresh('owner');
+        });
+    }
+
     private function normalizeAttributes(array $attributes): array
     {
         if (array_key_exists('website_url', $attributes)) {

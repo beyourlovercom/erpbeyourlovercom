@@ -5,6 +5,7 @@ import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 type Company = { id: number; name: string; legal_name: string | null; website_url: string | null; website_domain_normalized: string | null; country_code: string | null; registration_number: string | null; industry: string | null; owner: { id: number; name: string } | null; status: string; archived_at: string | null; created_at: string | null; updated_at: string | null }
 const props = defineProps<{ company: Company; canOperate: boolean; audit: { action: string; actor_id: number | null; created_at: string }[] }>()
 const archive = () => { if (window.confirm(`确认归档公司「${props.company.name}」？`)) router.post(`/customers/companies/${props.company.id}/archive`) }
+const restore = () => { if (window.confirm(`确认取消归档公司「${props.company.name}」？`)) router.post(`/customers/companies/${props.company.id}/restore`) }
 </script>
 <template>
   <Head :title="`${company.name} · BYL ERP`" />
@@ -16,6 +17,7 @@ const archive = () => { if (window.confirm(`确认归档公司「${props.company
           <a class="mvp-button" href="/customers/companies">返回列表</a>
           <Link v-if="canOperate && !company.archived_at" class="mvp-button" :href="`/customers/companies/${company.id}/edit`">编辑</Link>
           <button v-if="canOperate && !company.archived_at" class="mvp-button" type="button" @click="archive">归档</button>
+          <button v-if="canOperate && company.archived_at" class="mvp-button" type="button" @click="restore">取消归档</button>
         </div>
       </div>
       <div class="mvp-detail-grid">

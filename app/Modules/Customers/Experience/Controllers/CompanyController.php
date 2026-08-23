@@ -89,6 +89,13 @@ final class CompanyController
         return redirect()->route('customers.companies')->with('success', '公司已归档');
     }
 
+    public function restore(Request $request, Company $company): RedirectResponse
+    {
+        $this->companies->restore($company, $request->user());
+
+        return redirect()->route('customers.companies.show', $company)->with('success', '公司已取消归档');
+    }
+
     private function companyData(Company $company): array
     {
         return [

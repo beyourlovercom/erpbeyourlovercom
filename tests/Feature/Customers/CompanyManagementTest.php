@@ -113,6 +113,41 @@ final class CompanyManagementTest extends TestCase
             ->where('companies', fn ($companies): bool => collect($companies)->pluck('name')->all() === ['Archived Co']));
     }
 
+    public function test_authorized_user_can_restore_an_archived_company(): void
+    {
+        $user = $this->userWith(['customers.view', 'customers.operate']);
+        $this->actingAs($user)->post('/customers/companies', ['name' => 'Restorable Co'])->assertRedirect();
+        $company = Company::query()->firstOrFail();
+        $this->actingAs($user)->post('/customers/companies/'.$company->id.'/archive')->assertRedirect();
+        $this->assertNotNull($company->fresh()->archived_at);
+
+        $response = $this->actingAs($user)->post('/customers/companies/'.$company->id.'/restore');
+        $response->assertRedirect('/customers/companies/'.$company->id);
+        $company->refresh();
+        $this->assertNull($company->archived_at);
+        $this->assertDatabaseHas('audit_records', ['action' => 'company.restored', 'entity_id' => (string) $company->id]);
+
+        $this->actingAs($user)->get('/customers/companies')->assertInertia(fn (Assert $page) => $page
+            ->component('Customers/Companies/Index')
+            ->where('companies', fn ($companies): bool => collect($companies)->pluck('name')->all() === ['Restorable Co']));
+
+        $this->actingAs($user)->get('/customers/companies?archived=only')->assertInertia(fn (Assert $page) => $page
+            ->where('companies', fn ($companies): bool => collect($companies)->pluck('name')->all() === []));
+    }
+
+    public function test_restoring_an_already_active_company_is_idempotent(): void
+    {
+        $user = $this->userWith(['customers.view', 'customers.operate']);
+        $this->actingAs($user)->post('/customers/companies', ['name' => 'Already Active Co'])->assertRedirect();
+        $company = Company::query()->firstOrFail();
+
+        $this->actingAs($user)->post('/customers/companies/'.$company->id.'/restore')->assertRedirect('/customers/companies/'.$company->id);
+
+        $this->assertNull($company->fresh()->archived_at);
+        $this->assertDatabaseCount('audit_records', 1);
+        $this->assertDatabaseMissing('audit_records', ['action' => 'company.restored']);
+    }
+
     public function test_read_only_user_can_list_and_view_but_cannot_mutate(): void
     {
         $operator = $this->userWith(['customers.view', 'customers.operate']);
@@ -125,6 +160,7 @@ final class CompanyManagementTest extends TestCase
         $this->actingAs($reader)->post('/customers/companies', ['name' => 'Should Fail'])->assertForbidden();
         $this->actingAs($reader)->patch('/customers/companies/'.$company->id, ['name' => 'Should Fail'])->assertForbidden();
         $this->actingAs($reader)->post('/customers/companies/'.$company->id.'/archive')->assertForbidden();
+        $this->actingAs($reader)->post('/customers/companies/'.$company->id.'/restore')->assertForbidden();
         $this->assertDatabaseCount('companies', 1);
     }
 
