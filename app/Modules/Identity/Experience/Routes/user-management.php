@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Identity\Experience\Controllers\RolePermissionsController;
 use App\Modules\Identity\Experience\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -11,9 +12,13 @@ Route::middleware(['web', 'auth', 'can:system.permissions.manage'])->group(funct
     Route::match(['put', 'patch'], '/settings/users/{user}', [UserController::class, 'update'])->name('user.update');
     Route::post('/settings/users/{user}/password', [UserController::class, 'setPassword'])->name('user.password');
     Route::post('/settings/users/{user}/role', [UserController::class, 'setRole'])->name('user.role');
+    Route::post('/settings/users/{user}/permissions', [UserController::class, 'updatePermissions'])->name('user.permissions');
     Route::post('/settings/users/{user}/enable', [UserController::class, 'enable'])->name('user.enable');
     Route::post('/settings/users/{user}/disable', [UserController::class, 'disable'])->name('user.disable');
     Route::delete('/settings/users/{user}', [UserController::class, 'destroy'])->name('user.destroy');
+
+    Route::get('/settings/roles-permissions', [RolePermissionsController::class, 'index'])->name('settings.roles-permissions');
+    Route::put('/settings/roles-permissions/{preset}', [RolePermissionsController::class, 'update'])->name('settings.roles-permissions.update');
 
     // Temporary GET-only compatibility redirects. Legacy mutation routes do not exist.
     Route::get('/user', fn () => redirect('/settings/users'));

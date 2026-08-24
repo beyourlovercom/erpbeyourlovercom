@@ -28,6 +28,8 @@ final class UserService
 
     private const COMPANY_CLASS = 'App\\Modules\\Customers\\Infrastructure\\Models\\Company';
 
+    private const GUARD_KEY = 'system.permissions.manage';
+
     public function __construct(private readonly AuditRecorder $audit) {}
 
     public function list(): Collection
@@ -41,7 +43,7 @@ final class UserService
     {
         $userClass = self::USER_CLASS;
 
-        return $userClass::query()->with('roles')->findOrFail($id);
+        return $userClass::query()->with(['roles', 'customPermissions'])->findOrFail($id);
     }
 
     public function create(array $attributes, RolePreset $preset, Authenticatable $actor): Model
@@ -109,6 +111,11 @@ final class UserService
                 return $locked;
             }
 
+            if (! $active) {
+                // guardLastPermissionsHolder checks other active users (before this one is deactivated)
+                $this->guardLastPermissionsHolder($locked);
+            }
+
             $before = ['is_active' => $locked->is_active];
             $locked->forceFill(['is_active' => $active])->save();
             $after = ['is_active' => $locked->is_active];
@@ -125,10 +132,58 @@ final class UserService
             $before = $this->rolePresetValue($locked);
             $role = $this->ensureRole($preset);
             $locked->roles()->sync([$role->id]);
+            $this->guardTotalPermissionsHolders($locked);
             $after = $preset->value;
             $this->record($actor, 'user.role_changed', $locked, before: ['role' => $before], after: ['role' => $after], reason: 'role_preset_assigned');
 
             return $locked->fresh('roles');
+        });
+    }
+
+    /**
+     * @param list<string> $permissionKeys
+     */
+    public function setPermissions(Model $user, string $mode, array $permissionKeys, Authenticatable $actor): Model
+    {
+        if (! in_array($mode, ['role', 'custom'], true)) {
+            throw new \InvalidArgumentException('Invalid permission mode.');
+        }
+
+        if ($mode === 'custom' && ! PermissionCatalog::validate($permissionKeys)) {
+            throw new \InvalidArgumentException('Invalid permission key(s).');
+        }
+
+        return DB::transaction(function () use ($user, $mode, $permissionKeys, $actor): Model {
+            $userClass = self::USER_CLASS;
+            $permissionClass = self::PERMISSION_CLASS;
+
+            $locked = $userClass::query()->whereKey($user->getKey())->lockForUpdate()->firstOrFail();
+
+            $beforeMode = $locked->permission_mode;
+            $beforeKeys = $locked->customPermissions()->pluck('key')->sort()->values()->all();
+
+            $locked->forceFill(['permission_mode' => $mode])->save();
+
+            if ($mode === 'custom') {
+                $ids = collect($permissionKeys)
+                    ->map(fn (string $key): int => $permissionClass::query()->firstOrCreate(['key' => $key], ['label' => $key])->id)
+                    ->all();
+                $locked->customPermissions()->sync($ids);
+            } else {
+                $locked->customPermissions()->detach();
+            }
+
+            $this->guardTotalPermissionsHolders($locked);
+
+            $afterKeys = $mode === 'custom' ? collect($permissionKeys)->sort()->values()->all() : [];
+
+            $this->record($actor, 'user.permissions_updated', $locked,
+                before: ['mode' => $beforeMode, 'permissions' => $beforeKeys],
+                after: ['mode' => $mode, 'permissions' => $afterKeys],
+                reason: 'user_permissions_updated',
+            );
+
+            return $locked->fresh(['roles', 'customPermissions']);
         });
     }
 
@@ -145,9 +200,12 @@ final class UserService
                 throw IdentityGuardException::hasBusinessReferences();
             }
 
+            $this->guardLastPermissionsHolder($locked);
+
             $before = ['name' => $locked->name, 'email' => $locked->email];
             $id = $locked->getKey();
             $locked->roles()->detach();
+            $locked->customPermissions()->detach();
             $locked->delete();
             $this->record($actor, 'user.deleted', $locked, before: $before, reason: 'user_deleted', entityId: $id);
         });
@@ -167,18 +225,72 @@ final class UserService
             || $companyClass::query()->where('owner_id', $id)->exists();
     }
 
+    /** Seed permissions only for newly created roles; leave existing role templates untouched. */
     private function ensureRole(RolePreset $preset): Model
     {
         $roleClass = self::ROLE_CLASS;
         $permissionClass = self::PERMISSION_CLASS;
+
         $role = $roleClass::query()->firstOrCreate(['key' => $preset->roleKey()], ['label' => $preset->label()]);
         $role->forceFill(['label' => $preset->label()])->save();
-        $permissionIds = collect($preset->permissions())
-            ->map(fn (string $key): int => $permissionClass::query()->firstOrCreate(['key' => $key], ['label' => $key])->id)
-            ->all();
-        $role->permissions()->sync($permissionIds);
+
+        if ($role->wasRecentlyCreated) {
+            $permissionIds = collect($preset->permissions())
+                ->map(fn (string $key): int => $permissionClass::query()->firstOrCreate(['key' => $key], ['label' => $key])->id)
+                ->all();
+            $role->permissions()->sync($permissionIds);
+        }
 
         return $role;
+    }
+
+    /**
+     * Called BEFORE deactivating/deleting this user.
+     * Ensures at least one OTHER active user retains system.permissions.manage.
+     */
+    private function guardLastPermissionsHolder(Model $user): void
+    {
+        if (! $user->is_active) {
+            return;
+        }
+
+        if (! $user->hasPermission(self::GUARD_KEY)) {
+            return;
+        }
+
+        $userClass = self::USER_CLASS;
+
+        $otherHolders = $userClass::query()
+            ->where('is_active', true)
+            ->where('id', '!=', $user->getKey())
+            ->get()
+            ->filter(fn (Model $u): bool => $u->hasPermission(self::GUARD_KEY))
+            ->count();
+
+        if ($otherHolders === 0) {
+            throw IdentityGuardException::lastPermissionsHolder();
+        }
+    }
+
+    /**
+     * Called AFTER permissions/roles have been mutated in the current transaction.
+     * Ensures at least one active user (including this one, with new permissions) retains the guard key.
+     */
+    private function guardTotalPermissionsHolders(Model $user): void
+    {
+        $userClass = self::USER_CLASS;
+        $user->unsetRelation('roles');
+        $user->unsetRelation('customPermissions');
+
+        $total = $userClass::query()
+            ->where('is_active', true)
+            ->get()
+            ->filter(fn (Model $u): bool => $u->hasPermission(self::GUARD_KEY))
+            ->count();
+
+        if ($total === 0) {
+            throw IdentityGuardException::lastPermissionsHolder();
+        }
     }
 
     private function rolePresetValue(Model $user): ?string

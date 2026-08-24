@@ -3,6 +3,7 @@
 namespace App\Modules\Identity\Experience\Controllers;
 
 use App\Modules\Identity\Application\Exceptions\IdentityGuardException;
+use App\Modules\Identity\Application\PermissionCatalog;
 use App\Modules\Identity\Application\RolePreset;
 use App\Modules\Identity\Application\UserService;
 use App\Modules\Identity\Infrastructure\Models\User;
@@ -39,17 +40,21 @@ final class UserController
     {
         $data = $request->validate($this->createRules(), $this->messages());
         $preset = RolePreset::from($data['role']);
-        $user = $this->users->create($data, $preset, $request->user());
+        $this->users->create($data, $preset, $request->user());
 
         return redirect()->route('user.index')->with('success', '用户已创建');
     }
 
     public function edit(Request $request, User $user): Response
     {
+        $user->loadMissing(['roles', 'customPermissions']);
+
         return Inertia::render('Identity/Users/Edit', [
             'user' => $this->userData($user),
             'rolePresets' => RolePreset::options(),
             'isSelf' => $request->user()?->is($user) ?? false,
+            'permissionCatalog' => PermissionCatalog::groups(),
+            'rolePermissions' => $this->effectiveRolePermissions($user),
         ]);
     }
 
@@ -72,9 +77,39 @@ final class UserController
     public function setRole(Request $request, User $user): RedirectResponse
     {
         $data = $request->validate($this->roleRules(), $this->messages());
-        $this->users->setRolePreset($user, RolePreset::from($data['role']), $request->user());
+        try {
+            $this->users->setRolePreset($user, RolePreset::from($data['role']), $request->user());
+        } catch (IdentityGuardException $exception) {
+            throw ValidationException::withMessages(['user' => $exception->getMessage()]);
+        }
 
         return redirect()->route('user.index')->with('success', '角色已更新');
+    }
+
+    public function updatePermissions(Request $request, User $user): RedirectResponse
+    {
+        $data = $request->validate([
+            'mode' => ['required', Rule::in(['role', 'custom'])],
+            'permissions' => ['array'],
+            'permissions.*' => ['string'],
+        ]);
+
+        $mode = $data['mode'];
+        $keys = $data['permissions'] ?? [];
+
+        if ($mode === 'custom' && ! PermissionCatalog::validate($keys)) {
+            throw ValidationException::withMessages(['permissions' => '包含无效的权限键。']);
+        }
+
+        try {
+            $this->users->setPermissions($user, $mode, $keys, $request->user());
+        } catch (IdentityGuardException $exception) {
+            throw ValidationException::withMessages(['user' => $exception->getMessage()]);
+        } catch (\InvalidArgumentException $exception) {
+            throw ValidationException::withMessages(['permissions' => $exception->getMessage()]);
+        }
+
+        return redirect()->route('user.edit', $user)->with('success', '权限已更新');
     }
 
     public function enable(Request $request, User $user): RedirectResponse
@@ -116,9 +151,23 @@ final class UserController
             'name' => $user->name,
             'email' => $user->email,
             'is_active' => $user->is_active,
+            'permission_mode' => $user->permission_mode ?? 'role',
+            'custom_permissions' => $user->relationLoaded('customPermissions')
+                ? $user->customPermissions->pluck('key')->values()->all()
+                : [],
             'role' => $role ? ['key' => $role->key, 'label' => $role->label, 'preset' => $preset?->value] : null,
             'created_at' => $user->created_at?->toIso8601String(),
         ];
+    }
+
+    private function effectiveRolePermissions(User $user): array
+    {
+        $role = $user->roles->first();
+        if (! $role) {
+            return [];
+        }
+
+        return $role->permissions()->pluck('key')->values()->all();
     }
 
     private function createRules(): array

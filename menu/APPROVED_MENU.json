@@ -628,11 +628,11 @@
       "slug": "roles-permissions",
       "url": "/settings/roles-permissions",
       "route": "settings.roles-permissions",
-      "permission": "prototype.view",
+      "permission": "system.permissions.manage",
       "emoji": null,
-      "function_zh": "管理角色与权限。",
-      "status": "planned",
-      "progress": 0,
+      "function_zh": "管理七种角色预设的权限模板，调整各角色的默认权限集合（管理员专用）。",
+      "status": "implemented",
+      "progress": 100,
       "sort": 40
     },
     {
