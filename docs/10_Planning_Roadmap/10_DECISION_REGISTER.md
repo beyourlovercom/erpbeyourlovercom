@@ -2,7 +2,7 @@
 type: decision-register
 project: BYL ERP
 version: 1.0
-updated: 2026-08-23
+updated: 2026-08-24
 ---
 
 # Decision Register
@@ -136,7 +136,7 @@ PR #17 is MERGED / PASS at accepted Head `e46fb54a1b41a1efa620b4af3646e104ff7bcb
 
 ## D-027 001E closure and 001F-A governance correction
 
-PR #21 (`3b67586cafd2b4af3e248e3079719cb73b4e4163` → `4b9fbb0deacdfc02439fb947398b87c148602c75`) and PR #22 (`2844d8f2f9214a3fb058e546eb92751e49cbe5af` → `3218473b1cfc93f098a2e9607aabe9adb16bcf0d`) are merged. 001E-B and 001E-C are MERGED / PASS / CLOSED; 001E is COMPLETE / PASS. 001F is ACTIVE / PREFLIGHT REVIEWED and 001F-A is IMPLEMENTED / PENDING INDEPENDENT REVIEW. Historical pending-review text in child records is retained as history only. Global Architecture Gate remains FAIL. Architecture conflict: NONE.
+PR #21 (`3b67586cafd2b4af3e248e3079719cb73b4e4163` → `4b9fbb0deacdfc02439fb947398b87c148602c75`) and PR #22 (`2844d8f2f9214a3fb058e546eb92751e49cbe5af` → `3218473b1cfc93f098a2e9607aabe9adb16bcf0d`) are merged. 001E-B and 001E-C are MERGED / PASS / COMPLETE / CLOSED; 001E is COMPLETE / PASS. 001F is ACTIVE / PREFLIGHT REVIEWED and 001F-A is IMPLEMENTED / PENDING INDEPENDENT REVIEW. Historical pending-review text in child records is retained as history only. Global Architecture Gate remains FAIL. Architecture conflict: NONE.
 
 ## D-028 MySQL support baseline
 
@@ -175,7 +175,7 @@ For newly activated Work Packages after the standard becomes effective, one boun
 
 Historical merged packages remain valid and are not retroactively invalidated. A legacy active Work Package with an already-issued contract that explicitly uses separate Work Package / Implementation / Closure PRs may finish under that contract. A material re-scope after the new standard becomes effective must become a new Work Package under the new model.
 
-A merge SHA becoming repository truth does not require a second Closure PR under the same new Work Package identity. If repository mutation is genuinely required after merge, it must be a separately identified closure-correction or remediation Work Package with its own branch, worktree and PR.
+A merge SHA becoming repository truth does not require a second Closure PR under the same new Work Package identity. If repository mutation is genuinely required after merge, it must be a separately identified closure-correction or remediation Work Package with its own branch/worktree/PR.
 
 Independent page-level repairs such as Dashboard, Orders and Settings may run concurrently through separate OpenCode sessions and dedicated worktrees when scopes and dependencies are bounded. Shared App Shell, navigation, design tokens, common components, routes, permissions, schema primitives or test infrastructure required by multiple downstream pages must be extracted first unless Owner explicitly authorizes a declared stacked dependency.
 
@@ -212,3 +212,21 @@ Owner explicitly approved all six M1.0 decision gates on 2026-08-23: Case number
 PR #85 merged the design contract to `main` as `02ce87dba5ede14d791b646b7cbe976a12064cae`. The contract is now the frozen design authority for ERP-INQUIRY-M1 unless a later Owner-approved design revision supersedes it.
 
 This acceptance does not itself authorize product implementation, Migration execution, Email connection, WhatsApp registration, remote deployment or Production access. The next bounded product package is `ERP-INQUIRY-M1.1-COMPANY-001`, and it requires separate explicit Owner implementation authorization before Claude writes product code or Migration files.
+
+## D-037 Freeze canonical Order / Finance / KOL data contract and reprioritize Unified Order Fulfillment before Inquiry M1.2
+
+Owner approved the canonical Order / Finance / KOL business semantics on 2026-08-24 after reviewing real WooCommerce and AffiliateWP export examples outside the repository. The frozen design authority is `docs/10_Planning_Roadmap/16_BYL_ERP_CANONICAL_ORDER_FINANCE_KOL_DATA_CONTRACT_V1.md`.
+
+The canonical transaction truth remains one `orders.id`. `external_order_number` is the primary user-visible business order number; manually entered business numbers are preserved and cannot duplicate within the manual ERP connection scope. `internal_order_number` remains generated, globally unique, immutable and hidden by default. `order_kind` is frozen as `customer | kol_fulfillment` and is independent from source/provider. Affiliate-attributed consumer sales remain `customer` Orders plus attribution; `kol_fulfillment` means products/samples/gifts/replacements sent to a KOL.
+
+Finance uses the same canonical Order. ERP analytical base currency is USD. Shipping revenue and shipping cost remain separate; tax collected and tax cost/liability remain separate; Order-level and future Item-level profitability are supported. Shared Item costs default to sales-value proportion when no real item-level/weight evidence exists, while real item facts override allocation. V1 shipment cardinality remains one Order to one Shipment.
+
+AffiliateWP remains the Affiliate / Referral / Payout source of truth. ERP does not clone AffiliateWP Visits, Conversion, aggregate Earnings history or full Referral/Payout administration. ERP stores only the minimum identity binding, Order attribution and commission facts needed for canonical Finance/analytics. Commission recognition is frozen as pending=projected only, unpaid=recognized/payable cost, paid=recognized cost plus actually paid, rejected=zero recognized cost; `unpaid → paid` must never double-count expense. AffiliateWP `paid` is accepted as actually paid for V1.
+
+Program priority is revised after the already-merged ERP-INQUIRY-M1.1 Company slice: `ERP-ORDER-FULFILLMENT-M1` becomes CURRENT; ERP-INQUIRY-M1.2 Contact is PAUSED, not cancelled, and resumes after the Order/Fulfillment Owner gate unless Owner changes priority again. The four remaining MVP1 Order/Fulfillment Human UAT findings become explicit revalidation targets; none is closed by this decision alone.
+
+`ERP-ORDER-FULFILLMENT-M1-001` follows D-033: one Work Package, one branch `feature/erp-order-fulfillment-m1-001`, one Draft delivery PR spanning contract → approved implementation → validation → remediation → final pre-merge evidence. This decision authorizes contract/Roadmap/Work-Package formalization only. Product implementation, Migration authoring/execution, external AffiliateWP connector implementation, Production access, remote deployment and merge remain NOT AUTHORIZED until their explicit gates.
+
+Because the package changes schema semantics and authorization/data scope, its verification classification is Tier B: full US verification plus full China exact-SHA independent verification before Owner Local UAT/merge. The exact implementation estimate remains `UNKNOWN WITH EVIDENCE` until the implementation preflight confirms migration/backfill, legacy source data and permission/data-scope surfaces; no fabricated estimate is permitted.
+
+Architecture conflict: D-034 serial Inquiry sequence is intentionally superseded only in current priority order; the approved ERP-INQUIRY-M1 contract itself remains valid and resumes at M1.2 after this package. Remote milestone deployment remains gated and unchanged.
