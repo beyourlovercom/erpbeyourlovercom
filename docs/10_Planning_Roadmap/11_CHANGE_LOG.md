@@ -510,3 +510,27 @@ Owner approved all six ERP-INQUIRY-M1.0 gates. PR #85 merged to `main` as `02ce8
 Canonical sources are synchronized from `OWNER REVIEW REQUIRED / estimate unknown` to `OWNER APPROVED / FROZEN`, with ERP-INQUIRY-M1 implementation estimate `86–150h`, planning value `116h`, and M1.1 Company `6–10h`, planning value `8h`.
 
 No product code, Migration, database data, dependencies, Email/WhatsApp connection or remote environment is changed. The next product Work Package is M1.1 Company and remains implementation-unauthorized until separate Owner approval.
+
+## 2026-08-24 — Canonical Order / Finance / KOL contract frozen; Unified Order Fulfillment reprioritized
+
+```text
+Owner decision: Approve the canonical Order / Finance / KOL business semantics and prioritize Unified Manual Order → Logistics before ERP-INQUIRY-M1.2 Contact.
+Decision: D-037 — Freeze canonical Order / Finance / KOL data contract and reprioritize Unified Order Fulfillment before Inquiry M1.2.
+Previous state: ERP-INQUIRY-M1.1 Company was complete/merged and M1.2 Contact was the default next slice; MVP1 Order/Fulfillment foundations existed but four Human UAT findings remained open and customer/KOL order semantics were not yet normalized.
+New state: ERP-ORDER-FULFILLMENT-M1-001 is CURRENT / CONTRACT FORMALIZED / IMPLEMENTATION NOT AUTHORIZED on branch feature/erp-order-fulfillment-m1-001 from main@6ac25f2168dea7e8cd9e8f4c49c10752642a44df. ERP-INQUIRY-M1.2 Contact is PAUSED / NOT CANCELLED and resumes after the Order/Fulfillment Owner gate unless Owner reprioritizes again.
+Frozen contract: one canonical orders.id; external_order_number is the primary user-visible business order number; internal_order_number is generated/global-unique/immutable/hidden by default; order_kind=customer|kol_fulfillment independent from source; Affiliate-attributed consumer sales remain customer Orders plus attribution; KOL fulfillment means products/samples/gifts/replacements sent to a KOL.
+Finance: same canonical Order; base currency USD; shipping revenue vs shipping cost and tax collected vs tax cost/liability remain separate; Order-level and future Item-level profitability supported; real item facts win and shared costs default to sales-value proportion when stronger allocation evidence is absent.
+AffiliateWP boundary: AffiliateWP remains Affiliate/Referral/Payout source of truth. ERP does not clone Visits/Conversion/aggregate Earnings/full Referral-Payout administration; ERP stores only minimum KOL identity binding, Order attribution and commission facts needed for Finance/analytics. pending=projected, unpaid=recognized/payable, paid=recognized+actually paid for V1, rejected=zero recognized cost; unpaid→paid cannot double-count expense.
+Shipment: V1 remains 1 Order : 1 Shipment. Future split shipments may widen to 1:N without replacing Order truth.
+Human UAT targets: MVP1-UAT-DEFECT-002, DEFECT-003, DEFECT-004 and FINDING-005 require exact revalidation; none is closed by this documentation change.
+Verification: schema semantics + authorization/data scope classify the package as Tier B: US full verification + China exact-SHA full independent verification + Owner Local UAT before merge.
+Estimate impact: ERP-ORDER-FULFILLMENT-M1 exact implementation estimate is UNKNOWN WITH EVIDENCE until the US implementation preflight confirms legacy source/backfill, external-number duplicate state, indexes and permission/data-scope surfaces. ERP-INQUIRY-M1 approved 86–150h / 116h milestone range is retained; M1.1 is completed and M1.2–M1.9 remain planned.
+Architecture conflict: D-034 uninterrupted Inquiry execution order is intentionally superseded only for current priority; the frozen Inquiry M1.0 contract remains valid. No second Order truth is introduced.
+Application code: NO CHANGE in this formalization phase.
+Schema/Migration: NO CHANGE / NOT AUTHORIZED / NOT RUN.
+AffiliateWP/WooCommerce external connection: NO implementation in this package formalization.
+Production/remote access: NO.
+Deployment: NO.
+Merge authorization: NO.
+Documents added/updated: Canonical Order/Finance/KOL Data Contract V1; ERP-ORDER-FULFILLMENT-M1-001 Work Package and Work Log; Current Context; Living Roadmap; Product/Menu Map; MVP1 Fast Track; Finance/Order Analysis spec; KOL spec; Decision Register; Change Log; Work Package Index; Program Roadmap and Hours.
+```
