@@ -6,7 +6,7 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use Illuminate\Contracts\Auth\Authenticatable;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +28,8 @@ final class OrderService
             $orderAttributes = array_diff_key($attributes, $address);
             $order = $orderClass::create([
                 ...$orderAttributes,
-                'internal_order_number' => $this->nextOrderNumber($attributes['source_type']),
+                'external_order_number' => trim((string) $attributes['external_order_number']),
+                'internal_order_number' => $this->nextOrderNumber($attributes['order_kind']),
                 'order_status' => OrderStatus::PendingShipment,
                 'owner_id' => $orderAttributes['owner_id'] ?? $actor?->getAuthIdentifier(),
             ]);
@@ -78,12 +79,25 @@ final class OrderService
         });
     }
 
-    public function list(array $filters = []): Collection
+    public function list(array $filters = [], int $perPage = 50): LengthAwarePaginator
+    {
+        return $this->filteredQuery($filters)
+            ->paginate(min($perPage, 200))
+            ->withQueryString();
+    }
+
+    public function exportCursor(array $filters): \Illuminate\Support\LazyCollection
+    {
+        return $this->filteredQuery($filters)->cursor();
+    }
+
+    private function filteredQuery(array $filters): \Illuminate\Database\Eloquent\Builder
     {
         $orderClass = 'App\\Modules\\Orders\\Infrastructure\\Models\\Order';
 
         return $orderClass::query()
             ->with(['items', 'owner', 'address'])
+            ->where('order_kind', $filters['order_kind'])
             ->when($filters['search'] ?? null, function ($query, string $search): void {
                 $query->where(function ($nested) use ($search): void {
                     $nested->where('internal_order_number', 'like', "%{$search}%")
@@ -94,15 +108,14 @@ final class OrderService
             ->when($filters['source_type'] ?? null, fn ($query, string $source) => $query->where('source_type', $source))
             ->when($filters['order_status'] ?? null, fn ($query, string $status) => $query->where('order_status', $status))
             ->latest('order_date')
-            ->latest('id')
-            ->get();
+            ->latest('id');
     }
 
-    private function nextOrderNumber(string $source): string
+    private function nextOrderNumber(string $orderKind): string
     {
-        $prefix = match ($source) {
-            OrderSourceType::Website->value => 'WEB',
-            OrderSourceType::Kol->value => 'KOL',
+        $prefix = match ($orderKind) {
+            OrderKind::Customer->value => 'CUS',
+            OrderKind::KolFulfillment->value => 'KOL',
             default => 'MAN',
         };
         $orderClass = 'App\\Modules\\Orders\\Infrastructure\\Models\\Order';
@@ -141,7 +154,9 @@ final class OrderService
     {
         return [
             'internal_order_number' => $order->internal_order_number,
+            'external_order_number' => $order->external_order_number,
             'source_type' => $order->source_type instanceof \BackedEnum ? $order->source_type->value : $order->source_type,
+            'order_kind' => $order->order_kind instanceof \BackedEnum ? $order->order_kind->value : $order->order_kind,
             'order_status' => $order->order_status instanceof \BackedEnum ? $order->order_status->value : $order->order_status,
             'owner_id' => $order->owner_id,
         ];

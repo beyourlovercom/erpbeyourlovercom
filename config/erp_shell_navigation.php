@@ -15,8 +15,8 @@ return [
         ['key' => 'customers-orders-mine', 'label' => '我的订单', 'path' => '/customers/orders/mine', 'route' => 'customers.orders.mine', 'permission' => 'prototype.view', 'placeholder' => false],
     ]],
     ['key' => 'kol', 'label' => '网红', 'emoji' => '⭐', 'path' => '/kol', 'route' => 'shell.kol', 'permission' => 'kol.view', 'placeholder' => true, 'children' => [
-        ['key' => 'kol-orders', 'label' => '订单', 'path' => '/kol/orders', 'route' => 'kol.orders', 'permission' => 'prototype.view', 'placeholder' => false],
-        ['key' => 'kol-orders-create', 'label' => '新建订单', 'path' => '/kol/orders/create', 'route' => 'kol.orders.create', 'permission' => 'prototype.view', 'placeholder' => false],
+        ['key' => 'kol-orders', 'label' => '订单', 'path' => '/kol/orders', 'route' => 'kol.orders', 'permission' => 'orders.view', 'placeholder' => false],
+        ['key' => 'kol-orders-create', 'label' => '新建订单', 'path' => '/kol/orders/create', 'route' => 'kol.orders.create', 'permission' => 'orders.create', 'placeholder' => false],
         ['key' => 'kol-orders-mine', 'label' => '我的订单', 'path' => '/kol/orders/mine', 'route' => 'kol.orders.mine', 'permission' => 'prototype.view', 'placeholder' => false],
         ['key' => 'kol-orders-team', 'label' => '团队订单', 'path' => '/kol/orders/team', 'route' => 'kol.orders.team', 'permission' => 'prototype.view', 'placeholder' => false],
     ]],

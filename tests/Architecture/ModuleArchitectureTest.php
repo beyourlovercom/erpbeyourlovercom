@@ -96,6 +96,8 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Runtime/Experience/Routes/web.php',
         'app/Modules/Runtime/Infrastructure/RedisRuntimeProbe.php',
         'app/Modules/Runtime/Providers/RuntimeServiceProvider.php',
+        'app/Modules/Orders/Application/OrderKind.php',
+        'app/Modules/Orders/Application/OrderKindBackfill.php',
         'app/Modules/Orders/Application/OrderService.php',
         'app/Modules/Orders/Application/OrderSourceType.php',
         'app/Modules/Orders/Application/OrderStatus.php',
@@ -272,6 +274,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_05_000002_create_manual_syncs_table.php' => 'a71467bb42ab9c0a2edcbc9519619138c4bd8e5b0e15b5246e6f9a6a44fa14d5',
         'database/migrations/2026_08_05_000003_create_order_costs_table.php' => '107416001d2e658fad74870e656b2d23f45d21dbe2a892d512af1d043bd815cb',
         'database/migrations/2026_08_23_000000_create_companies_table.php' => '860faaca4a5c8f2654164798fc4d9717df2f291642f4c5754a1fda22ac652401',
+        'database/migrations/2026_08_24_000000_add_order_kind_to_orders_table.php' => '7775e65ca4ec9e4d2de5fe6b603bf8118b35d2f999f95f8e85471ef280dd89c8',
     ];
 
     private const FRONTEND_FILES = [
@@ -307,10 +310,10 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Dashboard/Index.test.ts' => '27c63e094fcdec28a0e5677508723e149c90a5130efb98d4448fa2b7f51b4ae4',
         'resources/js/Pages/Dashboard/Index.vue' => '0c28a768afcaa181b54ab01c4ec08457a04f7ed98e5ba3b52a041d98492bc2bb',
         'resources/js/Pages/Finance/OrderAnalysis.vue' => '96216f9ce4b67dd10bc4627c7e09703c1752c030110425509839d9aaab25d0aa',
-        'resources/js/Pages/Logistics/Index.vue' => 'd5cb5024e68ab800043d2ac14d206394ad6f44924f8ba6c73156d52f7c507c91',
-        'resources/js/Pages/Orders/Create.vue' => '0ea13dfe14a72147e800ee1ba3fefb6bcd091ba97c61ec306a011459e0fb0060',
-        'resources/js/Pages/Orders/Index.vue' => '42e49684dbd996c4c8dc5893f6314672dc28fb5ecdd638ee31fe04132d7b846d',
-        'resources/js/Pages/Orders/Show.vue' => '7ea993e5745667b160cd81ef9997a5df890c53aadfa20e567b028f6bee68aa6f',
+        'resources/js/Pages/Logistics/Index.vue' => 'a596b35faebf9bbeda3047bc17224a353db869c1fdc96c3c9a10f324edb31e84',
+        'resources/js/Pages/Orders/Create.vue' => 'dfbc8738eaa6d5194c292a1b1cad5a2da70b7342e21302d7ce0619f86a837bd1',
+        'resources/js/Pages/Orders/Index.vue' => 'b5a10885fac7369e0c4cb55015afce46f5231081f3d50795026da617df8c23bc',
+        'resources/js/Pages/Orders/Show.vue' => 'f76d36edfdf23aca79dd9b59eefbc37e0c6bec0710836dc34e2ada511aa84f20',
         'resources/js/Pages/Shell/Placeholder.test.ts' => 'd0623492800b81b76650531eec2b979747d98daf34dcd4320ba00438529bb781',
         'resources/js/Pages/Shell/Placeholder.vue' => 'e18f588432b7d29a025f7618f977bdb7457536e8ae8028c2c343ce5c7b95472f',
         'resources/js/Pages/Sync/Index.vue' => '127b59b51cfef855410b60002fe82737e349dbd51f4b40e753fc4f7ba92e06c8',
@@ -362,6 +365,8 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Customers/Application/CompanyService.php',
         'app/Modules/Finance/Application/OrderAnalysisService.php',
         'app/Modules/Logistics/Application/ShipmentService.php',
+        'app/Modules/Orders/Application/OrderKind.php',
+        'app/Modules/Orders/Application/OrderKindBackfill.php',
         'app/Modules/Orders/Application/OrderService.php',
         'app/Modules/Orders/Application/OrderSourceType.php',
         'app/Modules/Orders/Application/OrderStatus.php',
@@ -500,7 +505,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('452406a1070ed29353684a39c70afc6d5d59cb9d39f7d0effa0752ba081994dd', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('1afc67219650436b9707d762e68cc4687b7ccb7638df15d0521bc0f39433aa81', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);

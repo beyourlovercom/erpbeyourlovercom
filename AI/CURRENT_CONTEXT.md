@@ -65,9 +65,9 @@ The remaining Human UAT findings are Order/Fulfillment-related and are targeted 
 ```text
 CURRENT_PROGRAM_PRIORITY: ERP-ORDER-FULFILLMENT-M1
 CURRENT_WORK_PACKAGE: ERP-ORDER-FULFILLMENT-M1-001
-CURRENT_ACTIVITY: DRAFT DELIVERY PR #90 OPEN / AWAITING OWNER IMPLEMENTATION AUTHORIZATION
+CURRENT_ACTIVITY: DRAFT DELIVERY PR #90 / IMPLEMENTATION COMPLETE / US FULL VERIFICATION PASS / AWAITING CHINA TIER-B VERIFICATION AND OWNER UAT
 DELIVERY_PR: #90 / DRAFT
-IMPLEMENTATION_AUTHORIZATION: NOT YET GRANTED
+IMPLEMENTATION_AUTHORIZATION: GRANTED 2026-08-24
 BASELINE: main@6ac25f2168dea7e8cd9e8f4c49c10752642a44df
 DELIVERY_BRANCH: feature/erp-order-fulfillment-m1-001
 ```
@@ -136,11 +136,11 @@ PRODUCTION/REMOTE DIRECT FIX BY CODEX: FORBIDDEN
 
 ```text
 1. Draft delivery PR #90 is OPEN with the frozen data contract, Work Package and canonical Roadmap/Decision/Change/estimate/context synchronization.
-2. NEXT GATE: Owner explicitly authorizes ERP-ORDER-FULFILLMENT-M1-001 implementation before Claude writes product code or Migration files.
-3. US Claude performs the bounded read-only implementation preflight, including legacy order_kind/source/backfill and permission/data-scope evidence.
-4. GPT/Owner review preflight if it exposes a contract conflict; otherwise Claude implements only the approved Work Package on the same branch/PR.
-5. US full verification.
-6. China Codex full Tier B exact-SHA independent verification and evidence only.
+2. DONE: Owner explicitly authorized ERP-ORDER-FULFILLMENT-M1-001 implementation on 2026-08-24.
+3. DONE: US Claude performed the bounded read-only implementation preflight (legacy order_kind/source/backfill and permission/data-scope evidence); IMPLEMENTATION_PREFLIGHT=PASS, no contract conflict.
+4. DONE: Claude implemented the approved Work Package on the same branch/PR (see Work Package Section 15 and the 2026-08-24 work log for full evidence).
+5. DONE: US full verification PASS (PHPUnit, Vitest, typecheck, build, browser E2E, local MySQL 8 migration/backfill/rollback validation).
+6. NEXT GATE: China Codex full Tier B exact-SHA independent verification and evidence only.
 7. Owner Local UAT, including the four remaining Order/Fulfillment legacy findings.
 8. Owner merge gate.
 9. Resume ERP-INQUIRY-M1 at M1.2 Contact unless Owner changes priority again.

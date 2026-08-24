@@ -3,14 +3,14 @@ type: work-package
 project: BYL ERP
 work_package_id: ERP-ORDER-FULFILLMENT-M1-001
 title: Unified Manual Order → Logistics / Fulfillment M1
-status: CONTRACT FORMALIZED / DRAFT DELIVERY PR #90 OPEN / IMPLEMENTATION NOT AUTHORIZED
+status: IMPLEMENTATION COMPLETE / US FULL VERIFICATION PASS / AWAITING CHINA TIER-B VERIFICATION AND OWNER UAT
 draft_pr: 90
 execution_provider: CLAUDE_CODE
 design_authority: GPT_WEB
 test_provider: CODEX_CLI
 baseline: main@6ac25f2168dea7e8cd9e8f4c49c10752642a44df
 branch: feature/erp-order-fulfillment-m1-001
-estimate: UNKNOWN WITH EVIDENCE / exact implementation estimate deferred until implementation preflight confirms migration/backfill and affected runtime surfaces
+estimate: DELIVERED / see 2026-08-24 implementation log entry for exact scope and evidence
 updated: 2026-08-24
 ---
 
@@ -321,11 +321,37 @@ Remote deployment remains a separate milestone/release action.
 ```text
 CONTRACT: OWNER APPROVED DESIGN AUTHORITY
 WORK_PACKAGE_FORMALIZATION: AUTHORIZED BY NEXT-STEP INSTRUCTION
-PRODUCT_IMPLEMENTATION: NOT YET AUTHORIZED
-MIGRATION_AUTHORING: NOT YET AUTHORIZED UNTIL IMPLEMENTATION GRANT/PREFLIGHT
-MIGRATION_EXECUTION: NO
+OWNER_IMPLEMENTATION_AUTHORIZATION: GRANTED 2026-08-24
+PRODUCT_IMPLEMENTATION: COMPLETE ON feature/erp-order-fulfillment-m1-001
+MIGRATION_AUTHORING: COMPLETE
+MIGRATION_EXECUTION: LOCAL ONLY (SQLite test suite + local MySQL 8 byl_erp_us_dev synthetic dev database)
 REMOTE_DEPLOYMENT: NO
 MERGE: NO
 ```
 
-The next gate after this Draft delivery PR is opened is explicit Owner authorization to begin the implementation preflight/implementation on the US Mac through Claude Code.
+## 15. Implementation evidence (2026-08-24)
+
+Preflight confirmed the local MySQL 8 dev database (`byl_erp_us_dev`) contains only 7 synthetic `LocalUatSeeder`-generated rows (`source_type` distribution: website=3, kol=2, manual_other=2), all `external_order_number` populated with no duplicates, and legacy KOL order routes gated only by the generic `prototype.view` placeholder permission (a genuine authorization gap matching `DEFECT-004`'s "Admin permission concern").
+
+Implemented:
+
+- `orders.order_kind` column (`customer | kol_fulfillment`), added via migration with deterministic backfill (`website→customer`, `kol→kol_fulfillment`); `manual_other` legacy rows are left `NULL` as an explicit migration exception (never guessed) and logged via `OrderKindBackfill`.
+- Shared `OrderController`/`OrderService` now require `order_kind` and a required, trimmed, unique `external_order_number` on manual create; `internal_order_number` remains system-generated/immutable and is never written into the business-number field.
+- Customer and KOL fulfillment order routes are bound to `order_kind` via `Route::defaults()`; list, export and detail actions are server-side scoped by `order_kind`, and direct-URL cross-kind access to an order detail returns 404.
+- KOL order routes (`/kol/orders*`) now require the real `orders.view` / `orders.create` / `orders.edit` permissions instead of the `prototype.view` placeholder; `menu/APPROVED_MENU.json` and `config/erp_shell_navigation.php` were updated together (KOL Level-2 `kol-orders` / `kol-orders-create` now `implemented`), per the Work Package's explicit menu-change authorization in Section 9.
+- Logistics queue (`LogisticsController` + `Logistics/Index.vue`) is paginated server-side, shows `order_kind` and the business `external_order_number`, and the copy action uses an explicit Clipboard API capability check with an `execCommand` fallback and a visible success/error state (no silent failure).
+- Order/Logistics list surfaces use Laravel pagination (50/page) instead of unbounded `.get()`.
+- Order Detail (`Orders/Show.vue`) gained a minimal fulfillment workspace: shipment status/carrier/tracking/manual-sync summary above the existing address/items/audit sections, with the business number as the page heading and the ERP technical number shown de-emphasized as "ERP编号".
+
+Defect/finding disposition:
+
+```text
+DEFECT-002 (required-field validation): REVALIDATED — main already enforced required address/item fields server-side; no redundant rules added.
+DEFECT-003 (business number overwritten): FIXED — external_order_number is now required, preserved verbatim (trimmed), and is the primary UI number everywhere; internal_order_number never overwrites it.
+DEFECT-004 (copy reliability + permission gap): FIXED — explicit capability-checked clipboard with fallback and visible state; KOL order routes now require real orders.* permissions instead of prototype.view.
+FINDING-005 (fulfillment workspace): ADDRESSED — bounded fulfillment summary card added to Order Detail; no broader redesign performed.
+```
+
+Verification executed on the US host: full PHPUnit (192 passed / 2 skipped / 1 pre-existing risky, 0 failures), full Vitest (86/86), `vue-tsc --noEmit` (clean), `npm run build` (clean), full Playwright browser E2E including the new `tests/e2e/orders/order-fulfillment.spec.ts` (22/22, including customer and KOL manual-create → logistics → ship, cross-leak 404 check, and clipboard-fallback), and a local MySQL 8 migration/backfill/rollback/reapply cycle against the synthetic `byl_erp_us_dev` database (backed up first) confirming deterministic classification and clean rollback.
+
+None of Owner UAT, China Tier-B independent verification, or merge has occurred. This Work Package remains a Draft PR pending those gates.
