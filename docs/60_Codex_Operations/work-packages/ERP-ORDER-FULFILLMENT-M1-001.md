@@ -3,7 +3,8 @@ type: work-package
 project: BYL ERP
 work_package_id: ERP-ORDER-FULFILLMENT-M1-001
 title: Unified Manual Order → Logistics / Fulfillment M1
-status: CONTRACT FORMALIZED / IMPLEMENTATION NOT AUTHORIZED / DRAFT DELIVERY PR PENDING
+status: CONTRACT FORMALIZED / DRAFT DELIVERY PR #90 OPEN / IMPLEMENTATION NOT AUTHORIZED
+draft_pr: 90
 execution_provider: CLAUDE_CODE
 design_authority: GPT_WEB
 test_provider: CODEX_CLI

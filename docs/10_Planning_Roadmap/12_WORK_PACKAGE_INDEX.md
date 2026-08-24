@@ -12,7 +12,8 @@ updated: 2026-08-24
 ```text
 ERP-ORDER-FULFILLMENT-M1-001
 Unified Manual Order → Logistics / Fulfillment M1
-Status: CURRENT / CONTRACT FORMALIZED / IMPLEMENTATION NOT AUTHORIZED
+Status: CURRENT / CONTRACT FORMALIZED / DRAFT PR #90 OPEN / IMPLEMENTATION NOT AUTHORIZED
+PR: #90 / Draft
 Baseline: main@6ac25f2168dea7e8cd9e8f4c49c10752642a44df
 Branch: feature/erp-order-fulfillment-m1-001
 Work Package: docs/60_Codex_Operations/work-packages/ERP-ORDER-FULFILLMENT-M1-001.md

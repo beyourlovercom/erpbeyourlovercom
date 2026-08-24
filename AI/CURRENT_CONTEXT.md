@@ -65,7 +65,8 @@ The remaining Human UAT findings are Order/Fulfillment-related and are targeted 
 ```text
 CURRENT_PROGRAM_PRIORITY: ERP-ORDER-FULFILLMENT-M1
 CURRENT_WORK_PACKAGE: ERP-ORDER-FULFILLMENT-M1-001
-CURRENT_ACTIVITY: CONTRACT FORMALIZATION / DRAFT DELIVERY PR / NO PRODUCT IMPLEMENTATION
+CURRENT_ACTIVITY: DRAFT DELIVERY PR #90 OPEN / AWAITING OWNER IMPLEMENTATION AUTHORIZATION
+DELIVERY_PR: #90 / DRAFT
 IMPLEMENTATION_AUTHORIZATION: NOT YET GRANTED
 BASELINE: main@6ac25f2168dea7e8cd9e8f4c49c10752642a44df
 DELIVERY_BRANCH: feature/erp-order-fulfillment-m1-001
@@ -134,8 +135,8 @@ PRODUCTION/REMOTE DIRECT FIX BY CODEX: FORBIDDEN
 ## Immediate sequence
 
 ```text
-1. Open the Draft delivery PR containing the frozen data contract, Work Package, Roadmap/Decision/Change/estimate/context synchronization.
-2. Owner explicitly authorizes ERP-ORDER-FULFILLMENT-M1-001 implementation before Claude writes product code or Migration files.
+1. Draft delivery PR #90 is OPEN with the frozen data contract, Work Package and canonical Roadmap/Decision/Change/estimate/context synchronization.
+2. NEXT GATE: Owner explicitly authorizes ERP-ORDER-FULFILLMENT-M1-001 implementation before Claude writes product code or Migration files.
 3. US Claude performs the bounded read-only implementation preflight, including legacy order_kind/source/backfill and permission/data-scope evidence.
 4. GPT/Owner review preflight if it exposes a contract conflict; otherwise Claude implements only the approved Work Package on the same branch/PR.
 5. US full verification.
