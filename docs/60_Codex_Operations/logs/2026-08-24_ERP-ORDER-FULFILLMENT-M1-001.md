@@ -44,3 +44,19 @@ The current product priority is revised to Unified Manual Order → Logistics / 
 Historical Order/Fulfillment Human UAT findings targeted for exact revalidation are `MVP1-UAT-DEFECT-002`, `MVP1-UAT-DEFECT-003`, `MVP1-UAT-DEFECT-004` and `MVP1-UAT-FINDING-005`. None is closed by documentation alone.
 
 Estimate remains `UNKNOWN WITH EVIDENCE` until the implementation preflight confirms exact migration/backfill behavior, legacy `source_type` data shape, current permission/data-scope integration and affected runtime surfaces. No estimate is fabricated from chat elapsed time.
+
+## 2026-08-24 — Draft delivery PR opened
+
+```text
+PR: #90
+PR_STATE: OPEN / DRAFT
+INITIAL_PR_HEAD: 480ae77bfddeb2b79ff04ef58a1c655e91fe7e69
+BASE: main@6ac25f2168dea7e8cd9e8f4c49c10752642a44df
+DIFF_CLASSIFICATION: DOCUMENTATION / GOVERNANCE ONLY
+PRODUCT_IMPLEMENTATION: NOT AUTHORIZED
+MIGRATION_AUTHORING: NOT AUTHORIZED
+MIGRATION_EXECUTION: NO
+REMOTE_DEPLOYMENT: NO
+MERGE: NO
+NEXT_GATE: EXPLICIT OWNER IMPLEMENTATION AUTHORIZATION
+```
