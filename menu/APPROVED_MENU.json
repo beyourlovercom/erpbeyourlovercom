@@ -193,11 +193,11 @@
       "slug": "orders",
       "url": "/kol/orders",
       "route": "kol.orders",
-      "permission": "prototype.view",
+      "permission": "orders.view",
       "emoji": null,
-      "function_zh": "查看网红订单列表。",
-      "status": "planned",
-      "progress": 0,
+      "function_zh": "查看网红履约订单列表（order_kind=kol_fulfillment）。",
+      "status": "implemented",
+      "progress": 100,
       "sort": 10
     },
     {
@@ -208,11 +208,11 @@
       "slug": "create",
       "url": "/kol/orders/create",
       "route": "kol.orders.create",
-      "permission": "prototype.view",
+      "permission": "orders.create",
       "emoji": null,
-      "function_zh": "创建新的网红订单。",
-      "status": "planned",
-      "progress": 0,
+      "function_zh": "创建新的网红履约订单（order_kind=kol_fulfillment）。",
+      "status": "implemented",
+      "progress": 100,
       "sort": 20
     },
     {

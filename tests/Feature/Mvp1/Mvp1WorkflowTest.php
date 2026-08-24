@@ -153,6 +153,7 @@ final class Mvp1WorkflowTest extends TestCase
     private function orderPayload(): array
     {
         return [
+            'order_kind' => 'customer',
             'source_type' => 'website', 'external_order_number' => 'SYNTH-WEB-001', 'order_date' => '2026-08-05',
             'recipient_name' => 'Synthetic Recipient', 'phone' => '+1 555 0100', 'country' => 'US',
             'province_state' => 'CA', 'city' => 'Los Angeles', 'address_line_1' => '100 Synthetic Street',

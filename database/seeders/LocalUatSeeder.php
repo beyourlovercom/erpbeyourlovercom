@@ -11,6 +11,7 @@ use App\Modules\Identity\Infrastructure\Models\Permission;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
+use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderStatus;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -37,26 +38,26 @@ final class LocalUatSeeder extends Seeder
         $roles = $this->roles($permissions);
         $users = $this->users($roles);
 
-        $websitePending = $this->order($users['owner'], OrderSourceType::Website, 'UAT-WEB-001', 'UAT Website Pending', 'pending@example.test', [
+        $websitePending = $this->order($users['owner'], OrderSourceType::Website, OrderKind::Customer, 'UAT-WEB-001', 'UAT Website Pending', 'pending@example.test', [
             ['product_summary' => 'Synthetic Website Bundle A', 'sku' => 'UAT-WEB-A', 'quantity' => 2, 'unit_price' => '24.50'],
             ['product_summary' => 'Synthetic Website Bundle B', 'sku' => 'UAT-WEB-B', 'quantity' => 1, 'unit_price' => '12.00'],
         ]);
-        $kolIncomplete = $this->order($users['owner'], OrderSourceType::Kol, 'UAT-KOL-001', 'UAT KOL Incomplete', 'kol@example.test', [
+        $kolIncomplete = $this->order($users['owner'], OrderSourceType::Kol, OrderKind::KolFulfillment, 'UAT-KOL-001', 'UAT KOL Incomplete', 'kol@example.test', [
             ['product_summary' => 'Synthetic KOL Product', 'sku' => 'UAT-KOL-A', 'quantity' => 1, 'unit_price' => '75.00'],
         ]);
-        $manualPending = $this->order($users['owner'], OrderSourceType::ManualOther, 'UAT-MAN-001', 'UAT Manual Pending Sync', 'manual@example.test', [
+        $manualPending = $this->order($users['owner'], OrderSourceType::ManualOther, OrderKind::Customer, 'UAT-MAN-001', 'UAT Manual Pending Sync', 'manual@example.test', [
             ['product_summary' => 'Synthetic Manual Product', 'sku' => 'UAT-MAN-A', 'quantity' => 3, 'unit_price' => '10.00'],
         ]);
-        $completed = $this->order($users['owner'], OrderSourceType::Website, 'UAT-WEB-002', 'UAT Completed Sync', 'completed@example.test', [
+        $completed = $this->order($users['owner'], OrderSourceType::Website, OrderKind::Customer, 'UAT-WEB-002', 'UAT Completed Sync', 'completed@example.test', [
             ['product_summary' => 'Synthetic Completed Product', 'sku' => 'UAT-WEB-C', 'quantity' => 1, 'unit_price' => '100.00'],
         ]);
-        $returned = $this->order($users['owner'], OrderSourceType::ManualOther, 'UAT-MAN-002', 'UAT Returned Sync', 'returned@example.test', [
+        $returned = $this->order($users['owner'], OrderSourceType::ManualOther, OrderKind::KolFulfillment, 'UAT-MAN-002', 'UAT Returned Sync', 'returned@example.test', [
             ['product_summary' => 'Synthetic Returned Product', 'sku' => 'UAT-MAN-R', 'quantity' => 1, 'unit_price' => '35.00'],
         ]);
-        $confirmed = $this->order($users['owner'], OrderSourceType::Website, 'UAT-WEB-003', 'UAT Confirmed Profit', 'profit@example.test', [
+        $confirmed = $this->order($users['owner'], OrderSourceType::Website, OrderKind::Customer, 'UAT-WEB-003', 'UAT Confirmed Profit', 'profit@example.test', [
             ['product_summary' => 'Synthetic Profit Product', 'sku' => 'UAT-WEB-P', 'quantity' => 1, 'unit_price' => '120.00'],
         ]);
-        $missingCost = $this->order($users['owner'], OrderSourceType::Kol, 'UAT-KOL-002', 'UAT Missing Cost', 'missing@example.test', [
+        $missingCost = $this->order($users['owner'], OrderSourceType::Kol, OrderKind::KolFulfillment, 'UAT-KOL-002', 'UAT Missing Cost', 'missing@example.test', [
             ['product_summary' => 'Synthetic Missing Cost Product', 'sku' => 'UAT-KOL-M', 'quantity' => 1, 'unit_price' => '55.00'],
         ]);
 
@@ -117,11 +118,12 @@ final class LocalUatSeeder extends Seeder
         return $users;
     }
 
-    private function order(User $owner, OrderSourceType $source, string $externalNumber, string $recipient, string $email, array $items): Order
+    private function order(User $owner, OrderSourceType $source, OrderKind $kind, string $externalNumber, string $recipient, string $email, array $items): Order
     {
         $order = Order::create([
             'internal_order_number' => $externalNumber,
             'source_type' => $source,
+            'order_kind' => $kind,
             'external_order_number' => $externalNumber,
             'order_date' => now()->toDateString(),
             'order_note' => 'Synthetic local UAT data only',
