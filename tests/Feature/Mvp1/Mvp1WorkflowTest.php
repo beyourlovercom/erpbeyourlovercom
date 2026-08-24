@@ -25,7 +25,7 @@ final class Mvp1WorkflowTest extends TestCase
         $order = Order::query()->firstOrFail();
 
         $response->assertRedirect('/customers/orders/'.$order->id);
-        $this->assertDatabaseHas('orders', ['id' => $order->id, 'source_type' => 'website', 'order_status' => 'pending_shipment']);
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'source_type' => 'manual', 'order_status' => 'pending_shipment']);
         $this->assertDatabaseHas('order_items', ['order_id' => $order->id, 'quantity' => 2, 'line_revenue' => '39.98']);
         $this->assertDatabaseHas('audit_records', ['action' => 'order.created', 'entity_id' => (string) $order->id]);
 

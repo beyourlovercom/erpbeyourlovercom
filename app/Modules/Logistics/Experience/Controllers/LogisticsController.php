@@ -79,7 +79,8 @@ final class LogisticsController
                 null => '未分类',
             },
             'recipient_name' => $order->address?->recipient_name, 'phone' => $order->address?->phone,
-            'country' => $order->address?->country, 'owner' => $order->owner?->name,
+            'country' => $order->address?->country,
+            'owner_label' => $order->owner ? 'Owner('.$order->owner->name.')' : null,
             'item_count' => $order->items->sum('quantity'),
             'shipment' => $order->shipment?->only(['carrier', 'tracking_number', 'shipped_at', 'logistics_note']),
         ];

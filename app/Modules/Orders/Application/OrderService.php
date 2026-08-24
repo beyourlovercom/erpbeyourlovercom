@@ -127,6 +127,25 @@ final class OrderService
         return $number;
     }
 
+    /**
+     * Pre-generates the operator-facing business order number (CUS/KOL + date + 4-char code + 007),
+     * shown on the create form before save so the operator can edit it prior to first save.
+     */
+    public function generateExternalOrderNumber(OrderKind $orderKind): string
+    {
+        $prefix = match ($orderKind) {
+            OrderKind::Customer => 'CUS',
+            OrderKind::KolFulfillment => 'KOL',
+        };
+        $orderClass = 'App\\Modules\\Orders\\Infrastructure\\Models\\Order';
+
+        do {
+            $number = $prefix.now()->format('Ymd').Str::upper(Str::random(4)).'007';
+        } while ($orderClass::query()->where('external_order_number', $number)->exists());
+
+        return $number;
+    }
+
     private function lineRevenue(string|int|float $unitPrice, int $quantity): string
     {
         $parts = explode('.', (string) $unitPrice, 2);

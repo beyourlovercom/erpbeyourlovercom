@@ -23,6 +23,7 @@ export default defineConfig({
         'authorization/**/*.spec.ts',
         'shell/**/*.spec.ts',
         'customers/**/*.spec.ts',
+        'orders/**/*.spec.ts',
     ],
     fullyParallel: false,
     workers: 1,

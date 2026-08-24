@@ -286,6 +286,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_23_000000_create_companies_table.php' => '860faaca4a5c8f2654164798fc4d9717df2f291642f4c5754a1fda22ac652401',
         'database/migrations/2026_08_24_000000_add_permission_mode_and_permission_user_pivot.php' => '8f84c0b97530d31395cfbc7968476b1734498019bf47830e7974ed7d59af3be6',
         'database/migrations/2026_08_24_000000_add_order_kind_to_orders_table.php' => '7775e65ca4ec9e4d2de5fe6b603bf8118b35d2f999f95f8e85471ef280dd89c8',
+        'database/migrations/2026_08_24_000001_make_order_address_snapshot_fields_nullable.php' => '0c3df13a4def87cb761dbac6c2a15b58fdf3c1352431456f39992b85f9ceaaf9',
     ];
 
     private const FRONTEND_FILES = [
@@ -331,10 +332,10 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Identity/Users/Edit.vue' => '3d0774e7097e63648d01528f70b5243d960b7146a8ac0d6ae7708f6ad5011d3e',
         'resources/js/Pages/Identity/Users/Index.test.ts' => 'c2a508b3fb59d1f4725f86d658bfdcd162487477cae6c7f5e0db119b2f4f2cd0',
         'resources/js/Pages/Identity/Users/Index.vue' => '559f700abcd95b484fe834dbb0e5f871cc7301ff20d0e51f9c3c1179ea228e07',
-        'resources/js/Pages/Logistics/Index.vue' => 'a596b35faebf9bbeda3047bc17224a353db869c1fdc96c3c9a10f324edb31e84',
-        'resources/js/Pages/Orders/Create.vue' => 'dfbc8738eaa6d5194c292a1b1cad5a2da70b7342e21302d7ce0619f86a837bd1',
-        'resources/js/Pages/Orders/Index.vue' => 'b5a10885fac7369e0c4cb55015afce46f5231081f3d50795026da617df8c23bc',
-        'resources/js/Pages/Orders/Show.vue' => 'f76d36edfdf23aca79dd9b59eefbc37e0c6bec0710836dc34e2ada511aa84f20',
+        'resources/js/Pages/Logistics/Index.vue' => 'd5b7d79d693f899d93362e7b0c3902ec7597099f82a391bc5a5a5fdc27ee17c5',
+        'resources/js/Pages/Orders/Create.vue' => 'fff7d41b5936cc07ff3224823e5822fa3399eecb702e9996f7c07b8a74c85bd6',
+        'resources/js/Pages/Orders/Index.vue' => 'e1d4ec13d3f3732e317e9e3b27c84f763424257332cbde9dc6830fcfdbac7a66',
+        'resources/js/Pages/Orders/Show.vue' => 'a4596924b4144c8fc32cf3a958837aa9256fe0f949207502510b45657a260ae1',
         'resources/js/Pages/Shell/Placeholder.test.ts' => 'd0623492800b81b76650531eec2b979747d98daf34dcd4320ba00438529bb781',
         'resources/js/Pages/Shell/Placeholder.vue' => 'e18f588432b7d29a025f7618f977bdb7457536e8ae8028c2c343ce5c7b95472f',
         'resources/js/Pages/Sync/Index.vue' => '127b59b51cfef855410b60002fe82737e349dbd51f4b40e753fc4f7ba92e06c8',

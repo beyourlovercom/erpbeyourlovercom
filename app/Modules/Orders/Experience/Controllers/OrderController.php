@@ -2,7 +2,6 @@
 
 namespace App\Modules\Orders\Experience\Controllers;
 
-use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderSourceType;
@@ -35,11 +34,12 @@ final class OrderController
 
     public function create(Request $request): Response
     {
+        $kind = $this->kind($request);
+
         return Inertia::render('Orders/Create', [
-            'defaultOrderKind' => $this->kind($request)->value,
-            'orderKinds' => array_map(fn (OrderKind $kind): array => ['value' => $kind->value, 'label' => $this->kindLabel($kind)], OrderKind::cases()),
-            'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),
-            'owners' => User::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'email']),
+            'defaultOrderKind' => $kind->value,
+            'orderKindLabel' => $this->kindLabel($kind),
+            'generatedExternalOrderNumber' => $this->orders->generateExternalOrderNumber($kind),
         ]);
     }
 
@@ -48,7 +48,10 @@ final class OrderController
         $data = $request->validate($this->rules());
         $items = $data['items'];
         unset($data['items']);
-        $data['owner_id'] ??= $request->user()->getAuthIdentifier();
+        // Route context is authority: order_kind/source_type/owner cannot be overridden by client input.
+        $data['order_kind'] = $this->kind($request)->value;
+        $data['source_type'] = OrderSourceType::Manual->value;
+        $data['owner_id'] = $request->user()->getAuthIdentifier();
         $order = $this->orders->create($data, $items, $request->user());
 
         $routeName = $order->order_kind === OrderKind::KolFulfillment ? 'kol.orders.show' : 'customers.orders.show';
@@ -129,6 +132,7 @@ final class OrderController
             'order_status_label' => $this->statusLabel($order->order_status->value),
             'order_note' => $order->order_note,
             'owner' => $order->owner ? ['id' => $order->owner->id, 'name' => $order->owner->name] : null,
+            'owner_label' => $order->owner ? 'Owner('.$order->owner->name.')' : null,
             'address' => $order->address?->only(['recipient_name', 'phone', 'country', 'province_state', 'city', 'address_line_1', 'address_line_2', 'postal_code']),
             'items' => $order->items->map(fn ($item): array => $item->only(['id', 'product_summary', 'sku', 'quantity', 'unit_price', 'line_revenue']))->values()->all(),
             'shipment' => $order->shipment?->only(['shipment_status', 'carrier', 'tracking_number', 'shipped_at', 'logistics_note', 'handled_by']),
@@ -144,15 +148,13 @@ final class OrderController
     private function rules(): array
     {
         return [
-            'order_kind' => ['required', Rule::in(array_column(OrderKind::cases(), 'value'))],
-            'source_type' => ['required', 'in:website,kol,manual_other'],
+            // order_kind/source_type/owner_id are forced from route context in store(); not client-settable.
             'external_order_number' => ['required', 'string', 'max:128', Rule::unique('orders', 'external_order_number')],
             'order_date' => ['required', 'date'],
             'order_note' => ['nullable', 'string', 'max:5000'],
-            'owner_id' => ['nullable', 'integer', 'exists:users,id'],
-            'recipient_name' => ['required', 'string', 'max:255'], 'phone' => ['required', 'string', 'max:64'],
-            'country' => ['required', 'string', 'max:128'], 'province_state' => ['required', 'string', 'max:128'],
-            'city' => ['required', 'string', 'max:128'], 'address_line_1' => ['required', 'string', 'max:255'],
+            'recipient_name' => ['nullable', 'string', 'max:255'], 'phone' => ['nullable', 'string', 'max:64'],
+            'country' => ['nullable', 'string', 'max:128'], 'province_state' => ['nullable', 'string', 'max:128'],
+            'city' => ['nullable', 'string', 'max:128'], 'address_line_1' => ['nullable', 'string', 'max:255'],
             'address_line_2' => ['nullable', 'string', 'max:255'], 'postal_code' => ['nullable', 'string', 'max:32'],
             'items' => ['required', 'array', 'min:1'], 'items.*.product_summary' => ['required', 'string', 'max:255'],
             'items.*.sku' => ['nullable', 'string', 'max:128'], 'items.*.quantity' => ['required', 'integer', 'min:1'],
@@ -163,15 +165,14 @@ final class OrderController
     private function updateRules(Order $order): array
     {
         return [
+            // external_order_number and owner_id are immutable via the generic update path once saved (audit-preserving).
             'order_kind' => ['sometimes', Rule::in(array_column(OrderKind::cases(), 'value'))],
-            'source_type' => ['sometimes', 'in:website,kol,manual_other'],
-            'external_order_number' => ['sometimes', 'string', 'max:128', Rule::unique('orders', 'external_order_number')->ignore($order->id)],
+            'source_type' => ['sometimes', 'in:website,kol,manual_other,manual'],
             'order_date' => ['sometimes', 'date'],
             'order_note' => ['sometimes', 'nullable', 'string', 'max:5000'],
-            'owner_id' => ['sometimes', 'nullable', 'integer', 'exists:users,id'],
-            'recipient_name' => ['sometimes', 'string', 'max:255'], 'phone' => ['sometimes', 'string', 'max:64'],
-            'country' => ['sometimes', 'string', 'max:128'], 'province_state' => ['sometimes', 'string', 'max:128'],
-            'city' => ['sometimes', 'string', 'max:128'], 'address_line_1' => ['sometimes', 'string', 'max:255'],
+            'recipient_name' => ['sometimes', 'nullable', 'string', 'max:255'], 'phone' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'country' => ['sometimes', 'nullable', 'string', 'max:128'], 'province_state' => ['sometimes', 'nullable', 'string', 'max:128'],
+            'city' => ['sometimes', 'nullable', 'string', 'max:128'], 'address_line_1' => ['sometimes', 'nullable', 'string', 'max:255'],
             'address_line_2' => ['sometimes', 'nullable', 'string', 'max:255'], 'postal_code' => ['sometimes', 'nullable', 'string', 'max:32'],
             'items' => ['sometimes', 'array', 'min:1'], 'items.*.product_summary' => ['required_with:items', 'string', 'max:255'],
             'items.*.sku' => ['nullable', 'string', 'max:128'], 'items.*.quantity' => ['required_with:items', 'integer', 'min:1'],
@@ -181,7 +182,12 @@ final class OrderController
 
     private function sourceLabel(OrderSourceType $source): string
     {
-        return match ($source) { OrderSourceType::Website => 'Website', OrderSourceType::Kol => 'KOL', OrderSourceType::ManualOther => 'Manual Other' };
+        return match ($source) {
+            OrderSourceType::Website => 'Website',
+            OrderSourceType::Kol => 'KOL',
+            OrderSourceType::ManualOther => 'Manual Other',
+            OrderSourceType::Manual => '手动创建',
+        };
     }
 
     private function kindLabel(OrderKind $kind): string
