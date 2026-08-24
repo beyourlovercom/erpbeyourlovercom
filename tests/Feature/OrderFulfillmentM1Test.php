@@ -103,6 +103,88 @@ final class OrderFulfillmentM1Test extends TestCase
         );
     }
 
+    public function test_create_page_pre_generates_a_formatted_external_order_number(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+
+        $this->actingAs($user)->get('/customers/orders/create')->assertInertia(
+            fn ($page) => $page->where('generatedExternalOrderNumber', fn ($value) => (bool) preg_match('/^CUS\d{8}[A-Z0-9]{4}007$/', $value))
+        );
+        $this->actingAs($user)->get('/kol/orders/create')->assertInertia(
+            fn ($page) => $page->where('generatedExternalOrderNumber', fn ($value) => (bool) preg_match('/^KOL\d{8}[A-Z0-9]{4}007$/', $value))
+        );
+    }
+
+    public function test_operator_can_override_the_pre_generated_number_before_first_save(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+        $this->actingAs($user)->post('/customers/orders', $this->payload('OPERATOR-CHOSEN-001'))->assertRedirect();
+
+        $order = Order::query()->firstOrFail();
+        $this->assertSame('OPERATOR-CHOSEN-001', $order->external_order_number);
+    }
+
+    public function test_route_context_forces_order_kind_and_source_type_regardless_of_client_payload(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+
+        $payload = $this->payload('FORCED-001', 'kol_fulfillment');
+        $payload['source_type'] = 'website';
+        $this->actingAs($user)->post('/customers/orders', $payload)->assertRedirect();
+
+        $order = Order::query()->firstOrFail();
+        $this->assertSame('customer', $order->order_kind->value, 'client-supplied order_kind must not cross-create');
+        $this->assertSame('manual', $order->source_type->value, 'new manual orders must be stamped source_type=manual');
+    }
+
+    public function test_owner_is_forced_to_the_creating_actor_and_cannot_be_reassigned_on_create(): void
+    {
+        $owner = $this->userWith(['orders.view', 'orders.create']);
+        $other = $this->userWith(['orders.view', 'orders.create'], 'other-user');
+
+        $payload = $this->payload('OWNER-001');
+        $payload['owner_id'] = $other->id;
+        $this->actingAs($owner)->post('/customers/orders', $payload)->assertRedirect();
+
+        $order = Order::query()->firstOrFail();
+        $this->assertSame($owner->id, $order->owner_id, 'owner must be the creator, not a client-supplied value');
+    }
+
+    public function test_external_order_number_and_owner_are_immutable_via_the_generic_update_path(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create', 'orders.edit']);
+        $other = $this->userWith(['orders.view', 'orders.create'], 'other-user-2');
+        $this->actingAs($user)->post('/customers/orders', $this->payload('IMMUTABLE-001'))->assertRedirect();
+        $order = Order::query()->firstOrFail();
+
+        $this->actingAs($user)->patch('/customers/orders/'.$order->id, [
+            'external_order_number' => 'TRIED-TO-CHANGE',
+            'owner_id' => $other->id,
+            'order_note' => 'updated note',
+        ])->assertRedirect();
+
+        $order->refresh();
+        $this->assertSame('IMMUTABLE-001', $order->external_order_number, 'external_order_number must not be editable via the generic update path');
+        $this->assertSame($user->id, $order->owner_id, 'owner_id must not be reassignable via the generic update path');
+        $this->assertSame('updated note', $order->order_note);
+    }
+
+    public function test_non_critical_snapshot_fields_are_optional_and_stored_as_null_not_a_dash(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+        $payload = [
+            'external_order_number' => 'NO-ADDRESS-001',
+            'order_date' => '2026-08-24',
+            'items' => [['product_summary' => 'Synthetic Product', 'sku' => null, 'quantity' => 1, 'unit_price' => '9.99']],
+        ];
+
+        $this->actingAs($user)->post('/customers/orders', $payload)->assertRedirect();
+
+        $order = Order::query()->firstOrFail();
+        $this->assertNotSame('—', $order->address?->recipient_name);
+        $this->assertNull($order->address?->recipient_name);
+    }
+
     public function test_legacy_manual_other_rows_are_not_guessed_during_order_kind_backfill(): void
     {
         DB::table('users')->insert(['id' => 1, 'name' => 'Legacy Owner', 'email' => 'legacy@example.test', 'password' => 'x', 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);

@@ -618,6 +618,28 @@
     font-size: var(--byl-font-size-12);
 }
 
+.mvp-inline-field {
+    display: flex;
+    align-items: center;
+    gap: var(--byl-space-6);
+}
+
+.mvp-icon-button {
+    flex: 0 0 auto;
+    padding: 0 var(--byl-space-8);
+}
+
+.mvp-readonly {
+    background: var(--byl-color-shell-nav-hover);
+    color: var(--byl-text-muted);
+}
+
+.mvp-details summary {
+    cursor: pointer;
+    color: var(--byl-text-muted);
+    font-size: var(--byl-font-size-12);
+}
+
 .mvp-pagination {
     display: flex;
     align-items: center;

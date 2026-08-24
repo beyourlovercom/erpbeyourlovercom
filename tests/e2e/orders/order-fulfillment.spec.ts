@@ -15,7 +15,8 @@ test('customer manual order flows through logistics to shipped with the business
     await loginThroughUi(page, syntheticUsers().authorized);
 
     await page.goto('/customers/orders/create');
-    await expect(page.getByRole('heading', { name: '新建订单' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '新建订单', level: 2 })).toBeVisible();
+    await page.getByRole('button', { name: '编辑订单号' }).click();
     await page.getByLabel('业务订单号').fill('E2E-CUS-0001');
     await page.getByLabel('姓名').fill('E2E Customer Recipient');
     await page.getByLabel('电话').fill('+1 555 0100');
@@ -52,7 +53,8 @@ test('KOL fulfillment manual order defaults to kol_fulfillment and shares the sa
     await loginThroughUi(page, syntheticUsers().authorized);
 
     await page.goto('/kol/orders/create');
-    await expect(page.locator('select').first()).toHaveValue('kol_fulfillment');
+    await expect(page.getByLabel('订单类型')).toHaveValue('网红履约订单');
+    await page.getByRole('button', { name: '编辑订单号' }).click();
     await page.getByLabel('业务订单号').fill('E2E-KOL-0001');
     await page.getByLabel('姓名').fill('E2E KOL Recipient');
     await page.getByLabel('电话').fill('+1 555 0101');
@@ -88,6 +90,7 @@ test('direct URL manipulation cannot cross-leak an order into the wrong kind sur
     await loginThroughUi(page, syntheticUsers().authorized);
 
     await page.goto('/customers/orders/create');
+    await page.getByRole('button', { name: '编辑订单号' }).click();
     await page.getByLabel('业务订单号').fill('E2E-LEAK-CUS');
     await page.getByLabel('姓名').fill('Leak Test Customer');
     await page.getByLabel('电话').fill('+1 555 0102');
@@ -121,6 +124,7 @@ test('logistics copy falls back to a manual-selection path when the async Clipbo
     await loginThroughUi(page, syntheticUsers().authorized);
 
     await page.goto('/customers/orders/create');
+    await page.getByRole('button', { name: '编辑订单号' }).click();
     await page.getByLabel('业务订单号').fill('E2E-FALLBACK-0001');
     await page.getByLabel('姓名').fill('Fallback Recipient');
     await page.getByLabel('电话').fill('+1 555 0103');
