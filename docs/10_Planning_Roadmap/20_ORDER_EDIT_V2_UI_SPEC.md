@@ -1,6 +1,7 @@
 # Order Create/Edit V2 UI Specification
 
-**Status: OWNER_AUTHORIZED / IMPLEMENTATION BASELINE**
+**Status: OWNER_AUTHORIZED / UAT_READY_FROZEN**
+**Implementation gate: `ORDER_EDIT_V2 = UAT_READY_FROZEN`**
 **Date: 2026-08-25**
 **Applies to:** `/customers/orders/create`, `/kol/orders/create`, `/customers/orders/{id}`, `/kol/orders/{id}`
 **Parent rules:** `18_BYL_ERP_FORM_DESIGN_STANDARD_V1.md`, `16_BYL_ERP_CANONICAL_ORDER_FINANCE_KOL_DATA_CONTRACT_V1.md`
