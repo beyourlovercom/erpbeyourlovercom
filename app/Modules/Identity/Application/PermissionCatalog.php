@@ -1,0 +1,129 @@
+<?php
+
+namespace App\Modules\Identity\Application;
+
+final class PermissionCatalog
+{
+    /** @return array<string, array{label: string, permissions: list<array{key: string, label: string}>}> */
+    public static function groups(): array
+    {
+        return [
+            '通用' => [
+                'label' => '通用',
+                'permissions' => [
+                    ['key' => 'dashboard.view', 'label' => '查看仪表盘'],
+                ],
+            ],
+            '订单' => [
+                'label' => '订单',
+                'permissions' => [
+                    ['key' => 'orders.view', 'label' => '查看订单'],
+                    ['key' => 'orders.create', 'label' => '创建订单'],
+                    ['key' => 'orders.edit', 'label' => '编辑订单'],
+                ],
+            ],
+            '客户' => [
+                'label' => '客户',
+                'permissions' => [
+                    ['key' => 'customers.view', 'label' => '查看客户'],
+                    ['key' => 'customers.operate', 'label' => '操作客户'],
+                ],
+            ],
+            '物流' => [
+                'label' => '物流',
+                'permissions' => [
+                    ['key' => 'logistics.view', 'label' => '查看物流'],
+                    ['key' => 'logistics.operate', 'label' => '操作物流'],
+                ],
+            ],
+            '网红' => [
+                'label' => '网红',
+                'permissions' => [
+                    ['key' => 'kol.view', 'label' => '查看网红'],
+                ],
+            ],
+            '库存' => [
+                'label' => '库存',
+                'permissions' => [
+                    ['key' => 'inventory.view', 'label' => '查看库存'],
+                ],
+            ],
+            '外采' => [
+                'label' => '外采',
+                'permissions' => [
+                    ['key' => 'procurement.view', 'label' => '查看外采'],
+                ],
+            ],
+            '产品' => [
+                'label' => '产品',
+                'permissions' => [
+                    ['key' => 'products.view', 'label' => '查看产品'],
+                ],
+            ],
+            '指南' => [
+                'label' => '指南',
+                'permissions' => [
+                    ['key' => 'guides.view', 'label' => '查看指南'],
+                ],
+            ],
+            '财务' => [
+                'label' => '财务',
+                'permissions' => [
+                    ['key' => 'accounting.view', 'label' => '查看财务'],
+                    ['key' => 'analysis.view', 'label' => '查看分析报表'],
+                ],
+            ],
+            '同步' => [
+                'label' => '同步',
+                'permissions' => [
+                    ['key' => 'sync.view', 'label' => '查看同步'],
+                    ['key' => 'sync.operate', 'label' => '操作同步'],
+                ],
+            ],
+            '系统' => [
+                'label' => '系统',
+                'permissions' => [
+                    ['key' => 'system.permissions.manage', 'label' => '管理系统权限'],
+                    ['key' => 'audit.view', 'label' => '查看审计日志'],
+                ],
+            ],
+            '兼容' => [
+                'label' => '兼容',
+                'permissions' => [
+                    ['key' => 'prototype.view', 'label' => '原型预览（兼容）'],
+                    ['key' => 'architecture.foundation.view', 'label' => '架构基础（内部）'],
+                ],
+            ],
+        ];
+    }
+
+    /** @return list<string> */
+    public static function allKeys(): array
+    {
+        $keys = [];
+        foreach (self::groups() as $group) {
+            foreach ($group['permissions'] as $perm) {
+                $keys[] = $perm['key'];
+            }
+        }
+
+        return $keys;
+    }
+
+    public static function isValid(string $key): bool
+    {
+        return in_array($key, self::allKeys(), true);
+    }
+
+    /** @param list<string> $keys */
+    public static function validate(array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (! self::isValid($key)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}
