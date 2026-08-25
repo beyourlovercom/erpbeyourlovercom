@@ -3,9 +3,10 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { usePage } from '@inertiajs/vue3'
 import GlobalNavigation from '../Components/AppShell/GlobalNavigation.vue'
 import TopBar from '../Components/AppShell/TopBar.vue'
+import type { BreadcrumbItem } from '../Components/AppShell/TopBar.vue'
 import type { ShellPageProps } from '../types/navigation'
 
-defineProps<{ title: string; breadcrumbs: string[] }>()
+defineProps<{ title: string; breadcrumbs: (string | BreadcrumbItem)[] }>()
 const page = usePage<ShellPageProps>()
 const sidebarCollapsed = ref(false)
 const mobileOpen = ref(false)

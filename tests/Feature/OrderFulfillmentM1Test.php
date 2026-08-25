@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Orders\Application\OrderKindBackfill;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -172,10 +173,11 @@ final class OrderFulfillmentM1Test extends TestCase
     public function test_non_critical_snapshot_fields_are_optional_and_stored_as_null_not_a_dash(): void
     {
         $user = $this->userWith(['orders.view', 'orders.create']);
+        $product = Product::firstOrCreate(['sku' => 'SYN-1'], ['name' => 'Synthetic Product', 'product_type' => 'simple', 'woocommerce_product_id' => 8001]);
         $payload = [
             'external_order_number' => 'NO-ADDRESS-001',
             'order_date' => '2026-08-24',
-            'items' => [['product_summary' => 'Synthetic Product', 'sku' => null, 'quantity' => 1, 'unit_price' => '9.99']],
+            'items' => [['product_id' => $product->id, 'product_summary' => 'Synthetic Product', 'sku' => null, 'quantity' => 1, 'unit_price' => '9.99']],
         ];
 
         $this->actingAs($user)->post('/customers/orders', $payload)->assertRedirect();
@@ -202,13 +204,15 @@ final class OrderFulfillmentM1Test extends TestCase
 
     private function payload(string $externalOrderNumber, string $orderKind = 'customer'): array
     {
+        $product = Product::firstOrCreate(['sku' => 'SYN-1'], ['name' => 'Synthetic Product', 'product_type' => 'simple', 'woocommerce_product_id' => 9001]);
+
         return [
             'order_kind' => $orderKind,
             'source_type' => 'website', 'external_order_number' => $externalOrderNumber, 'order_date' => '2026-08-24',
             'recipient_name' => 'Synthetic Recipient', 'phone' => '+1 555 0100', 'country' => 'US',
             'province_state' => 'CA', 'city' => 'Los Angeles', 'address_line_1' => '100 Synthetic Street',
             'postal_code' => '90001', 'items' => [
-                ['product_summary' => 'Synthetic Product', 'sku' => 'SYN-1', 'quantity' => 1, 'unit_price' => '19.99'],
+                ['product_id' => $product->id, 'product_summary' => 'Synthetic Product', 'sku' => 'SYN-1', 'quantity' => 1, 'unit_price' => '19.99'],
             ],
         ];
     }

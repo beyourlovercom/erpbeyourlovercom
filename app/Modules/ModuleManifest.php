@@ -12,6 +12,7 @@ use App\Modules\Orders\Providers\OrdersServiceProvider;
 use App\Modules\Runtime\Providers\RuntimeServiceProvider;
 use App\Modules\Shell\Providers\ShellServiceProvider;
 use App\Modules\Sync\Providers\SyncServiceProvider;
+use App\Modules\Products\Providers\ProductsServiceProvider;
 use App\Modules\Sync\Providers\ManualSyncServiceProvider;
 use Illuminate\Support\ServiceProvider;
 use LogicException;
@@ -35,6 +36,7 @@ final class ModuleManifest
             ShellServiceProvider::class,
             DashboardServiceProvider::class,
             CustomersServiceProvider::class,
+            ProductsServiceProvider::class,
         ];
     }
 

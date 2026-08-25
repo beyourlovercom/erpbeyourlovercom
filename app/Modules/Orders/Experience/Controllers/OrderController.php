@@ -156,8 +156,9 @@ final class OrderController
             'country' => ['nullable', 'string', 'max:128'], 'province_state' => ['nullable', 'string', 'max:128'],
             'city' => ['nullable', 'string', 'max:128'], 'address_line_1' => ['nullable', 'string', 'max:255'],
             'address_line_2' => ['nullable', 'string', 'max:255'], 'postal_code' => ['nullable', 'string', 'max:32'],
-            'items' => ['required', 'array', 'min:1'], 'items.*.product_summary' => ['required', 'string', 'max:255'],
-            'items.*.sku' => ['nullable', 'string', 'max:128'], 'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items' => ['required', 'array', 'min:1'], 'items.*.product_summary' => ['nullable', 'string', 'max:255'],
+            'items.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')->whereNotNull('sku')->where('sku', '!=', '')],
+            'items.*.quantity' => ['required', 'integer', 'min:1'],
             'items.*.unit_price' => ['required', 'decimal:0,2', 'min:0'],
         ];
     }
@@ -174,8 +175,9 @@ final class OrderController
             'country' => ['sometimes', 'nullable', 'string', 'max:128'], 'province_state' => ['sometimes', 'nullable', 'string', 'max:128'],
             'city' => ['sometimes', 'nullable', 'string', 'max:128'], 'address_line_1' => ['sometimes', 'nullable', 'string', 'max:255'],
             'address_line_2' => ['sometimes', 'nullable', 'string', 'max:255'], 'postal_code' => ['sometimes', 'nullable', 'string', 'max:32'],
-            'items' => ['sometimes', 'array', 'min:1'], 'items.*.product_summary' => ['required_with:items', 'string', 'max:255'],
-            'items.*.sku' => ['nullable', 'string', 'max:128'], 'items.*.quantity' => ['required_with:items', 'integer', 'min:1'],
+            'items' => ['sometimes', 'array', 'min:1'], 'items.*.product_summary' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'items.*.product_id' => ['required_with:items', 'integer', Rule::exists('products', 'id')->whereNotNull('sku')->where('sku', '!=', '')],
+            'items.*.quantity' => ['required_with:items', 'integer', 'min:1'],
             'items.*.unit_price' => ['required_with:items', 'decimal:0,2', 'min:0'],
         ];
     }

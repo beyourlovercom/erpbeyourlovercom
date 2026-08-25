@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Finance\Application\OrderAnalysisService;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Sync\Application\ManualSyncStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -59,10 +60,11 @@ final class Mvp1WorkflowTest extends TestCase
         $this->actingAs($user)->post('/customers/orders', $this->orderPayload())->assertRedirect();
         $order = Order::query()->firstOrFail();
 
+        $corrProduct = Product::firstOrCreate(['sku' => 'COR-1'], ['name' => 'Corrected Product', 'product_type' => 'simple', 'woocommerce_product_id' => 7002]);
         $this->actingAs($user)->patch('/customers/orders/'.$order->id, [
             'recipient_name' => 'Corrected Recipient',
             'address_line_1' => 'Corrected Address',
-            'items' => [['product_summary' => 'Corrected Product', 'sku' => 'COR-1', 'quantity' => 3, 'unit_price' => '12.00']],
+            'items' => [['product_id' => $corrProduct->id, 'product_summary' => 'Corrected Product', 'sku' => 'COR-1', 'quantity' => 3, 'unit_price' => '12.00']],
         ])->assertRedirect();
 
         $order->refresh()->load(['address', 'items']);
@@ -152,13 +154,15 @@ final class Mvp1WorkflowTest extends TestCase
 
     private function orderPayload(): array
     {
+        $product = Product::firstOrCreate(['sku' => 'SYN-1'], ['name' => 'Synthetic Product', 'product_type' => 'simple', 'woocommerce_product_id' => 7001]);
+
         return [
             'order_kind' => 'customer',
-            'source_type' => 'website', 'external_order_number' => 'SYNTH-WEB-001', 'order_date' => '2026-08-05',
+            'source_type' => 'website', 'external_order_number' => 'SYNTH-WEB-'.uniqid(), 'order_date' => '2026-08-05',
             'recipient_name' => 'Synthetic Recipient', 'phone' => '+1 555 0100', 'country' => 'US',
             'province_state' => 'CA', 'city' => 'Los Angeles', 'address_line_1' => '100 Synthetic Street',
             'postal_code' => '90001', 'items' => [
-                ['product_summary' => 'Synthetic Product', 'sku' => 'SYN-1', 'quantity' => 2, 'unit_price' => '19.99'],
+                ['product_id' => $product->id, 'product_summary' => 'Synthetic Product', 'sku' => 'SYN-1', 'quantity' => 2, 'unit_price' => '19.99'],
             ],
         ];
     }

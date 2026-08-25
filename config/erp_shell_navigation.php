@@ -30,8 +30,8 @@ return [
         ['key' => 'procurement-files', 'label' => '外采文件', 'path' => '/procurement/files', 'route' => 'procurement.files', 'permission' => 'prototype.view', 'placeholder' => false],
         ['key' => 'procurement-records', 'label' => '记录', 'path' => '/procurement/records', 'route' => 'procurement.records', 'permission' => 'prototype.view', 'placeholder' => false],
     ]],
-    ['key' => 'products', 'label' => '产品', 'emoji' => '🏷️', 'path' => '/products', 'route' => 'shell.products', 'permission' => 'products.view', 'placeholder' => true, 'children' => [
-        ['key' => 'products-index', 'label' => '产品索引', 'path' => '/products', 'route' => 'shell.products', 'permission' => 'products.view', 'placeholder' => false],
+    ['key' => 'products', 'label' => '产品', 'emoji' => '🏷️', 'path' => '/products', 'route' => 'products.dashboard', 'permission' => 'products.view', 'placeholder' => false, 'children' => [
+        ['key' => 'products-list', 'label' => '产品列表', 'path' => '/products/list', 'route' => 'products.list', 'permission' => 'products.view', 'placeholder' => false],
         ['key' => 'products-skus', 'label' => 'SKU', 'path' => '/products/skus', 'route' => 'products.skus', 'permission' => 'prototype.view', 'placeholder' => false],
         ['key' => 'products-sku-aliases', 'label' => 'SKU别名', 'path' => '/products/sku-aliases', 'route' => 'products.sku-aliases', 'permission' => 'prototype.view', 'placeholder' => false],
     ]],
