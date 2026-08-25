@@ -67,13 +67,21 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Identity/Application/AuthorizationKeys.php',
         'app/Modules/Identity/Application/Contracts/AuditRecorder.php',
         'app/Modules/Identity/Application/DataScope.php',
+        'app/Modules/Identity/Application/Exceptions/IdentityGuardException.php',
+        'app/Modules/Identity/Application/PermissionCatalog.php',
+        'app/Modules/Identity/Application/RolePermissionsService.php',
+        'app/Modules/Identity/Application/RolePreset.php',
+        'app/Modules/Identity/Application/UserService.php',
         'app/Modules/Identity/Experience/Console/Commands/CreateErpUser.php',
         'app/Modules/Identity/Experience/Controllers/AuthController.php',
+        'app/Modules/Identity/Experience/Controllers/RolePermissionsController.php',
+        'app/Modules/Identity/Experience/Controllers/UserController.php',
         'app/Modules/Identity/Experience/Fortify/AttemptPersistentAuthentication.php',
         'app/Modules/Identity/Experience/Fortify/IdentityFortify.php',
         'app/Modules/Identity/Experience/Middleware/ApplyLocalAdminBypass.php',
         'app/Modules/Identity/Experience/Middleware/EnsureActiveAuthenticatedUser.php',
         'app/Modules/Identity/Experience/Middleware/RequireAnyPermission.php',
+        'app/Modules/Identity/Experience/Routes/user-management.php',
         'app/Modules/Identity/Experience/Routes/web.php',
         'app/Modules/Identity/Infrastructure/Models/Permission.php',
         'app/Modules/Identity/Infrastructure/Models/Role.php',
@@ -176,6 +184,7 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Identity',
         'app/Modules/Identity/Application',
         'app/Modules/Identity/Application/Contracts',
+        'app/Modules/Identity/Application/Exceptions',
         'app/Modules/Identity/Experience',
         'app/Modules/Identity/Experience/Console',
         'app/Modules/Identity/Experience/Console/Commands',
@@ -253,12 +262,16 @@ final class ModuleArchitectureTest extends TestCase
         'kol.orders.mine', 'kol.orders.show', 'kol.orders.team', 'login', 'login.store',
         'logistics.awaiting-tracking', 'logistics.exceptions', 'logistics.in-transit',
         'logistics.pending', 'logistics.payload', 'logistics.reopen', 'logistics.ship', 'logout', 'password.confirm.store', 'password.confirmation',
-        'procurement.files', 'procurement.records', 'products.create', 'products.dashboard', 'products.destroy', 'products.edit', 'products.import', 'products.import.store', 'products.list', 'products.sku-aliases', 'products.sku-search', 'products.skus', 'products.store', 'products.update',
-        'root', 'settings.audit-logs', 'settings.roles-permissions', 'settings.statuses',
-        'settings.users', 'settings.warehouses', 'shell.accounting', 'shell.customers',
+        'procurement.files', 'procurement.records', 'products.create', 'products.dashboard',
+        'products.destroy', 'products.edit', 'products.import', 'products.import.store',
+        'products.list', 'products.sku-aliases', 'products.sku-search', 'products.skus',
+        'products.store', 'products.update', 'root', 'settings.audit-logs',
+        'settings.roles-permissions', 'settings.roles-permissions.update', 'settings.statuses', 'settings.users',
+        'settings.warehouses', 'shell.accounting', 'shell.customers',
         'shell.guides', 'shell.inventory', 'shell.kol', 'shell.logistics', 'shell.procurement',
         'shell.settings', 'shell.sync', 'storage.local', 'storage.local.upload',
         'sync.complete', 'sync.payload', 'sync.reopen', 'sync.return', 'orders.export', 'orders.store', 'orders.store.customers', 'orders.update', 'orders.update.customers', 'customers.orders.show', 'system.audit-records.index', 'system.runtime.health',
+        'user.create', 'user.destroy', 'user.disable', 'user.edit', 'user.enable', 'user.index', 'user.password', 'user.permissions', 'user.role', 'user.store', 'user.update',
     ];
 
     private const PERMISSION_KEYS = [
@@ -297,6 +310,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_24_000000_add_order_kind_to_orders_table.php' => '7775e65ca4ec9e4d2de5fe6b603bf8118b35d2f999f95f8e85471ef280dd89c8',
         'database/migrations/2026_08_24_000001_make_order_address_snapshot_fields_nullable.php' => '0c3df13a4def87cb761dbac6c2a15b58fdf3c1352431456f39992b85f9ceaaf9',
         'database/migrations/2026_08_24_100000_create_products_table.php' => 'a7ddaa6125c296d3b67fd85eb8c3728764630207a121d57046702defb3bda1c0',
+        'database/migrations/2026_08_24_000000_add_permission_mode_and_permission_user_pivot.php' => '8f84c0b97530d31395cfbc7968476b1734498019bf47830e7974ed7d59af3be6',
     ];
 
     private const FRONTEND_FILES = [
@@ -310,6 +324,8 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Components/AppShell/UserAccountMenu.vue' => '2ae335eacc6146873ffcf857d829a7c30d1136555e1339f500966c5dd7797367',
         'resources/js/Components/Products/SkuCombobox.test.ts' => 'fe5a4a4faf285ed257496aab9f183541df6ef3fab1cd708e410e9feca278c6b1',
         'resources/js/Components/Products/SkuCombobox.vue' => 'f2b5e07e5621b2c4e0184eaa308379d0185bad20efbd2de9bf0531fca7d9433e',
+        'resources/js/Components/PermissionMatrix.test.ts' => '5050666c6cdb788a74033ca42d7b9e0a09003faf5478992ce54af022f2a76839',
+        'resources/js/Components/PermissionMatrix.vue' => '5376899d0142e95e8af4ceb218ea552d5495b733059e24e6165f7bc74b166a5f',
         'resources/js/Components/UI/EmptyState.test.ts' => '4fda8290eb407fe9313f32d5a5ac0f802cbb668797af87b9cb3c7f856e528b18',
         'resources/js/Components/UI/EmptyState.vue' => 'a0cab2c71afa978cca886b9b6cb9ab0f0ff40d29962109f7da7c5e1aed2297ce',
         'resources/js/Components/UI/FormField.test.ts' => '9e604341a19c1618e5949b713c6137cbc27c50c64f0830890c2a50cc2e38df4c',
@@ -335,6 +351,14 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Dashboard/Index.test.ts' => '27c63e094fcdec28a0e5677508723e149c90a5130efb98d4448fa2b7f51b4ae4',
         'resources/js/Pages/Dashboard/Index.vue' => '0c28a768afcaa181b54ab01c4ec08457a04f7ed98e5ba3b52a041d98492bc2bb',
         'resources/js/Pages/Finance/OrderAnalysis.vue' => '96216f9ce4b67dd10bc4627c7e09703c1752c030110425509839d9aaab25d0aa',
+        'resources/js/Pages/Identity/RolesPermissions/Index.test.ts' => 'c81fa140a3d75212813d17f95ccdf85da874f5118241031e06dbfb4ab9c062f5',
+        'resources/js/Pages/Identity/RolesPermissions/Index.vue' => '5faa0e5bed62fb38d096a100964bb2c34ed7a855b10e43addd32c165bd9ebcd9',
+        'resources/js/Pages/Identity/Users/Create.test.ts' => '56b4aa1d7673eb6ebfc4eed35a04381f459ee7a3717f7664ff094af64d5eb6d0',
+        'resources/js/Pages/Identity/Users/Create.vue' => '48aa373766567b98a2ac27a2be7b1d1fe5342a94d25e1680a9ff6d25d49194e3',
+        'resources/js/Pages/Identity/Users/Edit.test.ts' => 'c8653e756df55cbd1608ca9b0bcf4ab63b6973bfe1cb0f2e0ac6fbce7226d4e8',
+        'resources/js/Pages/Identity/Users/Edit.vue' => '3d0774e7097e63648d01528f70b5243d960b7146a8ac0d6ae7708f6ad5011d3e',
+        'resources/js/Pages/Identity/Users/Index.test.ts' => 'c2a508b3fb59d1f4725f86d658bfdcd162487477cae6c7f5e0db119b2f4f2cd0',
+        'resources/js/Pages/Identity/Users/Index.vue' => '559f700abcd95b484fe834dbb0e5f871cc7301ff20d0e51f9c3c1179ea228e07',
         'resources/js/Pages/Logistics/Index.vue' => 'd5b7d79d693f899d93362e7b0c3902ec7597099f82a391bc5a5a5fdc27ee17c5',
         'resources/js/Pages/Orders/Create.vue' => '004db6e3def65f7ee2c6532cf3b418f347a9656a876eea247a8c430b3c09d8d1',
         'resources/js/Pages/Orders/Index.vue' => 'e1d4ec13d3f3732e317e9e3b27c84f763424257332cbde9dc6830fcfdbac7a66',
@@ -386,6 +410,11 @@ final class ModuleArchitectureTest extends TestCase
             'app/Modules/Identity/Application/AuthorizationKeys.php',
             'app/Modules/Identity/Application/Contracts/AuditRecorder.php',
             'app/Modules/Identity/Application/DataScope.php',
+            'app/Modules/Identity/Application/Exceptions/IdentityGuardException.php',
+            'app/Modules/Identity/Application/PermissionCatalog.php',
+            'app/Modules/Identity/Application/RolePermissionsService.php',
+            'app/Modules/Identity/Application/RolePreset.php',
+            'app/Modules/Identity/Application/UserService.php',
             'app/Modules/Runtime/Application/Contracts/RedisRuntimeProbe.php',
             'app/Modules/Runtime/Application/QueueJobConvention.php',
             'app/Modules/Runtime/Application/QueueName.php',
@@ -543,7 +572,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('0f1a8345f52ceb564996651334b42547862e364aec52e431512c24c63e4a689b', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('e40b16abf77e0b650257ec982a07866b52f7311b83d89fd1bbe07897627d0035', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);

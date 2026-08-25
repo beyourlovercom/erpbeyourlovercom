@@ -56,8 +56,8 @@ return [
     ['key' => 'settings', 'label' => '设置', 'emoji' => '⚙️', 'path' => '/settings', 'route' => 'shell.settings', 'permission' => 'system.permissions.manage', 'placeholder' => true, 'children' => [
         ['key' => 'settings-statuses', 'label' => '状态设置', 'path' => '/settings/statuses', 'route' => 'settings.statuses', 'permission' => 'prototype.view', 'placeholder' => false],
         ['key' => 'settings-warehouses', 'label' => '仓库设置', 'path' => '/settings/warehouses', 'route' => 'settings.warehouses', 'permission' => 'prototype.view', 'placeholder' => false],
-        ['key' => 'settings-users', 'label' => '用户', 'path' => '/settings/users', 'route' => 'settings.users', 'permission' => 'prototype.view', 'placeholder' => false],
-        ['key' => 'settings-roles-permissions', 'label' => '角色与权限', 'path' => '/settings/roles-permissions', 'route' => 'settings.roles-permissions', 'permission' => 'prototype.view', 'placeholder' => false],
+        ['key' => 'settings-users', 'label' => '用户', 'path' => '/settings/users', 'route' => 'user.index', 'permission' => 'system.permissions.manage', 'placeholder' => false],
+        ['key' => 'settings-roles-permissions', 'label' => '角色与权限', 'path' => '/settings/roles-permissions', 'route' => 'settings.roles-permissions', 'permission' => 'system.permissions.manage', 'placeholder' => false],
         ['key' => 'settings-audit-logs', 'label' => '操作日志', 'path' => '/settings/audit-logs', 'route' => 'settings.audit-logs', 'permission' => 'prototype.view', 'placeholder' => false],
     ]],
 ];
