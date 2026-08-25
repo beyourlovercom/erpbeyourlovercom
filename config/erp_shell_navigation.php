@@ -20,10 +20,10 @@ return [
         ['key' => 'kol-orders-mine', 'label' => '我的订单', 'path' => '/kol/orders/mine', 'route' => 'kol.orders.mine', 'permission' => 'prototype.view', 'placeholder' => false],
         ['key' => 'kol-orders-team', 'label' => '团队订单', 'path' => '/kol/orders/team', 'route' => 'kol.orders.team', 'permission' => 'prototype.view', 'placeholder' => false],
     ]],
-    ['key' => 'inventory', 'label' => '库存', 'emoji' => '📦', 'path' => '/inventory', 'route' => 'shell.inventory', 'permission' => 'inventory.view', 'placeholder' => true, 'children' => [
+    ['key' => 'inventory', 'label' => '库存', 'emoji' => '📦', 'path' => '/inventory', 'route' => 'shell.inventory', 'permission' => 'inventory.view', 'placeholder' => false, 'children' => [
         ['key' => 'inventory-overview', 'label' => '库存总览', 'path' => '/inventory', 'route' => 'shell.inventory', 'permission' => 'inventory.view', 'placeholder' => false],
-        ['key' => 'inventory-files', 'label' => '库存文件', 'path' => '/inventory/files', 'route' => 'inventory.files', 'permission' => 'prototype.view', 'placeholder' => false],
-        ['key' => 'inventory-warehouses', 'label' => '仓库', 'path' => '/inventory/warehouses', 'route' => 'inventory.warehouses', 'permission' => 'prototype.view', 'placeholder' => false],
+        ['key' => 'inventory-list', 'label' => '仓库清单', 'path' => '/inventory/list', 'route' => 'inventory.list', 'permission' => 'inventory.view', 'placeholder' => false],
+        ['key' => 'inventory-products', 'label' => '产品库存', 'path' => '/inventory/products', 'route' => 'inventory.products', 'permission' => 'inventory.view', 'placeholder' => false],
     ]],
     ['key' => 'procurement', 'label' => '外采', 'emoji' => '🛒', 'path' => '/procurement', 'route' => 'shell.procurement', 'permission' => 'procurement.view', 'placeholder' => true, 'children' => [
         ['key' => 'procurement-overview', 'label' => '外采总览', 'path' => '/procurement', 'route' => 'shell.procurement', 'permission' => 'procurement.view', 'placeholder' => false],

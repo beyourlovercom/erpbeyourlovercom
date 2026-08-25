@@ -97,12 +97,12 @@ class AppShellNavigationTest extends TestCase
     public function test_only_exact_legacy_root_path_collisions_fall_back_for_prototype_users(): void
     {
         $prototypeUser = $this->userWith(['prototype.view'], 'prototype-operator');
-        foreach (['/inventory', '/procurement', '/guides'] as $path) {
+        foreach (['/procurement', '/guides'] as $path) {
             $this->actingAs($prototypeUser)->get($path)->assertOk()->assertViewIs('erp.shell');
         }
         // /products now requires products.view (not prototype.view); prototype-only users are forbidden
         $this->actingAs($prototypeUser)->get('/products')->assertForbidden();
-        foreach (['/logistics', '/customers', '/kol', '/accounting', '/settings', '/sync'] as $path) {
+        foreach (['/inventory', '/logistics', '/customers', '/kol', '/accounting', '/settings', '/sync'] as $path) {
             $this->actingAs($prototypeUser)->get($path)->assertForbidden();
         }
     }
@@ -122,6 +122,7 @@ class AppShellNavigationTest extends TestCase
                     '/logistics' => 'Logistics/Index',
                     '/sync' => 'Sync/Index',
                     '/products' => 'Products/Dashboard',
+                    '/inventory' => 'Inventory/Dashboard',
                     default => 'Shell/Placeholder',
                 }));
         }

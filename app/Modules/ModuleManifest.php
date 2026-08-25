@@ -6,6 +6,7 @@ use App\Modules\Audit\Providers\AuditServiceProvider;
 use App\Modules\Customers\Providers\CustomersServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
+use App\Modules\Inventory\Providers\InventoryServiceProvider;
 use App\Modules\Finance\Providers\FinanceServiceProvider;
 use App\Modules\Logistics\Providers\LogisticsServiceProvider;
 use App\Modules\Orders\Providers\OrdersServiceProvider;
@@ -37,6 +38,7 @@ final class ModuleManifest
             DashboardServiceProvider::class,
             CustomersServiceProvider::class,
             ProductsServiceProvider::class,
+            InventoryServiceProvider::class,
         ];
     }
 

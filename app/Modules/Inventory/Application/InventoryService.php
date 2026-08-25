@@ -1,0 +1,134 @@
+<?php
+
+namespace App\Modules\Inventory\Application;
+
+use App\Modules\Audit\Application\AuditActor;
+use App\Modules\Audit\Application\AuditSource;
+use App\Modules\Audit\Application\Contracts\AuditRecorder;
+use App\Modules\Inventory\Application\Contracts\InventoryRepository;
+use App\Modules\Products\Application\Contracts\ProductRepository;
+use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
+
+final class InventoryService
+{
+    public function __construct(
+        private readonly InventoryRepository $inventory,
+        private readonly ProductRepository $products,
+        private readonly AuditRecorder $audit,
+    ) {}
+
+    public function dashboard(): array { return $this->inventory->dashboard(); }
+    public function warehouses(): array { return $this->inventory->warehouseList(); }
+    public function productInventory(array $filters = []): mixed { return $this->inventory->productInventory($filters); }
+    public function searchProducts(string $query): array { return $this->products->searchSkus($query, 20); }
+
+    public function warehouse(string $slug): Model
+    {
+        $warehouse = $this->inventory->findWarehouseBySlug($slug);
+        abort_if($warehouse === null, 404);
+        return $this->inventory->warehouseDetail($warehouse);
+    }
+
+    public function createWarehouse(array $attributes, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($attributes, $actor): Model {
+            $warehouse = $this->inventory->createWarehouse($this->normalizeWarehouse($attributes));
+            $this->record($actor, 'warehouse.created', $warehouse, null, $this->warehouseAudit($warehouse), 'warehouse_created');
+            return $warehouse;
+        });
+    }
+
+    public function updateWarehouse(Model $warehouse, array $attributes, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($warehouse, $attributes, $actor): Model {
+            $before = $this->warehouseAudit($warehouse);
+            $updated = $this->inventory->updateWarehouse($warehouse, $this->normalizeWarehouse($attributes));
+            $this->record($actor, 'warehouse.updated', $updated, $before, $this->warehouseAudit($updated), 'warehouse_updated');
+            return $updated;
+        });
+    }
+
+    public function updateBilling(Model $warehouse, ?string $markdown, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($warehouse, $markdown, $actor): Model {
+            $before = ['billing_markdown' => $warehouse->billing_markdown];
+            $updated = $this->inventory->updateWarehouse($warehouse, ['billing_markdown' => $markdown]);
+            $this->record($actor, 'warehouse.billing_updated', $updated, $before, ['billing_markdown' => $updated->billing_markdown], 'warehouse_billing_markdown_updated');
+            return $updated;
+        });
+    }
+
+    public function updateRegions(Model $warehouse, array $countryCodes, ?Authenticatable $actor): Model
+    {
+        $codes = collect($countryCodes)->map(fn ($code) => strtoupper(trim((string) $code)))->filter()->unique()->values()->all();
+        return DB::transaction(function () use ($warehouse, $codes, $actor): Model {
+            $before = $warehouse->serviceRegions()->pluck('country_code')->sort()->values()->all();
+            $this->inventory->syncServiceRegions($warehouse, $codes);
+            $after = $warehouse->serviceRegions()->pluck('country_code')->sort()->values()->all();
+            $this->record($actor, 'warehouse.service_regions_updated', $warehouse, ['country_codes' => $before], ['country_codes' => $after], 'warehouse_service_regions_updated');
+            return $this->inventory->warehouseDetail($warehouse->fresh());
+        });
+    }
+
+    public function saveInventory(Model $warehouse, int $productId, array $attributes, ?Authenticatable $actor): Model
+    {
+        $product = $this->products->findById($productId);
+        abort_if($product === null, 422, '产品不存在');
+        return DB::transaction(function () use ($warehouse, $product, $attributes, $actor): Model {
+            $existing = $warehouse->inventories()->where('product_id', $product->getKey())->first();
+            $before = $existing ? $this->inventoryAudit($existing) : null;
+            $saved = $this->inventory->upsertInventory($warehouse, $product, $this->normalizeInventory($attributes));
+            $this->record($actor, 'inventory.stock_saved', $saved, $before, $this->inventoryAudit($saved), $existing ? 'inventory_updated' : 'inventory_created');
+            return $saved;
+        });
+    }
+
+    public function updateInventory(Model $warehouse, int $inventoryId, array $attributes, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($warehouse, $inventoryId, $attributes, $actor): Model {
+            $item = $this->inventory->findInventory($warehouse, $inventoryId);
+            $before = $this->inventoryAudit($item);
+            $updated = $this->inventory->updateInventory($item, $this->normalizeInventory($attributes));
+            $this->record($actor, 'inventory.stock_adjusted', $updated, $before, $this->inventoryAudit($updated), 'manual_inventory_adjustment');
+            return $updated;
+        });
+    }
+
+    private function normalizeWarehouse(array $attributes): array
+    {
+        foreach (['slug','code'] as $key) if (isset($attributes[$key])) $attributes[$key] = strtolower(trim((string) $attributes[$key]));
+        if (isset($attributes['country_code']) && $attributes['country_code'] !== '') $attributes['country_code'] = strtoupper(trim((string) $attributes['country_code']));
+        return $attributes;
+    }
+
+    private function normalizeInventory(array $attributes): array
+    {
+        $attributes['quantity_on_hand'] = max(0, (int) ($attributes['quantity_on_hand'] ?? 0));
+        $attributes['quantity_reserved'] = max(0, (int) ($attributes['quantity_reserved'] ?? 0));
+        $attributes['expected_restock_qty'] = max(0, (int) ($attributes['expected_restock_qty'] ?? 0));
+        return $attributes;
+    }
+
+    private function record(?Authenticatable $actor, string $action, Model $entity, ?array $before, ?array $after, string $reason): void
+    {
+        $this->audit->record(
+            $actor ? AuditActor::user($actor, AuditSource::InternalSystem) : AuditActor::system(AuditSource::InternalSystem),
+            $action, get_class($entity), $entity->getKey(), before: $before, after: $after, reason: $reason,
+        );
+    }
+
+    private function warehouseAudit(Model $w): array
+    {
+        return $w->only(['slug','code','name','country_code','address_line1','address_line2','city','state_region','postal_code','timezone','type','is_active','priority']);
+    }
+
+    private function inventoryAudit(Model $i): array
+    {
+        return [
+            ...$i->only(['warehouse_id','product_id','quantity_on_hand','quantity_reserved','inbound_at','location','standard_qoh','expected_restock_qty']),
+            'quantity_available' => $i->quantity_available,
+        ];
+    }
+}

@@ -7,6 +7,7 @@ use App\Modules\Customers\Providers\CustomersServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Finance\Providers\FinanceServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
+use App\Modules\Inventory\Providers\InventoryServiceProvider;
 use App\Modules\Logistics\Providers\LogisticsServiceProvider;
 use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
@@ -87,6 +88,17 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Identity/Infrastructure/Models/Role.php',
         'app/Modules/Identity/Infrastructure/Models/User.php',
         'app/Modules/Identity/Providers/IdentityServiceProvider.php',
+        'app/Modules/Inventory/Application/Contracts/InventoryRepository.php',
+        'app/Modules/Inventory/Application/InventoryService.php',
+        'app/Modules/Inventory/Experience/Controllers/InventoryController.php',
+        'app/Modules/Inventory/Experience/Controllers/WarehouseController.php',
+        'app/Modules/Inventory/Experience/Routes/web.php',
+        'app/Modules/Inventory/Infrastructure/EloquentInventoryRepository.php',
+        'app/Modules/Inventory/Infrastructure/Models/InventoryAdjustment.php',
+        'app/Modules/Inventory/Infrastructure/Models/Warehouse.php',
+        'app/Modules/Inventory/Infrastructure/Models/WarehouseInventory.php',
+        'app/Modules/Inventory/Infrastructure/Models/WarehouseServiceRegion.php',
+        'app/Modules/Inventory/Providers/InventoryServiceProvider.php',
         'app/Modules/Logistics/Application/ShipmentService.php',
         'app/Modules/Logistics/Experience/Controllers/LogisticsController.php',
         'app/Modules/Logistics/Experience/Routes/web.php',
@@ -195,6 +207,15 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Identity/Infrastructure',
         'app/Modules/Identity/Infrastructure/Models',
         'app/Modules/Identity/Providers',
+        'app/Modules/Inventory',
+        'app/Modules/Inventory/Application',
+        'app/Modules/Inventory/Application/Contracts',
+        'app/Modules/Inventory/Experience',
+        'app/Modules/Inventory/Experience/Controllers',
+        'app/Modules/Inventory/Experience/Routes',
+        'app/Modules/Inventory/Infrastructure',
+        'app/Modules/Inventory/Infrastructure/Models',
+        'app/Modules/Inventory/Providers',
         'app/Modules/Logistics',
         'app/Modules/Logistics/Application',
         'app/Modules/Logistics/Experience',
@@ -258,7 +279,9 @@ final class ModuleArchitectureTest extends TestCase
         'customers.companies.restore', 'customers.companies.show', 'customers.companies.store', 'customers.companies.update',
         'customers.orders', 'customers.orders.create',
         'customers.orders.mine', 'dashboard', 'guides.manuals', 'guides.videos',
-        'inventory.files', 'inventory.warehouses', 'kol.orders', 'kol.orders.create',
+        'inventory.add', 'inventory.list', 'inventory.product-search', 'inventory.products',
+        'inventory.stock.store', 'inventory.stock.update', 'inventory.store', 'inventory.warehouse.billing', 'inventory.warehouse.regions',
+        'inventory.warehouse.show', 'inventory.warehouse.update', 'inventory.warehouses', 'kol.orders', 'kol.orders.create',
         'kol.orders.mine', 'kol.orders.show', 'kol.orders.team', 'login', 'login.store',
         'logistics.awaiting-tracking', 'logistics.exceptions', 'logistics.in-transit',
         'logistics.pending', 'logistics.payload', 'logistics.reopen', 'logistics.ship', 'logout', 'password.confirm.store', 'password.confirmation',
@@ -266,7 +289,7 @@ final class ModuleArchitectureTest extends TestCase
         'products.destroy', 'products.edit', 'products.import', 'products.import.store',
         'products.list', 'products.sku-aliases', 'products.sku-search', 'products.skus',
         'products.store', 'products.update', 'root', 'settings.audit-logs',
-        'settings.roles-permissions', 'settings.roles-permissions.update', 'settings.statuses', 'settings.users',
+        'settings.roles-permissions', 'settings.roles-permissions.update', 'settings.statuses',
         'settings.warehouses', 'shell.accounting', 'shell.customers',
         'shell.guides', 'shell.inventory', 'shell.kol', 'shell.logistics', 'shell.procurement',
         'shell.settings', 'shell.sync', 'storage.local', 'storage.local.upload',
@@ -276,7 +299,7 @@ final class ModuleArchitectureTest extends TestCase
 
     private const PERMISSION_KEYS = [
         'accounting.view', 'analysis.view', 'architecture.foundation.view', 'audit.view', 'customers.operate', 'customers.view',
-        'dashboard.view', 'guides.view', 'inventory.view', 'kol.view', 'logistics.operate', 'logistics.view',
+        'dashboard.view', 'guides.view', 'inventory.operate', 'inventory.view', 'inventory.warehouses.manage', 'kol.view', 'logistics.operate', 'logistics.view',
         'orders.create', 'orders.edit', 'orders.view', 'procurement.view', 'products.operate', 'products.view', 'prototype.view', 'sync.operate', 'sync.view',
         'system.permissions.manage',
     ];
@@ -308,9 +331,11 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_05_000003_create_order_costs_table.php' => '107416001d2e658fad74870e656b2d23f45d21dbe2a892d512af1d043bd815cb',
         'database/migrations/2026_08_23_000000_create_companies_table.php' => '860faaca4a5c8f2654164798fc4d9717df2f291642f4c5754a1fda22ac652401',
         'database/migrations/2026_08_24_000000_add_order_kind_to_orders_table.php' => '7775e65ca4ec9e4d2de5fe6b603bf8118b35d2f999f95f8e85471ef280dd89c8',
+        'database/migrations/2026_08_24_000000_add_permission_mode_and_permission_user_pivot.php' => '8f84c0b97530d31395cfbc7968476b1734498019bf47830e7974ed7d59af3be6',
         'database/migrations/2026_08_24_000001_make_order_address_snapshot_fields_nullable.php' => '0c3df13a4def87cb761dbac6c2a15b58fdf3c1352431456f39992b85f9ceaaf9',
         'database/migrations/2026_08_24_100000_create_products_table.php' => 'a7ddaa6125c296d3b67fd85eb8c3728764630207a121d57046702defb3bda1c0',
-        'database/migrations/2026_08_24_000000_add_permission_mode_and_permission_user_pivot.php' => '8f84c0b97530d31395cfbc7968476b1734498019bf47830e7974ed7d59af3be6',
+        'database/migrations/2026_08_25_000100_create_inventory_foundation_tables.php' => '5c04ba76e1e90e51970b492aca4f386ed02270eb4f201493d1d90ccd74794e07',
+        'database/migrations/2026_08_25_000101_seed_initial_warehouses.php' => '47ac9451febaa5b34ddc0ab6e76e2a208264227551caf4818dd0624afc0f5fa9',
     ];
 
     private const FRONTEND_FILES = [
@@ -322,10 +347,10 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Components/AppShell/TopBar.vue' => '5f6dd6fb6a225f590cdcde940374e9a084e0b0f3a9169787be1afdafe18cbf6e',
         'resources/js/Components/AppShell/UserAccountMenu.test.ts' => 'cbad0690b0c251c28ce7ee9644eb2de5699fc80065f8bc10d4fe1125d65dd687',
         'resources/js/Components/AppShell/UserAccountMenu.vue' => '2ae335eacc6146873ffcf857d829a7c30d1136555e1339f500966c5dd7797367',
-        'resources/js/Components/Products/SkuCombobox.test.ts' => 'fe5a4a4faf285ed257496aab9f183541df6ef3fab1cd708e410e9feca278c6b1',
-        'resources/js/Components/Products/SkuCombobox.vue' => 'f2b5e07e5621b2c4e0184eaa308379d0185bad20efbd2de9bf0531fca7d9433e',
         'resources/js/Components/PermissionMatrix.test.ts' => '5050666c6cdb788a74033ca42d7b9e0a09003faf5478992ce54af022f2a76839',
         'resources/js/Components/PermissionMatrix.vue' => '5376899d0142e95e8af4ceb218ea552d5495b733059e24e6165f7bc74b166a5f',
+        'resources/js/Components/Products/SkuCombobox.test.ts' => 'fe5a4a4faf285ed257496aab9f183541df6ef3fab1cd708e410e9feca278c6b1',
+        'resources/js/Components/Products/SkuCombobox.vue' => 'f2b5e07e5621b2c4e0184eaa308379d0185bad20efbd2de9bf0531fca7d9433e',
         'resources/js/Components/UI/EmptyState.test.ts' => '4fda8290eb407fe9313f32d5a5ac0f802cbb668797af87b9cb3c7f856e528b18',
         'resources/js/Components/UI/EmptyState.vue' => 'a0cab2c71afa978cca886b9b6cb9ab0f0ff40d29962109f7da7c5e1aed2297ce',
         'resources/js/Components/UI/FormField.test.ts' => '9e604341a19c1618e5949b713c6137cbc27c50c64f0830890c2a50cc2e38df4c',
@@ -359,6 +384,13 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Identity/Users/Edit.vue' => '3d0774e7097e63648d01528f70b5243d960b7146a8ac0d6ae7708f6ad5011d3e',
         'resources/js/Pages/Identity/Users/Index.test.ts' => 'c2a508b3fb59d1f4725f86d658bfdcd162487477cae6c7f5e0db119b2f4f2cd0',
         'resources/js/Pages/Identity/Users/Index.vue' => '559f700abcd95b484fe834dbb0e5f871cc7301ff20d0e51f9c3c1179ea228e07',
+        'resources/js/Pages/Inventory/Dashboard.vue' => 'b5f14d5b4a55c50366a7d33c07c91473afaab1ba590346c4214f9715b218556a',
+        'resources/js/Pages/Inventory/InventoryFoundation.test.ts' => 'cba1e89b5168dd738eb84741268ff360d86e2e3fa592e5e87cfa3f4ed805456b',
+        'resources/js/Pages/Inventory/Products.vue' => 'ac82349fdc897f5000f2d8adaefab53daa8e13635490e6ae03ee210946f0efc7',
+        'resources/js/Pages/Inventory/WarehouseCreate.vue' => '4b7e712128869056190057b8a30b9c6c86e070d8933dfbeabc177a1bda4a007c',
+        'resources/js/Pages/Inventory/WarehouseList.vue' => '26b80c315d084d599fa39af9975e4bbf1b040837a3b3ec635b4de6e010389fb8',
+        'resources/js/Pages/Inventory/WarehouseShow.vue' => 'f31be9291a0d3e7fad8b562d087ba7e583f36d011f4f4aed0eedc282f3c7422a',
+        'resources/js/Pages/Inventory/components/InventorySkuCombobox.vue' => 'd2d7408ee79d6fe9b060c268cf076a33a6d30ce096cc1d56ab9d49767e1bd670',
         'resources/js/Pages/Logistics/Index.vue' => 'd5b7d79d693f899d93362e7b0c3902ec7597099f82a391bc5a5a5fdc27ee17c5',
         'resources/js/Pages/Orders/Create.vue' => '004db6e3def65f7ee2c6532cf3b418f347a9656a876eea247a8c430b3c09d8d1',
         'resources/js/Pages/Orders/Index.vue' => 'e1d4ec13d3f3732e317e9e3b27c84f763424257332cbde9dc6830fcfdbac7a66',
@@ -428,6 +460,8 @@ final class ModuleArchitectureTest extends TestCase
             'app/Modules/Sync/Application/SyncOutboxWriteException.php',
         'app/Modules/Customers/Application/CompanyService.php',
         'app/Modules/Finance/Application/OrderAnalysisService.php',
+        'app/Modules/Inventory/Application/Contracts/InventoryRepository.php',
+        'app/Modules/Inventory/Application/InventoryService.php',
         'app/Modules/Logistics/Application/ShipmentService.php',
         'app/Modules/Orders/Application/OrderKind.php',
         'app/Modules/Products/Application/Contracts/ProductRepository.php',
@@ -572,7 +606,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('e40b16abf77e0b650257ec982a07866b52f7311b83d89fd1bbe07897627d0035', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('5017365efbfdecf90e467ae67a8beb428a23ad872e00dd1518005d6155dd8961', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);
@@ -598,6 +632,7 @@ PHP;
             DashboardServiceProvider::class,
             CustomersServiceProvider::class,
             ProductsServiceProvider::class,
+            InventoryServiceProvider::class,
         ], ModuleManifest::providers());
         self::assertSame([AppServiceProvider::class, ModulesServiceProvider::class], require $this->path('bootstrap/providers.php'));
     }
