@@ -1,8 +1,8 @@
 ---
 type: current-context
 project: BYL ERP
-updated: 2026-08-23
-status: inquiry-m1-contract-accepted-next-company
+updated: 2026-08-25
+status: release-1-operations-inventory-foundation-planned
 ---
 
 # Current Context
@@ -33,7 +33,7 @@ BASELINE_MERGE_SHA: faa45f9620211f3c398dde7f30c1a886313ced14
 PR_83_ROADMAP_REVISION: MERGED
 PR_84_EXECUTION_ROLE_ALIGNMENT: MERGED
 PR_85_INQUIRY_M1_CONTRACT: MERGED / OWNER APPROVED
-CURRENT_MAIN_SHA: 1c4079204cc38f3523cbccdcd729d100362202fe
+CURRENT_MAIN_SHA: d4bd3a6ae9eba16e8b3e5e35a957fa4632c8669d
 ARCHITECTURE_FOUNDATION: COMPLETE / PASS
 GLOBAL_ARCHITECTURE_GATE: PASS
 LOCAL_RUNTIME: http://erp.b
@@ -62,32 +62,28 @@ Five legacy Human UAT findings were migrated. `MVP1-UAT-DEFECT-001` is now forma
 ## Current milestone
 
 ```text
-CURRENT_PROGRAM_MILESTONE: ERP-INQUIRY-M1
-CURRENT_GOVERNANCE_WORK_PACKAGE: ERP-GOV-INQUIRY-M1.0-ACCEPTANCE-SYNC-001
-CURRENT_ACTIVITY: RECORD OWNER ACCEPTANCE / SYNC CANONICAL STATUS / NO PRODUCT IMPLEMENTATION
-NEXT_PRODUCT_WORK_PACKAGE: ERP-INQUIRY-M1.1-COMPANY-001 / NOT YET ACTIVATED
+CURRENT_PROGRAM_MILESTONE: Release 1 Internal Operations / Tencent Docs Replacement
+ORDER_FULFILLMENT_STREAM: ACTIVE / PR #90 NOT MERGED
+PRODUCT_MASTER_STREAM: ACTIVE PARALLEL STREAM
+SHIPPING_CARRIER_STREAM: ACTIVE / US OWNER UAT REMEDIATION
+NEXT_FOUNDATION_DEPENDENCY: ERP-INVENTORY-FOUNDATION-M1-001
+INVENTORY_FOUNDATION: OWNER APPROVED PLAN / IMPLEMENTATION NOT STARTED
+ERP_INQUIRY_M1: PAUSED B2B TRACK / OWNER REACTIVATION REQUIRED
 ```
 
-ERP-INQUIRY-M1 sequence:
+Inventory Foundation planned sequence:
 
 ```text
-M1.0 Inquiry Architecture / Data / API Contract
-→ M1.1 Company
-→ M1.2 Contact
-→ M1.3 Case
-→ M1.4 Inbound Message
-→ M1.5 Inquiry Inbox
-→ M1.6 Email Intake
-→ M1.7 WhatsApp Intake
-→ M1.8 Yesterday / Waiting Dashboard
-→ M1.9 Local Milestone UAT
-→ Owner Milestone PASS
-→ Remote release of exact GitHub revision to https://erp.beyourlover.com
+Warehouse / Inventory schema
+→ /inventory dashboard/add/list
+→ /inventory/products cross-warehouse table
+→ six warehouse detail pages + Markdown billing tables
+→ Shipping warehouse candidate/recommendation integration
 ```
 
 ## Business objective
 
-Email and WhatsApp inquiries are captured automatically, deduplicated, attached to the correct Company / Contact / Case, preserved as original inbound-message evidence, and shown in ERP with accurate yesterday-new and waiting-to-handle counts.
+Replace Tencent Docs for daily order and fulfillment work. Release 1 must support efficient copy/paste workflows and real warehouse-aware shipping. Inventory is the canonical source for warehouse identity and SKU availability; Shipping consumes that truth instead of guessing. B2B Inquiry is a separate paused track.
 
 ## Environment gates
 
@@ -104,11 +100,11 @@ PRODUCTION/REMOTE DIRECT FIX BY CODEX: FORBIDDEN
 ## Immediate sequence
 
 ```text
-1. Record Owner acceptance of ERP-INQUIRY-M1.0 and synchronize canonical status/estimate sources.
-2. GPT Web prepares ERP-INQUIRY-M1.1-COMPANY-001 as the first bounded Claude implementation Work Package.
-3. Owner explicitly authorizes that implementation package before Claude writes product code or Migration files.
-4. US Claude implements the approved package and pushes the exact branch/PR to GitHub.
-5. China Codex performs the required exact-SHA verification tier on erp.b (daily smoke by default; full independent verification only for milestone/release/high-risk or explicit escalation) and returns evidence only.
-6. GPT Web diagnoses failures and issues bounded remediation instructions.
-7. Owner UAT and merge gates apply.
+1. Finish current Shipping UAT remediation except the warehouse-recommendation gap.
+2. Prepare ERP-INVENTORY-FOUNDATION-M1-001 dependency/menu/schema preflight on a dedicated branch/worktree.
+3. Implement Warehouse Master + SKU × Warehouse inventory truth.
+4. Implement inventory dashboard, warehouse list, product inventory table and six warehouse detail pages.
+5. Integrate Shipping warehouse candidates/recommendation with manual override, save and Audit.
+6. Finish Tencent Docs single/batch copy, batch paste and batch fill layer.
+7. Owner UAT gates Release 1.
 ```

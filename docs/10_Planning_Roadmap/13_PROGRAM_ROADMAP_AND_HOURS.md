@@ -2,7 +2,7 @@
 type: program-roadmap-hours
 project: BYL ERP
 version: 1.0
-updated: 2026-08-23
+updated: 2026-08-25
 ---
 
 # Program Roadmap and Hours
@@ -13,26 +13,22 @@ This document is the repository source of truth for the complete Program Roadmap
 
 ```text
 Architecture Migration / Global Architecture Gate [COMPLETE]
-→ MVP1 Existing Operations / Tencent Docs Replacement [IMPLEMENTATION COMPLETE; HUMAN UAT REMEDIATION OPEN]
-→ ERP-INQUIRY-M1 B2B Inquiry Foundation [CURRENT]
-→ ERP-INQUIRY-M1 Local Milestone UAT
-→ Milestone Remote Release / erp.beyourlover.com
+→ Release 1 Internal Operations / Tencent Docs Replacement [CURRENT]
+  → Order / Fulfillment
+  → Product Master / canonical SKU
+  → Shipping / Carrier
+  → ERP-INVENTORY-FOUNDATION-M1-001 Warehouse / Inventory Foundation
+  → Shipping ↔ Inventory warehouse selection
+  → Tencent Docs productivity layer
+  → Release 1 Owner UAT
 → MVP1.1 WooCommerce Inbound
 → MVP1.2 Single Tracking Outbound
 → MVP1.3 Sync Orchestration
-→ Product / Media
-→ WordPress Product and Image Sync
-→ Content / SEO
-→ Posts / Pages
-→ GA4 / GSC / Cloudflare
-→ Google Docs Publishing
-→ Full Order Workspace
-→ Logistics OS
-→ KOL OS and Social Providers
-→ Inventory and Procurement
-→ Accounting / ROI Expansion
-→ Shopify and Additional Integrations
-→ Production Hardening
+→ Release 2 Growth Operations
+→ Release 3 Full Core ERP
+→ Release 4 Platform Expansion / Production Hardening
+
+PAUSED: ERP-INQUIRY-M1 B2B Inquiry M1.2–M1.9 / OWNER REACTIVATION REQUIRED
 ```
 
 The Program Roadmap is the top-level delivery sequence. It must not be replaced by the current Architecture track or a single Work Package map.
@@ -80,18 +76,15 @@ EVIDENCE_LIMITS: GitHub self-approval is unavailable for the repository owner ac
 ## Current Program Position and Estimate
 
 ```text
-001F_B2_TO_B5_KNOWN_ESTIMATE: 4–8 Codex / 20–40h
-CURRENT_B2_TO_B5_PLANNING_VALUE: 30h
-CURRENT_PACKAGE: ERP-GOV-INQUIRY-M1.0-ACCEPTANCE-SYNC-001 / governance-only post-merge sync
-B5_CLOSURE_PR: #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be
-E_CURRENT_DEPENDENCY: CLOSED through PR #47.
-001F_F_ESTIMATE: 5–9h; planning value 7h; completed and closed
+CURRENT_PROGRAM_MILESTONE: Release 1 Internal Operations / Tencent Docs Replacement
+CURRENT_ACTIVE_STREAMS: Order/Fulfillment; Product Master; Shipping/Carrier; Accounting contract work
+NEXT_FOUNDATION_DEPENDENCY: ERP-INVENTORY-FOUNDATION-M1-001
+INVENTORY_FOUNDATION_STATUS: OWNER APPROVED PLAN / IMPLEMENTATION NOT STARTED
+INVENTORY_FOUNDATION_IMPLEMENTATION_ESTIMATE: UNKNOWN WITH EVIDENCE / requires dependency + schema preflight
+ERP_INQUIRY_M1_STATUS: PAUSED B2B TRACK / OWNER REACTIVATION REQUIRED
 TOTAL_ARCHITECTURE_MIGRATION_REMAINING: 0h / complete
-ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
-CURRENT_GOVERNANCE_PACKAGE_ESTIMATE: 1–2h / planning value 1.5h / GPT_WEB governance-only
-ERP_INQUIRY_M1_ESTIMATE: 86–150h / planning value 116h / M1.1–M1.9 implementation / Owner-approved M1.0 contract
-ERP_INQUIRY_M1_1_COMPANY_ESTIMATE: 6–10h / planning value 8h / next bounded implementation package
 MVP1_HUMAN_UAT_FINDINGS_OPEN: 4
+PRODUCTION_DEPLOYMENT_STATUS: NO
 ```
 
 Historical estimate: `001F_B_TO_F_ESTIMATE: SUPERSEDED / NOT CURRENT` and `PLANNING_VALUE: 18h` are retained only as historical evidence.
@@ -114,6 +107,7 @@ Historical estimate: `001F_B_TO_F_ESTIMATE: SUPERSEDED / NOT CURRENT` and `PLANN
 | `MVP1_REMAINING` | UNKNOWN WITH EVIDENCE | unknown remaining total | Accepted actual-hours ledger and proven architecture/MVP1 overlap map are incomplete |
 | `ERP_INQUIRY_M1_ESTIMATE` | 86–150h; planning value 116h | milestone implementation estimate | Owner-approved M1.0 contract; M1.1–M1.9 non-overlapping child ranges |
 | `ERP_INQUIRY_M1_1_COMPANY_ESTIMATE` | 6–10h; planning value 8h | next bounded child estimate | M1.1 Company only; implementation not yet authorized |
+| `ERP_INVENTORY_FOUNDATION_M1_001` | UNKNOWN WITH EVIDENCE | planned foundation estimate | Scope is Owner-approved; implementation estimate requires Product/Shipping dependency and schema preflight |
 | `POST_MVP_KNOWN_INCREMENT` | approximately 68–120h beyond MVP1 | incremental estimate | WooCommerce inbound plus single outbound |
 | `PROGRAM_REMAINING` | UNKNOWN WITH EVIDENCE | unknown remaining total | Long-term ranges are cumulative; actuals and overlap mapping are incomplete |
 | `COMPLETED_ACTUAL_EFFECTIVE_HOURS` | UNKNOWN WITH EVIDENCE | unknown actual effort | Accepted Work Logs do not yet provide a complete project-wide ledger; chat memory is not evidence |

@@ -216,6 +216,31 @@ Featured image:
 - controlled local mirror;
 - sync state.
 
+## 10.1 Inventory Foundation V1
+
+Inventory is the canonical Warehouse / SKU availability truth consumed by Shipping.
+
+Required surfaces:
+
+- `/inventory` dashboard;
+- `/inventory/add` warehouse creation;
+- `/inventory/list` warehouse list and per-warehouse product totals;
+- `/inventory/products` cross-warehouse SKU inventory table;
+- stable detail routes for US-LA, US-NY, Germany, Canada, China Factory and 007 Local warehouse.
+
+Required concepts:
+
+- warehouse identity, address, status and priority;
+- SKU × warehouse on-hand/reserved/available quantities;
+- inbound time, location and automatically calculated stay time;
+- expected restock quantity;
+- editable/audited warehouse billing Markdown;
+- Shipping warehouse candidate/recommendation based on destination, SKU quantity, available inventory, service region and priority;
+- explicit no-available-warehouse state;
+- no hard-coded or guessed warehouse truth.
+
+Detailed plan: `docs/10_Planning_Roadmap/16_ERP_INVENTORY_FOUNDATION_M1_001.md`.
+
 ## 11. SEO OS
 
 - content inventory;

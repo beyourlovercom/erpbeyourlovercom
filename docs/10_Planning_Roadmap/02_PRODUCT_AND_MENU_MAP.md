@@ -37,6 +37,25 @@ Webhook
 同步设置
 ```
 
+## Inventory / Warehouse
+
+Planned Release 1 foundation pages:
+
+```text
+/inventory           库存概览
+/inventory/add       增加仓库
+/inventory/list      仓库清单
+/inventory/products  产品 × 仓库库存总表
+/inventory/us-la     美东洛杉矶仓
+/inventory/us-ny     美西纽约仓
+/inventory/de        德国仓
+/inventory/ca        加拿大仓库
+/inventory/factory   中国工厂
+/inventory/007       007本地仓库
+```
+
+This is a product/page map only. Any governed level-1/level-2 menu change still follows `menu/APPROVED_MENU.json` synchronization rules.
+
 ## Finance / Accounting
 
 ```text

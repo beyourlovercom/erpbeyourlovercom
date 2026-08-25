@@ -264,11 +264,27 @@ Work Log: docs/60_Codex_Operations/logs/2026-08-23_ERP-GOV-INQUIRY-M1.0-ACCEPTAN
 
 ERP-INQUIRY-M1
 B2B Inquiry Foundation
-Status: CURRENT MILESTONE / M1.0 CONTRACT FROZEN / IMPLEMENTATION NOT STARTED
-Children: M1.0 COMPLETE; M1.1 Company NEXT / NOT ACTIVATED; M1.2 Contact WAITING; M1.3 Case WAITING; M1.4 Inbound Message WAITING; M1.5 Inquiry Inbox WAITING; M1.6 Email Intake WAITING; M1.7 WhatsApp Intake WAITING; M1.8 Yesterday/Waiting Dashboard WAITING; M1.9 Local Milestone UAT WAITING
+Status: PAUSED / M1.0 + M1.1 RETAINED / OWNER REACTIVATION REQUIRED
+Children: M1.0 COMPLETE; M1.1 Company COMPLETE; M1.2 Contact PAUSED; M1.3 Case PAUSED; M1.4 Inbound Message PAUSED; M1.5 Inquiry Inbox PAUSED; M1.6 Email Intake PAUSED; M1.7 WhatsApp Intake PAUSED; M1.8 Yesterday/Waiting Dashboard PAUSED; M1.9 Local Milestone UAT PAUSED
 ```
 
-## Post-Inquiry planned milestones
+ERP-GOV-INVENTORY-FOUNDATION-PLAN-001
+Release 1 mainline + Inventory Foundation planning synchronization
+Status: GOVERNANCE/DESIGN ONLY / IMPLEMENTATION NOT AUTHORIZED
+Work Package: docs/60_Codex_Operations/work-packages/ERP-GOV-INVENTORY-FOUNDATION-PLAN-001.md
+Branch: docs/erp-inventory-foundation-plan-001
+Baseline: main@d4bd3a6ae9eba16e8b3e5e35a957fa4632c8669d
+
+ERP-INVENTORY-FOUNDATION-M1-001
+Warehouse / Inventory Foundation for Release 1 Shipping
+Status: PLANNED / OWNER APPROVED SCOPE / IMPLEMENTATION NOT STARTED
+Planning authority: docs/10_Planning_Roadmap/16_ERP_INVENTORY_FOUNDATION_M1_001.md
+Upstream: canonical Order truth; canonical Product Master SKU truth
+Downstream: ERP-SHIPPING-CARRIER-M1-001 warehouse-selection closure
+Implementation estimate: UNKNOWN WITH EVIDENCE / dependency + schema preflight required
+Menu baseline mutation in planning sync: NO
+
+## Post-Release-1 planned milestones
 
 ```text
 MVP1.1-WOOCOMMERCE-INBOUND-001

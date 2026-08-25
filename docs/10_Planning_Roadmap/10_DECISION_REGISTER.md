@@ -212,3 +212,23 @@ Owner explicitly approved all six M1.0 decision gates on 2026-08-23: Case number
 PR #85 merged the design contract to `main` as `02ce87dba5ede14d791b646b7cbe976a12064cae`. The contract is now the frozen design authority for ERP-INQUIRY-M1 unless a later Owner-approved design revision supersedes it.
 
 This acceptance does not itself authorize product implementation, Migration execution, Email connection, WhatsApp registration, remote deployment or Production access. The next bounded product package is `ERP-INQUIRY-M1.1-COMPANY-001`, and it requires separate explicit Owner implementation authorization before Claude writes product code or Migration files.
+
+## D-037 Restore Release 1 operations as the current business mainline and pause B2B Inquiry
+
+Owner direction on 2026-08-25 supersedes D-034/D-036 only for current prioritization, not for historical validity of already merged Inquiry work.
+
+Current business sequence is Release 1 internal operations / Tencent Docs replacement first: Order/Fulfillment → Product Master → Shipping/Carrier → Inventory/Warehouse truth → Shipping/Inventory integration → copy/paste/batch productivity → Release 1 Owner UAT.
+
+`ERP-INQUIRY-M1` is a separate B2B track. M1.0 and M1.1 remain retained as completed historical/product work; M1.2–M1.9 are PAUSED and must not auto-reactivate. Explicit Owner reactivation is required.
+
+This decision authorizes Roadmap/governance synchronization only. It does not authorize Production deployment or unrelated merges.
+
+## D-038 Prepare ERP-INVENTORY-FOUNDATION-M1-001 as the Warehouse / Inventory truth required by Shipping
+
+Owner approved the Inventory Foundation development plan on 2026-08-25. The plan establishes canonical Warehouse Master and SKU × Warehouse inventory truth, the inventory dashboard/list/products/detail surfaces, warehouse addresses, stay-time/restock views, editable Markdown billing tables and the downstream Shipping warehouse candidate/recommendation contract.
+
+Shipping must consume Inventory truth and must not hard-code or guess a warehouse. Warehouse recommendation uses order destination, required SKU quantities, available stock, service-region eligibility and warehouse priority; no eligible warehouse produces an explicit `无可用仓库` state.
+
+Initial detail URLs are `/inventory/us-la`, `/inventory/us-ny`, `/inventory/de`, `/inventory/ca`, `/inventory/factory` and `/inventory/007`. Slugs are technical identifiers independent of future display-name changes.
+
+Implementation is NOT started by this decision. Product Master / SKU dependency, menu impact, permission names and any shared Shipment schema change must pass preflight before implementation. Detailed authority: `docs/10_Planning_Roadmap/16_ERP_INVENTORY_FOUNDATION_M1_001.md`.

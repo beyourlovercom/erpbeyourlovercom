@@ -510,3 +510,19 @@ Owner approved all six ERP-INQUIRY-M1.0 gates. PR #85 merged to `main` as `02ce8
 Canonical sources are synchronized from `OWNER REVIEW REQUIRED / estimate unknown` to `OWNER APPROVED / FROZEN`, with ERP-INQUIRY-M1 implementation estimate `86–150h`, planning value `116h`, and M1.1 Company `6–10h`, planning value `8h`.
 
 No product code, Migration, database data, dependencies, Email/WhatsApp connection or remote environment is changed. The next product Work Package is M1.1 Company and remains implementation-unauthorized until separate Owner approval.
+
+## 2026-08-25 — Release 1 mainline restored / Inventory Foundation planned
+
+```text
+Owner decision: Keep current ERP mainline focused on replacing Tencent Docs for order → fulfillment → shipping; pause ERP-INQUIRY-M1 as a separate B2B roadmap; record ERP-INVENTORY-FOUNDATION-M1-001 as the warehouse/inventory foundation required by Shipping.
+Previous state: Canonical Roadmap still marked ERP-INQUIRY-M1 as CURRENT and Inventory as a later post-MVP module.
+New state: Release 1 Internal Operations is CURRENT; ERP-INQUIRY-M1 M1.2–M1.9 are PAUSED / OWNER REACTIVATION REQUIRED; Inventory Foundation moves forward as a Release 1 dependency before Shipping warehouse-selection closure.
+Inventory scope: /inventory dashboard; /inventory/add; /inventory/list; /inventory/products; six stable warehouse detail URLs; Warehouse Master; SKU × Warehouse quantities; inbound/stay time; restock quantity; editable Markdown billing table; Shipping candidate/recommendation integration.
+Data rule: Warehouse / Inventory is canonical truth; Shipping must not hard-code warehouse selection.
+Dependency rule: Product Master canonical SKU and any shared menu/permission/Shipment changes must be resolved in preflight; no competing SKU truth.
+Menu impact in this docs-only change: NO runtime/menu-baseline mutation. Future governed menu changes require synchronized baseline/runtime/tests.
+Implementation: NOT STARTED by this planning sync.
+Deployment: NO.
+Decision: D-037 and D-038.
+Documents updated: AI/CURRENT_CONTEXT.md; 01_MASTER_REQUIREMENTS.md; 02_PRODUCT_AND_MENU_MAP.md; 04_LIVING_ROADMAP.md; 10_DECISION_REGISTER.md; 11_CHANGE_LOG.md; 12_WORK_PACKAGE_INDEX.md; 13_PROGRAM_ROADMAP_AND_HOURS.md; new 16_ERP_INVENTORY_FOUNDATION_M1_001.md; new docs/60_Codex_Operations/work-packages/ERP-GOV-INVENTORY-FOUNDATION-PLAN-001.md.
+```
