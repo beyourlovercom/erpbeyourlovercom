@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 
 type SkuOption = { id: number; sku: string; name: string }
 
@@ -11,6 +11,14 @@ const options = ref<SkuOption[]>([])
 const open = ref(false)
 const loading = ref(false)
 let debounceTimer: ReturnType<typeof setTimeout> | undefined
+let blurTimer: ReturnType<typeof setTimeout> | undefined
+let mounted = true
+
+onUnmounted(() => {
+  mounted = false
+  clearTimeout(debounceTimer)
+  clearTimeout(blurTimer)
+})
 
 watch(() => props.modelValue, (v) => { inputValue.value = v })
 
@@ -19,10 +27,11 @@ const fetchOptions = async (q: string) => {
   loading.value = true
   try {
     const res = await fetch(`/products/sku-search?q=${encodeURIComponent(q)}`, { headers: { Accept: 'application/json' } })
+    if (!mounted) return
     options.value = await res.json()
     open.value = options.value.length > 0
   } finally {
-    loading.value = false
+    if (mounted) loading.value = false
   }
 }
 
@@ -43,7 +52,7 @@ const select = (opt: SkuOption) => {
   options.value = []
 }
 
-const onBlur = () => { setTimeout(() => { open.value = false }, 150) }
+const onBlur = () => { blurTimer = setTimeout(() => { open.value = false }, 150) }
 </script>
 
 <template>

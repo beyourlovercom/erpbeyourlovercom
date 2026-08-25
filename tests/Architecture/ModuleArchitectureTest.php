@@ -253,7 +253,7 @@ final class ModuleArchitectureTest extends TestCase
         'kol.orders.mine', 'kol.orders.show', 'kol.orders.team', 'login', 'login.store',
         'logistics.awaiting-tracking', 'logistics.exceptions', 'logistics.in-transit',
         'logistics.pending', 'logistics.payload', 'logistics.reopen', 'logistics.ship', 'logout', 'password.confirm.store', 'password.confirmation',
-        'procurement.files', 'procurement.records', 'products.dashboard', 'products.list', 'products.sku-aliases', 'products.sku-search', 'products.skus',
+        'procurement.files', 'procurement.records', 'products.create', 'products.dashboard', 'products.destroy', 'products.edit', 'products.import', 'products.import.store', 'products.list', 'products.sku-aliases', 'products.sku-search', 'products.skus', 'products.store', 'products.update',
         'root', 'settings.audit-logs', 'settings.roles-permissions', 'settings.statuses',
         'settings.users', 'settings.warehouses', 'shell.accounting', 'shell.customers',
         'shell.guides', 'shell.inventory', 'shell.kol', 'shell.logistics', 'shell.procurement',
@@ -264,7 +264,7 @@ final class ModuleArchitectureTest extends TestCase
     private const PERMISSION_KEYS = [
         'accounting.view', 'analysis.view', 'architecture.foundation.view', 'audit.view', 'customers.operate', 'customers.view',
         'dashboard.view', 'guides.view', 'inventory.view', 'kol.view', 'logistics.operate', 'logistics.view',
-        'orders.create', 'orders.edit', 'orders.view', 'procurement.view', 'products.view', 'prototype.view', 'sync.operate', 'sync.view',
+        'orders.create', 'orders.edit', 'orders.view', 'procurement.view', 'products.operate', 'products.view', 'prototype.view', 'sync.operate', 'sync.view',
         'system.permissions.manage',
     ];
 
@@ -296,7 +296,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_23_000000_create_companies_table.php' => '860faaca4a5c8f2654164798fc4d9717df2f291642f4c5754a1fda22ac652401',
         'database/migrations/2026_08_24_000000_add_order_kind_to_orders_table.php' => '7775e65ca4ec9e4d2de5fe6b603bf8118b35d2f999f95f8e85471ef280dd89c8',
         'database/migrations/2026_08_24_000001_make_order_address_snapshot_fields_nullable.php' => '0c3df13a4def87cb761dbac6c2a15b58fdf3c1352431456f39992b85f9ceaaf9',
-        'database/migrations/2026_08_24_100000_create_products_table.php' => 'ad91e964f77ea9b8c75c4b1ecf943cfa0bc5613949628350f99c8f79b62f7a24',
+        'database/migrations/2026_08_24_100000_create_products_table.php' => 'a7ddaa6125c296d3b67fd85eb8c3728764630207a121d57046702defb3bda1c0',
     ];
 
     private const FRONTEND_FILES = [
@@ -308,8 +308,8 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Components/AppShell/TopBar.vue' => '5f6dd6fb6a225f590cdcde940374e9a084e0b0f3a9169787be1afdafe18cbf6e',
         'resources/js/Components/AppShell/UserAccountMenu.test.ts' => 'cbad0690b0c251c28ce7ee9644eb2de5699fc80065f8bc10d4fe1125d65dd687',
         'resources/js/Components/AppShell/UserAccountMenu.vue' => '2ae335eacc6146873ffcf857d829a7c30d1136555e1339f500966c5dd7797367',
-        'resources/js/Components/Products/SkuCombobox.test.ts' => '235b0797cbcfc0abbca25a456e86f3780af7d1eddb270f96d6fee67214a637cd',
-        'resources/js/Components/Products/SkuCombobox.vue' => '5c4a65120745e13df41d19abd145892969510729355caf041c2eb7dc40169465',
+        'resources/js/Components/Products/SkuCombobox.test.ts' => 'fe5a4a4faf285ed257496aab9f183541df6ef3fab1cd708e410e9feca278c6b1',
+        'resources/js/Components/Products/SkuCombobox.vue' => 'f2b5e07e5621b2c4e0184eaa308379d0185bad20efbd2de9bf0531fca7d9433e',
         'resources/js/Components/UI/EmptyState.test.ts' => '4fda8290eb407fe9313f32d5a5ac0f802cbb668797af87b9cb3c7f856e528b18',
         'resources/js/Components/UI/EmptyState.vue' => 'a0cab2c71afa978cca886b9b6cb9ab0f0ff40d29962109f7da7c5e1aed2297ce',
         'resources/js/Components/UI/FormField.test.ts' => '9e604341a19c1618e5949b713c6137cbc27c50c64f0830890c2a50cc2e38df4c',
@@ -339,10 +339,16 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Orders/Create.vue' => '004db6e3def65f7ee2c6532cf3b418f347a9656a876eea247a8c430b3c09d8d1',
         'resources/js/Pages/Orders/Index.vue' => 'e1d4ec13d3f3732e317e9e3b27c84f763424257332cbde9dc6830fcfdbac7a66',
         'resources/js/Pages/Orders/Show.vue' => '955dc8b7ec51f97183ab745ab6d737e629afcab9124e184a87dab5c98700813e',
+        'resources/js/Pages/Products/Create.test.ts' => 'ccd52ae0ef78914c8c422a39f352da245865f6be8ad6552e6f585cd4e69fb8ef',
+        'resources/js/Pages/Products/Create.vue' => '2a9bc2d42aa6c35f32a5443975e2ebf0406652d03fa6af9f334d76c95f3e947c',
         'resources/js/Pages/Products/Dashboard.test.ts' => '94c55c75db32ab0ef154fda039b3735946898912939a8022ee1a4a3a59c97997',
         'resources/js/Pages/Products/Dashboard.vue' => 'ef523319db49a1d4bd970be5e7d700d7d5d1ed418f8e36c1e93e2a3477f309b9',
-        'resources/js/Pages/Products/Index.test.ts' => '8a376e38074cf24fa800f0e1c998fa097795c12284129b43b6819dba77fa1baa',
-        'resources/js/Pages/Products/Index.vue' => '52d1ba06e81a162971177ccac3418792e438d858716b827819e6723190f8be58',
+        'resources/js/Pages/Products/Edit.test.ts' => '4caf2df3743577fbff4df10fbebb675d345bd76f18d0122465ee2c0d350d6d57',
+        'resources/js/Pages/Products/Edit.vue' => '380e9eb936ff5255329ef748d5f73b380fdbfb6cd5348f973745d05939ce2156',
+        'resources/js/Pages/Products/Import.test.ts' => 'a9e749926038276a62094e946b44119353fcf5005b087956881b7c33faee133c',
+        'resources/js/Pages/Products/Import.vue' => '3abe0367cae0aaffd141462b8c3d11ea06d80b6f093dbc707802d5e141fd3a13',
+        'resources/js/Pages/Products/Index.test.ts' => '0dea6f018291aa009911da0cab40e199665955719118ad618dfcf5e2b630fdd6',
+        'resources/js/Pages/Products/Index.vue' => 'd78d462ae0199d1ffd79e892f131fc215946859f8e9d8b22d4d31c6186640bc7',
         'resources/js/Pages/Shell/Placeholder.test.ts' => 'd0623492800b81b76650531eec2b979747d98daf34dcd4320ba00438529bb781',
         'resources/js/Pages/Shell/Placeholder.vue' => 'e18f588432b7d29a025f7618f977bdb7457536e8ae8028c2c343ce5c7b95472f',
         'resources/js/Pages/Sync/Index.vue' => '127b59b51cfef855410b60002fe82737e349dbd51f4b40e753fc4f7ba92e06c8',

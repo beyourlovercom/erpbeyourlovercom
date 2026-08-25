@@ -24,6 +24,11 @@ final class EloquentProductRepository implements ProductRepository
         $product->fill($attributes)->save();
     }
 
+    public function delete(Model $product): void
+    {
+        $product->delete();
+    }
+
     public function findById(int $id): ?Model
     {
         return Product::find($id);

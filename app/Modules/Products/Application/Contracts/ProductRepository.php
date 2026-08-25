@@ -13,6 +13,8 @@ interface ProductRepository
 
     public function update(Model $product, array $attributes): void;
 
+    public function delete(Model $product): void;
+
     public function findById(int $id): ?Model;
 
     public function findBySku(string $sku): ?Model;
