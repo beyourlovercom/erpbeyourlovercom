@@ -1,6 +1,7 @@
 # Product Edit V2 UI Specification
 
 **Status: OWNER_APPROVED / PRODUCT FORM BASELINE / FROZEN V1**
+**Implementation gate: `PRODUCT_EDIT_V2 = UAT_READY_FROZEN`**
 **Date: 2026-08-25**
 **Applies to:** `/products/create`, `/products/{id}/edit`
 **Parent rule:** `18_BYL_ERP_FORM_DESIGN_STANDARD_V1.md`
