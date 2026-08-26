@@ -3,7 +3,7 @@ type: work-package
 project: BYL ERP
 work_package_id: ERP-ORDER-EDIT-V2-001
 title: Order Create/Edit V2
-status: UAT_READY_FROZEN / US FOCUSED VERIFICATION PASS / LOCAL BROWSER SMOKE PASS
+status: OWNER UAT REMEDIATION / VI + VIEW-EDIT MODE
 execution_provider: CLAUDE_CODE
 design_authority: GPT_WEB + OWNER
 test_provider: CODEX_CLI
@@ -22,9 +22,9 @@ Implement the Owner-authorized Order Create/Edit V2 UI described in `docs/10_Pla
 ## Parallel/dependency declaration
 
 BASELINE: `7bbb7f934f973f7079cecded67762888878601e9` from Product Master committed branch state.
-DEPENDENCIES: Product Master committed functionality / PR #93 lineage only; Product Edit V2 uncommitted WIP is explicitly excluded.
+DEPENDENCIES: Product Master / Product Edit V2 base branch `feature/erp-product-master-m1-001`, including committed Product V2 checkpoint `2a5d876c33836f661e2ab44425b148a22e46aa6b`; Order remediation may reuse its frozen `erp-*` form visual primitives but must not mutate Product V2 behavior.
 DEPENDENCY_TYPE: STACKED_PR.
-DEPENDENCY_STATUS: OWNER AUTHORIZED by continuation after the baseline/worktree was explicitly declared in chat.
+DEPENDENCY_STATUS: OWNER AUTHORIZED; Product V2 visual baseline is now the shared VI dependency for Order V2 remediation.
 PARALLEL_SAFE: YES.
 FOUNDATION_CHANGE_REQUIRED: NO.
 ## Scope

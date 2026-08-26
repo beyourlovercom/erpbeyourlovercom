@@ -1,7 +1,7 @@
 # Order Create/Edit V2 UI Specification
 
-**Status: OWNER_AUTHORIZED / UAT_READY_FROZEN**
-**Implementation gate: `ORDER_EDIT_V2 = UAT_READY_FROZEN`**
+**Status: OWNER UAT REMEDIATION / VI + VIEW-EDIT MODE**
+**Previous gate: `ORDER_EDIT_V2 = UAT_READY_FROZEN` — reopened by Owner UAT finding on 2026-08-26**
 **Date: 2026-08-25**
 **Applies to:** `/customers/orders/create`, `/kol/orders/create`, `/customers/orders/{id}`, `/kol/orders/{id}`
 **Parent rules:** `18_BYL_ERP_FORM_DESIGN_STANDARD_V1.md`, `16_BYL_ERP_CANONICAL_ORDER_FINANCE_KOL_DATA_CONTRACT_V1.md`
@@ -60,9 +60,20 @@ Business cards:
 5. `内部备注` — editable order note.
 
 Action bar:
-- `返回列表`/cancel secondary.
-- `保存订单` is the only primary action.
+- Detail opens in read-only View Mode by default.
+- View Mode shows an `编辑订单` secondary action in the page header/identity area and does not present editable controls as active inputs.
+- `编辑订单` switches the same canonical Order surface into Edit Mode; no separate Order copy/model is created.
+- Edit Mode shows `取消编辑` secondary plus `保存订单` as the only primary action.
+- Cancel restores the current persisted Order projection without saving local edits.
 - No delete action is introduced because the current Order contract does not authorize Order deletion.
+
+### Owner UAT remediation — 2026-08-26
+
+- Order Create and Order Detail/Edit must use the same frozen ERP V2 form visual system as Product Create/Edit: `erp-form-page`, `erp-form-content`, `erp-form-card`, `erp-form-grid`, `erp-form-field`, `erp-form-label`, `erp-input`/`erp-readonly-input`, `erp-textarea`, `erp-btn` and the same focus/error/read-only treatment.
+- The previous `mvp-input` usage is invalid on these V2 surfaces because the controls are not inside the legacy `.mvp-form` selector scope; visible field boxes must not depend on legacy selector inheritance.
+- Order-specific layout classes may remain only where Product has no reusable primitive (for example item-row or fulfillment layout); they must not redefine a competing form visual language.
+- Historical and existing Orders are correctable: default View Mode is read-only, and authorized users can explicitly enter Edit Mode to correct editable Order fields.
+
 ## 5. Data and interaction invariants
 
 - `orders.id` remains canonical Order truth.
