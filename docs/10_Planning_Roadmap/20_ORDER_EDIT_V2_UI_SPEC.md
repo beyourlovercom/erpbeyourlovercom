@@ -1,7 +1,7 @@
 # Order Create/Edit V2 UI Specification
 
-**Status: OWNER UAT REMEDIATION / VI + VIEW-EDIT MODE**
-**Previous gate: `ORDER_EDIT_V2 = UAT_READY_FROZEN` — reopened by Owner UAT finding on 2026-08-26**
+**Status: OWNER UAT PASS / UAT_READY_FROZEN**
+**Final gate: `ORDER_EDIT_V2 = UAT_READY_FROZEN` — Owner UAT PASS on 2026-08-26**
 **Date: 2026-08-25**
 **Applies to:** `/customers/orders/create`, `/kol/orders/create`, `/customers/orders/{id}`, `/kol/orders/{id}`
 **Parent rules:** `18_BYL_ERP_FORM_DESIGN_STANDARD_V1.md`, `16_BYL_ERP_CANONICAL_ORDER_FINANCE_KOL_DATA_CONTRACT_V1.md`
@@ -109,3 +109,12 @@ Focused backend/E2E must verify:
 - existing Logistics/Shipment/Sync regression remains green.
 
 After focused verification passes, this Work Package may be added to the same local Owner UAT session as Product Edit V2. It must remain unmerged and undeployed until Owner UAT explicitly passes.
+
+## 8. Owner UAT closure — 2026-08-26
+
+- Owner confirmed the remediated interaction is correct.
+- Product-aligned ERP V2 VI on Order Create/Edit: PASS.
+- Historical Order default View Mode: PASS.
+- Explicit `编辑订单` → Edit Mode: PASS.
+- `取消编辑` reset and `保存订单` flow: PASS.
+- `ORDER_EDIT_V2 = UAT_READY_FROZEN`.

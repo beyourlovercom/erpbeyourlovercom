@@ -3,7 +3,7 @@ type: work-package
 project: BYL ERP
 work_package_id: ERP-ORDER-EDIT-V2-001
 title: Order Create/Edit V2
-status: OWNER UAT REMEDIATION / VI + VIEW-EDIT MODE
+status: OWNER UAT PASS / UAT_READY_FROZEN
 execution_provider: CLAUDE_CODE
 design_authority: GPT_WEB + OWNER
 test_provider: CODEX_CLI
@@ -127,3 +127,7 @@ MIGRATION_FILE_AUTHORING: EXCLUDED
 MIGRATION_EXECUTION: EXCLUDED
 UAT: EXCLUDED
 DEPLOYMENT: EXCLUDED
+
+## Owner UAT closure — 2026-08-26
+
+Owner confirmed the remediated Order interaction with no further findings. The Order Create/Edit surface now shares the Product V2 ERP form VI, historical Orders default to View Mode, and authorized correction is entered explicitly through `编辑订单`. `ORDER_EDIT_V2 = UAT_READY_FROZEN`.
