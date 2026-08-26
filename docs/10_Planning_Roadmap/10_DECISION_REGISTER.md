@@ -212,3 +212,15 @@ Owner explicitly approved all six M1.0 decision gates on 2026-08-23: Case number
 PR #85 merged the design contract to `main` as `02ce87dba5ede14d791b646b7cbe976a12064cae`. The contract is now the frozen design authority for ERP-INQUIRY-M1 unless a later Owner-approved design revision supersedes it.
 
 This acceptance does not itself authorize product implementation, Migration execution, Email connection, WhatsApp registration, remote deployment or Production access. The next bounded product package is `ERP-INQUIRY-M1.1-COMPANY-001`, and it requires separate explicit Owner implementation authorization before Claude writes product code or Migration files.
+
+## D-038 Adopt BYL ERP Entity Architecture V2 and unified search model
+
+Owner approved the long-term Entity Architecture V2 on 2026-08-26. The design authority is `docs/10_Planning_Roadmap/21_BYL_ERP_ENTITY_ARCHITECTURE_V2.md`.
+
+`orders.id/order_id` and `products.id/product_id` remain the canonical Order and Product anchors. Every future major business object receives its own canonical ID. Core business relationships use explicit foreign keys/relation tables, while generic entity relationship/search indexes are derived discovery/navigation infrastructure only and never replace source-module truth.
+
+Product/Order and future Warehouse, Supplier, Project, Shipment, Purchase Order, Tooling and other 360 surfaces shall support bidirectional canonical deep links. Product classification uses multi-dimensional taxonomy; Project and Tooling are independent entities rather than fixed Product columns. First-screen 360 aggregates use bounded read projections as scale grows.
+
+Owner also approved a unified search model: a persistent search icon on the Header right opens Global Search across registered entities, initially Product, Order and Inventory context; Product and Order pages also provide Product-only and Order-only scoped search. Global and scoped search reuse one extensible Search Contract/Search Provider architecture. Search results are authorization-filtered, server-side, grouped by entity type and deep-link to canonical 360 pages or pre-filtered module views.
+
+Target planning scale is at least 10,000 Products and 100,000 Orders with room for materially larger datasets. This decision freezes architecture/design direction only; it does not authorize schema migration, search implementation, external search infrastructure, merge, remote deployment or Production access.
