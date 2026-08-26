@@ -123,4 +123,47 @@ describe('Orders/Create V2', () => {
     const addBtn = wrapper.findAll('button[type="button"]').find(b => b.text().includes('添加商品'))
     expect(addBtn).toBeTruthy()
   })
+
+  // ERP V2 VI contract — no mvp-input dependency
+  it('uses erp-form-page outer container', () => {
+    const wrapper = mount(Create, { props: customerProps })
+    expect(wrapper.find('.erp-form-page').exists()).toBe(true)
+  })
+
+  it('uses erp-form-card for section cards', () => {
+    const wrapper = mount(Create, { props: customerProps })
+    const cards = wrapper.findAll('.erp-form-card')
+    expect(cards.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('uses erp-input for editable fields — no mvp-input class', () => {
+    const wrapper = mount(Create, { props: customerProps })
+    expect(wrapper.find('.mvp-input').exists()).toBe(false)
+    expect(wrapper.findAll('.erp-input').length).toBeGreaterThan(0)
+  })
+
+  it('uses erp-form-label for field labels', () => {
+    const wrapper = mount(Create, { props: customerProps })
+    expect(wrapper.find('.erp-form-label').exists()).toBe(true)
+    expect(wrapper.find('.mvp-label').exists()).toBe(false)
+  })
+
+  it('uses erp-btn for action buttons', () => {
+    const wrapper = mount(Create, { props: customerProps })
+    expect(wrapper.find('.erp-btn').exists()).toBe(true)
+    expect(wrapper.find('.mvp-button').exists()).toBe(false)
+  })
+
+  it('uses erp-textarea for note field', () => {
+    const wrapper = mount(Create, { props: customerProps })
+    expect(wrapper.find('textarea.erp-textarea').exists()).toBe(true)
+  })
+
+  it('shows readonly div for order kind (not editable input)', () => {
+    const wrapper = mount(Create, { props: customerProps })
+    const readonlyDivs = wrapper.findAll('.erp-readonly-input')
+    const texts = readonlyDivs.map(d => d.text())
+    expect(texts.some(t => t.includes('客户订单'))).toBe(true)
+    expect(texts.some(t => t.includes('手动创建'))).toBe(true)
+  })
 })

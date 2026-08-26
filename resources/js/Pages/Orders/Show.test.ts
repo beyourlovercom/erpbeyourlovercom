@@ -5,12 +5,17 @@ import Show from './Show.vue'
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
   router: { post: vi.fn() },
-  useForm: (initial: Record<string, unknown>) => ({
-    ...initial,
-    processing: false,
-    errors: {},
-    patch: vi.fn(),
-  }),
+  useForm: (initial: Record<string, unknown>) => {
+    const data = { ...initial }
+    return {
+      ...data,
+      processing: false,
+      errors: {},
+      patch: vi.fn(),
+      reset: vi.fn(),
+      clearErrors: vi.fn(),
+    }
+  },
   usePage: () => ({ url: '/customers/orders/1', props: { auth: { user: { id: 1, name: 'Test', email: 't@t.com' } }, shellNavigation: [] } }),
 }))
 
@@ -102,13 +107,6 @@ describe('Orders/Show V2', () => {
     expect(wrapper.text()).toContain('内部备注')
   })
 
-  it('shows 保存订单 as the only primary submit action', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
-    const submitBtn = wrapper.find('button[type="submit"]')
-    expect(submitBtn.exists()).toBe(true)
-    expect(submitBtn.text()).toBe('保存订单')
-  })
-
   it('does not introduce a delete action', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit } })
     expect(wrapper.text()).not.toContain('删除订单')
@@ -125,12 +123,82 @@ describe('Orders/Show V2', () => {
     expect(wrapper.find('a[href="/kol/orders"]').exists()).toBe(true)
   })
 
-  it('renders editable order date field', () => {
+  // View Mode tests
+  it('defaults to View Mode: no active submit button', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    expect(wrapper.find('button[type="submit"]').exists()).toBe(false)
+  })
+
+  it('defaults to View Mode: 编辑订单 button is visible', () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    expect(editBtn).toBeTruthy()
+  })
+
+  it('defaults to View Mode: no active date input', () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    expect(wrapper.find('input[type="date"]').exists()).toBe(false)
+  })
+
+  it('defaults to View Mode: no active textarea for note', () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    expect(wrapper.find('textarea').exists()).toBe(false)
+  })
+
+  it('defaults to View Mode: no SKU combobox visible', () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    expect(wrapper.find('.sku-combobox-stub').exists()).toBe(false)
+  })
+
+  it('defaults to View Mode: 保存订单 action not shown', () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    expect(wrapper.text()).not.toContain('保存订单')
+  })
+
+  // Edit Mode tests
+  it('clicking 编辑订单 enters Edit Mode: shows 保存订单 and 取消编辑', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    await editBtn!.trigger('click')
+    expect(wrapper.text()).toContain('保存订单')
+    expect(wrapper.text()).toContain('取消编辑')
+  })
+
+  it('Edit Mode shows date input', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    await editBtn!.trigger('click')
     expect(wrapper.find('input[type="date"]').exists()).toBe(true)
   })
 
-  it('renders identity fields as disabled (immutable)', () => {
+  it('Edit Mode shows textarea for note', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    await editBtn!.trigger('click')
+    expect(wrapper.find('textarea').exists()).toBe(true)
+  })
+
+  it('Edit Mode shows SKU combobox for items', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    await editBtn!.trigger('click')
+    expect(wrapper.find('.sku-combobox-stub').exists()).toBe(true)
+  })
+
+  it('clicking 取消编辑 returns to View Mode', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    await editBtn!.trigger('click')
+    const cancelBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '取消编辑')
+    await cancelBtn!.trigger('click')
+    expect(wrapper.find('input[type="date"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('保存订单')
+    const editBtnAgain = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    expect(editBtnAgain).toBeTruthy()
+  })
+
+  // Immutable identity always read-only
+  it('identity fields are immutable in View Mode (disabled inputs)', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit } })
     const disabledInputs = wrapper.findAll('input[disabled]')
     const values = disabledInputs.map(i => (i.element as HTMLInputElement).value)
@@ -140,22 +208,57 @@ describe('Orders/Show V2', () => {
     expect(values).toContain('Test Owner')
   })
 
-  it('renders SKU combobox for editable items', () => {
+  it('identity fields remain immutable in Edit Mode (disabled inputs)', async () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit } })
-    expect(wrapper.find('.sku-combobox-stub').exists()).toBe(true)
+    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    await editBtn!.trigger('click')
+    const disabledInputs = wrapper.findAll('input[disabled]')
+    const values = disabledInputs.map(i => (i.element as HTMLInputElement).value)
+    expect(values).toContain('BIZ-001')
+    expect(values).toContain('客户订单')
+    expect(values).toContain('手动创建')
+    expect(values).toContain('Test Owner')
   })
 
-  it('shows existing item sku combobox in items card (product relation preserved)', () => {
+  // ERP V2 VI contract
+  it('uses erp-form-page outer container', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit } })
-    expect(wrapper.find('.sku-combobox-stub').exists()).toBe(true)
-    expect(wrapper.text()).toContain('订单商品')
+    expect(wrapper.find('.erp-form-page').exists()).toBe(true)
   })
 
-  it('renders note textarea', () => {
+  it('uses erp-form-card for section cards', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit } })
-    expect(wrapper.find('textarea').exists()).toBe(true)
+    const cards = wrapper.findAll('.erp-form-card')
+    expect(cards.length).toBeGreaterThanOrEqual(5)
   })
 
+  it('uses erp-form-label — no mvp-label class', () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    expect(wrapper.find('.erp-form-label').exists()).toBe(true)
+    expect(wrapper.find('.mvp-label').exists()).toBe(false)
+  })
+
+  it('uses erp-btn — no mvp-button class', () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    expect(wrapper.find('.erp-btn').exists()).toBe(true)
+    expect(wrapper.find('.mvp-button').exists()).toBe(false)
+  })
+
+  it('View Mode shows erp-readonly-input for mutable fields', () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const readonlyDivs = wrapper.findAll('.erp-readonly-input')
+    expect(readonlyDivs.length).toBeGreaterThan(0)
+  })
+
+  it('Edit Mode shows erp-input controls — no mvp-input class', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    await editBtn!.trigger('click')
+    expect(wrapper.find('.mvp-input').exists()).toBe(false)
+    expect(wrapper.findAll('.erp-input').length).toBeGreaterThan(0)
+  })
+
+  // Fulfillment and audit
   it('shows fulfillment status in fulfillment card', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit } })
     expect(wrapper.text()).toContain('待发货')
@@ -183,9 +286,15 @@ describe('Orders/Show V2', () => {
     expect(wrapper.text()).toContain('created')
   })
 
-  it('shows address fields pre-filled', () => {
+  it('shows address fields labels', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit } })
     expect(wrapper.text()).toContain('收件人姓名')
     expect(wrapper.text()).toContain('联系电话')
+  })
+
+  it('existing item product_id preserved for existing order items', () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    // item.product_id = 5 from baseOrder — shown in SKU field (view mode shows SKU text)
+    expect(wrapper.text()).toContain('SKU-001')
   })
 })

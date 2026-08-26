@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3'
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 
@@ -60,19 +60,7 @@ type EditItem = {
   unit_price: string
 }
 
-const form = useForm<{
-  order_date: string
-  order_note: string
-  recipient_name: string
-  phone: string
-  country: string
-  province_state: string
-  city: string
-  address_line_1: string
-  address_line_2: string
-  postal_code: string
-  items: EditItem[]
-}>({
+const makeFormData = () => ({
   order_date: props.order.order_date ?? '',
   order_note: props.order.order_note ?? '',
   recipient_name: props.order.address?.recipient_name ?? '',
@@ -90,10 +78,25 @@ const form = useForm<{
     product_summary: item.product_summary ?? '',
     quantity: item.quantity,
     unit_price: item.unit_price,
-  })),
+  })) as EditItem[],
 })
 
-const submit = () => form.patch(`${basePath.value}/${props.order.id}`)
+const form = useForm(makeFormData())
+
+const editMode = ref(false)
+
+const enterEditMode = () => { editMode.value = true }
+
+const cancelEdit = () => {
+  form.reset()
+  Object.assign(form, makeFormData())
+  form.clearErrors()
+  editMode.value = false
+}
+
+const submit = () => form.patch(`${basePath.value}/${props.order.id}`, {
+  onSuccess: () => { editMode.value = false },
+})
 
 const shipmentStatusLabel = computed(() => {
   const s = props.order.shipment?.shipment_status
@@ -107,29 +110,39 @@ const shipmentStatusLabel = computed(() => {
 <template>
   <Head :title="`${order.external_order_number} · BYL ERP`" />
   <AuthenticatedLayout :title="`订单 ${order.external_order_number}`" :breadcrumbs="breadcrumbs">
-    <div class="ord-page">
-      <!-- Identity strip -->
-      <div class="ord-identity-strip">
-        <div class="ord-identity-main">
-          <span class="ord-identity-number">{{ order.external_order_number }}</span>
-          <span class="ord-identity-badge">{{ order.order_kind_label }}</span>
-          <span class="ord-identity-badge ord-badge-muted">{{ order.source_label }}</span>
-          <span class="ord-identity-badge ord-badge-status">{{ order.order_status_label }}</span>
-          <span class="ord-identity-owner">负责人：{{ order.owner_label ?? '—' }}</span>
-        </div>
-        <div class="ord-identity-actions">
-          <details class="ord-details-disclosure">
-            <summary class="ord-details-summary">ERP技术编号</summary>
-            <span class="ord-details-value">{{ order.internal_order_number }}</span>
-          </details>
-          <a :href="basePath" class="mvp-button mvp-button-secondary">返回列表</a>
-        </div>
-      </div>
+    <div class="erp-form-page">
+      <div class="erp-form-content">
 
-      <form @submit.prevent="submit">
-        <!-- Card 1: 履约状态 -->
-        <div class="ord-card">
-          <h3 class="ord-card-title">履约状态</h3>
+        <!-- Identity strip -->
+        <div class="ord-identity-strip">
+          <div class="ord-identity-main">
+            <span class="ord-identity-number">{{ order.external_order_number }}</span>
+            <span class="ord-identity-badge">{{ order.order_kind_label }}</span>
+            <span class="ord-identity-badge ord-badge-muted">{{ order.source_label }}</span>
+            <span class="ord-identity-badge ord-badge-status">{{ order.order_status_label }}</span>
+            <span class="ord-identity-owner">负责人：{{ order.owner?.name ?? '—' }}</span>
+          </div>
+          <div class="ord-identity-actions">
+            <details class="ord-details-disclosure">
+              <summary class="ord-details-summary">ERP技术编号</summary>
+              <span class="ord-details-value">{{ order.internal_order_number }}</span>
+            </details>
+            <button
+              v-if="!editMode"
+              type="button"
+              class="erp-btn erp-btn-secondary"
+              @click="enterEditMode"
+            >
+              编辑订单
+            </button>
+            <a v-else :href="basePath" class="erp-btn erp-btn-secondary">返回列表</a>
+            <a v-if="!editMode" :href="basePath" class="erp-btn erp-btn-secondary">返回列表</a>
+          </div>
+        </div>
+
+        <!-- Card 1: 履约状态 (always read-only) -->
+        <div class="erp-form-card">
+          <h2 class="erp-form-card-title">履约状态</h2>
           <div class="ord-fulfillment-grid">
             <div class="ord-fulfillment-item">
               <small class="ord-fulfillment-label">发货状态</small>
@@ -151,7 +164,7 @@ const shipmentStatusLabel = computed(() => {
           <div v-if="order.shipment?.tracking_number" class="ord-fulfillment-action">
             <button
               type="button"
-              class="mvp-button mvp-button-secondary"
+              class="erp-btn erp-btn-secondary"
               @click="router.post(`/logistics/orders/${order.id}/reopen`)"
             >
               重开发货
@@ -160,147 +173,198 @@ const shipmentStatusLabel = computed(() => {
         </div>
 
         <!-- Card 2: 订单信息 -->
-        <div class="ord-card">
-          <h3 class="ord-card-title">订单信息</h3>
-          <div class="ord-form-grid">
-            <div class="mvp-form-field">
-              <label class="mvp-label">业务订单号</label>
-              <input :value="order.external_order_number" class="mvp-input ord-readonly" disabled>
+        <div class="erp-form-card">
+          <h2 class="erp-form-card-title">订单信息</h2>
+          <div class="erp-form-grid">
+            <div class="erp-form-field">
+              <label class="erp-form-label">业务订单号</label>
+              <input :value="order.external_order_number" class="erp-input" disabled>
             </div>
-            <div class="mvp-form-field">
-              <label class="mvp-label">订单类型</label>
-              <input :value="order.order_kind_label" class="mvp-input ord-readonly" disabled>
+            <div class="erp-form-field">
+              <label class="erp-form-label">订单类型</label>
+              <input :value="order.order_kind_label" class="erp-input" disabled>
             </div>
-            <div class="mvp-form-field">
-              <label class="mvp-label">来源</label>
-              <input :value="order.source_label" class="mvp-input ord-readonly" disabled>
+            <div class="erp-form-field">
+              <label class="erp-form-label">来源</label>
+              <input :value="order.source_label" class="erp-input" disabled>
             </div>
-            <div class="mvp-form-field">
-              <label class="mvp-label">负责人</label>
-              <input :value="order.owner?.name ?? '—'" class="mvp-input ord-readonly" disabled>
+            <div class="erp-form-field">
+              <label class="erp-form-label">负责人</label>
+              <input :value="order.owner?.name ?? '—'" class="erp-input" disabled>
             </div>
-            <div class="mvp-form-field ord-span-2">
-              <label class="mvp-label">订单日期</label>
-              <input v-model="form.order_date" type="date" class="mvp-input">
-              <p v-if="form.errors.order_date" class="mvp-error">{{ form.errors.order_date }}</p>
+            <div class="erp-form-field ord-span-2">
+              <label class="erp-form-label">订单日期</label>
+              <div v-if="!editMode" class="erp-readonly-input">{{ order.order_date }}</div>
+              <input v-else v-model="form.order_date" type="date" class="erp-input" :class="{ 'has-error': form.errors.order_date }">
+              <p v-if="form.errors.order_date" class="erp-field-error">{{ form.errors.order_date }}</p>
             </div>
           </div>
         </div>
 
         <!-- Card 3: 收件与地址 -->
-        <div class="ord-card">
-          <h3 class="ord-card-title">收件与地址</h3>
-          <div class="ord-form-grid">
-            <div class="mvp-form-field">
-              <label class="mvp-label">收件人姓名</label>
-              <input v-model="form.recipient_name" class="mvp-input" placeholder="可选">
-              <p v-if="form.errors.recipient_name" class="mvp-error">{{ form.errors.recipient_name }}</p>
+        <div class="erp-form-card">
+          <h2 class="erp-form-card-title">收件与地址</h2>
+          <div class="erp-form-grid">
+            <div class="erp-form-field">
+              <label class="erp-form-label">收件人姓名</label>
+              <div v-if="!editMode" class="erp-readonly-input">{{ order.address?.recipient_name || '—' }}</div>
+              <template v-else>
+                <input v-model="form.recipient_name" class="erp-input" placeholder="可选">
+                <p v-if="form.errors.recipient_name" class="erp-field-error">{{ form.errors.recipient_name }}</p>
+              </template>
             </div>
-            <div class="mvp-form-field">
-              <label class="mvp-label">联系电话</label>
-              <input v-model="form.phone" class="mvp-input" placeholder="可选">
-              <p v-if="form.errors.phone" class="mvp-error">{{ form.errors.phone }}</p>
+            <div class="erp-form-field">
+              <label class="erp-form-label">联系电话</label>
+              <div v-if="!editMode" class="erp-readonly-input">{{ order.address?.phone || '—' }}</div>
+              <template v-else>
+                <input v-model="form.phone" class="erp-input" placeholder="可选">
+                <p v-if="form.errors.phone" class="erp-field-error">{{ form.errors.phone }}</p>
+              </template>
             </div>
-            <div class="mvp-form-field">
-              <label class="mvp-label">国家</label>
-              <input v-model="form.country" class="mvp-input" placeholder="可选">
-              <p v-if="form.errors.country" class="mvp-error">{{ form.errors.country }}</p>
+            <div class="erp-form-field">
+              <label class="erp-form-label">国家</label>
+              <div v-if="!editMode" class="erp-readonly-input">{{ order.address?.country || '—' }}</div>
+              <template v-else>
+                <input v-model="form.country" class="erp-input" placeholder="可选">
+                <p v-if="form.errors.country" class="erp-field-error">{{ form.errors.country }}</p>
+              </template>
             </div>
-            <div class="mvp-form-field">
-              <label class="mvp-label">省/州</label>
-              <input v-model="form.province_state" class="mvp-input" placeholder="可选">
-              <p v-if="form.errors.province_state" class="mvp-error">{{ form.errors.province_state }}</p>
+            <div class="erp-form-field">
+              <label class="erp-form-label">省/州</label>
+              <div v-if="!editMode" class="erp-readonly-input">{{ order.address?.province_state || '—' }}</div>
+              <template v-else>
+                <input v-model="form.province_state" class="erp-input" placeholder="可选">
+                <p v-if="form.errors.province_state" class="erp-field-error">{{ form.errors.province_state }}</p>
+              </template>
             </div>
-            <div class="mvp-form-field">
-              <label class="mvp-label">城市</label>
-              <input v-model="form.city" class="mvp-input" placeholder="可选">
-              <p v-if="form.errors.city" class="mvp-error">{{ form.errors.city }}</p>
+            <div class="erp-form-field">
+              <label class="erp-form-label">城市</label>
+              <div v-if="!editMode" class="erp-readonly-input">{{ order.address?.city || '—' }}</div>
+              <template v-else>
+                <input v-model="form.city" class="erp-input" placeholder="可选">
+                <p v-if="form.errors.city" class="erp-field-error">{{ form.errors.city }}</p>
+              </template>
             </div>
-            <div class="mvp-form-field">
-              <label class="mvp-label">邮政编码</label>
-              <input v-model="form.postal_code" class="mvp-input" placeholder="可选">
-              <p v-if="form.errors.postal_code" class="mvp-error">{{ form.errors.postal_code }}</p>
+            <div class="erp-form-field">
+              <label class="erp-form-label">邮政编码</label>
+              <div v-if="!editMode" class="erp-readonly-input">{{ order.address?.postal_code || '—' }}</div>
+              <template v-else>
+                <input v-model="form.postal_code" class="erp-input" placeholder="可选">
+                <p v-if="form.errors.postal_code" class="erp-field-error">{{ form.errors.postal_code }}</p>
+              </template>
             </div>
-            <div class="mvp-form-field ord-span-2">
-              <label class="mvp-label">地址行 1</label>
-              <input v-model="form.address_line_1" class="mvp-input" placeholder="可选">
-              <p v-if="form.errors.address_line_1" class="mvp-error">{{ form.errors.address_line_1 }}</p>
+            <div class="erp-form-field ord-span-2">
+              <label class="erp-form-label">地址行 1</label>
+              <div v-if="!editMode" class="erp-readonly-input">{{ order.address?.address_line_1 || '—' }}</div>
+              <template v-else>
+                <input v-model="form.address_line_1" class="erp-input" placeholder="可选">
+                <p v-if="form.errors.address_line_1" class="erp-field-error">{{ form.errors.address_line_1 }}</p>
+              </template>
             </div>
-            <div class="mvp-form-field ord-span-2">
-              <label class="mvp-label">地址行 2</label>
-              <input v-model="form.address_line_2" class="mvp-input" placeholder="可选">
-              <p v-if="form.errors.address_line_2" class="mvp-error">{{ form.errors.address_line_2 }}</p>
+            <div class="erp-form-field ord-span-2">
+              <label class="erp-form-label">地址行 2</label>
+              <div v-if="!editMode" class="erp-readonly-input">{{ order.address?.address_line_2 || '—' }}</div>
+              <template v-else>
+                <input v-model="form.address_line_2" class="erp-input" placeholder="可选">
+                <p v-if="form.errors.address_line_2" class="erp-field-error">{{ form.errors.address_line_2 }}</p>
+              </template>
             </div>
           </div>
         </div>
 
         <!-- Card 4: 订单商品 -->
-        <div class="ord-card">
-          <h3 class="ord-card-title">订单商品</h3>
-          <div v-for="(item, index) in form.items" :key="item.id" class="ord-item-row">
-            <div class="ord-item-sku">
-              <label class="mvp-label">SKU / 产品</label>
-              <SkuCombobox
-                v-model="item.sku"
-                :product-id="item.product_id"
-                @update:product-id="(id) => { item.product_id = id }"
-              />
+        <div class="erp-form-card">
+          <h2 class="erp-form-card-title">订单商品</h2>
+          <!-- View mode: read-only item list -->
+          <template v-if="!editMode">
+            <div v-for="item in order.items" :key="item.id" class="ord-item-row-view">
+              <div class="erp-form-field">
+                <label class="erp-form-label">SKU / 产品</label>
+                <div class="erp-readonly-input">{{ item.sku || '—' }}</div>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">产品摘要</label>
+                <div class="erp-readonly-input">{{ item.product_summary || '—' }}</div>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">数量</label>
+                <div class="erp-readonly-input">{{ item.quantity }}</div>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">单价</label>
+                <div class="erp-readonly-input">{{ item.unit_price }}</div>
+              </div>
             </div>
-            <div class="mvp-form-field">
-              <label class="mvp-label">产品摘要</label>
-              <input v-model="item.product_summary" class="mvp-input" placeholder="可选">
+          </template>
+          <!-- Edit mode: editable item rows with SkuCombobox -->
+          <template v-else>
+            <div v-for="(item, index) in form.items" :key="item.id" class="ord-item-row">
+              <div class="ord-item-sku">
+                <label class="erp-form-label">SKU / 产品</label>
+                <SkuCombobox
+                  v-model="item.sku"
+                  :product-id="item.product_id"
+                  @update:product-id="(id) => { item.product_id = id }"
+                />
+                <p v-if="(form.errors as Record<string, string>)[`items.${index}.product_id`]" class="erp-field-error">
+                  {{ (form.errors as Record<string, string>)[`items.${index}.product_id`] }}
+                </p>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">产品摘要</label>
+                <input v-model="item.product_summary" class="erp-input" placeholder="可选">
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">数量</label>
+                <input v-model="item.quantity" type="number" min="1" class="erp-input" required>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">单价</label>
+                <input v-model="item.unit_price" type="number" min="0" step="0.01" class="erp-input" required>
+              </div>
             </div>
-            <div class="mvp-form-field">
-              <label class="mvp-label">数量</label>
-              <input v-model="item.quantity" type="number" min="1" class="mvp-input" required>
-            </div>
-            <div class="mvp-form-field">
-              <label class="mvp-label">单价</label>
-              <input v-model="item.unit_price" type="number" min="0" step="0.01" class="mvp-input" required>
-            </div>
-          </div>
+          </template>
         </div>
 
         <!-- Card 5: 内部备注 -->
-        <div class="ord-card">
-          <h3 class="ord-card-title">内部备注</h3>
-          <div class="mvp-form-field">
-            <label class="mvp-label">备注内容</label>
-            <textarea v-model="form.order_note" class="mvp-input ord-textarea" placeholder="可选" />
-            <p v-if="form.errors.order_note" class="mvp-error">{{ form.errors.order_note }}</p>
+        <div class="erp-form-card">
+          <h2 class="erp-form-card-title">内部备注</h2>
+          <div class="erp-form-field">
+            <label class="erp-form-label">备注内容</label>
+            <div v-if="!editMode" class="erp-readonly-input ord-readonly-textarea">{{ order.order_note || '—' }}</div>
+            <template v-else>
+              <textarea v-model="form.order_note" class="erp-textarea" placeholder="可选" />
+              <p v-if="form.errors.order_note" class="erp-field-error">{{ form.errors.order_note }}</p>
+            </template>
           </div>
         </div>
 
-        <!-- Action bar -->
-        <div class="ord-action-bar">
-          <a :href="basePath" class="mvp-button mvp-button-secondary">返回列表</a>
-          <button type="submit" class="mvp-button mvp-button-primary" :disabled="form.processing">
+        <!-- Edit Mode action bar -->
+        <div v-if="editMode" class="erp-form-actions ord-action-bar">
+          <button type="button" class="erp-btn erp-btn-secondary" @click="cancelEdit">取消编辑</button>
+          <button type="button" class="erp-btn erp-btn-primary" :disabled="form.processing" @click="submit">
             保存订单
           </button>
         </div>
-      </form>
 
-      <!-- Audit log -->
-      <div class="ord-card ord-audit-card">
-        <h3 class="ord-card-title">操作审计</h3>
-        <ul class="ord-audit-list">
-          <li v-for="event in audit" :key="event.created_at + event.action" class="ord-audit-item">
-            <span class="ord-audit-action">{{ event.action }}</span>
-            <small class="ord-audit-meta">{{ event.created_at }} · actor {{ event.actor_id ?? 'system' }}</small>
-          </li>
-        </ul>
+        <!-- Audit log -->
+        <div class="erp-form-card ord-audit-card">
+          <h2 class="erp-form-card-title">操作审计</h2>
+          <ul class="ord-audit-list">
+            <li v-for="event in audit" :key="event.created_at + event.action" class="ord-audit-item">
+              <span class="ord-audit-action">{{ event.action }}</span>
+              <small class="ord-audit-meta">{{ event.created_at }} · actor {{ event.actor_id ?? 'system' }}</small>
+            </li>
+          </ul>
+        </div>
+
       </div>
     </div>
   </AuthenticatedLayout>
 </template>
 
 <style scoped>
-.ord-page {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 24px 16px;
-}
-
+/* Identity strip — order-specific, no erp-* equivalent */
 .ord-identity-strip {
   display: flex;
   align-items: center;
@@ -309,7 +373,7 @@ const shipmentStatusLabel = computed(() => {
   border: 1px solid #e4eaed;
   border-radius: 16px;
   padding: 16px 24px;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   gap: 16px;
   flex-wrap: wrap;
 }
@@ -376,37 +440,7 @@ const shipmentStatusLabel = computed(() => {
   font-family: monospace;
 }
 
-.ord-card {
-  background: #ffffff;
-  border: 1px solid #e4eaed;
-  border-radius: 16px;
-  padding: 24px;
-  margin-bottom: 24px;
-}
-
-.ord-card-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #142126;
-  margin: 0 0 20px;
-}
-
-.ord-form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-}
-
-.ord-span-2 {
-  grid-column: span 2;
-}
-
-.ord-readonly {
-  background: #f4f7f8;
-  color: #7a8c94;
-  cursor: default;
-}
-
+/* Fulfillment card layout — no erp-* equivalent */
 .ord-fulfillment-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -435,6 +469,12 @@ const shipmentStatusLabel = computed(() => {
   border-top: 1px solid #e4eaed;
 }
 
+/* span-2 within erp-form-grid */
+.ord-span-2 {
+  grid-column: span 2;
+}
+
+/* Item rows — order-specific layout */
 .ord-item-row {
   display: grid;
   grid-template-columns: 2fr 2fr 1fr 1fr;
@@ -444,7 +484,17 @@ const shipmentStatusLabel = computed(() => {
   border-top: 1px solid #e4eaed;
 }
 
-.ord-item-row:first-of-type {
+.ord-item-row-view {
+  display: grid;
+  grid-template-columns: 2fr 2fr 1fr 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 12px 0;
+  border-top: 1px solid #e4eaed;
+}
+
+.ord-item-row:first-of-type,
+.ord-item-row-view:first-of-type {
   border-top: none;
 }
 
@@ -454,19 +504,20 @@ const shipmentStatusLabel = computed(() => {
   gap: 4px;
 }
 
-.ord-textarea {
-  min-height: 96px;
-  resize: vertical;
+/* Readonly textarea-height variant */
+.ord-readonly-textarea {
+  min-height: 80px;
+  height: auto;
+  align-items: flex-start;
+  padding: 10px 12px;
 }
 
+/* Action bar — right-aligned for orders */
 .ord-action-bar {
-  display: flex;
-  align-items: center;
   justify-content: flex-end;
-  gap: 12px;
-  padding: 20px 0 8px;
 }
 
+/* Audit log */
 .ord-audit-card {
   margin-top: 0;
 }
@@ -500,16 +551,14 @@ const shipmentStatusLabel = computed(() => {
 }
 
 @media (max-width: 767px) {
-  .ord-form-grid {
-    grid-template-columns: 1fr;
-  }
   .ord-span-2 {
     grid-column: span 1;
   }
   .ord-fulfillment-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  .ord-item-row {
+  .ord-item-row,
+  .ord-item-row-view {
     grid-template-columns: 1fr;
   }
   .ord-identity-strip {
