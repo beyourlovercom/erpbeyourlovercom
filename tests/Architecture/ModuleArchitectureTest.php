@@ -264,7 +264,7 @@ final class ModuleArchitectureTest extends TestCase
         'logistics.pending', 'logistics.payload', 'logistics.reopen', 'logistics.ship', 'logout', 'password.confirm.store', 'password.confirmation',
         'procurement.files', 'procurement.records', 'products.create', 'products.dashboard', 'products.destroy', 'products.edit', 'products.import', 'products.import.store', 'products.list', 'products.sku-aliases', 'products.sku-search', 'products.skus', 'products.store', 'products.update',
         'root', 'settings.audit-logs', 'settings.roles-permissions', 'settings.roles-permissions.update', 'settings.statuses',
-        'settings.users', 'settings.warehouses', 'shell.accounting', 'shell.customers',
+        'settings.warehouses', 'shell.accounting', 'shell.customers',
         'shell.guides', 'shell.inventory', 'shell.kol', 'shell.logistics', 'shell.procurement',
         'shell.settings', 'shell.sync', 'storage.local', 'storage.local.upload',
         'sync.complete', 'sync.payload', 'sync.reopen', 'sync.return', 'orders.export', 'orders.store', 'orders.store.customers', 'orders.update', 'orders.update.customers', 'customers.orders.show', 'system.audit-records.index', 'system.runtime.health',
