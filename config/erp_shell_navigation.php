@@ -24,6 +24,7 @@ return [
         ['key' => 'inventory-overview', 'label' => '库存总览', 'path' => '/inventory', 'route' => 'shell.inventory', 'permission' => 'inventory.view', 'placeholder' => false],
         ['key' => 'inventory-list', 'label' => '仓库清单', 'path' => '/inventory/list', 'route' => 'inventory.list', 'permission' => 'inventory.view', 'placeholder' => false],
         ['key' => 'inventory-products', 'label' => '产品库存', 'path' => '/inventory/products', 'route' => 'inventory.products', 'permission' => 'inventory.view', 'placeholder' => false],
+        ['key' => 'inventory-sync', 'label' => '批量同步', 'path' => '/inventory/sync', 'route' => 'inventory.sync', 'permission' => 'inventory.operate', 'placeholder' => false],
     ]],
     ['key' => 'procurement', 'label' => '外采', 'emoji' => '🛒', 'path' => '/procurement', 'route' => 'shell.procurement', 'permission' => 'procurement.view', 'placeholder' => true, 'children' => [
         ['key' => 'procurement-overview', 'label' => '外采总览', 'path' => '/procurement', 'route' => 'shell.procurement', 'permission' => 'procurement.view', 'placeholder' => false],

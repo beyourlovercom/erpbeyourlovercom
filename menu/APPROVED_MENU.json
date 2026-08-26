@@ -309,6 +309,21 @@
       "sort": 30
     },
     {
+      "code": "inventory-sync",
+      "parent_code": "inventory",
+      "level": 2,
+      "label_zh": "批量同步",
+      "slug": "sync",
+      "url": "/inventory/sync",
+      "route": "inventory.sync",
+      "permission": "inventory.operate",
+      "emoji": null,
+      "function_zh": "通过复制粘贴、CSV 或 XLSX 批量同步仓库库存，支持部分/全量模式、多批次预览与确认。",
+      "status": "in_progress",
+      "progress": 80,
+      "sort": 40
+    },
+    {
       "code": "procurement",
       "parent_code": null,
       "level": 1,
