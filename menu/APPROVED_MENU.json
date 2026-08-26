@@ -612,12 +612,12 @@
       "label_zh": "用户",
       "slug": "users",
       "url": "/settings/users",
-      "route": "settings.users",
-      "permission": "prototype.view",
+      "route": "user.index",
+      "permission": "system.permissions.manage",
       "emoji": null,
-      "function_zh": "管理用户账户。",
-      "status": "planned",
-      "progress": 0,
+      "function_zh": "管理ERP用户账户：新增、编辑姓名/邮箱、启用/停用、设置或重置密码、分配角色权限模板、安全删除误建账号（管理员专用）。",
+      "status": "implemented",
+      "progress": 100,
       "sort": 30
     },
     {
@@ -628,11 +628,11 @@
       "slug": "roles-permissions",
       "url": "/settings/roles-permissions",
       "route": "settings.roles-permissions",
-      "permission": "prototype.view",
+      "permission": "system.permissions.manage",
       "emoji": null,
-      "function_zh": "管理角色与权限。",
-      "status": "planned",
-      "progress": 0,
+      "function_zh": "管理七种角色预设的权限模板，调整各角色的默认权限集合（管理员专用）。",
+      "status": "implemented",
+      "progress": 100,
       "sort": 40
     },
     {
