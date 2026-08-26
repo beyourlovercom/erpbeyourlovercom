@@ -1,27 +1,30 @@
 ---
 type: product-map
 project: BYL ERP
-version: 1.0
+version: 1.1
+updated: 2026-08-24
 ---
 
 # Product and Menu Map
 
 ## Primary navigation
 
+The governed Level-1 menu baseline remains unchanged by this planning contract. Product work must preserve the approved Level-1 navigation authority.
+
+Current long-term functional map includes:
+
 ```text
 仪表盘
-同步
-订单
-客户
-网红 / KOL
 物流
-产品
+同步
+客户
+网红
 库存
 外采
-SEO
-财务 / 会计
+产品
 指南
-Manager OS
+会计
+设置
 ```
 
 ## Sync
@@ -48,7 +51,43 @@ KOL ROI
 费用与成本设置
 ```
 
-MVP1 only requires `订单分析`.
+Existing MVP1 provides the Order-level Finance/Cost foundation. Future profitability expansion must use the canonical `orders.id` and the frozen Canonical Order / Finance / KOL data contract rather than create a separate accounting-order truth.
+
+## KOL
+
+Owner-approved Level-2 target:
+
+```text
+所有网红
+网红订单
+佣金明细
+网红统计
+关系维护
+```
+
+Semantics:
+
+```text
+所有网红
+= ERP KOL master / assigned specialist ownership
+
+网红订单
+= order_kind = kol_fulfillment
+= products / samples / gifts / replacements sent to KOLs
+
+佣金明细
+= AffiliateWP referral/commission projection bound to canonical customer Orders
+
+网红统计
+= orders / revenue / profit / margin / commission / SKU / country derived from canonical Orders
+
+关系维护
+= ERP-owned KOL CRM activities, relationship stage and next follow-up
+```
+
+Affiliate-attributed consumer sales remain `order_kind=customer` plus KOL/Affiliate attribution. They are not KOL fulfillment Orders.
+
+Full AffiliateWP connector / KOL CRM runtime implementation is not automatically authorized by the menu target. `ERP-ORDER-FULFILLMENT-M1-001` may expose only the real KOL fulfillment Order surface required by its bounded scope; broader KOL Level-2 activation requires explicit implementation scope.
 
 ## SEO
 
@@ -65,30 +104,6 @@ Google Docs
 同步状态
 ```
 
-## KOL
+## Canonical Order projection rule
 
-```text
-KOL列表
-KOL详情
-社交账号
-粉丝历史
-KOL订单
-合作
-内容
-付款
-发布记录
-重复审核
-```
-
-## MVP1 visible minimum
-
-```text
-仪表盘
-同步
-订单
-物流
-财务 / 会计
-Manager OS
-```
-
-Other primary menus may appear as permission-aware placeholders or remain hidden until activated.
+Customer, KOL fulfillment, Logistics and Finance surfaces are projections over one canonical `orders.id`. No menu entry may imply or create a duplicate order database.

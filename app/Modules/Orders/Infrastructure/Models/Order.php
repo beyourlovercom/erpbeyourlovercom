@@ -2,6 +2,7 @@
 
 namespace App\Modules\Orders\Infrastructure\Models;
 
+use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderStatus;
 use Illuminate\Database\Eloquent\Model;
@@ -12,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Order extends Model
 {
     protected $fillable = [
-        'internal_order_number', 'source_type', 'external_order_number', 'order_date',
+        'internal_order_number', 'source_type', 'order_kind', 'external_order_number', 'order_date',
         'order_note', 'owner_id', 'order_status',
     ];
 
@@ -21,6 +22,7 @@ class Order extends Model
         return [
             'order_date' => 'date',
             'source_type' => OrderSourceType::class,
+            'order_kind' => OrderKind::class,
             'order_status' => OrderStatus::class,
         ];
     }

@@ -140,7 +140,15 @@ class AppShellNavigationTest extends TestCase
         $user = $this->userWith(['dashboard.view', 'prototype.view']);
         $this->actingAs($user)->get('/')->assertRedirectToRoute('dashboard');
         $this->actingAs($user)->get('/logistics/pending')->assertOk();
-        $this->actingAs($user)->get('/kol/orders')->assertOk();
+    }
+
+    public function test_kol_orders_surface_requires_the_real_orders_permission_not_prototype(): void
+    {
+        $prototypeOnly = $this->userWith(['dashboard.view', 'prototype.view'], 'prototype-only');
+        $this->actingAs($prototypeOnly)->get('/kol/orders')->assertForbidden();
+
+        $withOrdersView = $this->userWith(['dashboard.view', 'orders.view'], 'orders-view');
+        $this->actingAs($withOrdersView)->get('/kol/orders')->assertOk();
     }
 
     public function test_no_public_registration_route_is_introduced(): void

@@ -10,15 +10,18 @@ use Inertia\Response;
 
 final class LogisticsController
 {
+    private const PER_PAGE = 50;
+
     public function __construct(private readonly ShipmentService $shipments) {}
 
-    public function index(): Response
+    public function index(Request $request): Response
     {
         $orders = Order::query()->with(['address', 'items', 'owner', 'shipment'])
-            ->where('order_status', 'pending_shipment')->latest('order_date')->latest('id')->get();
+            ->where('order_status', 'pending_shipment')->latest('order_date')->latest('id')
+            ->paginate(self::PER_PAGE)->withQueryString();
 
         return Inertia::render('Logistics/Index', [
-            'orders' => $orders->map(fn (Order $order): array => $this->data($order))->values()->all(),
+            'orders' => $orders->through(fn (Order $order): array => $this->data($order))->toArray(),
         ]);
     }
 
@@ -48,7 +51,7 @@ final class LogisticsController
         $order->load(['address', 'items', 'shipment']);
 
         return response()->json([
-            'order_number' => $order->internal_order_number,
+            'order_number' => $order->external_order_number,
             'recipient_name' => $order->address?->recipient_name,
             'phone' => $order->address?->phone,
             'country' => $order->address?->country,
@@ -67,9 +70,17 @@ final class LogisticsController
     private function data(Order $order): array
     {
         return [
-            'id' => $order->id, 'internal_order_number' => $order->internal_order_number,
+            'id' => $order->id, 'external_order_number' => $order->external_order_number,
+            'internal_order_number' => $order->internal_order_number,
+            'order_kind' => $order->order_kind?->value,
+            'order_kind_label' => match ($order->order_kind) {
+                \App\Modules\Orders\Application\OrderKind::Customer => '客户订单',
+                \App\Modules\Orders\Application\OrderKind::KolFulfillment => '网红履约订单',
+                null => '未分类',
+            },
             'recipient_name' => $order->address?->recipient_name, 'phone' => $order->address?->phone,
-            'country' => $order->address?->country, 'owner' => $order->owner?->name,
+            'country' => $order->address?->country,
+            'owner_label' => $order->owner ? 'Owner('.$order->owner->name.')' : null,
             'item_count' => $order->items->sum('quantity'),
             'shipment' => $order->shipment?->only(['carrier', 'tracking_number', 'shipped_at', 'logistics_note']),
         ];

@@ -25,7 +25,7 @@ final class Mvp1WorkflowTest extends TestCase
         $order = Order::query()->firstOrFail();
 
         $response->assertRedirect('/customers/orders/'.$order->id);
-        $this->assertDatabaseHas('orders', ['id' => $order->id, 'source_type' => 'website', 'order_status' => 'pending_shipment']);
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'source_type' => 'manual', 'order_status' => 'pending_shipment']);
         $this->assertDatabaseHas('order_items', ['order_id' => $order->id, 'quantity' => 2, 'line_revenue' => '39.98']);
         $this->assertDatabaseHas('audit_records', ['action' => 'order.created', 'entity_id' => (string) $order->id]);
 
@@ -153,6 +153,7 @@ final class Mvp1WorkflowTest extends TestCase
     private function orderPayload(): array
     {
         return [
+            'order_kind' => 'customer',
             'source_type' => 'website', 'external_order_number' => 'SYNTH-WEB-001', 'order_date' => '2026-08-05',
             'recipient_name' => 'Synthetic Recipient', 'phone' => '+1 555 0100', 'country' => 'US',
             'province_state' => 'CA', 'city' => 'Los Angeles', 'address_line_1' => '100 Synthetic Street',

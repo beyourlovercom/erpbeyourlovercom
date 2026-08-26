@@ -2,6 +2,7 @@
 type: work-package-index
 project: BYL ERP
 version: 1.0
+updated: 2026-08-24
 ---
 
 # Work Package Index
@@ -9,6 +10,27 @@ version: 1.0
 ## Active
 
 ```text
+ERP-ORDER-FULFILLMENT-M1-001
+Unified Manual Order → Logistics / Fulfillment M1
+Status: CURRENT / CONTRACT FORMALIZED / DRAFT PR #90 OPEN / IMPLEMENTATION NOT AUTHORIZED
+PR: #90 / Draft
+Baseline: main@6ac25f2168dea7e8cd9e8f4c49c10752642a44df
+Branch: feature/erp-order-fulfillment-m1-001
+Work Package: docs/60_Codex_Operations/work-packages/ERP-ORDER-FULFILLMENT-M1-001.md
+Work Log: docs/60_Codex_Operations/logs/2026-08-24_ERP-ORDER-FULFILLMENT-M1-001.md
+Design Contract: docs/10_Planning_Roadmap/16_BYL_ERP_CANONICAL_ORDER_FINANCE_KOL_DATA_CONTRACT_V1.md
+Verification: TIER B / US FULL + CHINA FULL EXACT-SHA AFTER IMPLEMENTATION
+Product Implementation: NOT AUTHORIZED
+Migration Execution: NO
+Remote Deployment: NO
+Merge: NO
+
+ERP-INQUIRY-M1
+B2B Inquiry Foundation
+Status: ACTIVE MILESTONE / EXECUTION PAUSED AT M1.2 / NOT CANCELLED
+Children: M1.0 COMPLETE; M1.1 Company COMPLETE / MERGED BY PR #89; M1.2 Contact PAUSED; M1.3 Case WAITING; M1.4 Inbound Message WAITING; M1.5 Inquiry Inbox WAITING; M1.6 Email Intake WAITING; M1.7 WhatsApp Intake WAITING; M1.8 Yesterday/Waiting Dashboard WAITING; M1.9 Local Milestone UAT WAITING
+Resume Default: after ERP-ORDER-FULFILLMENT-M1 Owner gate / merge unless Owner reprioritizes again
+
 ERP-ARCH-MIGRATION-001E
 Shared UI / Browser E2E
 Status: COMPLETE / PASS
@@ -206,7 +228,6 @@ Work Log: docs/60_Codex_Operations/logs/2026-08-05_MVP1-ORDER-CORE-001.md
 Implementation PR: #59; Accepted Head: 3956f206e63dc77142f0d353f2ad3cede3816a19; Main Squash: 5ce98ad34b4adac0e931e348bfce0961e3d4bfd6
 Closure PR: #60; Main Closure SHA: fb58cb14c3aa2c998abc1a4d4b2aab2e3634db26
 
-Current / next package:
 MVP1-FULFILLMENT-001
 Shipment and logistics manual workflow
 Status: COMPLETE / PASS / CLOSED
@@ -232,8 +253,8 @@ Closure PR: #68; implementation evidence inherited from PR #63
 
 MVP1-UAT-RELEASE-001
 Tests, migration, backup, UAT and release
-Status: AUTOMATED READINESS PASS / HUMAN UAT CHANGES REQUIRED / 5 FINDINGS OPEN
-Readiness PRs: #70, #71, #72; Human UAT findings migrated by PR #80
+Status: AUTOMATED READINESS PASS / HUMAN UAT CHANGES REQUIRED / 4 LEGACY FINDINGS OPEN
+Readiness PRs: #70, #71, #72; Human UAT findings migrated by PR #80; DEFECT-001 closed by PR #87 + Owner UAT
 
 ERP-GOV-INQUIRY-ROADMAP-REVISION-001
 Roadmap revision promoting B2B Inquiry Foundation to current business milestone
@@ -258,22 +279,28 @@ Work Log: docs/60_Codex_Operations/logs/2026-08-23_ERP-INQUIRY-M1.0-CONTRACT-001
 
 ERP-GOV-INQUIRY-M1.0-ACCEPTANCE-SYNC-001
 Post-merge canonical status/estimate synchronization for Owner-approved M1.0
-Status: ACTIVE / GOVERNANCE ONLY / DRAFT DELIVERY PR
+Status: COMPLETE / PASS / MERGED
+PR: #86; Main SHA: 7308f81af3660acff3bcec5d843dbe83cfbf14a6
 Work Package: docs/60_Codex_Operations/work-packages/ERP-GOV-INQUIRY-M1.0-ACCEPTANCE-SYNC-001.md
 Work Log: docs/60_Codex_Operations/logs/2026-08-23_ERP-GOV-INQUIRY-M1.0-ACCEPTANCE-SYNC-001.md
 
-ERP-INQUIRY-M1
-B2B Inquiry Foundation
-Status: CURRENT MILESTONE / M1.0 CONTRACT FROZEN / IMPLEMENTATION NOT STARTED
-Children: M1.0 COMPLETE; M1.1 Company NEXT / NOT ACTIVATED; M1.2 Contact WAITING; M1.3 Case WAITING; M1.4 Inbound Message WAITING; M1.5 Inquiry Inbox WAITING; M1.6 Email Intake WAITING; M1.7 WhatsApp Intake WAITING; M1.8 Yesterday/Waiting Dashboard WAITING; M1.9 Local Milestone UAT WAITING
+ERP-INQUIRY-M1.1-COMPANY-001
+Company Master Data Foundation
+Status: COMPLETE / MERGED / OWNER UAT PASS
+PR: #89; Main Merge SHA: 6ac25f2168dea7e8cd9e8f4c49c10752642a44df
+Work Package: docs/60_Codex_Operations/work-packages/ERP-INQUIRY-M1.1-COMPANY-001.md
+Work Log: docs/60_Codex_Operations/logs/2026-08-23_ERP-INQUIRY-M1.1-COMPANY-001.md
 ```
 
-## Post-Inquiry planned milestones
+## Post-current planned milestones
 
 ```text
+ERP-INQUIRY-M1.2-CONTACT
+Status: PAUSED / NOT CANCELLED / resumes after ERP-ORDER-FULFILLMENT-M1 by default
+
 MVP1.1-WOOCOMMERCE-INBOUND-001
 MVP1.2-WOOCOMMERCE-TRACKING-OUTBOUND-001
 MVP1.3-SYNC-ORCHESTRATION-001
 ```
 
-No package is activated merely by appearing in this index.
+No package is activated merely by appearing in this index. Product implementation for `ERP-ORDER-FULFILLMENT-M1-001` remains unauthorized until an explicit Owner grant.

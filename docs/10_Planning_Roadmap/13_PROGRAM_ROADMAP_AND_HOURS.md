@@ -2,7 +2,7 @@
 type: program-roadmap-hours
 project: BYL ERP
 version: 1.0
-updated: 2026-08-23
+updated: 2026-08-24
 ---
 
 # Program Roadmap and Hours
@@ -14,8 +14,11 @@ This document is the repository source of truth for the complete Program Roadmap
 ```text
 Architecture Migration / Global Architecture Gate [COMPLETE]
 → MVP1 Existing Operations / Tencent Docs Replacement [IMPLEMENTATION COMPLETE; HUMAN UAT REMEDIATION OPEN]
-→ ERP-INQUIRY-M1 B2B Inquiry Foundation [CURRENT]
-→ ERP-INQUIRY-M1 Local Milestone UAT
+→ ERP-INQUIRY-M1 M1.0 Contract + M1.1 Company [COMPLETE]
+→ ERP-ORDER-FULFILLMENT-M1 Unified Manual Order → Logistics [CURRENT]
+→ ERP-ORDER-FULFILLMENT-M1 Local UAT / Owner Gate
+→ Resume ERP-INQUIRY-M1 at M1.2 Contact [PAUSED, NOT CANCELLED]
+→ ERP-INQUIRY-M1 M1.2–M1.9 + Local Milestone UAT
 → Milestone Remote Release / erp.beyourlover.com
 → MVP1.1 WooCommerce Inbound
 → MVP1.2 Single Tracking Outbound
@@ -69,32 +72,32 @@ Global Architecture Gate              PASS
 ## Source Conflict Snapshot
 
 ```text
-GITHUB_FACT: PR #24 merged the B1 contract into main at b3ac6268488b9ea96ceebaf7e7dcb23e8b5f2c9f.
-GOVERNANCE_CLOSURE_FACT: PR #25 is the B1 governance closure PR.
-GOVERNANCE_FACT: 001F-B1 through 001F-F are COMPLETE / PASS / CLOSED; architecture closure main SHA was a13becbefe1272ffb59cb2d78369df544e68ca97.
-CURRENT_REPOSITORY_BASELINE: PR #82 baseline audit merged to main as faa45f9620211f3c398dde7f30c1a886313ced14.
-SOURCE_CONFLICTS: Historical pre-merge status text remains in older records; current GitHub and merged closure records are authoritative.
-EVIDENCE_LIMITS: GitHub self-approval is unavailable for the repository owner account; exact-head review basis is recorded. Remote Dev, Staging and Production remain outside contract.
+GITHUB_FACT: architecture closure is historical and Global Architecture Gate remains PASS.
+CURRENT_REPOSITORY_BASELINE: main@6ac25f2168dea7e8cd9e8f4c49c10752642a44df after PR #89 ERP-INQUIRY-M1.1 Company merge.
+INQUIRY_FACT: M1.0 contract and M1.1 Company are complete; M1.2 Contact is PAUSED / NOT CANCELLED by D-037.
+ORDER_FULFILLMENT_FACT: ERP-ORDER-FULFILLMENT-M1-001 is the current bounded delivery package; implementation is not yet authorized.
+SOURCE_CONFLICTS: older documents that still describe M1.1 as next or ERP-INQUIRY-M1 as uninterrupted current sequence are historical/stale and are superseded by D-037 after this delivery PR merges.
+EVIDENCE_LIMITS: real production data, Production migration and remote deployment remain outside contract. Exact Order/Fulfillment implementation estimate is not issued until implementation preflight confirms migration/backfill and authorization surfaces.
 ```
 
 ## Current Program Position and Estimate
 
 ```text
-001F_B2_TO_B5_KNOWN_ESTIMATE: 4–8 Codex / 20–40h
-CURRENT_B2_TO_B5_PLANNING_VALUE: 30h
-CURRENT_PACKAGE: ERP-GOV-INQUIRY-M1.0-ACCEPTANCE-SYNC-001 / governance-only post-merge sync
-B5_CLOSURE_PR: #37; main closure a5035cbe0e8d4aed0bf1683c1081b4417f8936be
-E_CURRENT_DEPENDENCY: CLOSED through PR #47.
-001F_F_ESTIMATE: 5–9h; planning value 7h; completed and closed
 TOTAL_ARCHITECTURE_MIGRATION_REMAINING: 0h / complete
 ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
-CURRENT_GOVERNANCE_PACKAGE_ESTIMATE: 1–2h / planning value 1.5h / GPT_WEB governance-only
-ERP_INQUIRY_M1_ESTIMATE: 86–150h / planning value 116h / M1.1–M1.9 implementation / Owner-approved M1.0 contract
-ERP_INQUIRY_M1_1_COMPANY_ESTIMATE: 6–10h / planning value 8h / next bounded implementation package
+CURRENT_PACKAGE: ERP-ORDER-FULFILLMENT-M1-001 / contract formalized / implementation not authorized
+CURRENT_PACKAGE_BASELINE: main@6ac25f2168dea7e8cd9e8f4c49c10752642a44df
+ERP_ORDER_FULFILLMENT_M1_ESTIMATE: UNKNOWN WITH EVIDENCE / implementation preflight required before exact estimate
+ERP_INQUIRY_M1_ESTIMATE: 86–150h / planning value 116h / frozen M1.0 contract; M1.1 complete; M1.2–M1.9 retained
+ERP_INQUIRY_M1_1_COMPANY_ESTIMATE: 6–10h / planning value 8h / completed package estimate, not remaining
+ERP_INQUIRY_M1_2_CONTACT_ESTIMATE: retained inside approved ERP-INQUIRY-M1 milestone / execution PAUSED / exact child value not changed by D-037
 MVP1_HUMAN_UAT_FINDINGS_OPEN: 4
+REMOTE_DEPLOYMENT: NO / milestone gated
 ```
 
-Historical estimate: `001F_B_TO_F_ESTIMATE: SUPERSEDED / NOT CURRENT` and `PLANNING_VALUE: 18h` are retained only as historical evidence.
+`ERP_ORDER_FULFILLMENT_M1_ESTIMATE` is deliberately `UNKNOWN WITH EVIDENCE`: repository source audit confirms the existing Order/Shipment/Sync/Finance foundations and identifies the bounded gaps, but the final migration/backfill behavior for legacy `source_type`, current external-order-number duplicates and exact permission/data-scope integration must be confirmed by the US implementation preflight before an engineering range is issued. Chat elapsed time must not be converted into an estimate.
+
+Historical architecture estimate fields below remain historical/completed evidence and are not current remaining work.
 
 ## Initial Hours Snapshot
 
@@ -103,19 +106,19 @@ Historical estimate: `001F_B_TO_F_ESTIMATE: SUPERSEDED / NOT CURRENT` and `PLANN
 | `001D_TOTAL_ESTIMATE` | 35–54h; planning value 45h | completed issued total estimate | Frozen and completed parent 001D package; not remaining |
 | `001E_PARENT_PLANNING_ESTIMATE` | 40–62h; planning value 51h | parent-level original planning estimate | Original allocation across 001E-A/B/C; not remaining |
 | `001E_B_CONFIRMED_ESTIMATE` | 12–18h; planning value 15h | confirmed child implementation estimate | Accepted bounded implementation estimate; package merged and closed |
-| `001F_B2_TO_B5_KNOWN_ESTIMATE` | 4–8 Codex / 20–40h; planning value 30h | planning estimate only | B2-B5 only |
+| `001F_B2_TO_B5_KNOWN_ESTIMATE` | 4–8 Codex / 20–40h; planning value 30h | historical planning estimate | completed architecture scope; not remaining |
 | `001F_C_TO_001F_F_ESTIMATE` | SUPERSEDED / COMPLETE | historical planning estimate | 001F-C through 001F-F are closed; not a remaining estimate |
 | `TOTAL_ARCHITECTURE_MIGRATION_REMAINING` | 0h / complete | remaining estimate | Global Architecture Gate is PASS and 001F is closed |
 | `ACTUAL_HOURS` | UNKNOWN WITH EVIDENCE | actual-hours status | no fabricated actuals |
-| `001F_B2_TO_B5_ESTIMATE` | SUPERSEDED / see `001F_B2_TO_B5_KNOWN_ESTIMATE` | historical planning estimate | excludes 001F-C through 001F-F; current estimate is recorded above |
 | `MVP1_TOTAL_ESTIMATE` | 122–190h | total estimate | Effective Hours source; not automatically remaining |
 | `MVP1_PLANNING_BASELINE` | 166h | total planning value | Effective Hours source |
 | `MVP1_MAXIMUM_ENVELOPE` | 192h | maximum total planning envelope | Living Roadmap and Effective Hours sources |
 | `MVP1_REMAINING` | UNKNOWN WITH EVIDENCE | unknown remaining total | Accepted actual-hours ledger and proven architecture/MVP1 overlap map are incomplete |
-| `ERP_INQUIRY_M1_ESTIMATE` | 86–150h; planning value 116h | milestone implementation estimate | Owner-approved M1.0 contract; M1.1–M1.9 non-overlapping child ranges |
-| `ERP_INQUIRY_M1_1_COMPANY_ESTIMATE` | 6–10h; planning value 8h | next bounded child estimate | M1.1 Company only; implementation not yet authorized |
+| `ERP_ORDER_FULFILLMENT_M1_ESTIMATE` | UNKNOWN WITH EVIDENCE | current bounded package estimate | exact engineering range deferred until US implementation preflight confirms migration/backfill and permission/data-scope surfaces |
+| `ERP_INQUIRY_M1_ESTIMATE` | 86–150h; planning value 116h | milestone implementation estimate | Owner-approved M1.0 contract; M1.1 completed; M1.2–M1.9 retained and paused only by priority |
+| `ERP_INQUIRY_M1_1_COMPANY_ESTIMATE` | 6–10h; planning value 8h | completed child estimate | M1.1 Company merged by PR #89; do not count as remaining |
 | `POST_MVP_KNOWN_INCREMENT` | approximately 68–120h beyond MVP1 | incremental estimate | WooCommerce inbound plus single outbound |
-| `PROGRAM_REMAINING` | UNKNOWN WITH EVIDENCE | unknown remaining total | Long-term ranges are cumulative; actuals and overlap mapping are incomplete |
+| `PROGRAM_REMAINING` | UNKNOWN WITH EVIDENCE | unknown remaining total | Long-term ranges are cumulative; actuals, overlap mapping and the current package estimate are incomplete |
 | `COMPLETED_ACTUAL_EFFECTIVE_HOURS` | UNKNOWN WITH EVIDENCE | unknown actual effort | Accepted Work Logs do not yet provide a complete project-wide ledger; chat memory is not evidence |
 
 ## Long-Term Cumulative Ranges
@@ -155,14 +158,14 @@ Future rows may be added only from accepted repository Work Logs. PR elapsed tim
 - use `UNKNOWN WITH EVIDENCE` with checked sources, missing data and the unsafe operation explained;
 - do not sum cumulative ranges;
 - do not add an increment to a cumulative value when the increment is already included;
-- the current package estimate must agree with its final `ESTIMATED CODEX HOURS` module.
+- the current package estimate must agree with its formal Work Package.
 
 ## Estimate Confidence
 
 ```text
-HIGH: quoted repository total and cumulative ranges; issued 001D estimate
-MEDIUM: parent 001E-A/B/C planning allocation and bounded 001E-A Preflight estimate
-LOW / UNKNOWN: project and Architecture Gate remaining totals because 001F and actual-ledger overlap remain incomplete
-ESTIMATE_AS_OF: 2026-08-01
-ESTIMATE_METHOD: repository source classification; no subtraction without accepted actuals; no addition of cumulative or overlapping ranges
+HIGH: quoted repository total/cumulative historical ranges and Owner-frozen ERP-INQUIRY-M1 milestone range
+MEDIUM: bounded completed child-package estimates with accepted scope evidence
+LOW / UNKNOWN: ERP-ORDER-FULFILLMENT-M1 exact implementation estimate until migration/backfill and permission/data-scope preflight completes; project/program remaining total
+ESTIMATE_AS_OF: 2026-08-24
+ESTIMATE_METHOD: repository source classification; no subtraction without accepted actuals; no addition of cumulative/overlapping ranges; no chat-time conversion
 ```
