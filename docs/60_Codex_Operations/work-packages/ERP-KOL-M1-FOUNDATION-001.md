@@ -509,3 +509,16 @@ MIGRATION_FILE_AUTHORING: INCLUDED
 MIGRATION_EXECUTION: INCLUDED / LOCAL DISPOSABLE DATABASE ONLY
 UAT: INCLUDED / US LOCAL ONLY
 DEPLOYMENT: EXCLUDED
+
+## Owner UAT Remediation Amendment — 2026-08-27
+
+OWNER_UAT_RESULT: FAIL / REMEDIATION REQUIRED.
+
+Required before M1.0 acceptance:
+1. Rebuild KOL Create/Edit to the frozen ERP Form Design Standard V1 / existing ERP V2 form VI; remove legacy generic `mvp-card` form layout and page-local generic input styling.
+2. Use centered `erp-form-page` / `erp-form-content`, `erp-form-card`, 2-column desktop field composition, standard labels/inputs/errors/action bar, and responsive single-column collapse.
+3. Add structured KOL contact/shipping/payout fields: email, phone, optional tax ID, payout method/account, recipient and structured shipping address.
+4. Preserve server-side authorization/scope and audit; do not expose tax/payment identifiers as default KOL list columns.
+5. Add focused frontend VI contract tests and backend persistence/validation tests, then rerun full verification and US Local UAT.
+
+This amendment is Owner-authorized M1.0 remediation on PR #103. M1.1+ remains excluded. MERGE remains unauthorized until Owner UAT PASS.

@@ -578,3 +578,18 @@ The KOL module is considered progressively usable when:
 6. KOL fulfillment continues to reuse canonical Orders/Shipments;
 7. published content is evidence-backed by URL or screenshot;
 8. AffiliateWP source-of-truth boundary remains intact.
+
+## Owner UAT Amendment — 2026-08-27
+
+Status: OWNER_APPROVED / M1.0 REMEDIATION REQUIRED BEFORE ACCEPTANCE.
+
+The KOL Create/Edit surfaces MUST comply with `18_BYL_ERP_FORM_DESIGN_STANDARD_V1.md` and the existing ERP V2 form VI already used by canonical Order/Product forms. Legacy `mvp-card`/page-local generic form styling is not an approved exception.
+
+KOL Master V1 must additionally expose structured contact, shipping and payout facts on Create/Edit:
+- contact email;
+- contact phone;
+- optional tax identifier;
+- payout method (`paypal`, `bank`, `other`) and payout account identifier/details;
+- shipping recipient and structured shipping address (country, province/state, city, postal code, address lines).
+
+These facts remain KOL-domain data. Payment/tax identifiers are sensitive business data and must not be shown as default list columns; mutation remains audited. This amendment is part of M1.0 Owner UAT remediation, not M1.1 CRM scope.
