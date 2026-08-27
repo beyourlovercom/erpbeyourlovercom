@@ -230,3 +230,14 @@ Program priority is revised after the already-merged ERP-INQUIRY-M1.1 Company sl
 Because the package changes schema semantics and authorization/data scope, its verification classification is Tier B: full US verification plus full China exact-SHA independent verification before Owner Local UAT/merge. The exact implementation estimate remains `UNKNOWN WITH EVIDENCE` until the implementation preflight confirms migration/backfill, legacy source data and permission/data-scope surfaces; no fabricated estimate is permitted.
 
 Architecture conflict: D-034 serial Inquiry sequence is intentionally superseded only in current priority order; the approved ERP-INQUIRY-M1 contract itself remains valid and resumes at M1.2 after this package. Remote milestone deployment remains gated and unchanged.
+
+
+## D-038 Close Inventory M1 and set US-only default verification path
+
+Owner formally accepted Inventory M1 on 2026-08-27 after successful US Local/remote UAT and authorized merge. PR #96 merged Inventory Foundation + Inventory Batch Sync M1 to `main` as `f5247a2f9d18e8912dd64d7e728a30ec6bef9a9b`. The accepted Inventory baseline includes canonical Product Master matching, warehouse inventory truth, multi-lot sellable/defective separation, partial/full batch sync, Preview → Confirm → Audit, dynamic active-Warehouse menu shortcuts, and local/UAT `admin` / `password` provisioning restricted to local/testing.
+
+Owner also revised the default verification policy: US Mac verification/UAT is sufficient for normal development unless the Owner explicitly requests China verification or a concrete cross-machine/region-specific defect requires it. China is no longer a default merge gate.
+
+The next program phase is Shipping ↔ Inventory M1, but this decision does not authorize its implementation. Its first bounded contract must define warehouse eligibility, stock availability, reservation semantics, `selected_warehouse_id`, one-Order/one-Warehouse behavior, manual exception handling, rollback and audit. Carrier rules, Warehouse Connectors, automatic fulfillment and Production deployment remain later separately gated scope.
+
+Architecture conflict: NONE. GitHub remains the unique source of truth. Remote Production deployment remains NOT AUTHORIZED.

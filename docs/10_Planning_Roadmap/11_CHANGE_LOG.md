@@ -534,3 +534,21 @@ Deployment: NO.
 Merge authorization: NO.
 Documents added/updated: Canonical Order/Finance/KOL Data Contract V1; ERP-ORDER-FULFILLMENT-M1-001 Work Package and Work Log; Current Context; Living Roadmap; Product/Menu Map; MVP1 Fast Track; Finance/Order Analysis spec; KOL spec; Decision Register; Change Log; Work Package Index; Program Roadmap and Hours.
 ```
+
+
+## 2026-08-27 — Inventory M1 formally closed; Shipping ↔ Inventory becomes next
+
+```text
+Owner UAT: PASS on US Local/remote UAT.
+PR #96: MERGED to main as f5247a2f9d18e8912dd64d7e728a30ec6bef9a9b.
+Inventory Foundation: COMPLETE.
+Inventory Batch Sync M1: COMPLETE.
+Dynamic warehouse shortcuts: retained as data-driven active Warehouse Master links.
+Verification policy: US Mac is the default sufficient verification/UAT host; China is special-case only unless explicitly requested or required by a concrete cross-machine issue.
+Temporary UAT service 127.0.0.1:18103: STOPPED.
+Inventory batch/foundation/planning worktrees: REMOVED after clean-state and merge ancestry checks.
+Stale planning PR #94: CLOSED UNMERGED / SUPERSEDED BY PR #96.
+Next phase: Shipping ↔ Inventory M1 / NOT YET FORMALIZED.
+Production deployment: NO.
+Decision: D-038.
+```

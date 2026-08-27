@@ -16,7 +16,7 @@ Architecture Migration / Global Architecture Gate [COMPLETE]
 → ERP-ORDER-FULFILLMENT-M1 [COMPLETE]
 → Product Master / SKU M1 [COMPLETE]
 → Order Create/Edit V2 [COMPLETE]
-→ Inventory Foundation + Inventory Batch Sync M1 [COMPLETE / MERGE CLOSURE CURRENT]
+→ Inventory Foundation + Inventory Batch Sync M1 [COMPLETE / MERGED BY PR #96]
 → Shipping ↔ Inventory M1 [NEXT]
 → Carrier / Shipping Rule Engine M1
 → Warehouse Connector Foundation
@@ -41,13 +41,13 @@ ERP-ORDER-FULFILLMENT-M1 = COMPLETE / MERGED
 Product Master / SKU M1 = COMPLETE / MERGED BY PR #93
 Order Create/Edit V2 = COMPLETE / MERGED BY PR #95
 Inventory Foundation = COMPLETE / ACCEPTED
-Inventory Batch Sync M1 = OWNER UAT PASS / MERGE AUTHORIZED / PR #96 CLOSURE CURRENT
+Inventory Batch Sync M1 = COMPLETE / OWNER UAT PASS / MERGED BY PR #96
 ERP-INQUIRY-M1.2 Contact = PAUSED / NOT CANCELLED
 US Mac = default full verification + Owner UAT host
 China Mac = not required by default; special-case verification only
 GitHub = UNIQUE SOURCE OF TRUTH
-CURRENT_PHASE = Inventory Batch Sync M1 formal closure / PR #96
-CURRENT_WORK_PACKAGE = ERP-INVENTORY-BATCH-SYNC-M1-001
+CURRENT_PHASE = Inventory M1 CLOSED / Shipping ↔ Inventory M1 planning next
+CURRENT_WORK_PACKAGE = NONE / NEXT WORK PACKAGE NOT YET FORMALIZED
 NEXT_PHASE = Shipping ↔ Inventory M1
 Remote Milestone Target = https://erp.beyourlover.com
 Deployment = NO / MILESTONE GATED
@@ -67,14 +67,12 @@ Remote-release rule: https://erp.beyourlover.com remains milestone-gated.
 ## Immediate sequence
 
 ```text
-1. Formally close and merge ERP-INVENTORY-BATCH-SYNC-M1-001 / PR #96 into main.
-2. Stop temporary Inventory UAT service and remove its temporary worktree after merge verification.
-3. Formalize Shipping ↔ Inventory M1: warehouse eligibility + available-stock check + inventory reservation + selected_warehouse_id.
-4. Implement one-Order/one-Warehouse automatic recommendation with manual exception handling when no warehouse can satisfy the complete Order.
-5. Formalize Carrier / Shipping Rule Engine M1 after warehouse allocation is stable.
-6. Add Warehouse Connector Foundation, then individual adapters for the real US East / US West / China / Germany warehouse systems.
-7. Connect automatic fulfillment end-to-end before expanding WooCommerce automation, Accounting/Procurement, or resuming paused Inquiry work.
-8. Remote deployment remains milestone-gated and separate from normal local development.
+1. Formalize Shipping ↔ Inventory M1: warehouse eligibility + available-stock check + inventory reservation + selected_warehouse_id.
+2. Implement one-Order/one-Warehouse automatic recommendation with manual exception handling when no warehouse can satisfy the complete Order.
+3. Formalize Carrier / Shipping Rule Engine M1 after warehouse allocation is stable.
+4. Add Warehouse Connector Foundation, then individual adapters for the real US East / US West / China / Germany warehouse systems.
+5. Connect automatic fulfillment end-to-end before expanding WooCommerce automation, Accounting/Procurement, or resuming paused Inquiry work.
+6. Remote deployment remains milestone-gated and separate from normal local development.
 ```
 
 Architecture migration and its Global Gate are closed. MySQL 8.x remains the supported database baseline. Historical architecture evidence is retained in its Work Packages and logs; it is no longer a current blocker. Remote deployment remains milestone-gated and is not part of normal development.
