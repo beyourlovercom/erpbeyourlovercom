@@ -13,17 +13,23 @@ This document is the repository source of truth for the complete Program Roadmap
 
 ```text
 Architecture Migration / Global Architecture Gate [COMPLETE]
-→ MVP1 Existing Operations / Tencent Docs Replacement [IMPLEMENTATION COMPLETE; HUMAN UAT REMEDIATION OPEN]
 → ERP-INQUIRY-M1 M1.0 Contract + M1.1 Company [COMPLETE]
 → ERP-ORDER-FULFILLMENT-M1 [COMPLETE]
 → Product Master / SKU M1 [COMPLETE]
 → Order Create/Edit V2 [COMPLETE]
 → Inventory Foundation + Inventory Batch Sync M1 [COMPLETE / MERGED BY PR #96]
-→ Shipping ↔ Inventory M1 [NEXT / NOT YET FORMALIZED]
-→ Carrier / Shipping Rule Engine M1
-→ Warehouse Connector Foundation
-→ Automatic Fulfillment M1
-→ WooCommerce Inbound + Tracking Outbound
+→ MVP1 Manual Fulfillment Integration / Tencent Docs Replacement [CURRENT / NOT YET FORMALIZED]
+→ MVP1.1 WooCommerce Inbound
+→ MVP1.2 Tracking Outbound
+→ MVP1.3 Sync Orchestration
+→ MVP2 Inventory Reservation Foundation
+→ MVP2.1 Warehouse Allocation Recommendation
+→ MVP2.2 Packing + Chargeable Weight
+→ MVP2.3 Shipping Cost Estimator
+→ MVP2.4 Transport Mode Decision / Express-to-Ocean Evaluation
+→ MVP2.5 Carrier Rule Engine
+→ MVP3 Warehouse Connector Foundation + real warehouse adapters
+→ MVP4 Automatic Fulfillment
 → Accounting / Procurement expansion
 → Resume ERP-INQUIRY-M1 at M1.2 Contact [PAUSED, NOT CANCELLED]
 → ERP-INQUIRY-M1 M1.2–M1.9 + Local Milestone UAT
@@ -33,6 +39,17 @@ Architecture Migration / Global Architecture Gate [COMPLETE]
 ```
 
 The Program Roadmap is the top-level delivery sequence. It must not be replaced by the current Architecture track or a single Work Package map.
+
+## Fulfillment planning principle
+
+```text
+MVP1 = MANUAL DECISIONS / ERP REPLACES TENCENT DOCS
+MVP2 = ASSISTED INTELLIGENCE / HUMAN CONFIRMATION
+MVP3 = WAREHOUSE CONNECTORS
+MVP4 = AUTOMATIC FULFILLMENT
+```
+
+MVP1 must not be expanded by pulling future intelligent judgment into the current delivery. The long-term interfaces must remain compatible with Reservation, warehouse recommendation, Packing, chargeable weight, shipping-cost estimation, transport-mode evaluation, carrier rules and WMS connectors. Future chargeable weight uses `max(actual_weight, volumetric_weight)`. Future express cost above the configurable threshold (initial business threshold 300, currency configurable) triggers ocean-freight evaluation and does not force ocean automatically.
 
 ## Current Architecture Track
 
@@ -66,13 +83,16 @@ Global Architecture Gate              PASS
 ## Source Conflict Snapshot
 
 ```text
-GITHUB_FACT: PR #96 merged Inventory Foundation + Inventory Batch Sync M1 to main as f5247a2f9d18e8912dd64d7e728a30ec6bef9a9b.
-CURRENT_REPOSITORY_BASELINE: main@f5247a2f9d18e8912dd64d7e728a30ec6bef9a9b after PR #96 Inventory M1 merge.
+GITHUB_FACT: PR #96 merged Inventory Foundation + Inventory Batch Sync M1 to main; Inventory M1 is closed.
+CURRENT_REPOSITORY_BASELINE: main includes the accepted Product Master + Order V2 + Inventory baseline and subsequent Inventory closure synchronization.
 INVENTORY_FACT: Product Master, Order V2, Inventory Foundation and Inventory Batch Sync are complete; Owner UAT passed.
 VERIFICATION_FACT: US Mac verification/UAT is the default sufficient path; China verification is special-case only unless explicitly requested or required by a concrete cross-machine issue.
-NEXT_FACT: Shipping ↔ Inventory M1 is next, but no implementation Work Package is activated by this closure sync.
+OWNER_PRIORITY_FACT: MVP1 must first replace the Tencent Docs manual fulfillment workflow. Human warehouse/carrier judgment remains manual in MVP1; smart decision engines are post-MVP1.
+FUTURE_BACKBONE_FACT: Product → Order → Inventory Availability → Warehouse Allocation → Reservation → Packing → Chargeable Weight → Shipping Cost → Transport Mode → Carrier → Warehouse Connector → Shipment.
+COST_RULE_FACT: future chargeable weight is max(actual, volumetric); best express cost above configurable threshold (initial business threshold 300, currency configurable) triggers ocean-freight evaluation rather than forcing ocean.
+NEXT_FACT: MVP1 Manual Fulfillment Integration is next and is not yet formalized as a bounded Work Package.
 INQUIRY_FACT: M1.2 Contact remains PAUSED / NOT CANCELLED.
-EVIDENCE_LIMITS: Production deployment, live WMS connectors and remote production mutation remain outside this closure.
+EVIDENCE_LIMITS: Production deployment, live WMS connectors and remote production mutation remain outside the current planning sync.
 ```
 
 ## Current Program Position and Estimate
@@ -82,17 +102,18 @@ TOTAL_ARCHITECTURE_MIGRATION_REMAINING: 0h / complete
 ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
 INVENTORY_M1: COMPLETE / OWNER UAT PASS / MERGED BY PR #96
 CURRENT_PACKAGE: NONE / Inventory M1 closed
-CURRENT_PACKAGE_BASELINE: main@f5247a2f9d18e8912dd64d7e728a30ec6bef9a9b
-NEXT_PACKAGE: Shipping ↔ Inventory M1 / NOT YET FORMALIZED
-SHIPPING_INVENTORY_M1_ESTIMATE: UNKNOWN WITH EVIDENCE / no bounded Work Package issued yet
+CURRENT_PACKAGE_BASELINE: current main / see GitHub for exact SHA
+NEXT_PACKAGE: MVP1 Manual Fulfillment Integration / Tencent Docs Replacement / NOT YET FORMALIZED
+MVP1_MANUAL_FULFILLMENT_INTEGRATION_ESTIMATE: UNKNOWN WITH EVIDENCE / no bounded Work Package issued yet
+POST_MVP_SMART_FULFILLMENT_ESTIMATE: UNKNOWN WITH EVIDENCE / Reservation, Allocation, Packing, Cost, Mode, Carrier, Connectors and Automation are separately bounded future work
 ERP_INQUIRY_M1_ESTIMATE: 86–150h / planning value 116h / frozen M1.0 contract; M1.1 complete; M1.2–M1.9 retained
 ERP_INQUIRY_M1_1_COMPANY_ESTIMATE: 6–10h / planning value 8h / completed package estimate, not remaining
 ERP_INQUIRY_M1_2_CONTACT_ESTIMATE: retained inside approved ERP-INQUIRY-M1 milestone / execution PAUSED
-MVP1_HUMAN_UAT_FINDINGS_OPEN: 4
+MVP1_HUMAN_UAT_FINDINGS_OPEN: retained until individually evidenced closed
 REMOTE_DEPLOYMENT: NO / milestone gated
 ```
 
-No exact estimate is issued for Shipping ↔ Inventory M1 until its bounded Work Package defines reservation, allocation, schema and rollback scope. Chat elapsed time must not be converted into an estimate.
+No exact estimate is issued for MVP1 Manual Fulfillment Integration until its bounded Work Package defines the remaining manual Order/Product/Inventory/Logistics connection scope. Smart fulfillment phases remain separately estimated later and must not be pulled into MVP1. Chat elapsed time must not be converted into an estimate.
 
 Historical architecture estimate fields below remain historical/completed evidence and are not current remaining work.
 
@@ -162,7 +183,7 @@ Future rows may be added only from accepted repository Work Logs. PR elapsed tim
 ```text
 HIGH: quoted repository total/cumulative historical ranges and Owner-frozen ERP-INQUIRY-M1 milestone range
 MEDIUM: bounded completed child-package estimates with accepted scope evidence
-LOW / UNKNOWN: Shipping ↔ Inventory M1 exact estimate until a bounded Work Package is issued; project/program remaining total
+LOW / UNKNOWN: MVP1 Manual Fulfillment Integration and post-MVP smart-fulfillment estimates until bounded Work Packages are issued; project/program remaining total
 ESTIMATE_AS_OF: 2026-08-27
 ESTIMATE_METHOD: repository source classification; no subtraction without accepted actuals; no addition of cumulative/overlapping ranges; no chat-time conversion
 ```
