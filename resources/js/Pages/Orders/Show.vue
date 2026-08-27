@@ -4,6 +4,9 @@ import { ref, computed } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 
+type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; quantity_on_hand: number; quantity_reserved: number; quantity_available: number }
+type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null }
+
 type OrderItem = {
   id: number
   product_id: number | null
@@ -31,7 +34,12 @@ type Order = {
   items: OrderItem[]
   shipment: {
     shipment_status: string
+    warehouse_id?: number | null
+    warehouse_name?: string | null
+    warehouse_selection_source?: string | null
     carrier: string | null
+    service?: string | null
+    carrier_selection_source?: string | null
     tracking_number: string | null
     shipped_at: string | null
   } | null
@@ -40,6 +48,7 @@ type Order = {
 
 const props = defineProps<{
   order: Order
+  inventoryAvailability?: Record<number, Availability[]>
   audit: { action: string; actor_id: number | null; created_at: string; reason?: string }[]
 }>()
 
@@ -149,8 +158,16 @@ const shipmentStatusLabel = computed(() => {
               <strong class="ord-fulfillment-value">{{ shipmentStatusLabel }}</strong>
             </div>
             <div class="ord-fulfillment-item">
+              <small class="ord-fulfillment-label">发货仓库</small>
+              <strong class="ord-fulfillment-value">{{ order.shipment?.warehouse_name ?? '未选择' }}</strong>
+            </div>
+            <div class="ord-fulfillment-item">
               <small class="ord-fulfillment-label">承运商</small>
               <strong class="ord-fulfillment-value">{{ order.shipment?.carrier ?? '—' }}</strong>
+            </div>
+            <div class="ord-fulfillment-item">
+              <small class="ord-fulfillment-label">物流渠道</small>
+              <strong class="ord-fulfillment-value">{{ order.shipment?.service ?? '—' }}</strong>
             </div>
             <div class="ord-fulfillment-item">
               <small class="ord-fulfillment-label">追踪号</small>
@@ -169,6 +186,21 @@ const shipmentStatusLabel = computed(() => {
             >
               重开发货
             </button>
+          </div>
+        </div>
+
+        <!-- Inventory visibility -->
+        <div class="erp-form-card">
+          <h2 class="erp-form-card-title">库存可见</h2>
+          <p class="ord-inventory-help">仅展示当前库存事实，由操作人员人工决定发货仓库。</p>
+          <div v-for="item in order.items" :key="`inventory-${item.id}`" class="ord-inventory-row">
+            <div class="ord-inventory-sku"><strong>{{ item.sku || '—' }}</strong><small>需求 {{ item.quantity }}</small></div>
+            <div class="ord-inventory-warehouses">
+              <span v-for="row in inventoryAvailability?.[item.product_id ?? 0] ?? []" :key="row.warehouse_id" class="ord-inventory-pill" :class="{ shortage: row.quantity_available < item.quantity }">
+                {{ row.warehouse_name }} · 可用 {{ row.quantity_available }}
+                <small>QOH {{ row.quantity_on_hand }} / Reserved {{ row.quantity_reserved }}</small>
+              </span>
+            </div>
           </div>
         </div>
 
@@ -443,7 +475,7 @@ const shipmentStatusLabel = computed(() => {
 /* Fulfillment card layout — no erp-* equivalent */
 .ord-fulfillment-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 16px;
   margin-bottom: 16px;
 }
@@ -468,6 +500,15 @@ const shipmentStatusLabel = computed(() => {
   padding-top: 8px;
   border-top: 1px solid #e4eaed;
 }
+
+.ord-inventory-help { margin: -4px 0 12px; font-size: 12px; color: #7a8c94; }
+.ord-inventory-row { display: grid; grid-template-columns: 150px 1fr; gap: 12px; padding: 10px 0; border-bottom: 1px solid #e4eaed; }
+.ord-inventory-sku { display: flex; flex-direction: column; gap: 3px; }
+.ord-inventory-sku small { color: #7a8c94; }
+.ord-inventory-warehouses { display: flex; flex-wrap: wrap; gap: 8px; }
+.ord-inventory-pill { background: #eef7f2; border-radius: 7px; padding: 6px 9px; font-size: 12px; }
+.ord-inventory-pill.shortage { background: #fff1f2; }
+.ord-inventory-pill small { display: block; color: #6b7f87; }
 
 /* span-2 within erp-form-grid */
 .ord-span-2 {
