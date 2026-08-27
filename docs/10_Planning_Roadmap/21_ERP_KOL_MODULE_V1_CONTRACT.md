@@ -633,3 +633,13 @@ Foreign-KOL contact scope is simplified. Remove WeChat/微信号, Douyin/抖音 
 Business-profile semantics are also revised: remove `monthly_gmv_band` and `average_selling_price` from the required KOL foundation UI/data target. Replace them with cumulative historical sales-volume facts. The product meaning is: each attributable selling/cooperation event records an incremental order count (e.g. A, then B, then C), while the KOL detail/list/dashboard may display the derived cumulative historical order count `A + B + C`. The total must not be maintained as an opaque manually overwritten lifetime number when durable per-event facts are available.
 
 Recommended V1 fact model is additive/history-preserving: `kol_sales_performance` (or equivalent child facts) with at least `kol_id`, optional collaboration/content/source reference, `order_count`, `recorded_at`, optional note/source. `historical_order_count` is a derived aggregate across authorized facts. This does not create a second canonical customer Order truth; when canonical Order attribution exists later it should be referenced/reconciled rather than duplicated.
+## M1.0 Scope Closure — 2026-08-27
+
+Owner decision: `KOL_M1_FOUNDATION_UI_UPGRADE_V1` is the final M1.0 scope. No additional intelligence, public-platform ingestion, audience analytics, OAuth, scoring model, or new business-engine scope may be added before M1.0 Owner UAT is completed.
+
+M1.0 now closes around the already frozen foundation/UI upgrade: KOL master, owner/data scope, Saved Views, ERP V2 Form VI, foreign-contact fields, shipping/tax/payout data, business profile, social accounts/followers, additive historical sales quantity, KOL Dashboard, 红人库 list, and Chinese detail surfaces.
+
+Execution order after M1.0 is fixed as:
+`Owner UAT PASS -> M1.1 CRM -> M1.2 Collaboration/Fulfillment -> M1.3 Content -> M1.4 Finance/Affiliate`.
+
+KOL Intelligence (public profile/content ingestion, automated performance metrics, Audience Analytics screenshots/authorization, evaluation scoring) is explicitly deferred until after the existing M1.1–M1.4 operating track unless the Owner later reprioritizes it.

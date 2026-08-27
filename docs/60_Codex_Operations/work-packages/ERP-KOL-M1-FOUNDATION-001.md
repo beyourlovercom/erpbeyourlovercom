@@ -559,3 +559,13 @@ Contact fields for foreign KOLs: keep Email, Phone, WhatsApp, optional Other Con
 Business profile: remove required 月度 GMV and 平均售价 fields. Replace with 历史带货数量 / historical attributable order count. Preserve additive history: each selling/cooperation event contributes an incremental order count; the displayed lifetime total is the sum of those event facts. Example: A + B + C = historical order count. Do not store only a manually overwritten lifetime total when the contributing facts can be preserved.
 
 Implementation should use a bounded child performance/history fact model or equivalent, without creating duplicate canonical Orders. Later canonical attribution may link/reconcile these facts. Dashboard/list/detail should use the derived historical order count and may show event history where appropriate.
+## Final M1.0 Scope Freeze — 2026-08-27
+
+Owner has closed further M1.0 expansion. `KOL_M1_FOUNDATION_UI_UPGRADE_V1` is the final remediation scope for PR #103.
+
+Do not add KOL Intelligence, public social-platform ingestion, Audience Analytics extraction, OAuth/authorization flows, automated evaluation/scoring, or additional M1.1+ business engines before Owner UAT.
+
+Required execution order is:
+`finish current M1.0 implementation -> full verification -> US Local Owner UAT -> explicit acceptance/merge gate -> M1.1 -> M1.2 -> M1.3 -> M1.4`.
+
+Implementation must stop at the M1.0 Owner UAT gate after preparing the verified UAT build. It must not automatically begin M1.1.
