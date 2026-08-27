@@ -131,10 +131,10 @@ class AppShellNavigationTest extends TestCase
         }
     }
 
-    public function test_formal_permissions_always_render_the_corresponding_vue_placeholder(): void
+    public function test_every_formal_root_renders_real_content_instead_of_placeholder(): void
     {
         $permissionsByPath = [
-            '/logistics' => 'logistics.view', '/sync' => 'sync.view', '/customers' => 'customers.view',
+            '/orders' => 'orders.view', '/logistics' => 'logistics.view', '/sync' => 'sync.view', '/customers' => 'customers.view',
             '/kol' => 'kol.view', '/inventory' => 'inventory.view', '/procurement' => 'procurement.view',
             '/products' => 'products.view', '/guides' => 'guides.view', '/accounting' => 'accounting.view',
             '/settings' => 'system.permissions.manage',
@@ -143,11 +143,12 @@ class AppShellNavigationTest extends TestCase
         foreach ($permissionsByPath as $path => $permission) {
             $this->actingAs($user)->get($path)->assertInertia(fn (Assert $page) => $page
                 ->component(match ($path) {
+                    '/orders' => 'Orders/Index',
                     '/logistics' => 'Logistics/Index',
                     '/sync' => 'Sync/Index',
                     '/products' => 'Products/Dashboard',
                     '/inventory' => 'Inventory/Dashboard',
-                    default => 'Shell/Placeholder',
+                    default => 'Shell/ModuleOverview',
                 }));
         }
     }
@@ -155,7 +156,7 @@ class AppShellNavigationTest extends TestCase
     public function test_users_without_formal_or_prototype_permission_receive_forbidden_for_all_modules(): void
     {
         $user = $this->userWith([], 'restricted-operator');
-        foreach (['/logistics', '/sync', '/customers', '/kol', '/inventory', '/procurement', '/products', '/guides', '/accounting', '/settings'] as $path) {
+        foreach (['/orders', '/logistics', '/sync', '/customers', '/kol', '/inventory', '/procurement', '/products', '/guides', '/accounting', '/settings'] as $path) {
             $this->actingAs($user)->get($path)->assertForbidden();
         }
     }
@@ -164,7 +165,7 @@ class AppShellNavigationTest extends TestCase
     {
         $user = $this->userWith([], 'super_admin');
         $this->actingAs($user)->get('/settings')->assertOk();
-        $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page->has('shellNavigation', 11));
+        $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page->has('shellNavigation', 12));
     }
 
     public function test_root_contract_and_legacy_prototype_access_remain_unchanged(): void

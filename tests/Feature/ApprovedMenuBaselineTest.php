@@ -23,10 +23,10 @@ class ApprovedMenuBaselineTest extends TestCase
         $this->assertFileExists($path, self::MISMATCH.': approved file is missing');
         $baseline = $this->baseline();
 
-        $this->assertSame('1.1', $baseline['version'] ?? null, self::MISMATCH.': version');
+        $this->assertSame('1.3', $baseline['version'] ?? null, self::MISMATCH.': version');
         $this->assertSame('OWNER_APPROVED', $baseline['status'] ?? null, self::MISMATCH.': status');
-        $this->assertSame('2026-08-25', $baseline['approved_at'] ?? null, self::MISMATCH.': approved_at');
-        $this->assertSame('fa4c4a07922a311d0ea299d25d748b2ce376d7f4', $baseline['approved_head'] ?? null, self::MISMATCH.': approved_head');
+        $this->assertSame('2026-08-27', $baseline['approved_at'] ?? null, self::MISMATCH.': approved_at');
+        $this->assertSame('030e014189529877e8906e805770636f10397ec7', $baseline['approved_head'] ?? null, self::MISMATCH.': approved_head');
         $this->assertSame([1, 2], $baseline['governed_levels'] ?? null, self::MISMATCH.': governed_levels');
         $this->assertIsArray($baseline['items'] ?? null, self::MISMATCH.': items');
     }
@@ -72,21 +72,21 @@ class ApprovedMenuBaselineTest extends TestCase
     }
 
     /** @throws JsonException */
-    public function test_current_approval_contains_exactly_the_eleven_owner_approved_level_one_items(): void
+    public function test_current_approval_contains_exactly_the_twelve_owner_approved_level_one_items(): void
     {
         $items = $this->baseline()['items'];
         $levelOne = collect($items)->where('level', 1)->values();
         $levelTwo = collect($items)->where('level', 2)->values();
 
-        $this->assertCount(11, $levelOne, self::MISMATCH.': level-1 count');
-        $this->assertCount(33, $levelTwo, self::MISMATCH.': R2 owner-approved level-2 count');
+        $this->assertCount(12, $levelOne, self::MISMATCH.': level-1 count');
+        $this->assertCount(34, $levelTwo, self::MISMATCH.': R2 owner-approved level-2 count');
         $this->assertSame(
-            ['dashboard', 'logistics', 'sync', 'customers', 'kol', 'inventory', 'procurement', 'products', 'guides', 'accounting', 'settings'],
+            ['dashboard', 'orders', 'logistics', 'sync', 'customers', 'kol', 'inventory', 'procurement', 'products', 'guides', 'accounting', 'settings'],
             $levelOne->pluck('code')->all(),
             self::MISMATCH.': level-1 order',
         );
         $this->assertSame(
-            ['📊', '🚚', '🔄', '👥', '⭐', '📦', '🛒', '🏷️', '📖', '🧾', '⚙️'],
+            ['📊', '📋', '🚚', '🔄', '👥', '⭐', '📦', '🛒', '🏷️', '📖', '🧾', '⚙️'],
             $levelOne->pluck('emoji')->all(),
             self::MISMATCH.': Emoji approval',
         );

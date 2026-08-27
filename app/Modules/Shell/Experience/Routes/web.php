@@ -6,14 +6,14 @@ use App\Modules\Shell\Experience\Controllers\ShellPlaceholderController;
 use Illuminate\Support\Facades\Route;
 
 $legacyPaths = app(LegacyErpNavigationPaths::class);
-$formalPaths = collect(config('erp_shell_navigation'))->where('placeholder', true)->pluck('path')->map($legacyPaths->normalize(...))->all();
+$formalPaths = collect(config('erp_shell_navigation'))->pluck('path')->map($legacyPaths->normalize(...))->all();
 $implementedPaths = [
-    '/customers/orders', '/customers/orders/create', '/kol/orders', '/kol/orders/create',
-    '/logistics', '/sync', '/accounting/order-costs', '/settings/users', '/settings/roles-permissions',
+    '/orders', '/customers/orders', '/customers/orders/create', '/kol/orders', '/kol/orders/create',
+    '/dashboard', '/logistics', '/sync', '/products', '/accounting/order-costs', '/settings/users', '/settings/roles-permissions',
     '/inventory', '/inventory/warehouses',
 ];
 
-foreach (collect(config('erp_shell_navigation'))->where('placeholder', true)->reject(fn (array $module): bool => in_array($module['path'], $implementedPaths, true)) as $module) {
+foreach (collect(config('erp_shell_navigation'))->reject(fn (array $module): bool => in_array($module['path'], $implementedPaths, true)) as $module) {
     Route::middleware(['web', 'auth'])->get($module['path'], ShellPlaceholderController::class)
         ->defaults('module', $module)
         ->name($module['route']);

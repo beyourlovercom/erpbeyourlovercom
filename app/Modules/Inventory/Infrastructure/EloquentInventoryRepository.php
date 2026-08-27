@@ -29,7 +29,7 @@ final class EloquentInventoryRepository implements InventoryRepository
     {
         return Warehouse::query()->withCount('inventories')->withSum('inventories as quantity_on_hand_total','quantity_on_hand')->orderBy('priority')->orderBy('name')->get()->map(fn ($w) => [
             'id'=>$w->id,'slug'=>$w->slug,'code'=>$w->code,'name'=>$w->name,'country_code'=>$w->country_code,
-            'address'=>$this->address($w),'is_active'=>$w->is_active,'priority'=>$w->priority,
+            'address'=>$this->address($w),'ownership_type'=>$w->ownership_type,'is_active'=>$w->is_active,'priority'=>$w->priority,
             'product_count'=>$w->inventories_count,'quantity_on_hand'=>(int)($w->quantity_on_hand_total ?? 0),
         ])->all();
     }
