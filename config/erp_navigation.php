@@ -20,8 +20,8 @@ return [
     ]],
     'inventory' => ['icon' => '📦', 'label' => '库存', 'children' => [
         'overview' => ['label' => '库存总览', 'path' => '/inventory'],
-        'files' => ['label' => '库存文件', 'path' => '/inventory/files'],
-        'warehouses' => ['label' => '仓库', 'path' => '/inventory/warehouses'],
+        'list' => ['label' => '仓库清单', 'path' => '/inventory/list'],
+        'products' => ['label' => '产品库存', 'path' => '/inventory/products'],
     ]],
     'procurement' => ['icon' => '📦', 'label' => '外采', 'children' => [
         'overview' => ['label' => '外采总览', 'path' => '/procurement'],

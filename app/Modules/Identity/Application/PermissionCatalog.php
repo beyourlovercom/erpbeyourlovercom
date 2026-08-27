@@ -46,6 +46,8 @@ final class PermissionCatalog
                 'label' => '库存',
                 'permissions' => [
                     ['key' => 'inventory.view', 'label' => '查看库存'],
+                    ['key' => 'inventory.operate', 'label' => '编辑库存'],
+                    ['key' => 'inventory.warehouses.manage', 'label' => '管理仓库'],
                 ],
             ],
             '外采' => [

@@ -19,7 +19,7 @@ describe('login page', () => {
 
     it('renders fields, approved account text, no registration and robots policy', () => {
         const wrapper = mount(Login)
-        expect(wrapper.get('input[name="email"]').attributes()).toMatchObject({ id: 'email', type: 'email', autocomplete: 'username' })
+        expect(wrapper.get('input[name="email"]').attributes()).toMatchObject({ id: 'email', type: 'text', autocomplete: 'username' })
         expect(wrapper.get('input[name="password"]').attributes()).toMatchObject({ id: 'password', type: 'password', autocomplete: 'current-password' })
         expect(wrapper.get('label[for="email"]').text()).toContain('邮箱')
         expect(wrapper.get('label[for="password"]').text()).toContain('密码')

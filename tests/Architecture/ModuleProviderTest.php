@@ -7,6 +7,7 @@ use App\Modules\Customers\Providers\CustomersServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Finance\Providers\FinanceServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
+use App\Modules\Inventory\Providers\InventoryServiceProvider;
 use App\Modules\Logistics\Providers\LogisticsServiceProvider;
 use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
@@ -53,6 +54,7 @@ final class ModuleProviderTest extends TestCase
             DashboardServiceProvider::class,
             CustomersServiceProvider::class,
             ProductsServiceProvider::class,
+            InventoryServiceProvider::class,
         ];
         self::assertSame($providers, ModuleManifest::providers());
         $application = $this->createMock(Application::class);
@@ -97,6 +99,7 @@ final class ModuleProviderTest extends TestCase
             DashboardServiceProvider::class,
             CustomersServiceProvider::class,
             ProductsServiceProvider::class,
+            InventoryServiceProvider::class,
         ], ModuleManifest::validate([
             AppServiceProvider::class,
             ModulesServiceProvider::class,
@@ -112,6 +115,7 @@ final class ModuleProviderTest extends TestCase
             DashboardServiceProvider::class,
             CustomersServiceProvider::class,
             ProductsServiceProvider::class,
+            InventoryServiceProvider::class,
         ]));
     }
 
