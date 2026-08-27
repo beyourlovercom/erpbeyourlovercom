@@ -310,7 +310,7 @@ final class ModuleArchitectureTest extends TestCase
         'settings.warehouses', 'shell.accounting', 'shell.customers',
         'shell.guides', 'shell.inventory', 'shell.kol', 'shell.logistics', 'shell.procurement',
         'shell.settings', 'shell.sync', 'storage.local', 'storage.local.upload',
-        'sync.complete', 'sync.payload', 'sync.reopen', 'sync.return', 'orders.export', 'orders.store', 'orders.store.customers', 'orders.update', 'orders.update.customers', 'customers.orders.show', 'system.audit-records.index', 'system.runtime.health',
+        'sync.complete', 'sync.payload', 'sync.reopen', 'sync.return', 'orders.export', 'orders.export.all', 'orders.export.procurement', 'orders.index', 'orders.procurement', 'orders.store', 'orders.store.customers', 'orders.update', 'orders.update.customers', 'customers.orders.show', 'system.audit-records.index', 'system.runtime.health',
         'user.create', 'user.destroy', 'user.disable', 'user.edit', 'user.enable', 'user.index', 'user.password', 'user.permissions', 'user.role', 'user.store', 'user.update',
     ];
 
@@ -356,6 +356,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_25_000200_create_inventory_batch_sync_tables.php' => 'a2e1ecba6592740d3708503e3260523ec33a2601618a591c1abf75f5ed8eb5c4',
         'database/migrations/2026_08_27_000000_repair_inventory_sync_preview_metrics.php' => 'd791cc4fc3aebecafcfff2c0fc8f5b02b51f142b3dc9986ee7f8fdcd17b7aded',
         'database/migrations/2026_08_27_020000_add_manual_fulfillment_fields_to_shipments.php' => '44d755cd840a87bbc96c48311f53751c6fc375f85d1fff5293090b5b8c2be0ad',
+        'database/migrations/2026_08_27_171200_add_warehouse_ownership_type.php' => '758912e9318255ee88471503f3a1785f1430479e371e17f1add06e1d5cd5edad',
     ];
 
     private const FRONTEND_FILES = [
@@ -409,14 +410,14 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Inventory/InventoryFoundation.test.ts' => 'cba1e89b5168dd738eb84741268ff360d86e2e3fa592e5e87cfa3f4ed805456b',
         'resources/js/Pages/Inventory/Products.vue' => 'ac82349fdc897f5000f2d8adaefab53daa8e13635490e6ae03ee210946f0efc7',
         'resources/js/Pages/Inventory/Sync.vue' => '3ec525e92c95252991a05999a539eab3d301a5d13e4c9512cde7a4249b8f044a',
-        'resources/js/Pages/Inventory/WarehouseCreate.vue' => '4b7e712128869056190057b8a30b9c6c86e070d8933dfbeabc177a1bda4a007c',
-        'resources/js/Pages/Inventory/WarehouseList.vue' => '26b80c315d084d599fa39af9975e4bbf1b040837a3b3ec635b4de6e010389fb8',
-        'resources/js/Pages/Inventory/WarehouseShow.vue' => 'f31be9291a0d3e7fad8b562d087ba7e583f36d011f4f4aed0eedc282f3c7422a',
+        'resources/js/Pages/Inventory/WarehouseCreate.vue' => '62c6952525498d2a85c21e0e79531a016f0b5f759ad5e054408f91297a157ad2',
+        'resources/js/Pages/Inventory/WarehouseList.vue' => 'a16f1296fbc977d4b7b6f6244f9588a2a1f4c33f147dfeb5d326109bf8b69ce0',
+        'resources/js/Pages/Inventory/WarehouseShow.vue' => '9289be4c3d39b2fe3fdab2d3fa49fd3b435a4c424d575d4ebfc13f152d58162c',
         'resources/js/Pages/Inventory/components/InventorySkuCombobox.vue' => 'd2d7408ee79d6fe9b060c268cf076a33a6d30ce096cc1d56ab9d49767e1bd670',
         'resources/js/Pages/Logistics/Index.vue' => 'e7340d2ba412db52ff06e734bc2fcf9720e330443dafbb97049481e7b70f591a',
         'resources/js/Pages/Orders/Create.test.ts' => '393caaba053b9c08a73d372a193865b80e3ca13f0025561aa92017ad98f35069',
         'resources/js/Pages/Orders/Create.vue' => '1b5da97b31ee2523f2197bf48c3c50e804207c62cfa4478daf32177228c1cec7',
-        'resources/js/Pages/Orders/Index.vue' => 'e1d4ec13d3f3732e317e9e3b27c84f763424257332cbde9dc6830fcfdbac7a66',
+        'resources/js/Pages/Orders/Index.vue' => '6eb9991e4ba8dcf0ea954372ce4537155c1097901bc560d4be8d62941efbeeb3',
         'resources/js/Pages/Orders/Show.test.ts' => '53975ddc5ffd17d2d2d1de84e2e8b9a85f5cf1361beb13a0636063c16c94f5d0',
         'resources/js/Pages/Orders/Show.vue' => '2af6b741619aad50c9a7057468f74310db99ade85c0bfcdc7635e43d22555545',
         'resources/js/Pages/Products/Create.test.ts' => '5be67e88543a49632c107677ada316c3820ed0cb2b1d3d63c66604e3a22756e9',
@@ -429,6 +430,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Products/Import.vue' => '3abe0367cae0aaffd141462b8c3d11ea06d80b6f093dbc707802d5e141fd3a13',
         'resources/js/Pages/Products/Index.test.ts' => '0dea6f018291aa009911da0cab40e199665955719118ad618dfcf5e2b630fdd6',
         'resources/js/Pages/Products/Index.vue' => 'd78d462ae0199d1ffd79e892f131fc215946859f8e9d8b22d4d31c6186640bc7',
+        'resources/js/Pages/Shell/ModuleOverview.vue' => '7c4148ed1570444f4b2cb5763a1a8cfac3c6f7b958b95a4f3d98fbf40b6ca02c',
         'resources/js/Pages/Shell/Placeholder.test.ts' => 'd0623492800b81b76650531eec2b979747d98daf34dcd4320ba00438529bb781',
         'resources/js/Pages/Shell/Placeholder.vue' => 'e18f588432b7d29a025f7618f977bdb7457536e8ae8028c2c343ce5c7b95472f',
         'resources/js/Pages/Sync/Index.vue' => '127b59b51cfef855410b60002fe82737e349dbd51f4b40e753fc4f7ba92e06c8',
@@ -639,7 +641,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('fddd710bf30346567129e361deee3256295e87603c7e8384b254bd2936609780', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('46c010053d4b453e68f414f4919c97a288974bda892ca58b6f52fc4ec89e203a', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);

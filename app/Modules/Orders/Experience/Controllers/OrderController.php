@@ -23,11 +23,20 @@ final class OrderController
 
     public function index(Request $request): Response
     {
-        $kind = $this->kind($request);
-        $orders = $this->orders->list([...$request->only(['search', 'source_type', 'order_status']), 'order_kind' => $kind->value]);
+        $kind = $this->kindOrNull($request);
+        $filters = $request->only(['search', 'source_type', 'order_status']);
+        $scope = (string) $request->route('order_scope');
+        if ($scope === 'external_warehouse') {
+            $filters['warehouse_ownership'] = 'external';
+        }
+        if ($kind) {
+            $filters['order_kind'] = $kind->value;
+        }
+        $orders = $this->orders->list($filters);
 
         return Inertia::render('Orders/Index', [
-            'orderKind' => $kind->value,
+            'orderKind' => $kind?->value ?? 'all',
+            'orderScope' => $scope === 'external_warehouse' ? 'external_warehouse' : 'all',
             'orders' => $orders->through(fn (Order $order): array => $this->orderData($order))->toArray(),
             'filters' => $request->only(['search', 'source_type', 'order_status']),
             'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),
@@ -95,8 +104,16 @@ final class OrderController
 
     public function export(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $kind = $this->kind($request);
-        $orders = $this->orders->exportCursor([...$request->only(['search', 'source_type', 'order_status']), 'order_kind' => $kind->value]);
+        $kind = $this->kindOrNull($request);
+        $filters = $request->only(['search', 'source_type', 'order_status']);
+        $scope = (string) $request->route('order_scope');
+        if ($scope === 'external_warehouse') {
+            $filters['warehouse_ownership'] = 'external';
+        }
+        if ($kind) {
+            $filters['order_kind'] = $kind->value;
+        }
+        $orders = $this->orders->exportCursor($filters);
 
         return response()->streamDownload(function () use ($orders): void {
             $handle = fopen('php://output', 'w');
@@ -114,7 +131,13 @@ final class OrderController
 
     private function kind(Request $request): OrderKind
     {
-        return OrderKind::from((string) $request->route('order_kind'));
+        return $this->kindOrNull($request) ?? abort(404);
+    }
+
+    private function kindOrNull(Request $request): ?OrderKind
+    {
+        $value = (string) $request->route('order_kind');
+        return $value === '' || $value === 'all' ? null : OrderKind::from($value);
     }
 
     private function authorizeKind(Request $request, Order $order): void
