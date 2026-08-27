@@ -42,9 +42,9 @@ async function fillRecipientFields(page: Page, overrides: {
 
 async function fillItemRow(page: Page, summary: string, qty: string, price: string): Promise<void> {
     const row = page.locator('.ord-item-row').first();
-    await row.locator('[placeholder="产品摘要"]').fill(summary);
-    await row.locator('[placeholder="数量"]').fill(qty);
-    await row.locator('[placeholder="单价"]').fill(price);
+    await row.locator('.erp-form-field').filter({ hasText: /^产品摘要$/ }).locator('input').fill(summary);
+    await row.locator('.erp-form-field').filter({ hasText: /^数量$/ }).locator('input').fill(qty);
+    await row.locator('.erp-form-field').filter({ hasText: /^单价$/ }).locator('input').fill(price);
 }
 
 test('customer manual order flows through logistics to shipped with the business number preserved', async ({ context, page }) => {
@@ -85,10 +85,10 @@ test('KOL fulfillment manual order defaults to kol_fulfillment and shares the sa
 
     await page.goto('/kol/orders/create');
     await expect(page.getByRole('heading', { name: '新建网红履约订单', level: 1 })).toBeVisible();
-    // 订单类型 is a readonly display block in V2 — assert visible text, not form value
+    // 订单类型 is a readonly display block in V2 — field text includes the value, so scope by label child
     await expect(
-        page.locator('.erp-form-field').filter({ hasText: /^订单类型$/ }).getByText('网红履约订单'),
-    ).toBeVisible();
+        page.locator('.erp-form-field').filter({ has: page.locator('.erp-form-field__label', { hasText: /^订单类型$/ }) }).locator('.erp-readonly-input'),
+    ).toHaveText('网红履约订单');
     await page.getByRole('button', { name: '编辑订单号' }).click();
     await page.getByLabel('业务订单号').fill('E2E-KOL-0001');
     await fillRecipientFields(page, { name: 'E2E KOL Recipient', phone: '+1 555 0101', address: '200 E2E Street' });
