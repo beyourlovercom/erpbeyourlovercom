@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Models\Role;
 use App\Models\User;
+use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\DB;
@@ -140,7 +141,7 @@ if ($runtimePreflight) {
 }
 
 $tables = $pdo->query("SELECT name FROM sqlite_master WHERE type = 'table'")->fetchAll(PDO::FETCH_COLUMN);
-foreach (['migrations', 'users', 'roles', 'permissions', 'role_user'] as $requiredTable) {
+foreach (['migrations', 'users', 'roles', 'permissions', 'role_user', 'products'] as $requiredTable) {
     if (! in_array($requiredTable, $tables, true)) {
         failClosed('schema not migrated');
     }
@@ -151,6 +152,13 @@ if ((int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() !== 0) {
 unset($pdo);
 
 DB::transaction(function () use ($runId, $activePassword, $inactivePassword): void {
+    Product::query()->create([
+        'sku' => 'E2E-SKU-0001',
+        'name' => 'E2E Synthetic Product',
+        'source_type' => 'manual',
+        'is_active' => true,
+    ]);
+
     $role = Role::query()->create(['key' => 'super_admin', 'label' => 'E2E Super Admin']);
     $authorized = User::query()->create([
         'name' => 'E2E Authorized',
@@ -174,4 +182,4 @@ DB::transaction(function () use ($runId, $activePassword, $inactivePassword): vo
     ]);
 });
 
-fwrite(STDOUT, json_encode(['synthetic_users' => 3, 'database' => 'disposable-sqlite'], JSON_THROW_ON_ERROR)."\n");
+fwrite(STDOUT, json_encode(['synthetic_users' => 3, 'synthetic_products' => 1, 'database' => 'disposable-sqlite'], JSON_THROW_ON_ERROR)."\n");
