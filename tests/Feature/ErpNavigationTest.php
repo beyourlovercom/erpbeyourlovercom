@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\AuditRecord;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -51,11 +52,12 @@ class ErpNavigationTest extends TestCase
 
     public function test_order_list_and_detail_render_the_phase_two_skeleton(): void
     {
+        $kolProduct = Product::firstOrCreate(['sku' => 'KOL-1'], ['name' => 'Synthetic KOL Product', 'product_type' => 'simple', 'woocommerce_product_id' => 6001]);
         $this->post('/kol/orders', [
             'order_kind' => 'kol_fulfillment', 'source_type' => 'kol', 'external_order_number' => 'PHASE2-KOL-1',
             'order_date' => '2026-08-05', 'recipient_name' => 'Synthetic KOL', 'phone' => '+1 555 0101',
             'country' => 'US', 'province_state' => 'CA', 'city' => 'Los Angeles', 'address_line_1' => 'Synthetic Street',
-            'items' => [['product_summary' => 'Synthetic KOL Product', 'sku' => 'KOL-1', 'quantity' => 1, 'unit_price' => '10.00']],
+            'items' => [['product_id' => $kolProduct->id, 'product_summary' => 'Synthetic KOL Product', 'sku' => 'KOL-1', 'quantity' => 1, 'unit_price' => '10.00']],
         ])->assertRedirect();
         $order = Order::query()->firstOrFail();
         $this->get('/kol/orders')->assertInertia(fn (Assert $page) => $page->component('Orders/Index')->where('orders.data.0.internal_order_number', $order->internal_order_number));

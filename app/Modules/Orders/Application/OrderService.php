@@ -5,6 +5,7 @@ namespace App\Modules\Orders\Application;
 use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
+use App\Modules\Products\Application\Contracts\ProductRepository;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
@@ -18,7 +19,10 @@ final class OrderService
         'address_line_1', 'address_line_2', 'postal_code',
     ];
 
-    public function __construct(private readonly AuditRecorder $audit) {}
+    public function __construct(
+        private readonly AuditRecorder $audit,
+        private readonly ProductRepository $productRepository,
+    ) {}
 
     public function create(array $attributes, array $items, ?Authenticatable $actor): Model
     {
@@ -36,8 +40,11 @@ final class OrderService
             $order->address()->create($address);
 
             foreach ($items as $item) {
+                $resolved = $this->resolveProductFields($item);
                 $order->items()->create([
                     ...$item,
+                    'sku' => $resolved['sku'],
+                    'product_summary' => $resolved['product_summary'],
                     'line_revenue' => $this->lineRevenue($item['unit_price'], (int) $item['quantity']),
                 ]);
             }
@@ -64,8 +71,11 @@ final class OrderService
             if ($items !== null) {
                 $lockedOrder->items()->delete();
                 foreach ($items as $item) {
+                    $resolved = $this->resolveProductFields($item);
                     $lockedOrder->items()->create([
                         ...$item,
+                        'sku' => $resolved['sku'],
+                        'product_summary' => $resolved['product_summary'],
                         'line_revenue' => $this->lineRevenue($item['unit_price'], (int) $item['quantity']),
                     ]);
                 }
@@ -144,6 +154,27 @@ final class OrderService
         } while ($orderClass::query()->where('external_order_number', $number)->exists());
 
         return $number;
+    }
+
+    private function resolveProductFields(array $item): array
+    {
+        $product = ! empty($item['product_id']) ? $this->productRepository->findById((int) $item['product_id']) : null;
+
+        $sku = $product ? (string) $product->sku : trim((string) ($item['sku'] ?? ''));
+
+        $explicit = trim((string) ($item['product_summary'] ?? ''));
+        if ($explicit !== '' && $explicit !== '—') {
+            return ['sku' => $sku, 'product_summary' => $explicit];
+        }
+
+        if ($product) {
+            if (! empty($product->name)) {
+                return ['sku' => $sku, 'product_summary' => (string) $product->name];
+            }
+            return ['sku' => $sku, 'product_summary' => $sku];
+        }
+
+        return ['sku' => $sku, 'product_summary' => $sku];
     }
 
     private function lineRevenue(string|int|float $unitPrice, int $quantity): string

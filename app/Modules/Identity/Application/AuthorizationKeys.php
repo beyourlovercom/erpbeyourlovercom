@@ -21,6 +21,7 @@ enum AuthorizationKeys: string
     case InventoryView = 'inventory.view';
     case ProcurementView = 'procurement.view';
     case ProductsView = 'products.view';
+    case ProductsOperate = 'products.operate';
     case GuidesView = 'guides.view';
     case AccountingView = 'accounting.view';
     case OrdersView = 'orders.view';

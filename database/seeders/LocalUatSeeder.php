@@ -86,7 +86,7 @@ final class LocalUatSeeder extends Seeder
         $keys = [
             'dashboard.view', 'orders.view', 'orders.create', 'orders.edit', 'logistics.view', 'logistics.operate',
             'sync.view', 'sync.operate', 'analysis.view', 'customers.view', 'customers.operate', 'kol.view', 'inventory.view',
-            'procurement.view', 'products.view', 'guides.view', 'accounting.view', 'system.permissions.manage',
+            'procurement.view', 'products.view', 'products.operate', 'guides.view', 'accounting.view', 'system.permissions.manage',
         ];
 
         return collect($keys)->mapWithKeys(fn (string $key): array => [$key => Permission::create(['key' => $key, 'label' => $key])])->all();

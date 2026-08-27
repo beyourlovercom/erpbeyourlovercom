@@ -97,9 +97,11 @@ class AppShellNavigationTest extends TestCase
     public function test_only_exact_legacy_root_path_collisions_fall_back_for_prototype_users(): void
     {
         $prototypeUser = $this->userWith(['prototype.view'], 'prototype-operator');
-        foreach (['/inventory', '/procurement', '/products', '/guides'] as $path) {
+        foreach (['/inventory', '/procurement', '/guides'] as $path) {
             $this->actingAs($prototypeUser)->get($path)->assertOk()->assertViewIs('erp.shell');
         }
+        // /products now requires products.view (not prototype.view); prototype-only users are forbidden
+        $this->actingAs($prototypeUser)->get('/products')->assertForbidden();
         foreach (['/logistics', '/customers', '/kol', '/accounting', '/settings', '/sync'] as $path) {
             $this->actingAs($prototypeUser)->get($path)->assertForbidden();
         }
@@ -116,7 +118,12 @@ class AppShellNavigationTest extends TestCase
         $user = $this->userWith(array_values($permissionsByPath), 'formal-operator');
         foreach ($permissionsByPath as $path => $permission) {
             $this->actingAs($user)->get($path)->assertInertia(fn (Assert $page) => $page
-                ->component(match ($path) { '/logistics' => 'Logistics/Index', '/sync' => 'Sync/Index', default => 'Shell/Placeholder' }));
+                ->component(match ($path) {
+                    '/logistics' => 'Logistics/Index',
+                    '/sync' => 'Sync/Index',
+                    '/products' => 'Products/Dashboard',
+                    default => 'Shell/Placeholder',
+                }));
         }
     }
 

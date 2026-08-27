@@ -11,6 +11,7 @@ use App\Modules\Logistics\Providers\LogisticsServiceProvider;
 use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
 use App\Modules\Orders\Providers\OrdersServiceProvider;
+use App\Modules\Products\Providers\ProductsServiceProvider;
 use App\Modules\Runtime\Providers\RuntimeServiceProvider;
 use App\Modules\Shell\Providers\ShellServiceProvider;
 use App\Modules\Sync\Providers\SyncServiceProvider;
@@ -116,6 +117,15 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Orders/Infrastructure/Models/OrderExternalReference.php',
         'app/Modules/Orders/Infrastructure/Models/OrderItem.php',
         'app/Modules/Orders/Providers/OrdersServiceProvider.php',
+        'app/Modules/Products/Application/Contracts/ProductRepository.php',
+        'app/Modules/Products/Application/ProductImportResult.php',
+        'app/Modules/Products/Application/ProductService.php',
+        'app/Modules/Products/Experience/Console/ImportWooCsvCommand.php',
+        'app/Modules/Products/Experience/Controllers/ProductController.php',
+        'app/Modules/Products/Experience/Routes/web.php',
+        'app/Modules/Products/Infrastructure/EloquentProductRepository.php',
+        'app/Modules/Products/Infrastructure/Models/Product.php',
+        'app/Modules/Products/Providers/ProductsServiceProvider.php',
         'app/Modules/Shell/Application/ErpShellNavigation.php',
         'app/Modules/Shell/Application/LegacyErpNavigationPaths.php',
         'app/Modules/Shell/Experience/Controllers/ErpShellController.php',
@@ -201,6 +211,16 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Orders/Infrastructure',
         'app/Modules/Orders/Infrastructure/Models',
         'app/Modules/Orders/Providers',
+        'app/Modules/Products',
+        'app/Modules/Products/Application',
+        'app/Modules/Products/Application/Contracts',
+        'app/Modules/Products/Experience',
+        'app/Modules/Products/Experience/Console',
+        'app/Modules/Products/Experience/Controllers',
+        'app/Modules/Products/Experience/Routes',
+        'app/Modules/Products/Infrastructure',
+        'app/Modules/Products/Infrastructure/Models',
+        'app/Modules/Products/Providers',
         'app/Modules/Runtime',
         'app/Modules/Runtime/Application',
         'app/Modules/Runtime/Application/Contracts',
@@ -242,11 +262,11 @@ final class ModuleArchitectureTest extends TestCase
         'kol.orders.mine', 'kol.orders.show', 'kol.orders.team', 'login', 'login.store',
         'logistics.awaiting-tracking', 'logistics.exceptions', 'logistics.in-transit',
         'logistics.pending', 'logistics.payload', 'logistics.reopen', 'logistics.ship', 'logout', 'password.confirm.store', 'password.confirmation',
-        'procurement.files', 'procurement.records', 'products.sku-aliases', 'products.skus',
+        'procurement.files', 'procurement.records', 'products.create', 'products.dashboard', 'products.destroy', 'products.edit', 'products.import', 'products.import.store', 'products.list', 'products.sku-aliases', 'products.sku-search', 'products.skus', 'products.store', 'products.update',
         'root', 'settings.audit-logs', 'settings.roles-permissions', 'settings.roles-permissions.update', 'settings.statuses',
         'settings.warehouses', 'shell.accounting', 'shell.customers',
         'shell.guides', 'shell.inventory', 'shell.kol', 'shell.logistics', 'shell.procurement',
-        'shell.products', 'shell.settings', 'shell.sync', 'storage.local', 'storage.local.upload',
+        'shell.settings', 'shell.sync', 'storage.local', 'storage.local.upload',
         'sync.complete', 'sync.payload', 'sync.reopen', 'sync.return', 'orders.export', 'orders.store', 'orders.store.customers', 'orders.update', 'orders.update.customers', 'customers.orders.show', 'system.audit-records.index', 'system.runtime.health',
         'user.create', 'user.destroy', 'user.disable', 'user.edit', 'user.enable', 'user.index', 'user.password', 'user.permissions', 'user.role', 'user.store', 'user.update',
     ];
@@ -254,7 +274,7 @@ final class ModuleArchitectureTest extends TestCase
     private const PERMISSION_KEYS = [
         'accounting.view', 'analysis.view', 'architecture.foundation.view', 'audit.view', 'customers.operate', 'customers.view',
         'dashboard.view', 'guides.view', 'inventory.view', 'kol.view', 'logistics.operate', 'logistics.view',
-        'orders.create', 'orders.edit', 'orders.view', 'procurement.view', 'products.view', 'prototype.view', 'sync.operate', 'sync.view',
+        'orders.create', 'orders.edit', 'orders.view', 'procurement.view', 'products.operate', 'products.view', 'prototype.view', 'sync.operate', 'sync.view',
         'system.permissions.manage',
     ];
 
@@ -287,6 +307,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_24_000000_add_order_kind_to_orders_table.php' => '7775e65ca4ec9e4d2de5fe6b603bf8118b35d2f999f95f8e85471ef280dd89c8',
         'database/migrations/2026_08_24_000000_add_permission_mode_and_permission_user_pivot.php' => '8f84c0b97530d31395cfbc7968476b1734498019bf47830e7974ed7d59af3be6',
         'database/migrations/2026_08_24_000001_make_order_address_snapshot_fields_nullable.php' => '0c3df13a4def87cb761dbac6c2a15b58fdf3c1352431456f39992b85f9ceaaf9',
+        'database/migrations/2026_08_24_100000_create_products_table.php' => 'a7ddaa6125c296d3b67fd85eb8c3728764630207a121d57046702defb3bda1c0',
     ];
 
     private const FRONTEND_FILES = [
@@ -294,11 +315,14 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Components/AppShell/GlobalNavigation.vue' => 'd770da59371440e8b4108aaa4116f50f07baa0b1980292d203a7936d702bf6dc',
         'resources/js/Components/AppShell/ModuleSidebar.vue' => '127f19089943410e88558a4f4fe07f7003c318c353b29582d526bdfcd64bc5a4',
         'resources/js/Components/AppShell/NavigationItem.vue' => 'a01afcb25099612ce549b48f3504f998c3ab71a112576e88792c5c1f99f4ead2',
-        'resources/js/Components/AppShell/TopBar.vue' => '8ee9469043fa193fa2a3435331cfd4b656fc9cd27950e6138d5ea66e56ca6e3e',
+        'resources/js/Components/AppShell/TopBar.test.ts' => '458cd86f6d5e11edfe08c8ec16898f11b8b6081f0436f59365783f44fca07d78',
+        'resources/js/Components/AppShell/TopBar.vue' => '5f6dd6fb6a225f590cdcde940374e9a084e0b0f3a9169787be1afdafe18cbf6e',
         'resources/js/Components/AppShell/UserAccountMenu.test.ts' => 'cbad0690b0c251c28ce7ee9644eb2de5699fc80065f8bc10d4fe1125d65dd687',
         'resources/js/Components/AppShell/UserAccountMenu.vue' => '2ae335eacc6146873ffcf857d829a7c30d1136555e1339f500966c5dd7797367',
         'resources/js/Components/PermissionMatrix.test.ts' => '5050666c6cdb788a74033ca42d7b9e0a09003faf5478992ce54af022f2a76839',
         'resources/js/Components/PermissionMatrix.vue' => '5376899d0142e95e8af4ceb218ea552d5495b733059e24e6165f7bc74b166a5f',
+        'resources/js/Components/Products/SkuCombobox.test.ts' => 'fe5a4a4faf285ed257496aab9f183541df6ef3fab1cd708e410e9feca278c6b1',
+        'resources/js/Components/Products/SkuCombobox.vue' => 'f2b5e07e5621b2c4e0184eaa308379d0185bad20efbd2de9bf0531fca7d9433e',
         'resources/js/Components/UI/EmptyState.test.ts' => '4fda8290eb407fe9313f32d5a5ac0f802cbb668797af87b9cb3c7f856e528b18',
         'resources/js/Components/UI/EmptyState.vue' => 'a0cab2c71afa978cca886b9b6cb9ab0f0ff40d29962109f7da7c5e1aed2297ce',
         'resources/js/Components/UI/FormField.test.ts' => '9e604341a19c1618e5949b713c6137cbc27c50c64f0830890c2a50cc2e38df4c',
@@ -310,7 +334,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Components/UI/UiButton.test.ts' => '126bc019e025164dc901b9c21986aa370fedf26da3d1618c90d7c60791797bf8',
         'resources/js/Components/UI/UiButton.vue' => '7ae624f92c56911ce58b60ae54c54625e85837666ca6b9882ac04be32c718113',
         'resources/js/Layouts/AuthenticatedLayout.test.ts' => 'f43ad24ee595b6203987fd69746a9a3eae98f0e5619e70c19a91b5e3555d3fde',
-        'resources/js/Layouts/AuthenticatedLayout.vue' => '50423cdd09161ce7cf36aade3f0375231571af27671dc7fc3055623442a80d2b',
+        'resources/js/Layouts/AuthenticatedLayout.vue' => '5c4a123758c94f76a2abc97ac168e0502fba0754bf894c8c6f86d92db5bf1ec7',
         'resources/js/Pages/Architecture/Foundation.test.ts' => '68898785345d5cc641bcc8b3f165527a94c912e33c5f1941554a9a28aad97a1c',
         'resources/js/Pages/Architecture/Foundation.vue' => '0f3f96bd3ad9a5b68fa7fe5a78e20a1e0e92f4d2e6806ef30697fda64941aa70',
         'resources/js/Pages/Auth/Login.test.ts' => '937fcfd44e8348130d7abded4669263142d4cfc423f3ac4d87cee2a7889eec65',
@@ -333,9 +357,19 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Identity/Users/Index.test.ts' => 'c2a508b3fb59d1f4725f86d658bfdcd162487477cae6c7f5e0db119b2f4f2cd0',
         'resources/js/Pages/Identity/Users/Index.vue' => '559f700abcd95b484fe834dbb0e5f871cc7301ff20d0e51f9c3c1179ea228e07',
         'resources/js/Pages/Logistics/Index.vue' => 'd5b7d79d693f899d93362e7b0c3902ec7597099f82a391bc5a5a5fdc27ee17c5',
-        'resources/js/Pages/Orders/Create.vue' => 'fff7d41b5936cc07ff3224823e5822fa3399eecb702e9996f7c07b8a74c85bd6',
+        'resources/js/Pages/Orders/Create.vue' => '004db6e3def65f7ee2c6532cf3b418f347a9656a876eea247a8c430b3c09d8d1',
         'resources/js/Pages/Orders/Index.vue' => 'e1d4ec13d3f3732e317e9e3b27c84f763424257332cbde9dc6830fcfdbac7a66',
-        'resources/js/Pages/Orders/Show.vue' => 'a4596924b4144c8fc32cf3a958837aa9256fe0f949207502510b45657a260ae1',
+        'resources/js/Pages/Orders/Show.vue' => '955dc8b7ec51f97183ab745ab6d737e629afcab9124e184a87dab5c98700813e',
+        'resources/js/Pages/Products/Create.test.ts' => '5be67e88543a49632c107677ada316c3820ed0cb2b1d3d63c66604e3a22756e9',
+        'resources/js/Pages/Products/Create.vue' => '58de31e6ad2b3fc976f9d9b785b69c51e5e9b5481e7d51157c5d9796bd39c216',
+        'resources/js/Pages/Products/Dashboard.test.ts' => '94c55c75db32ab0ef154fda039b3735946898912939a8022ee1a4a3a59c97997',
+        'resources/js/Pages/Products/Dashboard.vue' => 'ef523319db49a1d4bd970be5e7d700d7d5d1ed418f8e36c1e93e2a3477f309b9',
+        'resources/js/Pages/Products/Edit.test.ts' => '4ec4575d2bc44646399de9a9ba2c2f3b32047835fd1295f18614d1663e803554',
+        'resources/js/Pages/Products/Edit.vue' => '7662ef427ee1cbe94d5c5017499268a4c4b4a97d64239ff7cedd133cd46bf341',
+        'resources/js/Pages/Products/Import.test.ts' => 'a9e749926038276a62094e946b44119353fcf5005b087956881b7c33faee133c',
+        'resources/js/Pages/Products/Import.vue' => '3abe0367cae0aaffd141462b8c3d11ea06d80b6f093dbc707802d5e141fd3a13',
+        'resources/js/Pages/Products/Index.test.ts' => '0dea6f018291aa009911da0cab40e199665955719118ad618dfcf5e2b630fdd6',
+        'resources/js/Pages/Products/Index.vue' => 'd78d462ae0199d1ffd79e892f131fc215946859f8e9d8b22d4d31c6186640bc7',
         'resources/js/Pages/Shell/Placeholder.test.ts' => 'd0623492800b81b76650531eec2b979747d98daf34dcd4320ba00438529bb781',
         'resources/js/Pages/Shell/Placeholder.vue' => 'e18f588432b7d29a025f7618f977bdb7457536e8ae8028c2c343ce5c7b95472f',
         'resources/js/Pages/Sync/Index.vue' => '127b59b51cfef855410b60002fe82737e349dbd51f4b40e753fc4f7ba92e06c8',
@@ -393,6 +427,9 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Finance/Application/OrderAnalysisService.php',
         'app/Modules/Logistics/Application/ShipmentService.php',
         'app/Modules/Orders/Application/OrderKind.php',
+        'app/Modules/Products/Application/Contracts/ProductRepository.php',
+        'app/Modules/Products/Application/ProductImportResult.php',
+        'app/Modules/Products/Application/ProductService.php',
         'app/Modules/Orders/Application/OrderKindBackfill.php',
         'app/Modules/Orders/Application/OrderService.php',
         'app/Modules/Orders/Application/OrderSourceType.php',
@@ -532,7 +569,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('794781d23c47e5222393b81ac1305110ee77d9f7e26ac879b01269f89f164e38', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('e40b16abf77e0b650257ec982a07866b52f7311b83d89fd1bbe07897627d0035', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);
@@ -557,6 +594,7 @@ PHP;
             ShellServiceProvider::class,
             DashboardServiceProvider::class,
             CustomersServiceProvider::class,
+            ProductsServiceProvider::class,
         ], ModuleManifest::providers());
         self::assertSame([AppServiceProvider::class, ModulesServiceProvider::class], require $this->path('bootstrap/providers.php'));
     }
