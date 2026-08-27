@@ -14,6 +14,17 @@ type KolRow = {
   latest_followers: number | null
   is_100k_plus: boolean
   joined_at: string | null
+  level: string | null
+  city: string | null
+  categories: string[]
+  products: string[]
+  content_format: string | null
+  product_quantity: number | null
+  store_count: number | null
+  internal_contact: string | null
+  mcn_agency: string | null
+  is_mcn_managed: boolean
+  historical_order_count: number
 }
 
 type SavedView = {
@@ -48,6 +59,10 @@ const filters = reactive({
   platform: props.filters.platform ?? '',
   followers_min: props.filters.followers_min ?? '',
   followers_max: props.filters.followers_max ?? '',
+  level: props.filters.level ?? '',
+  city: props.filters.city ?? '',
+  content_format: props.filters.content_format ?? '',
+  mcn: props.filters.mcn ?? '',
   view: props.filters.view ?? '',
   sort: props.filters.sort ?? 'display_name',
   direction: props.filters.direction ?? 'asc',
@@ -76,6 +91,7 @@ const applySystemView = (viewKey: string) => {
 const stageLabel = (s: string) => ({ prospect: '潜在', contacted: '已联系', negotiating: '谈判中', cooperating: '合作中', long_term: '长期合作', paused: '暂停', ended: '已结束' }[s] ?? s)
 const platformLabel = (p: string | null) => ({ instagram: 'INS', tiktok: 'TK', youtube: 'YTB', xiaohongshu: '小红书', weibo: '微博', wechat: '微信', twitter: 'X', facebook: 'FB', other: '其他' }[p ?? ''] ?? p ?? '—')
 const followersLabel = (n: number | null) => n === null ? '—' : n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n)
+const tagList = (values: string[], limit = 2) => values.length === 0 ? '—' : values.slice(0, limit).join('、') + (values.length > limit ? ` +${values.length - limit}` : '')
 
 const systemViews = computed(() => {
   const views = [{ key: 'my_kols', label: '我的红人' }]
@@ -121,7 +137,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
         <div>
           <p class="mvp-kicker">KOL Master / 红人库</p>
           <h2>红人库</h2>
-          <p>KOL 主数据列表，支持 Owner 范围和保存视图。</p>
+          <p>KOL 主数据列表，支持 Owner 范围、业务画像筛选和保存视图。</p>
         </div>
         <div class="mvp-actions">
           <Link v-if="canOperate" class="mvp-button mvp-button-primary" href="/kol/library/create">新建 KOL</Link>
@@ -144,7 +160,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
       </div>
 
       <!-- Filters -->
-      <form class="mvp-toolbar" @submit.prevent="submit">
+      <form class="mvp-toolbar kol-toolbar" @submit.prevent="submit">
         <input v-model="filters.search" aria-label="搜索 KOL" placeholder="搜索名称…">
         <select v-if="isAllScope" v-model="filters.owner_id" aria-label="负责人">
           <option value="">全部负责人</option>
@@ -155,7 +171,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
           <option value="active">活跃</option>
           <option value="inactive">停用</option>
         </select>
-        <select v-model="filters.relationship_stage" aria-label="关系阶段">
+        <select v-model="filters.relationship_stage" aria-label="合作阶段">
           <option value="">全部阶段</option>
           <option value="prospect">潜在</option>
           <option value="contacted">已联系</option>
@@ -175,6 +191,27 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
           <option value="wechat">微信</option>
           <option value="twitter">X/Twitter</option>
         </select>
+        <select v-model="filters.level" aria-label="等级">
+          <option value="">全部等级</option>
+          <option value="头部">头部</option>
+          <option value="腰部">腰部</option>
+          <option value="尾部">尾部</option>
+          <option value="素人">素人</option>
+        </select>
+        <input v-model="filters.city" aria-label="城市" placeholder="城市">
+        <select v-model="filters.content_format" aria-label="内容形式">
+          <option value="">全部形式</option>
+          <option value="图文">图文</option>
+          <option value="短视频">短视频</option>
+          <option value="直播">直播</option>
+          <option value="图文+视频">图文+视频</option>
+          <option value="混合">混合</option>
+        </select>
+        <select v-model="filters.mcn" aria-label="MCN 状态">
+          <option value="">全部 MCN</option>
+          <option value="yes">MCN 管理</option>
+          <option value="no">非 MCN</option>
+        </select>
         <input v-model="filters.followers_min" type="number" min="0" aria-label="粉丝数最小值" placeholder="粉丝≥">
         <input v-model="filters.followers_max" type="number" min="0" aria-label="粉丝数最大值" placeholder="粉丝≤">
         <button class="mvp-button" type="submit">筛选</button>
@@ -182,15 +219,22 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
 
       <!-- Table -->
       <div class="mvp-table-wrap">
-        <table class="mvp-table">
+        <table class="mvp-table kol-dense-table">
           <thead>
             <tr>
-              <th>名称</th>
-              <th>平台</th>
-              <th>粉丝数</th>
-              <th>国家</th>
-              <th>阶段</th>
+              <th>红人名称</th>
+              <th>等级</th>
+              <th>城市</th>
+              <th>主营品类</th>
+              <th>主推产品</th>
+              <th>内容形式</th>
+              <th>产品数量</th>
+              <th>店铺数量</th>
+              <th>合作阶段</th>
+              <th>MCN机构</th>
               <th>负责人</th>
+              <th>粉丝数</th>
+              <th>历史带货数量</th>
               <th></th>
             </tr>
           </thead>
@@ -200,17 +244,24 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
                 <Link :href="`/kol/library/${kol.id}`">{{ kol.display_name }}</Link>
                 <span v-if="kol.is_100k_plus" class="badge-100k">100K+</span>
               </td>
-              <td>{{ platformLabel(kol.primary_platform) }}</td>
-              <td>{{ followersLabel(kol.latest_followers) }}</td>
-              <td>{{ kol.country_code ?? '—' }}</td>
+              <td><span v-if="kol.level" class="tag-chip">{{ kol.level }}</span><span v-else>—</span></td>
+              <td>{{ kol.city ?? '—' }}</td>
+              <td>{{ tagList(kol.categories) }}</td>
+              <td>{{ tagList(kol.products) }}</td>
+              <td>{{ kol.content_format ?? '—' }}</td>
+              <td>{{ kol.product_quantity ?? '—' }}</td>
+              <td>{{ kol.store_count ?? '—' }}</td>
               <td>{{ stageLabel(kol.relationship_stage) }}</td>
+              <td>{{ kol.mcn_agency ?? (kol.is_mcn_managed ? '是' : '—') }}</td>
               <td>{{ kol.owner?.name ?? '—' }}</td>
+              <td>{{ followersLabel(kol.latest_followers) }}<span v-if="kol.primary_platform" class="platform-hint"> ({{ platformLabel(kol.primary_platform) }})</span></td>
+              <td>{{ kol.historical_order_count }}</td>
               <td>
                 <Link :href="`/kol/library/${kol.id}`">查看</Link>
               </td>
             </tr>
             <tr v-if="kols.data.length === 0">
-              <td colspan="7" class="mvp-empty">暂无符合条件的 KOL</td>
+              <td colspan="14" class="mvp-empty">暂无符合条件的 KOL</td>
             </tr>
           </tbody>
         </table>
@@ -259,6 +310,10 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
 .view-tab.active { background: #0f766e; color: #fff; border-color: #0f766e; }
 .view-tab-custom { border-style: dashed; }
 .view-tab-add { color: #0f766e; border-color: #0f766e; }
+.kol-toolbar { flex-wrap: wrap; }
+.kol-dense-table { font-size: 13px; }
+.tag-chip { display: inline-block; padding: 1px 8px; background: #f0fdfa; color: #0f766e; border-radius: 10px; font-size: 11px; }
+.platform-hint { color: #94a3b8; font-size: 11px; }
 .badge-100k { margin-left: 6px; padding: 1px 6px; background: #fef3c7; color: #92400e; border-radius: 10px; font-size: 11px; }
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .modal-box { background: #fff; border-radius: 12px; padding: 24px; width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 14px; }

@@ -14,6 +14,7 @@ final class KolService
 {
     private const KOL = 'App\\Modules\\Kol\\Infrastructure\\Models\\Kol';
     private const KOL_SOCIAL_ACCOUNT = 'App\\Modules\\Kol\\Infrastructure\\Models\\KolSocialAccount';
+    private const KOL_SALES_PERFORMANCE = 'App\\Modules\\Kol\\Infrastructure\\Models\\KolSalesPerformance';
 
     public function __construct(private readonly AuditRecorder $audit) {}
 
@@ -24,6 +25,7 @@ final class KolService
     {
         $kolClass = self::KOL;
         $query = $kolClass::with(['owner', 'socialAccounts.latestMetric'])
+            ->withSum('salesPerformances as historical_order_count', 'order_count')
             ->active();
 
         if ($ownerScopeId !== null) {
@@ -74,6 +76,28 @@ final class KolService
             });
         }
 
+        if (isset($filters['level']) && $filters['level'] !== '') {
+            $query->where('level', $filters['level']);
+        }
+
+        if (isset($filters['city']) && $filters['city'] !== '') {
+            $query->whereRaw('LOWER(city) LIKE ?', ['%'.mb_strtolower($filters['city']).'%']);
+        }
+
+        if (isset($filters['content_format']) && $filters['content_format'] !== '') {
+            $query->where('content_format', $filters['content_format']);
+        }
+
+        if (isset($filters['mcn']) && $filters['mcn'] !== '') {
+            if ($filters['mcn'] === 'yes') {
+                $query->where(function (Builder $q): void {
+                    $q->where('is_mcn_managed', true)->orWhereNotNull('mcn_agency');
+                });
+            } else {
+                $query->where('is_mcn_managed', false)->whereNull('mcn_agency');
+            }
+        }
+
         if (! empty($filters['view'])) {
             $query = $this->applySystemView($query, $filters['view'], $ownerScopeId);
         }
@@ -89,6 +113,27 @@ final class KolService
         return $query->paginate(30)->withQueryString();
     }
 
+    /**
+     * @return array<string, int>
+     */
+    private function platformDistribution(?int $ownerScopeId): array
+    {
+        $saClass = self::KOL_SOCIAL_ACCOUNT;
+
+        return $saClass::query()
+            ->where('is_active', true)
+            ->whereHas('kol', function (Builder $q) use ($ownerScopeId): void {
+                $q->active();
+                if ($ownerScopeId !== null) {
+                    $q->where('owner_id', $ownerScopeId);
+                }
+            })
+            ->selectRaw('platform, count(*) as count')
+            ->groupBy('platform')
+            ->pluck('count', 'platform')
+            ->all();
+    }
+
     private function applySystemView(Builder $query, string $view, ?int $ownerScopeId): Builder
     {
         return match ($view) {
@@ -99,32 +144,109 @@ final class KolService
         };
     }
 
-    public function overview(?int $ownerScopeId = null): array
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    public function overview(?int $ownerScopeId = null, array $filters = []): array
     {
         $kolClass = self::KOL;
         $base = $kolClass::active();
+
+        if (! empty($filters['platform'])) {
+            $base->whereHas('socialAccounts', function (Builder $q) use ($filters): void {
+                $q->where('platform', $filters['platform'])->where('is_active', true);
+            });
+        }
+        if (! empty($filters['country_code'])) {
+            $base->where('country_code', $filters['country_code']);
+        }
+        if (! empty($filters['level'])) {
+            $base->where('level', $filters['level']);
+        }
+        if (! empty($filters['relationship_stage'])) {
+            $base->where('relationship_stage', $filters['relationship_stage']);
+        }
+        if (! empty($filters['date_from'])) {
+            $base->where('created_at', '>=', $filters['date_from']);
+        }
+        if (! empty($filters['date_to'])) {
+            $base->where('created_at', '<=', $filters['date_to'].' 23:59:59');
+        }
+        if ($ownerScopeId === null && ! empty($filters['owner_id'])) {
+            $base->where('owner_id', (int) $filters['owner_id']);
+        }
+
         $scoped = $ownerScopeId !== null ? (clone $base)->where('owner_id', $ownerScopeId) : clone $base;
+        $collaboratedStages = ['cooperating', 'long_term'];
+
+        $ranking = [];
+        if ($ownerScopeId === null) {
+            $ranking = (clone $base)
+                ->whereNotNull('owner_id')
+                ->selectRaw('owner_id, count(*) as count')
+                ->groupBy('owner_id')
+                ->orderByDesc('count')
+                ->with('owner:id,name')
+                ->get()
+                ->map(fn ($row): array => [
+                    'owner_id' => $row->owner_id,
+                    'owner_name' => $row->owner?->name ?? '未知',
+                    'count' => (int) $row->count,
+                ])
+                ->values()
+                ->all();
+        }
 
         return [
             'total' => $base->count(),
             'mine' => $ownerScopeId !== null ? $scoped->count() : null,
+            'monthly_new' => (clone $base)->where('created_at', '>=', now()->startOfMonth())->count(),
+            'collaborated' => (clone $base)->whereIn('relationship_stage', $collaboratedStages)->count(),
+            'long_term' => (clone $base)->where('relationship_stage', 'long_term')->count(),
             'hundred_k_plus' => (clone $base)->hundredKPlus()->count(),
             'by_stage' => (clone $base)
                 ->selectRaw('relationship_stage, count(*) as count')
                 ->groupBy('relationship_stage')
                 ->pluck('count', 'relationship_stage')
                 ->all(),
+            'by_level' => (clone $base)
+                ->whereNotNull('level')
+                ->selectRaw('level, count(*) as count')
+                ->groupBy('level')
+                ->pluck('count', 'level')
+                ->all(),
+            'by_content_format' => (clone $base)
+                ->whereNotNull('content_format')
+                ->selectRaw('content_format, count(*) as count')
+                ->groupBy('content_format')
+                ->pluck('count', 'content_format')
+                ->all(),
+            'by_city' => (clone $base)
+                ->whereNotNull('city')
+                ->selectRaw('city, count(*) as count')
+                ->groupBy('city')
+                ->orderByDesc('count')
+                ->limit(10)
+                ->pluck('count', 'city')
+                ->all(),
+            'by_platform' => $this->platformDistribution($ownerScopeId),
+            'owner_ranking' => $ranking,
+            'pending_publication_count' => null,
+            'pending_commission_amount' => null,
         ];
     }
 
     /**
      * @param  array<string, mixed>  $data
      * @param  array<int, array<string, mixed>>  $socialAccounts
+     * @param  array<int, array<string, mixed>>  $salesPerformanceEntries
      */
-    public function create(array $data, array $socialAccounts, Authenticatable $actor): Model
+    public function create(array $data, array $socialAccounts, Authenticatable $actor, array $salesPerformanceEntries = []): Model
     {
         $kolClass = self::KOL;
         $kol = $kolClass::create($data);
+
+        $this->addSalesPerformanceEntries($kol, $salesPerformanceEntries, $actor);
 
         foreach ($socialAccounts as $account) {
             $sa = $kol->socialAccounts()->create([
@@ -158,8 +280,9 @@ final class KolService
     /**
      * @param  array<string, mixed>  $data
      * @param  array<int, array<string, mixed>>  $socialAccounts
+     * @param  array<int, array<string, mixed>>  $salesPerformanceEntries
      */
-    public function update(Model $kol, array $data, array $socialAccounts, Authenticatable $actor): Model
+    public function update(Model $kol, array $data, array $socialAccounts, Authenticatable $actor, array $salesPerformanceEntries = []): Model
     {
         $before = ['display_name' => $kol->display_name, 'owner_id' => $kol->owner_id, 'status' => $kol->status];
 
@@ -167,6 +290,7 @@ final class KolService
         $kol->update($data);
 
         $this->syncSocialAccounts($kol, $socialAccounts);
+        $this->addSalesPerformanceEntries($kol, $salesPerformanceEntries, $actor);
 
         $after = ['display_name' => $kol->display_name, 'owner_id' => $kol->owner_id, 'status' => $kol->status];
 
@@ -214,6 +338,52 @@ final class KolService
             'kol.reactivated',
             'kol',
             $kol->id,
+        );
+    }
+
+    /**
+     * Sales-performance facts are additive/history-preserving: each event is recorded once and
+     * never edited or deleted through this entry point, so the derived lifetime total always
+     * equals the sum of the individually preserved facts.
+     *
+     * @param  array<int, array<string, mixed>>  $entries
+     */
+    private function addSalesPerformanceEntries(Model $kol, array $entries, Authenticatable $actor): void
+    {
+        if ($entries === []) {
+            return;
+        }
+
+        $performanceClass = self::KOL_SALES_PERFORMANCE;
+        $created = 0;
+
+        foreach ($entries as $entry) {
+            if (empty($entry['order_count'])) {
+                continue;
+            }
+
+            $performanceClass::create([
+                'kol_id' => $kol->id,
+                'order_count' => (int) $entry['order_count'],
+                'recorded_at' => $entry['recorded_at'] ?? now(),
+                'source' => $entry['source'] ?? null,
+                'note' => $entry['note'] ?? null,
+                'created_by' => (int) $actor->getAuthIdentifier(),
+            ]);
+            $created++;
+        }
+
+        if ($created === 0) {
+            return;
+        }
+
+        $this->audit->record(
+            AuditActor::user($actor, AuditSource::Web),
+            'kol.sales_performance.recorded',
+            'kol',
+            $kol->id,
+            null,
+            ['entries_added' => $created],
         );
     }
 
