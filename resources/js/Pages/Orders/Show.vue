@@ -1,6 +1,18 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3'
 import { ref, computed } from 'vue'
+
+const commonCurrencyOptions = [
+  { value: 'USD', label: 'USD · 美元' },
+  { value: 'CAD', label: 'CAD · 加拿大元' },
+  { value: 'HKD', label: 'HKD · 港币' },
+  { value: 'EUR', label: 'EUR · 欧元' },
+  { value: 'CNY', label: 'CNY · 人民币' },
+  { value: 'GBP', label: 'GBP · 英镑' },
+  { value: 'AUD', label: 'AUD · 澳元' },
+  { value: 'JPY', label: 'JPY · 日元' },
+  { value: 'SGD', label: 'SGD · 新加坡元' },
+]
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 
@@ -28,6 +40,7 @@ type Order = {
   order_status: string
   order_status_label: string
   order_note: string | null
+  currency: string
   owner: { id: number; name: string } | null
   owner_label: string | null
   address: Record<string, string> | null
@@ -72,6 +85,7 @@ type EditItem = {
 const makeFormData = () => ({
   order_date: props.order.order_date ?? '',
   order_note: props.order.order_note ?? '',
+  currency: props.order.currency ?? 'USD',
   recipient_name: props.order.address?.recipient_name ?? '',
   phone: props.order.address?.phone ?? '',
   country: props.order.address?.country ?? '',
@@ -91,6 +105,13 @@ const makeFormData = () => ({
 })
 
 const form = useForm(makeFormData())
+
+const currencyOptions = computed(() => {
+  const current = form.currency || props.order.currency || 'USD'
+  return commonCurrencyOptions.some(option => option.value === current)
+    ? commonCurrencyOptions
+    : [{ value: current, label: current }, ...commonCurrencyOptions]
+})
 
 const editMode = ref(false)
 
@@ -224,7 +245,17 @@ const shipmentStatusLabel = computed(() => {
               <label class="erp-form-label">负责人</label>
               <input :value="order.owner?.name ?? '—'" class="erp-input" disabled>
             </div>
-            <div class="erp-form-field ord-span-2">
+            <div class="erp-form-field">
+              <label class="erp-form-label">订单币种</label>
+              <div v-if="!editMode" class="erp-readonly-input">{{ order.currency }}</div>
+              <template v-else>
+                <select v-model="form.currency" class="erp-input">
+                  <option v-for="option in currencyOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                </select>
+                <p v-if="form.errors.currency" class="erp-field-error">{{ form.errors.currency }}</p>
+              </template>
+            </div>
+            <div class="erp-form-field">
               <label class="erp-form-label">订单日期</label>
               <div v-if="!editMode" class="erp-readonly-input">{{ order.order_date }}</div>
               <input v-else v-model="form.order_date" type="date" class="erp-input" :class="{ 'has-error': form.errors.order_date }">
@@ -324,7 +355,7 @@ const shipmentStatusLabel = computed(() => {
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">单价</label>
-                <div class="erp-readonly-input">{{ item.unit_price }}</div>
+                <div class="erp-readonly-input">{{ order.currency }} {{ item.unit_price }}</div>
               </div>
             </div>
           </template>
@@ -351,7 +382,7 @@ const shipmentStatusLabel = computed(() => {
                 <input v-model="item.quantity" type="number" min="1" class="erp-input" required>
               </div>
               <div class="erp-form-field">
-                <label class="erp-form-label">单价</label>
+                <label class="erp-form-label">单价（{{ form.currency }}）</label>
                 <input v-model="item.unit_price" type="number" min="0" step="0.01" class="erp-input" required>
               </div>
             </div>

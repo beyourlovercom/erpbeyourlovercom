@@ -62,6 +62,7 @@ final class OrderController
         // Route context is authority: order_kind/source_type/owner cannot be overridden by client input.
         $data['order_kind'] = $this->kind($request)->value;
         $data['source_type'] = OrderSourceType::Manual->value;
+        $data['currency'] ??= 'USD';
         $data['owner_id'] = $request->user()->getAuthIdentifier();
         $order = $this->orders->create($data, $items, $request->user());
 
@@ -184,6 +185,7 @@ final class OrderController
             'external_order_number' => ['required', 'string', 'max:128', Rule::unique('orders', 'external_order_number')],
             'order_date' => ['required', 'date'],
             'order_note' => ['nullable', 'string', 'max:5000'],
+            'currency' => ['sometimes', 'string', 'regex:/^[A-Z]{3}$/'],
             'recipient_name' => ['nullable', 'string', 'max:255'], 'phone' => ['nullable', 'string', 'max:64'],
             'country' => ['nullable', 'string', 'max:128'], 'province_state' => ['nullable', 'string', 'max:128'],
             'city' => ['nullable', 'string', 'max:128'], 'address_line_1' => ['nullable', 'string', 'max:255'],
@@ -203,6 +205,7 @@ final class OrderController
             'source_type' => ['sometimes', Rule::in(array_column(OrderSourceType::cases(), 'value'))],
             'order_date' => ['sometimes', 'date'],
             'order_note' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'currency' => ['sometimes', 'required', 'string', 'regex:/^[A-Z]{3}$/'],
             'recipient_name' => ['sometimes', 'nullable', 'string', 'max:255'], 'phone' => ['sometimes', 'nullable', 'string', 'max:64'],
             'country' => ['sometimes', 'nullable', 'string', 'max:128'], 'province_state' => ['sometimes', 'nullable', 'string', 'max:128'],
             'city' => ['sometimes', 'nullable', 'string', 'max:128'], 'address_line_1' => ['sometimes', 'nullable', 'string', 'max:255'],
