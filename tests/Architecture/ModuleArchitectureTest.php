@@ -310,7 +310,7 @@ final class ModuleArchitectureTest extends TestCase
         'settings.warehouses', 'shell.accounting', 'shell.customers',
         'shell.guides', 'shell.inventory', 'shell.kol', 'shell.logistics', 'shell.procurement',
         'shell.settings', 'shell.sync', 'storage.local', 'storage.local.upload',
-        'sync.complete', 'sync.payload', 'sync.reopen', 'sync.return', 'orders.export', 'orders.store', 'orders.store.customers', 'orders.update', 'orders.update.customers', 'customers.orders.show', 'system.audit-records.index', 'system.runtime.health',
+        'sync.complete', 'sync.payload', 'sync.reopen', 'sync.return', 'orders.export', 'orders.export.all', 'orders.index', 'orders.store', 'orders.store.customers', 'orders.update', 'orders.update.customers', 'customers.orders.show', 'system.audit-records.index', 'system.runtime.health',
         'user.create', 'user.destroy', 'user.disable', 'user.edit', 'user.enable', 'user.index', 'user.password', 'user.permissions', 'user.role', 'user.store', 'user.update',
     ];
 
@@ -416,7 +416,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Logistics/Index.vue' => 'e7340d2ba412db52ff06e734bc2fcf9720e330443dafbb97049481e7b70f591a',
         'resources/js/Pages/Orders/Create.test.ts' => '393caaba053b9c08a73d372a193865b80e3ca13f0025561aa92017ad98f35069',
         'resources/js/Pages/Orders/Create.vue' => '1b5da97b31ee2523f2197bf48c3c50e804207c62cfa4478daf32177228c1cec7',
-        'resources/js/Pages/Orders/Index.vue' => 'e1d4ec13d3f3732e317e9e3b27c84f763424257332cbde9dc6830fcfdbac7a66',
+        'resources/js/Pages/Orders/Index.vue' => 'e6561947db1b44b13d5de397472c4e606e6f78cd5443fe0f254eada517365fd9',
         'resources/js/Pages/Orders/Show.test.ts' => '53975ddc5ffd17d2d2d1de84e2e8b9a85f5cf1361beb13a0636063c16c94f5d0',
         'resources/js/Pages/Orders/Show.vue' => '2af6b741619aad50c9a7057468f74310db99ade85c0bfcdc7635e43d22555545',
         'resources/js/Pages/Products/Create.test.ts' => '5be67e88543a49632c107677ada316c3820ed0cb2b1d3d63c66604e3a22756e9',
@@ -429,6 +429,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Products/Import.vue' => '3abe0367cae0aaffd141462b8c3d11ea06d80b6f093dbc707802d5e141fd3a13',
         'resources/js/Pages/Products/Index.test.ts' => '0dea6f018291aa009911da0cab40e199665955719118ad618dfcf5e2b630fdd6',
         'resources/js/Pages/Products/Index.vue' => 'd78d462ae0199d1ffd79e892f131fc215946859f8e9d8b22d4d31c6186640bc7',
+        'resources/js/Pages/Shell/ModuleOverview.vue' => '7c4148ed1570444f4b2cb5763a1a8cfac3c6f7b958b95a4f3d98fbf40b6ca02c',
         'resources/js/Pages/Shell/Placeholder.test.ts' => 'd0623492800b81b76650531eec2b979747d98daf34dcd4320ba00438529bb781',
         'resources/js/Pages/Shell/Placeholder.vue' => 'e18f588432b7d29a025f7618f977bdb7457536e8ae8028c2c343ce5c7b95472f',
         'resources/js/Pages/Sync/Index.vue' => '127b59b51cfef855410b60002fe82737e349dbd51f4b40e753fc4f7ba92e06c8',
@@ -639,7 +640,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('fddd710bf30346567129e361deee3256295e87603c7e8384b254bd2936609780', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('7b1aae206c025d832bded97a032c652025f5c93ce3b750e207c26404fa95454c', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);

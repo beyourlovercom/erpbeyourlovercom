@@ -4,6 +4,8 @@ use App\Modules\Orders\Experience\Controllers\OrderController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth'])->group(function (): void {
+    Route::get('/orders', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.index')->defaults('order_kind', 'all');
+    Route::get('/orders/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.all')->defaults('order_kind', 'all');
     Route::get('/customers/orders', [OrderController::class, 'index'])->middleware('can:orders.view')->name('customers.orders')->defaults('order_kind', 'customer');
     Route::get('/customers/orders/create', [OrderController::class, 'create'])->middleware('can:orders.create')->name('customers.orders.create')->defaults('order_kind', 'customer');
     Route::post('/customers/orders', [OrderController::class, 'store'])->middleware('can:orders.create')->name('orders.store.customers')->defaults('order_kind', 'customer');

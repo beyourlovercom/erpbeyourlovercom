@@ -107,7 +107,7 @@ final class OrderService
 
         return $orderClass::query()
             ->with(['items', 'owner', 'address'])
-            ->where('order_kind', $filters['order_kind'])
+            ->when($filters['order_kind'] ?? null, fn ($query, string $kind) => $query->where('order_kind', $kind))
             ->when($filters['search'] ?? null, function ($query, string $search): void {
                 $query->where(function ($nested) use ($search): void {
                     $nested->where('internal_order_number', 'like', "%{$search}%")

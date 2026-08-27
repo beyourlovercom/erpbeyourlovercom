@@ -1,8 +1,8 @@
 {
-  "version": "1.1",
+  "version": "1.2",
   "status": "OWNER_APPROVED",
-  "approved_at": "2026-08-25",
-  "approved_head": "fa4c4a07922a311d0ea299d25d748b2ce376d7f4",
+  "approved_at": "2026-08-27",
+  "approved_head": "c0a09baf43397454f16026041c8507b16a53dd26",
   "governed_levels": [
     1,
     2
@@ -24,6 +24,36 @@
       "sort": 10
     },
     {
+      "code": "orders",
+      "parent_code": null,
+      "level": 1,
+      "label_zh": "订单",
+      "slug": "orders",
+      "url": "/orders",
+      "route": "orders.index",
+      "permission": "orders.view",
+      "emoji": "📋",
+      "function_zh": "全部订单统一入口，汇总客户订单和网红履约订单。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 20
+    },
+    {
+      "code": "orders-all",
+      "parent_code": "orders",
+      "level": 2,
+      "label_zh": "全部订单",
+      "slug": "orders",
+      "url": "/orders",
+      "route": "orders.index",
+      "permission": "orders.view",
+      "emoji": null,
+      "function_zh": "查看全部客户订单和网红履约订单，并按来源和状态筛选。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 10
+    },
+    {
       "code": "logistics",
       "parent_code": null,
       "level": 1,
@@ -36,7 +66,7 @@
       "function_zh": "管理发货、物流状态、运输信息和物流异常。",
       "status": "planned",
       "progress": 0,
-      "sort": 20
+      "sort": 30
     },
     {
       "code": "logistics-pending",
@@ -111,7 +141,7 @@
       "function_zh": "管理外部系统、数据源及同步任务。",
       "status": "planned",
       "progress": 0,
-      "sort": 30
+      "sort": 40
     },
     {
       "code": "customers",
@@ -126,7 +156,7 @@
       "function_zh": "管理客户资料、客户状态和客户关系信息。",
       "status": "planned",
       "progress": 0,
-      "sort": 40
+      "sort": 50
     },
     {
       "code": "customers-orders",
@@ -186,7 +216,7 @@
       "function_zh": "管理网红资料、合作订单、内容进度和付款状态。",
       "status": "planned",
       "progress": 0,
-      "sort": 50
+      "sort": 60
     },
     {
       "code": "kol-orders",
@@ -261,7 +291,7 @@
       "function_zh": "管理库存数量、仓库、库存变动和库存异常。",
       "status": "in_progress",
       "progress": 80,
-      "sort": 60
+      "sort": 70
     },
     {
       "code": "inventory-overview",
@@ -336,7 +366,7 @@
       "function_zh": "管理外采需求、采购任务、供应商及采购进度。",
       "status": "planned",
       "progress": 0,
-      "sort": 70
+      "sort": 80
     },
     {
       "code": "procurement-overview",
@@ -396,7 +426,7 @@
       "function_zh": "管理产品、SKU、产品资料和相关业务配置。",
       "status": "in_progress",
       "progress": 50,
-      "sort": 80
+      "sort": 90
     },
     {
       "code": "products-list",
@@ -456,7 +486,7 @@
       "function_zh": "管理ERP操作指南、业务标准和内部知识内容。",
       "status": "planned",
       "progress": 0,
-      "sort": 90
+      "sort": 100
     },
     {
       "code": "guides-index",
@@ -516,7 +546,7 @@
       "function_zh": "管理收入、支出、应收、应付及业务财务记录。",
       "status": "planned",
       "progress": 0,
-      "sort": 100
+      "sort": 110
     },
     {
       "code": "accounting-cost-calculation",
@@ -591,7 +621,7 @@
       "function_zh": "管理ERP系统配置、字段、权限和管理员设置。",
       "status": "planned",
       "progress": 0,
-      "sort": 110
+      "sort": 120
     },
     {
       "code": "settings-statuses",
