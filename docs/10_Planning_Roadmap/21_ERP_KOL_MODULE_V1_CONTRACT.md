@@ -623,3 +623,13 @@ Required detail/business-profile facts include: KOL level, city, categories, pro
 The list follows the Owner reference direction: dense relational table, Chinese labels, multi-value/tag presentation, server-side filters/sort/pagination and Saved Views. Candidate columns include 红人名称, 等级, 城市, 主营品类, 主推产品, 月度GMV, 平均售价, 内容形式, 产品数量, 店铺数量, 内部联系人, 合作阶段, MCN机构, 负责人, 粉丝数, 最近沟通, 是否已发布 and 待结算佣金 when the owning source exists.
 
 Search/filter may cover name/handle/contact, Owner, platform, country/region, city, level, categories, products, GMV band, content format, collaboration stage, publication state, MCN state and follower range. KOL Specialist own-only scope remains server-side and cannot be widened by filters or Saved Views.
+
+## Owner UI Upgrade Micro-Adjustment — 2026-08-27
+
+Status: OWNER_APPROVED / OVERRIDES PRIOR CONTACT + GMV DETAIL WORDING FOR `KOL_M1_FOUNDATION_UI_UPGRADE_V1`.
+
+Foreign-KOL contact scope is simplified. Remove WeChat/微信号, Douyin/抖音 ID and Telegram from KOL contact fields and filters. Keep `phone`, `email`, `whatsapp`, optional `other_contact`. `preferred_contact_method` remains structured, with Email as the default/preferred business contact for new KOL records; Phone/WhatsApp/Other may remain selectable only when explicitly required by the implementation.
+
+Business-profile semantics are also revised: remove `monthly_gmv_band` and `average_selling_price` from the required KOL foundation UI/data target. Replace them with cumulative historical sales-volume facts. The product meaning is: each attributable selling/cooperation event records an incremental order count (e.g. A, then B, then C), while the KOL detail/list/dashboard may display the derived cumulative historical order count `A + B + C`. The total must not be maintained as an opaque manually overwritten lifetime number when durable per-event facts are available.
+
+Recommended V1 fact model is additive/history-preserving: `kol_sales_performance` (or equivalent child facts) with at least `kol_id`, optional collaboration/content/source reference, `order_count`, `recorded_at`, optional note/source. `historical_order_count` is a derived aggregate across authorized facts. This does not create a second canonical customer Order truth; when canonical Order attribution exists later it should be referenced/reconciled rather than duplicated.

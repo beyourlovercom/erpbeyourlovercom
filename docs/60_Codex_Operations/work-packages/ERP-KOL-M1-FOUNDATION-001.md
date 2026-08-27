@@ -549,3 +549,13 @@ Explicitly excluded from this KOL contact contract: 微信号 / WeChat ID and �
 Acceptance addition: Owner UAT must verify dashboard structure, Chinese detail sections, ERP V2 Form VI compliance, persistence of contact/address/tax/payout facts, redaction/non-default exposure of sensitive payout/tax data, upgraded 红人库 tags/filters/Saved Views, and preservation of Specialist own-only server scope.
 
 MERGE remains unauthorized until this upgrade passes Owner UAT. Production deployment/migration remains unauthorized.
+
+## KOL_M1_FOUNDATION_UI_UPGRADE_V1 Micro-Adjustment — Owner Approved
+
+This amendment supersedes the earlier contact/GMV field wording inside the same M1.0 remediation package.
+
+Contact fields for foreign KOLs: keep Email, Phone, WhatsApp, optional Other Contact. Remove WeChat, Douyin ID and Telegram entirely from contact UI/data/filter requirements. New KOL records default `preferred_contact_method` to Email.
+
+Business profile: remove required 月度 GMV and 平均售价 fields. Replace with 历史带货数量 / historical attributable order count. Preserve additive history: each selling/cooperation event contributes an incremental order count; the displayed lifetime total is the sum of those event facts. Example: A + B + C = historical order count. Do not store only a manually overwritten lifetime total when the contributing facts can be preserved.
+
+Implementation should use a bounded child performance/history fact model or equivalent, without creating duplicate canonical Orders. Later canonical attribution may link/reconcile these facts. Dashboard/list/detail should use the derived historical order count and may show event history where appropriate.
