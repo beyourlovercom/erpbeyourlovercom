@@ -1,3 +1,5 @@
+import type { GlobalFeedbackFlash } from '../lib/globalFeedback'
+
 export type ShellNavigationItem = {
     key: string
     label: string
@@ -14,4 +16,5 @@ export type SafeUser = { id: number; name: string; email: string }
 export type ShellPageProps = {
     auth: { user: SafeUser }
     shellNavigation: ShellNavigationItem[]
+    flash?: GlobalFeedbackFlash
 }

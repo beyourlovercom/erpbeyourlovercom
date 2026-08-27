@@ -360,6 +360,8 @@ final class ModuleArchitectureTest extends TestCase
     ];
 
     private const FRONTEND_FILES = [
+        'resources/js/Components/AppShell/GlobalFeedbackIsland.test.ts' => '36d4310edf520357dd153cc19de772d774e3473606881298d734ed28e1725ce1',
+        'resources/js/Components/AppShell/GlobalFeedbackIsland.vue' => '17e7bcf0d540843934215cb537b82d243e3492b0760518f523500c15b1916cd9',
         'resources/js/Components/AppShell/GlobalNavigation.test.ts' => '49d9b31f8a296a545117a6593de4eba26126c5a9865b5df9c39b6dd5688d5e49',
         'resources/js/Components/AppShell/GlobalNavigation.vue' => 'd770da59371440e8b4108aaa4116f50f07baa0b1980292d203a7936d702bf6dc',
         'resources/js/Components/AppShell/ModuleSidebar.vue' => '127f19089943410e88558a4f4fe07f7003c318c353b29582d526bdfcd64bc5a4',
@@ -383,7 +385,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Components/UI/UiButton.test.ts' => '126bc019e025164dc901b9c21986aa370fedf26da3d1618c90d7c60791797bf8',
         'resources/js/Components/UI/UiButton.vue' => '7ae624f92c56911ce58b60ae54c54625e85837666ca6b9882ac04be32c718113',
         'resources/js/Layouts/AuthenticatedLayout.test.ts' => 'f43ad24ee595b6203987fd69746a9a3eae98f0e5619e70c19a91b5e3555d3fde',
-        'resources/js/Layouts/AuthenticatedLayout.vue' => '5c4a123758c94f76a2abc97ac168e0502fba0754bf894c8c6f86d92db5bf1ec7',
+        'resources/js/Layouts/AuthenticatedLayout.vue' => '45a285e6b2093e80f700012a3a8a46c7d73124cdabccaac7b0d917dc888ac8fc',
         'resources/js/Pages/Architecture/Foundation.test.ts' => '68898785345d5cc641bcc8b3f165527a94c912e33c5f1941554a9a28aad97a1c',
         'resources/js/Pages/Architecture/Foundation.vue' => '0f3f96bd3ad9a5b68fa7fe5a78e20a1e0e92f4d2e6806ef30697fda64941aa70',
         'resources/js/Pages/Auth/Login.test.ts' => '445f3392872df2466f83736af7854a1a5c2e477198abea252c546e24141420c8',
@@ -436,7 +438,9 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Sync/Index.vue' => '127b59b51cfef855410b60002fe82737e349dbd51f4b40e753fc4f7ba92e06c8',
         'resources/js/app.js' => '40994ac10f73e394b96d6e4742be37921fc38e477dccfdfe9e8ab90cd5e6d7d4',
         'resources/js/app.ts' => 'c667a849465fad821d6d08babe410c6d44bd7412629198522f1d408f373823b3',
-        'resources/js/types/navigation.ts' => '31e51f9100ce60a20831007af9c48d412b3aeaee487c5ffa99a15006dcd6e1c3',
+        'resources/js/lib/globalFeedback.test.ts' => '63887c4a11ca91d7014df88987bf6ccbaf54be0c03dc334f78711fec3ff519d6',
+        'resources/js/lib/globalFeedback.ts' => '54ba6e2214e691f2059e239571fb9f70a533b8b2dae7a6d8923f8a2ee43fbfc3',
+        'resources/js/types/navigation.ts' => '265ec164e751beaa4c53045fa431850601840cbea6deab4e7a87de72e8538327',
     ];
 
     public function test_frozen_module_and_support_boundaries(): void
