@@ -2,6 +2,14 @@ import { expect, test } from '@playwright/test';
 import { loginThroughUi, syntheticUsers } from '../support/auth-helpers';
 import { installBrowserGuards } from '../support/browser-guards';
 
+async function selectSkuProduct(page: import('@playwright/test').Page, query: string): Promise<void> {
+    const combobox = page.getByPlaceholder('输入 SKU 或产品名称…');
+    await combobox.fill(query);
+    const option = page.locator('.sku-combobox-dropdown li').first();
+    await option.waitFor({ state: 'visible' });
+    await option.click();
+}
+
 async function shipViaPrompt(page: import('@playwright/test').Page, carrier: string, tracking: string): Promise<void> {
     const answers = [carrier, tracking];
     page.on('dialog', async (dialog) => {
@@ -24,6 +32,7 @@ test('customer manual order flows through logistics to shipped with the business
     await page.getByLabel('省/州').fill('CA');
     await page.getByLabel('城市').fill('Los Angeles');
     await page.getByLabel('地址', { exact: true }).fill('100 E2E Street');
+    await selectSkuProduct(page, 'E2E-SKU-0001');
     await page.getByPlaceholder('商品摘要').fill('E2E Product');
     await page.getByPlaceholder('数量').fill('1');
     await page.getByPlaceholder('单价').fill('9.99');
@@ -62,6 +71,7 @@ test('KOL fulfillment manual order defaults to kol_fulfillment and shares the sa
     await page.getByLabel('省/州').fill('CA');
     await page.getByLabel('城市').fill('Los Angeles');
     await page.getByLabel('地址', { exact: true }).fill('200 E2E Street');
+    await selectSkuProduct(page, 'E2E-SKU-0001');
     await page.getByPlaceholder('商品摘要').fill('E2E KOL Product');
     await page.getByPlaceholder('数量').fill('1');
     await page.getByPlaceholder('单价').fill('19.99');
@@ -98,6 +108,7 @@ test('direct URL manipulation cannot cross-leak an order into the wrong kind sur
     await page.getByLabel('省/州').fill('CA');
     await page.getByLabel('城市').fill('Los Angeles');
     await page.getByLabel('地址', { exact: true }).fill('300 E2E Street');
+    await selectSkuProduct(page, 'E2E-SKU-0001');
     await page.getByPlaceholder('商品摘要').fill('Leak Product');
     await page.getByPlaceholder('数量').fill('1');
     await page.getByPlaceholder('单价').fill('5.00');
@@ -132,6 +143,7 @@ test('logistics copy falls back to a manual-selection path when the async Clipbo
     await page.getByLabel('省/州').fill('CA');
     await page.getByLabel('城市').fill('Los Angeles');
     await page.getByLabel('地址', { exact: true }).fill('400 E2E Street');
+    await selectSkuProduct(page, 'E2E-SKU-0001');
     await page.getByPlaceholder('商品摘要').fill('Fallback Product');
     await page.getByPlaceholder('数量').fill('1');
     await page.getByPlaceholder('单价').fill('7.00');

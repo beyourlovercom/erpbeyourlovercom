@@ -19,6 +19,17 @@ Codex must not modify tracked files, fix failures, commit, push, open implementa
 
 Parallel implementation is allowed only under `PARALLEL-WORK-EXEC-001`. Each active implementation stream must obey `ONE_WORK_PACKAGE_ONE_BRANCH_ONE_PR`, `ONE_ACTIVE_AGENT_ONE_WORKTREE`, declared dependencies and shared-foundation extraction rules.
 
+# HIGHEST UI / FORM DESIGN GATE
+
+For any BYL ERP create/edit/data-entry form task, the highest UI/form authority is:
+
+- `docs/10_Planning_Roadmap/18_BYL_ERP_FORM_DESIGN_STANDARD_V1.md`
+- Page-specific form specifications such as `docs/10_Planning_Roadmap/19_PRODUCT_EDIT_V2_UI_SPEC.md`
+
+These rules are OWNER_APPROVED and mandatory unless the Owner explicitly approves an exception. They govern field grouping, VI, spacing, controls, responsive behavior, validation presentation, action hierarchy, and destructive-action placement. Existing developer-style forms must migrate toward this standard when touched.
+
+This UI/form gate does not override repository security, authorization, canonical data-truth, accounting, menu, or execution-governance gates. Where a visual request would violate those higher-order correctness constraints, preserve correctness and stop for Owner/GPT direction.
+
 # MENU BASELINE GATE
 
 Any task that may affect a level-1 or level-2 menu must read:
