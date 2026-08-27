@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Modules\Shell\Application\ErpShellNavigation;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -13,11 +14,22 @@ class HandleInertiaRequests extends Middleware
     public function share(Request $request): array
     {
         $user = $request->user();
+        $flash = [
+            'success' => $request->session()->get('success'),
+            'error' => $request->session()->get('error'),
+            'warning' => $request->session()->get('warning'),
+            'info' => $request->session()->get('info'),
+        ];
+        $hasFeedback = collect($flash)->contains(fn ($value): bool => is_string($value) && trim($value) !== '');
 
         return [
             ...parent::share($request),
             'auth' => ['user' => $user?->only(['id', 'name', 'email'])],
             'shellNavigation' => $user ? app(ErpShellNavigation::class)->for($user) : [],
+            'flash' => [
+                'feedback_id' => $hasFeedback ? (string) Str::uuid() : null,
+                ...$flash,
+            ],
         ];
     }
 }
