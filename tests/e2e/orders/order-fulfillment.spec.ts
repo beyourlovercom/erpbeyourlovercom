@@ -1,8 +1,17 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { loginThroughUi, syntheticUsers } from '../support/auth-helpers';
 import { installBrowserGuards } from '../support/browser-guards';
 
-async function selectSkuProduct(page: import('@playwright/test').Page, query: string): Promise<void> {
+// Scoped helper: finds the .erp-form-field containing the exact label text and returns its input.
+// Required because V2 labels are not associated via `for` attributes.
+function getFieldInput(page: Page, label: string) {
+    return page
+        .locator('.erp-form-field')
+        .filter({ hasText: new RegExp(`^${label}$`, 'u') })
+        .locator('input');
+}
+
+async function selectSkuProduct(page: Page, query: string): Promise<void> {
     const combobox = page.getByPlaceholder('输入 SKU 或产品名称…');
     await combobox.fill(query);
     const option = page.locator('.sku-combobox-dropdown li').first();
@@ -10,7 +19,7 @@ async function selectSkuProduct(page: import('@playwright/test').Page, query: st
     await option.click();
 }
 
-async function shipViaPrompt(page: import('@playwright/test').Page, carrier: string, tracking: string): Promise<void> {
+async function shipViaPrompt(page: Page, carrier: string, tracking: string): Promise<void> {
     const answers = [carrier, tracking];
     page.on('dialog', async (dialog) => {
         await dialog.accept(answers.shift() ?? '');
@@ -18,25 +27,38 @@ async function shipViaPrompt(page: import('@playwright/test').Page, carrier: str
     await page.getByRole('button', { name: '标记发货' }).click();
 }
 
+async function fillRecipientFields(page: Page, overrides: {
+    name: string;
+    phone: string;
+    address: string;
+}): Promise<void> {
+    await getFieldInput(page, '收件人姓名').fill(overrides.name);
+    await getFieldInput(page, '联系电话').fill(overrides.phone);
+    await getFieldInput(page, '国家').fill('US');
+    await getFieldInput(page, '省/州').fill('CA');
+    await getFieldInput(page, '城市').fill('Los Angeles');
+    await getFieldInput(page, '地址行 1').fill(overrides.address);
+}
+
+async function fillItemRow(page: Page, summary: string, qty: string, price: string): Promise<void> {
+    const row = page.locator('.ord-item-row').first();
+    await row.locator('.erp-form-field').filter({ has: page.locator('.erp-form-label', { hasText: '产品摘要' }) }).locator('input').fill(summary);
+    await row.locator('.erp-form-field').filter({ has: page.locator('.erp-form-label', { hasText: '数量' }) }).locator('input').fill(qty);
+    await row.locator('.erp-form-field').filter({ has: page.locator('.erp-form-label', { hasText: '单价' }) }).locator('input').fill(price);
+}
+
 test('customer manual order flows through logistics to shipped with the business number preserved', async ({ context, page }) => {
     const guard = await installBrowserGuards(context, page);
     await loginThroughUi(page, syntheticUsers().authorized);
 
     await page.goto('/customers/orders/create');
-    await expect(page.getByRole('heading', { name: '新建订单', level: 2 })).toBeVisible();
+    await expect(page.locator('#main-content').getByRole('heading', { name: '新建客户订单', level: 1 })).toBeVisible();
     await page.getByRole('button', { name: '编辑订单号' }).click();
     await page.getByLabel('业务订单号').fill('E2E-CUS-0001');
-    await page.getByLabel('姓名').fill('E2E Customer Recipient');
-    await page.getByLabel('电话').fill('+1 555 0100');
-    await page.getByLabel('国家').fill('US');
-    await page.getByLabel('省/州').fill('CA');
-    await page.getByLabel('城市').fill('Los Angeles');
-    await page.getByLabel('地址', { exact: true }).fill('100 E2E Street');
+    await fillRecipientFields(page, { name: 'E2E Customer Recipient', phone: '+1 555 0100', address: '100 E2E Street' });
     await selectSkuProduct(page, 'E2E-SKU-0001');
-    await page.getByPlaceholder('商品摘要').fill('E2E Product');
-    await page.getByPlaceholder('数量').fill('1');
-    await page.getByPlaceholder('单价').fill('9.99');
-    await page.getByRole('button', { name: '保存订单' }).click();
+    await fillItemRow(page, 'E2E Product', '1', '9.99');
+    await page.getByRole('button', { name: '创建订单' }).click();
 
     await expect(page).toHaveURL(/\/customers\/orders\/\d+$/u);
     await expect(page.getByRole('heading', { name: 'E2E-CUS-0001' })).toBeVisible();
@@ -62,20 +84,17 @@ test('KOL fulfillment manual order defaults to kol_fulfillment and shares the sa
     await loginThroughUi(page, syntheticUsers().authorized);
 
     await page.goto('/kol/orders/create');
-    await expect(page.getByLabel('订单类型')).toHaveValue('网红履约订单');
+    await expect(page.locator('#main-content').getByRole('heading', { name: '新建网红履约订单', level: 1 })).toBeVisible();
+    // 订单类型 is a readonly display block in V2 — field text includes the value, so scope by label child
+    await expect(
+        page.locator('.erp-form-field').filter({ has: page.locator('.erp-form-label', { hasText: /^订单类型$/ }) }).locator('.erp-readonly-input'),
+    ).toHaveText('网红履约订单');
     await page.getByRole('button', { name: '编辑订单号' }).click();
     await page.getByLabel('业务订单号').fill('E2E-KOL-0001');
-    await page.getByLabel('姓名').fill('E2E KOL Recipient');
-    await page.getByLabel('电话').fill('+1 555 0101');
-    await page.getByLabel('国家').fill('US');
-    await page.getByLabel('省/州').fill('CA');
-    await page.getByLabel('城市').fill('Los Angeles');
-    await page.getByLabel('地址', { exact: true }).fill('200 E2E Street');
+    await fillRecipientFields(page, { name: 'E2E KOL Recipient', phone: '+1 555 0101', address: '200 E2E Street' });
     await selectSkuProduct(page, 'E2E-SKU-0001');
-    await page.getByPlaceholder('商品摘要').fill('E2E KOL Product');
-    await page.getByPlaceholder('数量').fill('1');
-    await page.getByPlaceholder('单价').fill('19.99');
-    await page.getByRole('button', { name: '保存订单' }).click();
+    await fillItemRow(page, 'E2E KOL Product', '1', '19.99');
+    await page.getByRole('button', { name: '创建订单' }).click();
 
     await expect(page).toHaveURL(/\/kol\/orders\/\d+$/u);
     await expect(page.getByRole('heading', { name: 'E2E-KOL-0001' })).toBeVisible();
@@ -102,17 +121,10 @@ test('direct URL manipulation cannot cross-leak an order into the wrong kind sur
     await page.goto('/customers/orders/create');
     await page.getByRole('button', { name: '编辑订单号' }).click();
     await page.getByLabel('业务订单号').fill('E2E-LEAK-CUS');
-    await page.getByLabel('姓名').fill('Leak Test Customer');
-    await page.getByLabel('电话').fill('+1 555 0102');
-    await page.getByLabel('国家').fill('US');
-    await page.getByLabel('省/州').fill('CA');
-    await page.getByLabel('城市').fill('Los Angeles');
-    await page.getByLabel('地址', { exact: true }).fill('300 E2E Street');
+    await fillRecipientFields(page, { name: 'Leak Test Customer', phone: '+1 555 0102', address: '300 E2E Street' });
     await selectSkuProduct(page, 'E2E-SKU-0001');
-    await page.getByPlaceholder('商品摘要').fill('Leak Product');
-    await page.getByPlaceholder('数量').fill('1');
-    await page.getByPlaceholder('单价').fill('5.00');
-    await page.getByRole('button', { name: '保存订单' }).click();
+    await fillItemRow(page, 'Leak Product', '1', '5.00');
+    await page.getByRole('button', { name: '创建订单' }).click();
     await expect(page).toHaveURL(/\/customers\/orders\/(\d+)$/u);
     const customerOrderId = new URL(page.url()).pathname.split('/').pop();
 
@@ -137,17 +149,10 @@ test('logistics copy falls back to a manual-selection path when the async Clipbo
     await page.goto('/customers/orders/create');
     await page.getByRole('button', { name: '编辑订单号' }).click();
     await page.getByLabel('业务订单号').fill('E2E-FALLBACK-0001');
-    await page.getByLabel('姓名').fill('Fallback Recipient');
-    await page.getByLabel('电话').fill('+1 555 0103');
-    await page.getByLabel('国家').fill('US');
-    await page.getByLabel('省/州').fill('CA');
-    await page.getByLabel('城市').fill('Los Angeles');
-    await page.getByLabel('地址', { exact: true }).fill('400 E2E Street');
+    await fillRecipientFields(page, { name: 'Fallback Recipient', phone: '+1 555 0103', address: '400 E2E Street' });
     await selectSkuProduct(page, 'E2E-SKU-0001');
-    await page.getByPlaceholder('商品摘要').fill('Fallback Product');
-    await page.getByPlaceholder('数量').fill('1');
-    await page.getByPlaceholder('单价').fill('7.00');
-    await page.getByRole('button', { name: '保存订单' }).click();
+    await fillItemRow(page, 'Fallback Product', '1', '7.00');
+    await page.getByRole('button', { name: '创建订单' }).click();
     await expect(page).toHaveURL(/\/customers\/orders\/\d+$/u);
 
     await page.goto('/logistics/pending');

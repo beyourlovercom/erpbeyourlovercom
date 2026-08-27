@@ -134,7 +134,7 @@ final class OrderController
             'owner' => $order->owner ? ['id' => $order->owner->id, 'name' => $order->owner->name] : null,
             'owner_label' => $order->owner ? 'Owner('.$order->owner->name.')' : null,
             'address' => $order->address?->only(['recipient_name', 'phone', 'country', 'province_state', 'city', 'address_line_1', 'address_line_2', 'postal_code']),
-            'items' => $order->items->map(fn ($item): array => $item->only(['id', 'product_summary', 'sku', 'quantity', 'unit_price', 'line_revenue']))->values()->all(),
+            'items' => $order->items->map(fn ($item): array => $item->only(['id', 'product_id', 'product_summary', 'sku', 'quantity', 'unit_price', 'line_revenue']))->values()->all(),
             'shipment' => $order->shipment?->only(['shipment_status', 'carrier', 'tracking_number', 'shipped_at', 'logistics_note', 'handled_by']),
             'manual_sync' => $order->manualSync ? [
                 'status' => $order->manualSync->website_sync_status->value,
