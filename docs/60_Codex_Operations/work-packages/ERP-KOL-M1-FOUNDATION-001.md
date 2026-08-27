@@ -569,3 +569,19 @@ Required execution order is:
 `finish current M1.0 implementation -> full verification -> US Local Owner UAT -> explicit acceptance/merge gate -> M1.1 -> M1.2 -> M1.3 -> M1.4`.
 
 Implementation must stop at the M1.0 Owner UAT gate after preparing the verified UAT build. It must not automatically begin M1.1.
+## Roadmap Re-estimate — 2026-08-27
+
+Status: OWNER-APPROVED PLANNING BASELINE / supersedes the earlier 14–22h M1.0 planning range as a remaining-work estimate.
+
+Based on the current implemented foundation and preserved uncommitted remediation, remaining effective development estimates are:
+
+- M1.0 `KOL_M1_FOUNDATION_UI_UPGRADE_V1`: 6–9h remaining.
+- M1.1 CRM: 3–5h.
+- M1.2 Collaboration / Fulfillment: 4–6h.
+- M1.3 Content: 3–5h.
+- M1.4 Finance / Affiliate: 4–6h.
+- KOL V1 cross-phase closure / regression / Owner UAT remediation buffer: 2–3h.
+
+Current KOL V1 operating-track remainder: 22–34h effective engineering time, planning baseline ≈ 28h. Waiting time, Claude quota resets, passive CI time and Owner review latency are not counted as engineering hours.
+
+KOL Intelligence remains outside this operating-track estimate and is deferred until after M1.1–M1.4 unless Owner reprioritizes it.
