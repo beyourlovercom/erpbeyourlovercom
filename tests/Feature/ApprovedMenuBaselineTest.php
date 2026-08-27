@@ -23,10 +23,10 @@ class ApprovedMenuBaselineTest extends TestCase
         $this->assertFileExists($path, self::MISMATCH.': approved file is missing');
         $baseline = $this->baseline();
 
-        $this->assertSame('1.0', $baseline['version'] ?? null, self::MISMATCH.': version');
+        $this->assertSame('1.1', $baseline['version'] ?? null, self::MISMATCH.': version');
         $this->assertSame('OWNER_APPROVED', $baseline['status'] ?? null, self::MISMATCH.': status');
-        $this->assertSame('2026-08-03', $baseline['approved_at'] ?? null, self::MISMATCH.': approved_at');
-        $this->assertSame('8fe6ba786af1d794b63819ea94aaa45cecd1e1e4', $baseline['approved_head'] ?? null, self::MISMATCH.': approved_head');
+        $this->assertSame('2026-08-25', $baseline['approved_at'] ?? null, self::MISMATCH.': approved_at');
+        $this->assertSame('fa4c4a07922a311d0ea299d25d748b2ce376d7f4', $baseline['approved_head'] ?? null, self::MISMATCH.': approved_head');
         $this->assertSame([1, 2], $baseline['governed_levels'] ?? null, self::MISMATCH.': governed_levels');
         $this->assertIsArray($baseline['items'] ?? null, self::MISMATCH.': items');
     }
@@ -79,7 +79,7 @@ class ApprovedMenuBaselineTest extends TestCase
         $levelTwo = collect($items)->where('level', 2)->values();
 
         $this->assertCount(11, $levelOne, self::MISMATCH.': level-1 count');
-        $this->assertCount(32, $levelTwo, self::MISMATCH.': R2 owner-approved level-2 count');
+        $this->assertCount(33, $levelTwo, self::MISMATCH.': R2 owner-approved level-2 count');
         $this->assertSame(
             ['dashboard', 'logistics', 'sync', 'customers', 'kol', 'inventory', 'procurement', 'products', 'guides', 'accounting', 'settings'],
             $levelOne->pluck('code')->all(),

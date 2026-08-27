@@ -51,3 +51,9 @@ When explicit Owner menu-change authorization exists, the same change must updat
 4. the Work Package or change record.
 
 Partial updates are prohibited.
+
+## Data-driven entity shortcuts
+
+Owner-approved entity shortcuts generated from canonical runtime data are not static functional menu definitions. Example: active Warehouse records may appear as direct links beneath the governed `inventory` module.
+
+These shortcuts must use an existing detail route, inherit the parent module's read permission, disappear when the entity is inactive, and must not rename, remove, or change the relative order of approved static level-1/level-2 function items. They require focused runtime tests but are not enumerated one-by-one in `APPROVED_MENU.json`.

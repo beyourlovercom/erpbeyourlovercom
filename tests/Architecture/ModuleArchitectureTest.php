@@ -7,6 +7,7 @@ use App\Modules\Customers\Providers\CustomersServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Finance\Providers\FinanceServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
+use App\Modules\Inventory\Providers\InventoryServiceProvider;
 use App\Modules\Logistics\Providers\LogisticsServiceProvider;
 use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
@@ -87,6 +88,30 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Identity/Infrastructure/Models/Role.php',
         'app/Modules/Identity/Infrastructure/Models/User.php',
         'app/Modules/Identity/Providers/IdentityServiceProvider.php',
+        'app/Modules/Inventory/Application/Contracts/InventoryBatchSyncRepository.php',
+        'app/Modules/Inventory/Application/Contracts/InventoryRepository.php',
+        'app/Modules/Inventory/Application/InventoryBatchSyncService.php',
+        'app/Modules/Inventory/Application/InventoryService.php',
+        'app/Modules/Inventory/Application/Sync/ApiAdapterPlaceholder.php',
+        'app/Modules/Inventory/Application/Sync/CsvAdapter.php',
+        'app/Modules/Inventory/Application/Sync/NormalizedRow.php',
+        'app/Modules/Inventory/Application/Sync/PasteAdapter.php',
+        'app/Modules/Inventory/Application/Sync/RowNormalizer.php',
+        'app/Modules/Inventory/Application/Sync/XlsxAdapter.php',
+        'app/Modules/Inventory/Experience/Controllers/InventoryController.php',
+        'app/Modules/Inventory/Experience/Controllers/InventorySyncController.php',
+        'app/Modules/Inventory/Experience/Controllers/WarehouseController.php',
+        'app/Modules/Inventory/Experience/Routes/web.php',
+        'app/Modules/Inventory/Infrastructure/EloquentInventoryBatchSyncRepository.php',
+        'app/Modules/Inventory/Infrastructure/EloquentInventoryRepository.php',
+        'app/Modules/Inventory/Infrastructure/Models/InventoryAdjustment.php',
+        'app/Modules/Inventory/Infrastructure/Models/InventorySyncBatch.php',
+        'app/Modules/Inventory/Infrastructure/Models/InventorySyncRow.php',
+        'app/Modules/Inventory/Infrastructure/Models/Warehouse.php',
+        'app/Modules/Inventory/Infrastructure/Models/WarehouseInventory.php',
+        'app/Modules/Inventory/Infrastructure/Models/WarehouseInventoryLot.php',
+        'app/Modules/Inventory/Infrastructure/Models/WarehouseServiceRegion.php',
+        'app/Modules/Inventory/Providers/InventoryServiceProvider.php',
         'app/Modules/Logistics/Application/ShipmentService.php',
         'app/Modules/Logistics/Experience/Controllers/LogisticsController.php',
         'app/Modules/Logistics/Experience/Routes/web.php',
@@ -195,6 +220,16 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Identity/Infrastructure',
         'app/Modules/Identity/Infrastructure/Models',
         'app/Modules/Identity/Providers',
+        'app/Modules/Inventory',
+        'app/Modules/Inventory/Application',
+        'app/Modules/Inventory/Application/Contracts',
+        'app/Modules/Inventory/Application/Sync',
+        'app/Modules/Inventory/Experience',
+        'app/Modules/Inventory/Experience/Controllers',
+        'app/Modules/Inventory/Experience/Routes',
+        'app/Modules/Inventory/Infrastructure',
+        'app/Modules/Inventory/Infrastructure/Models',
+        'app/Modules/Inventory/Providers',
         'app/Modules/Logistics',
         'app/Modules/Logistics/Application',
         'app/Modules/Logistics/Experience',
@@ -258,12 +293,18 @@ final class ModuleArchitectureTest extends TestCase
         'customers.companies.restore', 'customers.companies.show', 'customers.companies.store', 'customers.companies.update',
         'customers.orders', 'customers.orders.create',
         'customers.orders.mine', 'dashboard', 'guides.manuals', 'guides.videos',
-        'inventory.files', 'inventory.warehouses', 'kol.orders', 'kol.orders.create',
+        'inventory.add', 'inventory.list', 'inventory.product-search', 'inventory.products',
+        'inventory.stock.store', 'inventory.stock.update', 'inventory.store', 'inventory.sync', 'inventory.sync.confirm',
+        'inventory.sync.history', 'inventory.sync.preview', 'inventory.sync.show', 'inventory.warehouse.billing', 'inventory.warehouse.regions',
+        'inventory.warehouse.show', 'inventory.warehouse.update', 'inventory.warehouses', 'kol.orders', 'kol.orders.create',
         'kol.orders.mine', 'kol.orders.show', 'kol.orders.team', 'login', 'login.store',
         'logistics.awaiting-tracking', 'logistics.exceptions', 'logistics.in-transit',
         'logistics.pending', 'logistics.payload', 'logistics.reopen', 'logistics.ship', 'logout', 'password.confirm.store', 'password.confirmation',
-        'procurement.files', 'procurement.records', 'products.create', 'products.dashboard', 'products.destroy', 'products.edit', 'products.import', 'products.import.store', 'products.list', 'products.sku-aliases', 'products.sku-search', 'products.skus', 'products.store', 'products.update',
-        'root', 'settings.audit-logs', 'settings.roles-permissions', 'settings.roles-permissions.update', 'settings.statuses',
+        'procurement.files', 'procurement.records', 'products.create', 'products.dashboard',
+        'products.destroy', 'products.edit', 'products.import', 'products.import.store',
+        'products.list', 'products.sku-aliases', 'products.sku-search', 'products.skus',
+        'products.store', 'products.update', 'root', 'settings.audit-logs',
+        'settings.roles-permissions', 'settings.roles-permissions.update', 'settings.statuses',
         'settings.warehouses', 'shell.accounting', 'shell.customers',
         'shell.guides', 'shell.inventory', 'shell.kol', 'shell.logistics', 'shell.procurement',
         'shell.settings', 'shell.sync', 'storage.local', 'storage.local.upload',
@@ -273,7 +314,7 @@ final class ModuleArchitectureTest extends TestCase
 
     private const PERMISSION_KEYS = [
         'accounting.view', 'analysis.view', 'architecture.foundation.view', 'audit.view', 'customers.operate', 'customers.view',
-        'dashboard.view', 'guides.view', 'inventory.view', 'kol.view', 'logistics.operate', 'logistics.view',
+        'dashboard.view', 'guides.view', 'inventory.operate', 'inventory.view', 'inventory.warehouses.manage', 'kol.view', 'logistics.operate', 'logistics.view',
         'orders.create', 'orders.edit', 'orders.view', 'procurement.view', 'products.operate', 'products.view', 'prototype.view', 'sync.operate', 'sync.view',
         'system.permissions.manage',
     ];
@@ -308,6 +349,10 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_24_000000_add_permission_mode_and_permission_user_pivot.php' => '8f84c0b97530d31395cfbc7968476b1734498019bf47830e7974ed7d59af3be6',
         'database/migrations/2026_08_24_000001_make_order_address_snapshot_fields_nullable.php' => '0c3df13a4def87cb761dbac6c2a15b58fdf3c1352431456f39992b85f9ceaaf9',
         'database/migrations/2026_08_24_100000_create_products_table.php' => 'a7ddaa6125c296d3b67fd85eb8c3728764630207a121d57046702defb3bda1c0',
+        'database/migrations/2026_08_25_000100_create_inventory_foundation_tables.php' => '5c04ba76e1e90e51970b492aca4f386ed02270eb4f201493d1d90ccd74794e07',
+        'database/migrations/2026_08_25_000101_seed_initial_warehouses.php' => '47ac9451febaa5b34ddc0ab6e76e2a208264227551caf4818dd0624afc0f5fa9',
+        'database/migrations/2026_08_25_000200_create_inventory_batch_sync_tables.php' => 'a2e1ecba6592740d3708503e3260523ec33a2601618a591c1abf75f5ed8eb5c4',
+        'database/migrations/2026_08_27_000000_repair_inventory_sync_preview_metrics.php' => 'd791cc4fc3aebecafcfff2c0fc8f5b02b51f142b3dc9986ee7f8fdcd17b7aded',
     ];
 
     private const FRONTEND_FILES = [
@@ -337,8 +382,8 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Layouts/AuthenticatedLayout.vue' => '5c4a123758c94f76a2abc97ac168e0502fba0754bf894c8c6f86d92db5bf1ec7',
         'resources/js/Pages/Architecture/Foundation.test.ts' => '68898785345d5cc641bcc8b3f165527a94c912e33c5f1941554a9a28aad97a1c',
         'resources/js/Pages/Architecture/Foundation.vue' => '0f3f96bd3ad9a5b68fa7fe5a78e20a1e0e92f4d2e6806ef30697fda64941aa70',
-        'resources/js/Pages/Auth/Login.test.ts' => '937fcfd44e8348130d7abded4669263142d4cfc423f3ac4d87cee2a7889eec65',
-        'resources/js/Pages/Auth/Login.vue' => '203bd9c4dc2ae13b8f5e185c4ebebcb5a4b4a088ae43eaf868b62cddf73d8901',
+        'resources/js/Pages/Auth/Login.test.ts' => '445f3392872df2466f83736af7854a1a5c2e477198abea252c546e24141420c8',
+        'resources/js/Pages/Auth/Login.vue' => '5595bb6472df208ce26f74a7e8ba51dd3d96d1421c1502517af97827a3d8b9db',
         'resources/js/Pages/Customers/Companies/Create.test.ts' => '2221b8d4e063e0615a97af14e6fbb738022fd44b55080a6fa6fa8c14d500e198',
         'resources/js/Pages/Customers/Companies/Create.vue' => '568e82d1d2587204b48319443d0d7958e2d053be901288ac02bdee2a58c68bb8',
         'resources/js/Pages/Customers/Companies/Edit.vue' => '7ffbcb6d19a43a59a0f27b37057f411c315644148cc57237e6f232ebc02b547f',
@@ -356,6 +401,15 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Identity/Users/Edit.vue' => '3d0774e7097e63648d01528f70b5243d960b7146a8ac0d6ae7708f6ad5011d3e',
         'resources/js/Pages/Identity/Users/Index.test.ts' => 'c2a508b3fb59d1f4725f86d658bfdcd162487477cae6c7f5e0db119b2f4f2cd0',
         'resources/js/Pages/Identity/Users/Index.vue' => '559f700abcd95b484fe834dbb0e5f871cc7301ff20d0e51f9c3c1179ea228e07',
+        'resources/js/Pages/Inventory/Dashboard.vue' => 'b5f14d5b4a55c50366a7d33c07c91473afaab1ba590346c4214f9715b218556a',
+        'resources/js/Pages/Inventory/InventoryBatchSync.test.ts' => '3c63a7717dcac8e4698db4fd922f69867c82ff9667b0c0f0f03b2b9045c5375f',
+        'resources/js/Pages/Inventory/InventoryFoundation.test.ts' => 'cba1e89b5168dd738eb84741268ff360d86e2e3fa592e5e87cfa3f4ed805456b',
+        'resources/js/Pages/Inventory/Products.vue' => 'ac82349fdc897f5000f2d8adaefab53daa8e13635490e6ae03ee210946f0efc7',
+        'resources/js/Pages/Inventory/Sync.vue' => '3ec525e92c95252991a05999a539eab3d301a5d13e4c9512cde7a4249b8f044a',
+        'resources/js/Pages/Inventory/WarehouseCreate.vue' => '4b7e712128869056190057b8a30b9c6c86e070d8933dfbeabc177a1bda4a007c',
+        'resources/js/Pages/Inventory/WarehouseList.vue' => '26b80c315d084d599fa39af9975e4bbf1b040837a3b3ec635b4de6e010389fb8',
+        'resources/js/Pages/Inventory/WarehouseShow.vue' => 'f31be9291a0d3e7fad8b562d087ba7e583f36d011f4f4aed0eedc282f3c7422a',
+        'resources/js/Pages/Inventory/components/InventorySkuCombobox.vue' => 'd2d7408ee79d6fe9b060c268cf076a33a6d30ce096cc1d56ab9d49767e1bd670',
         'resources/js/Pages/Logistics/Index.vue' => 'd5b7d79d693f899d93362e7b0c3902ec7597099f82a391bc5a5a5fdc27ee17c5',
         'resources/js/Pages/Orders/Create.test.ts' => '393caaba053b9c08a73d372a193865b80e3ca13f0025561aa92017ad98f35069',
         'resources/js/Pages/Orders/Create.vue' => '1b5da97b31ee2523f2197bf48c3c50e804207c62cfa4478daf32177228c1cec7',
@@ -427,6 +481,16 @@ final class ModuleArchitectureTest extends TestCase
             'app/Modules/Sync/Application/SyncOutboxWriteException.php',
         'app/Modules/Customers/Application/CompanyService.php',
         'app/Modules/Finance/Application/OrderAnalysisService.php',
+        'app/Modules/Inventory/Application/Contracts/InventoryBatchSyncRepository.php',
+        'app/Modules/Inventory/Application/Contracts/InventoryRepository.php',
+        'app/Modules/Inventory/Application/InventoryBatchSyncService.php',
+        'app/Modules/Inventory/Application/InventoryService.php',
+        'app/Modules/Inventory/Application/Sync/ApiAdapterPlaceholder.php',
+        'app/Modules/Inventory/Application/Sync/CsvAdapter.php',
+        'app/Modules/Inventory/Application/Sync/NormalizedRow.php',
+        'app/Modules/Inventory/Application/Sync/PasteAdapter.php',
+        'app/Modules/Inventory/Application/Sync/RowNormalizer.php',
+        'app/Modules/Inventory/Application/Sync/XlsxAdapter.php',
         'app/Modules/Logistics/Application/ShipmentService.php',
         'app/Modules/Orders/Application/OrderKind.php',
         'app/Modules/Products/Application/Contracts/ProductRepository.php',
@@ -571,7 +635,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('e40b16abf77e0b650257ec982a07866b52f7311b83d89fd1bbe07897627d0035', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('fddd710bf30346567129e361deee3256295e87603c7e8384b254bd2936609780', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);
@@ -597,6 +661,7 @@ PHP;
             DashboardServiceProvider::class,
             CustomersServiceProvider::class,
             ProductsServiceProvider::class,
+            InventoryServiceProvider::class,
         ], ModuleManifest::providers());
         self::assertSame([AppServiceProvider::class, ModulesServiceProvider::class], require $this->path('bootstrap/providers.php'));
     }

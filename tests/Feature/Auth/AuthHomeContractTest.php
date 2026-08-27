@@ -46,6 +46,28 @@ class AuthHomeContractTest extends TestCase
         $this->assertNotNull($user->fresh()->remember_token);
     }
 
+    public function test_local_uat_admin_alias_authenticates_only_in_non_production_environments(): void
+    {
+        $role = Role::create(['key' => 'uat-admin-alias', 'label' => 'UAT Admin Alias']);
+        $permission = Permission::create(['key' => 'dashboard.view', 'label' => 'Dashboard view']);
+        $role->permissions()->attach($permission);
+        $user = User::factory()->create([
+            'email' => 'admin@local.test',
+            'is_active' => true,
+            'password' => Hash::make('password'),
+        ]);
+        $user->roles()->attach($role);
+
+        $this->app->instance('env', 'testing');
+        $this->post('/login', ['email' => 'admin', 'password' => 'password'])->assertRedirect('/dashboard');
+        $this->assertAuthenticatedAs($user);
+        auth()->logout();
+
+        $this->app->instance('env', 'production');
+        $this->post('/login', ['email' => 'admin', 'password' => 'password']);
+        $this->assertGuest();
+    }
+
     public function test_inactive_user_loses_an_existing_authenticated_session(): void
     {
         $user = $this->dashboardUser();

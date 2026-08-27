@@ -1,0 +1,14 @@
+<?php
+
+namespace App\Modules\Inventory\Infrastructure\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+final class Warehouse extends Model
+{
+    protected $fillable = ['slug','code','name','country_code','address_line1','address_line2','city','state_region','postal_code','timezone','type','is_active','priority','billing_markdown'];
+    protected $casts = ['is_active' => 'boolean', 'priority' => 'integer'];
+    public function inventories(): HasMany { return $this->hasMany(WarehouseInventory::class); }
+    public function serviceRegions(): HasMany { return $this->hasMany(WarehouseServiceRegion::class); }
+}

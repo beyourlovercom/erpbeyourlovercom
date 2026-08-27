@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Schema;
 final class LocalUatSeeder extends Seeder
 {
     private const PASSWORDS = [
+        'admin@local.test' => 'UAT_ADMIN_PASSWORD',
         'owner@example.test' => 'UAT_OWNER_PASSWORD',
         'logistics@example.test' => 'UAT_LOGISTICS_PASSWORD',
         'restricted@example.test' => 'UAT_RESTRICTED_PASSWORD',
@@ -85,7 +86,7 @@ final class LocalUatSeeder extends Seeder
     {
         $keys = [
             'dashboard.view', 'orders.view', 'orders.create', 'orders.edit', 'logistics.view', 'logistics.operate',
-            'sync.view', 'sync.operate', 'analysis.view', 'customers.view', 'customers.operate', 'kol.view', 'inventory.view',
+            'sync.view', 'sync.operate', 'analysis.view', 'customers.view', 'customers.operate', 'kol.view', 'inventory.view', 'inventory.operate',
             'procurement.view', 'products.view', 'products.operate', 'guides.view', 'accounting.view', 'system.permissions.manage',
         ];
 
@@ -107,10 +108,12 @@ final class LocalUatSeeder extends Seeder
     private function users(array $roles): array
     {
         $users = [
+            'admin' => User::create(['name' => 'UAT Admin', 'email' => 'admin@local.test', 'password' => Hash::make((string) env(self::PASSWORDS['admin@local.test'], 'password')), 'is_active' => true]),
             'owner' => User::create(['name' => 'UAT Owner/Admin', 'email' => 'owner@example.test', 'password' => Hash::make((string) env(self::PASSWORDS['owner@example.test'], '')), 'is_active' => true]),
             'logistics' => User::create(['name' => 'UAT Logistics Operator', 'email' => 'logistics@example.test', 'password' => Hash::make((string) env(self::PASSWORDS['logistics@example.test'], '')), 'is_active' => true]),
             'restricted' => User::create(['name' => 'UAT Restricted Operator', 'email' => 'restricted@example.test', 'password' => Hash::make((string) env(self::PASSWORDS['restricted@example.test'], '')), 'is_active' => true]),
         ];
+        $users['admin']->roles()->attach($roles['owner']);
         $users['owner']->roles()->attach($roles['owner']);
         $users['logistics']->roles()->attach($roles['logistics']);
         $users['restricted']->roles()->attach($roles['restricted']);
