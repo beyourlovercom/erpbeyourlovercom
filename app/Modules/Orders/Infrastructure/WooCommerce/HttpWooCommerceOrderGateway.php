@@ -46,6 +46,9 @@ final class HttpWooCommerceOrderGateway implements WooCommerceOrderGateway
         }
 
         return Http::acceptJson()
+            ->withHeaders([
+                'User-Agent' => 'Mozilla/5.0 (compatible; BYL-ERP-WooCommerce-Inbound/1.0; +https://www.beyourlover.com/)',
+            ])
             ->withBasicAuth((string) config('services.woocommerce.consumer_key'), (string) config('services.woocommerce.consumer_secret'))
             ->timeout(max(1, (int) config('services.woocommerce.timeout', 15)))
             ->get($this->baseUrl().'/wp-json/wc/v3/'.$path, $query)

@@ -143,6 +143,8 @@ final class WooCommerceInboundTest extends TestCase
 
         Http::fake(['https://shop.test/wp-json/wc/v3/orders*' => Http::response([], 200)]);
         $this->actingAs($user)->post('/sync/woocommerce/probe')->assertSessionHas('success');
+        Http::assertSent(fn (Request $request) => str_starts_with((string) $request->header('User-Agent')[0], 'Mozilla/5.0')
+            && str_contains((string) $request->header('User-Agent')[0], 'BYL-ERP-WooCommerce-Inbound/1.0'));
     }
 
     private function wooOrder(
