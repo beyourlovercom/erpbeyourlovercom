@@ -6,6 +6,7 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Products\Application\Contracts\ProductRepository;
+use App\Modules\Orders\Application\Inbound\NormalizedInboundOrder;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
@@ -52,6 +53,87 @@ final class OrderService
             $this->record($actor, 'order.created', $order, after: $this->auditData($order), reason: 'manual_order_created');
 
             return $order->load('items', 'owner', 'address');
+        });
+    }
+
+    /** @return array{order:Model,created:bool} */
+    public function upsertInbound(NormalizedInboundOrder $data, ?Authenticatable $actor): array
+    {
+        return DB::transaction(function () use ($data, $actor): array {
+            $orderClass = 'App\\Modules\\Orders\\Infrastructure\\Models\\Order';
+            $referenceClass = 'App\\Modules\\Orders\\Infrastructure\\Models\\OrderExternalReference';
+            $reference = $referenceClass::query()
+                ->where('provider', $data->provider)
+                ->where('connection_key', $data->connectionKey)
+                ->where('reference', $data->reference)
+                ->lockForUpdate()
+                ->first();
+
+            $created = $reference === null;
+            if ($reference) {
+                $order = $orderClass::query()->whereKey($reference->order_id)->lockForUpdate()->firstOrFail();
+                $before = $this->inboundAuditData($order);
+                $localStatus = $order->order_status instanceof \BackedEnum ? $order->order_status->value : (string) $order->order_status;
+                $nextStatus = $localStatus;
+                if ($localStatus === OrderStatus::PendingShipment->value && $data->orderStatus === OrderStatus::Cancelled->value) {
+                    $nextStatus = OrderStatus::Cancelled->value;
+                }
+                $order->fill([
+                    'source_type' => OrderSourceType::WooCommerce->value,
+                    'order_kind' => OrderKind::Customer->value,
+                    'external_order_number' => $data->externalOrderNumber,
+                    'order_date' => $data->orderDate,
+                    'order_note' => $data->orderNote,
+                    'currency' => $data->currency,
+                    'order_status' => $nextStatus,
+                ])->save();
+            } else {
+                $order = $orderClass::create([
+                    'internal_order_number' => $this->nextOrderNumber(OrderKind::Customer->value),
+                    'source_type' => OrderSourceType::WooCommerce->value,
+                    'order_kind' => OrderKind::Customer->value,
+                    'external_order_number' => $data->externalOrderNumber,
+                    'order_date' => $data->orderDate,
+                    'order_note' => $data->orderNote,
+                    'currency' => $data->currency,
+                    'order_status' => $data->orderStatus,
+                    'owner_id' => null,
+                ]);
+                $reference = $order->externalReferences()->create([
+                    'provider' => $data->provider,
+                    'connection_key' => $data->connectionKey,
+                    'reference' => $data->reference,
+                    'provider_modified_at' => $data->providerModifiedAt,
+                ]);
+                $before = null;
+            }
+
+            $order->address()->updateOrCreate(['order_id' => $order->getKey()], $data->address);
+            $order->items()->delete();
+            foreach ($data->items as $item) {
+                $resolved = $this->resolveInboundProductFields($item);
+                $order->items()->create([
+                    'product_id' => $resolved['product_id'],
+                    'sku' => $resolved['sku'],
+                    'product_summary' => $resolved['product_summary'],
+                    'quantity' => (int) $item['quantity'],
+                    'unit_price' => (string) $item['unit_price'],
+                    'line_revenue' => $this->lineRevenue((string) $item['unit_price'], (int) $item['quantity']),
+                ]);
+            }
+            $reference->forceFill(['provider_modified_at' => $data->providerModifiedAt])->save();
+            $order = $order->fresh(['items', 'owner', 'address', 'externalReferences']);
+            $this->record(
+                $actor,
+                $created ? 'order.inbound_created' : 'order.inbound_updated',
+                $order,
+                before: $before,
+                after: $this->inboundAuditData($order),
+                reason: 'woocommerce_inbound',
+                source: AuditSource::WooCommerceInbound,
+            );
+
+            return ['order' => $order, 'created' => $created];
         });
     }
 
@@ -157,6 +239,29 @@ final class OrderService
         return $number;
     }
 
+    private function resolveInboundProductFields(array $item): array
+    {
+        $product = null;
+        if (! empty($item['woocommerce_product_id'])) {
+            $product = $this->productRepository->findByWooId((int) $item['woocommerce_product_id']);
+        }
+        $rawSku = trim((string) ($item['sku'] ?? ''));
+        if (! $product && $rawSku !== '') {
+            $product = $this->productRepository->findBySku($rawSku);
+        }
+
+        $summary = trim((string) ($item['product_summary'] ?? ''));
+        if ($summary === '') {
+            $summary = $product?->name ? (string) $product->name : ($rawSku !== '' ? $rawSku : 'WooCommerce item');
+        }
+
+        return [
+            'product_id' => $product?->getKey(),
+            'sku' => $product?->sku ? (string) $product->sku : $rawSku,
+            'product_summary' => $summary,
+        ];
+    }
+
     private function resolveProductFields(array $item): array
     {
         $product = ! empty($item['product_id']) ? $this->productRepository->findById((int) $item['product_id']) : null;
@@ -188,10 +293,20 @@ final class OrderService
         return number_format(($cents * $quantity) / 100, 2, '.', '');
     }
 
-    private function record(?Authenticatable $actor, string $action, Model $order, ?array $before = null, ?array $after = null, ?string $reason = null): void
+    private function inboundAuditData(Model $order): array
+    {
+        $data = $this->auditData($order);
+        $data['currency'] = $order->currency;
+        $data['address'] = $order->address?->toArray();
+        $data['items'] = $order->items()->get()->toArray();
+        $data['external_references'] = $order->externalReferences()->get(['provider', 'connection_key', 'reference', 'provider_modified_at'])->toArray();
+        return $data;
+    }
+
+    private function record(?Authenticatable $actor, string $action, Model $order, ?array $before = null, ?array $after = null, ?string $reason = null, AuditSource $source = AuditSource::InternalSystem): void
     {
         $this->audit->record(
-            $actor ? AuditActor::user($actor, AuditSource::InternalSystem) : AuditActor::system(AuditSource::InternalSystem),
+            $actor ? AuditActor::user($actor, $source) : AuditActor::system($source),
             $action,
             get_class($order),
             $order->getKey(),
@@ -210,6 +325,7 @@ final class OrderService
             'order_kind' => $order->order_kind instanceof \BackedEnum ? $order->order_kind->value : $order->order_kind,
             'order_status' => $order->order_status instanceof \BackedEnum ? $order->order_status->value : $order->order_status,
             'owner_id' => $order->owner_id,
+            'currency' => $order->currency,
         ];
     }
 }

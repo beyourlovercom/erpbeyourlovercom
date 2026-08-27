@@ -19,7 +19,7 @@ Replace manual re-entry of WooCommerce customer orders with a controlled inbound
 1. Environment-backed WooCommerce REST API connection with an explicit connection key.
 2. Connection test from ERP.
 3. Single import by WooCommerce provider order ID.
-4. Incremental import from the last successfully observed WooCommerce reference timestamp.
+4. Incremental import from the maximum successfully observed WooCommerce provider modification timestamp.
 5. Historical import by explicit date range.
 6. Normalize WooCommerce payloads before persistence.
 7. Idempotent upsert into existing `orders`, `order_addresses`, `order_items`, and `order_external_references`.
@@ -31,7 +31,7 @@ Replace manual re-entry of WooCommerce customer orders with a controlled inbound
 ## Canonical contract adjustments
 
 - Add `OrderSourceType::WooCommerce = woocommerce` while preserving legacy `website`, `kol`, `manual_other`, and `manual` values.
-- Add `connection_key` to `order_external_references` and enforce `UNIQUE(provider, connection_key, reference)`.
+- Add `connection_key` and `provider_modified_at` to `order_external_references`; enforce `UNIQUE(provider, connection_key, reference)`.
 - Add order currency so WooCommerce currency is not discarded.
 
 ## Import semantics

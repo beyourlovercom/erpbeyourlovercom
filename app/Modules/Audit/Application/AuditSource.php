@@ -8,4 +8,5 @@ enum AuditSource: string
     case InternalSystem = 'system';
     case UserProvisioning = 'erp:user:create';
     case SyncOutbox = 'sync:outbox';
+    case WooCommerceInbound = 'woocommerce:inbound';
 }
