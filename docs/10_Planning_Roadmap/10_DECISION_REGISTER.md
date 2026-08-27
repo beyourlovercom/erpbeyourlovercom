@@ -241,3 +241,17 @@ Owner also revised the default verification policy: US Mac verification/UAT is s
 The next program phase is Shipping ↔ Inventory M1, but this decision does not authorize its implementation. Its first bounded contract must define warehouse eligibility, stock availability, reservation semantics, `selected_warehouse_id`, one-Order/one-Warehouse behavior, manual exception handling, rollback and audit. Carrier rules, Warehouse Connectors, automatic fulfillment and Production deployment remain later separately gated scope.
 
 Architecture conflict: NONE. GitHub remains the unique source of truth. Remote Production deployment remains NOT AUTHORIZED.
+
+## D-039 Freeze manual-first fulfillment roadmap and defer intelligent decisions beyond MVP1
+
+Owner approved the upgraded fulfillment backbone on 2026-08-27 and explicitly froze the delivery priority: MVP1 must first replace the current Tencent Docs manual order/fulfillment workflow. Existing human operational judgment remains human in MVP1; ERP must present canonical Product / Order / Inventory / Logistics facts, record manual Warehouse and Carrier decisions, persist Shipment/Manual Sync state, and provide Audit without requiring automatic warehouse/carrier decisions.
+
+The long-term fulfillment backbone is frozen as: `Product → Order → Inventory Availability → Warehouse Allocation → Reservation → Packing → Chargeable Weight → Shipping Cost → Transport Mode → Carrier → Warehouse Connector → Shipment`. MVP1 must remain forward-compatible with this chain but must not implement the intelligent engines merely because the extension points exist.
+
+Program phases are now: MVP1 Manual Fulfillment / Tencent Docs Replacement; MVP1.1 WooCommerce Inbound; MVP1.2 Tracking Outbound; MVP1.3 Sync Orchestration; MVP2 Reservation + assisted Warehouse Allocation + Packing/Chargeable Weight + Shipping Cost + Transport Mode + Carrier rules; MVP3 Warehouse Connectors; MVP4 Automatic Fulfillment. Recommendation-first / human-confirmation behavior precedes full automation.
+
+Future logistics costing is also frozen at the architecture level only: `chargeable_weight = max(actual_weight, volumetric_weight)`; volumetric divisor is carrier/service configuration rather than Order/Inventory hard-code. The Shipping Cost Estimator must evaluate eligible rate candidates. If best express cost exceeds a configurable threshold (initial business threshold `300`, currency configurable), the system must evaluate ocean freight; it must not automatically force ocean, because SLA/time commitment, product restrictions, destination and other explicit business constraints remain part of the later Transport Mode decision.
+
+MVP1 may preserve provenance/extension concepts such as manual vs future rule-engine/override Warehouse and Carrier selection, plus later decision snapshots and estimated-vs-actual shipping cost, but this decision does not require premature schema columns or implementation of Reservation, Allocation, Packing, rate shopping, ocean evaluation, Carrier rules, Warehouse connectors or Automatic Fulfillment.
+
+Verification policy remains D-038: US Mac verification/UAT is sufficient by default; China verification is special-case only unless Owner explicitly requests it or a concrete cross-machine/region-specific defect requires it. GitHub remains the unique source of truth. Production deployment remains separately gated. Architecture conflict: NONE.

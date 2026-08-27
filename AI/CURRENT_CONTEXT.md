@@ -1,8 +1,8 @@
 ---
 type: current-context
 project: BYL ERP
-updated: 2026-08-24
-status: order-fulfillment-m1-contract-formalized-awaiting-implementation-authorization
+updated: 2026-08-27
+status: mvp1-manual-fulfillment-roadmap-current
 ---
 
 # Current Context
@@ -12,136 +12,165 @@ status: order-fulfillment-m1-contract-formalized-awaiting-implementation-authori
 ```text
 OWNER: final product, UAT, merge and release authority
 DESIGN_DIAGNOSIS_AUTHORITY: GPT Web + Owner
-IMPLEMENTATION_PROVIDER: US Mac / Claude Code / implementation only
-TEST_PROVIDER: China Mac / Codex CLI / test, verification and evidence only
-SOURCE_OF_TRUTH: GitHub / beyourlovercom/erpbeyourlovercom
-US_LOCAL_RUNTIME: http://erp.b
-CHINA_LOCAL_RUNTIME: http://erp.b
+PRIMARY_IMPLEMENTATION_HOST: US Mac
 PRIMARY_FULL_VERIFICATION_HOST: US Mac
-DAILY_CHINA_VERIFICATION: EXACT_SHA_SMOKE_BY_DEFAULT
-TIER_B_CHINA_VERIFICATION: FULL EXACT_SHA INDEPENDENT VERIFICATION
+OWNER_UAT_HOST: US Mac local/remote UAT
+CHINA_VERIFICATION: special-case only unless Owner explicitly requests it or a concrete cross-machine/region-specific defect requires it
+SOURCE_OF_TRUTH: GitHub / beyourlovercom/erpbeyourlovercom
 REMOTE_MILESTONE_TARGET: https://erp.beyourlover.com
 AICC_IN_ERP_EXECUTION_CHAIN: NO
 ```
 
-Claude and Codex do not design, diagnose, select architecture, decide root cause, or decide the next Work Package. They may report raw implementation/test facts and errors only.
+Normal development does not require China verification. GitHub remains the unique synchronization/source-of-truth path. Remote Production deployment is milestone-gated and not part of normal development debugging.
 
 ## Canonical baseline
-
 ```text
-PR_82_LOCAL_BASELINE_AUDIT: MERGED
-PR_83_ROADMAP_REVISION: MERGED
-PR_84_EXECUTION_ROLE_ALIGNMENT: MERGED
-PR_85_INQUIRY_M1_CONTRACT: MERGED / OWNER APPROVED
-PR_89_INQUIRY_M1_1_COMPANY: MERGED
-CURRENT_MAIN_SHA: 6ac25f2168dea7e8cd9e8f4c49c10752642a44df
+CURRENT_MAIN_SHA: b99cc8934e8e041ae8aa004383dae41ac1be207f
 ARCHITECTURE_FOUNDATION: COMPLETE / PASS
 GLOBAL_ARCHITECTURE_GATE: PASS
-LOCAL_RUNTIME: http://erp.b
-LOCAL_BASELINE_RECONCILIATION: COMPLETE
+ERP-ORDER-FULFILLMENT-M1: COMPLETE / MERGED BY PR #90
+PRODUCT_MASTER_SKU_M1: COMPLETE / MERGED BY PR #93
+ORDER_CREATE_EDIT_V2: COMPLETE / MERGED BY PR #95
+INVENTORY_FOUNDATION: COMPLETE
+INVENTORY_BATCH_SYNC_M1: COMPLETE / OWNER UAT PASS / MERGED BY PR #96
+INVENTORY_DYNAMIC_WAREHOUSE_SHORTCUTS: COMPLETE
 GITHUB_UNIQUE_SYNC_SOURCE: YES
 REMOTE_DEPLOYMENT: NOT AUTHORIZED UNTIL MILESTONE STABLE
 ```
 
-Existing implemented foundations include Identity/Auth/Permissions, App Shell, Dashboard foundation, Runtime health, immutable Audit, Sync Outbox/manual sync, Orders, Order Items, Addresses, Shipments/Logistics, Finance/Order Analysis, Redis/Queue/Scheduler validation, PHPUnit/Vitest/Browser E2E and local MySQL UAT backup/restore evidence.
+Existing foundations now include canonical Order/Order Items/Shipping Address, Product Master identity, Warehouse Master, Warehouse-level Inventory truth and batch sync, Logistics/Shipment foundation, Manual Sync/Audit, Finance/Order Analysis, App Shell/Auth/Permissions and local verification infrastructure.
 
-## Existing MVP1 status
-
-```text
-MVP1_FOUNDATION: COMPLETE / PASS / CLOSED
-MVP1_ORDER_CORE: COMPLETE / PASS / CLOSED
-MVP1_FULFILLMENT: COMPLETE / PASS / CLOSED
-MVP1_MANUAL_SYNC: COMPLETE / PASS / CLOSED
-MVP1_FINANCE_ORDER_ANALYSIS: COMPLETE / PASS / CLOSED
-MVP1_AUTOMATED_UAT_READINESS: PASS
-MVP1_HUMAN_UAT: CHANGES REQUIRED
-LEGACY_HUMAN_UAT_FINDINGS_OPEN: 4
-```
-
-The remaining Human UAT findings are Order/Fulfillment-related and are targeted for exact revalidation under `ERP-ORDER-FULFILLMENT-M1-001`. Documentation does not close them.
-
-## Current priority
+## Owner-frozen program priority
 
 ```text
-CURRENT_PROGRAM_PRIORITY: ERP-ORDER-FULFILLMENT-M1
-CURRENT_WORK_PACKAGE: ERP-ORDER-FULFILLMENT-M1-001
-CURRENT_ACTIVITY: DRAFT DELIVERY PR #90 / IMPLEMENTATION COMPLETE / US FULL VERIFICATION PASS / AWAITING CHINA TIER-B VERIFICATION AND OWNER UAT
-DELIVERY_PR: #90 / DRAFT
-IMPLEMENTATION_AUTHORIZATION: GRANTED 2026-08-24
-BASELINE: main@6ac25f2168dea7e8cd9e8f4c49c10752642a44df
-DELIVERY_BRANCH: feature/erp-order-fulfillment-m1-001
-```
-
-The frozen design authority is:
-
-```text
-docs/10_Planning_Roadmap/16_BYL_ERP_CANONICAL_ORDER_FINANCE_KOL_DATA_CONTRACT_V1.md
-```
-
-Core rules:
-
-```text
-CANONICAL_ORDER_TRUTH = orders.id
-PRIMARY_UI_ORDER_NUMBER = external_order_number
-ERP_TECHNICAL_NUMBER = internal_order_number / generated / unique / immutable / hidden by default
-ORDER_KIND = customer | kol_fulfillment
-ORDER_SOURCE = independent from order kind
-BASE_CURRENCY = USD
-V1_SHIPMENT = 1 Order : 1 Shipment
-AFFILIATEWP = Affiliate / Referral / Payout source of truth; ERP does not clone it
-```
-
-## Inquiry milestone pause / resume
-
-```text
-ERP-INQUIRY-M1.0: COMPLETE
-ERP-INQUIRY-M1.1 COMPANY: COMPLETE / MERGED
+CURRENT_PROGRAM_PRIORITY: MVP1 Manual Fulfillment Integration / Tencent Docs Replacement
+CURRENT_WORK_PACKAGE: NONE / NEXT PACKAGE NOT YET FORMALIZED
+CURRENT_ACTIVITY: Roadmap frozen; next bounded package must connect existing Order + Product + Inventory + Logistics manually first
 ERP-INQUIRY-M1.2 CONTACT: PAUSED / NOT CANCELLED
-RESUME_DEFAULT: after ERP-ORDER-FULFILLMENT-M1 Owner gate / merge
 ```
 
-The approved Inquiry architecture contract remains valid. This priority change does not cancel M1.2–M1.9 and does not change the already-frozen M1.0 semantics.
+MVP1 is deliberately manual-first. The goal is not automatic fulfillment yet. The goal is to remove Tencent Docs from the operational handoff while preserving current human decision-making.
 
-## Current business objective
-
-One canonical manual Order flow must support both customer Orders and KOL fulfillment Orders, feed the same Logistics/Shipment workflow, preserve human-entered business order numbers, enforce server-side scoped access, and leave Finance able to analyze the same `orders.id` later by product/country/KOL/cost.
-
-`kol_fulfillment` means samples/products/gifts/replacements sent to a KOL. Consumer orders generated by an affiliate remain `customer` Orders plus Affiliate/KOL attribution.
-
-## Verification tier
-
-This package is Tier B because schema semantics and authorization/data scope are affected.
-
+## MVP1 operating model
 ```text
-US_MAC: full implementation verification
-CHINA_MAC: full exact-SHA independent verification
-OWNER: Local UAT + merge decision
-CODEX_SOURCE_MUTATION: FORBIDDEN
-REMOTE_DEPLOYMENT: NO
+HUMAN DECIDES
+→ ERP SHOWS CANONICAL DATA
+→ ERP RECORDS THE DECISION
+→ ERP EXECUTES / TRACKS THE MANUAL WORKFLOW
+→ ERP PRESERVES AUDIT
 ```
 
-## Environment gates
+Required MVP1 flow:
 
 ```text
-NORMAL DEVELOPMENT DEPLOYMENT: LOCAL ONLY
-LOCAL URL: http://erp.b
-LOCAL CODE SYNC: GitHub exact revision
+Order / Shipping Address / Order Items
+→ Product Master identity
+→ Warehouse-level Inventory visibility
+→ operator manually selects fulfillment Warehouse
+→ Logistics workspace
+→ operator manually selects/records carrier + service
+→ tracking + shipped time
+→ Shipment
+→ Manual Sync queue where applicable
+→ operator manually updates website
+→ mark sync complete / reopen with Audit
+```
+
+MVP1 acceptance means this workflow can be completed end-to-end inside ERP without relying on Tencent Docs.
+
+## Long-term fulfillment backbone
+
+MVP1 contracts must remain forward-compatible with this future chain, but the intelligent engines are post-MVP1:
+```text
+Product
+→ Order
+→ Inventory Availability
+→ Warehouse Allocation
+→ Reservation
+→ Packing Plan
+→ Chargeable Weight
+→ Shipping Cost Estimator
+→ Transport Mode Decision
+→ Carrier Rule Engine
+→ Warehouse Connector
+→ Shipment
+```
+
+### Future logistics-cost rules
+
+```text
+chargeable_weight = max(actual_weight, volumetric_weight)
+volumetric_divisor = carrier/service configuration
+```
+
+Later, if the best eligible express cost exceeds a configurable threshold, the system must evaluate ocean freight.
+
+Initial business threshold:
+
+```text
+amount = 300
+currency = configurable
+behavior = evaluate ocean freight, not force ocean automatically
+```
+The later Transport Mode decision must also consider SLA/time commitment, destination, package facts, product restrictions and explicit business rules.
+
+## Frozen phased roadmap
+
+```text
+MVP1   Manual Fulfillment / Tencent Docs Replacement
+MVP1.1 WooCommerce Inbound
+MVP1.2 Tracking Outbound
+MVP1.3 Sync Orchestration
+MVP2   Inventory Reservation Foundation
+MVP2.1 Warehouse Allocation Recommendation
+MVP2.2 Packing + Chargeable Weight
+MVP2.3 Shipping Cost Estimator
+MVP2.4 Transport Mode Decision / Express-to-Ocean Evaluation
+MVP2.5 Carrier Rule Engine
+MVP3   Warehouse Connector Foundation + real warehouse adapters
+MVP4   Automatic Fulfillment
+```
+
+MVP2 is recommendation/assistance first with human confirmation/override. Full autonomous decisions are not required until MVP4.
+
+## MVP1 scope protection
+
+MVP1 must not be expanded by pulling in these future engines:
+
+```text
+NO automatic Reservation requirement
+NO automatic warehouse recommendation/assignment requirement
+NO automatic packing optimization
+NO chargeable-weight engine requirement
+NO carrier rate shopping requirement
+NO automatic express-to-ocean decision
+NO automatic carrier/service selection
+NO live Warehouse/WMS connector requirement
+NO automatic fulfillment requirement
+```
+
+MVP1 may preserve future-compatible provenance/extension points such as manual vs future rule-engine/override Warehouse and Carrier selection, but it must not create premature complexity merely to anticipate later phases.
+
+## Verification / release gates
+
+```text
+NORMAL DEVELOPMENT: US Mac
+NORMAL OWNER UAT: US Mac local/remote UAT
+CHINA: NOT REQUIRED BY DEFAULT
+GITHUB: UNIQUE SOURCE OF TRUTH
 REMOTE URL: https://erp.beyourlover.com
 REMOTE USE: STABLE MILESTONE RELEASE ONLY
-PRODUCTION/REMOTE DIRECT EDIT BY CLAUDE: FORBIDDEN
-PRODUCTION/REMOTE DIRECT FIX BY CODEX: FORBIDDEN
+PRODUCTION DIRECT EDIT: FORBIDDEN
 ```
 
 ## Immediate sequence
 
 ```text
-1. Draft delivery PR #90 is OPEN with the frozen data contract, Work Package and canonical Roadmap/Decision/Change/estimate/context synchronization.
-2. DONE: Owner explicitly authorized ERP-ORDER-FULFILLMENT-M1-001 implementation on 2026-08-24.
-3. DONE: US Claude performed the bounded read-only implementation preflight (legacy order_kind/source/backfill and permission/data-scope evidence); IMPLEMENTATION_PREFLIGHT=PASS, no contract conflict.
-4. DONE: Claude implemented the approved Work Package on the same branch/PR (see Work Package Section 15 and the 2026-08-24 work log for full evidence).
-5. DONE: US full verification PASS (PHPUnit, Vitest, typecheck, build, browser E2E, local MySQL 8 migration/backfill/rollback validation).
-6. NEXT GATE: China Codex full Tier B exact-SHA independent verification and evidence only.
-7. Owner Local UAT, including the four remaining Order/Fulfillment legacy findings.
-8. Owner merge gate.
-9. Resume ERP-INQUIRY-M1 at M1.2 Contact unless Owner changes priority again.
+1. Merge this Roadmap synchronization to main so D-039 becomes canonical.
+2. Formalize one bounded MVP1 Manual Fulfillment Integration Work Package.
+3. Connect Order + Product + Inventory + Logistics with manual decisions first.
+4. Owner UAT proves the real Tencent Docs workflow can be completed entirely inside ERP.
+5. Close MVP1 Tencent Docs Replacement.
+6. Proceed to MVP1.1 WooCommerce Inbound, MVP1.2 Tracking Outbound and MVP1.3 Sync Orchestration.
+7. Only after MVP1.x closure begin MVP2 assisted-intelligence work.
 ```

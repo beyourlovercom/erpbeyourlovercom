@@ -552,3 +552,27 @@ Next phase: Shipping ↔ Inventory M1 / NOT YET FORMALIZED.
 Production deployment: NO.
 Decision: D-038.
 ```
+
+## 2026-08-27 — Manual-first fulfillment roadmap frozen; intelligent fulfillment deferred beyond MVP1
+
+```text
+Owner decision: MVP1 remains the direct Tencent Docs replacement and must preserve human warehouse/carrier judgment; intelligent decisions are deferred to later iterations.
+Decision: D-039.
+Previous next phase: Shipping ↔ Inventory M1 focused on automatic warehouse eligibility/recommendation + Reservation.
+New current phase: MVP1 Manual Fulfillment Integration / Tencent Docs Replacement. Existing Order + Product + Inventory + Logistics foundations are connected manually first.
+MVP1 target workflow: canonical Order → Product/Inventory visibility → manual Warehouse assignment → Logistics workspace → manual carrier/service/tracking/shipped time → Shipment → Manual Sync queue → Audit.
+MVP1.1: WooCommerce Inbound.
+MVP1.2: Tracking Outbound.
+MVP1.3: Sync Orchestration.
+MVP2: Reservation → Warehouse Allocation recommendation → Packing/Chargeable Weight → Shipping Cost Estimator → Transport Mode Decision → Carrier Rule Engine, recommendation-first with human confirmation/override.
+MVP3: canonical WarehouseConnector + US East / US West / China / Germany adapters.
+MVP4: Automatic Fulfillment.
+Future fulfillment backbone: Product → Order → Inventory Availability → Warehouse Allocation → Reservation → Packing → Chargeable Weight → Shipping Cost → Transport Mode → Carrier → Warehouse Connector → Shipment.
+Future chargeable-weight rule: max(actual_weight, volumetric_weight); volumetric divisor is carrier/service configuration.
+Future cost rule: best express cost > configurable threshold (initial business threshold 300, currency configurable) triggers ocean-freight evaluation, not forced ocean; later decision also considers SLA/time, product restrictions, destination and explicit business rules.
+Scope protection: these future extension points do not authorize premature schema/engine implementation in MVP1.
+Verification policy: US Mac remains default sufficient verification/UAT host; China special-case only unless explicitly requested or required by a concrete cross-machine issue.
+Production deployment: NO / milestone gated.
+Architecture conflict: NONE.
+Documents synchronized: 04_LIVING_ROADMAP.md; 05_MVP1_FAST_TRACK.md; 13_PROGRAM_ROADMAP_AND_HOURS.md; 10_DECISION_REGISTER.md; 11_CHANGE_LOG.md; AI/CURRENT_CONTEXT.md.
+```
