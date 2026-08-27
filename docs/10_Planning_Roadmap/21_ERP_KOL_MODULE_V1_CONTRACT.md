@@ -593,3 +593,33 @@ KOL Master V1 must additionally expose structured contact, shipping and payout f
 - shipping recipient and structured shipping address (country, province/state, city, postal code, address lines).
 
 These facts remain KOL-domain data. Payment/tax identifiers are sensitive business data and must not be shown as default list columns; mutation remains audited. This amendment is part of M1.0 Owner UAT remediation, not M1.1 CRM scope.
+
+## Owner UI Upgrade — KOL_M1_FOUNDATION_UI_UPGRADE_V1
+
+Status: OWNER_APPROVED / FROZEN FOR M1.0 REMEDIATION.
+
+This named upgrade remains inside `ERP-KOL-M1-FOUNDATION-001` / PR #103; it is not a second Work Package and does not create a second branch/PR.
+
+### Dashboard target
+
+`KOL 总览` upgrades from simple count cards to an operational dashboard. It should include, where backed by canonical data: total KOLs, monthly new KOLs, collaborated KOLs, long-term KOLs, pending publication count, pending commission amount; monthly GMV distribution; KOL level distribution; collaboration-stage funnel; content-format distribution; category/platform/city distribution; and Owner/负责人 ranking. Later-package metrics must show zero/not-yet-connected rather than fabricated facts until M1.1-M1.4 sources exist.
+
+Dashboard filters: date range, Owner, platform, country/region, KOL level and collaboration stage. Server-side Owner scope remains authoritative.
+
+### KOL detail target
+
+Detail/Create/Edit must use the frozen ERP V2 Form VI and present Chinese labels. Required sections: 基本信息, 业务画像, 联系方式, 收件地址, 税务与收款, 社交账号, 内部运营信息, 更多资料, 备注.
+
+Required detail/business-profile facts include: KOL level, city, categories, products, monthly GMV band, average selling price, content format, product quantity, store count, internal contact, collaboration stage, MCN agency/name and MCN-managed flag where applicable.
+
+联系方式 fields are frozen as: 联系电话, Email, Telegram, WhatsApp, 其他联系方式, 首选联系方式. WeChat/微信号 and Douyin/抖音 ID are explicitly excluded. Preferred-contact choices are Phone, Email, Telegram, WhatsApp, Other.
+
+收件地址 fields: recipient, phone, country/region, province/state, city, postal code, address line 1, address line 2.
+
+税务与收款 fields: optional tax identifier; payout method (`paypal`, `bank`, `other`); PayPal account or structured bank receiving details as applicable. Sensitive payout/tax facts must not be default list columns or unrestricted Audit payloads.
+
+### 红人库 list target
+
+The list follows the Owner reference direction: dense relational table, Chinese labels, multi-value/tag presentation, server-side filters/sort/pagination and Saved Views. Candidate columns include 红人名称, 等级, 城市, 主营品类, 主推产品, 月度GMV, 平均售价, 内容形式, 产品数量, 店铺数量, 内部联系人, 合作阶段, MCN机构, 负责人, 粉丝数, 最近沟通, 是否已发布 and 待结算佣金 when the owning source exists.
+
+Search/filter may cover name/handle/contact, Owner, platform, country/region, city, level, categories, products, GMV band, content format, collaboration stage, publication state, MCN state and follower range. KOL Specialist own-only scope remains server-side and cannot be widened by filters or Saved Views.

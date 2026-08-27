@@ -522,3 +522,30 @@ Required before M1.0 acceptance:
 5. Add focused frontend VI contract tests and backend persistence/validation tests, then rerun full verification and US Local UAT.
 
 This amendment is Owner-authorized M1.0 remediation on PR #103. M1.1+ remains excluded. MERGE remains unauthorized until Owner UAT PASS.
+
+## Named Owner Upgrade Scope — KOL_M1_FOUNDATION_UI_UPGRADE_V1
+
+Status: OWNER APPROVED / FROZEN / SAME WP + SAME BRANCH + SAME PR #103.
+
+This is the formal name for the current M1.0 Owner-UAT remediation. It does not open a new WP/branch/PR.
+
+Implementation scope:
+1. Upgrade `KOL 总览` to the approved operational dashboard direction with canonical-only metrics and filters; no fabricated M1.1-M1.4 data.
+2. Rebuild KOL Create/Edit/Detail on the existing ERP V2 Form VI (`erp-form-page`, `erp-form-content`, `erp-form-card`, `erp-form-grid`, `erp-form-field`, `erp-input`, standard error/action states).
+3. Expand KOL detail/business profile with Chinese labels and the Owner-approved reference fields: level, city, categories, products, GMV band, average price, content format, product/store counts, internal contact, collaboration stage and MCN facts.
+4. Add structured contact/address/tax/payout persistence and validation.
+5. Upgrade 红人库 to the approved dense tag/table direction while preserving Saved Views and server-side filtering/scope.
+
+Frozen contact fields:
+- 联系电话 / `phone`
+- Email / `email`
+- Telegram / `telegram`
+- WhatsApp / `whatsapp`
+- 其他联系方式 / `other_contact`
+- 首选联系方式 / `preferred_contact_method` = Phone|Email|Telegram|WhatsApp|Other
+
+Explicitly excluded from this KOL contact contract: 微信号 / WeChat ID and 抖音 ID / Douyin ID.
+
+Acceptance addition: Owner UAT must verify dashboard structure, Chinese detail sections, ERP V2 Form VI compliance, persistence of contact/address/tax/payout facts, redaction/non-default exposure of sensitive payout/tax data, upgraded 红人库 tags/filters/Saved Views, and preservation of Specialist own-only server scope.
+
+MERGE remains unauthorized until this upgrade passes Owner UAT. Production deployment/migration remains unauthorized.
