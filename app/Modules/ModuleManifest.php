@@ -8,6 +8,7 @@ use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
 use App\Modules\Inventory\Providers\InventoryServiceProvider;
 use App\Modules\Finance\Providers\FinanceServiceProvider;
+use App\Modules\Kol\Providers\KolServiceProvider;
 use App\Modules\Logistics\Providers\LogisticsServiceProvider;
 use App\Modules\Orders\Providers\OrdersServiceProvider;
 use App\Modules\Runtime\Providers\RuntimeServiceProvider;
@@ -27,6 +28,7 @@ final class ModuleManifest
     {
         return [
             IdentityServiceProvider::class,
+            KolServiceProvider::class,
             OrdersServiceProvider::class,
             LogisticsServiceProvider::class,
             FinanceServiceProvider::class,

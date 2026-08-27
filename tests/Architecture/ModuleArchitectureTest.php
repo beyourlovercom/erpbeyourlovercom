@@ -8,6 +8,7 @@ use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Finance\Providers\FinanceServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
 use App\Modules\Inventory\Providers\InventoryServiceProvider;
+use App\Modules\Kol\Providers\KolServiceProvider;
 use App\Modules\Logistics\Providers\LogisticsServiceProvider;
 use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
@@ -114,6 +115,18 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Inventory/Infrastructure/Models/WarehouseInventoryLot.php',
         'app/Modules/Inventory/Infrastructure/Models/WarehouseServiceRegion.php',
         'app/Modules/Inventory/Providers/InventoryServiceProvider.php',
+        'app/Modules/Kol/Application/KolScope.php',
+        'app/Modules/Kol/Application/KolService.php',
+        'app/Modules/Kol/Application/SavedViewService.php',
+        'app/Modules/Kol/Experience/Controllers/KolController.php',
+        'app/Modules/Kol/Experience/Controllers/KolOverviewController.php',
+        'app/Modules/Kol/Experience/Controllers/SavedViewController.php',
+        'app/Modules/Kol/Experience/Routes/web.php',
+        'app/Modules/Kol/Infrastructure/Models/Kol.php',
+        'app/Modules/Kol/Infrastructure/Models/KolSocialAccount.php',
+        'app/Modules/Kol/Infrastructure/Models/KolSocialMetric.php',
+        'app/Modules/Kol/Infrastructure/Models/SavedView.php',
+        'app/Modules/Kol/Providers/KolServiceProvider.php',
         'app/Modules/Logistics/Application/ShipmentService.php',
         'app/Modules/Logistics/Experience/Controllers/LogisticsController.php',
         'app/Modules/Logistics/Experience/Routes/web.php',
@@ -232,6 +245,14 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Inventory/Infrastructure',
         'app/Modules/Inventory/Infrastructure/Models',
         'app/Modules/Inventory/Providers',
+        'app/Modules/Kol',
+        'app/Modules/Kol/Application',
+        'app/Modules/Kol/Experience',
+        'app/Modules/Kol/Experience/Controllers',
+        'app/Modules/Kol/Experience/Routes',
+        'app/Modules/Kol/Infrastructure',
+        'app/Modules/Kol/Infrastructure/Models',
+        'app/Modules/Kol/Providers',
         'app/Modules/Logistics',
         'app/Modules/Logistics/Application',
         'app/Modules/Logistics/Experience',
@@ -298,8 +319,14 @@ final class ModuleArchitectureTest extends TestCase
         'inventory.add', 'inventory.list', 'inventory.product-search', 'inventory.products',
         'inventory.stock.store', 'inventory.stock.update', 'inventory.store', 'inventory.sync', 'inventory.sync.confirm',
         'inventory.sync.history', 'inventory.sync.preview', 'inventory.sync.show', 'inventory.warehouse.billing', 'inventory.warehouse.regions',
-        'inventory.warehouse.show', 'inventory.warehouse.update', 'inventory.warehouses', 'kol.orders', 'kol.orders.create',
-        'kol.orders.mine', 'kol.orders.show', 'kol.orders.team', 'login', 'login.store',
+        'inventory.warehouse.show', 'inventory.warehouse.update', 'inventory.warehouses',
+        'kol.affiliate', 'kol.collaborations', 'kol.commissions', 'kol.communications', 'kol.content',
+        'kol.library', 'kol.library.archive', 'kol.library.create', 'kol.library.edit', 'kol.library.reactivate',
+        'kol.library.show', 'kol.library.store', 'kol.library.update',
+        'kol.opportunities', 'kol.orders', 'kol.orders.create',
+        'kol.orders.mine', 'kol.orders.show', 'kol.orders.team', 'kol.overview', 'kol.samples',
+        'kol.views.destroy', 'kol.views.store', 'kol.views.update',
+        'login', 'login.store',
         'logistics.awaiting-tracking', 'logistics.exceptions', 'logistics.in-transit',
         'logistics.pending', 'logistics.payload', 'logistics.reopen', 'logistics.draft', 'logistics.ship', 'logout', 'password.confirm.store', 'password.confirmation',
         'procurement.files', 'procurement.records', 'products.create', 'products.dashboard',
@@ -316,7 +343,8 @@ final class ModuleArchitectureTest extends TestCase
 
     private const PERMISSION_KEYS = [
         'accounting.view', 'analysis.view', 'architecture.foundation.view', 'audit.view', 'customers.operate', 'customers.view',
-        'dashboard.view', 'guides.view', 'inventory.operate', 'inventory.view', 'inventory.warehouses.manage', 'kol.view', 'logistics.operate', 'logistics.view',
+        'dashboard.view', 'guides.view', 'inventory.operate', 'inventory.view', 'inventory.warehouses.manage',
+        'kol.operate', 'kol.view', 'kol.views.manage', 'logistics.operate', 'logistics.view',
         'orders.create', 'orders.edit', 'orders.view', 'procurement.view', 'products.operate', 'products.view', 'prototype.view', 'sync.operate', 'sync.view',
         'system.permissions.manage',
     ];
@@ -357,6 +385,8 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_27_000000_repair_inventory_sync_preview_metrics.php' => 'd791cc4fc3aebecafcfff2c0fc8f5b02b51f142b3dc9986ee7f8fdcd17b7aded',
         'database/migrations/2026_08_27_020000_add_manual_fulfillment_fields_to_shipments.php' => '44d755cd840a87bbc96c48311f53751c6fc375f85d1fff5293090b5b8c2be0ad',
         'database/migrations/2026_08_27_171200_add_warehouse_ownership_type.php' => '758912e9318255ee88471503f3a1785f1430479e371e17f1add06e1d5cd5edad',
+        'database/migrations/2026_08_27_210000_create_kols_tables.php' => 'cca66cb015a6493a38f78ab8af0bfad144278d2565e86a27e63f4b124d28ed6c',
+        'database/migrations/2026_08_27_210001_create_saved_views_table.php' => '848c4971ba83242e78578a373b78365782eb16c5a22a8af4e4755bd50c449602',
     ];
 
     private const FRONTEND_FILES = [
@@ -414,6 +444,12 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Inventory/WarehouseList.vue' => 'a16f1296fbc977d4b7b6f6244f9588a2a1f4c33f147dfeb5d326109bf8b69ce0',
         'resources/js/Pages/Inventory/WarehouseShow.vue' => '9289be4c3d39b2fe3fdab2d3fa49fd3b435a4c424d575d4ebfc13f152d58162c',
         'resources/js/Pages/Inventory/components/InventorySkuCombobox.vue' => 'd2d7408ee79d6fe9b060c268cf076a33a6d30ce096cc1d56ab9d49767e1bd670',
+        'resources/js/Pages/Kol/Create.vue' => 'c4dad8c5642fe16b7e9f2334586199007086dfcd373107cf289fa107ebcf1b22',
+        'resources/js/Pages/Kol/Edit.vue' => 'a381c106a9fdf056f76732f628776788b6765b4554d5ea5305aea198cf6ec909',
+        'resources/js/Pages/Kol/Index.vue' => 'ef224faf7fd64b3cf40ce61ea263b90641e0844e9afe5bc5d4844843f95a62fd',
+        'resources/js/Pages/Kol/Overview.vue' => '4a8c672f5f1aaac4e3b31989a4d978b4f866a4db539d4249b01d4e98c203f7bb',
+        'resources/js/Pages/Kol/PlaceholderPage.vue' => '17bcfd63e0f10267eccb24ff899ebb61d04265b1caceb5a35a7023c633fad595',
+        'resources/js/Pages/Kol/Show.vue' => '1cbcc91e2e381c2628b7515fc86d2f83302c1d0c40aa38cab1e004cdb9befad6',
         'resources/js/Pages/Logistics/Index.vue' => 'e7340d2ba412db52ff06e734bc2fcf9720e330443dafbb97049481e7b70f591a',
         'resources/js/Pages/Orders/Create.test.ts' => '393caaba053b9c08a73d372a193865b80e3ca13f0025561aa92017ad98f35069',
         'resources/js/Pages/Orders/Create.vue' => '1b5da97b31ee2523f2197bf48c3c50e804207c62cfa4478daf32177228c1cec7',
@@ -497,6 +533,9 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Inventory/Application/Sync/PasteAdapter.php',
         'app/Modules/Inventory/Application/Sync/RowNormalizer.php',
         'app/Modules/Inventory/Application/Sync/XlsxAdapter.php',
+        'app/Modules/Kol/Application/KolScope.php',
+        'app/Modules/Kol/Application/KolService.php',
+        'app/Modules/Kol/Application/SavedViewService.php',
         'app/Modules/Logistics/Application/ShipmentService.php',
         'app/Modules/Orders/Application/OrderKind.php',
         'app/Modules/Products/Application/Contracts/ProductRepository.php',
@@ -641,7 +680,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('46c010053d4b453e68f414f4919c97a288974bda892ca58b6f52fc4ec89e203a', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('a51949885c280aa3c4c87cedd330e05ebc655454cefddfa625f8963da02a7dc1', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);
@@ -656,6 +695,7 @@ PHP;
         self::assertSame(ServiceProvider::class, get_parent_class(ModulesServiceProvider::class));
         self::assertSame([
             IdentityServiceProvider::class,
+            KolServiceProvider::class,
             OrdersServiceProvider::class,
             LogisticsServiceProvider::class,
             FinanceServiceProvider::class,
