@@ -352,6 +352,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_25_000100_create_inventory_foundation_tables.php' => '5c04ba76e1e90e51970b492aca4f386ed02270eb4f201493d1d90ccd74794e07',
         'database/migrations/2026_08_25_000101_seed_initial_warehouses.php' => '47ac9451febaa5b34ddc0ab6e76e2a208264227551caf4818dd0624afc0f5fa9',
         'database/migrations/2026_08_25_000200_create_inventory_batch_sync_tables.php' => 'a2e1ecba6592740d3708503e3260523ec33a2601618a591c1abf75f5ed8eb5c4',
+        'database/migrations/2026_08_27_000000_repair_inventory_sync_preview_metrics.php' => 'd791cc4fc3aebecafcfff2c0fc8f5b02b51f142b3dc9986ee7f8fdcd17b7aded',
     ];
 
     private const FRONTEND_FILES = [
@@ -381,8 +382,8 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Layouts/AuthenticatedLayout.vue' => '5c4a123758c94f76a2abc97ac168e0502fba0754bf894c8c6f86d92db5bf1ec7',
         'resources/js/Pages/Architecture/Foundation.test.ts' => '68898785345d5cc641bcc8b3f165527a94c912e33c5f1941554a9a28aad97a1c',
         'resources/js/Pages/Architecture/Foundation.vue' => '0f3f96bd3ad9a5b68fa7fe5a78e20a1e0e92f4d2e6806ef30697fda64941aa70',
-        'resources/js/Pages/Auth/Login.test.ts' => '937fcfd44e8348130d7abded4669263142d4cfc423f3ac4d87cee2a7889eec65',
-        'resources/js/Pages/Auth/Login.vue' => '203bd9c4dc2ae13b8f5e185c4ebebcb5a4b4a088ae43eaf868b62cddf73d8901',
+        'resources/js/Pages/Auth/Login.test.ts' => '445f3392872df2466f83736af7854a1a5c2e477198abea252c546e24141420c8',
+        'resources/js/Pages/Auth/Login.vue' => '5595bb6472df208ce26f74a7e8ba51dd3d96d1421c1502517af97827a3d8b9db',
         'resources/js/Pages/Customers/Companies/Create.test.ts' => '2221b8d4e063e0615a97af14e6fbb738022fd44b55080a6fa6fa8c14d500e198',
         'resources/js/Pages/Customers/Companies/Create.vue' => '568e82d1d2587204b48319443d0d7958e2d053be901288ac02bdee2a58c68bb8',
         'resources/js/Pages/Customers/Companies/Edit.vue' => '7ffbcb6d19a43a59a0f27b37057f411c315644148cc57237e6f232ebc02b547f',
@@ -401,10 +402,10 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Identity/Users/Index.test.ts' => 'c2a508b3fb59d1f4725f86d658bfdcd162487477cae6c7f5e0db119b2f4f2cd0',
         'resources/js/Pages/Identity/Users/Index.vue' => '559f700abcd95b484fe834dbb0e5f871cc7301ff20d0e51f9c3c1179ea228e07',
         'resources/js/Pages/Inventory/Dashboard.vue' => 'b5f14d5b4a55c50366a7d33c07c91473afaab1ba590346c4214f9715b218556a',
-        'resources/js/Pages/Inventory/InventoryBatchSync.test.ts' => 'bc4e282314c8d13163208977c89bf4581c8ed4de326a234d636a7ac3ba3e1c22',
+        'resources/js/Pages/Inventory/InventoryBatchSync.test.ts' => '3c63a7717dcac8e4698db4fd922f69867c82ff9667b0c0f0f03b2b9045c5375f',
         'resources/js/Pages/Inventory/InventoryFoundation.test.ts' => 'cba1e89b5168dd738eb84741268ff360d86e2e3fa592e5e87cfa3f4ed805456b',
         'resources/js/Pages/Inventory/Products.vue' => 'ac82349fdc897f5000f2d8adaefab53daa8e13635490e6ae03ee210946f0efc7',
-        'resources/js/Pages/Inventory/Sync.vue' => 'a0bf7bc906960abf094959beeaab943856655b6ca3efa4188030210957e0f410',
+        'resources/js/Pages/Inventory/Sync.vue' => '3ec525e92c95252991a05999a539eab3d301a5d13e4c9512cde7a4249b8f044a',
         'resources/js/Pages/Inventory/WarehouseCreate.vue' => '4b7e712128869056190057b8a30b9c6c86e070d8933dfbeabc177a1bda4a007c',
         'resources/js/Pages/Inventory/WarehouseList.vue' => '26b80c315d084d599fa39af9975e4bbf1b040837a3b3ec635b4de6e010389fb8',
         'resources/js/Pages/Inventory/WarehouseShow.vue' => 'f31be9291a0d3e7fad8b562d087ba7e583f36d011f4f4aed0eedc282f3c7422a',

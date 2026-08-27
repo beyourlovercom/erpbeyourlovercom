@@ -33,7 +33,11 @@ final class IdentityFortify
             PrepareAuthenticatedSession::class,
         ]);
         Fortify::authenticateUsing(function ($request) {
-            $user = User::where('email', $request->email)->first();
+            $identifier = strtolower(trim((string) $request->email));
+            if (app()->environment(['local', 'testing']) && $identifier === 'admin') {
+                $identifier = 'admin@local.test';
+            }
+            $user = User::where('email', $identifier)->first();
 
             return $user && $user->is_active && Hash::check($request->password, $user->password) ? $user : null;
         });

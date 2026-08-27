@@ -39,7 +39,7 @@ const submit = () => form.post('/login')
                 <p class="mt-5 text-sm leading-7 text-[var(--byl-text-muted)]">连接订单、客户、物流与团队协作，<br>让每一项业务清晰可见、持续推进。</p>
                 <form class="mt-8 space-y-5" @submit.prevent="submit">
                     <FormField id="email" v-slot="{ controlId, describedBy, invalid }" label="邮箱" required>
-                        <TextInput v-model="form.email" :id="controlId" name="email" type="email" autocomplete="username" required :aria-describedby="describedBy" :invalid="invalid" />
+                        <TextInput v-model="form.email" :id="controlId" name="email" type="text" autocomplete="username" required :aria-describedby="describedBy" :invalid="invalid" />
                     </FormField>
                     <FormField id="password" v-slot="{ controlId, describedBy, invalid }" label="密码" required>
                         <TextInput v-model="form.password" :id="controlId" name="password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" required :aria-describedby="describedBy" :invalid="invalid">

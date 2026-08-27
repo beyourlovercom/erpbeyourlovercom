@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -72,6 +73,29 @@ class AppShellNavigationTest extends TestCase
             ->where('shellNavigation.1.children.1.label', '已发待单号')
             ->where('shellNavigation.1.children.2.label', '运输中')
             ->where('shellNavigation.1.children.3.label', '异常订单'));
+    }
+
+    public function test_inventory_navigation_includes_active_warehouse_shortcuts(): void
+    {
+        Warehouse::query()->delete();
+        $first = Warehouse::query()->create(['slug' => 'de', 'code' => 'DE', 'name' => '德国仓', 'is_active' => true, 'priority' => 10]);
+        $second = Warehouse::query()->create(['slug' => 'us-east', 'code' => 'USE', 'name' => '美东仓', 'is_active' => true, 'priority' => 20]);
+        Warehouse::query()->create(['slug' => 'inactive', 'code' => 'OFF', 'name' => '停用仓', 'is_active' => false, 'priority' => 1]);
+
+        $user = $this->userWith(['dashboard.view', 'inventory.view']);
+        $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
+            ->has('shellNavigation.1.children', 5)
+            ->where('shellNavigation.1.key', 'inventory')
+            ->where('shellNavigation.1.children.0.key', 'inventory-overview')
+            ->where('shellNavigation.1.children.1.key', 'inventory-list')
+            ->where('shellNavigation.1.children.2.key', 'inventory-warehouse-'.$first->id)
+            ->where('shellNavigation.1.children.2.label', '德国仓')
+            ->where('shellNavigation.1.children.2.path', '/inventory/de')
+            ->where('shellNavigation.1.children.3.key', 'inventory-warehouse-'.$second->id)
+            ->where('shellNavigation.1.children.3.label', '美东仓')
+            ->where('shellNavigation.1.children.4.key', 'inventory-products'));
+
+        $this->actingAs($user)->get('/inventory/de')->assertOk();
     }
 
     public function test_accounting_expense_analysis_group_is_non_link_with_real_nested_children(): void

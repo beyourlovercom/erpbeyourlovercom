@@ -185,3 +185,17 @@ MIGRATION_FILE_AUTHORING: INCLUDED
 MIGRATION_EXECUTION: LOCAL TEST ONLY
 UAT: INCLUDED
 DEPLOYMENT: EXCLUDED
+
+## Owner UAT closeout remediation — 2026-08-27
+
+```text
+OWNER_UAT: PASS
+OWNER_APPROVED_DYNAMIC_WAREHOUSE_SHORTCUTS: YES
+WAREHOUSE_SHORTCUT_SOURCE: active canonical Warehouse records
+WAREHOUSE_SHORTCUT_ROUTE: /inventory/{warehouse}
+DEFAULT_UAT_HOST: US main development Mac
+CHINA_VERIFICATION: WAIVED BY OWNER UNLESS EXPLICITLY REQUESTED OR CROSS-MACHINE ISSUE REQUIRES IT
+MERGE_AUTHORIZATION: GRANTED BY OWNER
+```
+
+Owner UAT also required the Local/UAT credential `admin` / `password`, repair migration support for stale local inventory-sync schemas, and a persistently visible two-step `Preview → 确认导入库存` control. These Local/UAT and sync-workspace remediations are included in the final merge candidate; Production deployment remains separately unauthorized.

@@ -294,14 +294,24 @@ function validationBadge(s: 'ok' | 'warning' | 'error') {
             </div>
           </template>
 
-          <div v-if="activeTab !== 'api'" class="mt-4 flex gap-3 items-center">
+          <div v-if="activeTab !== 'api'" class="mt-4 flex flex-wrap gap-3 items-center">
             <button
               :disabled="!canPreview || loading"
               class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               @click="doPreview"
             >
-              {{ loading ? '解析中…' : '预览' }}
+              {{ loading ? '解析中…' : '1. 预览数据' }}
             </button>
+            <button
+              :disabled="!canConfirm || confirming"
+              class="px-5 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              @click="doConfirm"
+            >
+              {{ confirming ? '导入中…' : batch?.status === 'confirmed' ? '已导入库存' : '2. 确认导入库存' }}
+            </button>
+            <span v-if="!batch" class="text-xs text-gray-400">请先预览数据，确认无错误后再导入。</span>
+            <span v-else-if="batch.has_blockers" class="text-xs text-red-600">预览存在错误，修正后才能导入。</span>
+            <span v-else-if="batch.status === 'confirmed'" class="text-xs text-green-700">本批次已写入库存。</span>
             <button v-if="batch || error" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900" @click="resetForm">重置</button>
           </div>
         </div>
@@ -415,20 +425,10 @@ function validationBadge(s: 'ok' | 'warning' | 'error') {
           </table>
         </div>
 
-        <!-- Confirm -->
-        <div v-if="batch.status !== 'confirmed'" class="flex gap-3 items-center pt-2">
-          <button
-            :disabled="!canConfirm || confirming"
-            class="px-6 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            @click="doConfirm"
-          >
-            {{ confirming ? '确认中…' : '确认同步' }}
-          </button>
-          <span v-if="!canConfirm && !batch.has_blockers" class="text-xs text-gray-400">已确认</span>
-        </div>
-        <div v-else class="flex items-center gap-2 text-green-700 text-sm pt-2">
+        <!-- Confirm result -->
+        <div v-if="batch.status === 'confirmed'" class="flex items-center gap-2 text-green-700 text-sm pt-2">
           <span>✓</span>
-          <span>已于 {{ batch.confirmed_at ? new Date(batch.confirmed_at).toLocaleString('zh-CN') : '—' }} 确认同步</span>
+          <span>已于 {{ batch.confirmed_at ? new Date(batch.confirmed_at).toLocaleString('zh-CN') : '—' }} 确认导入库存</span>
         </div>
 
         <div v-if="confirmError" class="text-red-600 text-sm">{{ confirmError }}</div>

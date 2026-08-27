@@ -89,10 +89,14 @@ describe('Inventory Batch Sync workspace', () => {
     expect(wrapper.text()).toContain('API 连接器尚未配置')
   })
 
-  it('disables preview button when no warehouse is selected', () => {
+  it('keeps both import steps visible and disabled until preview prerequisites are met', () => {
     const wrapper = mount(Sync, { props: defaultProps })
-    const btn = wrapper.findAll('button').find(b => b.text() === '预览')
-    expect(btn?.attributes('disabled')).toBeDefined()
+    const preview = wrapper.findAll('button').find(b => b.text() === '1. 预览数据')
+    const confirm = wrapper.findAll('button').find(b => b.text() === '2. 确认导入库存')
+    expect(preview?.attributes('disabled')).toBeDefined()
+    expect(confirm).toBeDefined()
+    expect(confirm?.attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('请先预览数据，确认无错误后再导入。')
   })
 
   it('shows preview stats after successful preview call', async () => {
@@ -108,7 +112,7 @@ describe('Inventory Batch Sync workspace', () => {
     await textarea.setValue('SKU\tQty/数量\nABC123\t100\nDEF456\t1')
 
     // Click preview
-    const previewBtn = wrapper.findAll('button').find(b => b.text() === '预览')
+    const previewBtn = wrapper.findAll('button').find(b => b.text() === '1. 预览数据')
     await previewBtn!.trigger('click')
     await flushPromises()
 
@@ -126,12 +130,12 @@ describe('Inventory Batch Sync workspace', () => {
     await select.setValue('1')
     const textarea = wrapper.find('textarea')
     await textarea.setValue('SKU\tQty/数量\nBAD\t5')
-    const previewBtn = wrapper.findAll('button').find(b => b.text() === '预览')
+    const previewBtn = wrapper.findAll('button').find(b => b.text() === '1. 预览数据')
     await previewBtn!.trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('有错误')
-    const confirmBtn = wrapper.findAll('button').find(b => b.text() === '确认同步')
+    const confirmBtn = wrapper.findAll('button').find(b => b.text() === '2. 确认导入库存')
     expect(confirmBtn?.attributes('disabled')).toBeDefined()
   })
 
@@ -145,11 +149,11 @@ describe('Inventory Batch Sync workspace', () => {
     await select.setValue('1')
     const textarea = wrapper.find('textarea')
     await textarea.setValue('SKU\tQty/数量\nABC123\t100')
-    const previewBtn = wrapper.findAll('button').find(b => b.text() === '预览')
+    const previewBtn = wrapper.findAll('button').find(b => b.text() === '1. 预览数据')
     await previewBtn!.trigger('click')
     await flushPromises()
 
-    const confirmBtn = wrapper.findAll('button').find(b => b.text() === '确认同步')
+    const confirmBtn = wrapper.findAll('button').find(b => b.text() === '2. 确认导入库存')
     expect(confirmBtn?.attributes('disabled')).toBeUndefined()
     await confirmBtn!.trigger('click')
     await flushPromises()
@@ -169,7 +173,7 @@ describe('Inventory Batch Sync workspace', () => {
     await selects[1].setValue('full')
     const textarea = wrapper.find('textarea')
     await textarea.setValue('SKU\tQty/数量\nABC123\t100')
-    const previewBtn = wrapper.findAll('button').find(b => b.text() === '预览')
+    const previewBtn = wrapper.findAll('button').find(b => b.text() === '1. 预览数据')
     await previewBtn!.trigger('click')
     await flushPromises()
 
