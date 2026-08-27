@@ -42,9 +42,9 @@ async function fillRecipientFields(page: Page, overrides: {
 
 async function fillItemRow(page: Page, summary: string, qty: string, price: string): Promise<void> {
     const row = page.locator('.ord-item-row').first();
-    await row.locator('.erp-form-field').filter({ hasText: /^产品摘要$/ }).locator('input').fill(summary);
-    await row.locator('.erp-form-field').filter({ hasText: /^数量$/ }).locator('input').fill(qty);
-    await row.locator('.erp-form-field').filter({ hasText: /^单价$/ }).locator('input').fill(price);
+    await row.locator('.erp-form-field').filter({ has: page.locator('.erp-form-label', { hasText: '产品摘要' }) }).locator('input').fill(summary);
+    await row.locator('.erp-form-field').filter({ has: page.locator('.erp-form-label', { hasText: '数量' }) }).locator('input').fill(qty);
+    await row.locator('.erp-form-field').filter({ has: page.locator('.erp-form-label', { hasText: '单价' }) }).locator('input').fill(price);
 }
 
 test('customer manual order flows through logistics to shipped with the business number preserved', async ({ context, page }) => {
@@ -52,7 +52,7 @@ test('customer manual order flows through logistics to shipped with the business
     await loginThroughUi(page, syntheticUsers().authorized);
 
     await page.goto('/customers/orders/create');
-    await expect(page.getByRole('heading', { name: '新建客户订单', level: 1 })).toBeVisible();
+    await expect(page.locator('#main-content').getByRole('heading', { name: '新建客户订单', level: 1 })).toBeVisible();
     await page.getByRole('button', { name: '编辑订单号' }).click();
     await page.getByLabel('业务订单号').fill('E2E-CUS-0001');
     await fillRecipientFields(page, { name: 'E2E Customer Recipient', phone: '+1 555 0100', address: '100 E2E Street' });
@@ -84,10 +84,10 @@ test('KOL fulfillment manual order defaults to kol_fulfillment and shares the sa
     await loginThroughUi(page, syntheticUsers().authorized);
 
     await page.goto('/kol/orders/create');
-    await expect(page.getByRole('heading', { name: '新建网红履约订单', level: 1 })).toBeVisible();
+    await expect(page.locator('#main-content').getByRole('heading', { name: '新建网红履约订单', level: 1 })).toBeVisible();
     // 订单类型 is a readonly display block in V2 — field text includes the value, so scope by label child
     await expect(
-        page.locator('.erp-form-field').filter({ has: page.locator('.erp-form-field__label', { hasText: /^订单类型$/ }) }).locator('.erp-readonly-input'),
+        page.locator('.erp-form-field').filter({ has: page.locator('.erp-form-label', { hasText: /^订单类型$/ }) }).locator('.erp-readonly-input'),
     ).toHaveText('网红履约订单');
     await page.getByRole('button', { name: '编辑订单号' }).click();
     await page.getByLabel('业务订单号').fill('E2E-KOL-0001');
