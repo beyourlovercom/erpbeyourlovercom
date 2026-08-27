@@ -62,6 +62,7 @@ final class OrderController
         // Route context is authority: order_kind/source_type/owner cannot be overridden by client input.
         $data['order_kind'] = $this->kind($request)->value;
         $data['source_type'] = OrderSourceType::Manual->value;
+        $data['currency'] ??= 'USD';
         $data['owner_id'] = $request->user()->getAuthIdentifier();
         $order = $this->orders->create($data, $items, $request->user());
 
@@ -159,6 +160,7 @@ final class OrderController
             'order_status' => $order->order_status->value,
             'order_status_label' => $this->statusLabel($order->order_status->value),
             'order_note' => $order->order_note,
+            'currency' => $order->currency,
             'owner' => $order->owner ? ['id' => $order->owner->id, 'name' => $order->owner->name] : null,
             'owner_label' => $order->owner ? 'Owner('.$order->owner->name.')' : null,
             'address' => $order->address?->only(['recipient_name', 'phone', 'country', 'province_state', 'city', 'address_line_1', 'address_line_2', 'postal_code']),
@@ -183,6 +185,7 @@ final class OrderController
             'external_order_number' => ['required', 'string', 'max:128', Rule::unique('orders', 'external_order_number')],
             'order_date' => ['required', 'date'],
             'order_note' => ['nullable', 'string', 'max:5000'],
+            'currency' => ['sometimes', 'string', 'regex:/^[A-Z]{3}$/'],
             'recipient_name' => ['nullable', 'string', 'max:255'], 'phone' => ['nullable', 'string', 'max:64'],
             'country' => ['nullable', 'string', 'max:128'], 'province_state' => ['nullable', 'string', 'max:128'],
             'city' => ['nullable', 'string', 'max:128'], 'address_line_1' => ['nullable', 'string', 'max:255'],
@@ -199,9 +202,10 @@ final class OrderController
         return [
             // external_order_number and owner_id are immutable via the generic update path once saved (audit-preserving).
             'order_kind' => ['sometimes', Rule::in(array_column(OrderKind::cases(), 'value'))],
-            'source_type' => ['sometimes', 'in:website,kol,manual_other,manual'],
+            'source_type' => ['sometimes', Rule::in(array_column(OrderSourceType::cases(), 'value'))],
             'order_date' => ['sometimes', 'date'],
             'order_note' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'currency' => ['sometimes', 'required', 'string', 'regex:/^[A-Z]{3}$/'],
             'recipient_name' => ['sometimes', 'nullable', 'string', 'max:255'], 'phone' => ['sometimes', 'nullable', 'string', 'max:64'],
             'country' => ['sometimes', 'nullable', 'string', 'max:128'], 'province_state' => ['sometimes', 'nullable', 'string', 'max:128'],
             'city' => ['sometimes', 'nullable', 'string', 'max:128'], 'address_line_1' => ['sometimes', 'nullable', 'string', 'max:255'],
@@ -220,6 +224,7 @@ final class OrderController
             OrderSourceType::Kol => 'KOL',
             OrderSourceType::ManualOther => 'Manual Other',
             OrderSourceType::Manual => '手动创建',
+            OrderSourceType::WooCommerce => 'WooCommerce',
         };
     }
 

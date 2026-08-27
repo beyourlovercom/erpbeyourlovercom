@@ -89,6 +89,14 @@ describe('Orders/Create V2', () => {
     expect(wrapper.find('.sku-combobox-stub').exists()).toBe(true)
   })
 
+  it('defaults manual orders to USD and labels unit price with currency', () => {
+    const wrapper = mount(Create, { props: customerProps })
+    const currencySelect = wrapper.find('select')
+    expect(currencySelect.exists()).toBe(true)
+    expect((currencySelect.element as HTMLSelectElement).value).toBe('USD')
+    expect(wrapper.text()).toContain('单价（USD）')
+  })
+
   it('renders order date field', () => {
     const wrapper = mount(Create, { props: customerProps })
     expect(wrapper.find('input[type="date"]').exists()).toBe(true)

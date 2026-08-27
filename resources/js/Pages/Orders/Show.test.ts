@@ -39,6 +39,7 @@ const baseOrder = {
   order_status: 'pending_shipment',
   order_status_label: '待发货',
   order_note: '测试备注',
+  currency: 'USD',
   owner: { id: 1, name: 'Test Owner' },
   owner_label: 'Owner(Test Owner)',
   address: {
@@ -124,6 +125,23 @@ describe('Orders/Show V2', () => {
   })
 
   // View Mode tests
+  it('shows ISO currency beside every item unit price', () => {
+    const eurOrder = { ...baseOrder, currency: 'EUR', items: [{ ...baseOrder.items[0], unit_price: '29.00' }] }
+    const wrapper = mount(Show, { props: { order: eurOrder, audit } })
+    expect(wrapper.text()).toContain('订单币种')
+    expect(wrapper.text()).toContain('EUR 29.00')
+  })
+
+  it('Edit Mode exposes the canonical order currency selector', async () => {
+    const eurOrder = { ...baseOrder, currency: 'EUR' }
+    const wrapper = mount(Show, { props: { order: eurOrder, audit } })
+    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    await editBtn!.trigger('click')
+    const selects = wrapper.findAll('select')
+    expect(selects.some(select => (select.element as HTMLSelectElement).value === 'EUR')).toBe(true)
+    expect(wrapper.text()).toContain('单价（EUR）')
+  })
+
   it('defaults to View Mode: no active submit button', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit } })
     expect(wrapper.find('button[type="submit"]').exists()).toBe(false)

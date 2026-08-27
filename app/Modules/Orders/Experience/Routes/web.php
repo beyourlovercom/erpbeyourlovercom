@@ -1,9 +1,15 @@
 <?php
 
 use App\Modules\Orders\Experience\Controllers\OrderController;
+use App\Modules\Orders\Experience\Controllers\WooCommerceInboundController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth'])->group(function (): void {
+    Route::get('/sync/woocommerce', [WooCommerceInboundController::class, 'index'])->middleware('can:sync.view')->name('woocommerce.inbound.index');
+    Route::post('/sync/woocommerce/probe', [WooCommerceInboundController::class, 'probe'])->middleware('can:sync.operate')->name('woocommerce.inbound.probe');
+    Route::post('/sync/woocommerce/single', [WooCommerceInboundController::class, 'single'])->middleware('can:sync.operate')->name('woocommerce.inbound.single');
+    Route::post('/sync/woocommerce/incremental', [WooCommerceInboundController::class, 'incremental'])->middleware('can:sync.operate')->name('woocommerce.inbound.incremental');
+    Route::post('/sync/woocommerce/historical', [WooCommerceInboundController::class, 'historical'])->middleware('can:sync.operate')->name('woocommerce.inbound.historical');
     Route::get('/orders', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.index')->defaults('order_kind', 'all');
     Route::get('/orders/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.all')->defaults('order_kind', 'all');
     Route::get('/orders/procurement', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.procurement')->defaults('order_kind', 'all')->defaults('order_scope', 'external_warehouse');

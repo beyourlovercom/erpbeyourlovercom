@@ -8,4 +8,5 @@ enum OrderSourceType: string
     case Kol = 'kol';
     case ManualOther = 'manual_other';
     case Manual = 'manual';
+    case WooCommerce = 'woocommerce';
 }

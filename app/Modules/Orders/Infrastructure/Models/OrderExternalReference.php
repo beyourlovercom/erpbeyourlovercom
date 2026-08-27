@@ -7,7 +7,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class OrderExternalReference extends Model
 {
-    protected $fillable = ['provider', 'reference'];
+    protected $fillable = ['provider', 'connection_key', 'reference', 'provider_modified_at'];
+
+    protected $casts = ['provider_modified_at' => 'immutable_datetime'];
 
     public function order(): BelongsTo
     {
