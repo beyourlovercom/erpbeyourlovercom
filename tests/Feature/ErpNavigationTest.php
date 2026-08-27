@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\AuditRecord;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -82,6 +83,41 @@ class ErpNavigationTest extends TestCase
             ->where('orders.data.0.order_kind', 'kol_fulfillment')
             ->where('orders.data.1.order_kind', 'customer'));
         $this->get('/orders/export')->assertOk();
+    }
+
+    public function test_procurement_orders_include_only_orders_assigned_to_external_warehouses(): void
+    {
+        $product = Product::firstOrCreate(['sku' => 'PROC-ORDERS-1'], ['name' => 'Procurement Orders Product', 'product_type' => 'simple', 'woocommerce_product_id' => 6003]);
+        $base = [
+            'order_date' => '2026-08-27', 'recipient_name' => 'Warehouse Scope', 'country' => 'US',
+            'items' => [['product_id' => $product->id, 'product_summary' => 'Procurement Orders Product', 'quantity' => 1, 'unit_price' => '10.00']],
+        ];
+        $this->post('/customers/orders', [...$base, 'external_order_number' => 'PROC-EXTERNAL-1'])->assertRedirect();
+        $this->post('/customers/orders', [...$base, 'external_order_number' => 'PROC-OWNED-1'])->assertRedirect();
+        $this->post('/customers/orders', [...$base, 'external_order_number' => 'PROC-UNASSIGNED-1'])->assertRedirect();
+
+        $externalWarehouse = Warehouse::query()->create([
+            'slug' => 'external-3pl', 'code' => 'EXTERNAL-3PL', 'name' => 'External 3PL', 'type' => 'warehouse',
+            'ownership_type' => 'external', 'is_active' => true, 'priority' => 999,
+        ]);
+        $ownedWarehouse = Warehouse::query()->where('slug', 'us-la')->firstOrFail();
+        Order::query()->where('external_order_number', 'PROC-EXTERNAL-1')->firstOrFail()->shipment()->create([
+            'warehouse_id' => $externalWarehouse->id, 'shipment_status' => 'draft',
+        ]);
+        Order::query()->where('external_order_number', 'PROC-OWNED-1')->firstOrFail()->shipment()->create([
+            'warehouse_id' => $ownedWarehouse->id, 'shipment_status' => 'draft',
+        ]);
+
+        $this->get('/orders/procurement')->assertInertia(fn (Assert $page) => $page
+            ->component('Orders/Index')
+            ->where('orderKind', 'all')
+            ->where('orderScope', 'external_warehouse')
+            ->has('orders.data', 1)
+            ->where('orders.data.0.external_order_number', 'PROC-EXTERNAL-1'));
+        $csv = $this->get('/orders/procurement/export')->assertOk()->streamedContent();
+        $this->assertStringContainsString('PROC-EXTERNAL-1', $csv);
+        $this->assertStringNotContainsString('PROC-OWNED-1', $csv);
+        $this->assertStringNotContainsString('PROC-UNASSIGNED-1', $csv);
     }
 
     public function test_architecture_foundation_is_an_inertia_page_with_safe_props(): void

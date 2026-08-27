@@ -27,6 +27,8 @@ final class InventoryFoundationM1Test extends TestCase
             '007'=>'007本地仓库','ca'=>'加拿大仓库','de'=>'德国仓','factory'=>'中国工厂','us-la'=>'美东洛杉矶仓','us-ny'=>'美西纽约仓',
         ], Warehouse::query()->orderBy('slug')->pluck('name','slug')->all());
         $this->assertSame(0, Warehouse::query()->whereNotNull('address_line1')->count());
+        $this->assertSame(6, Warehouse::query()->where('ownership_type', 'owned')->count());
+        $this->assertSame(0, Warehouse::query()->where('ownership_type', 'external')->count());
     }
 
     public function test_inventory_dashboard_list_products_and_detail_routes_are_real(): void
@@ -51,10 +53,10 @@ final class InventoryFoundationM1Test extends TestCase
     {
         $user=$this->userWith(['inventory.view','inventory.warehouses.manage']);
         $this->actingAs($user)->post('/inventory',[
-            'slug'=>'test-wh','code'=>'TEST-WH','name'=>'测试仓库','country_code'=>'US','type'=>'warehouse','is_active'=>true,'priority'=>90,
+            'slug'=>'test-wh','code'=>'TEST-WH','name'=>'测试仓库','country_code'=>'US','type'=>'warehouse','ownership_type'=>'external','is_active'=>true,'priority'=>90,
             'address_line1'=>'100 Test Ave','city'=>'Test City','state_region'=>'CA','postal_code'=>'90001','timezone'=>'America/Los_Angeles',
         ])->assertRedirect();
-        $this->assertDatabaseHas('warehouses',['slug'=>'test-wh','code'=>'test-wh','name'=>'测试仓库','address_line1'=>'100 Test Ave']);
+        $this->assertDatabaseHas('warehouses',['slug'=>'test-wh','code'=>'test-wh','name'=>'测试仓库','ownership_type'=>'external','address_line1'=>'100 Test Ave']);
         $this->assertDatabaseHas('audit_records',['action'=>'warehouse.created']);
     }
 

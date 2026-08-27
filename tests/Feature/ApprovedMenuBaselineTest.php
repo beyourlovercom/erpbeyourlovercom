@@ -23,10 +23,10 @@ class ApprovedMenuBaselineTest extends TestCase
         $this->assertFileExists($path, self::MISMATCH.': approved file is missing');
         $baseline = $this->baseline();
 
-        $this->assertSame('1.2', $baseline['version'] ?? null, self::MISMATCH.': version');
+        $this->assertSame('1.3', $baseline['version'] ?? null, self::MISMATCH.': version');
         $this->assertSame('OWNER_APPROVED', $baseline['status'] ?? null, self::MISMATCH.': status');
         $this->assertSame('2026-08-27', $baseline['approved_at'] ?? null, self::MISMATCH.': approved_at');
-        $this->assertSame('c0a09baf43397454f16026041c8507b16a53dd26', $baseline['approved_head'] ?? null, self::MISMATCH.': approved_head');
+        $this->assertSame('030e014189529877e8906e805770636f10397ec7', $baseline['approved_head'] ?? null, self::MISMATCH.': approved_head');
         $this->assertSame([1, 2], $baseline['governed_levels'] ?? null, self::MISMATCH.': governed_levels');
         $this->assertIsArray($baseline['items'] ?? null, self::MISMATCH.': items');
     }

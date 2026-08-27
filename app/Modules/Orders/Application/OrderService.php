@@ -106,8 +106,9 @@ final class OrderService
         $orderClass = 'App\\Modules\\Orders\\Infrastructure\\Models\\Order';
 
         return $orderClass::query()
-            ->with(['items', 'owner', 'address'])
+            ->with(['items', 'owner', 'address', 'shipment.warehouse'])
             ->when($filters['order_kind'] ?? null, fn ($query, string $kind) => $query->where('order_kind', $kind))
+            ->when($filters['warehouse_ownership'] ?? null, fn ($query, string $ownership) => $query->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('ownership_type', $ownership)))
             ->when($filters['search'] ?? null, function ($query, string $search): void {
                 $query->where(function ($nested) use ($search): void {
                     $nested->where('internal_order_number', 'like', "%{$search}%")

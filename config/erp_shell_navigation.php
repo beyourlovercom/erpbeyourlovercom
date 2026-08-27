@@ -3,7 +3,9 @@
 return [
     ['key' => 'dashboard', 'label' => '仪表盘', 'emoji' => '📊', 'path' => '/dashboard', 'route' => 'dashboard', 'permission' => 'dashboard.view', 'placeholder' => false],
     ['key' => 'orders', 'label' => '订单', 'emoji' => '📋', 'path' => '/orders', 'route' => 'orders.index', 'permission' => 'orders.view', 'placeholder' => false, 'children' => [
-        ['key' => 'orders-all', 'label' => '全部订单', 'path' => '/orders', 'route' => 'orders.index', 'permission' => 'orders.view', 'placeholder' => false],
+        ['key' => 'orders-customers', 'label' => '客户订单', 'path' => '/customers/orders', 'route' => 'customers.orders', 'permission' => 'orders.view', 'placeholder' => false],
+        ['key' => 'orders-kol', 'label' => '网红订单', 'path' => '/kol/orders', 'route' => 'kol.orders', 'permission' => 'orders.view', 'placeholder' => false],
+        ['key' => 'orders-procurement', 'label' => '外采订单', 'path' => '/orders/procurement', 'route' => 'orders.procurement', 'permission' => 'orders.view', 'placeholder' => false],
     ]],
     ['key' => 'logistics', 'label' => '物流', 'emoji' => '🚚', 'path' => '/logistics', 'route' => 'shell.logistics', 'permission' => 'logistics.view', 'placeholder' => false, 'children' => [
         ['key' => 'logistics-pending', 'label' => '待发货', 'path' => '/logistics/pending', 'route' => 'logistics.pending', 'permission' => 'logistics.view', 'placeholder' => false],
@@ -13,12 +15,10 @@ return [
     ]],
     ['key' => 'sync', 'label' => '同步', 'emoji' => '🔄', 'path' => '/sync', 'route' => 'shell.sync', 'permission' => 'sync.view', 'placeholder' => false],
     ['key' => 'customers', 'label' => '客户', 'emoji' => '👥', 'path' => '/customers', 'route' => 'shell.customers', 'permission' => 'customers.view', 'placeholder' => false, 'children' => [
-        ['key' => 'customers-orders', 'label' => '订单', 'path' => '/customers/orders', 'route' => 'customers.orders', 'permission' => 'orders.view', 'placeholder' => false],
         ['key' => 'customers-orders-create', 'label' => '新建订单', 'path' => '/customers/orders/create', 'route' => 'customers.orders.create', 'permission' => 'orders.create', 'placeholder' => false],
         ['key' => 'customers-orders-mine', 'label' => '我的订单', 'path' => '/customers/orders/mine', 'route' => 'customers.orders.mine', 'permission' => 'prototype.view', 'placeholder' => false],
     ]],
     ['key' => 'kol', 'label' => '网红', 'emoji' => '⭐', 'path' => '/kol', 'route' => 'shell.kol', 'permission' => 'kol.view', 'placeholder' => false, 'children' => [
-        ['key' => 'kol-orders', 'label' => '订单', 'path' => '/kol/orders', 'route' => 'kol.orders', 'permission' => 'orders.view', 'placeholder' => false],
         ['key' => 'kol-orders-create', 'label' => '新建订单', 'path' => '/kol/orders/create', 'route' => 'kol.orders.create', 'permission' => 'orders.create', 'placeholder' => false],
         ['key' => 'kol-orders-mine', 'label' => '我的订单', 'path' => '/kol/orders/mine', 'route' => 'kol.orders.mine', 'permission' => 'prototype.view', 'placeholder' => false],
         ['key' => 'kol-orders-team', 'label' => '团队订单', 'path' => '/kol/orders/team', 'route' => 'kol.orders.team', 'permission' => 'prototype.view', 'placeholder' => false],

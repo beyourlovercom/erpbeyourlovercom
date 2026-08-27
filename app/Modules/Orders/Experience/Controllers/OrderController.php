@@ -25,6 +25,10 @@ final class OrderController
     {
         $kind = $this->kindOrNull($request);
         $filters = $request->only(['search', 'source_type', 'order_status']);
+        $scope = (string) $request->route('order_scope');
+        if ($scope === 'external_warehouse') {
+            $filters['warehouse_ownership'] = 'external';
+        }
         if ($kind) {
             $filters['order_kind'] = $kind->value;
         }
@@ -32,6 +36,7 @@ final class OrderController
 
         return Inertia::render('Orders/Index', [
             'orderKind' => $kind?->value ?? 'all',
+            'orderScope' => $scope === 'external_warehouse' ? 'external_warehouse' : 'all',
             'orders' => $orders->through(fn (Order $order): array => $this->orderData($order))->toArray(),
             'filters' => $request->only(['search', 'source_type', 'order_status']),
             'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),
@@ -101,6 +106,10 @@ final class OrderController
     {
         $kind = $this->kindOrNull($request);
         $filters = $request->only(['search', 'source_type', 'order_status']);
+        $scope = (string) $request->route('order_scope');
+        if ($scope === 'external_warehouse') {
+            $filters['warehouse_ownership'] = 'external';
+        }
         if ($kind) {
             $filters['order_kind'] = $kind->value;
         }

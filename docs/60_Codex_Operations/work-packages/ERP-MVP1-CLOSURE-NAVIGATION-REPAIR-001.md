@@ -51,6 +51,8 @@ Add `/orders` as a first-level Order surface backed by the canonical Order table
 It must combine Customer + KOL fulfillment orders and retain search/source/status filters, pagination and CSV export.
 Customer/KOL list pages remain filtered views and their existing detail/create routes remain canonical.
 
+The Order first-level menu owns three business slices: `客户订单`, `网红订单`, and `外采订单`. `客户订单` and `网红订单` reuse the existing filtered pages. `外采订单` uses `/orders/procurement` and is defined only by the canonical fulfillment warehouse relation: `Order -> Shipment.warehouse_id -> Warehouse.ownership_type = external`. Orders assigned to owned warehouses, and orders without an assigned warehouse, are excluded. Existing warehouses default to `owned`; Warehouse Master supports an explicit `owned` / `external` classification.
+
 ### 4.2 Formal module overviews
 
 Provide formal first-level content for:
@@ -85,6 +87,9 @@ Legacy/prototype child navigation remains available where already authorized, bu
 - every first-level root renders a non-placeholder formal page for an authorized user;
 - `/orders` returns both Customer and KOL orders from the same canonical Order model;
 - existing `/customers/orders` and `/kol/orders` behavior remains valid;
+- Order navigation exposes `客户订单 / 网红订单 / 外采订单`;
+- `/orders/procurement` returns only orders assigned to a Warehouse Master record with `ownership_type=external`; owned and unassigned orders are excluded;
+- existing official warehouses remain `ownership_type=owned` by default, while Warehouse Master can explicitly mark a warehouse `external`;
 - unauthorized root access remains forbidden;
 - legacy prototype-only access semantics remain unchanged where previously supported;
 - architecture tests, focused feature tests, full PHPUnit, Vitest, typecheck, build and `git diff --check` pass;
