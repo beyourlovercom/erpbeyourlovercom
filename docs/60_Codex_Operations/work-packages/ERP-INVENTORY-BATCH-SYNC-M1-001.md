@@ -3,12 +3,12 @@ type: work-package
 project: BYL ERP
 work_package_id: ERP-INVENTORY-BATCH-SYNC-M1-001
 title: Inventory Batch Sync M1
-status: ACTIVE / OWNER AUTHORIZED
+status: COMPLETE / OWNER UAT PASS / MERGE AUTHORIZED
 execution_provider: CLAUDE_CODE
 verification_tier: HIGH_RISK
 baseline: inventory-foundation@d37c791b9482f1e569c9f9e17088f83c9a5d0a83
 branch: feature/erp-inventory-batch-sync-m1-001
-updated: 2026-08-25
+updated: 2026-08-27
 ---
 
 # ERP-INVENTORY-BATCH-SYNC-M1-001
@@ -199,3 +199,18 @@ MERGE_AUTHORIZATION: GRANTED BY OWNER
 ```
 
 Owner UAT also required the Local/UAT credential `admin` / `password`, repair migration support for stale local inventory-sync schemas, and a persistently visible two-step `Preview → 确认导入库存` control. These Local/UAT and sync-workspace remediations are included in the final merge candidate; Production deployment remains separately unauthorized.
+
+## Final closure — 2026-08-27
+```text
+US_FULL_VERIFICATION = PASS
+OWNER_LOCAL_UAT = PASS
+OWNER_REMOTE_UAT = PASS
+CHINA_VERIFICATION = WAIVED BY OWNER / NOT REQUIRED BY DEFAULT
+DYNAMIC_WAREHOUSE_SHORTCUTS = PASS / data-driven active Warehouse Master entries
+LOCAL_UAT_DEFAULT_CREDENTIALS = admin / password (local/testing only)
+MERGE_AUTHORIZATION = GRANTED BY OWNER
+PRODUCTION_DEPLOYMENT = NOT AUTHORIZED
+NEXT_WORK_PACKAGE = Shipping ↔ Inventory M1
+```
+
+The Owner explicitly set the continuing verification default: US Mac verification/UAT is sufficient unless the Owner requests China verification or a concrete cross-machine reproduction risk requires it.
