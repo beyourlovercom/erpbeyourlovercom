@@ -2,6 +2,7 @@
 
 namespace App\Modules\Orders\Experience\Controllers;
 
+use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderSourceType;
@@ -17,6 +18,7 @@ final class OrderController
 {
     public function __construct(
         private readonly OrderService $orders,
+        private readonly InventoryAvailabilityReader $availability,
     ) {}
 
     public function index(Request $request): Response
@@ -62,10 +64,13 @@ final class OrderController
     public function show(Request $request, Order $order): Response
     {
         $this->authorizeKind($request, $order);
-        $order->load(['items', 'owner', 'address', 'shipment', 'manualSync']);
+        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync']);
+        $inventoryAvailability = $this->availability->forProductIds($order->items->pluck('product_id')->filter()->unique()->values()->all());
 
         return Inertia::render('Orders/Show', [
             'order' => $this->orderData($order),
+            'inventoryAvailability' => $inventoryAvailability,
+            'warehouses' => $this->availability->activeWarehouses(),
             'audit' => AuditRecord::query()
                 ->where('entity_type', Order::class)
                 ->where('entity_id', (string) $order->getKey())
@@ -135,7 +140,10 @@ final class OrderController
             'owner_label' => $order->owner ? 'Owner('.$order->owner->name.')' : null,
             'address' => $order->address?->only(['recipient_name', 'phone', 'country', 'province_state', 'city', 'address_line_1', 'address_line_2', 'postal_code']),
             'items' => $order->items->map(fn ($item): array => $item->only(['id', 'product_id', 'product_summary', 'sku', 'quantity', 'unit_price', 'line_revenue']))->values()->all(),
-            'shipment' => $order->shipment?->only(['shipment_status', 'carrier', 'tracking_number', 'shipped_at', 'logistics_note', 'handled_by']),
+            'shipment' => $order->shipment ? [
+                ...$order->shipment->only(['shipment_status', 'warehouse_id', 'warehouse_selection_source', 'carrier', 'service', 'carrier_selection_source', 'tracking_number', 'shipped_at', 'logistics_note', 'handled_by']),
+                'warehouse_name' => $order->shipment->warehouse?->name,
+            ] : null,
             'manual_sync' => $order->manualSync ? [
                 'status' => $order->manualSync->website_sync_status->value,
                 'synced_at' => $order->manualSync->synced_at?->toIso8601String(),

@@ -2,9 +2,11 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
+use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -12,26 +14,40 @@ final class LogisticsController
 {
     private const PER_PAGE = 50;
 
-    public function __construct(private readonly ShipmentService $shipments) {}
+    public function __construct(
+        private readonly ShipmentService $shipments,
+        private readonly InventoryAvailabilityReader $availability,
+    ) {}
 
     public function index(Request $request): Response
     {
-        $orders = Order::query()->with(['address', 'items', 'owner', 'shipment'])
+        $orders = Order::query()->with(['address', 'items', 'owner', 'shipment.warehouse'])
             ->where('order_status', 'pending_shipment')->latest('order_date')->latest('id')
             ->paginate(self::PER_PAGE)->withQueryString();
 
+        $productIds = collect($orders->items())->flatMap(fn (Order $order) => $order->items->pluck('product_id'))->filter()->unique()->values()->all();
+        $availability = $this->availability->forProductIds($productIds);
+
         return Inertia::render('Logistics/Index', [
-            'orders' => $orders->through(fn (Order $order): array => $this->data($order))->toArray(),
+            'orders' => $orders->through(fn (Order $order): array => $this->data($order, $availability))->toArray(),
+            'warehouses' => $this->availability->activeWarehouses(),
         ]);
+    }
+
+    public function saveDraft(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    {
+        $this->shipments->saveDraft($order, $request->validate($this->draftRules()), $request->user());
+
+        return back()->with('success', '履约草稿已保存');
     }
 
     public function markShipped(Request $request, Order $order): \Illuminate\Http\RedirectResponse
     {
         $data = $request->validate([
+            ...$this->draftRules(),
             'carrier' => ['required', 'string', 'max:128'],
             'tracking_number' => ['required', 'string', 'max:128'],
             'shipped_at' => ['required', 'date'],
-            'logistics_note' => ['nullable', 'string', 'max:5000'],
         ]);
         $this->shipments->markShipped($order, $data, $request->user());
 
@@ -48,7 +64,7 @@ final class LogisticsController
 
     public function payload(Order $order): \Illuminate\Http\JsonResponse
     {
-        $order->load(['address', 'items', 'shipment']);
+        $order->load(['address', 'items', 'shipment.warehouse']);
 
         return response()->json([
             'order_number' => $order->external_order_number,
@@ -61,16 +77,31 @@ final class LogisticsController
             'address_line_2' => $order->address?->address_line_2,
             'postal_code' => $order->address?->postal_code,
             'items' => $order->items->map(fn ($item): array => $item->only(['product_summary', 'sku', 'quantity', 'unit_price']))->values(),
+            'warehouse' => $order->shipment?->warehouse?->name,
             'carrier' => $order->shipment?->carrier,
+            'service' => $order->shipment?->service,
             'tracking_number' => $order->shipment?->tracking_number,
             'shipped_at' => $order->shipment?->shipped_at?->toIso8601String(),
         ]);
     }
 
-    private function data(Order $order): array
+    private function draftRules(): array
     {
         return [
-            'id' => $order->id, 'external_order_number' => $order->external_order_number,
+            'warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('is_active', true)],
+            'carrier' => ['nullable', 'string', 'max:128'],
+            'service' => ['nullable', 'string', 'max:128'],
+            'tracking_number' => ['nullable', 'string', 'max:128'],
+            'shipped_at' => ['nullable', 'date'],
+            'logistics_note' => ['nullable', 'string', 'max:5000'],
+        ];
+    }
+
+    private function data(Order $order, array $availability): array
+    {
+        return [
+            'id' => $order->id,
+            'external_order_number' => $order->external_order_number,
             'internal_order_number' => $order->internal_order_number,
             'order_kind' => $order->order_kind?->value,
             'order_kind_label' => match ($order->order_kind) {
@@ -78,11 +109,23 @@ final class LogisticsController
                 \App\Modules\Orders\Application\OrderKind::KolFulfillment => '网红履约订单',
                 null => '未分类',
             },
-            'recipient_name' => $order->address?->recipient_name, 'phone' => $order->address?->phone,
+            'recipient_name' => $order->address?->recipient_name,
+            'phone' => $order->address?->phone,
             'country' => $order->address?->country,
             'owner_label' => $order->owner ? 'Owner('.$order->owner->name.')' : null,
             'item_count' => $order->items->sum('quantity'),
-            'shipment' => $order->shipment?->only(['carrier', 'tracking_number', 'shipped_at', 'logistics_note']),
+            'items' => $order->items->map(fn ($item): array => [
+                'id' => $item->id,
+                'product_id' => $item->product_id,
+                'sku' => $item->sku,
+                'product_summary' => $item->product_summary,
+                'quantity' => $item->quantity,
+                'availability' => $availability[$item->product_id] ?? [],
+            ])->values()->all(),
+            'shipment' => $order->shipment ? [
+                ...$order->shipment->only(['warehouse_id', 'warehouse_selection_source', 'carrier', 'service', 'carrier_selection_source', 'tracking_number', 'shipped_at', 'logistics_note']),
+                'warehouse_name' => $order->shipment->warehouse?->name,
+            ] : null,
         ];
     }
 }

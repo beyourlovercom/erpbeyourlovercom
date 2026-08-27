@@ -17,16 +17,51 @@ final class ShipmentService
         private readonly ManualSyncService $manualSync,
     ) {}
 
+    public function saveDraft(Model $order, array $attributes, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($order, $attributes, $actor): Model {
+            $orderClass = get_class($order);
+            $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            abort_unless($lockedOrder->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以保存履约草稿');
+
+            $shipment = $lockedOrder->shipment()->firstOrCreate(['order_id' => $lockedOrder->getKey()]);
+            $before = $this->snapshot($shipment);
+            $shipment->fill([
+                'shipment_status' => 'pending',
+                'warehouse_id' => $attributes['warehouse_id'] ?? null,
+                'warehouse_selection_source' => isset($attributes['warehouse_id']) ? 'manual' : null,
+                'carrier' => $attributes['carrier'] ?? null,
+                'service' => $attributes['service'] ?? null,
+                'carrier_selection_source' => ($attributes['carrier'] ?? null) || ($attributes['service'] ?? null) ? 'manual' : null,
+                'tracking_number' => $attributes['tracking_number'] ?? null,
+                'logistics_note' => $attributes['logistics_note'] ?? null,
+                'handled_by' => $actor?->getAuthIdentifier(),
+            ]);
+            $changed = $shipment->isDirty();
+            $shipment->save();
+
+            if ($changed) {
+                $this->record($actor, 'shipment.fulfillment_draft_saved', $shipment, $before, $this->snapshot($shipment), 'manual_fulfillment_draft');
+            }
+
+            return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync']);
+        });
+    }
+
     public function markShipped(Model $order, array $attributes, ?Authenticatable $actor): Model
     {
         return DB::transaction(function () use ($order, $attributes, $actor): Model {
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $shipment = $lockedOrder->shipment()->firstOrCreate(['order_id' => $lockedOrder->getKey()]);
-            $before = $shipment->only(['shipment_status', 'carrier', 'tracking_number', 'shipped_at', 'handled_by']);
+            $before = $this->snapshot($shipment);
             $shipment->fill([
                 'shipment_status' => 'shipped',
+                'warehouse_id' => $attributes['warehouse_id'] ?? $shipment->warehouse_id,
+                'warehouse_selection_source' => array_key_exists('warehouse_id', $attributes) && $attributes['warehouse_id'] !== null ? 'manual' : $shipment->warehouse_selection_source,
                 'carrier' => $attributes['carrier'],
+                'service' => $attributes['service'] ?? $shipment->service,
+                'carrier_selection_source' => array_key_exists('service', $attributes) || array_key_exists('carrier', $attributes) ? 'manual' : $shipment->carrier_selection_source,
                 'tracking_number' => $attributes['tracking_number'],
                 'shipped_at' => $attributes['shipped_at'],
                 'logistics_note' => $attributes['logistics_note'] ?? null,
@@ -39,18 +74,10 @@ final class ShipmentService
             }
             $this->manualSync->ensurePending($lockedOrder, $actor);
             if ($changed) {
-                $this->audit->record(
-                    $actor ? AuditActor::user($actor, AuditSource::InternalSystem) : AuditActor::system(AuditSource::InternalSystem),
-                    'shipment.marked_shipped',
-                    get_class($shipment),
-                    $shipment->getKey(),
-                    before: $before,
-                    after: $shipment->only(['shipment_status', 'carrier', 'tracking_number', 'shipped_at', 'handled_by']),
-                    reason: 'manual_fulfillment',
-                );
+                $this->record($actor, 'shipment.marked_shipped', $shipment, $before, $this->snapshot($shipment), 'manual_fulfillment');
             }
 
-            return $lockedOrder->fresh(['items', 'owner', 'shipment', 'manualSync', 'financials', 'costEntries']);
+            return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync', 'financials', 'costEntries']);
         });
     }
 
@@ -60,10 +87,12 @@ final class ShipmentService
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
-            $before = $shipment->only(['shipment_status', 'carrier', 'tracking_number', 'shipped_at', 'logistics_note', 'handled_by']);
+            $before = $this->snapshot($shipment);
             $shipment->fill([
                 'shipment_status' => 'pending',
                 'carrier' => null,
+                'service' => null,
+                'carrier_selection_source' => null,
                 'tracking_number' => null,
                 'shipped_at' => null,
                 'logistics_note' => $note,
@@ -76,18 +105,31 @@ final class ShipmentService
             }
             $this->manualSync->reopen($lockedOrder, $actor, $note);
             if ($changed) {
-                $this->audit->record(
-                    $actor ? AuditActor::user($actor, AuditSource::InternalSystem) : AuditActor::system(AuditSource::InternalSystem),
-                    'shipment.reopened',
-                    get_class($shipment),
-                    $shipment->getKey(),
-                    before: $before,
-                    after: $shipment->only(['shipment_status', 'carrier', 'tracking_number', 'shipped_at', 'logistics_note', 'handled_by']),
-                    reason: 'shipment_correction',
-                );
+                $this->record($actor, 'shipment.reopened', $shipment, $before, $this->snapshot($shipment), 'shipment_correction');
             }
 
-            return $lockedOrder->fresh(['items', 'owner', 'shipment', 'manualSync', 'financials', 'costEntries']);
+            return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync', 'financials', 'costEntries']);
         });
+    }
+
+    private function snapshot(Model $shipment): array
+    {
+        return $shipment->only([
+            'shipment_status', 'warehouse_id', 'warehouse_selection_source', 'carrier', 'service',
+            'carrier_selection_source', 'tracking_number', 'shipped_at', 'logistics_note', 'handled_by',
+        ]);
+    }
+
+    private function record(?Authenticatable $actor, string $action, Model $shipment, array $before, array $after, string $reason): void
+    {
+        $this->audit->record(
+            $actor ? AuditActor::user($actor, AuditSource::InternalSystem) : AuditActor::system(AuditSource::InternalSystem),
+            $action,
+            get_class($shipment),
+            $shipment->getKey(),
+            before: $before,
+            after: $after,
+            reason: $reason,
+        );
     }
 }

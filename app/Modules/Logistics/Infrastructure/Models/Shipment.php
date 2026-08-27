@@ -7,13 +7,22 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Shipment extends Model
 {
-    protected $fillable = ['shipment_status', 'carrier', 'tracking_number', 'shipped_at', 'logistics_note', 'handled_by'];
+    protected $fillable = [
+        'warehouse_id', 'warehouse_selection_source', 'shipment_status',
+        'carrier', 'service', 'carrier_selection_source', 'tracking_number',
+        'shipped_at', 'logistics_note', 'handled_by',
+    ];
 
     protected $casts = ['shipped_at' => 'datetime'];
 
     public function order(): BelongsTo
     {
         return $this->belongsTo('App\\Modules\\Orders\\Infrastructure\\Models\\Order');
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo('App\\Modules\\Inventory\\Infrastructure\\Models\\Warehouse');
     }
 
     public function handler(): BelongsTo
