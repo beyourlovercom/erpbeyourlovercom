@@ -2,7 +2,7 @@
 type: program-roadmap-hours
 project: BYL ERP
 version: 1.0
-updated: 2026-08-24
+updated: 2026-08-27
 ---
 
 # Program Roadmap and Hours
@@ -15,26 +15,20 @@ This document is the repository source of truth for the complete Program Roadmap
 Architecture Migration / Global Architecture Gate [COMPLETE]
 → MVP1 Existing Operations / Tencent Docs Replacement [IMPLEMENTATION COMPLETE; HUMAN UAT REMEDIATION OPEN]
 → ERP-INQUIRY-M1 M1.0 Contract + M1.1 Company [COMPLETE]
-→ ERP-ORDER-FULFILLMENT-M1 Unified Manual Order → Logistics [CURRENT]
-→ ERP-ORDER-FULFILLMENT-M1 Local UAT / Owner Gate
+→ ERP-ORDER-FULFILLMENT-M1 [COMPLETE]
+→ Product Master / SKU M1 [COMPLETE]
+→ Order Create/Edit V2 [COMPLETE]
+→ Inventory Foundation + Inventory Batch Sync M1 [COMPLETE / MERGED BY PR #96]
+→ Shipping ↔ Inventory M1 [NEXT / NOT YET FORMALIZED]
+→ Carrier / Shipping Rule Engine M1
+→ Warehouse Connector Foundation
+→ Automatic Fulfillment M1
+→ WooCommerce Inbound + Tracking Outbound
+→ Accounting / Procurement expansion
 → Resume ERP-INQUIRY-M1 at M1.2 Contact [PAUSED, NOT CANCELLED]
 → ERP-INQUIRY-M1 M1.2–M1.9 + Local Milestone UAT
 → Milestone Remote Release / erp.beyourlover.com
-→ MVP1.1 WooCommerce Inbound
-→ MVP1.2 Single Tracking Outbound
-→ MVP1.3 Sync Orchestration
-→ Product / Media
-→ WordPress Product and Image Sync
-→ Content / SEO
-→ Posts / Pages
-→ GA4 / GSC / Cloudflare
-→ Google Docs Publishing
-→ Full Order Workspace
-→ Logistics OS
-→ KOL OS and Social Providers
-→ Inventory and Procurement
-→ Accounting / ROI Expansion
-→ Shopify and Additional Integrations
+→ later Product / Media / Content / SEO / KOL / Shopify expansion
 → Production Hardening
 ```
 
@@ -72,12 +66,13 @@ Global Architecture Gate              PASS
 ## Source Conflict Snapshot
 
 ```text
-GITHUB_FACT: architecture closure is historical and Global Architecture Gate remains PASS.
-CURRENT_REPOSITORY_BASELINE: main@6ac25f2168dea7e8cd9e8f4c49c10752642a44df after PR #89 ERP-INQUIRY-M1.1 Company merge.
-INQUIRY_FACT: M1.0 contract and M1.1 Company are complete; M1.2 Contact is PAUSED / NOT CANCELLED by D-037.
-ORDER_FULFILLMENT_FACT: ERP-ORDER-FULFILLMENT-M1-001 is the current bounded delivery package; implementation is not yet authorized.
-SOURCE_CONFLICTS: older documents that still describe M1.1 as next or ERP-INQUIRY-M1 as uninterrupted current sequence are historical/stale and are superseded by D-037 after this delivery PR merges.
-EVIDENCE_LIMITS: real production data, Production migration and remote deployment remain outside contract. Exact Order/Fulfillment implementation estimate is not issued until implementation preflight confirms migration/backfill and authorization surfaces.
+GITHUB_FACT: PR #96 merged Inventory Foundation + Inventory Batch Sync M1 to main as f5247a2f9d18e8912dd64d7e728a30ec6bef9a9b.
+CURRENT_REPOSITORY_BASELINE: main@f5247a2f9d18e8912dd64d7e728a30ec6bef9a9b after PR #96 Inventory M1 merge.
+INVENTORY_FACT: Product Master, Order V2, Inventory Foundation and Inventory Batch Sync are complete; Owner UAT passed.
+VERIFICATION_FACT: US Mac verification/UAT is the default sufficient path; China verification is special-case only unless explicitly requested or required by a concrete cross-machine issue.
+NEXT_FACT: Shipping ↔ Inventory M1 is next, but no implementation Work Package is activated by this closure sync.
+INQUIRY_FACT: M1.2 Contact remains PAUSED / NOT CANCELLED.
+EVIDENCE_LIMITS: Production deployment, live WMS connectors and remote production mutation remain outside this closure.
 ```
 
 ## Current Program Position and Estimate
@@ -85,17 +80,19 @@ EVIDENCE_LIMITS: real production data, Production migration and remote deploymen
 ```text
 TOTAL_ARCHITECTURE_MIGRATION_REMAINING: 0h / complete
 ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
-CURRENT_PACKAGE: ERP-ORDER-FULFILLMENT-M1-001 / contract formalized / implementation not authorized
-CURRENT_PACKAGE_BASELINE: main@6ac25f2168dea7e8cd9e8f4c49c10752642a44df
-ERP_ORDER_FULFILLMENT_M1_ESTIMATE: UNKNOWN WITH EVIDENCE / implementation preflight required before exact estimate
+INVENTORY_M1: COMPLETE / OWNER UAT PASS / MERGED BY PR #96
+CURRENT_PACKAGE: NONE / Inventory M1 closed
+CURRENT_PACKAGE_BASELINE: main@f5247a2f9d18e8912dd64d7e728a30ec6bef9a9b
+NEXT_PACKAGE: Shipping ↔ Inventory M1 / NOT YET FORMALIZED
+SHIPPING_INVENTORY_M1_ESTIMATE: UNKNOWN WITH EVIDENCE / no bounded Work Package issued yet
 ERP_INQUIRY_M1_ESTIMATE: 86–150h / planning value 116h / frozen M1.0 contract; M1.1 complete; M1.2–M1.9 retained
 ERP_INQUIRY_M1_1_COMPANY_ESTIMATE: 6–10h / planning value 8h / completed package estimate, not remaining
-ERP_INQUIRY_M1_2_CONTACT_ESTIMATE: retained inside approved ERP-INQUIRY-M1 milestone / execution PAUSED / exact child value not changed by D-037
+ERP_INQUIRY_M1_2_CONTACT_ESTIMATE: retained inside approved ERP-INQUIRY-M1 milestone / execution PAUSED
 MVP1_HUMAN_UAT_FINDINGS_OPEN: 4
 REMOTE_DEPLOYMENT: NO / milestone gated
 ```
 
-`ERP_ORDER_FULFILLMENT_M1_ESTIMATE` is deliberately `UNKNOWN WITH EVIDENCE`: repository source audit confirms the existing Order/Shipment/Sync/Finance foundations and identifies the bounded gaps, but the final migration/backfill behavior for legacy `source_type`, current external-order-number duplicates and exact permission/data-scope integration must be confirmed by the US implementation preflight before an engineering range is issued. Chat elapsed time must not be converted into an estimate.
+No exact estimate is issued for Shipping ↔ Inventory M1 until its bounded Work Package defines reservation, allocation, schema and rollback scope. Chat elapsed time must not be converted into an estimate.
 
 Historical architecture estimate fields below remain historical/completed evidence and are not current remaining work.
 
@@ -114,7 +111,7 @@ Historical architecture estimate fields below remain historical/completed eviden
 | `MVP1_PLANNING_BASELINE` | 166h | total planning value | Effective Hours source |
 | `MVP1_MAXIMUM_ENVELOPE` | 192h | maximum total planning envelope | Living Roadmap and Effective Hours sources |
 | `MVP1_REMAINING` | UNKNOWN WITH EVIDENCE | unknown remaining total | Accepted actual-hours ledger and proven architecture/MVP1 overlap map are incomplete |
-| `ERP_ORDER_FULFILLMENT_M1_ESTIMATE` | UNKNOWN WITH EVIDENCE | current bounded package estimate | exact engineering range deferred until US implementation preflight confirms migration/backfill and permission/data-scope surfaces |
+| `ERP_ORDER_FULFILLMENT_M1_ESTIMATE` | UNKNOWN WITH EVIDENCE | historical completed package estimate | package is complete/merged; no retrospective range is fabricated |
 | `ERP_INQUIRY_M1_ESTIMATE` | 86–150h; planning value 116h | milestone implementation estimate | Owner-approved M1.0 contract; M1.1 completed; M1.2–M1.9 retained and paused only by priority |
 | `ERP_INQUIRY_M1_1_COMPANY_ESTIMATE` | 6–10h; planning value 8h | completed child estimate | M1.1 Company merged by PR #89; do not count as remaining |
 | `POST_MVP_KNOWN_INCREMENT` | approximately 68–120h beyond MVP1 | incremental estimate | WooCommerce inbound plus single outbound |
@@ -165,7 +162,7 @@ Future rows may be added only from accepted repository Work Logs. PR elapsed tim
 ```text
 HIGH: quoted repository total/cumulative historical ranges and Owner-frozen ERP-INQUIRY-M1 milestone range
 MEDIUM: bounded completed child-package estimates with accepted scope evidence
-LOW / UNKNOWN: ERP-ORDER-FULFILLMENT-M1 exact implementation estimate until migration/backfill and permission/data-scope preflight completes; project/program remaining total
-ESTIMATE_AS_OF: 2026-08-24
+LOW / UNKNOWN: Shipping ↔ Inventory M1 exact estimate until a bounded Work Package is issued; project/program remaining total
+ESTIMATE_AS_OF: 2026-08-27
 ESTIMATE_METHOD: repository source classification; no subtraction without accepted actuals; no addition of cumulative/overlapping ranges; no chat-time conversion
 ```

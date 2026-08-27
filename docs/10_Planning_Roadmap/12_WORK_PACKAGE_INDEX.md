@@ -2,7 +2,7 @@
 type: work-package-index
 project: BYL ERP
 version: 1.0
-updated: 2026-08-24
+updated: 2026-08-27
 ---
 
 # Work Package Index
@@ -12,24 +12,47 @@ updated: 2026-08-24
 ```text
 ERP-ORDER-FULFILLMENT-M1-001
 Unified Manual Order → Logistics / Fulfillment M1
-Status: CURRENT / CONTRACT FORMALIZED / DRAFT PR #90 OPEN / IMPLEMENTATION NOT AUTHORIZED
-PR: #90 / Draft
+Status: COMPLETE / OWNER UAT PASS / MERGED BY PR #90
+PR: #90 / MERGED
 Baseline: main@6ac25f2168dea7e8cd9e8f4c49c10752642a44df
 Branch: feature/erp-order-fulfillment-m1-001
 Work Package: docs/60_Codex_Operations/work-packages/ERP-ORDER-FULFILLMENT-M1-001.md
 Work Log: docs/60_Codex_Operations/logs/2026-08-24_ERP-ORDER-FULFILLMENT-M1-001.md
 Design Contract: docs/10_Planning_Roadmap/16_BYL_ERP_CANONICAL_ORDER_FINANCE_KOL_DATA_CONTRACT_V1.md
-Verification: TIER B / US FULL + CHINA FULL EXACT-SHA AFTER IMPLEMENTATION
-Product Implementation: NOT AUTHORIZED
+Verification: US verification accepted; China closure verification waived by Owner
+Product Implementation: COMPLETE
 Migration Execution: NO
 Remote Deployment: NO
-Merge: NO
+Merge: COMPLETE
+
+ERP-PRODUCT-MASTER-M1-001
+Product Master / canonical SKU
+Status: COMPLETE / OWNER UAT PASS / MERGED BY PR #93
+PR: #93; Main merge included in current main lineage
+
+ERP-ORDER-EDIT-V2-001
+Order Create/Edit V2
+Status: COMPLETE / OWNER UAT PASS / MERGED BY PR #95
+PR: #95; Merge SHA: 3d35916a9634b7303470cad9cce07f76185ea4bb
+
+ERP-INVENTORY-BATCH-SYNC-M1-001
+Inventory Foundation + Inventory Batch Sync M1
+Status: COMPLETE / OWNER UAT PASS / MERGED BY PR #96
+PR: #96; Main Merge SHA: f5247a2f9d18e8912dd64d7e728a30ec6bef9a9b
+Work Package: docs/60_Codex_Operations/work-packages/ERP-INVENTORY-BATCH-SYNC-M1-001.md
+Verification: US full verification/UAT accepted; China verification not required by Owner default
+
+ERP-GOV-INVENTORY-M1-CLOSURE-SYNC-001
+Post-merge canonical Inventory closure synchronization
+Status: COMPLETE / DOCS-ONLY / OWNER AUTHORIZED
+Work Package: docs/60_Codex_Operations/work-packages/ERP-GOV-INVENTORY-M1-CLOSURE-SYNC-001.md
+Next: Shipping ↔ Inventory M1 / NOT YET FORMALIZED
 
 ERP-INQUIRY-M1
 B2B Inquiry Foundation
 Status: ACTIVE MILESTONE / EXECUTION PAUSED AT M1.2 / NOT CANCELLED
 Children: M1.0 COMPLETE; M1.1 Company COMPLETE / MERGED BY PR #89; M1.2 Contact PAUSED; M1.3 Case WAITING; M1.4 Inbound Message WAITING; M1.5 Inquiry Inbox WAITING; M1.6 Email Intake WAITING; M1.7 WhatsApp Intake WAITING; M1.8 Yesterday/Waiting Dashboard WAITING; M1.9 Local Milestone UAT WAITING
-Resume Default: after ERP-ORDER-FULFILLMENT-M1 Owner gate / merge unless Owner reprioritizes again
+Resume Default: PAUSED / Shipping ↔ Inventory M1 is next by current Owner priority
 
 ERP-ARCH-MIGRATION-001E
 Shared UI / Browser E2E
@@ -296,11 +319,11 @@ Work Log: docs/60_Codex_Operations/logs/2026-08-23_ERP-INQUIRY-M1.1-COMPANY-001.
 
 ```text
 ERP-INQUIRY-M1.2-CONTACT
-Status: PAUSED / NOT CANCELLED / resumes after ERP-ORDER-FULFILLMENT-M1 by default
+Status: PAUSED / NOT CANCELLED / Shipping ↔ Inventory M1 is next by current Owner priority
 
 MVP1.1-WOOCOMMERCE-INBOUND-001
 MVP1.2-WOOCOMMERCE-TRACKING-OUTBOUND-001
 MVP1.3-SYNC-ORCHESTRATION-001
 ```
 
-No package is activated merely by appearing in this index. Product implementation for `ERP-ORDER-FULFILLMENT-M1-001` remains unauthorized until an explicit Owner grant.
+No package is activated merely by appearing in this index. `Shipping ↔ Inventory M1` is NEXT but remains NOT YET FORMALIZED and its implementation is not authorized by this closure sync.
