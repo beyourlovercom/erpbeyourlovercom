@@ -10,7 +10,8 @@ type Opportunity = { id: number; title: string; cooperation_type: string | null;
 type Communication = { id: number; channel: string; direction: string; summary: string; contacted_at: string | null; next_action: string | null; next_follow_up_at: string | null; creator: { id: number; name: string } | null; opportunity: { id: number; title: string } | null }
 type HistoricalOpportunity = { id: number; title: string; cooperation_type: string | null; stage: string; status: string; created_at: string | null; estimated_cost: number | null; currency: string; owner: { id: number; name: string } | null }
 type CollaborationProduct = { id: number; product_id: number | null; sku: string; name: string | null; quantity: number }
-type Collaboration = { id: number; opportunity_id: number | null; owner_id: number | null; owner: { id: number; name: string } | null; title: string | null; post_url: string | null; cooperation_type: string | null; status: string; agreement_amount: number | null; currency: string; agreed_at: string | null; planned_publish_at: string | null; deliverables: string | null; fulfillment_required: boolean; notes: string | null; products: CollaborationProduct[]; created_at: string | null }
+type FulfillmentOrder = { id:number; internal_order_number:string; external_order_number:string; order_status:string; shipment:{ shipment_status:string; warehouse_name:string|null; carrier:string|null; service:string|null; tracking_number:string|null; shipped_at:string|null }|null; manual_sync_status:string|null }
+type Collaboration = { id: number; opportunity_id: number | null; owner_id: number | null; order_id:number|null; owner: { id: number; name: string } | null; title: string | null; post_url: string | null; cooperation_type: string | null; status: string; agreement_amount: number | null; currency: string; agreed_at: string | null; planned_publish_at: string | null; deliverables: string | null; fulfillment_required: boolean; notes: string | null; products: CollaborationProduct[]; fulfillment_order:FulfillmentOrder|null; created_at: string | null }
 type KolDetail = {
   id: number; display_name: string; avatar_url?: string | null; avatar_source?: string | null; avatar_updated_at?: string | null; legal_name: string | null; country_code: string | null; language: string | null
   status: string; relationship_stage: string; cooperation_type: string | null; owner_id: number | null
@@ -36,6 +37,7 @@ type KolDetail = {
 const props = defineProps<{
   kol: KolDetail
   canOperate: boolean
+  canCreateOrders?: boolean
   canManageViews: boolean
 }>()
 
@@ -231,6 +233,8 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
               <div><dt>寄样/发货</dt><dd>{{ currentCollaboration.fulfillment_required ? '需要' : '不需要' }}</dd></div>
             </dl>
             <div class="kol-collaboration-products"><strong>合作产品：</strong><span>{{ currentCollaboration.products.length ? currentCollaboration.products.map(p => `${p.sku} ×${p.quantity}`).join('、') : '—' }}</span></div>
+            <div v-if="currentCollaboration.fulfillment_order" class="kol-next-action"><strong>履约订单：</strong><span><Link :href="`/kol/orders/${currentCollaboration.fulfillment_order.id}`">{{ currentCollaboration.fulfillment_order.external_order_number }}</Link> · {{ currentCollaboration.fulfillment_order.order_status }}</span></div>
+            <div v-if="currentCollaboration.fulfillment_order?.shipment" class="kol-next-action"><strong>发货状态：</strong><span>{{ currentCollaboration.fulfillment_order.shipment.shipment_status }} · {{ currentCollaboration.fulfillment_order.shipment.warehouse_name ?? '未选择仓库' }} · {{ currentCollaboration.fulfillment_order.shipment.tracking_number ?? '暂无追踪号' }}</span></div>
             <div v-if="currentCollaboration.deliverables" class="kol-next-action"><strong>约定交付：</strong><span>{{ currentCollaboration.deliverables }}</span></div>
           </div>
           <div v-else class="kol-opportunity-empty">暂无正式合作</div>

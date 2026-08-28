@@ -3,6 +3,7 @@
 namespace App\Modules\Kol\Infrastructure\Models;
 
 use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -12,7 +13,7 @@ class KolCollaboration extends Model
     protected $table = 'kol_collaborations';
 
     protected $fillable = [
-        'kol_id', 'opportunity_id', 'owner_id', 'title', 'post_url', 'cooperation_type', 'status',
+        'kol_id', 'opportunity_id', 'owner_id', 'order_id', 'title', 'post_url', 'cooperation_type', 'status',
         'agreement_amount', 'currency', 'agreed_at', 'planned_publish_at',
         'deliverables', 'fulfillment_required', 'notes',
     ];
@@ -27,5 +28,6 @@ class KolCollaboration extends Model
     public function kol(): BelongsTo { return $this->belongsTo(Kol::class, 'kol_id'); }
     public function opportunity(): BelongsTo { return $this->belongsTo(KolOpportunity::class, 'opportunity_id'); }
     public function owner(): BelongsTo { return $this->belongsTo(User::class, 'owner_id'); }
+    public function order(): BelongsTo { return $this->belongsTo(Order::class, 'order_id'); }
     public function products(): HasMany { return $this->hasMany(KolCollaborationProduct::class, 'collaboration_id')->orderBy('id'); }
 }

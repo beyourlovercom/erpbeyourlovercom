@@ -11,6 +11,9 @@ use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolCollaboration;
 use App\Modules\Kol\Infrastructure\Models\KolOpportunity;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Orders\Application\OrderKind;
+use App\Modules\Orders\Application\OrderService;
+use App\Modules\Orders\Application\OrderSourceType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,11 +23,14 @@ use Inertia\Response;
 
 final class KolCollaborationController
 {
-    public function __construct(private readonly AuditRecorder $audit) {}
+    public function __construct(
+        private readonly AuditRecorder $audit,
+        private readonly OrderService $orders,
+    ) {}
 
     public function index(Request $request): Response
     {
-        $query = KolCollaboration::query()->with(['kol:id,display_name,owner_id', 'owner:id,name', 'products']);
+        $query = KolCollaboration::query()->with(['kol:id,display_name,owner_id', 'owner:id,name', 'products', 'order.shipment.warehouse', 'order.manualSync']);
         if (! KolScope::isAllScope($request->user())) {
             $query->whereHas('kol', fn ($q) => $q->where('owner_id', (int) $request->user()->getAuthIdentifier()));
         }
@@ -69,7 +75,7 @@ final class KolCollaborationController
         });
         $this->recordAudit($request, 'kol.collaboration.created', $collaboration, null, $this->snapshot($collaboration));
 
-        return response()->json(['collaboration' => $this->payload($collaboration->load(['owner', 'products.product', 'opportunity']))], 201);
+        return response()->json(['collaboration' => $this->payload($collaboration->load(['owner', 'products.product', 'opportunity', 'order.shipment.warehouse', 'order.manualSync']))], 201);
     }
 
     public function update(Request $request, Kol $kol, KolCollaboration $collaboration): JsonResponse
@@ -89,7 +95,7 @@ final class KolCollaborationController
         });
         $this->recordAudit($request, 'kol.collaboration.updated', $collaboration, $before, $this->snapshot($collaboration));
 
-        return response()->json(['collaboration' => $this->payload($collaboration->load(['owner', 'products.product', 'opportunity']))]);
+        return response()->json(['collaboration' => $this->payload($collaboration->load(['owner', 'products.product', 'opportunity', 'order.shipment.warehouse', 'order.manualSync']))]);
     }
 
     public function convertOpportunity(Request $request, Kol $kol, KolOpportunity $opportunity): JsonResponse
@@ -97,7 +103,7 @@ final class KolCollaborationController
         $this->authorizeKol($request, $kol);
         abort_unless((int) $opportunity->kol_id === (int) $kol->id, 404);
         if ($existing = KolCollaboration::where('opportunity_id', $opportunity->id)->first()) {
-            return response()->json(['collaboration' => $this->payload($existing->load(['owner', 'products.product', 'opportunity'])), 'already_exists' => true]);
+            return response()->json(['collaboration' => $this->payload($existing->load(['owner', 'products.product', 'opportunity', 'order.shipment.warehouse', 'order.manualSync'])), 'already_exists' => true]);
         }
 
         $productRows = Product::query()->whereIn('sku', $opportunity->target_products ?? [])->get()->map(fn (Product $p) => [
@@ -127,7 +133,56 @@ final class KolCollaborationController
         });
         $this->recordAudit($request, 'kol.collaboration.created_from_opportunity', $collaboration, null, $this->snapshot($collaboration));
 
-        return response()->json(['collaboration' => $this->payload($collaboration->load(['owner', 'products.product', 'opportunity']))], 201);
+        return response()->json(['collaboration' => $this->payload($collaboration->load(['owner', 'products.product', 'opportunity', 'order.shipment.warehouse', 'order.manualSync']))], 201);
+    }
+
+    public function createFulfillmentOrder(Request $request, Kol $kol, KolCollaboration $collaboration): JsonResponse
+    {
+        $this->authorizeCollaboration($request, $kol, $collaboration);
+
+        $result = DB::transaction(function () use ($request, $kol, $collaboration): array {
+            $locked = KolCollaboration::query()->whereKey($collaboration->id)->lockForUpdate()->firstOrFail();
+            if ($locked->order_id) {
+                return ['order' => $locked->order()->with(['shipment.warehouse', 'manualSync'])->firstOrFail(), 'created' => false];
+            }
+            abort_unless((bool) $locked->fulfillment_required, 422, '该正式合作未标记需要寄样 / 发货');
+            $locked->load('products');
+            abort_if($locked->products->isEmpty(), 422, '创建履约订单前必须至少指定一个合作产品');
+
+            $order = $this->orders->create([
+                'source_type' => OrderSourceType::Kol->value,
+                'order_kind' => OrderKind::KolFulfillment->value,
+                'external_order_number' => $this->orders->generateExternalOrderNumber(OrderKind::KolFulfillment),
+                'order_date' => now()->toDateString(),
+                'order_note' => 'KOL Collaboration #'.$locked->id,
+                'currency' => $locked->currency ?: 'USD',
+                'owner_id' => $locked->owner_id ?? $request->user()->getAuthIdentifier(),
+                'recipient_name' => $kol->shipping_recipient_name,
+                'phone' => $kol->contact_phone,
+                'country' => $kol->shipping_country,
+                'province_state' => $kol->shipping_province_state,
+                'city' => $kol->shipping_city,
+                'address_line_1' => $kol->shipping_address_line_1,
+                'address_line_2' => $kol->shipping_address_line_2,
+                'postal_code' => $kol->shipping_postal_code,
+            ], $locked->products->map(fn ($row) => [
+                'product_id' => $row->product_id,
+                'product_summary' => $row->product_name_snapshot ?: $row->sku_snapshot,
+                'quantity' => (int) $row->quantity,
+                'unit_price' => '0.00',
+            ])->all(), $request->user());
+
+            $locked->update(['order_id' => $order->id]);
+            return ['order' => $order->load(['shipment.warehouse', 'manualSync']), 'created' => true];
+        });
+
+        $fresh = $collaboration->fresh();
+        $this->recordAudit($request, 'kol.collaboration.fulfillment_order_linked', $fresh, null, $this->snapshot($fresh));
+
+        return response()->json([
+            'order' => $this->fulfillmentOrderPayload($result['order']),
+            'created' => $result['created'],
+        ], $result['created'] ? 201 : 200);
     }
 
     private function validated(Request $request, Kol $kol, ?KolCollaboration $collaboration = null): array
@@ -188,6 +243,7 @@ final class KolCollaborationController
             'opportunity_id' => $item->opportunity_id,
             'opportunity' => $item->relationLoaded('opportunity') && $item->opportunity ? ['id' => $item->opportunity->id, 'title' => $item->opportunity->title] : null,
             'owner_id' => $item->owner_id,
+            'order_id' => $item->order_id,
             'owner' => $item->relationLoaded('owner') && $item->owner ? ['id' => $item->owner->id, 'name' => $item->owner->name] : null,
             'title' => $item->title,
             'post_url' => $item->post_url,
@@ -207,13 +263,33 @@ final class KolCollaborationController
                 'name' => $row->product_name_snapshot,
                 'quantity' => $row->quantity,
             ])->values()->all() : [],
+            'fulfillment_order' => $item->relationLoaded('order') && $item->order ? $this->fulfillmentOrderPayload($item->order) : null,
             'created_at' => $item->created_at?->format('Y-m-d H:i:s'),
         ];
     }
 
     private function snapshot(KolCollaboration $item): array
     {
-        return ['kol_id' => $item->kol_id, 'opportunity_id' => $item->opportunity_id, 'owner_id' => $item->owner_id, 'status' => $item->status, 'post_url' => $item->post_url, 'fulfillment_required' => (bool) $item->fulfillment_required];
+        return ['kol_id' => $item->kol_id, 'opportunity_id' => $item->opportunity_id, 'owner_id' => $item->owner_id, 'order_id' => $item->order_id, 'status' => $item->status, 'post_url' => $item->post_url, 'fulfillment_required' => (bool) $item->fulfillment_required];
+    }
+
+    private function fulfillmentOrderPayload($order): array
+    {
+        return [
+            'id' => $order->id,
+            'internal_order_number' => $order->internal_order_number,
+            'external_order_number' => $order->external_order_number,
+            'order_status' => $order->order_status instanceof \BackedEnum ? $order->order_status->value : (string) $order->order_status,
+            'shipment' => $order->relationLoaded('shipment') && $order->shipment ? [
+                'shipment_status' => $order->shipment->shipment_status instanceof \BackedEnum ? $order->shipment->shipment_status->value : (string) $order->shipment->shipment_status,
+                'warehouse_name' => $order->shipment->warehouse?->name,
+                'carrier' => $order->shipment->carrier,
+                'service' => $order->shipment->service,
+                'tracking_number' => $order->shipment->tracking_number,
+                'shipped_at' => $order->shipment->shipped_at?->toIso8601String(),
+            ] : null,
+            'manual_sync_status' => $order->relationLoaded('manualSync') && $order->manualSync ? $order->manualSync->website_sync_status->value : null,
+        ];
     }
 
     private function recordAudit(Request $request, string $action, KolCollaboration $item, ?array $before, ?array $after): void
