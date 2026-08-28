@@ -68,6 +68,7 @@ final class PermissionCatalog
                 'label' => '指南',
                 'permissions' => [
                     ['key' => 'guides.view', 'label' => '查看指南'],
+                    ['key' => 'guides.manage', 'label' => '管理指南内容'],
                 ],
             ],
             '财务' => [

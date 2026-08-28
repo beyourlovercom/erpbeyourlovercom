@@ -218,7 +218,7 @@ final class UserManagementTest extends TestCase
             RolePreset::SalesRepresentative->value => ['customers.operate', 'customers.view', 'dashboard.view', 'orders.create', 'orders.edit', 'orders.view'],
             RolePreset::KolSpecialist->value => ['dashboard.view', 'kol.operate', 'kol.view', 'orders.create', 'orders.edit', 'orders.view'],
             RolePreset::Finance->value => ['accounting.view', 'analysis.view', 'dashboard.view', 'orders.view'],
-            RolePreset::Writer->value => ['dashboard.view', 'guides.view'],
+            RolePreset::Writer->value => ['dashboard.view', 'guides.manage', 'guides.view'],
         ];
         foreach ($expected as $value => $keys) {
             $preset = RolePreset::from($value);

@@ -37,6 +37,7 @@ return [
         'index' => ['label' => '全部教程', 'path' => '/guides'],
         'videos' => ['label' => '视频教程', 'path' => '/guides/videos'],
         'manuals' => ['label' => '操作手册', 'path' => '/guides/manuals'],
+        'changelog' => ['label' => '版本更新', 'path' => '/guides/changelog'],
     ]],
     'accounting' => ['icon' => '💰', 'label' => '会计', 'children' => [
         'cost-calculation' => ['label' => '成本核算表', 'path' => '/accounting/cost-calculation'],

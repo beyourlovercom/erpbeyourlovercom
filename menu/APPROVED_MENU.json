@@ -679,8 +679,8 @@
       "permission": "guides.view",
       "emoji": "📖",
       "function_zh": "管理ERP操作指南、业务标准和内部知识内容。",
-      "status": "planned",
-      "progress": 0,
+      "status": "implemented",
+      "progress": 100,
       "sort": 100
     },
     {
@@ -706,11 +706,11 @@
       "slug": "videos",
       "url": "/guides/videos",
       "route": "guides.videos",
-      "permission": "prototype.view",
+      "permission": "guides.view",
       "emoji": null,
       "function_zh": "查看视频教程。",
-      "status": "planned",
-      "progress": 0,
+      "status": "implemented",
+      "progress": 100,
       "sort": 20
     },
     {
@@ -721,12 +721,27 @@
       "slug": "manuals",
       "url": "/guides/manuals",
       "route": "guides.manuals",
-      "permission": "prototype.view",
+      "permission": "guides.view",
       "emoji": null,
       "function_zh": "查看操作手册。",
-      "status": "planned",
-      "progress": 0,
+      "status": "implemented",
+      "progress": 100,
       "sort": 30
+    },
+    {
+      "code": "guides-changelog",
+      "parent_code": "guides",
+      "level": 2,
+      "label_zh": "版本更新",
+      "slug": "changelog",
+      "url": "/guides/changelog",
+      "route": "guides.releases.index",
+      "permission": "guides.view",
+      "emoji": null,
+      "function_zh": "查看ERP版本更新与发布说明。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 40
     },
     {
       "code": "accounting",

@@ -6,6 +6,7 @@ use App\Modules\Audit\Providers\AuditServiceProvider;
 use App\Modules\Customers\Providers\CustomersServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Finance\Providers\FinanceServiceProvider;
+use App\Modules\Guides\Providers\GuidesServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
 use App\Modules\Inventory\Providers\InventoryServiceProvider;
 use App\Modules\Kol\Providers\KolServiceProvider;
@@ -48,6 +49,7 @@ final class ModuleProviderTest extends TestCase
             OrdersServiceProvider::class,
             LogisticsServiceProvider::class,
             FinanceServiceProvider::class,
+            GuidesServiceProvider::class,
             RuntimeServiceProvider::class,
             AuditServiceProvider::class,
             SyncServiceProvider::class,

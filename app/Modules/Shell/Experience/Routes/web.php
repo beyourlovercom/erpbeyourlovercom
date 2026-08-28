@@ -10,7 +10,7 @@ $formalPaths = collect(config('erp_shell_navigation'))->pluck('path')->map($lega
 $implementedPaths = [
     '/orders', '/customers/orders', '/customers/orders/create', '/kol/orders', '/kol/orders/create',
     '/dashboard', '/logistics', '/sync', '/kol', '/products', '/accounting/order-costs', '/settings/users', '/settings/roles-permissions',
-    '/inventory', '/inventory/warehouses',
+    '/inventory', '/inventory/warehouses', '/guides', '/guides/videos', '/guides/manuals', '/guides/changelog',
 ];
 
 foreach (collect(config('erp_shell_navigation'))->reject(fn (array $module): bool => in_array($module['path'], $implementedPaths, true)) as $module) {

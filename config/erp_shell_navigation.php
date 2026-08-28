@@ -55,8 +55,9 @@ return [
     ]],
     ['key' => 'guides', 'label' => '指南', 'emoji' => '📖', 'path' => '/guides', 'route' => 'shell.guides', 'permission' => 'guides.view', 'placeholder' => false, 'children' => [
         ['key' => 'guides-index', 'label' => '全部教程', 'path' => '/guides', 'route' => 'shell.guides', 'permission' => 'guides.view', 'placeholder' => false],
-        ['key' => 'guides-videos', 'label' => '视频教程', 'path' => '/guides/videos', 'route' => 'guides.videos', 'permission' => 'prototype.view', 'placeholder' => false],
-        ['key' => 'guides-manuals', 'label' => '操作手册', 'path' => '/guides/manuals', 'route' => 'guides.manuals', 'permission' => 'prototype.view', 'placeholder' => false],
+        ['key' => 'guides-videos', 'label' => '视频教程', 'path' => '/guides/videos', 'route' => 'guides.videos', 'permission' => 'guides.view', 'placeholder' => false],
+        ['key' => 'guides-manuals', 'label' => '操作手册', 'path' => '/guides/manuals', 'route' => 'guides.manuals', 'permission' => 'guides.view', 'placeholder' => false],
+        ['key' => 'guides-changelog', 'label' => '版本更新', 'path' => '/guides/changelog', 'route' => 'guides.releases.index', 'permission' => 'guides.view', 'placeholder' => false],
     ]],
     ['key' => 'accounting', 'label' => '会计', 'emoji' => '🧾', 'path' => '/accounting', 'route' => 'shell.accounting', 'permission' => 'accounting.view', 'placeholder' => false, 'children' => [
         ['key' => 'accounting-cost-calculation', 'label' => '成本核算表', 'path' => '/accounting/cost-calculation', 'route' => 'accounting.cost-calculation', 'permission' => 'prototype.view', 'placeholder' => false],

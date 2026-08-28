@@ -27,6 +27,7 @@ enum AuthorizationKeys: string
     case ProductsView = 'products.view';
     case ProductsOperate = 'products.operate';
     case GuidesView = 'guides.view';
+    case GuidesManage = 'guides.manage';
     case AccountingView = 'accounting.view';
     case OrdersView = 'orders.view';
     case OrdersCreate = 'orders.create';
