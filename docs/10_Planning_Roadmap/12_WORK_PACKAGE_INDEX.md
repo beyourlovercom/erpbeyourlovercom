@@ -2,7 +2,7 @@
 type: work-package-index
 project: BYL ERP
 version: 1.0
-updated: 2026-08-27
+updated: 2026-08-28
 ---
 
 # Work Package Index
@@ -10,6 +10,15 @@ updated: 2026-08-27
 ## Active
 
 ```text
+ERP-GOV-ROADMAP-RECONCILIATION-001
+Full ERP Roadmap conflict cleanup through PR #110
+Status: CURRENT / DOCS-ONLY / OWNER DIRECTED / MERGE NOT AUTHORIZED
+Baseline: main@8c3a24d0a202d3180106d1ac7befbd848539494b
+Branch: docs/erp-roadmap-reconciliation-001
+Work Package: docs/60_Codex_Operations/work-packages/ERP-GOV-ROADMAP-RECONCILIATION-001.md
+Product Implementation: NO
+Next Product Package: NONE / OWNER SELECTION REQUIRED AFTER RECONCILIATION
+
 ERP-ORDER-FULFILLMENT-M1-001
 Unified Manual Order → Logistics / Fulfillment M1
 Status: COMPLETE / OWNER UAT PASS / MERGED BY PR #90
@@ -46,13 +55,13 @@ ERP-GOV-INVENTORY-M1-CLOSURE-SYNC-001
 Post-merge canonical Inventory closure synchronization
 Status: COMPLETE / DOCS-ONLY / OWNER AUTHORIZED
 Work Package: docs/60_Codex_Operations/work-packages/ERP-GOV-INVENTORY-M1-CLOSURE-SYNC-001.md
-Next: Shipping ↔ Inventory M1 / NOT YET FORMALIZED
+Next: HISTORICAL MARKER SUPERSEDED / see D-040 roadmap reconciliation
 
 ERP-INQUIRY-M1
 B2B Inquiry Foundation
 Status: ACTIVE MILESTONE / EXECUTION PAUSED AT M1.2 / NOT CANCELLED
 Children: M1.0 COMPLETE; M1.1 Company COMPLETE / MERGED BY PR #89; M1.2 Contact PAUSED; M1.3 Case WAITING; M1.4 Inbound Message WAITING; M1.5 Inquiry Inbox WAITING; M1.6 Email Intake WAITING; M1.7 WhatsApp Intake WAITING; M1.8 Yesterday/Waiting Dashboard WAITING; M1.9 Local Milestone UAT WAITING
-Resume Default: PAUSED / Shipping ↔ Inventory M1 is next by current Owner priority
+Resume Default: PAUSED / explicit Owner reactivation required
 
 ERP-ARCH-MIGRATION-001E
 Shared UI / Browser E2E
@@ -315,15 +324,36 @@ Work Package: docs/60_Codex_Operations/work-packages/ERP-INQUIRY-M1.1-COMPANY-00
 Work Log: docs/60_Codex_Operations/logs/2026-08-23_ERP-INQUIRY-M1.1-COMPANY-001.md
 ```
 
+
+MVP1-MANUAL-FULFILLMENT-INTEGRATION-001
+Status: COMPLETE / MERGED BY PR #101
+
+MVP1.1-WOOCOMMERCE-INBOUND-001
+Status: COMPLETE / MERGED BY PR #104
+
+MVP1.2-WOOCOMMERCE-TRACKING-OUTBOUND-001
+Status: COMPLETE / MERGED BY PR #106
+
+MVP1.3-SYNC-ORCHESTRATION-001
+Status: COMPLETE / MERGED BY PR #108
+
+ERP-KOL-M1-FOUNDATION-001
+Status: COMPLETE / MERGED BY PR #103
+
+ERP-KOL-M1.1-CRM-001
+Status: COMPLETE / MERGED BY PR #110
+
 ## Post-current planned milestones
 
 ```text
-ERP-INQUIRY-M1.2-CONTACT
-Status: PAUSED / NOT CANCELLED / Shipping ↔ Inventory M1 is next by current Owner priority
+ERP-KOL-M1.2A-COLLABORATION-001
+Status: ELIGIBLE NEXT / NOT ACTIVATED
 
-MVP1.1-WOOCOMMERCE-INBOUND-001
-MVP1.2-WOOCOMMERCE-TRACKING-OUTBOUND-001
-MVP1.3-SYNC-ORCHESTRATION-001
+MVP2-INVENTORY-RESERVATION-FOUNDATION
+Status: ELIGIBLE NEXT / NOT ACTIVATED
+
+ERP-INQUIRY-M1.2-CONTACT
+Status: PAUSED / NOT CANCELLED / explicit Owner reactivation required
 ```
 
-No package is activated merely by appearing in this index. `Shipping ↔ Inventory M1` is NEXT but remains NOT YET FORMALIZED and its implementation is not authorized by this closure sync.
+No product package is activated merely by appearing in this index. After `ERP-GOV-ROADMAP-RECONCILIATION-001`, the Owner must explicitly select the next bounded feature track.

@@ -576,3 +576,26 @@ Production deployment: NO / milestone gated.
 Architecture conflict: NONE.
 Documents synchronized: 04_LIVING_ROADMAP.md; 05_MVP1_FAST_TRACK.md; 13_PROGRAM_ROADMAP_AND_HOURS.md; 10_DECISION_REGISTER.md; 11_CHANGE_LOG.md; AI/CURRENT_CONTEXT.md.
 ```
+## 2026-08-28 — Full ERP Roadmap reconciliation after KOL M1.1
+
+```text
+Owner direction: perform a full ERP Roadmap conflict cleanup before starting the next feature.
+Decision: D-040.
+Baseline: main@8c3a24d0a202d3180106d1ac7befbd848539494b after PR #110.
+Merged facts synchronized: PR #101 Manual Fulfillment; #104 WooCommerce Inbound; #106 Tracking Outbound; #108 Sync Orchestration; #103 KOL M1.0; #110 KOL M1.1.
+Old current/future markers for those completed phases: REMOVED.
+KOL M1.2: split to M1.2A Collaboration + M1.2B Canonical Fulfillment Bridge.
+Truth boundary: KOL cannot duplicate Product/Inventory/Order/Shipment/Tracking or MVP2–MVP4 fulfillment engines.
+KOL physical fulfillment: canonical orders.id + order_kind=kol_fulfillment + existing Shipment/Tracking projection.
+PR #98: CLOSED UNMERGED / SUPERSEDED.
+PR #109: CLOSED UNMERGED / SUPERSEDED BY PR #110.
+PR #97: retained as design reference only / not execution authority.
+PR #81: retained as stale legacy experiment / not roadmap authority.
+Current product Work Package after reconciliation: NONE.
+Next feature: explicit Owner selection required among bounded eligible tracks.
+Application code: NO CHANGE.
+Schema/Migration/DB: NO CHANGE.
+Dependencies: NO CHANGE.
+Production/deployment: NO.
+Merge of reconciliation PR: requires separate explicit Owner authorization.
+```
