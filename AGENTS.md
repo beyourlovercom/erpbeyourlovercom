@@ -52,3 +52,17 @@ When a fresh Local/UAT database is created, use `Database\Seeders\LocalUatSeeder
 Unless the Owner explicitly requests otherwise, US main development machine Local/UAT verification is the default and sufficient acceptance path. China-machine verification is not required after a successful US-machine Owner UAT.
 
 Use China-machine verification only when the Owner explicitly requests it or when a concrete cross-machine/region-specific issue cannot be verified on the US machine alone.
+
+# HIGHEST PAGE-LEVEL ACTION PLACEMENT GATE
+
+**Implementation baseline: OWNER_UAT PASS / COMPLETE / FROZEN / CLOSED (Batch 1 + Batch 2). The rule remains active and mandatory for future work.**
+
+For every BYL ERP page, all page-level actions must be consolidated into one canonical Page Header Action Zone at the upper-right of the page header. This applies to Create, Edit, Show/Detail, Index/List, dashboards, import/export workflows, and other operational pages.
+
+Page-level actions include Save/Create/Update, Cancel, Back/Back to List, Edit, New/Create, Import, Export, Archive/Restore, Delete, and any other action whose scope is the current page, current primary record, or current workflow. Do not duplicate or scatter those actions at the page bottom, beside unrelated cards, or across multiple page regions.
+
+Within the upper-right cluster, navigation/cancel actions come first, secondary business actions next, destructive actions remain visually separated and confirmation-protected, and the single dominant primary action is rightmost. On narrow screens the same header action zone may wrap, but it must remain at the top and must not migrate to a bottom action bar.
+
+This rule does not move table-row actions, field-local actions, filters/search controls, pagination, or modal-local actions out of their own context. Existing pages are migration candidates; whenever an existing page is materially touched, its page-level actions must be brought into compliance.
+
+This is an OWNER-APPROVED HIGHEST UI interaction rule and applies globally unless the Owner explicitly revokes or replaces it.

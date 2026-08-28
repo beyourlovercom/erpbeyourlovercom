@@ -21,7 +21,7 @@ const post = (path: string, data: any = {}) => router.post(path, data, { preserv
           <h2>WooCommerce 入站</h2>
           <p>把 WooCommerce 客户订单幂等写入同一个 ERP Order，不创建第二套订单表。</p>
         </div>
-        <a class="mvp-button" href="/sync">返回人工同步</a>
+        <div class="mvp-form-actions page-header-actions"><a class="mvp-button" href="/sync">返回人工同步</a></div>
       </div>
 
       <div class="mvp-grid mvp-grid-3">

@@ -81,7 +81,8 @@ const orderPath = (order: Order) => order.order_kind === 'kol_fulfillment' ? `/k
     <section class="mvp-page orders-page">
       <div class="mvp-page-heading">
         <div><p class="mvp-kicker">订单核心</p><h2>{{ heading }}</h2><p>统一维护 Website、KOL 和 Manual Other 订单。</p></div>
-        <div class="mvp-actions">
+        <div class="mvp-actions page-header-actions">
+          <a class="mvp-button" :href="exportUrl()">导出 CSV</a>
           <template v-if="orderKind === 'all' && orderScope !== 'external_warehouse'">
             <Link class="mvp-button" href="/customers/orders/create">新建客户订单</Link>
             <Link class="mvp-button mvp-button-primary" href="/kol/orders/create">新建网红订单</Link>
@@ -110,7 +111,7 @@ const orderPath = (order: Order) => order.order_kind === 'kol_fulfillment' ? `/k
         <input v-model="filters.search" aria-label="搜索订单" placeholder="搜索订单号、外部单号或收件人">
         <select v-model="filters.source_type" aria-label="来源"><option value="">全部来源</option><option v-for="source in sourceTypes" :key="source.value" :value="source.value">{{ source.label }}</option></select>
         <select v-model="filters.order_status" aria-label="状态"><option value="">全部状态</option><option value="pending_shipment">待发货</option><option value="shipped">已发货</option><option value="cancelled">已取消</option></select>
-        <button class="mvp-button" type="submit">筛选</button><a class="mvp-button" :href="exportUrl()">导出 CSV</a>
+        <button class="mvp-button" type="submit">筛选</button>
       </form>
 
       <div class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th>订单号</th><th>来源</th><th>订单日期</th><th>收件人</th><th>国家</th><th>状态</th><th>负责人</th><th></th></tr></thead><tbody><tr v-for="order in orders.data" :key="order.id"><td><Link :href="orderPath(order)">{{ order.external_order_number }}</Link></td><td>{{ order.source_label }}</td><td>{{ order.order_date }}</td><td>{{ order.address?.recipient_name ?? '—' }}</td><td>{{ order.address?.country ?? '—' }}</td><td><span class="mvp-status">{{ order.order_status_label }}</span></td><td>{{ order.owner_label ?? '—' }}</td><td><Link :href="orderPath(order)">查看</Link></td></tr><tr v-if="orders.data.length === 0"><td colspan="8" class="mvp-empty">暂无符合条件的订单</td></tr></tbody></table></div>

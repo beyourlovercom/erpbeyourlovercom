@@ -10,8 +10,8 @@ const submit = () => form.post('/settings/users')
   <Head title="新增用户 · BYL ERP" />
   <AuthenticatedLayout title="新增用户" :breadcrumbs="['BYL ERP', '设置', '用户', '新增']">
     <section class="mvp-page">
-      <div class="mvp-page-heading"><div><p class="mvp-kicker">系统设置</p><h2>新增用户</h2></div></div>
-      <form class="mvp-form" @submit.prevent="submit">
+      <div class="mvp-page-heading"><div><p class="mvp-kicker">系统设置</p><h2>新增用户</h2></div><div class="mvp-form-actions page-header-actions"><a class="mvp-button" href="/settings/users">取消</a><a class="mvp-button" href="/settings/users">返回列表</a><button type="submit" form="user-create-form" class="mvp-button mvp-button-primary" :disabled="form.processing">保存用户</button></div></div>
+      <form id="user-create-form" class="mvp-form" @submit.prevent="submit">
         <div class="mvp-form-grid">
           <label>姓名<input v-model="form.name" required></label>
           <span v-if="form.errors.name" class="mvp-field-error">{{ form.errors.name }}</span>
@@ -28,7 +28,6 @@ const submit = () => form.post('/settings/users')
           </label>
           <span v-if="form.errors.role" class="mvp-field-error">{{ form.errors.role }}</span>
         </div>
-        <div class="mvp-form-actions"><button class="mvp-button mvp-button-primary" :disabled="form.processing">保存用户</button><a class="mvp-button" href="/settings/users">取消</a></div>
       </form>
     </section>
   </AuthenticatedLayout>

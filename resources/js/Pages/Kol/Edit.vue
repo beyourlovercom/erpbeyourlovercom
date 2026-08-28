@@ -390,7 +390,7 @@ const breadcrumbs = [
             <h1 class="erp-form-title">{{ kol.display_name }}</h1>
             <p class="erp-form-subtitle">修改红人资料、业务画像、联系与收货信息后点击「保存更改」</p>
           </div>
-          <div class="kol-header-actions">
+          <div class="kol-header-actions page-header-actions">
             <a href="/kol/library" class="erp-btn erp-btn-secondary">返回列表</a>
             <a :href="`/kol/library/${kol.id}`" class="erp-btn erp-btn-secondary">取消</a>
             <button type="submit" form="kol-edit-form" class="erp-btn erp-btn-primary">保存修改</button>

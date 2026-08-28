@@ -32,7 +32,7 @@ Every formal create/edit page follows this order:
 2. Page header: title, concise purpose, optional Back/List action.
 3. Optional identity/status strip for existing records.
 4. Business-section cards.
-5. Bottom action bar.
+5. Upper-right Page Header Action Zone is the canonical location for page-level actions; no duplicate bottom action bar.
 6. Optional destructive zone below or visually separated from the primary action.
 
 Desktop content width target: 960–1120px. The form must not stretch edge-to-edge on large screens. The header and action bar align to the same content column.
@@ -168,3 +168,14 @@ A form is not complete unless:
 Any new or materially redesigned BYL ERP create/edit/data-entry page MUST read this document before implementation. Existing forms should migrate toward it when touched. A conflicting page-local style must yield to this standard unless the Owner explicitly approves an exception.
 
 Changes to this V1 require explicit Owner approval and a new version or clearly recorded revision.
+## 13. Global Page-Level Action Placement — Owner Approved Highest Rule
+
+**Implementation Status: OWNER_UAT PASS / COMPLETE / FROZEN / CLOSED (Batch 1 + Batch 2, 2026-08-28). This section remains the mandatory global rule for future pages and future material changes.**
+
+All page-level actions on Create, Edit, Show/Detail, Index/List, dashboard and operational workflow pages are consolidated in one upper-right Page Header Action Zone. Save/Create/Update, Cancel, Back/Back to List, Edit, New, Import, Export, Archive/Restore, Delete and similar actions must not be scattered across the page or duplicated at the bottom.
+
+Order inside the cluster is stable: navigation/cancel first, secondary business actions next, destructive actions visually separated and confirmation-protected, and the single dominant primary action at the far right. On narrow screens the same top action zone may wrap without moving to a bottom action bar.
+
+This rule governs page-level actions only. Table-row actions stay with the row; field-local actions stay with the field; filters/search controls stay in their toolbar; pagination stays with the list; modal-local actions stay within the modal. Existing pages migrate when materially touched.
+
+This global rule supersedes the earlier Create/Edit bottom-action-bar wording in this document.

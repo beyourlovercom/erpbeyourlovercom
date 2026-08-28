@@ -154,6 +154,20 @@ const shipmentStatusLabel = computed(() => {
     <div class="erp-form-page">
       <div class="erp-form-content">
 
+        <div class="erp-form-header-row">
+          <div>
+            <p class="ord-kicker">{{ order.order_kind_label }}</p>
+            <h1 class="erp-form-title">{{ order.external_order_number }}</h1>
+            <p class="erp-form-subtitle">查看订单事实；进入编辑模式后可维护允许修改的订单字段。</p>
+          </div>
+          <div class="erp-form-header-actions page-header-actions">
+            <button v-if="editMode" type="button" class="erp-btn erp-btn-secondary" @click="cancelEdit">取消编辑</button>
+            <a :href="basePath" class="erp-btn erp-btn-secondary">返回列表</a>
+            <button v-if="!editMode" type="button" class="erp-btn erp-btn-primary" @click="enterEditMode">编辑订单</button>
+            <button v-else type="button" class="erp-btn erp-btn-primary" :disabled="form.processing" @click="submit">保存订单</button>
+          </div>
+        </div>
+
         <!-- Identity strip -->
         <div class="ord-identity-strip">
           <div class="ord-identity-main">
@@ -168,16 +182,6 @@ const shipmentStatusLabel = computed(() => {
               <summary class="ord-details-summary">ERP技术编号</summary>
               <span class="ord-details-value">{{ order.internal_order_number }}</span>
             </details>
-            <button
-              v-if="!editMode"
-              type="button"
-              class="erp-btn erp-btn-secondary"
-              @click="enterEditMode"
-            >
-              编辑订单
-            </button>
-            <a v-else :href="basePath" class="erp-btn erp-btn-secondary">返回列表</a>
-            <a v-if="!editMode" :href="basePath" class="erp-btn erp-btn-secondary">返回列表</a>
           </div>
         </div>
 
@@ -422,14 +426,6 @@ const shipmentStatusLabel = computed(() => {
           </div>
         </div>
 
-        <!-- Edit Mode action bar -->
-        <div v-if="editMode" class="erp-form-actions ord-action-bar">
-          <button type="button" class="erp-btn erp-btn-secondary" @click="cancelEdit">取消编辑</button>
-          <button type="button" class="erp-btn erp-btn-primary" :disabled="form.processing" @click="submit">
-            保存订单
-          </button>
-        </div>
-
         <!-- Audit log -->
         <div class="erp-form-card ord-audit-card">
           <h2 class="erp-form-card-title">操作审计</h2>
@@ -447,6 +443,14 @@ const shipmentStatusLabel = computed(() => {
 </template>
 
 <style scoped>
+.erp-form-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
 /* Identity strip — order-specific, no erp-* equivalent */
 .ord-identity-strip {
   display: flex;
@@ -604,11 +608,6 @@ const shipmentStatusLabel = computed(() => {
   padding: 10px 12px;
 }
 
-/* Action bar — right-aligned for orders */
-.ord-action-bar {
-  justify-content: flex-end;
-}
-
 /* Audit log */
 .ord-audit-card {
   margin-top: 0;
@@ -643,6 +642,13 @@ const shipmentStatusLabel = computed(() => {
 }
 
 @media (max-width: 767px) {
+  .erp-form-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .erp-form-header-actions .erp-btn {
+    flex: 1 1 auto;
+  }
   .ord-span-2 {
     grid-column: span 1;
   }

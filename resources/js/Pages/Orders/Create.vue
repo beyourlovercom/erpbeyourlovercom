@@ -97,10 +97,14 @@ const submit = () =>
             <h1 class="erp-form-title">{{ pageTitle }}</h1>
             <p class="erp-form-subtitle">填写订单信息后点击「创建订单」完成录入</p>
           </div>
-          <a :href="listHref" class="erp-btn erp-btn-secondary">返回列表</a>
+          <div class="erp-form-header-actions page-header-actions">
+            <a :href="listHref" class="erp-btn erp-btn-secondary">取消</a>
+            <a :href="listHref" class="erp-btn erp-btn-secondary">返回列表</a>
+            <button type="submit" form="order-create-form" class="erp-btn erp-btn-primary" :disabled="form.processing">创建订单</button>
+          </div>
         </div>
 
-        <form @submit.prevent="submit">
+        <form id="order-create-form" @submit.prevent="submit">
 
           <!-- Card 1: 订单信息 -->
           <div class="erp-form-card">
@@ -255,13 +259,7 @@ const submit = () =>
             </div>
           </div>
 
-          <!-- Action bar -->
-          <div class="erp-form-actions ord-action-bar">
-            <a :href="listHref" class="erp-btn erp-btn-secondary">取消</a>
-            <button type="submit" class="erp-btn erp-btn-primary" :disabled="form.processing">
-              创建订单
-            </button>
-          </div>
+
 
         </form>
       </div>
@@ -344,12 +342,22 @@ const submit = () =>
   grid-column: span 2;
 }
 
-/* action bar overrides erp-form-actions to right-align for create */
-.ord-action-bar {
+.erp-form-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 @media (max-width: 767px) {
+  .erp-form-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .erp-form-header-actions .erp-btn {
+    flex: 1 1 auto;
+  }
   .ord-span-2 {
     grid-column: span 1;
   }

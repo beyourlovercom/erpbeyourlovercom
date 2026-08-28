@@ -58,10 +58,14 @@ const submit = () => {
             <h1 class="erp-form-title">新增产品</h1>
             <p class="erp-form-subtitle">管理产品资料、物流属性与会计参考成本</p>
           </div>
-          <a href="/products/list" class="erp-btn erp-btn-secondary">返回列表</a>
+          <div class="erp-form-header-actions page-header-actions">
+            <a href="/products/list" class="erp-btn erp-btn-secondary">取消</a>
+            <a href="/products/list" class="erp-btn erp-btn-secondary">返回列表</a>
+            <button type="submit" form="product-create-form" class="erp-btn erp-btn-primary" :disabled="submitting">{{ submitting ? '提交中…' : '创建产品' }}</button>
+          </div>
         </div>
 
-        <form @submit.prevent="submit">
+        <form id="product-create-form" @submit.prevent="submit">
 
           <!-- Card 1: 基本信息 -->
           <div class="erp-form-card">
@@ -418,16 +422,6 @@ const submit = () => {
               />
               <p v-if="errors.notes" class="erp-field-error">{{ errors.notes }}</p>
             </div>
-          </div>
-
-          <!-- Action bar -->
-          <div class="erp-form-actions">
-            <a href="/products/list" class="erp-btn erp-btn-secondary">取消</a>
-            <button
-              type="submit"
-              class="erp-btn erp-btn-primary"
-              :disabled="submitting"
-            >{{ submitting ? '提交中…' : '创建产品' }}</button>
           </div>
 
         </form>

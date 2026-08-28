@@ -96,7 +96,7 @@ const effectivePermissions = computed(() =>
   <Head title="编辑用户 · BYL ERP" />
   <AuthenticatedLayout title="编辑用户" :breadcrumbs="['BYL ERP', '设置', '用户', user.name, '编辑']">
     <section class="mvp-page">
-      <div class="mvp-page-heading"><div><p class="mvp-kicker">系统设置</p><h2>编辑 {{ user.name }}</h2></div></div>
+      <div class="mvp-page-heading"><div><p class="mvp-kicker">系统设置</p><h2>编辑 {{ user.name }}</h2></div><div class="mvp-form-actions page-header-actions"><a class="mvp-button" href="/settings/users">返回用户列表</a></div></div>
 
       <form class="mvp-form" @submit.prevent="submitProfile">
         <h3>基本信息</h3>
@@ -161,7 +161,6 @@ const effectivePermissions = computed(() =>
       </div>
 
       <p v-if="isSelf" class="mvp-field-error">提示：管理员不能停用或删除自己的账号，请返回用户列表操作其他账号。</p>
-      <a class="mvp-button" href="/settings/users">返回用户列表</a>
     </section>
   </AuthenticatedLayout>
 </template>

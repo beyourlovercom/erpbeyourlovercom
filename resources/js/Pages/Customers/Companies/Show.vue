@@ -13,7 +13,7 @@ const restore = () => { if (window.confirm(`确认取消归档公司「${props.c
     <section class="mvp-page">
       <div class="mvp-page-heading">
         <div><p class="mvp-kicker">公司详情</p><h2>{{ company.name }}</h2><p><span class="mvp-status">{{ company.archived_at ? '已归档' : company.status }}</span></p></div>
-        <div class="mvp-form-actions">
+        <div class="mvp-form-actions page-header-actions">
           <a class="mvp-button" href="/customers/companies">返回列表</a>
           <Link v-if="canOperate && !company.archived_at" class="mvp-button" :href="`/customers/companies/${company.id}/edit`">编辑</Link>
           <button v-if="canOperate && !company.archived_at" class="mvp-button" type="button" @click="archive">归档</button>
