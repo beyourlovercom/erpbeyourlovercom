@@ -55,6 +55,7 @@ final class SavedViewController
 
     private function authorizeView(Request $request, SavedView $view): void
     {
+        abort_unless($view->module === 'kol', 404);
         $userId = (int) $request->user()->getAuthIdentifier();
         if ($view->created_by !== $userId) {
             abort(403);

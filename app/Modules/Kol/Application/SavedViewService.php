@@ -63,7 +63,7 @@ final class SavedViewService
 
         $this->audit->record(
             AuditActor::user($actor, AuditSource::Web),
-            'kol.saved_view.created',
+            $module.'.saved_view.created',
             'saved_view',
             $view->id,
             null,
@@ -91,7 +91,7 @@ final class SavedViewService
 
         $this->audit->record(
             AuditActor::user($actor, AuditSource::Web),
-            'kol.saved_view.updated',
+            $view->module.'.saved_view.updated',
             'saved_view',
             $view->id,
             $before,
@@ -105,7 +105,7 @@ final class SavedViewService
     {
         $this->audit->record(
             AuditActor::user($actor, AuditSource::Web),
-            'kol.saved_view.deleted',
+            $view->module.'.saved_view.deleted',
             'saved_view',
             $view->id,
             ['name' => $view->name, 'module' => $view->module],

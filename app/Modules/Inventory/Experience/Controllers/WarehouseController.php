@@ -71,7 +71,7 @@ final class WarehouseController
             'name'=>['required','string','max:191'],'country_code'=>['nullable','string','size:2'],
             'address_line1'=>['nullable','string','max:255'],'address_line2'=>['nullable','string','max:255'],'city'=>['nullable','string','max:128'],
             'state_region'=>['nullable','string','max:128'],'postal_code'=>['nullable','string','max:32'],'timezone'=>['nullable','string','max:64'],
-            'type'=>['required','string','max:32'],'ownership_type'=>['sometimes','in:owned,external'],'is_active'=>['boolean'],'priority'=>['integer','min:0','max:9999'],
+            'type'=>['required','string','max:32'],'ownership_type'=>['sometimes','in:owned,external'],'is_domestic'=>['boolean'],'is_active'=>['boolean'],'priority'=>['integer','min:0','max:9999'],
         ];
     }
     private function inventoryRules(bool $withProduct=true): array
@@ -89,7 +89,7 @@ final class WarehouseController
         return [
             'id'=>$w->id,'slug'=>$w->slug,'code'=>$w->code,'name'=>$w->name,'country_code'=>$w->country_code,
             'address_line1'=>$w->address_line1,'address_line2'=>$w->address_line2,'city'=>$w->city,'state_region'=>$w->state_region,'postal_code'=>$w->postal_code,
-            'timezone'=>$w->timezone,'type'=>$w->type,'ownership_type'=>$w->ownership_type,'is_active'=>$w->is_active,'priority'=>$w->priority,'billing_markdown'=>$w->billing_markdown,
+            'timezone'=>$w->timezone,'type'=>$w->type,'ownership_type'=>$w->ownership_type,'is_domestic'=>$w->is_domestic,'is_active'=>$w->is_active,'priority'=>$w->priority,'billing_markdown'=>$w->billing_markdown,
             'service_regions'=>$w->serviceRegions->pluck('country_code')->all(),
             'inventories'=>$w->inventories->map(fn($i)=>[
                 'id'=>$i->id,'product'=>['id'=>$i->product->id,'sku'=>$i->product->sku,'name'=>$i->product->name],

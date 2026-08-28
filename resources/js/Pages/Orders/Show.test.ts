@@ -57,6 +57,7 @@ const baseOrder = {
   ],
   shipment: { shipment_status: 'pending', carrier: null, tracking_number: null, shipped_at: null },
   manual_sync: null,
+  operational_markers: [],
 }
 
 const kolOrder = { ...baseOrder, order_kind: 'kol_fulfillment', order_kind_label: '网红履约订单' }
@@ -213,6 +214,14 @@ describe('Orders/Show V2', () => {
     expect(wrapper.text()).not.toContain('保存订单')
     const editBtnAgain = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
     expect(editBtnAgain).toBeTruthy()
+  })
+
+  it('renders explicit operational markers without replacing order status', async () => {
+    const marked = { ...baseOrder, operational_markers: ['exception'] }
+    const wrapper = mount(Show, { props: { order: marked, audit, canMarkOperational: true } })
+    expect(wrapper.text()).toContain('业务标记')
+    expect(wrapper.text()).toContain('✓ 异常')
+    expect(wrapper.text()).toContain('待发货')
   })
 
   // Immutable identity always read-only

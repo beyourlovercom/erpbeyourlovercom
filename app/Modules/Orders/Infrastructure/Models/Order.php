@@ -67,4 +67,9 @@ class Order extends Model
         return $this->hasMany('App\\Modules\\Finance\\Infrastructure\\Models\\OrderCostEntry');
     }
 
+    public function operationalMarkers(): HasMany
+    {
+        return $this->hasMany(OrderOperationalMarker::class);
+    }
+
 }

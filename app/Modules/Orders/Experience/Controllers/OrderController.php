@@ -6,6 +6,7 @@ use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderSourceType;
+use App\Modules\Kol\Application\SavedViewService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Audit\Infrastructure\Models\AuditRecord;
 use Illuminate\Http\Request;
@@ -19,12 +20,13 @@ final class OrderController
     public function __construct(
         private readonly OrderService $orders,
         private readonly InventoryAvailabilityReader $availability,
+        private readonly SavedViewService $views,
     ) {}
 
     public function index(Request $request): Response
     {
         $kind = $this->kindOrNull($request);
-        $filters = $request->only(['search', 'source_type', 'order_status']);
+        $filters = $request->only(['search', 'source_type', 'order_status', 'view']);
         $scope = (string) $request->route('order_scope');
         if ($scope === 'external_warehouse') {
             $filters['warehouse_ownership'] = 'external';
@@ -38,7 +40,8 @@ final class OrderController
             'orderKind' => $kind?->value ?? 'all',
             'orderScope' => $scope === 'external_warehouse' ? 'external_warehouse' : 'all',
             'orders' => $orders->through(fn (Order $order): array => $this->orderData($order))->toArray(),
-            'filters' => $request->only(['search', 'source_type', 'order_status']),
+            'filters' => $request->only(['search', 'source_type', 'order_status', 'view']),
+            'savedViews' => $this->views->forUser('orders', (int) $request->user()->getAuthIdentifier(), false),
             'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),
         ]);
     }
@@ -74,13 +77,14 @@ final class OrderController
     public function show(Request $request, Order $order): Response
     {
         $this->authorizeKind($request, $order);
-        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync']);
+        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync', 'operationalMarkers']);
         $inventoryAvailability = $this->availability->forProductIds($order->items->pluck('product_id')->filter()->unique()->values()->all());
 
         return Inertia::render('Orders/Show', [
             'order' => $this->orderData($order),
             'inventoryAvailability' => $inventoryAvailability,
             'warehouses' => $this->availability->activeWarehouses(),
+            'canMarkOperational' => $request->user()?->can('orders.edit') ?? false,
             'audit' => AuditRecord::query()
                 ->where('entity_type', Order::class)
                 ->where('entity_id', (string) $order->getKey())
@@ -103,10 +107,18 @@ final class OrderController
         return back()->with('success', '订单已更新');
     }
 
+    public function setOperationalMarker(Request $request, Order $order, string $marker): \Illuminate\Http\RedirectResponse
+    {
+        $data = $request->validate(['active' => ['required', 'boolean']]);
+        $this->orders->setOperationalMarker($order, $marker, (bool) $data['active'], $request->user());
+
+        return back()->with('success', '订单业务标记已更新');
+    }
+
     public function export(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
     {
         $kind = $this->kindOrNull($request);
-        $filters = $request->only(['search', 'source_type', 'order_status']);
+        $filters = $request->only(['search', 'source_type', 'order_status', 'view']);
         $scope = (string) $request->route('order_scope');
         if ($scope === 'external_warehouse') {
             $filters['warehouse_ownership'] = 'external';
@@ -169,6 +181,7 @@ final class OrderController
                 ...$order->shipment->only(['shipment_status', 'warehouse_id', 'warehouse_selection_source', 'carrier', 'service', 'carrier_selection_source', 'tracking_number', 'shipped_at', 'logistics_note', 'handled_by']),
                 'warehouse_name' => $order->shipment->warehouse?->name,
             ] : null,
+            'operational_markers' => $order->relationLoaded('operationalMarkers') ? $order->operationalMarkers->pluck('marker')->values()->all() : [],
             'manual_sync' => $order->manualSync ? [
                 'status' => $order->manualSync->website_sync_status->value,
                 'synced_at' => $order->manualSync->synced_at?->toIso8601String(),
