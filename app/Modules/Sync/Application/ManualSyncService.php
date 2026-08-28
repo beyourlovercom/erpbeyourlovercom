@@ -37,7 +37,17 @@ final class ManualSyncService
 
     public function complete(Model $order, ?Authenticatable $actor, ?string $note = null): Model
     {
-        return DB::transaction(function () use ($order, $actor, $note): Model {
+        return $this->completeWithReason($order, $actor, $note, 'external_site_updated_manually');
+    }
+
+    public function completeFromAutomaticTracking(Model $order, ?Authenticatable $actor, ?string $note = null): Model
+    {
+        return $this->completeWithReason($order, $actor, $note, 'woocommerce_tracking_updated_automatically');
+    }
+
+    private function completeWithReason(Model $order, ?Authenticatable $actor, ?string $note, string $reason): Model
+    {
+        return DB::transaction(function () use ($order, $actor, $note, $reason): Model {
             $order->loadMissing('shipment');
             if ($order->shipment?->shipment_status !== 'shipped') {
                 throw new \DomainException('Only shipped orders can be marked as manually synced.');
@@ -56,7 +66,7 @@ final class ManualSyncService
                 'synced_by' => $actor?->getAuthIdentifier(),
                 'sync_note' => $note,
             ])->save();
-            $this->record($actor, 'manual_sync.completed', $sync, $before, 'external_site_updated_manually');
+            $this->record($actor, 'manual_sync.completed', $sync, $before, $reason);
 
             return $sync->fresh(['order', 'operator']);
         });
