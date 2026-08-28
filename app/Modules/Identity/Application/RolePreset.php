@@ -36,9 +36,9 @@ enum RolePreset: string
         return match ($this) {
             self::Logistics => ['dashboard.view', 'orders.view', 'logistics.view', 'logistics.operate', 'sync.view', 'sync.operate'],
             self::SalesRepresentative => ['dashboard.view', 'customers.view', 'customers.operate', 'orders.view', 'orders.create', 'orders.edit'],
-            self::KolSpecialist => ['dashboard.view', 'kol.view', 'orders.view', 'orders.create', 'orders.edit'],
+            self::KolSpecialist => ['dashboard.view', 'kol.view', 'kol.operate', 'orders.view', 'orders.create', 'orders.edit'],
             self::Finance => ['dashboard.view', 'orders.view', 'accounting.view', 'analysis.view'],
-            self::Operations => ['dashboard.view', 'customers.view', 'customers.operate', 'orders.view', 'orders.create', 'orders.edit', 'logistics.view', 'sync.view', 'analysis.view', 'inventory.view', 'procurement.view', 'products.view'],
+            self::Operations => ['dashboard.view', 'customers.view', 'customers.operate', 'orders.view', 'orders.create', 'orders.edit', 'logistics.view', 'sync.view', 'analysis.view', 'inventory.view', 'procurement.view', 'products.view', 'kol.view', 'kol.operate', 'kol.views.manage'],
             self::Writer => ['dashboard.view', 'guides.view'],
             self::Administrator => self::allPermissionKeys(),
         };

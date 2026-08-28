@@ -40,6 +40,8 @@ final class PermissionCatalog
                 'label' => '网红',
                 'permissions' => [
                     ['key' => 'kol.view', 'label' => '查看网红'],
+                    ['key' => 'kol.operate', 'label' => '操作网红'],
+                    ['key' => 'kol.views.manage', 'label' => '管理网红视图'],
                 ],
             ],
             '库存' => [

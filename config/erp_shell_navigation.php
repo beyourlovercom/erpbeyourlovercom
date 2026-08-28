@@ -19,9 +19,15 @@ return [
         ['key' => 'customers-orders-mine', 'label' => '我的订单', 'path' => '/customers/orders/mine', 'route' => 'customers.orders.mine', 'permission' => 'prototype.view', 'placeholder' => false],
     ]],
     ['key' => 'kol', 'label' => '网红', 'emoji' => '⭐', 'path' => '/kol', 'route' => 'shell.kol', 'permission' => 'kol.view', 'placeholder' => false, 'children' => [
-        ['key' => 'kol-orders-create', 'label' => '新建订单', 'path' => '/kol/orders/create', 'route' => 'kol.orders.create', 'permission' => 'orders.create', 'placeholder' => false],
-        ['key' => 'kol-orders-mine', 'label' => '我的订单', 'path' => '/kol/orders/mine', 'route' => 'kol.orders.mine', 'permission' => 'prototype.view', 'placeholder' => false],
-        ['key' => 'kol-orders-team', 'label' => '团队订单', 'path' => '/kol/orders/team', 'route' => 'kol.orders.team', 'permission' => 'prototype.view', 'placeholder' => false],
+        ['key' => 'kol-library', 'label' => '红人库', 'path' => '/kol/library', 'route' => 'kol.library', 'permission' => 'kol.view', 'placeholder' => false],
+        ['key' => 'kol-library-create', 'label' => '新增网红', 'path' => '/kol/library/create', 'route' => 'kol.library.create', 'permission' => 'kol.operate', 'placeholder' => false],
+        ['key' => 'kol-opportunities', 'label' => '合作机会', 'path' => '/kol/opportunities', 'route' => 'kol.opportunities', 'permission' => 'kol.view', 'placeholder' => false],
+        ['key' => 'kol-collaborations', 'label' => '合作记录', 'path' => '/kol/collaborations', 'route' => 'kol.collaborations', 'permission' => 'kol.view', 'placeholder' => false],
+        ['key' => 'kol-communications', 'label' => '沟通跟进', 'path' => '/kol/communications', 'route' => 'kol.communications', 'permission' => 'kol.view', 'placeholder' => false],
+        ['key' => 'kol-samples', 'label' => '样品与发货', 'path' => '/kol/samples', 'route' => 'kol.samples', 'permission' => 'kol.view', 'placeholder' => false],
+        ['key' => 'kol-content', 'label' => '内容与发布', 'path' => '/kol/content', 'route' => 'kol.content', 'permission' => 'kol.view', 'placeholder' => false],
+        ['key' => 'kol-commissions', 'label' => '佣金与结算', 'path' => '/kol/commissions', 'route' => 'kol.commissions', 'permission' => 'kol.view', 'placeholder' => false],
+        ['key' => 'kol-affiliate', 'label' => '优惠码与 Affiliate', 'path' => '/kol/affiliate', 'route' => 'kol.affiliate', 'permission' => 'kol.view', 'placeholder' => false],
     ]],
     ['key' => 'inventory', 'label' => '库存', 'emoji' => '📦', 'path' => '/inventory', 'route' => 'shell.inventory', 'permission' => 'inventory.view', 'placeholder' => false, 'children' => [
         ['key' => 'inventory-overview', 'label' => '库存总览', 'path' => '/inventory', 'route' => 'shell.inventory', 'permission' => 'inventory.view', 'placeholder' => false],

@@ -21,6 +21,7 @@
         </include>
     </source>
     <php>
+        <env name="APP_BASE_PATH" value="/Users/a/ai/007/worktrees/erp-kol-m1-foundation-001"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_KEY" value="base64:dGVzdGtleXRlc3RrZXl0ZXN0a2V5dGVzdGtleXRlc3Q="/>
         <env name="ERP_LOCAL_ADMIN_BYPASS" value="false"/>

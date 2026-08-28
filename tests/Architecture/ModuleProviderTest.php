@@ -8,6 +8,7 @@ use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Finance\Providers\FinanceServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
 use App\Modules\Inventory\Providers\InventoryServiceProvider;
+use App\Modules\Kol\Providers\KolServiceProvider;
 use App\Modules\Logistics\Providers\LogisticsServiceProvider;
 use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
@@ -43,6 +44,7 @@ final class ModuleProviderTest extends TestCase
     {
         $providers = [
             IdentityServiceProvider::class,
+            KolServiceProvider::class,
             OrdersServiceProvider::class,
             LogisticsServiceProvider::class,
             FinanceServiceProvider::class,

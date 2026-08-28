@@ -148,6 +148,7 @@ class AppShellNavigationTest extends TestCase
                     '/sync' => 'Sync/Index',
                     '/products' => 'Products/Dashboard',
                     '/inventory' => 'Inventory/Dashboard',
+                    '/kol' => 'Kol/Overview',
                     default => 'Shell/ModuleOverview',
                 }));
         }

@@ -216,7 +216,7 @@ final class UserManagementTest extends TestCase
         $expected = [
             RolePreset::Logistics->value => ['dashboard.view', 'logistics.operate', 'logistics.view', 'orders.view', 'sync.operate', 'sync.view'],
             RolePreset::SalesRepresentative->value => ['customers.operate', 'customers.view', 'dashboard.view', 'orders.create', 'orders.edit', 'orders.view'],
-            RolePreset::KolSpecialist->value => ['dashboard.view', 'kol.view', 'orders.create', 'orders.edit', 'orders.view'],
+            RolePreset::KolSpecialist->value => ['dashboard.view', 'kol.operate', 'kol.view', 'orders.create', 'orders.edit', 'orders.view'],
             RolePreset::Finance->value => ['accounting.view', 'analysis.view', 'dashboard.view', 'orders.view'],
             RolePreset::Writer->value => ['dashboard.view', 'guides.view'],
         ];
