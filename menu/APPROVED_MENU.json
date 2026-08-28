@@ -234,21 +234,6 @@
       "sort": 60
     },
     {
-      "code": "kol-overview",
-      "parent_code": "kol",
-      "level": 2,
-      "label_zh": "KOL 总览",
-      "slug": "overview",
-      "url": "/kol/overview",
-      "route": "kol.overview",
-      "permission": "kol.view",
-      "emoji": null,
-      "function_zh": "KOL 模块总览：展示 KOL 总数、我的 KOL、关系阶段分布和 100K+ 数量。",
-      "status": "implemented",
-      "progress": 100,
-      "sort": 10
-    },
-    {
       "code": "kol-library",
       "parent_code": "kol",
       "level": 2,
@@ -259,6 +244,21 @@
       "permission": "kol.view",
       "emoji": null,
       "function_zh": "KOL 主数据列表，支持搜索、Owner 筛选、平台/国家/粉丝数过滤、保存视图、分页和排序。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 10
+    },
+    {
+      "code": "kol-library-create",
+      "parent_code": "kol",
+      "level": 2,
+      "label_zh": "新增网红",
+      "slug": "create",
+      "url": "/kol/library/create",
+      "route": "kol.library.create",
+      "permission": "kol.operate",
+      "emoji": null,
+      "function_zh": "新增 KOL 主数据，默认负责人、加入日期、合作类型、国家/语言和主运营社交平台。",
       "status": "implemented",
       "progress": 100,
       "sort": 20

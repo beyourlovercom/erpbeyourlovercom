@@ -602,7 +602,7 @@ This named upgrade remains inside `ERP-KOL-M1-FOUNDATION-001` / PR #103; it is n
 
 ### Dashboard target
 
-`KOL 总览` upgrades from simple count cards to an operational dashboard. It should include, where backed by canonical data: total KOLs, monthly new KOLs, collaborated KOLs, long-term KOLs, pending publication count, pending commission amount; monthly GMV distribution; KOL level distribution; collaboration-stage funnel; content-format distribution; category/platform/city distribution; and Owner/负责人 ranking. Later-package metrics must show zero/not-yet-connected rather than fabricated facts until M1.1-M1.4 sources exist.
+`/kol` 总览 upgrades from simple count cards to an operational dashboard. It should include, where backed by canonical data: total KOLs, monthly new KOLs, collaborated KOLs, long-term KOLs, pending publication count, pending commission amount; monthly GMV distribution; KOL level distribution; collaboration-stage funnel; content-format distribution; category/platform/city distribution; and Owner/负责人 ranking. Later-package metrics must show zero/not-yet-connected rather than fabricated facts until M1.1-M1.4 sources exist.
 
 Dashboard filters: date range, Owner, platform, country/region, KOL level and collaboration stage. Server-side Owner scope remains authoritative.
 

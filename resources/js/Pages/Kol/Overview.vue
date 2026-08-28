@@ -40,7 +40,7 @@ const filters = reactive({
   date_to: props.filters.date_to ?? '',
 })
 
-const submit = () => router.get('/kol/overview', filters, { preserveState: true, replace: true })
+const submit = () => router.get('/kol', filters, { preserveState: true, replace: true })
 
 const stageLabel = (stage: string): string => ({
   prospect: '潜在',
@@ -54,7 +54,7 @@ const stageLabel = (stage: string): string => ({
 
 const platformLabel = (p: string): string => ({ instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', xiaohongshu: '小红书', weibo: '微博', wechat: '微信', twitter: 'X/Twitter', facebook: 'Facebook', other: '其他' }[p] ?? p)
 
-const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', 'KOL 总览']
+const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红']
 </script>
 
 <template>

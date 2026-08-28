@@ -64,8 +64,9 @@ Owner explicitly approved this KOL navigation baseline:
 
 ```text
 KOL
-├── KOL 总览
+├── KOL（/kol 即总览）
 ├── 红人库
+├── 新增网红
 ├── 合作机会
 ├── 合作记录
 ├── 沟通跟进
@@ -84,7 +85,7 @@ menu/navigation automated tests
 this Work Package evidence
 ```
 
-For M1.0, `KOL 总览` and `红人库` are real working surfaces. The remaining approved Level-2 entries may be registered as bounded module routes/surfaces only if they do not pretend their later M1.1–M1.4 business engines are already implemented. Their status/progress in the approved menu baseline must remain truthful.
+For M1.0, `/kol` 总览 and `红人库` are real working surfaces. The remaining approved Level-2 entries may be registered as bounded module routes/surfaces only if they do not pretend their later M1.1–M1.4 business engines are already implemented. Their status/progress in the approved menu baseline must remain truthful.
 
 Existing KOL fulfillment Order routes remain canonical capabilities and must continue to function even if they are no longer Level-2 KOL menu items.
 
@@ -530,7 +531,7 @@ Status: OWNER APPROVED / FROZEN / SAME WP + SAME BRANCH + SAME PR #103.
 This is the formal name for the current M1.0 Owner-UAT remediation. It does not open a new WP/branch/PR.
 
 Implementation scope:
-1. Upgrade `KOL 总览` to the approved operational dashboard direction with canonical-only metrics and filters; no fabricated M1.1-M1.4 data.
+1. Upgrade `/kol` 总览 to the approved operational dashboard direction with canonical-only metrics and filters; no fabricated M1.1-M1.4 data.
 2. Rebuild KOL Create/Edit/Detail on the existing ERP V2 Form VI (`erp-form-page`, `erp-form-content`, `erp-form-card`, `erp-form-grid`, `erp-form-field`, `erp-input`, standard error/action states).
 3. Expand KOL detail/business profile with Chinese labels and the Owner-approved reference fields: level, city, categories, products, GMV band, average price, content format, product/store counts, internal contact, collaboration stage and MCN facts.
 4. Add structured contact/address/tax/payout persistence and validation.
@@ -585,3 +586,28 @@ Based on the current implemented foundation and preserved uncommitted remediatio
 Current KOL V1 operating-track remainder: 22–34h effective engineering time, planning baseline ≈ 28h. Waiting time, Claude quota resets, passive CI time and Owner review latency are not counted as engineering hours.
 
 KOL Intelligence remains outside this operating-track estimate and is deferred until after M1.1–M1.4 unless Owner reprioritizes it.
+
+## M1.0 Owner UAT Acceptance — 2026-08-28
+
+OWNER_UAT_RESULT: PASS.
+
+Owner-approved final UAT adjustments inside the same M1.0 package:
+- `/kol` is the canonical KOL overview; `/kol/overview` is compatibility redirect only.
+- KOL Level-2 navigation removes standalone `KOL 总览` and adds `新增网红`.
+- Create/Edit first-screen information architecture prioritizes basic facts, shipping/contact facts and social accounts.
+- Legal name is removed from the Create/Edit UI while existing persisted data remains compatible.
+- Cooperation type is constrained to `免费发帖 | 长期合作 | 付费发帖`, default `免费发帖`.
+- New records default joined date to today and Owner to the creating account.
+- Shipping/contact card is two columns × four rows: Phone/Email, Recipient/Country, State/City, Postal Code/Detailed Address; Address Line 2 is removed from the UI.
+- Primary social rows default to Instagram and X/Twitter.
+- Country/region uses searchable canonical options with `US` default and `OTHER` fallback; language uses fixed options with `en` default and `other` fallback.
+- Create/Edit actions are sticky at the upper-right; bottom action bar is removed.
+
+Final verification after Owner UAT remediation:
+- PHP: 342 passed / 3507 assertions / 0 failures (2 skipped, 1 deprecated, 1 risky).
+- Vitest: 32 files / 294 tests PASS.
+- Typecheck: PASS.
+- Vite production build: PASS.
+- `git diff --check`: PASS.
+
+M1.0 is accepted/frozen. M1.1 remains excluded until PR #103 is merged. Production deployment/migration remains unauthorized.

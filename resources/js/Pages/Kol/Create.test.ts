@@ -62,9 +62,11 @@ describe('Kol/Create VI contract', () => {
     expect(wrapper.find('.erp-form-title').text()).toContain('新建 KOL')
   })
 
-  it('uses erp-form-actions action bar', () => {
+  it('uses sticky header actions instead of a bottom action bar', () => {
     const wrapper = mount(Create, { props: defaultProps })
-    expect(wrapper.find('.erp-form-actions').exists()).toBe(true)
+    expect(wrapper.find('.kol-sticky-header').exists()).toBe(true)
+    expect(wrapper.find('.kol-header-actions').exists()).toBe(true)
+    expect(wrapper.find('.erp-form-actions').exists()).toBe(false)
   })
 
   it('primary submit button uses erp-btn erp-btn-primary', () => {
@@ -72,7 +74,7 @@ describe('Kol/Create VI contract', () => {
     const btn = wrapper.find('button[type="submit"]')
     expect(btn.classes()).toContain('erp-btn')
     expect(btn.classes()).toContain('erp-btn-primary')
-    expect(btn.text()).toContain('创建 KOL')
+    expect(btn.text()).toContain('保存 KOL')
   })
 
   it('cancel link uses erp-btn erp-btn-secondary', () => {
@@ -94,11 +96,6 @@ describe('Kol/Create VI contract', () => {
   it('shows 业务画像 card heading', () => {
     const wrapper = mount(Create, { props: defaultProps })
     expect(wrapper.text()).toContain('业务画像')
-  })
-
-  it('shows 联系方式 card heading', () => {
-    const wrapper = mount(Create, { props: defaultProps })
-    expect(wrapper.text()).toContain('联系方式')
   })
 
   it('shows 税务与收款 card heading', () => {
@@ -138,13 +135,31 @@ describe('Kol/Create VI contract', () => {
     expect(wrapper.text()).not.toContain('Telegram')
   })
 
-  it('shows email, phone, whatsapp and other contact fields with email as default preferred method', () => {
+  it('keeps only phone and email contact inputs inside the shipping-address card', () => {
     const wrapper = mount(Create, { props: defaultProps })
-    expect(wrapper.text()).toContain('Email')
-    expect(wrapper.text()).toContain('联系电话')
-    expect(wrapper.text()).toContain('WhatsApp')
-    expect(wrapper.text()).toContain('其他联系方式')
-    expect(wrapper.text()).toContain('首选联系方式')
+    const addressCard = wrapper.findAll('.erp-form-card').find(card => card.text().includes('收件地址'))
+    expect(addressCard).toBeTruthy()
+    expect(addressCard!.text()).toContain('电话')
+    expect(addressCard!.text()).toContain('邮箱')
+    expect(wrapper.text()).not.toContain('WhatsApp')
+    expect(wrapper.text()).not.toContain('其他联系方式')
+    expect(wrapper.text()).not.toContain('首选联系方式')
+    expect(addressCard!.find('.kol-address-grid').exists()).toBe(true)
+    expect(addressCard!.findAll('.erp-form-field')).toHaveLength(8)
+  })
+
+  it('defaults cooperation type, joined date, owner and primary social platforms', () => {
+    const wrapper = mount(Create, { props: defaultProps })
+    expect(wrapper.text()).toContain('免费发帖')
+    expect(wrapper.text()).toContain('长期合作')
+    expect(wrapper.text()).toContain('付费发帖')
+    expect((wrapper.find('input[type="date"]').element as HTMLInputElement).value).toBe(new Date().toISOString().slice(0, 10))
+    const platformSelects = wrapper.findAll('.kol-sa-row select')
+    expect(platformSelects).toHaveLength(2)
+    expect((platformSelects[0].element as HTMLSelectElement).value).toBe('instagram')
+    expect((platformSelects[1].element as HTMLSelectElement).value).toBe('twitter')
+    expect((wrapper.findAll('select').find(select => select.text().includes('Test User'))!.element as HTMLSelectElement).value).toBe('1')
+    expect(wrapper.text()).not.toContain('法定名称')
   })
 
   it('shows payout method, tax id and payout account fields', () => {
@@ -157,7 +172,8 @@ describe('Kol/Create VI contract', () => {
   it('shows shipping address fields', () => {
     const wrapper = mount(Create, { props: defaultProps })
     expect(wrapper.text()).toContain('收件人')
-    expect(wrapper.text()).toContain('地址行 1')
+    expect(wrapper.text()).toContain('详细地址')
+    expect(wrapper.text()).not.toContain('地址行 2')
     expect(wrapper.text()).toContain('邮政编码')
   })
 

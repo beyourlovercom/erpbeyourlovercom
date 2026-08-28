@@ -188,7 +188,7 @@ class KolUiUpgradeTest extends TestCase
             'relationship_stage' => 'long_term',
         ]))->assertRedirect();
 
-        $response = $this->actingAs($admin)->get('/kol/overview');
+        $response = $this->actingAs($admin)->get('/kol');
         $response->assertOk();
         $overview = $response->original->getData()['page']['props']['overview'];
 
@@ -202,7 +202,7 @@ class KolUiUpgradeTest extends TestCase
     public function test_specialist_overview_does_not_expose_owner_ranking(): void
     {
         $specialist = $this->userWith(['kol.view', 'kol.operate']);
-        $response = $this->actingAs($specialist)->get('/kol/overview');
+        $response = $this->actingAs($specialist)->get('/kol');
         $response->assertOk();
         $overview = $response->original->getData()['page']['props']['overview'];
         $this->assertSame([], $overview['owner_ranking']);

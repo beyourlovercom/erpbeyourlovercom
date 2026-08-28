@@ -86,7 +86,7 @@ final class LocalUatSeeder extends Seeder
     {
         $keys = [
             'dashboard.view', 'orders.view', 'orders.create', 'orders.edit', 'logistics.view', 'logistics.operate',
-            'sync.view', 'sync.operate', 'analysis.view', 'customers.view', 'customers.operate', 'kol.view', 'inventory.view', 'inventory.operate',
+            'sync.view', 'sync.operate', 'analysis.view', 'customers.view', 'customers.operate', 'kol.view', 'kol.operate', 'kol.views.manage', 'inventory.view', 'inventory.operate',
             'procurement.view', 'products.view', 'products.operate', 'guides.view', 'accounting.view', 'system.permissions.manage',
         ];
 

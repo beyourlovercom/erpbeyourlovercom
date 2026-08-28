@@ -19,8 +19,8 @@ return [
         ['key' => 'customers-orders-mine', 'label' => '我的订单', 'path' => '/customers/orders/mine', 'route' => 'customers.orders.mine', 'permission' => 'prototype.view', 'placeholder' => false],
     ]],
     ['key' => 'kol', 'label' => '网红', 'emoji' => '⭐', 'path' => '/kol', 'route' => 'shell.kol', 'permission' => 'kol.view', 'placeholder' => false, 'children' => [
-        ['key' => 'kol-overview', 'label' => 'KOL 总览', 'path' => '/kol/overview', 'route' => 'kol.overview', 'permission' => 'kol.view', 'placeholder' => false],
         ['key' => 'kol-library', 'label' => '红人库', 'path' => '/kol/library', 'route' => 'kol.library', 'permission' => 'kol.view', 'placeholder' => false],
+        ['key' => 'kol-library-create', 'label' => '新增网红', 'path' => '/kol/library/create', 'route' => 'kol.library.create', 'permission' => 'kol.operate', 'placeholder' => false],
         ['key' => 'kol-opportunities', 'label' => '合作机会', 'path' => '/kol/opportunities', 'route' => 'kol.opportunities', 'permission' => 'kol.view', 'placeholder' => false],
         ['key' => 'kol-collaborations', 'label' => '合作记录', 'path' => '/kol/collaborations', 'route' => 'kol.collaborations', 'permission' => 'kol.view', 'placeholder' => false],
         ['key' => 'kol-communications', 'label' => '沟通跟进', 'path' => '/kol/communications', 'route' => 'kol.communications', 'permission' => 'kol.view', 'placeholder' => false],

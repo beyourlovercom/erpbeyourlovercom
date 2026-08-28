@@ -405,6 +405,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Components/PermissionMatrix.vue' => '5376899d0142e95e8af4ceb218ea552d5495b733059e24e6165f7bc74b166a5f',
         'resources/js/Components/Products/SkuCombobox.test.ts' => 'fe5a4a4faf285ed257496aab9f183541df6ef3fab1cd708e410e9feca278c6b1',
         'resources/js/Components/Products/SkuCombobox.vue' => 'f2b5e07e5621b2c4e0184eaa308379d0185bad20efbd2de9bf0531fca7d9433e',
+        'resources/js/Components/SearchableSelect.vue' => '9ece77235645ae4bd1c19bff0d01a408b5d333ae653b1bb34c1ce567f2939faf',
         'resources/js/Components/UI/EmptyState.test.ts' => '4fda8290eb407fe9313f32d5a5ac0f802cbb668797af87b9cb3c7f856e528b18',
         'resources/js/Components/UI/EmptyState.vue' => 'a0cab2c71afa978cca886b9b6cb9ab0f0ff40d29962109f7da7c5e1aed2297ce',
         'resources/js/Components/UI/FormField.test.ts' => '9e604341a19c1618e5949b713c6137cbc27c50c64f0830890c2a50cc2e38df4c',
@@ -447,12 +448,12 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Inventory/WarehouseList.vue' => 'a16f1296fbc977d4b7b6f6244f9588a2a1f4c33f147dfeb5d326109bf8b69ce0',
         'resources/js/Pages/Inventory/WarehouseShow.vue' => '9289be4c3d39b2fe3fdab2d3fa49fd3b435a4c424d575d4ebfc13f152d58162c',
         'resources/js/Pages/Inventory/components/InventorySkuCombobox.vue' => 'd2d7408ee79d6fe9b060c268cf076a33a6d30ce096cc1d56ab9d49767e1bd670',
-        'resources/js/Pages/Kol/Create.test.ts' => 'bce138fb44611df6a59dda29a6c70ce0626fe42b0c463c1dcbf795129b289d83',
-        'resources/js/Pages/Kol/Create.vue' => '6620a7770a6b034895383639a0cb429b29460b1d6cac899f027ed4c28132098a',
-        'resources/js/Pages/Kol/Edit.test.ts' => '9dde26eb0af2708a829167ebaf49563e4f55dad88cb10d94015f280a3e493f91',
-        'resources/js/Pages/Kol/Edit.vue' => 'f1471ef854cfcae684cb2835613218f40b5914ba3d06095a3c270bd4cd356cac',
+        'resources/js/Pages/Kol/Create.test.ts' => '2f0beacb9c7f6a6cec7ffc210c43a9147151e34455f7be1a81e6bad24d861d56',
+        'resources/js/Pages/Kol/Create.vue' => '9f73e005458f56fb5a5b790670aac51d2c9c8552e0a68762043a353a691f5631',
+        'resources/js/Pages/Kol/Edit.test.ts' => '232902911a6d4ac16cc8e974d26e341002e6054f40290d3eab9e03d0f242e353',
+        'resources/js/Pages/Kol/Edit.vue' => '39118e6fc1766fc183984ae52821f97326989dbfcb8c74936ee1105470fbbe7e',
         'resources/js/Pages/Kol/Index.vue' => 'bf5d5d751033dd50a4a1d60f676434762219982aea451ffdbdde46dc5f308e09',
-        'resources/js/Pages/Kol/Overview.vue' => '5e9eb9ae687ab1e0293cb32edeb7441cd37e1c46a082b5b834702330f85bcb34',
+        'resources/js/Pages/Kol/Overview.vue' => '592e9f6acef06fc224a49d3432a5dfe566dbe87abb70fa8df2145cc776223ba4',
         'resources/js/Pages/Kol/PlaceholderPage.vue' => '17bcfd63e0f10267eccb24ff899ebb61d04265b1caceb5a35a7023c633fad595',
         'resources/js/Pages/Kol/Show.vue' => '8ff6835dca88e98d0f755eccab5b5068d64a806e18dd8ba39801c5059ad07ac0',
         'resources/js/Pages/Logistics/Index.vue' => 'e7340d2ba412db52ff06e734bc2fcf9720e330443dafbb97049481e7b70f591a',
@@ -685,7 +686,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('a51949885c280aa3c4c87cedd330e05ebc655454cefddfa625f8963da02a7dc1', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('800dfdb75d21c7298a8a5c4052e8b08c3df82b28cb730baa46ffb98e7969d523', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);

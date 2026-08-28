@@ -1,8 +1,31 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+import SearchableSelect from '../../Components/SearchableSelect.vue'
 
 type OwnerOption = { value: number; label: string }
+
+const countryOptions = [
+  { value: 'US', label: 'United States' },
+  { value: 'GB', label: 'United Kingdom' },
+  { value: 'DE', label: 'Germany' },
+  { value: 'FR', label: 'France' },
+  { value: 'CA', label: 'Canada' },
+  { value: 'EU', label: 'Europe' },
+  { value: 'AU', label: 'Australia' },
+  { value: 'ASIA', label: '东南亚' },
+  { value: 'PH', label: 'Philippines' },
+  { value: 'OTHER', label: '其他' },
+]
+const languageOptions = [
+  { value: 'en', label: 'English' },
+  { value: 'es', label: 'Spanish' },
+  { value: 'de', label: 'German' },
+  { value: 'fr', label: 'French' },
+  { value: 'it', label: 'Italian' },
+  { value: 'zh', label: 'Chinese' },
+  { value: 'other', label: '其他' },
+]
 type SocialMetric = { followers: number | null; raw_followers_value: string | null; measured_at: string | null }
 type SocialAccount = { id: number; platform: string; handle: string | null; profile_url: string | null; is_active: boolean; latest_metric: SocialMetric | null }
 type SalesPerformanceEvent = { id: number; order_count: number; recorded_at: string | null; source: string | null; note: string | null }
@@ -32,13 +55,12 @@ const props = defineProps<{
 
 const form = useForm({
   display_name: props.kol.display_name,
-  legal_name: props.kol.legal_name ?? '',
-  country_code: props.kol.country_code ?? '',
-  language: props.kol.language ?? '',
+  country_code: props.kol.country_code ?? 'US',
+  language: props.kol.language ?? 'en',
   status: props.kol.status,
   owner_id: props.kol.owner_id ? String(props.kol.owner_id) : '',
   relationship_stage: props.kol.relationship_stage,
-  cooperation_type: props.kol.cooperation_type ?? '',
+  cooperation_type: ['免费发帖', '长期合作', '付费发帖'].includes(props.kol.cooperation_type ?? '') ? props.kol.cooperation_type! : '免费发帖',
   joined_at: props.kol.joined_at ?? '',
   notes: props.kol.notes ?? '',
   contact_email: props.kol.contact_email ?? '',
@@ -66,15 +88,21 @@ const form = useForm({
   internal_contact: props.kol.internal_contact ?? '',
   mcn_agency: props.kol.mcn_agency ?? '',
   is_mcn_managed: props.kol.is_mcn_managed,
-  social_accounts: props.kol.social_accounts.map(sa => ({
-    id: sa.id as number | undefined,
-    platform: sa.platform,
-    handle: sa.handle ?? '',
-    profile_url: sa.profile_url ?? '',
-    is_active: sa.is_active,
-    followers: sa.latest_metric?.followers !== null && sa.latest_metric?.followers !== undefined ? String(sa.latest_metric.followers) : '',
-    raw_followers_value: sa.latest_metric?.raw_followers_value ?? '',
-  })),
+  social_accounts: (() => {
+    const existing = props.kol.social_accounts.map(sa => ({
+      id: sa.id as number | undefined,
+      platform: sa.platform,
+      handle: sa.handle ?? '',
+      profile_url: sa.profile_url ?? '',
+      is_active: sa.is_active,
+      followers: sa.latest_metric?.followers !== null && sa.latest_metric?.followers !== undefined ? String(sa.latest_metric.followers) : '',
+      raw_followers_value: sa.latest_metric?.raw_followers_value ?? '',
+    }))
+    const defaults = ['instagram', 'twitter']
+      .filter(platform => !existing.some(sa => sa.platform === platform))
+      .map(platform => ({ id: undefined, platform, handle: '', profile_url: '', is_active: true, followers: '', raw_followers_value: '' }))
+    return [...defaults, ...existing]
+  })(),
   sales_performance_entries: [] as Array<{
     order_count: string
     recorded_at: string
@@ -144,16 +172,20 @@ const breadcrumbs = [
       <div class="erp-form-content">
 
         <!-- Page header -->
-        <div class="erp-form-header-row">
+        <div class="erp-form-header-row kol-sticky-header">
           <div>
             <p class="kol-kicker">编辑 KOL</p>
             <h1 class="erp-form-title">{{ kol.display_name }}</h1>
             <p class="erp-form-subtitle">修改红人资料、业务画像、联系与收货信息后点击「保存更改」</p>
           </div>
-          <a :href="`/kol/library/${kol.id}`" class="erp-btn erp-btn-secondary">返回详情</a>
+          <div class="kol-header-actions">
+            <a href="/kol/library" class="erp-btn erp-btn-secondary">返回列表</a>
+            <a :href="`/kol/library/${kol.id}`" class="erp-btn erp-btn-secondary">取消</a>
+            <button type="submit" form="kol-edit-form" class="erp-btn erp-btn-primary">修改 KOL</button>
+          </div>
         </div>
 
-        <form @submit.prevent="submit">
+        <form id="kol-edit-form" @submit.prevent="submit">
 
           <!-- Card 1: 基本信息 -->
           <div class="erp-form-card">
@@ -165,23 +197,24 @@ const breadcrumbs = [
                 <p v-if="form.errors.display_name" class="erp-field-error">{{ form.errors.display_name }}</p>
               </div>
               <div class="erp-form-field">
-                <label class="erp-form-label">法定名称</label>
-                <input v-model="form.legal_name" type="text" class="erp-input" :class="{ 'has-error': form.errors.legal_name }" maxlength="255">
-                <p v-if="form.errors.legal_name" class="erp-field-error">{{ form.errors.legal_name }}</p>
-              </div>
-              <div class="erp-form-field">
                 <label class="erp-form-label">国家/地区</label>
-                <input v-model="form.country_code" type="text" class="erp-input" :class="{ 'has-error': form.errors.country_code }" maxlength="8" placeholder="例如：US、CN">
+                <SearchableSelect v-model="form.country_code" :options="countryOptions" placeholder="搜索国家/地区" />
                 <p v-if="form.errors.country_code" class="erp-field-error">{{ form.errors.country_code }}</p>
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">语言</label>
-                <input v-model="form.language" type="text" class="erp-input" :class="{ 'has-error': form.errors.language }" maxlength="16" placeholder="例如：zh、en">
+                <select v-model="form.language" class="erp-select" :class="{ 'has-error': form.errors.language }">
+                  <option v-for="language in languageOptions" :key="language.value" :value="language.value">{{ language.label }}</option>
+                </select>
                 <p v-if="form.errors.language" class="erp-field-error">{{ form.errors.language }}</p>
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">合作类型</label>
-                <input v-model="form.cooperation_type" type="text" class="erp-input" :class="{ 'has-error': form.errors.cooperation_type }" maxlength="32">
+                <select v-model="form.cooperation_type" class="erp-select" :class="{ 'has-error': form.errors.cooperation_type }">
+                  <option value="免费发帖">免费发帖</option>
+                  <option value="长期合作">长期合作</option>
+                  <option value="付费发帖">付费发帖</option>
+                </select>
                 <p v-if="form.errors.cooperation_type" class="erp-field-error">{{ form.errors.cooperation_type }}</p>
               </div>
               <div class="erp-form-field">
@@ -221,7 +254,100 @@ const breadcrumbs = [
             </div>
           </div>
 
-          <!-- Card 2: 业务画像 -->
+          <!-- Card 2: 收件地址 -->
+          <div class="erp-form-card">
+            <h2 class="erp-form-card-title">收件地址</h2>
+            <p class="erp-form-card-helper">联系方式与收件信息集中维护。</p>
+            <div class="erp-form-grid kol-address-grid">
+              <div class="erp-form-field">
+                <label class="erp-form-label">电话</label>
+                <input v-model="form.contact_phone" type="text" class="erp-input" :class="{ 'has-error': form.errors.contact_phone }" maxlength="64" placeholder="可选">
+                <p v-if="form.errors.contact_phone" class="erp-field-error">{{ form.errors.contact_phone }}</p>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">邮箱</label>
+                <input v-model="form.contact_email" type="email" class="erp-input" :class="{ 'has-error': form.errors.contact_email }" maxlength="255" placeholder="可选">
+                <p v-if="form.errors.contact_email" class="erp-field-error">{{ form.errors.contact_email }}</p>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">收件人</label>
+                <input v-model="form.shipping_recipient_name" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_recipient_name }" maxlength="255" placeholder="可选">
+                <p v-if="form.errors.shipping_recipient_name" class="erp-field-error">{{ form.errors.shipping_recipient_name }}</p>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">国家</label>
+                <input v-model="form.shipping_country" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_country }" maxlength="8" placeholder="例如：US">
+                <p v-if="form.errors.shipping_country" class="erp-field-error">{{ form.errors.shipping_country }}</p>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">省/州</label>
+                <input v-model="form.shipping_province_state" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_province_state }" maxlength="128" placeholder="可选">
+                <p v-if="form.errors.shipping_province_state" class="erp-field-error">{{ form.errors.shipping_province_state }}</p>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">城市</label>
+                <input v-model="form.shipping_city" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_city }" maxlength="128" placeholder="可选">
+                <p v-if="form.errors.shipping_city" class="erp-field-error">{{ form.errors.shipping_city }}</p>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">邮政编码</label>
+                <input v-model="form.shipping_postal_code" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_postal_code }" maxlength="32" placeholder="可选">
+                <p v-if="form.errors.shipping_postal_code" class="erp-field-error">{{ form.errors.shipping_postal_code }}</p>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">详细地址</label>
+                <input v-model="form.shipping_address_line_1" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_address_line_1 }" maxlength="255" placeholder="可选">
+                <p v-if="form.errors.shipping_address_line_1" class="erp-field-error">{{ form.errors.shipping_address_line_1 }}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3: 社交账号 -->
+          <div class="erp-form-card">
+            <div class="kol-card-header-row">
+              <h2 class="erp-form-card-title">社交账号</h2>
+              <button type="button" class="erp-btn erp-btn-secondary" @click="addSocialAccount">添加账号</button>
+            </div>
+            <p v-if="form.social_accounts.length === 0" class="kol-empty-state">暂无社交账号</p>
+            <div v-for="(sa, idx) in form.social_accounts" :key="idx" class="kol-sa-row">
+              <div class="erp-form-field">
+                <label class="erp-form-label">平台</label>
+                <select v-model="sa.platform" class="erp-select">
+                  <option v-for="p in platformOptions" :key="p.value" :value="p.value">{{ p.label }}</option>
+                </select>
+                <p v-if="(form.errors as Record<string, string>)[`social_accounts.${idx}.platform`]" class="erp-field-error">{{ (form.errors as Record<string, string>)[`social_accounts.${idx}.platform`] }}</p>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">账号名 / Handle</label>
+                <input v-model="sa.handle" type="text" class="erp-input" placeholder="可选">
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">主页链接</label>
+                <input v-model="sa.profile_url" type="url" class="erp-input" placeholder="可选">
+                <p v-if="(form.errors as Record<string, string>)[`social_accounts.${idx}.profile_url`]" class="erp-field-error">{{ (form.errors as Record<string, string>)[`social_accounts.${idx}.profile_url`] }}</p>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">粉丝数</label>
+                <input v-model="sa.followers" type="number" min="0" class="erp-input" placeholder="整数，可选">
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">原始值</label>
+                <input v-model="sa.raw_followers_value" type="text" class="erp-input" maxlength="32" placeholder="如 318.2K">
+              </div>
+              <div class="erp-form-field kol-sa-status">
+                <label class="erp-form-label">状态</label>
+                <div class="erp-segmented">
+                  <button type="button" class="erp-segmented-option" :class="{ selected: sa.is_active }" @click="sa.is_active = true">启用</button>
+                  <button type="button" class="erp-segmented-option" :class="{ selected: !sa.is_active }" @click="sa.is_active = false">停用</button>
+                </div>
+              </div>
+              <div class="kol-sa-remove">
+                <button type="button" class="erp-btn erp-btn-secondary" @click="removeSocialAccount(idx)">删除</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 4: 业务画像 -->
           <div class="erp-form-card">
             <h2 class="erp-form-card-title">业务画像</h2>
             <div class="erp-form-grid">
@@ -272,44 +398,7 @@ const breadcrumbs = [
             </div>
           </div>
 
-          <!-- Card 3: 联系方式 -->
-          <div class="erp-form-card">
-            <h2 class="erp-form-card-title">联系方式</h2>
-            <div class="erp-form-grid">
-              <div class="erp-form-field">
-                <label class="erp-form-label">Email</label>
-                <input v-model="form.contact_email" type="email" class="erp-input" :class="{ 'has-error': form.errors.contact_email }" maxlength="255" placeholder="可选">
-                <p v-if="form.errors.contact_email" class="erp-field-error">{{ form.errors.contact_email }}</p>
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">联系电话</label>
-                <input v-model="form.contact_phone" type="text" class="erp-input" :class="{ 'has-error': form.errors.contact_phone }" maxlength="64" placeholder="可选">
-                <p v-if="form.errors.contact_phone" class="erp-field-error">{{ form.errors.contact_phone }}</p>
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">WhatsApp</label>
-                <input v-model="form.contact_whatsapp" type="text" class="erp-input" :class="{ 'has-error': form.errors.contact_whatsapp }" maxlength="64" placeholder="可选">
-                <p v-if="form.errors.contact_whatsapp" class="erp-field-error">{{ form.errors.contact_whatsapp }}</p>
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">其他联系方式</label>
-                <input v-model="form.other_contact" type="text" class="erp-input" :class="{ 'has-error': form.errors.other_contact }" maxlength="255" placeholder="可选">
-                <p v-if="form.errors.other_contact" class="erp-field-error">{{ form.errors.other_contact }}</p>
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">首选联系方式 <span class="erp-form-required">*</span></label>
-                <select v-model="form.preferred_contact_method" class="erp-select" :class="{ 'has-error': form.errors.preferred_contact_method }">
-                  <option value="phone">电话</option>
-                  <option value="email">Email</option>
-                  <option value="whatsapp">WhatsApp</option>
-                  <option value="other">其他</option>
-                </select>
-                <p v-if="form.errors.preferred_contact_method" class="erp-field-error">{{ form.errors.preferred_contact_method }}</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Card 4: 税务与收款 -->
+          <!-- Card 5: 税务与收款 -->
           <div class="erp-form-card">
             <h2 class="erp-form-card-title">税务与收款</h2>
             <p class="erp-form-card-helper">税务标识符和收款账户为敏感信息，不会显示在红人列表中。</p>
@@ -337,94 +426,7 @@ const breadcrumbs = [
             </div>
           </div>
 
-          <!-- Card 5: 收件地址 -->
-          <div class="erp-form-card">
-            <h2 class="erp-form-card-title">收件地址</h2>
-            <div class="erp-form-grid">
-              <div class="erp-form-field">
-                <label class="erp-form-label">收件人</label>
-                <input v-model="form.shipping_recipient_name" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_recipient_name }" maxlength="255" placeholder="可选">
-                <p v-if="form.errors.shipping_recipient_name" class="erp-field-error">{{ form.errors.shipping_recipient_name }}</p>
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">国家</label>
-                <input v-model="form.shipping_country" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_country }" maxlength="8" placeholder="例如：US">
-                <p v-if="form.errors.shipping_country" class="erp-field-error">{{ form.errors.shipping_country }}</p>
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">省/州</label>
-                <input v-model="form.shipping_province_state" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_province_state }" maxlength="128" placeholder="可选">
-                <p v-if="form.errors.shipping_province_state" class="erp-field-error">{{ form.errors.shipping_province_state }}</p>
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">城市</label>
-                <input v-model="form.shipping_city" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_city }" maxlength="128" placeholder="可选">
-                <p v-if="form.errors.shipping_city" class="erp-field-error">{{ form.errors.shipping_city }}</p>
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">邮政编码</label>
-                <input v-model="form.shipping_postal_code" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_postal_code }" maxlength="32" placeholder="可选">
-                <p v-if="form.errors.shipping_postal_code" class="erp-field-error">{{ form.errors.shipping_postal_code }}</p>
-              </div>
-              <div class="erp-form-field kol-span-2">
-                <label class="erp-form-label">地址行 1</label>
-                <input v-model="form.shipping_address_line_1" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_address_line_1 }" maxlength="255" placeholder="可选">
-                <p v-if="form.errors.shipping_address_line_1" class="erp-field-error">{{ form.errors.shipping_address_line_1 }}</p>
-              </div>
-              <div class="erp-form-field kol-span-2">
-                <label class="erp-form-label">地址行 2</label>
-                <input v-model="form.shipping_address_line_2" type="text" class="erp-input" :class="{ 'has-error': form.errors.shipping_address_line_2 }" maxlength="255" placeholder="可选">
-                <p v-if="form.errors.shipping_address_line_2" class="erp-field-error">{{ form.errors.shipping_address_line_2 }}</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Card 6: 社交账号 -->
-          <div class="erp-form-card">
-            <div class="kol-card-header-row">
-              <h2 class="erp-form-card-title">社交账号</h2>
-              <button type="button" class="erp-btn erp-btn-secondary" @click="addSocialAccount">添加账号</button>
-            </div>
-            <p v-if="form.social_accounts.length === 0" class="kol-empty-state">暂无社交账号</p>
-            <div v-for="(sa, idx) in form.social_accounts" :key="idx" class="kol-sa-row">
-              <div class="erp-form-field">
-                <label class="erp-form-label">平台</label>
-                <select v-model="sa.platform" class="erp-select">
-                  <option v-for="p in platformOptions" :key="p.value" :value="p.value">{{ p.label }}</option>
-                </select>
-                <p v-if="(form.errors as Record<string, string>)[`social_accounts.${idx}.platform`]" class="erp-field-error">{{ (form.errors as Record<string, string>)[`social_accounts.${idx}.platform`] }}</p>
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">账号名 / Handle</label>
-                <input v-model="sa.handle" type="text" class="erp-input" placeholder="可选">
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">主页链接</label>
-                <input v-model="sa.profile_url" type="url" class="erp-input" placeholder="可选">
-                <p v-if="(form.errors as Record<string, string>)[`social_accounts.${idx}.profile_url`]" class="erp-field-error">{{ (form.errors as Record<string, string>)[`social_accounts.${idx}.profile_url`] }}</p>
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">粉丝数</label>
-                <input v-model="sa.followers" type="number" min="0" class="erp-input" placeholder="整数，可选">
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">原始值</label>
-                <input v-model="sa.raw_followers_value" type="text" class="erp-input" maxlength="32" placeholder="如 318.2K">
-              </div>
-              <div class="erp-form-field kol-sa-status">
-                <label class="erp-form-label">状态</label>
-                <div class="erp-segmented">
-                  <button type="button" class="erp-segmented-option" :class="{ selected: sa.is_active }" @click="sa.is_active = true">启用</button>
-                  <button type="button" class="erp-segmented-option" :class="{ selected: !sa.is_active }" @click="sa.is_active = false">停用</button>
-                </div>
-              </div>
-              <div class="kol-sa-remove">
-                <button type="button" class="erp-btn erp-btn-secondary" @click="removeSocialAccount(idx)">删除</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Card 7: 历史带货记录 -->
+          <!-- Card 6: 历史带货记录 -->
           <div class="erp-form-card">
             <div class="kol-card-header-row">
               <h2 class="erp-form-card-title">历史带货记录</h2>
@@ -463,7 +465,7 @@ const breadcrumbs = [
             </div>
           </div>
 
-          <!-- Card 8: 内部运营信息 -->
+          <!-- Card 7: 内部运营信息 -->
           <div class="erp-form-card">
             <h2 class="erp-form-card-title">内部运营信息</h2>
             <div class="erp-form-grid">
@@ -485,7 +487,7 @@ const breadcrumbs = [
             </div>
           </div>
 
-          <!-- Card 9: 备注 -->
+          <!-- Card 8: 备注 -->
           <div class="erp-form-card">
             <h2 class="erp-form-card-title">备注</h2>
             <div class="erp-form-field">
@@ -495,14 +497,6 @@ const breadcrumbs = [
             </div>
           </div>
 
-          <!-- Action bar -->
-          <div class="erp-form-actions kol-action-bar">
-            <a :href="`/kol/library/${kol.id}`" class="erp-btn erp-btn-secondary">取消</a>
-            <button type="submit" class="erp-btn erp-btn-primary" :disabled="form.processing">
-              {{ form.processing ? '保存中…' : '保存更改' }}
-            </button>
-          </div>
-
         </form>
       </div>
     </div>
@@ -510,10 +504,32 @@ const breadcrumbs = [
 </template>
 
 <style scoped>
+.kol-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--erp-page-bg, #f8fafc);
+  padding-block: 12px;
+}
+
+.kol-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
 .kol-kicker {
   font-size: 13px;
   color: #7a8c94;
   margin: 0 0 4px;
+}
+
+.kol-address-column {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  max-width: 760px;
 }
 
 .kol-card-header-row {
@@ -593,6 +609,10 @@ const breadcrumbs = [
   padding-bottom: 0;
 }
 
+.kol-address-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .kol-span-2 {
   grid-column: span 2;
 }
@@ -602,7 +622,11 @@ const breadcrumbs = [
 }
 
 @media (max-width: 767px) {
-  .kol-span-2 {
+  .kol-address-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.kol-span-2 {
     grid-column: span 1;
   }
 

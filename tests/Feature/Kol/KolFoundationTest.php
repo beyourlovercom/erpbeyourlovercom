@@ -98,7 +98,7 @@ class KolFoundationTest extends TestCase
 
     public function test_guest_cannot_access_kol_overview(): void
     {
-        $this->get('/kol/overview')->assertRedirect('/login');
+        $this->get('/kol')->assertRedirect('/login');
     }
 
     public function test_user_without_kol_view_cannot_access_library(): void
@@ -110,7 +110,8 @@ class KolFoundationTest extends TestCase
     public function test_user_with_kol_view_can_access_overview(): void
     {
         $user = $this->userWith(['kol.view']);
-        $this->actingAs($user)->get('/kol/overview')->assertOk();
+        $this->actingAs($user)->get('/kol')->assertOk();
+        $this->actingAs($user)->get('/kol/overview')->assertRedirect('/kol');
     }
 
     public function test_user_with_kol_view_can_access_library(): void

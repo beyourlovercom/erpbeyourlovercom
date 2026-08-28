@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
-    Route::get('/kol', fn () => redirect()->route('kol.overview'))->name('shell.kol');
-    Route::get('/kol/overview', KolOverviewController::class)->name('kol.overview');
+    Route::get('/kol', KolOverviewController::class)->name('shell.kol');
+    Route::get('/kol/overview', fn () => redirect()->route('shell.kol'))->name('kol.overview');
 
     Route::get('/kol/library', [KolController::class, 'index'])->name('kol.library');
     Route::get('/kol/library/create', [KolController::class, 'create'])->middleware('can:kol.operate')->name('kol.library.create');
