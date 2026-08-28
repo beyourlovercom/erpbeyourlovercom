@@ -71,3 +71,7 @@ These are alternatives, not a parallel mandate.
 ## Safety
 
 This reconciliation changes planning/governance only. No product code, schema, migration, dependency, runtime, production data or deployment is authorized.
+
+## Owner priority update — 2026-08-28
+
+Owner selected **KOL V1 full completion and stabilization** as the next product program. After this reconciliation merges, the default execution order is M1.2A Collaboration → M1.2B Canonical Fulfillment Bridge → M1.3 Content → M1.4 Finance/Affiliate → KOL V1 Cross-phase Closure. MVP2 and Inquiry M1.2 remain paused unless Owner explicitly reprioritizes.

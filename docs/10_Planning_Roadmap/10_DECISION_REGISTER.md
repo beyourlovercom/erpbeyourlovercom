@@ -266,3 +266,9 @@ KOL M1.2 is split into `M1.2A Collaboration` and `M1.2B Canonical Fulfillment Br
 PR #98 is closed unmerged as a superseded roadmap proposal. PR #109 is closed unmerged as duplicate/superseded by merged PR #110. PR #97 remains long-term docs/design reference only; PR #81 remains a stale legacy Dashboard experiment. Neither is current Roadmap authority.
 
 Eligible next tracks after this reconciliation are alternatives requiring explicit Owner selection: KOL M1.2A Collaboration, MVP2 Inventory Reservation Foundation, or reactivation of ERP-INQUIRY-M1.2 Contact. This decision authorizes governance/docs synchronization only; no product implementation, schema/migration, dependency, Production access, deployment or merge is authorized.
+
+## D-041 Prioritize full KOL V1 completion and stabilization
+
+Owner selected the KOL track on 2026-08-28 as the next program priority after Roadmap Reconciliation. The frozen sequence is `M1.2A Collaboration → M1.2B Canonical Fulfillment Bridge → M1.3 Content → M1.4 Finance / Affiliate → KOL V1 Cross-phase Closure`.
+
+KOL remains bounded by D-040 canonical ownership: it may reference Product and create/link `order_kind=kol_fulfillment` Orders through the bridge, but it must not duplicate Product, Inventory, Order, Shipment, Tracking, Reservation, allocation, shipping-cost, carrier-rule or WMS truth. MVP2 and ERP-INQUIRY-M1.2 remain paused until KOL V1 closure or explicit Owner reprioritization. Every implementation PR still requires its own test/UAT and explicit merge authorization.

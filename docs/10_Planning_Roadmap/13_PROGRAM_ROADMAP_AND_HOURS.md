@@ -24,15 +24,14 @@ Architecture Migration / Global Architecture Gate [COMPLETE]
 → MVP1.3 Sync Orchestration [COMPLETE / PR #108]
 → KOL M1.0 Foundation [COMPLETE / PR #103]
 → KOL M1.1 CRM [COMPLETE / PR #110]
-→ ROADMAP RECONCILIATION [CURRENT / DOCS ONLY]
-→ OWNER SELECTS NEXT BOUNDED FEATURE TRACK
-   • KOL M1.2A Collaboration
-   • MVP2 Inventory Reservation Foundation
-   • Resume ERP-INQUIRY-M1 M1.2 Contact
-→ KOL M1.2B Canonical Fulfillment Bridge when required by an active Collaboration
-→ MVP2.1–MVP4 Fulfillment Intelligence / Connectors / Automation
+→ ROADMAP RECONCILIATION [CURRENT / DOCS MERGE GATE]
+→ KOL M1.2A Collaboration [NEXT]
+→ KOL M1.2B Canonical Fulfillment Bridge
+→ KOL M1.3 Content
+→ KOL M1.4 Finance / Affiliate
+→ KOL V1 Cross-phase Closure / Full Regression / Owner UAT
+→ MVP2 Inventory Reservation Foundation + MVP2.1–MVP4 Fulfillment Intelligence / Connectors / Automation [PAUSED UNTIL KOL V1 CLOSED]
 → Accounting / Procurement expansion
-→ KOL M1.3 Content → KOL M1.4 Finance / Affiliate
 → remaining Inquiry milestone when reactivated
 → Milestone Remote Release / erp.beyourlover.com
 → Product / Media / Content / SEO / Shopify expansion
@@ -105,7 +104,7 @@ ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
 INVENTORY_M1: COMPLETE / OWNER UAT PASS / MERGED BY PR #96
 CURRENT_PACKAGE: NONE / Inventory M1 closed
 CURRENT_PACKAGE_BASELINE: current main / see GitHub for exact SHA
-NEXT_PACKAGE: NONE / OWNER SELECTION REQUIRED AFTER ROADMAP RECONCILIATION
+NEXT_PACKAGE: ERP-KOL-M1.2A-COLLABORATION-001 / OWNER SELECTED KOL V1 FULL COMPLETION
 MVP1_MANUAL_FULFILLMENT_INTEGRATION: COMPLETE / MERGED BY PR #101 / historical, not remaining
 POST_MVP_SMART_FULFILLMENT_ESTIMATE: UNKNOWN WITH EVIDENCE / Reservation, Allocation, Packing, Cost, Mode, Carrier, Connectors and Automation are separately bounded future work
 ERP_INQUIRY_M1_ESTIMATE: 86–150h / planning value 116h / frozen M1.0 contract; M1.1 complete; M1.2–M1.9 retained

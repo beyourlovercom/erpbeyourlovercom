@@ -599,3 +599,7 @@ Dependencies: NO CHANGE.
 Production/deployment: NO.
 Merge of reconciliation PR: requires separate explicit Owner authorization.
 ```
+
+## 2026-08-28 — KOL V1 full completion selected as next program priority
+
+Owner selected the KOL route after the full ERP roadmap reconciliation. Next sequence: M1.2A Collaboration → M1.2B Canonical Fulfillment Bridge → M1.3 Content → M1.4 Finance/Affiliate → Cross-phase Closure. MVP2 and Inquiry M1.2 remain paused. Canonical Product/Inventory/Order/Shipment/Tracking ownership is unchanged. Decision: D-041.

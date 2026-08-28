@@ -253,14 +253,16 @@ These may later be introduced as a separate KOL Intelligence track without chang
 
 ## 11. Immediate next execution target
 
-M1.0 Foundation and M1.1 CRM are COMPLETE / MERGED.
+Owner priority as of 2026-08-28: complete and stabilize the entire KOL V1 track before moving to another product roadmap.
 
-No KOL product Work Package is automatically active after M1.1. The next KOL product target, only if selected by the Owner after global roadmap reconciliation, is:
+Canonical execution order:
 
 ```text
 ERP-KOL-M1.2A-COLLABORATION-001
+→ ERP-KOL-M1.2B-FULFILLMENT-BRIDGE-001
+→ ERP-KOL-M1.3-CONTENT-001
+→ ERP-KOL-M1.4-FINANCE-AFFILIATE-001
+→ ERP-KOL-V1-CROSS-PHASE-CLOSURE-001
 ```
 
-M1.2A must remain Collaboration-only. M1.2B Canonical Fulfillment Bridge is activated only when the Collaboration workflow actually needs to create/link a physical fulfillment Order.
-
-This boundary prevents KOL development from duplicating the already-merged Product / Inventory / Order / Shipment / Tracking fulfillment stack.
+Each implementation package remains bounded and independently tested. M1.2B must only bridge to canonical Order/Inventory/Shipment/Tracking truth. Final KOL V1 closure requires full cross-phase regression, permissions/Owner-scope checks, migration rehearsal, build/typecheck, local UAT and Owner UAT. Merge remains separately authorized per PR.

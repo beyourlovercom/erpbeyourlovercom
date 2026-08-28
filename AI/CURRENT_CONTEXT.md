@@ -44,23 +44,25 @@ REMOTE_DEPLOYMENT: NOT AUTHORIZED UNTIL MILESTONE STABLE
 ## Current program position
 
 ```text
-CURRENT_PROGRAM_PHASE: ERP PROGRAM ROADMAP RECONCILIATION / DOCS ONLY
-CURRENT_WORK_PACKAGE: ERP-GOV-ROADMAP-RECONCILIATION-001
-CURRENT_PRODUCT_WORK_PACKAGE: NONE
-NEXT_PRODUCT_WORK_PACKAGE: OWNER SELECTION REQUIRED AFTER RECONCILIATION
+CURRENT_PROGRAM_PHASE: KOL V1 FULL COMPLETION TRACK
+CURRENT_WORK_PACKAGE: ERP-GOV-ROADMAP-RECONCILIATION-001 / MERGE GATE
+CURRENT_PRODUCT_WORK_PACKAGE: NONE UNTIL ROADMAP RECONCILIATION MERGES
+NEXT_PRODUCT_WORK_PACKAGE: ERP-KOL-M1.2A-COLLABORATION-001
 ```
 
-No product track becomes current merely because it is listed as eligible next work.
+Owner selected the KOL track on 2026-08-28. The program now stays on KOL until KOL V1 is fully implemented, regression-tested and Owner-UAT stable.
 
-Eligible next bounded tracks after reconciliation:
+Frozen KOL completion order:
 
 ```text
-A. ERP-KOL-M1.2A-COLLABORATION-001
-B. MVP2 Inventory Reservation Foundation
-C. ERP-INQUIRY-M1.2 Contact reactivation
+ERP-KOL-M1.2A-COLLABORATION-001
+→ ERP-KOL-M1.2B-FULFILLMENT-BRIDGE-001
+→ ERP-KOL-M1.3-CONTENT-001
+→ ERP-KOL-M1.4-FINANCE-AFFILIATE-001
+→ ERP-KOL-V1-CROSS-PHASE-CLOSURE-001
 ```
 
-These are alternatives until the Owner chooses one.
+MVP2 fulfillment intelligence and ERP-INQUIRY-M1.2 remain paused while this KOL completion track is active.
 
 ## Canonical truth ownership
 

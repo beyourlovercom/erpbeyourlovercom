@@ -357,3 +357,12 @@ Status: PAUSED / NOT CANCELLED / explicit Owner reactivation required
 ```
 
 No product package is activated merely by appearing in this index. After `ERP-GOV-ROADMAP-RECONCILIATION-001`, the Owner must explicitly select the next bounded feature track.
+
+## Owner-selected next KOL track
+
+```text
+ERP-KOL-M1.2A-COLLABORATION-001
+Status: NEXT / OWNER SELECTED / NOT YET IMPLEMENTED
+Followed by: ERP-KOL-M1.2B-FULFILLMENT-BRIDGE-001 → ERP-KOL-M1.3-CONTENT-001 → ERP-KOL-M1.4-FINANCE-AFFILIATE-001 → ERP-KOL-V1-CROSS-PHASE-CLOSURE-001
+Boundary: reuse canonical Product / Order / Inventory / Shipment / Tracking truth; no duplicate fulfillment engine
+```

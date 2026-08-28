@@ -22,12 +22,13 @@ Architecture Migration / Global Architecture Gate [COMPLETE]
 → MVP1.3 Sync Orchestration [COMPLETE / PR #108]
 → KOL M1.0 Foundation [COMPLETE / PR #103]
 → KOL M1.1 CRM [COMPLETE / PR #110]
-→ ROADMAP RECONCILIATION [CURRENT / DOCS ONLY]
-→ OWNER SELECTS NEXT BOUNDED FEATURE TRACK
-   • KOL M1.2A Collaboration
-   • MVP2 Inventory Reservation Foundation
-   • Resume ERP-INQUIRY-M1 at M1.2 Contact
-→ KOL M1.2B Canonical Fulfillment Bridge (only after Collaboration needs fulfillment)
+→ ROADMAP RECONCILIATION [CURRENT / DOCS MERGE GATE]
+→ KOL M1.2A Collaboration [NEXT]
+→ KOL M1.2B Canonical Fulfillment Bridge
+→ KOL M1.3 Content
+→ KOL M1.4 Finance / Affiliate
+→ KOL V1 Cross-phase Closure / Full Regression / Owner UAT
+→ MVP2 Inventory Reservation Foundation [PAUSED UNTIL KOL V1 CLOSED]
 → MVP2.1 Warehouse Allocation Recommendation
 → MVP2.2 Packing + Chargeable Weight
 → MVP2.3 Shipping Cost Estimator
@@ -36,8 +37,6 @@ Architecture Migration / Global Architecture Gate [COMPLETE]
 → MVP3 Warehouse Connector Foundation + real warehouse adapters
 → MVP4 Automatic Fulfillment
 → Accounting / Procurement expansion
-→ KOL M1.3 Content
-→ KOL M1.4 Finance / Affiliate
 → ERP-INQUIRY-M1 remaining M1.2–M1.9 when reactivated
 → Milestone Remote Release / https://erp.beyourlover.com
 → Product / Media / Content / SEO / Shopify expansion
@@ -68,9 +67,9 @@ KOL duplicate CRM PR #109 = CLOSED / SUPERSEDED BY PR #110
 US Mac = default full verification + Owner UAT host
 China Mac = special-case verification only unless explicitly required
 GitHub = UNIQUE SOURCE OF TRUTH
-CURRENT_PHASE = ERP PROGRAM ROADMAP RECONCILIATION / DOCS ONLY
+CURRENT_PHASE = KOL V1 FULL COMPLETION TRACK / ROADMAP MERGE GATE
 CURRENT_WORK_PACKAGE = ERP-GOV-ROADMAP-RECONCILIATION-001
-NEXT_PRODUCT_WORK_PACKAGE = NONE / OWNER SELECTION REQUIRED AFTER RECONCILIATION
+NEXT_PRODUCT_WORK_PACKAGE = ERP-KOL-M1.2A-COLLABORATION-001
 Remote Milestone Target = https://erp.beyourlover.com
 Deployment = NO / MILESTONE GATED
 ```
@@ -92,11 +91,11 @@ Remote-release rule: https://erp.beyourlover.com remains milestone-gated.
 
 ```text
 1. Close this docs-only Roadmap Reconciliation and make main the only current planning authority.
-2. Do not start a new product Work Package until Owner selects one bounded next track.
-3. KOL next track, if selected, is M1.2A Collaboration only; it may reference canonical Product IDs/SKUs but must not create duplicate Product/Order/Shipment/Inventory/Tracking truth.
+2. Owner selected KOL V1 full completion as the active product priority.
+3. Start with M1.2A Collaboration only; it may reference canonical Product IDs/SKUs but must not create duplicate Product/Order/Shipment/Inventory/Tracking truth.
 4. When a formal Collaboration requires a sample/product shipment, M1.2B uses a Canonical Fulfillment Bridge to create/link the existing Order (`order_kind=kol_fulfillment`) and project existing Shipment/Tracking state back into KOL.
 5. Assisted Fulfillment remains the existing MVP2 path: Reservation → Allocation recommendation → Packing/Chargeable Weight → Cost → Mode → Carrier rules; KOL does not own these engines.
-6. ERP-INQUIRY-M1.2 Contact remains paused until explicit Owner reactivation.
+6. Continue KOL M1.3 Content → M1.4 Finance/Affiliate → KOL V1 Cross-phase Closure before switching product tracks. ERP-INQUIRY-M1.2 Contact and MVP2 remain paused until KOL V1 closes or Owner explicitly reprioritizes.
 7. PR #97 Entity Architecture V2 remains design/reference only until separately activated; no draft PR may override merged main roadmap status.
 8. Remote deployment remains milestone-gated and separate from normal local development.
 ```
