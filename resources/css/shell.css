@@ -263,7 +263,7 @@
     outline-offset: var(--byl-focus-offset);
 }
 
-.shell-topbar-trailing .shell-mobile-toggle {
+.shell-topbar .shell-topbar-trailing .shell-mobile-toggle {
     display: none;
 }
 
@@ -776,7 +776,7 @@
         display: block;
     }
 
-    .shell-topbar-trailing .shell-mobile-toggle {
+    .shell-topbar .shell-topbar-trailing .shell-mobile-toggle {
         display: inline-flex;
     }
 
