@@ -7,7 +7,7 @@ const props = defineProps<{ user: SafeUser; navigationHidden: boolean }>()
 const open = ref(false)
 const root = ref<HTMLElement>()
 const trigger = ref<HTMLButtonElement>()
-const logoutButton = ref<HTMLButtonElement>()
+const firstMenuItem = ref<HTMLButtonElement>()
 const menuId = `shell-account-menu-${useId()}`
 
 const initials = computed(() => {
@@ -26,7 +26,7 @@ const close = (restoreFocus = false) => {
 
 const toggle = async () => {
     open.value = !open.value
-    if (open.value) await nextTick(() => logoutButton.value?.focus())
+    if (open.value) await nextTick(() => firstMenuItem.value?.focus())
 }
 
 const onDocumentPointerDown = (event: PointerEvent) => {
@@ -52,6 +52,7 @@ onBeforeUnmount(() => {
     document.removeEventListener('keydown', onDocumentKeydown)
 })
 
+const visit = (path: string) => { close(); router.visit(path) }
 const logout = () => router.post('/logout')
 </script>
 
@@ -66,7 +67,11 @@ const logout = () => router.post('/logout')
         <span class="shell-account-avatar" aria-hidden="true">{{ initials }}</span>
         <span><strong>{{ user.name || '未命名用户' }}</strong><small>{{ user.email }}</small></span>
       </div>
-      <button ref="logoutButton" class="shell-account-logout" type="button" role="menuitem" @click="logout">退出登录</button>
+      <div class="shell-account-actions" role="presentation">
+        <button ref="firstMenuItem" class="shell-account-action" type="button" role="menuitem" @click="visit('/account/profile')">个人信息</button>
+        <button class="shell-account-action" type="button" role="menuitem" @click="visit('/account/password')">修改密码</button>
+        <button class="shell-account-action shell-account-logout" type="button" role="menuitem" @click="logout">退出登录</button>
+      </div>
     </div>
   </div>
 </template>

@@ -12,14 +12,22 @@ return [
         ['key' => 'logistics-awaiting-tracking', 'label' => '已发待单号', 'path' => '/logistics/awaiting-tracking', 'route' => 'logistics.awaiting-tracking', 'permission' => 'prototype.view', 'placeholder' => false],
         ['key' => 'logistics-in-transit', 'label' => '运输中', 'path' => '/logistics/in-transit', 'route' => 'logistics.in-transit', 'permission' => 'prototype.view', 'placeholder' => false],
         ['key' => 'logistics-exceptions', 'label' => '异常订单', 'path' => '/logistics/exceptions', 'route' => 'logistics.exceptions', 'permission' => 'prototype.view', 'placeholder' => false],
+        ['key' => 'logistics-carriers', 'label' => '承运商', 'path' => '/logistics/carriers', 'route' => 'logistics.carriers', 'permission' => 'logistics.view', 'placeholder' => false],
     ]],
-    ['key' => 'sync', 'label' => '同步', 'emoji' => '🔄', 'path' => '/sync', 'route' => 'shell.sync', 'permission' => 'sync.view', 'placeholder' => false],
+    ['key' => 'sync', 'label' => '同步', 'emoji' => '🔄', 'path' => '/sync', 'route' => 'shell.sync', 'permission' => 'sync.view', 'placeholder' => false, 'children' => [
+        ['key' => 'sync-orders', 'label' => '同步订单', 'path' => '/sync/orders', 'route' => 'sync.orders', 'permission' => 'sync.view', 'placeholder' => false],
+        ['key' => 'sync-warehouses', 'label' => '同步仓库', 'path' => '/sync/warehouses', 'route' => 'sync.warehouses', 'permission' => 'sync.view', 'placeholder' => false],
+        ['key' => 'sync-kol', 'label' => '同步网红', 'path' => '/sync/kol', 'route' => 'sync.kol', 'permission' => 'sync.view', 'placeholder' => false],
+        ['key' => 'sync-exports', 'label' => '导出平台订单', 'path' => '/sync/exports', 'route' => 'sync.exports', 'permission' => 'sync.view', 'placeholder' => false],
+    ]],
     ['key' => 'customers', 'label' => '客户', 'emoji' => '👥', 'path' => '/customers', 'route' => 'shell.customers', 'permission' => 'customers.view', 'placeholder' => false, 'children' => [
+        ['key' => 'customers-orders', 'label' => '客户订单', 'path' => '/customers/orders', 'route' => 'customers.orders', 'permission' => 'orders.view', 'placeholder' => false],
         ['key' => 'customers-orders-create', 'label' => '新建订单', 'path' => '/customers/orders/create', 'route' => 'customers.orders.create', 'permission' => 'orders.create', 'placeholder' => false],
         ['key' => 'customers-orders-mine', 'label' => '我的订单', 'path' => '/customers/orders/mine', 'route' => 'customers.orders.mine', 'permission' => 'prototype.view', 'placeholder' => false],
     ]],
     ['key' => 'kol', 'label' => '网红', 'emoji' => '⭐', 'path' => '/kol', 'route' => 'shell.kol', 'permission' => 'kol.view', 'placeholder' => false, 'children' => [
         ['key' => 'kol-library', 'label' => '红人库', 'path' => '/kol/library', 'route' => 'kol.library', 'permission' => 'kol.view', 'placeholder' => false],
+        ['key' => 'kol-orders', 'label' => '网红订单', 'path' => '/kol/orders', 'route' => 'kol.orders', 'permission' => 'orders.view', 'placeholder' => false],
         ['key' => 'kol-library-create', 'label' => '新增网红', 'path' => '/kol/library/create', 'route' => 'kol.library.create', 'permission' => 'kol.operate', 'placeholder' => false],
         ['key' => 'kol-opportunities', 'label' => '合作机会', 'path' => '/kol/opportunities', 'route' => 'kol.opportunities', 'permission' => 'kol.view', 'placeholder' => false],
         ['key' => 'kol-collaborations', 'label' => '合作记录', 'path' => '/kol/collaborations', 'route' => 'kol.collaborations', 'permission' => 'kol.view', 'placeholder' => false],
@@ -47,8 +55,8 @@ return [
     ]],
     ['key' => 'guides', 'label' => '指南', 'emoji' => '📖', 'path' => '/guides', 'route' => 'shell.guides', 'permission' => 'guides.view', 'placeholder' => false, 'children' => [
         ['key' => 'guides-index', 'label' => '全部教程', 'path' => '/guides', 'route' => 'shell.guides', 'permission' => 'guides.view', 'placeholder' => false],
-        ['key' => 'guides-videos', 'label' => '视频教程', 'path' => '/guides/videos', 'route' => 'guides.videos', 'permission' => 'prototype.view', 'placeholder' => false],
-        ['key' => 'guides-manuals', 'label' => '操作手册', 'path' => '/guides/manuals', 'route' => 'guides.manuals', 'permission' => 'prototype.view', 'placeholder' => false],
+        ['key' => 'guides-videos', 'label' => '视频教程', 'path' => '/guides/videos', 'route' => 'guides.videos', 'permission' => 'guides.view', 'placeholder' => false],
+        ['key' => 'guides-manuals', 'label' => '操作手册', 'path' => '/guides/manuals', 'route' => 'guides.manuals', 'permission' => 'guides.view', 'placeholder' => false],
     ]],
     ['key' => 'accounting', 'label' => '会计', 'emoji' => '🧾', 'path' => '/accounting', 'route' => 'shell.accounting', 'permission' => 'accounting.view', 'placeholder' => false, 'children' => [
         ['key' => 'accounting-cost-calculation', 'label' => '成本核算表', 'path' => '/accounting/cost-calculation', 'route' => 'accounting.cost-calculation', 'permission' => 'prototype.view', 'placeholder' => false],
@@ -69,5 +77,6 @@ return [
         ['key' => 'settings-users', 'label' => '用户', 'path' => '/settings/users', 'route' => 'user.index', 'permission' => 'system.permissions.manage', 'placeholder' => false],
         ['key' => 'settings-roles-permissions', 'label' => '角色与权限', 'path' => '/settings/roles-permissions', 'route' => 'settings.roles-permissions', 'permission' => 'system.permissions.manage', 'placeholder' => false],
         ['key' => 'settings-audit-logs', 'label' => '操作日志', 'path' => '/settings/audit-logs', 'route' => 'settings.audit-logs', 'permission' => 'prototype.view', 'placeholder' => false],
+        ['key' => 'settings-changelog', 'label' => '版本更新', 'path' => '/settings/changelog', 'route' => 'settings.changelog', 'permission' => 'system.permissions.manage', 'placeholder' => false],
     ]],
 ];

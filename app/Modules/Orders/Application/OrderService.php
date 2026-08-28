@@ -20,6 +20,13 @@ final class OrderService
         'address_line_1', 'address_line_2', 'postal_code',
     ];
 
+    private const OPERATIONAL_MARKERS = ['exception', 'in_transit', 'return', 'stockout'];
+
+    private const FINAL_COST_TYPES = [
+        'product_cost', 'warehouse_cost', 'first_mile_cost', 'overseas_handling_cost', 'last_mile_cost',
+        'kol_commission', 'payment_fee', 'customs_tax', 'refund_replacement_loss', 'other_variable_cost',
+    ];
+
     public function __construct(
         private readonly AuditRecorder $audit,
         private readonly ProductRepository $productRepository,
@@ -171,6 +178,42 @@ final class OrderService
         });
     }
 
+    public function setOperationalMarker(Model $order, string $marker, bool $active, ?Authenticatable $actor): Model
+    {
+        if (! in_array($marker, self::OPERATIONAL_MARKERS, true)) {
+            throw new \InvalidArgumentException('Unsupported order operational marker.');
+        }
+
+        return DB::transaction(function () use ($order, $marker, $active, $actor): Model {
+            $locked = $order->newQuery()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $existing = $locked->operationalMarkers()->where('marker', $marker)->first();
+            $wasActive = $existing !== null;
+
+            if ($active && ! $existing) {
+                $locked->operationalMarkers()->create([
+                    'marker' => $marker,
+                    'marked_by' => $actor?->getAuthIdentifier(),
+                    'marked_at' => now(),
+                ]);
+            } elseif (! $active && $existing) {
+                $existing->delete();
+            }
+
+            if ($wasActive !== $active) {
+                $this->record(
+                    $actor,
+                    'order.operational_marker.updated',
+                    $locked,
+                    before: ['marker' => $marker, 'active' => $wasActive],
+                    after: ['marker' => $marker, 'active' => $active],
+                    reason: 'manual_operational_marker',
+                );
+            }
+
+            return $locked->fresh(['operationalMarkers']);
+        });
+    }
+
     public function list(array $filters = [], int $perPage = 50): LengthAwarePaginator
     {
         return $this->filteredQuery($filters)
@@ -186,9 +229,8 @@ final class OrderService
     private function filteredQuery(array $filters): \Illuminate\Database\Eloquent\Builder
     {
         $orderClass = 'App\\Modules\\Orders\\Infrastructure\\Models\\Order';
-
-        return $orderClass::query()
-            ->with(['items', 'owner', 'address', 'shipment.warehouse'])
+        $query = $orderClass::query()
+            ->with(['items', 'owner', 'address', 'shipment.warehouse', 'operationalMarkers'])
             ->when($filters['order_kind'] ?? null, fn ($query, string $kind) => $query->where('order_kind', $kind))
             ->when($filters['warehouse_ownership'] ?? null, fn ($query, string $ownership) => $query->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('ownership_type', $ownership)))
             ->when($filters['search'] ?? null, function ($query, string $search): void {
@@ -199,9 +241,65 @@ final class OrderService
                 });
             })
             ->when($filters['source_type'] ?? null, fn ($query, string $source) => $query->where('source_type', $source))
-            ->when($filters['order_status'] ?? null, fn ($query, string $status) => $query->where('order_status', $status))
-            ->latest('order_date')
-            ->latest('id');
+            ->when($filters['order_status'] ?? null, fn ($query, string $status) => $query->where('order_status', $status));
+
+        $this->applyBusinessView($query, (string) ($filters['view'] ?? 'all'));
+
+        return $query->latest('order_date')->latest('id');
+    }
+
+    private function applyBusinessView(\Illuminate\Database\Eloquent\Builder $query, string $view): void
+    {
+        match ($view) {
+            '', 'all' => null,
+            'pending' => $query->where('order_status', OrderStatus::PendingShipment->value),
+            'exception' => $this->applyMarkerView($query, 'exception'),
+            'in_transit' => $this->applyMarkerView($query, 'in_transit'),
+            'shipped' => $query->where('order_status', OrderStatus::Shipped->value),
+            'return' => $this->applyMarkerView($query, 'return'),
+            'loss' => $this->applyLossView($query),
+            'overweight' => $query
+                ->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('is_domestic', true))
+                ->whereHas('shipment.billingEvidence', fn ($billing) => $billing->where('chargeable_weight_kg', '>', 1.5)),
+            'stockout' => $this->applyStockoutView($query),
+            default => null,
+        };
+    }
+
+    private function applyMarkerView(\Illuminate\Database\Eloquent\Builder $query, string $marker): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->whereHas('operationalMarkers', fn ($markers) => $markers->where('marker', $marker));
+    }
+
+    private function applyLossView(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        $placeholders = implode(',', array_fill(0, count(self::FINAL_COST_TYPES), '?'));
+
+        return $query
+            ->whereHas('financials', fn ($financials) => $financials->whereNotNull('amount_paid')->whereNotNull('refund_amount'))
+            ->whereHas('costEntries', fn ($costs) => $costs->whereIn('cost_type', self::FINAL_COST_TYPES), '>=', count(self::FINAL_COST_TYPES))
+            ->whereRaw(
+                "(SELECT CAST(order_financials.amount_paid AS NUMERIC) - CAST(order_financials.refund_amount AS NUMERIC) FROM order_financials WHERE order_financials.order_id = orders.id) - (SELECT COALESCE(SUM(CAST(order_cost_entries.amount AS NUMERIC)), 0) FROM order_cost_entries WHERE order_cost_entries.order_id = orders.id AND order_cost_entries.cost_type IN ({$placeholders})) < 0",
+                self::FINAL_COST_TYPES,
+            );
+    }
+
+    private function applyStockoutView(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        return $this->applyMarkerView($query, 'stockout')
+            ->whereExists(function ($stockout): void {
+                $stockout->selectRaw('1')
+                    ->from('order_items as stockout_items')
+                    ->join('shipments as stockout_shipments', 'stockout_shipments.order_id', '=', 'stockout_items.order_id')
+                    ->leftJoin('warehouse_inventory as stockout_inventory', function ($join): void {
+                        $join->on('stockout_inventory.warehouse_id', '=', 'stockout_shipments.warehouse_id')
+                            ->on('stockout_inventory.product_id', '=', 'stockout_items.product_id');
+                    })
+                    ->whereColumn('stockout_items.order_id', 'orders.id')
+                    ->whereNotNull('stockout_shipments.warehouse_id')
+                    ->whereNotNull('stockout_items.product_id')
+                    ->whereRaw('(COALESCE(stockout_inventory.quantity_on_hand, 0) - COALESCE(stockout_inventory.quantity_reserved, 0)) < stockout_items.quantity');
+            });
     }
 
     private function nextOrderNumber(string $orderKind): string

@@ -60,6 +60,33 @@ final class InventoryFoundationM1Test extends TestCase
         $this->assertDatabaseHas('audit_records',['action'=>'warehouse.created']);
     }
 
+    public function test_warehouse_manager_can_explicitly_configure_domestic_fulfillment_authority(): void
+    {
+        $user=$this->userWith(['inventory.view','inventory.warehouses.manage']);
+        $warehouse=Warehouse::query()->where('slug','factory')->firstOrFail();
+        $this->assertFalse((bool)$warehouse->is_domestic);
+
+        $this->actingAs($user)->patch('/inventory/factory',[
+            'name'=>$warehouse->name,
+            'code'=>$warehouse->code,
+            'country_code'=>'CN',
+            'address_line1'=>$warehouse->address_line1,
+            'address_line2'=>$warehouse->address_line2,
+            'city'=>$warehouse->city,
+            'state_region'=>$warehouse->state_region,
+            'postal_code'=>$warehouse->postal_code,
+            'timezone'=>$warehouse->timezone,
+            'type'=>$warehouse->type,
+            'ownership_type'=>$warehouse->ownership_type,
+            'is_domestic'=>true,
+            'is_active'=>true,
+            'priority'=>$warehouse->priority,
+        ])->assertRedirect();
+
+        $this->assertTrue((bool)$warehouse->fresh()->is_domestic);
+        $this->assertDatabaseHas('audit_records',['action'=>'warehouse.updated']);
+    }
+
     public function test_stock_links_to_canonical_product_id_and_available_is_computed(): void
     {
         $product=Product::create(['sku'=>'INV-001','name'=>'Inventory Product','source_type'=>'manual','product_type'=>'simple']);

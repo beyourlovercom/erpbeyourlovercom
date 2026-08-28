@@ -1,8 +1,17 @@
 <?php
 
+use App\Modules\Identity\Experience\Controllers\AccountController;
 use App\Modules\Identity\Experience\Controllers\RolePermissionsController;
 use App\Modules\Identity\Experience\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
+
+
+Route::middleware(['web', 'auth'])->group(function (): void {
+    Route::get('/account/profile', [AccountController::class, 'profile'])->name('account.profile');
+    Route::match(['put', 'patch'], '/account/profile', [AccountController::class, 'updateProfile'])->name('account.profile.update');
+    Route::get('/account/password', [AccountController::class, 'password'])->name('account.password');
+    Route::put('/account/password', [AccountController::class, 'updatePassword'])->name('account.password.update');
+});
 
 Route::middleware(['web', 'auth', 'can:system.permissions.manage'])->group(function (): void {
     Route::get('/settings/users', [UserController::class, 'index'])->name('user.index');

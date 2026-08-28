@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Orders\Experience\Controllers\OrderController;
+use App\Modules\Orders\Experience\Controllers\OrderSavedViewController;
 use App\Modules\Orders\Experience\Controllers\WooCommerceInboundController;
 use Illuminate\Support\Facades\Route;
 
@@ -12,6 +13,10 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/sync/woocommerce/historical', [WooCommerceInboundController::class, 'historical'])->middleware('can:sync.operate')->name('woocommerce.inbound.historical');
     Route::get('/orders', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.index')->defaults('order_kind', 'all');
     Route::get('/orders/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.all')->defaults('order_kind', 'all');
+    Route::post('/orders/views', [OrderSavedViewController::class, 'store'])->middleware('can:orders.view')->name('orders.views.store');
+    Route::patch('/orders/views/{savedView}', [OrderSavedViewController::class, 'update'])->middleware('can:orders.view')->name('orders.views.update');
+    Route::delete('/orders/views/{savedView}', [OrderSavedViewController::class, 'destroy'])->middleware('can:orders.view')->name('orders.views.destroy');
+    Route::post('/orders/{order}/operational-markers/{marker}', [OrderController::class, 'setOperationalMarker'])->middleware('can:orders.edit')->where('order', '[0-9]+')->whereIn('marker', ['exception', 'in_transit', 'return', 'stockout'])->name('orders.operational-markers.update');
     Route::get('/orders/procurement', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.procurement')->defaults('order_kind', 'all')->defaults('order_scope', 'external_warehouse');
     Route::get('/orders/procurement/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.procurement')->defaults('order_kind', 'all')->defaults('order_scope', 'external_warehouse');
     Route::get('/customers/orders', [OrderController::class, 'index'])->middleware('can:orders.view')->name('customers.orders')->defaults('order_kind', 'customer');

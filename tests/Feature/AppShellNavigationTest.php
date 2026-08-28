@@ -63,16 +63,20 @@ class AppShellNavigationTest extends TestCase
     {
         $user = $this->userWith(['dashboard.view', 'logistics.view'], 'operator-without-prototype');
         $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
-            ->has('shellNavigation.1.children', 1)
+            ->has('shellNavigation.1.children', 2)
             ->where('shellNavigation.1.children.0.key', 'logistics-pending')
-            ->where('shellNavigation.1.children.0.label', '待发货'));
+            ->where('shellNavigation.1.children.0.label', '待发货')
+            ->where('shellNavigation.1.children.1.key', 'logistics-carriers')
+            ->where('shellNavigation.1.children.1.label', '承运商'));
 
         $withPrototype = $this->userWith(['dashboard.view', 'logistics.view', 'prototype.view'], 'operator-with-prototype');
         $this->actingAs($withPrototype)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
-            ->has('shellNavigation.1.children', 4)
+            ->has('shellNavigation.1.children', 5)
             ->where('shellNavigation.1.children.1.label', '已发待单号')
             ->where('shellNavigation.1.children.2.label', '运输中')
-            ->where('shellNavigation.1.children.3.label', '异常订单'));
+            ->where('shellNavigation.1.children.3.label', '异常订单')
+            ->where('shellNavigation.1.children.4.key', 'logistics-carriers')
+            ->where('shellNavigation.1.children.4.label', '承运商'));
     }
 
     public function test_inventory_navigation_includes_active_warehouse_shortcuts(): void
@@ -121,9 +125,9 @@ class AppShellNavigationTest extends TestCase
     public function test_only_exact_legacy_root_path_collisions_fall_back_for_prototype_users(): void
     {
         $prototypeUser = $this->userWith(['prototype.view'], 'prototype-operator');
-        foreach (['/procurement', '/guides'] as $path) {
-            $this->actingAs($prototypeUser)->get($path)->assertOk()->assertViewIs('erp.shell');
-        }
+        $this->actingAs($prototypeUser)->get('/procurement')->assertOk()->assertViewIs('erp.shell');
+        // Guides is now a formal knowledge-base module and no longer falls back to prototype access.
+        $this->actingAs($prototypeUser)->get('/guides')->assertForbidden();
         // /products now requires products.view (not prototype.view); prototype-only users are forbidden
         $this->actingAs($prototypeUser)->get('/products')->assertForbidden();
         foreach (['/inventory', '/logistics', '/customers', '/kol', '/accounting', '/settings', '/sync'] as $path) {
@@ -149,6 +153,8 @@ class AppShellNavigationTest extends TestCase
                     '/products' => 'Products/Dashboard',
                     '/inventory' => 'Inventory/Dashboard',
                     '/kol' => 'Kol/Overview',
+                    '/guides' => 'Guides/Index',
+                    '/settings' => 'Settings/Index',
                     default => 'Shell/ModuleOverview',
                 }));
         }

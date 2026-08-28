@@ -1,96 +1,40 @@
 import { mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import Index from './Index.vue'
-
-const { post } = vi.hoisted(() => ({ post: vi.fn() }))
 
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
-  router: { get: vi.fn(), post },
 }))
-
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({
   default: { props: ['title', 'breadcrumbs'], template: '<div><slot /></div>' },
 }))
 
-const woo = {
-  id: 1,
-  internal_order_number: 'WOO-1',
-  recipient_name: 'Test',
-  status: 'pending',
-  synced_at: null,
-  synced_by: null,
-  tracking_number: 'TRACK-1',
-  shipment_status: 'shipped',
-  carrier: 'DHL',
-  source_type: 'woocommerce',
-  tracking_outbound_status: null,
-  tracking_outbound_attempts: null,
-}
-describe('Sync tracking outbound UI', () => {
-  beforeEach(() => post.mockClear())
-
-  it('shows one-click outbound only for eligible Woo shipped orders', async () => {
-    const wrapper = mount(Index, { props: { orders: [woo], filters: {} } })
-    expect(wrapper.text()).toContain('Tracking 写回')
-    expect(wrapper.text()).toContain('未执行')
-    const button = wrapper.findAll('button').find((item) => item.text() === '写回 Tracking')
-    expect(button?.exists()).toBe(true)
-    await button!.trigger('click')
-    expect(post).toHaveBeenCalledWith('/sync/orders/1/tracking-outbound')
-  })
-
-  it('hides outbound action for non-Woo or unshipped orders', () => {
-    const manual = { ...woo, id: 2, source_type: 'manual' }
-    const unshipped = { ...woo, id: 3, shipment_status: 'pending' }
-    const wrapper = mount(Index, { props: { orders: [manual, unshipped], filters: {} } })
-    expect(wrapper.findAll('button').filter((item) => item.text() === '写回 Tracking')).toHaveLength(0)
-  })
-
-  it('renders retry and completed outbox states explicitly', () => {
-    const retry = { ...woo, id: 4, tracking_outbound_status: 'pending', tracking_outbound_attempts: 1 }
-    const done = { ...woo, id: 5, status: 'completed', tracking_outbound_status: 'completed', tracking_outbound_attempts: 1 }
-    const wrapper = mount(Index, { props: { orders: [retry, done], filters: {} } })
-    expect(wrapper.text()).toContain('待重试')
-    expect(wrapper.text()).toContain('已完成')
-  })
-  it('posts selected and orchestration actions to canonical routes', async () => {
-    const wrapper = mount(Index, { props: { orders: [woo], filters: {} } })
-    await wrapper.find('input[type="checkbox"]').setValue(true)
-
-    const click = async (label: string) => {
-      const button = wrapper.findAll('button').find((item) => item.text() === label)
-      expect(button?.exists()).toBe(true)
-      await button!.trigger('click')
+const domains = [
+  { key: 'orders', title: '同步订单', subtitle: 'WooCommerce / Shopify / ERP', href: '/sync/orders', last_sync_at: '2026-08-28T08:00:00Z', status: 'completed', succeeded_items: 3, failed_items: 0, conflict_items: 0 },
+  { key: 'warehouses', title: '同步仓库', subtitle: '仓库', href: '/sync/warehouses', last_sync_at: null, status: 'not_started', succeeded_items: 0, failed_items: 0, conflict_items: 0 },
+  { key: 'kol', title: '同步网红', subtitle: 'IG / X', href: '/sync/kol', last_sync_at: null, status: 'not_started', succeeded_items: 0, failed_items: 0, conflict_items: 0 },
+  { key: 'exports', title: '导出平台订单', subtitle: 'Export', href: '/sync/exports', last_sync_at: null, status: 'not_started', succeeded_items: 0, failed_items: 0, conflict_items: 0 },
+]
+const queueSummary = { retry_due: 1, retry_waiting: 2, processing: 3, failed: 4, conflicts: 5 }
+describe('Sync overview', () => {
+  it('renders the four frozen second-level workspaces', () => {
+    const wrapper = mount(Index, { props: { domains, queueSummary, manualRuns: [], automaticRuns: [] } })
+    for (const domain of domains) {
+      expect(wrapper.text()).toContain(domain.title)
+      expect(wrapper.find(`a[href="${domain.href}"]`).exists()).toBe(true)
     }
-
-    await click('批量写回所选')
-    expect(post).toHaveBeenCalledWith('/sync/orchestration/tracking/selected', { order_ids: [1] })
-    await click('写回全部待同步')
-    expect(post).toHaveBeenCalledWith('/sync/orchestration/tracking/all-pending', { limit: 100 })
-    await click('重试到期任务')
-    expect(post).toHaveBeenCalledWith('/sync/orchestration/retry', { limit: 100 })
-    await click('恢复超时任务')
-    expect(post).toHaveBeenCalledWith('/sync/orchestration/recover-stale', { age_seconds: 300, limit: 100 })
-    await click('核对所选 Tracking')
-    expect(post).toHaveBeenCalledWith('/sync/orchestration/reconcile', { order_ids: [1] })
+    expect(wrapper.text()).toContain('最后同步')
+    expect(wrapper.text()).toContain('订单同步队列')
   })
 
-  it('renders queue summary and recent sync runs', () => {
-    const wrapper = mount(Index, { props: {
-      orders: [], filters: {},
-      queueSummary: { retry_due: 2, retry_waiting: 3, processing: 4, failed: 5, conflicts: 6 },
-      syncRuns: [{
-        id: 9, run_type: 'tracking_all_pending', status: 'partial', requested_items: 7,
-        succeeded_items: 4, retrying_items: 1, failed_items: 1, conflict_items: 1,
-        skipped_items: 0, started_at: '2026-08-28T04:00:00Z',
-      }],
-    } })
-
-    expect(wrapper.text()).toContain('到期重试')
-    expect(wrapper.text()).toContain('等待重试')
-    expect(wrapper.text()).toContain('tracking_all_pending')
-    expect(wrapper.text()).toContain('partial')
-    expect(wrapper.find('a[href="/sync/runs/9"]').exists()).toBe(true)
+  it('separates manual and automatic run history without inventing records', () => {
+    const run = { id: 11, domain: 'orders', run_type: 'tracking_selected', provider_key: 'woocommerce', status: 'completed', initiator: 'Andy', started_at: '2026-08-28T08:00:00Z', completed_at: '2026-08-28T08:01:00Z', requested_items: 1, succeeded_items: 1, failed_items: 0, conflict_items: 0 }
+    const systemRun = { ...run, id: 12, initiator: null, run_type: 'scheduled_incremental' }
+    const wrapper = mount(Index, { props: { domains, queueSummary, manualRuns: [run], automaticRuns: [systemRun] } })
+    expect(wrapper.text()).toContain('手动同步记录')
+    expect(wrapper.text()).toContain('自动同步记录')
+    expect(wrapper.text()).toContain('Andy')
+    expect(wrapper.find('a[href="/sync/runs/11"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/sync/runs/12"]').exists()).toBe(true)
   })
 })

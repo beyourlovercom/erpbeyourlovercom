@@ -37,6 +37,7 @@ return [
         'index' => ['label' => '全部教程', 'path' => '/guides'],
         'videos' => ['label' => '视频教程', 'path' => '/guides/videos'],
         'manuals' => ['label' => '操作手册', 'path' => '/guides/manuals'],
+        'changelog' => ['label' => '版本更新', 'path' => '/settings/changelog'],
     ]],
     'accounting' => ['icon' => '💰', 'label' => '会计', 'children' => [
         'cost-calculation' => ['label' => '成本核算表', 'path' => '/accounting/cost-calculation'],
@@ -57,5 +58,6 @@ return [
         'users' => ['label' => '用户', 'path' => '/settings/users'],
         'roles-permissions' => ['label' => '角色与权限', 'path' => '/settings/roles-permissions'],
         'audit-logs' => ['label' => '操作日志', 'path' => '/settings/audit-logs'],
+        'changelog' => ['label' => '版本更新', 'path' => '/settings/changelog'],
     ]],
 ];

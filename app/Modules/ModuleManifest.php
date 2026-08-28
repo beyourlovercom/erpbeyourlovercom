@@ -8,6 +8,7 @@ use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
 use App\Modules\Inventory\Providers\InventoryServiceProvider;
 use App\Modules\Finance\Providers\FinanceServiceProvider;
+use App\Modules\Guides\Providers\GuidesServiceProvider;
 use App\Modules\Kol\Providers\KolServiceProvider;
 use App\Modules\Logistics\Providers\LogisticsServiceProvider;
 use App\Modules\Orders\Providers\OrdersServiceProvider;
@@ -32,6 +33,7 @@ final class ModuleManifest
             OrdersServiceProvider::class,
             LogisticsServiceProvider::class,
             FinanceServiceProvider::class,
+            GuidesServiceProvider::class,
             RuntimeServiceProvider::class,
             AuditServiceProvider::class,
             SyncServiceProvider::class,

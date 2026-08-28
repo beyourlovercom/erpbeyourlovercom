@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { router } from '@inertiajs/vue3'
 import UserAccountMenu from './UserAccountMenu.vue'
 
-vi.mock('@inertiajs/vue3', () => ({ router: { post: vi.fn() } }))
+vi.mock('@inertiajs/vue3', () => ({ router: { post: vi.fn(), visit: vi.fn() } }))
 
 const user = { id: 1, name: 'Test User', email: 'test@example.com' }
 
@@ -32,7 +32,9 @@ describe('UserAccountMenu', () => {
     expect(wrapper.get('[role="menu"]').attributes('id')).toBe(trigger.attributes('aria-controls'))
     expect(wrapper.get('[role="menu"]').text()).toContain('Test User')
     expect(wrapper.get('[role="menu"]').text()).toContain('test@example.com')
-    expect(document.activeElement).toBe(wrapper.get('.shell-account-logout').element)
+    expect(document.activeElement).toBe(wrapper.findAll('.shell-account-action')[0].element)
+    expect(wrapper.get('[role="menu"]').text()).toContain('个人信息')
+    expect(wrapper.get('[role="menu"]').text()).toContain('修改密码')
 
     await trigger.trigger('click')
     expect(trigger.attributes('aria-expanded')).toBe('false')
@@ -57,6 +59,18 @@ describe('UserAccountMenu', () => {
     await wrapper.vm.$nextTick()
     expect(wrapper.get('.shell-account-trigger').attributes('aria-expanded')).toBe('false')
     wrapper.unmount()
+  })
+
+  it('opens self-service profile and password routes', async () => {
+    const wrapper = mount(UserAccountMenu, { props: { user, navigationHidden: false } })
+    await wrapper.get('.shell-account-trigger').trigger('click')
+    const actions = wrapper.findAll('.shell-account-action')
+    await actions[0].trigger('click')
+    expect(router.visit).toHaveBeenCalledWith('/account/profile')
+
+    await wrapper.get('.shell-account-trigger').trigger('click')
+    await wrapper.findAll('.shell-account-action')[1].trigger('click')
+    expect(router.visit).toHaveBeenCalledWith('/account/password')
   })
 
   it('posts logout through the existing route', async () => {

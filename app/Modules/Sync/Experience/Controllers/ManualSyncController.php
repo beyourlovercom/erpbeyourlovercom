@@ -41,7 +41,7 @@ final class ManualSyncController
 
         $recentRuns = $this->orchestration->recentRuns(10);
 
-        return Inertia::render('Sync/Index', [
+        return Inertia::render('Sync/Orders', [
             'queueSummary' => $this->orchestration->queueSummary(),
             'syncRuns' => $recentRuns->map(fn ($run): array => [
                 'id' => $run->id,

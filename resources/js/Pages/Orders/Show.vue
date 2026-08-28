@@ -57,13 +57,15 @@ type Order = {
     shipped_at: string | null
   } | null
   manual_sync: { status: string; synced_at: string | null } | null
+  operational_markers: string[]
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   order: Order
   inventoryAvailability?: Record<number, Availability[]>
   audit: { action: string; actor_id: number | null; created_at: string; reason?: string }[]
-}>()
+  canMarkOperational?: boolean
+}>(), { canMarkOperational: false })
 
 const isKol = computed(() => props.order.order_kind === 'kol_fulfillment')
 const basePath = computed(() => isKol.value ? '/kol/orders' : '/customers/orders')
@@ -127,6 +129,15 @@ const cancelEdit = () => {
 const submit = () => form.patch(`${basePath.value}/${props.order.id}`, {
   onSuccess: () => { editMode.value = false },
 })
+
+const operationalMarkerOptions = [
+  { key: 'exception', label: '异常' },
+  { key: 'in_transit', label: '运输中' },
+  { key: 'return', label: '退货' },
+  { key: 'stockout', label: '缺货' },
+]
+const markerActive = (key: string) => props.order.operational_markers?.includes(key) ?? false
+const toggleMarker = (key: string) => router.post(`/orders/${props.order.id}/operational-markers/${key}`, { active: !markerActive(key) }, { preserveScroll: true })
 
 const shipmentStatusLabel = computed(() => {
   const s = props.order.shipment?.shipment_status
@@ -207,6 +218,15 @@ const shipmentStatusLabel = computed(() => {
             >
               重开发货
             </button>
+          </div>
+        </div>
+
+        <!-- Operational markers: explicit human marks, not a second Order status -->
+        <div class="erp-form-card">
+          <h2 class="erp-form-card-title">业务标记</h2>
+          <p class="ord-inventory-help">用于异常、运输中、退货、缺货等业务视图。标记不会改写订单主状态；缺货视图还会再次核对所选仓库真实可用库存。</p>
+          <div class="ord-marker-row">
+            <button v-for="marker in operationalMarkerOptions" :key="marker.key" type="button" class="erp-btn erp-btn-secondary ord-marker" :class="{ active: markerActive(marker.key) }" :disabled="!canMarkOperational" @click="toggleMarker(marker.key)">{{ markerActive(marker.key) ? '✓ ' : '' }}{{ marker.label }}</button>
           </div>
         </div>
 
@@ -638,4 +658,8 @@ const shipmentStatusLabel = computed(() => {
     align-items: flex-start;
   }
 }
+</style>
+
+<style scoped>
+.ord-marker-row{display:flex;gap:8px;flex-wrap:wrap}.ord-marker.active{background:var(--byl-status-bg);color:var(--byl-status-ink);font-weight:700}.ord-marker:disabled{opacity:.55;cursor:not-allowed}
 </style>
