@@ -11,6 +11,8 @@ type Communication = { id: number; channel: string; direction: string; summary: 
 type HistoricalOpportunity = { id: number; title: string; cooperation_type: string | null; stage: string; status: string; created_at: string | null; estimated_cost: number | null; currency: string; owner: { id: number; name: string } | null }
 type CollaborationProduct = { id: number; product_id: number | null; sku: string; name: string | null; quantity: number }
 type FulfillmentOrder = { id:number; internal_order_number:string; external_order_number:string; order_status:string; shipment:{ shipment_status:string; warehouse_name:string|null; carrier:string|null; service:string|null; tracking_number:string|null; shipped_at:string|null }|null; manual_sync_status:string|null }
+type ContentAttachment = { id:number; name:string; url:string }
+type ContentRecord = { id:number; collaboration_id:number|null; platform:string; content_type:string; publication_status:string; post_url:string|null; planned_publish_at:string|null; published_at:string|null; evidence_classification:string; attachments:ContentAttachment[] }
 type Collaboration = { id: number; opportunity_id: number | null; owner_id: number | null; order_id:number|null; owner: { id: number; name: string } | null; title: string | null; post_url: string | null; cooperation_type: string | null; status: string; agreement_amount: number | null; currency: string; agreed_at: string | null; planned_publish_at: string | null; deliverables: string | null; fulfillment_required: boolean; notes: string | null; products: CollaborationProduct[]; fulfillment_order:FulfillmentOrder|null; created_at: string | null }
 type KolDetail = {
   id: number; display_name: string; avatar_url?: string | null; avatar_source?: string | null; avatar_updated_at?: string | null; legal_name: string | null; country_code: string | null; language: string | null
@@ -32,6 +34,7 @@ type KolDetail = {
   recent_communications: Communication[]
   historical_opportunities: HistoricalOpportunity[]
   collaborations: Collaboration[]
+  contents?: ContentRecord[]
 }
 
 const props = defineProps<{
@@ -76,8 +79,12 @@ const communicationDirectionLabel = (value: string) => value === 'inbound' ? '�
 const opportunityStatusLabel = (value: string) => ({ active: '进行中', success: '成功', failed: '失败', paused: '暂停', completed: '已完成', cancelled: '已取消' }[value] ?? value)
 const opportunityStatusClass = (value: string) => value === 'success' || value === 'completed' ? 'is-success' : value === 'failed' ? 'is-failed' : value === 'paused' ? 'is-paused' : 'is-neutral'
 const collaborationStatusLabel = (value: string) => ({ draft: '草稿', confirmed: '已确认', in_progress: '进行中', completed: '已完成', cancelled: '已取消' }[value] ?? value)
+const contentStatusLabel = (value:string) => value === 'published' ? '已发布' : '未发布'
+const contentTypeLabel = (value:string) => ({ post:'图文', reel:'Reel', short_video:'短视频', long_video:'长视频', story:'Story', live:'直播', article:'文章', other:'其他' }[value] ?? value)
+const evidenceLabel = (value:string) => ({ none:'无证据', url:'URL', screenshot:'截图/附件', url_and_screenshot:'URL + 截图/附件' }[value] ?? value)
 const currentCollaboration = computed(() => props.kol.collaborations[0] ?? null)
 const collaborationHistory = computed(() => props.kol.collaborations.filter(item => item.status === 'completed' || item.status === 'cancelled'))
+const contentRows = computed(() => props.kol.contents ?? [])
 
 const primarySocial = computed(() => props.kol.social_accounts.find((account) => account.is_active) ?? props.kol.social_accounts[0] ?? null)
 const strongestFollowers = computed(() => {
@@ -238,6 +245,28 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
             <div v-if="currentCollaboration.deliverables" class="kol-next-action"><strong>约定交付：</strong><span>{{ currentCollaboration.deliverables }}</span></div>
           </div>
           <div v-else class="kol-opportunity-empty">暂无正式合作</div>
+        </section>
+
+        <!-- M1.3 · 内容与发布 -->
+        <section class="kol-collaboration-card kol-content-publication-card" aria-labelledby="kol-content-publication-title">
+          <div class="kol-card-heading">
+            <h3 id="kol-content-publication-title">内容与发布</h3>
+            <Link class="kol-card-view-all" :href="`/kol/content?search=${encodeURIComponent(kol.display_name)}`">管理内容</Link>
+          </div>
+          <div v-if="contentRows.length" class="kol-history-scroll">
+            <table class="kol-history-table">
+              <thead><tr><th>平台 / 类型</th><th>发布 URL</th><th>状态</th><th>发布证据</th><th>计划时间</th><th>实际时间</th></tr></thead>
+              <tbody><tr v-for="content in contentRows" :key="`content-${content.id}`">
+                <td><strong>{{ platformLabel(content.platform) }}</strong><small class="kol-history-note">{{ contentTypeLabel(content.content_type) }}</small></td>
+                <td><a v-if="content.post_url" :href="content.post_url" target="_blank" rel="noopener noreferrer">{{ content.post_url }}</a><span v-else>—</span></td>
+                <td><span class="kol-history-status" :class="content.publication_status === 'published' ? 'is-success' : 'is-neutral'">{{ contentStatusLabel(content.publication_status) }}</span></td>
+                <td><strong>{{ evidenceLabel(content.evidence_classification) }}</strong><small v-for="attachment in content.attachments" :key="attachment.id" class="kol-history-note"><a :href="attachment.url" target="_blank" rel="noopener noreferrer">{{ attachment.name }}</a></small></td>
+                <td>{{ dateLabel(content.planned_publish_at) }}</td>
+                <td>{{ dateLabel(content.published_at) }}</td>
+              </tr></tbody>
+            </table>
+          </div>
+          <div v-else class="kol-opportunity-empty">暂无内容发布记录</div>
         </section>
 
         <!-- Region E · 最近沟通 -->

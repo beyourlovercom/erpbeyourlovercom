@@ -26,6 +26,7 @@ final class KolService
         $kolClass = self::KOL;
         $query = $kolClass::with(['owner', 'socialAccounts.latestMetric'])
             ->withSum('salesPerformances as historical_order_count', 'order_count')
+            ->withExists(['contents as has_published_content' => fn (Builder $q) => $q->where('publication_status', 'published')])
             ->active();
 
         if ($ownerScopeId !== null) {
@@ -94,6 +95,22 @@ final class KolService
             }
         }
 
+        $hasPublished = $filters['has_published_content'] ?? '';
+        $evidence = $filters['publication_evidence'] ?? '';
+        if ($hasPublished === 'yes') {
+            $query->whereHas('contents', function (Builder $q) use ($evidence): void {
+                $q->where('publication_status', 'published');
+                if ($evidence !== '') $this->applyContentEvidenceFilter($q, $evidence);
+            });
+        } elseif ($hasPublished === 'no') {
+            $query->whereDoesntHave('contents', fn (Builder $q) => $q->where('publication_status', 'published'));
+            if ($evidence !== '') {
+                $query->whereHas('contents', fn (Builder $q) => $this->applyContentEvidenceFilter($q, $evidence));
+            }
+        } elseif ($evidence !== '') {
+            $query->whereHas('contents', fn (Builder $q) => $this->applyContentEvidenceFilter($q, $evidence));
+        }
+
         if (! empty($filters['view'])) {
             $query = $this->applySystemView($query, $filters['view'], $ownerScopeId);
         }
@@ -107,6 +124,18 @@ final class KolService
         $query->orderBy($sort, $direction);
 
         return $query->paginate(30)->withQueryString();
+    }
+
+
+    private function applyContentEvidenceFilter(Builder $query, string $evidence): void
+    {
+        match ($evidence) {
+            'none' => $query->where(fn (Builder $q) => $q->whereNull('post_url')->orWhere('post_url', ''))->whereDoesntHave('attachments'),
+            'url' => $query->whereNotNull('post_url')->where('post_url', '!=', '')->whereDoesntHave('attachments'),
+            'screenshot' => $query->where(fn (Builder $q) => $q->whereNull('post_url')->orWhere('post_url', ''))->whereHas('attachments'),
+            'url_and_screenshot' => $query->whereNotNull('post_url')->where('post_url', '!=', '')->whereHas('attachments'),
+            default => null,
+        };
     }
 
     /**

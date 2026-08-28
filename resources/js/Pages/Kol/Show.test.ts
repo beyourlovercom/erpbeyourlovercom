@@ -10,4 +10,12 @@ describe('KOL Show formal collaboration projection', () => {
     expect(source).toContain('待补合作发帖 URL')
     expect(source).toContain('当前正式合作')
   })
+
+  it('projects M1.3 content separately from formal collaboration', () => {
+    expect(source).toContain('props.kol.contents ?? []')
+    expect(source).toContain('内容与发布')
+    expect(source).toContain('content.evidence_classification')
+    expect(source).toContain('content.publication_status')
+  })
+
 })
