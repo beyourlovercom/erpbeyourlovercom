@@ -258,7 +258,7 @@
 .shell-collapse-button:focus-visible,
 .shell-primary-link:focus-visible,
 .shell-account-trigger:focus-visible,
-.shell-account-logout:focus-visible {
+.shell-account-action:focus-visible {
     outline: var(--byl-focus-width) solid var(--byl-focus-ring);
     outline-offset: var(--byl-focus-offset);
 }
@@ -277,7 +277,7 @@
 }
 
 .shell-account-trigger,
-.shell-account-logout {
+.shell-account-action {
     border: 0;
     font: inherit;
     cursor: pointer;
@@ -354,11 +354,27 @@
     color: var(--byl-text-muted);
 }
 
-.shell-account-logout {
-    width: 100%;
+.shell-account-actions {
+    display: grid;
+    gap: var(--byl-space-6);
     margin-top: var(--byl-space-14);
+}
+
+.shell-account-action {
+    width: 100%;
     min-height: var(--byl-control-min-height);
     border-radius: var(--byl-radius-md);
+    background: var(--byl-readonly-bg);
+    color: var(--byl-text);
+    text-align: left;
+    padding: 0 var(--byl-space-12);
+}
+
+.shell-account-action:hover {
+    background: var(--byl-status-bg);
+}
+
+.shell-account-logout {
     background: var(--byl-color-shell-nav-hover);
     color: var(--byl-color-white);
 }
@@ -630,9 +646,10 @@
 .mvp-status {
     display: inline-flex;
     border-radius: var(--byl-radius-round);
-    background: var(--byl-color-shell-nav-hover);
+    background: var(--byl-status-bg);
     padding: var(--byl-space-4) var(--byl-space-8);
-    color: var(--byl-accent);
+    color: var(--byl-status-ink);
+    font-weight: 600;
 }
 
 .mvp-success {
@@ -662,8 +679,8 @@
 }
 
 .mvp-readonly {
-    background: var(--byl-color-shell-nav-hover);
-    color: var(--byl-text-muted);
+    background: var(--byl-readonly-bg);
+    color: var(--byl-readonly-ink);
 }
 
 .mvp-details summary {

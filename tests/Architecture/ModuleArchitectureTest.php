@@ -76,6 +76,7 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Identity/Application/UserService.php',
         'app/Modules/Identity/Experience/Console/Commands/CreateErpUser.php',
         'app/Modules/Identity/Experience/Controllers/AuthController.php',
+        'app/Modules/Identity/Experience/Controllers/AccountController.php',
         'app/Modules/Identity/Experience/Controllers/RolePermissionsController.php',
         'app/Modules/Identity/Experience/Controllers/UserController.php',
         'app/Modules/Identity/Experience/Fortify/AttemptPersistentAuthentication.php',
@@ -335,6 +336,7 @@ final class ModuleArchitectureTest extends TestCase
     ];
 
     private const ROUTE_NAMES = [
+        'account.password', 'account.password.update', 'account.profile', 'account.profile.update',
         'accounting.actual-2025', 'accounting.cost-calculation', 'accounting.execution-2026',
         'accounting.forecast-2027', 'accounting.kol-commissions', 'accounting.monthly',
         'accounting.optimization', 'accounting.order-costs', 'accounting.variance',
@@ -418,6 +420,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_27_220000_add_contact_shipping_payout_to_kols.php' => 'b1dde67cb168f0bcbef7d6f4c6820db054d8599ef32c1e0a3aa0612980115b85',
         'database/migrations/2026_08_27_230000_add_business_profile_and_contact_upgrade_to_kols.php' => '6ad45d9779d5233bd8c7f9f35f1bb13b74442aecef54410c5c33950b4e85a667',
         'database/migrations/2026_08_28_000000_create_sync_orchestration_tables.php' => '986373a6aa616b074c1edb119d6a4b2b30ba686170efae4374772d67749aa7c9',
+        'database/migrations/2026_08_28_150000_add_self_profile_fields_to_users.php' => 'abfbbda534229b2c5c7efcf5814ae76b212876a8157fdf8009e72e076d89b7c3',
     ];
 
     private const FRONTEND_FILES = [
@@ -427,10 +430,10 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Components/AppShell/GlobalNavigation.vue' => 'd770da59371440e8b4108aaa4116f50f07baa0b1980292d203a7936d702bf6dc',
         'resources/js/Components/AppShell/ModuleSidebar.vue' => '127f19089943410e88558a4f4fe07f7003c318c353b29582d526bdfcd64bc5a4',
         'resources/js/Components/AppShell/NavigationItem.vue' => 'a01afcb25099612ce549b48f3504f998c3ab71a112576e88792c5c1f99f4ead2',
-        'resources/js/Components/AppShell/TopBar.test.ts' => '458cd86f6d5e11edfe08c8ec16898f11b8b6081f0436f59365783f44fca07d78',
-        'resources/js/Components/AppShell/TopBar.vue' => '5f6dd6fb6a225f590cdcde940374e9a084e0b0f3a9169787be1afdafe18cbf6e',
-        'resources/js/Components/AppShell/UserAccountMenu.test.ts' => 'cbad0690b0c251c28ce7ee9644eb2de5699fc80065f8bc10d4fe1125d65dd687',
-        'resources/js/Components/AppShell/UserAccountMenu.vue' => '2ae335eacc6146873ffcf857d829a7c30d1136555e1339f500966c5dd7797367',
+        'resources/js/Components/AppShell/TopBar.test.ts' => '2b49fac1367891c39b9202cf4d3c8d9b8eba7ab4a767e0be5b7c43f8ee6f9d09',
+        'resources/js/Components/AppShell/TopBar.vue' => '1a4b9a6b31fee11bacb42abe74215e34cb0b3b7e798647a2765ef449db8d8a7c',
+        'resources/js/Components/AppShell/UserAccountMenu.test.ts' => '4f5d8af12c7be66fa9a878f47f614e2d6e734e338aa71ed6415ed9caa93c18db',
+        'resources/js/Components/AppShell/UserAccountMenu.vue' => '3f19fd436b22405f12bf2070565e50eb15268f7deb1eeb7160afa122eb1ffbaa',
         'resources/js/Components/PermissionMatrix.test.ts' => '5050666c6cdb788a74033ca42d7b9e0a09003faf5478992ce54af022f2a76839',
         'resources/js/Components/PermissionMatrix.vue' => '5376899d0142e95e8af4ceb218ea552d5495b733059e24e6165f7bc74b166a5f',
         'resources/js/Components/Products/SkuCombobox.test.ts' => 'fe5a4a4faf285ed257496aab9f183541df6ef3fab1cd708e410e9feca278c6b1',
@@ -461,6 +464,8 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Dashboard/Index.test.ts' => '27c63e094fcdec28a0e5677508723e149c90a5130efb98d4448fa2b7f51b4ae4',
         'resources/js/Pages/Dashboard/Index.vue' => '0c28a768afcaa181b54ab01c4ec08457a04f7ed98e5ba3b52a041d98492bc2bb',
         'resources/js/Pages/Finance/OrderAnalysis.vue' => '96216f9ce4b67dd10bc4627c7e09703c1752c030110425509839d9aaab25d0aa',
+        'resources/js/Pages/Identity/Account/Password.vue' => '515e95bbdad3b138f69f96676aeb176dd3554b048685c3e54da2897844ab2887',
+        'resources/js/Pages/Identity/Account/Profile.vue' => 'cac0dfa2facdc852dfc9cc44d3897c6910eaa4d68abbd4edf6ff5091b741a85d',
         'resources/js/Pages/Identity/RolesPermissions/Index.test.ts' => 'c81fa140a3d75212813d17f95ccdf85da874f5118241031e06dbfb4ab9c062f5',
         'resources/js/Pages/Identity/RolesPermissions/Index.vue' => '5faa0e5bed62fb38d096a100964bb2c34ed7a855b10e43addd32c165bd9ebcd9',
         'resources/js/Pages/Identity/Users/Create.test.ts' => '56b4aa1d7673eb6ebfc4eed35a04381f459ee7a3717f7664ff094af64d5eb6d0',
@@ -735,7 +740,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('800dfdb75d21c7298a8a5c4052e8b08c3df82b28cb730baa46ffb98e7969d523', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('2ddfa80d68d7508e4812704c7328db5b64758a3bf31eca876859444c4bc21038', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);

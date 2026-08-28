@@ -79,7 +79,7 @@ class ApprovedMenuBaselineTest extends TestCase
         $levelTwo = collect($items)->where('level', 2)->values();
 
         $this->assertCount(12, $levelOne, self::MISMATCH.': level-1 count');
-        $this->assertCount(40, $levelTwo, self::MISMATCH.': R2 owner-approved level-2 count');
+        $this->assertCount(42, $levelTwo, self::MISMATCH.': owner-approved level-2 count including cross-module order shortcuts');
         $this->assertSame(
             ['dashboard', 'orders', 'logistics', 'sync', 'customers', 'kol', 'inventory', 'procurement', 'products', 'guides', 'accounting', 'settings'],
             $levelOne->pluck('code')->all(),
@@ -108,7 +108,21 @@ class ApprovedMenuBaselineTest extends TestCase
                 continue;
             }
 
-            $this->assertCount(2, $group, self::MISMATCH.': URL shared by more than a parent/child landing pair for '.$url);
+            $approvedShortcutAliases = [
+                '/customers/orders' => ['customers-orders', 'orders-customers'],
+                '/kol/orders' => ['kol-orders', 'orders-kol'],
+            ];
+
+            if (isset($approvedShortcutAliases[$url])) {
+                $this->assertSame(
+                    $approvedShortcutAliases[$url],
+                    $group->pluck('code')->sort()->values()->all(),
+                    self::MISMATCH.': unapproved cross-module shortcut aliases for '.$url,
+                );
+                continue;
+            }
+
+            $this->assertCount(2, $group, self::MISMATCH.': URL shared by more than an approved pair for '.$url);
             $this->assertSame([1, 2], $group->pluck('level')->sort()->values()->all(), self::MISMATCH.': shared URL must be a level-1/level-2 pair for '.$url);
 
             $parent = $group->firstWhere('level', 1);

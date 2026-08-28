@@ -189,6 +189,21 @@
       "sort": 50
     },
     {
+      "code": "customers-orders",
+      "parent_code": "customers",
+      "level": 2,
+      "label_zh": "客户订单",
+      "slug": "orders",
+      "url": "/customers/orders",
+      "route": "customers.orders",
+      "permission": "orders.view",
+      "emoji": null,
+      "function_zh": "查看全部客户订单；该入口与订单模块下的客户订单快捷入口指向同一业务页面。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 10
+    },
+    {
       "code": "customers-orders-create",
       "parent_code": "customers",
       "level": 2,
@@ -201,7 +216,7 @@
       "function_zh": "创建新的客户订单。",
       "status": "implemented",
       "progress": 100,
-      "sort": 10
+      "sort": 20
     },
     {
       "code": "customers-orders-mine",
@@ -216,7 +231,7 @@
       "function_zh": "查看我负责的客户订单。",
       "status": "planned",
       "progress": 0,
-      "sort": 20
+      "sort": 30
     },
     {
       "code": "kol",
@@ -249,6 +264,21 @@
       "sort": 10
     },
     {
+      "code": "kol-orders",
+      "parent_code": "kol",
+      "level": 2,
+      "label_zh": "网红订单",
+      "slug": "orders",
+      "url": "/kol/orders",
+      "route": "kol.orders",
+      "permission": "orders.view",
+      "emoji": null,
+      "function_zh": "查看网红履约订单；该入口与订单模块下的网红订单快捷入口指向同一业务页面。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 20
+    },
+    {
       "code": "kol-library-create",
       "parent_code": "kol",
       "level": 2,
@@ -261,7 +291,7 @@
       "function_zh": "新增 KOL 主数据，默认负责人、加入日期、合作类型、国家/语言和主运营社交平台。",
       "status": "implemented",
       "progress": 100,
-      "sort": 20
+      "sort": 30
     },
     {
       "code": "kol-opportunities",
@@ -276,7 +306,7 @@
       "function_zh": "管理 KOL 合作机会和跟进阶段（M1.1 CRM 包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 30
+      "sort": 40
     },
     {
       "code": "kol-collaborations",
@@ -291,7 +321,7 @@
       "function_zh": "查看 KOL 合作记录、产品/样品关联和发货投影（M1.2 合作包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 40
+      "sort": 50
     },
     {
       "code": "kol-communications",
@@ -306,7 +336,7 @@
       "function_zh": "记录 KOL 沟通历史和待跟进事项（M1.1 CRM 包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 50
+      "sort": 60
     },
     {
       "code": "kol-samples",
@@ -321,7 +351,7 @@
       "function_zh": "查看 KOL 样品和发货信息投影，复用 canonical 订单和物流真相（M1.2 合作包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 60
+      "sort": 70
     },
     {
       "code": "kol-content",
@@ -336,7 +366,7 @@
       "function_zh": "管理 KOL 内容发布记录和发布证据（M1.3 内容包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 70
+      "sort": 80
     },
     {
       "code": "kol-commissions",
@@ -351,7 +381,7 @@
       "function_zh": "管理 KOL 佣金记录和结算历史（M1.4 财务包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 80
+      "sort": 90
     },
     {
       "code": "kol-affiliate",
@@ -366,7 +396,7 @@
       "function_zh": "管理 KOL 优惠码绑定和 AffiliateWP 关联元数据（M1.4 财务包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 90
+      "sort": 100
     },
     {
       "code": "inventory",

@@ -89,6 +89,36 @@ final class UserService
         });
     }
 
+    public function updateSelfProfile(Model $user, array $attributes, Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($user, $attributes, $actor): Model {
+            $locked = $user->newQuery()->whereKey($user->getKey())->lockForUpdate()->firstOrFail();
+            $fields = ['name', 'email', 'contact_name', 'mobile', 'phone', 'qq'];
+            $before = collect($fields)->mapWithKeys(fn (string $field): array => [$field => $locked->{$field}])->all();
+            $locked->fill(collect($attributes)->only($fields)->all())->save();
+            $after = collect($fields)->mapWithKeys(fn (string $field): array => [$field => $locked->{$field}])->all();
+            $this->record(
+                $actor,
+                'user.self_profile_updated',
+                $locked,
+                before: $before,
+                after: $after,
+                reason: $before === $after ? 'no_material_change' : 'self_profile_updated',
+            );
+
+            return $locked->fresh('roles');
+        });
+    }
+
+    public function setOwnPassword(Model $user, string $password, Authenticatable $actor): void
+    {
+        DB::transaction(function () use ($user, $password, $actor): void {
+            $locked = $user->newQuery()->whereKey($user->getKey())->lockForUpdate()->firstOrFail();
+            $locked->forceFill(['password' => Hash::make($password)])->save();
+            $this->record($actor, 'user.password_changed', $locked, reason: 'password_changed_by_user');
+        });
+    }
+
     public function setPassword(Model $user, string $password, Authenticatable $actor): void
     {
         DB::transaction(function () use ($user, $password, $actor): void {

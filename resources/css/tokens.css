@@ -76,6 +76,10 @@
     --byl-color-shell-accent: #277d78;
     --byl-color-shell-accent-hover: #174b50;
     --byl-color-shell-focus: #277d78;
+    --byl-color-shell-status-bg: #dff3ef;
+    --byl-color-shell-status-ink: #174b50;
+    --byl-color-shell-readonly-bg: #f3f6f7;
+    --byl-color-shell-readonly-ink: #526670;
     --byl-color-shell-backdrop: rgb(7 21 29 / 0.70);
 
     --byl-color-auth-canvas: #07111f;
@@ -117,6 +121,10 @@
     --byl-accent-hover: var(--byl-color-shell-accent-hover, #174b50);
     --byl-accent-ink: var(--byl-color-white, #ffffff);
     --byl-focus-ring: var(--byl-color-shell-focus, #277d78);
+    --byl-status-bg: var(--byl-color-shell-status-bg, #dff3ef);
+    --byl-status-ink: var(--byl-color-shell-status-ink, #174b50);
+    --byl-readonly-bg: var(--byl-color-shell-readonly-bg, #f3f6f7);
+    --byl-readonly-ink: var(--byl-color-shell-readonly-ink, #526670);
     --byl-danger: #be123c;
 }
 
@@ -132,6 +140,10 @@
     --byl-accent-hover: var(--byl-color-auth-accent-hover, #a5f3fc);
     --byl-accent-ink: var(--byl-color-auth-accent-ink, #020617);
     --byl-focus-ring: var(--byl-color-auth-focus, #67e8f9);
+    --byl-status-bg: #12353b;
+    --byl-status-ink: #a5f3fc;
+    --byl-readonly-bg: #111827;
+    --byl-readonly-ink: #cbd5e1;
     --byl-danger: var(--byl-color-auth-danger, #fda4af);
 }
 
