@@ -187,7 +187,7 @@
     min-height: var(--byl-shell-topbar-height);
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: space-between;
     gap: var(--byl-space-20);
     background: var(--byl-surface);
     border-bottom: var(--byl-border-width) solid var(--byl-border-subtle);
@@ -198,6 +198,38 @@
     display: flex;
     align-items: center;
     gap: var(--byl-space-14);
+    min-width: 0;
+}
+
+.shell-topbar-trailing {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+}
+
+.shell-back-control {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    min-height: var(--byl-control-min-height);
+    padding: 0 var(--byl-space-10);
+    border-radius: var(--byl-radius-md);
+    color: var(--byl-text-muted);
+    text-decoration: none;
+    font-size: var(--byl-font-size-20);
+    line-height: 1;
+}
+
+.shell-back-control:hover,
+.shell-back-control:focus-visible {
+    background: var(--byl-border-subtle);
+    color: var(--byl-text);
+}
+
+.shell-back-control:focus-visible {
+    outline: var(--byl-focus-width) solid var(--byl-focus-ring);
+    outline-offset: var(--byl-focus-offset);
 }
 
 .shell-topbar h1 {
@@ -231,7 +263,7 @@
     outline-offset: var(--byl-focus-offset);
 }
 
-.shell-topbar .shell-mobile-toggle {
+.shell-topbar .shell-topbar-trailing .shell-mobile-toggle {
     display: none;
 }
 
@@ -744,7 +776,7 @@
         display: block;
     }
 
-    .shell-topbar .shell-mobile-toggle {
+    .shell-topbar .shell-topbar-trailing .shell-mobile-toggle {
         display: inline-flex;
     }
 
