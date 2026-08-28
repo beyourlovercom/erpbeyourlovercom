@@ -14,6 +14,14 @@ return [
     |
     */
 
+    'woocommerce' => [
+        'url' => env('WOO_BASE_URL', ''),
+        'consumer_key' => env('WOO_CONSUMER_KEY', ''),
+        'consumer_secret' => env('WOO_CONSUMER_SECRET', ''),
+        'connection_key' => env('WOO_CONNECTION_KEY', 'beyourlover.com'),
+        'timeout' => (int) env('WOO_TIMEOUT_SECONDS', 15),
+    ],
+
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
     ],

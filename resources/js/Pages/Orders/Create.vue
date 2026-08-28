@@ -1,6 +1,18 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3'
 import { ref, computed } from 'vue'
+
+const currencyOptions = [
+  { value: 'USD', label: 'USD · 美元' },
+  { value: 'CAD', label: 'CAD · 加拿大元' },
+  { value: 'HKD', label: 'HKD · 港币' },
+  { value: 'EUR', label: 'EUR · 欧元' },
+  { value: 'CNY', label: 'CNY · 人民币' },
+  { value: 'GBP', label: 'GBP · 英镑' },
+  { value: 'AUD', label: 'AUD · 澳元' },
+  { value: 'JPY', label: 'JPY · 日元' },
+  { value: 'SGD', label: 'SGD · 新加坡元' },
+]
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 
@@ -22,6 +34,7 @@ const form = useForm<{
   external_order_number: string
   order_date: string
   order_note: string
+  currency: string
   recipient_name: string
   phone: string
   country: string
@@ -35,6 +48,7 @@ const form = useForm<{
   external_order_number: props.generatedExternalOrderNumber,
   order_date: new Date().toISOString().slice(0, 10),
   order_note: '',
+  currency: 'USD',
   recipient_name: '',
   phone: '',
   country: '',
@@ -104,6 +118,13 @@ const submit = () =>
                 <label class="erp-form-label">订单日期 <span class="erp-form-required">*</span></label>
                 <input v-model="form.order_date" type="date" class="erp-input" :class="{ 'has-error': form.errors.order_date }" required>
                 <p v-if="form.errors.order_date" class="erp-field-error">{{ form.errors.order_date }}</p>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">订单币种 <span class="erp-form-required">*</span></label>
+                <select v-model="form.currency" class="erp-input" required>
+                  <option v-for="option in currencyOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                </select>
+                <p v-if="form.errors.currency" class="erp-field-error">{{ form.errors.currency }}</p>
               </div>
               <div class="erp-form-field ord-span-2">
                 <label for="external_order_number" class="erp-form-label">
@@ -208,7 +229,7 @@ const submit = () =>
                 <input v-model="item.quantity" type="number" min="1" class="erp-input" required>
               </div>
               <div class="erp-form-field">
-                <label class="erp-form-label">单价 <span class="erp-form-required">*</span></label>
+                <label class="erp-form-label">单价（{{ form.currency }}） <span class="erp-form-required">*</span></label>
                 <input v-model="item.unit_price" type="number" min="0" step="0.01" class="erp-input" required>
               </div>
               <div class="ord-item-remove">

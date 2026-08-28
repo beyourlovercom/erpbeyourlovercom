@@ -14,7 +14,7 @@ class Order extends Model
 {
     protected $fillable = [
         'internal_order_number', 'source_type', 'order_kind', 'external_order_number', 'order_date',
-        'order_note', 'owner_id', 'order_status',
+        'order_note', 'owner_id', 'order_status', 'currency',
     ];
 
     protected function casts(): array

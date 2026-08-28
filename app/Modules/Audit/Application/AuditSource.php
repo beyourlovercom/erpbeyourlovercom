@@ -9,4 +9,5 @@ enum AuditSource: string
     case UserProvisioning = 'erp:user:create';
     case SyncOutbox = 'sync:outbox';
     case Web = 'web';
+    case WooCommerceInbound = 'woocommerce:inbound';
 }
