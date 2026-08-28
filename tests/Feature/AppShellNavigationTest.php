@@ -154,6 +154,7 @@ class AppShellNavigationTest extends TestCase
                     '/inventory' => 'Inventory/Dashboard',
                     '/kol' => 'Kol/Overview',
                     '/guides' => 'Guides/Index',
+                    '/settings' => 'Settings/Index',
                     default => 'Shell/ModuleOverview',
                 }));
         }

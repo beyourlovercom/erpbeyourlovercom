@@ -26,6 +26,18 @@ final class ReleaseNoteController
         return Inertia::render('Guides/Releases/Index', ['releaseNotes' => $notes, 'canManage' => $canManage]);
     }
 
+    public function settings(Request $request): Response
+    {
+        $current = ReleaseNote::query()->published()->orderByDesc('released_on')->orderByDesc('id')->first();
+        $recent = ReleaseNote::query()->published()->orderByDesc('released_on')->orderByDesc('id')->limit(3)->get();
+
+        return Inertia::render('Settings/Index', [
+            'currentRelease' => $current ? $this->payload($current) : null,
+            'recentReleases' => $recent->map(fn (ReleaseNote $note) => $this->payload($note))->all(),
+            'canManage' => $request->user()?->can('guides.manage') ?? false,
+        ]);
+    }
+
     public function show(Request $request, ReleaseNote $releaseNote): Response
     {
         $canManage = $request->user()?->can('guides.manage') ?? false;

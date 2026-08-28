@@ -729,21 +729,6 @@
       "sort": 30
     },
     {
-      "code": "guides-changelog",
-      "parent_code": "guides",
-      "level": 2,
-      "label_zh": "版本更新",
-      "slug": "changelog",
-      "url": "/guides/changelog",
-      "route": "guides.releases.index",
-      "permission": "guides.view",
-      "emoji": null,
-      "function_zh": "查看ERP版本更新与发布说明。",
-      "status": "implemented",
-      "progress": 100,
-      "sort": 40
-    },
-    {
       "code": "accounting",
       "parent_code": null,
       "level": 1,
@@ -828,9 +813,9 @@
       "route": "shell.settings",
       "permission": "system.permissions.manage",
       "emoji": "⚙️",
-      "function_zh": "管理ERP系统配置、字段、权限和管理员设置。",
-      "status": "planned",
-      "progress": 0,
+      "function_zh": "管理ERP系统配置，并查看当前版本与近期发布摘要。",
+      "status": "implemented",
+      "progress": 100,
       "sort": 120
     },
     {
@@ -907,6 +892,21 @@
       "status": "planned",
       "progress": 0,
       "sort": 50
+    },
+    {
+      "code": "settings-changelog",
+      "parent_code": "settings",
+      "level": 2,
+      "label_zh": "版本更新",
+      "slug": "changelog",
+      "url": "/settings/changelog",
+      "route": "settings.changelog",
+      "permission": "system.permissions.manage",
+      "emoji": null,
+      "function_zh": "查看当前ERP版本、近期发布摘要与完整版本历史。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 60
     }
   ]
 }

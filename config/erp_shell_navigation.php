@@ -57,7 +57,6 @@ return [
         ['key' => 'guides-index', 'label' => '全部教程', 'path' => '/guides', 'route' => 'shell.guides', 'permission' => 'guides.view', 'placeholder' => false],
         ['key' => 'guides-videos', 'label' => '视频教程', 'path' => '/guides/videos', 'route' => 'guides.videos', 'permission' => 'guides.view', 'placeholder' => false],
         ['key' => 'guides-manuals', 'label' => '操作手册', 'path' => '/guides/manuals', 'route' => 'guides.manuals', 'permission' => 'guides.view', 'placeholder' => false],
-        ['key' => 'guides-changelog', 'label' => '版本更新', 'path' => '/guides/changelog', 'route' => 'guides.releases.index', 'permission' => 'guides.view', 'placeholder' => false],
     ]],
     ['key' => 'accounting', 'label' => '会计', 'emoji' => '🧾', 'path' => '/accounting', 'route' => 'shell.accounting', 'permission' => 'accounting.view', 'placeholder' => false, 'children' => [
         ['key' => 'accounting-cost-calculation', 'label' => '成本核算表', 'path' => '/accounting/cost-calculation', 'route' => 'accounting.cost-calculation', 'permission' => 'prototype.view', 'placeholder' => false],
@@ -78,5 +77,6 @@ return [
         ['key' => 'settings-users', 'label' => '用户', 'path' => '/settings/users', 'route' => 'user.index', 'permission' => 'system.permissions.manage', 'placeholder' => false],
         ['key' => 'settings-roles-permissions', 'label' => '角色与权限', 'path' => '/settings/roles-permissions', 'route' => 'settings.roles-permissions', 'permission' => 'system.permissions.manage', 'placeholder' => false],
         ['key' => 'settings-audit-logs', 'label' => '操作日志', 'path' => '/settings/audit-logs', 'route' => 'settings.audit-logs', 'permission' => 'prototype.view', 'placeholder' => false],
+        ['key' => 'settings-changelog', 'label' => '版本更新', 'path' => '/settings/changelog', 'route' => 'settings.changelog', 'permission' => 'system.permissions.manage', 'placeholder' => false],
     ]],
 ];

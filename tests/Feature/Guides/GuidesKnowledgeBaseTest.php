@@ -81,14 +81,17 @@ final class GuidesKnowledgeBaseTest extends TestCase
     {
         $manager = $this->userWith(['guides.view','guides.manage']);
         $viewer = $this->userWith(['guides.view']);
-        $this->actingAs($manager)->post('/guides/changelog', [
+        $this->actingAs($manager)->post('/settings/changelog', [
             'version'=>'v1.6.0','title'=>'ERP 1.6.0','summary'=>'Release summary','markdown_body'=>"# Release\n\n## Added\n- Guides",'released_on'=>'2026-08-28',
         ])->assertRedirect();
         $note = ReleaseNote::where('version','v1.6.0')->firstOrFail();
-        $this->actingAs($viewer)->get('/guides/changelog')->assertOk()->assertInertia(fn (Assert $p) => $p->has('releaseNotes',0));
-        $this->actingAs($manager)->post('/guides/changelog/'.$note->id.'/publish')->assertRedirect();
-        $this->actingAs($viewer)->get('/guides/changelog')->assertOk()->assertInertia(fn (Assert $p) => $p->has('releaseNotes',1)->where('releaseNotes.0.version','v1.6.0'));
-        $this->actingAs($viewer)->get('/guides/changelog/'.$note->id)->assertOk()->assertInertia(fn (Assert $p) => $p->where('toc.0.label','Added'));
+        $this->actingAs($viewer)->get('/guides/changelog')->assertRedirect('/settings/changelog');
+        $this->actingAs($viewer)->get('/settings/changelog')->assertOk()->assertInertia(fn (Assert $p) => $p->has('releaseNotes',0));
+        $this->actingAs($manager)->post('/settings/changelog/'.$note->id.'/publish')->assertRedirect();
+        $this->actingAs($viewer)->get('/settings/changelog')->assertOk()->assertInertia(fn (Assert $p) => $p->has('releaseNotes',1)->where('releaseNotes.0.version','v1.6.0'));
+        $this->actingAs($viewer)->get('/settings/changelog/'.$note->id)->assertOk()->assertInertia(fn (Assert $p) => $p->where('toc.0.label','Added'));
+        $settingsAdmin = $this->userWith(['system.permissions.manage','guides.manage']);
+        $this->actingAs($settingsAdmin)->get('/settings')->assertOk()->assertInertia(fn (Assert $p) => $p->component('Settings/Index')->where('currentRelease.version','v1.6.0')->has('recentReleases',1));
         $columns = Schema::getColumnListing('release_notes');
         $this->assertContains('markdown_body', $columns);
         $this->assertNotContains('commit_sha', $columns);

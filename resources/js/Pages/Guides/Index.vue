@@ -16,7 +16,7 @@ const typeLabel = (type:string) => ({ tutorial:'教程', video:'视频', manual:
         <Link v-if="canManage" class="mvp-button mvp-button-primary" href="/guides/create">新建教程</Link>
       </div>
       <nav class="guide-tabs" aria-label="指南分类">
-        <Link href="/guides">全部教程</Link><Link href="/guides/videos">视频教程</Link><Link href="/guides/manuals">操作手册</Link><Link href="/guides/changelog">版本更新</Link>
+        <Link href="/guides">全部教程</Link><Link href="/guides/videos">视频教程</Link><Link href="/guides/manuals">操作手册</Link><Link href="/settings/changelog">版本更新</Link>
       </nav>
       <div class="guide-grid">
         <article v-for="guide in guides" :key="guide.id" class="mvp-card guide-card">

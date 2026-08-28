@@ -498,6 +498,7 @@ final class ModuleArchitectureTest extends TestCase
         'products.update',
         'root',
         'settings.audit-logs',
+        'settings.changelog',
         'settings.roles-permissions',
         'settings.roles-permissions.update',
         'settings.statuses',
@@ -653,12 +654,12 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Dashboard/Index.vue' => '0c28a768afcaa181b54ab01c4ec08457a04f7ed98e5ba3b52a041d98492bc2bb',
         'resources/js/Pages/Finance/OrderAnalysis.vue' => '96216f9ce4b67dd10bc4627c7e09703c1752c030110425509839d9aaab25d0aa',
         'resources/js/Pages/Guides/Edit.vue' => '47b31eb218c25505b2037e27460f99f52c80d42eee4057583d2ea680e9bd890b',
-        'resources/js/Pages/Guides/Index.test.ts' => '9c05043e9f7d835d6a8e35af2e6cfefdc36eeb01a08350b983067e6fc959de3f',
-        'resources/js/Pages/Guides/Index.vue' => '7ce6beb87a38f57a0d787c9efe609ee5e28ce902295122ebce9266a2246ea597',
-        'resources/js/Pages/Guides/Releases/Edit.vue' => '8a46e7a55c5d51e9b197c8061bd44ddc877bc1cf33d19c80f948ecca3c9c655a',
-        'resources/js/Pages/Guides/Releases/Index.test.ts' => '43971473790a00d223dc5d59c25c492a69422ea6142feff5a2b393ea1cd82edf',
-        'resources/js/Pages/Guides/Releases/Index.vue' => '9fe1969cd2ee2afee12cd48b612010c994ff6ce9c142c7b0a88ab367d07ab148',
-        'resources/js/Pages/Guides/Releases/Show.vue' => '2227db0f6f75c9c0acb67c272816e98b76e2c7fbcf6131b15f47e1736537b22b',
+        'resources/js/Pages/Guides/Index.test.ts' => 'b751aca1f6cc636b969306643ad1278159dd3be28192c129df9033a62f92e0c9',
+        'resources/js/Pages/Guides/Index.vue' => 'b4121443c078f0f386cbe204673386bf75d73fd187b9f642e61a05adabcc35ad',
+        'resources/js/Pages/Guides/Releases/Edit.vue' => '4bd76aa0a3bdae2ba74a0d601259cda0c64a41b37f836b19faf2f14dd0fbaca2',
+        'resources/js/Pages/Guides/Releases/Index.test.ts' => 'f87f3e583d97aadaf3fc77bd23a5793b48bf4bc66463112fc14d9fe11021ed2c',
+        'resources/js/Pages/Guides/Releases/Index.vue' => 'b59f69aea90679b6786ee3ba36f0a7097c4557c8c00f6fbd871ea8f9c41b18f9',
+        'resources/js/Pages/Guides/Releases/Show.vue' => '1186bb25382dcf06851b01f265753f5ce265a5503b28d9cf02cb00f8bf276eef',
         'resources/js/Pages/Guides/Show.test.ts' => '3dd81f33f5aa7303c7c09dcd9f7acc68ed57cf240025594a2322403fa670a1c0',
         'resources/js/Pages/Guides/Show.vue' => 'd8e6205a05d65bbb3e4aa823b762f4424114f65ad7c2550ac72374ae36d3124f',
         'resources/js/Pages/Identity/Account/Password.vue' => '515e95bbdad3b138f69f96676aeb176dd3554b048685c3e54da2897844ab2887',
@@ -709,6 +710,8 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Products/Import.vue' => '3abe0367cae0aaffd141462b8c3d11ea06d80b6f093dbc707802d5e141fd3a13',
         'resources/js/Pages/Products/Index.test.ts' => '0dea6f018291aa009911da0cab40e199665955719118ad618dfcf5e2b630fdd6',
         'resources/js/Pages/Products/Index.vue' => 'd78d462ae0199d1ffd79e892f131fc215946859f8e9d8b22d4d31c6186640bc7',
+        'resources/js/Pages/Settings/Index.test.ts' => '45cbba34d62289d3bd7c99bf05b9aa099a2875425c93ae8e0d4464619a60a825',
+        'resources/js/Pages/Settings/Index.vue' => 'd931499dca9a7b0ae06408ea196d097a863992ba160d749b8e4a7520322d9038',
         'resources/js/Pages/Shell/ModuleOverview.vue' => '7c4148ed1570444f4b2cb5763a1a8cfac3c6f7b958b95a4f3d98fbf40b6ca02c',
         'resources/js/Pages/Shell/Placeholder.test.ts' => 'd0623492800b81b76650531eec2b979747d98daf34dcd4320ba00438529bb781',
         'resources/js/Pages/Shell/Placeholder.vue' => 'e18f588432b7d29a025f7618f977bdb7457536e8ae8028c2c343ce5c7b95472f',
@@ -944,7 +947,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('cd9087f4399efc74b36e95d05a526350f41a6565c8bd9fdfdc57de7aae069afa', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('62be9d4e01ffcb018b10cdf65e41997b280ad18d69c325320f424824f7160592', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);
