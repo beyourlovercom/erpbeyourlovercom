@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Infrastructure\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Shipment extends Model
 {
@@ -28,5 +29,10 @@ class Shipment extends Model
     public function handler(): BelongsTo
     {
         return $this->belongsTo('App\\Modules\\Identity\\Infrastructure\\Models\\User', 'handled_by');
+    }
+
+    public function billingEvidence(): HasOne
+    {
+        return $this->hasOne(ShipmentCarrierBilling::class);
     }
 }

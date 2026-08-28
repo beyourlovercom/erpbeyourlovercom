@@ -159,6 +159,21 @@
       "sort": 40
     },
     {
+      "code": "logistics-carriers",
+      "parent_code": "logistics",
+      "level": 2,
+      "label_zh": "承运商",
+      "slug": "carriers",
+      "url": "/logistics/carriers",
+      "route": "logistics.carriers",
+      "permission": "logistics.view",
+      "emoji": null,
+      "function_zh": "按承运商汇总 canonical Shipment 发货历史、计费重量、实际物流费用与原始账单凭证。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 50
+    },
+    {
       "code": "sync",
       "parent_code": null,
       "level": 1,
