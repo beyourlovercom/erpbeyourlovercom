@@ -26,6 +26,7 @@ Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
     Route::patch('/kol/library/{kol}/communications/{communication}', [KolCommunicationController::class, 'update'])->middleware('can:kol.operate')->name('kol.library.communications.update');
     Route::post('/kol/library/{kol}/collaborations', [KolCollaborationController::class, 'store'])->middleware('can:kol.operate')->name('kol.library.collaborations.store');
     Route::patch('/kol/library/{kol}/collaborations/{collaboration}', [KolCollaborationController::class, 'update'])->middleware('can:kol.operate')->name('kol.library.collaborations.update');
+    Route::post('/kol/library/{kol}/collaborations/{collaboration}/fulfillment-order', [KolCollaborationController::class, 'createFulfillmentOrder'])->middleware(['can:kol.operate', 'can:orders.create'])->name('kol.library.collaborations.fulfillment-order');
     Route::post('/kol/library/{kol}/opportunities/{opportunity}/convert-to-collaboration', [KolCollaborationController::class, 'convertOpportunity'])->middleware('can:kol.operate')->name('kol.library.opportunities.convert-collaboration');
     Route::post('/kol/library/{kol}/archive', [KolController::class, 'archive'])->middleware('can:kol.operate')->name('kol.library.archive');
     Route::post('/kol/library/{kol}/reactivate', [KolController::class, 'reactivate'])->middleware('can:kol.operate')->name('kol.library.reactivate');

@@ -35,7 +35,8 @@ type SalesPerformanceEvent = { id: number; order_count: number; recorded_at: str
 type OpportunityRecord = { id: number; title: string; cooperation_type: string | null; target_products: string[]; stage: string; owner_id: number | null; owner: { id: number; name: string } | null; estimated_cost: number | null; currency: string; expected_publish_at: string | null; next_follow_up_at: string | null; next_action: string | null; status: string; notes: string | null }
 type CommunicationRecord = { id: number; opportunity_id: number | null; channel: string; direction: string; summary: string; contacted_at: string | null; next_action: string | null; next_follow_up_at: string | null; creator: { id: number; name: string } | null; opportunity: { id: number; title: string } | null }
 type CollaborationProduct = { id?: number; product_id: number | null; sku: string; name?: string | null; quantity: number }
-type CollaborationRecord = { id: number; opportunity_id: number | null; owner_id: number | null; owner: { id: number; name: string } | null; title: string | null; post_url: string | null; cooperation_type: string | null; status: string; agreement_amount: number | null; currency: string; agreed_at: string | null; planned_publish_at: string | null; deliverables: string | null; fulfillment_required: boolean; notes: string | null; products: CollaborationProduct[] }
+type FulfillmentOrder = { id:number; internal_order_number:string; external_order_number:string; order_status:string; shipment:{ shipment_status:string; warehouse_name:string|null; carrier:string|null; service:string|null; tracking_number:string|null; shipped_at:string|null }|null; manual_sync_status:string|null }
+type CollaborationRecord = { id: number; opportunity_id: number | null; owner_id: number | null; order_id:number|null; owner: { id: number; name: string } | null; title: string | null; post_url: string | null; cooperation_type: string | null; status: string; agreement_amount: number | null; currency: string; agreed_at: string | null; planned_publish_at: string | null; deliverables: string | null; fulfillment_required: boolean; notes: string | null; products: CollaborationProduct[]; fulfillment_order:FulfillmentOrder|null }
 type KolDetail = {
   id: number; display_name: string; avatar_url?: string | null; avatar_source?: string | null; avatar_updated_at?: string | null; legal_name: string | null; country_code: string | null; language: string | null
   status: string; relationship_stage: string; cooperation_type: string | null; owner_id: number | null
@@ -61,6 +62,7 @@ const props = defineProps<{
   kol: KolDetail
   ownerOptions: OwnerOption[]
   canManageViews: boolean
+  canCreateOrders?: boolean
 }>()
 
 const opportunityRows = ref<OpportunityRecord[]>([...(props.kol.opportunities ?? [])])
@@ -162,6 +164,21 @@ const saveCollaboration = async () => {
   catch(error:any){ const errors=error?.response?.data?.errors; collaborationError.value=errors ? Object.values(errors).flat().join('；') : (error?.response?.data?.message || '正式合作保存失败') }
   finally{ collaborationSaving.value=false }
 }
+
+const fulfillmentCreatingId = ref<number | null>(null)
+const createFulfillmentOrder = async (item: CollaborationRecord) => {
+  if (!item.fulfillment_required || item.fulfillment_order || fulfillmentCreatingId.value) return
+  fulfillmentCreatingId.value = item.id
+  collaborationError.value = ''
+  try {
+    const response = await axios.post(`/kol/library/${props.kol.id}/collaborations/${item.id}/fulfillment-order`)
+    item.order_id = response.data.order.id
+    item.fulfillment_order = response.data.order as FulfillmentOrder
+  } catch (error:any) {
+    collaborationError.value = error?.response?.data?.message || '履约订单创建失败'
+  } finally { fulfillmentCreatingId.value = null }
+}
+
 const convertOpportunity = async (item: OpportunityRecord) => {
   if (collaborationRows.value.some(c=>c.opportunity_id===item.id)) return
   try { const response=await axios.post(`/kol/library/${props.kol.id}/opportunities/${item.id}/convert-to-collaboration`); collaborationRows.value.unshift(response.data.collaboration as CollaborationRecord); item.stage='confirmed'; item.status='completed' }
@@ -639,10 +656,10 @@ const breadcrumbs = [
             <div v-if="collaborationRows.length" class="kol-collaboration-list">
               <div v-for="item in collaborationRows" :key="item.id" class="kol-collaboration-row">
                 <div><strong>{{ item.post_url || '待补合作发帖 URL' }}</strong><span>{{ collaborationStatusLabel(item.status) }}</span><span>{{ item.products.length ? item.products.map(p => `${p.sku} ×${p.quantity}`).join('、') : '未指定产品' }}</span></div>
-                <div><span>{{ item.agreement_amount === null ? '—' : `${item.currency} ${item.agreement_amount}` }}</span><span>{{ item.fulfillment_required ? '需要寄样/发货' : '无需寄样/发货' }}</span><button type="button" class="erp-btn erp-btn-secondary" @click="openEditCollaboration(item)">编辑</button></div>
+                <div><span>{{ item.agreement_amount === null ? '—' : `${item.currency} ${item.agreement_amount}` }}</span><span>{{ item.fulfillment_required ? '需要寄样/发货' : '无需寄样/发货' }}</span><a v-if="item.fulfillment_order" class="erp-btn erp-btn-secondary" :href="`/kol/orders/${item.fulfillment_order.id}`">履约单 {{ item.fulfillment_order.external_order_number }}</a><button v-else-if="item.fulfillment_required && canCreateOrders" type="button" class="erp-btn erp-btn-primary" :disabled="fulfillmentCreatingId===item.id" @click="createFulfillmentOrder(item)">{{ fulfillmentCreatingId===item.id ? '创建中…' : '创建履约订单' }}</button><button type="button" class="erp-btn erp-btn-secondary" @click="openEditCollaboration(item)">编辑</button></div>
               </div>
             </div>
-            <div v-else class="kol-empty-state">暂无正式合作。可从已确认机会点击「转为正式合作」，或直接新增。</div>
+            <p v-if="collaborationError" class="erp-field-error">{{ collaborationError }}</p><div v-if="!collaborationRows.length" class="kol-empty-state">暂无正式合作。可从已确认机会点击「转为正式合作」，或直接新增。</div>
           </div>
 
           <!-- M1.1 CRM: 沟通记录 -->

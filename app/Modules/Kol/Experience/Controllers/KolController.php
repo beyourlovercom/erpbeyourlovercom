@@ -150,12 +150,15 @@ final class KolController
             $relations[] = 'collaborations.owner';
             $relations[] = 'collaborations.products.product';
             $relations[] = 'collaborations.opportunity';
+            $relations[] = 'collaborations.order.shipment.warehouse';
+            $relations[] = 'collaborations.order.manualSync';
         }
         $kol->load($relations);
 
         return Inertia::render('Kol/Show', [
             'kol' => $this->kolDetailData($kol),
             'canOperate' => KolScope::canOperate($request->user()),
+            'canCreateOrders' => $request->user()->can('orders.create'),
             'canManageViews' => KolScope::canManageViews($request->user()),
         ]);
     }
@@ -175,6 +178,8 @@ final class KolController
             $editRelations[] = 'collaborations.owner';
             $editRelations[] = 'collaborations.products.product';
             $editRelations[] = 'collaborations.opportunity';
+            $editRelations[] = 'collaborations.order.shipment.warehouse';
+            $editRelations[] = 'collaborations.order.manualSync';
         }
         $kol->load($editRelations);
 
@@ -189,6 +194,7 @@ final class KolController
             'kol' => $this->kolDetailData($kol),
             'ownerOptions' => $ownerOptions,
             'canManageViews' => KolScope::canManageViews($user),
+            'canCreateOrders' => $user->can('orders.create'),
         ]);
     }
 
@@ -454,6 +460,7 @@ final class KolController
                 'target_products' => $item->target_products ?? [],
                 'stage' => $item->stage,
                 'owner_id' => $item->owner_id,
+                'order_id' => $item->order_id,
                 'owner' => $item->owner ? ['id' => $item->owner->id, 'name' => $item->owner->name] : null,
                 'estimated_cost' => $item->estimated_cost !== null ? (float) $item->estimated_cost : null,
                 'currency' => $item->currency,
@@ -480,6 +487,21 @@ final class KolController
                 'fulfillment_required' => (bool) $item->fulfillment_required,
                 'notes' => $item->notes,
                 'products' => $item->products->map(fn ($row) => ['id' => $row->id, 'product_id' => $row->product_id, 'sku' => $row->sku_snapshot, 'name' => $row->product_name_snapshot, 'quantity' => $row->quantity])->values()->all(),
+                'fulfillment_order' => $item->order ? [
+                    'id' => $item->order->id,
+                    'internal_order_number' => $item->order->internal_order_number,
+                    'external_order_number' => $item->order->external_order_number,
+                    'order_status' => $item->order->order_status instanceof \BackedEnum ? $item->order->order_status->value : (string) $item->order->order_status,
+                    'shipment' => $item->order->shipment ? [
+                        'shipment_status' => $item->order->shipment->shipment_status instanceof \BackedEnum ? $item->order->shipment->shipment_status->value : (string) $item->order->shipment->shipment_status,
+                        'warehouse_name' => $item->order->shipment->warehouse?->name,
+                        'carrier' => $item->order->shipment->carrier,
+                        'service' => $item->order->shipment->service,
+                        'tracking_number' => $item->order->shipment->tracking_number,
+                        'shipped_at' => $item->order->shipment->shipped_at?->toIso8601String(),
+                    ] : null,
+                    'manual_sync_status' => $item->order->manualSync?->website_sync_status?->value,
+                ] : null,
                 'created_at' => $item->created_at?->format('Y-m-d H:i:s'),
             ])->values()->all() : [],
             'historical_opportunities' => Schema::hasTable('kol_opportunities') && $kol->relationLoaded('opportunities') ? $kol->opportunities->filter(fn ($item) => $item->status !== 'active')->take(20)->map(fn ($item) => [
