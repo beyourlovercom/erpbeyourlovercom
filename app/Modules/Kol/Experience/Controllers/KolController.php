@@ -146,6 +146,11 @@ final class KolController
             $relations[] = 'communications.creator';
             $relations[] = 'communications.opportunity';
         }
+        if (Schema::hasTable('kol_collaborations')) {
+            $relations[] = 'collaborations.owner';
+            $relations[] = 'collaborations.products.product';
+            $relations[] = 'collaborations.opportunity';
+        }
         $kol->load($relations);
 
         return Inertia::render('Kol/Show', [
@@ -165,6 +170,11 @@ final class KolController
         if (Schema::hasTable('kol_communications')) {
             $editRelations[] = 'communications.creator';
             $editRelations[] = 'communications.opportunity';
+        }
+        if (Schema::hasTable('kol_collaborations')) {
+            $editRelations[] = 'collaborations.owner';
+            $editRelations[] = 'collaborations.products.product';
+            $editRelations[] = 'collaborations.opportunity';
         }
         $kol->load($editRelations);
 
@@ -452,6 +462,25 @@ final class KolController
                 'next_action' => $item->next_action,
                 'status' => $item->status,
                 'notes' => $item->notes,
+            ])->values()->all() : [],
+            'collaborations' => Schema::hasTable('kol_collaborations') && $kol->relationLoaded('collaborations') ? $kol->collaborations->map(fn ($item) => [
+                'id' => $item->id,
+                'opportunity_id' => $item->opportunity_id,
+                'owner_id' => $item->owner_id,
+                'owner' => $item->owner ? ['id' => $item->owner->id, 'name' => $item->owner->name] : null,
+                'title' => $item->title,
+                'post_url' => $item->post_url,
+                'cooperation_type' => $item->cooperation_type,
+                'status' => $item->status,
+                'agreement_amount' => $item->agreement_amount !== null ? (float) $item->agreement_amount : null,
+                'currency' => $item->currency,
+                'agreed_at' => $item->agreed_at?->format('Y-m-d'),
+                'planned_publish_at' => $item->planned_publish_at?->format('Y-m-d'),
+                'deliverables' => $item->deliverables,
+                'fulfillment_required' => (bool) $item->fulfillment_required,
+                'notes' => $item->notes,
+                'products' => $item->products->map(fn ($row) => ['id' => $row->id, 'product_id' => $row->product_id, 'sku' => $row->sku_snapshot, 'name' => $row->product_name_snapshot, 'quantity' => $row->quantity])->values()->all(),
+                'created_at' => $item->created_at?->format('Y-m-d H:i:s'),
             ])->values()->all() : [],
             'historical_opportunities' => Schema::hasTable('kol_opportunities') && $kol->relationLoaded('opportunities') ? $kol->opportunities->filter(fn ($item) => $item->status !== 'active')->take(20)->map(fn ($item) => [
                 'id' => $item->id,

@@ -9,6 +9,8 @@ type SalesPerformanceEvent = { id: number; order_count: number; recorded_at: str
 type Opportunity = { id: number; title: string; cooperation_type: string | null; target_products: string[]; stage: string; estimated_cost: number | null; currency: string; expected_publish_at: string | null; next_follow_up_at: string | null; next_action: string | null; owner: { id: number; name: string } | null; status: string }
 type Communication = { id: number; channel: string; direction: string; summary: string; contacted_at: string | null; next_action: string | null; next_follow_up_at: string | null; creator: { id: number; name: string } | null; opportunity: { id: number; title: string } | null }
 type HistoricalOpportunity = { id: number; title: string; cooperation_type: string | null; stage: string; status: string; created_at: string | null; estimated_cost: number | null; currency: string; owner: { id: number; name: string } | null }
+type CollaborationProduct = { id: number; product_id: number | null; sku: string; name: string | null; quantity: number }
+type Collaboration = { id: number; opportunity_id: number | null; owner_id: number | null; owner: { id: number; name: string } | null; title: string | null; post_url: string | null; cooperation_type: string | null; status: string; agreement_amount: number | null; currency: string; agreed_at: string | null; planned_publish_at: string | null; deliverables: string | null; fulfillment_required: boolean; notes: string | null; products: CollaborationProduct[]; created_at: string | null }
 type KolDetail = {
   id: number; display_name: string; avatar_url?: string | null; avatar_source?: string | null; avatar_updated_at?: string | null; legal_name: string | null; country_code: string | null; language: string | null
   status: string; relationship_stage: string; cooperation_type: string | null; owner_id: number | null
@@ -28,6 +30,7 @@ type KolDetail = {
   current_opportunity: Opportunity | null
   recent_communications: Communication[]
   historical_opportunities: HistoricalOpportunity[]
+  collaborations: Collaboration[]
 }
 
 const props = defineProps<{
@@ -70,6 +73,9 @@ const communicationMark = (value: string) => ({ instagram_dm: 'IG', email: '✉'
 const communicationDirectionLabel = (value: string) => value === 'inbound' ? '对方联系我方' : '我方联系对方'
 const opportunityStatusLabel = (value: string) => ({ active: '进行中', success: '成功', failed: '失败', paused: '暂停', completed: '已完成', cancelled: '已取消' }[value] ?? value)
 const opportunityStatusClass = (value: string) => value === 'success' || value === 'completed' ? 'is-success' : value === 'failed' ? 'is-failed' : value === 'paused' ? 'is-paused' : 'is-neutral'
+const collaborationStatusLabel = (value: string) => ({ draft: '草稿', confirmed: '已确认', in_progress: '进行中', completed: '已完成', cancelled: '已取消' }[value] ?? value)
+const currentCollaboration = computed(() => props.kol.collaborations[0] ?? null)
+const collaborationHistory = computed(() => props.kol.collaborations.filter(item => item.status === 'completed' || item.status === 'cancelled'))
 
 const primarySocial = computed(() => props.kol.social_accounts.find((account) => account.is_active) ?? props.kol.social_accounts[0] ?? null)
 const strongestFollowers = computed(() => {
@@ -208,6 +214,28 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
           <div v-else class="kol-opportunity-empty">暂无进行中的合作机会</div>
         </section>
 
+        <!-- M1.2A · 当前正式合作 -->
+        <section class="kol-collaboration-card" aria-labelledby="kol-current-collaboration-title">
+          <div class="kol-card-heading">
+            <h3 id="kol-current-collaboration-title">当前正式合作</h3>
+            <Link class="kol-card-view-all" :href="`/kol/library/${kol.id}/edit#crm-collaborations`">管理合作</Link>
+          </div>
+          <div v-if="currentCollaboration" class="kol-collaboration-detail">
+            <div class="kol-collaboration-title-row"><a v-if="currentCollaboration.post_url" :href="currentCollaboration.post_url" target="_blank" rel="noopener noreferrer"><strong>{{ currentCollaboration.post_url }}</strong></a><strong v-else>待补合作发帖 URL</strong><span class="kol-opportunity-stage-pill">{{ collaborationStatusLabel(currentCollaboration.status) }}</span></div>
+            <dl class="kol-opportunity-facts">
+              <div><dt>合作类型</dt><dd>{{ currentCollaboration.cooperation_type ?? '—' }}</dd></div>
+              <div><dt>确认日期</dt><dd>{{ dateLabel(currentCollaboration.agreed_at) }}</dd></div>
+              <div><dt>计划发布时间</dt><dd>{{ dateLabel(currentCollaboration.planned_publish_at) }}</dd></div>
+              <div><dt>合作金额</dt><dd>{{ moneyLabel(currentCollaboration.agreement_amount, currentCollaboration.currency) }}</dd></div>
+              <div><dt>负责人</dt><dd>{{ currentCollaboration.owner?.name ?? '—' }}</dd></div>
+              <div><dt>寄样/发货</dt><dd>{{ currentCollaboration.fulfillment_required ? '需要' : '不需要' }}</dd></div>
+            </dl>
+            <div class="kol-collaboration-products"><strong>合作产品：</strong><span>{{ currentCollaboration.products.length ? currentCollaboration.products.map(p => `${p.sku} ×${p.quantity}`).join('、') : '—' }}</span></div>
+            <div v-if="currentCollaboration.deliverables" class="kol-next-action"><strong>约定交付：</strong><span>{{ currentCollaboration.deliverables }}</span></div>
+          </div>
+          <div v-else class="kol-opportunity-empty">暂无正式合作</div>
+        </section>
+
         <!-- Region E · 最近沟通 -->
         <section class="kol-communications-card" aria-labelledby="kol-recent-communications-title">
           <div class="kol-card-heading kol-card-heading--communications">
@@ -243,10 +271,21 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
           <h3 id="kol-history-opportunities-title">历史合作记录</h3>
           <Link class="kol-card-view-all" :href="`/kol/library/${kol.id}/edit#crm-opportunities`">管理记录</Link>
         </div>
-        <div v-if="kol.historical_opportunities.length || kol.sales_performance_history.length" class="kol-history-scroll">
+        <div v-if="kol.historical_opportunities.length || kol.sales_performance_history.length || collaborationHistory.length" class="kol-history-scroll">
           <table class="kol-history-table">
             <thead><tr><th>合作项目</th><th>合作类型</th><th>时间</th><th>结果 / 阶段</th><th>带货数量</th><th>预计费用</th><th>负责人</th><th>来源</th><th>操作</th></tr></thead>
             <tbody>
+              <tr v-for="collaboration in collaborationHistory" :key="`collaboration-${collaboration.id}`">
+                <td><a v-if="collaboration.post_url" :href="collaboration.post_url" target="_blank" rel="noopener noreferrer"><strong>{{ collaboration.post_url }}</strong></a><strong v-else>待补合作发帖 URL</strong><small v-if="collaboration.deliverables" class="kol-history-note">{{ collaboration.deliverables }}</small></td>
+                <td>{{ collaboration.cooperation_type ?? '—' }}</td>
+                <td>{{ dateLabel(collaboration.agreed_at ?? collaboration.created_at) }}</td>
+                <td><span :class="['kol-history-status', collaboration.status === 'completed' ? 'is-success' : 'is-neutral']">{{ collaborationStatusLabel(collaboration.status) }}</span></td>
+                <td>—</td>
+                <td>{{ moneyLabel(collaboration.agreement_amount, collaboration.currency) }}</td>
+                <td>{{ collaboration.owner?.name ?? '—' }}</td>
+                <td><span class="kol-history-source">正式合作</span></td>
+                <td><Link class="kol-history-action" :href="`/kol/library/${kol.id}/edit#crm-collaborations`">查看</Link></td>
+              </tr>
               <tr v-for="opportunity in kol.historical_opportunities" :key="`opportunity-${opportunity.id}`">
                 <td><strong>{{ opportunity.title }}</strong></td>
                 <td>{{ opportunity.cooperation_type ?? '—' }}</td>
@@ -578,4 +617,10 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
   .kol-sales-history-row span:last-child { grid-column: auto; }
 }
 
+
+.kol-collaboration-card { min-width: 0; overflow: hidden; border: 1px solid #e6e9ed; border-radius: 12px; background: #fff; box-shadow: 0 6px 20px rgba(15, 23, 42, .035); }
+.kol-collaboration-detail { padding: 16px 18px 18px; }
+.kol-collaboration-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.kol-collaboration-title-row strong { color: #1f2937; font-size: 15px; }
+.kol-collaboration-products { display: flex; gap: 6px; margin-top: 12px; color: #475467; font-size: 12px; line-height: 1.6; }
 </style>
