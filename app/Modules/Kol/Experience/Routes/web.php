@@ -1,7 +1,9 @@
 <?php
 
 use App\Modules\Kol\Experience\Controllers\KolController;
+use App\Modules\Kol\Experience\Controllers\KolCommunicationController;
 use App\Modules\Kol\Experience\Controllers\KolOverviewController;
+use App\Modules\Kol\Experience\Controllers\KolOpportunityController;
 use App\Modules\Kol\Experience\Controllers\SavedViewController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -16,6 +18,11 @@ Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
     Route::get('/kol/library/{kol}', [KolController::class, 'show'])->name('kol.library.show');
     Route::get('/kol/library/{kol}/edit', [KolController::class, 'edit'])->middleware('can:kol.operate')->name('kol.library.edit');
     Route::patch('/kol/library/{kol}', [KolController::class, 'update'])->middleware('can:kol.operate')->name('kol.library.update');
+    Route::post('/kol/library/{kol}/avatar', [KolController::class, 'uploadAvatar'])->middleware('can:kol.operate')->name('kol.library.avatar');
+    Route::post('/kol/library/{kol}/opportunities', [KolOpportunityController::class, 'store'])->middleware('can:kol.operate')->name('kol.library.opportunities.store');
+    Route::patch('/kol/library/{kol}/opportunities/{opportunity}', [KolOpportunityController::class, 'update'])->middleware('can:kol.operate')->name('kol.library.opportunities.update');
+    Route::post('/kol/library/{kol}/communications', [KolCommunicationController::class, 'store'])->middleware('can:kol.operate')->name('kol.library.communications.store');
+    Route::patch('/kol/library/{kol}/communications/{communication}', [KolCommunicationController::class, 'update'])->middleware('can:kol.operate')->name('kol.library.communications.update');
     Route::post('/kol/library/{kol}/archive', [KolController::class, 'archive'])->middleware('can:kol.operate')->name('kol.library.archive');
     Route::post('/kol/library/{kol}/reactivate', [KolController::class, 'reactivate'])->middleware('can:kol.operate')->name('kol.library.reactivate');
 

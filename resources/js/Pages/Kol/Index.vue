@@ -15,12 +15,10 @@ type KolRow = {
   is_100k_plus: boolean
   joined_at: string | null
   level: string | null
-  city: string | null
   categories: string[]
   products: string[]
   content_format: string | null
   product_quantity: number | null
-  store_count: number | null
   internal_contact: string | null
   mcn_agency: string | null
   is_mcn_managed: boolean
@@ -60,7 +58,6 @@ const filters = reactive({
   followers_min: props.filters.followers_min ?? '',
   followers_max: props.filters.followers_max ?? '',
   level: props.filters.level ?? '',
-  city: props.filters.city ?? '',
   content_format: props.filters.content_format ?? '',
   mcn: props.filters.mcn ?? '',
   view: props.filters.view ?? '',
@@ -198,7 +195,6 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
           <option value="尾部">尾部</option>
           <option value="素人">素人</option>
         </select>
-        <input v-model="filters.city" aria-label="城市" placeholder="城市">
         <select v-model="filters.content_format" aria-label="内容形式">
           <option value="">全部形式</option>
           <option value="图文">图文</option>
@@ -245,12 +241,10 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
                 <span v-if="kol.is_100k_plus" class="badge-100k">100K+</span>
               </td>
               <td><span v-if="kol.level" class="tag-chip">{{ kol.level }}</span><span v-else>—</span></td>
-              <td>{{ kol.city ?? '—' }}</td>
               <td>{{ tagList(kol.categories) }}</td>
               <td>{{ tagList(kol.products) }}</td>
               <td>{{ kol.content_format ?? '—' }}</td>
               <td>{{ kol.product_quantity ?? '—' }}</td>
-              <td>{{ kol.store_count ?? '—' }}</td>
               <td>{{ stageLabel(kol.relationship_stage) }}</td>
               <td>{{ kol.mcn_agency ?? (kol.is_mcn_managed ? '是' : '—') }}</td>
               <td>{{ kol.owner?.name ?? '—' }}</td>

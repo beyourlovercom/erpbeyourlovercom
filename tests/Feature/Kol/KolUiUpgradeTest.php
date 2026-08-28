@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolSalesPerformance;
+use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -81,16 +82,16 @@ class KolUiUpgradeTest extends TestCase
     public function test_business_profile_facts_persist(): void
     {
         $admin = $this->adminUser();
+        Product::create(['source_type' => 'manual', 'woocommerce_product_id' => null, 'sku' => 'MW810A', 'name' => 'Test Product', 'product_type' => 'simple']);
 
         $this->actingAs($admin)->post('/kol/library', $this->basePayload([
             'owner_id' => $admin->id,
             'level' => '头部',
-            'city' => 'Los Angeles',
-            'categories' => ['美妆', '穿搭'],
-            'products' => ['口红'],
+            'gender' => '女',
+            'categories' => ['Beauty'],
+            'products' => ['MW810A'],
             'content_format' => '短视频',
             'product_quantity' => 12,
-            'store_count' => 3,
             'internal_contact' => 'Emma',
             'mcn_agency' => 'ACME MCN',
             'is_mcn_managed' => true,
@@ -98,12 +99,11 @@ class KolUiUpgradeTest extends TestCase
 
         $kol = Kol::where('display_name', 'UI Upgrade KOL')->firstOrFail();
         $this->assertSame('头部', $kol->level);
-        $this->assertSame('Los Angeles', $kol->city);
-        $this->assertSame(['美妆', '穿搭'], $kol->categories);
-        $this->assertSame(['口红'], $kol->products);
+        $this->assertSame('女', $kol->gender);
+        $this->assertSame(['Beauty'], $kol->categories);
+        $this->assertSame(['MW810A'], $kol->products);
         $this->assertSame('短视频', $kol->content_format);
         $this->assertSame(12, $kol->product_quantity);
-        $this->assertSame(3, $kol->store_count);
         $this->assertSame('Emma', $kol->internal_contact);
         $this->assertSame('ACME MCN', $kol->mcn_agency);
         $this->assertTrue($kol->is_mcn_managed);
@@ -158,6 +158,46 @@ class KolUiUpgradeTest extends TestCase
 
         $this->assertSame(3, KolSalesPerformance::where('kol_id', $kol->id)->count());
         $this->assertSame(10, $kol->fresh()->historicalOrderCount());
+    }
+
+    public function test_legacy_business_profile_does_not_block_adding_sales_performance(): void
+    {
+        $admin = $this->adminUser();
+        $kol = Kol::create([
+            'display_name' => 'Legacy KOL',
+            'status' => 'active',
+            'relationship_stage' => 'prospect',
+            'owner_id' => $admin->id,
+            'level' => 'A',
+            'categories' => ['Lifestyle'],
+            'products' => ['LEGACY-SKU'],
+            'content_format' => 'Short Video',
+        ]);
+
+        $this->actingAs($admin)->patch("/kol/library/{$kol->id}", [
+            'display_name' => $kol->display_name,
+            'status' => $kol->status,
+            'relationship_stage' => $kol->relationship_stage,
+            'owner_id' => $admin->id,
+            'level' => 'A',
+            'categories' => ['Lifestyle'],
+            'products' => ['LEGACY-SKU'],
+            'content_format' => 'Short Video',
+            'social_accounts' => [],
+            'sales_performance_entries' => [[
+                'order_count' => 7,
+                'recorded_at' => '2026-08-28',
+                'source' => 'legacy-uat',
+                'note' => 'legacy compatibility',
+            ]],
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('kol_sales_performance', [
+            'kol_id' => $kol->id,
+            'order_count' => 7,
+            'source' => 'legacy-uat',
+        ]);
+        $this->assertSame(7, $kol->fresh()->historicalOrderCount());
     }
 
     public function test_historical_order_count_appears_in_the_list_and_detail_projections(): void

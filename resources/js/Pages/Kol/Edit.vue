@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3'
+import { ref } from 'vue'
+import axios from 'axios'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SearchableSelect from '../../Components/SearchableSelect.vue'
+import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 
 type OwnerOption = { value: number; label: string }
 
@@ -29,8 +32,10 @@ const languageOptions = [
 type SocialMetric = { followers: number | null; raw_followers_value: string | null; measured_at: string | null }
 type SocialAccount = { id: number; platform: string; handle: string | null; profile_url: string | null; is_active: boolean; latest_metric: SocialMetric | null }
 type SalesPerformanceEvent = { id: number; order_count: number; recorded_at: string | null; source: string | null; note: string | null }
+type OpportunityRecord = { id: number; title: string; cooperation_type: string | null; target_products: string[]; stage: string; owner_id: number | null; owner: { id: number; name: string } | null; estimated_cost: number | null; currency: string; expected_publish_at: string | null; next_follow_up_at: string | null; next_action: string | null; status: string; notes: string | null }
+type CommunicationRecord = { id: number; opportunity_id: number | null; channel: string; direction: string; summary: string; contacted_at: string | null; next_action: string | null; next_follow_up_at: string | null; creator: { id: number; name: string } | null; opportunity: { id: number; title: string } | null }
 type KolDetail = {
-  id: number; display_name: string; legal_name: string | null; country_code: string | null; language: string | null
+  id: number; display_name: string; avatar_url?: string | null; avatar_source?: string | null; avatar_updated_at?: string | null; legal_name: string | null; country_code: string | null; language: string | null
   status: string; relationship_stage: string; cooperation_type: string | null; owner_id: number | null
   joined_at: string | null; notes: string | null
   contact_email: string | null; contact_phone: string | null; contact_whatsapp: string | null; other_contact: string | null
@@ -39,12 +44,14 @@ type KolDetail = {
   shipping_recipient_name: string | null; shipping_country: string | null; shipping_province_state: string | null
   shipping_city: string | null; shipping_postal_code: string | null
   shipping_address_line_1: string | null; shipping_address_line_2: string | null
-  level: string | null; city: string | null; categories: string[]; products: string[]
-  content_format: string | null; product_quantity: number | null; store_count: number | null
+  level: string | null; gender: string | null; categories: string[]; products: string[]
+  content_format: string | null; product_quantity: number | null
   internal_contact: string | null; mcn_agency: string | null; is_mcn_managed: boolean
   historical_order_count: number
   sales_performance_history: SalesPerformanceEvent[]
   social_accounts: SocialAccount[]
+  opportunities?: OpportunityRecord[]
+  communications?: CommunicationRecord[]
 }
 
 const props = defineProps<{
@@ -52,6 +59,159 @@ const props = defineProps<{
   ownerOptions: OwnerOption[]
   canManageViews: boolean
 }>()
+
+const opportunityRows = ref<OpportunityRecord[]>([...(props.kol.opportunities ?? [])])
+const opportunityModalOpen = ref(false)
+const opportunitySaving = ref(false)
+const opportunityError = ref('')
+const editingOpportunityId = ref<number | null>(null)
+const emptyOpportunityForm = () => ({
+  title: '', cooperation_type: '免费发帖', target_sku: '', stage: 'pending_contact',
+  owner_id: props.kol.owner_id ? String(props.kol.owner_id) : '', estimated_cost: '', currency: 'USD',
+  expected_publish_at: '', next_follow_up_at: '', next_action: '', status: 'active', notes: '',
+})
+const opportunityForm = ref(emptyOpportunityForm())
+const opportunityStageOptions = [
+  ['pending_contact', '待联系'], ['contacted', '已联系'], ['communicating', '沟通中'], ['confirmed', '已确认'],
+  ['waiting_sample', '等待寄样'], ['success', '成功'], ['failed', '失败'],
+] as const
+const opportunityStatusOptions = [
+  ['active', '进行中'], ['completed', '已完成'], ['success', '成功'], ['failed', '失败'], ['paused', '暂停'], ['cancelled', '已取消'],
+] as const
+const opportunityStageLabel = (value: string) => opportunityStageOptions.find(([key]) => key === value)?.[1] ?? value
+const opportunityStatusLabel = (value: string) => opportunityStatusOptions.find(([key]) => key === value)?.[1] ?? value
+
+const openNewOpportunity = () => {
+  editingOpportunityId.value = null
+  opportunityForm.value = emptyOpportunityForm()
+  opportunityError.value = ''
+  opportunityModalOpen.value = true
+}
+const openEditOpportunity = (item: OpportunityRecord) => {
+  editingOpportunityId.value = item.id
+  opportunityForm.value = {
+    title: item.title, cooperation_type: item.cooperation_type ?? '免费发帖', target_sku: item.target_products[0] ?? '', stage: item.stage,
+    owner_id: item.owner_id ? String(item.owner_id) : '', estimated_cost: item.estimated_cost !== null ? String(item.estimated_cost) : '', currency: item.currency || 'USD',
+    expected_publish_at: item.expected_publish_at ?? '', next_follow_up_at: item.next_follow_up_at ?? '', next_action: item.next_action ?? '', status: item.status, notes: item.notes ?? '',
+  }
+  opportunityError.value = ''
+  opportunityModalOpen.value = true
+}
+const saveOpportunity = async () => {
+  opportunitySaving.value = true
+  opportunityError.value = ''
+  const payload = {
+    title: opportunityForm.value.title,
+    cooperation_type: opportunityForm.value.cooperation_type || null,
+    target_products: opportunityForm.value.target_sku ? [opportunityForm.value.target_sku] : [],
+    stage: opportunityForm.value.stage,
+    owner_id: opportunityForm.value.owner_id ? Number(opportunityForm.value.owner_id) : null,
+    estimated_cost: opportunityForm.value.estimated_cost !== '' ? Number(opportunityForm.value.estimated_cost) : null,
+    currency: opportunityForm.value.currency.toUpperCase(),
+    expected_publish_at: opportunityForm.value.expected_publish_at || null,
+    next_follow_up_at: opportunityForm.value.next_follow_up_at || null,
+    next_action: opportunityForm.value.next_action || null,
+    status: opportunityForm.value.status,
+    notes: opportunityForm.value.notes || null,
+  }
+  try {
+    const url = editingOpportunityId.value
+      ? `/kol/library/${props.kol.id}/opportunities/${editingOpportunityId.value}`
+      : `/kol/library/${props.kol.id}/opportunities`
+    const response = editingOpportunityId.value ? await axios.patch(url, payload) : await axios.post(url, payload)
+    const saved = response.data.opportunity as OpportunityRecord
+    const index = opportunityRows.value.findIndex(item => item.id === saved.id)
+    if (index >= 0) opportunityRows.value.splice(index, 1, saved)
+    else opportunityRows.value.unshift(saved)
+    opportunityModalOpen.value = false
+  } catch (error: any) {
+    const errors = error?.response?.data?.errors
+    opportunityError.value = errors ? Object.values(errors).flat().join('；') : (error?.response?.data?.message || '合作机会保存失败，请检查填写内容')
+  } finally {
+    opportunitySaving.value = false
+  }
+}
+
+const communicationRows = ref<CommunicationRecord[]>([...(props.kol.communications ?? [])])
+const communicationModalOpen = ref(false)
+const communicationSaving = ref(false)
+const communicationError = ref('')
+const editingCommunicationId = ref<number | null>(null)
+const emptyCommunicationForm = () => ({ opportunity_id: '', channel: 'email', direction: 'outbound', summary: '', contacted_at: new Date().toISOString().slice(0,16), next_action: '', next_follow_up_at: '' })
+const communicationForm = ref(emptyCommunicationForm())
+const communicationChannelOptions = [['email','Email'],['instagram_dm','Instagram'],['x_dm','X'],['whatsapp','WhatsApp'],['phone','Phone'],['other','其他']] as const
+const communicationDirectionLabel = (value: string) => value === 'inbound' ? '对方联系我方' : '我方联系对方'
+const communicationChannelLabel = (value: string) => communicationChannelOptions.find(([key]) => key === value)?.[1] ?? value
+const openNewCommunication = () => { editingCommunicationId.value = null; communicationForm.value = emptyCommunicationForm(); communicationError.value = ''; communicationModalOpen.value = true }
+const openEditCommunication = (item: CommunicationRecord) => { editingCommunicationId.value = item.id; communicationForm.value = { opportunity_id: item.opportunity_id ? String(item.opportunity_id) : '', channel: item.channel, direction: item.direction || 'outbound', summary: item.summary, contacted_at: item.contacted_at ?? '', next_action: item.next_action ?? '', next_follow_up_at: item.next_follow_up_at ?? '' }; communicationError.value=''; communicationModalOpen.value=true }
+const saveCommunication = async () => {
+  communicationSaving.value = true; communicationError.value = ''
+  const payload = { opportunity_id: communicationForm.value.opportunity_id ? Number(communicationForm.value.opportunity_id) : null, channel: communicationForm.value.channel, direction: communicationForm.value.direction, summary: communicationForm.value.summary, contacted_at: communicationForm.value.contacted_at, next_action: communicationForm.value.next_action || null, next_follow_up_at: communicationForm.value.next_follow_up_at || null }
+  try {
+    const url = editingCommunicationId.value ? `/kol/library/${props.kol.id}/communications/${editingCommunicationId.value}` : `/kol/library/${props.kol.id}/communications`
+    const response = editingCommunicationId.value ? await axios.patch(url, payload) : await axios.post(url, payload)
+    const saved = response.data.communication as CommunicationRecord
+    const index = communicationRows.value.findIndex(item => item.id === saved.id)
+    if (index >= 0) communicationRows.value.splice(index,1,saved); else communicationRows.value.unshift(saved)
+    communicationModalOpen.value = false
+  } catch (error: any) { const errors = error?.response?.data?.errors; communicationError.value = errors ? Object.values(errors).flat().join('；') : (error?.response?.data?.message || '沟通记录保存失败') }
+  finally { communicationSaving.value = false }
+}
+
+const avatarUrl = ref(props.kol.avatar_url)
+const avatarPasteActive = ref(false)
+const avatarUploading = ref(false)
+const avatarError = ref('')
+const avatarInput = ref<HTMLInputElement | null>(null)
+
+const uploadAvatar = async (file: File) => {
+  if (!file.type.startsWith('image/')) {
+    avatarError.value = '请粘贴或选择图片文件'
+    return
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    avatarError.value = '头像图片不能超过 5MB'
+    return
+  }
+
+  avatarUploading.value = true
+  avatarError.value = ''
+  const data = new FormData()
+  data.append('avatar', file)
+
+  try {
+    const response = await axios.post(`/kol/library/${props.kol.id}/avatar`, data, {
+      headers: { 'Content-Type': 'multipart/form-data', 'X-Requested-With': 'XMLHttpRequest' },
+    })
+    avatarUrl.value = response.data.avatar_url
+    avatarPasteActive.value = false
+  } catch (error: any) {
+    avatarError.value = error?.response?.data?.message || '头像上传失败，请重试'
+  } finally {
+    avatarUploading.value = false
+  }
+}
+
+const handleAvatarPaste = (event: ClipboardEvent) => {
+  const item = Array.from(event.clipboardData?.items ?? []).find(entry => entry.type.startsWith('image/'))
+  const file = item?.getAsFile()
+  if (file) {
+    event.preventDefault()
+    void uploadAvatar(file)
+  } else {
+    avatarError.value = '剪贴板中没有图片，请先复制头像图片'
+  }
+}
+
+const handleAvatarFile = (event: Event) => {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (file) void uploadAvatar(file)
+}
+
+const handleAvatarDrop = (event: DragEvent) => {
+  const file = event.dataTransfer?.files?.[0]
+  if (file) void uploadAvatar(file)
+}
 
 const form = useForm({
   display_name: props.kol.display_name,
@@ -79,12 +239,11 @@ const form = useForm({
   shipping_address_line_1: props.kol.shipping_address_line_1 ?? '',
   shipping_address_line_2: props.kol.shipping_address_line_2 ?? '',
   level: (props.kol.level ?? '') as '' | '头部' | '腰部' | '尾部' | '素人',
-  city: props.kol.city ?? '',
-  categories: (props.kol.categories ?? []).join(', '),
-  products: (props.kol.products ?? []).join(', '),
+  gender: (props.kol.gender ?? '') as '' | '男' | '女' | '女同' | '男同' | '其他',
+  categories: (props.kol.categories ?? [])[0] ?? '',
+  products: (props.kol.products ?? [])[0] ?? '',
   content_format: (props.kol.content_format ?? '') as '' | '图文' | '短视频' | '直播' | '图文+视频' | '混合',
   product_quantity: props.kol.product_quantity !== null ? String(props.kol.product_quantity) : '',
-  store_count: props.kol.store_count !== null ? String(props.kol.store_count) : '',
   internal_contact: props.kol.internal_contact ?? '',
   mcn_agency: props.kol.mcn_agency ?? '',
   is_mcn_managed: props.kol.is_mcn_managed,
@@ -132,9 +291,9 @@ const submit = () => {
     level: data.level || null,
     content_format: data.content_format || null,
     product_quantity: data.product_quantity !== '' ? Number(data.product_quantity) : null,
-    store_count: data.store_count !== '' ? Number(data.store_count) : null,
-    categories: data.categories.split(',').map(v => v.trim()).filter(Boolean),
-    products: data.products.split(',').map(v => v.trim()).filter(Boolean),
+    gender: data.gender || null,
+    categories: data.categories ? [data.categories] : [],
+    products: data.products ? [data.products] : [],
     social_accounts: data.social_accounts.map(sa => ({
       ...sa,
       followers: sa.followers !== '' ? Number(sa.followers) : null,
@@ -181,9 +340,11 @@ const breadcrumbs = [
           <div class="kol-header-actions">
             <a href="/kol/library" class="erp-btn erp-btn-secondary">返回列表</a>
             <a :href="`/kol/library/${kol.id}`" class="erp-btn erp-btn-secondary">取消</a>
-            <button type="submit" form="kol-edit-form" class="erp-btn erp-btn-primary">修改 KOL</button>
+            <button type="submit" form="kol-edit-form" class="erp-btn erp-btn-primary">保存修改</button>
+            <a :href="`/kol/library/${kol.id}`" class="erp-btn erp-btn-secondary">返回预览</a>
           </div>
         </div>
+
 
         <form id="kol-edit-form" @submit.prevent="submit">
 
@@ -349,53 +510,103 @@ const breadcrumbs = [
 
           <!-- Card 4: 业务画像 -->
           <div class="erp-form-card">
-            <h2 class="erp-form-card-title">业务画像</h2>
+            <h2 class="erp-form-card-title">网红业务画像</h2>
+            <div class="kol-avatar-business-row">
+              <div
+                class="kol-avatar-editor"
+                :class="{ 'is-active': avatarPasteActive, 'is-uploading': avatarUploading }"
+                tabindex="0"
+                role="button"
+                aria-label="编辑网红头像"
+                @click="avatarPasteActive = true"
+                @focus="avatarPasteActive = true"
+                @paste="handleAvatarPaste"
+                @dragover.prevent
+                @drop.prevent="handleAvatarDrop"
+              >
+                <img v-if="avatarUrl" :src="avatarUrl" :alt="`${kol.display_name} 头像`" class="kol-avatar-image">
+                <span v-else class="kol-avatar-placeholder">{{ kol.display_name.trim().charAt(0).toUpperCase() || '?' }}</span>
+                <span v-if="avatarUploading" class="kol-avatar-overlay">上传中…</span>
+              </div>
+              <div class="kol-avatar-editor-copy">
+                <strong v-if="avatarPasteActive">粘贴图片即可 Ctrl+V / ⌘V</strong>
+                <span v-else>点击头像后可直接粘贴，也支持拖拽或选择图片</span>
+                <button type="button" class="erp-btn erp-btn-secondary kol-avatar-choose" @click="avatarInput?.click()">选择图片</button>
+                <input ref="avatarInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="kol-avatar-file" @change="handleAvatarFile">
+                <p v-if="avatarError" class="erp-field-error">{{ avatarError }}</p>
+              </div>
+            </div>
             <div class="erp-form-grid">
               <div class="erp-form-field">
-                <label class="erp-form-label">等级</label>
-                <select v-model="form.level" class="erp-select" :class="{ 'has-error': form.errors.level }">
-                  <option value="">未分级</option>
-                  <option value="头部">头部</option>
-                  <option value="腰部">腰部</option>
-                  <option value="尾部">尾部</option>
-                  <option value="素人">素人</option>
-                </select>
-                <p v-if="form.errors.level" class="erp-field-error">{{ form.errors.level }}</p>
+                <label class="erp-form-label">网红分级</label>
+                <select v-model="form.level" class="erp-select"><option value="">未分级</option><option value="头部">头部</option><option value="腰部">腰部</option><option value="尾部">尾部</option><option value="素人">素人</option></select>
               </div>
               <div class="erp-form-field">
-                <label class="erp-form-label">城市</label>
-                <input v-model="form.city" type="text" class="erp-input" :class="{ 'has-error': form.errors.city }" maxlength="128" placeholder="可选">
-                <p v-if="form.errors.city" class="erp-field-error">{{ form.errors.city }}</p>
+                <label class="erp-form-label">性别</label>
+                <select v-model="form.gender" class="erp-select"><option value="">未指定</option><option value="男">男</option><option value="女">女</option><option value="女同">女同</option><option value="男同">男同</option><option value="其他">其他</option></select>
               </div>
-              <div class="erp-form-field kol-span-2">
+              <div class="erp-form-field">
                 <label class="erp-form-label">主营品类</label>
-                <input v-model="form.categories" type="text" class="erp-input" placeholder="多个品类用逗号分隔，例如：美妆,穿搭">
-              </div>
-              <div class="erp-form-field kol-span-2">
-                <label class="erp-form-label">主推产品</label>
-                <input v-model="form.products" type="text" class="erp-input" placeholder="多个产品用逗号分隔">
+                <select v-model="form.categories" class="erp-select"><option value="">未指定</option><option value="Lifestyle">Lifestyle</option><option value="Beauty">Beauty</option><option value="Fitness">Fitness</option><option value="漫画">漫画</option><option value="家居">家居</option><option value="色情">色情</option><option value="其他">其他</option></select>
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">内容形式</label>
-                <select v-model="form.content_format" class="erp-select" :class="{ 'has-error': form.errors.content_format }">
-                  <option value="">未指定</option>
-                  <option value="图文">图文</option>
-                  <option value="短视频">短视频</option>
-                  <option value="直播">直播</option>
-                  <option value="图文+视频">图文+视频</option>
-                  <option value="混合">混合</option>
-                </select>
-                <p v-if="form.errors.content_format" class="erp-field-error">{{ form.errors.content_format }}</p>
+                <select v-model="form.content_format" class="erp-select"><option value="">未指定</option><option value="图文">图文</option><option value="短视频">短视频</option><option value="直播">直播</option><option value="图文+视频">图文+视频</option><option value="混合">混合</option></select>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">主推产品</label>
+                <SkuCombobox v-model="form.products" />
+                <p v-if="form.errors.products" class="erp-field-error">{{ form.errors.products }}</p>
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">产品数量</label>
                 <input v-model="form.product_quantity" type="number" min="0" class="erp-input" placeholder="可选">
               </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">店铺数量</label>
-                <input v-model="form.store_count" type="number" min="0" class="erp-input" placeholder="可选">
+            </div>
+          </div>
+
+          <!-- M1.1 CRM: 合作机会 -->
+          <div id="crm-opportunities" class="erp-form-card">
+            <div class="kol-card-header-row">
+              <div>
+                <h2 class="erp-form-card-title">合作机会</h2>
+                <p class="erp-form-card-helper">维护真实 CRM 机会；进行中机会显示在预览页「当前合作机会」，其他状态进入历史机会。</p>
+              </div>
+              <button type="button" class="erp-btn erp-btn-secondary" @click="openNewOpportunity">新增合作机会</button>
+            </div>
+            <div v-if="opportunityRows.length" class="kol-opportunity-list">
+              <div v-for="item in opportunityRows" :key="item.id" class="kol-opportunity-row">
+                <div class="kol-opportunity-main">
+                  <strong>{{ item.title }}</strong>
+                  <span>{{ opportunityStageLabel(item.stage) }}</span>
+                  <span>{{ item.target_products.length ? item.target_products.join('、') : '未指定 SKU' }}</span>
+                </div>
+                <div class="kol-opportunity-meta">
+                  <span :class="['kol-opportunity-status', `is-${item.status}`]">{{ opportunityStatusLabel(item.status) }}</span>
+                  <span>{{ item.owner?.name ?? '未分配' }}</span>
+                  <span>{{ item.next_follow_up_at ? item.next_follow_up_at.replace('T', ' ') : '无下次跟进' }}</span>
+                  <button type="button" class="erp-btn erp-btn-secondary kol-opportunity-edit" @click="openEditOpportunity(item)">编辑</button>
+                </div>
               </div>
             </div>
+            <div v-else class="kol-empty-state kol-opportunity-empty">暂无合作机会，点击「新增合作机会」开始记录。</div>
+          </div>
+
+
+          <!-- M1.1 CRM: 沟通记录 -->
+          <div id="crm-communications" class="erp-form-card">
+            <div class="kol-card-header-row">
+              <div><h2 class="erp-form-card-title">沟通记录</h2><p class="erp-form-card-helper">同一个网红可由多人持续记录沟通；最新记录自动展示在预览页「最近沟通」。</p></div>
+              <button type="button" class="erp-btn erp-btn-secondary" @click="openNewCommunication">新增沟通记录</button>
+            </div>
+            <div v-if="communicationRows.length" class="kol-communication-admin-list">
+              <div v-for="item in communicationRows" :key="item.id" class="kol-communication-admin-row">
+                <div><strong>{{ communicationChannelLabel(item.channel) }}</strong><span>{{ communicationDirectionLabel(item.direction) }}</span><span>{{ item.contacted_at?.replace('T',' ') ?? '—' }}</span></div>
+                <p>{{ item.summary }}</p>
+                <div><span>{{ item.creator?.name ?? '—' }}</span><span v-if="item.opportunity">{{ item.opportunity.title }}</span><button type="button" class="erp-btn erp-btn-secondary" @click="openEditCommunication(item)">编辑</button></div>
+              </div>
+            </div>
+            <div v-else class="kol-empty-state">暂无沟通记录。</div>
           </div>
 
           <!-- Card 5: 税务与收款 -->
@@ -498,6 +709,94 @@ const breadcrumbs = [
           </div>
 
         </form>
+
+        <div v-if="opportunityModalOpen" class="kol-modal-backdrop" @click.self="opportunityModalOpen = false">
+          <section class="kol-modal" role="dialog" aria-modal="true" aria-labelledby="kol-opportunity-modal-title">
+            <div class="kol-modal-header">
+              <div>
+                <p class="kol-kicker">M1.1 CRM</p>
+                <h2 id="kol-opportunity-modal-title">{{ editingOpportunityId ? '编辑合作机会' : '新增合作机会' }}</h2>
+              </div>
+              <button type="button" class="kol-modal-close" aria-label="关闭" @click="opportunityModalOpen = false">×</button>
+            </div>
+            <div class="kol-modal-grid">
+              <div class="erp-form-field kol-span-2">
+                <label class="erp-form-label">机会标题 *</label>
+                <input v-model="opportunityForm.title" type="text" class="erp-input" maxlength="255" placeholder="例如：2026 秋季 Instagram 合作">
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">当前阶段 *</label>
+                <select v-model="opportunityForm.stage" class="erp-select">
+                  <option v-for="option in opportunityStageOptions" :key="option[0]" :value="option[0]">{{ option[1] }}</option>
+                </select>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">状态 *</label>
+                <select v-model="opportunityForm.status" class="erp-select">
+                  <option v-for="option in opportunityStatusOptions" :key="option[0]" :value="option[0]">{{ option[1] }}</option>
+                </select>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">合作类型</label>
+                <select v-model="opportunityForm.cooperation_type" class="erp-select"><option value="免费发帖">免费发帖</option><option value="长期合作">长期合作</option><option value="付费发帖">付费发帖</option></select>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">目标 SKU</label>
+                <SkuCombobox v-model="opportunityForm.target_sku" />
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">预计费用</label>
+                <input v-model="opportunityForm.estimated_cost" type="number" min="0" step="0.01" class="erp-input" placeholder="可选">
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">币种</label>
+                <input v-model="opportunityForm.currency" type="text" class="erp-input" maxlength="3" placeholder="USD">
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">预计发布时间</label>
+                <input v-model="opportunityForm.expected_publish_at" type="date" class="erp-input">
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">下次跟进</label>
+                <input v-model="opportunityForm.next_follow_up_at" type="datetime-local" class="erp-input">
+              </div>
+              <div v-if="canManageViews" class="erp-form-field kol-span-2">
+                <label class="erp-form-label">负责人</label>
+                <select v-model="opportunityForm.owner_id" class="erp-select"><option value="">未分配</option><option v-for="owner in ownerOptions" :key="owner.value" :value="String(owner.value)">{{ owner.label }}</option></select>
+              </div>
+              <div class="erp-form-field kol-span-2">
+                <label class="erp-form-label">下一步</label>
+                <input v-model="opportunityForm.next_action" type="text" class="erp-input" maxlength="2000" placeholder="例如：确认报价后发送样品">
+              </div>
+              <div class="erp-form-field kol-span-2">
+                <label class="erp-form-label">备注</label>
+                <textarea v-model="opportunityForm.notes" class="erp-textarea" maxlength="5000" placeholder="可选" />
+              </div>
+            </div>
+            <p v-if="opportunityError" class="erp-field-error kol-modal-error">{{ opportunityError }}</p>
+            <div class="kol-modal-actions">
+              <button type="button" class="erp-btn erp-btn-secondary" :disabled="opportunitySaving" @click="opportunityModalOpen = false">取消</button>
+              <button type="button" class="erp-btn erp-btn-primary" :disabled="opportunitySaving || !opportunityForm.title.trim()" @click="saveOpportunity">{{ opportunitySaving ? '保存中…' : '保存合作机会' }}</button>
+            </div>
+          </section>
+        </div>
+
+        <div v-if="communicationModalOpen" class="kol-modal-backdrop" @click.self="communicationModalOpen = false">
+          <section class="kol-modal" role="dialog" aria-modal="true" aria-labelledby="kol-communication-modal-title">
+            <div class="kol-modal-header"><div><p class="kol-kicker">M1.1 CRM</p><h2 id="kol-communication-modal-title">{{ editingCommunicationId ? '编辑沟通记录' : '新增沟通记录' }}</h2></div><button type="button" class="kol-modal-close" @click="communicationModalOpen = false">×</button></div>
+            <div class="kol-modal-grid">
+              <div class="erp-form-field"><label class="erp-form-label">沟通时间 *</label><input v-model="communicationForm.contacted_at" type="datetime-local" class="erp-input"></div>
+              <div class="erp-form-field"><label class="erp-form-label">渠道 *</label><select v-model="communicationForm.channel" class="erp-select"><option v-for="o in communicationChannelOptions" :key="o[0]" :value="o[0]">{{ o[1] }}</option></select></div>
+              <div class="erp-form-field"><label class="erp-form-label">方向 *</label><select v-model="communicationForm.direction" class="erp-select"><option value="outbound">我方联系对方</option><option value="inbound">对方联系我方</option></select></div>
+              <div class="erp-form-field"><label class="erp-form-label">关联合作机会</label><select v-model="communicationForm.opportunity_id" class="erp-select"><option value="">不关联</option><option v-for="o in opportunityRows" :key="o.id" :value="String(o.id)">{{ o.title }}</option></select></div>
+              <div class="erp-form-field kol-span-2"><label class="erp-form-label">沟通内容 *</label><textarea v-model="communicationForm.summary" class="erp-textarea" maxlength="5000" /></div>
+              <div class="erp-form-field"><label class="erp-form-label">下一步</label><input v-model="communicationForm.next_action" type="text" class="erp-input" maxlength="2000"></div>
+              <div class="erp-form-field"><label class="erp-form-label">下次跟进</label><input v-model="communicationForm.next_follow_up_at" type="datetime-local" class="erp-input"></div>
+            </div>
+            <p v-if="communicationError" class="erp-field-error kol-modal-error">{{ communicationError }}</p>
+            <div class="kol-modal-actions"><button type="button" class="erp-btn erp-btn-secondary" @click="communicationModalOpen = false">取消</button><button type="button" class="erp-btn erp-btn-primary" :disabled="communicationSaving || !communicationForm.summary.trim()" @click="saveCommunication">{{ communicationSaving ? '保存中…' : '保存沟通记录' }}</button></div>
+          </section>
+        </div>
       </div>
     </div>
   </AuthenticatedLayout>
@@ -621,7 +920,55 @@ const breadcrumbs = [
   justify-content: flex-end;
 }
 
+.kol-avatar-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+}
+
+.kol-avatar-business-row { display: flex; align-items: center; gap: 18px; margin: 4px 0 18px; padding-bottom: 18px; border-bottom: 1px solid #e5eaed; }
+.kol-avatar-editor { position: relative; width: 96px; height: 96px; flex: 0 0 96px; display: grid; place-items: center; border-radius: 50%; border: 2px dashed #cbd5e1; background: #f8fafc; cursor: pointer; overflow: hidden; outline: none; transition: border-color .15s ease, box-shadow .15s ease; }
+.kol-avatar-editor.is-active, .kol-avatar-editor:focus { border-color: #0f766e; box-shadow: 0 0 0 3px rgba(15, 118, 110, .12); }
+.kol-avatar-image { width: 100%; height: 100%; object-fit: cover; }
+.kol-avatar-placeholder { font-size: 32px; font-weight: 700; color: #0f766e; }
+.kol-avatar-overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(15, 23, 42, .62); color: #fff; font-size: 12px; font-weight: 600; }
+.kol-avatar-editor-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; color: #64748b; font-size: 13px; }
+.kol-avatar-editor-copy strong { color: #0f766e; }
+.kol-avatar-choose { min-height: 34px; padding: 6px 12px; }
+.kol-avatar-file { display: none; }
+
+.kol-opportunity-list { display: flex; flex-direction: column; border: 1px solid #e5eaed; border-radius: 10px; overflow: hidden; }
+.kol-opportunity-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 16px; border-top: 1px solid #edf1f3; background: #fff; }
+.kol-opportunity-row:first-child { border-top: 0; }
+.kol-opportunity-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.kol-opportunity-main strong { min-width: 180px; color: #1f2937; }
+.kol-opportunity-main span { color: #64748b; font-size: 13px; }
+.kol-opportunity-meta { display: flex; align-items: center; justify-content: flex-end; gap: 12px; color: #64748b; font-size: 13px; white-space: nowrap; }
+.kol-opportunity-status { padding: 3px 9px; border-radius: 999px; background: #eef2f6; color: #475569; font-weight: 600; }
+.kol-opportunity-status.is-active, .kol-opportunity-status.is-success { background: #e8f6f1; color: #16745f; }
+.kol-opportunity-status.is-failed, .kol-opportunity-status.is-cancelled { background: #fff0f0; color: #b54747; }
+.kol-opportunity-status.is-paused { background: #fff7e6; color: #9a6700; }
+.kol-opportunity-edit { min-height: 32px; padding: 5px 10px; }
+.kol-opportunity-empty { border: 1px dashed #d6dee2; border-radius: 10px; padding: 22px; text-align: center; }
+.kol-modal-backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px; background: rgba(15, 23, 42, .48); }
+.kol-modal { width: min(760px, 100%); max-height: calc(100vh - 48px); overflow: auto; border-radius: 14px; background: #fff; box-shadow: 0 24px 60px rgba(15, 23, 42, .22); padding: 22px; }
+.kol-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.kol-modal-header h2 { margin: 0; font-size: 20px; color: #1f2937; }
+.kol-modal-close { border: 0; background: transparent; color: #64748b; font-size: 28px; line-height: 1; cursor: pointer; }
+.kol-modal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; }
+.kol-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.kol-modal-error { margin-top: 12px; }
+
+
+.kol-communication-admin-list { display: flex; flex-direction: column; }
+.kol-communication-admin-row { display: grid; grid-template-columns: 1.2fr 2fr 1fr; gap: 14px; align-items: center; padding: 12px 0; border-top: 1px solid #e5eaed; }
+.kol-communication-admin-row:first-child { border-top: 0; }
+.kol-communication-admin-row > div { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; color: #64748b; }
+.kol-communication-admin-row p { margin: 0; color: #334155; font-size: 13px; }
+
 @media (max-width: 767px) {
+  .kol-avatar-business-row { align-items: flex-start; flex-direction: column; }
   .kol-address-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -630,9 +977,14 @@ const breadcrumbs = [
     grid-column: span 1;
   }
 
+  .kol-opportunity-row, .kol-opportunity-main, .kol-opportunity-meta { align-items: flex-start; flex-direction: column; white-space: normal; }
+  .kol-opportunity-main strong { min-width: 0; }
+  .kol-modal-grid { grid-template-columns: 1fr; }
+  .kol-modal-grid .kol-span-2 { grid-column: span 1; }
   .kol-sa-row,
   .kol-perf-row,
-  .kol-perf-history-row {
+  .kol-perf-history-row,
+  .kol-communication-admin-row {
     grid-template-columns: 1fr;
   }
 }

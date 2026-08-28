@@ -7,8 +7,11 @@ use App\Modules\Kol\Application\KolScope;
 use App\Modules\Kol\Application\KolService;
 use App\Modules\Kol\Application\SavedViewService;
 use App\Modules\Kol\Infrastructure\Models\Kol;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -25,7 +28,7 @@ final class KolController
         $ownerScopeId = KolScope::effectiveOwnerId($user);
         $canManageViews = KolScope::canManageViews($user);
 
-        $filters = $request->only(['search', 'owner_id', 'status', 'relationship_stage', 'country_code', 'platform', 'followers_min', 'followers_max', 'level', 'city', 'content_format', 'mcn', 'view', 'sort', 'direction']);
+        $filters = $request->only(['search', 'owner_id', 'status', 'relationship_stage', 'country_code', 'platform', 'followers_min', 'followers_max', 'level', 'content_format', 'mcn', 'view', 'sort', 'direction']);
         $kols = $this->kols->list($filters, $ownerScopeId);
         $savedViews = $this->views->forUser('kol', (int) $user->getAuthIdentifier(), $canManageViews);
 
@@ -97,14 +100,13 @@ final class KolController
             'shipping_address_line_1' => 'nullable|string|max:255',
             'shipping_address_line_2' => 'nullable|string|max:255',
             'level' => 'nullable|string|in:头部,腰部,尾部,素人',
-            'city' => 'nullable|string|max:128',
-            'categories' => 'nullable|array|max:20',
-            'categories.*' => 'string|max:64',
-            'products' => 'nullable|array|max:20',
-            'products.*' => 'string|max:64',
+            'gender' => 'nullable|string|in:男,女,女同,男同,其他',
+            'categories' => 'nullable|array|max:1',
+            'categories.*' => 'string|in:Lifestyle,Beauty,Fitness,漫画,家居,色情,其他',
+            'products' => 'nullable|array|max:1',
+            'products.*' => 'string|max:128|exists:products,sku',
             'content_format' => 'nullable|string|in:图文,短视频,直播,图文+视频,混合',
             'product_quantity' => 'nullable|integer|min:0',
-            'store_count' => 'nullable|integer|min:0',
             'internal_contact' => 'nullable|string|max:255',
             'mcn_agency' => 'nullable|string|max:255',
             'is_mcn_managed' => 'boolean',
@@ -136,7 +138,15 @@ final class KolController
     public function show(Request $request, Kol $kol): Response
     {
         $this->authorizeKolAccess($request, $kol);
-        $kol->load(['owner', 'socialAccounts.latestMetric', 'socialAccounts.metrics']);
+        $relations = ['owner', 'socialAccounts.latestMetric', 'socialAccounts.metrics'];
+        if (Schema::hasTable('kol_opportunities')) {
+            $relations[] = 'opportunities.owner';
+        }
+        if (Schema::hasTable('kol_communications')) {
+            $relations[] = 'communications.creator';
+            $relations[] = 'communications.opportunity';
+        }
+        $kol->load($relations);
 
         return Inertia::render('Kol/Show', [
             'kol' => $this->kolDetailData($kol),
@@ -148,7 +158,15 @@ final class KolController
     public function edit(Request $request, Kol $kol): Response
     {
         $this->authorizeKolAccess($request, $kol);
-        $kol->load(['socialAccounts.latestMetric']);
+        $editRelations = ['socialAccounts.latestMetric'];
+        if (Schema::hasTable('kol_opportunities')) {
+            $editRelations[] = 'opportunities.owner';
+        }
+        if (Schema::hasTable('kol_communications')) {
+            $editRelations[] = 'communications.creator';
+            $editRelations[] = 'communications.opportunity';
+        }
+        $kol->load($editRelations);
 
         $user = $request->user();
         $ownerOptions = [];
@@ -167,6 +185,13 @@ final class KolController
     public function update(Request $request, Kol $kol): RedirectResponse
     {
         $this->authorizeKolAccess($request, $kol);
+
+        $submittedLevel = $request->input('level');
+        $submittedContentFormat = $request->input('content_format');
+        $submittedProduct = $request->input('products.0');
+        $legacyLevelUnchanged = $submittedLevel !== null && $submittedLevel === $kol->level;
+        $legacyContentFormatUnchanged = $submittedContentFormat !== null && $submittedContentFormat === $kol->content_format;
+        $legacyProductUnchanged = $submittedProduct !== null && in_array($submittedProduct, $kol->products ?? [], true);
 
         $data = $request->validate([
             'display_name' => 'required|string|max:255',
@@ -194,15 +219,14 @@ final class KolController
             'shipping_postal_code' => 'nullable|string|max:32',
             'shipping_address_line_1' => 'nullable|string|max:255',
             'shipping_address_line_2' => 'nullable|string|max:255',
-            'level' => 'nullable|string|in:头部,腰部,尾部,素人',
-            'city' => 'nullable|string|max:128',
-            'categories' => 'nullable|array|max:20',
-            'categories.*' => 'string|max:64',
-            'products' => 'nullable|array|max:20',
-            'products.*' => 'string|max:64',
-            'content_format' => 'nullable|string|in:图文,短视频,直播,图文+视频,混合',
+            'level' => $legacyLevelUnchanged ? 'nullable|string|max:32' : 'nullable|string|in:头部,腰部,尾部,素人',
+            'gender' => 'nullable|string|in:男,女,女同,男同,其他',
+            'categories' => 'nullable|array|max:1',
+            'categories.*' => 'string|in:Lifestyle,Beauty,Fitness,漫画,家居,色情,其他',
+            'products' => 'nullable|array|max:1',
+            'products.*' => $legacyProductUnchanged ? 'string|max:128' : 'string|max:128|exists:products,sku',
+            'content_format' => $legacyContentFormatUnchanged ? 'nullable|string|max:64' : 'nullable|string|in:图文,短视频,直播,图文+视频,混合',
             'product_quantity' => 'nullable|integer|min:0',
-            'store_count' => 'nullable|integer|min:0',
             'internal_contact' => 'nullable|string|max:255',
             'mcn_agency' => 'nullable|string|max:255',
             'is_mcn_managed' => 'boolean',
@@ -230,6 +254,31 @@ final class KolController
         $this->kols->update($kol, $data, $data['social_accounts'] ?? [], $user, $data['sales_performance_entries'] ?? []);
 
         return redirect()->route('kol.library.show', $kol)->with('success', 'KOL 已更新');
+    }
+
+    public function uploadAvatar(Request $request, Kol $kol): JsonResponse
+    {
+        $this->authorizeKolAccess($request, $kol);
+
+        $validated = $request->validate([
+            'avatar' => 'required|image|mimes:jpeg,jpg,png,webp,gif|max:5120',
+        ]);
+
+        if ($kol->avatar_path) {
+            Storage::disk('public')->delete($kol->avatar_path);
+        }
+
+        $path = $validated['avatar']->store("kol/avatars/{$kol->id}", 'public');
+        $kol->forceFill([
+            'avatar_path' => $path,
+            'avatar_source' => 'manual_paste',
+            'avatar_updated_at' => now(),
+        ])->save();
+
+        return response()->json([
+            'avatar_url' => Storage::disk('public')->url($path),
+            'avatar_updated_at' => $kol->avatar_updated_at?->toIso8601String(),
+        ]);
     }
 
     public function archive(Request $request, Kol $kol): RedirectResponse
@@ -276,6 +325,9 @@ final class KolController
         return [
             'id' => $kol->id,
             'display_name' => $kol->display_name,
+            'avatar_url' => $kol->avatar_path ? Storage::disk('public')->url($kol->avatar_path) : null,
+            'avatar_source' => $kol->avatar_source,
+            'avatar_updated_at' => $kol->avatar_updated_at?->toIso8601String(),
             'country_code' => $kol->country_code,
             'status' => $kol->status,
             'relationship_stage' => $kol->relationship_stage,
@@ -285,12 +337,11 @@ final class KolController
             'is_100k_plus' => $latestFollowers !== null && $latestFollowers >= 100000,
             'joined_at' => $kol->joined_at?->format('Y-m-d'),
             'level' => $kol->level,
-            'city' => $kol->city,
+            'gender' => $kol->gender,
             'categories' => $kol->categories ?? [],
             'products' => $kol->products ?? [],
             'content_format' => $kol->content_format,
             'product_quantity' => $kol->product_quantity,
-            'store_count' => $kol->store_count,
             'internal_contact' => $kol->internal_contact,
             'mcn_agency' => $kol->mcn_agency,
             'is_mcn_managed' => $kol->is_mcn_managed,
@@ -303,6 +354,9 @@ final class KolController
         return [
             'id' => $kol->id,
             'display_name' => $kol->display_name,
+            'avatar_url' => $kol->avatar_path ? Storage::disk('public')->url($kol->avatar_path) : null,
+            'avatar_source' => $kol->avatar_source,
+            'avatar_updated_at' => $kol->avatar_updated_at?->toIso8601String(),
             'legal_name' => $kol->legal_name,
             'country_code' => $kol->country_code,
             'language' => $kol->language,
@@ -330,12 +384,11 @@ final class KolController
             'other_contact' => $kol->other_contact,
             'preferred_contact_method' => $kol->preferred_contact_method,
             'level' => $kol->level,
-            'city' => $kol->city,
+            'gender' => $kol->gender,
             'categories' => $kol->categories ?? [],
             'products' => $kol->products ?? [],
             'content_format' => $kol->content_format,
             'product_quantity' => $kol->product_quantity,
-            'store_count' => $kol->store_count,
             'internal_contact' => $kol->internal_contact,
             'mcn_agency' => $kol->mcn_agency,
             'is_mcn_managed' => $kol->is_mcn_managed,
@@ -347,6 +400,70 @@ final class KolController
                 'source' => $p->source,
                 'note' => $p->note,
             ])->values()->all(),
+            'current_opportunity' => Schema::hasTable('kol_opportunities') && ($opportunity = $kol->relationLoaded('opportunities') ? $kol->opportunities->first(fn ($item) => $item->status === 'active') : null) ? [
+                'id' => $opportunity->id,
+                'title' => $opportunity->title,
+                'cooperation_type' => $opportunity->cooperation_type,
+                'target_products' => $opportunity->target_products ?? [],
+                'stage' => $opportunity->stage,
+                'estimated_cost' => $opportunity->estimated_cost !== null ? (float) $opportunity->estimated_cost : null,
+                'currency' => $opportunity->currency,
+                'expected_publish_at' => $opportunity->expected_publish_at?->format('Y-m-d'),
+                'next_follow_up_at' => $opportunity->next_follow_up_at?->format('Y-m-d H:i:s'),
+                'next_action' => $opportunity->next_action,
+                'owner' => $opportunity->owner ? ['id' => $opportunity->owner->id, 'name' => $opportunity->owner->name] : null,
+                'status' => $opportunity->status,
+            ] : null,
+            'recent_communications' => Schema::hasTable('kol_communications') && $kol->relationLoaded('communications') ? $kol->communications->take(5)->map(fn ($communication) => [
+                'id' => $communication->id,
+                'channel' => $communication->channel,
+                'direction' => $communication->direction ?? 'outbound',
+                'summary' => $communication->summary,
+                'contacted_at' => $communication->contacted_at?->format('Y-m-d H:i:s'),
+                'next_action' => $communication->next_action,
+                'next_follow_up_at' => $communication->next_follow_up_at?->format('Y-m-d H:i:s'),
+                'creator' => $communication->creator ? ['id' => $communication->creator->id, 'name' => $communication->creator->name] : null,
+                'opportunity' => $communication->opportunity ? ['id' => $communication->opportunity->id, 'title' => $communication->opportunity->title] : null,
+            ])->values()->all() : [],
+            'communications' => Schema::hasTable('kol_communications') && $kol->relationLoaded('communications') ? $kol->communications->map(fn ($communication) => [
+                'id' => $communication->id,
+                'opportunity_id' => $communication->opportunity_id,
+                'channel' => $communication->channel,
+                'direction' => $communication->direction ?? 'outbound',
+                'summary' => $communication->summary,
+                'contacted_at' => $communication->contacted_at?->format('Y-m-d\TH:i'),
+                'next_action' => $communication->next_action,
+                'next_follow_up_at' => $communication->next_follow_up_at?->format('Y-m-d\TH:i'),
+                'creator' => $communication->creator ? ['id' => $communication->creator->id, 'name' => $communication->creator->name] : null,
+                'opportunity' => $communication->opportunity ? ['id' => $communication->opportunity->id, 'title' => $communication->opportunity->title] : null,
+            ])->values()->all() : [],
+            'opportunities' => Schema::hasTable('kol_opportunities') && $kol->relationLoaded('opportunities') ? $kol->opportunities->map(fn ($item) => [
+                'id' => $item->id,
+                'title' => $item->title,
+                'cooperation_type' => $item->cooperation_type,
+                'target_products' => $item->target_products ?? [],
+                'stage' => $item->stage,
+                'owner_id' => $item->owner_id,
+                'owner' => $item->owner ? ['id' => $item->owner->id, 'name' => $item->owner->name] : null,
+                'estimated_cost' => $item->estimated_cost !== null ? (float) $item->estimated_cost : null,
+                'currency' => $item->currency,
+                'expected_publish_at' => $item->expected_publish_at?->format('Y-m-d'),
+                'next_follow_up_at' => $item->next_follow_up_at?->format('Y-m-d\TH:i'),
+                'next_action' => $item->next_action,
+                'status' => $item->status,
+                'notes' => $item->notes,
+            ])->values()->all() : [],
+            'historical_opportunities' => Schema::hasTable('kol_opportunities') && $kol->relationLoaded('opportunities') ? $kol->opportunities->filter(fn ($item) => $item->status !== 'active')->take(20)->map(fn ($item) => [
+                'id' => $item->id,
+                'title' => $item->title,
+                'cooperation_type' => $item->cooperation_type,
+                'stage' => $item->stage,
+                'status' => $item->status,
+                'created_at' => $item->created_at?->format('Y-m-d'),
+                'estimated_cost' => $item->estimated_cost !== null ? (float) $item->estimated_cost : null,
+                'currency' => $item->currency,
+                'owner' => $item->owner ? ['id' => $item->owner->id, 'name' => $item->owner->name] : null,
+            ])->values()->all() : [],
             'social_accounts' => $kol->socialAccounts->map(fn ($sa) => [
                 'id' => $sa->id,
                 'platform' => $sa->platform,
