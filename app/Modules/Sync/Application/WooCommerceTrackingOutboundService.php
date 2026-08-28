@@ -111,6 +111,12 @@ final class WooCommerceTrackingOutboundService
     }
 
     /** @return array<string,mixed> */
+    public function describeOrder(Model $order): array
+    {
+        return $this->prepare($order);
+    }
+
+    /** @return array<string,mixed> */
     private function prepare(Model $order): array
     {
         $order->loadMissing(['shipment', 'externalReferences', 'manualSync']);

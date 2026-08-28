@@ -22,6 +22,21 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         ];
     }
 
+    public function inspectTracking(int $providerOrderId): array
+    {
+        if (! $this->configured()) {
+            throw new RuntimeException('WooCommerce connection is not configured.');
+        }
+
+        $state = $this->trackingState($this->readOrder($providerOrderId));
+
+        return [
+            'tracking_number' => $state['number'],
+            'provider' => $state['provider'],
+            'has_tracking' => $this->hasTracking($state),
+        ];
+    }
+
     public function syncTracking(
         int $providerOrderId,
         string $providerSlug,
