@@ -79,7 +79,7 @@ class ApprovedMenuBaselineTest extends TestCase
         $levelTwo = collect($items)->where('level', 2)->values();
 
         $this->assertCount(12, $levelOne, self::MISMATCH.': level-1 count');
-        $this->assertCount(42, $levelTwo, self::MISMATCH.': owner-approved level-2 count including cross-module order shortcuts');
+        $this->assertCount(46, $levelTwo, self::MISMATCH.': owner-approved level-2 count including shortcuts and sync workspaces');
         $this->assertSame(
             ['dashboard', 'orders', 'logistics', 'sync', 'customers', 'kol', 'inventory', 'procurement', 'products', 'guides', 'accounting', 'settings'],
             $levelOne->pluck('code')->all(),

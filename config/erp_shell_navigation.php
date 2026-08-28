@@ -13,7 +13,12 @@ return [
         ['key' => 'logistics-in-transit', 'label' => '运输中', 'path' => '/logistics/in-transit', 'route' => 'logistics.in-transit', 'permission' => 'prototype.view', 'placeholder' => false],
         ['key' => 'logistics-exceptions', 'label' => '异常订单', 'path' => '/logistics/exceptions', 'route' => 'logistics.exceptions', 'permission' => 'prototype.view', 'placeholder' => false],
     ]],
-    ['key' => 'sync', 'label' => '同步', 'emoji' => '🔄', 'path' => '/sync', 'route' => 'shell.sync', 'permission' => 'sync.view', 'placeholder' => false],
+    ['key' => 'sync', 'label' => '同步', 'emoji' => '🔄', 'path' => '/sync', 'route' => 'shell.sync', 'permission' => 'sync.view', 'placeholder' => false, 'children' => [
+        ['key' => 'sync-orders', 'label' => '同步订单', 'path' => '/sync/orders', 'route' => 'sync.orders', 'permission' => 'sync.view', 'placeholder' => false],
+        ['key' => 'sync-warehouses', 'label' => '同步仓库', 'path' => '/sync/warehouses', 'route' => 'sync.warehouses', 'permission' => 'sync.view', 'placeholder' => false],
+        ['key' => 'sync-kol', 'label' => '同步网红', 'path' => '/sync/kol', 'route' => 'sync.kol', 'permission' => 'sync.view', 'placeholder' => false],
+        ['key' => 'sync-exports', 'label' => '导出平台订单', 'path' => '/sync/exports', 'route' => 'sync.exports', 'permission' => 'sync.view', 'placeholder' => false],
+    ]],
     ['key' => 'customers', 'label' => '客户', 'emoji' => '👥', 'path' => '/customers', 'route' => 'shell.customers', 'permission' => 'customers.view', 'placeholder' => false, 'children' => [
         ['key' => 'customers-orders', 'label' => '客户订单', 'path' => '/customers/orders', 'route' => 'customers.orders', 'permission' => 'orders.view', 'placeholder' => false],
         ['key' => 'customers-orders-create', 'label' => '新建订单', 'path' => '/customers/orders/create', 'route' => 'customers.orders.create', 'permission' => 'orders.create', 'placeholder' => false],

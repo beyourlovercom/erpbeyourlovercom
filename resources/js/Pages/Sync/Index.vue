@@ -1,134 +1,115 @@
 <script setup lang="ts">
-import { Head, router } from '@inertiajs/vue3'
-import { reactive, ref } from 'vue'
+import { Head } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
-type Order = {
-  id: number; internal_order_number: string; recipient_name: string; status: string
-  synced_at: string | null; synced_by: number | null; tracking_number: string | null
-  shipment_status: string | null; carrier: string | null; source_type: string
-  tracking_outbound_status: string | null; tracking_outbound_attempts: number | null
+type DomainCard = {
+  key: string; title: string; subtitle: string; href: string; last_sync_at: string | null
+  status: string; succeeded_items: number; failed_items: number; conflict_items: number
 }
 type SyncRun = {
-  id: number; run_type: string; status: string; requested_items: number
-  succeeded_items: number; retrying_items: number; failed_items: number
-  conflict_items: number; skipped_items: number; started_at: string | null
+  id: number; domain: string; run_type: string; provider_key: string | null; status: string
+  initiator: string | null; started_at: string | null; completed_at: string | null
+  requested_items: number; succeeded_items: number; failed_items: number; conflict_items: number
 }
 type QueueSummary = { retry_due: number; retry_waiting: number; processing: number; failed: number; conflicts: number }
 
-const props = withDefaults(defineProps<{
-  orders: Order[]; filters: { status?: string; search?: string }
-  syncRuns?: SyncRun[]; queueSummary?: QueueSummary
-}>(), {
-  syncRuns: () => [],
-  queueSummary: () => ({ retry_due: 0, retry_waiting: 0, processing: 0, failed: 0, conflicts: 0 }),
-})
-const filters = reactive({ status: props.filters.status ?? '', search: props.filters.search ?? '' })
-const selected = ref<number[]>([])
-const submit = () => router.get('/sync', filters, { preserveState: true, replace: true })
-const update = (id: number, action: string) => router.post(`/sync/orders/${id}/${action}`, { sync_note: window.prompt('备注（可选）') ?? '' })
-const pushTracking = (id: number) => router.post(`/sync/orders/${id}/tracking-outbound`)
-const copy = async (id: number) => {
-  const response = await fetch(`/sync/orders/${id}/payload`, { headers: { Accept: 'application/json' } })
-  await navigator.clipboard.writeText(JSON.stringify(await response.json(), null, 2))
-}
-const selectable = (order: Order) => order.source_type === 'woocommerce' && order.shipment_status === 'shipped' && !!order.tracking_number
-const toggleSelected = (id: number, checked: boolean) => {
-  selected.value = checked ? [...new Set([...selected.value, id])] : selected.value.filter((value) => value !== id)
-}
-const batchSelected = () => router.post('/sync/orchestration/tracking/selected', { order_ids: selected.value })
-const batchAllPending = () => router.post('/sync/orchestration/tracking/all-pending', { limit: 100 })
-const retryPending = () => router.post('/sync/orchestration/retry', { limit: 100 })
-const recoverStale = () => router.post('/sync/orchestration/recover-stale', { age_seconds: 300, limit: 100 })
-const reconcileSelected = () => router.post('/sync/orchestration/reconcile', { order_ids: selected.value })
-const outboundLabel = (order: Order) => {
-  if (!order.tracking_outbound_status) return '未执行'
-  if (order.tracking_outbound_status === 'pending') return (order.tracking_outbound_attempts ?? 0) > 0 ? '待重试' : '待执行'
-  if (order.tracking_outbound_status === 'processing') return '处理中'
-  if (order.tracking_outbound_status === 'completed') return '已完成'
-  if (order.tracking_outbound_status === 'failed') return '失败'
-  return order.tracking_outbound_status
-}
+const props = defineProps<{
+  domains: DomainCard[]
+  manualRuns: SyncRun[]
+  automaticRuns: SyncRun[]
+  queueSummary: QueueSummary
+}>()
+
+const formatTime = (value: string | null) => value
+  ? new Date(value).toLocaleString('zh-CN', { hour12: false })
+  : '尚未同步'
 </script>
 <template>
-  <Head title="同步 · BYL ERP" />
+  <Head title="同步总览 · BYL ERP" />
   <AuthenticatedLayout title="同步" :breadcrumbs="['BYL ERP', '同步']">
-    <section class="mvp-page">
+    <section class="mvp-page sync-overview">
       <div class="mvp-page-heading">
         <div>
-          <p class="mvp-kicker">Sync Orchestration</p>
-          <h2>同步工作区</h2>
-          <p>统一处理 Tracking 写回、重试、冲突和远端核对；订单与 Shipment 仍是业务真相。</p>
+          <p class="mvp-kicker">SYNC CENTER</p>
+          <h2>同步总览</h2>
+          <p>统一查看订单、仓库、网红与订单导出的同步状态和执行记录。</p>
         </div>
-        <a class="mvp-button mvp-button-primary" href="/sync/woocommerce">WooCommerce 入站</a>
       </div>
 
-      <div class="mvp-toolbar">
-        <button class="mvp-button mvp-button-primary" type="button" :disabled="selected.length === 0" @click="batchSelected">批量写回所选</button>
-        <button class="mvp-button" type="button" @click="batchAllPending">写回全部待同步</button>
-        <button class="mvp-button" type="button" @click="retryPending">重试到期任务</button>
-        <button class="mvp-button" type="button" @click="recoverStale">恢复超时任务</button>
-        <button class="mvp-button" type="button" :disabled="selected.length === 0" @click="reconcileSelected">核对所选 Tracking</button>
-        <span class="mvp-status">已选择 {{ selected.length }}</span>
+      <div class="sync-domain-grid">
+        <a v-for="domain in props.domains" :key="domain.key" class="sync-domain-card" :href="domain.href">
+          <div class="sync-card-heading"><h3>{{ domain.title }}</h3><span>进入 →</span></div>
+          <p>{{ domain.subtitle }}</p>
+          <dl>
+            <div><dt>最后同步</dt><dd>{{ formatTime(domain.last_sync_at) }}</dd></div>
+            <div><dt>最近状态</dt><dd><span class="mvp-status">{{ domain.status }}</span></dd></div>
+            <div><dt>成功</dt><dd>{{ domain.succeeded_items }}</dd></div>
+            <div><dt>失败 / 冲突</dt><dd>{{ domain.failed_items }} / {{ domain.conflict_items }}</dd></div>
+          </dl>
+        </a>
       </div>
-      <div class="mvp-table-wrap">
-        <table class="mvp-table">
-          <thead><tr><th>到期重试</th><th>等待重试</th><th>处理中</th><th>失败</th><th>冲突</th></tr></thead>
-          <tbody><tr>
-            <td>{{ props.queueSummary.retry_due }}</td>
-            <td>{{ props.queueSummary.retry_waiting }}</td>
-            <td>{{ props.queueSummary.processing }}</td>
-            <td>{{ props.queueSummary.failed }}</td>
-            <td>{{ props.queueSummary.conflicts }}</td>
-          </tr></tbody>
-        </table>
-      </div>
+      <section class="mvp-panel">
+        <div class="mvp-page-heading compact-heading"><div><h3>订单同步队列</h3></div><a class="mvp-button" href="/sync/orders">进入同步订单</a></div>
+        <div class="sync-metrics">
+          <div><strong>{{ props.queueSummary.retry_due }}</strong><span>到期重试</span></div>
+          <div><strong>{{ props.queueSummary.retry_waiting }}</strong><span>等待重试</span></div>
+          <div><strong>{{ props.queueSummary.processing }}</strong><span>处理中</span></div>
+          <div><strong>{{ props.queueSummary.failed }}</strong><span>失败</span></div>
+          <div><strong>{{ props.queueSummary.conflicts }}</strong><span>冲突</span></div>
+        </div>
+      </section>
 
-      <div class="mvp-table-wrap">
-        <table class="mvp-table">
-          <thead><tr><th>Run</th><th>类型</th><th>状态</th><th>请求</th><th>成功</th><th>重试</th><th>冲突</th><th>失败</th><th>跳过</th></tr></thead>
+      <section class="mvp-panel">
+        <h3>手动同步记录</h3>
+        <div class="mvp-table-wrap"><table class="mvp-table">
+          <thead><tr><th>时间</th><th>执行人</th><th>同步域</th><th>平台</th><th>操作</th><th>结果</th><th>状态</th></tr></thead>
           <tbody>
-            <tr v-for="run in props.syncRuns" :key="run.id">
-              <td><a :href="`/sync/runs/${run.id}`">#{{ run.id }}</a></td>
-              <td>{{ run.run_type }}</td><td><span class="mvp-status">{{ run.status }}</span></td>
-              <td>{{ run.requested_items }}</td><td>{{ run.succeeded_items }}</td><td>{{ run.retrying_items }}</td>
-              <td>{{ run.conflict_items }}</td><td>{{ run.failed_items }}</td><td>{{ run.skipped_items }}</td>
+            <tr v-for="run in props.manualRuns" :key="run.id">
+              <td>{{ formatTime(run.started_at) }}</td><td>{{ run.initiator ?? '—' }}</td><td>{{ run.domain }}</td>
+              <td>{{ run.provider_key ?? 'system' }}</td><td><a :href="`/sync/runs/${run.id}`">{{ run.run_type }}</a></td>
+              <td>{{ run.succeeded_items }} 成功 / {{ run.failed_items }} 失败 / {{ run.conflict_items }} 冲突</td><td><span class="mvp-status">{{ run.status }}</span></td>
             </tr>
-            <tr v-if="props.syncRuns.length === 0"><td colspan="9" class="mvp-empty">暂无 Sync Run</td></tr>
+            <tr v-if="props.manualRuns.length === 0"><td colspan="7" class="mvp-empty">暂无手动同步记录</td></tr>
           </tbody>
-        </table>
-      </div>
-      <form class="mvp-toolbar" @submit.prevent="submit">
-        <input v-model="filters.search" placeholder="搜索订单号或收件人" aria-label="搜索同步">
-        <select v-model="filters.status" aria-label="同步状态">
-          <option value="">全部状态</option><option value="pending">待同步</option><option value="completed">已完成</option>
-          <option value="needs_confirmation">待确认</option><option value="returned">已退回</option><option value="failed">失败</option>
-        </select>
-        <button class="mvp-button mvp-button-primary">筛选</button>
-      </form>
-
-      <div class="mvp-table-wrap">
-        <table class="mvp-table">
-          <thead><tr><th>选择</th><th>订单号</th><th>来源</th><th>收件人</th><th>追踪号</th><th>Tracking 写回</th><th>状态</th><th>完成时间</th><th>操作</th></tr></thead>
+        </table></div>
+      </section>
+      <section class="mvp-panel">
+        <h3>自动同步记录</h3>
+        <div class="mvp-table-wrap"><table class="mvp-table">
+          <thead><tr><th>时间</th><th>同步域</th><th>平台</th><th>操作</th><th>结果</th><th>状态</th></tr></thead>
           <tbody>
-            <tr v-for="order in props.orders" :key="order.id">
-              <td><input v-if="selectable(order)" type="checkbox" :aria-label="`选择 ${order.internal_order_number}`" :checked="selected.includes(order.id)" @change="toggleSelected(order.id, ($event.target as HTMLInputElement).checked)"></td>
-              <td>{{ order.internal_order_number }}</td><td>{{ order.source_type }}</td><td>{{ order.recipient_name }}</td>
-              <td>{{ order.tracking_number ?? '—' }}</td>
-              <td><span class="mvp-status">{{ order.source_type === 'woocommerce' ? outboundLabel(order) : '—' }}</span></td>
-              <td><span class="mvp-status">{{ order.status }}</span></td><td>{{ order.synced_at ?? '—' }}</td>
-              <td class="mvp-actions">
-                <button class="mvp-button" @click="copy(order.id)">复制网站 payload</button>
-                <button v-if="order.source_type === 'woocommerce' && order.shipment_status === 'shipped' && order.tracking_number && order.status !== 'completed'" class="mvp-button mvp-button-primary" @click="pushTracking(order.id)">写回 Tracking</button>
-                <button v-if="order.status !== 'completed'" class="mvp-button" @click="update(order.id, 'complete')">标记完成</button>
-                <button v-if="order.status === 'completed'" class="mvp-button" @click="update(order.id, 'reopen')">重开</button>
-                <button v-if="order.status !== 'returned'" class="mvp-button" @click="update(order.id, 'return')">退回更正</button>
-              </td>
+            <tr v-for="run in props.automaticRuns" :key="run.id">
+              <td>{{ formatTime(run.started_at) }}</td><td>{{ run.domain }}</td><td>{{ run.provider_key ?? 'system' }}</td>
+              <td><a :href="`/sync/runs/${run.id}`">{{ run.run_type }}</a></td>
+              <td>{{ run.succeeded_items }} 成功 / {{ run.failed_items }} 失败 / {{ run.conflict_items }} 冲突</td><td><span class="mvp-status">{{ run.status }}</span></td>
             </tr>
-            <tr v-if="props.orders.length === 0"><td colspan="9" class="mvp-empty">暂无同步记录</td></tr>
+            <tr v-if="props.automaticRuns.length === 0"><td colspan="6" class="mvp-empty">暂无自动同步记录</td></tr>
           </tbody>
-        </table>
-      </div>
+        </table></div>
+      </section>
     </section>
   </AuthenticatedLayout>
 </template>
+
+<style scoped>
+.sync-overview { display: grid; gap: var(--byl-space-20); }
+.sync-domain-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--byl-space-16); }
+.sync-domain-card { display: grid; gap: var(--byl-space-12); padding: var(--byl-space-20); border: 1px solid var(--byl-border-subtle); border-radius: var(--byl-radius-lg); background: var(--byl-surface); color: var(--byl-text); text-decoration: none; box-shadow: var(--byl-shadow-card); }
+.sync-card-heading { display: flex; justify-content: space-between; gap: var(--byl-space-12); align-items: center; }
+.sync-card-heading h3, .sync-domain-card p { margin: 0; }
+.sync-domain-card p, dt { color: var(--byl-text-muted); }
+dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--byl-space-10); margin: 0; }
+dl div { display: grid; gap: var(--byl-space-4); }
+dd { margin: 0; font-weight: 600; }
+.mvp-panel { display: grid; gap: var(--byl-space-12); padding: var(--byl-space-20); border: 1px solid var(--byl-border-subtle); border-radius: var(--byl-radius-lg); background: var(--byl-surface); }
+.mvp-panel h3 { margin: 0; }
+.compact-heading { margin: 0; }
+.sync-metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--byl-space-10); }
+.sync-metrics div { display: grid; gap: var(--byl-space-4); padding: var(--byl-space-12); border-radius: var(--byl-radius-md); background: var(--byl-readonly-bg); }
+.sync-metrics strong { font-size: var(--byl-font-size-20); }
+.sync-metrics span { color: var(--byl-text-muted); }
+@media (max-width: 800px) {
+  .sync-domain-grid { grid-template-columns: 1fr; }
+  .sync-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+</style>

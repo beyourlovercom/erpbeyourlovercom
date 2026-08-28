@@ -201,6 +201,7 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Sync/Infrastructure/Models/SyncOutbox.php',
         'app/Modules/Sync/Experience/Controllers/ManualSyncController.php',
         'app/Modules/Sync/Experience/Controllers/SyncOrchestrationController.php',
+        'app/Modules/Sync/Experience/Controllers/SyncWorkspaceController.php',
         'app/Modules/Sync/Experience/Controllers/WooCommerceTrackingOutboundController.php',
         'app/Modules/Sync/Experience/Routes/web.php',
         'app/Modules/Sync/Infrastructure/Models/ManualSync.php',
@@ -366,7 +367,7 @@ final class ModuleArchitectureTest extends TestCase
         'settings.warehouses', 'shell.accounting', 'shell.customers',
         'shell.guides', 'shell.inventory', 'shell.kol', 'shell.logistics', 'shell.procurement',
         'shell.settings', 'shell.sync', 'storage.local', 'storage.local.upload',
-        'sync.complete', 'sync.orchestration.reconcile', 'sync.orchestration.recover-stale', 'sync.orchestration.retry', 'sync.orchestration.tracking-all-pending', 'sync.orchestration.tracking-selected', 'sync.payload', 'sync.reopen', 'sync.return', 'sync.runs.show', 'sync.tracking-outbound', 'woocommerce.inbound.historical', 'woocommerce.inbound.incremental', 'woocommerce.inbound.index', 'woocommerce.inbound.probe', 'woocommerce.inbound.single', 'orders.export', 'orders.export.all', 'orders.export.procurement', 'orders.index', 'orders.procurement', 'orders.store', 'orders.store.customers', 'orders.update', 'orders.update.customers', 'customers.orders.show', 'system.audit-records.index', 'system.runtime.health',
+        'sync.exports', 'sync.kol', 'sync.orders', 'sync.warehouses', 'sync.complete', 'sync.orchestration.reconcile', 'sync.orchestration.recover-stale', 'sync.orchestration.retry', 'sync.orchestration.tracking-all-pending', 'sync.orchestration.tracking-selected', 'sync.payload', 'sync.reopen', 'sync.return', 'sync.runs.show', 'sync.tracking-outbound', 'woocommerce.inbound.historical', 'woocommerce.inbound.incremental', 'woocommerce.inbound.index', 'woocommerce.inbound.probe', 'woocommerce.inbound.single', 'orders.export', 'orders.export.all', 'orders.export.procurement', 'orders.index', 'orders.procurement', 'orders.store', 'orders.store.customers', 'orders.update', 'orders.update.customers', 'customers.orders.show', 'system.audit-records.index', 'system.runtime.health',
         'user.create', 'user.destroy', 'user.disable', 'user.edit', 'user.enable', 'user.index', 'user.password', 'user.permissions', 'user.role', 'user.store', 'user.update',
     ];
 
@@ -510,10 +511,15 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Shell/ModuleOverview.vue' => '7c4148ed1570444f4b2cb5763a1a8cfac3c6f7b958b95a4f3d98fbf40b6ca02c',
         'resources/js/Pages/Shell/Placeholder.test.ts' => 'd0623492800b81b76650531eec2b979747d98daf34dcd4320ba00438529bb781',
         'resources/js/Pages/Shell/Placeholder.vue' => 'e18f588432b7d29a025f7618f977bdb7457536e8ae8028c2c343ce5c7b95472f',
-        'resources/js/Pages/Sync/Index.test.ts' => '1274b4de573eec788330634547ca9856972de93c943f7147db78a908ce638a47',
-        'resources/js/Pages/Sync/Index.vue' => '7aca0bedcdbfb0c8b0b0a1a421ec97feb33ab92e3afab83b64991cad5e8ecfae',
+        'resources/js/Pages/Sync/Exports.vue' => '932514b646b4ba57d800294d68bbcfd228ab69273139eb48e12b8940524fd6f4',
+        'resources/js/Pages/Sync/Index.test.ts' => '974de1cb0004755edc7eace65444764bc2e710d8a1147ad74668ac1b67443970',
+        'resources/js/Pages/Sync/Index.vue' => '36a0c4b48b5c09092e842356e3ca24a77d321b1cae414361e42a243d38dbed2a',
+        'resources/js/Pages/Sync/Kol.vue' => '2e14cf9d2e6e45e012154ea9c16a97f5552044198a08e62ee20019b7ca9f7891',
+        'resources/js/Pages/Sync/Orders.test.ts' => '0dca497aca6740187deb113bd2e3be023da7e93a36905f9abb15315b980356b1',
+        'resources/js/Pages/Sync/Orders.vue' => 'ac820592eb1bc897e87e3b2926a8bf5b07e79c12dfb92f2ffe6293b6f63a2f4e',
         'resources/js/Pages/Sync/RunShow.test.ts' => '9197c15ef1b151072f645fd9c6a5231cfe599c8376bcbee862045056f67f1cc2',
         'resources/js/Pages/Sync/RunShow.vue' => '860b778527a11d6c9d2c2871b904dc922bf98ffbda472980fe4dee23cea3dd1c',
+        'resources/js/Pages/Sync/Warehouses.vue' => '59a2e6ae75d572c26f80bef5500979b02b20fc84756fdfe73110ceefbb10d06b',
         'resources/js/Pages/Sync/WooCommerceInbound.vue' => '1c9800def13da3a7caad30dbc302e4e36d94a557e3ab43e4b109ee591dff9745',
         'resources/js/app.js' => '40994ac10f73e394b96d6e4742be37921fc38e477dccfdfe9e8ab90cd5e6d7d4',
         'resources/js/app.ts' => 'c667a849465fad821d6d08babe410c6d44bd7412629198522f1d408f373823b3',
@@ -740,7 +746,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('2ddfa80d68d7508e4812704c7328db5b64758a3bf31eca876859444c4bc21038', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('8dfad6ea6636c4aa40d957f0af82a3a2ea4d4063248610230f36670b6aba0228', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);

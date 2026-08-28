@@ -3,10 +3,15 @@
 use App\Modules\Sync\Experience\Controllers\ManualSyncController;
 use App\Modules\Sync\Experience\Controllers\WooCommerceTrackingOutboundController;
 use App\Modules\Sync\Experience\Controllers\SyncOrchestrationController;
+use App\Modules\Sync\Experience\Controllers\SyncWorkspaceController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth'])->group(function (): void {
-    Route::get('/sync', [ManualSyncController::class, 'index'])->middleware('can:sync.view')->name('shell.sync');
+    Route::get('/sync', [SyncWorkspaceController::class, 'index'])->middleware('can:sync.view')->name('shell.sync');
+    Route::get('/sync/orders', [ManualSyncController::class, 'index'])->middleware('can:sync.view')->name('sync.orders');
+    Route::get('/sync/warehouses', [SyncWorkspaceController::class, 'warehouses'])->middleware('can:sync.view')->name('sync.warehouses');
+    Route::get('/sync/kol', [SyncWorkspaceController::class, 'kol'])->middleware('can:sync.view')->name('sync.kol');
+    Route::get('/sync/exports', [SyncWorkspaceController::class, 'exports'])->middleware('can:sync.view')->name('sync.exports');
     Route::get('/sync/orders/{order}/payload', [ManualSyncController::class, 'payload'])->middleware('can:sync.view')->name('sync.payload');
     Route::post('/sync/orders/{order}/complete', [ManualSyncController::class, 'complete'])->middleware('can:sync.operate')->name('sync.complete');
     Route::post('/sync/orders/{order}/reopen', [ManualSyncController::class, 'reopen'])->middleware('can:sync.operate')->name('sync.reopen');
