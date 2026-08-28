@@ -136,7 +136,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
           <h2>红人库</h2>
           <p>KOL 主数据列表，支持 Owner 范围、业务画像筛选和保存视图。</p>
         </div>
-        <div class="mvp-actions">
+        <div class="mvp-actions page-header-actions">
           <Link v-if="canOperate" class="mvp-button mvp-button-primary" href="/kol/library/create">新建 KOL</Link>
         </div>
       </div>

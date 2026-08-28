@@ -42,17 +42,17 @@ const submit = () => {
     <section class="mvp-page">
       <div class="mvp-page-heading">
         <div><p class="mvp-kicker">产品主数据</p><h2>导入 WooCommerce CSV</h2></div>
+        <div class="mvp-form-actions page-header-actions">
+          <a href="/products/list" class="mvp-button mvp-button-secondary">返回列表</a>
+          <button type="submit" form="product-import-form" class="mvp-button mvp-button-primary" :disabled="submitting">{{ submitting ? '导入中…' : '开始导入' }}</button>
+        </div>
       </div>
 
-      <form class="mvp-form" @submit.prevent="submit">
+      <form id="product-import-form" class="mvp-form" @submit.prevent="submit">
         <div class="mvp-form-field">
           <label class="mvp-label">选择 CSV 文件</label>
           <input ref="fileInput" type="file" accept=".csv,text/csv" class="mvp-input">
           <p v-if="fieldError" class="mvp-error">{{ fieldError }}</p>
-        </div>
-        <div class="mvp-form-actions">
-          <button type="submit" class="mvp-button" :disabled="submitting">开始导入</button>
-          <a href="/products/list" class="mvp-button mvp-button-secondary">返回列表</a>
         </div>
       </form>
 

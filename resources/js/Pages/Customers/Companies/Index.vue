@@ -15,7 +15,7 @@ const restore = (company: Company) => { if (window.confirm(`确认取消归档�
     <section class="mvp-page">
       <div class="mvp-page-heading">
         <div><p class="mvp-kicker">客户主数据</p><h2>公司</h2><p>维护公司主数据档案。</p></div>
-        <Link v-if="canOperate" class="mvp-button mvp-button-primary" href="/customers/companies/create">新建公司</Link>
+        <div class="mvp-form-actions page-header-actions"><Link v-if="canOperate" class="mvp-button mvp-button-primary" href="/customers/companies/create">新建公司</Link></div>
       </div>
       <form class="mvp-toolbar" @submit.prevent="submit">
         <input v-model="filters.search" aria-label="搜索公司" placeholder="搜索名称、网址域名或注册号">

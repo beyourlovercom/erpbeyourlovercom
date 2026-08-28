@@ -94,7 +94,12 @@ const doDelete = () => {
             <h1 class="erp-form-title">编辑产品</h1>
             <p class="erp-form-subtitle">管理产品资料、物流属性与会计参考成本</p>
           </div>
-          <a href="/products/list" class="erp-btn erp-btn-secondary">返回列表</a>
+          <div class="erp-form-header-actions page-header-actions">
+            <a href="/products/list" class="erp-btn erp-btn-secondary">取消</a>
+            <a href="/products/list" class="erp-btn erp-btn-secondary">返回列表</a>
+            <button type="button" class="erp-btn-danger" @click="confirmingDelete = true">删除产品</button>
+            <button type="submit" form="product-edit-form" class="erp-btn erp-btn-primary" :disabled="submitting">{{ submitting ? '保存中…' : '保存产品' }}</button>
+          </div>
         </div>
 
         <!-- Identity strip (edit-only) -->
@@ -120,7 +125,7 @@ const doDelete = () => {
           </div>
         </div>
 
-        <form @submit.prevent="submit">
+        <form id="product-edit-form" @submit.prevent="submit">
 
           <!-- Card 1: 基本信息 -->
           <div class="erp-form-card">
@@ -461,28 +466,10 @@ const doDelete = () => {
             </div>
           </div>
 
-          <!-- Action bar -->
-          <div class="erp-form-actions">
-            <a href="/products/list" class="erp-btn erp-btn-secondary">取消</a>
-            <button
-              type="submit"
-              class="erp-btn erp-btn-primary"
-              :disabled="submitting"
-            >{{ submitting ? '保存中…' : '保存产品' }}</button>
-          </div>
-
         </form>
 
-        <!-- Danger Zone -->
-        <div v-if="!confirmingDelete" class="erp-danger-zone">
-          <div class="erp-danger-zone-text">
-            <p>删除此产品</p>
-            <small>历史订单快照继续保留。此操作不可撤销。</small>
-          </div>
-          <button type="button" class="erp-btn-danger" @click="confirmingDelete = true">删除产品</button>
-        </div>
-
-        <div v-else class="erp-danger-zone">
+        <!-- Danger confirmation: local confirmation actions remain in context -->
+        <div v-if="confirmingDelete" class="erp-danger-zone">
           <div class="erp-danger-zone-text">
             <p>确认删除「{{ product.name }}」？</p>
             <small>此操作不可撤销，历史订单快照继续保留。</small>

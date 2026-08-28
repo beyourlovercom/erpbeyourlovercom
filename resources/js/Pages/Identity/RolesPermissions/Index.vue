@@ -43,6 +43,17 @@ function submitPreset() {
     <section class="mvp-page">
       <div class="mvp-page-heading">
         <div><p class="mvp-kicker">系统设置</p><h2>角色与权限</h2></div>
+        <div class="mvp-form-actions page-header-actions">
+          <button
+            v-if="currentPreset"
+            type="button"
+            class="mvp-button mvp-button-primary"
+            :disabled="permForms[currentPreset.preset].processing"
+            @click="submitPreset"
+          >
+            保存权限
+          </button>
+        </div>
       </div>
       <p class="mvp-form-hint">在此编辑各角色预设的默认权限模板。调整后，跟随角色默认的用户将立即生效；自定义权限的用户不受影响。</p>
 
@@ -69,16 +80,6 @@ function submitPreset() {
         <span v-if="permForms[currentPreset.preset].errors.permissions" class="mvp-field-error">
           {{ permForms[currentPreset.preset].errors.permissions }}
         </span>
-        <div class="mvp-form-actions">
-          <button
-            type="button"
-            class="mvp-button mvp-button-primary"
-            :disabled="permForms[currentPreset.preset].processing"
-            @click="submitPreset"
-          >
-            保存权限
-          </button>
-        </div>
       </div>
     </section>
   </AuthenticatedLayout>

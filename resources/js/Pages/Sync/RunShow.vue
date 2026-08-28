@@ -21,7 +21,7 @@ defineProps<{ run: Run }>()
   <Head :title="`Sync Run #${run.id} · BYL ERP`" />
   <AuthenticatedLayout title="Sync Run" :breadcrumbs="['BYL ERP', '同步', `Run #${run.id}`]">
     <section class="mvp-page">
-      <div class="mvp-page-heading"><div><p class="mvp-kicker">Sync Orchestration Evidence</p><h2>Sync Run #{{ run.id }}</h2><p>{{ run.run_type }} · {{ run.provider_key ?? '—' }} · {{ run.connection_key ?? '—' }}</p></div><a class="mvp-button" href="/sync">返回同步</a></div>
+      <div class="mvp-page-heading"><div><p class="mvp-kicker">Sync Orchestration Evidence</p><h2>Sync Run #{{ run.id }}</h2><p>{{ run.run_type }} · {{ run.provider_key ?? '—' }} · {{ run.connection_key ?? '—' }}</p></div><div class="mvp-form-actions page-header-actions"><a class="mvp-button" href="/sync">返回同步</a></div></div>
       <div class="mvp-table-wrap">
         <table class="mvp-table">
           <thead><tr><th>状态</th><th>请求</th><th>处理</th><th>成功</th><th>重试</th><th>冲突</th><th>失败</th><th>跳过</th></tr></thead>

@@ -96,7 +96,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
     <section class="kol-detail-page">
       <div class="kol-detail-toolbar">
         <div class="kol-detail-toolbar__trail">KOL 资料库 / KOL 详情</div>
-        <div class="kol-detail-toolbar__actions">
+        <div class="kol-detail-toolbar__actions page-header-actions">
           <Link class="kol-action-button" href="/kol/library">返回列表</Link>
           <Link v-if="canOperate" class="kol-action-button" :href="`/kol/library/${kol.id}/edit`">编辑 KOL</Link>
           <button v-if="canOperate && !kol.archived_at" class="kol-action-button kol-action-button--danger" type="button" @click="archive">归档</button>

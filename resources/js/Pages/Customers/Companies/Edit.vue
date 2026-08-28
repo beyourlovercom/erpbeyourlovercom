@@ -19,8 +19,8 @@ const submit = () => form.patch(`/customers/companies/${props.company.id}`)
   <Head title="编辑公司 · BYL ERP" />
   <AuthenticatedLayout title="编辑公司" :breadcrumbs="['BYL ERP', '客户', '公司', company.name, '编辑']">
     <section class="mvp-page">
-      <div class="mvp-page-heading"><div><p class="mvp-kicker">客户主数据</p><h2>编辑 {{ company.name }}</h2></div></div>
-      <form class="mvp-form" @submit.prevent="submit">
+      <div class="mvp-page-heading"><div><p class="mvp-kicker">客户主数据</p><h2>编辑 {{ company.name }}</h2></div><div class="mvp-form-actions page-header-actions"><a class="mvp-button" :href="`/customers/companies/${company.id}`">取消</a><a class="mvp-button" href="/customers/companies">返回列表</a><button type="submit" form="company-edit-form" class="mvp-button mvp-button-primary" :disabled="form.processing">保存修改</button></div></div>
+      <form id="company-edit-form" class="mvp-form" @submit.prevent="submit">
         <div class="mvp-form-grid">
           <label>名称<input v-model="form.name" required></label>
           <span v-if="form.errors.name" class="mvp-field-error">{{ form.errors.name }}</span>
@@ -33,7 +33,6 @@ const submit = () => form.patch(`/customers/companies/${props.company.id}`)
           <label>行业<input v-model="form.industry"></label>
           <label>负责人<select v-model="form.owner_id"><option value="">未指定</option><option v-for="owner in owners" :key="owner.id" :value="owner.id">{{ owner.name }}</option></select></label>
         </div>
-        <div class="mvp-form-actions"><button class="mvp-button mvp-button-primary" :disabled="form.processing">保存修改</button><a class="mvp-button" :href="`/customers/companies/${company.id}`">取消</a></div>
       </form>
     </section>
   </AuthenticatedLayout>

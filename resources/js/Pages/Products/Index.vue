@@ -63,9 +63,9 @@ const sourceLabel = (s: string) => s === 'manual' ? '手动' : 'Woo'
     <section class="mvp-page">
       <div class="mvp-page-heading">
         <div><p class="mvp-kicker">产品主数据</p><h2>产品列表</h2><p>共 {{ products.total }} 件产品</p></div>
-        <div v-if="canOperate" class="mvp-page-actions">
-          <a href="/products/create" class="mvp-button">新增产品</a>
+        <div v-if="canOperate" class="mvp-page-actions page-header-actions">
           <a href="/products/import" class="mvp-button mvp-button-secondary">导入 CSV</a>
+          <a href="/products/create" class="mvp-button mvp-button-primary">新增产品</a>
         </div>
       </div>
 

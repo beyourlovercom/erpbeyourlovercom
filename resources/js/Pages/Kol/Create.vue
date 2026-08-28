@@ -149,7 +149,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
             <h1 class="erp-form-title">新建 KOL</h1>
             <p class="erp-form-subtitle">填写红人基本资料、业务画像、联系与收货信息后点击「创建 KOL」完成录入</p>
           </div>
-          <div class="kol-header-actions">
+          <div class="kol-header-actions page-header-actions">
             <a href="/kol/library" class="erp-btn erp-btn-secondary">返回列表</a>
             <a href="/kol/library" class="erp-btn erp-btn-secondary">取消</a>
             <button type="submit" form="kol-create-form" class="erp-btn erp-btn-primary">保存 KOL</button>
