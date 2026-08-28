@@ -14,6 +14,9 @@ class Kol extends Model
 
     protected $fillable = [
         'display_name',
+        'avatar_path',
+        'avatar_source',
+        'avatar_updated_at',
         'legal_name',
         'country_code',
         'language',
@@ -40,12 +43,11 @@ class Kol extends Model
         'other_contact',
         'preferred_contact_method',
         'level',
-        'city',
+        'gender',
         'categories',
         'products',
         'content_format',
         'product_quantity',
-        'store_count',
         'internal_contact',
         'mcn_agency',
         'is_mcn_managed',
@@ -53,13 +55,13 @@ class Kol extends Model
 
     protected $casts = [
         'joined_at' => 'datetime',
+        'avatar_updated_at' => 'datetime',
         'archived_at' => 'datetime',
         'tax_id' => 'encrypted',
         'payout_account' => 'encrypted',
         'categories' => 'array',
         'products' => 'array',
         'product_quantity' => 'integer',
-        'store_count' => 'integer',
         'is_mcn_managed' => 'boolean',
     ];
 
@@ -73,9 +75,19 @@ class Kol extends Model
         return $this->hasMany(KolSocialAccount::class, 'kol_id');
     }
 
+    public function opportunities(): HasMany
+    {
+        return $this->hasMany(KolOpportunity::class, 'kol_id')->orderByDesc('created_at')->orderByDesc('id');
+    }
+
     public function salesPerformances(): HasMany
     {
         return $this->hasMany(KolSalesPerformance::class, 'kol_id')->orderByDesc('recorded_at');
+    }
+
+    public function communications(): HasMany
+    {
+        return $this->hasMany(KolCommunication::class, 'kol_id')->orderByDesc('contacted_at')->orderByDesc('id');
     }
 
     public function historicalOrderCount(): int

@@ -50,12 +50,11 @@ const baseKol = {
   shipping_address_line_1: null,
   shipping_address_line_2: null,
   level: null,
-  city: null,
+  gender: null,
   categories: [],
   products: [],
   content_format: null,
   product_quantity: null,
-  store_count: null,
   internal_contact: null,
   mcn_agency: null,
   is_mcn_managed: false,
@@ -111,7 +110,7 @@ describe('Kol/Edit VI contract', () => {
     const btn = wrapper.find('button[type="submit"]')
     expect(btn.classes()).toContain('erp-btn')
     expect(btn.classes()).toContain('erp-btn-primary')
-    expect(btn.text()).toContain('修改 KOL')
+    expect(btn.text()).toContain('保存修改')
   })
 
   it('cancel link points back to kol detail and uses erp-btn-secondary', () => {

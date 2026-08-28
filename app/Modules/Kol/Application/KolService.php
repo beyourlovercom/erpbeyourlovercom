@@ -80,10 +80,6 @@ final class KolService
             $query->where('level', $filters['level']);
         }
 
-        if (isset($filters['city']) && $filters['city'] !== '') {
-            $query->whereRaw('LOWER(city) LIKE ?', ['%'.mb_strtolower($filters['city']).'%']);
-        }
-
         if (isset($filters['content_format']) && $filters['content_format'] !== '') {
             $query->where('content_format', $filters['content_format']);
         }
@@ -220,14 +216,6 @@ final class KolService
                 ->selectRaw('content_format, count(*) as count')
                 ->groupBy('content_format')
                 ->pluck('count', 'content_format')
-                ->all(),
-            'by_city' => (clone $base)
-                ->whereNotNull('city')
-                ->selectRaw('city, count(*) as count')
-                ->groupBy('city')
-                ->orderByDesc('count')
-                ->limit(10)
-                ->pluck('count', 'city')
                 ->all(),
             'by_platform' => $this->platformDistribution($ownerScopeId),
             'owner_ranking' => $ranking,

@@ -643,3 +643,6 @@ Execution order after M1.0 is fixed as:
 `Owner UAT PASS -> M1.1 CRM -> M1.2 Collaboration/Fulfillment -> M1.3 Content -> M1.4 Finance/Affiliate`.
 
 KOL Intelligence (public profile/content ingestion, automated performance metrics, Audience Analytics screenshots/authorization, evaluation scoring) is explicitly deferred until after the existing M1.1–M1.4 operating track unless the Owner later reprioritizes it.
+## Unified execution roadmap authority — 2026-08-28
+
+Owner decision: future KOL execution order and phase boundaries are consolidated in `23_ERP_KOL_MODULE_V1_UNIFIED_ROADMAP.md`. This contract remains the architectural/data authority where not overridden by that unified execution roadmap.

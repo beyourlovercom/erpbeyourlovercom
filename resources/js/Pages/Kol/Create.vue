@@ -2,6 +2,7 @@
 import { Head, useForm } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SearchableSelect from '../../Components/SearchableSelect.vue'
+import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 
 type OwnerOption = { value: number; label: string }
 
@@ -59,12 +60,11 @@ const form = useForm({
   shipping_address_line_1: '',
   shipping_address_line_2: '',
   level: '' as '' | '头部' | '腰部' | '尾部' | '素人',
-  city: '',
+  gender: '' as '' | '男' | '女' | '女同' | '男同' | '其他',
   categories: '',
   products: '',
   content_format: '' as '' | '图文' | '短视频' | '直播' | '图文+视频' | '混合',
   product_quantity: '',
-  store_count: '',
   internal_contact: '',
   mcn_agency: '',
   is_mcn_managed: false,
@@ -108,9 +108,9 @@ const submit = () => {
     level: data.level || null,
     content_format: data.content_format || null,
     product_quantity: data.product_quantity !== '' ? Number(data.product_quantity) : null,
-    store_count: data.store_count !== '' ? Number(data.store_count) : null,
-    categories: data.categories.split(',').map(v => v.trim()).filter(Boolean),
-    products: data.products.split(',').map(v => v.trim()).filter(Boolean),
+    gender: data.gender || null,
+    categories: data.categories ? [data.categories] : [],
+    products: data.products ? [data.products] : [],
     social_accounts: data.social_accounts.map(sa => ({
       ...sa,
       followers: sa.followers !== '' ? Number(sa.followers) : null,
@@ -322,48 +322,29 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
             <h2 class="erp-form-card-title">业务画像</h2>
             <div class="erp-form-grid">
               <div class="erp-form-field">
-                <label class="erp-form-label">等级</label>
-                <select v-model="form.level" class="erp-select" :class="{ 'has-error': form.errors.level }">
-                  <option value="">未分级</option>
-                  <option value="头部">头部</option>
-                  <option value="腰部">腰部</option>
-                  <option value="尾部">尾部</option>
-                  <option value="素人">素人</option>
-                </select>
-                <p v-if="form.errors.level" class="erp-field-error">{{ form.errors.level }}</p>
+                <label class="erp-form-label">网红分级</label>
+                <select v-model="form.level" class="erp-select"><option value="">未分级</option><option value="头部">头部</option><option value="腰部">腰部</option><option value="尾部">尾部</option><option value="素人">素人</option></select>
               </div>
               <div class="erp-form-field">
-                <label class="erp-form-label">城市</label>
-                <input v-model="form.city" type="text" class="erp-input" :class="{ 'has-error': form.errors.city }" maxlength="128" placeholder="可选">
-                <p v-if="form.errors.city" class="erp-field-error">{{ form.errors.city }}</p>
+                <label class="erp-form-label">性别</label>
+                <select v-model="form.gender" class="erp-select"><option value="">未指定</option><option value="男">男</option><option value="女">女</option><option value="女同">女同</option><option value="男同">男同</option><option value="其他">其他</option></select>
               </div>
-              <div class="erp-form-field kol-span-2">
+              <div class="erp-form-field">
                 <label class="erp-form-label">主营品类</label>
-                <input v-model="form.categories" type="text" class="erp-input" placeholder="多个品类用逗号分隔，例如：美妆,穿搭">
-              </div>
-              <div class="erp-form-field kol-span-2">
-                <label class="erp-form-label">主推产品</label>
-                <input v-model="form.products" type="text" class="erp-input" placeholder="多个产品用逗号分隔">
+                <select v-model="form.categories" class="erp-select"><option value="">未指定</option><option value="Lifestyle">Lifestyle</option><option value="Beauty">Beauty</option><option value="Fitness">Fitness</option><option value="漫画">漫画</option><option value="家居">家居</option><option value="色情">色情</option><option value="其他">其他</option></select>
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">内容形式</label>
-                <select v-model="form.content_format" class="erp-select" :class="{ 'has-error': form.errors.content_format }">
-                  <option value="">未指定</option>
-                  <option value="图文">图文</option>
-                  <option value="短视频">短视频</option>
-                  <option value="直播">直播</option>
-                  <option value="图文+视频">图文+视频</option>
-                  <option value="混合">混合</option>
-                </select>
-                <p v-if="form.errors.content_format" class="erp-field-error">{{ form.errors.content_format }}</p>
+                <select v-model="form.content_format" class="erp-select"><option value="">未指定</option><option value="图文">图文</option><option value="短视频">短视频</option><option value="直播">直播</option><option value="图文+视频">图文+视频</option><option value="混合">混合</option></select>
+              </div>
+              <div class="erp-form-field">
+                <label class="erp-form-label">主推产品</label>
+                <SkuCombobox v-model="form.products" />
+                <p v-if="form.errors.products" class="erp-field-error">{{ form.errors.products }}</p>
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">产品数量</label>
                 <input v-model="form.product_quantity" type="number" min="0" class="erp-input" placeholder="可选">
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">店铺数量</label>
-                <input v-model="form.store_count" type="number" min="0" class="erp-input" placeholder="可选">
               </div>
             </div>
           </div>

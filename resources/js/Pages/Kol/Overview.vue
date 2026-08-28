@@ -14,7 +14,6 @@ type Overview = {
   by_stage: Record<string, number>
   by_level: Record<string, number>
   by_content_format: Record<string, number>
-  by_city: Record<string, number>
   by_platform: Record<string, number>
   owner_ranking: OwnerRankingRow[]
   pending_publication_count: number | null
@@ -176,25 +175,6 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红']
           </div>
         </div>
 
-        <div v-if="Object.keys(overview.by_city).length > 0" class="mvp-card">
-          <h3>城市分布（Top 10）</h3>
-          <div class="stage-grid">
-            <div v-for="(count, city) in overview.by_city" :key="city" class="stage-item">
-              <span class="stage-label">{{ city }}</span>
-              <span class="stage-count">{{ count }}</span>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="overview.owner_ranking.length > 0" class="mvp-card">
-          <h3>负责人排行</h3>
-          <div class="stage-grid">
-            <div v-for="row in overview.owner_ranking" :key="row.owner_id" class="stage-item">
-              <span class="stage-label">{{ row.owner_name }}</span>
-              <span class="stage-count">{{ row.count }}</span>
-            </div>
-          </div>
-        </div>
       </div>
 
       <div class="mvp-card not-connected-card">
