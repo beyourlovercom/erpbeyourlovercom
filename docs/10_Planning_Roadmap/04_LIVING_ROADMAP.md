@@ -2,7 +2,7 @@
 type: living-roadmap
 project: BYL ERP
 version: 1.1
-updated: 2026-08-27
+updated: 2026-08-28
 ---
 
 # Living Roadmap
@@ -15,12 +15,20 @@ Architecture Migration / Global Architecture Gate [COMPLETE]
 → ERP-ORDER-FULFILLMENT-M1 [COMPLETE]
 → Product Master / SKU M1 [COMPLETE]
 → Order Create/Edit V2 [COMPLETE]
-→ Inventory Foundation + Inventory Batch Sync M1 [COMPLETE / MERGED BY PR #96]
-→ MVP1 Manual Fulfillment Integration / Tencent Docs Replacement [CURRENT]
-→ MVP1.1 WooCommerce Inbound
-→ MVP1.2 Tracking Outbound
-→ MVP1.3 Sync Orchestration
-→ MVP2 Inventory Reservation Foundation
+→ Inventory Foundation + Inventory Batch Sync M1 [COMPLETE]
+→ MVP1 Manual Fulfillment Integration / Tencent Docs Replacement [COMPLETE / PR #101]
+→ MVP1.1 WooCommerce Inbound [COMPLETE / PR #104]
+→ MVP1.2 Tracking Outbound [COMPLETE / PR #106]
+→ MVP1.3 Sync Orchestration [COMPLETE / PR #108]
+→ KOL M1.0 Foundation [COMPLETE / PR #103]
+→ KOL M1.1 CRM [COMPLETE / PR #110]
+→ ROADMAP RECONCILIATION [CURRENT / DOCS MERGE GATE]
+→ KOL M1.2A Collaboration [NEXT]
+→ KOL M1.2B Canonical Fulfillment Bridge
+→ KOL M1.3 Content
+→ KOL M1.4 Finance / Affiliate
+→ KOL V1 Cross-phase Closure / Full Regression / Owner UAT
+→ MVP2 Inventory Reservation Foundation [PAUSED UNTIL KOL V1 CLOSED]
 → MVP2.1 Warehouse Allocation Recommendation
 → MVP2.2 Packing + Chargeable Weight
 → MVP2.3 Shipping Cost Estimator
@@ -29,10 +37,9 @@ Architecture Migration / Global Architecture Gate [COMPLETE]
 → MVP3 Warehouse Connector Foundation + real warehouse adapters
 → MVP4 Automatic Fulfillment
 → Accounting / Procurement expansion
-→ Resume ERP-INQUIRY-M1 at M1.2 Contact [PAUSED, NOT CANCELLED]
-→ ERP-INQUIRY-M1 M1.2–M1.9 + Local Milestone UAT
+→ ERP-INQUIRY-M1 remaining M1.2–M1.9 when reactivated
 → Milestone Remote Release / https://erp.beyourlover.com
-→ later Product / Media / Content / SEO / KOL / Shopify expansion
+→ Product / Media / Content / SEO / Shopify expansion
 → Production Hardening
 ```
 
@@ -46,15 +53,23 @@ Global Architecture Gate = PASS
 ERP-ORDER-FULFILLMENT-M1 = COMPLETE / MERGED
 Product Master / SKU M1 = COMPLETE / MERGED BY PR #93
 Order Create/Edit V2 = COMPLETE / MERGED BY PR #95
-Inventory Foundation = COMPLETE / ACCEPTED
-Inventory Batch Sync M1 = COMPLETE / OWNER UAT PASS / MERGED BY PR #96
+Inventory Foundation + Batch Sync M1 = COMPLETE / MERGED BY PR #96
+MVP1 Manual Fulfillment Integration = COMPLETE / MERGED BY PR #101
+WooCommerce Inbound = COMPLETE / MERGED BY PR #104
+Tracking Outbound = COMPLETE / MERGED BY PR #106
+Sync Orchestration = COMPLETE / MERGED BY PR #108
+KOL M1.0 Foundation = COMPLETE / MERGED BY PR #103
+KOL M1.1 CRM = COMPLETE / MERGED BY PR #110
 ERP-INQUIRY-M1.2 Contact = PAUSED / NOT CANCELLED
+Entity Architecture V2 PR #97 = DRAFT DESIGN REFERENCE / NOT EXECUTION AUTHORITY
+Release Rebaseline PR #98 = CLOSED / SUPERSEDED BY CURRENT RECONCILIATION
+KOL duplicate CRM PR #109 = CLOSED / SUPERSEDED BY PR #110
 US Mac = default full verification + Owner UAT host
-China Mac = not required by default; special-case verification only
+China Mac = special-case verification only unless explicitly required
 GitHub = UNIQUE SOURCE OF TRUTH
-CURRENT_PHASE = MVP1 Manual Fulfillment Integration / Tencent Docs Replacement
-CURRENT_WORK_PACKAGE = NONE / NEXT WORK PACKAGE NOT YET FORMALIZED
-NEXT_PHASE = connect Order + Product + Inventory + Logistics with manual decisions first
+CURRENT_PHASE = KOL V1 FULL COMPLETION TRACK / ROADMAP MERGE GATE
+CURRENT_WORK_PACKAGE = ERP-GOV-ROADMAP-RECONCILIATION-001
+NEXT_PRODUCT_WORK_PACKAGE = ERP-KOL-M1.2A-COLLABORATION-001
 Remote Milestone Target = https://erp.beyourlover.com
 Deployment = NO / MILESTONE GATED
 ```
@@ -75,13 +90,14 @@ Remote-release rule: https://erp.beyourlover.com remains milestone-gated.
 ## Immediate sequence
 
 ```text
-1. Formalize MVP1 Manual Fulfillment Integration: connect existing Order + Product + Inventory + Logistics screens/data without replacing human judgment.
-2. MVP1 acceptance target: an operator can complete the Tencent Docs workflow entirely inside ERP — create/view Order, inspect SKU inventory by Warehouse, manually choose Warehouse, enter carrier/service/tracking/shipped time, and complete the manual website-sync queue with Audit.
-3. Preserve forward-compatible selection provenance (`manual`, future `rule_engine`, future `override`) for Warehouse and Carrier decisions; do not implement the rule engines in MVP1.
-4. After MVP1 closure, implement MVP1.1 WooCommerce inbound, MVP1.2 Tracking outbound and MVP1.3 Sync orchestration.
-5. Only then begin smart fulfillment foundations: Reservation → Warehouse Allocation recommendation → Packing/Chargeable Weight → Shipping Cost → Transport Mode → Carrier rules.
-6. Build Warehouse Connectors after the internal fulfillment contract is stable; Automatic Fulfillment is MVP4, not MVP1.
-7. Remote deployment remains milestone-gated and separate from normal local development.
+1. Close this docs-only Roadmap Reconciliation and make main the only current planning authority.
+2. Owner selected KOL V1 full completion as the active product priority.
+3. Start with M1.2A Collaboration only; it may reference canonical Product IDs/SKUs but must not create duplicate Product/Order/Shipment/Inventory/Tracking truth.
+4. When a formal Collaboration requires a sample/product shipment, M1.2B uses a Canonical Fulfillment Bridge to create/link the existing Order (`order_kind=kol_fulfillment`) and project existing Shipment/Tracking state back into KOL.
+5. Assisted Fulfillment remains the existing MVP2 path: Reservation → Allocation recommendation → Packing/Chargeable Weight → Cost → Mode → Carrier rules; KOL does not own these engines.
+6. Continue KOL M1.3 Content → M1.4 Finance/Affiliate → KOL V1 Cross-phase Closure before switching product tracks. ERP-INQUIRY-M1.2 Contact and MVP2 remain paused until KOL V1 closes or Owner explicitly reprioritizes.
+7. PR #97 Entity Architecture V2 remains design/reference only until separately activated; no draft PR may override merged main roadmap status.
+8. Remote deployment remains milestone-gated and separate from normal local development.
 ```
 
 Architecture migration and its Global Gate are closed. MySQL 8.x remains the supported database baseline. Historical architecture evidence is retained in its Work Packages and logs; it is no longer a current blocker. Remote deployment remains milestone-gated and is not part of normal development.

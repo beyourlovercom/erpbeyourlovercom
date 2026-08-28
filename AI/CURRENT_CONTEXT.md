@@ -1,8 +1,8 @@
 ---
 type: current-context
 project: BYL ERP
-updated: 2026-08-27
-status: mvp1-manual-fulfillment-roadmap-current
+updated: 2026-08-28
+status: roadmap-reconciliation-current
 ---
 
 # Current Context
@@ -18,109 +18,82 @@ OWNER_UAT_HOST: US Mac local/remote UAT
 CHINA_VERIFICATION: special-case only unless Owner explicitly requests it or a concrete cross-machine/region-specific defect requires it
 SOURCE_OF_TRUTH: GitHub / beyourlovercom/erpbeyourlovercom
 REMOTE_MILESTONE_TARGET: https://erp.beyourlover.com
-AICC_IN_ERP_EXECUTION_CHAIN: NO
 ```
 
-Normal development does not require China verification. GitHub remains the unique synchronization/source-of-truth path. Remote Production deployment is milestone-gated and not part of normal development debugging.
+GitHub remains the unique synchronization/source-of-truth path. Remote Production deployment is milestone-gated and is not part of normal development debugging.
 
-## Canonical baseline
+## Canonical baseline through PR #110
+
 ```text
-CURRENT_MAIN_SHA: b99cc8934e8e041ae8aa004383dae41ac1be207f
+BASELINE_MAIN_SHA: 8c3a24d0a202d3180106d1ac7befbd848539494b
 ARCHITECTURE_FOUNDATION: COMPLETE / PASS
-GLOBAL_ARCHITECTURE_GATE: PASS
-ERP-ORDER-FULFILLMENT-M1: COMPLETE / MERGED BY PR #90
-PRODUCT_MASTER_SKU_M1: COMPLETE / MERGED BY PR #93
-ORDER_CREATE_EDIT_V2: COMPLETE / MERGED BY PR #95
-INVENTORY_FOUNDATION: COMPLETE
-INVENTORY_BATCH_SYNC_M1: COMPLETE / OWNER UAT PASS / MERGED BY PR #96
-INVENTORY_DYNAMIC_WAREHOUSE_SHORTCUTS: COMPLETE
-GITHUB_UNIQUE_SYNC_SOURCE: YES
+ERP-ORDER-FULFILLMENT-M1: COMPLETE / PR #90
+PRODUCT_MASTER_SKU_M1: COMPLETE / PR #93
+ORDER_CREATE_EDIT_V2: COMPLETE / PR #95
+INVENTORY_FOUNDATION_BATCH_SYNC_M1: COMPLETE / PR #96
+MVP1_MANUAL_FULFILLMENT_INTEGRATION: COMPLETE / PR #101
+WOOCOMMERCE_INBOUND: COMPLETE / PR #104
+TRACKING_OUTBOUND: COMPLETE / PR #106
+SYNC_ORCHESTRATION: COMPLETE / PR #108
+KOL_M1_0_FOUNDATION: COMPLETE / PR #103
+KOL_M1_1_CRM: COMPLETE / PR #110
+ERP_INQUIRY_M1_2_CONTACT: PAUSED / NOT CANCELLED
 REMOTE_DEPLOYMENT: NOT AUTHORIZED UNTIL MILESTONE STABLE
 ```
 
-Existing foundations now include canonical Order/Order Items/Shipping Address, Product Master identity, Warehouse Master, Warehouse-level Inventory truth and batch sync, Logistics/Shipment foundation, Manual Sync/Audit, Finance/Order Analysis, App Shell/Auth/Permissions and local verification infrastructure.
-
-## Owner-frozen program priority
+## Current program position
 
 ```text
-CURRENT_PROGRAM_PRIORITY: MVP1 Manual Fulfillment Integration / Tencent Docs Replacement
-CURRENT_WORK_PACKAGE: NONE / NEXT PACKAGE NOT YET FORMALIZED
-CURRENT_ACTIVITY: Roadmap frozen; next bounded package must connect existing Order + Product + Inventory + Logistics manually first
-ERP-INQUIRY-M1.2 CONTACT: PAUSED / NOT CANCELLED
+CURRENT_PROGRAM_PHASE: KOL V1 FULL COMPLETION TRACK
+CURRENT_WORK_PACKAGE: ERP-GOV-ROADMAP-RECONCILIATION-001 / MERGE GATE
+CURRENT_PRODUCT_WORK_PACKAGE: NONE UNTIL ROADMAP RECONCILIATION MERGES
+NEXT_PRODUCT_WORK_PACKAGE: ERP-KOL-M1.2A-COLLABORATION-001
 ```
 
-MVP1 is deliberately manual-first. The goal is not automatic fulfillment yet. The goal is to remove Tencent Docs from the operational handoff while preserving current human decision-making.
+Owner selected the KOL track on 2026-08-28. The program now stays on KOL until KOL V1 is fully implemented, regression-tested and Owner-UAT stable.
 
-## MVP1 operating model
+Frozen KOL completion order:
+
 ```text
-HUMAN DECIDES
-→ ERP SHOWS CANONICAL DATA
-→ ERP RECORDS THE DECISION
-→ ERP EXECUTES / TRACKS THE MANUAL WORKFLOW
-→ ERP PRESERVES AUDIT
+ERP-KOL-M1.2A-COLLABORATION-001
+→ ERP-KOL-M1.2B-FULFILLMENT-BRIDGE-001
+→ ERP-KOL-M1.3-CONTENT-001
+→ ERP-KOL-M1.4-FINANCE-AFFILIATE-001
+→ ERP-KOL-V1-CROSS-PHASE-CLOSURE-001
 ```
 
-Required MVP1 flow:
+MVP2 fulfillment intelligence and ERP-INQUIRY-M1.2 remain paused while this KOL completion track is active.
+
+## Canonical truth ownership
 
 ```text
-Order / Shipping Address / Order Items
-→ Product Master identity
-→ Warehouse-level Inventory visibility
-→ operator manually selects fulfillment Warehouse
-→ Logistics workspace
-→ operator manually selects/records carrier + service
-→ tracking + shipped time
-→ Shipment
-→ Manual Sync queue where applicable
-→ operator manually updates website
-→ mark sync complete / reopen with Audit
+KOL = KOL master + CRM + Collaboration + Content + KOL finance projections
+PRODUCT = products.id / SKU
+INVENTORY = Warehouse + SKU×Warehouse stock truth
+ORDER = orders.id
+SHIPMENT = fulfillment / carrier / service / tracking truth
+SYNC = external synchronization orchestration/evidence
+AFFILIATEWP = Affiliate / Referral / Payout provider truth
 ```
 
-MVP1 acceptance means this workflow can be completed end-to-end inside ERP without relying on Tencent Docs.
+No module may create a second truth for another module's canonical entity.
 
-## Long-term fulfillment backbone
+## KOL / Fulfillment boundary
 
-MVP1 contracts must remain forward-compatible with this future chain, but the intelligent engines are post-MVP1:
+KOL M1.2 is split to prevent duplicate fulfillment logic:
+
 ```text
-Product
-→ Order
-→ Inventory Availability
-→ Warehouse Allocation
-→ Reservation
-→ Packing Plan
-→ Chargeable Weight
-→ Shipping Cost Estimator
-→ Transport Mode Decision
-→ Carrier Rule Engine
-→ Warehouse Connector
-→ Shipment
+M1.2A Collaboration
+M1.2B Canonical Fulfillment Bridge
 ```
 
-### Future logistics-cost rules
+M1.2A owns formal cooperation facts. If physical sample/product fulfillment is required, M1.2B creates or links the existing canonical Order using `order_kind=kol_fulfillment`, then projects existing Shipment/Tracking state back into the KOL collaboration view.
+
+KOL must not implement its own Inventory, Reservation, warehouse allocation, Shipment, Tracking, shipping-cost, transport-mode, carrier-rule or Warehouse Connector engine.
+
+## Global Fulfillment roadmap retained
 
 ```text
-chargeable_weight = max(actual_weight, volumetric_weight)
-volumetric_divisor = carrier/service configuration
-```
-
-Later, if the best eligible express cost exceeds a configurable threshold, the system must evaluate ocean freight.
-
-Initial business threshold:
-
-```text
-amount = 300
-currency = configurable
-behavior = evaluate ocean freight, not force ocean automatically
-```
-The later Transport Mode decision must also consider SLA/time commitment, destination, package facts, product restrictions and explicit business rules.
-
-## Frozen phased roadmap
-
-```text
-MVP1   Manual Fulfillment / Tencent Docs Replacement
-MVP1.1 WooCommerce Inbound
-MVP1.2 Tracking Outbound
-MVP1.3 Sync Orchestration
 MVP2   Inventory Reservation Foundation
 MVP2.1 Warehouse Allocation Recommendation
 MVP2.2 Packing + Chargeable Weight
@@ -131,25 +104,16 @@ MVP3   Warehouse Connector Foundation + real warehouse adapters
 MVP4   Automatic Fulfillment
 ```
 
-MVP2 is recommendation/assistance first with human confirmation/override. Full autonomous decisions are not required until MVP4.
+Future chargeable weight remains `max(actual_weight, volumetric_weight)`. Express cost above the configurable threshold triggers ocean evaluation, not forced ocean.
 
-## MVP1 scope protection
-
-MVP1 must not be expanded by pulling in these future engines:
+## Open Draft classification
 
 ```text
-NO automatic Reservation requirement
-NO automatic warehouse recommendation/assignment requirement
-NO automatic packing optimization
-NO chargeable-weight engine requirement
-NO carrier rate shopping requirement
-NO automatic express-to-ocean decision
-NO automatic carrier/service selection
-NO live Warehouse/WMS connector requirement
-NO automatic fulfillment requirement
+PR #97 Entity Architecture V2: RETAIN / DESIGN REFERENCE ONLY / NOT EXECUTION AUTHORITY
+PR #81 Dashboard pilot: RETAIN AS LEGACY EXPERIMENT / STALE BASELINE / NOT ROADMAP AUTHORITY
+PR #98 Roadmap Rebaseline: CLOSED / SUPERSEDED
+PR #109 duplicate KOL CRM: CLOSED / SUPERSEDED BY PR #110
 ```
-
-MVP1 may preserve future-compatible provenance/extension points such as manual vs future rule-engine/override Warehouse and Carrier selection, but it must not create premature complexity merely to anticipate later phases.
 
 ## Verification / release gates
 
@@ -166,11 +130,9 @@ PRODUCTION DIRECT EDIT: FORBIDDEN
 ## Immediate sequence
 
 ```text
-1. Merge this Roadmap synchronization to main so D-039 becomes canonical.
-2. Formalize one bounded MVP1 Manual Fulfillment Integration Work Package.
-3. Connect Order + Product + Inventory + Logistics with manual decisions first.
-4. Owner UAT proves the real Tencent Docs workflow can be completed entirely inside ERP.
-5. Close MVP1 Tencent Docs Replacement.
-6. Proceed to MVP1.1 WooCommerce Inbound, MVP1.2 Tracking Outbound and MVP1.3 Sync Orchestration.
-7. Only after MVP1.x closure begin MVP2 assisted-intelligence work.
+1. Deliver ERP-GOV-ROADMAP-RECONCILIATION-001 as docs/governance only.
+2. Owner reviews and separately authorizes merge.
+3. After merge, Owner chooses exactly one next bounded product track.
+4. No stale Draft PR may override the merged main roadmap.
+5. No KOL work may duplicate canonical Product / Inventory / Order / Shipment / Tracking truth.
 ```

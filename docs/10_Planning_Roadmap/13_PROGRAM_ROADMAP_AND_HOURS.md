@@ -2,7 +2,7 @@
 type: program-roadmap-hours
 project: BYL ERP
 version: 1.0
-updated: 2026-08-27
+updated: 2026-08-28
 ---
 
 # Program Roadmap and Hours
@@ -17,24 +17,24 @@ Architecture Migration / Global Architecture Gate [COMPLETE]
 → ERP-ORDER-FULFILLMENT-M1 [COMPLETE]
 → Product Master / SKU M1 [COMPLETE]
 → Order Create/Edit V2 [COMPLETE]
-→ Inventory Foundation + Inventory Batch Sync M1 [COMPLETE / MERGED BY PR #96]
-→ MVP1 Manual Fulfillment Integration / Tencent Docs Replacement [CURRENT / NOT YET FORMALIZED]
-→ MVP1.1 WooCommerce Inbound
-→ MVP1.2 Tracking Outbound
-→ MVP1.3 Sync Orchestration
-→ MVP2 Inventory Reservation Foundation
-→ MVP2.1 Warehouse Allocation Recommendation
-→ MVP2.2 Packing + Chargeable Weight
-→ MVP2.3 Shipping Cost Estimator
-→ MVP2.4 Transport Mode Decision / Express-to-Ocean Evaluation
-→ MVP2.5 Carrier Rule Engine
-→ MVP3 Warehouse Connector Foundation + real warehouse adapters
-→ MVP4 Automatic Fulfillment
+→ Inventory Foundation + Inventory Batch Sync M1 [COMPLETE]
+→ MVP1 Manual Fulfillment Integration [COMPLETE / PR #101]
+→ MVP1.1 WooCommerce Inbound [COMPLETE / PR #104]
+→ MVP1.2 Tracking Outbound [COMPLETE / PR #106]
+→ MVP1.3 Sync Orchestration [COMPLETE / PR #108]
+→ KOL M1.0 Foundation [COMPLETE / PR #103]
+→ KOL M1.1 CRM [COMPLETE / PR #110]
+→ ROADMAP RECONCILIATION [CURRENT / DOCS MERGE GATE]
+→ KOL M1.2A Collaboration [NEXT]
+→ KOL M1.2B Canonical Fulfillment Bridge
+→ KOL M1.3 Content
+→ KOL M1.4 Finance / Affiliate
+→ KOL V1 Cross-phase Closure / Full Regression / Owner UAT
+→ MVP2 Inventory Reservation Foundation + MVP2.1–MVP4 Fulfillment Intelligence / Connectors / Automation [PAUSED UNTIL KOL V1 CLOSED]
 → Accounting / Procurement expansion
-→ Resume ERP-INQUIRY-M1 at M1.2 Contact [PAUSED, NOT CANCELLED]
-→ ERP-INQUIRY-M1 M1.2–M1.9 + Local Milestone UAT
+→ remaining Inquiry milestone when reactivated
 → Milestone Remote Release / erp.beyourlover.com
-→ later Product / Media / Content / SEO / KOL / Shopify expansion
+→ Product / Media / Content / SEO / Shopify expansion
 → Production Hardening
 ```
 
@@ -83,16 +83,17 @@ Global Architecture Gate              PASS
 ## Source Conflict Snapshot
 
 ```text
-GITHUB_FACT: PR #96 merged Inventory Foundation + Inventory Batch Sync M1 to main; Inventory M1 is closed.
-CURRENT_REPOSITORY_BASELINE: main includes the accepted Product Master + Order V2 + Inventory baseline and subsequent Inventory closure synchronization.
-INVENTORY_FACT: Product Master, Order V2, Inventory Foundation and Inventory Batch Sync are complete; Owner UAT passed.
-VERIFICATION_FACT: US Mac verification/UAT is the default sufficient path; China verification is special-case only unless explicitly requested or required by a concrete cross-machine issue.
-OWNER_PRIORITY_FACT: MVP1 must first replace the Tencent Docs manual fulfillment workflow. Human warehouse/carrier judgment remains manual in MVP1; smart decision engines are post-MVP1.
-FUTURE_BACKBONE_FACT: Product → Order → Inventory Availability → Warehouse Allocation → Reservation → Packing → Chargeable Weight → Shipping Cost → Transport Mode → Carrier → Warehouse Connector → Shipment.
-COST_RULE_FACT: future chargeable weight is max(actual, volumetric); best express cost above configurable threshold (initial business threshold 300, currency configurable) triggers ocean-freight evaluation rather than forcing ocean.
-NEXT_FACT: MVP1 Manual Fulfillment Integration is next and is not yet formalized as a bounded Work Package.
-INQUIRY_FACT: M1.2 Contact remains PAUSED / NOT CANCELLED.
-EVIDENCE_LIMITS: Production deployment, live WMS connectors and remote production mutation remain outside the current planning sync.
+GITHUB_FACT: PR #101, #104, #106, #108, #103 and #110 are merged; the old roadmap positions that listed those phases as future/current are stale.
+CANONICAL_MAIN_FACT: merged main is the only execution authority after this reconciliation; draft PRs cannot supersede it.
+FULFILLMENT_TRUTH_FACT: Product, Inventory, Order, Shipment and Tracking truth already exist in their canonical modules.
+KOL_BOUNDARY_FACT: KOL may own Collaboration facts and project fulfillment state, but must not own a second Order/Shipment/Inventory/Tracking engine.
+KOL_FULFILLMENT_FACT: KOL physical fulfillment uses canonical orders.id with order_kind=kol_fulfillment and existing Shipment/Tracking truth.
+INQUIRY_FACT: M1.2 Contact remains PAUSED / NOT CANCELLED until explicit Owner reactivation.
+ENTITY_ARCH_FACT: PR #97 remains a docs/design reference only and is not implementation authority.
+STALE_PR_FACT: PR #98 roadmap rebaseline and PR #109 duplicate KOL CRM are CLOSED / superseded by later merged facts.
+VERIFICATION_FACT: US Mac remains the default sufficient verification/UAT host; China is special-case only unless explicitly requested or required by a concrete issue.
+CURRENT_FACT: Roadmap Reconciliation is docs-only; no product feature is active after it until Owner selects a bounded next Work Package.
+EVIDENCE_LIMITS: Production deployment, live WMS connectors and remote production mutation remain outside this reconciliation.
 ```
 
 ## Current Program Position and Estimate
@@ -103,8 +104,8 @@ ACTUAL_HOURS: UNKNOWN WITH EVIDENCE
 INVENTORY_M1: COMPLETE / OWNER UAT PASS / MERGED BY PR #96
 CURRENT_PACKAGE: NONE / Inventory M1 closed
 CURRENT_PACKAGE_BASELINE: current main / see GitHub for exact SHA
-NEXT_PACKAGE: MVP1 Manual Fulfillment Integration / Tencent Docs Replacement / NOT YET FORMALIZED
-MVP1_MANUAL_FULFILLMENT_INTEGRATION_ESTIMATE: UNKNOWN WITH EVIDENCE / no bounded Work Package issued yet
+NEXT_PACKAGE: ERP-KOL-M1.2A-COLLABORATION-001 / OWNER SELECTED KOL V1 FULL COMPLETION
+MVP1_MANUAL_FULFILLMENT_INTEGRATION: COMPLETE / MERGED BY PR #101 / historical, not remaining
 POST_MVP_SMART_FULFILLMENT_ESTIMATE: UNKNOWN WITH EVIDENCE / Reservation, Allocation, Packing, Cost, Mode, Carrier, Connectors and Automation are separately bounded future work
 ERP_INQUIRY_M1_ESTIMATE: 86–150h / planning value 116h / frozen M1.0 contract; M1.1 complete; M1.2–M1.9 retained
 ERP_INQUIRY_M1_1_COMPANY_ESTIMATE: 6–10h / planning value 8h / completed package estimate, not remaining
@@ -183,7 +184,7 @@ Future rows may be added only from accepted repository Work Logs. PR elapsed tim
 ```text
 HIGH: quoted repository total/cumulative historical ranges and Owner-frozen ERP-INQUIRY-M1 milestone range
 MEDIUM: bounded completed child-package estimates with accepted scope evidence
-LOW / UNKNOWN: MVP1 Manual Fulfillment Integration and post-MVP smart-fulfillment estimates until bounded Work Packages are issued; project/program remaining total
+LOW / UNKNOWN: next Owner-selected feature and post-MVP smart-fulfillment estimates until bounded Work Packages are issued; project/program remaining total
 ESTIMATE_AS_OF: 2026-08-27
 ESTIMATE_METHOD: repository source classification; no subtraction without accepted actuals; no addition of cumulative/overlapping ranges; no chat-time conversion
 ```

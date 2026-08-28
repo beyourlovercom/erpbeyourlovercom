@@ -255,3 +255,20 @@ Future logistics costing is also frozen at the architecture level only: `chargea
 MVP1 may preserve provenance/extension concepts such as manual vs future rule-engine/override Warehouse and Carrier selection, plus later decision snapshots and estimated-vs-actual shipping cost, but this decision does not require premature schema columns or implementation of Reservation, Allocation, Packing, rate shopping, ocean evaluation, Carrier rules, Warehouse connectors or Automatic Fulfillment.
 
 Verification policy remains D-038: US Mac verification/UAT is sufficient by default; China verification is special-case only unless Owner explicitly requests it or a concrete cross-machine/region-specific defect requires it. GitHub remains the unique source of truth. Production deployment remains separately gated. Architecture conflict: NONE.
+## D-040 Reconcile ERP roadmap after PR #110 and freeze KOL-to-Fulfillment truth boundary
+
+Owner directed a full ERP Roadmap conflict cleanup on 2026-08-28 after KOL M1.1 merged by PR #110. Repository audit confirmed that the canonical Living Roadmap / Program Roadmap still listed already-merged Manual Fulfillment, WooCommerce Inbound, Tracking Outbound and Sync Orchestration as current/future work, while the KOL Unified Roadmap still grouped Collaboration and Fulfillment under one M1.2 phase name.
+
+Decision: merged GitHub reality through `main@8c3a24d0a202d3180106d1ac7befbd848539494b` becomes the reconciliation baseline. PR #101 Manual Fulfillment, #104 WooCommerce Inbound, #106 Tracking Outbound, #108 Sync Orchestration, #103 KOL M1.0 and #110 KOL M1.1 are recorded COMPLETE. No product Work Package is implicitly current after this docs-only reconciliation; the Owner must select the next bounded track explicitly.
+
+KOL M1.2 is split into `M1.2A Collaboration` and `M1.2B Canonical Fulfillment Bridge`. KOL owns formal Collaboration facts but does not own Product, Inventory, Order, Shipment, Tracking, Reservation, warehouse allocation, shipping-cost, transport-mode, carrier-rule or WMS-connector truth/engines. Physical KOL fulfillment uses the existing canonical `orders.id` with `order_kind=kol_fulfillment`, canonical Order Items/Product references, existing Inventory/Warehouse truth, existing Shipment and existing Tracking/Sync; KOL may store relations and read projections only.
+
+PR #98 is closed unmerged as a superseded roadmap proposal. PR #109 is closed unmerged as duplicate/superseded by merged PR #110. PR #97 remains long-term docs/design reference only; PR #81 remains a stale legacy Dashboard experiment. Neither is current Roadmap authority.
+
+Eligible next tracks after this reconciliation are alternatives requiring explicit Owner selection: KOL M1.2A Collaboration, MVP2 Inventory Reservation Foundation, or reactivation of ERP-INQUIRY-M1.2 Contact. This decision authorizes governance/docs synchronization only; no product implementation, schema/migration, dependency, Production access, deployment or merge is authorized.
+
+## D-041 Prioritize full KOL V1 completion and stabilization
+
+Owner selected the KOL track on 2026-08-28 as the next program priority after Roadmap Reconciliation. The frozen sequence is `M1.2A Collaboration → M1.2B Canonical Fulfillment Bridge → M1.3 Content → M1.4 Finance / Affiliate → KOL V1 Cross-phase Closure`.
+
+KOL remains bounded by D-040 canonical ownership: it may reference Product and create/link `order_kind=kol_fulfillment` Orders through the bridge, but it must not duplicate Product, Inventory, Order, Shipment, Tracking, Reservation, allocation, shipping-cost, carrier-rule or WMS truth. MVP2 and ERP-INQUIRY-M1.2 remain paused until KOL V1 closure or explicit Owner reprioritization. Every implementation PR still requires its own test/UAT and explicit merge authorization.

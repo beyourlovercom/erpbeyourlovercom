@@ -31,7 +31,8 @@ KOL must not create duplicate Product, Order, Shipment, payout, referral or trac
 ```text
 M1.0 Foundation
   -> M1.1 CRM
-  -> M1.2 Collaboration / Fulfillment
+  -> M1.2A Collaboration
+  -> M1.2B Canonical Fulfillment Bridge
   -> M1.3 Content
   -> M1.4 Finance / Affiliate
   -> Cross-phase Closure
@@ -163,19 +164,45 @@ Before Owner UAT:
 - Owner UAT;
 - only after Owner UAT PASS: commit / push / PR delivery;
 - Merge remains a separate explicit Owner authorization.
-## 6. M1.2 — Collaboration / Fulfillment
+## 6. M1.2 — Collaboration + Canonical Fulfillment Bridge
 
-M1.2 begins only after an Opportunity becomes a formal cooperation/fulfillment object. It owns:
-- formal Collaboration records;
-- agreed collaboration products using canonical Product references;
-- KOL fulfillment Order using canonical `orders.id` / `order_kind=kol_fulfillment`;
-- sample handling;
-- Shipment / Tracking projection using canonical Shipment truth;
-- fulfillment status and durable collaboration history.
+### M1.2A — Collaboration
+
+M1.2A owns formal KOL cooperation facts only after an Opportunity becomes a confirmed business collaboration:
+- formal Collaboration record;
+- related Opportunity and KOL;
+- agreed products as canonical `products.id` / SKU references;
+- agreed quantity, cooperation type, commercial terms, dates, Owner, status and notes;
+- durable collaboration history.
+
+M1.2A does not create Warehouse, Inventory, Order, Shipment or Tracking truth.
+
+### M1.2B — Canonical Fulfillment Bridge
+
+M1.2B exists only when a Collaboration requires physical sample/product fulfillment. It is an integration/projection bridge, not a second fulfillment engine.
+
+Frozen bridge contract:
+
+```text
+KOL Collaboration
+  -> canonical Order (`orders.id`, `order_kind=kol_fulfillment`)
+  -> canonical Order Items (`product_id` / SKU)
+  -> existing Inventory / Warehouse truth
+  -> existing Shipment
+  -> existing Tracking / Sync
+  -> projected fulfillment status back into KOL Collaboration/Detail
+```
+
+Rules:
+- one canonical Order truth; KOL stores only the relation/projection needed for the Collaboration;
+- one canonical Product truth from Product Master;
+- Inventory and Warehouse decisions remain owned by Inventory/Fulfillment modules;
+- Shipment and Tracking remain canonical Shipment/Sync truth;
+- KOL may deep-link to Order/Shipment and display read projections;
+- KOL must not implement Reservation, warehouse allocation, shipping-cost, transport-mode, carrier-rule or WMS-connector engines;
+- those engines remain in the global MVP2–MVP4 Fulfillment roadmap.
 
 `M1.1 historical opportunity != M1.2 collaboration history`.
-
-M1.2 must not duplicate Warehouse, Shipment, tracking number, Product or Order truth.
 
 ## 7. M1.3 — Content
 
@@ -226,17 +253,16 @@ These may later be introduced as a separate KOL Intelligence track without chang
 
 ## 11. Immediate next execution target
 
-Current phase: `M1.1 CRM`.
+Owner priority as of 2026-08-28: complete and stabilize the entire KOL V1 track before moving to another product roadmap.
 
-Already implemented in the current branch: Detail Regions A-F foundation, CRM opportunity/communication data models, business-profile revisions, avatar storage/paste upload and Detail avatar rendering.
+Canonical execution order:
 
-Next implementation order:
-1. Opportunity operator CRUD/state management;
-2. Communication operator CRUD;
-3. real-data Detail closure;
-4. Region G visual/responsive closure;
-5. Region H tests + Local Owner UAT;
-6. delivery PR only after UAT PASS;
-7. Merge only after separate explicit Owner authorization.
+```text
+ERP-KOL-M1.2A-COLLABORATION-001
+→ ERP-KOL-M1.2B-FULFILLMENT-BRIDGE-001
+→ ERP-KOL-M1.3-CONTENT-001
+→ ERP-KOL-M1.4-FINANCE-AFFILIATE-001
+→ ERP-KOL-V1-CROSS-PHASE-CLOSURE-001
+```
 
-This sequence replaces any older M1.1 execution list that stops at visual-only Detail rendering.
+Each implementation package remains bounded and independently tested. M1.2B must only bridge to canonical Order/Inventory/Shipment/Tracking truth. Final KOL V1 closure requires full cross-phase regression, permissions/Owner-scope checks, migration rehearsal, build/typecheck, local UAT and Owner UAT. Merge remains separately authorized per PR.
