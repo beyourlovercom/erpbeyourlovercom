@@ -185,6 +185,11 @@ final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         ];
     }
 
+    public function inspectTracking(int $providerOrderId): array
+    {
+        return ['tracking_number' => '', 'provider' => '', 'has_tracking' => false];
+    }
+
     public function syncTracking(
         int $providerOrderId,
         string $providerSlug,

@@ -4,6 +4,7 @@ namespace App\Modules\Sync\Experience\Controllers;
 
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\ManualSyncService;
+use App\Modules\Sync\Application\SyncOrchestrationService;
 use App\Modules\Sync\Infrastructure\Models\SyncOutbox;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -11,7 +12,10 @@ use Inertia\Response;
 
 final class ManualSyncController
 {
-    public function __construct(private readonly ManualSyncService $sync) {}
+    public function __construct(
+        private readonly ManualSyncService $sync,
+        private readonly SyncOrchestrationService $orchestration,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -35,7 +39,22 @@ final class ManualSyncController
             ->unique('aggregate_id')
             ->keyBy('aggregate_id');
 
+        $recentRuns = $this->orchestration->recentRuns(10);
+
         return Inertia::render('Sync/Index', [
+            'queueSummary' => $this->orchestration->queueSummary(),
+            'syncRuns' => $recentRuns->map(fn ($run): array => [
+                'id' => $run->id,
+                'run_type' => $run->run_type,
+                'status' => $run->status->value,
+                'requested_items' => $run->requested_items,
+                'succeeded_items' => $run->succeeded_items,
+                'retrying_items' => $run->retrying_items,
+                'failed_items' => $run->failed_items,
+                'conflict_items' => $run->conflict_items,
+                'skipped_items' => $run->skipped_items,
+                'started_at' => $run->started_at?->toIso8601String(),
+            ])->values()->all(),
             'orders' => $orders->map(fn (Order $order): array => [
                 'id' => $order->id, 'internal_order_number' => $order->internal_order_number,
                 'recipient_name' => $order->address?->recipient_name,
