@@ -90,6 +90,11 @@ class Kol extends Model
         return $this->hasMany(KolCommunication::class, 'kol_id')->orderByDesc('contacted_at')->orderByDesc('id');
     }
 
+    public function collaborations(): HasMany
+    {
+        return $this->hasMany(KolCollaboration::class, 'kol_id')->orderByDesc('created_at')->orderByDesc('id');
+    }
+
     public function historicalOrderCount(): int
     {
         return (int) $this->salesPerformances()->sum('order_count');

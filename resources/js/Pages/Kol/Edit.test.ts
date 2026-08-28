@@ -61,6 +61,9 @@ const baseKol = {
   historical_order_count: 0,
   sales_performance_history: [],
   social_accounts: [],
+  opportunities: [],
+  communications: [],
+  collaborations: [],
 }
 
 const defaultProps = {
@@ -119,14 +122,40 @@ describe('Kol/Edit VI contract', () => {
     expect(cancelLinks.some(a => a.attributes('href') === '/kol/library/1')).toBe(true)
   })
 
-  it('does not use any native isolated checkbox (social is_active uses segmented control)', () => {
+  it('uses a checkbox only for the M1.2A fulfillment requirement flag while social state stays segmented', async () => {
     const wrapper = mount(Edit, { props: defaultProps })
-    expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false)
+    expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(0)
+    const createButton = wrapper.findAll('button').find(button => button.text() === '新增正式合作')
+    expect(createButton).toBeTruthy()
+    await createButton!.trigger('click')
+    expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(1)
+    expect(wrapper.text()).toContain('仅需求标记，不会创建订单')
   })
 
   it('shows 业务画像 card heading', () => {
     const wrapper = mount(Edit, { props: defaultProps })
     expect(wrapper.text()).toContain('业务画像')
+  })
+
+  it('shows the M1.2A formal collaboration section and explicit create action', () => {
+    const wrapper = mount(Edit, { props: defaultProps })
+    const section = wrapper.find('#crm-collaborations')
+    expect(section.exists()).toBe(true)
+    expect(section.text()).toContain('正式合作')
+    expect(section.text()).toContain('新增正式合作')
+  })
+
+  it('shows an explicit opportunity-to-collaboration conversion action only before conversion', () => {
+    const props = {
+      ...defaultProps,
+      kol: {
+        ...baseKol,
+        opportunities: [{ id: 9, title: 'Confirmed deal', cooperation_type: '付费发帖', target_products: [], stage: 'confirmed', owner_id: 1, owner: { id: 1, name: 'Test User' }, estimated_cost: 100, currency: 'USD', expected_publish_at: null, next_follow_up_at: null, next_action: null, status: 'completed', notes: null }],
+        collaborations: [],
+      },
+    }
+    const wrapper = mount(Edit, { props })
+    expect(wrapper.text()).toContain('转为正式合作')
   })
 
   it('shows 税务与收款 card heading', () => {

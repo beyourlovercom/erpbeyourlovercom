@@ -34,6 +34,8 @@ type SocialAccount = { id: number; platform: string; handle: string | null; prof
 type SalesPerformanceEvent = { id: number; order_count: number; recorded_at: string | null; source: string | null; note: string | null }
 type OpportunityRecord = { id: number; title: string; cooperation_type: string | null; target_products: string[]; stage: string; owner_id: number | null; owner: { id: number; name: string } | null; estimated_cost: number | null; currency: string; expected_publish_at: string | null; next_follow_up_at: string | null; next_action: string | null; status: string; notes: string | null }
 type CommunicationRecord = { id: number; opportunity_id: number | null; channel: string; direction: string; summary: string; contacted_at: string | null; next_action: string | null; next_follow_up_at: string | null; creator: { id: number; name: string } | null; opportunity: { id: number; title: string } | null }
+type CollaborationProduct = { id?: number; product_id: number | null; sku: string; name?: string | null; quantity: number }
+type CollaborationRecord = { id: number; opportunity_id: number | null; owner_id: number | null; owner: { id: number; name: string } | null; title: string | null; post_url: string | null; cooperation_type: string | null; status: string; agreement_amount: number | null; currency: string; agreed_at: string | null; planned_publish_at: string | null; deliverables: string | null; fulfillment_required: boolean; notes: string | null; products: CollaborationProduct[] }
 type KolDetail = {
   id: number; display_name: string; avatar_url?: string | null; avatar_source?: string | null; avatar_updated_at?: string | null; legal_name: string | null; country_code: string | null; language: string | null
   status: string; relationship_stage: string; cooperation_type: string | null; owner_id: number | null
@@ -52,6 +54,7 @@ type KolDetail = {
   social_accounts: SocialAccount[]
   opportunities?: OpportunityRecord[]
   communications?: CommunicationRecord[]
+  collaborations?: CollaborationRecord[]
 }
 
 const props = defineProps<{
@@ -130,6 +133,39 @@ const saveOpportunity = async () => {
   } finally {
     opportunitySaving.value = false
   }
+}
+
+const collaborationRows = ref<CollaborationRecord[]>([...(props.kol.collaborations ?? [])])
+const collaborationModalOpen = ref(false)
+const collaborationSaving = ref(false)
+const collaborationError = ref('')
+const editingCollaborationId = ref<number | null>(null)
+const emptyCollaborationForm = () => ({
+  opportunity_id: '', post_url: '', cooperation_type: '免费发帖', status: 'draft', owner_id: props.kol.owner_id ? String(props.kol.owner_id) : '', agreement_amount: '', currency: 'USD', agreed_at: '', planned_publish_at: '', deliverables: '', fulfillment_required: false, notes: '',
+  products: [{ product_id: null as number | null, sku: '', quantity: 1 }],
+})
+const collaborationForm = ref(emptyCollaborationForm())
+const collaborationStatusOptions = [['draft','草稿'],['confirmed','已确认'],['in_progress','进行中'],['completed','已完成'],['cancelled','已取消']] as const
+const collaborationStatusLabel = (v:string) => collaborationStatusOptions.find(([key]) => key === v)?.[1] ?? v
+const openNewCollaboration = () => { editingCollaborationId.value=null; collaborationForm.value=emptyCollaborationForm(); collaborationError.value=''; collaborationModalOpen.value=true }
+const openEditCollaboration = (item: CollaborationRecord) => {
+  editingCollaborationId.value=item.id
+  collaborationForm.value={ opportunity_id:item.opportunity_id ? String(item.opportunity_id) : '', post_url:item.post_url ?? '', cooperation_type:item.cooperation_type ?? '免费发帖', status:item.status, owner_id:item.owner_id ? String(item.owner_id) : '', agreement_amount:item.agreement_amount === null ? '' : String(item.agreement_amount), currency:item.currency || 'USD', agreed_at:item.agreed_at ?? '', planned_publish_at:item.planned_publish_at ?? '', deliverables:item.deliverables ?? '', fulfillment_required:item.fulfillment_required, notes:item.notes ?? '', products:item.products.length ? item.products.map(p=>({product_id:p.product_id,sku:p.sku,quantity:p.quantity})) : [{product_id:null,sku:'',quantity:1}] }
+  collaborationError.value=''; collaborationModalOpen.value=true
+}
+const addCollaborationProduct = () => collaborationForm.value.products.push({ product_id:null, sku:'', quantity:1 })
+const removeCollaborationProduct = (i:number) => { if (collaborationForm.value.products.length > 1) collaborationForm.value.products.splice(i,1) }
+const saveCollaboration = async () => {
+  collaborationSaving.value=true; collaborationError.value=''
+  const payload={ opportunity_id: collaborationForm.value.opportunity_id ? Number(collaborationForm.value.opportunity_id) : null, owner_id: collaborationForm.value.owner_id ? Number(collaborationForm.value.owner_id) : null, post_url:collaborationForm.value.post_url || null, cooperation_type:collaborationForm.value.cooperation_type || null, status:collaborationForm.value.status, agreement_amount:collaborationForm.value.agreement_amount === '' ? null : Number(collaborationForm.value.agreement_amount), currency:collaborationForm.value.currency.toUpperCase(), agreed_at:collaborationForm.value.agreed_at || null, planned_publish_at:collaborationForm.value.planned_publish_at || null, deliverables:collaborationForm.value.deliverables || null, fulfillment_required:collaborationForm.value.fulfillment_required, notes:collaborationForm.value.notes || null, products:collaborationForm.value.products.filter(p=>p.product_id && p.sku).map(p=>({product_id:p.product_id,sku:p.sku,quantity:Number(p.quantity)||1})) }
+  try { const url=editingCollaborationId.value ? `/kol/library/${props.kol.id}/collaborations/${editingCollaborationId.value}` : `/kol/library/${props.kol.id}/collaborations`; const response=editingCollaborationId.value ? await axios.patch(url,payload) : await axios.post(url,payload); const saved=response.data.collaboration as CollaborationRecord; const i=collaborationRows.value.findIndex(x=>x.id===saved.id); if(i>=0) collaborationRows.value.splice(i,1,saved); else collaborationRows.value.unshift(saved); collaborationModalOpen.value=false }
+  catch(error:any){ const errors=error?.response?.data?.errors; collaborationError.value=errors ? Object.values(errors).flat().join('；') : (error?.response?.data?.message || '正式合作保存失败') }
+  finally{ collaborationSaving.value=false }
+}
+const convertOpportunity = async (item: OpportunityRecord) => {
+  if (collaborationRows.value.some(c=>c.opportunity_id===item.id)) return
+  try { const response=await axios.post(`/kol/library/${props.kol.id}/opportunities/${item.id}/convert-to-collaboration`); collaborationRows.value.unshift(response.data.collaboration as CollaborationRecord); item.stage='confirmed'; item.status='completed' }
+  catch(error:any){ opportunityError.value=error?.response?.data?.message || '转为正式合作失败' }
 }
 
 const communicationRows = ref<CommunicationRecord[]>([...(props.kol.communications ?? [])])
@@ -585,6 +621,7 @@ const breadcrumbs = [
                   <span :class="['kol-opportunity-status', `is-${item.status}`]">{{ opportunityStatusLabel(item.status) }}</span>
                   <span>{{ item.owner?.name ?? '未分配' }}</span>
                   <span>{{ item.next_follow_up_at ? item.next_follow_up_at.replace('T', ' ') : '无下次跟进' }}</span>
+                  <button v-if="!collaborationRows.some(c => c.opportunity_id === item.id)" type="button" class="erp-btn erp-btn-primary" @click="convertOpportunity(item)">转为正式合作</button>
                   <button type="button" class="erp-btn erp-btn-secondary kol-opportunity-edit" @click="openEditOpportunity(item)">编辑</button>
                 </div>
               </div>
@@ -592,6 +629,21 @@ const breadcrumbs = [
             <div v-else class="kol-empty-state kol-opportunity-empty">暂无合作机会，点击「新增合作机会」开始记录。</div>
           </div>
 
+
+          <!-- M1.2A: 正式合作 -->
+          <div id="crm-collaborations" class="erp-form-card">
+            <div class="kol-card-header-row">
+              <div><h2 class="erp-form-card-title">正式合作</h2><p class="erp-form-card-helper">仅维护已确认的合作事实；需要寄样/发货只做标记，实际履约由 M1.2B 接入 canonical KOL Order。</p></div>
+              <button type="button" class="erp-btn erp-btn-secondary" @click="openNewCollaboration">新增正式合作</button>
+            </div>
+            <div v-if="collaborationRows.length" class="kol-collaboration-list">
+              <div v-for="item in collaborationRows" :key="item.id" class="kol-collaboration-row">
+                <div><strong>{{ item.post_url || '待补合作发帖 URL' }}</strong><span>{{ collaborationStatusLabel(item.status) }}</span><span>{{ item.products.length ? item.products.map(p => `${p.sku} ×${p.quantity}`).join('、') : '未指定产品' }}</span></div>
+                <div><span>{{ item.agreement_amount === null ? '—' : `${item.currency} ${item.agreement_amount}` }}</span><span>{{ item.fulfillment_required ? '需要寄样/发货' : '无需寄样/发货' }}</span><button type="button" class="erp-btn erp-btn-secondary" @click="openEditCollaboration(item)">编辑</button></div>
+              </div>
+            </div>
+            <div v-else class="kol-empty-state">暂无正式合作。可从已确认机会点击「转为正式合作」，或直接新增。</div>
+          </div>
 
           <!-- M1.1 CRM: 沟通记录 -->
           <div id="crm-communications" class="erp-form-card">
@@ -778,6 +830,29 @@ const breadcrumbs = [
               <button type="button" class="erp-btn erp-btn-secondary" :disabled="opportunitySaving" @click="opportunityModalOpen = false">取消</button>
               <button type="button" class="erp-btn erp-btn-primary" :disabled="opportunitySaving || !opportunityForm.title.trim()" @click="saveOpportunity">{{ opportunitySaving ? '保存中…' : '保存合作机会' }}</button>
             </div>
+          </section>
+        </div>
+
+        <div v-if="collaborationModalOpen" class="kol-modal-backdrop" @click.self="collaborationModalOpen = false">
+          <section class="kol-modal" role="dialog" aria-modal="true" aria-labelledby="kol-collaboration-modal-title">
+            <div class="kol-modal-header"><div><p class="kol-kicker">M1.2A Collaboration</p><h2 id="kol-collaboration-modal-title">{{ editingCollaborationId ? '编辑正式合作' : '新增正式合作' }}</h2></div><button type="button" class="kol-modal-close" @click="collaborationModalOpen=false">×</button></div>
+            <div class="kol-modal-grid">
+              <div class="erp-form-field kol-span-2"><label class="erp-form-label">合作发帖 URL</label><input v-model="collaborationForm.post_url" type="url" class="erp-input" maxlength="2048" placeholder="https://…"><small class="erp-form-helper">非必填；未填写的正式合作可在合作记录中单独筛选跟进。</small></div>
+              <div class="erp-form-field"><label class="erp-form-label">来源机会</label><select v-model="collaborationForm.opportunity_id" class="erp-select"><option value="">不关联</option><option v-for="o in opportunityRows" :key="o.id" :value="String(o.id)">{{ o.title }}</option></select></div>
+              <div class="erp-form-field"><label class="erp-form-label">状态 *</label><select v-model="collaborationForm.status" class="erp-select"><option v-for="o in collaborationStatusOptions" :key="o[0]" :value="o[0]">{{ o[1] }}</option></select></div>
+              <div class="erp-form-field"><label class="erp-form-label">合作类型</label><select v-model="collaborationForm.cooperation_type" class="erp-select"><option value="免费发帖">免费发帖</option><option value="长期合作">长期合作</option><option value="付费发帖">付费发帖</option></select></div>
+              <div v-if="canManageViews" class="erp-form-field"><label class="erp-form-label">负责人</label><select v-model="collaborationForm.owner_id" class="erp-select"><option value="">未分配</option><option v-for="owner in ownerOptions" :key="owner.value" :value="String(owner.value)">{{ owner.label }}</option></select></div>
+              <div class="erp-form-field"><label class="erp-form-label">合作金额</label><input v-model="collaborationForm.agreement_amount" type="number" min="0" step="0.01" class="erp-input"></div>
+              <div class="erp-form-field"><label class="erp-form-label">币种</label><input v-model="collaborationForm.currency" maxlength="3" class="erp-input"></div>
+              <div class="erp-form-field"><label class="erp-form-label">确认日期</label><input v-model="collaborationForm.agreed_at" type="date" class="erp-input"></div>
+              <div class="erp-form-field"><label class="erp-form-label">计划发布时间</label><input v-model="collaborationForm.planned_publish_at" type="date" class="erp-input"></div>
+              <div class="erp-form-field kol-span-2"><label class="erp-form-label">约定交付内容</label><textarea v-model="collaborationForm.deliverables" class="erp-textarea" maxlength="5000" /></div>
+              <div class="erp-form-field kol-span-2"><label class="erp-form-label">合作产品</label><div v-for="(product,idx) in collaborationForm.products" :key="idx" class="kol-collab-product-row"><SkuCombobox v-model="product.sku" v-model:product-id="product.product_id"/><input v-model="product.quantity" type="number" min="1" max="9999" class="erp-input" aria-label="产品数量"><button type="button" class="erp-btn erp-btn-secondary" :disabled="collaborationForm.products.length===1" @click="removeCollaborationProduct(idx)">删除</button></div><button type="button" class="erp-btn erp-btn-secondary" @click="addCollaborationProduct">添加产品</button></div>
+              <div class="erp-form-field kol-span-2"><label class="erp-checkbox-label"><input v-model="collaborationForm.fulfillment_required" type="checkbox"> 需要寄样 / 发货（仅需求标记，不会创建订单）</label></div>
+              <div class="erp-form-field kol-span-2"><label class="erp-form-label">备注</label><textarea v-model="collaborationForm.notes" class="erp-textarea" maxlength="5000" /></div>
+            </div>
+            <p v-if="collaborationError" class="erp-field-error kol-modal-error">{{ collaborationError }}</p>
+            <div class="kol-modal-actions"><button type="button" class="erp-btn erp-btn-secondary" :disabled="collaborationSaving" @click="collaborationModalOpen=false">取消</button><button type="button" class="erp-btn erp-btn-primary" :disabled="collaborationSaving" @click="saveCollaboration">{{ collaborationSaving ? '保存中…' : '保存正式合作' }}</button></div>
           </section>
         </div>
 
@@ -988,4 +1063,6 @@ const breadcrumbs = [
     grid-template-columns: 1fr;
   }
 }
+
+.kol-collaboration-list{display:grid;gap:10px;margin-top:14px}.kol-collaboration-row{display:flex;justify-content:space-between;gap:16px;padding:12px 14px;border:1px solid var(--erp-border);border-radius:12px}.kol-collaboration-row>div{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.kol-collaboration-row span{color:var(--erp-text-muted);font-size:13px}.kol-collab-product-row{display:grid;grid-template-columns:minmax(0,1fr) 110px auto;gap:8px;margin-bottom:8px}.erp-checkbox-label{display:flex;align-items:center;gap:8px}@media(max-width:800px){.kol-collaboration-row{flex-direction:column}.kol-collab-product-row{grid-template-columns:1fr}}
 </style>
