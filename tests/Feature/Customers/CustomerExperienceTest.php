@@ -561,6 +561,171 @@ final class CustomerExperienceTest extends TestCase
                 ->where('canExport', true));
     }
 
+    // ─── Customer M1.2 segmentation foundation ─────────────────────────────
+
+    public function test_customer_groups_route_redirects_to_canonical_library_and_preserves_filters(): void
+    {
+        $user = $this->userWith(['customers.view'], 'segment_compatibility');
+
+        $this->actingAs($user)->get('/customers/groups?group=no_purchase&country_code=US')
+            ->assertRedirect('/customers/library?group=no_purchase&country_code=US');
+    }
+
+    public function test_customer_list_grid_projects_registered_address_spend_aov_and_latest_order_from_real_data(): void
+    {
+        $user = $this->userWith(['customers.view'], 'segment_grid_projection');
+        $customer = Customer::query()->create([
+            'name' => 'Grid Customer',
+            'email' => 'grid@example.test',
+            'phone' => '+1-555-0100',
+            'country_code' => 'US',
+            'source_type' => 'manual',
+        ]);
+        CustomerAddress::query()->create([
+            'customer_id' => $customer->id,
+            'address_type' => 'billing',
+            'country_code' => 'US',
+            'province_state' => 'NY',
+            'city' => 'New York',
+            'postal_code' => '10001',
+        ]);
+        CustomerAddress::query()->create([
+            'customer_id' => $customer->id,
+            'address_type' => 'shipping',
+            'country_code' => 'US',
+            'province_state' => 'CA',
+            'city' => 'Los Angeles',
+            'postal_code' => '90001',
+        ]);
+        $this->createCustomerOrder($customer, ['GRID-A', 'GRID-B']);
+
+        $this->actingAs($user)->get('/customers/library')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('customers.total', 1)
+                ->where('customers.data.0.primary_address.city', 'Los Angeles')
+                ->where('customers.data.0.primary_address.province_state', 'CA')
+                ->where('customers.data.0.primary_address.postal_code', '90001')
+                ->where('customers.data.0.orders_count', 1)
+                ->where('customers.data.0.lifetime_revenue.0.currency', 'USD')
+                ->where('customers.data.0.lifetime_revenue.0.revenue', 20)
+                ->where('customers.data.0.lifetime_revenue.0.average_order_value', 20)
+                ->where('customers.data.0.latest_order_date', now()->toDateString())
+                ->where('customers.data.0.created_at', fn ($value): bool => is_string($value) && $value !== ''));
+    }
+
+    public function test_no_purchase_segment_counts_only_non_cancelled_customer_orders(): void
+    {
+        $user = $this->userWith(['customers.view'], 'segment_no_purchase');
+        $none = Customer::query()->create(['name' => 'No Orders', 'source_type' => 'manual']);
+        $cancelledOnly = Customer::query()->create(['name' => 'Cancelled Only', 'source_type' => 'manual']);
+        $purchased = Customer::query()->create(['name' => 'Purchased', 'source_type' => 'manual']);
+
+        $this->createCustomerOrder($cancelledOnly, ['CANCELLED-SKU'], 'cancelled');
+        $this->createCustomerOrder($purchased, ['VALID-SKU']);
+
+        $this->actingAs($user)->get('/customers/library?group=no_purchase')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('filters.group', 'no_purchase')
+                ->where('customers.total', 2)
+                ->where('customers.data', function ($rows) use ($cancelledOnly, $none): bool {
+                    $actual = collect($rows)->pluck('name')->sort()->values()->all();
+                    $expected = collect([$cancelledOnly->name, $none->name])->sort()->values()->all();
+
+                    return $actual === $expected;
+                }));
+    }
+
+    public function test_new_customer_segment_requires_exactly_one_valid_order(): void
+    {
+        $user = $this->userWith(['customers.view'], 'segment_new');
+        $newCustomer = Customer::query()->create(['name' => 'One Valid', 'source_type' => 'manual']);
+        $repeat = Customer::query()->create(['name' => 'Two Valid', 'source_type' => 'manual']);
+        Customer::query()->create(['name' => 'Zero Valid', 'source_type' => 'manual']);
+
+        $this->createCustomerOrder($newCustomer, ['ONE']);
+        $this->createCustomerOrder($newCustomer, ['IGNORED-CANCELLED'], 'cancelled');
+        $this->createCustomerOrder($repeat, ['TWO-A']);
+        $this->createCustomerOrder($repeat, ['TWO-B']);
+
+        $this->actingAs($user)->get('/customers/library?group=new_customer')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('customers.total', 1)
+                ->where('customers.data.0.name', $newCustomer->name));
+    }
+
+    public function test_repeat_customer_segment_requires_at_least_two_valid_orders(): void
+    {
+        $user = $this->userWith(['customers.view'], 'segment_repeat');
+        $repeat = Customer::query()->create(['name' => 'Repeat Buyer', 'source_type' => 'manual']);
+        $single = Customer::query()->create(['name' => 'Single Buyer', 'source_type' => 'manual']);
+
+        $this->createCustomerOrder($repeat, ['R-A']);
+        $this->createCustomerOrder($repeat, ['R-B']);
+        $this->createCustomerOrder($single, ['S-A']);
+
+        $this->actingAs($user)->get('/customers/library?group=repeat_customer')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('customers.total', 1)
+                ->where('customers.data.0.name', $repeat->name));
+    }
+
+    public function test_multi_product_segment_requires_three_distinct_skus_in_one_valid_order(): void
+    {
+        $user = $this->userWith(['customers.view'], 'segment_multi_product');
+        $qualifies = Customer::query()->create(['name' => 'Three SKU One Order', 'source_type' => 'manual']);
+        $quantityOnly = Customer::query()->create(['name' => 'Quantity Ten', 'source_type' => 'manual']);
+        $spreadAcrossOrders = Customer::query()->create(['name' => 'Spread SKU', 'source_type' => 'manual']);
+        $cancelledThreeSku = Customer::query()->create(['name' => 'Cancelled Three SKU', 'source_type' => 'manual']);
+
+        $this->createCustomerOrder($qualifies, ['A', 'B', 'C']);
+        $this->createCustomerOrder($quantityOnly, ['ONLY-SKU'], 'shipped', 10);
+        $this->createCustomerOrder($spreadAcrossOrders, ['X', 'Y']);
+        $this->createCustomerOrder($spreadAcrossOrders, ['Z']);
+        $this->createCustomerOrder($cancelledThreeSku, ['CA', 'CB', 'CC'], 'cancelled');
+
+        $this->actingAs($user)->get('/customers/library?group=multi_product_single_order')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('customers.total', 1)
+                ->where('customers.data.0.name', $qualifies->name));
+    }
+
+    private function createCustomerOrder(Customer $customer, array $skus, string $status = 'shipped', int $quantity = 1): int
+    {
+        $token = str_replace('.', '', uniqid('', true));
+        $orderId = DB::table('orders')->insertGetId([
+            'internal_order_number' => 'SEG-'.$token,
+            'source_type' => 'manual',
+            'order_kind' => 'customer',
+            'external_order_number' => 'SEG-EXT-'.$token,
+            'order_date' => now()->toDateString(),
+            'order_status' => $status,
+            'customer_id' => $customer->id,
+            'currency' => 'USD',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        foreach ($skus as $sku) {
+            DB::table('order_items')->insert([
+                'order_id' => $orderId,
+                'product_summary' => $sku,
+                'sku' => $sku,
+                'quantity' => $quantity,
+                'unit_price' => 10,
+                'line_revenue' => 10 * $quantity,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return $orderId;
+    }
+
     private function ecbXml(array $rates = [], string $date = '2026-08-28'): string
     {
         $rateXml = '';

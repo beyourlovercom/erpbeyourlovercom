@@ -9,6 +9,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/customers', CustomerDashboardController::class)->middleware('can:customers.view')->name('shell.customers');
 
     Route::get('/customers/library', [CustomerController::class, 'index'])->middleware('can:customers.view')->name('customers.library');
+    Route::get('/customers/groups', [CustomerController::class, 'groups'])->middleware('can:customers.view')->name('customers.groups');
     Route::get('/customers/library/create', [CustomerController::class, 'create'])->middleware('can:customers.operate')->name('customers.library.create');
     Route::post('/customers/library', [CustomerController::class, 'store'])->middleware('can:customers.operate')->name('customers.library.store');
     Route::get('/customers/library/export', [CustomerController::class, 'reservedExport'])->middleware(['can:customers.export', 'can:system.permissions.manage'])->name('customers.library.export');

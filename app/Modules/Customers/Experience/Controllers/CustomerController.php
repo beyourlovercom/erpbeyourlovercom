@@ -22,6 +22,9 @@ use Inertia\Response;
 
 final class CustomerController
 {
+
+
+
     private const SOURCES = [
         'manual' => '手工录入',
         'website' => '网站',
@@ -37,7 +40,7 @@ final class CustomerController
 
     public function index(Request $request): Response
     {
-        $filters = $request->only(['search', 'country_code', 'source_type', 'archived']);
+        $filters = $request->only(['search', 'country_code', 'source_type', 'archived', 'group']);
         $paginator = $this->customers->list($filters);
 
         $customerIds = collect($paginator->items())->pluck('id');
@@ -60,6 +63,7 @@ final class CustomerController
                 ->select('orders.customer_id')
                 ->selectRaw('COALESCE(orders.currency, \'USD\') as currency')
                 ->selectRaw('SUM(order_items.line_revenue) as revenue')
+                ->selectRaw('COUNT(DISTINCT orders.id) as order_count')
                 ->groupBy('orders.customer_id', 'currency')
                 ->get()->groupBy('customer_id')
             : collect();
@@ -100,10 +104,17 @@ final class CustomerController
                 $latestDate = $latestOrderDates->get($customer->id);
                 $data['latest_order_date'] = $latestDate ? substr((string) $latestDate->latest_order_date, 0, 10) : null;
                 $revRows = $lifetimeRevenueBatch->get($customer->id) ?? collect();
-                $data['lifetime_revenue'] = $revRows->map(fn (object $r): array => [
-                    'currency' => $r->currency,
-                    'revenue' => (float) $r->revenue,
-                ])->sortBy('currency')->values()->all();
+                $data['lifetime_revenue'] = $revRows->map(function (object $r): array {
+                    $orderCount = (int) $r->order_count;
+                    $revenue = (float) $r->revenue;
+                    return [
+                        'currency' => $r->currency,
+                        'revenue' => $revenue,
+                        'order_count' => $orderCount,
+                        'average_order_value' => $orderCount > 0 ? round($revenue / $orderCount, 2) : 0,
+                    ];
+                })->sortBy('currency')->values()->all();
+                $data['primary_address'] = $this->addressData($customer->shippingAddress ?? $customer->billingAddress);
                 return $data;
             }),
             'filters' => $filters,
@@ -122,6 +133,18 @@ final class CustomerController
             'canExport' => (bool) ($request->user()?->hasPermission('customers.export') && $request->user()?->hasPermission('system.permissions.manage')),
         ]);
     }
+
+    public function groups(Request $request): RedirectResponse
+    {
+        $query = $request->query();
+        $target = route('customers.library', [], false);
+        if ($query !== []) {
+            $target .= '?'.http_build_query($query);
+        }
+
+        return redirect($target);
+    }
+
 
     public function create(): Response
     {

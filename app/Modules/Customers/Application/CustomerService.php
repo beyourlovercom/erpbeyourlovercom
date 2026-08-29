@@ -15,6 +15,8 @@ final class CustomerService
 {
     private const CUSTOMER_CLASS = 'App\\Modules\\Customers\\Infrastructure\\Models\\Customer';
 
+    private const SEGMENTS = ['no_purchase', 'new_customer', 'repeat_customer', 'multi_product_single_order'];
+
     private const AUDIT_FIELDS = ['name', 'email', 'phone', 'country_code', 'language_code', 'source_type', 'owner_id', 'notes'];
 
     public function __construct(private readonly AuditRecorder $audit) {}
@@ -23,9 +25,10 @@ final class CustomerService
     {
         $customerClass = self::CUSTOMER_CLASS;
         $archived = $filters['archived'] ?? '';
+        $segment = in_array($filters['group'] ?? '', self::SEGMENTS, true) ? $filters['group'] : '';
 
         return $customerClass::query()
-            ->with('owner')
+            ->with(['owner', 'billingAddress', 'shippingAddress'])
             ->withCount(['orders' => fn ($query) => $query->where('order_kind', 'customer')])
             ->when($archived === '', fn ($query) => $query->whereNull('archived_at'))
             ->when($archived === 'only', fn ($query) => $query->whereNotNull('archived_at'))
@@ -38,9 +41,49 @@ final class CustomerService
             })
             ->when($filters['country_code'] ?? null, fn ($query, string $country) => $query->where('country_code', strtoupper($country)))
             ->when($filters['source_type'] ?? null, fn ($query, string $source) => $query->where('source_type', $source))
+            ->when($segment !== '', function ($query) use ($segment): void {
+                $this->applySegment($query, $segment);
+            })
             ->orderByDesc('updated_at')
             ->paginate($perPage)
             ->withQueryString();
+    }
+
+    private function applySegment($query, string $segment): void
+    {
+        $validOrder = fn ($orderQuery) => $orderQuery
+            ->where('order_kind', 'customer')
+            ->where('order_status', '!=', 'cancelled');
+
+        if ($segment === 'no_purchase') {
+            $query->whereDoesntHave('orders', $validOrder);
+            return;
+        }
+
+        if ($segment === 'new_customer') {
+            $query->whereHas('orders', $validOrder, '=', 1);
+            return;
+        }
+
+        if ($segment === 'repeat_customer') {
+            $query->whereHas('orders', $validOrder, '>=', 2);
+            return;
+        }
+
+        if ($segment === 'multi_product_single_order') {
+            $query->whereExists(function ($subquery): void {
+                $subquery->selectRaw('1')
+                    ->from('orders')
+                    ->join('order_items', 'order_items.order_id', '=', 'orders.id')
+                    ->whereColumn('orders.customer_id', 'customers.id')
+                    ->where('orders.order_kind', 'customer')
+                    ->where('orders.order_status', '!=', 'cancelled')
+                    ->whereNotNull('order_items.sku')
+                    ->where('order_items.sku', '!=', '')
+                    ->groupBy('orders.id')
+                    ->havingRaw('COUNT(DISTINCT order_items.sku) >= 3');
+            });
+        }
     }
 
     public function create(array $attributes, ?Authenticatable $actor): Model

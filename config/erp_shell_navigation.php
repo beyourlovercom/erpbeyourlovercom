@@ -21,6 +21,7 @@ return [
         ['key' => 'sync-exports', 'label' => '导出平台订单', 'path' => '/sync/exports', 'route' => 'sync.exports', 'permission' => 'sync.view', 'placeholder' => false],
     ]],
     ['key' => 'customers', 'label' => '客户', 'emoji' => '👥', 'path' => '/customers', 'route' => 'shell.customers', 'permission' => 'customers.view', 'placeholder' => false, 'children' => [
+        ['key' => 'customers-library', 'label' => '客户列表', 'path' => '/customers/library', 'route' => 'customers.library', 'permission' => 'customers.view', 'placeholder' => false],
         ['key' => 'customers-orders', 'label' => '客户订单', 'path' => '/customers/orders', 'route' => 'customers.orders', 'permission' => 'orders.view', 'placeholder' => false],
         ['key' => 'customers-orders-create', 'label' => '新建订单', 'path' => '/customers/orders/create', 'route' => 'customers.orders.create', 'permission' => 'orders.create', 'placeholder' => false],
         ['key' => 'customers-orders-mine', 'label' => '我的订单', 'path' => '/customers/orders/mine', 'route' => 'customers.orders.mine', 'permission' => 'prototype.view', 'placeholder' => false],
