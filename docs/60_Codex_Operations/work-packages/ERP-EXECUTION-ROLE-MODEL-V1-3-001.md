@@ -2,7 +2,7 @@
 type: work-package
 project: BYL ERP
 work_package_id: ERP-EXECUTION-ROLE-MODEL-V1-3-001
-status: LOCAL_IMPLEMENTATION_COMPLETE / DELIVERY_AUTHORIZED
+status: LOCAL_IMPLEMENTATION_COMPLETE / DRAFT_PR_123_OPEN
 execution_provider: GPT_WEB
 verification_tier: DAILY
 baseline: origin/main@8a887e0e743c06fe0e5dd8991692e204dcfe9307
@@ -60,6 +60,13 @@ Commit, push and Draft PR actions remain controlled by the active Work Package. 
 - `git diff --check`: PASS.
 - No application code, schema, dependency or runtime configuration changed.
 - No commit, push, PR, merge or deployment executed.
+
+## Git delivery record
+- Owner authorized commit + push + Draft PR on 2026-08-29.
+- Initial delivery commit: `9c2165de81d40f2013765be765a767d13f426870`.
+- Draft PR: `#123` — `Governance: Execution Role Model V1.3`.
+- PR base at creation: `main@8a887e0e743c06fe0e5dd8991692e204dcfe9307`.
+- Merge remains a separate Owner gate.
 
 PROJECT POSITION
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Existing Operations → Inquiry M1 → Local Milestone UAT → Remote Milestone Release → WooCommerce Inbound → Tracking Outbound → Sync Orchestration → Product / Media → WordPress Sync → Content / SEO → Posts / Pages → GA4/GSC/Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS / Social Providers → Inventory / Procurement → Accounting / ROI → Additional Integrations → Production Hardening
