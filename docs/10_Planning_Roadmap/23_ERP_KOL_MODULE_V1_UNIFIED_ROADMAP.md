@@ -3,11 +3,11 @@ type: unified-execution-roadmap
 project: BYL ERP
 roadmap_id: ERP-KOL-MODULE-V1-UNIFIED-ROADMAP
 status: OWNER APPROVED / CANONICAL EXECUTION ROADMAP
-version: 2.0
-updated: 2026-08-28
+version: 3.0
+updated: 2026-08-29
 ---
 
-# ERP KOL Module V1 — Unified Roadmap V2
+# ERP KOL Module V1 — Unified Roadmap V3
 
 ## 1. Authority
 
@@ -34,7 +34,12 @@ M1.0 Foundation
   -> M1.2A Collaboration
   -> M1.2B Canonical Fulfillment Bridge
   -> M1.3 Content
-  -> M1.4 Finance / Affiliate
+  -> M1.4A AffiliateWP Connector Foundation
+  -> M1.4B Influencer Sync + KOL Approval + Provisioning
+  -> M1.4C Coupon Sync + Provisioning
+  -> M1.4D Referral + Commission Sync
+  -> M1.4E Commission Payout Workflow
+  -> M1.4F Manager Approval Center + Weekly/Monthly Dashboard
   -> Cross-phase Closure
 ```
 
@@ -217,16 +222,66 @@ M1.3 owns content and publication facts:
 
 Frozen rule: `已合作 != 已发布`. Publication requires URL and/or screenshot evidence according to the V1 contract.
 
-## 8. M1.4 — Finance / Affiliate
+## 8. M1.4 — AffiliateWP Operations + Finance
 
-M1.4 owns KOL finance/affiliate projections and durable relationship metadata:
-- commission detail/history;
-- payment/settlement status;
-- promotion/discount codes;
-- Affiliate bindings;
-- Referral/Payout projections.
+Owner expanded M1.4 on 2026-08-29 so KOL Specialists and KOL Managers can perform normal AffiliateWP operations entirely from ERP without logging into WordPress. WordPress/AffiliateWP remains the external provider truth; ERP becomes the operating, approval, audit and finance workspace. Synchronized mirrors/projections are allowed only where required to operate and reconcile against provider truth.
 
-AffiliateWP remains provider truth where applicable. ERP must not silently clone AffiliateWP Referral/Payout truth.
+### M1.4A — AffiliateWP Connector Foundation
+- ERP-side signed connector client and provider contract;
+- connection descriptor from environment/config, not database-stored plaintext secrets;
+- HMAC request signing, timestamp, nonce, replay-resistant contract and idempotency key;
+- health/probe and version compatibility;
+- deterministic error/sync state contract;
+- Andy Core v1.5.3 WordPress Connector is the external execution-side dependency.
+
+### M1.4B — Influencer Sync + KOL Approval + Provisioning
+- sync every AffiliateWP Affiliate into ERP AffiliateWP Influencer workspace;
+- exact `connection_key + affiliate_id` is the authoritative external identity; no fuzzy name/email matching;
+- unbound Affiliate may be explicitly bound to an existing KOL or explicitly converted to a new KOL;
+- KOL Specialist-created KOL follows the configured approval policy;
+- Manager/Admin-created KOL is immediately approved;
+- approved KOL provisions/enables WordPress User and creates/approves an Active AffiliateWP Affiliate idempotently.
+
+KOL approval policy has exactly three modes:
+1. `ALL`: every Specialist-created KOL requires Manager approval;
+2. `THRESHOLD`: configured platform thresholds determine whether manual approval is required; reaching any configured exemption threshold auto-approves, while all configured values below threshold or missing reliable data requires approval;
+3. `NONE`: Specialist-created KOL is immediately approved.
+
+Policy changes are prospective only. Each KOL approval decision preserves policy snapshot and reason.
+
+### M1.4C — Coupon Sync + Provisioning
+- sync all WooCommerce coupons into ERP, including non-Affiliate coupons;
+- Coupon mode is part of `/kol/affiliatewp`;
+- normalized Coupon Code uses trim + case-insensitive comparison;
+- one Coupon Code may belong to at most one Affiliate/KOL, while one KOL may own multiple Coupons;
+- ERP creation checks local mirror plus live WordPress/WooCommerce conflict before remote create;
+- conflicts are hard-blocked and surfaced through the ERP notification/island UX with existing owner details;
+- successful create must read back and verify the WooCommerce Coupon + Affiliate binding.
+
+### M1.4D — Referral + Commission Sync
+- sync AffiliateWP Referral facts and bind them to canonical customer Orders;
+- `pending` = projected only; `unpaid` = recognized/payable; `paid` = recognized + paid; `rejected` = zero recognized;
+- `unpaid -> paid` never double-counts canonical `kol_commission` cost;
+- AffiliateWP Referral commission cannot be manually recreated as a duplicate ERP commission;
+- ERP manual settlements remain only for non-AffiliateWP fixed fee, bonus, content fee, reimbursement or other approved business costs.
+
+### M1.4E — Commission Payout Workflow
+- Specialist selects eligible `unpaid` Referral groups/KOLs and submits one payout request batch;
+- exact Referral IDs are snapshotted and locked against concurrent active payout requests;
+- Manager approval means approved-for-payment, not paid;
+- payment is initially manual PayPal; Manager records PayPal transaction ID, amount, currency, paid date and optional evidence;
+- only after real payment is recorded does ERP ask the Connector to create/complete the AffiliateWP Payout and mark exact Referrals paid;
+- payment success + AffiliateWP sync failure becomes `PAID_SYNC_PENDING`; only sync retries are allowed, never a second payment.
+
+### M1.4F — Manager Approval Center + Weekly/Monthly Dashboard
+- Manager-only Approval Center tabs: KOL approval, paid-collaboration approval, commission payout approval;
+- paid Collaboration created by a Specialist requires Manager approval before it becomes an approved payable cooperation;
+- Manager dashboard supports This Week / This Month and canonical filters;
+- metrics include new/approved/rejected KOLs, cooperation records, publication records, Affiliate sales/commission and payout workflow counts;
+- Specialist dashboard is owner-scoped and exposes own KOL/cooperation/publication/eligible-commission/application state.
+
+### Provider-truth boundary
+AffiliateWP remains Affiliate / Referral / Payout provider truth; WooCommerce remains Coupon and customer Order provider truth where applicable; WordPress remains WordPress User truth. ERP stores explicit synchronized mirror/projection, approval, payout-request, audit and canonical Finance facts required for the operating workflow. Provider mismatch is surfaced as sync/conflict state and must never be silently overwritten.
 ## 9. Cross-phase Closure
 
 Final KOL V1 closure occurs only after M1.0-M1.4 are complete and includes:
@@ -261,7 +316,12 @@ Canonical execution order:
 ERP-KOL-M1.2A-COLLABORATION-001
 → ERP-KOL-M1.2B-FULFILLMENT-BRIDGE-001
 → ERP-KOL-M1.3-CONTENT-001
-→ ERP-KOL-M1.4-FINANCE-AFFILIATE-001
+→ ERP-KOL-M1.4A-AFFILIATEWP-CONNECTOR-FOUNDATION-001
+→ ERP-KOL-M1.4B-INFLUENCER-APPROVAL-PROVISIONING-001
+→ ERP-KOL-M1.4C-COUPON-SYNC-PROVISIONING-001
+→ ERP-KOL-M1.4D-REFERRAL-COMMISSION-SYNC-001
+→ ERP-KOL-M1.4E-COMMISSION-PAYOUT-001
+→ ERP-KOL-M1.4F-APPROVAL-DASHBOARD-001
 → ERP-KOL-V1-CROSS-PHASE-CLOSURE-001
 ```
 

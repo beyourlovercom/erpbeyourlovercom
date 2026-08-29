@@ -1,8 +1,8 @@
 ---
 type: living-roadmap
 project: BYL ERP
-version: 1.1
-updated: 2026-08-28
+version: 1.2
+updated: 2026-08-29
 ---
 
 # Living Roadmap
@@ -22,11 +22,16 @@ Architecture Migration / Global Architecture Gate [COMPLETE]
 → MVP1.3 Sync Orchestration [COMPLETE / PR #108]
 → KOL M1.0 Foundation [COMPLETE / PR #103]
 → KOL M1.1 CRM [COMPLETE / PR #110]
-→ ROADMAP RECONCILIATION [CURRENT / DOCS MERGE GATE]
-→ KOL M1.2A Collaboration [NEXT]
-→ KOL M1.2B Canonical Fulfillment Bridge
-→ KOL M1.3 Content
-→ KOL M1.4 Finance / Affiliate
+→ ROADMAP RECONCILIATION [COMPLETE / PR #111]
+→ KOL M1.2A Collaboration [COMPLETE / PR #113]
+→ KOL M1.2B Canonical Fulfillment Bridge [COMPLETE / PR #114]
+→ KOL M1.3 Content [COMPLETE / PR #116]
+→ KOL M1.4A AffiliateWP Connector Foundation [CURRENT]
+→ KOL M1.4B Influencer Sync + KOL Approval + Provisioning
+→ KOL M1.4C Coupon Sync + Provisioning
+→ KOL M1.4D Referral + Commission Sync
+→ KOL M1.4E Commission Payout Workflow
+→ KOL M1.4F Approval Center + Weekly/Monthly Dashboard
 → KOL V1 Cross-phase Closure / Full Regression / Owner UAT
 → MVP2 Inventory Reservation Foundation [PAUSED UNTIL KOL V1 CLOSED]
 → MVP2.1 Warehouse Allocation Recommendation
@@ -67,9 +72,9 @@ KOL duplicate CRM PR #109 = CLOSED / SUPERSEDED BY PR #110
 US Mac = default full verification + Owner UAT host
 China Mac = special-case verification only unless explicitly required
 GitHub = UNIQUE SOURCE OF TRUTH
-CURRENT_PHASE = KOL V1 FULL COMPLETION TRACK / ROADMAP MERGE GATE
-CURRENT_WORK_PACKAGE = ERP-GOV-ROADMAP-RECONCILIATION-001
-NEXT_PRODUCT_WORK_PACKAGE = ERP-KOL-M1.2A-COLLABORATION-001
+CURRENT_PHASE = KOL V1 FULL COMPLETION TRACK / M1.4A CONNECTOR FOUNDATION
+CURRENT_WORK_PACKAGE = ERP-KOL-M1.4A-AFFILIATEWP-CONNECTOR-FOUNDATION-001
+NEXT_PRODUCT_WORK_PACKAGE = ERP-KOL-M1.4B-INFLUENCER-APPROVAL-PROVISIONING-001
 Remote Milestone Target = https://erp.beyourlover.com
 Deployment = NO / MILESTONE GATED
 ```
@@ -90,13 +95,13 @@ Remote-release rule: https://erp.beyourlover.com remains milestone-gated.
 ## Immediate sequence
 
 ```text
-1. Close this docs-only Roadmap Reconciliation and make main the only current planning authority.
-2. Owner selected KOL V1 full completion as the active product priority.
-3. Start with M1.2A Collaboration only; it may reference canonical Product IDs/SKUs but must not create duplicate Product/Order/Shipment/Inventory/Tracking truth.
-4. When a formal Collaboration requires a sample/product shipment, M1.2B uses a Canonical Fulfillment Bridge to create/link the existing Order (`order_kind=kol_fulfillment`) and project existing Shipment/Tracking state back into KOL.
-5. Assisted Fulfillment remains the existing MVP2 path: Reservation → Allocation recommendation → Packing/Chargeable Weight → Cost → Mode → Carrier rules; KOL does not own these engines.
-6. Continue KOL M1.3 Content → M1.4 Finance/Affiliate → KOL V1 Cross-phase Closure before switching product tracks. ERP-INQUIRY-M1.2 Contact and MVP2 remain paused until KOL V1 closes or Owner explicitly reprioritizes.
-7. PR #97 Entity Architecture V2 remains design/reference only until separately activated; no draft PR may override merged main roadmap status.
+1. M1.2A, M1.2B and M1.3 are complete and merged.
+2. Current execution is M1.4A AffiliateWP Connector Foundation from `main@3e4328deb9990f41ec38308463cbfa5336e82305`.
+3. Andy Core v1.5.3 WordPress Connector is a separately implemented external dependency in the Andy Core repository/chat; ERP stores the interface contract only in this package.
+4. Continue serially through M1.4B Influencer/Approval/Provisioning → M1.4C Coupon → M1.4D Referral/Commission → M1.4E Payout → M1.4F Approval/Dashboard.
+5. KOL Specialists and Managers must be able to complete normal operations without WordPress login after M1.4F.
+6. AffiliateWP/WooCommerce/WordPress provider-truth boundaries remain intact; ERP mirrors and operates but does not create competing provider truth.
+7. ERP-INQUIRY-M1.2 Contact and MVP2 remain paused until KOL V1 closes or Owner explicitly reprioritizes.
 8. Remote deployment remains milestone-gated and separate from normal local development.
 ```
 

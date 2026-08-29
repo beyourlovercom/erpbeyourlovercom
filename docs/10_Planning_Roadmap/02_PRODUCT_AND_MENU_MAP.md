@@ -55,39 +55,35 @@ Existing MVP1 provides the Order-level Finance/Cost foundation. Future profitabi
 
 ## KOL
 
-Owner-approved Level-2 target:
+Owner-approved Level-2 V1 operating target after M1.4 expansion:
 
 ```text
-所有网红
-网红订单
-佣金明细
-网红统计
-关系维护
+总览
+红人库
+审批中心             [Manager]
+合作机会
+合作记录
+内容与发布
+AffiliateWP
+佣金与结算
+佣金付款
 ```
 
 Semantics:
 
 ```text
-所有网红
-= ERP KOL master / assigned specialist ownership
-
-网红订单
-= order_kind = kol_fulfillment
-= products / samples / gifts / replacements sent to KOLs
-
-佣金明细
-= AffiliateWP referral/commission projection bound to canonical customer Orders
-
-网红统计
-= orders / revenue / profit / margin / commission / SKU / country derived from canonical Orders
-
-关系维护
-= ERP-owned KOL CRM activities, relationship stage and next follow-up
+总览 = role-aware KOL Specialist / KOL Manager weekly-monthly operational dashboard
+红人库 = ERP KOL master / assigned specialist ownership
+审批中心 = KOL / paid-collaboration / commission-payout approvals, Manager only
+合作机会 = ERP CRM opportunity truth
+合作记录 = formal Collaboration truth
+内容与发布 = ERP Content publication truth
+AffiliateWP = Influencer + Coupon synchronized operating workspace
+佣金与结算 = AffiliateWP Referral commission projection + ERP non-Affiliate settlements
+佣金付款 = payout request / approval / manual PayPal / AffiliateWP payout reconciliation history
 ```
 
-Affiliate-attributed consumer sales remain `order_kind=customer` plus KOL/Affiliate attribution. They are not KOL fulfillment Orders.
-
-Full AffiliateWP connector / KOL CRM runtime implementation is not automatically authorized by the menu target. `ERP-ORDER-FULFILLMENT-M1-001` may expose only the real KOL fulfillment Order surface required by its bounded scope; broader KOL Level-2 activation requires explicit implementation scope.
+Affiliate-attributed consumer sales remain `order_kind=customer` plus KOL/Affiliate attribution. Physical samples/gifts remain `order_kind=kol_fulfillment`. AffiliateWP remains Affiliate/Referral/Payout provider truth; WooCommerce remains Coupon/customer-order provider truth; ERP becomes the normal KOL operating and approval surface.
 
 ## SEO
 
