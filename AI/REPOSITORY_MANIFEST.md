@@ -1,7 +1,7 @@
 ---
 type: repository-manifest
 project: BYL ERP
-version: 1.3
+version: 1.4
 ---
 
 # Repository Manifest
@@ -60,11 +60,11 @@ AI/CURRENT_CONTEXT.md
 ## Current execution model
 
 - GPT Web + Owner own architecture, design, diagnosis, root cause and next-step decisions.
-- US Mac Claude Code implements only Owner/GPT-approved Work Packages.
-- China Mac Codex CLI tests exact GitHub revisions and returns evidence only.
-- Codex does not modify tracked files, fix code, commit, push or open implementation PRs.
-- Claude does not invent architecture, diagnose root cause, widen scope or choose the next Work Package.
-- Normal development validation remains on China Mac `http://erp.b`.
+- US Mac Codex CLI may implement frozen, deterministic low-to-medium complexity Owner/GPT-approved Work Packages.
+- US Mac Claude Code implements complex/high-ambiguity Owner/GPT-approved Work Packages.
+- GPT, Codex and Claude each obey `ONE_ACTIVE_IMPLEMENTATION_PROVIDER_PER_WORKTREE`.
+- Codex and Claude do not invent architecture, widen scope or choose the next Work Package; ambiguous remediation returns to GPT Web.
+- Normal implementation and full validation use US Mac `http://erp.b`. China Mac is not required by default.
 - Remote `https://erp.beyourlover.com` is milestone-gated and not a normal debugging environment.
 
 ## Repository governance

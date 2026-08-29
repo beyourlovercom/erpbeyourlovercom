@@ -2,7 +2,7 @@
 type: execution-governance-standard
 project: BYL ERP
 standard_id: LARGE-PROJECT-EXEC-001
-version: 1.3
+version: 1.4
 ---
 
 # Large Project Execution Standard
@@ -11,7 +11,7 @@ version: 1.3
 
 ```text
 Standard ID: LARGE-PROJECT-EXEC-001
-Version: 1.3
+Version: 1.4
 ```
 
 ## Applicability
@@ -20,52 +20,35 @@ This repository-local standard governs every formal BYL ERP task: implementation
 
 ## Execution Role Authority
 
-`AI/EXECUTION_ROLE_MODEL.md` is the forward-effective authority for who may design, implement, test and diagnose. GPT Web + Owner own design/diagnosis; US Claude Code implements approved Work Packages; China Codex CLI performs test/verification/evidence only. Historical Codex/OpenCode implementation records remain historical evidence and do not grant present implementation authority.
+`AI/EXECUTION_ROLE_MODEL.md` is the forward-effective authority for who may design, implement, test and diagnose. GPT Web + Owner own design/diagnosis. GPT Web may implement bounded approved work; US Codex CLI may implement frozen deterministic low-to-medium complexity Work Packages; US Claude Code implements complex/high-ambiguity Work Packages.
 
-The legacy footer label `ESTIMATED CODEX HOURS` is retained in this standard version only as a repository schema compatibility label for existing package templates. It does not authorize Codex implementation. For a new implementation package, the Work Package must explicitly declare `EXECUTION_PROVIDER: CLAUDE_CODE`; for a test-only package, `EXECUTION_PROVIDER: CODEX_CLI`; for GPT-authored governance/design mutation, `EXECUTION_PROVIDER: GPT_WEB`.
+The legacy footer label `ESTIMATED CODEX HOURS` is retained only for repository schema compatibility. New packages must explicitly declare one actual provider: `EXECUTION_PROVIDER: GPT_WEB`, `EXECUTION_PROVIDER: US_CODEX_CLI`, or `EXECUTION_PROVIDER: CLAUDE_CODE`. Verification-only packages may use `EXECUTION_PROVIDER: CODEX_CLI`.
 
 ## Verification Tier Contract
 
-`AI/EXECUTION_ROLE_MODEL.md` defines the host roles. This standard defines how much verification each host performs.
+`AI/EXECUTION_ROLE_MODEL.md` defines provider and host roles. This standard defines verification depth.
 
 ### Daily development default
 
-For ordinary implementation/remediation work, the default is:
+For ordinary implementation/remediation work:
 
 ```text
 US implementation host = ONE complete package verification
-China verification host = exact-SHA smoke only
-DUPLICATE_FULL_SUITE_ON_BOTH_HOSTS = NO BY DEFAULT
+SECONDARY HOST = NONE BY DEFAULT
+DUPLICATE_FULL_SUITE = NO BY DEFAULT
 ```
 
-The US full verification must be run on the merge-candidate revision before or immediately before push and must satisfy the active Work Package validation contract. A package may require PHPUnit, Vitest, typecheck, build, Architecture/Menu checks, System Chrome E2E, MySQL/Redis/runtime checks, or other bounded validation.
+The US full verification must run on the merge-candidate revision before or immediately before push and satisfy the active Work Package validation contract. It may include PHPUnit, Vitest, typecheck, build, Architecture/Menu checks, System Chrome E2E, MySQL/Redis/runtime checks and other bounded validation.
 
-After push, China Codex verifies the exact GitHub revision with a bounded smoke contract. Daily smoke normally contains:
+No China Mac smoke is required by default. An independent secondary-host check occurs only when GPT/Owner explicitly requests it or a concrete cross-machine/region-specific defect requires it; the Work Package must identify the host and exact scope.
 
-- exact requested SHA / branch identity;
-- clean tracked Git state;
-- China `http://erp.b` reachability when the task has runtime impact;
-- one or a few task-critical focused assertions appropriate to the change.
+### High-risk / milestone verification
 
-China must not rerun the same entire PHPUnit + frontend + build + browser suite merely because the US host already ran it successfully.
+High-risk triggers include migration/schema/database changes, PHP/MySQL/Redis/runtime/environment changes, authentication/authorization/security changes, browser/runtime compatibility concerns, deployment/release tooling changes and milestone/release candidates.
 
-### Full dual-host verification triggers
+High-risk work requires stronger verification on the US implementation host. It does not automatically require a China Mac or dual-host run. GPT/Owner may explicitly add independent verification when risk justifies it.
 
-Full independent verification on both hosts is required for milestone/release candidates and may be required for high-risk changes. High-risk triggers include migration/schema/database changes, PHP/MySQL/Redis/runtime/environment changes, authentication/authorization/security changes, browser/runtime compatibility concerns, deployment/release tooling changes, cross-machine reproducibility concerns, a smoke failure escalated by GPT, or explicit GPT/Owner direction.
-
-When a full dual-host trigger exists:
-
-```text
-US FULL VERIFICATION
-        ↓ push exact revision
-CHINA FULL INDEPENDENT VERIFICATION
-        ↓
-OWNER / MERGE / RELEASE GATE
-```
-
-A China smoke failure is evidence, not authorization to expand scope. Codex stops and returns raw evidence. GPT determines whether the next step is a focused rerun, full China verification, or a bounded Claude remediation.
-
-Every newly activated implementation/remediation Work Package must state its verification classification in the validation section as one of:
+Every newly activated implementation/remediation Work Package must state one verification classification:
 
 ```text
 VERIFICATION_TIER = DAILY
@@ -74,7 +57,7 @@ VERIFICATION_TIER = HIGH_RISK
 VERIFICATION_TIER = OWNER_OVERRIDE
 ```
 
-If omitted in a newly activated package after version 1.3 becomes effective, the default is `DAILY`; omission does not silently escalate to dual-host full verification. Historical/open packages do not need retrospective rewrites solely for this field; GPT/Owner may apply the version 1.3 policy prospectively to their remaining verification gates.
+If omitted after version 1.4 becomes effective, the default is `DAILY`. Historical/open packages do not require retrospective rewrites solely for this field.
 
 ## Repository-Local Implementation
 
@@ -86,12 +69,12 @@ Merging this standard does not automatically govern another repository, and no t
 
 ## Version Transition
 
-- version 1.3 becomes effective when its governance PR merges;
-- it applies to every newly activated formal task and every open/unmerged task reviewed afterward unless an explicit grandfather rule applies;
+- version 1.4 becomes effective when its governance PR merges;
+- it applies to newly activated formal tasks and materially re-scoped open work;
 - historical merged packages remain governed by their issued version and are not retroactively invalidated;
-- version 1.3 retains the D-034 execution-role overlay and adds the Owner-approved asymmetric verification-tier policy without rewriting historical evidence;
-- historical Codex/OpenCode implementation references remain history only and cannot override `AI/EXECUTION_ROLE_MODEL.md`;
-- the legacy `ESTIMATED CODEX HOURS` footer name remains temporarily schema-compatible, but new packages must declare their actual `EXECUTION_PROVIDER`.
+- version 1.4 adopts Execution Role Model v1.3: US Codex gains frozen deterministic implementation authority, Claude remains the complex/high-ambiguity provider, and China is removed from the default verification chain;
+- historical Codex/OpenCode/China verification records remain history only and do not override current role authority;
+- the legacy `ESTIMATED CODEX HOURS` footer remains schema-compatible, while new packages declare their actual `EXECUTION_PROVIDER`.
 
 ## Completeness Gates
 

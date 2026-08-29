@@ -619,3 +619,19 @@ External dependency: Andy Core v1.5.3 WordPress Connector; v1.5.2 remains releas
 Current Work Package: ERP-KOL-M1.4A-AFFILIATEWP-CONNECTOR-FOUNDATION-001.
 Production/deployment: NO. Merge: separately gated.
 ```
+
+## 2026-08-29 — Execution Role Model v1.3
+
+```text
+Decision: D-043.
+GPT Web: architecture/design/diagnosis/Work Package authority + bounded approved implementation.
+US Codex CLI: newly authorized for frozen deterministic low-to-medium complexity implementation + US-local verification.
+US Claude Code: complex/high-ambiguity/broad implementation provider.
+Provider selection: complexity/ambiguity based; file count alone does not require Claude.
+Collision gate: ONE_ACTIVE_IMPLEMENTATION_PROVIDER_PER_WORKTREE applies to GPT+DC / US Codex / Claude.
+China Mac: removed from default development and verification chain; special-case only.
+Primary implementation/full verification host: US Mac / http://erp.b.
+GitHub: unique source of truth.
+Merge / Production release: separately Owner-gated; unchanged.
+Historical records: preserved, not rewritten.
+```

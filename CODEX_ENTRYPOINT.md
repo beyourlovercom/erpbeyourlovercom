@@ -1,70 +1,43 @@
 ---
-type: codex-test-entrypoint
+type: codex-entrypoint
 project: BYL ERP
-version: 2.0
+version: 3.0
 ---
 
-# BYL ERP Codex Test Entrypoint
+# BYL ERP Codex CLI Entrypoint
 
-Every China Mac Codex CLI session begins here.
+Every Codex CLI session begins here. The active Work Package determines whether the session is implementation-capable or verification-only.
 
 ## Read in this order
 
 1. `AI/EXECUTION_ROLE_MODEL.md`
 2. `AI/REPOSITORY_MANIFEST.md`
-3. `AI/CURRENT_CONTEXT.md`
-4. `docs/10_Planning_Roadmap/03_SYSTEM_ARCHITECTURE.md`
-5. `docs/10_Planning_Roadmap/04_LIVING_ROADMAP.md`
-6. The exact Work Package / PR / commit requested for verification
-7. Relevant acceptance criteria and test instructions
+3. `AI/LARGE_PROJECT_EXECUTION_STANDARD.md`
+4. `AI/PARALLEL_WORK_EXECUTION_STANDARD.md`
+5. `AI/CURRENT_CONTEXT.md`
+6. The exact Work Package / PR / commit
+7. Relevant frozen specifications and acceptance criteria
 
-Codex is not an implementation or diagnosis authority.
-## Mandatory role limits
+## US Codex implementation mode
 
-Codex may:
+US Mac Codex may implement only when the Work Package declares `EXECUTION_PROVIDER: US_CODEX_CLI` and freezes the required architecture/business behavior.
+In implementation mode Codex may:
+- modify tracked files inside the dedicated Work Package worktree;
+- create the frozen migrations/schema/tests specified by the package;
+- run PHPUnit, Vitest, typecheck, build and `http://erp.b` runtime verification;
+- commit, push and maintain the Draft PR only when the Work Package explicitly authorizes those Git actions;
+- report raw implementation/test facts.
 
-- fetch and check out an exact GitHub branch or commit;
-- run the approved local test runtime at `http://erp.b`;
-- run approved local test migrations against disposable/local UAT databases;
-- execute PHPUnit, Vitest, typecheck, build, browser E2E and runtime checks;
-- collect raw logs, assertions, HTTP responses and environment evidence;
-- report evidence-supported PASS / FAIL results.
+Codex must stop and return to GPT Web when architecture, business behavior, scope or remediation becomes ambiguous.
 
-Codex must not:
+Codex must not invent architecture, widen scope, choose replacement designs, select the next Work Package, merge without Owner authorization or deploy without explicit release authorization.
 
-- modify tracked product, test or governance files;
-- create code fixes after a failed test;
-- commit, push, create implementation branches or open implementation PRs;
-- design architecture, schema, API, UI or business behavior;
-- diagnose root cause or recommend a remediation;
-- choose the next Work Package;
-- test local unpushed code as if it were canonical GitHub state.
-## GitHub and local-test contract
+## Verification-only mode
 
-```text
-SOURCE_OF_TRUTH = GitHub
-PRIMARY_TEST_MACHINE = China Mac
-PRIMARY_TEST_URL = http://erp.b
-REMOTE_MILESTONE_TARGET = https://erp.beyourlover.com
-REMOTE_DEPLOYMENT = NO unless separately authorized
-```
+When the Work Package declares `EXECUTION_PROVIDER: CODEX_CLI` for verification only, Codex must not modify tracked files. It may check out the requested exact GitHub revision, prepare approved local test runtime, run the specified verification and return evidence-supported results.
 
-The requested GitHub revision must be recorded before testing. If the local checkout differs from the requested revision, stop and report the mismatch.
+China Mac is not a default verification host. If an independent secondary host is explicitly requested, the Work Package must name the host and exact scope.
 
-Temporary local test artifacts are permitted only when disposable, untracked and excluded from GitHub.
+## Collision rule
 
-## Required test handoff
-
-Report:
-
-```text
-WORK_PACKAGE_ID
-TESTED_REVISION
-LOCAL_RUNTIME
-TESTS_EXECUTED
-TEST_RESULTS
-RAW_FAILURES
-HTTP_RUNTIME_STATUS
-DATABASE_TEST_SCOPE
-TRACKED_FILE_MUTATION = NO
-```
+Codex must never enter implementation mode in a worktree currently owned by GPT+DC or Claude Code. `ONE_ACTIVE_IMPLEMENTATION_PROVIDER_PER_WORKTREE` is mandatory.
