@@ -202,9 +202,12 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Runtime/Providers/RuntimeServiceProvider.php',
         'app/Modules/Shell/Application/ErpShellNavigation.php',
         'app/Modules/Shell/Application/LegacyErpNavigationPaths.php',
+        'app/Modules/Shell/Application/UserUiPreferenceService.php',
         'app/Modules/Shell/Experience/Controllers/ErpShellController.php',
         'app/Modules/Shell/Experience/Controllers/ShellPlaceholderController.php',
+        'app/Modules/Shell/Experience/Controllers/UserUiPreferenceController.php',
         'app/Modules/Shell/Experience/Routes/web.php',
+        'app/Modules/Shell/Infrastructure/Models/UserUiPreference.php',
         'app/Modules/Shell/Providers/ShellServiceProvider.php',
         'app/Modules/Sync/Application/Contracts/SyncOrchestrationRepository.php',
         'app/Modules/Sync/Application/Contracts/SyncOutboxRepository.php',
@@ -357,6 +360,8 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Shell/Experience',
         'app/Modules/Shell/Experience/Controllers',
         'app/Modules/Shell/Experience/Routes',
+        'app/Modules/Shell/Infrastructure',
+        'app/Modules/Shell/Infrastructure/Models',
         'app/Modules/Shell/Providers',
         'app/Modules/Sync',
         'app/Modules/Sync/Application',
@@ -557,6 +562,8 @@ final class ModuleArchitectureTest extends TestCase
         'system.runtime.health',
         'user.create',
         'user.destroy',
+        'ui.preferences.show',
+        'ui.preferences.update',
         'user.disable',
         'user.edit',
         'user.enable',
@@ -641,6 +648,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_28_200100_create_release_notes_table.php' => '1ad9359ac7185106b41677d4fd69eba3d4b5f84a222113bf24568e5aeb1161eb',
         'database/migrations/2026_08_28_210000_create_customers_and_link_orders.php' => '23b515334af28797b6ad5dd950f389392151b003994ad5437e3e5e5268ff2b18',
         'database/migrations/2026_08_28_220000_create_customer_addresses_table.php' => '573bba35c511937fbb4d24f328bbe68a10acb18e68193045fc2cf08bf0898b7a',
+        'database/migrations/2026_08_29_140000_create_user_ui_preferences_table.php' => '6f76c7eb1cc3aa4d1eeac985787b07baca3b11b6d686e85a9500346bd5880bd7',
     ];
 
     private const FRONTEND_FILES = [
@@ -669,6 +677,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Components/UI/UiAlert.vue' => 'e3e6ee0e127ae0911efce1bb1d1cb873146cf77220c9c9156a86b968b03b519f',
         'resources/js/Components/UI/UiButton.test.ts' => '126bc019e025164dc901b9c21986aa370fedf26da3d1618c90d7c60791797bf8',
         'resources/js/Components/UI/UiButton.vue' => '7ae624f92c56911ce58b60ae54c54625e85837666ca6b9882ac04be32c718113',
+        'resources/js/Composables/useAccountGridPreferences.ts' => '2116e19fca6072de4fb55e5c57785340e2e74a39ee1c16bbbb2214b3b41b9620',
         'resources/js/Layouts/AuthenticatedLayout.test.ts' => 'f43ad24ee595b6203987fd69746a9a3eae98f0e5619e70c19a91b5e3555d3fde',
         'resources/js/Layouts/AuthenticatedLayout.vue' => '45a285e6b2093e80f700012a3a8a46c7d73124cdabccaac7b0d917dc888ac8fc',
         'resources/js/Pages/Architecture/Foundation.test.ts' => '68898785345d5cc641bcc8b3f165527a94c912e33c5f1941554a9a28aad97a1c',
@@ -684,7 +693,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Customers/Dashboard.vue' => 'a275cd384461e90fa7d71f9b2d14acbd41556a25dff239ab1d2dadeccf765b32',
         'resources/js/Pages/Customers/Library/Create.vue' => '17066bb7a7f0dc1ac21f539f79f79397990b08574b69952171683975878d50d6',
         'resources/js/Pages/Customers/Library/Edit.vue' => '1b99107357f6979f860c72457bfc01c9f5bf7f3c39343d96afe946f48774895f',
-        'resources/js/Pages/Customers/Library/Index.vue' => 'aa5cf036864556f8206435b899a8a602f86d432828bfa2580a798cde32157189',
+        'resources/js/Pages/Customers/Library/Index.vue' => '1b1e32ec995fef8f60ff6ee6773c3f9aaa93a24f763f31135ccb01e4976269fd',
         'resources/js/Pages/Customers/Library/Show.vue' => '08c0cffcb2c068eb4d04cf0c50f951a1814b376e3e66f9ec962f9f714aaad676',
         'resources/js/Pages/Dashboard/Index.test.ts' => '27c63e094fcdec28a0e5677508723e149c90a5130efb98d4448fa2b7f51b4ae4',
         'resources/js/Pages/Dashboard/Index.vue' => '0c28a768afcaa181b54ab01c4ec08457a04f7ed98e5ba3b52a041d98492bc2bb',
@@ -838,6 +847,7 @@ final class ModuleArchitectureTest extends TestCase
             'app/Modules/Runtime/Application/RuntimeHealthService.php',
             'app/Modules/Shell/Application/ErpShellNavigation.php',
             'app/Modules/Shell/Application/LegacyErpNavigationPaths.php',
+        'app/Modules/Shell/Application/UserUiPreferenceService.php',
             'app/Modules/Sync/Application/Contracts/SyncOrchestrationRepository.php',
             'app/Modules/Sync/Application/Contracts/SyncOutboxRepository.php',
             'app/Modules/Sync/Application/Contracts/SyncRunRepository.php',
@@ -986,7 +996,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('c6a79a44704e43743b9b6cf1ea62a39be7105135ebfb100ef37465e87354148c', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('56021995ebe80ff3bcc95f56e3888e168f14531da8561c79cc38f81f74286e12', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);

@@ -23,7 +23,7 @@ class ApprovedMenuBaselineTest extends TestCase
         $this->assertFileExists($path, self::MISMATCH.': approved file is missing');
         $baseline = $this->baseline();
 
-        $this->assertSame('1.6', $baseline['version'] ?? null, self::MISMATCH.': version');
+        $this->assertSame('1.7', $baseline['version'] ?? null, self::MISMATCH.': version');
         $this->assertSame('OWNER_APPROVED', $baseline['status'] ?? null, self::MISMATCH.': status');
         $this->assertSame('2026-08-29', $baseline['approved_at'] ?? null, self::MISMATCH.': approved_at');
         $this->assertSame('9052d1ed8c1b361264c4b7802d99fba2eaba6611', $baseline['approved_head'] ?? null, self::MISMATCH.': approved_head');
@@ -79,7 +79,7 @@ class ApprovedMenuBaselineTest extends TestCase
         $levelTwo = collect($items)->where('level', 2)->values();
 
         $this->assertCount(12, $levelOne, self::MISMATCH.': level-1 count');
-        $this->assertCount(49, $levelTwo, self::MISMATCH.': owner-approved level-2 count including shortcuts, sync workspaces, carrier workspace and settings changelog');
+        $this->assertCount(50, $levelTwo, self::MISMATCH.': owner-approved level-2 count including shortcuts, sync workspaces, carrier workspace and settings changelog');
         $this->assertSame(
             ['dashboard', 'orders', 'logistics', 'sync', 'customers', 'kol', 'inventory', 'procurement', 'products', 'guides', 'accounting', 'settings'],
             $levelOne->pluck('code')->all(),

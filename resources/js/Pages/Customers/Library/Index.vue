@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3'
 import { computed, reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
+import { useAccountGridPreferences, type GridColumnDefinition, type GridPreferenceValue } from '../../../Composables/useAccountGridPreferences'
 
 type CustomerAddress = {
     country_code: string | null
@@ -78,11 +79,17 @@ const props = defineProps<{
     canOperate: boolean
     canImport: boolean
     canExport: boolean
+    workspace: 'library' | 'groups'
+    gridPreferenceNamespace: string
+    gridPreference: GridPreferenceValue<ColumnKey> | null
 }>()
 
-const workspaceTitle = '客户列表'
-const workspaceSubtitle = '统一查看、筛选和分组浏览 Customer 主档；订单只通过明确 Customer ID 关联。'
-const workspaceBasePath = '/customers/library'
+const isGroupsWorkspace = computed(() => props.workspace === 'groups')
+const workspaceTitle = computed(() => isGroupsWorkspace.value ? '客户分组' : '客户列表')
+const workspaceSubtitle = computed(() => isGroupsWorkspace.value
+    ? '按系统动态分组查看 Customer；列显示与顺序绑定当前账号，并在不同设备同步。'
+    : '统一查看和筛选 Customer 主档；订单只通过明确 Customer ID 关联。')
+const workspaceBasePath = computed(() => isGroupsWorkspace.value ? '/customers/groups' : '/customers/library')
 
 const groupShortcuts = [
     { key: '', label: '全部客户' },
@@ -100,7 +107,7 @@ const groupHref = (group: string): string => {
     if (filters.archived) params.set('archived', filters.archived)
     if (group) params.set('group', group)
     const query = params.toString()
-    return `${workspaceBasePath}${query ? `?${query}` : ''}`
+    return `${workspaceBasePath.value}${query ? `?${query}` : ''}`
 }
 
 const COMPACT_KEY = 'customer_list_compact_mode'
@@ -119,7 +126,7 @@ const filters = reactive({
     group: props.filters.group ?? '',
 })
 
-const submit = () => router.get(workspaceBasePath, { ...filters, page: 1 }, { preserveState: true, replace: true })
+const submit = () => router.get(workspaceBasePath.value, { ...filters, page: 1 }, { preserveState: true, replace: true })
 
 const restore = (customer: Customer) => {
     if (window.confirm(`确认恢复客户「${customer.name}」？`)) {
@@ -156,75 +163,38 @@ const salesKpiTooltip = computed((): string => {
     return `原始: ${breakdown || '暂无'} | 来源: ${dateStr}${staleNote}`
 })
 
-type ColumnPreference = { key: ColumnKey; label: string; visible: boolean }
-
-const CUSTOMER_COLUMN_KEY = 'customer_list_grid_columns_v1'
-const LEGACY_GROUP_COLUMN_KEY = 'customer_groups_grid_columns_v1'
-const defaultColumns: ColumnPreference[] = [
-    { key: 'email', label: 'Email', visible: true },
-    { key: 'phone', label: '电话', visible: true },
-    { key: 'registered_at', label: '注册日期', visible: true },
-    { key: 'country_region', label: '国家 / 地区', visible: true },
-    { key: 'city', label: '城市', visible: true },
-    { key: 'province_state', label: '州 / 省', visible: true },
-    { key: 'postal_code', label: '邮编', visible: true },
-    { key: 'source', label: '来源', visible: true },
-    { key: 'orders_count', label: '订单数', visible: true },
-    { key: 'total_spend', label: '累计销售额', visible: true },
-    { key: 'aov', label: 'AOV', visible: true },
-    { key: 'latest_order', label: '最近下单', visible: true },
-    { key: 'owner', label: '负责人', visible: true },
-    { key: 'status', label: '状态', visible: true },
+const defaultColumns: GridColumnDefinition<ColumnKey>[] = [
+    { key: 'email', label: 'Email' },
+    { key: 'phone', label: '电话' },
+    { key: 'registered_at', label: '注册日期' },
+    { key: 'country_region', label: '国家 / 地区' },
+    { key: 'city', label: '城市' },
+    { key: 'province_state', label: '州 / 省' },
+    { key: 'postal_code', label: '邮编' },
+    { key: 'source', label: '来源' },
+    { key: 'orders_count', label: '订单数' },
+    { key: 'total_spend', label: '累计销售额' },
+    { key: 'aov', label: 'AOV' },
+    { key: 'latest_order', label: '最近下单' },
+    { key: 'owner', label: '负责人' },
+    { key: 'status', label: '状态' },
 ]
 
-const loadColumnPreferences = (): ColumnPreference[] => {
-    try {
-        const raw = localStorage.getItem(CUSTOMER_COLUMN_KEY) ?? localStorage.getItem(LEGACY_GROUP_COLUMN_KEY)
-        if (!raw) return defaultColumns.map(column => ({ ...column }))
-        const stored = JSON.parse(raw) as Array<{ key?: string; visible?: boolean }>
-        const allowed = new Map(defaultColumns.map(column => [column.key, column]))
-        const restored: ColumnPreference[] = []
-        for (const item of stored) {
-            const definition = allowed.get(item.key as ColumnKey)
-            if (!definition || restored.some(column => column.key === definition.key)) continue
-            restored.push({ ...definition, visible: item.visible !== false })
-        }
-        for (const definition of defaultColumns) {
-            if (!restored.some(column => column.key === definition.key)) restored.push({ ...definition })
-        }
-        return restored
-    } catch {
-        return defaultColumns.map(column => ({ ...column }))
-    }
-}
-
 const columnSettingsOpen = ref(false)
-const columnPreferences = ref<ColumnPreference[]>(loadColumnPreferences())
-const visibleGroupColumns = computed(() => columnPreferences.value.filter(column => column.visible))
-const draggedColumnKey = ref<ColumnKey | null>(null)
-const persistColumnPreferences = () => localStorage.setItem(CUSTOMER_COLUMN_KEY, JSON.stringify(columnPreferences.value.map(({ key, visible }) => ({ key, visible }))))
-const toggleColumn = (key: ColumnKey) => {
-    const column = columnPreferences.value.find(item => item.key === key)
-    if (!column) return
-    column.visible = !column.visible
-    persistColumnPreferences()
-}
-const startColumnDrag = (key: ColumnKey) => { draggedColumnKey.value = key }
-const dropColumn = (targetKey: ColumnKey) => {
-    const sourceKey = draggedColumnKey.value
-    draggedColumnKey.value = null
-    if (!sourceKey || sourceKey === targetKey) return
-    const sourceIndex = columnPreferences.value.findIndex(item => item.key === sourceKey)
-    const targetIndex = columnPreferences.value.findIndex(item => item.key === targetKey)
-    if (sourceIndex < 0 || targetIndex < 0) return
-    const [moved] = columnPreferences.value.splice(sourceIndex, 1)
-    columnPreferences.value.splice(targetIndex, 0, moved)
-    persistColumnPreferences()
-}
-const resetColumns = () => {
-    columnPreferences.value = defaultColumns.map(column => ({ ...column }))
-    persistColumnPreferences()
-}
+const {
+    columns: columnPreferences,
+    visibleColumns: visibleGroupColumns,
+    syncState: columnPreferenceSyncState,
+    toggle: toggleColumn,
+    startDrag: startColumnDrag,
+    drop: dropColumn,
+    reset: resetColumns,
+} = useAccountGridPreferences<ColumnKey>({
+    namespace: props.gridPreferenceNamespace,
+    definitions: defaultColumns,
+    serverValue: isGroupsWorkspace.value ? props.gridPreference : null,
+    legacyCacheKeys: isGroupsWorkspace.value ? ['customer_groups_grid_columns_v1', 'customer_list_grid_columns_v1'] : [],
+})
 
 const dateOnly = (value: string | null) => value ? value.slice(0, 10) : '—'
 const customerCountry = (customer: Customer) => customer.country_code ?? customer.primary_address?.country_code ?? '—'
@@ -263,7 +233,7 @@ const customerCountry = (customer: Customer) => customer.country_code ?? custome
                                 title="客户导入功能（M1.8）尚在规划中，暂不可用"
                             >导入</button>
                         </div>
-                        <nav class="customer-group-shortcut-rail" aria-label="客户分组快捷筛选">
+                        <nav v-if="isGroupsWorkspace" class="customer-group-shortcut-rail" aria-label="客户分组快捷筛选">
                             <Link
                                 v-for="shortcut in groupShortcuts"
                                 :key="shortcut.key || 'all'"
@@ -343,6 +313,13 @@ const customerCountry = (customer: Customer) => customer.country_code ?? custome
                                     <option value="all">全部</option>
                                 </select>
                             </div>
+                            <div v-if="!isGroupsWorkspace" class="filter-row-field">
+                                <label class="erp-form-label" for="filter-group">客户分组</label>
+                                <select id="filter-group" v-model="filters.group" class="erp-select filter-select">
+                                    <option value="">全部客户</option>
+                                    <option v-for="shortcut in groupShortcuts.slice(1)" :key="shortcut.key" :value="shortcut.key">{{ shortcut.label }}</option>
+                                </select>
+                            </div>
                             <div class="filter-row-submit">
                                 <span class="erp-form-label" aria-hidden="true">&nbsp;</span>
                                 <button class="erp-btn erp-btn-primary" type="submit">筛选</button>
@@ -352,7 +329,7 @@ const customerCountry = (customer: Customer) => customer.country_code ?? custome
                 </template>
 
                 <div class="customer-grid-shell">
-                    <div class="customer-grid-settings-anchor">
+                    <div v-if="isGroupsWorkspace" class="customer-grid-settings-anchor">
                         <button
                             class="column-settings-trigger"
                             type="button"
@@ -365,7 +342,8 @@ const customerCountry = (customer: Customer) => customer.country_code ?? custome
                                 <strong>列设置</strong>
                                 <button type="button" class="column-reset-btn" @click="resetColumns">恢复默认</button>
                             </div>
-                            <p class="column-settings-help">勾选显示列；按住拖动柄上下调整列顺序。设置保存在当前浏览器。</p>
+                            <p class="column-settings-help">勾选显示列；按住拖动柄上下调整列顺序。设置绑定当前账号并跨设备同步。</p>
+                            <p v-if="columnPreferenceSyncState !== 'idle'" class="column-sync-state" :data-state="columnPreferenceSyncState">{{ columnPreferenceSyncState === 'saving' ? '正在同步…' : columnPreferenceSyncState === 'error' ? '同步失败，已保留本地缓存' : '已同步到账号' }}</p>
                             <div class="column-setting-row column-setting-pinned">
                                 <span class="column-drag-handle column-drag-disabled">⋮⋮</span>
                                 <input type="checkbox" checked disabled aria-label="客户编号 / 姓名固定显示">

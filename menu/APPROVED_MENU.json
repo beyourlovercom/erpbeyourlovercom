@@ -1,5 +1,5 @@
 {
-  "version": "1.6",
+  "version": "1.7",
   "status": "OWNER_APPROVED",
   "approved_at": "2026-08-29",
   "approved_head": "9052d1ed8c1b361264c4b7802d99fba2eaba6611",
@@ -279,6 +279,21 @@
       "sort": 10
     },
     {
+      "code": "customers-groups",
+      "parent_code": "customers",
+      "level": 2,
+      "label_zh": "客户分组",
+      "slug": "groups",
+      "url": "/customers/groups",
+      "route": "customers.groups",
+      "permission": "customers.view",
+      "emoji": null,
+      "function_zh": "按系统动态客户分组查看 Customer；支持账号级同步的可配置列显示与排序。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 20
+    },
+    {
       "code": "customers-orders",
       "parent_code": "customers",
       "level": 2,
@@ -291,7 +306,7 @@
       "function_zh": "查看全部客户订单；该入口与订单模块下的客户订单快捷入口指向同一业务页面。",
       "status": "implemented",
       "progress": 100,
-      "sort": 20
+      "sort": 30
     },
     {
       "code": "customers-orders-create",
@@ -306,7 +321,7 @@
       "function_zh": "创建新的客户订单。",
       "status": "implemented",
       "progress": 100,
-      "sort": 30
+      "sort": 40
     },
     {
       "code": "customers-orders-mine",
@@ -321,7 +336,7 @@
       "function_zh": "查看我负责的客户订单。",
       "status": "planned",
       "progress": 0,
-      "sort": 40
+      "sort": 50
     },
     {
       "code": "kol",
