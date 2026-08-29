@@ -1,12 +1,12 @@
 ---
 type: claude-entrypoint
 project: BYL ERP
-version: 1.0
+version: 1.1
 ---
 
 # BYL ERP Claude Code Entrypoint
 
-Every US Mac Claude Code implementation session begins here.
+Every US Mac Claude Code implementation session begins here. Claude is used when the active Work Package declares `EXECUTION_PROVIDER: CLAUDE_CODE`; deterministic low/medium-complexity packages may instead use US Codex under Execution Role Model v1.3.
 
 ## Read in this order
 

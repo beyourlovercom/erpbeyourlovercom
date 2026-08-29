@@ -288,3 +288,13 @@ AffiliateWP Referral commission remains provider-derived and cannot be recreated
 Commission payout is an ERP workflow. Specialists select eligible unpaid Referral groups and submit exact Referral snapshots. A Referral may belong to at most one active payout request. Manager approval means approved-for-payment, not paid. Initial money movement is manual PayPal. After a Manager records the real PayPal transaction ID/amount/currency/date, ERP asks the WordPress Connector to create/complete the exact AffiliateWP Payout and reconcile Referrals to paid. If money is paid but provider sync fails, status becomes `PAID_SYNC_PENDING`; only sync may retry, never the payment.
 
 The external WordPress execution dependency is an Andy Core `v1.5.3` WordPress Connector module. Andy Core `v1.5.2` remains the released baseline. The connector is implemented in the Andy Core repository/another chat and must conform to the ERP-side frozen contract `25_ANDY_CORE_V1.5.3_WORDPRESS_CONNECTOR_CONTRACT.md`. This decision authorizes the M1.4A ERP implementation package only; it does not authorize Andy Core repository mutation, Production deployment, or merge of any future PR without its normal gate.
+
+## D-043 Upgrade Execution Role Model to v1.3 and authorize US Codex implementation
+
+Owner approved this governance change on 2026-08-29 after reviewing the merged v1.2 rules and confirming that daily development should use the US Mac, not China Mac, for Codex implementation.
+
+Execution Role Model v1.3 adds `US_CODEX_CLI` as a formal implementation provider for frozen, deterministic low-to-medium complexity Work Packages. GPT Web + Owner retain architecture, business-rule, diagnosis and next-step authority. US Claude Code remains the preferred provider for complex/high-ambiguity implementation, complex external integrations, materially interdependent schema/data-model work, large cross-module refactors, concurrency/state-machine work and similar high-complexity packages.
+
+Provider choice is based on ambiguity and complexity, not file count or historical habit. US Codex must stop and return raw evidence when a frozen contract becomes ambiguous or requires a new design/remediation decision. `ONE_ACTIVE_IMPLEMENTATION_PROVIDER_PER_WORKTREE` applies equally to GPT+DC, US Codex CLI and US Claude Code.
+
+D-038 remains the verification baseline: US Mac verification/UAT is sufficient by default. China Mac is removed from the default execution and verification chain and is used only when explicitly requested or required by a concrete cross-machine/region-specific defect. GitHub remains the unique source of truth. Merge and Production deployment remain separately Owner-gated.

@@ -1,7 +1,7 @@
 ---
 type: current-context
 project: BYL ERP
-updated: 2026-08-28
+updated: 2026-08-29
 status: roadmap-reconciliation-current
 ---
 
@@ -12,6 +12,7 @@ status: roadmap-reconciliation-current
 ```text
 OWNER: final product, UAT, merge and release authority
 DESIGN_DIAGNOSIS_AUTHORITY: GPT Web + Owner
+IMPLEMENTATION_PROVIDERS: GPT direct (bounded) / US Codex CLI (frozen low-medium complexity) / US Claude Code (complex-high ambiguity)
 PRIMARY_IMPLEMENTATION_HOST: US Mac
 PRIMARY_FULL_VERIFICATION_HOST: US Mac
 OWNER_UAT_HOST: US Mac local/remote UAT
