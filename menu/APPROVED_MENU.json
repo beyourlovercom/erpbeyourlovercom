@@ -1,8 +1,8 @@
 {
-  "version": "1.4",
+  "version": "1.6",
   "status": "OWNER_APPROVED",
-  "approved_at": "2026-08-27",
-  "approved_head": "79a804b6b6309100654aefb43befe21ba50150fe",
+  "approved_at": "2026-08-29",
+  "approved_head": "9052d1ed8c1b361264c4b7802d99fba2eaba6611",
   "governed_levels": [
     1,
     2
@@ -264,6 +264,21 @@
       "sort": 50
     },
     {
+      "code": "customers-library",
+      "parent_code": "customers",
+      "level": 2,
+      "label_zh": "客户列表",
+      "slug": "library",
+      "url": "/customers/library",
+      "route": "customers.library",
+      "permission": "customers.view",
+      "emoji": null,
+      "function_zh": "统一查看、筛选和分组浏览客户；支持可配置列、分页，并进入客户详情。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 10
+    },
+    {
       "code": "customers-orders",
       "parent_code": "customers",
       "level": 2,
@@ -276,7 +291,7 @@
       "function_zh": "查看全部客户订单；该入口与订单模块下的客户订单快捷入口指向同一业务页面。",
       "status": "implemented",
       "progress": 100,
-      "sort": 10
+      "sort": 20
     },
     {
       "code": "customers-orders-create",
@@ -291,7 +306,7 @@
       "function_zh": "创建新的客户订单。",
       "status": "implemented",
       "progress": 100,
-      "sort": 20
+      "sort": 30
     },
     {
       "code": "customers-orders-mine",
@@ -306,7 +321,7 @@
       "function_zh": "查看我负责的客户订单。",
       "status": "planned",
       "progress": 0,
-      "sort": 30
+      "sort": 40
     },
     {
       "code": "kol",

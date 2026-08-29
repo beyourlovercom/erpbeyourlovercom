@@ -3,6 +3,20 @@ import { Head, Link, router } from '@inertiajs/vue3'
 import { computed, reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 
+type CustomerAddress = {
+    country_code: string | null
+    province_state: string | null
+    city: string | null
+    postal_code: string | null
+}
+
+type CustomerRevenue = {
+    currency: string
+    revenue: number
+    order_count: number
+    average_order_value: number
+}
+
 type Customer = {
     id: number
     customer_number: string
@@ -14,9 +28,13 @@ type Customer = {
     owner: { name: string } | null
     orders_count: number
     latest_order_date: string | null
-    lifetime_revenue: { currency: string; revenue: number }[]
+    lifetime_revenue: CustomerRevenue[]
+    primary_address: CustomerAddress | null
     archived_at: string | null
+    created_at: string | null
 }
+
+type ColumnKey = 'email' | 'phone' | 'registered_at' | 'country_region' | 'city' | 'province_state' | 'postal_code' | 'source' | 'orders_count' | 'total_spend' | 'aov' | 'latest_order' | 'owner' | 'status'
 
 type Paginator = {
     data: Customer[]
@@ -62,6 +80,29 @@ const props = defineProps<{
     canExport: boolean
 }>()
 
+const workspaceTitle = '客户列表'
+const workspaceSubtitle = '统一查看、筛选和分组浏览 Customer 主档；订单只通过明确 Customer ID 关联。'
+const workspaceBasePath = '/customers/library'
+
+const groupShortcuts = [
+    { key: '', label: '全部客户' },
+    { key: 'no_purchase', label: '无购买客户' },
+    { key: 'new_customer', label: '新客户' },
+    { key: 'repeat_customer', label: '复购客户' },
+    { key: 'multi_product_single_order', label: '单次多产品客户' },
+]
+
+const groupHref = (group: string): string => {
+    const params = new URLSearchParams()
+    if (filters.search) params.set('search', filters.search)
+    if (filters.country_code) params.set('country_code', filters.country_code)
+    if (filters.source_type) params.set('source_type', filters.source_type)
+    if (filters.archived) params.set('archived', filters.archived)
+    if (group) params.set('group', group)
+    const query = params.toString()
+    return `${workspaceBasePath}${query ? `?${query}` : ''}`
+}
+
 const COMPACT_KEY = 'customer_list_compact_mode'
 const compact = ref(localStorage.getItem(COMPACT_KEY) === '1')
 
@@ -75,9 +116,10 @@ const filters = reactive({
     country_code: props.filters.country_code ?? '',
     source_type: props.filters.source_type ?? '',
     archived: props.filters.archived ?? '',
+    group: props.filters.group ?? '',
 })
 
-const submit = () => router.get('/customers/library', { ...filters, page: 1 }, { preserveState: true, replace: true })
+const submit = () => router.get(workspaceBasePath, { ...filters, page: 1 }, { preserveState: true, replace: true })
 
 const restore = (customer: Customer) => {
     if (window.confirm(`确认恢复客户「${customer.name}」？`)) {
@@ -113,40 +155,124 @@ const salesKpiTooltip = computed((): string => {
     const staleNote = est.stale ? '（汇率数据已过期）' : ''
     return `原始: ${breakdown || '暂无'} | 来源: ${dateStr}${staleNote}`
 })
+
+type ColumnPreference = { key: ColumnKey; label: string; visible: boolean }
+
+const CUSTOMER_COLUMN_KEY = 'customer_list_grid_columns_v1'
+const LEGACY_GROUP_COLUMN_KEY = 'customer_groups_grid_columns_v1'
+const defaultColumns: ColumnPreference[] = [
+    { key: 'email', label: 'Email', visible: true },
+    { key: 'phone', label: '电话', visible: true },
+    { key: 'registered_at', label: '注册日期', visible: true },
+    { key: 'country_region', label: '国家 / 地区', visible: true },
+    { key: 'city', label: '城市', visible: true },
+    { key: 'province_state', label: '州 / 省', visible: true },
+    { key: 'postal_code', label: '邮编', visible: true },
+    { key: 'source', label: '来源', visible: true },
+    { key: 'orders_count', label: '订单数', visible: true },
+    { key: 'total_spend', label: '累计销售额', visible: true },
+    { key: 'aov', label: 'AOV', visible: true },
+    { key: 'latest_order', label: '最近下单', visible: true },
+    { key: 'owner', label: '负责人', visible: true },
+    { key: 'status', label: '状态', visible: true },
+]
+
+const loadColumnPreferences = (): ColumnPreference[] => {
+    try {
+        const raw = localStorage.getItem(CUSTOMER_COLUMN_KEY) ?? localStorage.getItem(LEGACY_GROUP_COLUMN_KEY)
+        if (!raw) return defaultColumns.map(column => ({ ...column }))
+        const stored = JSON.parse(raw) as Array<{ key?: string; visible?: boolean }>
+        const allowed = new Map(defaultColumns.map(column => [column.key, column]))
+        const restored: ColumnPreference[] = []
+        for (const item of stored) {
+            const definition = allowed.get(item.key as ColumnKey)
+            if (!definition || restored.some(column => column.key === definition.key)) continue
+            restored.push({ ...definition, visible: item.visible !== false })
+        }
+        for (const definition of defaultColumns) {
+            if (!restored.some(column => column.key === definition.key)) restored.push({ ...definition })
+        }
+        return restored
+    } catch {
+        return defaultColumns.map(column => ({ ...column }))
+    }
+}
+
+const columnSettingsOpen = ref(false)
+const columnPreferences = ref<ColumnPreference[]>(loadColumnPreferences())
+const visibleGroupColumns = computed(() => columnPreferences.value.filter(column => column.visible))
+const draggedColumnKey = ref<ColumnKey | null>(null)
+const persistColumnPreferences = () => localStorage.setItem(CUSTOMER_COLUMN_KEY, JSON.stringify(columnPreferences.value.map(({ key, visible }) => ({ key, visible }))))
+const toggleColumn = (key: ColumnKey) => {
+    const column = columnPreferences.value.find(item => item.key === key)
+    if (!column) return
+    column.visible = !column.visible
+    persistColumnPreferences()
+}
+const startColumnDrag = (key: ColumnKey) => { draggedColumnKey.value = key }
+const dropColumn = (targetKey: ColumnKey) => {
+    const sourceKey = draggedColumnKey.value
+    draggedColumnKey.value = null
+    if (!sourceKey || sourceKey === targetKey) return
+    const sourceIndex = columnPreferences.value.findIndex(item => item.key === sourceKey)
+    const targetIndex = columnPreferences.value.findIndex(item => item.key === targetKey)
+    if (sourceIndex < 0 || targetIndex < 0) return
+    const [moved] = columnPreferences.value.splice(sourceIndex, 1)
+    columnPreferences.value.splice(targetIndex, 0, moved)
+    persistColumnPreferences()
+}
+const resetColumns = () => {
+    columnPreferences.value = defaultColumns.map(column => ({ ...column }))
+    persistColumnPreferences()
+}
+
+const dateOnly = (value: string | null) => value ? value.slice(0, 10) : '—'
+const customerCountry = (customer: Customer) => customer.country_code ?? customer.primary_address?.country_code ?? '—'
 </script>
 <template>
-    <Head title="客户库 · BYL ERP" />
-    <AuthenticatedLayout title="客户库" :breadcrumbs="['BYL ERP', '客户', '客户库']">
+    <Head :title="`${workspaceTitle} · BYL ERP`" />
+    <AuthenticatedLayout :title="workspaceTitle" :breadcrumbs="['BYL ERP', '客户', workspaceTitle]">
         <div class="erp-form-page">
             <div class="erp-form-content">
-                <div class="erp-form-header-row">
-                    <div>
-                        <h1 class="erp-form-title">客户库</h1>
-                        <p class="erp-form-subtitle">一个客户一条主档；订单后续统一关联到 Customer ID。</p>
+                <div class="erp-form-header-row customer-list-header-row">
+                    <div class="customer-header-copy">
+                        <h1 class="erp-form-title">{{ workspaceTitle }}</h1>
+                        <p class="erp-form-subtitle">{{ workspaceSubtitle }}</p>
                     </div>
-                    <div class="erp-form-header-actions page-header-actions">
-                        <button
-                            class="erp-btn erp-btn-secondary compact-toggle"
-                            type="button"
-                            :title="compact ? '展开统计与筛选' : '收起统计与筛选'"
-                            :aria-label="compact ? '展开统计与筛选' : '收起统计与筛选'"
-                            @click="toggleCompact"
-                        >↕️</button>
-                        <button
-                            v-if="canExport"
-                            class="erp-btn erp-btn-secondary"
-                            type="button"
-                            disabled
-                            title="客户导出功能（M1.8）尚在规划中，暂不可用"
-                        >导出</button>
-                        <button
-                            v-if="canImport"
-                            class="erp-btn erp-btn-secondary"
-                            type="button"
-                            disabled
-                            title="客户导入功能（M1.8）尚在规划中，暂不可用"
-                        >导入</button>
-                        <Link v-if="canOperate" class="erp-btn erp-btn-primary" href="/customers/library/create">新建客户</Link>
+                    <div class="erp-form-header-actions page-header-actions customer-header-actions">
+                        <div class="customer-header-leading-actions">
+                            <button
+                                class="erp-btn erp-btn-secondary compact-toggle"
+                                type="button"
+                                :title="compact ? '展开统计与筛选' : '收起统计与筛选'"
+                                :aria-label="compact ? '展开统计与筛选' : '收起统计与筛选'"
+                                @click="toggleCompact"
+                            >↕️</button>
+                            <button
+                                v-if="canExport"
+                                class="erp-btn erp-btn-secondary customer-header-utility"
+                                type="button"
+                                disabled
+                                title="客户导出功能（M1.8）尚在规划中，暂不可用"
+                            >导出</button>
+                            <button
+                                v-if="canImport"
+                                class="erp-btn erp-btn-secondary customer-header-utility"
+                                type="button"
+                                disabled
+                                title="客户导入功能（M1.8）尚在规划中，暂不可用"
+                            >导入</button>
+                        </div>
+                        <nav class="customer-group-shortcut-rail" aria-label="客户分组快捷筛选">
+                            <Link
+                                v-for="shortcut in groupShortcuts"
+                                :key="shortcut.key || 'all'"
+                                class="erp-btn erp-btn-secondary customer-group-shortcut"
+                                :class="{ 'customer-group-shortcut-active': filters.group === shortcut.key }"
+                                :href="groupHref(shortcut.key)"
+                            >{{ shortcut.label }}</Link>
+                        </nav>
+                        <Link v-if="canOperate" class="erp-btn erp-btn-primary customer-header-create" href="/customers/library/create">新建客户</Link>
                     </div>
                 </div>
 
@@ -217,13 +343,6 @@ const salesKpiTooltip = computed((): string => {
                                     <option value="all">全部</option>
                                 </select>
                             </div>
-                            <!-- M1.2 reserved: customer group filter (not yet implemented) -->
-                            <div class="filter-row-field">
-                                <label class="erp-form-label" for="filter-group">客户分组（M1.2）</label>
-                                <select id="filter-group" class="erp-select filter-select" disabled title="客户分组筛选（M1.2）尚未实现">
-                                    <option value="">全部分组</option>
-                                </select>
-                            </div>
                             <div class="filter-row-submit">
                                 <span class="erp-form-label" aria-hidden="true">&nbsp;</span>
                                 <button class="erp-btn erp-btn-primary" type="submit">筛选</button>
@@ -232,54 +351,100 @@ const salesKpiTooltip = computed((): string => {
                     </form>
                 </template>
 
-                <div class="mvp-table-wrap">
-                    <table class="mvp-table">
-                        <thead>
-                            <tr>
-                                <th>客户编号 / 姓名</th>
-                                <th>Email</th>
-                                <th>电话</th>
-                                <th>国家</th>
-                                <th>来源</th>
-                                <th>订单数</th>
-                                <th>累计销售额</th>
-                                <th>最近下单</th>
-                                <th>负责人</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="customer in customers.data" :key="customer.id">
-                                <td>
-                                    <Link :href="`/customers/library/${customer.id}`" class="customer-name-link">{{ customer.name }}</Link>
-                                    <br><span class="customer-number">{{ customer.customer_number }}</span>
-                                    <span v-if="customer.archived_at" class="archived-badge">已归档</span>
-                                </td>
-                                <td>{{ customer.email ?? '—' }}</td>
-                                <td>{{ customer.phone ?? '—' }}</td>
-                                <td>{{ customer.country_code ?? '—' }}</td>
-                                <td>{{ customer.source_label }}</td>
-                                <td>{{ customer.orders_count }}</td>
-                                <td class="td-revenue">
-                                    <template v-if="customer.lifetime_revenue.length === 0">—</template>
-                                    <template v-else>
-                                        <span v-for="r in customer.lifetime_revenue" :key="r.currency" class="revenue-chip">
-                                            {{ money(r.revenue, r.currency) }}
-                                        </span>
-                                    </template>
-                                </td>
-                                <td>{{ customer.latest_order_date ?? '—' }}</td>
-                                <td>{{ customer.owner?.name ?? '—' }}</td>
-                                <td>
-                                    <Link :href="`/customers/library/${customer.id}`" class="erp-btn erp-btn-secondary table-action-btn">查看</Link>
-                                    <button v-if="canOperate && customer.archived_at" class="erp-btn erp-btn-secondary table-action-btn" type="button" @click="restore(customer)">恢复</button>
-                                </td>
-                            </tr>
-                            <tr v-if="customers.data.length === 0">
-                                <td colspan="10" class="mvp-empty">暂无符合条件的客户</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <div class="customer-grid-shell">
+                    <div class="customer-grid-settings-anchor">
+                        <button
+                            class="column-settings-trigger"
+                            type="button"
+                            aria-label="设置客户列表列"
+                            title="设置显示列和列顺序"
+                            @click="columnSettingsOpen = !columnSettingsOpen"
+                        >…</button>
+                        <div v-if="columnSettingsOpen" class="column-settings-panel" @click.stop>
+                            <div class="column-settings-heading">
+                                <strong>列设置</strong>
+                                <button type="button" class="column-reset-btn" @click="resetColumns">恢复默认</button>
+                            </div>
+                            <p class="column-settings-help">勾选显示列；按住拖动柄上下调整列顺序。设置保存在当前浏览器。</p>
+                            <div class="column-setting-row column-setting-pinned">
+                                <span class="column-drag-handle column-drag-disabled">⋮⋮</span>
+                                <input type="checkbox" checked disabled aria-label="客户编号 / 姓名固定显示">
+                                <span>客户编号 / 姓名</span>
+                                <small>固定</small>
+                            </div>
+                            <div
+                                v-for="column in columnPreferences"
+                                :key="column.key"
+                                class="column-setting-row"
+                                draggable="true"
+                                :data-column-key="column.key"
+                                @dragstart="startColumnDrag(column.key)"
+                                @dragover.prevent
+                                @drop="dropColumn(column.key)"
+                            >
+                                <span class="column-drag-handle" title="拖动调整顺序">⋮⋮</span>
+                                <input
+                                    type="checkbox"
+                                    :checked="column.visible"
+                                    :aria-label="`显示${column.label}`"
+                                    @change="toggleColumn(column.key)"
+                                >
+                                <span>{{ column.label }}</span>
+                            </div>
+                            <p class="column-settings-unavailable">用户名、网站最近活跃：等待 Woo Customer 数据 authority 接入后开放。</p>
+                        </div>
+                    </div>
+                    <div class="mvp-table-wrap customer-grid-scroll">
+                        <table class="mvp-table customer-data-grid">
+                            <thead>
+                                <tr>
+                                    <th class="customer-grid-identity">客户编号 / 姓名</th>
+                                    <th v-for="column in visibleGroupColumns" :key="column.key">{{ column.label }}</th>
+                                    <th class="customer-grid-action-head"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="customer in customers.data" :key="customer.id">
+                                    <td class="customer-grid-identity">
+                                        <Link :href="`/customers/library/${customer.id}`" class="customer-name-link">{{ customer.name }}</Link>
+                                        <br><span class="customer-number">{{ customer.customer_number }}</span>
+                                    </td>
+                                    <td v-for="column in visibleGroupColumns" :key="column.key" :class="{ 'td-revenue': column.key === 'total_spend' || column.key === 'aov' }">
+                                        <template v-if="column.key === 'email'">{{ customer.email ?? '—' }}</template>
+                                        <template v-else-if="column.key === 'phone'">{{ customer.phone ?? '—' }}</template>
+                                        <template v-else-if="column.key === 'registered_at'">{{ dateOnly(customer.created_at) }}</template>
+                                        <template v-else-if="column.key === 'country_region'">{{ customerCountry(customer) }}</template>
+                                        <template v-else-if="column.key === 'city'">{{ customer.primary_address?.city ?? '—' }}</template>
+                                        <template v-else-if="column.key === 'province_state'">{{ customer.primary_address?.province_state ?? '—' }}</template>
+                                        <template v-else-if="column.key === 'postal_code'">{{ customer.primary_address?.postal_code ?? '—' }}</template>
+                                        <template v-else-if="column.key === 'source'">{{ customer.source_label }}</template>
+                                        <template v-else-if="column.key === 'orders_count'">{{ customer.orders_count }}</template>
+                                        <template v-else-if="column.key === 'total_spend'">
+                                            <template v-if="customer.lifetime_revenue.length === 0">—</template>
+                                            <span v-for="r in customer.lifetime_revenue" v-else :key="r.currency" class="revenue-chip">{{ money(r.revenue, r.currency) }}</span>
+                                        </template>
+                                        <template v-else-if="column.key === 'aov'">
+                                            <template v-if="customer.lifetime_revenue.length === 0">—</template>
+                                            <span v-for="r in customer.lifetime_revenue" v-else :key="r.currency" class="revenue-chip">{{ money(r.average_order_value, r.currency) }}</span>
+                                        </template>
+                                        <template v-else-if="column.key === 'latest_order'">{{ customer.latest_order_date ?? '—' }}</template>
+                                        <template v-else-if="column.key === 'owner'">{{ customer.owner?.name ?? '—' }}</template>
+                                        <template v-else-if="column.key === 'status'">
+                                            <span v-if="customer.archived_at" class="archived-badge">已归档</span>
+                                            <span v-else class="active-badge">在用</span>
+                                        </template>
+                                    </td>
+                                    <td class="customer-grid-action-cell">
+                                        <Link :href="`/customers/library/${customer.id}`" class="erp-btn erp-btn-secondary table-action-btn">查看</Link>
+                                        <button v-if="canOperate && customer.archived_at" class="erp-btn erp-btn-secondary table-action-btn" type="button" @click="restore(customer)">恢复</button>
+                                    </td>
+                                </tr>
+                                <tr v-if="customers.data.length === 0">
+                                    <td :colspan="visibleGroupColumns.length + 2" class="mvp-empty">暂无符合条件的客户</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
                 <div v-if="customers.last_page > 1" class="pagination-row">
@@ -336,6 +501,45 @@ const salesKpiTooltip = computed((): string => {
 .filter-input-sm { min-width: 80px; }
 .filter-select { min-width: 140px; }
 .compact-toggle { font-size: 16px; padding: 6px 10px; }
+.customer-list-header-row { align-items: flex-start; }
+.customer-header-copy { flex: 0 1 300px; min-width: 220px; }
+.customer-header-actions {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+    gap: 6px;
+    min-width: 0;
+    max-width: calc(100% - 236px);
+}
+.customer-header-leading-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
+.customer-header-utility { flex: 0 0 auto; padding-inline: 10px; }
+.customer-group-shortcut-rail {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+}
+.customer-group-shortcut {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 6px 9px;
+    min-height: 34px;
+    font-size: 12px;
+}
+.customer-header-create { flex: 0 0 auto; white-space: nowrap; }
+.customer-group-shortcut-active {
+    border-color: #142126;
+    background: #E9F0F2;
+    color: #142126;
+    font-weight: 700;
+}
 .customer-name-link { font-weight: 600; color: #142126; text-decoration: none; }
 .customer-name-link:hover { text-decoration: underline; }
 .customer-number { font-size: 11px; color: #7A8C94; }
@@ -352,6 +556,99 @@ const salesKpiTooltip = computed((): string => {
 .td-revenue { white-space: nowrap; }
 .revenue-chip { display: block; font-size: 12px; color: #344B53; }
 .table-action-btn { font-size: 12px; padding: 4px 10px; }
+.active-badge {
+    display: inline-block;
+    background: #E8F5F1;
+    color: #246F68;
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 999px;
+}
+.customer-grid-shell { position: relative; }
+.customer-grid-scroll { overflow-x: auto; scrollbar-width: thin; }
+.customer-data-grid { min-width: 1500px; }
+.customer-data-grid th,
+.customer-data-grid td { white-space: nowrap; }
+.customer-grid-identity {
+    position: sticky;
+    left: 0;
+    min-width: 190px;
+    background: #fff;
+    z-index: 3;
+}
+thead .customer-grid-identity { z-index: 5; }
+.customer-grid-action-head,
+.customer-grid-action-cell {
+    position: sticky;
+    right: 0;
+    width: 76px;
+    min-width: 76px;
+    background: #fff;
+    z-index: 4;
+}
+.customer-grid-settings-anchor {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 76px;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+    border-left: 1px solid #E4EAED;
+    border-bottom: 1px solid #E4EAED;
+    z-index: 20;
+}
+.column-settings-trigger {
+    width: 42px;
+    height: 32px;
+    border: 1px solid #DCE5E8;
+    border-radius: 8px;
+    background: #fff;
+    color: #344B53;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+.column-settings-trigger:hover { background: #F4F7F8; }
+.column-settings-panel {
+    position: absolute;
+    top: 40px;
+    right: 0;
+    width: 300px;
+    max-height: 520px;
+    overflow-y: auto;
+    padding: 12px;
+    background: #fff;
+    border: 1px solid #DCE5E8;
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(20, 33, 38, 0.14);
+    text-align: left;
+    z-index: 40;
+}
+.column-settings-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.column-settings-help,
+.column-settings-unavailable { margin: 8px 0; font-size: 11px; line-height: 1.45; color: #7A8C94; }
+.column-settings-unavailable { padding-top: 8px; border-top: 1px solid #EEF2F3; }
+.column-reset-btn { border: 0; background: transparent; color: #2D8C84; font-size: 12px; cursor: pointer; }
+.column-setting-row {
+    display: grid;
+    grid-template-columns: 22px 22px 1fr auto;
+    align-items: center;
+    gap: 6px;
+    min-height: 34px;
+    padding: 4px 5px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: grab;
+}
+.column-setting-row:hover { background: #F4F7F8; }
+.column-setting-row:active { cursor: grabbing; }
+.column-setting-pinned { background: #F8FAFA; cursor: default; }
+.column-setting-row small { color: #7A8C94; font-size: 10px; }
+.column-drag-handle { color: #7A8C94; letter-spacing: -2px; user-select: none; }
+.column-drag-disabled { opacity: 0.35; }
 .pagination-row {
     display: flex;
     gap: 4px;
@@ -371,6 +668,15 @@ const salesKpiTooltip = computed((): string => {
 }
 .pagination-btn-active { background: #2D8C84; color: #fff; border-color: #2D8C84; }
 .pagination-btn-disabled { color: #7A8C94; cursor: not-allowed; }
-@media (max-width: 1100px) { .customer-kpi-row { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 1100px) {
+    .customer-kpi-row { grid-template-columns: repeat(3, 1fr); }
+    .customer-header-copy { flex-basis: 250px; min-width: 190px; }
+    .customer-header-actions { max-width: calc(100% - 206px); }
+}
+@media (max-width: 760px) {
+    .customer-list-header-row { width: 100%; }
+    .customer-header-copy { width: 100%; min-width: 0; }
+    .customer-header-actions { width: 100%; max-width: 100%; }
+}
 @media (max-width: 700px) { .customer-kpi-row { grid-template-columns: repeat(2, 1fr); } }
 </style>

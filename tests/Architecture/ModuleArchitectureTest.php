@@ -395,6 +395,7 @@ final class ModuleArchitectureTest extends TestCase
         'customers.companies.show',
         'customers.companies.store',
         'customers.companies.update',
+        'customers.groups',
         'customers.library',
         'customers.library.archive',
         'customers.library.create',
@@ -683,7 +684,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Customers/Dashboard.vue' => 'a275cd384461e90fa7d71f9b2d14acbd41556a25dff239ab1d2dadeccf765b32',
         'resources/js/Pages/Customers/Library/Create.vue' => '17066bb7a7f0dc1ac21f539f79f79397990b08574b69952171683975878d50d6',
         'resources/js/Pages/Customers/Library/Edit.vue' => '1b99107357f6979f860c72457bfc01c9f5bf7f3c39343d96afe946f48774895f',
-        'resources/js/Pages/Customers/Library/Index.vue' => '2b6037b559a951d39d591b1a762ba3652ac6a764995e8149cfb64ffb99aad372',
+        'resources/js/Pages/Customers/Library/Index.vue' => 'aa5cf036864556f8206435b899a8a602f86d432828bfa2580a798cde32157189',
         'resources/js/Pages/Customers/Library/Show.vue' => '08c0cffcb2c068eb4d04cf0c50f951a1814b376e3e66f9ec962f9f714aaad676',
         'resources/js/Pages/Dashboard/Index.test.ts' => '27c63e094fcdec28a0e5677508723e149c90a5130efb98d4448fa2b7f51b4ae4',
         'resources/js/Pages/Dashboard/Index.vue' => '0c28a768afcaa181b54ab01c4ec08457a04f7ed98e5ba3b52a041d98492bc2bb',
@@ -985,7 +986,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('62be9d4e01ffcb018b10cdf65e41997b280ad18d69c325320f424824f7160592', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('c6a79a44704e43743b9b6cf1ea62a39be7105135ebfb100ef37465e87354148c', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);
