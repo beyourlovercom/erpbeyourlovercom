@@ -6,15 +6,15 @@ use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
- * Page Header Action Zone enforcement for the 23 current-main pages
- * defined in ERP-PAGE-HEADER-ACTION-ZONE-001.
+ * Page Header Action Zone enforcement for the 27 current-main pages
+ * defined in ERP-PAGE-HEADER-ACTION-ZONE-001 and ERP-CUSTOMER-MASTER-M1-CLEAN-001.
  *
  * Audited no-change exceptions (actions are not page-level):
  *   - resources/js/Pages/Inventory/Sync.vue      (workflow-step-local import buttons)
  *   - resources/js/Pages/Logistics/Index.vue     (per-order record-card actions)
  *
  * Feature-only exclusions (not present on current main — enforced by their own PRs):
- *   - Customers/Library/*,  Customers/Subscribers/*
+ *   - Customers/Subscribers/*
  *   - Support/Calls/*, Support/QualityIssues/*, Support/Tickets/*
  */
 final class PageHeaderActionStandardTest extends TestCase
@@ -23,6 +23,9 @@ final class PageHeaderActionStandardTest extends TestCase
         'resources/js/Pages/Customers/Companies/Create.vue',
         'resources/js/Pages/Customers/Companies/Edit.vue',
         'resources/js/Pages/Customers/Companies/Show.vue',
+        'resources/js/Pages/Customers/Library/Create.vue',
+        'resources/js/Pages/Customers/Library/Edit.vue',
+        'resources/js/Pages/Customers/Library/Show.vue',
         'resources/js/Pages/Identity/Users/Create.vue',
         'resources/js/Pages/Identity/Users/Edit.vue',
         'resources/js/Pages/Kol/Create.vue',
@@ -37,7 +40,9 @@ final class PageHeaderActionStandardTest extends TestCase
     ];
 
     private const SECOND_BATCH = [
+        'resources/js/Pages/Customers/Dashboard.vue',
         'resources/js/Pages/Customers/Companies/Index.vue',
+        'resources/js/Pages/Customers/Library/Index.vue',
         'resources/js/Pages/Products/Index.vue',
         'resources/js/Pages/Products/Import.vue',
         'resources/js/Pages/Identity/RolesPermissions/Index.vue',
@@ -112,6 +117,8 @@ final class PageHeaderActionStandardTest extends TestCase
 
         // erp-form-actions bottom bar must be absent (moved to header as erp-form-header-actions) for these pages
         foreach ([
+            'resources/js/Pages/Customers/Library/Create.vue',
+            'resources/js/Pages/Customers/Library/Edit.vue',
             'resources/js/Pages/Products/Create.vue',
             'resources/js/Pages/Products/Edit.vue',
             'resources/js/Pages/Orders/Create.vue',

@@ -58,15 +58,20 @@ final class SyncWorkspaceController
         ]);
     }
 
-    public function exports(): Response
+    public function exports(\Illuminate\Http\Request $request): Response
     {
-        return Inertia::render('Sync/Exports', [
-            'exports' => [
-                ['key' => 'all', 'label' => '全部 ERP 订单', 'href' => '/orders/export'],
-                ['key' => 'customers', 'label' => '客户订单', 'href' => '/customers/orders/export'],
-                ['key' => 'procurement', 'label' => '外采订单', 'href' => '/orders/procurement/export'],
-            ],
-        ]);
+        $canCustomerExport = $request->user()->can('customers.export') && $request->user()->can('system.permissions.manage');
+
+        $exports = [
+            ['key' => 'all', 'label' => '全部 ERP 订单', 'href' => '/orders/export'],
+            ['key' => 'procurement', 'label' => '外采订单', 'href' => '/orders/procurement/export'],
+        ];
+
+        if ($canCustomerExport) {
+            $exports[] = ['key' => 'customers', 'label' => '客户订单', 'href' => '/customers/orders/export'];
+        }
+
+        return Inertia::render('Sync/Exports', ['exports' => $exports]);
     }
 
     private function domain(Model $run): string

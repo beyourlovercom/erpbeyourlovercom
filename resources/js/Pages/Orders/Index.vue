@@ -14,6 +14,7 @@ const props = defineProps<{
   filters: Record<string, string>
   sourceTypes: { value: string; label: string }[]
   savedViews: SavedView[]
+  canExport: boolean
 }>()
 
 const filters = reactive({
@@ -82,7 +83,7 @@ const orderPath = (order: Order) => order.order_kind === 'kol_fulfillment' ? `/k
       <div class="mvp-page-heading">
         <div><p class="mvp-kicker">订单核心</p><h2>{{ heading }}</h2><p>统一维护 Website、KOL 和 Manual Other 订单。</p></div>
         <div class="mvp-actions page-header-actions">
-          <a class="mvp-button" :href="exportUrl()">导出 CSV</a>
+          <a v-if="canExport" class="mvp-button" :href="exportUrl()">导出 CSV</a>
           <template v-if="orderKind === 'all' && orderScope !== 'external_warehouse'">
             <Link class="mvp-button" href="/customers/orders/create">新建客户订单</Link>
             <Link class="mvp-button mvp-button-primary" href="/kol/orders/create">新建网红订单</Link>
