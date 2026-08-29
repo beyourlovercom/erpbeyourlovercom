@@ -603,3 +603,19 @@ Merge of reconciliation PR: requires separate explicit Owner authorization.
 ## 2026-08-28 — KOL V1 full completion selected as next program priority
 
 Owner selected the KOL route after the full ERP roadmap reconciliation. Next sequence: M1.2A Collaboration → M1.2B Canonical Fulfillment Bridge → M1.3 Content → M1.4 Finance/Affiliate → Cross-phase Closure. MVP2 and Inquiry M1.2 remain paused. Canonical Product/Inventory/Order/Shipment/Tracking ownership is unchanged. Decision: D-041.
+
+## 2026-08-29 — KOL M1.4 expanded to ERP-operated AffiliateWP workflow
+
+```text
+Owner decision: KOL Specialists and Managers must complete normal influencer, AffiliateWP, Coupon, commission and payout operations from ERP without routine WordPress login.
+Decision: D-042.
+Previous state: M1.4 prototype supported local Affiliate bindings, Coupon metadata, Referral commission projections and ERP settlements but explicitly excluded live AffiliateWP connector/sync and full payout administration.
+New state: M1.4 is split into M1.4A Connector Foundation, M1.4B Influencer Sync/Approval/Provisioning, M1.4C Coupon Sync/Provisioning, M1.4D Referral/Commission Sync, M1.4E Commission Payout Workflow, and M1.4F Approval Center/Dashboard.
+Approval policy: ALL | THRESHOLD | NONE; Manager/Admin creation auto-approves; THRESHOLD auto-approves when any configured platform exemption threshold is met and requires review when all are below threshold or reliable facts are missing.
+Coupon rule: normalized global uniqueness; one Coupon Code -> at most one Affiliate/KOL; one KOL -> many Coupons permitted.
+Payout rule: exact unpaid Referral snapshot -> Specialist application -> Manager approval -> manual PayPal -> recorded transaction -> AffiliateWP Payout reconciliation; approval != paid; PAID_SYNC_PENDING retries sync only.
+Provider truth: WordPress User = WordPress; Coupon/customer Order = WooCommerce; Affiliate/Referral/Payout = AffiliateWP; ERP = KOL master + operating/approval/audit/Finance workspace.
+External dependency: Andy Core v1.5.3 WordPress Connector; v1.5.2 remains released baseline; implementation occurs in separate Andy Core chat/repository.
+Current Work Package: ERP-KOL-M1.4A-AFFILIATEWP-CONNECTOR-FOUNDATION-001.
+Production/deployment: NO. Merge: separately gated.
+```
