@@ -2,7 +2,7 @@
 type: work-package
 project: BYL ERP
 work_package_id: ERP-CUSTOMER-M1-2-SEGMENTATION-001
-status: OWNER_UAT_PASS / DELIVERY_AUTHORIZED / DRAFT_PR_PENDING
+status: OWNER_UAT_PASS / DELIVERY_AUTHORIZED / DRAFT_PR_120_OPEN
 execution_provider: GPT_WEB_OWNER_AUTHORIZED
 baseline: origin/main@9052d1ed8c1b361264c4b7802d99fba2eaba6611
 ---
@@ -110,12 +110,13 @@ PROJECT POSITION
 PROGRAM_ROADMAP: Customer M1.1 Experience → Customer M1.2 Segmentation Foundation → Customer M1.3 Subscriber Integration → Customer M1.4 Support Integration → Customer M1.5 Fulfillment Projection → Customer M1.6 Advanced Segmentation → Customer M1.7 Manual Groups → Customer M1.8 Full Import/Export → Customer M1.9 Customer360 Closure
 CURRENT_PHASE: Customer M1.2 GitHub delivery
 CURRENT_WORK_PACKAGE: ERP-CUSTOMER-M1-2-SEGMENTATION-001
-PACKAGE_STATUS: OWNER_UAT_PASS / DELIVERY_READY / DRAFT_PR_PENDING
-WAITING_PHASES: Draft PR exact-head gate; separate Owner merge authorization; Customer M1.3
+PACKAGE_STATUS: OWNER_UAT_PASS / DELIVERY_READY / DRAFT_PR_120_OPEN
+WAITING_PHASES: Draft PR #120 exact-head gate; separate Owner merge authorization; Customer M1.3
 BASELINE: origin/main@9052d1ed8c1b361264c4b7802d99fba2eaba6611
 SOURCE_CONFLICTS: NONE at pre-commit gate
 GLOBAL_GATE: PACKAGE REGRESSION PASS; repository-global ModuleArchitecture retains 3 pre-existing KOL baseline failures
-NEXT_DEPENDENCY: commit → push → Draft PR → exact-head verification → separate Owner merge gate
+GITHUB_STATE: Draft PR #120 open; head branch feature/erp-customer-m1-2-segmentation-001; base main
+NEXT_DEPENDENCY: exact-head verification of Draft PR #120 → separate Owner merge gate
 EVIDENCE_AS_OF: 2026-08-29
 
 OWNER_REVIEW: INCLUDED / PASS
