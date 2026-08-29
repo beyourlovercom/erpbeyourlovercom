@@ -1,6 +1,8 @@
 # BYL ERP Global Data Grid VI V1.1
 
-Status: OWNER APPROVED / GLOBAL UI CONTRACT
+Status: OWNER APPROVED / GLOBAL UI CONTRACT / COMPLETE / FROZEN / CLOSED
+Rule ID: `BYL_GLOBAL_DATA_GRID_VI_V1_1`
+Canonical source locator: `beyourlovercom/erpbeyourlovercom@main:docs/10_Planning_Roadmap/26_BYL_ERP_GLOBAL_DATA_GRID_VI_V1_1.md`
 Reference implementation: `/customers/groups`
 Reference namespace: `grid.customers.groups.v1`
 
@@ -88,3 +90,32 @@ Column resize, column groups/presets, bulk actions and Saved/Shared Views are la
 ## 9. Reference implementation
 
 `/customers/groups` is the V1.1 reference implementation. New list upgrades should preserve its interaction model while using the target module's own canonical data authority and permissions.
+
+## 10. Cross-project portability contract
+
+`BYL_GLOBAL_DATA_GRID_VI_V1_1` is a portable contract, not an ERP-only implementation package. Another repository or product may adopt it without sharing BYL ERP's framework or source tree.
+
+A project invokes the contract by explicitly referencing the Rule ID in its `AGENTS.md`, work package, architecture specification, or Owner instruction. After invocation, the project must preserve the same four contracts: Visual, Column, Query and Preference.
+For cross-repository use, include the canonical source locator above or vendor a pinned copy of this contract into the target repository. A vendored copy must retain the Rule ID and source/version reference so later upgrades are explicit rather than silent.
+
+Portable semantics are mandatory; implementation mechanics are replaceable. Vue composables, Laravel routes/models and the literal `user_ui_preferences` table name are BYL ERP implementations, not cross-project requirements. React, Svelte, native apps or another backend may implement equivalent adapters.
+
+A conforming target project must still keep one generic per-account UI-preference authority, versioned grid namespaces, permission-aware sanitization and browser storage as cache only. Per-module preference databases and copied business truth remain prohibited.
+
+If the target project has no authenticated account/identity authority, it may reuse the Visual/Column/Query portions, but must not claim full `BYL_GLOBAL_DATA_GRID_VI_V1_1` compliance until an Owner-approved equivalent identity/preference authority exists.
+
+## 11. Invocation examples
+
+A target project's governance may activate the rule with a statement such as:
+
+`UI_RULE: BYL_GLOBAL_DATA_GRID_VI_V1_1`
+
+`RULE_SOURCE: beyourlovercom/erpbeyourlovercom@main:docs/10_Planning_Roadmap/26_BYL_ERP_GLOBAL_DATA_GRID_VI_V1_1.md`
+
+or:
+
+`This project's primary business grids adopt BYL_GLOBAL_DATA_GRID_VI_V1_1.`
+
+Once invoked, project-specific resource adapters remain responsible for their own canonical data authority, permissions, query implementation and row actions.
+
+Local Owner-approved project rules remain authoritative for explicit conflicts. Conflicts must be surfaced for Owner resolution instead of silently weakening or overriding either contract.

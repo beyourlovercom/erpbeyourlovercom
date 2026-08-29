@@ -106,3 +106,30 @@ Within the upper-right cluster, navigation/cancel actions come first, secondary 
 This rule does not move table-row actions, field-local actions, filters/search controls, pagination, or modal-local actions out of their own context. Existing pages are migration candidates; whenever an existing page is materially touched, its page-level actions must be brought into compliance.
 
 This is an OWNER-APPROVED HIGHEST UI interaction rule and applies globally unless the Owner explicitly revokes or replaces it.
+
+# GLOBAL DATA GRID VI V1.1 GATE
+
+**Rule ID: `BYL_GLOBAL_DATA_GRID_VI_V1_1`. Implementation baseline: OWNER_UAT PASS / COMPLETE / FROZEN / CLOSED. The rule remains active for BYL ERP and is portable to other projects when explicitly invoked.**
+
+For every primary business list or data-workbench page, default to the Global Data Grid VI pattern unless a documented exception applies. Simple embedded tables with only a few stable columns may remain Simple Tables.
+
+The canonical layout is: identity column fixed at the left, configurable data columns in the middle, and row actions fixed at the right. The compact table-header far-right `…` is the canonical Column Settings trigger. Column Settings supports show/hide, drag reorder and restore defaults without permanently consuming vertical space. Wide grids may scroll horizontally.
+
+Every displayed field must come from an explicit canonical authority or an explicit relation/aggregate/virtual projection. Never copy Order, Shipment, Inventory, Finance, Customer or other business truth into another resource merely to make a grid easier to render, and never fabricate unavailable fields for presentation.
+
+Primary grids that can grow materially must use server-side pagination/filtering/sorting. Sort/filter keys are allowlisted logical keys; arbitrary database-field passthrough is forbidden. N+1 row loading is forbidden.
+
+Personal grid layout is a user-account preference, not a device preference. In BYL ERP, canonical persistence is the single generic `user_ui_preferences` authority keyed by `(user_id, namespace)` with versioned namespaces such as `grid.{resource}.{view}.v{version}`. Browser storage is cache/migration fallback only and must never become canonical authority. Do not create per-module Grid preference tables or a database-backed column registry.
+
+Stored preferences may contain UI choices only. Current code/config remains authoritative for allowed columns, labels, source mappings, formatting and permissions. A Preference Sanitizer must remove unknown/duplicate/disallowed keys, restore required/default columns, and must never allow a saved preference to bypass current permissions.
+
+The complete canonical contract is `docs/10_Planning_Roadmap/26_BYL_ERP_GLOBAL_DATA_GRID_VI_V1_1.md`.
+Cross-project canonical source locator: `beyourlovercom/erpbeyourlovercom@main:docs/10_Planning_Roadmap/26_BYL_ERP_GLOBAL_DATA_GRID_VI_V1_1.md`.
+
+## Cross-project invocation
+
+`BYL_GLOBAL_DATA_GRID_VI_V1_1` is a portable, framework-agnostic UI/data contract. Any other project may adopt it by explicitly referencing this Rule ID in that project's `AGENTS.md`, work package, architecture document, or Owner instruction. Once invoked, preserve the Visual, Column, Query and Preference contracts while adapting implementation details to that project's framework, database and authentication model.
+
+Do not assume Vue, Laravel, `useAccountGridPreferences`, or the literal `user_ui_preferences` table name outside BYL ERP. A different project may implement equivalent adapters and persistence, but it must preserve one generic account-preference authority rather than per-module preference stores. If a target project has no authenticated user/account concept, it cannot claim full V1.1 account-sync compliance unless the Owner explicitly defines an equivalent identity authority.
+
+When a target project's explicit Owner-approved local rule conflicts with this portable contract, do not silently override either rule; stop and surface the conflict for Owner resolution.
