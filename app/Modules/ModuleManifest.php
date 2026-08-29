@@ -11,6 +11,7 @@ use App\Modules\Finance\Providers\FinanceServiceProvider;
 use App\Modules\Guides\Providers\GuidesServiceProvider;
 use App\Modules\Kol\Providers\KolServiceProvider;
 use App\Modules\Logistics\Providers\LogisticsServiceProvider;
+use App\Modules\Marketing\Providers\MarketingServiceProvider;
 use App\Modules\Orders\Providers\OrdersServiceProvider;
 use App\Modules\Runtime\Providers\RuntimeServiceProvider;
 use App\Modules\Shell\Providers\ShellServiceProvider;
@@ -43,6 +44,7 @@ final class ModuleManifest
             CustomersServiceProvider::class,
             ProductsServiceProvider::class,
             InventoryServiceProvider::class,
+            MarketingServiceProvider::class,
         ];
     }
 

@@ -27,6 +27,13 @@ return [
         ['key' => 'customers-orders-create', 'label' => '新建订单', 'path' => '/customers/orders/create', 'route' => 'customers.orders.create', 'permission' => 'orders.create', 'placeholder' => false],
         ['key' => 'customers-orders-mine', 'label' => '我的订单', 'path' => '/customers/orders/mine', 'route' => 'customers.orders.mine', 'permission' => 'prototype.view', 'placeholder' => false],
     ]],
+    ['key' => 'marketing', 'label' => '营销', 'emoji' => '📣', 'path' => '/marketing', 'route' => 'shell.marketing', 'permission' => 'marketing.view', 'placeholder' => false, 'children' => [
+        ['key' => 'marketing-subscribers', 'label' => '邮件订阅', 'path' => '/marketing/subscribers', 'route' => 'marketing.subscribers', 'permission' => 'marketing.view', 'placeholder' => false],
+        ['key' => 'marketing-newsletters', 'label' => '群发邮件', 'path' => '/marketing/newsletters', 'route' => 'marketing.newsletters', 'permission' => 'marketing.view', 'placeholder' => false],
+        ['key' => 'marketing-campaigns', 'label' => '营销活动', 'path' => '/marketing/campaigns', 'route' => 'marketing.campaigns', 'permission' => 'marketing.view', 'placeholder' => false],
+        ['key' => 'marketing-automations', 'label' => '自动化营销', 'path' => '/marketing/automations', 'route' => 'marketing.automations', 'permission' => 'marketing.view', 'placeholder' => false],
+        ['key' => 'marketing-promotions', 'label' => '优惠促销', 'path' => '/marketing/promotions', 'route' => 'marketing.promotions', 'permission' => 'marketing.view', 'placeholder' => false],
+    ]],
     ['key' => 'kol', 'label' => '网红', 'emoji' => '⭐', 'path' => '/kol', 'route' => 'shell.kol', 'permission' => 'kol.view', 'placeholder' => false, 'children' => [
         ['key' => 'kol-library', 'label' => '红人库', 'path' => '/kol/library', 'route' => 'kol.library', 'permission' => 'kol.view', 'placeholder' => false],
         ['key' => 'kol-orders', 'label' => '网红订单', 'path' => '/kol/orders', 'route' => 'kol.orders', 'permission' => 'orders.view', 'placeholder' => false],

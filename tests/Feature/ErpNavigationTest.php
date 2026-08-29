@@ -25,7 +25,7 @@ class ErpNavigationTest extends TestCase
         $permissionKeys = [
             'prototype.view', 'dashboard.view', 'architecture.foundation.view', 'logistics.view', 'logistics.operate',
             'sync.view', 'sync.operate', 'customers.view', 'kol.view', 'inventory.view', 'procurement.view',
-            'products.view', 'guides.view', 'accounting.view', 'system.permissions.manage', 'orders.view',
+            'products.view', 'guides.view', 'accounting.view', 'marketing.view', 'marketing.operate', 'system.permissions.manage', 'orders.view',
             'orders.create', 'orders.edit', 'analysis.view',
         ];
         $permissions = collect($permissionKeys)->mapWithKeys(fn (string $key): array => [$key => Permission::create(['key' => $key, 'label' => $key])]);
@@ -43,7 +43,7 @@ class ErpNavigationTest extends TestCase
     public function test_shell_renders_required_modules_without_affiliate(): void
     {
         $response = $this->get('/logistics/pending');
-        $response->assertInertia(fn (Assert $page) => $page->component('Logistics/Index')->has('shellNavigation', 12));
+        $response->assertInertia(fn (Assert $page) => $page->component('Logistics/Index')->has('shellNavigation', 13));
     }
 
     public function test_accounting_third_level_navigation_is_rendered(): void

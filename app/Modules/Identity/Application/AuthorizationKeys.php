@@ -37,4 +37,6 @@ enum AuthorizationKeys: string
     case LogisticsOperate = 'logistics.operate';
     case SyncOperate = 'sync.operate';
     case AnalysisView = 'analysis.view';
+    case MarketingView = 'marketing.view';
+    case MarketingOperate = 'marketing.operate';
 }

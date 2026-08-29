@@ -11,6 +11,7 @@ use App\Modules\Identity\Providers\IdentityServiceProvider;
 use App\Modules\Inventory\Providers\InventoryServiceProvider;
 use App\Modules\Kol\Providers\KolServiceProvider;
 use App\Modules\Logistics\Providers\LogisticsServiceProvider;
+use App\Modules\Marketing\Providers\MarketingServiceProvider;
 use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
 use App\Modules\Orders\Providers\OrdersServiceProvider;
@@ -158,6 +159,11 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Logistics/Infrastructure/Models/Shipment.php',
         'app/Modules/Logistics/Infrastructure/Models/ShipmentCarrierBilling.php',
         'app/Modules/Logistics/Providers/LogisticsServiceProvider.php',
+        'app/Modules/Marketing/Experience/Controllers/MarketingController.php',
+        'app/Modules/Marketing/Experience/Routes/web.php',
+        'app/Modules/Marketing/Infrastructure/Models/MarketingSubscriber.php',
+        'app/Modules/Marketing/Infrastructure/Models/MarketingSubscription.php',
+        'app/Modules/Marketing/Providers/MarketingServiceProvider.php',
         'app/Modules/ModuleManifest.php',
         'app/Modules/ModulesServiceProvider.php',
         'app/Modules/Orders/Application/Contracts/WooCommerceOrderGateway.php',
@@ -323,6 +329,13 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Logistics/Infrastructure',
         'app/Modules/Logistics/Infrastructure/Models',
         'app/Modules/Logistics/Providers',
+        'app/Modules/Marketing',
+        'app/Modules/Marketing/Experience',
+        'app/Modules/Marketing/Experience/Controllers',
+        'app/Modules/Marketing/Experience/Routes',
+        'app/Modules/Marketing/Infrastructure',
+        'app/Modules/Marketing/Infrastructure/Models',
+        'app/Modules/Marketing/Providers',
         'app/Modules/Orders',
         'app/Modules/Orders/Application',
         'app/Modules/Orders/Application/Contracts',
@@ -485,6 +498,12 @@ final class ModuleArchitectureTest extends TestCase
         'kol.views.update',
         'login',
         'login.store',
+        'marketing.newsletters',
+        'marketing.promotions',
+        'marketing.automations',
+        'marketing.campaigns',
+        'marketing.subscribers',
+        'shell.marketing',
         'logistics.awaiting-tracking',
         'logistics.carriers',
         'logistics.carriers.show',
@@ -586,7 +605,7 @@ final class ModuleArchitectureTest extends TestCase
         'dashboard.view', 'guides.manage', 'guides.view', 'inventory.operate', 'inventory.view', 'inventory.warehouses.manage',
         'kol.operate', 'kol.view', 'kol.views.manage', 'logistics.operate', 'logistics.view',
         'orders.create', 'orders.edit', 'orders.view', 'procurement.view', 'products.operate', 'products.view', 'prototype.view', 'sync.operate', 'sync.view',
-        'system.permissions.manage',
+        'system.permissions.manage', 'marketing.operate', 'marketing.view',
     ];
 
     private const SUPPORT_FILES = [
@@ -649,6 +668,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_28_210000_create_customers_and_link_orders.php' => '23b515334af28797b6ad5dd950f389392151b003994ad5437e3e5e5268ff2b18',
         'database/migrations/2026_08_28_220000_create_customer_addresses_table.php' => '573bba35c511937fbb4d24f328bbe68a10acb18e68193045fc2cf08bf0898b7a',
         'database/migrations/2026_08_29_140000_create_user_ui_preferences_table.php' => '6f76c7eb1cc3aa4d1eeac985787b07baca3b11b6d686e85a9500346bd5880bd7',
+        'database/migrations/2026_08_29_150000_create_marketing_subscriber_tables.php' => '134de0ec084445828ad413b689253607e9491f7d65c50582d24d7013a9238373',
     ];
 
     private const FRONTEND_FILES = [
@@ -695,6 +715,9 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Customers/Library/Edit.vue' => '1b99107357f6979f860c72457bfc01c9f5bf7f3c39343d96afe946f48774895f',
         'resources/js/Pages/Customers/Library/Index.vue' => '1b1e32ec995fef8f60ff6ee6773c3f9aaa93a24f763f31135ccb01e4976269fd',
         'resources/js/Pages/Customers/Library/Show.vue' => '08c0cffcb2c068eb4d04cf0c50f951a1814b376e3e66f9ec962f9f714aaad676',
+        'resources/js/Pages/Marketing/Overview.vue' => 'aa35d4a42c13827fbd22f11aece6c7256238d0438a8e75e1a2f0f6e66648b9e2',
+        'resources/js/Pages/Marketing/Planned.vue' => 'd111af94df4ae9e4121fbf78b52d490c13b2ca34785b4d65ab06b610cb03df66',
+        'resources/js/Pages/Marketing/Subscribers/Index.vue' => '4816eeb3b6e70f8a64b94a7f8dd6daf63a000e42981ecc80b7e74d8fa5151bc0',
         'resources/js/Pages/Dashboard/Index.test.ts' => '27c63e094fcdec28a0e5677508723e149c90a5130efb98d4448fa2b7f51b4ae4',
         'resources/js/Pages/Dashboard/Index.vue' => '0c28a768afcaa181b54ab01c4ec08457a04f7ed98e5ba3b52a041d98492bc2bb',
         'resources/js/Pages/Finance/OrderAnalysis.vue' => '96216f9ce4b67dd10bc4627c7e09703c1752c030110425509839d9aaab25d0aa',
@@ -996,7 +1019,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('56021995ebe80ff3bcc95f56e3888e168f14531da8561c79cc38f81f74286e12', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('2ae8be84bb377a76d17363d194fc727b5c86c0466b3dc8303ec303e155ac58dd', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);
@@ -1025,6 +1048,7 @@ PHP;
             CustomersServiceProvider::class,
             ProductsServiceProvider::class,
             InventoryServiceProvider::class,
+            MarketingServiceProvider::class,
         ], ModuleManifest::providers());
         self::assertSame([AppServiceProvider::class, ModulesServiceProvider::class], require $this->path('bootstrap/providers.php'));
     }
