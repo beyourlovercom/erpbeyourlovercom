@@ -1,9 +1,9 @@
 ---
 type: execution-role-model
 project: BYL ERP
-version: 1.1
+version: 1.2
 status: mandatory
-effective_date: 2026-08-23
+effective_date: 2026-08-29
 ---
 
 # BYL ERP Execution Role Model
@@ -14,8 +14,8 @@ This document implements Owner decision D-034 and is the role-authority overlay 
 
 ```text
 OWNER = final product / UAT / merge / release authority
-GPT_WEB = architecture / design / diagnosis / root-cause / task definition
-US_CLAUDE_CODE = implementation only
+GPT_WEB = architecture / design / diagnosis / root-cause / task definition + bounded approved remediation implementation
+US_CLAUDE_CODE = primary provider for large/complex implementation
 CHINA_CODEX_CLI = test / verification / evidence only
 GITHUB = unique source of truth and only code synchronization path
 US_LOCAL_RUNTIME = http://erp.b
@@ -35,13 +35,17 @@ GPT Web may:
 - diagnose failures and determine root cause;
 - decide whether remediation is required;
 - decide the next technical step subject to Owner approval gates;
-- create or update governance/design documentation and Draft PRs.
+- create or update governance/design documentation and Draft PRs;
+- directly implement bounded, well-understood remediation when architecture/business behavior is already approved or frozen, including narrow UI/CSS, exact bug fixes with established root cause, approved permission enforcement, test/typecheck/build fixes, UAT remediation, architecture-hash updates, and similarly bounded follow-up work;
+- run required US-local verification and perform Owner-authorized Git delivery for that bounded Work Package.
 
-GPT Web must not treat chat memory as code truth when GitHub evidence exists.
+GPT-direct implementation must not invent new architecture, widen approved scope, weaken verification, or bypass Owner merge/release gates. GPT Web must not treat chat memory as code truth when GitHub evidence exists.
 
 ## US Claude Code role
 
-Claude Code may only execute an Owner/GPT-approved Work Package.
+Claude Code is the primary implementation provider for large new modules/features, broad cross-file implementation, materially complex schema/data-model work, complex external integrations, and high-complexity refactors. Claude Code may only execute an Owner/GPT-approved Work Package.
+
+For bounded remediation that GPT can safely implement and verify, GPT is the default provider. Do not create a fresh Claude session merely for a one/few-file exact follow-up. When Claude is used, continuation of the same Work Package/session is preferred where practical to avoid repeated context loading.
 
 Claude Code may:
 
@@ -60,6 +64,12 @@ Claude Code must not:
 - decide the next Work Package;
 - merge without Owner authorization;
 - deploy to the remote milestone target unless explicitly authorized.
+
+## Implementation collision and handoff rule
+
+For every active Work Package, use `ONE_ACTIVE_IMPLEMENTATION_PROVIDER_PER_WORKTREE`. GPT+DC and Claude must not concurrently implement in the same worktree or edit the same tracked file. Handoffs are serialized: stop the outgoing provider, preserve current branch/HEAD and working-tree diff as authority, then require the incoming provider to read that exact state before editing. A stale Claude session must not overwrite later GPT remediation.
+
+Sequential Work Packages for the same module start from the latest merged `origin/main` unless an explicitly approved dependency branch says otherwise. Owner-UAT-PASS / COMPLETE / FROZEN UI and behavior are regression baselines and may only be extended incrementally unless the Owner explicitly authorizes redesign/removal. Codex remains exact-revision verification-only and never creates a competing implementation.
 
 ## China Codex CLI role
 
