@@ -30,4 +30,5 @@ class KolCollaboration extends Model
     public function owner(): BelongsTo { return $this->belongsTo(User::class, 'owner_id'); }
     public function order(): BelongsTo { return $this->belongsTo(Order::class, 'order_id'); }
     public function products(): HasMany { return $this->hasMany(KolCollaborationProduct::class, 'collaboration_id')->orderBy('id'); }
+    public function contents(): HasMany { return $this->hasMany(KolContent::class, 'collaboration_id')->orderByDesc('published_at')->orderByDesc('id'); }
 }

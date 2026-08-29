@@ -3,6 +3,7 @@
 use App\Modules\Kol\Experience\Controllers\KolController;
 use App\Modules\Kol\Experience\Controllers\KolCommunicationController;
 use App\Modules\Kol\Experience\Controllers\KolCollaborationController;
+use App\Modules\Kol\Experience\Controllers\KolContentController;
 use App\Modules\Kol\Experience\Controllers\KolOverviewController;
 use App\Modules\Kol\Experience\Controllers\KolOpportunityController;
 use App\Modules\Kol\Experience\Controllers\SavedViewController;
@@ -42,7 +43,14 @@ Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
     Route::get('/kol/collaborations', [KolCollaborationController::class, 'index'])->name('kol.collaborations');
     Route::get('/kol/communications', fn () => Inertia::render('Kol/PlaceholderPage', ['title' => '沟通跟进', 'note' => 'M1.1 CRM 包交付']))->name('kol.communications');
     Route::get('/kol/samples', fn () => Inertia::render('Kol/PlaceholderPage', ['title' => '样品与发货', 'note' => 'M1.2 合作包交付']))->name('kol.samples');
-    Route::get('/kol/content', fn () => Inertia::render('Kol/PlaceholderPage', ['title' => '内容与发布', 'note' => 'M1.3 内容包交付']))->name('kol.content');
+    Route::get('/kol/content', [KolContentController::class, 'index'])->name('kol.content');
+    Route::get('/kol/content/options', [KolContentController::class, 'options'])->name('kol.content.options');
+    Route::post('/kol/contents', [KolContentController::class, 'store'])->middleware('can:kol.operate')->name('kol.contents.store');
+    Route::patch('/kol/contents/{content}', [KolContentController::class, 'update'])->middleware('can:kol.operate')->name('kol.contents.update');
+    Route::post('/kol/contents/{content}/evidence', [KolContentController::class, 'addEvidence'])->middleware('can:kol.operate')->name('kol.contents.evidence.store');
+    Route::post('/kol/contents/{content}/sync-post-image', [KolContentController::class, 'syncPostImage'])->middleware('can:kol.operate')->name('kol.contents.sync-post-image');
+    Route::get('/kol/contents/{content}/evidence/{attachment}', [KolContentController::class, 'showEvidence'])->name('kol.contents.evidence.show');
+    Route::delete('/kol/contents/{content}/evidence/{attachment}', [KolContentController::class, 'deleteEvidence'])->middleware('can:kol.operate')->name('kol.contents.evidence.destroy');
     Route::get('/kol/commissions', fn () => Inertia::render('Kol/PlaceholderPage', ['title' => '佣金与结算', 'note' => 'M1.4 财务包交付']))->name('kol.commissions');
     Route::get('/kol/affiliate', fn () => Inertia::render('Kol/PlaceholderPage', ['title' => '优惠码与 Affiliate', 'note' => 'M1.4 财务包交付']))->name('kol.affiliate');
 });

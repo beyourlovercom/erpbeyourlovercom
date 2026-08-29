@@ -23,6 +23,7 @@ type KolRow = {
   mcn_agency: string | null
   is_mcn_managed: boolean
   historical_order_count: number
+  has_published_content: boolean
 }
 
 type SavedView = {
@@ -60,6 +61,8 @@ const filters = reactive({
   level: props.filters.level ?? '',
   content_format: props.filters.content_format ?? '',
   mcn: props.filters.mcn ?? '',
+  has_published_content: props.filters.has_published_content ?? '',
+  publication_evidence: props.filters.publication_evidence ?? '',
   view: props.filters.view ?? '',
   sort: props.filters.sort ?? 'display_name',
   direction: props.filters.direction ?? 'asc',
@@ -208,6 +211,18 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
           <option value="yes">MCN 管理</option>
           <option value="no">非 MCN</option>
         </select>
+        <select v-model="filters.has_published_content" aria-label="是否已发布">
+          <option value="">全部发布状态</option>
+          <option value="yes">已发布</option>
+          <option value="no">未发布</option>
+        </select>
+        <select v-model="filters.publication_evidence" aria-label="发布证据">
+          <option value="">全部发布证据</option>
+          <option value="none">无证据</option>
+          <option value="url">仅 URL</option>
+          <option value="screenshot">仅截图</option>
+          <option value="url_and_screenshot">URL + 截图</option>
+        </select>
         <input v-model="filters.followers_min" type="number" min="0" aria-label="粉丝数最小值" placeholder="粉丝≥">
         <input v-model="filters.followers_max" type="number" min="0" aria-label="粉丝数最大值" placeholder="粉丝≤">
         <button class="mvp-button" type="submit">筛选</button>
@@ -230,6 +245,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
               <th>MCN机构</th>
               <th>负责人</th>
               <th>粉丝数</th>
+              <th>是否已发布</th>
               <th>历史带货数量</th>
               <th></th>
             </tr>
@@ -249,13 +265,14 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
               <td>{{ kol.mcn_agency ?? (kol.is_mcn_managed ? '是' : '—') }}</td>
               <td>{{ kol.owner?.name ?? '—' }}</td>
               <td>{{ followersLabel(kol.latest_followers) }}<span v-if="kol.primary_platform" class="platform-hint"> ({{ platformLabel(kol.primary_platform) }})</span></td>
+              <td><span :class="['tag-chip', kol.has_published_content ? 'is-published' : '']">{{ kol.has_published_content ? '已发布' : '未发布' }}</span></td>
               <td>{{ kol.historical_order_count }}</td>
               <td>
                 <Link :href="`/kol/library/${kol.id}`">查看</Link>
               </td>
             </tr>
             <tr v-if="kols.data.length === 0">
-              <td colspan="14" class="mvp-empty">暂无符合条件的 KOL</td>
+              <td colspan="15" class="mvp-empty">暂无符合条件的 KOL</td>
             </tr>
           </tbody>
         </table>

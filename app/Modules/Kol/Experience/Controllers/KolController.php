@@ -28,7 +28,7 @@ final class KolController
         $ownerScopeId = KolScope::effectiveOwnerId($user);
         $canManageViews = KolScope::canManageViews($user);
 
-        $filters = $request->only(['search', 'owner_id', 'status', 'relationship_stage', 'country_code', 'platform', 'followers_min', 'followers_max', 'level', 'content_format', 'mcn', 'view', 'sort', 'direction']);
+        $filters = $request->only(['search', 'owner_id', 'status', 'relationship_stage', 'country_code', 'platform', 'followers_min', 'followers_max', 'level', 'content_format', 'mcn', 'has_published_content', 'publication_evidence', 'view', 'sort', 'direction']);
         $kols = $this->kols->list($filters, $ownerScopeId);
         $savedViews = $this->views->forUser('kol', (int) $user->getAuthIdentifier(), $canManageViews);
 
@@ -153,6 +153,10 @@ final class KolController
             $relations[] = 'collaborations.order.shipment.warehouse';
             $relations[] = 'collaborations.order.manualSync';
         }
+        if (Schema::hasTable('kol_contents')) {
+            $relations[] = 'contents.collaboration';
+            $relations[] = 'contents.attachments';
+        }
         $kol->load($relations);
 
         return Inertia::render('Kol/Show', [
@@ -180,6 +184,10 @@ final class KolController
             $editRelations[] = 'collaborations.opportunity';
             $editRelations[] = 'collaborations.order.shipment.warehouse';
             $editRelations[] = 'collaborations.order.manualSync';
+        }
+        if (Schema::hasTable('kol_contents')) {
+            $editRelations[] = 'contents.collaboration';
+            $editRelations[] = 'contents.attachments';
         }
         $kol->load($editRelations);
 
@@ -362,6 +370,7 @@ final class KolController
             'mcn_agency' => $kol->mcn_agency,
             'is_mcn_managed' => $kol->is_mcn_managed,
             'historical_order_count' => (int) ($kol->historical_order_count ?? 0),
+            'has_published_content' => (bool) ($kol->has_published_content ?? false),
         ];
     }
 
@@ -503,6 +512,22 @@ final class KolController
                     'manual_sync_status' => $item->order->manualSync?->website_sync_status?->value,
                 ] : null,
                 'created_at' => $item->created_at?->format('Y-m-d H:i:s'),
+            ])->values()->all() : [],
+            'contents' => Schema::hasTable('kol_contents') && $kol->relationLoaded('contents') ? $kol->contents->map(fn ($item) => [
+                'id' => $item->id,
+                'collaboration_id' => $item->collaboration_id,
+                'platform' => $item->platform,
+                'content_type' => $item->content_type,
+                'publication_status' => $item->publication_status,
+                'post_url' => $item->post_url,
+                'planned_publish_at' => $item->planned_publish_at?->format('Y-m-d'),
+                'published_at' => $item->published_at?->format('Y-m-d'),
+                'evidence_classification' => $item->evidenceClassification(),
+                'attachments' => $item->attachments->map(fn ($attachment) => [
+                    'id' => $attachment->id,
+                    'name' => $attachment->original_name,
+                    'url' => route('kol.contents.evidence.show', ['content' => $item->id, 'attachment' => $attachment->id], false),
+                ])->values()->all(),
             ])->values()->all() : [],
             'historical_opportunities' => Schema::hasTable('kol_opportunities') && $kol->relationLoaded('opportunities') ? $kol->opportunities->filter(fn ($item) => $item->status !== 'active')->take(20)->map(fn ($item) => [
                 'id' => $item->id,
