@@ -87,6 +87,13 @@ final class PermissionCatalog
                     ['key' => 'sync.operate', 'label' => '操作同步'],
                 ],
             ],
+            '营销' => [
+                'label' => '营销',
+                'permissions' => [
+                    ['key' => 'marketing.view', 'label' => '查看营销'],
+                    ['key' => 'marketing.operate', 'label' => '操作营销'],
+                ],
+            ],
             '系统' => [
                 'label' => '系统',
                 'permissions' => [

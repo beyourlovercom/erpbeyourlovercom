@@ -29,8 +29,8 @@ test('authenticated shell matches the approved level-one menu baseline', async (
 
     await expect(navigation).toBeVisible();
     await expect(links).toHaveCount(levelOneMenu.length);
-    expect(levelOneMenu).toHaveLength(11);
-    expect(levelTwoMenu).toHaveLength(32);
+    expect(levelOneMenu).toHaveLength(13);
+    expect(levelTwoMenu).toHaveLength(55);
 
     for (const [index, expected] of levelOneMenu.entries()) {
         const link = links.nth(index);

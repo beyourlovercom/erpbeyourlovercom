@@ -1,8 +1,8 @@
 {
-  "version": "1.7",
+  "version": "1.8",
   "status": "OWNER_APPROVED",
   "approved_at": "2026-08-29",
-  "approved_head": "9052d1ed8c1b361264c4b7802d99fba2eaba6611",
+  "approved_head": "be1afca30e839361975cfabe941b99f253b708fb",
   "governed_levels": [
     1,
     2
@@ -339,6 +339,96 @@
       "sort": 50
     },
     {
+      "code": "marketing",
+      "parent_code": null,
+      "level": 1,
+      "label_zh": "营销",
+      "slug": "marketing",
+      "url": "/marketing",
+      "route": "shell.marketing",
+      "permission": "marketing.view",
+      "emoji": "📣",
+      "function_zh": "管理邮件订阅身份与后续营销工作区入口。",
+      "status": "in_progress",
+      "progress": 20,
+      "sort": 60
+    },
+    {
+      "code": "marketing-subscribers",
+      "parent_code": "marketing",
+      "level": 2,
+      "label_zh": "邮件订阅",
+      "slug": "subscribers",
+      "url": "/marketing/subscribers",
+      "route": "marketing.subscribers",
+      "permission": "marketing.view",
+      "emoji": null,
+      "function_zh": "只读查看 ERP Marketing 订阅身份和 provider/source 订阅事实。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 10
+    },
+    {
+      "code": "marketing-newsletters",
+      "parent_code": "marketing",
+      "level": 2,
+      "label_zh": "群发邮件",
+      "slug": "newsletters",
+      "url": "/marketing/newsletters",
+      "route": "marketing.newsletters",
+      "permission": "marketing.view",
+      "emoji": null,
+      "function_zh": "未来承载群发邮件引擎，当前尚未实现。",
+      "status": "planned",
+      "progress": 0,
+      "sort": 20
+    },
+    {
+      "code": "marketing-campaigns",
+      "parent_code": "marketing",
+      "level": 2,
+      "label_zh": "营销活动",
+      "slug": "campaigns",
+      "url": "/marketing/campaigns",
+      "route": "marketing.campaigns",
+      "permission": "marketing.view",
+      "emoji": null,
+      "function_zh": "未来承载营销活动引擎，当前尚未实现。",
+      "status": "planned",
+      "progress": 0,
+      "sort": 30
+    },
+    {
+      "code": "marketing-automations",
+      "parent_code": "marketing",
+      "level": 2,
+      "label_zh": "自动化营销",
+      "slug": "automations",
+      "url": "/marketing/automations",
+      "route": "marketing.automations",
+      "permission": "marketing.view",
+      "emoji": null,
+      "function_zh": "未来承载营销自动化执行引擎，当前尚未实现。",
+      "status": "planned",
+      "progress": 0,
+      "sort": 40
+    },
+    {
+      "code": "marketing-promotions",
+      "parent_code": "marketing",
+      "level": 2,
+      "label_zh": "优惠促销",
+      "slug": "promotions",
+      "url": "/marketing/promotions",
+      "route": "marketing.promotions",
+      "permission": "marketing.view",
+      "emoji": null,
+      "function_zh": "未来承载优惠促销工作区，当前尚未实现。",
+      "status": "planned",
+      "progress": 0,
+      "sort": 50
+    },
+    {
       "code": "kol",
       "parent_code": null,
       "level": 1,
@@ -351,7 +441,7 @@
       "function_zh": "管理网红资料、合作订单、内容进度和付款状态。",
       "status": "planned",
       "progress": 0,
-      "sort": 60
+      "sort": 70
     },
     {
       "code": "kol-library",
@@ -516,7 +606,7 @@
       "function_zh": "管理库存数量、仓库、库存变动和库存异常。",
       "status": "in_progress",
       "progress": 80,
-      "sort": 70
+      "sort": 80
     },
     {
       "code": "inventory-overview",
@@ -591,7 +681,7 @@
       "function_zh": "管理外采需求、采购任务、供应商及采购进度。",
       "status": "planned",
       "progress": 0,
-      "sort": 80
+      "sort": 90
     },
     {
       "code": "procurement-overview",
@@ -651,7 +741,7 @@
       "function_zh": "管理产品、SKU、产品资料和相关业务配置。",
       "status": "in_progress",
       "progress": 50,
-      "sort": 90
+      "sort": 100
     },
     {
       "code": "products-list",
@@ -711,7 +801,7 @@
       "function_zh": "管理ERP操作指南、业务标准和内部知识内容。",
       "status": "implemented",
       "progress": 100,
-      "sort": 100
+      "sort": 110
     },
     {
       "code": "guides-index",
@@ -771,7 +861,7 @@
       "function_zh": "管理收入、支出、应收、应付及业务财务记录。",
       "status": "planned",
       "progress": 0,
-      "sort": 110
+      "sort": 120
     },
     {
       "code": "accounting-cost-calculation",
@@ -846,7 +936,7 @@
       "function_zh": "管理ERP系统配置，并查看当前版本与近期发布摘要。",
       "status": "implemented",
       "progress": 100,
-      "sort": 120
+      "sort": 130
     },
     {
       "code": "settings-statuses",
