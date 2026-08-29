@@ -2,7 +2,7 @@
 type: work-package
 project: BYL ERP
 work_package_id: ERP-CUSTOMER-M1-2-SEGMENTATION-001
-status: OWNER_UAT_PASS / DELIVERY_AUTHORIZED / DRAFT_PR_120_OPEN
+status: M1_2_MERGED / GLOBAL_DATA_GRID_V1_1_OWNER_UAT_PASS / READY_FOR_GIT_DELIVERY
 execution_provider: GPT_WEB_OWNER_AUTHORIZED
 baseline: origin/main@9052d1ed8c1b361264c4b7802d99fba2eaba6611
 ---
@@ -125,3 +125,47 @@ MIGRATION_FILE_AUTHORING: NONE
 MIGRATION_EXECUTION: NONE FOR M1.2
 UAT: INCLUDED / OWNER PASS
 DEPLOYMENT: EXCLUDED
+
+## Post-merge superseding amendment — Global Data Grid VI V1.1 Account Sync
+
+PR #120 merged the earlier M1.2 Customer List fusion into `main`. The Owner subsequently superseded only the Grid/navigation preference portion of that layout; the four M1.2 segment definitions remain unchanged.
+
+Current controlling decisions:
+- `/customers/library` remains the standard Customer List workspace and keeps the Customer Group select.
+- `/customers/groups` is again a real governed level-2 workspace and the Global Data Grid VI V1.1 reference implementation.
+- Customer Groups header exposes `全部客户 / 无购买客户 / 新客户 / 复购客户 / 单次多产品客户` immediately left of `新建客户`.
+- The configurable `…` Column Settings UI is scoped to the Customer Groups reference workspace.
+- `user_ui_preferences` is the single generic account UI-preference table with unique `(user_id, namespace)` authority.
+- `grid.customers.groups.v1` is the current reference namespace.
+- Server preference is canonical across devices; browser localStorage is cache / legacy migration fallback only.
+- Stored preferences contain column keys, visibility and order only; business/query/permission definitions remain code-owned.
+- `useAccountGridPreferences` is the reusable shared frontend primitive for future grids.
+- Preference sanitization removes unknown/duplicate columns and cannot bypass current permissions.
+
+GLOBAL_STANDARD: `docs/10_Planning_Roadmap/26_BYL_ERP_GLOBAL_DATA_GRID_VI_V1_1.md`.
+APPROVED_MENU_VERSION_TARGET: 1.7.
+DATABASE_EXPANSION: one generic `user_ui_preferences` table only.
+
+## Global Data Grid VI V1.1 final closure — 2026-08-29
+
+OWNER_UAT: PASS.
+EXACT_V1_1_BASE: `origin/main@436285faa6c35f0b93ab2c0256382d48db48472c` after PR #120 merged M1.2.
+
+Final gate evidence on that exact base:
+- Focused PHP: 71 passed / 1907 assertions.
+- Customer Grid Vitest: 15/15 PASS.
+- Typecheck PASS.
+- Fresh production build PASS.
+- `git diff --check` PASS; `public/hot` absent.
+- Production/runtime bundle: `assets/app-DFmh1Bqv.js`.
+- Runtime `/customers/groups`: HTTP 200, component `Customers/Library/Index`, workspace `groups`.
+- Runtime preference namespace: `grid.customers.groups.v1` with server preference present.
+- Same-account cross-session smoke: Session A save HTTP 200; fresh Session B value SHA256 matched exactly.
+- Preference migration rehearsal: up → unique-key rejection → rollback → reapply PASS.
+- ModuleArchitecture on candidate: 3 failed / 5 passed.
+- Untouched exact `main@436285f`: the same 3 failed / 5 passed; all failures are pre-existing KOL baseline drift.
+
+GLOBAL_DATA_GRID_VI_V1_1: OWNER_UAT_PASS / READY_FOR_GIT_DELIVERY.
+GIT_SCOPE: V1.1 account-sync follow-up only; M1.2 base functionality is already in main via PR #120.
+COMMIT_PUSH_PR: OWNER AUTHORIZATION REQUIRED.
+MERGE: SEPARATE OWNER GATE.

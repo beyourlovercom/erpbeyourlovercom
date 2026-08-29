@@ -563,12 +563,27 @@ final class CustomerExperienceTest extends TestCase
 
     // ─── Customer M1.2 segmentation foundation ─────────────────────────────
 
-    public function test_customer_groups_route_redirects_to_canonical_library_and_preserves_filters(): void
+    public function test_customer_groups_route_renders_dedicated_workspace_with_account_grid_preference(): void
     {
-        $user = $this->userWith(['customers.view'], 'segment_compatibility');
+        $user = $this->userWith(['customers.view'], 'segment_groups_workspace');
+        DB::table('user_ui_preferences')->insert([
+            'user_id' => $user->id,
+            'namespace' => 'grid.customers.groups.v1',
+            'value' => json_encode(['columns' => [['key' => 'email', 'visible' => false]]]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         $this->actingAs($user)->get('/customers/groups?group=no_purchase&country_code=US')
-            ->assertRedirect('/customers/library?group=no_purchase&country_code=US');
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Customers/Library/Index')
+                ->where('workspace', 'groups')
+                ->where('gridPreferenceNamespace', 'grid.customers.groups.v1')
+                ->where('gridPreference.columns.0.key', 'email')
+                ->where('gridPreference.columns.0.visible', false)
+                ->where('filters.group', 'no_purchase')
+                ->where('filters.country_code', 'US'));
     }
 
     public function test_customer_list_grid_projects_registered_address_spend_aov_and_latest_order_from_real_data(): void

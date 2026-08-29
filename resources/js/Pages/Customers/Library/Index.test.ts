@@ -1,19 +1,21 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Index from './Index.vue'
 
-const { get } = vi.hoisted(() => ({ get: vi.fn() }))
+const { get, put } = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(() => Promise.resolve({ data: {} })) }))
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
   Link: { props: ['href'], template: '<a :href="href"><slot /></a>' },
   router: { get },
 }))
+vi.mock('axios', () => ({ default: { put } }))
 vi.mock('../../../Layouts/AuthenticatedLayout.vue', () => ({
   default: { props: ['title', 'breadcrumbs'], template: '<div><slot /></div>' },
 }))
 
 beforeEach(() => {
   get.mockReset()
+  put.mockClear()
   const store = new Map<string, string>()
   vi.stubGlobal('localStorage', {
     getItem: (key: string) => store.get(key) ?? null,
@@ -47,8 +49,16 @@ const baseProps = {
   canOperate: false,
   canImport: false,
   canExport: false,
+  workspace: 'library' as const,
+  gridPreferenceNamespace: 'grid.customers.library.v1',
+  gridPreference: null,
 }
 
+const groupProps = {
+  ...baseProps,
+  workspace: 'groups' as const,
+  gridPreferenceNamespace: 'grid.customers.groups.v1',
+}
 
 describe('Customer Library KPI Strip — compact', () => {
   it('kpi-strip renders exactly six cards in non-compact mode', () => {
@@ -124,58 +134,64 @@ describe('Customer Library KPI Strip — compact', () => {
     expect(cards[5].attributes('title')).toContain('M1.4')
   })
 
-  it('customer list exposes the four system segments as header shortcuts and removes the duplicate group select', () => {
-    const wrapper = mount(Index, { props: { ...baseProps, canOperate: true, filters: { group: 'repeat_customer' } } })
-    const actions = wrapper.find('.page-header-actions')
-    const labels = actions.findAll('.customer-group-shortcut').map(link => link.text())
+  it('customer groups workspace exposes shortcuts and account-level column settings', async () => {
+    const wrapper = mount(Index, { props: { ...groupProps, canOperate: true, filters: { group: 'repeat_customer' } } })
+    const labels = wrapper.findAll('.customer-group-shortcut').map(link => link.text())
     expect(labels).toEqual(['全部客户', '无购买客户', '新客户', '复购客户', '单次多产品客户'])
-    expect(actions.find('.customer-group-shortcut-active').text()).toBe('复购客户')
-    expect(actions.find('a[href="/customers/library/create"]').text()).toBe('新建客户')
+    expect(wrapper.find('.customer-group-shortcut-active').text()).toBe('复购客户')
     expect(wrapper.find('#filter-group').exists()).toBe(false)
-    expect(actions.find('a[href*="group=repeat_customer"]').attributes('href')).toContain('/customers/library?')
-    expect(wrapper.find('.column-settings-trigger').exists()).toBe(true)
-  })
-
-  it('customer list grid exposes configurable real-data columns behind the top-right ellipsis', async () => {
-    const wrapper = mount(Index, { props: baseProps })
-    const trigger = wrapper.get('.column-settings-trigger')
-    expect(trigger.text()).toBe('…')
-    await trigger.trigger('click')
-    const panel = wrapper.get('.column-settings-panel')
-    for (const label of ['Email', '电话', '注册日期', '国家 / 地区', '城市', '州 / 省', '邮编', '来源', '订单数', '累计销售额', 'AOV', '最近下单', '负责人', '状态']) {
-      expect(panel.text()).toContain(label)
-    }
-    expect(panel.text()).toContain('客户编号 / 姓名')
-    expect(panel.text()).toContain('固定')
-    expect(panel.text()).toContain('用户名、网站最近活跃')
-  })
-
-  it('customer list grid can hide a column and persists that choice', async () => {
-    const wrapper = mount(Index, { props: baseProps })
+    expect(wrapper.find('a[href*="group=repeat_customer"]').attributes('href')).toContain('/customers/groups?')
     await wrapper.get('.column-settings-trigger').trigger('click')
-    const cityToggle = wrapper.get('input[aria-label="显示城市"]')
-    await cityToggle.trigger('change')
-    expect(wrapper.get('thead').text()).not.toContain('城市')
-    wrapper.unmount()
-    const remounted = mount(Index, { props: baseProps })
-    expect(remounted.get('thead').text()).not.toContain('城市')
+    expect(wrapper.get('.column-settings-panel').text()).toContain('设置绑定当前账号并跨设备同步')
   })
 
-  it('customer list grid drag order persists and changes table column order', async () => {
+  it('customer library keeps the group filter and does not expose column settings', () => {
     const wrapper = mount(Index, { props: baseProps })
-    await wrapper.get('.column-settings-trigger').trigger('click')
-    const emailRow = wrapper.get('[data-column-key="email"]')
-    const phoneRow = wrapper.get('[data-column-key="phone"]')
-    await phoneRow.trigger('dragstart')
-    await emailRow.trigger('drop')
+    expect(wrapper.findAll('.customer-group-shortcut').length).toBe(0)
+    expect(wrapper.find('#filter-group').exists()).toBe(true)
+    expect(wrapper.find('.column-settings-trigger').exists()).toBe(false)
+  })
+
+  it('server preference wins over conflicting local cache', () => {
+    localStorage.setItem('ui-pref-cache:grid.customers.groups.v1', JSON.stringify({ columns: [
+      { key: 'email', visible: true }, { key: 'phone', visible: false },
+    ] }))
+    const wrapper = mount(Index, { props: { ...groupProps, gridPreference: { columns: [
+      { key: 'phone', visible: true }, { key: 'email', visible: false },
+    ] } } })
     const headers = wrapper.findAll('thead th').map(node => node.text())
-    expect(headers.slice(0, 3)).toEqual(['客户编号 / 姓名', '电话', 'Email'])
-    wrapper.unmount()
-    const remounted = mount(Index, { props: baseProps })
-    const restoredHeaders = remounted.findAll('thead th').map(node => node.text())
-    expect(restoredHeaders.slice(0, 3)).toEqual(['客户编号 / 姓名', '电话', 'Email'])
+    expect(headers[1]).toBe('电话')
+    expect(headers).not.toContain('Email')
   })
 
+  it('column visibility change writes account preference and local cache', async () => {
+    const wrapper = mount(Index, { props: groupProps })
+    await wrapper.get('.column-settings-trigger').trigger('click')
+    await wrapper.get('input[aria-label="显示城市"]').trigger('change')
+    await flushPromises()
+    expect(wrapper.get('thead').text()).not.toContain('城市')
+    expect(put).toHaveBeenCalledWith('/ui/preferences/grid.customers.groups.v1', expect.objectContaining({ value: expect.any(Object) }))
+    expect(localStorage.getItem('ui-pref-cache:grid.customers.groups.v1')).toContain('city')
+  })
+
+  it('column drag order is cached and synced to the account', async () => {
+    const wrapper = mount(Index, { props: groupProps })
+    await wrapper.get('.column-settings-trigger').trigger('click')
+    await wrapper.get('[data-column-key="phone"]').trigger('dragstart')
+    await wrapper.get('[data-column-key="email"]').trigger('drop')
+    await flushPromises()
+    expect(wrapper.findAll('thead th').slice(0, 3).map(node => node.text())).toEqual(['客户编号 / 姓名', '电话', 'Email'])
+    expect(put).toHaveBeenCalled()
+  })
+
+  it('legacy browser preference migrates to the account when server preference is empty', async () => {
+    localStorage.setItem('customer_groups_grid_columns_v1', JSON.stringify([
+      { key: 'phone', visible: true }, { key: 'email', visible: false },
+    ]))
+    mount(Index, { props: groupProps })
+    await flushPromises()
+    expect(put).toHaveBeenCalledWith('/ui/preferences/grid.customers.groups.v1', expect.any(Object))
+  })
 
   it('kpi-strip is not rendered in compact mode', () => {
     // Simulate compact mode via localStorage

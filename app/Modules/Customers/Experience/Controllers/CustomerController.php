@@ -12,6 +12,7 @@ use App\Modules\Customers\Infrastructure\Models\CustomerAddress;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Shell\Application\UserUiPreferenceService;
 use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -22,6 +23,9 @@ use Inertia\Response;
 
 final class CustomerController
 {
+    private const LIBRARY_GRID_NAMESPACE = 'grid.customers.library.v1';
+    private const GROUPS_GRID_NAMESPACE = 'grid.customers.groups.v1';
+
 
 
 
@@ -36,10 +40,13 @@ final class CustomerController
     public function __construct(
         private readonly CustomerService $customers,
         private readonly EcbFxService $fx,
+        private readonly UserUiPreferenceService $uiPreferences,
     ) {}
 
     public function index(Request $request): Response
     {
+        $workspace = $request->routeIs('customers.groups') ? 'groups' : 'library';
+        $gridPreferenceNamespace = $workspace === 'groups' ? self::GROUPS_GRID_NAMESPACE : self::LIBRARY_GRID_NAMESPACE;
         $filters = $request->only(['search', 'country_code', 'source_type', 'archived', 'group']);
         $paginator = $this->customers->list($filters);
 
@@ -131,18 +138,15 @@ final class CustomerController
             'canOperate' => (bool) $request->user()?->hasPermission('customers.operate'),
             'canImport' => (bool) ($request->user()?->hasPermission('customers.import') && $request->user()?->hasPermission('system.permissions.manage')),
             'canExport' => (bool) ($request->user()?->hasPermission('customers.export') && $request->user()?->hasPermission('system.permissions.manage')),
+            'workspace' => $workspace,
+            'gridPreferenceNamespace' => $gridPreferenceNamespace,
+            'gridPreference' => $request->user() ? $this->uiPreferences->get($request->user(), $gridPreferenceNamespace) : null,
         ]);
     }
 
-    public function groups(Request $request): RedirectResponse
+    public function groups(Request $request): Response
     {
-        $query = $request->query();
-        $target = route('customers.library', [], false);
-        if ($query !== []) {
-            $target .= '?'.http_build_query($query);
-        }
-
-        return redirect($target);
+        return $this->index($request);
     }
 
 

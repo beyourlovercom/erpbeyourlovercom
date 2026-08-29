@@ -3,7 +3,15 @@
 use App\Modules\Shell\Application\LegacyErpNavigationPaths;
 use App\Modules\Shell\Experience\Controllers\ErpShellController;
 use App\Modules\Shell\Experience\Controllers\ShellPlaceholderController;
+use App\Modules\Shell\Experience\Controllers\UserUiPreferenceController;
 use Illuminate\Support\Facades\Route;
+
+Route::middleware(['web', 'auth'])->prefix('/ui/preferences')->name('ui.preferences.')->group(function (): void {
+    Route::get('/{namespace}', [UserUiPreferenceController::class, 'show'])
+        ->where('namespace', '[A-Za-z0-9._:-]+')->name('show');
+    Route::put('/{namespace}', [UserUiPreferenceController::class, 'update'])
+        ->where('namespace', '[A-Za-z0-9._:-]+')->name('update');
+});
 
 $legacyPaths = app(LegacyErpNavigationPaths::class);
 $formalPaths = collect(config('erp_shell_navigation'))->pluck('path')->map($legacyPaths->normalize(...))->all();
