@@ -17,6 +17,8 @@ enum AuthorizationKeys: string
     case SyncView = 'sync.view';
     case CustomersView = 'customers.view';
     case CustomersOperate = 'customers.operate';
+    case CustomersImport = 'customers.import';
+    case CustomersExport = 'customers.export';
     case KolView = 'kol.view';
     case KolOperate = 'kol.operate';
     case KolViewsManage = 'kol.views.manage';

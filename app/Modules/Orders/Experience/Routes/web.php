@@ -22,7 +22,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/customers/orders', [OrderController::class, 'index'])->middleware('can:orders.view')->name('customers.orders')->defaults('order_kind', 'customer');
     Route::get('/customers/orders/create', [OrderController::class, 'create'])->middleware('can:orders.create')->name('customers.orders.create')->defaults('order_kind', 'customer');
     Route::post('/customers/orders', [OrderController::class, 'store'])->middleware('can:orders.create')->name('orders.store.customers')->defaults('order_kind', 'customer');
-    Route::get('/customers/orders/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export')->defaults('order_kind', 'customer');
+    Route::get('/customers/orders/export', [OrderController::class, 'export'])->middleware(['can:customers.export', 'can:system.permissions.manage'])->name('orders.export')->defaults('order_kind', 'customer');
     Route::get('/customers/orders/{order}', [OrderController::class, 'show'])->middleware('can:orders.view')->where('order', '[A-Z]{3}-[0-9]{8}-[A-Z0-9]{6}|[0-9]+')->name('customers.orders.show')->defaults('order_kind', 'customer');
     Route::patch('/customers/orders/{order}', [OrderController::class, 'update'])->middleware('can:orders.edit')->where('order', '[A-Z]{3}-[0-9]{8}-[A-Z0-9]{6}|[0-9]+')->name('orders.update.customers')->defaults('order_kind', 'customer');
 

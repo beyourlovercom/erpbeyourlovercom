@@ -36,6 +36,11 @@ final class OrderController
         }
         $orders = $this->orders->list($filters);
 
+        $isCustomerKind = $kind?->value === 'customer';
+        $canExport = $isCustomerKind
+            ? ($request->user()->can('customers.export') && $request->user()->can('system.permissions.manage'))
+            : $request->user()->can('orders.view');
+
         return Inertia::render('Orders/Index', [
             'orderKind' => $kind?->value ?? 'all',
             'orderScope' => $scope === 'external_warehouse' ? 'external_warehouse' : 'all',
@@ -43,6 +48,7 @@ final class OrderController
             'filters' => $request->only(['search', 'source_type', 'order_status', 'view']),
             'savedViews' => $this->views->forUser('orders', (int) $request->user()->getAuthIdentifier(), false),
             'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),
+            'canExport' => $canExport,
         ]);
     }
 

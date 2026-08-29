@@ -27,6 +27,8 @@ final class PermissionCatalog
                 'permissions' => [
                     ['key' => 'customers.view', 'label' => '查看客户'],
                     ['key' => 'customers.operate', 'label' => '操作客户'],
+                    ['key' => 'customers.import', 'label' => '导入客户（保留）'],
+                    ['key' => 'customers.export', 'label' => '导出客户（保留）'],
                 ],
             ],
             '物流' => [

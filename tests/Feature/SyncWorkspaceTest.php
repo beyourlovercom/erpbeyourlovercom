@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Sync\Infrastructure\Models\SyncRun;
@@ -54,14 +55,30 @@ final class SyncWorkspaceTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->component('Sync/Warehouses')->has('warehouses'));
         $this->actingAs($user)->get('/sync/kol')->assertOk()
             ->assertInertia(fn (Assert $page) => $page->component('Sync/Kol')->has('platforms', 2));
+        // Non-admin sync user sees only 2 exports (all + procurement); customer-order export is hidden.
         $this->actingAs($user)->get('/sync/exports')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('Sync/Exports')->has('exports', 2));
+    }
+
+    public function test_sync_exports_shows_customer_order_export_only_to_admin(): void
+    {
+        $admin = $this->userWithPermissions(['sync.view', 'customers.export', 'system.permissions.manage']);
+        $this->actingAs($admin)->get('/sync/exports')->assertOk()
             ->assertInertia(fn (Assert $page) => $page->component('Sync/Exports')->has('exports', 3));
     }
+
     private function userWithSyncView(): User
     {
+        return $this->userWithPermissions(['sync.view']);
+    }
+
+    private function userWithPermissions(array $permissions): User
+    {
         $role = Role::create(['key' => 'sync-workspace-'.uniqid(), 'label' => 'Sync Workspace']);
-        $permission = $role->permissions()->firstOrCreate(['key' => 'sync.view'], ['label' => 'sync.view']);
-        $role->permissions()->syncWithoutDetaching([$permission->id]);
+        foreach ($permissions as $key) {
+            $permission = Permission::firstOrCreate(['key' => $key], ['label' => $key]);
+            $role->permissions()->syncWithoutDetaching([$permission->id]);
+        }
         $user = User::factory()->create();
         $user->roles()->sync([$role->id]);
 

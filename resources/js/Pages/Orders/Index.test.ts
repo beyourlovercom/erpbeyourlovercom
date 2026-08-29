@@ -17,6 +17,7 @@ const props = {
   filters: { view: 'all' },
   sourceTypes: [{ value: 'manual', label: '手动创建' }],
   savedViews: [{ id: 7, name: '我的待发', filters_json: { view: 'pending', source_type: 'manual' }, is_pinned: true, created_by: 1 }],
+  canExport: true,
 }
 
 describe('Orders Saved Views', () => {
