@@ -8,54 +8,14 @@ Before any formal task, read:
 - `AI/PARALLEL_WORK_EXECUTION_STANDARD.md`
 - `AI/CURRENT_CONTEXT.md`
 
-Role authority is governed by the Owner-approved execution-provider routing below:
+Role authority is fixed:
 
-- GPT Web + Owner: architecture, design, diagnosis, root cause, next-step decisions, and bounded exact remediation/implementation when behavior and scope are already approved.
-- US Claude Code: primary implementation provider for large new modules, broad cross-file implementation, complex integrations, materially complex new schema/data-model work, and high-complexity refactors.
+- GPT Web + Owner: architecture, design, diagnosis, root cause and next-step decisions.
+- US Claude Code: implementation only on an approved Work Package.
 - China Codex CLI: test, verification and evidence only on exact GitHub revisions.
 - GitHub: unique source of truth and only code synchronization path.
 
-Codex must not modify tracked files, fix failures, commit, push, open implementation PRs, design or diagnose. Claude must not invent architecture, diagnose root cause, widen scope or choose the next Work Package. GPT bounded implementation must not widen approved product scope or bypass Owner merge/release gates.
-
-# HIGHEST EXECUTION PROVIDER / CLAUDE BUDGET GATE
-
-**OWNER_APPROVED / ACTIVE. This gate supersedes historical wording that required Claude for every tracked-code implementation.**
-
-Default provider selection must minimize unnecessary Claude context/token consumption while preserving correctness and verification:
-
-- Use **GPT Web + US Remote Desktop Commander directly** for bounded, well-understood remediation where architecture/business behavior is already approved or frozen and the change can be verified locally.
-- Typical GPT-direct work includes UI/CSS/layout/spacing changes; labels and page-action placement; bounded form/control changes; small bug fixes with an established root cause; exact permission enforcement following an approved policy; test-harness/assertion fixes; TypeScript/typecheck/build fixes; architecture/hash baseline updates for directly changed files; UAT remediation; small route/controller/view corrections; governance/documentation edits; and similarly narrow follow-up changes that do not require new architecture.
-- Do **not** start a new Claude session merely for a one/few-file exact remediation when GPT can safely implement and verify it.
-- Use **US Claude Code** for large new modules/features, broad multi-file implementations, materially complex new schemas/data models/migrations, complex external integrations, large refactors, or implementation work whose size/ambiguity materially benefits from a dedicated coding agent.
-- When Claude is used, keep the same approved Work Package/session context where practical. Avoid repeated fresh Claude sessions for implementation → remediation → cleanup → hardening when the follow-up is bounded enough for GPT.
-- Claude usage requires a concrete complexity reason, not historical habit. If GPT can implement the approved change safely and run the required gates, GPT is the default for the remediation.
-- GPT-direct implementation may perform bounded local edits, tests, typecheck, build, runtime/UAT verification, and authorized Git delivery for that Work Package. Commit/push/PR/merge/release authority remains subject to existing Owner and Work Package gates; merge and production release still require explicit Owner authorization.
-- China Codex remains verification-only and receives no implementation authority from this rule.
-
-Provider choice must never weaken canonical data truth, authorization/security, migrations, accounting, menu governance, UAT evidence, or exact-revision verification requirements.
-
-# HIGHEST IMPLEMENTATION COLLISION / HANDOFF GATE
-
-**OWNER_APPROVED / ACTIVE. Applies globally, including all future Customer work.**
-
-The canonical implementation contract is:
-
-`ONE_WORK_PACKAGE_ONE_BRANCH_ONE_PR + ONE_ACTIVE_IMPLEMENTATION_PROVIDER_PER_WORKTREE`.
-
-Mandatory rules:
-
-- **SAME_FILE_PARALLEL_IMPLEMENTATION = FORBIDDEN.** GPT and Claude must never concurrently edit the same tracked file, and must not concurrently implement in the same worktree.
-- A worktree has exactly one active implementation provider at a time: either GPT+DC or Claude Code. Codex is never an implementation provider.
-- GPT/Claude handoff is serialized. Before handoff, stop the outgoing provider, capture current branch/HEAD plus `git status`/`git diff`, and make the current working tree the only implementation truth. The incoming provider must read that exact state before editing.
-- A stale Claude session must never resume and overwrite later GPT remediation. If Claude returns after GPT has changed the worktree, Claude must refresh/re-read the current diff and approved contract first; historical session state is not code authority.
-- Codex always verifies an exact GitHub SHA/branch state and reports evidence only. It must never create a competing implementation or repair a failure.
-- Sequential Work Packages for the same module must start from the latest merged `origin/main` after the prior package is merged, unless an explicitly documented dependency branch is approved. Do not start a later package from an obsolete pre-UAT/pre-merge baseline.
-- Owner-UAT-PASS / COMPLETE / FROZEN UI and behavior are regression baselines. Later Work Packages must extend them incrementally. Redesigning, removing, reverting, or replacing frozen behavior requires explicit Owner approval.
-- Before a later package reaches Owner UAT, perform a regression diff/audit against the frozen baseline for touched pages/files. Missing approved controls, changed permissions, lost layout behavior, removed translations, or reverted page-action placement are failures, not acceptable reinterpretations.
-- Parallel implementation is allowed only in separate worktrees with declared non-overlapping ownership or an approved shared-foundation extraction. If two streams need the same file, serialize them or extract/merge the shared foundation first.
-- GitHub remains the final synchronization boundary. Never use agent memory, an old local session, or machine-to-machine copying as authority over the current branch/worktree and GitHub history.
-
-These collision/handoff rules do not alter Owner UAT, explicit merge authorization, production release authorization, security, data-truth, migration, or verification gates.
+Codex must not modify tracked files, fix failures, commit, push, open implementation PRs, design or diagnose. Claude must not invent architecture, diagnose root cause, widen scope or choose the next Work Package.
 
 Parallel implementation is allowed only under `PARALLEL-WORK-EXEC-001`. Each active implementation stream must obey `ONE_WORK_PACKAGE_ONE_BRANCH_ONE_PR`, `ONE_ACTIVE_AGENT_ONE_WORKTREE`, declared dependencies and shared-foundation extraction rules.
 

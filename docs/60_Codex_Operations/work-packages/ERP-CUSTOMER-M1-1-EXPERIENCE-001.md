@@ -118,3 +118,64 @@ KOL remains an independent parallel track. Do not edit KOL implementation files 
 - Expose reference date/source/stale status and original currency breakdown for tooltip/auditability; do not consume vertical card space for those details.
 - The Customer Library six-card KPI strip must be visually compact: every card renders no more than two visible text rows (label + value). Remove visible currency sub-lines and unavailable explanatory notes; use title/aria-label tooltips instead.
 - Add focused tests for EUR/USD/CNY conversion math, unsupported currency behavior, cached fallback, controller payload, and compact frontend markers. Do not create accounting FX persistence or transaction settlement logic.
+
+## Final delivery evidence — 2026-08-29
+
+- Owner UAT: PASS for Customer Dashboard, List, Create, Show/Customer360, Edit, Billing/Shipping addresses, compact KPI strip, single-row horizontal filters, `↕️` maximize behavior, Admin-only Customer import/export visibility, and Admin-only Customer-order CSV export.
+- Final branch rebased/replayed onto `origin/main@1a7347f94938be2db29cbcd1fad6822aedcd9052` after PR #117 merged; no Customer/KOL source conflict occurred.
+- Customer/Company/Identity/Orders/Sync/AppShell/ECB/PageHeader merge-candidate regression: exit 0, 1181 assertions, 0 failures; PHPUnit reports 120 existing runtime warnings.
+- Frontend merge-candidate checks: `npm run typecheck` PASS; Customer Library + Orders Index Vitest 13/13 PASS; fresh Vite production build PASS; `public/hot` absent; `git diff --check` PASS.
+- Migration rehearsal on disposable SQLite: fresh Customer migrations=2; rollback last 2 leaves 0 Customer tables; reapply restores both `customers` and `customer_addresses` tables.
+- Runtime smoke `http://127.0.0.1:18113/customers/library`: HTTP 200; component `Customers/Library/Index`; runtime and manifest both `app-CS4yDgwl.js`; ECB reference source/date returned `ECB / 2026-08-28`; RMB estimate available and fresh.
+- `ModuleArchitectureTest` remains 3 failed / 5 passed on both untouched `main@1a7347f` and this Customer branch. Failure names are identical and are pre-existing KOL Content/AffiliateWP baseline drift (`frozen module and support boundaries`, `layer scans are limited to module layer directories`, `all rule ids have real assertions and compatibility evidence`). Customer introduces no additional Architecture failure and does not repair unrelated KOL baseline drift.
+- Production deployment: NOT AUTHORIZED. Merge remains a separate Owner gate.
+
+`CUSTOMER_M1_1_EXPERIENCE = OWNER_UAT_PASS / DELIVERY_READY`
+
+PROJECT POSITION
+PROGRAM_ROADMAP: Customer M1.1 Experience → Customer M1.2 Segmentation Foundation → Customer M1.3 Subscriber Integration → Customer M1.4 Support Integration → Customer M1.5 Fulfillment Projection → Customer M1.6 Advanced Segmentation → Customer M1.7 Manual Groups → Customer M1.8 Full Import/Export → Customer M1.9 Customer360 Closure; KOL continues on an independent parallel track
+CURRENT_TRACK_PHASE_MAP: Customer Core absorbed into M1.1 → Customer M1.1 OWNER_UAT_PASS / DELIVERY_READY → M1.2 waiting → M1.3–M1.9 waiting
+COMPLETED_PHASES: Customer canonical identity; explicit Order relation; Customer addresses; Dashboard/List/Customer360/Edit; Shipment projection; Admin-only export gates; ECB RMB reference display; Owner UAT
+CURRENT_PHASE: Customer M1.1 GitHub delivery
+CURRENT_WORK_PACKAGE: ERP-CUSTOMER-M1-1-EXPERIENCE-001
+PACKAGE_STATUS: OWNER_UAT_PASS / DELIVERY_READY / COMMIT_PUSH_PR_AUTHORIZED
+WAITING_PHASES: Draft PR exact-head gate; Owner merge authorization; Customer M1.2
+BASELINE: origin/main@1a7347f94938be2db29cbcd1fad6822aedcd9052
+GITHUB_STATE: feature/erp-customer-m1-1-experience-001 local merge candidate; commit/push/Draft PR authorized and pending at time of this evidence block
+SOURCE_CONFLICTS: NONE for Customer replay onto latest main; untouched main and Customer branch both reproduce the same 3 pre-existing KOL ModuleArchitecture baseline failures
+GLOBAL_GATE: PACKAGE REGRESSION PASS; GLOBAL MODULE ARCHITECTURE BASELINE HAS 3 PRE-EXISTING KOL FAILURES WITH EXACT MAIN REPRODUCTION
+PRODUCTION_DEPLOYMENT_STATUS: NO WITH EVIDENCE; no production migration or deployment authorization
+NEXT_DEPENDENCY: commit/push/Draft PR, then exact-head verification and separate Owner merge gate
+EVIDENCE_AS_OF: 2026-08-29
+
+ROADMAP HOURS
+CURRENT_PACKAGE_ESTIMATE: UNKNOWN WITH EVIDENCE; package evolved from undelivered Customer Core through multiple Owner-approved M1.1 amendments and was not re-estimated after scope expansion
+KNOWN_CURRENT_TRACK_REMAINING: Customer M1.2–M1.9 remain planned; exact effective-hour totals not re-estimated in this package
+ARCHITECTURE_GATE_REMAINING: Customer-specific 0; repository-global KOL baseline drift remains outside this package
+MVP1_TOTAL_ESTIMATE: UNKNOWN WITH EVIDENCE; this package does not revise the historical program estimate ledger
+MVP1_PLANNING_BASELINE: UNKNOWN WITH EVIDENCE; not recalculated here
+MVP1_MAXIMUM_ENVELOPE: UNKNOWN WITH EVIDENCE; not recalculated here
+MVP1_REMAINING: UNKNOWN WITH EVIDENCE; accepted project-wide actual ledger not recomputed here
+POST_MVP_KNOWN_INCREMENT: UNKNOWN WITH EVIDENCE; outside this package
+LONG_TERM_CUMULATIVE_RANGE: UNKNOWN WITH EVIDENCE; outside this package
+PROGRAM_REMAINING: UNKNOWN WITH EVIDENCE; Customer roadmap is frozen by phase but program-wide effective hours are not recomputed here
+COMPLETED_ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE; no accepted time ledger for this evolved package
+ESTIMATE_CONFIDENCE: LOW for hours / HIGH for delivered scope and verification evidence
+ESTIMATE_AS_OF: 2026-08-29
+ESTIMATE_METHOD: no elapsed-chat-time conversion; scope and verification evidence only
+
+ESTIMATED CODEX HOURS
+PREFLIGHT_AND_SCOPE: UNKNOWN WITH EVIDENCE
+CORE_EXECUTION: UNKNOWN WITH EVIDENCE
+TEST_AND_VALIDATION: UNKNOWN WITH EVIDENCE
+REMEDIATION_BUFFER: UNKNOWN WITH EVIDENCE
+ESTIMATED_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE
+ESTIMATE_RANGE: UNKNOWN WITH EVIDENCE
+ESTIMATE_BASIS: label retained for repository schema compatibility; primary implementation provider was Claude Code with Owner-authorized GPT Web exact remediation for bounded final fixes
+OWNER_REVIEW: INCLUDED / PASS
+MERGE: EXCLUDED / SEPARATE OWNER GATE
+MIGRATION: INCLUDED / LOCAL TEST ONLY
+MIGRATION_FILE_AUTHORING: INCLUDED
+MIGRATION_EXECUTION: LOCAL TEST ONLY
+UAT: INCLUDED / OWNER PASS
+DEPLOYMENT: EXCLUDED
