@@ -2,12 +2,12 @@
 type: work-package
 project: BYL ERP
 work_package_id: ERP-CUSTOMER-M1-4-SUPPORT-INTEGRATION-001
-status: OWNER_UAT_READY
-execution_provider: US_CODEX_CLI
+status: MERGE_AUTHORIZED
+execution_provider: CHINA_CODEX_CLI
 verification_tier: HIGH_RISK
 baseline: origin/main@94474846c10980cee9bbefaacf1f8cd3bbbefcf2
 owner_uat_required: YES
-git_delivery_authorized: NO
+git_delivery_authorized: YES
 production_deployment_authorized: NO
 ---
 
@@ -16,10 +16,10 @@ production_deployment_authorized: NO
 ## Owner authorization and current evidence
 
 OWNER_IMPLEMENTATION_AUTHORIZATION: GRANTED BY CURRENT CHAT DIRECTIVE 2026-08-30.
-GIT_DELIVERY_AUTHORIZATION: NOT GRANTED. No commit, push, PR or merge.
+GIT_DELIVERY_AUTHORIZATION: GRANTED by Owner after M1.4 validation PASS; commit, push, PR and merge are authorized for this exact M1.4 branch.
 PRODUCTION_DEPLOYMENT_AUTHORIZATION: NOT GRANTED.
 
-Preflight on US Mac confirms latest `origin/main` is `94474846c10980cee9bbefaacf1f8cd3bbbefcf2` (PR #126 Marketing M1.0A merge). Customer M1.3 merge `59dd5870c15aea5140a7ddf44bb046e470008eca` / PR #125 is an ancestor. Current main has no `App/Modules/Support`, no `support_tickets` table, and Customer Support surfaces remain placeholders. The dedicated worktree and branch were created from this exact latest main.
+Preflight on China Mac confirms latest `origin/main` is `94474846c10980cee9bbefaacf1f8cd3bbbefcf2` (PR #126 Marketing M1.0A merge). Customer M1.3 merge `59dd5870c15aea5140a7ddf44bb046e470008eca` / PR #125 is an ancestor. Current main has no `App/Modules/Support`, no `support_tickets` table, and Customer Support surfaces remain placeholders. The dedicated worktree and branch were created from this exact latest main.
 
 ## Goal
 
@@ -219,7 +219,7 @@ Use existing `erp-form-*` and Page Header Action Zone patterns.
 WORK_PACKAGE_ID: ERP-CUSTOMER-M1-4-SUPPORT-INTEGRATION-001
 BRANCH: feature/erp-customer-m1-4-support-integration-001
 WORKTREE: /Users/a/AI/007/worktrees/erp-customer-m1-4-support-integration-001
-AGENT_SESSION: US_CODEX_CLI after this Work Package is frozen
+AGENT_SESSION: CHINA_CODEX_CLI for M1.4 implementation and verification
 BASELINE: origin/main@94474846c10980cee9bbefaacf1f8cd3bbbefcf2
 EXPECTED_FILE_SCOPE: Support module + Support migration + Customer Support projection wiring + Customer Dashboard/Library/Show + focused tests + M1.4 architecture registration
 DEPENDENCIES: PR #125 Customer M1.3 merged; PR #126 Marketing M1.0A merged
@@ -265,11 +265,11 @@ Before Owner UAT readiness:
 
 ## Owner UAT gate
 
-OWNER_UAT_READINESS: READY on US Mac local isolated runtime `http://127.0.0.1:18117` using disposable SQLite fixture.
+OWNER_UAT_READINESS: READY on China Mac local isolated runtime `http://127.0.0.1:18117` using disposable SQLite fixture.
 AUTOMATED_GATE_EVIDENCE: Support + Customer backend `49 tests / 505 assertions`; focused Customer/Support frontend `20/20`; `npm run typecheck` PASS; fresh Vite build PASS; `git diff --check` PASS; `public/hot` absent; disposable migration rehearsal `1 → 0 → 1` PASS.
 ARCHITECTURE_GATE_EVIDENCE: M1.4-owned drift = 0; ModuleProvider `8/8` PASS; ModuleArchitecture retains exactly 3 pre-existing unrelated baseline failures (KOL module directory/file drift, Finance/KOL application-layer drift, existing KOL contents migration baseline drift).
 RUNTIME_SMOKE_EVIDENCE: authenticated runtime returns Customer Dashboard / Library / Customer360 / Support Show / Support Edit HTTP 200. Fixture projects Customer pending count `1` on Dashboard, Library aggregate and row; Customer360 shows one pending + one resolved linked ticket while an unlinked open ticket is excluded; Support audit actions are present.
-OWNER_UAT_STATUS: NOT_YET_PASS — manual Owner verification required below.
+OWNER_UAT_STATUS: PASS — Owner explicitly confirmed validation PASS and authorized M1.4 merge.
 
 Owner must verify Dashboard pending count, Library KPI/performance, Customer360 full-width Support placement and truthful table/empty state, explicit Customer-scoped create, update/status/owner/audit behavior, and that resolved/closed tickets leave pending counts.
 
@@ -285,15 +285,15 @@ CURRENT_TRACK_PHASE_MAP: Customer M1.1 [MERGED] → Customer M1.2 [MERGED] → C
 COMPLETED_PHASES: Customer M1.1, M1.2, M1.3; PR #126 Marketing M1.0A is also merged on current main.
 CURRENT_PHASE: Customer M1.4 Support Integration.
 CURRENT_WORK_PACKAGE: ERP-CUSTOMER-M1-4-SUPPORT-INTEGRATION-001.
-PACKAGE_STATUS: OWNER_UAT_READY / OWNER_UAT_NOT_YET_PASS / GIT_DELIVERY_NOT_AUTHORIZED.
+PACKAGE_STATUS: MERGE_AUTHORIZED / OWNER_UAT_PASS / GIT_DELIVERY_AUTHORIZED.
 WAITING_PHASES: Customer M1.5–M1.9 and all excluded scopes.
 BASELINE: origin/main@94474846c10980cee9bbefaacf1f8cd3bbbefcf2.
-GITHUB_STATE: PR #125 and PR #126 merged; M1.4 branch local only, no delivery PR authorized yet.
+GITHUB_STATE: PR #125 and PR #126 merged; M1.4 branch has been pushed from the China Mac; Owner has authorized PR creation and merge for the validated M1.4 head.
 SOURCE_CONFLICTS: `AI/CURRENT_CONTEXT.md` and `docs/10_Planning_Roadmap/13_PROGRAM_ROADMAP_AND_HOURS.md` remain dated 2026-08-28/29 and still describe Roadmap Reconciliation/KOL as current, while newer merged main contains Customer M1.1–M1.3 and Marketing PR #126 and the Owner currently explicitly directs Customer M1.4. Preserve that stale-governance conflict; this package does not rewrite unrelated roadmap governance. Current Owner task selection + current GitHub main determine this bounded package.
-GLOBAL_GATE: Customer M1.4 implementation/local verification authorized; Git delivery/merge/deploy gated.
+GLOBAL_GATE: Customer M1.4 Owner UAT PASS; Git delivery and merge authorized; production deployment remains gated.
 PRODUCTION_DEPLOYMENT_STATUS: NO WITH EVIDENCE; package explicitly excludes production deployment/migration.
-NEXT_DEPENDENCY: Complete M1.4 local verification and Owner UAT before any Git delivery request.
-EVIDENCE_AS_OF: 2026-08-30; US Mac preflight + current owner directive + origin/main history.
+NEXT_DEPENDENCY: Merge the exact M1.4 PR, synchronize the resulting latest main to the US Mac, then begin Customer M1.5 in a new isolated worktree.
+EVIDENCE_AS_OF: 2026-08-30; China Mac M1.4 implementation/verification + current Owner PASS/merge authorization + origin/main history.
 
 ## ROADMAP HOURS
 CURRENT_PACKAGE_ESTIMATE: planning value 8h; range 5–11h.
