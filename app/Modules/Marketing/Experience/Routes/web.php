@@ -3,6 +3,11 @@
 use App\Modules\Marketing\Experience\Controllers\MarketingController;
 use Illuminate\Support\Facades\Route;
 
+Route::middleware(['web', 'auth'])->group(function (): void {
+    Route::get('/sync/wpapi', [MarketingController::class, 'wordpressSync'])->middleware(['can:sync.view', 'can:marketing.view'])->name('sync.wpapi');
+    Route::post('/sync/wpapi/subscribers', [MarketingController::class, 'syncWordPress'])->middleware(['can:sync.operate', 'can:marketing.operate'])->name('sync.wpapi.subscribers');
+});
+
 Route::middleware(['web', 'auth', 'can:marketing.view'])->group(function (): void {
     Route::get('/marketing', [MarketingController::class, 'overview'])->name('shell.marketing');
     Route::get('/marketing/subscribers', [MarketingController::class, 'subscribers'])->name('marketing.subscribers');

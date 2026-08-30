@@ -5,6 +5,7 @@ namespace App\Modules\Sync\Experience\Controllers;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Sync\Application\SyncOrchestrationService;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -12,18 +13,23 @@ final class SyncWorkspaceController
 {
     public function __construct(private readonly SyncOrchestrationService $orchestration) {}
 
-    public function index(): Response
+    public function index(Request $request): Response
     {
         $runs = $this->orchestration->recentRuns(50);
         $byDomain = $runs->groupBy(fn (Model $run): string => $this->domain($run));
 
+        $domains = [
+            $this->domainCard('orders', '同步订单', 'WooCommerce / Shopify / ERP', '/sync/orders', $byDomain->get('orders')),
+            $this->domainCard('warehouses', '同步仓库', '统一管理仓库 Connector 与库存同步', '/sync/warehouses', $byDomain->get('warehouses')),
+            $this->domainCard('kol', '同步网红', 'Instagram / X 平台资料同步', '/sync/kol', $byDomain->get('kol')),
+            $this->domainCard('exports', '导出平台订单', '按平台和范围导出订单数据', '/sync/exports', $byDomain->get('exports')),
+        ];
+        if ($request->user()?->can('marketing.view')) {
+            $domains[] = $this->domainCard('marketing', '同步 WordPress 订阅用户', 'WordPress 明确订阅事实', '/sync/wpapi', $byDomain->get('marketing'));
+        }
+
         return Inertia::render('Sync/Index', [
-            'domains' => [
-                $this->domainCard('orders', '同步订单', 'WooCommerce / Shopify / ERP', '/sync/orders', $byDomain->get('orders')),
-                $this->domainCard('warehouses', '同步仓库', '统一管理仓库 Connector 与库存同步', '/sync/warehouses', $byDomain->get('warehouses')),
-                $this->domainCard('kol', '同步网红', 'Instagram / X 平台资料同步', '/sync/kol', $byDomain->get('kol')),
-                $this->domainCard('exports', '导出平台订单', '按平台和范围导出订单数据', '/sync/exports', $byDomain->get('exports')),
-            ],
+            'domains' => $domains,
             'queueSummary' => $this->orchestration->queueSummary(),
             'manualRuns' => $runs->filter(fn (Model $run): bool => $run->initiated_by !== null)
                 ->take(15)->map(fn (Model $run): array => $this->runData($run))->values()->all(),
@@ -77,7 +83,7 @@ final class SyncWorkspaceController
     private function domain(Model $run): string
     {
         $explicit = $run->context['domain'] ?? null;
-        if (in_array($explicit, ['orders', 'warehouses', 'kol', 'exports'], true)) {
+        if (in_array($explicit, ['orders', 'warehouses', 'kol', 'exports', 'marketing'], true)) {
             return $explicit;
         }
 

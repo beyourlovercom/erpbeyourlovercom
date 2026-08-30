@@ -19,6 +19,7 @@ return [
         'connection_key' => env('ANDY_CORE_CONNECTION_KEY', 'beyourlover.com'),
         'key_id' => env('ANDY_CORE_KEY_ID', ''),
         'shared_secret' => env('ANDY_CORE_SHARED_SECRET', ''),
+        'verify_tls' => (bool) env('ANDY_CORE_VERIFY_TLS', true),
         'timeout' => (int) env('ANDY_CORE_TIMEOUT_SECONDS', 15),
         'connect_timeout' => (int) env('ANDY_CORE_CONNECT_TIMEOUT_SECONDS', 5),
         'retry_times' => (int) env('ANDY_CORE_RETRY_TIMES', 2),

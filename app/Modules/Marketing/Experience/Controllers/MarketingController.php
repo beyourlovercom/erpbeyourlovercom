@@ -3,6 +3,9 @@
 namespace App\Modules\Marketing\Experience\Controllers;
 
 use App\Modules\Marketing\Infrastructure\Models\MarketingSubscriber;
+use App\Modules\Marketing\Application\Contracts\WordPressSubscriberGateway;
+use App\Modules\Marketing\Application\WordPressSubscriberSyncService;
+use App\Modules\Sync\Application\SyncOrchestrationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -10,6 +13,31 @@ use Inertia\Response;
 
 final class MarketingController
 {
+    public function wordpressSync(WordPressSubscriberGateway $gateway, SyncOrchestrationService $orchestration): Response
+    {
+        $latest = $orchestration->recentRuns(50)->first(fn ($run): bool => $run->run_type === 'wordpress_subscribers_snapshot');
+        return Inertia::render('Sync/WpApi', [
+            'connection' => $gateway->descriptor(),
+            'lastRun' => $latest ? [
+                'id' => $latest->id, 'status' => $latest->status->value, 'started_at' => $latest->started_at?->toIso8601String(),
+                'completed_at' => $latest->completed_at?->toIso8601String(), 'succeeded_items' => (int) $latest->succeeded_items,
+                'failed_items' => (int) $latest->failed_items, 'conflict_items' => (int) $latest->conflict_items,
+            ] : null,
+        ]);
+    }
+
+    public function syncWordPress(WordPressSubscriberSyncService $service, Request $request): \Illuminate\Http\RedirectResponse
+    {
+        try {
+            $run = $service->sync($request->user());
+            $summary = sprintf('同步结果：成功 %d，失败 %d，冲突 %d。', $run->succeeded_items, $run->failed_items, $run->conflict_items);
+            return $run->status->value === 'completed'
+                ? back()->with('success', $summary)
+                : back()->with('error', $summary);
+        } catch (\Throwable $exception) {
+            return back()->with('error', '同步失败：'.$exception->getMessage());
+        }
+    }
     public function overview(): Response
     {
         return Inertia::render('Marketing/Overview', [
