@@ -138,7 +138,7 @@ describe('Customer Library KPI Strip — compact', () => {
   it('customer groups workspace exposes shortcuts and account-level column settings', async () => {
     const wrapper = mount(Index, { props: { ...groupProps, canOperate: true, filters: { group: 'repeat_customer' } } })
     const labels = wrapper.findAll('.customer-group-shortcut').map(link => link.text())
-    expect(labels).toEqual(['全部客户', '无购买客户', '新客户', '复购客户', '单次多产品客户', '已发货客户', '尚未发货客户'])
+    expect(labels).toEqual(['全部客户', '无购买客户', '新客户', '复购客户', '单次多产品客户', '已发货客户', '尚未发货客户', '活跃客户', '流失风险客户', '沉睡客户', '高频客户', '高价值客户', 'VIP客户'])
     expect(wrapper.find('.customer-group-shortcut-active').text()).toBe('复购客户')
     expect(wrapper.find('#filter-group').exists()).toBe(false)
     expect(wrapper.find('a[href*="group=repeat_customer"]').attributes('href')).toContain('/customers/groups?')
@@ -150,6 +150,12 @@ describe('Customer Library KPI Strip — compact', () => {
     const wrapper = mount(Index, { props: baseProps })
     expect(wrapper.findAll('.customer-group-shortcut').length).toBe(0)
     expect(wrapper.find('#filter-group').exists()).toBe(true)
+    expect(wrapper.find('#filter-group').findAll('option').map(option => option.text())).toContain('活跃客户')
+    expect(wrapper.find('#filter-group').findAll('option').map(option => option.text())).toContain('流失风险客户')
+    expect(wrapper.find('#filter-group').findAll('option').map(option => option.text())).toContain('沉睡客户')
+    expect(wrapper.find('#filter-group').findAll('option').map(option => option.text())).toContain('高频客户')
+    expect(wrapper.find('#filter-group').findAll('option').map(option => option.text())).toContain('高价值客户')
+    expect(wrapper.find('#filter-group').findAll('option').map(option => option.text())).toContain('VIP客户')
     expect(wrapper.find('.column-settings-trigger').exists()).toBe(true)
   })
 

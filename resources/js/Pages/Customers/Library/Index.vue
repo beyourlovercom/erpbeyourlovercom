@@ -102,6 +102,12 @@ const groupShortcuts = [
     { key: 'multi_product_single_order', label: '单次多产品客户' },
     { key: 'has_shipment', label: '已发货客户' },
     { key: 'no_shipment_yet', label: '尚未发货客户' },
+    { key: 'active_customer', label: '活跃客户' },
+    { key: 'churn_risk', label: '流失风险客户' },
+    { key: 'dormant_customer', label: '沉睡客户' },
+    { key: 'high_frequency', label: '高频客户' },
+    { key: 'high_value', label: '高价值客户' },
+    { key: 'vip', label: 'VIP客户' },
 ]
 
 const groupHref = (group: string): string => {
