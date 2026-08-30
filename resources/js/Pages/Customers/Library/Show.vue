@@ -59,6 +59,7 @@ type Shipment = {
     shipped_at: string | null
     status: string | null
 }
+type SubscriptionFact = { id: number; channel: string | null; provider: string | null; source_site: string | null; status: string | null; consent_source: string | null; subscribed_at: string | null; unsubscribed_at: string | null; status_updated_at: string | null; last_synced_at: string | null }
 
 const props = defineProps<{
     customer: Customer
@@ -67,6 +68,7 @@ const props = defineProps<{
     metrics: Metrics
     recentOrders: Order[]
     shipments: Shipment[]
+    subscription: { matched: boolean; subscription_facts: SubscriptionFact[] }
     audit: { action: string; actor_id: number | null; created_at: string | null }[]
     canOperate: boolean
 }>()
@@ -269,17 +271,28 @@ function addressLines(addr: Address): string[] {
                     </div>
                 </article>
 
-                <!-- 订阅 / 支持（暂不可用） -->
-                <div class="c360-integration-grid">
-                    <article class="erp-form-card">
-                        <h2 class="erp-form-card-title">订阅记录</h2>
-                        <p class="integration-unavailable">Subscriber 模块（M1.3）尚未集成，暂无订阅数据。</p>
-                    </article>
-                    <article class="erp-form-card">
-                        <h2 class="erp-form-card-title">客户支持工单</h2>
-                        <p class="integration-unavailable">Support 模块（M1.4）尚未集成，暂无工单数据。</p>
-                    </article>
-                </div>
+                <!-- 订阅记录 -->
+                <article class="erp-form-card">
+                    <h2 class="erp-form-card-title">订阅记录</h2>
+                    <p v-if="!customer.email" class="integration-unavailable">该客户没有 Email，无法匹配 Subscriber 身份。</p>
+                    <p v-else-if="!subscription.matched" class="integration-unavailable">未找到匹配的 Marketing Subscriber 身份。</p>
+                    <p v-else-if="subscription.subscription_facts.length === 0" class="integration-unavailable">已匹配 Subscriber 身份，但暂无订阅事实。</p>
+                    <div v-else class="mvp-table-wrap">
+                        <table class="mvp-table">
+                            <thead><tr><th>Provider</th><th>来源网站</th><th>状态</th><th>同意来源</th><th>订阅时间</th><th>退订时间</th><th>状态时间</th><th>最后同步</th></tr></thead>
+                            <tbody><tr v-for="fact in subscription.subscription_facts" :key="fact.id">
+                                <td>{{ fact.provider ?? '—' }}</td><td>{{ fact.source_site ?? '—' }}</td><td>{{ fact.status ?? '—' }}</td><td>{{ fact.consent_source ?? '—' }}</td>
+                                <td>{{ fact.subscribed_at ?? '—' }}</td><td>{{ fact.unsubscribed_at ?? '—' }}</td><td>{{ fact.status_updated_at ?? '—' }}</td><td>{{ fact.last_synced_at ?? '—' }}</td>
+                            </tr></tbody>
+                        </table>
+                    </div>
+                </article>
+
+                <!-- 客户支持工单 -->
+                <article class="erp-form-card">
+                    <h2 class="erp-form-card-title">客户支持工单</h2>
+                    <p class="integration-unavailable">Support 模块（M1.4）尚未集成，暂无工单数据。</p>
+                </article>
 
                 <!-- 操作审计 -->
                 <article class="erp-form-card">
@@ -340,7 +353,6 @@ function addressLines(addr: Address): string[] {
 .address-empty { font-size: 13px; color: #7A8C94; font-style: italic; margin: 0; }
 
 /* Integration panels */
-.c360-integration-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 .integration-unavailable { font-size: 13px; color: #7A8C94; font-style: italic; margin: 0; }
 
 /* Audit */
@@ -357,7 +369,6 @@ function addressLines(addr: Address): string[] {
 @media (max-width: 700px) {
     .c360-kpi-grid { grid-template-columns: repeat(2, 1fr); }
     .c360-address-grid { grid-template-columns: 1fr; }
-    .c360-integration-grid { grid-template-columns: 1fr; }
     .profile-hero { flex-direction: column; }
 }
 @media (max-width: 440px) { .c360-kpi-grid { grid-template-columns: 1fr; } }
