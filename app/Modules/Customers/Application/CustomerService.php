@@ -15,7 +15,7 @@ final class CustomerService
 {
     private const CUSTOMER_CLASS = 'App\\Modules\\Customers\\Infrastructure\\Models\\Customer';
 
-    private const SEGMENTS = ['no_purchase', 'new_customer', 'repeat_customer', 'multi_product_single_order'];
+    private const SEGMENTS = ['no_purchase', 'new_customer', 'repeat_customer', 'multi_product_single_order', 'has_shipment', 'no_shipment_yet'];
 
     private const AUDIT_FIELDS = ['name', 'email', 'phone', 'country_code', 'language_code', 'source_type', 'owner_id', 'notes'];
 
@@ -83,6 +83,16 @@ final class CustomerService
                     ->groupBy('orders.id')
                     ->havingRaw('COUNT(DISTINCT order_items.sku) >= 3');
             });
+            return;
+        }
+
+        if ($segment === 'has_shipment') {
+            $query->whereHas('orders', fn ($orderQuery) => $validOrder($orderQuery)->whereHas('shipment'));
+            return;
+        }
+
+        if ($segment === 'no_shipment_yet') {
+            $query->whereDoesntHave('orders', fn ($orderQuery) => $validOrder($orderQuery)->whereHas('shipment'));
         }
     }
 

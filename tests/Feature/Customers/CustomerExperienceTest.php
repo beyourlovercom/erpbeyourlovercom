@@ -400,6 +400,54 @@ final class CustomerExperienceTest extends TestCase
                 ->where('recentOrders.0.shipment_status', 'delivered'));
     }
 
+    public function test_shipment_segments_use_only_non_cancelled_customer_orders(): void
+    {
+        $user = $this->userWith(['customers.view']);
+        $shipped = Customer::query()->create(['name' => 'Shipped', 'source_type' => 'manual']);
+        $cancelledOnly = Customer::query()->create(['name' => 'Cancelled Only', 'source_type' => 'manual']);
+        $unshipped = Customer::query()->create(['name' => 'Unshipped', 'source_type' => 'manual']);
+        $neverOrdered = Customer::query()->create(['name' => 'Never Ordered', 'source_type' => 'manual']);
+
+        $makeOrder = function (Customer $customer, string $status, string $number): int {
+            return DB::table('orders')->insertGetId([
+                'internal_order_number' => $number, 'source_type' => 'manual', 'order_kind' => 'customer',
+                'external_order_number' => $number, 'order_date' => now()->toDateString(),
+                'order_status' => $status, 'customer_id' => $customer->id,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        };
+
+        $shippedOrder = $makeOrder($shipped, 'shipped', 'SEG-SHIPPED');
+        (new Shipment())->forceFill(['order_id' => $shippedOrder, 'shipment_status' => 'shipped'])->save();
+        $cancelledOrder = $makeOrder($cancelledOnly, 'cancelled', 'SEG-CANCELLED');
+        (new Shipment())->forceFill(['order_id' => $cancelledOrder, 'shipment_status' => 'shipped'])->save();
+        $makeOrder($unshipped, 'pending_shipment', 'SEG-PENDING');
+
+        $this->actingAs($user)->get('/customers/library?group=has_shipment')->assertInertia(fn (Assert $page) => $page
+            ->where('customers.total', 1)->where('customers.data.0.name', 'Shipped'));
+        $this->actingAs($user)->get('/customers/library?group=no_shipment_yet')->assertInertia(fn (Assert $page) => $page
+            ->where('customers.total', 3)
+            ->where('customers.data', function ($rows): bool {
+                return collect($rows)->pluck('name')->sort()->values()->all() === ['Cancelled Only', 'Never Ordered', 'Unshipped'];
+            }));
+    }
+
+    public function test_customer_library_shipment_count_is_page_batched(): void
+    {
+        $user = $this->userWith(['customers.view']);
+        $customer = Customer::query()->create(['name' => 'Batched Shipment Count', 'source_type' => 'manual']);
+        $orderId = DB::table('orders')->insertGetId([
+            'internal_order_number' => 'BATCH-SHIP', 'source_type' => 'manual', 'order_kind' => 'customer',
+            'external_order_number' => 'BATCH-SHIP', 'order_date' => now()->toDateString(),
+            'order_status' => 'shipped', 'customer_id' => $customer->id,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        (new Shipment())->forceFill(['order_id' => $orderId, 'shipment_status' => 'shipped'])->save();
+
+        $this->actingAs($user)->get('/customers/library')->assertInertia(fn (Assert $page) => $page
+            ->where('customers.data.0.shipment_count', 1));
+    }
+
     // ─── Import/Export permissions ────────────────────────────────────────────
 
     public function test_import_export_buttons_visible_only_to_authorized_users(): void
