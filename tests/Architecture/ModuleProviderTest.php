@@ -20,6 +20,7 @@ use App\Modules\Shell\Providers\ShellServiceProvider;
 use App\Modules\Sync\Providers\SyncServiceProvider;
 use App\Modules\Sync\Providers\ManualSyncServiceProvider;
 use App\Modules\Products\Providers\ProductsServiceProvider;
+use App\Modules\Support\Providers\SupportServiceProvider;
 use App\Providers\AppServiceProvider;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
@@ -61,6 +62,7 @@ final class ModuleProviderTest extends TestCase
             ProductsServiceProvider::class,
             InventoryServiceProvider::class,
             MarketingServiceProvider::class,
+            SupportServiceProvider::class,
         ];
         self::assertSame($providers, ModuleManifest::providers());
         $application = $this->createMock(Application::class);

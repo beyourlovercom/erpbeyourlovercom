@@ -113,7 +113,7 @@ describe('Customer Library KPI Strip — compact', () => {
     expect(salesCard.text()).toContain('—')
   })
 
-  it('subscriber card shows real identity-link count while open ticket remains unavailable', () => {
+  it('subscriber and support cards show real aggregate counts', () => {
     const wrapper = mount(Index, { props: baseProps })
     const cards = wrapper.findAll('[data-testid="kpi-strip"] article')
     const subscriberCard = cards[4]
@@ -124,7 +124,7 @@ describe('Customer Library KPI Strip — compact', () => {
     expect(subscriberCard.text()).not.toContain('M1.3')
 
     expect(ticketCard.text()).toContain('待处理工单')
-    expect(ticketCard.text()).toContain('—')
+    expect(ticketCard.text()).toContain('0')
     expect(ticketCard.text()).not.toContain('M1.4')
   })
 
@@ -132,7 +132,7 @@ describe('Customer Library KPI Strip — compact', () => {
     const wrapper = mount(Index, { props: baseProps })
     const cards = wrapper.findAll('[data-testid="kpi-strip"] article')
     expect(cards[4].attributes('title')).toContain('精确匹配')
-    expect(cards[5].attributes('title')).toContain('M1.4')
+    expect(cards[5].attributes('title')).toContain('待处理客户支持工单')
   })
 
   it('customer groups workspace exposes shortcuts and account-level column settings', async () => {

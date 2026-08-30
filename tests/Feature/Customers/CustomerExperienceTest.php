@@ -252,7 +252,7 @@ final class CustomerExperienceTest extends TestCase
 
     // ─── Library stats ────────────────────────────────────────────────────────
 
-    public function test_library_index_exposes_real_stats_including_unavailable_cards(): void
+    public function test_library_index_exposes_real_stats_including_support_counts(): void
     {
         $user = $this->userWith(['customers.view']);
         $c = Customer::query()->create(['name' => 'Stats Test', 'source_type' => 'manual']);
@@ -280,7 +280,7 @@ final class CustomerExperienceTest extends TestCase
                 ->where('stats.revenue_this_month.0.revenue', 80)
                 ->where('stats.subscriber_count_available', true)
                 ->where('stats.subscriber_identity_links', 0)
-                ->where('stats.open_support_tickets_available', false));
+                ->where('stats.pending_support_tickets', 0));
     }
 
     public function test_library_table_rows_include_lifetime_revenue_and_latest_order_date(): void

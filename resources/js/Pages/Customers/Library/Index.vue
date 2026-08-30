@@ -70,7 +70,7 @@ type Stats = {
     rmb_estimate: RmbEstimate
     subscriber_count_available: boolean
     subscriber_identity_links: number
-    open_support_tickets_available: boolean
+    pending_support_tickets?: number
 }
 
 const props = defineProps<{
@@ -291,11 +291,11 @@ const subscriptionSummary = (customer: Customer): string => {
                         </article>
                         <article
                             class="erp-form-card customer-kpi-card kpi-unavailable"
-                            title="Support 模块（M1.4）尚未集成，暂无数据"
-                            aria-label="待处理工单: 暂不可用。Support 模块（M1.4）尚未集成"
+                            :title="`待处理客户支持工单: ${stats.pending_support_tickets ?? 0}`"
+                            :aria-label="`待处理工单: ${stats.pending_support_tickets ?? 0}`"
                         >
                             <p class="kpi-label">待处理工单</p>
-                            <p class="kpi-value kpi-muted">—</p>
+                            <p class="kpi-value">{{ stats.pending_support_tickets ?? 0 }}</p>
                         </article>
                     </div>
 

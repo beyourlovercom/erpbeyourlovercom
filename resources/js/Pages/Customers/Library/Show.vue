@@ -41,6 +41,7 @@ type Metrics = {
     revenue_by_currency: RevenueByCurrency[]
     shipment_count: number
 }
+type SupportTicket = { id: number; ticket_number: string; subject: string; status: string; priority: string; source_type: string; assignee: { name: string } | null; last_activity_at: string | null; created_at: string | null }
 type Order = {
     id: number
     number: string
@@ -71,10 +72,18 @@ const props = defineProps<{
     subscription: { matched: boolean; subscription_facts: SubscriptionFact[] }
     audit: { action: string; actor_id: number | null; created_at: string | null }[]
     canOperate: boolean
+    supportTickets: SupportTicket[]
+    pendingSupportTickets: number
 }>()
 
 const money = (value: number, currency: string) =>
     new Intl.NumberFormat('zh-CN', { style: 'currency', currency }).format(value)
+
+const supportLabel = (value: string) => ({
+    open: '待处理', waiting_customer: '等待客户', waiting_internal: '内部处理中',
+    resolved: '已解决', closed: '已关闭', low: '低', normal: '普通', high: '高',
+    urgent: '紧急', manual: '手工录入',
+} as Record<string, string>)[value] ?? value
 
 const initials = computed(() => {
     const name = props.customer.name.trim()
@@ -192,11 +201,11 @@ function addressLines(addr: Address): string[] {
                         <p class="kpi-value">{{ metrics.shipment_count }}</p>
                     </article>
 
-                    <!-- 6. 客服工单（暂不可用） -->
-                    <article class="erp-form-card c360-kpi-card kpi-unavailable">
+                    <!-- 6. 客服工单 -->
+                    <article class="erp-form-card c360-kpi-card">
                         <p class="kpi-label">待处理工单</p>
-                        <p class="kpi-value kpi-muted">—</p>
-                        <p class="kpi-sublabel">Support 模块（M1.4）尚未集成</p>
+                        <p class="kpi-value">{{ pendingSupportTickets }}</p>
+                        <p class="kpi-sublabel">待处理客户支持工单</p>
                     </article>
                 </div>
 
@@ -291,7 +300,13 @@ function addressLines(addr: Address): string[] {
                 <!-- 客户支持工单 -->
                 <article class="erp-form-card">
                     <h2 class="erp-form-card-title">客户支持工单</h2>
-                    <p class="integration-unavailable">Support 模块（M1.4）尚未集成，暂无工单数据。</p>
+                    <div class="c360-section-actions"><Link v-if="canOperate" class="erp-btn erp-btn-primary" :href="`/customers/library/${customer.id}/support-tickets/create`">新建工单</Link></div>
+                    <div v-if="supportTickets.length" class="mvp-table-wrap">
+                        <table class="mvp-table"><thead><tr><th>工单号</th><th>主题</th><th>状态</th><th>优先级</th><th>来源</th><th>负责人</th><th>最后活动</th><th>创建时间</th><th>操作</th></tr></thead>
+                            <tbody><tr v-for="ticket in supportTickets" :key="ticket.id"><td>{{ ticket.ticket_number }}</td><td>{{ ticket.subject }}</td><td>{{ supportLabel(ticket.status) }}</td><td>{{ supportLabel(ticket.priority) }}</td><td>{{ supportLabel(ticket.source_type) }}</td><td>{{ ticket.assignee?.name ?? '—' }}</td><td>{{ ticket.last_activity_at ?? '—' }}</td><td>{{ ticket.created_at ?? '—' }}</td><td><Link class="erp-btn erp-btn-secondary table-action-btn" :href="`/customers/library/${customer.id}/support-tickets/${ticket.id}`">查看</Link></td></tr></tbody>
+                        </table>
+                    </div>
+                    <p v-else class="integration-unavailable">暂无客户支持工单</p>
                 </article>
 
                 <!-- 操作审计 -->
