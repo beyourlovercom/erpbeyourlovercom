@@ -15,6 +15,7 @@ use App\Modules\Marketing\Providers\MarketingServiceProvider;
 use App\Modules\Orders\Providers\OrdersServiceProvider;
 use App\Modules\Runtime\Providers\RuntimeServiceProvider;
 use App\Modules\Shell\Providers\ShellServiceProvider;
+use App\Modules\Support\Providers\SupportServiceProvider;
 use App\Modules\Sync\Providers\SyncServiceProvider;
 use App\Modules\Products\Providers\ProductsServiceProvider;
 use App\Modules\Sync\Providers\ManualSyncServiceProvider;
@@ -45,6 +46,7 @@ final class ModuleManifest
             ProductsServiceProvider::class,
             InventoryServiceProvider::class,
             MarketingServiceProvider::class,
+            SupportServiceProvider::class,
         ];
     }
 

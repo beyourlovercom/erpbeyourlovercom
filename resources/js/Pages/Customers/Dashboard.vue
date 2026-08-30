@@ -11,6 +11,7 @@ const props = defineProps<{
         orders_this_month: number
         revenue_this_month: RevenueByCurrency[]
         subscriber_identity_links: number
+        pending_support_tickets: number
     }
     canOperate: boolean
     canImport: boolean
@@ -52,6 +53,10 @@ const money = (value: number, currency: string) =>
 
                 <div class="customer-kpi-grid">
                     <article class="erp-form-card customer-kpi-card">
+                        <p class="kpi-label">待处理工单</p>
+                        <p class="kpi-value">{{ metrics.pending_support_tickets }}</p>
+                    </article>
+                    <article class="erp-form-card customer-kpi-card">
                         <p class="kpi-label">客户总数</p>
                         <p class="kpi-value">{{ metrics.total_customers }}</p>
                     </article>
@@ -84,7 +89,7 @@ const money = (value: number, currency: string) =>
                     </article>
                     <article class="erp-form-card">
                         <h2 class="erp-form-card-title">客户支持工单</h2>
-                        <p class="integration-unavailable">Support 模块（M1.4）尚未集成，暂无数据。</p>
+                        <p class="integration-unavailable">当前有 {{ metrics.pending_support_tickets }} 个待处理客户支持工单。</p>
                     </article>
                 </div>
             </div>

@@ -16,6 +16,7 @@ use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
 use App\Modules\Orders\Providers\OrdersServiceProvider;
 use App\Modules\Products\Providers\ProductsServiceProvider;
+use App\Modules\Support\Providers\SupportServiceProvider;
 use App\Modules\Runtime\Providers\RuntimeServiceProvider;
 use App\Modules\Shell\Providers\ShellServiceProvider;
 use App\Modules\Sync\Providers\SyncServiceProvider;
@@ -170,6 +171,12 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Marketing/Infrastructure/Models/MarketingSubscriber.php',
         'app/Modules/Marketing/Infrastructure/Models/MarketingSubscription.php',
         'app/Modules/Marketing/Providers/MarketingServiceProvider.php',
+        'app/Modules/Support/Application/CustomerSupportProjection.php',
+        'app/Modules/Support/Application/SupportTicketService.php',
+        'app/Modules/Support/Experience/Controllers/CustomerSupportTicketController.php',
+        'app/Modules/Support/Experience/Routes/web.php',
+        'app/Modules/Support/Infrastructure/Models/SupportTicket.php',
+        'app/Modules/Support/Providers/SupportServiceProvider.php',
         'app/Modules/ModuleManifest.php',
         'app/Modules/ModulesServiceProvider.php',
         'app/Modules/Orders/Application/Contracts/WooCommerceOrderGateway.php',
@@ -395,6 +402,14 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Sync/Infrastructure/Models',
         'app/Modules/Sync/Infrastructure/WooCommerce',
         'app/Modules/Sync/Providers',
+        'app/Modules/Support',
+        'app/Modules/Support/Application',
+        'app/Modules/Support/Experience',
+        'app/Modules/Support/Experience/Controllers',
+        'app/Modules/Support/Experience/Routes',
+        'app/Modules/Support/Infrastructure',
+        'app/Modules/Support/Infrastructure/Models',
+        'app/Modules/Support/Providers',
     ];
 
     private const ROUTE_NAMES = [
@@ -433,6 +448,11 @@ final class ModuleArchitectureTest extends TestCase
         'customers.library.show',
         'customers.library.store',
         'customers.library.update',
+        'customers.support-tickets.create',
+        'customers.support-tickets.edit',
+        'customers.support-tickets.show',
+        'customers.support-tickets.store',
+        'customers.support-tickets.update',
         'customers.orders',
         'customers.orders.create',
         'customers.orders.mine',
@@ -680,6 +700,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_28_220000_create_customer_addresses_table.php' => '573bba35c511937fbb4d24f328bbe68a10acb18e68193045fc2cf08bf0898b7a',
         'database/migrations/2026_08_29_140000_create_user_ui_preferences_table.php' => '6f76c7eb1cc3aa4d1eeac985787b07baca3b11b6d686e85a9500346bd5880bd7',
         'database/migrations/2026_08_29_150000_create_marketing_subscriber_tables.php' => '134de0ec084445828ad413b689253607e9491f7d65c50582d24d7013a9238373',
+        'database/migrations/2026_08_30_000000_create_support_tickets_table.php' => '8a9edb6cc1713ed455062e83ea807529c0614072553a206ddcccf4a7b2bedd74',
     ];
 
     private const FRONTEND_FILES = [
@@ -721,11 +742,20 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Customers/Companies/Index.test.ts' => 'ab4d2c8f2e3f751daab6b8f980607251e31f67eb646539e593755386823713ab',
         'resources/js/Pages/Customers/Companies/Index.vue' => '7e7e164c6a1800d48f9440053c4238beffb932075f4b65053eb1a3e4f43d4add',
         'resources/js/Pages/Customers/Companies/Show.vue' => 'ec15baa7f74a287f7b8ab5b9c672da090b5031c0a8a055a9ccdcba5f28698b19',
-        'resources/js/Pages/Customers/Dashboard.vue' => '1aa19d33055406e1be7c905d0bcae0230fe85c6d1c580f68a362392b3df78d74',
+        'resources/js/Pages/Customers/Dashboard.test.ts' => 'a5089a3252d3169160ce2dbcac52540127622b0cdb19109bfd7d244392f8225d',
+        'resources/js/Pages/Customers/Dashboard.vue' => 'aeff4b27aea4e7ee9206f8f7180ac441e3dabfc580f1ad889fdb2d5f2e46ffac',
         'resources/js/Pages/Customers/Library/Create.vue' => '17066bb7a7f0dc1ac21f539f79f79397990b08574b69952171683975878d50d6',
         'resources/js/Pages/Customers/Library/Edit.vue' => '1b99107357f6979f860c72457bfc01c9f5bf7f3c39343d96afe946f48774895f',
-        'resources/js/Pages/Customers/Library/Index.vue' => 'f6cc78c2be1dfc219c22b7499f459da29d446117f881f5e001204bea19bde29b',
-        'resources/js/Pages/Customers/Library/Show.vue' => 'dc253435af7c8c24c159f8032327a56f67aa32fbfba0cbec93e12ccb24bbee39',
+        'resources/js/Pages/Customers/Library/Index.test.ts' => '7d55a95fc74056f790d0d37658f0a1444032351d6cf19087cb3dc065f5da940e',
+        'resources/js/Pages/Customers/Library/Index.vue' => '2e79d3461cdaa205bf7fe9ce69e57b45b6c0ac5b141e19a1a8e4d4b1a9899fe4',
+        'resources/js/Pages/Customers/Library/Show.test.ts' => '6ddb12aa705b02100543f1899bd4983778109c2e02402241fc6a65ab0498c2cb',
+        'resources/js/Pages/Customers/Library/Show.vue' => '09546926a8dec62227bf35b61d4c7bc905747af25b514fa649ed12e11eafd0ad',
+        'resources/js/Pages/Customers/Support/Create.vue' => 'b22761d3b7a22ecc96bf5a8ced4019a5d5410924d126876f4a36b5f2eef0e075',
+        'resources/js/Pages/Customers/Support/Edit.vue' => 'c62bf6df55d1d63c6006556023d8fc5f2fcbcc03ae787ad96c416339db7bb6ae',
+        'resources/js/Pages/Customers/Support/Show.test.ts' => 'c3ce33293b3a819073b6cca47ae794f51a517c66373615f6d35fb5b953f7c707',
+        'resources/js/Pages/Customers/Support/Show.vue' => '05fcbda0b6402a1dfcad552897e9e7d1fe458554f0235c1ba9d83c9f98bfa807',
+        'resources/js/Pages/Customers/Support/TicketForm.test.ts' => '4e10f9cd2ac487fe0635ceabe1d8855ffd8309043e43eff50355f9475bb05184',
+        'resources/js/Pages/Customers/Support/TicketForm.vue' => '28e2198067ef12bd82ad19765e8a6a7fd4c5761211bce16f6a89de6898dc1c05',
         'resources/js/Pages/Marketing/Overview.vue' => 'aa35d4a42c13827fbd22f11aece6c7256238d0438a8e75e1a2f0f6e66648b9e2',
         'resources/js/Pages/Marketing/Planned.vue' => 'd111af94df4ae9e4121fbf78b52d490c13b2ca34785b4d65ab06b610cb03df66',
         'resources/js/Pages/Marketing/Subscribers/Index.vue' => 'ba63d758645327b01a630dbe7e34828627a4682c1424bf5706d403c14676dfd7',
@@ -1065,6 +1095,7 @@ PHP;
             ProductsServiceProvider::class,
             InventoryServiceProvider::class,
             MarketingServiceProvider::class,
+            SupportServiceProvider::class,
         ], ModuleManifest::providers());
         self::assertSame([AppServiceProvider::class, ModulesServiceProvider::class], require $this->path('bootstrap/providers.php'));
     }

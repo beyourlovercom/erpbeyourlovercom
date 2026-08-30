@@ -14,6 +14,7 @@ use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Shell\Application\UserUiPreferenceService;
+use App\Modules\Support\Application\CustomerSupportProjection;
 use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -43,6 +44,7 @@ final class CustomerController
         private readonly CustomerSubscriberProjection $subscriberProjection,
         private readonly EcbFxService $fx,
         private readonly UserUiPreferenceService $uiPreferences,
+        private readonly CustomerSupportProjection $supportProjection,
     ) {}
 
     public function index(Request $request): Response
@@ -54,6 +56,7 @@ final class CustomerController
         $subscriberProjections = $this->subscriberProjection->forCustomers($paginator->items());
 
         $customerIds = collect($paginator->items())->pluck('id');
+        $supportCounts = $this->supportProjection->pendingCountsForCustomers($customerIds);
 
         $latestOrderDates = $customerIds->isNotEmpty()
             ? DB::table('orders')
@@ -109,7 +112,7 @@ final class CustomerController
             ->values()->all();
 
         return Inertia::render('Customers/Library/Index', [
-            'customers' => $paginator->through(function (Customer $customer) use ($latestOrderDates, $lifetimeRevenueBatch, $subscriberProjections): array {
+            'customers' => $paginator->through(function (Customer $customer) use ($latestOrderDates, $lifetimeRevenueBatch, $subscriberProjections, $supportCounts): array {
                 $data = $this->customerData($customer);
                 $data['subscription'] = $subscriberProjections[$this->normalizeEmail($customer->email)] ?? ['matched' => false, 'subscriber_email' => null, 'subscription_facts' => [], 'subscription_statuses' => []];
                 $latestDate = $latestOrderDates->get($customer->id);
@@ -126,6 +129,7 @@ final class CustomerController
                     ];
                 })->sortBy('currency')->values()->all();
                 $data['primary_address'] = $this->addressData($customer->shippingAddress ?? $customer->billingAddress);
+                $data['pending_support_tickets'] = $supportCounts[$customer->id] ?? 0;
                 return $data;
             }),
             'filters' => $filters,
@@ -138,7 +142,7 @@ final class CustomerController
                 'rmb_estimate' => $this->fx->convertToCny($revenueThisMonth),
                 'subscriber_count_available' => true,
                 'subscriber_identity_links' => $this->subscriberProjection->identityLinkCount(),
-                'open_support_tickets_available' => false,
+                'pending_support_tickets' => $this->supportProjection->pendingCount(),
             ],
             'canOperate' => (bool) $request->user()?->hasPermission('customers.operate'),
             'canImport' => (bool) ($request->user()?->hasPermission('customers.import') && $request->user()?->hasPermission('system.permissions.manage')),
@@ -259,6 +263,14 @@ final class CustomerController
             return $order;
         })->all();
 
+        $supportTickets = $this->supportProjection->forCustomer($customer->id);
+        $supportTicketIds = collect($supportTickets)->pluck('id')->map(fn (mixed $id): string => (string) $id)->all();
+        $auditQuery = AuditRecord::query()->where(function ($query) use ($customer, $supportTicketIds): void {
+            $query->where(fn ($q) => $q->where('entity_type', Customer::class)->where('entity_id', (string) $customer->id));
+            if ($supportTicketIds !== []) {
+                $query->orWhere(fn ($q) => $q->where('entity_type', \App\Modules\Support\Infrastructure\Models\SupportTicket::class)->whereIn('entity_id', $supportTicketIds));
+            }
+        });
         $orderCount = (int) ($summary->order_count ?? 0);
         $customer->orders_count = $orderCount;
 
@@ -277,9 +289,10 @@ final class CustomerController
             ],
             'recentOrders' => $recentOrders,
             'shipments' => $shipments,
+            'supportTickets' => $supportTickets,
+            'pendingSupportTickets' => collect($supportTickets)->whereIn('status', CustomerSupportProjection::PENDING_STATUSES)->count(),
             'subscription' => $subscription,
-            'audit' => AuditRecord::query()
-                ->where('entity_type', Customer::class)->where('entity_id', (string) $customer->id)
+            'audit' => $auditQuery
                 ->latest('created_at')->limit(30)->get()
                 ->map(fn (AuditRecord $record): array => [
                     'action' => $record->action,
