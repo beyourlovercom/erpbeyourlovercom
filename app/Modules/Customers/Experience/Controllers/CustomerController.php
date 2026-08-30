@@ -11,7 +11,7 @@ use App\Modules\Customers\Domain\Exceptions\InvalidCompanyAttributeException;
 use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Customers\Infrastructure\Models\CustomerAddress;
 use App\Modules\Identity\Infrastructure\Models\User;
-use App\Modules\Logistics\Infrastructure\Models\Shipment;
+use App\Modules\Logistics\Application\CustomerShipmentProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Shell\Application\UserUiPreferenceService;
 use App\Modules\Support\Application\CustomerSupportProjection;
@@ -45,6 +45,7 @@ final class CustomerController
         private readonly EcbFxService $fx,
         private readonly UserUiPreferenceService $uiPreferences,
         private readonly CustomerSupportProjection $supportProjection,
+        private readonly CustomerShipmentProjection $shipmentProjection,
     ) {}
 
     public function index(Request $request): Response
@@ -57,6 +58,7 @@ final class CustomerController
 
         $customerIds = collect($paginator->items())->pluck('id');
         $supportCounts = $this->supportProjection->pendingCountsForCustomers($customerIds);
+        $shipmentCounts = $this->shipmentProjection->countsForCustomers($customerIds);
 
         $latestOrderDates = $customerIds->isNotEmpty()
             ? DB::table('orders')
@@ -112,7 +114,7 @@ final class CustomerController
             ->values()->all();
 
         return Inertia::render('Customers/Library/Index', [
-            'customers' => $paginator->through(function (Customer $customer) use ($latestOrderDates, $lifetimeRevenueBatch, $subscriberProjections, $supportCounts): array {
+            'customers' => $paginator->through(function (Customer $customer) use ($latestOrderDates, $lifetimeRevenueBatch, $subscriberProjections, $supportCounts, $shipmentCounts): array {
                 $data = $this->customerData($customer);
                 $data['subscription'] = $subscriberProjections[$this->normalizeEmail($customer->email)] ?? ['matched' => false, 'subscriber_email' => null, 'subscription_facts' => [], 'subscription_statuses' => []];
                 $latestDate = $latestOrderDates->get($customer->id);
@@ -130,6 +132,7 @@ final class CustomerController
                 })->sortBy('currency')->values()->all();
                 $data['primary_address'] = $this->addressData($customer->shippingAddress ?? $customer->billingAddress);
                 $data['pending_support_tickets'] = $supportCounts[$customer->id] ?? 0;
+                $data['shipment_count'] = $shipmentCounts[$customer->id] ?? 0;
                 return $data;
             }),
             'filters' => $filters,
@@ -229,35 +232,11 @@ final class CustomerController
             ->where('order_kind', 'customer')
             ->pluck('id');
 
-        $shipmentCount = $orderIds->isNotEmpty()
-            ? Shipment::query()->whereIn('order_id', $orderIds)->count()
-            : 0;
-
-        $shipments = $orderIds->isNotEmpty()
-            ? Shipment::query()
-                ->whereIn('order_id', $orderIds)
-                ->with('order')
-                ->latest('shipped_at')->limit(20)->get()
-                ->map(fn (Shipment $s): array => [
-                    'id' => $s->id,
-                    'order_number' => $s->order?->external_order_number ?: $s->order?->internal_order_number,
-                    'order_id' => $s->order_id,
-                    'carrier' => $s->carrier,
-                    'tracking_number' => $s->tracking_number,
-                    'shipped_at' => $s->shipped_at?->toDateString(),
-                    'status' => $s->shipment_status,
-                ])->all()
-            : [];
+        $shipmentCount = $this->shipmentProjection->countForCustomer($customer->id);
+        $shipments = $this->shipmentProjection->recordsForCustomer($customer->id);
 
         $recentOrderIds = collect($recentOrders)->pluck('id');
-        $orderShipmentStatuses = $recentOrderIds->isNotEmpty()
-            ? DB::table('shipments')
-                ->whereIn('order_id', $recentOrderIds)
-                ->orderBy('shipped_at', 'desc')
-                ->get(['order_id', 'shipment_status'])
-                ->unique('order_id')
-                ->pluck('shipment_status', 'order_id')
-            : collect();
+        $orderShipmentStatuses = collect($this->shipmentProjection->statusesForOrders($recentOrderIds));
         $recentOrders = collect($recentOrders)->map(function (array $order) use ($orderShipmentStatuses): array {
             $order['shipment_status'] = $orderShipmentStatuses->get($order['id']);
             return $order;

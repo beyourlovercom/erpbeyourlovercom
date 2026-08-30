@@ -138,7 +138,7 @@ describe('Customer Library KPI Strip — compact', () => {
   it('customer groups workspace exposes shortcuts and account-level column settings', async () => {
     const wrapper = mount(Index, { props: { ...groupProps, canOperate: true, filters: { group: 'repeat_customer' } } })
     const labels = wrapper.findAll('.customer-group-shortcut').map(link => link.text())
-    expect(labels).toEqual(['全部客户', '无购买客户', '新客户', '复购客户', '单次多产品客户'])
+    expect(labels).toEqual(['全部客户', '无购买客户', '新客户', '复购客户', '单次多产品客户', '已发货客户', '尚未发货客户'])
     expect(wrapper.find('.customer-group-shortcut-active').text()).toBe('复购客户')
     expect(wrapper.find('#filter-group').exists()).toBe(false)
     expect(wrapper.find('a[href*="group=repeat_customer"]').attributes('href')).toContain('/customers/groups?')
@@ -153,12 +153,22 @@ describe('Customer Library KPI Strip — compact', () => {
     expect(wrapper.find('.column-settings-trigger').exists()).toBe(true)
   })
 
+  it('keeps shipment count hidden by default and exposes shipment group shortcuts', async () => {
+    const wrapper = mount(Index, { props: groupProps })
+    expect(wrapper.findAll('thead th').map(node => node.text())).not.toContain('Shipment count')
+    expect(wrapper.findAll('.customer-group-shortcut').map(link => link.text())).toContain('已发货客户')
+    expect(wrapper.findAll('.customer-group-shortcut').map(link => link.text())).toContain('尚未发货客户')
+    await wrapper.get('.column-settings-trigger').trigger('click')
+    expect(wrapper.findAll('input[aria-label="显示Shipment count"]').length).toBe(1)
+  })
+
   it('optional subscription column preserves conflicting provider statuses', async () => {
     const wrapper = mount(Index, { props: {
       ...baseProps,
       customers: { ...baseProps.customers, data: [{
         id: 1, customer_number: 'CUS-00000001', name: 'Alice', email: 'alice@example.test', phone: null,
         country_code: null, source_label: '手工录入', owner: null, orders_count: 0, latest_order_date: null,
+        shipment_count: 0,
         lifetime_revenue: [], primary_address: null, archived_at: null, created_at: null,
         subscription: { matched: true, subscription_facts: [{ provider: 'wordpress', source_site: 'beyourlover.com', status: 'subscribed' }, { provider: 'mail-b', source_site: 'site-b', status: 'unsubscribed' }], subscription_statuses: ['subscribed', 'unsubscribed'] },
       }] },

@@ -34,9 +34,10 @@ type Customer = {
     archived_at: string | null
     created_at: string | null
     subscription: { matched: boolean; subscription_facts: { provider: string | null; source_site: string | null; status: string | null }[]; subscription_statuses: string[] }
+    shipment_count: number
 }
 
-type ColumnKey = 'email' | 'phone' | 'registered_at' | 'country_region' | 'city' | 'province_state' | 'postal_code' | 'source' | 'orders_count' | 'total_spend' | 'aov' | 'latest_order' | 'owner' | 'status' | 'subscription'
+type ColumnKey = 'email' | 'phone' | 'registered_at' | 'country_region' | 'city' | 'province_state' | 'postal_code' | 'source' | 'orders_count' | 'shipment_count' | 'total_spend' | 'aov' | 'latest_order' | 'owner' | 'status' | 'subscription'
 
 type Paginator = {
     data: Customer[]
@@ -99,6 +100,8 @@ const groupShortcuts = [
     { key: 'new_customer', label: '新客户' },
     { key: 'repeat_customer', label: '复购客户' },
     { key: 'multi_product_single_order', label: '单次多产品客户' },
+    { key: 'has_shipment', label: '已发货客户' },
+    { key: 'no_shipment_yet', label: '尚未发货客户' },
 ]
 
 const groupHref = (group: string): string => {
@@ -175,6 +178,7 @@ const defaultColumns: GridColumnDefinition<ColumnKey>[] = [
     { key: 'postal_code', label: '邮编' },
     { key: 'source', label: '来源' },
     { key: 'orders_count', label: '订单数' },
+    { key: 'shipment_count', label: 'Shipment count', defaultVisible: false },
     { key: 'total_spend', label: '累计销售额' },
     { key: 'aov', label: 'AOV' },
     { key: 'latest_order', label: '最近下单' },
@@ -409,6 +413,7 @@ const subscriptionSummary = (customer: Customer): string => {
                                         <template v-else-if="column.key === 'postal_code'">{{ customer.primary_address?.postal_code ?? '—' }}</template>
                                         <template v-else-if="column.key === 'source'">{{ customer.source_label }}</template>
                                         <template v-else-if="column.key === 'orders_count'">{{ customer.orders_count }}</template>
+                                        <template v-else-if="column.key === 'shipment_count'">{{ customer.shipment_count }}</template>
                                         <template v-else-if="column.key === 'total_spend'">
                                             <template v-if="customer.lifetime_revenue.length === 0">—</template>
                                             <span v-for="r in customer.lifetime_revenue" v-else :key="r.currency" class="revenue-chip">{{ money(r.revenue, r.currency) }}</span>
