@@ -2,7 +2,7 @@
 type: work-package
 project: BYL ERP
 work_package_id: ERP-CUSTOMER-M1-6-ADVANCED-SEGMENTATION-001
-status: GIT_DELIVERY_AUTHORIZED
+status: MERGE_AUTHORIZED
 execution_provider: US_CODEX_CLI
 verification_tier: DAILY
 baseline: origin/main@fd52a4451753abe92c28b52539630af83609b439
@@ -105,7 +105,7 @@ HOST: US Mac / `as-Mac-mini.local`
 DEPENDENCY: Customer M1.5 PR #128 merged — SATISFIED
 IMPLEMENTATION_STATUS: COMPLETE / OWNER_UAT_READY.
 GIT_DELIVERY_AUTHORIZATION: YES
-MERGE_AUTHORIZATION: NO
+MERGE_AUTHORIZATION: YES
 PRODUCTION_DEPLOYMENT_AUTHORIZATION: NO
 
 ## Estimate
@@ -120,7 +120,7 @@ Planning range: approximately 4–5.5 effective hours, excluding Owner review an
 OWNER_POLICY_APPROVAL: PASS on 2026-08-30.
 OWNER_IMPLEMENTATION_AUTHORIZATION: GRANTED by current chat directive to proceed immediately.
 GIT_DELIVERY_AUTHORIZATION: GRANTED — Owner explicitly authorized commit / push / PR on 2026-08-30.
-MERGE_AUTHORIZATION: NOT GRANTED.
+MERGE_AUTHORIZATION: GRANTED — Owner explicitly authorized merge PR #129 on 2026-08-30.
 PRODUCTION_DEPLOYMENT_AUTHORIZATION: NOT GRANTED.
 
 ## Owner UAT readiness — 2026-08-30
@@ -128,7 +128,7 @@ PRODUCTION_DEPLOYMENT_AUTHORIZATION: NOT GRANTED.
 IMPLEMENTATION_STATUS: COMPLETE / OWNER_UAT_READY.
 OWNER_UAT_STATUS: PASS — Owner approved in chat on 2026-08-30.
 GIT_DELIVERY_AUTHORIZATION: GRANTED — Owner explicitly authorized commit / push / PR on 2026-08-30.
-MERGE_AUTHORIZATION: NOT GRANTED.
+MERGE_AUTHORIZATION: GRANTED — Owner explicitly authorized merge PR #129 on 2026-08-30.
 PRODUCTION_DEPLOYMENT_AUTHORIZATION: NOT GRANTED.
 
 Automated evidence:
@@ -155,7 +155,7 @@ US-local Owner UAT:
 - Cross Currency USD 490 + EUR 440 does not qualify high value.
 - cancelled-only and KOL-fulfillment-only noise fixtures do not qualify advanced Customer segments.
 
-NEXT_GATE: Git delivery — commit / push / open PR. Merge and deployment remain separately unauthorized.
+NEXT_GATE: Merge PR #129 using exact-head guard. Production deployment remains separately unauthorized.
 
 OWNER_UAT_PASS_RECORDED: 2026-08-30.
-PACKAGE_STATUS: OWNER_UAT_PASS / GIT_DELIVERY_AUTHORIZED / MERGE_NOT_AUTHORIZED.
+PACKAGE_STATUS: OWNER_UAT_PASS / GIT_DELIVERY_COMPLETE / MERGE_AUTHORIZED / PRODUCTION_DEPLOYMENT_NOT_AUTHORIZED.
