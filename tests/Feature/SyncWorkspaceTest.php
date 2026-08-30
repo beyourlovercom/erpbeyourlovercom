@@ -31,6 +31,7 @@ final class SyncWorkspaceTest extends TestCase
         ]);
         $this->actingAs($user)->get('/sync')->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Sync/Index')
+            ->has('domains', 4)
             ->where('domains.0.href', '/sync/orders')
             ->where('domains.1.href', '/sync/warehouses')
             ->where('domains.2.href', '/sync/kol')
@@ -45,6 +46,18 @@ final class SyncWorkspaceTest extends TestCase
             ->has('orders')
             ->has('syncRuns')
             ->has('queueSummary')
+        );
+    }
+
+
+    public function test_wordpress_subscriber_sync_card_requires_marketing_view(): void
+    {
+        $user = $this->userWithPermissions(['sync.view', 'marketing.view']);
+        $this->actingAs($user)->get('/sync')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Sync/Index')
+            ->has('domains', 5)
+            ->where('domains.4.href', '/sync/wpapi')
+            ->where('domains.4.key', 'marketing')
         );
     }
 

@@ -118,6 +118,7 @@ affiliates
 coupons
 referrals
 payouts
+subscribers
 ```
 
 Query contract:
@@ -139,6 +140,21 @@ Response returns `items`, `next_cursor`, `provider_modified_at` where available.
 - payment email where available;
 - registered/modified dates;
 - provider totals may be returned as supporting context but ERP canonical Finance remains Order/Referral based.
+
+### Subscriber item minimum (read-only explicit consent facts)
+
+`GET /snapshot/subscribers` returns only records explicitly exposed by the site's subscription/consent source. A WordPress User, role, WooCommerce Customer or Order is never a subscriber fallback.
+
+- `external_subscription_id` required provider-stable string;
+- `email` required;
+- `first_name` / `last_name` nullable;
+- `status`: `subscribed`, `unsubscribed`, `suppressed`, `pending` or `unknown`;
+- `consent_source` nullable and preserved verbatim when available;
+- `subscribed_at`, `unsubscribed_at`, `status_updated_at` nullable ISO-8601;
+- `provider_modified_at` nullable ISO-8601;
+- `external_list_id` / `external_list_name` nullable.
+
+The response identifies the actual connection/site source and returns the same bounded `cursor`, `updated_after` and `limit` pagination semantics as other snapshots. Unsupported or unavailable explicit subscription sources fail truthfully; the connector must not fabricate consent records.
 
 ### Coupon item minimum
 - WooCommerce coupon_id;
