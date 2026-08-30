@@ -15,11 +15,14 @@ final class CustomerService
 {
     private const CUSTOMER_CLASS = 'App\\Modules\\Customers\\Infrastructure\\Models\\Customer';
 
-    private const SEGMENTS = ['no_purchase', 'new_customer', 'repeat_customer', 'multi_product_single_order', 'has_shipment', 'no_shipment_yet'];
+    private const SEGMENTS = ['no_purchase', 'new_customer', 'repeat_customer', 'multi_product_single_order', 'has_shipment', 'no_shipment_yet', 'active_customer', 'churn_risk', 'dormant_customer', 'high_frequency', 'high_value', 'vip'];
 
     private const AUDIT_FIELDS = ['name', 'email', 'phone', 'country_code', 'language_code', 'source_type', 'owner_id', 'notes'];
 
-    public function __construct(private readonly AuditRecorder $audit) {}
+    public function __construct(
+        private readonly AuditRecorder $audit,
+        private readonly CustomerSegmentationQuery $segmentation,
+    ) {}
 
     public function list(array $filters = [], int $perPage = 50): LengthAwarePaginator
     {
@@ -51,6 +54,11 @@ final class CustomerService
 
     private function applySegment($query, string $segment): void
     {
+        if ($this->segmentation->supports($segment)) {
+            $this->segmentation->apply($query, $segment);
+            return;
+        }
+
         $validOrder = fn ($orderQuery) => $orderQuery
             ->where('order_kind', 'customer')
             ->where('order_status', '!=', 'cancelled');

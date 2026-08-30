@@ -5,6 +5,7 @@ namespace Tests\Feature\Customers;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use Carbon\Carbon;
 use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Customers\Infrastructure\Models\CustomerAddress;
 use App\Modules\Marketing\Infrastructure\Models\MarketingSubscriber;
@@ -805,18 +806,105 @@ final class CustomerExperienceTest extends TestCase
                 ->where('customers.data.0.name', $qualifies->name));
     }
 
-    private function createCustomerOrder(Customer $customer, array $skus, string $status = 'shipped', int $quantity = 1): int
+    public function test_advanced_recency_segments_use_inclusive_frozen_boundaries_and_valid_purchases(): void
+    {
+        Carbon::setTestNow('2026-08-30 12:00:00');
+        try {
+            $user = $this->userWith(['customers.view'], 'segment_advanced_recency');
+            $active = Customer::query()->create(['name' => 'Active', 'source_type' => 'manual']);
+            $churn91 = Customer::query()->create(['name' => 'Churn 91', 'source_type' => 'manual']);
+            $churn180 = Customer::query()->create(['name' => 'Churn 180', 'source_type' => 'manual']);
+            $dormant = Customer::query()->create(['name' => 'Dormant', 'source_type' => 'manual']);
+            $cancelled = Customer::query()->create(['name' => 'Cancelled', 'source_type' => 'manual']);
+            $kol = Customer::query()->create(['name' => 'KOL Order Only', 'source_type' => 'manual']);
+
+            $this->createCustomerOrder($active, ['ACTIVE'], 'shipped', 1, now()->subDays(90)->toDateString());
+            $this->createCustomerOrder($churn91, ['CHURN-91'], 'shipped', 1, now()->subDays(91)->toDateString());
+            $this->createCustomerOrder($churn91, ['CHURN-OLDER'], 'shipped', 1, now()->subDays(365)->toDateString());
+            $this->createCustomerOrder($churn180, ['CHURN-180'], 'shipped', 1, now()->subDays(180)->toDateString());
+            $this->createCustomerOrder($churn180, ['CHURN-OLDER'], 'shipped', 1, now()->subDays(365)->toDateString());
+            $this->createCustomerOrder($dormant, ['DORMANT'], 'shipped', 1, now()->subDays(181)->toDateString());
+            $this->createCustomerOrder($cancelled, ['CANCELLED'], 'cancelled', 1, now()->toDateString());
+            $this->createCustomerOrder($kol, ['KOL'], 'shipped', 1, now()->toDateString(), 'USD', 'kol_fulfillment');
+
+            $this->assertSegmentNames($user, 'active_customer', ['Active']);
+            $this->assertSegmentNames($user, 'churn_risk', ['Churn 180', 'Churn 91']);
+            $this->assertSegmentNames($user, 'dormant_customer', ['Dormant']);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_advanced_frequency_value_and_vip_segments_are_deterministic_and_currency_isolated(): void
+    {
+        Carbon::setTestNow('2026-08-30 12:00:00');
+        try {
+            $user = $this->userWith(['customers.view'], 'segment_advanced_value');
+            $frequency = Customer::query()->create(['name' => 'Frequency', 'source_type' => 'manual']);
+            $value = Customer::query()->create(['name' => 'Value', 'source_type' => 'manual']);
+            $vip = Customer::query()->create(['name' => 'VIP', 'source_type' => 'manual']);
+            $crossCurrency = Customer::query()->create(['name' => 'Cross Currency', 'source_type' => 'manual']);
+            $unsupported = Customer::query()->create(['name' => 'Unsupported', 'source_type' => 'manual']);
+            $cancelledOnly = Customer::query()->create(['name' => 'Cancelled Advanced Only', 'source_type' => 'manual']);
+            $nonCustomerOnly = Customer::query()->create(['name' => 'Non Customer Advanced Only', 'source_type' => 'manual']);
+            $boundary = Customer::query()->create(['name' => 'Frequency Boundary', 'source_type' => 'manual']);
+            $currencyThresholds = ['USD' => 500, 'EUR' => 450, 'GBP' => 400, 'CAD' => 700, 'AUD' => 750, 'CNY' => 3500];
+            $thresholdCustomers = [];
+
+            foreach (range(1, 3) as $index) {
+                $this->createCustomerOrder($frequency, ["F-{$index}"], 'shipped', 1, now()->subDays(365)->toDateString());
+                $this->createCustomerOrder($vip, ["V-{$index}"], 'shipped', 1, now()->subDays($index)->toDateString(), 'USD', 'customer');
+            }
+            $this->createCustomerOrder($value, ['VALUE'], 'shipped', 50, now()->toDateString(), 'USD', 'customer');
+            $this->createCustomerOrder($vip, ['VIP-VALUE'], 'shipped', 49, now()->toDateString(), 'USD', 'customer');
+            $this->createCustomerOrder($crossCurrency, ['CROSS-USD'], 'shipped', 49, now()->toDateString(), 'USD', 'customer');
+            $this->createCustomerOrder($crossCurrency, ['CROSS-EUR'], 'shipped', 44, now()->toDateString(), 'EUR', 'customer');
+            $this->createCustomerOrder($unsupported, ['UNSUPPORTED'], 'shipped', 1, now()->toDateString(), 'JPY', 'customer');
+            foreach (range(1, 3) as $index) {
+                $this->createCustomerOrder($cancelledOnly, ["CANCELLED-FREQ-{$index}"], 'cancelled', 1, now()->toDateString(), 'USD', 'customer');
+                $this->createCustomerOrder($nonCustomerOnly, ["NON-CUSTOMER-FREQ-{$index}"], 'shipped', 1, now()->toDateString(), 'USD', 'kol_fulfillment');
+            }
+            $this->createCustomerOrder($cancelledOnly, ['CANCELLED-VALUE'], 'cancelled', 50, now()->toDateString(), 'USD', 'customer');
+            $this->createCustomerOrder($nonCustomerOnly, ['NON-CUSTOMER-VALUE'], 'shipped', 50, now()->toDateString(), 'USD', 'kol_fulfillment');
+            foreach ($currencyThresholds as $currency => $threshold) {
+                $thresholdCustomer = Customer::query()->create(['name' => "Threshold {$currency}", 'source_type' => 'manual']);
+                $belowThresholdCustomer = Customer::query()->create(['name' => "Below {$currency}", 'source_type' => 'manual']);
+                $this->createCustomerOrder($thresholdCustomer, ["THRESHOLD-{$currency}"], 'shipped', (int) ($threshold / 10), now()->toDateString(), $currency, 'customer');
+                $this->createCustomerOrder($belowThresholdCustomer, ["BELOW-{$currency}"], 'shipped', (int) (($threshold - 10) / 10), now()->toDateString(), $currency, 'customer');
+                $thresholdCustomers[] = $thresholdCustomer->name;
+            }
+            $this->createCustomerOrder($boundary, ['BOUNDARY-1'], 'shipped', 1, now()->subDays(366)->toDateString(), 'USD', 'customer');
+            $this->createCustomerOrder($boundary, ['BOUNDARY-2'], 'shipped', 1, now()->subDays(366)->toDateString(), 'USD', 'customer');
+            $this->createCustomerOrder($boundary, ['BOUNDARY-3'], 'shipped', 1, now()->subDays(366)->toDateString(), 'USD', 'customer');
+
+            $this->assertSegmentNames($user, 'high_frequency', ['Frequency', 'VIP']);
+            $this->assertSegmentNames($user, 'high_value', ['Value', 'VIP', ...$thresholdCustomers]);
+            $this->assertSegmentNames($user, 'vip', ['VIP']);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    private function assertSegmentNames(User $user, string $segment, array $expected): void
+    {
+        $this->actingAs($user)->get("/customers/library?group={$segment}")->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('customers.data', function ($rows) use ($expected): bool {
+                return collect($rows)->pluck('name')->sort()->values()->all() === collect($expected)->sort()->values()->all();
+            }));
+    }
+
+    private function createCustomerOrder(Customer $customer, array $skus, string $status = 'shipped', int $quantity = 1, ?string $orderDate = null, string $currency = 'USD', string $orderKind = 'customer'): int
     {
         $token = str_replace('.', '', uniqid('', true));
         $orderId = DB::table('orders')->insertGetId([
             'internal_order_number' => 'SEG-'.$token,
             'source_type' => 'manual',
-            'order_kind' => 'customer',
             'external_order_number' => 'SEG-EXT-'.$token,
-            'order_date' => now()->toDateString(),
+            'order_date' => $orderDate ?? now()->toDateString(),
             'order_status' => $status,
             'customer_id' => $customer->id,
-            'currency' => 'USD',
+            'currency' => $currency,
+            'order_kind' => $orderKind,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
