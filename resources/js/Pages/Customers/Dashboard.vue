@@ -10,6 +10,7 @@ const props = defineProps<{
         new_this_month: number
         orders_this_month: number
         revenue_this_month: RevenueByCurrency[]
+        subscriber_identity_links: number
     }
     canOperate: boolean
     canImport: boolean
@@ -54,6 +55,10 @@ const money = (value: number, currency: string) =>
                         <p class="kpi-label">客户总数</p>
                         <p class="kpi-value">{{ metrics.total_customers }}</p>
                     </article>
+                    <article class="erp-form-card customer-kpi-card" :title="'按 Customer.email 与 Marketing Subscriber.email 精确匹配的身份链接数；不代表统一同意状态'">
+                        <p class="kpi-label">Subscriber 匹配</p>
+                        <p class="kpi-value">{{ metrics.subscriber_identity_links }}</p>
+                    </article>
                     <article class="erp-form-card customer-kpi-card">
                         <p class="kpi-label">本月新增客户</p>
                         <p class="kpi-value">{{ metrics.new_this_month }}</p>
@@ -75,7 +80,7 @@ const money = (value: number, currency: string) =>
                 <div class="customer-integration-grid">
                     <article class="erp-form-card">
                         <h2 class="erp-form-card-title">订阅者</h2>
-                        <p class="integration-unavailable">Subscriber 模块（M1.3）尚未集成，暂无数据。</p>
+                        <p class="integration-unavailable">已匹配 Marketing Subscriber 身份 {{ metrics.subscriber_identity_links }} 个；不推断全局同意状态。</p>
                     </article>
                     <article class="erp-form-card">
                         <h2 class="erp-form-card-title">客户支持工单</h2>

@@ -37,7 +37,8 @@ const baseStats = {
     stale: false,
     conversions: [{ original_currency: 'USD', original_amount: 100, rate_to_cny: 7.1, cny_amount: 710 }],
   },
-  subscriber_count_available: false,
+  subscriber_count_available: true,
+  subscriber_identity_links: 3,
   open_support_tickets_available: false,
 }
 
@@ -112,14 +113,14 @@ describe('Customer Library KPI Strip — compact', () => {
     expect(salesCard.text()).toContain('—')
   })
 
-  it('subscriber and open ticket cards show em-dash only (no explanatory text visible)', () => {
+  it('subscriber card shows real identity-link count while open ticket remains unavailable', () => {
     const wrapper = mount(Index, { props: baseProps })
     const cards = wrapper.findAll('[data-testid="kpi-strip"] article')
     const subscriberCard = cards[4]
     const ticketCard = cards[5]
 
-    expect(subscriberCard.text()).toContain('订阅者数')
-    expect(subscriberCard.text()).toContain('—')
+    expect(subscriberCard.text()).toContain('Subscriber 匹配')
+    expect(subscriberCard.text()).toContain('3')
     expect(subscriberCard.text()).not.toContain('M1.3')
 
     expect(ticketCard.text()).toContain('待处理工单')
@@ -127,10 +128,10 @@ describe('Customer Library KPI Strip — compact', () => {
     expect(ticketCard.text()).not.toContain('M1.4')
   })
 
-  it('subscriber and ticket cards carry explanation in title attribute', () => {
+  it('subscriber and ticket cards carry accurate explanation in title attribute', () => {
     const wrapper = mount(Index, { props: baseProps })
     const cards = wrapper.findAll('[data-testid="kpi-strip"] article')
-    expect(cards[4].attributes('title')).toContain('M1.3')
+    expect(cards[4].attributes('title')).toContain('精确匹配')
     expect(cards[5].attributes('title')).toContain('M1.4')
   })
 
@@ -145,11 +146,26 @@ describe('Customer Library KPI Strip — compact', () => {
     expect(wrapper.get('.column-settings-panel').text()).toContain('设置绑定当前账号并跨设备同步')
   })
 
-  it('customer library keeps the group filter and does not expose column settings', () => {
+  it('customer library keeps the group filter and exposes account column settings', () => {
     const wrapper = mount(Index, { props: baseProps })
     expect(wrapper.findAll('.customer-group-shortcut').length).toBe(0)
     expect(wrapper.find('#filter-group').exists()).toBe(true)
-    expect(wrapper.find('.column-settings-trigger').exists()).toBe(false)
+    expect(wrapper.find('.column-settings-trigger').exists()).toBe(true)
+  })
+
+  it('optional subscription column preserves conflicting provider statuses', async () => {
+    const wrapper = mount(Index, { props: {
+      ...baseProps,
+      customers: { ...baseProps.customers, data: [{
+        id: 1, customer_number: 'CUS-00000001', name: 'Alice', email: 'alice@example.test', phone: null,
+        country_code: null, source_label: '手工录入', owner: null, orders_count: 0, latest_order_date: null,
+        lifetime_revenue: [], primary_address: null, archived_at: null, created_at: null,
+        subscription: { matched: true, subscription_facts: [{ provider: 'wordpress', source_site: 'beyourlover.com', status: 'subscribed' }, { provider: 'mail-b', source_site: 'site-b', status: 'unsubscribed' }], subscription_statuses: ['subscribed', 'unsubscribed'] },
+      }] },
+    } })
+    await wrapper.get('.column-settings-trigger').trigger('click')
+    await wrapper.get('input[aria-label="显示订阅"]').trigger('change')
+    expect(wrapper.get('tbody').text()).toContain('wordpress · beyourlover.com: subscribed | mail-b · site-b: unsubscribed')
   })
 
   it('server preference wins over conflicting local cache', () => {

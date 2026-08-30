@@ -4,6 +4,7 @@ namespace App\Modules\Customers\Experience\Controllers;
 
 use App\Modules\Audit\Infrastructure\Models\AuditRecord;
 use App\Modules\Customers\Application\CustomerService;
+use App\Modules\Customers\Application\CustomerSubscriberProjection;
 use App\Modules\Finance\Application\EcbFxService;
 use App\Modules\Customers\Domain\CountryCodeNormalizer;
 use App\Modules\Customers\Domain\Exceptions\InvalidCompanyAttributeException;
@@ -39,6 +40,7 @@ final class CustomerController
 
     public function __construct(
         private readonly CustomerService $customers,
+        private readonly CustomerSubscriberProjection $subscriberProjection,
         private readonly EcbFxService $fx,
         private readonly UserUiPreferenceService $uiPreferences,
     ) {}
@@ -49,6 +51,7 @@ final class CustomerController
         $gridPreferenceNamespace = $workspace === 'groups' ? self::GROUPS_GRID_NAMESPACE : self::LIBRARY_GRID_NAMESPACE;
         $filters = $request->only(['search', 'country_code', 'source_type', 'archived', 'group']);
         $paginator = $this->customers->list($filters);
+        $subscriberProjections = $this->subscriberProjection->forCustomers($paginator->items());
 
         $customerIds = collect($paginator->items())->pluck('id');
 
@@ -106,8 +109,9 @@ final class CustomerController
             ->values()->all();
 
         return Inertia::render('Customers/Library/Index', [
-            'customers' => $paginator->through(function (Customer $customer) use ($latestOrderDates, $lifetimeRevenueBatch): array {
+            'customers' => $paginator->through(function (Customer $customer) use ($latestOrderDates, $lifetimeRevenueBatch, $subscriberProjections): array {
                 $data = $this->customerData($customer);
+                $data['subscription'] = $subscriberProjections[$this->normalizeEmail($customer->email)] ?? ['matched' => false, 'subscriber_email' => null, 'subscription_facts' => [], 'subscription_statuses' => []];
                 $latestDate = $latestOrderDates->get($customer->id);
                 $data['latest_order_date'] = $latestDate ? substr((string) $latestDate->latest_order_date, 0, 10) : null;
                 $revRows = $lifetimeRevenueBatch->get($customer->id) ?? collect();
@@ -132,7 +136,8 @@ final class CustomerController
                 'orders_this_month' => $ordersThisMonth,
                 'revenue_this_month' => $revenueThisMonth,
                 'rmb_estimate' => $this->fx->convertToCny($revenueThisMonth),
-                'subscriber_count_available' => false,
+                'subscriber_count_available' => true,
+                'subscriber_identity_links' => $this->subscriberProjection->identityLinkCount(),
                 'open_support_tickets_available' => false,
             ],
             'canOperate' => (bool) $request->user()?->hasPermission('customers.operate'),
@@ -173,6 +178,7 @@ final class CustomerController
     public function show(Request $request, Customer $customer): Response
     {
         $customer->load(['owner', 'billingAddress', 'shippingAddress']);
+        $subscription = $this->subscriberProjection->forEmail($customer->email);
         $summary = DB::table('orders')
             ->where('orders.customer_id', $customer->id)
             ->where('orders.order_kind', 'customer')
@@ -271,6 +277,7 @@ final class CustomerController
             ],
             'recentOrders' => $recentOrders,
             'shipments' => $shipments,
+            'subscription' => $subscription,
             'audit' => AuditRecord::query()
                 ->where('entity_type', Customer::class)->where('entity_id', (string) $customer->id)
                 ->latest('created_at')->limit(30)->get()
@@ -437,6 +444,11 @@ final class CustomerController
         }
         $email = trim((string) $request->input('email'));
         $request->merge(['email' => $email === '' ? null : strtolower($email)]);
+    }
+
+    private function normalizeEmail(?string $email): string
+    {
+        return $email === null ? '' : strtolower(trim($email));
     }
 
     private function owners(): array

@@ -7,6 +7,8 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Customers\Infrastructure\Models\CustomerAddress;
+use App\Modules\Marketing\Infrastructure\Models\MarketingSubscriber;
+use App\Modules\Marketing\Infrastructure\Models\MarketingSubscription;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -47,6 +49,7 @@ final class CustomerExperienceTest extends TestCase
                 ->where('metrics.total_customers', 2)
                 ->where('metrics.new_this_month', 1)
                 ->where('metrics.orders_this_month', 1)
+                ->where('metrics.subscriber_identity_links', 0)
                 ->has('metrics.revenue_this_month', 1)
                 ->where('metrics.revenue_this_month.0.currency', 'USD')
                 ->where('metrics.revenue_this_month.0.revenue', 100));
@@ -73,6 +76,50 @@ final class CustomerExperienceTest extends TestCase
         $this->actingAs($user)->get('/customers')
             ->assertInertia(fn (Assert $page) => $page
                 ->has('metrics.revenue_this_month', 2));
+    }
+
+    public function test_customer_dashboard_counts_only_active_customer_subscriber_identity_links(): void
+    {
+        $user = $this->userWith(['customers.view']);
+        Customer::query()->create(['name' => 'Linked', 'email' => '  LINKED@example.test ', 'source_type' => 'manual']);
+        Customer::query()->create(['name' => 'Archived', 'email' => 'archived@example.test', 'source_type' => 'manual', 'archived_at' => now()]);
+        MarketingSubscriber::query()->create(['email' => 'linked@example.test']);
+        MarketingSubscriber::query()->create(['email' => 'archived@example.test']);
+
+        $this->actingAs($user)->get('/customers')->assertInertia(fn (Assert $page) => $page
+            ->where('metrics.subscriber_identity_links', 1));
+    }
+
+    public function test_customer_subscriber_projection_keeps_provider_source_facts_separate(): void
+    {
+        $user = $this->userWith(['customers.view']);
+        $customer = Customer::query()->create(['name' => 'Subscriber Customer', 'email' => ' Alice@example.test ', 'source_type' => 'manual']);
+        $subscriber = MarketingSubscriber::query()->create(['email' => 'alice@example.test']);
+        MarketingSubscription::query()->create(['subscriber_id' => $subscriber->id, 'provider' => 'mail-a', 'source_site' => 'site-a', 'status' => 'subscribed', 'consent_source' => 'provider-a', 'subscribed_at' => '2026-08-01 10:00:00', 'last_synced_at' => '2026-08-02 10:00:00']);
+        MarketingSubscription::query()->create(['subscriber_id' => $subscriber->id, 'provider' => 'mail-b', 'source_site' => 'site-b', 'status' => 'unsubscribed', 'consent_source' => 'provider-b', 'unsubscribed_at' => '2026-08-03 10:00:00', 'status_updated_at' => '2026-08-03 10:00:00']);
+
+        $this->actingAs($user)->get('/customers/library')->assertInertia(fn (Assert $page) => $page
+            ->where('customers.data.0.subscription.matched', true)
+            ->where('customers.data.0.subscription.subscription_statuses', ['subscribed', 'unsubscribed']));
+        $this->actingAs($user)->get("/customers/library/{$customer->id}")->assertInertia(fn (Assert $page) => $page
+            ->where('subscription.matched', true)
+            ->where('subscription.subscription_facts.0.provider', 'mail-a')
+            ->where('subscription.subscription_facts.1.status', 'unsubscribed')
+            ->where('subscription.subscription_facts.1.consent_source', 'provider-b')
+            ->where('subscription.subscription_facts.1.status_updated_at', '2026-08-03 10:00:00'));
+    }
+
+    public function test_customer_subscription_projection_has_honest_empty_states(): void
+    {
+        $user = $this->userWith(['customers.view']);
+        $withoutEmail = Customer::query()->create(['name' => 'No Email', 'source_type' => 'manual']);
+        $withoutFacts = Customer::query()->create(['name' => 'No Facts', 'email' => 'nofacts@example.test', 'source_type' => 'manual']);
+        $this->assertDatabaseMissing('marketing_subscribers', ['email' => 'noemail@example.test']);
+        MarketingSubscriber::query()->create(['email' => 'nofacts@example.test']);
+
+        $this->actingAs($user)->get("/customers/library/{$withoutEmail->id}")->assertInertia(fn (Assert $page) => $page->where('subscription.matched', false));
+        $this->actingAs($user)->get("/customers/library/{$withoutFacts->id}")->assertInertia(fn (Assert $page) => $page
+            ->where('subscription.matched', true)->where('subscription.subscription_facts', []));
     }
 
     // ─── Addresses ────────────────────────────────────────────────────────────
@@ -231,7 +278,8 @@ final class CustomerExperienceTest extends TestCase
                 ->has('stats.revenue_this_month', 1)
                 ->where('stats.revenue_this_month.0.currency', 'USD')
                 ->where('stats.revenue_this_month.0.revenue', 80)
-                ->where('stats.subscriber_count_available', false)
+                ->where('stats.subscriber_count_available', true)
+                ->where('stats.subscriber_identity_links', 0)
                 ->where('stats.open_support_tickets_available', false));
     }
 

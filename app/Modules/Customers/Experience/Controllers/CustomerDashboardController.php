@@ -2,6 +2,7 @@
 
 namespace App\Modules\Customers\Experience\Controllers;
 
+use App\Modules\Customers\Application\CustomerSubscriberProjection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -9,6 +10,8 @@ use Inertia\Response;
 
 final class CustomerDashboardController
 {
+    public function __construct(private readonly CustomerSubscriberProjection $subscriberProjection) {}
+
     public function __invoke(Request $request): Response
     {
         $now = now();
@@ -52,6 +55,7 @@ final class CustomerDashboardController
                 'new_this_month' => $newThisMonth,
                 'orders_this_month' => $ordersThisMonth,
                 'revenue_this_month' => $revenueThisMonth,
+                'subscriber_identity_links' => $this->subscriberProjection->identityLinkCount(),
             ],
             'canOperate' => (bool) $request->user()?->hasPermission('customers.operate'),
             'canImport' => (bool) ($request->user()?->hasPermission('customers.import') && $request->user()?->hasPermission('system.permissions.manage')),

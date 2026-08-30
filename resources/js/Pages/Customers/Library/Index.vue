@@ -33,9 +33,10 @@ type Customer = {
     primary_address: CustomerAddress | null
     archived_at: string | null
     created_at: string | null
+    subscription: { matched: boolean; subscription_facts: { provider: string | null; source_site: string | null; status: string | null }[]; subscription_statuses: string[] }
 }
 
-type ColumnKey = 'email' | 'phone' | 'registered_at' | 'country_region' | 'city' | 'province_state' | 'postal_code' | 'source' | 'orders_count' | 'total_spend' | 'aov' | 'latest_order' | 'owner' | 'status'
+type ColumnKey = 'email' | 'phone' | 'registered_at' | 'country_region' | 'city' | 'province_state' | 'postal_code' | 'source' | 'orders_count' | 'total_spend' | 'aov' | 'latest_order' | 'owner' | 'status' | 'subscription'
 
 type Paginator = {
     data: Customer[]
@@ -68,6 +69,7 @@ type Stats = {
     revenue_this_month: RevenueRow[]
     rmb_estimate: RmbEstimate
     subscriber_count_available: boolean
+    subscriber_identity_links: number
     open_support_tickets_available: boolean
 }
 
@@ -178,6 +180,7 @@ const defaultColumns: GridColumnDefinition<ColumnKey>[] = [
     { key: 'latest_order', label: '最近下单' },
     { key: 'owner', label: '负责人' },
     { key: 'status', label: '状态' },
+    { key: 'subscription', label: '订阅', defaultVisible: false },
 ]
 
 const columnSettingsOpen = ref(false)
@@ -192,12 +195,21 @@ const {
 } = useAccountGridPreferences<ColumnKey>({
     namespace: props.gridPreferenceNamespace,
     definitions: defaultColumns,
-    serverValue: isGroupsWorkspace.value ? props.gridPreference : null,
-    legacyCacheKeys: isGroupsWorkspace.value ? ['customer_groups_grid_columns_v1', 'customer_list_grid_columns_v1'] : [],
+    serverValue: props.gridPreference,
+    legacyCacheKeys: ['customer_groups_grid_columns_v1', 'customer_list_grid_columns_v1'],
 })
 
 const dateOnly = (value: string | null) => value ? value.slice(0, 10) : '—'
 const customerCountry = (customer: Customer) => customer.country_code ?? customer.primary_address?.country_code ?? '—'
+const subscriptionSummary = (customer: Customer): string => {
+    if (!customer.email) return '无 Email'
+    if (!customer.subscription.matched) return '未匹配 Subscriber'
+    if (customer.subscription.subscription_facts.length === 0) return '已匹配身份 · 暂无订阅事实'
+    return customer.subscription.subscription_facts.map(fact => {
+        const source = [fact.provider, fact.source_site].filter(Boolean).join(' · ') || '未知来源'
+        return `${source}: ${fact.status ?? 'unknown'}`
+    }).join(' | ')
+}
 </script>
 <template>
     <Head :title="`${workspaceTitle} · BYL ERP`" />
@@ -270,12 +282,12 @@ const customerCountry = (customer: Customer) => customer.country_code ?? custome
                             <p class="kpi-value" :class="{ 'kpi-muted': !stats.rmb_estimate.available || stats.revenue_this_month.length === 0 }">{{ salesKpiValue }}</p>
                         </article>
                         <article
-                            class="erp-form-card customer-kpi-card kpi-unavailable"
-                            title="Subscriber 模块（M1.3）尚未集成，暂无数据"
-                            aria-label="订阅者数: 暂不可用。Subscriber 模块（M1.3）尚未集成"
+                            class="erp-form-card customer-kpi-card"
+                            title="按 Customer Email 与营销 Subscriber Email 精确匹配的身份链接数；不代表统一营销同意状态"
+                            :aria-label="`Subscriber 匹配: ${stats.subscriber_identity_links}。按 Email 精确匹配，不代表统一营销同意状态`"
                         >
-                            <p class="kpi-label">订阅者数</p>
-                            <p class="kpi-value kpi-muted">—</p>
+                            <p class="kpi-label">Subscriber 匹配</p>
+                            <p class="kpi-value">{{ stats.subscriber_identity_links }}</p>
                         </article>
                         <article
                             class="erp-form-card customer-kpi-card kpi-unavailable"
@@ -329,7 +341,7 @@ const customerCountry = (customer: Customer) => customer.country_code ?? custome
                 </template>
 
                 <div class="customer-grid-shell">
-                    <div v-if="isGroupsWorkspace" class="customer-grid-settings-anchor">
+                    <div class="customer-grid-settings-anchor">
                         <button
                             class="column-settings-trigger"
                             type="button"
@@ -411,6 +423,7 @@ const customerCountry = (customer: Customer) => customer.country_code ?? custome
                                             <span v-if="customer.archived_at" class="archived-badge">已归档</span>
                                             <span v-else class="active-badge">在用</span>
                                         </template>
+                                        <template v-else-if="column.key === 'subscription'">{{ subscriptionSummary(customer) }}</template>
                                     </td>
                                     <td class="customer-grid-action-cell">
                                         <Link :href="`/customers/library/${customer.id}`" class="erp-btn erp-btn-secondary table-action-btn">查看</Link>
