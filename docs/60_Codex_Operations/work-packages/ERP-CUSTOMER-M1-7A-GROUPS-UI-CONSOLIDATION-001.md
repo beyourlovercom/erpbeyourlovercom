@@ -8,7 +8,7 @@ verification_tier: DAILY
 baseline: origin/main@336c3c411e022ed63e5e31e4c0187d2adf538dab
 owner_uat_required: YES
 git_delivery_authorized: YES
-merge_authorized: NO
+merge_authorized: YES
 production_deployment_authorized: NO
 ---
 
@@ -85,10 +85,10 @@ Replace the stacked top shortcuts + Manual Group card area with one unified Grou
 OWNER_SCOPE_DIRECTION: PASS — Owner explicitly approved the rendered Groups Workspace as the M1.7A base design and directed M1.7A after M1.7 closure.
 IMPLEMENTATION_AUTHORIZATION: GRANTED — Owner explicitly directed M1.7A to enter IMPLEMENTATION_AUTHORIZED and begin page replication on 2026-08-31.
 GIT_DELIVERY_AUTHORIZATION: GRANTED — Owner explicitly authorized M1.7A commit / push / PR creation on 2026-08-31.
-MERGE_AUTHORIZATION: NOT GRANTED
+MERGE_AUTHORIZATION: GRANTED — Owner explicitly authorized merge PR #131 on 2026-08-31.
 PRODUCTION_DEPLOYMENT_AUTHORIZATION: NOT GRANTED
 
-NEXT_GATE: Owner merge authorization for PR #131. Merge and production deployment remain separately unauthorized.
+NEXT_GATE: Exact-head merge PR #131, then close Customer M1.7A. Production deployment remains separately unauthorized.
 
 PROJECT POSITION
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate [COMPLETE] → MVP1 Existing Operations / Tencent Docs Replacement → ERP-INQUIRY-M1 B2B Inquiry Foundation → ERP-INQUIRY-M1 Local Milestone UAT → Milestone-gated Remote Release → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Production Hardening / Expansion
@@ -96,12 +96,12 @@ CURRENT_TRACK_PHASE_MAP: Customer M1.1–M1.7 [MERGED] → M1.7A Groups UI Conso
 COMPLETED_PHASES: Customer M1.1 through M1.7 merged; PR #130 merge commit 336c3c411e022ed63e5e31e4c0187d2adf538dab.
 CURRENT_PHASE: Customer M1.7A Groups UI Consolidation — Owner UAT.
 CURRENT_WORK_PACKAGE: ERP-CUSTOMER-M1-7A-GROUPS-UI-CONSOLIDATION-001
-PACKAGE_STATUS: OWNER_UAT_PASS / GIT_DELIVERED_PR_131 / MERGE_NOT_AUTHORIZED.
+PACKAGE_STATUS: OWNER_UAT_PASS / GIT_DELIVERED_PR_131 / MERGE_AUTHORIZED.
 WAITING_PHASES: M1.7A Owner UAT; M1.8 Full Import/Export; M1.9 Customer360 Closure.
 BASELINE: origin/main@336c3c411e022ed63e5e31e4c0187d2adf538dab
 GITHUB_STATE: PR #130 MERGED; M1.7A PR #131 OPEN from `feature/erp-customer-m1-7a-groups-ui-consolidation-001`; delivery commit `a9ede7e05b9dee016d48fc72c31bcc3e1496986e` pushed. Merge not authorized.
 SOURCE_CONFLICTS: Historical roadmap/current-context documents may retain older track labels; current Owner direction and merged GitHub main govern this bounded Customer follow-up. NONE affecting the M1.7A visual contract.
-GLOBAL_GATE: M1.7A implementation, US-local verification, Owner UAT and Git delivery to PR #131 are complete. Merge remains a separate Owner gate.
+GLOBAL_GATE: M1.7A implementation, US-local verification, Owner UAT and Git delivery to PR #131 are complete. Owner has authorized exact-head merge; production deployment remains unauthorized.
 PRODUCTION_DEPLOYMENT_STATUS: NO — no M1.7A production deployment, tag or release authorized.
 NEXT_DEPENDENCY: Owner UAT → separate Git delivery/merge gates.
 EVIDENCE_AS_OF: 2026-08-31; Owner-approved render, PR #130 merge state, origin/main@336c3c411e022ed63e5e31e4c0187d2adf538dab.
@@ -111,7 +111,8 @@ OWNER_UAT_FIXTURE: selected manual group `2026 黑五重点客户` has 8 members
 OWNER_UAT_ACCEPTED_AT: 2026-08-30 20:00:50 -0700 (2026-08-31 11:00:50 +0800).
 US_LOCAL_VERIFICATION: Customer backend 51 tests / 603 assertions PASS; Customer frontend 22/22 PASS; `npm run typecheck` PASS; `npm run build` PASS; ModuleProvider 8/8 / 39 assertions PASS; `git diff --check` PASS; `public/hot` ABSENT.
 ARCHITECTURE_BASELINE_CLASSIFICATION: M1.7A worktree and exact canonical main@336c3c411e022ed63e5e31e4c0187d2adf538dab both report 3 failed / 5 passed / 86 assertions in ModuleArchitectureTest; M1.7A-owned architecture regression = 0.
-GIT_DELIVERY_AUTHORIZATION: EXECUTED — PR #131 created from delivery commit `a9ede7e05b9dee016d48fc72c31bcc3e1496986e`. MERGE_AUTHORIZATION remains NOT GRANTED; do not merge or deploy.
+GIT_DELIVERY_AUTHORIZATION: EXECUTED — PR #131 created from delivery commit `a9ede7e05b9dee016d48fc72c31bcc3e1496986e`.
+MERGE_AUTHORIZATION: GRANTED — merge PR #131 only. PRODUCTION_DEPLOYMENT_AUTHORIZATION remains NOT GRANTED.
 
 ROADMAP HOURS
 CURRENT_PACKAGE_ESTIMATE: UNKNOWN WITH EVIDENCE — no accepted M1.7A hours estimate issued.
