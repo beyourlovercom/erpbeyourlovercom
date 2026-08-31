@@ -247,3 +247,13 @@ PRODUCTION_DEPLOYMENT_AUTHORIZATION: NOT GRANTED.
 - Architecture: exact-main comparison remains the same historical 3 failures / 5 passes / 87 assertions; M1.9 regression = 0.
 - No migration diff, no dependency lock diff, no UAT artifacts retained.
 - Merge and production deployment remain separately unauthorized.
+
+## Git delivery receipt
+- PR: #133 — Customer M1.9 — Customer360 Closure.
+- PR URL: https://github.com/beyourlovercom/erpbeyourlovercom/pull/133
+- Business delivery commit: `a2e19c1766432ee35d659b38330625063ef8af11`.
+- Base at PR creation: `main@e627f7391cf9975fbc509d23724967d67a6e0f9b`.
+- PR creation state: OPEN / CLEAN / MERGEABLE.
+- GitHub status checks at creation: none configured / none pending.
+- NEXT_GATE: separate Owner merge authorization after final PR head verification.
+- Merge and production deployment remain NOT AUTHORIZED.
