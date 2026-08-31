@@ -328,3 +328,48 @@ Cleanup after Owner PASS:
 - temporary worktree `.env` removed;
 - temporary Chrome UAT profile removed;
 - no production deployment performed.
+
+## M1.5 FINAL GATE — 2026-08-31
+
+`M1.5 = READY_FOR_MERGE`
+
+Final local delivery verification:
+- Owner UAT: PASS;
+- worktree: clean;
+- branch rebased onto current `origin/main@750cb68d5062d8d411e875d62a6237eb03f362c4` before final gate;
+- `git diff --check`: PASS;
+- changed PHP syntax: PASS;
+- frontend `npm run typecheck`: PASS;
+- frontend production `npm run build`: PASS;
+- temporary Tailnet IP / UAT key marker scan: PASS;
+- credential literal scan across application/config/resource/database diff: PASS.
+
+Full local PHP suite result:
+- 5,590 assertions executed;
+- 3 failures, all inside `Tests\Architecture\ModuleArchitectureTest`;
+- the same three failures reproduce on untouched `main` in the architecture suite;
+- classification: `BASELINE_STALE_ASSERTION`, not Connector regression.
+
+Independent GitHub CI:
+- workflow: `ERP WordPress Connector M1 CI`;
+- path-scoped to Connector-related changes;
+- final green run: `33385746221`;
+- Node/frontend dependency install: PASS;
+- Typecheck: PASS;
+- Build: PASS;
+- focused PHP Connector gate: PASS, 79 tests / 258 assertions;
+- no business-code waiver was used.
+
+CI portability notes resolved during the gate:
+- Vite assets are built before Inertia-rendering PHP feature tests;
+- Ubuntu case-sensitive Inertia test lookup is bridged to the repository's canonical `resources/js/Pages` directory only inside CI.
+
+Delivery classification:
+- M1.0 `CONTRACT_FROZEN`: PASS;
+- M1.1 `CONNECTION_READY`: PASS;
+- M1.2 real read/import gate: PASS;
+- M1.3 `WRITEBACK_READY`: PASS;
+- M1.4 `OWNER_UAT_READY`: PASS;
+- M1.5 `READY_FOR_MERGE`: PASS.
+
+Merge remains prohibited until explicit Owner merge authorization. Production deployment remains a separate gate.
