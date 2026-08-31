@@ -32,7 +32,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->unique(['connection_key', 'coupon_id'], 'kol_affiliate_coupons_connection_coupon_unique');
-            $table->unique(['connection_key', 'normalized_code'], 'kol_affiliate_coupons_connection_code_unique');
+            $table->index(['connection_key', 'normalized_code'], 'kol_affiliate_coupons_connection_code_index');
             $table->index(['connection_key', 'affiliate_id']);
             $table->index('kol_id');
         });

@@ -236,4 +236,60 @@ class KolCouponSyncProvisioningTest extends TestCase
         self::assertSame('erp_provisioned', $row->origin);
         self::assertSame('provider_binding_mismatch', $row->reconciliation_status);
     }
+
+    public function test_provider_duplicate_codes_are_all_mirrored_and_marked_conflict(): void
+    {
+        $manager = $this->manager();
+        $kol = $this->kolWithAffiliate($manager, 42);
+        $mock = $this->mockGateway();
+        $mock->shouldReceive('snapshot')->once()->with('coupons', null, null)->andReturn($this->response([
+            'items' => [
+                ['coupon_id' => 301, 'code' => 'DUP20', 'normalized_code' => 'dup20', 'discount_type' => 'percent', 'amount' => '20', 'status' => 'publish', 'date_expires' => null, 'linked_affiliate_id' => 42],
+                ['coupon_id' => 302, 'code' => 'dup20', 'normalized_code' => 'dup20', 'discount_type' => 'percent', 'amount' => '20', 'status' => 'publish', 'date_expires' => null, 'linked_affiliate_id' => null],
+            ], 'next_cursor' => null,
+        ]));
+
+        $result = $this->app->make(CouponSnapshotSyncService::class)->sync(self::CONNECTION, $manager);
+        self::assertSame(2, $result['synced']);
+        self::assertSame(2, KolAffiliateCoupon::where('normalized_code', 'dup20')->count());
+        self::assertSame(['provider_code_conflict'], KolAffiliateCoupon::where('normalized_code', 'dup20')->pluck('reconciliation_status')->unique()->values()->all());
+        self::assertSame($kol->id, KolAffiliateCoupon::where('coupon_id', 301)->firstOrFail()->kol_id);
+    }
+
+    public function test_provider_blank_coupon_code_is_mirrored_as_invalid_provider_fact(): void
+    {
+        $manager = $this->manager();
+        $mock = $this->mockGateway();
+        $mock->shouldReceive('snapshot')->once()->with('coupons', null, null)->andReturn($this->response([
+            'items' => [
+                ['coupon_id' => 401, 'code' => '', 'normalized_code' => '', 'discount_type' => 'fixed_cart', 'amount' => '5', 'status' => 'publish', 'date_expires' => null, 'linked_affiliate_id' => null],
+            ], 'next_cursor' => null,
+        ]));
+
+        $result = $this->app->make(CouponSnapshotSyncService::class)->sync(self::CONNECTION, $manager);
+        self::assertSame(1, $result['synced']);
+        $row = KolAffiliateCoupon::where('coupon_id', 401)->firstOrFail();
+        self::assertSame('', $row->code);
+        self::assertSame('', $row->normalized_code);
+        self::assertSame('provider_invalid_code', $row->reconciliation_status);
+    }
+
+
+    public function test_provider_custom_discount_type_is_mirrored_but_not_treated_as_erp_provisionable(): void
+    {
+        $manager = $this->manager();
+        $mock = $this->mockGateway();
+        $mock->shouldReceive('snapshot')->once()->with('coupons', null, null)->andReturn($this->response([
+            'items' => [
+                ['coupon_id' => 501, 'code' => 'BOGO-UAT', 'normalized_code' => 'bogo-uat', 'discount_type' => 'wbte_sc_bogo', 'amount' => '0', 'status' => 'publish', 'date_expires' => null, 'linked_affiliate_id' => null],
+            ], 'next_cursor' => null,
+        ]));
+
+        $result = $this->app->make(CouponSnapshotSyncService::class)->sync(self::CONNECTION, $manager);
+        self::assertSame(1, $result['synced']);
+        $row = KolAffiliateCoupon::where('coupon_id', 501)->firstOrFail();
+        self::assertSame('wbte_sc_bogo', $row->discount_type);
+        self::assertSame('provider_unsupported_discount_type', $row->reconciliation_status);
+    }
+
 }

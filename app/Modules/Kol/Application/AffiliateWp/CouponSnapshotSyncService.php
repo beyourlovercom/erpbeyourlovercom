@@ -23,7 +23,7 @@ final class CouponSnapshotSyncService
         }
 
         $items = [];
-        $codes = [];
+        $codeIds = [];
         $cursor = null;
         $visited = [];
         do {
@@ -46,11 +46,10 @@ final class CouponSnapshotSyncService
                 if (isset($items[$row['coupon_id']]) && $items[$row['coupon_id']] !== $row) {
                     throw new UnexpectedValueException('Duplicate Coupon ID has conflicting provider facts.');
                 }
-                if (isset($codes[$row['normalized_code']]) && $codes[$row['normalized_code']] !== $row['coupon_id']) {
-                    throw new UnexpectedValueException('Normalized Coupon Code maps to multiple provider Coupon IDs.');
-                }
                 $items[$row['coupon_id']] = $row;
-                $codes[$row['normalized_code']] = $row['coupon_id'];
+                if ($row['normalized_code'] !== '') {
+                    $codeIds[$row['normalized_code']][$row['coupon_id']] = true;
+                }
             }
             $next = $response->data['next_cursor'] ?? null;
             if ($next !== null && $next !== '' && ! is_string($next)) {
@@ -59,10 +58,11 @@ final class CouponSnapshotSyncService
             $cursor = $next === '' ? null : $next;
         } while ($cursor !== null);
 
+        $conflictCodes = array_keys(array_filter($codeIds, fn (array $ids): bool => count($ids) > 1));
         $couponClass = self::COUPON;
         $accountClass = self::ACCOUNT;
         $seen = array_keys($items);
-        $markedMissing = DB::transaction(function () use ($items, $seen, $connectionKey, $couponClass, $accountClass): int {
+        $markedMissing = DB::transaction(function () use ($items, $seen, $connectionKey, $couponClass, $accountClass, $conflictCodes): int {
             $now = now();
             $accountRows = $accountClass::query()
                 ->where('connection_key', $connectionKey)
@@ -77,7 +77,7 @@ final class CouponSnapshotSyncService
                     ->where('connection_key', $connectionKey)
                     ->where('coupon_id', $couponId)
                     ->first();
-                if (! $existing) {
+                if (! $existing && $fields['normalized_code'] !== '' && ! in_array($fields['normalized_code'], $conflictCodes, true)) {
                     $existing = $couponClass::query()
                         ->where('connection_key', $connectionKey)
                         ->where('normalized_code', $fields['normalized_code'])
@@ -87,12 +87,18 @@ final class CouponSnapshotSyncService
                 }
 
                 $kolId = $account?->kol_id;
-                $reconciliation = 'present';
+                $reconciliation = $fields['normalized_code'] === ''
+                    ? 'provider_invalid_code'
+                    : (in_array($fields['normalized_code'], $conflictCodes, true)
+                        ? 'provider_code_conflict'
+                        : (! in_array($fields['discount_type'], ['percent', 'fixed_cart', 'fixed_product'], true)
+                            ? 'provider_unsupported_discount_type'
+                            : 'present'));
                 if ($existing && $existing->origin === 'erp_provisioned' && $existing->kol_id !== null) {
                     $kolId = (int) $existing->kol_id;
                     $expected = $accountsByKol->get($existing->kol_id);
                     $expectedAffiliateId = $expected?->affiliate_id === null ? null : (int) $expected->affiliate_id;
-                    if ($expectedAffiliateId === null || $fields['affiliate_id'] !== $expectedAffiliateId) {
+                    if ($reconciliation === 'present' && ($expectedAffiliateId === null || $fields['affiliate_id'] !== $expectedAffiliateId)) {
                         $reconciliation = 'provider_binding_mismatch';
                     }
                 }
@@ -132,7 +138,7 @@ final class CouponSnapshotSyncService
     {
         $couponClass = self::COUPON;
         return $couponClass::query()->where('connection_key', $connectionKey)->with('kol:id,display_name')
-            ->orderBy('normalized_code')->get()->map(fn ($row): array => [
+            ->orderBy('normalized_code')->orderBy('coupon_id')->get()->map(fn ($row): array => [
                 'id' => $row->id,
                 'coupon_id' => $row->coupon_id,
                 'code' => $row->code,
@@ -160,12 +166,9 @@ final class CouponSnapshotSyncService
             throw new UnexpectedValueException('Coupon snapshot item must be an object.');
         }
         $couponId = $this->positiveInt($item['coupon_id'] ?? null, 'coupon_id');
-        $code = $this->requiredString($item['code'] ?? null, 255, 'code');
-        $normalized = $this->normalizeCode($item['normalized_code'] ?? $code);
+        $code = $this->providerString($item['code'] ?? null, 255, 'code');
+        $normalized = $this->normalizeProviderCode($item['normalized_code'] ?? $code);
         $discountType = $this->requiredString($item['discount_type'] ?? null, 32, 'discount_type');
-        if (! in_array($discountType, ['percent', 'fixed_cart', 'fixed_product'], true)) {
-            throw new UnexpectedValueException('Coupon snapshot discount_type is unsupported.');
-        }
         $amount = $this->canonicalDecimal($item['amount'] ?? null);
         $status = $this->requiredString($item['status'] ?? null, 32, 'status');
         $affiliate = ($item['linked_affiliate_id'] ?? null) === null ? null : $this->positiveInt($item['linked_affiliate_id'], 'linked_affiliate_id');
@@ -178,6 +181,24 @@ final class CouponSnapshotSyncService
             'discount_type' => $discountType, 'amount' => $amount, 'provider_status' => $status,
             'date_expires' => $expiry ?: null, 'affiliate_id' => $affiliate,
         ];
+    }
+
+
+    private function normalizeProviderCode(mixed $value): string
+    {
+        return mb_strtolower(trim($this->providerString($value, 255, 'normalized_code')));
+    }
+
+    private function providerString(mixed $value, int $max, string $field): string
+    {
+        if (! is_string($value) && ! is_numeric($value)) {
+            throw new UnexpectedValueException("Coupon snapshot {$field} must be scalar text.");
+        }
+        $value = trim((string) $value);
+        if (mb_strlen($value) > $max) {
+            throw new UnexpectedValueException("Coupon snapshot {$field} is invalid.");
+        }
+        return $value;
     }
 
     private function normalizeCode(mixed $value): string

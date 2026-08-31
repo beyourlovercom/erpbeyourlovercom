@@ -12,7 +12,11 @@ Deliver the canonical ERP Coupon operating surface on top of the merged M1.4A Co
 - Sync every WooCommerce Coupon into an ERP mirror, including coupons with no Affiliate/KOL link.
 - Add Coupon mode to `/kol/affiliatewp`; Influencer mode remains unchanged.
 - Normalize code as trim + case-insensitive comparison.
-- One normalized Coupon Code may map to at most one provider Coupon and at most one Affiliate/KOL.
+- Every provider Coupon ID is mirrored even when historical provider data contains duplicate or invalid codes.
+- Duplicate non-empty normalized codes are preserved as separate Coupon rows and marked `provider_code_conflict`; ERP never silently chooses a winner.
+- Blank/invalid provider codes are mirrored and marked `provider_invalid_code`.
+- Provider-only/custom discount types are mirrored and marked `provider_unsupported_discount_type`; ERP provisioning remains restricted to the strict three supported types.
+- ERP creation still hard-blocks any normalized code already present in the local mirror or live WooCommerce.
 - One KOL may own multiple Coupon Codes.
 - Before create: check ERP mirror first, then live `/coupons/check` provider truth.
 - Conflict is hard-blocked; existing provider/ERP owner facts are surfaced, never overwritten.
@@ -68,7 +72,16 @@ Reuse the existing `kol.affiliates.manage` Manager/Admin boundary for M1.4C Coup
 - Frontend AffiliateWP workspace: 10/10 Vitest PASS.
 - `npm run typecheck = PASS`.
 - `npm run build = PASS`.
-- Fresh SQLite migration rehearsal = PASS; both `(connection_key,coupon_id)` and `(connection_key,normalized_code)` unique constraints are present.
+- Fresh SQLite migration rehearsal = PASS; `(connection_key,coupon_id)` is unique while `(connection_key,normalized_code)` is a non-unique lookup index so real provider duplicate-code conflicts can be mirrored without data loss.
 - Architecture frozen-set updates are limited to this WP's new KOL files/routes/migration/frontend. `M1.4C_KOL_ARCHITECTURE_VIOLATIONS = 0`.
 - Existing main baseline debt remains 12 non-KOL `APP-001` violations in Audit/Customers/Logistics/Shell/Support and is not changed by this WP.
 - `M1.4C_LIVE_PROVIDER_UAT = NOT_RUN` at this checkpoint; run only after the Draft PR exists.
+
+## Live provider discovery — 2026-09-01
+- Real Local WooCommerce contains 2,827 non-trash Coupon rows before the final UAT Coupon is created.
+- Existing provider truth includes 93 duplicate normalized-code groups, 2 blank-code Coupons, and 7 `wbte_sc_bogo` custom discount-type Coupons.
+- M1.4C therefore mirrors these historical provider anomalies explicitly instead of rejecting the full snapshot or mutating WordPress data.
+- ERP create/provision contract remains unchanged and strict: only `percent`, `fixed_cart`, `fixed_product`; local + live duplicate check remains mandatory.
+- Diagnostic UAT Coupons #39911, #39912 and #39913 were each identity-checked, permanently deleted and verified absent after their respective diagnostic runs.
+- The third diagnostic run reached the provider's fixed 60 requests/minute rate limit only after repeated diagnostic/full-snapshot calls; the rate limit was not bypassed or changed.
+- Final `M1.4C_LIVE_PROVIDER_UAT` remains pending until a fresh rate window executes the minimal real read/create/replay/read-back/cleanup path.

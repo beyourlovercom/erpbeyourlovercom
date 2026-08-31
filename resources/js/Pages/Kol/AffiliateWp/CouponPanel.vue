@@ -64,7 +64,7 @@ function time(value: string | null): string {
     <table class="coupon-table">
       <thead><tr><th>Coupon</th><th>Coupon ID</th><th>KOL / Affiliate</th><th>折扣</th><th>到期</th><th>Provider</th><th>Provision</th><th>同步</th></tr></thead>
       <tbody><tr v-for="coupon in coupons" :key="coupon.id">
-        <td><strong>{{ coupon.code }}</strong><small>{{ coupon.normalized_code }}</small></td>
+        <td><strong>{{ coupon.code || '（空 Coupon Code）' }}</strong><small>{{ coupon.normalized_code || 'provider invalid code' }}</small></td>
         <td>{{ coupon.coupon_id ?? '—' }}</td>
         <td><strong v-if="coupon.kol">{{ coupon.kol.display_name }} · #{{ coupon.kol.id }}</strong><span v-else class="coupon-muted">非 Affiliate / 未绑定 KOL</span><small>Affiliate #{{ coupon.affiliate_id ?? '—' }}</small></td>
         <td><strong>{{ coupon.amount ?? '—' }}</strong><small>{{ coupon.discount_type || '—' }}</small></td>

@@ -804,7 +804,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_30_010000_create_customer_groups_tables.php' => '66397ae9eaef8fbbd2a97a7522ad60cc73e9ae4eb331fd3882f2d06fe87e306f',
         'database/migrations/2026_08_31_000100_create_customer_import_batches_tables.php' => '7334c12a78bed3d375029957fce4d529f7d992410727a47d88d19bdc1ef1d6e9',
         'database/migrations/2026_08_31_091500_create_wordpress_connector_settings_table.php' => 'c6f790f4f40820f0bd02ce8fa75400728538f848fcd5ac7a942e5088097cc07a',
-        'database/migrations/2026_09_01_070000_create_kol_affiliate_coupons_table.php' => '6a4ea45848606ba5ddced54e0a0f1f6296860af91d36467d42a574e2f4894b29',
+        'database/migrations/2026_09_01_070000_create_kol_affiliate_coupons_table.php' => 'ab63302fce3805ff71e60ab9b77c290209cc1c93769a6b110262d26d19360aff',
     ];
 
     private const FRONTEND_FILES = [
@@ -893,7 +893,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Inventory/WarehouseList.vue' => 'a16f1296fbc977d4b7b6f6244f9588a2a1f4c33f147dfeb5d326109bf8b69ce0',
         'resources/js/Pages/Inventory/WarehouseShow.vue' => 'e9761f6ac6c30922b9d757e421f73e29c6c03205bf9df6dd17b7cd26a6762292',
         'resources/js/Pages/Inventory/components/InventorySkuCombobox.vue' => 'd2d7408ee79d6fe9b060c268cf076a33a6d30ce096cc1d56ab9d49767e1bd670',
-        'resources/js/Pages/Kol/AffiliateWp/CouponPanel.vue' => 'fe8267affb3c86509683323725dcb20a5efa89d8c59c4c3117c1b27fa0847202',
+        'resources/js/Pages/Kol/AffiliateWp/CouponPanel.vue' => '606d6b6d13f4644a7717fb57803666ea670f57571e54fd7f9552a2792b2d2751',
         'resources/js/Pages/Kol/AffiliateWp/Index.test.ts' => '82aa94b276ee3c0d2c65178b3a107a850240dc215762dc15316facaea20f12f8',
         'resources/js/Pages/Kol/AffiliateWp/Index.vue' => 'b24e8805db9ba85c41fa4662529128efb8fb49652932cffe55c93f41b4e9855c',
         'resources/js/Pages/Kol/Collaborations.vue' => '47df1c8b474ca53469f12bbbf63353d4df71277b8c20eb517e2362e19cf1593f',
