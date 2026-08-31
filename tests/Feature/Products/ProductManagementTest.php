@@ -6,6 +6,7 @@ use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Products\Application\ProductService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -281,23 +282,71 @@ final class ProductManagementTest extends TestCase
         $this->actingAs($user)->post('/products/import', [])->assertSessionHasErrors(['csv_file']);
     }
 
-    public function test_import_store_processes_csv_and_returns_counts(): void
+    public function test_import_template_uses_fixed_filename_and_standard_header(): void
     {
-        $csv = tempnam(sys_get_temp_dir(), 'woo_ui_test_').'.csv';
+        $user = $this->userWith(['products.view', 'products.operate']);
+
+        $response = $this->actingAs($user)->get('/products/import/template');
+
+        $response->assertOk();
+        $response->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
+        $response->assertHeader('Content-Disposition', 'attachment; filename="product-import-csv-template.csv"');
+        $this->assertStringStartsWith("\xEF\xBB\xBF", $response->getContent());
+        $this->assertStringContainsString('"ID","Type","SKU","GTIN, UPC, EAN, or ISBN","Name","Weight (kg)","Sale price","Regular price","Published"', $response->getContent());
+    }
+
+    public function test_import_store_previews_then_confirms_csv_without_mutating_during_preview(): void
+    {
+        $directory = storage_path('framework/testing');
+        if (! is_dir($directory)) mkdir($directory, 0777, true);
+        $csv = tempnam($directory, 'woo_ui_test_').'.csv';
         $handle = fopen($csv, 'w');
-        fputcsv($handle, ['ID', 'Type', 'SKU', 'GTIN, UPC, EAN, or ISBN', 'Name', 'Weight (kg)', 'Sale price', 'Regular price']);
-        fputcsv($handle, [2001, 'simple', 'UI-SKU', '', 'UI Import Product', '', 59, 89]);
+        fputcsv($handle, ['ID', 'Type', 'SKU', 'GTIN, UPC, EAN, or ISBN', 'Name', 'Weight (kg)', 'Sale price', 'Regular price', 'Published']);
+        fputcsv($handle, [2001, 'simple', 'UI-SKU', '', 'UI Import Product', '', 59, 89, 1]);
         fclose($handle);
 
         $user = $this->userWith(['products.view', 'products.operate']);
-        $response = $this->actingAs($user)->post('/products/import', [
+        $preview = $this->actingAs($user)->post('/products/import', [
             'csv_file' => new \Illuminate\Http\UploadedFile($csv, 'products.csv', 'text/csv', null, true),
         ]);
 
-        $response->assertOk();
-        $this->assertDatabaseHas('products', ['sku' => 'UI-SKU', 'name' => 'UI Import Product', 'source_type' => 'woocommerce']);
+        $preview->assertOk();
+        $this->assertDatabaseMissing('products', ['sku' => 'UI-SKU']);
+        $preview->assertInertia(fn ($page) => $page->where('result.candidates', 1)->where('result.canConfirm', true)->has('previewToken'));
 
         unlink($csv);
+    }
+
+    public function test_confirm_request_cannot_bypass_a_conflicted_preview_token(): void
+    {
+        $user = $this->userWith(['products.view', 'products.operate']);
+        $token = 'conflicted-preview-token';
+        $candidate = [
+            'woocommerce_product_id' => 2999,
+            'source_type' => 'woocommerce',
+            'product_type' => 'simple',
+            'sku' => 'SHOULD-NOT-IMPORT',
+            'gtin' => null,
+            'name' => 'Blocked Candidate',
+            'sale_price' => 10.0,
+            'regular_price' => 12.0,
+            'is_active' => true,
+            'weight_kg' => null,
+        ];
+
+        $response = $this->actingAs($user)
+            ->withSession([
+                "products.import.{$token}" => [
+                    'user_id' => (string) $user->id,
+                    'candidates' => [$candidate],
+                    'can_confirm' => false,
+                    'result' => ['identityConflicts' => 1, 'invalid' => 0, 'errors' => ['conflict'], 'canConfirm' => false],
+                ],
+            ])
+            ->post('/products/import', ['action' => 'confirm', 'preview_token' => $token]);
+
+        $response->assertOk()->assertInertia(fn ($page) => $page->where('result.canConfirm', false));
+        $this->assertDatabaseMissing('products', ['sku' => 'SHOULD-NOT-IMPORT']);
     }
 
     // ── Woo CSV ownership boundary ────────────────────────────────────────────
@@ -329,16 +378,16 @@ final class ProductManagementTest extends TestCase
             'notes' => 'Internal note',
         ]);
 
-        $csv = tempnam(sys_get_temp_dir(), 'woo_reimport_').'.csv';
+        $directory = storage_path('framework/testing');
+        if (! is_dir($directory)) mkdir($directory, 0777, true);
+        $csv = tempnam($directory, 'woo_reimport_').'.csv';
         $handle = fopen($csv, 'w');
-        fputcsv($handle, ['ID', 'Type', 'SKU', 'GTIN, UPC, EAN, or ISBN', 'Name', 'Weight (kg)', 'Sale price', 'Regular price']);
-        fputcsv($handle, [3001, 'simple', 'WOO-ACCT', '', 'Updated Name From Woo', '0.8', 110, 130]);
+        fputcsv($handle, ['ID', 'Type', 'SKU', 'GTIN, UPC, EAN, or ISBN', 'Name', 'Weight (kg)', 'Sale price', 'Regular price', 'Published']);
+        fputcsv($handle, [3001, 'simple', 'WOO-ACCT', '', 'Updated Name From Woo', '0.8', 110, 130, 1]);
         fclose($handle);
 
-        $user = $this->userWith(['products.view', 'products.operate']);
-        $this->actingAs($user)->post('/products/import', [
-            'csv_file' => new \Illuminate\Http\UploadedFile($csv, 'products.csv', 'text/csv', null, true),
-        ]);
+        $preview = app(ProductService::class)->preview($csv);
+        app(ProductService::class)->confirm($preview['candidates']);
 
         unlink($csv);
 

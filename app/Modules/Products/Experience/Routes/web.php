@@ -13,6 +13,7 @@ Route::middleware(['web', 'auth', 'can:products.operate'])->group(function (): v
     Route::get('/products/create', [ProductController::class, 'create'])->name('products.create');
     Route::post('/products', [ProductController::class, 'store'])->name('products.store');
     Route::get('/products/import', [ProductController::class, 'importPage'])->name('products.import');
+    Route::get('/products/import/template', [ProductController::class, 'importTemplate'])->name('products.import.template');
     Route::post('/products/import', [ProductController::class, 'importStore'])->name('products.import.store');
     Route::get('/products/{id}/edit', [ProductController::class, 'edit'])->name('products.edit');
     Route::patch('/products/{id}', [ProductController::class, 'update'])->name('products.update');
