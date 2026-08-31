@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3'
+import { router } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
 type RevenueByCurrency = { currency: string; revenue: number }
@@ -20,6 +21,7 @@ const props = defineProps<{
 
 const money = (value: number, currency: string) =>
     new Intl.NumberFormat('zh-CN', { style: 'currency', currency }).format(value)
+const exportCsv = () => { window.location.href = '/customers/library/export?format=csv' }
 </script>
 <template>
     <Head title="客户总览 · BYL ERP" />
@@ -32,19 +34,18 @@ const money = (value: number, currency: string) =>
                         <p class="erp-form-subtitle">Customer Master — 一个客户一条主档，订单按 Customer ID 明确关联。</p>
                     </div>
                     <div class="erp-form-header-actions page-header-actions">
+                        <a v-if="canExport" class="erp-btn erp-btn-secondary" href="/customers/library/export?format=xlsx">导出 XLSX</a>
                         <button
                             v-if="canExport"
                             class="erp-btn erp-btn-secondary"
                             type="button"
-                            disabled
-                            title="客户导出功能（M1.8）尚在规划中，暂不可用"
-                        >导出客户</button>
+                            @click="exportCsv"
+                        >导出 CSV</button>
                         <button
                             v-if="canImport"
                             class="erp-btn erp-btn-secondary"
                             type="button"
-                            disabled
-                            title="客户导入功能（M1.8）尚在规划中，暂不可用"
+                            @click="router.visit('/customers/import')"
                         >导入客户</button>
                         <Link v-if="canOperate" class="erp-btn erp-btn-primary" href="/customers/library/create">新建客户</Link>
                         <Link class="erp-btn erp-btn-secondary" href="/customers/library">客户列表</Link>

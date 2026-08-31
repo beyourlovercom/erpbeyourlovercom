@@ -11,6 +11,8 @@ use App\Modules\Customers\Domain\CountryCodeNormalizer;
 use App\Modules\Customers\Domain\Exceptions\InvalidCompanyAttributeException;
 use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Customers\Infrastructure\Models\CustomerAddress;
+use App\Modules\Customers\Infrastructure\Models\CustomerImportBatch;
+use App\Modules\Customers\Application\CustomerImportService;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Logistics\Application\CustomerShipmentProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -24,6 +26,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 final class CustomerController
 {
@@ -49,6 +52,7 @@ final class CustomerController
         private readonly UserUiPreferenceService $uiPreferences,
         private readonly CustomerSupportProjection $supportProjection,
         private readonly CustomerShipmentProjection $shipmentProjection,
+        private readonly CustomerImportService $customerImport,
     ) {}
 
     public function index(Request $request): Response
@@ -394,14 +398,46 @@ final class CustomerController
         return redirect()->route('customers.library.show', $customer)->with('success', '客户已恢复');
     }
 
-    public function reservedImport(Request $request): never
+    public function importWorkspace(Request $request): Response
     {
-        abort(501, '客户导入功能（M1.8）尚未实现。');
+        return Inertia::render('Customers/Import', ['history' => $this->customerImport->history(), 'columns' => $this->customerImport->headers()]);
     }
 
-    public function reservedExport(Request $request): never
+    public function previewImport(Request $request): JsonResponse
     {
-        abort(501, '客户导出功能（M1.8）尚未实现。');
+        if (! $request->hasFile('file')) {
+            return response()->json(['message' => '请选择导入文件。'], 422);
+        }
+        $request->validate(['file' => ['file']]);
+        $batch = $this->customerImport->preview($request->file('file'), $request->user());
+        return response()->json(['batch' => $batch->load('rows'), 'stats' => ['total'=>$batch->preview_total_rows,'create'=>$batch->preview_create_rows,'update'=>$batch->preview_update_rows,'unchanged'=>$batch->preview_unchanged_rows,'warning'=>$batch->preview_warning_rows,'error'=>$batch->preview_error_rows]]);
+    }
+
+    public function confirmImport(Request $request, CustomerImportBatch $batch): JsonResponse
+    {
+        return response()->json(['batch' => $this->customerImport->confirm($batch, $request->user())]);
+    }
+
+    public function reservedImport(Request $request): JsonResponse
+    {
+        return $this->previewImport($request);
+    }
+
+    public function importTemplate(Request $request): SymfonyResponse
+    {
+        $format = strtolower((string) $request->query('format', 'csv'));
+        if ($format === 'xlsx') return response($this->customerImport->xlsx([]), 200, ['Content-Type'=>'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition'=>'attachment; filename="customer-import-template.xlsx"']);
+        return response("\xEF\xBB\xBF".implode(',', $this->customerImport->headers())."\r\n", 200, ['Content-Type'=>'text/csv; charset=UTF-8','Content-Disposition'=>'attachment; filename="customer-import-template.csv"']);
+    }
+
+    public function reservedExport(Request $request): SymfonyResponse
+    {
+        $rows = $this->customerImport->exportRows($request->only(['search','country_code','source_type','archived','group']));
+        $format = strtolower((string) $request->query('format', 'xlsx'));
+        if ($format === 'csv') {
+            return response()->streamDownload(function () use ($rows): void { echo "\xEF\xBB\xBF"; $h=fopen('php://output','w'); fputcsv($h,$this->customerImport->headers()); foreach($rows as $row) fputcsv($h,array_map(fn($c)=>$row[$c]??null,$this->customerImport->headers())); fclose($h); }, 'customers.csv', ['Content-Type'=>'text/csv; charset=UTF-8']);
+        }
+        return response($this->customerImport->xlsx($rows), 200, ['Content-Type'=>'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition'=>'attachment; filename="customers.xlsx"']);
     }
 
     private function syncAddresses(Customer $customer, array $validated): void

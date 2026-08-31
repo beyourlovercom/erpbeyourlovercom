@@ -38,6 +38,11 @@ final class CustomerService
         return (int) $this->query($filters)->count();
     }
 
+    public function allForExport(array $filters = [])
+    {
+        return $this->query($filters)->with('groups')->orderBy('id')->get();
+    }
+
     private function query(array $filters = [])
     {
         $customerClass = self::CUSTOMER_CLASS;

@@ -479,16 +479,16 @@ final class CustomerExperienceTest extends TestCase
         $this->actingAs($noExport)->get('/customers/library/export')->assertForbidden();
     }
 
-    public function test_authorized_import_returns_not_implemented(): void
+    public function test_authorized_import_without_file_returns_validation_error(): void
     {
         $admin = $this->userWith(['customers.view', 'customers.operate', 'customers.import', 'system.permissions.manage'], 'has_import');
-        $this->actingAs($admin)->post('/customers/library/import')->assertStatus(501);
+        $this->actingAs($admin)->post('/customers/library/import')->assertStatus(422);
     }
 
-    public function test_authorized_export_returns_not_implemented(): void
+    public function test_authorized_export_returns_xlsx(): void
     {
         $admin = $this->userWith(['customers.view', 'customers.export', 'system.permissions.manage'], 'has_export');
-        $this->actingAs($admin)->get('/customers/library/export')->assertStatus(501);
+        $this->actingAs($admin)->get('/customers/library/export')->assertOk()->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     }
 
     public function test_non_admin_presets_do_not_receive_import_export_by_default(): void
@@ -545,16 +545,16 @@ final class CustomerExperienceTest extends TestCase
         $this->actingAs($user)->get('/customers/library/export')->assertForbidden();
     }
 
-    public function test_import_endpoint_501_when_both_permissions_present(): void
+    public function test_import_endpoint_validation_error_when_both_permissions_present_without_file(): void
     {
         $user = $this->userWith(['customers.view', 'customers.import', 'system.permissions.manage'], 'import_both_gates');
-        $this->actingAs($user)->post('/customers/library/import')->assertStatus(501);
+        $this->actingAs($user)->post('/customers/library/import')->assertStatus(422);
     }
 
-    public function test_export_endpoint_501_when_both_permissions_present(): void
+    public function test_export_endpoint_succeeds_when_both_permissions_present(): void
     {
         $user = $this->userWith(['customers.view', 'customers.export', 'system.permissions.manage'], 'export_both_gates');
-        $this->actingAs($user)->get('/customers/library/export')->assertStatus(501);
+        $this->actingAs($user)->get('/customers/library/export')->assertOk();
     }
 
     // ─── RMB estimate in library stats payload ────────────────────────────────
