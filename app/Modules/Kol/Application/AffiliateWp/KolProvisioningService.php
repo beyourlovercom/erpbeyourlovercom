@@ -97,11 +97,15 @@ final class KolProvisioningService
             return [$account, $key];
         });
 
-        $payload = array_filter([
+        $email = trim((string) $kol->contact_email);
+        $payload = [
             'erp_kol_id' => $kolId,
-            'email' => $kol->contact_email,
-            'display_name' => $kol->display_name,
-        ], fn ($v) => $v !== null);
+            'email' => $email,
+            'display_name' => (string) $kol->display_name,
+            'preferred_username' => 'erp-kol-'.$kolId,
+            'requested_affiliate_status' => 'active',
+            'payment_email' => $email,
+        ];
 
         try {
             $response = $this->gateway->provisionAffiliate($payload, $idempotencyKey);
@@ -121,12 +125,12 @@ final class KolProvisioningService
     private function finalizeWithSuccess(Model $account, mixed $data): Model
     {
         $affiliateId = $this->extractPositiveInt($data, ['affiliate_id']);
-        $wordpressUserId = $this->extractPositiveInt($data, ['user_id', 'wordpress_user_id']);
+        $wordpressUserId = $this->extractPositiveInt($data, ['wp_user_id', 'user_id', 'wordpress_user_id']);
         $wordpressUserEmail = is_array($data)
             ? ($data['user_email'] ?? $data['wordpress_user_email'] ?? null)
             : null;
         $wordpressUserEmail = is_string($wordpressUserEmail) && $wordpressUserEmail !== '' ? $wordpressUserEmail : null;
-        $status = is_array($data) ? ($data['status'] ?? null) : null;
+        $status = is_array($data) ? ($data['affiliate_status'] ?? $data['status'] ?? null) : null;
 
         $verified = $affiliateId !== null && $wordpressUserId !== null && $status === 'active';
 

@@ -110,6 +110,35 @@ class KolProvisioningTest extends TestCase
         self::assertNull($account->last_error_message);
     }
 
+    public function test_provision_accepts_andy_core_v153_readback_keys(): void
+    {
+        $manager = $this->manager();
+        $kol = $this->makeKol($manager);
+        $mock = $this->mockGateway();
+        $mock->shouldReceive('provisionAffiliate')
+            ->once()
+            ->andReturn(ConnectorResponse::fromArray([
+                'ok' => true,
+                'contract_version' => '1',
+                'request_id' => 'req-v153',
+                'connection_key' => self::CONNECTION,
+                'data' => [
+                    'affiliate_id' => 9002,
+                    'wp_user_id' => 7002,
+                    'affiliate_status' => 'active',
+                    'created_user' => true,
+                    'created_affiliate' => true,
+                ],
+            ]));
+
+        $account = $this->service()->provision(self::CONNECTION, $kol->id, $manager);
+
+        self::assertSame('active', $account->provisioning_status);
+        self::assertSame(9002, $account->affiliate_id);
+        self::assertSame(7002, $account->wordpress_user_id);
+        self::assertSame('active', $account->provider_status);
+    }
+
     // -------------------------------------------------------------------------
     // Provider failure → error
     // -------------------------------------------------------------------------
@@ -491,10 +520,12 @@ class KolProvisioningTest extends TestCase
         $mock = $this->mockGateway();
 
         $capturedKey = null;
+        $capturedPayload = null;
         $mock->shouldReceive('provisionAffiliate')
             ->once()
-            ->andReturnUsing(function (array $payload, string $key) use (&$capturedKey): ConnectorResponse {
+            ->andReturnUsing(function (array $payload, string $key) use (&$capturedKey, &$capturedPayload): ConnectorResponse {
                 $capturedKey = $key;
+                $capturedPayload = $payload;
 
                 return ConnectorResponse::fromArray([
                     'ok' => true, 'contract_version' => '1', 'request_id' => 'r1',
@@ -508,5 +539,13 @@ class KolProvisioningTest extends TestCase
         self::assertNotNull($capturedKey);
         self::assertSame($capturedKey, $account->provision_idempotency_key);
         self::assertNotEmpty($capturedKey);
+        self::assertSame([
+            'erp_kol_id' => $kol->id,
+            'email' => 'kol@example.com',
+            'display_name' => 'Provision KOL',
+            'preferred_username' => 'erp-kol-'.$kol->id,
+            'requested_affiliate_status' => 'active',
+            'payment_email' => 'kol@example.com',
+        ], $capturedPayload);
     }
 }

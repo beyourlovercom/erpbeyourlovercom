@@ -279,3 +279,31 @@ Verification after rebase:
 - KOL Application cross-module Infrastructure import scan: CLEAN.
 
 Architecture standalone is isolated to one latest-main baseline failure: 12 `APP-001` violations in Audit/Customers/Logistics/Shell/Support files. Every offending file is byte-for-byte unchanged from `origin/main`; zero KOL files appear in the violation set. Classification: `BASELINE_MAIN_APP_001_DEBT`, not M1.4B regression.
+
+## Live Provider UAT Gate — 2026-08-31
+
+`KOL_M1.4B_LIVE_PROVIDER_UAT_GATE = PASS`
+
+- authority: Local ERP on US Mac + Andy Core v1.5.3 / AffiliateWP on Windows Local WordPress;
+- signed health: PASS, contract v1, AffiliateWP ready, writable;
+- full real Affiliate snapshot: 1,758 provider rows synced, 0 errors, 0 marked missing;
+- live UAT used one synthetic `@example.test` KOL only; no production data was mutated;
+- first provision attempt exposed a request-contract mismatch before Provider mutation: Andy Core v1.5.3 requires exactly six provision fields;
+- ERP provisioning now deterministically sends `preferred_username`, `requested_affiliate_status=active`, and `payment_email` in addition to the existing KOL identity fields;
+- second live attempt created one Affiliate + one WordPress User and exposed the v1.5.3 read-back keys `wp_user_id` / `affiliate_status`;
+- ERP read-back now accepts the canonical v1.5.3 keys while retaining compatibility with the existing test aliases;
+- retry reused the same persisted idempotency key and returned the exact same Affiliate and WordPress User IDs;
+- ERP retained exactly one `(connection_key, kol_id)` provisioning row; no duplicate Affiliate was created;
+- a complete post-provision snapshot preserved `origin=erp_provisioned`, the explicit KOL binding, `active`, and `present` reconciliation state;
+- exact rollback removed only the synthetic Affiliate/User, its Connector binding/idempotency row, ERP test KOL/account/decision, and temporary Manager role;
+- post-cleanup Provider count = 1,758 and ERP mirror count = 1,758; test business objects = 0;
+- Connector secret was never printed or committed; temporary encrypted-transfer files/port were removed;
+- Production deployment: NOT RUN; merge: NOT AUTHORIZED.
+
+Final regression after live fixes:
+- focused M1.4B + Identity + Connector compatibility: `172 passed / 649 assertions / exit 0`;
+- provisioning-specific suite: `20 passed / 75 assertions`;
+- frontend typecheck: PASS; production build: PASS;
+- Architecture standalone remains isolated to the same 12 non-KOL `APP-001` latest-main violations;
+- `git diff --check`: PASS; changed PHP lint: PASS;
+- real credential/private-key/temp-IP/key scan: 0 hits (the documented synthetic `@example.test` marker is intentionally retained as UAT classification evidence).
