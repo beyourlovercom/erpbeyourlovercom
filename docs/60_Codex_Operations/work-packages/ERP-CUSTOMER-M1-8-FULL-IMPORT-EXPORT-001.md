@@ -2,7 +2,7 @@
 type: work-package
 project: BYL ERP
 work_package_id: ERP-CUSTOMER-M1-8-FULL-IMPORT-EXPORT-001
-status: GIT_DELIVERY_AUTHORIZED
+status: PR_OPEN
 execution_provider: US_CODEX_CLI
 verification_tier: HIGH_RISK
 baseline: origin/main@63c2fa628815d14bdea1f41063da64c77610b608
@@ -217,6 +217,7 @@ MERGE_AUTHORIZATION: NOT GRANTED
 PRODUCTION_DEPLOYMENT_AUTHORIZATION: NOT GRANTED
 HIGH_RISK_VERIFICATION: PASS — Customer regression 891 assertions; focused frontend 24/24; typecheck/build/diff/public-hot PASS; disposable SQLite fresh/FK/index/rollback/reapply PASS; Architecture exact-main comparison proves the same 3 unrelated baseline failures.
 DELIVERY_GATE: PASS — post-UAT delivery verification passed with Customer/Nav/Provider backend 2525 assertions, Customer frontend 34/34, typecheck, production build, git diff check, and public/hot absence. Menu baseline/hash includes the Owner-approved dual Customer/Sync import entries.
+DELIVERY_RECEIPT: PR #132 created from business delivery commit `9b65cccb9e1620f7aabc1400b4ba8c8d38c7cad8`; this receipt update is documentation-only and does not change verified product behavior.
 OWNER_UAT_STATUS: PASS — Owner explicitly accepted Customer M1.8 Full Import / Export on 2026-08-31 12:35 (+08:00), including the dual Customer/Sync import navigation tweak. Authenticated US-local UAT used bypass=false, isolated SQLite data, the shared `Customers/Import` workspace, and real CSV preview evidence of 2 total / 1 create / 1 update / 0 warning / 0 error.
 OWNER_UAT_TWEAK: PASS — Owner directed a duplicate `客户导入` level-2 entry under both Customer and Sync. Runtime navigation now exposes `/customers/import` and `/sync/customers/import` to the same workspace, with the same `customers.import + system.permissions.manage` all-of visibility/server gate and no duplicated import engine. Focused AppShell navigation, approved-menu baseline, and import/export suites PASS.
 
@@ -228,14 +229,14 @@ CURRENT_TRACK_PHASE_MAP: Customer M1.1–M1.7A [MERGED] → M1.8 Full Import/Exp
 COMPLETED_PHASES: Customer M1.1 through M1.7A merged; PR #131 merge commit `63c2fa628815d14bdea1f41063da64c77610b608`.
 CURRENT_PHASE: Customer M1.8 Full Import/Export — Owner UAT ready.
 CURRENT_WORK_PACKAGE: ERP-CUSTOMER-M1-8-FULL-IMPORT-EXPORT-001
-PACKAGE_STATUS: IMPLEMENTATION_COMPLETE / HIGH_RISK_VERIFICATION_PASS / OWNER_UAT_PASS / GIT_DELIVERY_AUTHORIZED / MERGE_NOT_AUTHORIZED.
+PACKAGE_STATUS: IMPLEMENTATION_COMPLETE / HIGH_RISK_VERIFICATION_PASS / OWNER_UAT_PASS / GIT_DELIVERED / PR_132_OPEN / MERGE_NOT_AUTHORIZED.
 WAITING_PHASES: M1.8 Owner UAT / separate Git delivery; M1.9 Customer360 Closure.
 BASELINE: origin/main@63c2fa628815d14bdea1f41063da64c77610b608
-GITHUB_STATE: PR #131 MERGED; M1.8 branch/worktree local only; no M1.8 commit/push/PR authorization.
+GITHUB_STATE: M1.8 delivery commit `9b65cccb9e1620f7aabc1400b4ba8c8d38c7cad8` pushed; PR #132 OPEN / CLEAN / MERGEABLE at creation; merge not authorized.
 SOURCE_CONFLICTS: Historical roadmap/current-context/WP documents may still call M1.7A CURRENT or M1.8 WAITING. Current Owner directive plus canonical merged Git main govern; no scope conflict blocks M1.8.
-GLOBAL_GATE: HIGH_RISK US-local verification PASS; Owner UAT PASS; Git delivery authorized. Merge and production deployment remain separately gated.
+GLOBAL_GATE: HIGH_RISK US-local verification PASS; Owner UAT PASS; Git delivery complete in PR #132. Merge and production deployment remain separately gated.
 PRODUCTION_DEPLOYMENT_STATUS: NO — no M1.8 deployment/tag/release authorized.
-NEXT_DEPENDENCY: commit / push / create PR → verify exact remote head and PR state → separate Owner merge authorization.
+NEXT_DEPENDENCY: verify final docs-only receipt head remains CLEAN/MERGEABLE → separate Owner merge authorization for PR #132.
 EVIDENCE_AS_OF: 2026-08-31; canonical main `63c2fa628815d14bdea1f41063da64c77610b608`, M1.1 reserved import/export contract, current Customer schema/services, Inventory Batch Sync preview/confirm precedent.
 
 ROADMAP HOURS
