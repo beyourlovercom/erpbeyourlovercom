@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3'
 import { computed, reactive, ref } from 'vue'
+import axios from 'axios'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 import { useAccountGridPreferences, type GridColumnDefinition, type GridPreferenceValue } from '../../../Composables/useAccountGridPreferences'
 
@@ -85,6 +86,8 @@ const props = defineProps<{
     workspace: 'library' | 'groups'
     gridPreferenceNamespace: string
     gridPreference: GridPreferenceValue<ColumnKey> | null
+    manualGroups?: { id: number; name: string; description: string | null; member_count: number }[]
+    selectedManualGroup?: { id: number; name: string; description: string | null; member_count: number } | null
 }>()
 
 const isGroupsWorkspace = computed(() => props.workspace === 'groups')
@@ -93,6 +96,8 @@ const workspaceSubtitle = computed(() => isGroupsWorkspace.value
     ? '按系统动态分组查看 Customer；列显示与顺序绑定当前账号，并在不同设备同步。'
     : '统一查看和筛选 Customer 主档；订单只通过明确 Customer ID 关联。')
 const workspaceBasePath = computed(() => isGroupsWorkspace.value ? '/customers/groups' : '/customers/library')
+const manualGroups = computed(() => props.manualGroups ?? [])
+const selectedManualGroup = computed(() => props.selectedManualGroup ?? null)
 
 const groupShortcuts = [
     { key: '', label: '全部客户' },
@@ -138,6 +143,54 @@ const filters = reactive({
 })
 
 const submit = () => router.get(workspaceBasePath.value, { ...filters, page: 1 }, { preserveState: true, replace: true })
+
+const newGroupName = ref('')
+const newGroupDescription = ref('')
+const renameGroupName = ref('')
+const renameOpen = ref(false)
+const memberSearch = ref('')
+const memberSearchResults = ref<{ id: number; name: string; email: string | null; phone: string | null }[]>([])
+const selectedMemberIds = ref<number[]>([])
+
+const createGroup = () => {
+    if (!newGroupName.value.trim()) return
+    router.post('/customers/groups', { name: newGroupName.value, description: newGroupDescription.value })
+}
+
+const renameGroup = () => {
+    if (!selectedManualGroup.value || !renameGroupName.value.trim()) return
+    router.patch(`/customers/groups/${selectedManualGroup.value.id}`, { name: renameGroupName.value, description: selectedManualGroup.value.description })
+    renameOpen.value = false
+}
+
+const beginRename = () => {
+    if (!selectedManualGroup.value) return
+    renameGroupName.value = selectedManualGroup.value.name
+    renameOpen.value = true
+}
+
+const deleteGroup = () => {
+    if (selectedManualGroup.value && window.confirm(`确认删除客户分组「${selectedManualGroup.value.name}」？客户不会被删除。`)) {
+        router.delete(`/customers/groups/${selectedManualGroup.value.id}`)
+    }
+}
+
+const searchGroupCustomers = async () => {
+    if (!selectedManualGroup.value || !memberSearch.value.trim()) return
+    const response = await axios.get(`/customers/groups/${selectedManualGroup.value.id}/customers/search`, { params: { search: memberSearch.value } })
+    memberSearchResults.value = response.data.customers
+}
+
+const addMembers = () => {
+    if (!selectedManualGroup.value || selectedMemberIds.value.length === 0) return
+    router.post(`/customers/groups/${selectedManualGroup.value.id}/members`, { customer_ids: selectedMemberIds.value })
+}
+
+const removeMember = (customer: Customer) => {
+    if (selectedManualGroup.value && window.confirm(`确认将「${customer.name}」移出当前分组？`)) {
+        router.delete(`/customers/groups/${selectedManualGroup.value.id}/members/${customer.id}`)
+    }
+}
 
 const restore = (customer: Customer) => {
     if (window.confirm(`确认恢复客户「${customer.name}」？`)) {
@@ -339,7 +392,12 @@ const subscriptionSummary = (customer: Customer): string => {
                                 <label class="erp-form-label" for="filter-group">客户分组</label>
                                 <select id="filter-group" v-model="filters.group" class="erp-select filter-select">
                                     <option value="">全部客户</option>
-                                    <option v-for="shortcut in groupShortcuts.slice(1)" :key="shortcut.key" :value="shortcut.key">{{ shortcut.label }}</option>
+                                    <optgroup label="系统分组">
+                                        <option v-for="shortcut in groupShortcuts.slice(1)" :key="shortcut.key" :value="shortcut.key">{{ shortcut.label }}</option>
+                                    </optgroup>
+                                    <optgroup v-if="manualGroups.length" label="手动分组">
+                                        <option v-for="group in manualGroups" :key="`manual:${group.id}`" :value="`manual:${group.id}`">{{ group.name }}</option>
+                                    </optgroup>
                                 </select>
                             </div>
                             <div class="filter-row-submit">
@@ -349,6 +407,48 @@ const subscriptionSummary = (customer: Customer): string => {
                         </div>
                     </form>
                 </template>
+
+                <section v-if="isGroupsWorkspace" class="manual-groups-area" aria-label="手动客户分组">
+                    <div class="manual-groups-heading">
+                        <div>
+                            <h2>手动分组</h2>
+                            <p>持久化维护客户成员；系统分组仍由订单、发货和客户事实动态计算。</p>
+                        </div>
+                        <form v-if="canOperate" class="manual-group-create" @submit.prevent="createGroup">
+                            <input v-model="newGroupName" class="erp-input" type="text" maxlength="255" placeholder="新分组名称" aria-label="新分组名称">
+                            <button class="erp-btn erp-btn-primary" type="submit">创建分组</button>
+                        </form>
+                    </div>
+                    <div v-if="manualGroups.length" class="manual-group-list">
+                        <Link v-for="group in manualGroups" :key="group.id" :href="groupHref(`manual:${group.id}`)" class="manual-group-card" :class="{ 'manual-group-card-active': selectedManualGroup?.id === group.id }">
+                            <strong>{{ group.name }}</strong><span>{{ group.member_count }} 位客户</span>
+                        </Link>
+                    </div>
+                    <p v-else class="manual-group-empty">暂无手动分组。使用“创建分组”开始维护固定客户集合。</p>
+                    <div v-if="selectedManualGroup" class="manual-group-detail">
+                        <div class="manual-group-detail-header">
+                            <div><h3>{{ selectedManualGroup.name }}</h3><p>{{ selectedManualGroup.member_count }} 位客户</p></div>
+                            <div v-if="canOperate" class="manual-group-actions">
+                                <button v-if="!renameOpen" class="erp-btn erp-btn-secondary" type="button" @click="beginRename">重命名</button>
+                                <form v-else class="manual-group-rename" @submit.prevent="renameGroup">
+                                    <input v-model="renameGroupName" class="erp-input" type="text" maxlength="255" aria-label="新的分组名称">
+                                    <button class="erp-btn erp-btn-primary" type="submit">保存</button>
+                                    <button class="erp-btn erp-btn-secondary" type="button" @click="renameOpen = false">取消</button>
+                                </form>
+                                <button class="erp-btn erp-btn-danger" type="button" @click="deleteGroup">删除分组</button>
+                            </div>
+                        </div>
+                        <form v-if="canOperate" class="manual-group-add" @submit.prevent="searchGroupCustomers">
+                            <input v-model="memberSearch" class="erp-input" type="search" placeholder="按姓名 / Email / 电话搜索客户" aria-label="搜索可加入客户">
+                            <button class="erp-btn erp-btn-secondary" type="submit">搜索</button>
+                            <button class="erp-btn erp-btn-primary" type="button" :disabled="selectedMemberIds.length === 0" @click="addMembers">添加客户</button>
+                        </form>
+                        <div v-if="memberSearchResults.length" class="manual-group-search-results">
+                            <label v-for="customer in memberSearchResults" :key="customer.id"><input v-model="selectedMemberIds" type="checkbox" :value="customer.id"> {{ customer.name }} <small>{{ customer.email || customer.phone || '—' }}</small></label>
+                        </div>
+                        <p v-if="customers.data.length === 0" class="manual-group-empty-state">这个手动分组还没有客户。</p>
+                    </div>
+                </section>
 
                 <div class="customer-grid-shell">
                     <div class="customer-grid-settings-anchor">
@@ -438,6 +538,7 @@ const subscriptionSummary = (customer: Customer): string => {
                                     </td>
                                     <td class="customer-grid-action-cell">
                                         <Link :href="`/customers/library/${customer.id}`" class="erp-btn erp-btn-secondary table-action-btn">查看</Link>
+                                        <button v-if="canOperate && selectedManualGroup" class="erp-btn erp-btn-secondary table-action-btn" type="button" @click="removeMember(customer)">移出分组</button>
                                         <button v-if="canOperate && customer.archived_at" class="erp-btn erp-btn-secondary table-action-btn" type="button" @click="restore(customer)">恢复</button>
                                     </td>
                                 </tr>
@@ -466,6 +567,23 @@ const subscriptionSummary = (customer: Customer): string => {
     </AuthenticatedLayout>
 </template>
 <style scoped>
+.manual-groups-area { margin-bottom: 16px; padding: 16px; border: 1px solid #DCE5E8; border-radius: 10px; background: #F8FAFA; }
+.manual-groups-heading, .manual-group-detail-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.manual-groups-heading h2, .manual-group-detail h3 { margin: 0; color: #142126; }
+.manual-groups-heading p, .manual-group-detail-header p { margin: 4px 0 0; color: #7A8C94; font-size: 13px; }
+.manual-group-create, .manual-group-add, .manual-group-actions, .manual-group-rename { display: flex; gap: 8px; align-items: center; }
+.manual-group-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.manual-group-card { display: flex; flex-direction: column; gap: 3px; min-width: 150px; padding: 10px 12px; border: 1px solid #DCE5E8; border-radius: 8px; background: #fff; color: #142126; text-decoration: none; }
+.manual-group-card span { color: #7A8C94; font-size: 12px; }
+.manual-group-card-active { border-color: #246F68; box-shadow: 0 0 0 1px #246F68; }
+.manual-group-empty, .manual-group-empty-state { margin: 14px 0 0; color: #7A8C94; font-size: 13px; }
+.manual-group-detail { margin-top: 16px; padding-top: 14px; border-top: 1px solid #DCE5E8; }
+.manual-group-add { margin-top: 12px; }
+.manual-group-add .erp-input { min-width: 280px; }
+.manual-group-search-results { display: grid; gap: 6px; margin-top: 10px; padding: 10px; background: #fff; border: 1px solid #DCE5E8; border-radius: 8px; }
+.manual-group-search-results label { color: #344B53; }
+.manual-group-search-results small { color: #7A8C94; }
+.erp-btn-danger { color: #A33A3A; border-color: #E8B7B7; background: #FFF7F7; }
 .customer-kpi-row {
     display: grid;
     grid-template-columns: repeat(6, minmax(0, 1fr));

@@ -5,6 +5,7 @@ namespace App\Modules\Customers\Infrastructure\Models;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
@@ -43,6 +44,18 @@ class Customer extends Model
     public function shippingAddress(): HasOne
     {
         return $this->hasOne(CustomerAddress::class)->where('address_type', 'shipping');
+    }
+
+    public function groupMemberships(): HasMany
+    {
+        return $this->hasMany(CustomerGroupMembership::class);
+    }
+
+    public function groups(): BelongsToMany
+    {
+        return $this->belongsToMany(CustomerGroup::class, 'customer_group_memberships')
+            ->withPivot(['added_by'])
+            ->withTimestamps();
     }
 
     public function getCustomerNumberAttribute(): string

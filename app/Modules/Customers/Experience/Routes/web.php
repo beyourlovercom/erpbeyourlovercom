@@ -10,6 +10,12 @@ Route::middleware(['web', 'auth'])->group(function (): void {
 
     Route::get('/customers/library', [CustomerController::class, 'index'])->middleware('can:customers.view')->name('customers.library');
     Route::get('/customers/groups', [CustomerController::class, 'groups'])->middleware('can:customers.view')->name('customers.groups');
+    Route::post('/customers/groups', [CustomerController::class, 'storeGroup'])->middleware('can:customers.operate')->name('customers.groups.store');
+    Route::patch('/customers/groups/{customerGroup}', [CustomerController::class, 'updateGroup'])->middleware('can:customers.operate')->name('customers.groups.update');
+    Route::delete('/customers/groups/{customerGroup}', [CustomerController::class, 'destroyGroup'])->middleware('can:customers.operate')->name('customers.groups.destroy');
+    Route::get('/customers/groups/{customerGroup}/customers/search', [CustomerController::class, 'searchGroupCustomers'])->middleware('can:customers.view')->name('customers.groups.customers.search');
+    Route::post('/customers/groups/{customerGroup}/members', [CustomerController::class, 'addGroupMembers'])->middleware('can:customers.operate')->name('customers.groups.members.store');
+    Route::delete('/customers/groups/{customerGroup}/members/{customer}', [CustomerController::class, 'removeGroupMember'])->middleware('can:customers.operate')->name('customers.groups.members.destroy');
     Route::get('/customers/library/create', [CustomerController::class, 'create'])->middleware('can:customers.operate')->name('customers.library.create');
     Route::post('/customers/library', [CustomerController::class, 'store'])->middleware('can:customers.operate')->name('customers.library.store');
     Route::get('/customers/library/export', [CustomerController::class, 'reservedExport'])->middleware(['can:customers.export', 'can:system.permissions.manage'])->name('customers.library.export');
