@@ -194,3 +194,28 @@ Persistence ownership remains unchanged:
 - Coupons / Referrals / Payouts → their canonical KOL / Finance ownership packages.
 
 Connector M1 will orchestrate these capabilities; it will not create parallel generic master tables.
+
+## M1.2 real Subscribers import + idempotency gate — 2026-08-31
+
+The Connector worktree was booted against an isolated temporary SQLite database. The live WordPress Connector was reached over the transport-only Tailscale UAT route. Real provider records were imported only into the isolated temporary ERP database.
+
+First real import:
+- before: 0 subscribers / 0 subscriptions;
+- Sync Run status: `completed`;
+- processed: 422;
+- succeeded: 422;
+- failed: 0;
+- conflicts: 0;
+- after: 422 subscribers / 422 subscriptions.
+
+Second identical real import:
+- before: 422 / 422;
+- processed: 422;
+- succeeded: 422;
+- failed: 0;
+- conflicts: 0;
+- after: 422 / 422;
+- duplicate growth: 0.
+
+`M1.2_SUBSCRIBER_REAL_IMPORT = PASS`
+`M1.2_SUBSCRIBER_IDEMPOTENCY = PASS`
