@@ -114,6 +114,37 @@ class AppShellNavigationTest extends TestCase
             ->where('shellNavigation.1.children.2.children.0.label', '2025实际'));
     }
 
+
+    public function test_customer_import_is_available_from_customer_and_sync_navigation_with_the_same_workspace(): void
+    {
+        $user = $this->userWith(['dashboard.view', 'sync.view', 'customers.view', 'customers.import', 'system.permissions.manage'], 'customer-import-admin');
+
+        $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
+            ->where('shellNavigation.1.key', 'sync')
+            ->where('shellNavigation.1.children.3.key', 'sync-customers-import')
+            ->where('shellNavigation.1.children.3.path', '/sync/customers/import')
+            ->where('shellNavigation.2.key', 'customers')
+            ->where('shellNavigation.2.children.2.key', 'customers-import')
+            ->where('shellNavigation.2.children.2.path', '/customers/import'));
+
+        $this->actingAs($user)->get('/customers/import')->assertInertia(fn (Assert $page) => $page->component('Customers/Import'));
+        $this->actingAs($user)->get('/sync/customers/import')->assertInertia(fn (Assert $page) => $page->component('Customers/Import'));
+    }
+
+    public function test_customer_import_navigation_requires_both_import_and_permission_admin_gates(): void
+    {
+        $withoutAdminGate = $this->userWith(['dashboard.view', 'sync.view', 'customers.view', 'customers.import'], 'customer-import-no-admin');
+
+        $this->actingAs($withoutAdminGate)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
+            ->where('shellNavigation.1.key', 'sync')
+            ->has('shellNavigation.1.children', 4)
+            ->where('shellNavigation.2.key', 'customers')
+            ->has('shellNavigation.2.children', 2));
+
+        $this->actingAs($withoutAdminGate)->get('/customers/import')->assertForbidden();
+        $this->actingAs($withoutAdminGate)->get('/sync/customers/import')->assertForbidden();
+    }
+
     public function test_sync_permission_controls_route_and_navigation_item(): void
     {
         $user = $this->userWith(['sync.view']);

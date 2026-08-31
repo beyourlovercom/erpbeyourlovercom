@@ -53,6 +53,7 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Audit/Providers/AuditServiceProvider.php',
         'app/Modules/Customers/Application/CompanyService.php',
         'app/Modules/Customers/Application/CustomerGroupService.php',
+        'app/Modules/Customers/Application/CustomerImportService.php',
         'app/Modules/Customers/Application/CustomerSegmentationQuery.php',
         'app/Modules/Customers/Application/CustomerService.php',
         'app/Modules/Customers/Application/CustomerSubscriberProjection.php',
@@ -68,6 +69,8 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Customers/Infrastructure/Models/CustomerAddress.php',
         'app/Modules/Customers/Infrastructure/Models/CustomerGroup.php',
         'app/Modules/Customers/Infrastructure/Models/CustomerGroupMembership.php',
+        'app/Modules/Customers/Infrastructure/Models/CustomerImportBatch.php',
+        'app/Modules/Customers/Infrastructure/Models/CustomerImportRow.php',
         'app/Modules/Customers/Providers/CustomersServiceProvider.php',
         'app/Modules/Dashboard/Application/DashboardMetrics.php',
         'app/Modules/Dashboard/Experience/Controllers/DashboardController.php',
@@ -455,6 +458,11 @@ final class ModuleArchitectureTest extends TestCase
         'customers.library.edit',
         'customers.library.export',
         'customers.library.import',
+        'customers.import',
+        'customers.import.template',
+        'customers.import.preview',
+        'customers.import.confirm',
+        'sync.customers.import',
         'customers.library.restore',
         'customers.library.show',
         'customers.library.store',
@@ -713,6 +721,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_29_150000_create_marketing_subscriber_tables.php' => '134de0ec084445828ad413b689253607e9491f7d65c50582d24d7013a9238373',
         'database/migrations/2026_08_30_000000_create_support_tickets_table.php' => '8a9edb6cc1713ed455062e83ea807529c0614072553a206ddcccf4a7b2bedd74',
         'database/migrations/2026_08_30_010000_create_customer_groups_tables.php' => '66397ae9eaef8fbbd2a97a7522ad60cc73e9ae4eb331fd3882f2d06fe87e306f',
+        'database/migrations/2026_08_31_000100_create_customer_import_batches_tables.php' => '7334c12a78bed3d375029957fce4d529f7d992410727a47d88d19bdc1ef1d6e9',
     ];
 
     private const FRONTEND_FILES = [
@@ -755,11 +764,13 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Customers/Companies/Index.vue' => '7e7e164c6a1800d48f9440053c4238beffb932075f4b65053eb1a3e4f43d4add',
         'resources/js/Pages/Customers/Companies/Show.vue' => 'ec15baa7f74a287f7b8ab5b9c672da090b5031c0a8a055a9ccdcba5f28698b19',
         'resources/js/Pages/Customers/Dashboard.test.ts' => 'a5089a3252d3169160ce2dbcac52540127622b0cdb19109bfd7d244392f8225d',
-        'resources/js/Pages/Customers/Dashboard.vue' => 'aeff4b27aea4e7ee9206f8f7180ac441e3dabfc580f1ad889fdb2d5f2e46ffac',
+        'resources/js/Pages/Customers/Dashboard.vue' => '2ae0b0dd499dee258c79d2de37d489c01c65f5a555b2e9ac04650956136ab8ce',
+        'resources/js/Pages/Customers/Import.test.ts' => 'ef9fb4ec8aff804ac4af097261aa84505f7f5ab47fef9dbbf1cf393c47dd19be',
+        'resources/js/Pages/Customers/Import.vue' => 'aa82c8954e635a14525bd1bc30808edf5617e229226a70265136e4b85a928b19',
         'resources/js/Pages/Customers/Library/Create.vue' => '17066bb7a7f0dc1ac21f539f79f79397990b08574b69952171683975878d50d6',
         'resources/js/Pages/Customers/Library/Edit.vue' => '1b99107357f6979f860c72457bfc01c9f5bf7f3c39343d96afe946f48774895f',
         'resources/js/Pages/Customers/Library/Index.test.ts' => '2983d288df14eed4771c9415ba6515239d8693225e8565fc9bdf606fbc8f7ae5',
-        'resources/js/Pages/Customers/Library/Index.vue' => '2bea1cec360dc0abf4685379a29075c4a62f42fc64b4a70ed316e9b9672f2f8e',
+        'resources/js/Pages/Customers/Library/Index.vue' => '20469eb45b70d5caea9adcd9b9c3081f3a3ba1482f9471d41f2bd602fee663bc',
         'resources/js/Pages/Customers/Library/Show.test.ts' => '6ddb12aa705b02100543f1899bd4983778109c2e02402241fc6a65ab0498c2cb',
         'resources/js/Pages/Customers/Library/Show.vue' => '09546926a8dec62227bf35b61d4c7bc905747af25b514fa649ed12e11eafd0ad',
         'resources/js/Pages/Customers/Support/Create.vue' => 'b22761d3b7a22ecc96bf5a8ced4019a5d5410924d126876f4a36b5f2eef0e075',
@@ -1079,7 +1090,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('2ae8be84bb377a76d17363d194fc727b5c86c0466b3dc8303ec303e155ac58dd', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('1dd4de51efa07ae2efc59afda60f639c70d121852fab801594032e72d78c3e68', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);

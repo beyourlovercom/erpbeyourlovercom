@@ -158,6 +158,13 @@ const filters = reactive({
 
 const submit = () => router.get(workspaceBasePath.value, { ...filters, page: 1 }, { preserveState: true, replace: true })
 
+const exportCustomers = (format: 'csv' | 'xlsx') => {
+    const params = new URLSearchParams()
+    Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value) })
+    params.set('format', format)
+    window.location.href = `/customers/library/export?${params.toString()}`
+}
+
 const newGroupName = ref('')
 const newGroupDescription = ref('')
 const newGroupOpen = ref(false)
@@ -330,15 +337,14 @@ const subscriptionSummary = (customer: Customer): string => {
                                 v-if="canExport"
                                 class="erp-btn erp-btn-secondary customer-header-utility"
                                 type="button"
-                                disabled
-                                title="客户导出功能（M1.8）尚在规划中，暂不可用"
-                            >导出</button>
+                                @click="exportCustomers('xlsx')"
+                            >导出 XLSX</button>
+                            <button v-if="canExport" class="erp-btn erp-btn-secondary customer-header-utility" type="button" @click="exportCustomers('csv')">导出 CSV</button>
                             <button
                                 v-if="canImport"
                                 class="erp-btn erp-btn-secondary customer-header-utility"
                                 type="button"
-                                disabled
-                                title="客户导入功能（M1.8）尚在规划中，暂不可用"
+                                @click="router.visit('/customers/import')"
                             >导入</button>
                         </div>
                         <Link v-if="canOperate" class="erp-btn erp-btn-primary customer-header-create" href="/customers/library/create">新建客户</Link>

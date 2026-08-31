@@ -13,7 +13,7 @@ final class ErpShellNavigation
     public function for(Authenticatable $user): array
     {
         return collect(config('erp_shell_navigation'))
-            ->filter(fn (array $item) => Gate::forUser($user)->allows($item['permission']))
+            ->filter(fn (array $item) => $this->allowed($user, $item))
             ->map(function (array $item) use ($user): array {
                 $serialized = $this->serialize($user, $item);
                 if ($item['key'] === 'inventory') {
@@ -52,10 +52,25 @@ final class ErpShellNavigation
         return $result;
     }
 
+    private function allowed(Authenticatable $user, array $item): bool
+    {
+        if (! Gate::forUser($user)->allows($item['permission'])) {
+            return false;
+        }
+
+        foreach ($item['permissions_all'] ?? [] as $permission) {
+            if (! Gate::forUser($user)->allows($permission)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private function serialize(Authenticatable $user, array $item): array
     {
         $children = collect($item['children'] ?? [])
-            ->filter(fn (array $child) => empty($child['permission']) || Gate::forUser($user)->allows($child['permission']))
+            ->filter(fn (array $child) => empty($child['permission']) || $this->allowed($user, $child))
             ->map(fn (array $child) => $this->serialize($user, $child))
             ->values()->all();
 

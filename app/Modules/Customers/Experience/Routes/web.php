@@ -20,6 +20,11 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/customers/library', [CustomerController::class, 'store'])->middleware('can:customers.operate')->name('customers.library.store');
     Route::get('/customers/library/export', [CustomerController::class, 'reservedExport'])->middleware(['can:customers.export', 'can:system.permissions.manage'])->name('customers.library.export');
     Route::post('/customers/library/import', [CustomerController::class, 'reservedImport'])->middleware(['can:customers.import', 'can:system.permissions.manage'])->name('customers.library.import');
+    Route::get('/customers/import', [CustomerController::class, 'importWorkspace'])->middleware(['can:customers.import', 'can:system.permissions.manage'])->name('customers.import');
+    Route::get('/sync/customers/import', [CustomerController::class, 'importWorkspace'])->middleware(['can:customers.import', 'can:system.permissions.manage'])->name('sync.customers.import');
+    Route::get('/customers/import/template', [CustomerController::class, 'importTemplate'])->middleware(['can:customers.import', 'can:system.permissions.manage'])->name('customers.import.template');
+    Route::post('/customers/import/preview', [CustomerController::class, 'previewImport'])->middleware(['can:customers.import', 'can:system.permissions.manage'])->name('customers.import.preview');
+    Route::post('/customers/import/{batch}/confirm', [CustomerController::class, 'confirmImport'])->middleware(['can:customers.import', 'can:system.permissions.manage'])->name('customers.import.confirm');
     Route::get('/customers/library/{customer}', [CustomerController::class, 'show'])->middleware('can:customers.view')->name('customers.library.show');
     Route::get('/customers/library/{customer}/edit', [CustomerController::class, 'edit'])->middleware('can:customers.operate')->name('customers.library.edit');
     Route::match(['put', 'patch'], '/customers/library/{customer}', [CustomerController::class, 'update'])->middleware('can:customers.operate')->name('customers.library.update');

@@ -1,8 +1,8 @@
 {
-  "version": "1.8",
+  "version": "1.9",
   "status": "OWNER_APPROVED",
-  "approved_at": "2026-08-29",
-  "approved_head": "be1afca30e839361975cfabe941b99f253b708fb",
+  "approved_at": "2026-08-31",
+  "approved_head": "63c2fa628815d14bdea1f41063da64c77610b608",
   "governed_levels": [
     1,
     2
@@ -234,6 +234,21 @@
       "sort": 30
     },
     {
+      "code": "sync-customers-import",
+      "parent_code": "sync",
+      "level": 2,
+      "label_zh": "客户导入",
+      "slug": "import",
+      "url": "/sync/customers/import",
+      "route": "sync.customers.import",
+      "permission": "customers.import",
+      "emoji": null,
+      "function_zh": "从同步模块进入 Customer M1.8 客户导入工作区；与客户模块的客户导入入口使用同一页面和同一导入引擎。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 40
+    },
+    {
       "code": "sync-exports",
       "parent_code": "sync",
       "level": 2,
@@ -246,7 +261,7 @@
       "function_zh": "导出订单数据文件，不改变订单或同步业务状态。",
       "status": "implemented",
       "progress": 100,
-      "sort": 40
+      "sort": 50
     },
     {
       "code": "customers",
@@ -294,6 +309,21 @@
       "sort": 20
     },
     {
+      "code": "customers-import",
+      "parent_code": "customers",
+      "level": 2,
+      "label_zh": "客户导入",
+      "slug": "import",
+      "url": "/customers/import",
+      "route": "customers.import",
+      "permission": "customers.import",
+      "emoji": null,
+      "function_zh": "进入 Customer M1.8 客户导入工作区，支持 CSV/XLSX 预览、校验和确认导入。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 30
+    },
+    {
       "code": "customers-orders",
       "parent_code": "customers",
       "level": 2,
@@ -306,7 +336,7 @@
       "function_zh": "查看全部客户订单；该入口与订单模块下的客户订单快捷入口指向同一业务页面。",
       "status": "implemented",
       "progress": 100,
-      "sort": 30
+      "sort": 40
     },
     {
       "code": "customers-orders-create",
@@ -321,7 +351,7 @@
       "function_zh": "创建新的客户订单。",
       "status": "implemented",
       "progress": 100,
-      "sort": 40
+      "sort": 50
     },
     {
       "code": "customers-orders-mine",
@@ -336,7 +366,7 @@
       "function_zh": "查看我负责的客户订单。",
       "status": "planned",
       "progress": 0,
-      "sort": 50
+      "sort": 60
     },
     {
       "code": "marketing",
