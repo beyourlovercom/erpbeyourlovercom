@@ -154,3 +154,43 @@ Architecture gate classification:
 - failure is the stale frozen directory list missing already-present KOL connector directories;
 - classification: `BASELINE_STALE_ASSERTION`, not Connector regression;
 - Connector M1 does not edit this file because Customer M1.9 currently owns/modifies it in its independent active worktree.
+
+## Live network + signed health gate closure — 2026-08-31
+
+This checkpoint supersedes the earlier network-blocked note above.
+
+- Windows Local WordPress host: `YST-241030SSD` / `localdev.beyourlover.com`.
+- Tailscale peer IP: `100.87.29.56` (transport-only UAT route; never application config).
+- Windows Tailscale service: Running / Automatic.
+- Windows Tailscale interface: Up / Private.
+- Windows Firewall profiles: disabled; not the blocker.
+- Nginx: listening on `0.0.0.0:443` and `[::]:443`.
+- Windows-local HTTPS `/wp-json/`: HTTP 200.
+- US Mac → Windows Tailscale ping: PASS.
+- US Mac → `100.87.29.56:443`: TCP PASS.
+- US Mac HTTPS with host resolution to `localdev.beyourlover.com`: HTTP 200.
+- Signed Connector `/health`: HTTP 200 / `ok=true` / contract `1`.
+- Live provider health: Andy Core `1.5.3`, WordPress `7.1`, WooCommerce `10.9.4`, AffiliateWP `2.35.0`, `writable=true`, `operational=true`.
+
+`LIVE_NETWORK_GATE = PASS`
+`SIGNED_HEALTH_GATE = PASS`
+
+## M1.2 live provider schema audit — 2026-08-31
+
+Signed read-only snapshots were executed from the US Mac against the Windows Local WordPress Connector with `limit=5`. No ERP or WordPress mutations were performed.
+
+- Subscribers: PASS; 5 items; stable `external_subscription_id`; fields include explicit consent/status/source facts.
+- Affiliates: PASS; 5 items; exact `affiliate_id`; fields include WP user identity, status, rate/rate_type and provider timestamps.
+- Coupons: PASS; 5 items; exact WooCommerce `coupon_id`; fields include exact/normalized code, discount facts and linked affiliate.
+- Referrals: PASS; 5 items; exact referral provider records; fields include affiliate, reference, amount/currency, status and payout link.
+- Payouts: PASS; 5 items; exact payout provider records; fields include affiliate, referral IDs, amount/currency, method, status and date.
+- All five resources returned `ok=true`, `contract_version=1` and a continuation cursor.
+
+`M1.2_PROVIDER_SCHEMA_AUDIT = PASS`
+
+Persistence ownership remains unchanged:
+- Subscribers → existing merged Marketing domain.
+- Affiliates → canonical KOL M1.4B domain after its formal merge.
+- Coupons / Referrals / Payouts → their canonical KOL / Finance ownership packages.
+
+Connector M1 will orchestrate these capabilities; it will not create parallel generic master tables.
