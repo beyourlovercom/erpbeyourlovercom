@@ -2,7 +2,7 @@
 type: work-package
 project: BYL ERP
 work_package_id: ERP-CUSTOMER-M1-8-FULL-IMPORT-EXPORT-001
-status: PR_OPEN
+status: MERGE_AUTHORIZED
 execution_provider: US_CODEX_CLI
 verification_tier: HIGH_RISK
 baseline: origin/main@63c2fa628815d14bdea1f41063da64c77610b608
@@ -212,8 +212,8 @@ Do not add new permissions. Existing Customer-order export gate remains unchange
 ## Delivery gates
 OWNER_SCOPE_DIRECTION: PASS — Owner explicitly directed Customer M1.8 on 2026-08-31.
 IMPLEMENTATION_AUTHORIZATION: GRANTED — this frozen deterministic package may be implemented by US Codex CLI.
-GIT_DELIVERY_AUTHORIZATION: GRANTED — Owner explicitly authorized M1.8 commit / push / PR creation on 2026-08-31. No merge or deployment authorization granted.
-MERGE_AUTHORIZATION: NOT GRANTED
+GIT_DELIVERY_AUTHORIZATION: GRANTED — Owner explicitly authorized M1.8 commit / push / PR creation on 2026-08-31. Delivery completed in PR #132.
+MERGE_AUTHORIZATION: GRANTED — Owner explicitly authorized merge PR #132 on 2026-08-31. Exact-head merge only; production deployment remains separately unauthorized.
 PRODUCTION_DEPLOYMENT_AUTHORIZATION: NOT GRANTED
 HIGH_RISK_VERIFICATION: PASS — Customer regression 891 assertions; focused frontend 24/24; typecheck/build/diff/public-hot PASS; disposable SQLite fresh/FK/index/rollback/reapply PASS; Architecture exact-main comparison proves the same 3 unrelated baseline failures.
 DELIVERY_GATE: PASS — post-UAT delivery verification passed with Customer/Nav/Provider backend 2525 assertions, Customer frontend 34/34, typecheck, production build, git diff check, and public/hot absence. Menu baseline/hash includes the Owner-approved dual Customer/Sync import entries.
@@ -229,14 +229,14 @@ CURRENT_TRACK_PHASE_MAP: Customer M1.1–M1.7A [MERGED] → M1.8 Full Import/Exp
 COMPLETED_PHASES: Customer M1.1 through M1.7A merged; PR #131 merge commit `63c2fa628815d14bdea1f41063da64c77610b608`.
 CURRENT_PHASE: Customer M1.8 Full Import/Export — Owner UAT ready.
 CURRENT_WORK_PACKAGE: ERP-CUSTOMER-M1-8-FULL-IMPORT-EXPORT-001
-PACKAGE_STATUS: IMPLEMENTATION_COMPLETE / HIGH_RISK_VERIFICATION_PASS / OWNER_UAT_PASS / GIT_DELIVERED / PR_132_OPEN / MERGE_NOT_AUTHORIZED.
+PACKAGE_STATUS: IMPLEMENTATION_COMPLETE / HIGH_RISK_VERIFICATION_PASS / OWNER_UAT_PASS / GIT_DELIVERED / PR_132_OPEN / MERGE_AUTHORIZED / DEPLOYMENT_NOT_AUTHORIZED.
 WAITING_PHASES: M1.8 Owner UAT / separate Git delivery; M1.9 Customer360 Closure.
 BASELINE: origin/main@63c2fa628815d14bdea1f41063da64c77610b608
 GITHUB_STATE: M1.8 delivery commit `9b65cccb9e1620f7aabc1400b4ba8c8d38c7cad8` pushed; PR #132 OPEN / CLEAN / MERGEABLE at creation; merge not authorized.
 SOURCE_CONFLICTS: Historical roadmap/current-context/WP documents may still call M1.7A CURRENT or M1.8 WAITING. Current Owner directive plus canonical merged Git main govern; no scope conflict blocks M1.8.
-GLOBAL_GATE: HIGH_RISK US-local verification PASS; Owner UAT PASS; Git delivery complete in PR #132. Merge and production deployment remain separately gated.
+GLOBAL_GATE: HIGH_RISK US-local verification PASS; Owner UAT PASS; Git delivery complete in PR #132; Owner merge authorization granted. Production deployment remains separately gated.
 PRODUCTION_DEPLOYMENT_STATUS: NO — no M1.8 deployment/tag/release authorized.
-NEXT_DEPENDENCY: verify final docs-only receipt head remains CLEAN/MERGEABLE → separate Owner merge authorization for PR #132.
+NEXT_DEPENDENCY: commit/push this docs-only merge authorization → verify exact PR head remains CLEAN/MERGEABLE → exact-head merge PR #132 → sync canonical main. No deployment.
 EVIDENCE_AS_OF: 2026-08-31; canonical main `63c2fa628815d14bdea1f41063da64c77610b608`, M1.1 reserved import/export contract, current Customer schema/services, Inventory Batch Sync preview/confirm precedent.
 
 ROADMAP HOURS
