@@ -92,15 +92,19 @@ final class HttpAffiliateWpGateway implements AffiliateWpGateway
                 $this->sharedSecret(), '', null, $timestamp, $nonce,
             );
 
-            $response = Http::withHeaders($headers)
+            $request = Http::withHeaders($headers)
                 ->withHeaders(['User-Agent' => self::UserAgent])
                 ->acceptJson()
                 ->timeout($this->timeout())
                 ->connectTimeout($this->connectTimeout())
                 ->withoutRedirecting()
-                ->get($baseUrl.$pathWithQuery);
+                ->withOptions(['verify' => true]);
 
-            return $this->parseResponse($response);
+            if (! $this->shouldVerifyTls()) {
+                $request->withoutVerifying();
+            }
+
+            return $this->parseResponse($request->get($baseUrl.$pathWithQuery));
         });
     }
 
@@ -121,17 +125,21 @@ final class HttpAffiliateWpGateway implements AffiliateWpGateway
                 $this->sharedSecret(), $body, $idempotencyKey, $timestamp, $nonce,
             );
 
-            $response = Http::withHeaders($headers)
+            $request = Http::withHeaders($headers)
                 ->withHeaders(['User-Agent' => self::UserAgent])
                 ->acceptJson()
                 ->contentType('application/json')
                 ->timeout($this->timeout())
                 ->connectTimeout($this->connectTimeout())
                 ->withoutRedirecting()
-                ->withBody($body, 'application/json')
-                ->post($baseUrl.$pathWithQuery);
+                ->withOptions(['verify' => true])
+                ->withBody($body, 'application/json');
 
-            return $this->parseResponse($response);
+            if (! $this->shouldVerifyTls()) {
+                $request->withoutVerifying();
+            }
+
+            return $this->parseResponse($request->post($baseUrl.$pathWithQuery));
         });
     }
 
@@ -405,6 +413,12 @@ final class HttpAffiliateWpGateway implements AffiliateWpGateway
     private function retryTimes(): int
     {
         return min(3, max(0, (int) config('services.andy_core.retry_times', 2)));
+    }
+
+    private function shouldVerifyTls(): bool
+    {
+        return ! in_array(config('app.env', 'production'), ['local', 'testing'], true)
+            || (bool) config('services.andy_core.verify_tls', true);
     }
 
     private function retrySleepMs(): int

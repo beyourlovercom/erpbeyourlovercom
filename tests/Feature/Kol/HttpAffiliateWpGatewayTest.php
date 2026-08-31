@@ -26,6 +26,7 @@ final class HttpAffiliateWpGatewayTest extends TestCase
             'services.andy_core.key_id' => self::KeyId,
             'services.andy_core.shared_secret' => self::SharedSecret,
             'services.andy_core.timeout' => 5,
+            'services.andy_core.verify_tls' => true,
             'app.env' => 'testing',
         ]);
     }
@@ -44,6 +45,24 @@ final class HttpAffiliateWpGatewayTest extends TestCase
             'connection_key' => self::ConnectionKey,
             'data' => $data,
         ];
+    }
+
+    public function test_local_environment_can_explicitly_disable_tls_verification(): void
+    {
+        config(['app.env' => 'local', 'services.andy_core.verify_tls' => false]);
+
+        $method = new \ReflectionMethod(HttpAffiliateWpGateway::class, 'shouldVerifyTls');
+
+        $this->assertFalse($method->invoke($this->gateway()));
+    }
+
+    public function test_production_environment_always_verifies_tls(): void
+    {
+        config(['app.env' => 'production', 'services.andy_core.verify_tls' => false]);
+
+        $method = new \ReflectionMethod(HttpAffiliateWpGateway::class, 'shouldVerifyTls');
+
+        $this->assertTrue($method->invoke($this->gateway()));
     }
 
     // -------------------------------------------------------------------------

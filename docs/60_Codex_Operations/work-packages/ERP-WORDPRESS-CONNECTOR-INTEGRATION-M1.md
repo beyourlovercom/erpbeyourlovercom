@@ -255,3 +255,33 @@ Local TLS coordination note:
 Customer M1.9 owned-file touch: `0`.
 Production deploy: `NO`.
 Merge: `NO`.
+
+## M1.4 OWNER UI / FULL UAT GATE — 2026-08-31
+
+Pre-gate coordination:
+- Customer M1.9 PR #133 is merged into `main` at `750cb68d`; Connector PR #134 rebased cleanly with zero overlapping files.
+- Active KOL M1.4B still has no PR, has 46 uncommitted changes, and is 44 commits behind `main`.
+- KOL M1.4B did not yet implement `services.andy_core.verify_tls` consumption.
+- The frozen architecture-directory assertion remains stale and fails identically on untouched current `main`; this is still a baseline issue, not a Connector regression.
+
+M1.4 transport closure:
+- `HttpAffiliateWpGateway` now follows the same TLS policy already used by the Marketing WordPress gateway.
+- TLS verification remains enabled by default.
+- Production cannot disable TLS verification.
+- Only `local` / `testing` may explicitly set `verify_tls=false` for self-signed development certificates.
+- HMAC, retry, redirect, idempotency and response-contract behavior are unchanged.
+Verification after the TLS fix:
+- focused Connector / KOL / Marketing / Sync suites: PASS, 258 assertions / 0 failures;
+- 79 pre-existing environment warnings remain non-functional;
+- `vue-tsc --noEmit`: PASS;
+- Vite production build: PASS;
+- `git diff --check`: PASS.
+
+Live self-signed HTTPS proof:
+- direct ERP gateway health over Windows Tailnet HTTPS with `verify_tls=false`: PASS;
+- contract version: `1`;
+- connection key: `localdev.beyourlover.com`;
+- direct Affiliate snapshot through the same gateway: PASS, first page 50 items;
+- no loopback proxy was used for this proof.
+
+The pre-existing WordPress encrypted Connector secret/options were restored exactly after the temporary UAT credential switch. Temporary UAT secrets and transfer files were removed from both devices.
