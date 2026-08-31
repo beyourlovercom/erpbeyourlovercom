@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Modules\Kol\Infrastructure\AffiliateWp;
+namespace App\Modules\Kol\Application\AffiliateWp;
 
 final readonly class ConnectorResponse
 {

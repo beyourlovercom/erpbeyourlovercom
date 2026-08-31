@@ -1,11 +1,12 @@
 <?php
 
-use App\Modules\Kol\Experience\Controllers\KolController;
-use App\Modules\Kol\Experience\Controllers\KolCommunicationController;
+use App\Modules\Kol\Experience\Controllers\AffiliateWpSyncController;
 use App\Modules\Kol\Experience\Controllers\KolCollaborationController;
+use App\Modules\Kol\Experience\Controllers\KolCommunicationController;
 use App\Modules\Kol\Experience\Controllers\KolContentController;
-use App\Modules\Kol\Experience\Controllers\KolOverviewController;
+use App\Modules\Kol\Experience\Controllers\KolController;
 use App\Modules\Kol\Experience\Controllers\KolOpportunityController;
+use App\Modules\Kol\Experience\Controllers\KolOverviewController;
 use App\Modules\Kol\Experience\Controllers\SavedViewController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -52,5 +53,18 @@ Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
     Route::get('/kol/contents/{content}/evidence/{attachment}', [KolContentController::class, 'showEvidence'])->name('kol.contents.evidence.show');
     Route::delete('/kol/contents/{content}/evidence/{attachment}', [KolContentController::class, 'deleteEvidence'])->middleware('can:kol.operate')->name('kol.contents.evidence.destroy');
     Route::get('/kol/commissions', fn () => Inertia::render('Kol/PlaceholderPage', ['title' => '佣金与结算', 'note' => 'M1.4 财务包交付']))->name('kol.commissions');
-    Route::get('/kol/affiliate', fn () => Inertia::render('Kol/PlaceholderPage', ['title' => '优惠码与 Affiliate', 'note' => 'M1.4 财务包交付']))->name('kol.affiliate');
+    Route::get('/kol/affiliatewp', [AffiliateWpSyncController::class, 'index'])->name('kol.affiliatewp');
+    Route::post('/kol/affiliatewp/sync', [AffiliateWpSyncController::class, 'sync'])
+        ->middleware('can:kol.affiliates.manage')
+        ->name('kol.affiliatewp.sync');
+    Route::post('/kol/affiliatewp/bind', [AffiliateWpSyncController::class, 'bind'])
+        ->middleware('can:kol.affiliates.manage')
+        ->name('kol.affiliatewp.bind');
+    Route::post('/kol/affiliatewp/convert', [AffiliateWpSyncController::class, 'convert'])
+        ->middleware('can:kol.affiliates.manage')
+        ->name('kol.affiliatewp.convert');
+    Route::post('/kol/affiliatewp/provision', [AffiliateWpSyncController::class, 'provision'])
+        ->middleware('can:kol.affiliates.manage')
+        ->name('kol.affiliatewp.provision');
+    Route::get('/kol/affiliate', fn () => redirect()->route('kol.affiliatewp'))->name('kol.affiliate');
 });

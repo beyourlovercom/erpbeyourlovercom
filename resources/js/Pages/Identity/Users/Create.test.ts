@@ -31,11 +31,12 @@ describe('user create page', () => {
         expect(post).toHaveBeenCalledWith('/settings/users')
     })
 
-    it('renders the seven role presets with Chinese labels', () => {
+    it('renders the eight role presets with Chinese labels', () => {
         const rolePresets = [
             { value: 'logistics', label: '物流' },
             { value: 'sales_representative', label: '业务员' },
             { value: 'kol_specialist', label: '网红专员' },
+            { value: 'kol_manager', label: '网红经理' },
             { value: 'finance', label: '财务' },
             { value: 'operations', label: '运营' },
             { value: 'writer', label: '写手' },

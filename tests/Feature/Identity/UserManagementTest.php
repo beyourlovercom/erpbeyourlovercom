@@ -211,12 +211,13 @@ final class UserManagementTest extends TestCase
         $this->assertSame(RolePreset::allPermissionKeys(), $grantedKeys);
     }
 
-    public function test_all_seven_role_presets_map_to_documented_permission_sets(): void
+    public function test_all_eight_role_presets_map_to_documented_permission_sets(): void
     {
         $expected = [
             RolePreset::Logistics->value => ['dashboard.view', 'logistics.operate', 'logistics.view', 'orders.view', 'sync.operate', 'sync.view'],
             RolePreset::SalesRepresentative->value => ['customers.operate', 'customers.view', 'dashboard.view', 'orders.create', 'orders.edit', 'orders.view'],
             RolePreset::KolSpecialist->value => ['dashboard.view', 'kol.operate', 'kol.view', 'orders.create', 'orders.edit', 'orders.view'],
+            RolePreset::KolManager->value => ['dashboard.view', 'kol.affiliates.manage', 'kol.approvals.manage', 'kol.operate', 'kol.view', 'kol.views.manage', 'orders.create', 'orders.edit', 'orders.view'],
             RolePreset::Finance->value => ['accounting.view', 'analysis.view', 'dashboard.view', 'orders.view'],
             RolePreset::Writer->value => ['dashboard.view', 'guides.manage', 'guides.view'],
         ];

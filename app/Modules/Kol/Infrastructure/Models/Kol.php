@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Kol extends Model
 {
@@ -51,6 +52,8 @@ class Kol extends Model
         'internal_contact',
         'mcn_agency',
         'is_mcn_managed',
+        'approval_status',
+        'approval_updated_at',
     ];
 
     protected $casts = [
@@ -63,6 +66,7 @@ class Kol extends Model
         'products' => 'array',
         'product_quantity' => 'integer',
         'is_mcn_managed' => 'boolean',
+        'approval_updated_at' => 'datetime',
     ];
 
     public function owner(): BelongsTo
@@ -98,6 +102,16 @@ class Kol extends Model
     public function contents(): HasMany
     {
         return $this->hasMany(KolContent::class, 'kol_id')->orderByDesc('published_at')->orderByDesc('id');
+    }
+
+    public function approvalDecisions(): HasMany
+    {
+        return $this->hasMany(KolApprovalDecision::class, 'kol_id')->orderByDesc('decided_at')->orderByDesc('id');
+    }
+
+    public function latestApprovalDecision(): HasOne
+    {
+        return $this->hasOne(KolApprovalDecision::class, 'kol_id')->latestOfMany('decided_at');
     }
 
     public function historicalOrderCount(): int

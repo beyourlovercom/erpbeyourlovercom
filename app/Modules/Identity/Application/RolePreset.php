@@ -7,6 +7,7 @@ enum RolePreset: string
     case Logistics = 'logistics';
     case SalesRepresentative = 'sales_representative';
     case KolSpecialist = 'kol_specialist';
+    case KolManager = 'kol_manager';
     case Finance = 'finance';
     case Operations = 'operations';
     case Writer = 'writer';
@@ -23,6 +24,7 @@ enum RolePreset: string
             self::Logistics => '物流',
             self::SalesRepresentative => '业务员',
             self::KolSpecialist => '网红专员',
+            self::KolManager => '网红经理',
             self::Finance => '财务',
             self::Operations => '运营',
             self::Writer => '写手',
@@ -37,6 +39,7 @@ enum RolePreset: string
             self::Logistics => ['dashboard.view', 'orders.view', 'logistics.view', 'logistics.operate', 'sync.view', 'sync.operate'],
             self::SalesRepresentative => ['dashboard.view', 'customers.view', 'customers.operate', 'orders.view', 'orders.create', 'orders.edit'],
             self::KolSpecialist => ['dashboard.view', 'kol.view', 'kol.operate', 'orders.view', 'orders.create', 'orders.edit'],
+            self::KolManager => ['dashboard.view', 'kol.view', 'kol.operate', 'kol.views.manage', 'kol.approvals.manage', 'kol.affiliates.manage', 'orders.view', 'orders.create', 'orders.edit'],
             self::Finance => ['dashboard.view', 'orders.view', 'accounting.view', 'analysis.view'],
             self::Operations => ['dashboard.view', 'customers.view', 'customers.operate', 'orders.view', 'orders.create', 'orders.edit', 'logistics.view', 'sync.view', 'analysis.view', 'inventory.view', 'procurement.view', 'products.view', 'kol.view', 'kol.operate', 'kol.views.manage', 'marketing.view', 'marketing.operate'],
             self::Writer => ['dashboard.view', 'guides.view', 'guides.manage'],

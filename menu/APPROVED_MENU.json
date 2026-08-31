@@ -594,18 +594,18 @@
       "sort": 90
     },
     {
-      "code": "kol-affiliate",
+      "code": "kol-affiliatewp",
       "parent_code": "kol",
       "level": 2,
-      "label_zh": "优惠码与 Affiliate",
-      "slug": "affiliate",
-      "url": "/kol/affiliate",
-      "route": "kol.affiliate",
+      "label_zh": "AffiliateWP",
+      "slug": "affiliatewp",
+      "url": "/kol/affiliatewp",
+      "route": "kol.affiliatewp",
       "permission": "kol.view",
       "emoji": null,
-      "function_zh": "管理 KOL 优惠码绑定和 AffiliateWP 关联元数据（M1.4 财务包交付）。",
-      "status": "planned",
-      "progress": 0,
+      "function_zh": "AffiliateWP 网红同步、KOL 绑定、审批状态与 provisioning 工作台；M1.4B 先交付 Influencer 模式，Coupon 模式属于 M1.4C。",
+      "status": "in_progress",
+      "progress": 25,
       "sort": 100
     },
     {
@@ -1008,7 +1008,7 @@
       "route": "settings.roles-permissions",
       "permission": "system.permissions.manage",
       "emoji": null,
-      "function_zh": "管理七种角色预设的权限模板，调整各角色的默认权限集合（管理员专用）。",
+      "function_zh": "管理八种角色预设的权限模板，调整各角色的默认权限集合（管理员专用）。",
       "status": "implemented",
       "progress": 100,
       "sort": 40

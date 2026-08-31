@@ -44,6 +44,8 @@ final class PermissionCatalog
                     ['key' => 'kol.view', 'label' => '查看网红'],
                     ['key' => 'kol.operate', 'label' => '操作网红'],
                     ['key' => 'kol.views.manage', 'label' => '管理网红视图'],
+                    ['key' => 'kol.approvals.manage', 'label' => '管理网红审批'],
+                    ['key' => 'kol.affiliates.manage', 'label' => '管理 AffiliateWP 网红'],
                 ],
             ],
             '库存' => [

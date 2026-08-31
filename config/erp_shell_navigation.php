@@ -45,7 +45,7 @@ return [
         ['key' => 'kol-samples', 'label' => '样品与发货', 'path' => '/kol/samples', 'route' => 'kol.samples', 'permission' => 'kol.view', 'placeholder' => false],
         ['key' => 'kol-content', 'label' => '内容与发布', 'path' => '/kol/content', 'route' => 'kol.content', 'permission' => 'kol.view', 'placeholder' => false],
         ['key' => 'kol-commissions', 'label' => '佣金与结算', 'path' => '/kol/commissions', 'route' => 'kol.commissions', 'permission' => 'kol.view', 'placeholder' => false],
-        ['key' => 'kol-affiliate', 'label' => '优惠码与 Affiliate', 'path' => '/kol/affiliate', 'route' => 'kol.affiliate', 'permission' => 'kol.view', 'placeholder' => false],
+        ['key' => 'kol-affiliatewp', 'label' => 'AffiliateWP', 'path' => '/kol/affiliatewp', 'route' => 'kol.affiliatewp', 'permission' => 'kol.view', 'placeholder' => false],
     ]],
     ['key' => 'inventory', 'label' => '库存', 'emoji' => '📦', 'path' => '/inventory', 'route' => 'shell.inventory', 'permission' => 'inventory.view', 'placeholder' => false, 'children' => [
         ['key' => 'inventory-overview', 'label' => '库存总览', 'path' => '/inventory', 'route' => 'shell.inventory', 'permission' => 'inventory.view', 'placeholder' => false],

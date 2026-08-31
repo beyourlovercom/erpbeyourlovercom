@@ -5,6 +5,7 @@ namespace App\Modules\Kol\Application;
 use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
+use App\Modules\Kol\Application\Approval\KolApprovalService;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -13,10 +14,15 @@ use Illuminate\Database\Eloquent\Model;
 final class KolService
 {
     private const KOL = 'App\\Modules\\Kol\\Infrastructure\\Models\\Kol';
+
     private const KOL_SOCIAL_ACCOUNT = 'App\\Modules\\Kol\\Infrastructure\\Models\\KolSocialAccount';
+
     private const KOL_SALES_PERFORMANCE = 'App\\Modules\\Kol\\Infrastructure\\Models\\KolSalesPerformance';
 
-    public function __construct(private readonly AuditRecorder $audit) {}
+    public function __construct(
+        private readonly AuditRecorder $audit,
+        private readonly KolApprovalService $approvals,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $filters
@@ -100,7 +106,9 @@ final class KolService
         if ($hasPublished === 'yes') {
             $query->whereHas('contents', function (Builder $q) use ($evidence): void {
                 $q->where('publication_status', 'published');
-                if ($evidence !== '') $this->applyContentEvidenceFilter($q, $evidence);
+                if ($evidence !== '') {
+                    $this->applyContentEvidenceFilter($q, $evidence);
+                }
             });
         } elseif ($hasPublished === 'no') {
             $query->whereDoesntHave('contents', fn (Builder $q) => $q->where('publication_status', 'published'));
@@ -125,7 +133,6 @@ final class KolService
 
         return $query->paginate(30)->withQueryString();
     }
-
 
     private function applyContentEvidenceFilter(Builder $query, string $evidence): void
     {
@@ -282,6 +289,8 @@ final class KolService
             }
         }
 
+        $this->approvals->evaluateAndRecord($kol, $actor, KolScope::canManageApprovals($actor));
+
         $this->audit->record(
             AuditActor::user($actor, AuditSource::Web),
             'kol.created',
@@ -432,6 +441,7 @@ final class KolService
                             'measured_at' => now(),
                         ]);
                     }
+
                     continue;
                 }
             }
