@@ -61,6 +61,7 @@ type Shipment = {
     status: string | null
 }
 type SubscriptionFact = { id: number; channel: string | null; provider: string | null; source_site: string | null; status: string | null; consent_source: string | null; subscribed_at: string | null; unsubscribed_at: string | null; status_updated_at: string | null; last_synced_at: string | null }
+type Group = { id: number; name: string; description: string | null }
 
 const props = defineProps<{
     customer: Customer
@@ -70,7 +71,9 @@ const props = defineProps<{
     recentOrders: Order[]
     shipments: Shipment[]
     subscription: { matched: boolean; subscription_facts: SubscriptionFact[] }
-    audit: { action: string; actor_id: number | null; created_at: string | null }[]
+    audit: { action: string; action_label: string; actor_id: number | null; actor_name: string | null; created_at: string | null; reason: string | null }[]
+    systemSegments: { key: string; label: string }[]
+    manualGroups: Group[]
     canOperate: boolean
     supportTickets: SupportTicket[]
     pendingSupportTickets: number
@@ -78,6 +81,16 @@ const props = defineProps<{
 
 const money = (value: number, currency: string) =>
     new Intl.NumberFormat('zh-CN', { style: 'currency', currency }).format(value)
+
+const dateTime = (value: string | null) => {
+    if (!value) return '—'
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) return value
+    return new Intl.DateTimeFormat('zh-CN', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(parsed)
+}
 
 const supportLabel = (value: string) => ({
     open: '待处理', waiting_customer: '等待客户', waiting_internal: '内部处理中',
@@ -152,6 +165,18 @@ function addressLines(addr: Address): string[] {
                     </div>
                 </article>
 
+                <nav class="c360-section-nav" aria-label="客户360分区导航">
+                    <a href="#groups">分组</a><a href="#addresses">地址</a><a href="#orders">购买</a><a href="#shipments">发货</a><a href="#subscriptions">订阅事实</a><a href="#support">支持</a><a href="#activity">活动</a>
+                </nav>
+
+                <article id="groups" class="erp-form-card c360-groups-card">
+                    <div class="section-heading"><h2 class="erp-form-card-title">客户分组</h2><Link class="mvp-link" href="/customers/groups">管理分组</Link></div>
+                    <div class="group-columns">
+                        <div><p class="group-label">系统分群 <span>只读计算</span></p><div v-if="systemSegments.length" class="group-chips"><span v-for="group in systemSegments" :key="group.key" class="group-chip system">{{ group.label }}</span></div><p v-else class="integration-unavailable">当前没有命中的系统分群</p></div>
+                        <div><p class="group-label">手动分组 <span>已保存成员关系</span></p><div v-if="manualGroups.length" class="group-chips"><span v-for="group in manualGroups" :key="group.id" class="group-chip manual">{{ group.name }}</span></div><p v-else class="integration-unavailable">当前未加入手动分组</p></div>
+                    </div>
+                </article>
+
                 <!-- Six KPI cards -->
                 <div class="c360-kpi-grid">
                     <!-- 1. 累计订单 -->
@@ -210,7 +235,7 @@ function addressLines(addr: Address): string[] {
                 </div>
 
                 <!-- 账单地址 / 收货地址 -->
-                <div class="c360-address-grid">
+                <div id="addresses" class="c360-address-grid">
                     <article class="erp-form-card">
                         <h2 class="erp-form-card-title">账单地址</h2>
                         <template v-if="billingAddress">
@@ -228,7 +253,7 @@ function addressLines(addr: Address): string[] {
                 </div>
 
                 <!-- 采购历史 -->
-                <article class="erp-form-card">
+                <article id="orders" class="erp-form-card">
                     <h2 class="erp-form-card-title">历史购买记录</h2>
                     <div class="mvp-table-wrap">
                         <table class="mvp-table">
@@ -254,7 +279,7 @@ function addressLines(addr: Address): string[] {
                 </article>
 
                 <!-- 发货记录 -->
-                <article class="erp-form-card">
+                <article id="shipments" class="erp-form-card">
                     <h2 class="erp-form-card-title">发货记录</h2>
                     <div class="mvp-table-wrap">
                         <table class="mvp-table">
@@ -281,8 +306,9 @@ function addressLines(addr: Address): string[] {
                 </article>
 
                 <!-- 订阅记录 -->
-                <article class="erp-form-card">
+                <article id="subscriptions" class="erp-form-card">
                     <h2 class="erp-form-card-title">订阅记录</h2>
+                    <p class="subscriber-summary">身份匹配：{{ subscription.matched ? '已匹配' : '未匹配' }} · 订阅事实：{{ subscription.subscription_facts.length }} 条；不推断统一同意状态。</p>
                     <p v-if="!customer.email" class="integration-unavailable">该客户没有 Email，无法匹配 Subscriber 身份。</p>
                     <p v-else-if="!subscription.matched" class="integration-unavailable">未找到匹配的 Marketing Subscriber 身份。</p>
                     <p v-else-if="subscription.subscription_facts.length === 0" class="integration-unavailable">已匹配 Subscriber 身份，但暂无订阅事实。</p>
@@ -298,7 +324,7 @@ function addressLines(addr: Address): string[] {
                 </article>
 
                 <!-- 客户支持工单 -->
-                <article class="erp-form-card">
+                <article id="support" class="erp-form-card">
                     <h2 class="erp-form-card-title">客户支持工单</h2>
                     <div class="c360-section-actions"><Link v-if="canOperate" class="erp-btn erp-btn-primary" :href="`/customers/library/${customer.id}/support-tickets/create`">新建工单</Link></div>
                     <div v-if="supportTickets.length" class="mvp-table-wrap">
@@ -310,12 +336,12 @@ function addressLines(addr: Address): string[] {
                 </article>
 
                 <!-- 操作审计 -->
-                <article class="erp-form-card">
-                    <h2 class="erp-form-card-title">操作审计</h2>
+                <article id="activity" class="erp-form-card">
+                    <h2 class="erp-form-card-title">活动记录</h2>
                     <ul class="c360-audit-list">
                         <li v-for="event in audit" :key="(event.created_at ?? '') + event.action">
-                            <span class="audit-action">{{ event.action }}</span>
-                            <span class="audit-meta">{{ event.created_at }} · 操作人 {{ event.actor_id ?? 'system' }}</span>
+                            <span class="audit-action">{{ event.action_label }}</span>
+                            <span class="audit-meta">{{ dateTime(event.created_at) }} · {{ event.actor_name ?? (event.actor_id ? `用户 ${event.actor_id}` : '系统') }}<span v-if="event.reason"> · {{ event.reason }}</span></span>
                         </li>
                         <li v-if="audit.length === 0" class="audit-empty">暂无审计记录</li>
                     </ul>
@@ -339,6 +365,19 @@ function addressLines(addr: Address): string[] {
 .profile-sub { font-size: 12px; color: #7A8C94; margin: 0 0 6px; }
 .profile-meta-row { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: #344B53; margin-bottom: 6px; }
 .profile-notes { font-size: 13px; color: #7A8C94; margin: 0; font-style: italic; }
+.c360-section-nav { position: sticky; top: 8px; z-index: 2; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; margin-bottom: 16px; background: rgba(255,255,255,.94); border: 1px solid #DCE5E7; border-radius: 8px; }
+.c360-section-nav a { color: #236F6A; text-decoration: none; font-size: 12px; padding: 4px 8px; }
+.c360-section-nav a:hover { background: #F3FAF9; border-radius: 5px; }
+.c360-groups-card { margin-bottom: 16px; }
+.section-heading { display: flex; justify-content: space-between; align-items: center; }
+.group-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.group-label { margin: 0 0 8px; font-size: 12px; color: #7A8C94; }
+.group-label span { margin-left: 6px; font-size: 10px; }
+.group-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.group-chip { padding: 4px 8px; border-radius: 999px; font-size: 12px; }
+.group-chip.system { color: #236F6A; background: #E6F5F2; }
+.group-chip.manual { color: #755414; background: #FFF4D6; }
+.subscriber-summary { margin: -8px 0 12px; font-size: 12px; color: #7A8C94; }
 .archived-badge {
     display: inline-block; margin-left: 8px;
     background: #FEF3CD; color: #856404;
@@ -385,6 +424,7 @@ function addressLines(addr: Address): string[] {
     .c360-kpi-grid { grid-template-columns: repeat(2, 1fr); }
     .c360-address-grid { grid-template-columns: 1fr; }
     .profile-hero { flex-direction: column; }
+    .group-columns { grid-template-columns: 1fr; }
 }
 @media (max-width: 440px) { .c360-kpi-grid { grid-template-columns: 1fr; } }
 </style>

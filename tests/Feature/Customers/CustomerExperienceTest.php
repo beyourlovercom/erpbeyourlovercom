@@ -8,6 +8,7 @@ use App\Models\User;
 use Carbon\Carbon;
 use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Customers\Infrastructure\Models\CustomerAddress;
+use App\Modules\Customers\Infrastructure\Models\CustomerGroup;
 use App\Modules\Marketing\Infrastructure\Models\MarketingSubscriber;
 use App\Modules\Marketing\Infrastructure\Models\MarketingSubscription;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
@@ -881,6 +882,37 @@ final class CustomerExperienceTest extends TestCase
             $this->assertSegmentNames($user, 'high_frequency', ['Frequency', 'VIP']);
             $this->assertSegmentNames($user, 'high_value', ['Value', 'VIP', ...$thresholdCustomers]);
             $this->assertSegmentNames($user, 'vip', ['VIP']);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_customer360_closure_projects_groups_order_summary_and_human_readable_activity(): void
+    {
+        Carbon::setTestNow('2026-08-31 12:00:00');
+        try {
+            $user = $this->userWith(['customers.view', 'customers.operate'], 'customer360_closure');
+            $customer = Customer::query()->create(['name' => 'Closure Customer', 'email' => 'closure@example.test', 'source_type' => 'manual']);
+            $group = CustomerGroup::query()->create(['name' => '2026 黑五重点客户', 'description' => 'Owner group']);
+            $customer->groups()->attach($group->id, ['added_by' => $user->id]);
+            $this->createCustomerOrder($customer, ['C360-SKU'], 'shipped', 2, now()->toDateString(), 'USD', 'customer');
+
+            $this->actingAs($user)->patch('/customers/library/'.$customer->id, [
+                'name' => 'Closure Customer Updated',
+                'email' => 'closure@example.test',
+                'source_type' => 'manual',
+            ])->assertRedirect('/customers/library/'.$customer->id);
+
+            $this->actingAs($user)->get('/customers/library/'.$customer->id)
+                ->assertOk()
+                ->assertInertia(fn (Assert $page) => $page
+                    ->where('metrics.order_count', 1)
+                    ->where('recentOrders.0.revenue', 20)
+                    ->where('manualGroups.0.name', '2026 黑五重点客户')
+                    ->where('systemSegments', fn ($segments): bool => collect($segments)->contains(fn ($segment) => $segment['key'] === 'active_customer'))
+                    ->where('audit.0.action', 'customer.updated')
+                    ->where('audit.0.action_label', '更新客户')
+                    ->where('audit.0.actor_name', $user->name));
         } finally {
             Carbon::setTestNow();
         }

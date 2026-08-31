@@ -79,7 +79,7 @@ class ApprovedMenuBaselineTest extends TestCase
         $levelTwo = collect($items)->where('level', 2)->values();
 
         $this->assertCount(13, $levelOne, self::MISMATCH.': level-1 count');
-        $this->assertCount(57, $levelTwo, self::MISMATCH.': owner-approved level-2 count including Customer Import aliases');
+        $this->assertCount(56, $levelTwo, self::MISMATCH.': owner-approved level-2 count including Customer Import aliases');
         $this->assertSame(
             ['dashboard', 'orders', 'logistics', 'sync', 'customers', 'marketing', 'kol', 'inventory', 'procurement', 'products', 'guides', 'accounting', 'settings'],
             $levelOne->pluck('code')->all(),
@@ -90,6 +90,22 @@ class ApprovedMenuBaselineTest extends TestCase
             $levelOne->pluck('emoji')->all(),
             self::MISMATCH.': Emoji approval',
         );
+    }
+
+    /** @throws JsonException */
+    public function test_customer_navigation_closure_has_only_stable_workspaces_and_no_ghost_my_orders_route(): void
+    {
+        $customerItems = collect($this->baseline()['items'])
+            ->where('parent_code', 'customers')
+            ->sortBy('sort')
+            ->values();
+
+        $this->assertSame(
+            ['customers-library', 'customers-groups', 'customers-companies', 'customers-orders', 'customers-import'],
+            $customerItems->pluck('code')->all(),
+            self::MISMATCH.': Customer level-2 workspace closure',
+        );
+        $this->assertFalse(app('router')->has('customers.orders.mine'), self::MISMATCH.': stale customers.orders.mine route must not exist');
     }
 
     /** @throws JsonException */

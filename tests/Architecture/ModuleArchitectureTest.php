@@ -40,6 +40,7 @@ final class ModuleArchitectureTest extends TestCase
 
     private const MODULE_FILES = [
         'app/Modules/Audit/Application/AuditActor.php',
+        'app/Modules/Audit/Application/CustomerActivityProjection.php',
         'app/Modules/Audit/Application/AuditService.php',
         'app/Modules/Audit/Application/AuditSource.php',
         'app/Modules/Audit/Application/AuditWriteException.php',
@@ -98,6 +99,7 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Identity/Application/PermissionCatalog.php',
         'app/Modules/Identity/Application/RolePermissionsService.php',
         'app/Modules/Identity/Application/RolePreset.php',
+        'app/Modules/Identity/Application/UserDirectory.php',
         'app/Modules/Identity/Application/UserService.php',
         'app/Modules/Identity/Experience/Console/Commands/CreateErpUser.php',
         'app/Modules/Identity/Experience/Controllers/AccountController.php',
@@ -188,6 +190,7 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/ModuleManifest.php',
         'app/Modules/ModulesServiceProvider.php',
         'app/Modules/Orders/Application/Contracts/WooCommerceOrderGateway.php',
+        'app/Modules/Orders/Application/CustomerOrderProjection.php',
         'app/Modules/Orders/Application/Inbound/NormalizedInboundOrder.php',
         'app/Modules/Orders/Application/Inbound/WooCommerceInboundService.php',
         'app/Modules/Orders/Application/Inbound/WooCommerceOrderNormalizer.php',
@@ -474,7 +477,6 @@ final class ModuleArchitectureTest extends TestCase
         'customers.support-tickets.update',
         'customers.orders',
         'customers.orders.create',
-        'customers.orders.mine',
         'customers.orders.show',
         'dashboard',
         'guides.create',
@@ -764,15 +766,15 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Customers/Companies/Index.vue' => '7e7e164c6a1800d48f9440053c4238beffb932075f4b65053eb1a3e4f43d4add',
         'resources/js/Pages/Customers/Companies/Show.vue' => 'ec15baa7f74a287f7b8ab5b9c672da090b5031c0a8a055a9ccdcba5f28698b19',
         'resources/js/Pages/Customers/Dashboard.test.ts' => 'a5089a3252d3169160ce2dbcac52540127622b0cdb19109bfd7d244392f8225d',
-        'resources/js/Pages/Customers/Dashboard.vue' => '2ae0b0dd499dee258c79d2de37d489c01c65f5a555b2e9ac04650956136ab8ce',
+        'resources/js/Pages/Customers/Dashboard.vue' => '98eb15b702c0cfb8ecbdd1a0cb3434f66b758d6960a41895c4d68b256eb22468',
         'resources/js/Pages/Customers/Import.test.ts' => 'ef9fb4ec8aff804ac4af097261aa84505f7f5ab47fef9dbbf1cf393c47dd19be',
         'resources/js/Pages/Customers/Import.vue' => 'aa82c8954e635a14525bd1bc30808edf5617e229226a70265136e4b85a928b19',
         'resources/js/Pages/Customers/Library/Create.vue' => '17066bb7a7f0dc1ac21f539f79f79397990b08574b69952171683975878d50d6',
         'resources/js/Pages/Customers/Library/Edit.vue' => '1b99107357f6979f860c72457bfc01c9f5bf7f3c39343d96afe946f48774895f',
         'resources/js/Pages/Customers/Library/Index.test.ts' => '2983d288df14eed4771c9415ba6515239d8693225e8565fc9bdf606fbc8f7ae5',
         'resources/js/Pages/Customers/Library/Index.vue' => '20469eb45b70d5caea9adcd9b9c3081f3a3ba1482f9471d41f2bd602fee663bc',
-        'resources/js/Pages/Customers/Library/Show.test.ts' => '6ddb12aa705b02100543f1899bd4983778109c2e02402241fc6a65ab0498c2cb',
-        'resources/js/Pages/Customers/Library/Show.vue' => '09546926a8dec62227bf35b61d4c7bc905747af25b514fa649ed12e11eafd0ad',
+        'resources/js/Pages/Customers/Library/Show.test.ts' => '9649767373fc8eec7d688d6443f570b5b708e3f0c1937181931a6c1869f6e835',
+        'resources/js/Pages/Customers/Library/Show.vue' => '8fc3d78a88c94eadf1b964b022f36ba1738a8fed52d011ce40a003f9143f09ef',
         'resources/js/Pages/Customers/Support/Create.vue' => 'b22761d3b7a22ecc96bf5a8ced4019a5d5410924d126876f4a36b5f2eef0e075',
         'resources/js/Pages/Customers/Support/Edit.vue' => 'c62bf6df55d1d63c6006556023d8fc5f2fcbcc03ae787ad96c416339db7bb6ae',
         'resources/js/Pages/Customers/Support/Show.test.ts' => 'c3ce33293b3a819073b6cca47ae794f51a517c66373615f6d35fb5b953f7c707',
@@ -882,6 +884,7 @@ final class ModuleArchitectureTest extends TestCase
         $infrastructureDependencyFiles = [...$domainFiles, ...$applicationFiles];
         self::assertSame($this->sorted([
             'app/Modules/Audit/Application/AuditActor.php',
+            'app/Modules/Audit/Application/CustomerActivityProjection.php',
             'app/Modules/Audit/Application/AuditService.php',
             'app/Modules/Audit/Application/AuditSource.php',
             'app/Modules/Audit/Application/AuditWriteException.php',
@@ -903,6 +906,7 @@ final class ModuleArchitectureTest extends TestCase
             'app/Modules/Identity/Application/PermissionCatalog.php',
             'app/Modules/Identity/Application/RolePermissionsService.php',
             'app/Modules/Identity/Application/RolePreset.php',
+            'app/Modules/Identity/Application/UserDirectory.php',
             'app/Modules/Identity/Application/UserService.php',
             'app/Modules/Inventory/Application/Contracts/InventoryAvailabilityReader.php',
             'app/Modules/Inventory/Application/Contracts/InventoryBatchSyncRepository.php',
@@ -923,6 +927,7 @@ final class ModuleArchitectureTest extends TestCase
             'app/Modules/Marketing/Application/Contracts/MarketingSubscriberSyncWriter.php',
             'app/Modules/Marketing/Application/WordPressSubscriberSyncService.php',
             'app/Modules/Orders/Application/Contracts/WooCommerceOrderGateway.php',
+            'app/Modules/Orders/Application/CustomerOrderProjection.php',
             'app/Modules/Orders/Application/Inbound/NormalizedInboundOrder.php',
             'app/Modules/Orders/Application/Inbound/WooCommerceInboundService.php',
             'app/Modules/Orders/Application/Inbound/WooCommerceOrderNormalizer.php',
@@ -1090,7 +1095,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('1dd4de51efa07ae2efc59afda60f639c70d121852fab801594032e72d78c3e68', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('ef5cbde74bb7d6aad8b329b0eae19876913fbe9b7033ae06f9ed34c6051090dc', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);

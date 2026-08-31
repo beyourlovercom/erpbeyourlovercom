@@ -18,6 +18,8 @@ const props = {
   shipments: [],
   subscription: { matched: false, subscription_facts: [] },
   audit: [],
+  systemSegments: [],
+  manualGroups: [],
   canOperate: true,
   pendingSupportTickets: 1,
   supportTickets: [{ id: 11, ticket_number: 'TKT-00000011', subject: '需要帮助', status: 'waiting_customer', priority: 'high', source_type: 'manual', assignee: null, last_activity_at: null, created_at: null }],
@@ -33,5 +35,25 @@ describe('Customer360 support integration', () => {
     expect(wrapper.text()).toContain('手工录入')
     expect(wrapper.text()).toContain('待处理工单')
     expect(wrapper.find(`a[href="/customers/library/7/support-tickets/create"]`).exists()).toBe(true)
+  })
+
+
+  it('renders section navigation, group truth, subscriber summary and human-readable activity', () => {
+    const wrapper = mount(Show, { props: {
+      ...props,
+      systemSegments: [{ key: 'active_customer', label: '活跃客户' }],
+      manualGroups: [{ id: 9, name: '2026 黑五重点客户', description: null }],
+      subscription: { matched: true, subscription_facts: [{ id: 1, channel: 'email', provider: 'wordpress', source_site: 'site-a', status: 'subscribed', consent_source: 'form', subscribed_at: null, unsubscribed_at: null, status_updated_at: null, last_synced_at: null }] },
+      audit: [{ action: 'customer.updated', action_label: '更新客户', actor_id: 3, actor_name: 'UAT Admin', created_at: '2026-08-31T12:00:00+00:00', reason: 'customer_profile_corrected' }],
+    } })
+    for (const href of ['#groups', '#addresses', '#orders', '#shipments', '#subscriptions', '#support', '#activity']) {
+      expect(wrapper.find(`a[href="${href}"]`).exists()).toBe(true)
+    }
+    expect(wrapper.text()).toContain('活跃客户')
+    expect(wrapper.text()).toContain('2026 黑五重点客户')
+    expect(wrapper.text()).toContain('身份匹配：已匹配 · 订阅事实：1 条')
+    expect(wrapper.text()).toContain('更新客户')
+    expect(wrapper.text()).toContain('UAT Admin')
+    expect(wrapper.text()).not.toContain('2026-08-31T12:00:00+00:00')
   })
 })

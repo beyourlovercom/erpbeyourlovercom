@@ -2,7 +2,7 @@
 
 namespace App\Modules\Customers\Experience\Controllers;
 
-use App\Modules\Audit\Infrastructure\Models\AuditRecord;
+use App\Modules\Audit\Application\CustomerActivityProjection;
 use App\Modules\Customers\Application\CustomerService;
 use App\Modules\Customers\Application\CustomerGroupService;
 use App\Modules\Customers\Application\CustomerSubscriberProjection;
@@ -15,7 +15,7 @@ use App\Modules\Customers\Infrastructure\Models\CustomerImportBatch;
 use App\Modules\Customers\Application\CustomerImportService;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Logistics\Application\CustomerShipmentProjection;
-use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Orders\Application\CustomerOrderProjection;
 use App\Modules\Shell\Application\UserUiPreferenceService;
 use App\Modules\Support\Application\CustomerSupportProjection;
 use Closure;
@@ -53,6 +53,8 @@ final class CustomerController
         private readonly CustomerSupportProjection $supportProjection,
         private readonly CustomerShipmentProjection $shipmentProjection,
         private readonly CustomerImportService $customerImport,
+        private readonly CustomerOrderProjection $orderProjection,
+        private readonly CustomerActivityProjection $activityProjection,
     ) {}
 
     public function index(Request $request): Response
@@ -267,51 +269,10 @@ final class CustomerController
     {
         $customer->load(['owner', 'billingAddress', 'shippingAddress']);
         $subscription = $this->subscriberProjection->forEmail($customer->email);
-        $summary = DB::table('orders')
-            ->where('orders.customer_id', $customer->id)
-            ->where('orders.order_kind', 'customer')
-            ->selectRaw('COUNT(DISTINCT orders.id) as order_count')
-            ->selectRaw('MIN(orders.order_date) as first_order_date')
-            ->selectRaw('MAX(orders.order_date) as last_order_date')
-            ->first();
-
-        $revenueByCurrency = DB::table('orders')
-            ->leftJoin('order_items', 'order_items.order_id', '=', 'orders.id')
-            ->where('orders.customer_id', $customer->id)
-            ->where('orders.order_kind', 'customer')
-            ->selectRaw('COALESCE(orders.currency, \'USD\') as currency')
-            ->selectRaw('COUNT(DISTINCT orders.id) as order_count')
-            ->selectRaw('COALESCE(SUM(order_items.line_revenue), 0) as revenue')
-            ->groupBy('currency')
-            ->orderBy('currency')
-            ->get()
-            ->map(fn (object $row): array => [
-                'currency' => $row->currency,
-                'revenue' => (float) $row->revenue,
-                'average_order_value' => (int) $row->order_count > 0
-                    ? round((float) $row->revenue / (int) $row->order_count, 2)
-                    : 0,
-                'order_count' => (int) $row->order_count,
-            ])->values()->all();
-
-        $recentOrders = Order::query()
-            ->where('customer_id', $customer->id)
-            ->where('order_kind', 'customer')
-            ->withSum('items as revenue', 'line_revenue')
-            ->latest('order_date')->latest('id')->limit(20)->get()
-            ->map(fn (Order $order): array => [
-                'id' => $order->id,
-                'number' => $order->external_order_number ?: $order->internal_order_number,
-                'order_date' => $order->order_date?->toDateString(),
-                'status' => $order->order_status?->value ?? (string) $order->order_status,
-                'revenue' => (float) ($order->revenue ?? 0),
-                'currency' => $order->currency ?? 'USD',
-            ])->all();
-
-        $orderIds = Order::query()
-            ->where('customer_id', $customer->id)
-            ->where('order_kind', 'customer')
-            ->pluck('id');
+        $orders = $this->orderProjection->forCustomer($customer->id);
+        $summary = $orders['summary'];
+        $revenueByCurrency = $orders['revenue_by_currency'];
+        $recentOrders = $orders['recent_orders'];
 
         $shipmentCount = $this->shipmentProjection->countForCustomer($customer->id);
         $shipments = $this->shipmentProjection->recordsForCustomer($customer->id);
@@ -325,12 +286,6 @@ final class CustomerController
 
         $supportTickets = $this->supportProjection->forCustomer($customer->id);
         $supportTicketIds = collect($supportTickets)->pluck('id')->map(fn (mixed $id): string => (string) $id)->all();
-        $auditQuery = AuditRecord::query()->where(function ($query) use ($customer, $supportTicketIds): void {
-            $query->where(fn ($q) => $q->where('entity_type', Customer::class)->where('entity_id', (string) $customer->id));
-            if ($supportTicketIds !== []) {
-                $query->orWhere(fn ($q) => $q->where('entity_type', \App\Modules\Support\Infrastructure\Models\SupportTicket::class)->whereIn('entity_id', $supportTicketIds));
-            }
-        });
         $orderCount = (int) ($summary->order_count ?? 0);
         $customer->orders_count = $orderCount;
 
@@ -347,18 +302,16 @@ final class CustomerController
                 'revenue_by_currency' => $revenueByCurrency,
                 'shipment_count' => $shipmentCount,
             ],
+            'systemSegments' => $this->customers->systemSegmentsFor($customer),
+            'manualGroups' => $customer->groups()->orderBy('name')->get(['customer_groups.id', 'customer_groups.name', 'customer_groups.description'])->map(fn ($group): array => [
+                'id' => $group->id, 'name' => $group->name, 'description' => $group->description,
+            ])->values()->all(),
             'recentOrders' => $recentOrders,
             'shipments' => $shipments,
             'supportTickets' => $supportTickets,
             'pendingSupportTickets' => collect($supportTickets)->whereIn('status', CustomerSupportProjection::PENDING_STATUSES)->count(),
             'subscription' => $subscription,
-            'audit' => $auditQuery
-                ->latest('created_at')->limit(30)->get()
-                ->map(fn (AuditRecord $record): array => [
-                    'action' => $record->action,
-                    'actor_id' => $record->actor_id,
-                    'created_at' => $record->created_at?->toIso8601String(),
-                ])->all(),
+            'audit' => $this->activityProjection->forCustomer($customer->id, $supportTicketIds),
             'canOperate' => (bool) $request->user()?->hasPermission('customers.operate'),
         ]);
     }

@@ -24,10 +24,9 @@ return [
     ['key' => 'customers', 'label' => '客户', 'emoji' => '👥', 'path' => '/customers', 'route' => 'shell.customers', 'permission' => 'customers.view', 'placeholder' => false, 'children' => [
         ['key' => 'customers-library', 'label' => '客户列表', 'path' => '/customers/library', 'route' => 'customers.library', 'permission' => 'customers.view', 'placeholder' => false],
         ['key' => 'customers-groups', 'label' => '客户分组', 'path' => '/customers/groups', 'route' => 'customers.groups', 'permission' => 'customers.view', 'placeholder' => false],
-        ['key' => 'customers-import', 'label' => '客户导入', 'path' => '/customers/import', 'route' => 'customers.import', 'permission' => 'customers.import', 'permissions_all' => ['system.permissions.manage'], 'placeholder' => false],
+        ['key' => 'customers-companies', 'label' => '公司', 'path' => '/customers/companies', 'route' => 'customers.companies', 'permission' => 'customers.view', 'placeholder' => false],
         ['key' => 'customers-orders', 'label' => '客户订单', 'path' => '/customers/orders', 'route' => 'customers.orders', 'permission' => 'orders.view', 'placeholder' => false],
-        ['key' => 'customers-orders-create', 'label' => '新建订单', 'path' => '/customers/orders/create', 'route' => 'customers.orders.create', 'permission' => 'orders.create', 'placeholder' => false],
-        ['key' => 'customers-orders-mine', 'label' => '我的订单', 'path' => '/customers/orders/mine', 'route' => 'customers.orders.mine', 'permission' => 'prototype.view', 'placeholder' => false],
+        ['key' => 'customers-import', 'label' => '客户导入', 'path' => '/customers/import', 'route' => 'customers.import', 'permission' => 'customers.import', 'permissions_all' => ['system.permissions.manage'], 'placeholder' => false],
     ]],
     ['key' => 'marketing', 'label' => '营销', 'emoji' => '📣', 'path' => '/marketing', 'route' => 'shell.marketing', 'permission' => 'marketing.view', 'placeholder' => false, 'children' => [
         ['key' => 'marketing-subscribers', 'label' => '邮件订阅', 'path' => '/marketing/subscribers', 'route' => 'marketing.subscribers', 'permission' => 'marketing.view', 'placeholder' => false],

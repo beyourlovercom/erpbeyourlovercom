@@ -17,6 +17,13 @@ final class CustomerService
 
     private const SEGMENTS = ['no_purchase', 'new_customer', 'repeat_customer', 'multi_product_single_order', 'has_shipment', 'no_shipment_yet', 'active_customer', 'churn_risk', 'dormant_customer', 'high_frequency', 'high_value', 'vip'];
 
+    private const SEGMENT_LABELS = [
+        'no_purchase' => '无购买客户', 'new_customer' => '新客户', 'repeat_customer' => '复购客户',
+        'multi_product_single_order' => '单次多产品客户', 'has_shipment' => '已发货客户', 'no_shipment_yet' => '尚未发货客户',
+        'active_customer' => '活跃客户', 'churn_risk' => '流失风险客户', 'dormant_customer' => '沉睡客户',
+        'high_frequency' => '高频客户', 'high_value' => '高价值客户', 'vip' => 'VIP客户',
+    ];
+
     private const AUDIT_FIELDS = ['name', 'email', 'phone', 'country_code', 'language_code', 'source_type', 'owner_id', 'notes'];
 
     public function __construct(
@@ -36,6 +43,20 @@ final class CustomerService
     public function count(array $filters = []): int
     {
         return (int) $this->query($filters)->count();
+    }
+
+    /** @return list<array{key:string,label:string}> */
+    public function systemSegmentsFor(Model $customer): array
+    {
+        $customerClass = self::CUSTOMER_CLASS;
+        return collect(self::SEGMENTS)
+            ->filter(function (string $segment) use ($customerClass, $customer): bool {
+                $query = $customerClass::query()->whereKey($customer->getKey());
+                $this->applySegment($query, $segment);
+                return $query->exists();
+            })
+            ->map(fn (string $segment): array => ['key' => $segment, 'label' => self::SEGMENT_LABELS[$segment]])
+            ->values()->all();
     }
 
     public function allForExport(array $filters = [])

@@ -60,6 +60,7 @@ final class CustomerDashboardController
                 'pending_support_tickets' => $this->supportProjection->pendingCount(),
             ],
             'canOperate' => (bool) $request->user()?->hasPermission('customers.operate'),
+            'canViewOrders' => (bool) $request->user()?->hasPermission('orders.view'),
             'canImport' => (bool) ($request->user()?->hasPermission('customers.import') && $request->user()?->hasPermission('system.permissions.manage')),
             'canExport' => (bool) ($request->user()?->hasPermission('customers.export') && $request->user()?->hasPermission('system.permissions.manage')),
         ]);
