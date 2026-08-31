@@ -227,12 +227,12 @@ PROJECT POSITION
 PROGRAM_ROADMAP: Customer M1.1–M1.7A completed/merged → Customer M1.8 Full Import/Export [CURRENT] → Customer M1.9 Customer360 Closure [WAITING].
 CURRENT_TRACK_PHASE_MAP: Customer M1.1–M1.7A [MERGED] → M1.8 Full Import/Export [CURRENT] → M1.9 Customer360 Closure [WAITING].
 COMPLETED_PHASES: Customer M1.1 through M1.7A merged; PR #131 merge commit `63c2fa628815d14bdea1f41063da64c77610b608`.
-CURRENT_PHASE: Customer M1.8 Full Import/Export — Owner UAT ready.
+CURRENT_PHASE: Customer M1.8 Full Import/Export — PR #132 merge authorized; exact-head merge pending.
 CURRENT_WORK_PACKAGE: ERP-CUSTOMER-M1-8-FULL-IMPORT-EXPORT-001
 PACKAGE_STATUS: IMPLEMENTATION_COMPLETE / HIGH_RISK_VERIFICATION_PASS / OWNER_UAT_PASS / GIT_DELIVERED / PR_132_OPEN / MERGE_AUTHORIZED / DEPLOYMENT_NOT_AUTHORIZED.
-WAITING_PHASES: M1.8 Owner UAT / separate Git delivery; M1.9 Customer360 Closure.
+WAITING_PHASES: PR #132 exact-head merge; then M1.9 Customer360 Closure.
 BASELINE: origin/main@63c2fa628815d14bdea1f41063da64c77610b608
-GITHUB_STATE: M1.8 delivery commit `9b65cccb9e1620f7aabc1400b4ba8c8d38c7cad8` pushed; PR #132 OPEN / CLEAN / MERGEABLE at creation; merge not authorized.
+GITHUB_STATE: M1.8 delivery commit `9b65cccb9e1620f7aabc1400b4ba8c8d38c7cad8` plus docs-only delivery/merge receipts pushed; PR #132 merge authorized and awaiting final exact-head CLEAN/MERGEABLE verification.
 SOURCE_CONFLICTS: Historical roadmap/current-context/WP documents may still call M1.7A CURRENT or M1.8 WAITING. Current Owner directive plus canonical merged Git main govern; no scope conflict blocks M1.8.
 GLOBAL_GATE: HIGH_RISK US-local verification PASS; Owner UAT PASS; Git delivery complete in PR #132; Owner merge authorization granted. Production deployment remains separately gated.
 PRODUCTION_DEPLOYMENT_STATUS: NO — no M1.8 deployment/tag/release authorized.
