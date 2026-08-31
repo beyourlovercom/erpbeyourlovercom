@@ -1,14 +1,14 @@
 ---
 id: ERP-PRODUCT-REAL-DATA-M1-1-CANONICAL-BOOTSTRAP-001
 title: Product Real Data M1.1 — Canonical Product Bootstrap
-status: OWNER_UAT_PASS / READY_FOR_GIT_DELIVERY
+status: GIT_DELIVERED / PR_137_OPEN / MERGE_NOT_AUTHORIZED
 branch: feature/erp-product-real-data-m1-1-canonical-bootstrap-001
 target_base: main@1f60a7815c51b2b5ce9de6991e43f4dd52267cab
 original_base: main@9496144f825301c110c4ae688b353cee5b4f868b
 execution_provider: US_CODEX_CLI
 implementation_authorization: OWNER_GRANTED_2026-08-31
 owner_uat: PASS_2026-09-01
-git_delivery: OWNER_AUTHORIZED_2026-09-01
+git_delivery: PR_137_OPEN
 merge: NOT_AUTHORIZED
 production_deployment: NOT_AUTHORIZED
 ---
@@ -224,3 +224,12 @@ Support S-M1 remains deliberately deferred because it is not required for the cu
 Git delivery may commit, push and open the PR under the Owner authorization recorded above.
 Merge remains separately gated and MUST NOT occur without explicit Owner authorization.
 Production import/deployment/tag/release remain separately gated and are NOT AUTHORIZED.
+# Git delivery receipt — 2026-09-01
+
+- Business commit: `b11d2259e319d5e1bd4d20d689f1d9167152b6a8` — `feat(products): bootstrap canonical Woo product import`.
+- Branch pushed: `feature/erp-product-real-data-m1-1-canonical-bootstrap-001`.
+- Pull request: `#137` — `Product Real Data M1.1 — Canonical Product Bootstrap`.
+- Target: `main`.
+- Git delivery: COMPLETE.
+- Merge: NOT AUTHORIZED.
+- Production import/deployment/tag/release: NOT AUTHORIZED.
