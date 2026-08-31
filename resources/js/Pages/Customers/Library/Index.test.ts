@@ -2,19 +2,20 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Index from './Index.vue'
 
-const { get, put } = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(() => Promise.resolve({ data: {} })) }))
+const { get, put, axiosGet } = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(() => Promise.resolve({ data: {} })), axiosGet: vi.fn() }))
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
   Link: { props: ['href'], template: '<a :href="href"><slot /></a>' },
   router: { get },
 }))
-vi.mock('axios', () => ({ default: { put } }))
+vi.mock('axios', () => ({ default: { put, get: axiosGet } }))
 vi.mock('../../../Layouts/AuthenticatedLayout.vue', () => ({
   default: { props: ['title', 'breadcrumbs'], template: '<div><slot /></div>' },
 }))
 
 beforeEach(() => {
   get.mockReset()
+  axiosGet.mockReset()
   put.mockClear()
   const store = new Map<string, string>()
   vi.stubGlobal('localStorage', {
@@ -157,6 +158,33 @@ describe('Customer Library KPI Strip — compact', () => {
     expect(wrapper.find('#filter-group').findAll('option').map(option => option.text())).toContain('高价值客户')
     expect(wrapper.find('#filter-group').findAll('option').map(option => option.text())).toContain('VIP客户')
     expect(wrapper.find('.column-settings-trigger').exists()).toBe(true)
+  })
+
+  it('renders manual groups separately and exposes manual options in the library filter', () => {
+    const props = {
+      ...baseProps,
+      manualGroups: [{ id: 7, name: 'VIP 手动组', description: 'Selected', member_count: 2 }],
+    }
+    const library = mount(Index, { props })
+    expect(library.find('#filter-group').findAll('option').map(option => option.text())).toContain('VIP 手动组')
+
+    const groups = mount(Index, { props: { ...props, ...groupProps, canOperate: true, selectedManualGroup: props.manualGroups[0] } })
+    expect(groups.find('.manual-groups-area').text()).toContain('VIP 手动组')
+    expect(groups.find('input[aria-label="新分组名称"]').exists()).toBe(true)
+    expect(groups.findAll('button').some(button => button.text() === '重命名')).toBe(true)
+    expect(groups.findAll('button').some(button => button.text() === '删除分组')).toBe(true)
+  })
+
+  it('shows the empty manual group state and bounded add flow', () => {
+    const wrapper = mount(Index, { props: {
+      ...groupProps,
+      canOperate: true,
+      manualGroups: [{ id: 8, name: 'Empty Group', description: null, member_count: 0 }],
+      selectedManualGroup: { id: 8, name: 'Empty Group', description: null, member_count: 0 },
+    } })
+    expect(wrapper.find('.manual-group-empty-state').text()).toContain('还没有客户')
+    expect(wrapper.find('input[aria-label="搜索可加入客户"]').exists()).toBe(true)
+    expect(wrapper.findAll('button').some(button => button.text() === '添加客户')).toBe(true)
   })
 
   it('keeps shipment count hidden by default and exposes shipment group shortcuts', async () => {

@@ -4,6 +4,7 @@ namespace App\Modules\Customers\Experience\Controllers;
 
 use App\Modules\Audit\Infrastructure\Models\AuditRecord;
 use App\Modules\Customers\Application\CustomerService;
+use App\Modules\Customers\Application\CustomerGroupService;
 use App\Modules\Customers\Application\CustomerSubscriberProjection;
 use App\Modules\Finance\Application\EcbFxService;
 use App\Modules\Customers\Domain\CountryCodeNormalizer;
@@ -17,6 +18,7 @@ use App\Modules\Shell\Application\UserUiPreferenceService;
 use App\Modules\Support\Application\CustomerSupportProjection;
 use Closure;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -41,6 +43,7 @@ final class CustomerController
 
     public function __construct(
         private readonly CustomerService $customers,
+        private readonly CustomerGroupService $customerGroups,
         private readonly CustomerSubscriberProjection $subscriberProjection,
         private readonly EcbFxService $fx,
         private readonly UserUiPreferenceService $uiPreferences,
@@ -54,6 +57,8 @@ final class CustomerController
         $gridPreferenceNamespace = $workspace === 'groups' ? self::GROUPS_GRID_NAMESPACE : self::LIBRARY_GRID_NAMESPACE;
         $filters = $request->only(['search', 'country_code', 'source_type', 'archived', 'group']);
         $paginator = $this->customers->list($filters);
+        $manualGroups = $this->customerGroups->all();
+        $selectedManualGroup = $this->customerGroups->findForFilter($filters['group'] ?? null);
         $subscriberProjections = $this->subscriberProjection->forCustomers($paginator->items());
 
         $customerIds = collect($paginator->items())->pluck('id');
@@ -153,12 +158,65 @@ final class CustomerController
             'workspace' => $workspace,
             'gridPreferenceNamespace' => $gridPreferenceNamespace,
             'gridPreference' => $request->user() ? $this->uiPreferences->get($request->user(), $gridPreferenceNamespace) : null,
+            'manualGroups' => $manualGroups->map(fn ($group): array => [
+                'id' => $group->id,
+                'name' => $group->name,
+                'description' => $group->description,
+                'member_count' => (int) $group->memberships_count,
+            ])->values()->all(),
+            'selectedManualGroup' => $selectedManualGroup ? [
+                'id' => $selectedManualGroup->id,
+                'name' => $selectedManualGroup->name,
+                'description' => $selectedManualGroup->description,
+                'member_count' => $selectedManualGroup->memberships()->count(),
+            ] : null,
         ]);
     }
 
     public function groups(Request $request): Response
     {
         return $this->index($request);
+    }
+
+    public function storeGroup(Request $request): RedirectResponse
+    {
+        $validated = $request->validate(['name' => ['required', 'string', 'max:255'], 'description' => ['nullable', 'string', 'max:5000']]);
+        $group = $this->customerGroups->create($validated);
+        return redirect()->to('/customers/groups?group='.CustomerGroupService::MANUAL_FILTER_PREFIX.$group->id)->with('success', '客户分组已创建');
+    }
+
+    public function updateGroup(Request $request, \App\Modules\Customers\Infrastructure\Models\CustomerGroup $customerGroup): RedirectResponse
+    {
+        $validated = $request->validate(['name' => ['required', 'string', 'max:255'], 'description' => ['nullable', 'string', 'max:5000']]);
+        $this->customerGroups->update($customerGroup, $validated);
+        return redirect()->to('/customers/groups?group='.CustomerGroupService::MANUAL_FILTER_PREFIX.$customerGroup->id)->with('success', '客户分组已更新');
+    }
+
+    public function destroyGroup(\App\Modules\Customers\Infrastructure\Models\CustomerGroup $customerGroup): RedirectResponse
+    {
+        $this->customerGroups->delete($customerGroup);
+        return redirect()->route('customers.groups')->with('success', '客户分组已删除');
+    }
+
+    public function searchGroupCustomers(Request $request, \App\Modules\Customers\Infrastructure\Models\CustomerGroup $customerGroup): JsonResponse
+    {
+        $validated = $request->validate(['search' => ['required', 'string', 'min:1', 'max:100']]);
+        return response()->json(['customers' => $this->customerGroups->searchAvailableCustomers($customerGroup, $validated['search'])->map(fn (Customer $customer): array => [
+            'id' => $customer->id, 'name' => $customer->name, 'email' => $customer->email, 'phone' => $customer->phone,
+        ])->values()->all()]);
+    }
+
+    public function addGroupMembers(Request $request, \App\Modules\Customers\Infrastructure\Models\CustomerGroup $customerGroup): RedirectResponse
+    {
+        $validated = $request->validate(['customer_ids' => ['required', 'array', 'min:1', 'max:100'], 'customer_ids.*' => ['integer', 'distinct', 'exists:customers,id']]);
+        $this->customerGroups->addMembers($customerGroup, array_map('intval', $validated['customer_ids']), $request->user());
+        return redirect()->to('/customers/groups?group='.CustomerGroupService::MANUAL_FILTER_PREFIX.$customerGroup->id)->with('success', '客户已加入分组');
+    }
+
+    public function removeGroupMember(\App\Modules\Customers\Infrastructure\Models\CustomerGroup $customerGroup, Customer $customer): RedirectResponse
+    {
+        $this->customerGroups->removeMember($customerGroup, $customer);
+        return redirect()->to('/customers/groups?group='.CustomerGroupService::MANUAL_FILTER_PREFIX.$customerGroup->id)->with('success', '客户已移出分组');
     }
 
 

@@ -22,13 +22,16 @@ final class CustomerService
     public function __construct(
         private readonly AuditRecorder $audit,
         private readonly CustomerSegmentationQuery $segmentation,
+        private readonly CustomerGroupService $groups,
     ) {}
 
     public function list(array $filters = [], int $perPage = 50): LengthAwarePaginator
     {
         $customerClass = self::CUSTOMER_CLASS;
         $archived = $filters['archived'] ?? '';
-        $segment = in_array($filters['group'] ?? '', self::SEGMENTS, true) ? $filters['group'] : '';
+        $groupFilter = (string) ($filters['group'] ?? '');
+        $segment = in_array($groupFilter, self::SEGMENTS, true) ? $groupFilter : '';
+        $manualGroup = $this->groups->findForFilter($groupFilter);
 
         return $customerClass::query()
             ->with(['owner', 'billingAddress', 'shippingAddress'])
@@ -46,6 +49,9 @@ final class CustomerService
             ->when($filters['source_type'] ?? null, fn ($query, string $source) => $query->where('source_type', $source))
             ->when($segment !== '', function ($query) use ($segment): void {
                 $this->applySegment($query, $segment);
+            })
+            ->when($manualGroup !== null, function ($query) use ($manualGroup): void {
+                $this->groups->applyFilter($query, $manualGroup);
             })
             ->orderByDesc('updated_at')
             ->paginate($perPage)
