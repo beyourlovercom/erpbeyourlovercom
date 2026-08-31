@@ -5,101 +5,117 @@ namespace App\Modules\Products\Application;
 use App\Modules\Products\Application\Contracts\ProductRepository;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 final class ProductService
 {
     public function __construct(private readonly ProductRepository $products) {}
 
-    public function import(string $csvPath): ProductImportResult
+    /** @return array{result: ProductImportResult, candidates: list<array<string, mixed>>} */
+    public function preview(string $csvPath): array
     {
         $handle = fopen($csvPath, 'r');
-        if ($handle === false) {
-            return new ProductImportResult(0, 0, 0, 1, ["Cannot open file: {$csvPath}"]);
+        if ($handle === false) return ['result' => new ProductImportResult(invalid: 1, errors: ["Cannot open file: {$csvPath}"]), 'candidates' => []];
+        $headerLine = fgets($handle);
+        if ($headerLine === false) { fclose($handle); return ['result' => new ProductImportResult(invalid: 1, errors: ['Empty or unreadable CSV']), 'candidates' => []]; }
+        $headerLine = (string) preg_replace('/^\xEF\xBB\xBF/', '', $headerLine);
+        $headers = str_getcsv($headerLine);
+        $headerMap = array_flip(array_map(static fn ($header): string => trim((string) $header), $headers));
+        foreach (['ID', 'Type', 'SKU', 'Name', 'Published'] as $required) {
+            if (! isset($headerMap[$required])) { fclose($handle); return ['result' => new ProductImportResult(invalid: 1, errors: ["Missing required column: {$required}"]), 'candidates' => []]; }
         }
 
-        $headers = fgetcsv($handle);
-        if ($headers === false) {
-            fclose($handle);
-            return new ProductImportResult(0, 0, 0, 1, ['Empty or unreadable CSV']);
-        }
-
-        $headerMap = array_flip(array_map('trim', $headers));
-        $required = ['ID', 'Type', 'SKU', 'Name'];
-        foreach ($required as $col) {
-            if (! isset($headerMap[$col])) {
-                fclose($handle);
-                return new ProductImportResult(0, 0, 0, 1, ["Missing required column: {$col}"]);
-            }
-        }
-
-        $inserted = 0;
-        $updated = 0;
-        $skipped = 0;
-        $invalid = 0;
-        $errors = [];
+        $total = $candidates = $active = $inactive = $invalid = $skippedVariations = $reconciliation = 0;
+        $new = $updates = $unchanged = $duplicateSku = $identity = 0;
+        $errors = $candidateRows = $seenSkus = $seenWooIds = [];
         $rowNum = 1;
-
         while (($row = fgetcsv($handle)) !== false) {
             $rowNum++;
-            $cell = fn (string $col): ?string => isset($headerMap[$col]) ? (trim($row[$headerMap[$col]] ?? '') ?: null) : null;
-
-            $wooId = (int) ($cell('ID') ?? 0);
-            if ($wooId <= 0) {
-                $invalid++;
-                $errors[] = "Row {$rowNum}: invalid or missing ID";
-                continue;
+            if ($this->rowIsEmpty($row)) continue;
+            $total++;
+            $cell = static fn (array $row, array $map, string $column): ?string => isset($map[$column]) ? (($value = trim((string) ($row[$map[$column]] ?? ''))) === '' ? null : $value) : null;
+            $wooIdRaw = $cell($row, $headerMap, 'ID');
+            $wooId = ctype_digit((string) $wooIdRaw) ? (int) $wooIdRaw : 0;
+            $type = strtolower((string) ($cell($row, $headerMap, 'Type') ?? ''));
+            $sku = $cell($row, $headerMap, 'SKU');
+            $name = $cell($row, $headerMap, 'Name');
+            if ($wooId <= 0 || $name === null) { $invalid++; $errors[] = "Row {$rowNum}: invalid or missing ID/Name"; continue; }
+            if ($sku === null) { if ($type === 'variation') $skippedVariations++; else $reconciliation++; continue; }
+            $values = $this->parseValues($row, $headerMap, $wooId, $type, $sku, $name);
+            if ($values === null) { $invalid++; $errors[] = "Row {$rowNum}: invalid numeric value"; continue; }
+            $candidates++;
+            if ($values['is_active']) $active++; else $inactive++;
+            if (isset($seenSkus[$sku])) { $duplicateSku++; $errors[] = "Row {$rowNum}: duplicate SKU conflict: {$sku}"; continue; }
+            if (isset($seenWooIds[$wooId])) { $identity++; $errors[] = "Row {$rowNum}: duplicate Woo Product ID conflict: {$wooId}"; continue; }
+            $seenSkus[$sku] = true;
+            $seenWooIds[$wooId] = true;
+            $existingByWoo = $this->products->findByWooId($wooId);
+            $existingBySku = $this->products->findBySku($sku);
+            if (($existingByWoo !== null && $existingByWoo->getAttribute('sku') !== $sku) || ($existingBySku !== null && (int) $existingBySku->getAttribute('woocommerce_product_id') !== $wooId)) {
+                $identity++; $errors[] = "Row {$rowNum}: Woo-ID/SKU identity conflict for {$sku}"; continue;
             }
-
-            $name = $cell('Name');
-            if ($name === null || $name === '') {
-                $invalid++;
-                $errors[] = "Row {$rowNum}: missing Name";
-                continue;
-            }
-
-            $sku = $cell('SKU');
-            $gtin = $cell('GTIN, UPC, EAN, or ISBN');
-            $type = $cell('Type') ?? 'simple';
-            $weightRaw = $cell('Weight (kg)');
-            $salePriceRaw = $cell('Sale price');
-            $regularPriceRaw = $cell('Regular price');
-
-            $attributes = [
-                'product_type' => $type,
-                'sku' => $sku,
-                'gtin' => $gtin,
-                'name' => $name,
-                'weight_kg' => $weightRaw !== null ? (float) $weightRaw : null,
-                'sale_price' => $salePriceRaw !== null ? (float) $salePriceRaw : null,
-                'regular_price' => $regularPriceRaw !== null ? (float) $regularPriceRaw : null,
-            ];
-
-            $existing = $this->products->findByWooId($wooId);
-
-            if ($existing === null) {
-                $this->products->create(['woocommerce_product_id' => $wooId, 'source_type' => 'woocommerce', ...$attributes]);
-                $inserted++;
-            } else {
-                $changed = false;
-                foreach ($attributes as $key => $value) {
-                    if ($existing->getAttribute($key) != $value) {
-                        $changed = true;
-                        break;
-                    }
-                }
-                if ($changed) {
-                    $this->products->update($existing, $attributes);
-                    $updated++;
-                } else {
-                    $skipped++;
-                }
-            }
+            if ($existingByWoo === null && $existingBySku === null) $new++;
+            elseif ($this->sameBootstrapValues($existingByWoo ?? $existingBySku, $values)) $unchanged++;
+            else $updates++;
+            $candidateRows[] = $values;
         }
-
         fclose($handle);
-
-        return new ProductImportResult($inserted, $updated, $skipped, $invalid, $errors);
+        return ['result' => new ProductImportResult($total, $candidates, $new, $updates, $unchanged, $active, $inactive, $skippedVariations, $reconciliation, $invalid, $duplicateSku, $identity, $errors), 'candidates' => $candidateRows];
     }
+
+    /** @param list<array<string, mixed>> $candidates */
+    public function confirm(array $candidates): ProductImportResult
+    {
+        $inserted = $updated = $unchanged = 0;
+        DB::transaction(function () use ($candidates, &$inserted, &$updated, &$unchanged): void {
+            foreach ($candidates as $values) {
+                $sku = (string) $values['sku']; $wooId = (int) $values['woocommerce_product_id'];
+                $byWoo = $this->products->findByWooId($wooId); $bySku = $this->products->findBySku($sku);
+                if (($byWoo !== null && $byWoo->getAttribute('sku') !== $sku) || ($bySku !== null && (int) $bySku->getAttribute('woocommerce_product_id') !== $wooId)) throw new \RuntimeException("Confirm blocked by identity conflict for {$sku}");
+                $product = $byWoo ?? $bySku;
+                if ($product === null) { $this->products->create($values); $inserted++; continue; }
+                $attributes = $this->bootstrapAttributes($values);
+                if ($product->getAttribute('weight_kg') === null && $values['weight_kg'] !== null) $attributes['weight_kg'] = $values['weight_kg'];
+                if ($this->sameBootstrapValues($product, $values)) $unchanged++; else { $this->products->update($product, $attributes); $updated++; }
+            }
+        });
+        $processed = $inserted + $updated + $unchanged;
+        $active = count(array_filter($candidates, static fn (array $row): bool => ($row['is_active'] ?? false) === true));
+        $inactive = $processed - $active;
+
+        return new ProductImportResult($processed, $processed, $inserted, $updated, $unchanged, $active, $inactive);
+    }
+
+    public function import(string $csvPath): ProductImportResult
+    {
+        $preview = $this->preview($csvPath);
+        if (! $preview['result']->toArray()['canConfirm']) return $preview['result'];
+        return $this->confirm($preview['candidates']);
+    }
+
+    private function parseValues(array $row, array $map, int $wooId, string $type, string $sku, string $name): ?array
+    {
+        $cell = static fn (string $column): ?string => isset($map[$column]) ? (($value = trim((string) ($row[$map[$column]] ?? ''))) === '' ? null : $value) : null;
+        $number = static function (?string $value): ?float { if ($value === null) return null; return is_numeric($value) && (float) $value >= 0 ? (float) $value : null; };
+        $rawWeight = $cell('Weight (kg)'); $rawSale = $cell('Sale price'); $rawRegular = $cell('Regular price');
+        $weight = $number($rawWeight); $sale = $number($rawSale); $regular = $number($rawRegular);
+        foreach ([[$rawWeight, $weight], [$rawSale, $sale], [$rawRegular, $regular]] as [$raw, $parsed]) if ($raw !== null && $parsed === null) return null;
+        $published = $cell('Published');
+        return ['woocommerce_product_id' => $wooId, 'source_type' => 'woocommerce', 'product_type' => $type ?: 'simple', 'sku' => $sku, 'gtin' => $cell('GTIN, UPC, EAN, or ISBN'), 'name' => $name, 'sale_price' => $sale, 'regular_price' => $regular, 'is_active' => $published === null ? true : $published === '1', 'weight_kg' => $weight];
+    }
+
+    private function bootstrapAttributes(array $values): array
+    {
+        return ['woocommerce_product_id' => $values['woocommerce_product_id'], 'source_type' => 'woocommerce', 'product_type' => $values['product_type'], 'sku' => $values['sku'], 'gtin' => $values['gtin'], 'name' => $values['name'], 'sale_price' => $values['sale_price'], 'regular_price' => $values['regular_price'], 'is_active' => $values['is_active']];
+    }
+
+    private function sameBootstrapValues(Model $product, array $values): bool
+    {
+        foreach ($this->bootstrapAttributes($values) as $key => $value) if ($product->getAttribute($key) != $value) return false;
+        return $values['weight_kg'] === null || $product->getAttribute('weight_kg') !== null || $product->getAttribute('weight_kg') == $values['weight_kg'];
+    }
+
+    private function rowIsEmpty(array $row): bool { return count(array_filter($row, static fn ($value): bool => trim((string) $value) !== '')) === 0; }
 
     public function searchSkus(string $query, int $limit = 20): array
     {
@@ -193,8 +209,8 @@ final class ProductService
         $this->products->delete($product);
     }
 
-    public function importFromUpload(string $tmpPath): ProductImportResult
+    public function importFromUpload(string $tmpPath): array
     {
-        return $this->import($tmpPath);
+        return $this->preview($tmpPath);
     }
 }

@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -172,19 +173,45 @@ final class ProductController
         return Inertia::render('Products/Import');
     }
 
+    public function importTemplate(): \Illuminate\Http\Response
+    {
+        $csv = "\xEF\xBB\xBF".'"ID","Type","SKU","GTIN, UPC, EAN, or ISBN","Name","Weight (kg)","Sale price","Regular price","Published"'."\r\n";
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="product-import-csv-template.csv"',
+            'Cache-Control' => 'private, no-store, max-age=0',
+        ]);
+    }
+
     public function importStore(Request $request): Response
     {
-        $request->validate([
-            'csv_file' => ['required', 'file', 'mimes:csv,txt', 'max:10240'],
-        ]);
+        if ($request->input('action') === 'confirm') {
+            $token = (string) $request->input('preview_token');
+            $artifact = $request->session()->get("products.import.{$token}");
+            if (! is_array($artifact) || ! isset($artifact['candidates']) || ! hash_equals((string) ($artifact['user_id'] ?? ''), (string) Auth::id())) {
+                return Inertia::render('Products/Import', ['result' => ['invalid' => 1, 'errors' => ['预览已失效，请重新上传 CSV'], 'canConfirm' => false]]);
+            }
+            if (($artifact['can_confirm'] ?? false) !== true) {
+                return Inertia::render('Products/Import', ['result' => [...($artifact['result'] ?? []), 'canConfirm' => false], 'previewToken' => $token]);
+            }
+            try {
+                $result = $this->products->confirm($artifact['candidates']);
+            } catch (\RuntimeException $exception) {
+                return Inertia::render('Products/Import', ['result' => ['invalid' => 0, 'identityConflicts' => 1, 'errors' => [$exception->getMessage()], 'canConfirm' => false], 'previewToken' => $token]);
+            }
+            $request->session()->forget("products.import.{$token}");
+            return Inertia::render('Products/Import', ['result' => $result->toArray(), 'confirmed' => true]);
+        }
 
-        $file = $request->file('csv_file');
-        $tmpPath = $file->getRealPath();
-
-        $result = $this->products->importFromUpload($tmpPath);
+        $request->validate(['csv_file' => ['required', 'file', 'mimes:csv,txt', 'max:10240']]);
+        $preview = $this->products->importFromUpload((string) $request->file('csv_file')->getRealPath());
+        $token = (string) Str::uuid();
+        $request->session()->put("products.import.{$token}", ['user_id' => (string) Auth::id(), 'candidates' => $preview['candidates'], 'can_confirm' => $preview['result']->toArray()['canConfirm'], 'result' => $preview['result']->toArray()]);
 
         return Inertia::render('Products/Import', [
-            'result' => $result->toArray(),
+            'result' => $preview['result']->toArray(),
+            'previewToken' => $token,
         ]);
     }
 
