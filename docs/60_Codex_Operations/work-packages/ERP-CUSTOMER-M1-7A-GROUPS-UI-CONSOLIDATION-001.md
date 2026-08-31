@@ -94,16 +94,16 @@ PROJECT POSITION
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate [COMPLETE] → MVP1 Existing Operations / Tencent Docs Replacement → ERP-INQUIRY-M1 B2B Inquiry Foundation → ERP-INQUIRY-M1 Local Milestone UAT → Milestone-gated Remote Release → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Production Hardening / Expansion
 CURRENT_TRACK_PHASE_MAP: Customer M1.1–M1.7 [MERGED] → M1.7A Groups UI Consolidation [CURRENT] → M1.8 Full Import/Export [WAITING] → M1.9 Customer360 Closure [WAITING]
 COMPLETED_PHASES: Customer M1.1 through M1.7 merged; PR #130 merge commit 336c3c411e022ed63e5e31e4c0187d2adf538dab.
-CURRENT_PHASE: Customer M1.7A Groups UI Consolidation — Owner UAT.
+CURRENT_PHASE: Customer M1.7A Groups UI Consolidation — merge authorized.
 CURRENT_WORK_PACKAGE: ERP-CUSTOMER-M1-7A-GROUPS-UI-CONSOLIDATION-001
 PACKAGE_STATUS: OWNER_UAT_PASS / GIT_DELIVERED_PR_131 / MERGE_AUTHORIZED.
-WAITING_PHASES: M1.7A Owner UAT; M1.8 Full Import/Export; M1.9 Customer360 Closure.
+WAITING_PHASES: M1.7A exact-head merge; M1.8 Full Import/Export; M1.9 Customer360 Closure.
 BASELINE: origin/main@336c3c411e022ed63e5e31e4c0187d2adf538dab
-GITHUB_STATE: PR #130 MERGED; M1.7A PR #131 OPEN from `feature/erp-customer-m1-7a-groups-ui-consolidation-001`; delivery commit `a9ede7e05b9dee016d48fc72c31bcc3e1496986e` pushed. Merge not authorized.
+GITHUB_STATE: PR #130 MERGED; M1.7A PR #131 OPEN/CLEAN from `feature/erp-customer-m1-7a-groups-ui-consolidation-001`; Owner merge authorization granted. Production deployment remains unauthorized.
 SOURCE_CONFLICTS: Historical roadmap/current-context documents may retain older track labels; current Owner direction and merged GitHub main govern this bounded Customer follow-up. NONE affecting the M1.7A visual contract.
 GLOBAL_GATE: M1.7A implementation, US-local verification, Owner UAT and Git delivery to PR #131 are complete. Owner has authorized exact-head merge; production deployment remains unauthorized.
 PRODUCTION_DEPLOYMENT_STATUS: NO — no M1.7A production deployment, tag or release authorized.
-NEXT_DEPENDENCY: Owner UAT → separate Git delivery/merge gates.
+NEXT_DEPENDENCY: Exact-head merge PR #131 → close M1.7A → M1.8 Full Import/Export.
 EVIDENCE_AS_OF: 2026-08-31; Owner-approved render, PR #130 merge state, origin/main@336c3c411e022ed63e5e31e4c0187d2adf538dab.
 
 OWNER_UAT_STATUS: PASS — Owner explicitly accepted the M1.7A Groups Workspace visual and interaction UAT on 2026-08-31. UAT ran through a real authenticated session with `ERP_LOCAL_ADMIN_BYPASS=false`.
