@@ -124,7 +124,7 @@ NEXT_GATE: Merge authorized on 2026-08-31 → exact-head merge PR #133 → canon
 
 PROJECT POSITION
 PROGRAM_ROADMAP: Customer M1.1–M1.8 [MERGED] → Customer M1.9 Customer360 Closure [CURRENT].
-CURRENT_TRACK_PHASE_MAP: M1.1 Experience → M1.2 Segmentation → M1.3 Subscriber → M1.4 Support → M1.5 Shipment → M1.6 Advanced Segmentation → M1.7 Manual Groups → M1.7A Groups UI → M1.8 Import/Export [ALL MERGED] → M1.9 Customer360 Closure [OWNER_UAT_READY].
+CURRENT_TRACK_PHASE_MAP: M1.1 Experience → M1.2 Segmentation → M1.3 Subscriber → M1.4 Support → M1.5 Shipment → M1.6 Advanced Segmentation → M1.7 Manual Groups → M1.7A Groups UI → M1.8 Import/Export [ALL MERGED] → M1.9 Customer360 Closure [MERGE_AUTHORIZED].
 CURRENT_WORK_PACKAGE: ERP-CUSTOMER-M1-9-CUSTOMER360-CLOSURE-001.
 PACKAGE_STATUS: IMPLEMENTATION_COMPLETE / HIGH_RISK_VERIFICATION_PASS_WITH_EXACT_MAIN_ARCH_BASELINE / OWNER_UAT_PASS / GIT_DELIVERY_AUTHORIZED / MERGE_AUTHORIZED / DEPLOYMENT_NOT_AUTHORIZED.
 BASELINE: origin/main@e627f7391cf9975fbc509d23724967d67a6e0f9b.
@@ -255,7 +255,7 @@ PRODUCTION_DEPLOYMENT_AUTHORIZATION: NOT GRANTED.
 - Base at PR creation: `main@e627f7391cf9975fbc509d23724967d67a6e0f9b`.
 - PR creation state: OPEN / CLEAN / MERGEABLE.
 - GitHub status checks at creation: none configured / none pending.
-- NEXT_GATE: separate Owner merge authorization after final PR head verification.
-- Merge and production deployment remain NOT AUTHORIZED.
+- NEXT_GATE: exact-head merge PR #133, then canonical main synchronization; deployment remains separate.
+- Merge is Owner-authorized for PR #133; production deployment remains NOT AUTHORIZED.
 
 OWNER_MERGE_DECISION: GRANTED — PR #133.
