@@ -1,13 +1,16 @@
 <?php
 
 use App\Modules\Sync\Experience\Controllers\ManualSyncController;
-use App\Modules\Sync\Experience\Controllers\WooCommerceTrackingOutboundController;
 use App\Modules\Sync\Experience\Controllers\SyncOrchestrationController;
 use App\Modules\Sync\Experience\Controllers\SyncWorkspaceController;
+use App\Modules\Sync\Experience\Controllers\WooCommerceTrackingOutboundController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/sync', [SyncWorkspaceController::class, 'index'])->middleware('can:sync.view')->name('shell.sync');
+    Route::get('/sync/wpapi', [SyncWorkspaceController::class, 'wordpressConnector'])->middleware(['can:sync.view', 'can:marketing.view'])->name('sync.wpapi');
+    Route::put('/sync/wpapi/connection', [SyncWorkspaceController::class, 'saveWordPressConnector'])->middleware('can:sync.operate')->name('sync.wpapi.connection');
+    Route::post('/sync/wpapi/health', [SyncWorkspaceController::class, 'testWordPressConnector'])->middleware('can:sync.operate')->name('sync.wpapi.health');
     Route::get('/sync/orders', [ManualSyncController::class, 'index'])->middleware('can:sync.view')->name('sync.orders');
     Route::get('/sync/warehouses', [SyncWorkspaceController::class, 'warehouses'])->middleware('can:sync.view')->name('sync.warehouses');
     Route::get('/sync/kol', [SyncWorkspaceController::class, 'kol'])->middleware('can:sync.view')->name('sync.kol');
