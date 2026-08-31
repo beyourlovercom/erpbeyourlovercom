@@ -127,8 +127,8 @@ final class PermissionMatrixTest extends TestCase
         $this->assertFalse($customUser->hasPermission('dashboard.view'));
     }
 
-    // G: all seven presets display and are editable through roles-permissions
-    public function test_all_seven_presets_display_and_are_editable(): void
+    // G: all eight presets display and are editable through roles-permissions
+    public function test_all_eight_presets_display_and_are_editable(): void
     {
         $admin = $this->adminUser();
 
@@ -136,7 +136,7 @@ final class PermissionMatrixTest extends TestCase
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
             ->component('Identity/RolesPermissions/Index')
-            ->has('presets', 7)
+            ->has('presets', 8)
         );
 
         foreach (RolePreset::cases() as $preset) {

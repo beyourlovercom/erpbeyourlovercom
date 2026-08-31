@@ -26,8 +26,8 @@ Architecture Migration / Global Architecture Gate [COMPLETE]
 → KOL M1.2A Collaboration [COMPLETE / PR #113]
 → KOL M1.2B Canonical Fulfillment Bridge [COMPLETE / PR #114]
 → KOL M1.3 Content [COMPLETE / PR #116]
-→ KOL M1.4A AffiliateWP Connector Foundation [CURRENT]
-→ KOL M1.4B Influencer Sync + KOL Approval + Provisioning
+→ KOL M1.4A AffiliateWP Connector Foundation [COMPLETE / PR #117]
+→ KOL M1.4B Influencer Sync + KOL Approval + Provisioning [CURRENT]
 → KOL M1.4C Coupon Sync + Provisioning
 → KOL M1.4D Referral + Commission Sync
 → KOL M1.4E Commission Payout Workflow
@@ -72,9 +72,9 @@ KOL duplicate CRM PR #109 = CLOSED / SUPERSEDED BY PR #110
 US Mac = default full verification + Owner UAT host
 China Mac = special-case verification only unless explicitly required
 GitHub = UNIQUE SOURCE OF TRUTH
-CURRENT_PHASE = KOL V1 FULL COMPLETION TRACK / M1.4A CONNECTOR FOUNDATION
-CURRENT_WORK_PACKAGE = ERP-KOL-M1.4A-AFFILIATEWP-CONNECTOR-FOUNDATION-001
-NEXT_PRODUCT_WORK_PACKAGE = ERP-KOL-M1.4B-INFLUENCER-APPROVAL-PROVISIONING-001
+CURRENT_PHASE = KOL V1 FULL COMPLETION TRACK / M1.4B INFLUENCER APPROVAL + PROVISIONING
+CURRENT_WORK_PACKAGE = ERP-KOL-M1.4B-INFLUENCER-APPROVAL-PROVISIONING-001
+NEXT_PRODUCT_WORK_PACKAGE = ERP-KOL-M1.4C-COUPON-SYNC-PROVISIONING-001
 Remote Milestone Target = https://erp.beyourlover.com
 Deployment = NO / MILESTONE GATED
 ```
@@ -95,10 +95,10 @@ Remote-release rule: https://erp.beyourlover.com remains milestone-gated.
 ## Immediate sequence
 
 ```text
-1. M1.2A, M1.2B and M1.3 are complete and merged.
-2. Current execution is M1.4A AffiliateWP Connector Foundation from `main@3e4328deb9990f41ec38308463cbfa5336e82305`.
-3. Andy Core v1.5.3 WordPress Connector is a separately implemented external dependency in the Andy Core repository/chat; ERP stores the interface contract only in this package.
-4. Continue serially through M1.4B Influencer/Approval/Provisioning → M1.4C Coupon → M1.4D Referral/Commission → M1.4E Payout → M1.4F Approval/Dashboard.
+1. M1.2A, M1.2B, M1.3 and M1.4A are complete and merged; M1.4A merged as PR #117 at `1a7347f94938be2db29cbcd1fad6822aedcd9052`.
+2. Current execution is M1.4B Influencer Sync + KOL Approval + Provisioning from `main@1a7347f94938be2db29cbcd1fad6822aedcd9052`.
+3. Andy Core v1.5.3 WordPress Connector remains a separately implemented external dependency in the Andy Core repository/chat; fake-provider verification is allowed before live compatibility UAT.
+4. Continue serially through M1.4B → M1.4C Coupon → M1.4D Referral/Commission → M1.4E Payout → M1.4F Approval/Dashboard.
 5. KOL Specialists and Managers must be able to complete normal operations without WordPress login after M1.4F.
 6. AffiliateWP/WooCommerce/WordPress provider-truth boundaries remain intact; ERP mirrors and operates but does not create competing provider truth.
 7. ERP-INQUIRY-M1.2 Contact and MVP2 remain paused until KOL V1 closes or Owner explicitly reprioritizes.

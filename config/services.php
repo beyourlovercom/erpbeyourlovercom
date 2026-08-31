@@ -24,6 +24,7 @@ return [
         'connect_timeout' => (int) env('ANDY_CORE_CONNECT_TIMEOUT_SECONDS', 5),
         'retry_times' => (int) env('ANDY_CORE_RETRY_TIMES', 2),
         'retry_sleep_ms' => (int) env('ANDY_CORE_RETRY_SLEEP_MS', 500),
+        'uat_fake' => filter_var(env('ANDY_CORE_UAT_FAKE', false), FILTER_VALIDATE_BOOL),
     ],
 
     'woocommerce' => [

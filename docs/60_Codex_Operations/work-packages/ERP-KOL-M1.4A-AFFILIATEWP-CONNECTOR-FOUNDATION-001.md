@@ -1,6 +1,7 @@
 # ERP-KOL-M1.4A-AFFILIATEWP-CONNECTOR-FOUNDATION-001
 
-Status: CURRENT / OWNER AUTHORIZED / IMPLEMENTATION READY
+Status: COMPLETE / MERGED PR #117
+Merge SHA: `1a7347f94938be2db29cbcd1fad6822aedcd9052`
 
 ## Baseline
 - Branch: `feature/erp-kol-m1-4a-affiliatewp-connector-001`

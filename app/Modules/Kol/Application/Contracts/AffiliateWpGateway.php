@@ -2,7 +2,7 @@
 
 namespace App\Modules\Kol\Application\Contracts;
 
-use App\Modules\Kol\Infrastructure\AffiliateWp\ConnectorResponse;
+use App\Modules\Kol\Application\AffiliateWp\ConnectorResponse;
 
 interface AffiliateWpGateway
 {

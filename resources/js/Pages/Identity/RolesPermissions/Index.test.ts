@@ -42,6 +42,7 @@ const presets = [
   { preset: 'logistics', label: '物流', permissions: ['dashboard.view'] },
   { preset: 'sales_representative', label: '业务员', permissions: [] },
   { preset: 'kol_specialist', label: '网红专员', permissions: [] },
+  { preset: 'kol_manager', label: '网红经理', permissions: [] },
   { preset: 'finance', label: '财务', permissions: [] },
   { preset: 'operations', label: '运营', permissions: [] },
   { preset: 'writer', label: '写手', permissions: [] },
@@ -49,11 +50,11 @@ const presets = [
 ]
 
 describe('RolesPermissions/Index', () => {
-  it('renders all seven preset tabs with Chinese labels', () => {
+  it('renders all eight preset tabs with Chinese labels', () => {
     const wrapper = mount(RolesPermissionsIndex, {
       props: { presets, permissionCatalog: catalog },
     })
-    const labels = ['物流', '业务员', '网红专员', '财务', '运营', '写手', '管理员']
+    const labels = ['物流', '业务员', '网红专员', '网红经理', '财务', '运营', '写手', '管理员']
     labels.forEach((label) => expect(wrapper.text()).toContain(label))
   })
 

@@ -29,4 +29,9 @@ final class KolScope
     {
         return $user->can('kol.operate');
     }
+
+    public static function canManageApprovals(Authenticatable $user): bool
+    {
+        return $user->can('kol.approvals.manage');
+    }
 }

@@ -6,7 +6,7 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
-use App\Modules\Kol\Infrastructure\AffiliateWp\ConnectorResponse;
+use App\Modules\Kol\Application\AffiliateWp\ConnectorResponse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
