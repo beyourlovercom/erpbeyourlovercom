@@ -35,6 +35,12 @@ jobs:
           cache: npm
       - name: Install PHP dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Install frontend dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
       - name: Prepare test environment
         run: |
           cp .env.example .env
@@ -48,9 +54,3 @@ jobs:
           tests/Feature/Marketing/WordPressSubscriberSyncTest.php
           tests/Feature/Marketing/HttpWordPressSubscriberGatewayTest.php
           tests/Feature/SyncWorkspaceTest.php
-      - name: Install frontend dependencies
-        run: npm ci --no-audit --no-fund
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Build
-        run: npm run build
