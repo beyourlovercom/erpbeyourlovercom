@@ -136,15 +136,44 @@ describe('Customer Library KPI Strip — compact', () => {
     expect(cards[5].attributes('title')).toContain('待处理客户支持工单')
   })
 
-  it('customer groups workspace exposes shortcuts and account-level column settings', async () => {
-    const wrapper = mount(Index, { props: { ...groupProps, canOperate: true, filters: { group: 'repeat_customer' } } })
-    const labels = wrapper.findAll('.customer-group-shortcut').map(link => link.text())
-    expect(labels).toEqual(['全部客户', '无购买客户', '新客户', '复购客户', '单次多产品客户', '已发货客户', '尚未发货客户', '活跃客户', '流失风险客户', '沉睡客户', '高频客户', '高价值客户', 'VIP客户'])
-    expect(wrapper.find('.customer-group-shortcut-active').text()).toBe('复购客户')
+  it('customer groups workspace consolidates system groups into the navigator', async () => {
+    const wrapper = mount(Index, { props: { ...groupProps, filters: { group: 'repeat_customer' }, systemGroupCounts: { '': 12, repeat_customer: 4 } } })
+    expect(wrapper.find('.customer-group-shortcut-rail').exists()).toBe(false)
+    expect(wrapper.findAll('.groups-row').map(link => link.text()).some(text => text.includes('复购客户') && text.includes('4'))).toBe(true)
+    expect(wrapper.find('.groups-row-selected').text()).toContain('复购客户')
+    expect(wrapper.find('.groups-row-selected').attributes('aria-current')).toBe('page')
     expect(wrapper.find('#filter-group').exists()).toBe(false)
     expect(wrapper.find('a[href*="group=repeat_customer"]').attributes('href')).toContain('/customers/groups?')
     await wrapper.get('.column-settings-trigger').trigger('click')
     expect(wrapper.get('.column-settings-panel').text()).toContain('设置绑定当前账号并跨设备同步')
+  })
+
+  it('independently collapses sections and the whole navigator', async () => {
+    const wrapper = mount(Index, { props: { ...groupProps, manualGroups: [{ id: 7, name: 'VIP 手动组', description: null, member_count: 2 }] } })
+    const toggles = wrapper.findAll('.groups-section-toggle')
+    await toggles[0].trigger('click')
+    expect(wrapper.find('[aria-label="系统分组"].groups-row-list').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="手动分组"].groups-row-list').exists()).toBe(true)
+    await toggles[1].trigger('click')
+    expect(wrapper.find('[aria-label="手动分组"].groups-row-list').exists()).toBe(false)
+    await wrapper.get('.groups-icon-button').trigger('click')
+    expect(wrapper.find('.groups-navigator-collapsed').exists()).toBe(true)
+    expect(wrapper.find('.groups-rail-mark').exists()).toBe(true)
+    await wrapper.get('.groups-icon-button').trigger('click')
+    expect(wrapper.find('.groups-navigator-collapsed').exists()).toBe(false)
+  })
+
+  it('keeps system actions absent and gates manual actions by customers.operate', () => {
+    const system = mount(Index, { props: { ...groupProps, canOperate: true, filters: { group: 'repeat_customer' }, customers: { ...groupProps.customers, total: 4 } } })
+    expect(system.find('.groups-current-header').text()).not.toContain('添加客户')
+    expect(system.find('.groups-current-header').text()).not.toContain('删除')
+
+    const manual = { id: 7, name: 'VIP 手动组', description: null, member_count: 2 }
+    const reader = mount(Index, { props: { ...groupProps, selectedManualGroup: manual, manualGroups: [manual], canOperate: false } })
+    expect(reader.find('.groups-current-header').text()).not.toContain('重命名')
+    expect(reader.find('.groups-current-header').text()).not.toContain('添加客户')
+    expect(reader.find('.groups-current-header').text()).not.toContain('删除')
+    expect(reader.find('input[aria-label="搜索可加入客户"]').exists()).toBe(false)
   })
 
   it('customer library keeps the group filter and exposes account column settings', () => {
@@ -160,7 +189,7 @@ describe('Customer Library KPI Strip — compact', () => {
     expect(wrapper.find('.column-settings-trigger').exists()).toBe(true)
   })
 
-  it('renders manual groups separately and exposes manual options in the library filter', () => {
+  it('renders manual groups separately and exposes manual options in the library filter', async () => {
     const props = {
       ...baseProps,
       manualGroups: [{ id: 7, name: 'VIP 手动组', description: 'Selected', member_count: 2 }],
@@ -169,13 +198,19 @@ describe('Customer Library KPI Strip — compact', () => {
     expect(library.find('#filter-group').findAll('option').map(option => option.text())).toContain('VIP 手动组')
 
     const groups = mount(Index, { props: { ...props, ...groupProps, canOperate: true, selectedManualGroup: props.manualGroups[0] } })
-    expect(groups.find('.manual-groups-area').text()).toContain('VIP 手动组')
-    expect(groups.find('input[aria-label="新分组名称"]').exists()).toBe(true)
+    expect(groups.find('[aria-label="手动分组"]').text()).toContain('VIP 手动组')
+    expect(groups.find('.groups-current-header').text()).toContain('手动分组')
+    expect(groups.find('input[aria-label="新分组名称"]').exists()).toBe(false)
+    await groups.get('button[aria-label="打开创建手动分组"]').trigger('click')
+    expect(groups.find('input[aria-label="新分组名称"]').isVisible()).toBe(true)
+    await groups.get('button[aria-label="取消创建手动分组"]').trigger('click')
+    expect(groups.find('input[aria-label="新分组名称"]').exists()).toBe(false)
     expect(groups.findAll('button').some(button => button.text() === '重命名')).toBe(true)
-    expect(groups.findAll('button').some(button => button.text() === '删除分组')).toBe(true)
+    expect(groups.findAll('button').some(button => button.text() === '删除')).toBe(true)
+    expect(groups.find('.groups-header-actions').findAll('button').map(button => button.text())).toEqual(['添加客户', '重命名', '删除', '…'])
   })
 
-  it('shows the empty manual group state and bounded add flow', () => {
+  it('shows the empty manual group state and bounded add flow', async () => {
     const wrapper = mount(Index, { props: {
       ...groupProps,
       canOperate: true,
@@ -183,15 +218,19 @@ describe('Customer Library KPI Strip — compact', () => {
       selectedManualGroup: { id: 8, name: 'Empty Group', description: null, member_count: 0 },
     } })
     expect(wrapper.find('.manual-group-empty-state').text()).toContain('还没有客户')
-    expect(wrapper.find('input[aria-label="搜索可加入客户"]').exists()).toBe(true)
+    expect(wrapper.find('input[aria-label="搜索可加入客户"]').exists()).toBe(false)
     expect(wrapper.findAll('button').some(button => button.text() === '添加客户')).toBe(true)
+    await wrapper.get('.groups-header-actions button').trigger('click')
+    expect(wrapper.find('input[aria-label="搜索可加入客户"]').exists()).toBe(true)
+    await wrapper.get('button[aria-label="关闭添加客户"]').trigger('click')
+    expect(wrapper.find('input[aria-label="搜索可加入客户"]').exists()).toBe(false)
   })
 
-  it('keeps shipment count hidden by default and exposes shipment group shortcuts', async () => {
+  it('keeps shipment count hidden by default and exposes shipment groups in the navigator', async () => {
     const wrapper = mount(Index, { props: groupProps })
     expect(wrapper.findAll('thead th').map(node => node.text())).not.toContain('Shipment count')
-    expect(wrapper.findAll('.customer-group-shortcut').map(link => link.text())).toContain('已发货客户')
-    expect(wrapper.findAll('.customer-group-shortcut').map(link => link.text())).toContain('尚未发货客户')
+    expect(wrapper.findAll('.groups-row').map(link => link.text()).some(text => text.includes('已发货客户'))).toBe(true)
+    expect(wrapper.findAll('.groups-row').map(link => link.text()).some(text => text.includes('尚未发货客户'))).toBe(true)
     await wrapper.get('.column-settings-trigger').trigger('click')
     expect(wrapper.findAll('input[aria-label="显示Shipment count"]').length).toBe(1)
   })

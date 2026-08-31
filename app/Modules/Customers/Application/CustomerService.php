@@ -27,6 +27,19 @@ final class CustomerService
 
     public function list(array $filters = [], int $perPage = 50): LengthAwarePaginator
     {
+        return $this->query($filters)
+            ->orderByDesc('updated_at')
+            ->paginate($perPage)
+            ->withQueryString();
+    }
+
+    public function count(array $filters = []): int
+    {
+        return (int) $this->query($filters)->count();
+    }
+
+    private function query(array $filters = [])
+    {
         $customerClass = self::CUSTOMER_CLASS;
         $archived = $filters['archived'] ?? '';
         $groupFilter = (string) ($filters['group'] ?? '');
@@ -52,10 +65,7 @@ final class CustomerService
             })
             ->when($manualGroup !== null, function ($query) use ($manualGroup): void {
                 $this->groups->applyFilter($query, $manualGroup);
-            })
-            ->orderByDesc('updated_at')
-            ->paginate($perPage)
-            ->withQueryString();
+            });
     }
 
     private function applySegment($query, string $segment): void

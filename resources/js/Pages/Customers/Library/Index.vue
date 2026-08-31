@@ -88,6 +88,7 @@ const props = defineProps<{
     gridPreference: GridPreferenceValue<ColumnKey> | null
     manualGroups?: { id: number; name: string; description: string | null; member_count: number }[]
     selectedManualGroup?: { id: number; name: string; description: string | null; member_count: number } | null
+    systemGroupCounts?: Record<string, number>
 }>()
 
 const isGroupsWorkspace = computed(() => props.workspace === 'groups')
@@ -98,6 +99,19 @@ const workspaceSubtitle = computed(() => isGroupsWorkspace.value
 const workspaceBasePath = computed(() => isGroupsWorkspace.value ? '/customers/groups' : '/customers/library')
 const manualGroups = computed(() => props.manualGroups ?? [])
 const selectedManualGroup = computed(() => props.selectedManualGroup ?? null)
+const systemGroupCounts = computed(() => props.systemGroupCounts ?? {})
+const systemGroups = computed(() => groupShortcuts.map(group => ({
+    ...group,
+    count: systemGroupCounts.value[group.key] ?? 0,
+})))
+const selectedSystemGroup = computed(() => systemGroups.value.find(group => group.key === filters.group) ?? systemGroups.value[0])
+const selectedGroup = computed(() => selectedManualGroup.value
+    ? { name: selectedManualGroup.value.name, type: '手动分组', description: selectedManualGroup.value.description, count: selectedManualGroup.value.member_count }
+    : { name: selectedSystemGroup.value.label, type: '系统分组', description: '根据客户、订单与发货事实动态计算。', count: props.customers.total })
+
+const systemGroupsExpanded = ref(true)
+const manualGroupsExpanded = ref(true)
+const groupsNavigatorCollapsed = ref(false)
 
 const groupShortcuts = [
     { key: '', label: '全部客户' },
@@ -146,15 +160,25 @@ const submit = () => router.get(workspaceBasePath.value, { ...filters, page: 1 }
 
 const newGroupName = ref('')
 const newGroupDescription = ref('')
+const newGroupOpen = ref(false)
 const renameGroupName = ref('')
 const renameOpen = ref(false)
 const memberSearch = ref('')
 const memberSearchResults = ref<{ id: number; name: string; email: string | null; phone: string | null }[]>([])
 const selectedMemberIds = ref<number[]>([])
+const memberAddOpen = ref(false)
+
+const toggleGroupsNavigator = () => { groupsNavigatorCollapsed.value = !groupsNavigatorCollapsed.value }
 
 const createGroup = () => {
     if (!newGroupName.value.trim()) return
     router.post('/customers/groups', { name: newGroupName.value, description: newGroupDescription.value })
+}
+
+const closeNewGroup = () => {
+    newGroupOpen.value = false
+    newGroupName.value = ''
+    newGroupDescription.value = ''
 }
 
 const renameGroup = () => {
@@ -179,6 +203,15 @@ const searchGroupCustomers = async () => {
     if (!selectedManualGroup.value || !memberSearch.value.trim()) return
     const response = await axios.get(`/customers/groups/${selectedManualGroup.value.id}/customers/search`, { params: { search: memberSearch.value } })
     memberSearchResults.value = response.data.customers
+}
+
+const openMemberAdd = () => { memberAddOpen.value = true }
+
+const closeMemberAdd = () => {
+    memberAddOpen.value = false
+    memberSearch.value = ''
+    memberSearchResults.value = []
+    selectedMemberIds.value = []
 }
 
 const addMembers = () => {
@@ -308,20 +341,31 @@ const subscriptionSummary = (customer: Customer): string => {
                                 title="客户导入功能（M1.8）尚在规划中，暂不可用"
                             >导入</button>
                         </div>
-                        <nav v-if="isGroupsWorkspace" class="customer-group-shortcut-rail" aria-label="客户分组快捷筛选">
-                            <Link
-                                v-for="shortcut in groupShortcuts"
-                                :key="shortcut.key || 'all'"
-                                class="erp-btn erp-btn-secondary customer-group-shortcut"
-                                :class="{ 'customer-group-shortcut-active': filters.group === shortcut.key }"
-                                :href="groupHref(shortcut.key)"
-                            >{{ shortcut.label }}</Link>
-                        </nav>
                         <Link v-if="canOperate" class="erp-btn erp-btn-primary customer-header-create" href="/customers/library/create">新建客户</Link>
                     </div>
                 </div>
 
-                <template v-if="!compact">
+                <div :class="{ 'groups-workspace': isGroupsWorkspace, 'groups-workspace-collapsed': groupsNavigatorCollapsed }">
+                <aside v-if="isGroupsWorkspace" class="groups-navigator" :class="{ 'groups-navigator-collapsed': groupsNavigatorCollapsed }" aria-label="客户分组导航">
+                    <div class="groups-navigator-header">
+                        <span v-if="!groupsNavigatorCollapsed" class="groups-navigator-title">分组</span>
+                        <button class="groups-icon-button" type="button" :aria-label="groupsNavigatorCollapsed ? '展开分组导航' : '收起分组导航'" :title="groupsNavigatorCollapsed ? '展开分组导航' : '收起分组导航'" @click="toggleGroupsNavigator">{{ groupsNavigatorCollapsed ? '›' : '‹' }}</button>
+                    </div>
+                    <template v-if="!groupsNavigatorCollapsed">
+                        <button class="groups-section-toggle" type="button" :aria-expanded="systemGroupsExpanded" @click="systemGroupsExpanded = !systemGroupsExpanded"><span>系统分组</span><span>{{ systemGroupsExpanded ? '⌃' : '⌄' }}</span></button>
+                        <nav v-if="systemGroupsExpanded" class="groups-row-list" aria-label="系统分组">
+                            <Link v-for="group in systemGroups" :key="group.key || 'all'" class="groups-row" :class="{ 'groups-row-selected': filters.group === group.key }" :aria-current="filters.group === group.key ? 'page' : undefined" :href="groupHref(group.key)"><span class="groups-row-icon" aria-hidden="true">{{ group.key === '' ? '○' : '◈' }}</span><span class="groups-row-label">{{ group.label }}</span><span class="groups-row-count">{{ group.count }}</span></Link>
+                        </nav>
+                        <div class="groups-section-heading"><button class="groups-section-toggle" type="button" :aria-expanded="manualGroupsExpanded" @click="manualGroupsExpanded = !manualGroupsExpanded"><span>手动分组</span><span>{{ manualGroupsExpanded ? '⌃' : '⌄' }}</span></button><button v-if="canOperate && !newGroupOpen" class="groups-add-button" type="button" aria-label="打开创建手动分组" title="创建手动分组" @click="newGroupOpen = true">+</button><form v-if="canOperate && newGroupOpen" class="groups-create-form" @submit.prevent="createGroup"><input v-model="newGroupName" class="erp-input" type="text" maxlength="255" placeholder="新分组名称" aria-label="新分组名称"><button class="erp-btn erp-btn-primary groups-create-submit" type="submit">创建</button><button class="erp-btn erp-btn-secondary groups-create-cancel" type="button" aria-label="取消创建手动分组" @click="closeNewGroup">取消</button></form></div>
+                        <nav v-if="manualGroupsExpanded" class="groups-row-list" aria-label="手动分组">
+                            <Link v-for="group in manualGroups" :key="group.id" class="groups-row" :class="{ 'groups-row-selected': selectedManualGroup?.id === group.id }" :aria-current="selectedManualGroup?.id === group.id ? 'page' : undefined" :href="groupHref(`manual:${group.id}`)"><span class="groups-row-icon" aria-hidden="true">◇</span><span class="groups-row-label">{{ group.name }}</span><span class="groups-row-count">{{ group.member_count }}</span></Link>
+                            <p v-if="manualGroups.length === 0" class="groups-empty">暂无手动分组</p>
+                        </nav>
+                    </template>
+                    <span v-else class="groups-rail-mark" aria-hidden="true">分</span>
+                </aside>
+                <main :class="{ 'groups-main': isGroupsWorkspace }">
+                <template v-if="!compact && !isGroupsWorkspace">
                     <!-- KPI Statistics — each card: label + value only (≤2 visible rows); details in title tooltip -->
                     <div class="customer-kpi-row" data-testid="kpi-strip">
                         <article class="erp-form-card customer-kpi-card">
@@ -408,47 +452,24 @@ const subscriptionSummary = (customer: Customer): string => {
                     </form>
                 </template>
 
-                <section v-if="isGroupsWorkspace" class="manual-groups-area" aria-label="手动客户分组">
-                    <div class="manual-groups-heading">
-                        <div>
-                            <h2>手动分组</h2>
-                            <p>持久化维护客户成员；系统分组仍由订单、发货和客户事实动态计算。</p>
-                        </div>
-                        <form v-if="canOperate" class="manual-group-create" @submit.prevent="createGroup">
-                            <input v-model="newGroupName" class="erp-input" type="text" maxlength="255" placeholder="新分组名称" aria-label="新分组名称">
-                            <button class="erp-btn erp-btn-primary" type="submit">创建分组</button>
-                        </form>
+                <section v-if="isGroupsWorkspace" class="groups-current-header">
+                    <div><p class="groups-current-eyebrow">客户分组</p><h2>{{ selectedGroup.name }} <span class="groups-type-badge">{{ selectedGroup.type }}</span></h2><p v-if="selectedGroup.description" class="groups-current-description">{{ selectedGroup.description }}</p></div>
+                    <div class="groups-current-meta"><strong>{{ selectedGroup.count }}</strong><span>位客户</span></div>
+                    <div v-if="selectedManualGroup && canOperate" class="groups-header-actions">
+                        <form v-if="renameOpen" class="manual-group-rename" @submit.prevent="renameGroup"><input v-model="renameGroupName" class="erp-input" type="text" maxlength="255" aria-label="新的分组名称"><button class="erp-btn erp-btn-primary" type="submit">保存</button><button class="erp-btn erp-btn-secondary" type="button" @click="renameOpen = false">取消</button></form>
+                        <template v-else><button class="erp-btn erp-btn-secondary" type="button" @click="openMemberAdd">添加客户</button><button class="erp-btn erp-btn-secondary" type="button" @click="beginRename">重命名</button><button class="erp-btn erp-btn-danger" type="button" @click="deleteGroup">删除</button><button class="erp-btn erp-btn-secondary groups-overflow-button" type="button" aria-label="更多分组操作">…</button></template>
                     </div>
-                    <div v-if="manualGroups.length" class="manual-group-list">
-                        <Link v-for="group in manualGroups" :key="group.id" :href="groupHref(`manual:${group.id}`)" class="manual-group-card" :class="{ 'manual-group-card-active': selectedManualGroup?.id === group.id }">
-                            <strong>{{ group.name }}</strong><span>{{ group.member_count }} 位客户</span>
-                        </Link>
-                    </div>
-                    <p v-else class="manual-group-empty">暂无手动分组。使用“创建分组”开始维护固定客户集合。</p>
-                    <div v-if="selectedManualGroup" class="manual-group-detail">
-                        <div class="manual-group-detail-header">
-                            <div><h3>{{ selectedManualGroup.name }}</h3><p>{{ selectedManualGroup.member_count }} 位客户</p></div>
-                            <div v-if="canOperate" class="manual-group-actions">
-                                <button v-if="!renameOpen" class="erp-btn erp-btn-secondary" type="button" @click="beginRename">重命名</button>
-                                <form v-else class="manual-group-rename" @submit.prevent="renameGroup">
-                                    <input v-model="renameGroupName" class="erp-input" type="text" maxlength="255" aria-label="新的分组名称">
-                                    <button class="erp-btn erp-btn-primary" type="submit">保存</button>
-                                    <button class="erp-btn erp-btn-secondary" type="button" @click="renameOpen = false">取消</button>
-                                </form>
-                                <button class="erp-btn erp-btn-danger" type="button" @click="deleteGroup">删除分组</button>
-                            </div>
-                        </div>
-                        <form v-if="canOperate" class="manual-group-add" @submit.prevent="searchGroupCustomers">
-                            <input v-model="memberSearch" class="erp-input" type="search" placeholder="按姓名 / Email / 电话搜索客户" aria-label="搜索可加入客户">
-                            <button class="erp-btn erp-btn-secondary" type="submit">搜索</button>
-                            <button class="erp-btn erp-btn-primary" type="button" :disabled="selectedMemberIds.length === 0" @click="addMembers">添加客户</button>
-                        </form>
+                </section>
+                <form v-if="isGroupsWorkspace" class="erp-form-card filter-row-form groups-toolbar" @submit.prevent="submit">
+                    <div class="filter-row-scroll" role="group" aria-label="客户筛选条件"><div class="filter-row-field"><label class="erp-form-label" for="filter-search-groups">搜索</label><input id="filter-search-groups" v-model="filters.search" class="erp-input filter-input" type="text" placeholder="姓名 / Email / 电话"></div><div class="filter-row-field"><label class="erp-form-label" for="filter-country-groups">国家</label><input id="filter-country-groups" v-model="filters.country_code" class="erp-input filter-input-sm" type="text" maxlength="2" placeholder="US"></div><div class="filter-row-field"><label class="erp-form-label" for="filter-source-groups">来源</label><select id="filter-source-groups" v-model="filters.source_type" class="erp-select filter-select"><option value="">全部来源</option><option v-for="(label, key) in sources" :key="key" :value="key">{{ label }}</option></select></div><div class="filter-row-field"><label class="erp-form-label" for="filter-archived-groups">状态</label><select id="filter-archived-groups" v-model="filters.archived" class="erp-select filter-select"><option value="">仅在用</option><option value="only">仅已归档</option><option value="all">全部</option></select></div><div class="filter-row-submit"><span class="erp-form-label" aria-hidden="true">&nbsp;</span><button class="erp-btn erp-btn-primary" type="submit">筛选</button></div></div>
+                </form>
+                <div v-if="selectedManualGroup && canOperate && memberAddOpen" class="groups-member-add-area">
+                    <div class="manual-group-add groups-member-toolbar"><input v-model="memberSearch" class="erp-input" type="search" placeholder="按姓名 / Email / 电话搜索客户" aria-label="搜索可加入客户"><button class="erp-btn erp-btn-secondary" type="button" @click="searchGroupCustomers">搜索</button><button class="erp-btn erp-btn-primary" type="button" :disabled="selectedMemberIds.length === 0" @click="addMembers">添加客户</button><button class="erp-btn erp-btn-secondary" type="button" aria-label="关闭添加客户" @click="closeMemberAdd">取消</button></div>
                         <div v-if="memberSearchResults.length" class="manual-group-search-results">
                             <label v-for="customer in memberSearchResults" :key="customer.id"><input v-model="selectedMemberIds" type="checkbox" :value="customer.id"> {{ customer.name }} <small>{{ customer.email || customer.phone || '—' }}</small></label>
                         </div>
-                        <p v-if="customers.data.length === 0" class="manual-group-empty-state">这个手动分组还没有客户。</p>
-                    </div>
-                </section>
+                </div>
+                <p v-if="isGroupsWorkspace && selectedManualGroup && customers.data.length === 0" class="manual-group-empty-state">这个手动分组还没有客户。</p>
 
                 <div class="customer-grid-shell">
                     <div class="customer-grid-settings-anchor">
@@ -562,23 +583,54 @@ const subscriptionSummary = (customer: Customer): string => {
                         <span v-else class="pagination-btn pagination-btn-disabled" v-html="link.label" />
                     </template>
                 </div>
+                </main>
+                </div>
             </div>
         </div>
     </AuthenticatedLayout>
 </template>
 <style scoped>
-.manual-groups-area { margin-bottom: 16px; padding: 16px; border: 1px solid #DCE5E8; border-radius: 10px; background: #F8FAFA; }
-.manual-groups-heading, .manual-group-detail-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
-.manual-groups-heading h2, .manual-group-detail h3 { margin: 0; color: #142126; }
-.manual-groups-heading p, .manual-group-detail-header p { margin: 4px 0 0; color: #7A8C94; font-size: 13px; }
-.manual-group-create, .manual-group-add, .manual-group-actions, .manual-group-rename { display: flex; gap: 8px; align-items: center; }
-.manual-group-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.manual-group-card { display: flex; flex-direction: column; gap: 3px; min-width: 150px; padding: 10px 12px; border: 1px solid #DCE5E8; border-radius: 8px; background: #fff; color: #142126; text-decoration: none; }
-.manual-group-card span { color: #7A8C94; font-size: 12px; }
-.manual-group-card-active { border-color: #246F68; box-shadow: 0 0 0 1px #246F68; }
-.manual-group-empty, .manual-group-empty-state { margin: 14px 0 0; color: #7A8C94; font-size: 13px; }
-.manual-group-detail { margin-top: 16px; padding-top: 14px; border-top: 1px solid #DCE5E8; }
-.manual-group-add { margin-top: 12px; }
+.groups-workspace { display: grid; grid-template-columns: 224px minmax(0, 1fr); gap: 18px; align-items: start; min-width: 0; }
+.groups-workspace-collapsed { grid-template-columns: 48px minmax(0, 1fr); }
+.groups-navigator { min-height: 560px; padding: 10px 8px; border: 1px solid #DCE5E8; border-radius: 10px; background: #F8FAFA; }
+.groups-navigator-collapsed { padding-inline: 6px; }
+.groups-navigator-header { display: flex; align-items: center; justify-content: space-between; min-height: 34px; padding: 0 4px 8px; border-bottom: 1px solid #E7EDEE; }
+.groups-navigator-collapsed .groups-navigator-header { justify-content: center; }
+.groups-navigator-title { color: #142126; font-size: 15px; font-weight: 700; }
+.groups-icon-button, .groups-add-button { display: inline-grid; place-items: center; border: 0; background: transparent; color: #64767D; cursor: pointer; }
+.groups-icon-button { width: 28px; height: 28px; border-radius: 6px; font-size: 22px; }
+.groups-icon-button:hover, .groups-add-button:hover { background: #EAF2F4; color: #246F68; }
+.groups-section-heading { display: flex; align-items: center; gap: 2px; margin-top: 10px; }
+.groups-section-toggle { display: flex; flex: 1; align-items: center; justify-content: space-between; min-height: 30px; padding: 0 6px; border: 0; background: transparent; color: #64767D; font-size: 11px; font-weight: 700; cursor: pointer; text-align: left; }
+.groups-add-button { width: 24px; height: 24px; margin-right: 3px; border-radius: 5px; font-size: 19px; }
+.groups-create-form { display: flex; align-items: center; gap: 3px; }
+.groups-create-form .erp-input { width: 108px; min-width: 0; padding: 5px 7px; }
+.groups-create-submit, .groups-create-cancel { padding: 5px 7px; font-size: 11px; white-space: nowrap; }
+.groups-row-list { display: grid; gap: 2px; }
+.groups-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 6px; min-height: 32px; padding: 0 8px; border-radius: 6px; color: #344B53; text-decoration: none; font-size: 12px; }
+.groups-row:hover { background: #EEF5F6; }
+.groups-row-selected { background: #DCEFF7; color: #164F63; font-weight: 700; }
+.groups-row-icon { color: #5A8A94; text-align: center; font-size: 14px; }
+.groups-row-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.groups-row-count { color: #7A8C94; font-size: 11px; font-variant-numeric: tabular-nums; }
+.groups-empty, .groups-rail-mark { margin: 8px; color: #7A8C94; font-size: 11px; }
+.groups-rail-mark { display: block; margin: 14px 0; text-align: center; font-weight: 700; }
+.groups-main { min-width: 0; }
+.groups-current-header { display: flex; align-items: flex-start; gap: 14px; min-height: 66px; margin-bottom: 12px; }
+.groups-current-header h2 { margin: 0; color: #142126; font-size: 20px; }
+.groups-current-eyebrow { margin: 0 0 4px; color: #7A8C94; font-size: 11px; }
+.groups-current-description { margin: 5px 0 0; color: #7A8C94; font-size: 12px; }
+.groups-type-badge { display: inline-block; margin-left: 6px; padding: 3px 7px; border-radius: 999px; background: #E9F2F4; color: #52717A; font-size: 10px; font-weight: 600; vertical-align: middle; }
+.groups-current-meta { display: flex; flex-direction: column; align-items: flex-end; margin-left: auto; color: #7A8C94; font-size: 11px; white-space: nowrap; }
+.groups-current-meta strong { color: #142126; font-size: 20px; line-height: 1.1; }
+.groups-header-actions { display: flex; align-items: center; gap: 6px; }
+.groups-overflow-button { font-size: 18px; padding-inline: 9px; }
+.groups-toolbar { margin-bottom: 10px; }
+.groups-member-toolbar { justify-content: flex-end; margin: -2px 0 10px; }
+.groups-member-toolbar .erp-input { min-width: 230px; }
+.groups-member-add-area { margin-bottom: 10px; }
+.manual-group-add { display: flex; gap: 8px; align-items: center; }
+.manual-group-empty-state { margin: 14px 0 0; color: #7A8C94; font-size: 13px; }
 .manual-group-add .erp-input { min-width: 280px; }
 .manual-group-search-results { display: grid; gap: 6px; margin-top: 10px; padding: 10px; background: #fff; border: 1px solid #DCE5E8; border-radius: 8px; }
 .manual-group-search-results label { color: #344B53; }
@@ -792,6 +844,13 @@ thead .customer-grid-identity { z-index: 5; }
     .customer-kpi-row { grid-template-columns: repeat(3, 1fr); }
     .customer-header-copy { flex-basis: 250px; min-width: 190px; }
     .customer-header-actions { max-width: calc(100% - 206px); }
+}
+@media (max-width: 900px) {
+    .groups-workspace { grid-template-columns: 190px minmax(0, 1fr); gap: 12px; }
+    .groups-workspace-collapsed { grid-template-columns: 44px minmax(0, 1fr); }
+    .groups-current-header { flex-wrap: wrap; }
+    .groups-current-meta { margin-left: auto; }
+    .groups-header-actions { width: 100%; justify-content: flex-end; }
 }
 @media (max-width: 760px) {
     .customer-list-header-row { width: 100%; }
