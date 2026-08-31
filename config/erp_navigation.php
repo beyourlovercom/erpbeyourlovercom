@@ -10,7 +10,6 @@ return [
     'customers' => ['icon' => '👥', 'label' => '客户', 'children' => [
         'orders' => ['label' => '订单', 'path' => '/customers/orders'],
         'orders.create' => ['label' => '新建订单', 'path' => '/customers/orders/create'],
-        'orders.mine' => ['label' => '我的订单', 'path' => '/customers/orders/mine'],
     ]],
     'kol' => ['icon' => '👥', 'label' => '网红', 'children' => [
         'orders' => ['label' => '订单', 'path' => '/kol/orders'],

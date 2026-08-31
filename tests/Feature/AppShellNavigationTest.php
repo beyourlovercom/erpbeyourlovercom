@@ -124,8 +124,9 @@ class AppShellNavigationTest extends TestCase
             ->where('shellNavigation.1.children.3.key', 'sync-customers-import')
             ->where('shellNavigation.1.children.3.path', '/sync/customers/import')
             ->where('shellNavigation.2.key', 'customers')
-            ->where('shellNavigation.2.children.2.key', 'customers-import')
-            ->where('shellNavigation.2.children.2.path', '/customers/import'));
+            ->where('shellNavigation.2.children.2.key', 'customers-companies')
+            ->where('shellNavigation.2.children.3.key', 'customers-import')
+            ->where('shellNavigation.2.children.3.path', '/customers/import'));
 
         $this->actingAs($user)->get('/customers/import')->assertInertia(fn (Assert $page) => $page->component('Customers/Import'));
         $this->actingAs($user)->get('/sync/customers/import')->assertInertia(fn (Assert $page) => $page->component('Customers/Import'));
@@ -139,7 +140,8 @@ class AppShellNavigationTest extends TestCase
             ->where('shellNavigation.1.key', 'sync')
             ->has('shellNavigation.1.children', 4)
             ->where('shellNavigation.2.key', 'customers')
-            ->has('shellNavigation.2.children', 2));
+            ->has('shellNavigation.2.children', 3)
+            ->where('shellNavigation.2.children.2.key', 'customers-companies'));
 
         $this->actingAs($withoutAdminGate)->get('/customers/import')->assertForbidden();
         $this->actingAs($withoutAdminGate)->get('/sync/customers/import')->assertForbidden();

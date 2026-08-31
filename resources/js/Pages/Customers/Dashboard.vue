@@ -17,6 +17,7 @@ const props = defineProps<{
     canOperate: boolean
     canImport: boolean
     canExport: boolean
+    canViewOrders: boolean
 }>()
 
 const money = (value: number, currency: string) =>
@@ -93,6 +94,19 @@ const exportCsv = () => { window.location.href = '/customers/library/export?form
                         <p class="integration-unavailable">当前有 {{ metrics.pending_support_tickets }} 个待处理客户支持工单。</p>
                     </article>
                 </div>
+
+                <section class="erp-form-card customer-quick-links" aria-label="客户工作区快捷入口">
+                    <h2 class="erp-form-card-title">客户工作区</h2>
+                    <div class="quick-link-grid">
+                        <Link v-for="entry in [
+                            { label: '客户列表', path: '/customers/library' },
+                            { label: '客户分组', path: '/customers/groups' },
+                            { label: '公司', path: '/customers/companies' },
+                        ]" :key="entry.path" class="quick-link" :href="entry.path">{{ entry.label }}<span>→</span></Link>
+                        <Link v-if="canViewOrders" class="quick-link" href="/customers/orders">客户订单<span>→</span></Link>
+                        <Link v-if="canImport" class="quick-link" href="/customers/import">客户导入<span>→</span></Link>
+                    </div>
+                </section>
             </div>
         </div>
     </AuthenticatedLayout>
@@ -116,6 +130,10 @@ const exportCsv = () => { window.location.href = '/customers/library/export?form
     margin-bottom: 24px;
 }
 .integration-unavailable { font-size: 13px; color: #7A8C94; font-style: italic; margin: 0; }
+.customer-quick-links { margin-bottom: 24px; }
+.quick-link-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.quick-link { display: flex; gap: 16px; justify-content: space-between; min-width: 150px; padding: 10px 12px; border: 1px solid #DCE5E7; border-radius: 8px; color: #236F6A; text-decoration: none; font-size: 13px; }
+.quick-link:hover { border-color: #2D8C84; background: #F3FAF9; }
 @media (max-width: 900px) { .customer-kpi-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 640px) { .customer-kpi-grid { grid-template-columns: 1fr; } .customer-integration-grid { grid-template-columns: 1fr; } }
 </style>
