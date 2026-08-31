@@ -117,16 +117,16 @@ Each rendered activity shows action label, actor display when resolvable, timest
 OWNER_SCOPE_DIRECTION: GRANTED — Owner explicitly started Customer M1.9 Customer360 Closure on 2026-08-31.
 IMPLEMENTATION_AUTHORIZATION: GRANTED — Owner explicitly authorized M1.9 implementation on 2026-08-31, including Customer URL/navigation closure amendment. Git delivery, merge and deployment remain separately unauthorized.
 GIT_DELIVERY_AUTHORIZATION: GRANTED — Owner explicitly authorized M1.9 commit / push / PR creation on 2026-08-31. This does not authorize merge or deployment.
-MERGE_AUTHORIZATION: NOT GRANTED.
+MERGE_AUTHORIZATION: GRANTED — Owner explicitly authorized merge of PR #133 on 2026-08-31. This does not authorize deployment.
 PRODUCTION_DEPLOYMENT_AUTHORIZATION: NOT GRANTED.
 
-NEXT_GATE: Git delivery authorized on 2026-08-31 → final delivery gate → commit / push / PR → separate merge authorization.
+NEXT_GATE: Merge authorized on 2026-08-31 → exact-head merge PR #133 → canonical main synchronization. Deployment remains separately unauthorized.
 
 PROJECT POSITION
 PROGRAM_ROADMAP: Customer M1.1–M1.8 [MERGED] → Customer M1.9 Customer360 Closure [CURRENT].
 CURRENT_TRACK_PHASE_MAP: M1.1 Experience → M1.2 Segmentation → M1.3 Subscriber → M1.4 Support → M1.5 Shipment → M1.6 Advanced Segmentation → M1.7 Manual Groups → M1.7A Groups UI → M1.8 Import/Export [ALL MERGED] → M1.9 Customer360 Closure [OWNER_UAT_READY].
 CURRENT_WORK_PACKAGE: ERP-CUSTOMER-M1-9-CUSTOMER360-CLOSURE-001.
-PACKAGE_STATUS: IMPLEMENTATION_COMPLETE / HIGH_RISK_VERIFICATION_PASS_WITH_EXACT_MAIN_ARCH_BASELINE / OWNER_UAT_PASS / GIT_DELIVERY_AUTHORIZED / MERGE_NOT_AUTHORIZED.
+PACKAGE_STATUS: IMPLEMENTATION_COMPLETE / HIGH_RISK_VERIFICATION_PASS_WITH_EXACT_MAIN_ARCH_BASELINE / OWNER_UAT_PASS / GIT_DELIVERY_AUTHORIZED / MERGE_AUTHORIZED / DEPLOYMENT_NOT_AUTHORIZED.
 BASELINE: origin/main@e627f7391cf9975fbc509d23724967d67a6e0f9b.
 PRODUCTION_DEPLOYMENT_STATUS: NO.
 
@@ -234,7 +234,7 @@ UAT_FIXTURE: customer identity, system/manual groups, addresses, linked customer
 UAT_NAVIGATION: Customer Level-2 `客户列表 / 客户分组 / 公司 / 客户订单 / 客户导入`; legacy `/customers/orders/mine` absent.
 OWNER_DECISION: PASS.
 GIT_DELIVERY_AUTHORIZATION: GRANTED — Owner explicitly authorized M1.9 commit / push / PR creation on 2026-08-31. This does not authorize merge or deployment.
-MERGE_AUTHORIZATION: NOT GRANTED.
+MERGE_AUTHORIZATION: GRANTED — Owner explicitly authorized merge of PR #133 on 2026-08-31. This does not authorize deployment.
 PRODUCTION_DEPLOYMENT_AUTHORIZATION: NOT GRANTED.
 
 ## Git delivery evidence — 2026-08-31
@@ -257,3 +257,5 @@ PRODUCTION_DEPLOYMENT_AUTHORIZATION: NOT GRANTED.
 - GitHub status checks at creation: none configured / none pending.
 - NEXT_GATE: separate Owner merge authorization after final PR head verification.
 - Merge and production deployment remain NOT AUTHORIZED.
+
+OWNER_MERGE_DECISION: GRANTED — PR #133.
