@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { Head, useForm } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
+import CouponPanel, { type CouponCandidate, type CouponRow } from './CouponPanel.vue'
 
 type AffiliateRow = {
   id: number
@@ -42,7 +43,9 @@ const props = defineProps<{
   canManageApprovals: boolean
   canManageAffiliates: boolean
   affiliates: AffiliateRow[]
+  coupons: CouponRow[]
   provisioningCandidates: ProvisioningCandidate[]
+  couponCandidates: CouponCandidate[]
   kolOptions: Option[]
   ownerOptions: Option[]
 }>()
@@ -52,6 +55,7 @@ const syncForm = useForm<{ affiliatewp_sync?: string }>({})
 const bindForm = useForm<{ account_id: number | null; kol_id: number | null; affiliatewp_binding?: string }>({ account_id: null, kol_id: null })
 const convertForm = useForm<{ account_id: number | null; owner_id: number | null; display_name: string; affiliatewp_binding?: string }>({ account_id: null, owner_id: null, display_name: '' })
 const provisionForm = useForm<{ kol_id: number | null; affiliatewp_provision?: string }>({ kol_id: null })
+const activeMode = ref<'influencer' | 'coupon'>('influencer')
 const actionAccountId = ref<number | null>(null)
 const actionMode = ref<'bind' | 'convert' | null>(null)
 
@@ -123,16 +127,16 @@ function formatSyncTime(value: string | null): string {
         <div>
           <p class="mvp-kicker">KOL · AffiliateWP</p>
           <h2>AffiliateWP</h2>
-          <p>统一查看 AffiliateWP Influencer，并承载 KOL 审批、绑定与 provisioning 状态。</p>
+          <p>统一操作 AffiliateWP Influencer 与 WooCommerce Coupon，并保持 Provider truth 可核验。</p>
         </div>
-        <button class="affiliatewp-sync" type="button" :disabled="!canManageAffiliates || syncForm.processing" :title="canManageAffiliates ? '从 WordPress / AffiliateWP 读取完整 Influencer 快照' : '需要 Affiliate 管理权限'" @click="syncNow">
+        <button v-if="activeMode === 'influencer'" class="affiliatewp-sync" type="button" :disabled="!canManageAffiliates || syncForm.processing" :title="canManageAffiliates ? '从 WordPress / AffiliateWP 读取完整 Influencer 快照' : '需要 Affiliate 管理权限'" @click="syncNow">
           {{ syncForm.processing ? '同步中…' : '立即同步' }}
         </button>
       </div>
 
       <div class="affiliatewp-tabs" role="tablist" aria-label="AffiliateWP workspace modes">
-        <button class="affiliatewp-tab is-active" type="button" role="tab" aria-selected="true">Influencer</button>
-        <button class="affiliatewp-tab" type="button" role="tab" aria-selected="false" disabled title="M1.4C 交付">Coupon</button>
+        <button class="affiliatewp-tab" :class="{ 'is-active': activeMode === 'influencer' }" type="button" role="tab" :aria-selected="activeMode === 'influencer'" @click="activeMode = 'influencer'">Influencer</button>
+        <button class="affiliatewp-tab" :class="{ 'is-active': activeMode === 'coupon' }" type="button" role="tab" :aria-selected="activeMode === 'coupon'" @click="activeMode = 'coupon'">Coupon</button>
       </div>
 
       <div class="mvp-card affiliatewp-capabilities">
@@ -140,6 +144,9 @@ function formatSyncTime(value: string | null): string {
         <span>Affiliate 管理：{{ canManageAffiliates ? '可管理' : '只读' }}</span>
       </div>
 
+      <CouponPanel v-if="activeMode === 'coupon'" :can-manage-affiliates="canManageAffiliates" :coupons="coupons" :coupon-candidates="couponCandidates" />
+
+      <template v-if="activeMode === 'influencer'">
       <div v-if="syncForm.errors.affiliatewp_sync || bindForm.errors.affiliatewp_binding || convertForm.errors.affiliatewp_binding || provisionForm.errors.affiliatewp_provision" class="mvp-card affiliatewp-error">
         {{ syncForm.errors.affiliatewp_sync || bindForm.errors.affiliatewp_binding || convertForm.errors.affiliatewp_binding || provisionForm.errors.affiliatewp_provision }}
       </div>
@@ -216,6 +223,7 @@ function formatSyncTime(value: string | null): string {
         <strong>暂无 AffiliateWP Influencer 同步数据</strong>
         <p>当前没有 provider mirror 数据。拥有 Affiliate 管理权限的用户可以点击“立即同步”读取完整 AffiliateWP Influencer 快照。</p>
       </div>
+      </template>
     </section>
   </AuthenticatedLayout>
 </template>

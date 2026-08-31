@@ -5,11 +5,14 @@ namespace App\Modules\Kol\Experience\Controllers;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Kol\Application\AffiliateWp\AffiliateBindingService;
 use App\Modules\Kol\Application\AffiliateWp\AffiliateSnapshotSyncService;
+use App\Modules\Kol\Application\AffiliateWp\CouponProvisioningService;
+use App\Modules\Kol\Application\AffiliateWp\CouponSnapshotSyncService;
 use App\Modules\Kol\Application\AffiliateWp\KolProvisioningService;
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
 use App\Modules\Kol\Application\KolScope;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateAccount;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -23,6 +26,8 @@ final class AffiliateWpSyncController
         private readonly AffiliateSnapshotSyncService $syncService,
         private readonly AffiliateBindingService $bindingService,
         private readonly KolProvisioningService $provisioningService,
+        private readonly CouponSnapshotSyncService $couponSyncService,
+        private readonly CouponProvisioningService $couponProvisioningService,
         private readonly AffiliateWpGateway $gateway,
     ) {}
 
@@ -60,7 +65,9 @@ final class AffiliateWpSyncController
             'canManageApprovals' => $request->user()->can('kol.approvals.manage'),
             'canManageAffiliates' => $canManageAffiliates,
             'affiliates' => $this->syncService->workspaceRows($connectionKey),
+            'coupons' => $this->couponSyncService->workspaceRows($connectionKey),
             'provisioningCandidates' => $this->provisioningCandidates($request, $connectionKey, $canManageAffiliates),
+            'couponCandidates' => $this->couponCandidates($request, $connectionKey, $canManageAffiliates),
             'kolOptions' => $kolOptions,
             'ownerOptions' => $ownerOptions,
         ]);
@@ -135,6 +142,86 @@ final class AffiliateWpSyncController
         return back()->with('success', $status === 'active'
             ? 'KOL 已成功配置为 AffiliateWP Influencer。'
             : 'KOL Provision 请求已提交（当前状态：'.$status.'）。');
+    }
+
+
+    public function syncCoupons(Request $request): RedirectResponse
+    {
+        $connectionKey = (string) ($this->gateway->descriptor()['connection_key'] ?? '');
+        try {
+            $result = $this->couponSyncService->sync($connectionKey, $request->user());
+        } catch (RuntimeException $exception) {
+            report($exception);
+            return back()->withErrors(['coupon_sync' => 'Coupon 同步失败。请检查 Connector / WooCommerce 状态后重试。']);
+        }
+
+        return back()->with('success', sprintf(
+            'Coupon 同步完成：%d 条已同步，%d 条标记为未出现在最新快照。',
+            $result['synced'],
+            $result['marked_missing'],
+        ));
+    }
+
+    public function provisionCoupon(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'kol_id' => 'required|integer|exists:kols,id',
+            'code' => 'required|string|max:255',
+            'discount_type' => 'required|in:percent,fixed_cart,fixed_product',
+            'amount' => ['required', 'regex:/^(?:0|[1-9]\\d*)(?:\\.\\d{1,6})?$/'],
+            'expiry_date' => 'nullable|date_format:Y-m-d',
+        ]);
+        $connectionKey = (string) ($this->gateway->descriptor()['connection_key'] ?? '');
+        $expiry = empty($data['expiry_date'])
+            ? null
+            : CarbonImmutable::createFromFormat('Y-m-d', $data['expiry_date'], config('app.timezone', 'UTC'))->endOfDay()->toIso8601String();
+
+        try {
+            $coupon = $this->couponProvisioningService->provision($connectionKey, [
+                'kol_id' => (int) $data['kol_id'],
+                'code' => $data['code'],
+                'discount_type' => $data['discount_type'],
+                'amount' => $data['amount'],
+                'expiry' => $expiry,
+            ], $request->user());
+        } catch (DomainException $exception) {
+            return back()->withErrors(['coupon_provision' => $exception->getMessage()]);
+        } catch (RuntimeException $exception) {
+            report($exception);
+            return back()->withErrors(['coupon_provision' => 'Coupon Provider 请求失败，未报告成功。']);
+        }
+
+        return match ($coupon->provisioning_status) {
+            'active' => back()->with('success', 'Coupon 已创建并通过 WooCommerce + Affiliate read-back 验证。'),
+            'conflict' => back()->withErrors(['coupon_provision' => 'Coupon Code 已存在，冲突已硬阻止，未覆盖现有 Owner。']),
+            'readback_mismatch' => back()->withErrors(['coupon_provision' => 'Coupon 已调用 Provider，但 read-back 与请求不一致；可使用原 idempotency key 安全重试。']),
+            default => back()->withErrors(['coupon_provision' => 'Coupon Provision 未完成；已保留稳定 idempotency key 与错误状态。']),
+        };
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function couponCandidates(Request $request, string $connectionKey, bool $canManageAffiliates): array
+    {
+        if (! $canManageAffiliates) {
+            return [];
+        }
+        $query = KolAffiliateAccount::query()
+            ->where('connection_key', $connectionKey)
+            ->whereNotNull('affiliate_id')
+            ->whereNotNull('kol_id')
+            ->where('reconciliation_status', 'present')
+            ->with('kol:id,display_name,owner_id,archived_at')
+            ->whereHas('kol', fn ($kol) => $kol->whereNull('archived_at'));
+        if (! KolScope::isAllScope($request->user())) {
+            $query->whereHas('kol', fn ($kol) => $kol->where('owner_id', (int) $request->user()->getAuthIdentifier()));
+        }
+
+        return $query->orderBy('kol_id')->get()->map(fn (KolAffiliateAccount $account): array => [
+            'kol_id' => (int) $account->kol_id,
+            'display_name' => $account->kol?->display_name ?? 'KOL #'.$account->kol_id,
+            'affiliate_id' => (int) $account->affiliate_id,
+            'provider_status' => $account->provider_status,
+        ])->values()->all();
     }
 
     /** @return list<array<string,mixed>> */

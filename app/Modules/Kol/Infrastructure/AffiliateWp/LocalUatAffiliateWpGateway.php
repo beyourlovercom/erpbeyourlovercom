@@ -25,34 +25,63 @@ final class LocalUatAffiliateWpGateway implements AffiliateWpGateway
 
     public function snapshot(string $resource, ?string $cursor = null, ?string $updatedAfter = null): ConnectorResponse
     {
-        if ($resource !== 'affiliates') {
-            throw new LogicException('Local UAT fake only supports M1.4B Affiliate snapshots.');
-        }
         if ($cursor !== null) {
             return $this->response(['items' => [], 'next_cursor' => null]);
         }
 
-        return $this->response([
-            'items' => [
-                [
-                    'affiliate_id' => 810001,
-                    'user_id' => 710001,
-                    'user_email' => 'uat-external-pending@example.test',
-                    'display_name' => 'UAT External Pending',
-                    'email' => 'uat-external-pending@example.test',
-                    'status' => 'pending',
+        if ($resource === 'affiliates') {
+            return $this->response([
+                'items' => [
+                    [
+                        'affiliate_id' => 810001,
+                        'user_id' => 710001,
+                        'user_email' => 'uat-external-pending@example.test',
+                        'display_name' => 'UAT External Pending',
+                        'email' => 'uat-external-pending@example.test',
+                        'status' => 'pending',
+                    ],
+                    [
+                        'affiliate_id' => 810002,
+                        'user_id' => 710002,
+                        'user_email' => 'uat-external-active@example.test',
+                        'display_name' => 'UAT External Active',
+                        'email' => 'uat-external-active@example.test',
+                        'status' => 'active',
+                    ],
                 ],
-                [
-                    'affiliate_id' => 810002,
-                    'user_id' => 710002,
-                    'user_email' => 'uat-external-active@example.test',
-                    'display_name' => 'UAT External Active',
-                    'email' => 'uat-external-active@example.test',
-                    'status' => 'active',
+                'next_cursor' => null,
+            ]);
+        }
+
+        if ($resource === 'coupons') {
+            return $this->response([
+                'items' => [
+                    [
+                        'coupon_id' => 840001,
+                        'code' => 'UAT-AFF-15',
+                        'normalized_code' => 'uat-aff-15',
+                        'discount_type' => 'percent',
+                        'amount' => '15',
+                        'status' => 'publish',
+                        'date_expires' => null,
+                        'linked_affiliate_id' => 830001,
+                    ],
+                    [
+                        'coupon_id' => 840002,
+                        'code' => 'UAT-WELCOME',
+                        'normalized_code' => 'uat-welcome',
+                        'discount_type' => 'fixed_cart',
+                        'amount' => '10',
+                        'status' => 'publish',
+                        'date_expires' => null,
+                        'linked_affiliate_id' => null,
+                    ],
                 ],
-            ],
-            'next_cursor' => null,
-        ]);
+                'next_cursor' => null,
+            ]);
+        }
+
+        throw new LogicException('Local UAT fake does not support snapshot resource: '.$resource);
     }
 
     public function provisionAffiliate(array $payload, string $idempotencyKey): ConnectorResponse
@@ -85,12 +114,45 @@ final class LocalUatAffiliateWpGateway implements AffiliateWpGateway
 
     public function checkCoupon(string $code): ConnectorResponse
     {
-        throw new LogicException('Coupon is M1.4C and is unavailable in the M1.4B local UAT fake.');
+        $normalized = mb_strtolower(trim($code));
+        if ($normalized === 'uat-existing') {
+            return $this->response([
+                'available' => false,
+                'coupon_id' => 840099,
+                'code' => 'UAT-EXISTING',
+                'linked_affiliate_id' => 830002,
+                'normalized_code' => 'uat-existing',
+            ]);
+        }
+
+        return $this->response(['available' => true, 'normalized_code' => $normalized]);
     }
 
     public function provisionCoupon(array $payload, string $idempotencyKey): ConnectorResponse
     {
-        throw new LogicException('Coupon is M1.4C and is unavailable in the M1.4B local UAT fake.');
+        $code = (string) ($payload['code'] ?? '');
+        $normalized = mb_strtolower(trim($code));
+        if (str_contains($normalized, 'provider-error')) {
+            throw ConnectorException::retryable('Synthetic local UAT Coupon provider timeout.', 'PROVIDER_UNAVAILABLE');
+        }
+        if (str_contains($normalized, 'conflict')) {
+            throw ConnectorException::nonRetryable('Synthetic local UAT Coupon conflict.', 'COUPON_CONFLICT', 409);
+        }
+
+        $affiliateId = (int) ($payload['affiliate_id'] ?? 0);
+        if (str_contains($normalized, 'readback')) {
+            $affiliateId += 1;
+        }
+
+        return $this->response([
+            'coupon_id' => 850000 + (int) ($payload['erp_kol_id'] ?? 0),
+            'code' => $code,
+            'normalized_code' => $normalized,
+            'affiliate_id' => $affiliateId,
+            'discount_type' => (string) ($payload['discount_type'] ?? ''),
+            'amount' => (string) ($payload['amount'] ?? ''),
+            'date_expires' => $payload['expiry'] ?? null,
+        ]);
     }
 
     public function completePayout(array $payload, string $idempotencyKey): ConnectorResponse

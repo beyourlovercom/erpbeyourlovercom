@@ -1,0 +1,70 @@
+name: ERP KOL M1.4C Coupon CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/Modules/Kol/Application/AffiliateWp/Coupon*'
+      - 'app/Modules/Kol/Experience/Controllers/AffiliateWpSyncController.php'
+      - 'app/Modules/Kol/Experience/Routes/web.php'
+      - 'app/Modules/Kol/Infrastructure/AffiliateWp/**'
+      - 'app/Modules/Kol/Infrastructure/Models/KolAffiliateCoupon.php'
+      - 'database/migrations/2026_09_01_070000_create_kol_affiliate_coupons_table.php'
+      - 'resources/js/Pages/Kol/AffiliateWp/**'
+      - 'tests/Feature/Kol/*Coupon*'
+      - 'tests/Feature/Kol/KolM14COwnerUatFixtureTest.php'
+      - '.github/workflows/erp-kol-m1-4c-coupon-sync-provisioning.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  coupon:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Install frontend dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Frontend Coupon workspace tests
+        run: npx vitest run resources/js/Pages/Kol/AffiliateWp/Index.test.ts
+      - name: Build
+        run: npm run build
+      - name: Prepare test environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+          ln -s Pages resources/js/pages
+      - name: Fresh migration rehearsal
+        run: php artisan migrate:fresh --force
+      - name: Diff check
+        run: git diff --check origin/main...HEAD
+      - name: Focused PHP Coupon gate
+        run: >-
+          php artisan test
+          tests/Feature/Kol/KolCouponSyncProvisioningTest.php
+          tests/Feature/Kol/KolM14COwnerUatFixtureTest.php
+          tests/Feature/Kol/KolM14BOwnerUatFixtureTest.php
+          tests/Feature/Kol/AffiliateSnapshotSyncTest.php
+          tests/Feature/Kol/AffiliateBindingTest.php
+          tests/Feature/Kol/AffiliateWpWorkspaceTest.php
+          tests/Feature/Kol/KolProvisioningTest.php
+          tests/Feature/Kol/HttpAffiliateWpGatewayTest.php
+          tests/Feature/Sync/WordPressConnectorSettingsTest.php
