@@ -8,7 +8,7 @@ verification_tier: HIGH_RISK
 baseline: origin/main@79ee52cad5c642ea40533efcb6fa44fdfc5700f3
 owner_uat_required: YES
 git_delivery_authorized: YES
-merge_authorized: NO
+merge_authorized: YES
 production_deployment_authorized: NO
 ---
 
@@ -71,10 +71,10 @@ Add persistent manually managed Customer Groups without duplicating or mutating 
 OWNER_SCOPE_APPROVAL: PASS — Owner explicitly directed execution of Customer M1.7 on 2026-08-30.
 IMPLEMENTATION_AUTHORIZATION: GRANTED — Owner explicitly authorized execution on 2026-08-30.
 GIT_DELIVERY_AUTHORIZATION: GRANTED — Owner explicitly authorized M1.7 commit / push / PR creation on 2026-08-31. This does not authorize merge or deployment.
-MERGE_AUTHORIZATION: NOT GRANTED
+MERGE_AUTHORIZATION: GRANTED — Owner explicitly authorized merge of PR #130 on 2026-08-31. This does not authorize deployment, tag or release.
 PRODUCTION_DEPLOYMENT_AUTHORIZATION: NOT GRANTED
 
-NEXT_GATE: Commit / push / PR creation under explicit Owner Git delivery authorization. Merge and production deployment remain separately unauthorized.
+NEXT_GATE: Exact-head merge of PR #130 under explicit Owner merge authorization. Production deployment, tag and release remain separately unauthorized.
 
 VERIFICATION_TIER_UPGRADE: HIGH_RISK — M1.7 authors new database schema/migration; stronger US-host migration and rollback verification required before Owner UAT. Secondary host remains not required by current repository standard.
 
@@ -89,12 +89,12 @@ CURRENT_TRACK_PHASE_MAP: Customer M1.1 Experience [MERGED] → M1.2 Segmentation
 COMPLETED_PHASES: Customer M1.1–M1.6 merged; M1.7 scope/implementation authorization granted and implementation in local verification.
 CURRENT_PHASE: Customer M1.7 Manual Groups — Owner UAT.
 CURRENT_WORK_PACKAGE: ERP-CUSTOMER-M1-7-MANUAL-GROUPS-001
-PACKAGE_STATUS: IMPLEMENTATION_COMPLETE / HIGH_RISK_VERIFICATION_PASS / OWNER_UAT_PASS / GIT_DELIVERY_AUTHORIZED / MERGE_NOT_AUTHORIZED.
+PACKAGE_STATUS: IMPLEMENTATION_COMPLETE / HIGH_RISK_VERIFICATION_PASS / OWNER_UAT_PASS / GIT_DELIVERY_AUTHORIZED / MERGE_AUTHORIZED / DEPLOYMENT_NOT_AUTHORIZED.
 WAITING_PHASES: Customer M1.7 Owner UAT and Git delivery gates; M1.8 Full Import/Export; M1.9 Customer360 Closure.
 BASELINE: origin/main@79ee52cad5c642ea40533efcb6fa44fdfc5700f3
 GITHUB_STATE: M1.7 branch/worktree local only; no M1.7 commit, push or PR authorized or created.
 SOURCE_CONFLICTS: AI/CURRENT_CONTEXT.md and historical program-roadmap documents retain stale earlier track selection; current Owner directive explicitly selects Customer M1.7 and merged GitHub main supplies the bounded baseline. Architecture suite also has 3 pre-existing KOL/file-manifest drift failures reproduced on baseline main; M1.7 does not normalize them.
-GLOBAL_GATE: HIGH_RISK US-local verification PASS; OWNER_UAT=PASS; Git delivery authorized. Merge remains separately gated.
+GLOBAL_GATE: HIGH_RISK US-local verification PASS; OWNER_UAT=PASS; Git delivery authorized; Owner merge authorization granted for PR #130. Deployment remains separately gated.
 PRODUCTION_DEPLOYMENT_STATUS: NO — no production deployment, migration, tag or release authorized for M1.7.
 NEXT_DEPENDENCY: Owner UAT → separate Owner Git delivery authorization.
 EVIDENCE_AS_OF: 2026-08-30; current Owner directive, main@79ee52cad5c642ea40533efcb6fa44fdfc5700f3, M1.7 worktree diff, US-local verification evidence.
