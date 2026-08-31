@@ -1,0 +1,56 @@
+name: ERP WordPress Connector M1 CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/Modules/Kol/Infrastructure/AffiliateWp/**'
+      - 'app/Modules/Marketing/Experience/Routes/web.php'
+      - 'app/Modules/Sync/**'
+      - 'app/Providers/AppServiceProvider.php'
+      - 'database/migrations/2026_08_31_091500_create_wordpress_connector_settings_table.php'
+      - 'resources/js/Pages/Sync/WpApi.vue'
+      - 'tests/Feature/Kol/HttpAffiliateWpGatewayTest.php'
+      - 'tests/Feature/Sync/WordPressConnectorSettingsTest.php'
+      - '.github/workflows/erp-wordpress-connector-integration-m1.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  connector:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Prepare test environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+      - name: Focused PHP connector gate
+        run: >-
+          php artisan test
+          tests/Feature/Kol/HttpAffiliateWpGatewayTest.php
+          tests/Feature/Sync/WordPressConnectorSettingsTest.php
+          tests/Feature/Marketing/WordPressSubscriberSyncTest.php
+          tests/Feature/Marketing/HttpWordPressSubscriberGatewayTest.php
+          tests/Feature/SyncWorkspaceTest.php
+      - name: Install frontend dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
