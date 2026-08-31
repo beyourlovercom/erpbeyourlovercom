@@ -46,6 +46,7 @@ jobs:
           cp .env.example .env
           php artisan key:generate
           touch database/database.sqlite
+          ln -s Pages resources/js/pages
       - name: Focused PHP connector gate
         run: >-
           php artisan test
