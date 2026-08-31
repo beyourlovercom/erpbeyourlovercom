@@ -219,3 +219,39 @@ Second identical real import:
 
 `M1.2_SUBSCRIBER_REAL_IMPORT = PASS`
 `M1.2_SUBSCRIBER_IDEMPOTENCY = PASS`
+
+## M1.3 REAL WRITE-BACK GATE — 2026-08-31
+
+`M1.3 = WRITEBACK_READY`
+
+Live target: Windows Local WordPress `localdev.beyourlover.com` only. No production site was touched.
+
+Reversible AffiliateWP status mutation was executed through the real ERP `HttpAffiliateWpGateway::setAffiliateStatus()` transport/HMAC path:
+- provider object: Affiliate `#1`;
+- original state: `active`;
+- mutation: `active -> inactive`;
+- first read-back: `inactive`;
+- exact same idempotency key replayed: provider result identical and state remained `inactive`;
+- durable WordPress idempotency record for the mutation key: exactly `1`, action `affiliate.status`, state `succeeded`;
+- restore used a different idempotency key: `inactive -> active`;
+- final read-back: `active`;
+- durable restore record: exactly `1`, action `affiliate.status`, state `succeeded`.
+
+This satisfies the M1 idempotency requirement: replay did not create a second logical mutation, provider identity remained unchanged, and the original business state was restored.
+Security / rollback evidence:
+- the pre-existing WordPress Connector options and encrypted secret blob were backed up without decrypting or displaying the original secret;
+- a temporary random UAT secret was used only for this gate;
+- the original encrypted secret blob was restored byte-equivalently after the test;
+- all US-Mac temporary secret files, proxy scripts and listeners were removed;
+- the Windows temporary state directory was removed.
+
+Local TLS coordination note:
+- `services.andy_core.verify_tls` exists, but the current shared `HttpAffiliateWpGateway` does not yet consume it;
+- active KOL M1.4B currently has uncommitted modifications to that same gateway file;
+- Connector M1 intentionally did not edit the shared gateway, preserving parallel-worktree isolation;
+- the M1.3 live gate therefore used a transient US-Mac loopback proxy whose upstream was the real Tailnet HTTPS endpoint;
+- M1.4 direct Local UI UAT must resolve this shared gateway/TLS-setting ownership after the KOL M1.4B merge or via an independent non-conflicting baseline change.
+
+Customer M1.9 owned-file touch: `0`.
+Production deploy: `NO`.
+Merge: `NO`.
