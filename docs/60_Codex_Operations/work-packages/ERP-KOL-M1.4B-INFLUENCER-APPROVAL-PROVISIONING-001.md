@@ -259,9 +259,9 @@ For an approved ERP KOL that has no authoritative external Affiliate, use `provi
 
 - pre-rebase HEAD: `91cb05dd2385e81074b814b92a8eabd5d80d9d6e`;
 - rebased authority: `origin/main@9496144f825301c110c4ae688b353cee5b4f868b`;
-- recovery artifacts retained outside the worktree under `/Users/a/AI/007/recovery/kol-m1-4b-20260831-065036`;
-- recovery branch retained: `recovery/kol-m1-4b-pre-rebase-20260831-065132`;
-- pre-rebase stash retained until PR checkpoint is verified;
+- recovery patch/archive was retained through live-provider verification, then deleted after final green CI;
+- recovery branch `recovery/kol-m1-4b-pre-rebase-20260831-065132` was deleted after final green CI;
+- pre-rebase stash was dropped only after live-provider PASS and final green CI confirmed the rebased checkpoint;
 - original 46 dirty entries / 29 untracked files were protected before rebase;
 - only rebase conflict was the frozen Architecture baseline file;
 - Connector M1 transport/TLS behavior in `HttpAffiliateWpGateway` was preserved;
