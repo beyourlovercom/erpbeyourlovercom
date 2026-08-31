@@ -285,3 +285,24 @@ Live self-signed HTTPS proof:
 - no loopback proxy was used for this proof.
 
 The pre-existing WordPress encrypted Connector secret/options were restored exactly after the temporary UAT credential switch. Temporary UAT secrets and transfer files were removed from both devices.
+Automated UI-route UAT on isolated local runtime:
+- dedicated Connector worktree runtime bound to `127.0.0.1:18107`;
+- dedicated temporary SQLite database; no main/customer data reused;
+- existing repository `LocalUatSeeder` used for local authentication data;
+- authenticated `/sync/wpapi` render: HTTP 200, component `Sync/WpApi`;
+- unauthenticated access redirects to login;
+- placeholder connection save: HTTP 302 success;
+- placeholder Shared Secret stored encrypted at rest;
+- frontend props expose only `secret_set`, never `shared_secret`;
+- placeholder secret literal absent from rendered page;
+- placeholder setting deleted after verification.
+
+Owner-manual remainder:
+- obtain/rotate the one-time Shared Secret in the Local WordPress Connector admin UI;
+- enter the real secret in the ERP UAT Connector page and save;
+- click `测试连接` and confirm `Connected` plus provider versions/status;
+- click Subscribers `立即同步` twice and confirm the second run creates no duplicate subscriber/subscription rows;
+- visually confirm Affiliates / Coupons / Referrals / Payouts remain explicitly disabled as `待接入` pending canonical domain ownership.
+
+`M1.4_AUTOMATED_UI_GATE = PASS`
+`M1.4_OWNER_VISUAL_UAT = PENDING`
