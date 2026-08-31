@@ -306,3 +306,25 @@ Owner-manual remainder:
 
 `M1.4_AUTOMATED_UI_GATE = PASS`
 `M1.4_OWNER_VISUAL_UAT = PENDING`
+
+## M1.4 OWNER UI / FULL UAT — 2026-08-31
+
+`M1.4 = OWNER_UAT_READY`
+
+Owner explicitly reported `PASS` after the live `/sync/wpapi` UAT flow.
+
+Automated/UI evidence already established before Owner sign-off:
+- Connector worktree rebased onto `main@750cb68d5062d8d411e875d62a6237eb03f362c4` after Customer M1.9 merged;
+- Local self-signed TLS transport now honors `verify_tls=false` only in local/testing; production remains fail-closed with TLS verification enabled;
+- direct real signed health and Affiliate snapshot pass without the M1.3 proxy;
+- `/sync/wpapi` renders HTTP 200 for an authorized UAT admin;
+- Shared Secret is encrypted at rest and is never returned in Inertia props;
+- connection save route returns success and preserves the secret non-disclosure contract;
+- Owner completed the real UI onboarding / health / sync checks and returned `PASS`.
+
+Cleanup after Owner PASS:
+- temporary `127.0.0.1:18107` UAT server stopped;
+- temporary isolated SQLite database removed;
+- temporary worktree `.env` removed;
+- temporary Chrome UAT profile removed;
+- no production deployment performed.
