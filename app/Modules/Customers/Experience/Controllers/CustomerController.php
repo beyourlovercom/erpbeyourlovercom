@@ -57,6 +57,24 @@ final class CustomerController
         $gridPreferenceNamespace = $workspace === 'groups' ? self::GROUPS_GRID_NAMESPACE : self::LIBRARY_GRID_NAMESPACE;
         $filters = $request->only(['search', 'country_code', 'source_type', 'archived', 'group']);
         $paginator = $this->customers->list($filters);
+        $groupCountFilters = array_diff_key($filters, ['group' => true]);
+        $systemGroupCounts = $workspace === 'groups' ? collect([
+            '' => '全部客户',
+            'no_purchase' => '无购买客户',
+            'new_customer' => '新客户',
+            'repeat_customer' => '复购客户',
+            'multi_product_single_order' => '单次多产品客户',
+            'has_shipment' => '已发货客户',
+            'no_shipment_yet' => '尚未发货客户',
+            'active_customer' => '活跃客户',
+            'churn_risk' => '流失风险客户',
+            'dormant_customer' => '沉睡客户',
+            'high_frequency' => '高频客户',
+            'high_value' => '高价值客户',
+            'vip' => 'VIP客户',
+        ])->mapWithKeys(fn (string $label, string $group): array => [
+            $group => $this->customers->count([...$groupCountFilters, 'group' => $group]),
+        ])->all() : [];
         $manualGroups = $this->customerGroups->all();
         $selectedManualGroup = $this->customerGroups->findForFilter($filters['group'] ?? null);
         $subscriberProjections = $this->subscriberProjection->forCustomers($paginator->items());
@@ -164,6 +182,7 @@ final class CustomerController
                 'description' => $group->description,
                 'member_count' => (int) $group->memberships_count,
             ])->values()->all(),
+            'systemGroupCounts' => $systemGroupCounts,
             'selectedManualGroup' => $selectedManualGroup ? [
                 'id' => $selectedManualGroup->id,
                 'name' => $selectedManualGroup->name,

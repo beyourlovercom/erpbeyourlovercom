@@ -736,11 +736,12 @@ final class CustomerExperienceTest extends TestCase
         $this->createCustomerOrder($cancelledOnly, ['CANCELLED-SKU'], 'cancelled');
         $this->createCustomerOrder($purchased, ['VALID-SKU']);
 
-        $this->actingAs($user)->get('/customers/library?group=no_purchase')
+        $this->actingAs($user)->get('/customers/groups?group=no_purchase')
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('filters.group', 'no_purchase')
                 ->where('customers.total', 2)
+                ->where('systemGroupCounts.no_purchase', 2)
                 ->where('customers.data', function ($rows) use ($cancelledOnly, $none): bool {
                     $actual = collect($rows)->pluck('name')->sort()->values()->all();
                     $expected = collect([$cancelledOnly->name, $none->name])->sort()->values()->all();
