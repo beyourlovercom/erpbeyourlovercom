@@ -14,6 +14,7 @@ use App\Modules\Kol\Infrastructure\Models\KolOpportunity;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderService;
+use App\Modules\Orders\Application\OrderIdentityService;
 use App\Modules\Orders\Application\OrderSourceType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -28,6 +29,7 @@ final class KolCollaborationController
     public function __construct(
         private readonly AuditRecorder $audit,
         private readonly OrderService $orders,
+        private readonly OrderIdentityService $identities,
         private readonly CollaborationApprovalService $approvals,
     ) {}
 
@@ -165,6 +167,7 @@ final class KolCollaborationController
             $order = $this->orders->create([
                 'source_type' => OrderSourceType::Kol->value,
                 'order_kind' => OrderKind::KolFulfillment->value,
+                'erp_order_id' => $this->identities->generate('k', $kol->id, now()->toDateString()),
                 'external_order_number' => $this->orders->generateExternalOrderNumber(OrderKind::KolFulfillment),
                 'order_date' => now()->toDateString(),
                 'order_note' => 'KOL Collaboration #'.$locked->id,
@@ -299,6 +302,7 @@ final class KolCollaborationController
         return [
             'id' => $order->id,
             'internal_order_number' => $order->internal_order_number,
+            'erp_order_id' => $order->erp_order_id,
             'external_order_number' => $order->external_order_number,
             'order_status' => $order->order_status instanceof \BackedEnum ? $order->order_status->value : (string) $order->order_status,
             'shipment' => $order->relationLoaded('shipment') && $order->shipment ? [

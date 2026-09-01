@@ -91,7 +91,10 @@ final class GuidesKnowledgeBaseTest extends TestCase
         $this->actingAs($viewer)->get('/settings/changelog')->assertOk()->assertInertia(fn (Assert $p) => $p->has('releaseNotes',1)->where('releaseNotes.0.version','v1.6.0'));
         $this->actingAs($viewer)->get('/settings/changelog/'.$note->id)->assertOk()->assertInertia(fn (Assert $p) => $p->where('toc.0.label','Added'));
         $settingsAdmin = $this->userWith(['system.permissions.manage','guides.manage']);
-        $this->actingAs($settingsAdmin)->get('/settings')->assertOk()->assertInertia(fn (Assert $p) => $p->component('Settings/Index')->where('currentRelease.version','v1.6.0')->has('recentReleases',1));
+        $this->actingAs($settingsAdmin)->get('/settings')->assertOk()->assertInertia(fn (Assert $p) => $p->component('Settings/Index')->where('currentRelease.version','v1.6.0')->where('orderIdentity.prefix_token', '007erp')->where('orderIdentity.example', '007erp-0901-c3721')->has('recentReleases',1));
+        $this->actingAs($settingsAdmin)->put('/settings/order-identity', ['prefix_token' => ' 007 '])->assertRedirect();
+        $this->assertDatabaseHas('order_identity_settings', ['id' => 1, 'prefix_token' => '007', 'updated_by' => $settingsAdmin->id]);
+        $this->actingAs($viewer)->put('/settings/order-identity', ['prefix_token' => 'blocked'])->assertForbidden();
         $columns = Schema::getColumnListing('release_notes');
         $this->assertContains('markdown_body', $columns);
         $this->assertNotContains('commit_sha', $columns);

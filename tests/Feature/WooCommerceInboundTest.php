@@ -44,6 +44,8 @@ final class WooCommerceInboundTest extends TestCase
         $this->assertSame('woocommerce', $order->source_type->value);
         $this->assertSame('customer', $order->order_kind->value);
         $this->assertSame('WC-101', $order->external_order_number);
+        $this->assertSame('007erp-0827-c1', $order->erp_order_id);
+        $firstErpOrderId = $order->erp_order_id;
         $this->assertSame('EUR', $order->currency);
         $this->assertSame('DE', $order->address->country);
         $this->assertSame($product->id, $order->items->first()->product_id);
@@ -58,6 +60,7 @@ final class WooCommerceInboundTest extends TestCase
         $this->assertSame(1, OrderExternalReference::count());
         $order->refresh()->load('items');
         $this->assertSame('Updated', $order->order_note);
+        $this->assertSame($firstErpOrderId, $order->erp_order_id);
         $this->assertSame('21.50', $order->items->first()->unit_price);
         $this->assertDatabaseHas('audit_records', ['action' => 'order.inbound_updated']);
     }
@@ -87,6 +90,9 @@ final class WooCommerceInboundTest extends TestCase
 
         $this->assertSame(2, Order::count());
         $this->assertSame(2, OrderExternalReference::where('reference', '303')->count());
+        $erpIds = Order::query()->orderBy('id')->pluck('erp_order_id')->all();
+        $this->assertSame(['007erp-0827-c1', '007erp-0827-c2'], $erpIds);
+        $this->assertCount(2, array_unique($erpIds));
         $this->assertDatabaseHas('order_external_references', ['provider' => 'woocommerce', 'connection_key' => 'shop-a', 'reference' => '303']);
         $this->assertDatabaseHas('order_external_references', ['provider' => 'woocommerce', 'connection_key' => 'shop-b', 'reference' => '303']);
     }

@@ -26,6 +26,7 @@ final class ManualSyncController
             ->when($request->input('search'), function ($query, string $search): void {
                 $query->where(function ($nested) use ($search): void {
                     $nested->where('internal_order_number', 'like', "%{$search}%")
+                        ->orWhere('erp_order_id', 'like', "%{$search}%")
                         ->orWhereHas('address', fn ($address) => $address->where('recipient_name', 'like', "%{$search}%"));
                 });
             })->latest('updated_at')->get();
@@ -56,7 +57,7 @@ final class ManualSyncController
                 'started_at' => $run->started_at?->toIso8601String(),
             ])->values()->all(),
             'orders' => $orders->map(fn (Order $order): array => [
-                'id' => $order->id, 'internal_order_number' => $order->internal_order_number,
+                'id' => $order->id, 'erp_order_id' => $order->erp_order_id, 'internal_order_number' => $order->internal_order_number,
                 'recipient_name' => $order->address?->recipient_name,
                 'status' => $order->manualSync?->website_sync_status->value,
                 'synced_at' => $order->manualSync?->synced_at?->toIso8601String(),

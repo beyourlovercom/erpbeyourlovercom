@@ -32,6 +32,7 @@ final class OrderService
         private readonly AuditRecorder $audit,
         private readonly ProductRepository $productRepository,
         private readonly SkuIdentityResolver $skuResolver,
+        private readonly OrderIdentityService $orderIdentities,
     ) {}
 
     public function create(array $attributes, array $items, ?Authenticatable $actor): Model
@@ -44,6 +45,9 @@ final class OrderService
                 ...$orderAttributes,
                 'external_order_number' => trim((string) $attributes['external_order_number']),
                 'internal_order_number' => $this->nextOrderNumber($attributes['order_kind']),
+                'erp_order_id' => $attributes['order_kind'] === OrderKind::Customer->value
+                    ? $this->orderIdentities->allocateCustomer((string) $attributes['order_date'])
+                    : ($orderAttributes['erp_order_id'] ?? null),
                 'order_status' => OrderStatus::PendingShipment,
                 'owner_id' => $orderAttributes['owner_id'] ?? $actor?->getAuthIdentifier(),
             ]);
@@ -99,6 +103,7 @@ final class OrderService
             } else {
                 $order = $orderClass::create([
                     'internal_order_number' => $this->nextOrderNumber(OrderKind::Customer->value),
+                    'erp_order_id' => $this->orderIdentities->allocateCustomer($data->orderDate),
                     'source_type' => OrderSourceType::WooCommerce->value,
                     'order_kind' => OrderKind::Customer->value,
                     'external_order_number' => $data->externalOrderNumber,
@@ -240,7 +245,8 @@ final class OrderService
                 $query->where(function ($nested) use ($search): void {
                     $nested->where('internal_order_number', 'like', "%{$search}%")
                         ->orWhereHas('address', fn ($address) => $address->where('recipient_name', 'like', "%{$search}%"))
-                        ->orWhere('external_order_number', 'like', "%{$search}%");
+                        ->orWhere('external_order_number', 'like', "%{$search}%")
+                        ->orWhere('erp_order_id', 'like', "%{$search}%");
                 });
             })
             ->when($filters['source_type'] ?? null, fn ($query, string $source) => $query->where('source_type', $source))
@@ -430,6 +436,7 @@ final class OrderService
     {
         return [
             'internal_order_number' => $order->internal_order_number,
+            'erp_order_id' => $order->erp_order_id,
             'external_order_number' => $order->external_order_number,
             'source_type' => $order->source_type instanceof \BackedEnum ? $order->source_type->value : $order->source_type,
             'order_kind' => $order->order_kind instanceof \BackedEnum ? $order->order_kind->value : $order->order_kind,

@@ -27,6 +27,7 @@ final class OrderFulfillmentM1Test extends TestCase
 
         $order = Order::query()->firstOrFail();
         $this->assertSame('customer', $order->order_kind->value);
+        $this->assertSame('007erp-'.$order->order_date->format('md').'-c1', $order->erp_order_id);
         $this->assertSame('BIZ-0001', $order->external_order_number, 'operator business number must be preserved exactly, only trimmed');
         $this->assertNotSame($order->external_order_number, $order->internal_order_number, 'the ERP technical number must never overwrite the business number');
     }
