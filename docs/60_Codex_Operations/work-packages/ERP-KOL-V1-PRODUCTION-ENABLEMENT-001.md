@@ -170,7 +170,7 @@ After an explicitly authorized Production deployment/migration:
 1. `ERP-PRODUCTION-RUNTIME-FOUNDATION-M2.0A-001` has not reached `PRODUCTION_RUNTIME_READY`; hosting/origin remains required.
 2. Production DB identity / backup / pending migration list cannot be captured until the runtime exists.
 3. Production Connector URL/key/secret inventory cannot be verified until the runtime exists; values must remain redacted.
-4. Owner-approved source/list for the first real KOL Master records is not yet identified. This does not justify building an import feature inside this WP.
+4. Owner-approved source/list for the first real KOL Master records is identified as Tencent Docs `BYL-Influencer Master List`, sheet `Influencers`, but readable access is still required (`REAL_KOL_MASTER_SOURCE = SOURCE_IDENTIFIED_ACCESS_REQUIRED`). This does not justify building an import feature inside this WP.
 
 ## Current checkpoint
 `KOL_SIDE_ENGINEERING_READINESS = PASS`
