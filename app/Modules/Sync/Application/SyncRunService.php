@@ -54,6 +54,34 @@ final class SyncRunService
         return $run;
     }
 
+    public function setRequestedItems(Model $run, int $requestedItems): Model
+    {
+        if ($requestedItems < 0) {
+            throw new LogicException('Sync run requested item count cannot be negative.');
+        }
+
+        return DB::transaction(function () use ($run, $requestedItems): Model {
+            $locked = $this->repository->lockRun((int) $run->getKey());
+            $this->assertRunning($locked);
+            $this->repository->updateRun($locked, ['requested_items' => $requestedItems]);
+
+            return $this->repository->freshRun($locked);
+        });
+    }
+
+    /** @param array<string,mixed> $context */
+    public function annotateContext(Model $run, array $context): Model
+    {
+        return DB::transaction(function () use ($run, $context): Model {
+            $locked = $this->repository->lockRun((int) $run->getKey());
+            $this->assertRunning($locked);
+            $current = is_array($locked->context) ? $locked->context : [];
+            $this->repository->updateRun($locked, ['context' => [...$current, ...$context]]);
+
+            return $this->repository->freshRun($locked);
+        });
+    }
+
     /** @param array<string,mixed> $attributes */
     public function addItem(Model $run, array $attributes): Model
     {

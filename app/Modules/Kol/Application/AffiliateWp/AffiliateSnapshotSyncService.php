@@ -14,7 +14,7 @@ final class AffiliateSnapshotSyncService
 
     public function __construct(private readonly AffiliateWpGateway $gateway) {}
 
-    /** @return array{synced:int, marked_missing:int, errors:list<string>} */
+    /** @return array{synced:int, marked_missing:int, errors:list<string>, provider_references:list<string>} */
     public function sync(string $connectionKey, Authenticatable $actor): array
     {
         if (! $actor->can('kol.affiliates.manage')) {
@@ -111,7 +111,7 @@ final class AffiliateSnapshotSyncService
             ]);
         });
 
-        return ['synced' => count($seenAffiliateIds), 'marked_missing' => $markedMissing, 'errors' => []];
+        return ['synced' => count($seenAffiliateIds), 'marked_missing' => $markedMissing, 'errors' => [], 'provider_references' => array_map(static fn (int $id): string => (string) $id, $seenAffiliateIds)];
     }
 
     /** @return list<array<string,mixed>> */

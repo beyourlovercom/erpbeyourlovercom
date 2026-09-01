@@ -3,9 +3,15 @@
 namespace App\Modules\Sync\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Kol\Application\AffiliateWp\AffiliateSnapshotSyncService;
+use App\Modules\Kol\Application\AffiliateWp\CouponSnapshotSyncService;
+use App\Modules\Kol\Application\AffiliateWp\PayoutSnapshotSyncService;
+use App\Modules\Kol\Application\AffiliateWp\ReferralCommissionSyncService;
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
 use App\Modules\Kol\Infrastructure\AffiliateWp\ConnectorException;
 use App\Modules\Sync\Application\SyncOrchestrationService;
+use App\Modules\Sync\Application\SyncRunItemStatus;
+use App\Modules\Sync\Application\SyncRunService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,7 +24,14 @@ use Throwable;
 
 final class SyncWorkspaceController
 {
-    public function __construct(private readonly SyncOrchestrationService $orchestration) {}
+    public function __construct(
+        private readonly SyncOrchestrationService $orchestration,
+        private readonly SyncRunService $runs,
+        private readonly AffiliateSnapshotSyncService $affiliateSync,
+        private readonly CouponSnapshotSyncService $couponSync,
+        private readonly ReferralCommissionSyncService $referralSync,
+        private readonly PayoutSnapshotSyncService $payoutSync,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -31,9 +44,8 @@ final class SyncWorkspaceController
             $this->domainCard('kol', '同步网红', 'Instagram / X 平台资料同步', '/sync/kol', $byDomain->get('kol')),
             $this->domainCard('exports', '导出平台订单', '按平台和范围导出订单数据', '/sync/exports', $byDomain->get('exports')),
         ];
-        if ($request->user()?->can('marketing.view')) {
-            $domains[] = $this->domainCard('marketing', 'WordPress Connector', '连接、健康检查与 WordPress 数据同步', '/sync/wpapi', $byDomain->get('marketing'));
-        }
+        $connectorRuns = $runs->filter(fn (Model $run): bool => $this->isWordPressConnectorRun($run));
+        $domains[] = $this->domainCard('wordpress', 'WordPress Connector', '连接、健康检查与 WordPress / AffiliateWP 数据同步', '/sync/wpapi', $connectorRuns);
 
         return Inertia::render('Sync/Index', [
             'domains' => $domains,
@@ -45,12 +57,24 @@ final class SyncWorkspaceController
         ]);
     }
 
-    public function wordpressConnector(AffiliateWpGateway $gateway): Response
+    public function wordpressConnector(Request $request, AffiliateWpGateway $gateway): Response
     {
         $settings = DB::table('wordpress_connector_settings')->where('id', 1)->first();
-        $latest = $this->orchestration->recentRuns(50)
-            ->first(fn (Model $run): bool => $run->run_type === 'wordpress_subscribers_snapshot');
+        $recent = $this->orchestration->recentRuns(100);
         $health = $this->decodeHealthPayload($settings?->last_health_payload ?? null);
+        $types = [
+            'subscribers' => 'wordpress_subscribers_snapshot',
+            'affiliates' => 'wordpress_affiliates_snapshot',
+            'coupons' => 'wordpress_coupons_snapshot',
+            'referrals' => 'wordpress_referrals_snapshot',
+            'payouts' => 'wordpress_payouts_snapshot',
+        ];
+        $resourceRuns = [];
+        foreach ($types as $resource => $runType) {
+            $run = $recent->first(fn (Model $candidate): bool => $candidate->run_type === $runType);
+            $resourceRuns[$resource] = $run ? $this->runData($run) : null;
+        }
+        $user = $request->user();
 
         return Inertia::render('Sync/WpApi', [
             'connection' => [
@@ -63,15 +87,13 @@ final class SyncWorkspaceController
                 'checked_at' => $settings?->last_health_checked_at,
                 'data' => $health,
             ],
-            'lastRun' => $latest ? [
-                'id' => $latest->id,
-                'status' => $latest->status->value,
-                'started_at' => $latest->started_at?->toIso8601String(),
-                'completed_at' => $latest->completed_at?->toIso8601String(),
-                'succeeded_items' => (int) $latest->succeeded_items,
-                'failed_items' => (int) $latest->failed_items,
-                'conflict_items' => (int) $latest->conflict_items,
-            ] : null,
+            'runs' => $resourceRuns,
+            'permissions' => [
+                'can_manage_connection' => (bool) $user?->can('sync.operate'),
+                'can_sync_subscribers' => (bool) ($user?->can('sync.operate') && $user?->can('marketing.operate')),
+                'can_sync_kol' => (bool) ($user?->can('sync.operate') && $user?->can('kol.affiliates.manage')),
+                'can_sync_payouts' => (bool) ($user?->can('sync.operate') && $user?->can('kol.payouts.manage')),
+            ],
         ]);
     }
 
@@ -138,6 +160,46 @@ final class SyncWorkspaceController
         }
     }
 
+    public function syncWordPressAffiliates(Request $request, AffiliateWpGateway $gateway): RedirectResponse
+    {
+        return $this->runWordPressKolSnapshot(
+            'affiliates',
+            $request,
+            $gateway,
+            fn (string $connection, $actor): array => $this->affiliateSync->sync($connection, $actor),
+        );
+    }
+
+    public function syncWordPressCoupons(Request $request, AffiliateWpGateway $gateway): RedirectResponse
+    {
+        return $this->runWordPressKolSnapshot(
+            'coupons',
+            $request,
+            $gateway,
+            fn (string $connection, $actor): array => $this->couponSync->sync($connection, $actor),
+        );
+    }
+
+    public function syncWordPressReferrals(Request $request, AffiliateWpGateway $gateway): RedirectResponse
+    {
+        return $this->runWordPressKolSnapshot(
+            'referrals',
+            $request,
+            $gateway,
+            fn (string $connection, $actor): array => $this->referralSync->sync($connection, $actor),
+        );
+    }
+
+    public function syncWordPressPayouts(Request $request, AffiliateWpGateway $gateway): RedirectResponse
+    {
+        return $this->runWordPressKolSnapshot(
+            'payouts',
+            $request,
+            $gateway,
+            fn (string $connection, $actor): array => $this->payoutSync->sync($connection, $actor),
+        );
+    }
+
     public function warehouses(): Response
     {
         $warehouses = Warehouse::query()->orderBy('priority')->orderBy('id')->get();
@@ -180,6 +242,77 @@ final class SyncWorkspaceController
 
         return Inertia::render('Sync/Exports', ['exports' => $exports]);
     }
+    /** @param callable(string,mixed):array<string,mixed> $sync */
+    private function runWordPressKolSnapshot(
+        string $resource,
+        Request $request,
+        AffiliateWpGateway $gateway,
+        callable $sync,
+    ): RedirectResponse {
+        $actor = $request->user();
+        $descriptor = $gateway->descriptor();
+        $connection = trim((string) ($descriptor['connection_key'] ?? '')) ?: null;
+        $run = $this->runs->start(
+            'wordpress_'.$resource.'_snapshot',
+            0,
+            $actor,
+            'affiliatewp',
+            $connection,
+            ['domain' => 'kol', 'resource' => $resource, 'surface' => 'wordpress_connector'],
+        );
+
+        try {
+            if (! ($descriptor['configured'] ?? false) || $connection === null) {
+                throw new \RuntimeException('Andy Core WordPress connector is not configured.');
+            }
+            $result = $sync($connection, $actor);
+            $references = array_values(array_unique(array_map(
+                static fn ($value): string => trim((string) $value),
+                is_array($result['provider_references'] ?? null) ? $result['provider_references'] : [],
+            )));
+            $references = array_values(array_filter($references, static fn (string $value): bool => $value !== ''));
+            $this->runs->setRequestedItems($run, count($references));
+            $safeResult = [];
+            foreach (['synced', 'marked_missing', 'affiliate_unresolved', 'order_unresolved', 'kol_unresolved'] as $key) {
+                if (isset($result[$key]) && is_numeric($result[$key])) {
+                    $safeResult[$key] = (int) $result[$key];
+                }
+            }
+            $this->runs->annotateContext($run, ['fetched_items' => count($references), 'result' => $safeResult]);
+            foreach ($references as $reference) {
+                $item = $this->runs->addItem($run, [
+                    'operation' => 'wordpress.'.$resource.'_import',
+                    'provider_reference' => $reference,
+                ]);
+                $this->runs->markProcessing($item);
+                $this->runs->finishItem($item, SyncRunItemStatus::Succeeded, 'imported');
+            }
+            $completed = $this->runs->complete($run, $actor);
+            $label = ['affiliates' => 'Affiliate', 'coupons' => 'Coupon', 'referrals' => 'Referral', 'payouts' => 'Payout'][$resource] ?? $resource;
+
+            return back()->with('success', sprintf('%s 同步完成：%d 条。', $label, (int) $completed->succeeded_items));
+        } catch (Throwable $exception) {
+            $this->runs->setRequestedItems($run, 1);
+            $item = $this->runs->addItem($run, [
+                'operation' => 'wordpress.'.$resource.'_snapshot',
+                'provider_reference' => null,
+            ]);
+            $this->runs->markProcessing($item);
+            $this->runs->finishItem($item, SyncRunItemStatus::Failed, 'provider_error', 'provider_error', $exception->getMessage());
+            $this->runs->annotateContext($run, ['fetched_items' => 0]);
+            $this->runs->complete($run, $actor);
+            report($exception);
+
+            return back()->with('error', ucfirst($resource).' 同步失败。请检查 Connector / Provider 状态后重试。');
+        }
+    }
+
+    private function isWordPressConnectorRun(Model $run): bool
+    {
+        return str_starts_with((string) $run->run_type, 'wordpress_')
+            && str_ends_with((string) $run->run_type, '_snapshot');
+    }
+
     private function domain(Model $run): string
     {
         $explicit = $run->context['domain'] ?? null;

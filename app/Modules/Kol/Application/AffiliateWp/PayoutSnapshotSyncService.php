@@ -17,7 +17,7 @@ final class PayoutSnapshotSyncService
 
     public function __construct(private readonly AffiliateWpGateway $gateway) {}
 
-    /** @return array{synced:int,marked_missing:int,kol_unresolved:int} */
+    /** @return array{synced:int,marked_missing:int,kol_unresolved:int,provider_references:list<string>} */
     public function sync(string $connectionKey, Authenticatable $actor): array
     {
         if (! $actor->can('kol.payouts.manage')) {
@@ -52,7 +52,7 @@ final class PayoutSnapshotSyncService
             foreach (array_chunk($missingIds, 500) as $chunk) {
                 $marked += $payoutClass::query()->where('connection_key',$connectionKey)->whereIn('payout_id',$chunk)->update(['reconciliation_status'=>'missing_from_latest_snapshot','last_synced_at'=>$now]);
             }
-            return ['synced'=>count($items),'marked_missing'=>$marked,'kol_unresolved'=>$unresolved];
+            return ['synced'=>count($items),'marked_missing'=>$marked,'kol_unresolved'=>$unresolved,'provider_references'=>array_map(static fn ($id): string => (string) $id, array_keys($seen))];
         });
     }
 

@@ -43,7 +43,7 @@ final class WordPressSubscriberSyncTest extends TestCase
     {
         $this->bindSnapshot([]);
         $this->actingAs($this->withPermissions(['marketing.view']))->get('/sync/wpapi')->assertForbidden();
-        $this->actingAs($this->withPermissions(['sync.view', 'marketing.view']))->get('/sync/wpapi')->assertOk();
+        $this->actingAs($this->withPermissions(['sync.view']))->get('/sync/wpapi')->assertOk();
         $this->actingAs($this->withPermissions(['sync.view', 'marketing.view']))->post('/sync/wpapi/subscribers')->assertForbidden();
         $this->actingAs($this->withPermissions(['sync.operate', 'marketing.operate']))->post('/sync/wpapi/subscribers')->assertRedirect();
     }
