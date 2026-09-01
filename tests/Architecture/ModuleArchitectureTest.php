@@ -922,6 +922,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_09_01_200000_create_product_weight_evidences_table.php' => '1757cc30d5996342bf017349c57acef17bd3e55e95e79d8bd8088271dd962df2',
         'database/migrations/2026_09_01_210000_register_backup_permissions.php' => 'f775e592182a1ae1f7635538e36e4f9c7a5f49c98a076db85c88eb81d0661bfd',
         'database/migrations/2026_09_01_220000_create_backup_runs_and_artifacts_tables.php' => '46c1da578ee91cc7d3e80e93c3a464b9ad4e866e053e373fe46a67882ec3dc54',
+        'database/migrations/2026_09_01_223000_correct_us_warehouse_names.php' => '06376276bb20e1fadc7f758c038d1b2281387bcedc8db80116cd5bbb05b7d173',
     ];
 
     private const FRONTEND_FILES = [
@@ -1003,13 +1004,13 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Identity/Users/Edit.vue' => '50d4a515a8b2425f95e4cc8385b441faa0c14c1d378c8d9cacc67a266a30fda0',
         'resources/js/Pages/Identity/Users/Index.test.ts' => 'c2a508b3fb59d1f4725f86d658bfdcd162487477cae6c7f5e0db119b2f4f2cd0',
         'resources/js/Pages/Identity/Users/Index.vue' => '559f700abcd95b484fe834dbb0e5f871cc7301ff20d0e51f9c3c1179ea228e07',
-        'resources/js/Pages/Inventory/Dashboard.vue' => 'b5f14d5b4a55c50366a7d33c07c91473afaab1ba590346c4214f9715b218556a',
+        'resources/js/Pages/Inventory/Dashboard.vue' => '095a36fba2dbb525c5cbeb76dc0aee0e046749350b37174e7199e04a37463a29',
         'resources/js/Pages/Inventory/InventoryBatchSync.test.ts' => '3c63a7717dcac8e4698db4fd922f69867c82ff9667b0c0f0f03b2b9045c5375f',
-        'resources/js/Pages/Inventory/InventoryFoundation.test.ts' => 'cba1e89b5168dd738eb84741268ff360d86e2e3fa592e5e87cfa3f4ed805456b',
+        'resources/js/Pages/Inventory/InventoryFoundation.test.ts' => '60269c72fcddcec9d7e6212468b9a3cf286c2ebcf6dbcafa14c1f4f9293fdc5c',
         'resources/js/Pages/Inventory/Products.vue' => 'ac82349fdc897f5000f2d8adaefab53daa8e13635490e6ae03ee210946f0efc7',
         'resources/js/Pages/Inventory/Sync.vue' => '3ec525e92c95252991a05999a539eab3d301a5d13e4c9512cde7a4249b8f044a',
         'resources/js/Pages/Inventory/WarehouseCreate.vue' => 'e980fa22bdc475729f99c5fea9da811d93aae964ff719d2d6f549a41c0885d75',
-        'resources/js/Pages/Inventory/WarehouseList.vue' => 'a16f1296fbc977d4b7b6f6244f9588a2a1f4c33f147dfeb5d326109bf8b69ce0',
+        'resources/js/Pages/Inventory/WarehouseList.vue' => '7f3bf94a895c719320525aa82dd6fbbb367dcd436ac483eed0b179ec8c4c85d0',
         'resources/js/Pages/Inventory/WarehouseShow.vue' => 'e9761f6ac6c30922b9d757e421f73e29c6c03205bf9df6dd17b7cd26a6762292',
         'resources/js/Pages/Inventory/components/InventorySkuCombobox.vue' => 'd2d7408ee79d6fe9b060c268cf076a33a6d30ce096cc1d56ab9d49767e1bd670',
         'resources/js/Pages/Kol/AffiliateWp/CouponPanel.vue' => '606d6b6d13f4644a7717fb57803666ea670f57571e54fd7f9552a2792b2d2751',
