@@ -1,6 +1,6 @@
 # ERP-KOL-M1.4E-COMMISSION-PAYOUT-WORKFLOW-001
 
-Status: IN_PROGRESS
+Status: LIVE_UAT_PASS_DEPENDENCY_OPEN
 Base: `main@264fe20b79b7f145f3b976d939ddce0a07c57d8d`
 Branch: `feature/erp-kol-m1-4e-commission-payout-workflow-001`
 
@@ -103,4 +103,23 @@ No payout write-back was performed during this audit.## Final Local Gate Evidenc
 
 Next allowed live action is read-only `GET /snapshot/payouts` against Local WordPress and parity comparison with the Provider database baseline. `POST /payouts/complete` remains prohibited because it creates real payout/referral financial side effects.
 
-Merge, Production deploy, tag, and release remain unauthorized.
+Merge, Production deploy, tag, and release remain unauthorized.## Live Provider Read-Only UAT — PASS
+
+The signed `GET /snapshot/payouts` gate against `localdev.beyourlover.com` was compared to direct read-only AffiliateWP database truth.
+
+Initial UAT exposed a Connector anomaly: historical payout #948 has a stale raw relation to deleted Referral #1617. Connector output first exposed `[null]`, then the raw stale ID when canonicalization preferred the payout object's raw relation.
+
+The fix is isolated in YBY-Core PR #29 (`ANDY-CORE-ERP-PAYOUT-EMPTY-REFERRAL-SNAPSHOT-001`): canonical payout Referral IDs prefer AffiliateWP's hydrated helper, filter missing Referral entities, and use raw relation IDs only as fallback.
+
+Final parity with PR #29 exact source:
+- 1,550 payouts / 1,550 Provider DB payouts
+- 112 distinct Affiliates
+- 1,549 Referral links / 1,549 Provider DB entity links
+- exactly 1 zero-Referral payout
+- payout #948 `referral_ids = []`
+- 0 null Referral IDs
+- status `paid = 1550`
+- method `manual = 1550`
+- payout ID range 1..1550
+
+`M1.4E_LIVE_PROVIDER_READ_ONLY_UAT = PASS`.
