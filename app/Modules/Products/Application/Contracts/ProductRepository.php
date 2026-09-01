@@ -19,6 +19,12 @@ interface ProductRepository
 
     public function findBySku(string $sku): ?Model;
 
+    /**
+     * Find a Product whose canonical SKU resolves to the given match key.
+     * Uses PHP-side SkuMatchKey comparison so behaviour is DB-collation-independent.
+     */
+    public function findBySkuMatchKey(string $matchKey): ?Model;
+
     /** @return list<array{id:int,sku:string,name:string}> */
     public function searchSkus(string $query, int $limit = 20): array;
 

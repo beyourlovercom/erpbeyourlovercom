@@ -7,7 +7,8 @@ use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Inventory\Application\Contracts\InventoryBatchSyncRepository;
 use App\Modules\Inventory\Application\Sync\NormalizedRow;
-use App\Modules\Products\Application\Contracts\ProductRepository;
+use App\Modules\Products\Application\SkuIdentityResolver;
+use App\Modules\Products\Application\SkuResolveResult;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -16,7 +17,7 @@ final class InventoryBatchSyncService
 {
     public function __construct(
         private readonly InventoryBatchSyncRepository $sync,
-        private readonly ProductRepository $products,
+        private readonly SkuIdentityResolver $resolver,
         private readonly AuditRecorder $audit,
     ) {}
 
@@ -49,17 +50,20 @@ final class InventoryBatchSyncService
                 'creator_user_id'   => $actor?->getAuthIdentifier(),
             ]);
 
-            $skuMap     = $this->loadSkuMap(array_filter(array_map(fn ($r) => $r->sku, $rows)));
+            $resolveMap = $this->buildResolveMap(array_filter(array_map(fn ($r) => $r->sku, $rows)));
             $stats = ['total' => 0, 'unique_skus' => [], 'sku_counts' => [], 'sellable' => 0, 'defective' => 0, 'unmatched' => 0, 'warnings' => 0, 'errors' => 0];
             $matchedProductIds = [];
 
             foreach ($rows as $row) {
                 $stats['total']++;
-                [$valStatus, $valMessage, $productId] = $this->validateRow($row, $skuMap, $warehouse);
+                $resolveResult = $row->sku !== null ? ($resolveMap[$row->sku] ?? null) : null;
+                [$valStatus, $valMessage, $productId, $canonicalSku] = $this->validateRowWithResult($row, $resolveResult, $warehouse);
                 if ($valStatus === 'error') $stats['errors']++;
                 if ($row->sku !== null) {
-                    $stats['unique_skus'][$row->sku] = true;
-                    $stats['sku_counts'][$row->sku] = ($stats['sku_counts'][$row->sku] ?? 0) + 1;
+                    // Canonical identity key for deduplication: use resolved product id when known
+                    $dedupeKey = $productId !== null ? "pid:{$productId}" : "raw:{$row->sku}";
+                    $stats['unique_skus'][$dedupeKey] = true;
+                    $stats['sku_counts'][$dedupeKey] = ($stats['sku_counts'][$dedupeKey] ?? 0) + 1;
                 }
                 if ($valStatus === 'warning') $stats['warnings']++;
                 if ($valStatus !== 'error' && $productId !== null) {
@@ -81,7 +85,7 @@ final class InventoryBatchSyncService
                     'raw_quantity'        => $row->rawQuantity,
                     'raw_dimension'       => $row->rawDimension,
                     'raw_total_volume'    => $row->rawTotalVolume,
-                    'sku'                 => $row->sku,
+                    'sku'                 => $canonicalSku ?? $row->sku,
                     'stock_status'        => $row->stockStatus,
                     'stock_count_at'      => $row->stockCountAt,
                     'putaway_date'        => $row->putawayDate,
@@ -215,34 +219,34 @@ final class InventoryBatchSyncService
     }
 
     // ──────────────────────────────────────────────────────────────
-    private function validateRow(NormalizedRow $row, array $skuMap, Model $warehouse): array
+    /** @return array{0:string,1:string|null,2:int|null,3:string|null} [status, message, productId, canonicalSku] */
+    private function validateRowWithResult(NormalizedRow $row, ?SkuResolveResult $result, Model $warehouse): array
     {
         if ($row->sku === null || $row->sku === '') {
-            return ['error', 'SKU 不能为空', null];
+            return ['error', 'SKU 不能为空', null, null];
         }
         if ($row->quantity === null) {
-            return ['error', '数量无效', null];
+            return ['error', '数量无效', null, null];
         }
         if ($row->quantity < 0) {
-            return ['error', '数量不能为负', null];
+            return ['error', '数量不能为负', null, null];
         }
         if ($row->stockStatus === null) {
-            return ['error', "库存属性未知（原始值: {$row->rawStockStatus}），必须为 正品 或 次品", null];
+            return ['error', "库存属性未知（原始值: {$row->rawStockStatus}），必须为 正品 或 次品", null, null];
         }
-        $productId = $skuMap[$row->sku] ?? null;
-        if ($productId === null) {
-            return ['error', "SKU {$row->sku} 在产品主数据中不存在", null];
+        if ($result === null || ! $result->isResolved()) {
+            $this->resolver->observeUnmatched($row->sku, 'inventory_batch', null, $row->rawProductName);
+            return ['error', "SKU {$row->sku} 在产品主数据中不存在", null, null];
         }
-        return ['ok', null, $productId];
+        return ['ok', null, (int) $result->product->getKey(), $result->canonicalSku];
     }
 
-    /** @return array<string, int> sku => product_id */
-    private function loadSkuMap(array $skus): array
+    /** @return array<string, SkuResolveResult> raw_sku => resolve result */
+    private function buildResolveMap(array $skus): array
     {
         $map = [];
         foreach (array_unique($skus) as $sku) {
-            $product = $this->products->findBySku((string) $sku);
-            if ($product !== null) $map[(string) $sku] = (int) $product->getKey();
+            $map[(string) $sku] = $this->resolver->resolve((string) $sku);
         }
         return $map;
     }

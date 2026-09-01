@@ -3,6 +3,7 @@
 namespace App\Modules\Products\Infrastructure;
 
 use App\Modules\Products\Application\Contracts\ProductRepository;
+use App\Modules\Products\Application\SkuMatchKey;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
@@ -39,6 +40,24 @@ final class EloquentProductRepository implements ProductRepository
         return Product::where('sku', $sku)->whereNotNull('sku')->first();
     }
 
+    public function findBySkuMatchKey(string $matchKey): ?Model
+    {
+        // Use PHP-side SkuMatchKey comparison so behaviour is identical across
+        // SQLite (case-insensitive LIKE by default) and MySQL (collation-dependent).
+        // We narrow candidates with LOWER() for index efficiency, then confirm in PHP.
+        $candidates = Product::whereNotNull('sku')
+            ->whereRaw('LOWER(sku) = ?', [$matchKey])
+            ->get();
+
+        foreach ($candidates as $candidate) {
+            if (SkuMatchKey::compute((string) $candidate->getAttribute('sku')) === $matchKey) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
     public function searchSkus(string $query, int $limit = 20): array
     {
         return Product::query()
@@ -61,7 +80,11 @@ final class EloquentProductRepository implements ProductRepository
         return Product::query()
             ->when(isset($filters['search']) && $filters['search'] !== '', function ($q) use ($filters): void {
                 $search = '%'.$filters['search'].'%';
-                $q->where(fn ($inner) => $inner->where('sku', 'like', $search)->orWhere('name', 'like', $search));
+                $q->where(function ($inner) use ($search): void {
+                    $inner->where('sku', 'like', $search)
+                        ->orWhere('name', 'like', $search)
+                        ->orWhereHas('skuAliases', fn ($a) => $a->where('alias_sku', 'like', $search));
+                });
             })
             ->orderBy('name')
             ->paginate(min($perPage, 200))
