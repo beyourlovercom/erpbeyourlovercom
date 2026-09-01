@@ -26,7 +26,7 @@ Continue the remaining ERP WordPress Connector integration after PR #134 deliver
 
 ## External authority
 - Andy Core stable release: `v1.5.3@715b83e4df9591cc5d47eb73dc8f4df30d157054`.
-- Connector authority: YBY-Core `main@1b5d1b2ad13d26c15cf47db259351083c418230e` after PR #28.
+- Referral all-status contract authority: YBY-Core PR #28 / `1b5d1b2ad13d26c15cf47db259351083c418230e`. Current `origin/main@3619625b6a477b335e2c077cb4ef3dc4e643a947` also contains later PR #29 payout-only fixes; they are outside this read UAT runtime patch.
 - Contract version remains `1`; Referral snapshots include `paid`, `unpaid`, `rejected`, `pending`, `draft`, `failed`.
 
 ## Remaining scope
@@ -104,3 +104,47 @@ Isolation / security:
 - No Tailnet IP, Shared Secret, credential literal or temporary UAT secret appears in the implementation diff.
 - No generic Connector/KOL/Payout master table was added.
 - No Production deployment, merge, push or PR creation performed at this checkpoint.
+
+## M1.2B live provider read UAT checkpoint — 2026-09-01
+
+`M1.2B = LIVE_PROVIDER_READ_UAT_PASS`
+
+Environment / transport:
+- Real provider: Windows Local WordPress `localdev.beyourlover.com`; no Production provider was used.
+- ERP UAT persistence: isolated SQLite `/tmp/erp-wpconnector-m12b.sqlite`; regular ERP application data was not used for mirror writes.
+- ERP application URL remained `https://localdev.beyourlover.com`; a temporary loopback CONNECT proxy mapped only that hostname to the Windows Tailnet peer for transport. No Tailnet IP was written into ERP source or Connector application config.
+- Existing Connector key ID / encrypted Shared Secret were reused without rendering or rotating the secret.
+- Signed `/health` passed with contract version `1`, matching connection key and Andy Core `1.5.3`.
+
+Final idempotency evidence:
+- Affiliates Round 1: Run #1 `completed`, `1758/1758` succeeded, `0` failed.
+- Affiliates Round 2: Run #6 `completed`, `1758/1758` succeeded, mirror remained `1758`, duplicate provider IDs `0`.
+- Coupons first successful run: Run #4 `completed`, `2827/2827` succeeded, `0` failed.
+- Coupons Round 2: Run #7 `completed`, `2827/2827` succeeded, mirror remained `2827`, duplicate provider IDs `0`.
+- Referrals first full run: Run #5 `completed`, `3299/3299` succeeded, `0` failed.
+- Referrals final repeat: Run #10 `completed`, `3299/3299` succeeded, mirror remained `3299`, duplicate provider IDs `0`.
+- Final row-level evidence was exact: Run #6 `1758` items / `1758` distinct provider references; Run #7 `2827/2827`; Run #10 `3299/3299`.
+Referral provider truth after final repeat:
+- `paid=1548`, `unpaid=834`, `failed=598`, `rejected=223`, `pending=95`, `draft=1`; total `3299`.
+- Final referral reconciliation: `present=3299`; no `missing_from_latest_snapshot` rows remained.
+
+Observed failure evidence retained:
+- Runs #2 and #3 failed with provider `RATE_LIMITED` after sequential large-resource execution exceeded Andy Core's fixed `60 requests / 60 seconds` protection. No partial Coupon/Referral mirror was committed.
+- Run #8 failed with a transport resolution error after the resumed CLI invocation omitted the temporary loopback proxy environment; the existing 3299 Referral mirror was unchanged.
+- Run #9 completed with only `2700` Referrals and exposed provider runtime drift rather than ERP duplication: exactly `598 failed + 1 draft = 599` rows were omitted and marked `missing_from_latest_snapshot`.
+
+Provider runtime drift classification and recovery:
+- Windows Local runtime `inc/class-yby-connector.php` SHA256 was `90e00bdaa1da3677debb7c4a606f0d1c05005eed2d0a451d16e1bd23b0febbeb`, exactly matching released Andy Core v1.5.3 baseline and therefore missing post-release PR #28.
+- YBY-Core PR #28 changes only the Referral snapshot query to request all provider statuses; its connector SHA256 is `57cf3261ffc902c16b3f254acdc3f7c7ad3b2eb4910c257cfe483c1e7834819e`.
+- Only that already-merged PR #28 three-line all-status patch was applied to Windows Local runtime. Final runtime SHA256 exactly matched `57cf3261...`; later PR #29 payout changes were not deployed as part of this gate.
+- After recovery, Run #10 returned all 3299 Referrals and restored all 599 previously missing rows to `present`.
+
+Cleanup / configuration correction:
+- US Mac main development DB Connector `site_url` was corrected from the stale Tailnet IP to `https://localdev.beyourlover.com`; connection key, key ID, encrypted Shared Secret and `verify_tls=false` were preserved.
+- No WordPress mutation endpoints, AffiliateWP payout/provision/status writes, merge, Production deploy, version bump, tag or release were executed.
+- Temporary worktree `.env`, isolated SQLite database and loopback proxy were removed after evidence capture; Windows helper/download temp files were also removed.
+
+Final checkpoint verification:
+- `git diff --check`: PASS.
+- `tests/Feature/Sync/WordPressConnectorReadOrchestrationTest.php`: PASS, 3 tests / 60 assertions / 0 functional failures; 3 instances of the pre-existing warning class remain.
+- `M1.2B` classification: `LIVE_PROVIDER_READ_UAT_PASS`.
