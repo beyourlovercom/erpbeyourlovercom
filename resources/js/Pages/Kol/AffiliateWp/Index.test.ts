@@ -48,17 +48,19 @@ function props(overrides: Record<string, unknown> = {}) {
     canManageApprovals: false,
     canManageAffiliates: false,
     affiliates: [],
+    coupons: [],
     provisioningCandidates: [],
+    couponCandidates: [],
     kolOptions: [],
     ownerOptions: [],
     ...overrides,
   }
 }
 
-describe('AffiliateWP Influencer workspace', () => {
+describe('AffiliateWP workspace', () => {
   beforeEach(() => postMock.mockReset())
 
-  it('renders real mirror rows, provisioning state, and keeps Coupon unavailable for M1.4C', () => {
+  it('renders Influencer mirror rows and exposes the M1.4C Coupon mode', async () => {
     const wrapper = mount(Index, { props: props({ affiliates: [affiliate] }) })
 
     expect(wrapper.text()).toContain('Alice Creator')
@@ -66,7 +68,21 @@ describe('AffiliateWP Influencer workspace', () => {
     expect(wrapper.text()).toContain('5001')
     expect(wrapper.text()).toContain('未绑定')
     expect(wrapper.text()).toContain('not_requested')
-    expect(wrapper.find('button[title="M1.4C 交付"]').attributes('disabled')).toBeDefined()
+
+    const couponTab = wrapper.findAll('button').find((button) => button.text() === 'Coupon')!
+    expect(couponTab.attributes('disabled')).toBeUndefined()
+    await couponTab.trigger('click')
+    expect(wrapper.text()).toContain('暂无 Coupon mirror')
+  })
+
+
+  it('manager can sync Coupon mirror from Coupon mode', async () => {
+    const wrapper = mount(Index, { props: props({ canManageAffiliates: true }) })
+    await wrapper.findAll('button').find((button) => button.text() === 'Coupon')!.trigger('click')
+    const button = wrapper.findAll('button').find((item) => item.text() === '同步 Coupon')!
+    expect(button.attributes('disabled')).toBeUndefined()
+    await button.trigger('click')
+    expect(postMock).toHaveBeenCalledWith('/kol/affiliatewp/coupons/sync', { preserveScroll: true })
   })
 
   it('keeps manual sync visible but disabled without affiliate management permission', () => {

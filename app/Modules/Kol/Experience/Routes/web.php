@@ -66,5 +66,11 @@ Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
     Route::post('/kol/affiliatewp/provision', [AffiliateWpSyncController::class, 'provision'])
         ->middleware('can:kol.affiliates.manage')
         ->name('kol.affiliatewp.provision');
+    Route::post('/kol/affiliatewp/coupons/sync', [AffiliateWpSyncController::class, 'syncCoupons'])
+        ->middleware('can:kol.affiliates.manage')
+        ->name('kol.affiliatewp.coupons.sync');
+    Route::post('/kol/affiliatewp/coupons/provision', [AffiliateWpSyncController::class, 'provisionCoupon'])
+        ->middleware('can:kol.affiliates.manage')
+        ->name('kol.affiliatewp.coupons.provision');
     Route::get('/kol/affiliate', fn () => redirect()->route('kol.affiliatewp'))->name('kol.affiliate');
 });
