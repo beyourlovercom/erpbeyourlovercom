@@ -809,7 +809,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_31_000100_create_customer_import_batches_tables.php' => '7334c12a78bed3d375029957fce4d529f7d992410727a47d88d19bdc1ef1d6e9',
         'database/migrations/2026_08_31_091500_create_wordpress_connector_settings_table.php' => 'c6f790f4f40820f0bd02ce8fa75400728538f848fcd5ac7a942e5088097cc07a',
         'database/migrations/2026_09_01_070000_create_kol_affiliate_coupons_table.php' => 'ab63302fce3805ff71e60ab9b77c290209cc1c93769a6b110262d26d19360aff',
-        'database/migrations/2026_09_01_093000_create_kol_affiliate_referrals_table.php' => '00815145a97a298f555458e33586a87e7086409c15901183ad0c336ff9545c9c',
+        'database/migrations/2026_09_01_093000_create_kol_affiliate_referrals_table.php' => 'b73e73768eb4679e852f077d73daec7207a5eda2117fa583d37fcd7700d73ae2',
     ];
 
     private const FRONTEND_FILES = [

@@ -21,7 +21,7 @@ return new class extends Migration
             $table->string('currency', 8);
             $table->string('provider_status', 32);
             $table->string('context', 64);
-            $table->timestamp('referral_date');
+            $table->dateTime('referral_date');
             $table->unsignedBigInteger('payout_id')->nullable();
             $table->string('affiliate_resolution_status', 32)->default('missing');
             $table->string('order_resolution_status', 32)->default('unresolved');
