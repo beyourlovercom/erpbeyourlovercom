@@ -4,6 +4,7 @@ namespace App\Modules\Products\Experience\Controllers;
 
 use App\Modules\Identity\Application\AuthorizationKeys;
 use App\Modules\Products\Application\ProductService;
+use App\Modules\Products\Application\ProductWeightEvidenceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,7 +15,10 @@ use Inertia\Response;
 
 final class ProductController
 {
-    public function __construct(private readonly ProductService $products) {}
+    public function __construct(
+        private readonly ProductService $products,
+        private readonly ProductWeightEvidenceService $weightEvidence,
+    ) {}
 
     public function dashboard(): Response
     {
@@ -96,6 +100,13 @@ final class ProductController
             return redirect()->route('products.list');
         }
 
+        $weightEvidence = $product->weight_evidence_id
+            ? $this->weightEvidence->findById((int) $product->weight_evidence_id)
+            : null;
+        $shippingWeightEvidence = $product->shipping_weight_evidence_id
+            ? $this->weightEvidence->findById((int) $product->shipping_weight_evidence_id)
+            : null;
+
         return Inertia::render('Products/Edit', [
             'product' => [
                 'id' => $product->id,
@@ -108,9 +119,13 @@ final class ProductController
                 'unit' => $product->unit,
                 'is_active' => $product->is_active,
                 'weight_kg' => $product->weight_kg,
+                'weight_evidence_id' => $product->weight_evidence_id,
+                'weight_evidence_source_type' => $weightEvidence?->getAttribute('source_type'),
                 'sale_price' => $product->sale_price,
                 'regular_price' => $product->regular_price,
                 'shipping_weight_kg' => $product->shipping_weight_kg,
+                'shipping_weight_evidence_id' => $product->shipping_weight_evidence_id,
+                'shipping_weight_evidence_source_type' => $shippingWeightEvidence?->getAttribute('source_type'),
                 'length_cm' => $product->length_cm,
                 'width_cm' => $product->width_cm,
                 'height_cm' => $product->height_cm,

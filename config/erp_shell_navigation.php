@@ -65,6 +65,7 @@ return [
         ['key' => 'products-list', 'label' => '产品列表', 'path' => '/products/list', 'route' => 'products.list', 'permission' => 'products.view', 'placeholder' => false],
         ['key' => 'products-skus', 'label' => 'SKU', 'path' => '/products/skus', 'route' => 'products.skus', 'permission' => 'products.view', 'placeholder' => false],
         ['key' => 'products-sku-aliases', 'label' => 'SKU别名', 'path' => '/products/sku-aliases', 'route' => 'products.sku-aliases', 'permission' => 'products.view', 'placeholder' => false],
+        ['key' => 'products-weight-evidence', 'label' => '重量证据', 'path' => '/products/weight-evidence', 'route' => 'products.weight-evidence.index', 'permission' => 'products.view', 'placeholder' => false],
     ]],
     ['key' => 'guides', 'label' => '指南', 'emoji' => '📖', 'path' => '/guides', 'route' => 'shell.guides', 'permission' => 'guides.view', 'placeholder' => false, 'children' => [
         ['key' => 'guides-index', 'label' => '全部教程', 'path' => '/guides', 'route' => 'shell.guides', 'permission' => 'guides.view', 'placeholder' => false],

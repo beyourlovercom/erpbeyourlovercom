@@ -14,9 +14,13 @@ type Product = {
   unit: string | null
   is_active: boolean
   weight_kg: string | null
+  weight_evidence_id: number | null
+  weight_evidence_source_type: string | null
   sale_price: string | null
   regular_price: string | null
   shipping_weight_kg: string | null
+  shipping_weight_evidence_id: number | null
+  shipping_weight_evidence_source_type: string | null
   length_cm: string | null
   width_cm: string | null
   height_cm: string | null
@@ -274,6 +278,12 @@ const doDelete = () => {
                   :class="{ 'has-error': errors.weight_kg }"
                 >
                 <p v-if="errors.weight_kg" class="erp-field-error">{{ errors.weight_kg }}</p>
+                <p class="text-xs text-gray-400 mt-0.5">
+                  溯源：
+                  <span v-if="product.weight_evidence_id" class="text-indigo-600">{{ product.weight_evidence_source_type ?? '已关联' }} #{{ product.weight_evidence_id }}</span>
+                  <span v-else-if="product.weight_kg" class="text-gray-500">历史遗留 / 未关联证据</span>
+                  <span v-else>—</span>
+                </p>
               </div>
 
               <div class="erp-form-field">
@@ -288,6 +298,12 @@ const doDelete = () => {
                   :class="{ 'has-error': errors.shipping_weight_kg }"
                 >
                 <p v-if="errors.shipping_weight_kg" class="erp-field-error">{{ errors.shipping_weight_kg }}</p>
+                <p class="text-xs text-gray-400 mt-0.5">
+                  溯源：
+                  <span v-if="product.shipping_weight_evidence_id" class="text-indigo-600">{{ product.shipping_weight_evidence_source_type ?? '已关联' }} #{{ product.shipping_weight_evidence_id }}</span>
+                  <span v-else-if="product.shipping_weight_kg" class="text-gray-500">历史遗留 / 未关联证据</span>
+                  <span v-else>—</span>
+                </p>
               </div>
 
               <div class="erp-form-field">
