@@ -20,7 +20,7 @@ describe('KOL operational overview', () => {
     expect(wrapper.text()).toContain('Manager 待办')
     expect(wrapper.text()).toContain('Affiliate 成交 Referral')
     expect(wrapper.text()).toContain('USD · 2 单')
-    expect(wrapper.find('a[href="/kol/approvals"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/kol/approvals/kols"]').exists()).toBe(true)
   })
   it('switches the canonical period to month', async () => {
     const wrapper = mount(Overview, { props: baseProps })
@@ -31,6 +31,6 @@ describe('KOL operational overview', () => {
     const specialistOps = { ...operations, scope: 'mine' as const, manager_tasks: null }
     const wrapper = mount(Overview, { props: { ...baseProps, operations: specialistOps, canManageViews: false, canManageApprovals: false } })
     expect(wrapper.text()).toContain('我的负责人范围')
-    expect(wrapper.find('a[href="/kol/approvals"]').exists()).toBe(false)
+    expect(wrapper.find('a[href="/kol/approvals/kols"]').exists()).toBe(false)
   })
 })

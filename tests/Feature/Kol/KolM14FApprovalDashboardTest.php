@@ -84,7 +84,7 @@ class KolM14FApprovalDashboardTest extends TestCase
         $free->assertCreated()->assertJsonPath('collaboration.approval_status', 'not_required');
     }
 
-    public function test_approval_center_is_manager_only_and_aggregates_all_three_pending_queues(): void
+    public function test_manager_approval_modules_are_isolated_and_keep_module_history(): void
     {
         $specialist = $this->userWith(['kol.view', 'kol.operate', 'kol.payouts.request'], 'Specialist B');
         $manager = $this->userWith(['kol.view', 'kol.views.manage', 'kol.approvals.manage', 'kol.payouts.approve'], 'Manager C');
@@ -94,20 +94,34 @@ class KolM14FApprovalDashboardTest extends TestCase
         KolCollaborationApprovalDecision::create(['collaboration_id' => $collaboration->id, 'outcome' => 'pending', 'source' => 'specialist_created', 'actor_user_id' => $specialist->id, 'cooperation_type' => '付费发帖', 'agreement_amount' => 200, 'currency' => 'USD', 'decided_at' => now()]);
         $payout = KolPayoutRequest::create(['connection_key' => 'test.example.com', 'kol_id' => $kol->id, 'affiliate_id' => 7, 'amount' => '10', 'currency' => 'USD', 'payout_method' => 'paypal_manual', 'payout_recipient' => 'pay@example.test', 'status' => 'pending_approval', 'payload_hash' => str_repeat('a', 64), 'idempotency_key' => (string) Str::uuid(), 'requested_by_user_id' => $specialist->id]);
 
-        $this->actingAs($specialist)->get('/kol/approvals')->assertForbidden();
-        $response = $this->actingAs($manager)->get('/kol/approvals')->assertOk();
-        $props = $response->original->getData()['page']['props']['workspace'];
-        $this->assertSame(['kols' => 1, 'collaborations' => 1, 'payouts' => 1, 'history' => 0], $props['counts']);
+        $this->actingAs($specialist)->get('/kol/approvals/kols')->assertForbidden();
+        $this->actingAs($manager)->get('/kol/approvals')->assertRedirect('/kol/approvals/kols');
+
+        $kolWorkspace = $this->actingAs($manager)->get('/kol/approvals/kols')->assertOk()->original->getData()['page']['props']['workspace'];
+        $this->assertSame('kols', $kolWorkspace['module']);
+        $this->assertSame(1, $kolWorkspace['pending_count']);
+        $this->assertSame(0, $kolWorkspace['history_count']);
+        $this->assertSame($kol->id, $kolWorkspace['pending'][0]['id']);
+
+        $collaborationWorkspace = $this->actingAs($manager)->get('/kol/approvals/collaborations')->assertOk()->original->getData()['page']['props']['workspace'];
+        $this->assertSame('collaborations', $collaborationWorkspace['module']);
+        $this->assertSame(1, $collaborationWorkspace['pending_count']);
+        $this->assertSame($collaboration->id, $collaborationWorkspace['pending'][0]['id']);
+
+        $payoutWorkspace = $this->actingAs($manager)->get('/kol/approvals/payouts')->assertOk()->original->getData()['page']['props']['workspace'];
+        $this->assertSame('payouts', $payoutWorkspace['module']);
+        $this->assertSame(1, $payoutWorkspace['pending_count']);
+        $this->assertSame($payout->id, $payoutWorkspace['pending'][0]['id']);
 
         $this->actingAs($manager)->post("/kol/approvals/payouts/{$payout->id}/approve")->assertRedirect();
         $this->assertSame('approved', $payout->fresh()->status);
         $this->assertSame($manager->id, $payout->fresh()->approved_by_user_id);
 
-        $historyResponse = $this->actingAs($manager)->get('/kol/approvals')->assertOk();
-        $history = $historyResponse->original->getData()['page']['props']['workspace']['history'];
-        $payoutHistory = collect($history)->firstWhere('record_key', 'payout:'.$payout->id);
-        $this->assertNotNull($payoutHistory);
-        $this->assertSame('payout', $payoutHistory['type']);
+        $historyWorkspace = $this->actingAs($manager)->get('/kol/approvals/payouts')->assertOk()->original->getData()['page']['props']['workspace'];
+        $this->assertSame(0, $historyWorkspace['pending_count']);
+        $this->assertSame(1, $historyWorkspace['history_count']);
+        $payoutHistory = $historyWorkspace['history'][0];
+        $this->assertSame('payout:'.$payout->id, $payoutHistory['record_key']);
         $this->assertSame('approved', $payoutHistory['outcome']);
         $this->assertSame($manager->name, $payoutHistory['actor_name']);
         $this->assertSame('10.000000', $payoutHistory['amount']);

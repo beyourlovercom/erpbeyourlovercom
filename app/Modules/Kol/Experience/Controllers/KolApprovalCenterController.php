@@ -14,9 +14,29 @@ final class KolApprovalCenterController
 {
     public function __construct(private readonly ManagerApprovalCenterService $approvals) {}
 
-    public function index(Request $request): Response
+    public function index(): RedirectResponse
     {
-        return Inertia::render('Kol/ApprovalCenter', ['workspace' => $this->approvals->workspace($request->user())]);
+        return redirect()->route('kol.approvals.kols');
+    }
+
+    public function kols(Request $request): Response
+    {
+        return $this->render($request, 'kols');
+    }
+
+    public function collaborations(Request $request): Response
+    {
+        return $this->render($request, 'collaborations');
+    }
+
+    public function payouts(Request $request): Response
+    {
+        return $this->render($request, 'payouts');
+    }
+
+    private function render(Request $request, string $module): Response
+    {
+        return Inertia::render('Kol/ApprovalCenter', ['workspace' => $this->approvals->workspace($request->user(), $module)]);
     }
 
     public function approveKol(Request $request, int $kol): RedirectResponse

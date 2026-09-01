@@ -6,11 +6,11 @@ Branch: `feature/erp-kol-m1-4f-manager-approval-dashboard-001`
 
 ## Objective
 
-Complete the KOL V1 operating surface with one Manager Approval Center and role-aware weekly/monthly dashboards, while preserving the canonical KOL, Collaboration, Content, AffiliateWP Referral, and payout-request facts already delivered by M1.4B-M1.4E.
+Complete the KOL V1 operating surface with module-separated Manager approval workspaces and role-aware weekly/monthly dashboards, while preserving the canonical KOL, Collaboration, Content, AffiliateWP Referral, and payout-request facts already delivered by M1.4B-M1.4E.
 
 ## Frozen Approval Boundary
 
-The Approval Center is Manager-only and aggregates three existing business queues:
+The Manager approval system is Manager-only and reuses three existing business queues. The canonical approval logic remains shared, while the UI is separated by business module:
 
 - KOL approval: reuse the M1.4B `KolApprovalService` and existing KOL approval projection/history.
 - Paid Collaboration approval: ERP-owned approval projection/history added to canonical `kol_collaborations`.
@@ -68,7 +68,10 @@ Affiliate sales count uses distinct Woo `order_reference`, because one canonical
 
 ## User-facing Surfaces
 
-- `/kol/approvals`: Manager Approval Center with KOL / paid Collaboration / payout tabs.
+- `/kol/approvals`: compatibility redirect to `/kol/approvals/kols`.
+- `/kol/approvals/kols`: dedicated KOL approval workspace with `待审批 / 审批记录`.
+- `/kol/approvals/collaborations`: dedicated paid Collaboration approval workspace with `待审批 / 审批记录`.
+- `/kol/approvals/payouts`: dedicated commission payout approval workspace with `待审批 / 审批记录`.
 - `/kol`: role-aware weekly/monthly operating dashboard.
 - `/kol/collaborations`: displays and filters paid Collaboration approval state separately from business status.
 - `/kol/payouts`: separates Manager approval actions from Finance completion actions.
@@ -136,3 +139,34 @@ The Approval Center now includes a fourth `审批记录` tab that projects exist
 - the Center displays the most recent 300 unified audit records; canonical decision tables remain the durable full history.
 
 Follow-up focused evidence: M1.4F backend 5 scenarios / 38 assertions PASS; Approval Center frontend 4/4 PASS; Typecheck PASS; Build PASS (838 modules; existing chunk-size warning only).
+
+
+## Owner UAT Follow-up — Module-separated Approval UX
+
+Owner rejected the unified mixed Approval Center presentation and approved a module-separated visual direction.
+This section supersedes the earlier unified fourth-tab/filter presentation while preserving the same canonical approval facts.
+
+Frozen UX:
+- three direct Manager routes: `KOL 审批`, `付费合作审批`, `佣金付款审批`;
+- each route owns only two local views: `待审批` and `审批记录`;
+- no approval-type filter is required inside history because the route already defines the business type;
+- one horizontal card equals one application/decision record;
+- card layout is fixed as business facts on the left and approval facts/actions on the right;
+- paid Collaboration and payout rows expose amount/currency prominently; payout never exposes encrypted recipient/account data;
+- historical rows show outcome, actor, decision time and rejection reason where applicable;
+- left shell navigation exposes all three Manager-only approval routes directly;
+- `/kol/approvals` remains a backward-compatible redirect to the KOL approval workspace.
+
+Implementation remains projection-only: KOL uses `kol_approval_decisions`, paid Collaboration uses `kol_collaboration_approval_decisions`, and payout uses canonical `kol_payout_requests` decision fields. No new approval ledger or migration was introduced.
+
+Redesign focused evidence:
+- module-isolation backend: 5 tests / 52 assertions PASS;
+- exact dedicated frontend suite (Approval Center + Overview + Payouts): 11/11 PASS;
+- Typecheck: PASS;
+- Build: PASS, 838 modules; existing chunk-size warning only;
+- exact dedicated PHP suite (M1.4F + Payout + Approval + Collaboration + User Management + Shell Navigation): 81 tests / 724 assertions PASS;
+- Architecture: existing baseline only, 1 failed / 1 risky / 6 passed / 507 assertions; M1.4F KOL APP-001 = 0;
+- live US Mac Manager UAT renders the new dedicated paid Collaboration history page with one row per record and the three direct sidebar approval entries.
+
+
+Redesign owner visual UAT status: `AWAITING_OWNER` on US Mac local UAT; current visible page is `付费合作审批 -> 审批记录`.

@@ -17,6 +17,7 @@ on:
       - 'app/Modules/Kol/Experience/Routes/web.php'
       - 'app/Modules/Kol/Infrastructure/Models/KolCollaboration*.php'
       - 'app/Modules/Kol/Infrastructure/Models/KolPayoutRequest.php'
+      - 'config/erp_shell_navigation.php'
       - 'database/migrations/2026_09_01_131000_add_kol_manager_approval_center.php'
       - 'resources/js/Pages/Kol/ApprovalCenter*'
       - 'resources/js/Pages/Kol/Collaborations.vue'
@@ -24,6 +25,8 @@ on:
       - 'resources/js/Pages/Kol/Payouts*'
       - 'tests/Architecture/ModuleArchitectureTest.php'
       - 'tests/Feature/Identity/UserManagementTest.php'
+      - 'tests/Feature/AppShellNavigationTest.php'
+      - 'tests/Feature/ErpNavigationTest.php'
       - 'tests/Feature/Kol/KolApprovalServiceTest.php'
       - 'tests/Feature/Kol/KolCollaborationTest.php'
       - 'tests/Feature/Kol/KolM14FApprovalDashboardTest.php'
@@ -83,3 +86,5 @@ jobs:
           tests/Feature/Kol/KolApprovalServiceTest.php
           tests/Feature/Kol/KolCollaborationTest.php
           tests/Feature/Identity/UserManagementTest.php
+          tests/Feature/AppShellNavigationTest.php
+          tests/Feature/ErpNavigationTest.php

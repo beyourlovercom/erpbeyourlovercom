@@ -5,6 +5,7 @@ namespace App\Modules\Kol\Application\Approval;
 use App\Modules\Kol\Application\AffiliateWp\PayoutWorkflowService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Auth\Authenticatable;
+use InvalidArgumentException;
 
 final class ManagerApprovalCenterService
 {
@@ -13,6 +14,7 @@ final class ManagerApprovalCenterService
     private const COLLABORATION = 'App\\Modules\\Kol\\Infrastructure\\Models\\KolCollaboration';
     private const COLLABORATION_DECISION = 'App\\Modules\\Kol\\Infrastructure\\Models\\KolCollaborationApprovalDecision';
     private const PAYOUT_REQUEST = 'App\\Modules\\Kol\\Infrastructure\\Models\\KolPayoutRequest';
+
     public function __construct(
         private readonly KolApprovalService $kols,
         private readonly CollaborationApprovalService $collaborations,
@@ -20,90 +22,146 @@ final class ManagerApprovalCenterService
     ) {}
 
     /** @return array<string,mixed> */
-    public function workspace(Authenticatable $actor): array
+    public function workspace(Authenticatable $actor, string $module): array
     {
         $this->authorize($actor);
 
-        $kolClass = self::KOL; $decisionClass = self::KOL_DECISION; $collaborationClass = self::COLLABORATION; $payoutClass = self::PAYOUT_REQUEST;
-        $kols = $kolClass::query()->whereNull('archived_at')->where('approval_status', 'pending')
-            ->with('owner:id,name')->orderBy('approval_updated_at')->orderBy('id')->limit(100)->get();
-        $kolIds = $kols->pluck('id');
-        $latestReasons = $decisionClass::query()->whereIn('kol_id', $kolIds)->orderByDesc('id')->get()->unique('kol_id')->keyBy('kol_id');
+        return match ($module) {
+            'kols' => $this->kolWorkspace(),
+            'collaborations' => $this->collaborationWorkspace(),
+            'payouts' => $this->payoutWorkspace(),
+            default => throw new InvalidArgumentException('Unsupported approval module.'),
+        };
+    }
 
-        $collaborations = $collaborationClass::query()->where('approval_status', 'pending')
-            ->with(['kol:id,display_name,owner_id', 'owner:id,name'])->orderBy('approval_updated_at')->orderBy('id')->limit(100)->get();
-
-        $payouts = $payoutClass::query()->where('status', 'pending_approval')
-            ->with(['items', 'kol:id,display_name,owner_id', 'requestedBy:id,name'])->orderBy('created_at')->orderBy('id')->limit(100)->get();
-
-        $collaborationDecisionClass = self::COLLABORATION_DECISION;
-        $kolHistory = $decisionClass::query()->whereIn('outcome', ['approved', 'rejected'])
-            ->with(['kol:id,display_name', 'actor:id,name'])->orderByDesc('decided_at')->orderByDesc('id')->limit(300)->get()
-            ->map(fn ($row): array => [
-                'record_key' => 'kol:'.$row->id, 'type' => 'kol', 'object_id' => (int) $row->kol_id,
-                'object_label' => $row->kol?->display_name ?? 'KOL #'.$row->kol_id,
-                'outcome' => (string) $row->outcome, 'actor_name' => $row->actor?->name ?? ($row->actor_user_id ? 'User #'.$row->actor_user_id : '系统'),
-                'decided_at' => $row->decided_at?->toIso8601String(), 'source' => (string) $row->source,
-                'detail' => $row->reason_code, 'reason' => $row->reason_text, 'amount' => null, 'currency' => null,
-            ]);
-        $collaborationHistory = $collaborationDecisionClass::query()->whereIn('outcome', ['approved', 'rejected'])
-            ->with(['collaboration:id,kol_id,title', 'collaboration.kol:id,display_name', 'actor:id,name'])
+    /** @return array<string,mixed> */
+    private function kolWorkspace(): array
+    {
+        $kolClass = self::KOL;
+        $decisionClass = self::KOL_DECISION;
+        $pending = $kolClass::query()
+            ->whereNull('archived_at')->where('approval_status', 'pending')
+            ->with(['owner:id,name', 'socialAccounts' => fn ($q) => $q->where('is_active', true)->orderBy('id')])
+            ->orderBy('approval_updated_at')->orderBy('id')->limit(100)->get();
+        $latestReasons = $decisionClass::query()->whereIn('kol_id', $pending->pluck('id'))
+            ->orderByDesc('id')->get()->unique('kol_id')->keyBy('kol_id');
+        $history = $decisionClass::query()->whereIn('outcome', ['approved', 'rejected'])
+            ->with(['kol:id,display_name,country_code,cooperation_type', 'actor:id,name'])
             ->orderByDesc('decided_at')->orderByDesc('id')->limit(300)->get()
             ->map(fn ($row): array => [
-                'record_key' => 'collaboration:'.$row->id, 'type' => 'collaboration', 'object_id' => (int) $row->collaboration_id,
-                'object_label' => ($row->collaboration?->kol?->display_name ?? 'KOL').' · '.($row->collaboration?->title ?: '合作 #'.$row->collaboration_id),
-                'outcome' => (string) $row->outcome, 'actor_name' => $row->actor?->name ?? ($row->actor_user_id ? 'User #'.$row->actor_user_id : '系统'),
-                'decided_at' => $row->decided_at?->toIso8601String(), 'source' => (string) $row->source,
-                'detail' => $row->cooperation_type, 'reason' => $row->reason_text,
+                'record_key' => 'kol:'.$row->id,
+                'id' => (int) $row->kol_id,
+                'title' => $row->kol?->display_name ?? 'KOL #'.$row->kol_id,
+                'meta' => array_values(array_filter([$row->kol?->country_code, $row->kol?->cooperation_type])),
+                'outcome' => (string) $row->outcome,
+                'actor_name' => $row->actor?->name ?? ($row->actor_user_id ? 'User #'.$row->actor_user_id : '系统'),
+                'decided_at' => $row->decided_at?->toIso8601String(),
+                'source' => (string) $row->source,
+                'reason' => $row->reason_text,
+                'detail_href' => '/kol/library/'.$row->kol_id,
+            ])->values();
+
+        return [
+            'module' => 'kols', 'pending_count' => $pending->count(), 'history_count' => $history->count(),
+            'pending' => $pending->map(function ($row) use ($latestReasons): array {
+                $social = $row->socialAccounts->first();
+                return [
+                    'id' => (int) $row->id, 'title' => $row->display_name,
+                    'owner_name' => $row->owner?->name, 'country_code' => $row->country_code,
+                    'cooperation_type' => $row->cooperation_type, 'platform' => $social?->platform,
+                    'handle' => $social?->handle, 'reason_code' => $latestReasons->get($row->id)?->reason_code,
+                    'created_at' => $row->created_at?->toIso8601String(),
+                    'submitted_at' => ($row->approval_updated_at ?? $row->created_at)?->toIso8601String(),
+                    'detail_href' => '/kol/library/'.$row->id,
+                ];
+            })->values()->all(),
+            'history' => $history->all(),
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    private function collaborationWorkspace(): array
+    {
+        $collaborationClass = self::COLLABORATION;
+        $decisionClass = self::COLLABORATION_DECISION;
+        $pending = $collaborationClass::query()->where('approval_status', 'pending')
+            ->with(['kol:id,display_name,owner_id', 'owner:id,name'])
+            ->orderBy('approval_updated_at')->orderBy('id')->limit(100)->get();
+        $history = $decisionClass::query()->whereIn('outcome', ['approved', 'rejected'])
+            ->with(['collaboration:id,kol_id,title,owner_id', 'collaboration.kol:id,display_name', 'actor:id,name'])
+            ->orderByDesc('decided_at')->orderByDesc('id')->limit(300)->get()
+            ->map(fn ($row): array => [
+                'record_key' => 'collaboration:'.$row->id,
+                'id' => (int) $row->collaboration_id,
+                'kol_id' => (int) ($row->collaboration?->kol_id ?? 0),
+                'title' => $row->collaboration?->title ?: '合作 #'.$row->collaboration_id,
+                'kol_name' => $row->collaboration?->kol?->display_name ?? 'KOL',
+                'cooperation_type' => $row->cooperation_type,
                 'amount' => $row->agreement_amount === null ? null : (string) $row->agreement_amount,
                 'currency' => $row->currency === null ? null : strtoupper((string) $row->currency),
-            ]);
-        $payoutHistory = $payoutClass::query()->where(function ($query): void {
-                $query->whereNotNull('approved_at')->orWhereNotNull('rejected_at');
-            })
-            ->with(['kol:id,display_name,owner_id', 'approvedBy:id,name', 'rejectedBy:id,name'])
+                'outcome' => (string) $row->outcome,
+                'actor_name' => $row->actor?->name ?? ($row->actor_user_id ? 'User #'.$row->actor_user_id : '系统'),
+                'decided_at' => $row->decided_at?->toIso8601String(),
+                'source' => (string) $row->source, 'reason' => $row->reason_text,
+                'detail_href' => $row->collaboration?->kol_id ? '/kol/library/'.$row->collaboration->kol_id : '/kol/collaborations',
+            ])->values();
+
+        return [
+            'module' => 'collaborations', 'pending_count' => $pending->count(), 'history_count' => $history->count(),
+            'pending' => $pending->map(fn ($row): array => [
+                'id' => (int) $row->id, 'kol_id' => (int) $row->kol_id,
+                'title' => $row->title ?: '合作 #'.$row->id,
+                'kol_name' => $row->kol?->display_name ?? 'KOL #'.$row->kol_id,
+                'owner_name' => $row->owner?->name, 'cooperation_type' => $row->cooperation_type,
+                'amount' => (string) $row->agreement_amount, 'currency' => strtoupper((string) $row->currency),
+                'deliverables' => $row->deliverables, 'planned_publish_at' => $row->planned_publish_at?->format('Y-m-d'),
+                'created_at' => $row->created_at?->toIso8601String(),
+                'submitted_at' => ($row->approval_updated_at ?? $row->created_at)?->toIso8601String(),
+                'detail_href' => '/kol/library/'.$row->kol_id,
+            ])->values()->all(),
+            'history' => $history->all(),
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    private function payoutWorkspace(): array
+    {
+        $payoutClass = self::PAYOUT_REQUEST;
+        $pending = $payoutClass::query()->where('status', 'pending_approval')
+            ->with(['items', 'kol:id,display_name,owner_id', 'requestedBy:id,name'])
+            ->orderBy('created_at')->orderBy('id')->limit(100)->get();
+        $history = $payoutClass::query()->where(fn ($q) => $q->whereNotNull('approved_at')->orWhereNotNull('rejected_at'))
+            ->with(['kol:id,display_name,owner_id', 'requestedBy:id,name', 'approvedBy:id,name', 'rejectedBy:id,name'])
             ->orderByDesc('id')->limit(300)->get()
             ->map(function ($row): array {
                 $rejected = $row->rejected_at !== null;
                 return [
-                    'record_key' => 'payout:'.$row->id, 'type' => 'payout', 'object_id' => (int) $row->id,
-                    'object_label' => 'Payout #'.$row->id.' · '.($row->kol?->display_name ?? 'KOL #'.$row->kol_id),
+                    'record_key' => 'payout:'.$row->id, 'id' => (int) $row->id,
+                    'title' => 'Payout #'.$row->id, 'kol_name' => $row->kol?->display_name ?? 'KOL #'.$row->kol_id,
+                    'requester_name' => $row->requestedBy?->name ?? 'User #'.$row->requested_by_user_id,
+                    'affiliate_id' => (int) $row->affiliate_id, 'amount' => (string) $row->amount,
+                    'currency' => strtoupper((string) $row->currency),
                     'outcome' => $rejected ? 'rejected' : 'approved',
                     'actor_name' => $rejected ? ($row->rejectedBy?->name ?? 'User #'.$row->rejected_by_user_id) : ($row->approvedBy?->name ?? 'User #'.$row->approved_by_user_id),
                     'decided_at' => ($rejected ? $row->rejected_at : $row->approved_at)?->toIso8601String(),
                     'source' => $rejected ? 'manager_payout_rejected' : 'manager_payout_approved',
-                    'detail' => 'Affiliate #'.$row->affiliate_id, 'reason' => $row->rejection_reason,
-                    'amount' => (string) $row->amount, 'currency' => strtoupper((string) $row->currency),
+                    'reason' => $row->rejection_reason, 'detail_href' => '/kol/payouts',
                 ];
-            });
-        $history = $kolHistory->concat($collaborationHistory)->concat($payoutHistory)
-            ->sortByDesc('decided_at')->take(300)->values();
+            })->sortByDesc('decided_at')->values();
 
         return [
-            'counts' => ['kols' => $kols->count(), 'collaborations' => $collaborations->count(), 'payouts' => $payouts->count(), 'history' => $history->count()],
-            'history' => $history->all(),
-            'kols' => $kols->map(fn ($kol): array => [
-                'id' => (int) $kol->id, 'display_name' => $kol->display_name,
-                'owner_name' => $kol->owner?->name, 'created_at' => $kol->created_at?->toIso8601String(),
-                'approval_updated_at' => $kol->approval_updated_at?->toIso8601String(),
-                'reason_code' => $latestReasons->get($kol->id)?->reason_code,
-            ])->values()->all(),
-            'collaborations' => $collaborations->map(fn ($row): array => [
-                'id' => (int) $row->id, 'kol_id' => (int) $row->kol_id,
-                'kol_name' => $row->kol?->display_name ?? 'KOL #'.$row->kol_id,
-                'owner_name' => $row->owner?->name, 'title' => $row->title,
-                'cooperation_type' => $row->cooperation_type, 'amount' => (string) $row->agreement_amount,
-                'currency' => strtoupper((string) $row->currency), 'created_at' => $row->created_at?->toIso8601String(),
-            ])->values()->all(),
-            'payouts' => $payouts->map(fn ($row): array => [
-                'id' => (int) $row->id, 'kol_id' => (int) $row->kol_id,
+            'module' => 'payouts', 'pending_count' => $pending->count(), 'history_count' => $history->count(),
+            'pending' => $pending->map(fn ($row): array => [
+                'id' => (int) $row->id, 'title' => 'Payout #'.$row->id,
                 'kol_name' => $row->kol?->display_name ?? 'KOL #'.$row->kol_id,
                 'requester_name' => $row->requestedBy?->name ?? 'User #'.$row->requested_by_user_id,
                 'affiliate_id' => (int) $row->affiliate_id, 'amount' => (string) $row->amount,
                 'currency' => strtoupper((string) $row->currency),
                 'referral_ids' => $row->items->pluck('referral_id')->map(fn ($id) => (int) $id)->values()->all(),
-                'created_at' => $row->created_at?->toIso8601String(),
+                'created_at' => $row->created_at?->toIso8601String(), 'submitted_at' => $row->created_at?->toIso8601String(),
+                'detail_href' => '/kol/payouts',
             ])->values()->all(),
+            'history' => $history->all(),
         ];
     }
 
