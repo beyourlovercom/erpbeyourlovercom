@@ -155,6 +155,17 @@ class AppShellNavigationTest extends TestCase
             ->where('shellNavigation.0.path', '/sync'));
     }
 
+    public function test_backup_child_menu_uses_backup_view_permission_and_canonical_route(): void
+    {
+        $user = $this->userWith(['dashboard.view', 'system.permissions.manage', 'backup.view'], 'backup-menu-user');
+        $settings = collect(config('erp_shell_navigation'))->firstWhere('key', 'settings');
+        $backup = collect($settings['children'] ?? [])->firstWhere('key', 'settings-backup');
+        $this->assertSame('备份与迁移', $backup['label']);
+        $this->assertSame('/settings/backup', $backup['path']);
+        $this->assertSame('backup.index', $backup['route']);
+        $this->assertSame('backup.view', $backup['permission']);
+    }
+
     public function test_only_exact_legacy_root_path_collisions_fall_back_for_prototype_users(): void
     {
         $prototypeUser = $this->userWith(['prototype.view'], 'prototype-operator');

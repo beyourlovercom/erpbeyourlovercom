@@ -1,8 +1,8 @@
 {
-  "version": "1.9",
+  "version": "2.0",
   "status": "OWNER_APPROVED",
-  "approved_at": "2026-08-31",
-  "approved_head": "63c2fa628815d14bdea1f41063da64c77610b608",
+  "approved_at": "2026-09-01",
+  "approved_head": "e9912acbd49d27e47641f085e8877d4c508e14b4",
   "governed_levels": [
     1,
     2
@@ -504,6 +504,51 @@
       "sort": 30
     },
     {
+      "code": "kol-approval-kols",
+      "parent_code": "kol",
+      "level": 2,
+      "label_zh": "KOL 审批",
+      "slug": "kols",
+      "url": "/kol/approvals/kols",
+      "route": "kol.approvals.kols",
+      "permission": "kol.approvals.manage",
+      "emoji": null,
+      "function_zh": "审核 KOL 资料与合作准入。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 40
+    },
+    {
+      "code": "kol-approval-collaborations",
+      "parent_code": "kol",
+      "level": 2,
+      "label_zh": "付费合作审批",
+      "slug": "collaborations",
+      "url": "/kol/approvals/collaborations",
+      "route": "kol.approvals.collaborations",
+      "permission": "kol.approvals.manage",
+      "emoji": null,
+      "function_zh": "审核付费合作申请。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 50
+    },
+    {
+      "code": "kol-approval-payouts",
+      "parent_code": "kol",
+      "level": 2,
+      "label_zh": "佣金付款审批",
+      "slug": "payouts",
+      "url": "/kol/approvals/payouts",
+      "route": "kol.approvals.payouts",
+      "permission": "kol.approvals.manage",
+      "emoji": null,
+      "function_zh": "审核 KOL 佣金付款。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 60
+    },
+    {
       "code": "kol-opportunities",
       "parent_code": "kol",
       "level": 2,
@@ -516,7 +561,7 @@
       "function_zh": "管理 KOL 合作机会和跟进阶段（M1.1 CRM 包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 40
+      "sort": 70
     },
     {
       "code": "kol-collaborations",
@@ -531,7 +576,7 @@
       "function_zh": "查看 KOL 合作记录、产品/样品关联和发货投影（M1.2 合作包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 50
+      "sort": 80
     },
     {
       "code": "kol-communications",
@@ -546,7 +591,7 @@
       "function_zh": "记录 KOL 沟通历史和待跟进事项（M1.1 CRM 包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 60
+      "sort": 90
     },
     {
       "code": "kol-samples",
@@ -561,7 +606,7 @@
       "function_zh": "查看 KOL 样品和发货信息投影，复用 canonical 订单和物流真相（M1.2 合作包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 70
+      "sort": 100
     },
     {
       "code": "kol-content",
@@ -576,7 +621,7 @@
       "function_zh": "管理 KOL 内容发布记录和发布证据（M1.3 内容包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 80
+      "sort": 110
     },
     {
       "code": "kol-commissions",
@@ -591,7 +636,7 @@
       "function_zh": "管理 KOL 佣金记录和结算历史（M1.4 财务包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 90
+      "sort": 120
     },
     {
       "code": "kol-affiliatewp",
@@ -606,7 +651,7 @@
       "function_zh": "AffiliateWP 网红同步、KOL 绑定、审批状态与 provisioning 工作台；M1.4B 先交付 Influencer 模式，Coupon 模式属于 M1.4C。",
       "status": "in_progress",
       "progress": 25,
-      "sort": 100
+      "sort": 130
     },
     {
       "code": "inventory",
@@ -802,6 +847,21 @@
       "status": "implemented",
       "progress": 100,
       "sort": 30
+    },
+    {
+      "code": "products-weight-evidence",
+      "parent_code": "products",
+      "level": 2,
+      "label_zh": "重量证据",
+      "slug": "weight-evidence",
+      "url": "/products/weight-evidence",
+      "route": "products.weight-evidence.index",
+      "permission": "products.view",
+      "emoji": null,
+      "function_zh": "查看和管理产品重量证据。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 40
     },
     {
       "code": "guides",
@@ -1042,6 +1102,21 @@
       "status": "implemented",
       "progress": 100,
       "sort": 60
+    },
+    {
+      "code": "settings-backup",
+      "parent_code": "settings",
+      "level": 2,
+      "label_zh": "备份与迁移",
+      "slug": "backup",
+      "url": "/settings/backup",
+      "route": "backup.index",
+      "permission": "backup.view",
+      "emoji": null,
+      "function_zh": "查看备份与迁移工作区；备份引擎接入前仅展示策略和不可用状态。",
+      "status": "in_progress",
+      "progress": 20,
+      "sort": 70
     }
   ]
 }

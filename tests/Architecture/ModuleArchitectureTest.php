@@ -57,6 +57,8 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Backup/Application/BackupType.php',
         'app/Modules/Backup/Application/ManifestContract.php',
         'app/Modules/Backup/Application/RestoreState.php',
+        'app/Modules/Backup/Experience/Controllers/BackupController.php',
+        'app/Modules/Backup/Experience/Routes/web.php',
         'app/Modules/Backup/Providers/BackupServiceProvider.php',
         'app/Modules/Customers/Application/CompanyService.php',
         'app/Modules/Customers/Application/CustomerGroupService.php',
@@ -344,6 +346,9 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Audit/Providers',
         'app/Modules/Backup',
         'app/Modules/Backup/Application',
+        'app/Modules/Backup/Experience',
+        'app/Modules/Backup/Experience/Controllers',
+        'app/Modules/Backup/Experience/Routes',
         'app/Modules/Backup/Providers',
         'app/Modules/Customers',
         'app/Modules/Customers/Application',
@@ -510,6 +515,8 @@ final class ModuleArchitectureTest extends TestCase
         'analysis.export',
         'analysis.update',
         'architecture.foundation',
+        'backup.index',
+        'backup.legacy',
         'customers.companies',
         'customers.companies.archive',
         'customers.companies.create',
@@ -927,6 +934,8 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Architecture/Foundation.vue' => '0f3f96bd3ad9a5b68fa7fe5a78e20a1e0e92f4d2e6806ef30697fda64941aa70',
         'resources/js/Pages/Auth/Login.test.ts' => '445f3392872df2466f83736af7854a1a5c2e477198abea252c546e24141420c8',
         'resources/js/Pages/Auth/Login.vue' => '5595bb6472df208ce26f74a7e8ba51dd3d96d1421c1502517af97827a3d8b9db',
+        'resources/js/Pages/Backup/Index.test.ts' => '526a2ebb08e2844f881135671f87917b7da9851bf3f69337b75231af7cb11440',
+        'resources/js/Pages/Backup/Index.vue' => '912f1abadb97747332d150eb332a414bef450c4973b06c26e63cb673343090a0',
         'resources/js/Pages/Customers/Companies/Create.test.ts' => '2221b8d4e063e0615a97af14e6fbb738022fd44b55080a6fa6fa8c14d500e198',
         'resources/js/Pages/Customers/Companies/Create.vue' => 'c9b4830fcaf4a5a7ec3748bcbf515c265f33999d15460b749a69c14168a525a4',
         'resources/js/Pages/Customers/Companies/Edit.vue' => '4bcd7f0f42345623c5b2eaeba7cf625a585b2a291df9f8b53cb9446f9d14958d',
@@ -1031,7 +1040,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Products/WeightEvidence.test.ts' => '5b28350ba9030846eb3ae96a97435048818817252e1912ea936e3cd007e3fdd5',
         'resources/js/Pages/Products/WeightEvidence.vue' => 'cd44b849340934aed046c1692bf5f63c4d22e46af0f459a73d3e7c5cd8b5e5fe',
         'resources/js/Pages/Settings/Index.test.ts' => '45cbba34d62289d3bd7c99bf05b9aa099a2875425c93ae8e0d4464619a60a825',
-        'resources/js/Pages/Settings/Index.vue' => 'd931499dca9a7b0ae06408ea196d097a863992ba160d749b8e4a7520322d9038',
+        'resources/js/Pages/Settings/Index.vue' => 'f40fb10eb06485f00189e7cb78183cef691e18a91330a2a7053e10b3a48d8e90',
         'resources/js/Pages/Shell/ModuleOverview.vue' => '7c4148ed1570444f4b2cb5763a1a8cfac3c6f7b958b95a4f3d98fbf40b6ca02c',
         'resources/js/Pages/Shell/Placeholder.test.ts' => 'd0623492800b81b76650531eec2b979747d98daf34dcd4320ba00438529bb781',
         'resources/js/Pages/Shell/Placeholder.vue' => 'e18f588432b7d29a025f7618f977bdb7457536e8ae8028c2c343ce5c7b95472f',
@@ -1313,7 +1322,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('89f7b09c22064db5369dd2c0e78f156f4294fbab5ed3f06b6bdda8b2f5e3c49f', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('4ef95415155129ea12411f7c11df2275bc0ecae5eb5819e112378b23d022aaec', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);
