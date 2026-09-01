@@ -19,7 +19,7 @@ final class ReferralCommissionSyncService
 
     public function __construct(private readonly AffiliateWpGateway $gateway) {}
 
-    /** @return array{synced:int,marked_missing:int,affiliate_unresolved:int,order_unresolved:int} */
+    /** @return array{synced:int,marked_missing:int,affiliate_unresolved:int,order_unresolved:int,provider_references:list<string>} */
     public function sync(string $connectionKey, Authenticatable $actor): array
     {
         if (! $actor->can('kol.affiliates.manage')) {
@@ -108,6 +108,7 @@ final class ReferralCommissionSyncService
                 'marked_missing' => $markedMissing,
                 'affiliate_unresolved' => $affiliateUnresolved,
                 'order_unresolved' => $orderUnresolved,
+                'provider_references' => array_map(static fn (array $item): string => (string) $item['referral_id'], $items),
             ];
         });
     }

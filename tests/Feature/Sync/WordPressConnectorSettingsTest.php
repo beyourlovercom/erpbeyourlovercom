@@ -85,7 +85,7 @@ final class WordPressConnectorSettingsTest extends TestCase
             'services.andy_core.key_id' => 'key-1',
             'services.andy_core.shared_secret' => 'runtime-secret-never-render',
         ]);
-        $user = $this->userWithPermissions(['sync.view', 'marketing.view']);
+        $user = $this->userWithPermissions(['sync.view']);
 
         $this->actingAs($user)->get('/sync/wpapi')->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Sync/WpApi')

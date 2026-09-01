@@ -54,3 +54,53 @@ Continue the remaining ERP WordPress Connector integration after PR #134 deliver
 
 ## Entry gate
 `CONTINUATION_M1.0 = FOUNDATION_FROZEN`
+
+## M1.2A unified read orchestration checkpoint — 2026-09-01
+
+`M1.2A = READ_ORCHESTRATION_CODE_READY`
+
+Implemented:
+- `/sync/wpapi` is now a Sync-scoped unified Connector surface; viewing requires `sync.view`, while each operation keeps its domain-specific operate permission.
+- Subscribers remain on the existing Marketing route/service and were not reimplemented.
+- Affiliates, Coupons and Referrals now expose manual Connector actions that invoke the existing canonical KOL snapshot services.
+- Payouts remain explicitly disabled and dependency-gated until the independent KOL M1.4E / Finance payout domain is present in `main`.
+- Existing KOL snapshot services now return exact provider references for orchestration evidence; their persistence ownership and reconciliation logic are unchanged.
+- `SyncRunService` gained narrow running-run metadata updates for requested item count and safe context annotation.
+- Each successful Affiliate/Coupon/Referral provider object creates one `sync_run_item` with its exact provider ID; failed provider calls create an explicit failed run item and never report success.
+- Connector page shows per-resource latest run status/counts and keeps Shared Secret redacted.
+- YBY-Core PR #28 compatibility is covered with a Referral `failed` provider-status fixture; provider status remains preserved without coercion.
+
+Actual implementation file map:
+- `app/Modules/Kol/Application/AffiliateWp/AffiliateSnapshotSyncService.php`
+- `app/Modules/Kol/Application/AffiliateWp/CouponSnapshotSyncService.php`
+- `app/Modules/Kol/Application/AffiliateWp/ReferralCommissionSyncService.php`
+- `app/Modules/Sync/Application/SyncRunService.php`
+- `app/Modules/Sync/Experience/Controllers/SyncWorkspaceController.php`
+- `app/Modules/Sync/Experience/Routes/web.php`
+- `resources/js/Pages/Sync/WpApi.vue`
+- `tests/Feature/Sync/WordPressConnectorReadOrchestrationTest.php`
+- `tests/Feature/Sync/WordPressConnectorSettingsTest.php`
+- `tests/Feature/Marketing/WordPressSubscriberSyncTest.php`
+- `tests/Architecture/ModuleArchitectureTest.php` (only the frozen `WpApi.vue` hash was updated)
+
+Verification:
+- PHP syntax on changed PHP implementation/tests: PASS.
+- `git diff --check`: PASS.
+- `npm run typecheck`: PASS.
+- `npm run build`: PASS; existing bundle-size warning only.
+- Focused Connector + Marketing + KOL read suites: PASS, 43 tests / 253 assertions / 0 functional failures; pre-existing `file_get_contents` warning class remains.
+- Architecture frozen module/support boundary: PASS.
+- Architecture compatibility/hash test: PASS, 448 assertions; PHPUnit marks one test risky but reports no functional failure.
+
+Architecture baseline classification:
+- Full `ModuleArchitectureTest` stops at existing `APP-001` Application→Infrastructure violations in Audit / Customers / Logistics / Shell / Support.
+- The entire M1.2A working diff was temporarily stashed and the same test was rerun with application code equivalent to exact `origin/main@264fe20b79b7f145f3b976d939ddce0a07c57d8d` (only documentation commits remained).
+- The same `APP-001` failure reproduced before restoring M1.2A changes.
+- Classification: `BASELINE_ARCHITECTURE_VIOLATION`, not Connector regression. This WP does not reopen or modify Customer OS or other unrelated modules to repair it.
+
+Isolation / security:
+- Customer module touch: `0`.
+- Marketing Application/Infrastructure domain touch: `0`.
+- No Tailnet IP, Shared Secret, credential literal or temporary UAT secret appears in the implementation diff.
+- No generic Connector/KOL/Payout master table was added.
+- No Production deployment, merge, push or PR creation performed at this checkpoint.
