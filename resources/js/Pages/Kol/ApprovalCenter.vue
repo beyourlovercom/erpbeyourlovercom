@@ -115,7 +115,7 @@ function detailText(){ return props.workspace.module==='payouts' ? '查看结算
               <div class="title-line"><h3>{{ row.title }}</h3></div>
               <p class="primary-meta">{{ historyMeta(row) || '—' }}</p>
               <p class="secondary-meta">审批来源：{{ row.source }}</p>
-              <p v-if="row.reason" class="record-note reject-note">驳回原因：{{ row.reason }}</p>
+              <p v-if="row.reason" class="record-note" :class="{ 'reject-note': row.outcome==='rejected' }">{{ row.outcome==='rejected' ? '驳回原因' : '审批备注' }}：{{ row.reason }}</p>
             </div>
             <div v-if="row.amount" class="amount-column"><strong>{{ row.amount }}</strong><span>{{ row.currency }}</span></div>
           </section>
