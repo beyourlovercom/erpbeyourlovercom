@@ -5,6 +5,7 @@ namespace App\Modules\Guides\Experience\Controllers;
 use App\Modules\Guides\Application\KnowledgeBaseService;
 use App\Modules\Guides\Application\MarkdownContentRenderer;
 use App\Modules\Guides\Infrastructure\Models\ReleaseNote;
+use App\Modules\Orders\Application\OrderIdentityService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -13,7 +14,7 @@ use Inertia\Response;
 
 final class ReleaseNoteController
 {
-    public function __construct(private readonly KnowledgeBaseService $service, private readonly MarkdownContentRenderer $renderer) {}
+    public function __construct(private readonly KnowledgeBaseService $service, private readonly MarkdownContentRenderer $renderer, private readonly OrderIdentityService $identities) {}
 
     public function index(Request $request): Response
     {
@@ -35,7 +36,15 @@ final class ReleaseNoteController
             'currentRelease' => $current ? $this->payload($current) : null,
             'recentReleases' => $recent->map(fn (ReleaseNote $note) => $this->payload($note))->all(),
             'canManage' => $request->user()?->can('guides.manage') ?? false,
+            'orderIdentity' => ['prefix_token' => $this->identities->prefix(), 'example' => $this->identities->prefix().'-0901-c3721'],
         ]);
+    }
+
+    public function updateOrderIdentity(Request $request): RedirectResponse
+    {
+        $data = $request->validate(['prefix_token' => ['required', 'string', 'max:24', 'regex:/^[A-Za-z0-9]+$/']]);
+        $this->identities->updatePrefix($data['prefix_token'], $request->user());
+        return back()->with('success', '订单编号前缀已保存');
     }
 
     public function show(Request $request, ReleaseNote $releaseNote): Response

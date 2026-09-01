@@ -136,10 +136,10 @@ final class OrderController
 
         return response()->streamDownload(function () use ($orders): void {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['订单号', '来源', '订单日期', '收件人', '国家', '状态', '负责人']);
+            fputcsv($handle, ['ERP订单号', '来源订单号', '来源', '订单日期', '收件人', '国家', '状态', '负责人']);
             foreach ($orders as $order) {
                 fputcsv($handle, [
-                    $order->external_order_number, $this->sourceLabel($order->source_type),
+                    $order->erp_order_id, $order->external_order_number, $this->sourceLabel($order->source_type),
                     $order->order_date?->toDateString(), $order->address?->recipient_name,
                     $order->address?->country, $order->order_status->value, $order->owner?->name,
                 ]);
@@ -169,6 +169,7 @@ final class OrderController
         return [
             'id' => $order->id,
             'internal_order_number' => $order->internal_order_number,
+            'erp_order_id' => $order->erp_order_id,
             'external_order_number' => $order->external_order_number,
             'source_type' => $order->source_type->value,
             'source_label' => $this->sourceLabel($order->source_type),

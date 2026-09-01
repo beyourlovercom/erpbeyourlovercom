@@ -68,6 +68,7 @@ final class LogisticsController
 
         return response()->json([
             'order_number' => $order->external_order_number,
+            'erp_order_id' => $order->erp_order_id,
             'recipient_name' => $order->address?->recipient_name,
             'phone' => $order->address?->phone,
             'country' => $order->address?->country,
@@ -102,6 +103,7 @@ final class LogisticsController
         return [
             'id' => $order->id,
             'external_order_number' => $order->external_order_number,
+            'erp_order_id' => $order->erp_order_id,
             'internal_order_number' => $order->internal_order_number,
             'order_kind' => $order->order_kind?->value,
             'order_kind_label' => match ($order->order_kind) {

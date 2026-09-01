@@ -120,6 +120,7 @@ final class CarrierController
             'id' => $shipment->id,
             'shipped_at' => $shipment->shipped_at?->toIso8601String(),
             'external_order_number' => $order?->external_order_number,
+            'erp_order_id' => $order?->erp_order_id,
             'internal_order_number' => $order?->internal_order_number,
             'order_kind' => $order?->order_kind?->value,
             'warehouse_name' => $shipment->warehouse?->name,

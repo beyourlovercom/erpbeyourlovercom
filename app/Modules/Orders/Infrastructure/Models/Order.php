@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Order extends Model
 {
     protected $fillable = [
-        'internal_order_number', 'source_type', 'order_kind', 'external_order_number', 'order_date',
+        'internal_order_number', 'erp_order_id', 'source_type', 'order_kind', 'external_order_number', 'order_date',
         'order_note', 'owner_id', 'order_status', 'currency',
     ];
 

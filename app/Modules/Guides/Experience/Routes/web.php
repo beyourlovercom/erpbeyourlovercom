@@ -5,6 +5,7 @@ use App\Modules\Guides\Experience\Controllers\ReleaseNoteController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth', 'can:system.permissions.manage'])->get('/settings', [ReleaseNoteController::class, 'settings'])->name('shell.settings');
+Route::middleware(['web', 'auth', 'can:system.permissions.manage'])->put('/settings/order-identity', [ReleaseNoteController::class, 'updateOrderIdentity'])->name('settings.order-identity.update');
 
 Route::middleware(['web', 'auth', 'can:guides.manage'])->group(function (): void {
     Route::get('/guides/create', [GuideController::class, 'create'])->name('guides.create');

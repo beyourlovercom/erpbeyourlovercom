@@ -36,6 +36,7 @@ class KolFulfillmentBridgeTest extends TestCase
         $order = Order::query()->firstOrFail();
         $this->assertSame('kol_fulfillment', $order->order_kind->value);
         $this->assertSame('kol', $order->source_type->value);
+        $this->assertSame('007erp-'.$order->order_date->format('md').'-k'.$kol->id, $order->erp_order_id);
         $this->assertSame($order->id, $collaboration->fresh()->order_id);
         $this->assertDatabaseHas('order_items', ['order_id' => $order->id, 'product_id' => $product->id, 'quantity' => 2]);
         $this->assertDatabaseHas('order_addresses', ['order_id' => $order->id, 'recipient_name' => 'Creator Name', 'country' => 'US', 'city' => 'Los Angeles']);

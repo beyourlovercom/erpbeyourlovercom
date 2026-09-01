@@ -30,6 +30,7 @@ type OrderItem = {
 
 type Order = {
   id: number
+  erp_order_id?: string | null
   internal_order_number: string
   external_order_number: string
   source_type: string
@@ -171,7 +172,7 @@ const shipmentStatusLabel = computed(() => {
         <!-- Identity strip -->
         <div class="ord-identity-strip">
           <div class="ord-identity-main">
-            <span class="ord-identity-number">{{ order.external_order_number }}</span>
+            <span class="ord-identity-number">{{ order.erp_order_id ?? order.external_order_number }}</span>
             <span class="ord-identity-badge">{{ order.order_kind_label }}</span>
             <span class="ord-identity-badge ord-badge-muted">{{ order.source_label }}</span>
             <span class="ord-identity-badge ord-badge-status">{{ order.order_status_label }}</span>
@@ -182,6 +183,7 @@ const shipmentStatusLabel = computed(() => {
               <summary class="ord-details-summary">ERP技术编号</summary>
               <span class="ord-details-value">{{ order.internal_order_number }}</span>
             </details>
+            <small>来源订单号：{{ order.external_order_number }}</small>
           </div>
         </div>
 
