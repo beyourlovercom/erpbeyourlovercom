@@ -13,7 +13,7 @@ vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({ default: { template: '
 const kolWorkspace = {
   module: 'kols' as const, pending_count: 1, history_count: 1,
   pending: [{ id:5,title:'Pending KOL',detail_href:'/kol/library/5',owner_name:'Owner A',country_code:'US',platform:'instagram',handle:'@pending',reason_code:'policy_all_requires_manager',created_at:'2026-09-01T01:00:00+00:00',submitted_at:'2026-09-01T01:10:00+00:00' }],
-  history: [{ record_key:'kol:20',id:9,title:'Approved Creator',detail_href:'/kol/library/9',outcome:'approved' as const,actor_name:'Manager A',decided_at:'2026-09-01T04:00:00+00:00',source:'manager_manual',reason:null,meta:['US','instagram'] }],
+  history: [{ record_key:'kol:20',id:9,title:'Approved Creator',detail_href:'/kol/library/9',outcome:'approved' as const,actor_name:'Manager A',decided_at:'2026-09-01T04:00:00+00:00',source:'manager_manual',reason:'资料完整，批准合作',meta:['US','instagram'] }],
 }
 const collaborationWorkspace = {
   module:'collaborations' as const,pending_count:1,history_count:1,
@@ -35,6 +35,12 @@ describe('KOL Manager approval module pages', () => {
     expect(wrapper.find('a[href="/kol/approvals/kols"]').exists()).toBe(true)
     expect(wrapper.find('a[href="/kol/approvals/collaborations"]').exists()).toBe(true)
     expect(wrapper.find('a[href="/kol/approvals/payouts"]').exists()).toBe(true)
+  })
+  it('labels approved notes separately from rejection reasons', async () => {
+    const wrapper=mount(ApprovalCenter,{props:{workspace:kolWorkspace}})
+    await wrapper.findAll('button').find(button=>button.text().includes('审批记录'))!.trigger('click')
+    expect(wrapper.text()).toContain('审批备注：资料完整，批准合作')
+    expect(wrapper.text()).not.toContain('驳回原因：资料完整，批准合作')
   })
   it('approves a KOL from its dedicated pending list', async () => {
     const wrapper=mount(ApprovalCenter,{props:{workspace:kolWorkspace}})

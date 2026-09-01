@@ -393,3 +393,21 @@ Followed by:
 
 MVP2 and ERP-INQUIRY-M1.2 remain paused until KOL V1 closes or Owner explicitly reprioritizes.
 ```
+
+
+## KOL V1 Cross-phase Closure — current 2026-09-01
+
+```text
+ERP-KOL-M1.2A-COLLABORATION-001 = COMPLETE / MERGED
+ERP-KOL-M1.2B-FULFILLMENT-BRIDGE-001 = COMPLETE / MERGED
+ERP-KOL-M1.3-CONTENT-001 = COMPLETE / MERGED
+ERP-KOL-M1.4A-AFFILIATEWP-CONNECTOR-FOUNDATION-001 = COMPLETE / MERGED
+ERP-KOL-M1.4B-INFLUENCER-APPROVAL-PROVISIONING-001 = COMPLETE / MERGED
+ERP-KOL-M1.4C-COUPON-SYNC-PROVISIONING-001 = COMPLETE / MERGED
+ERP-KOL-M1.4D-REFERRAL-COMMISSION-SYNC-001 = COMPLETE / MERGED
+ERP-KOL-M1.4E-COMMISSION-PAYOUT-WORKFLOW-001 = COMPLETE / MERGED
+ERP-KOL-M1.4F-APPROVAL-DASHBOARD-001 = COMPLETE / MERGED PR #141
+ERP-KOL-V1-CROSS-PHASE-CLOSURE-001 = OWNER UAT PASS / GIT DELIVERY PENDING
+```
+
+Boundary: closure performs full regression, responsibility-scope verification, migration rehearsal, Product/Order/Shipment/Affiliate truth checks and Owner UAT. KOL Intelligence / influencer discovery remains deferred and is not part of this package.

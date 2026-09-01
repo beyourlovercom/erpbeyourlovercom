@@ -1,0 +1,80 @@
+name: ERP KOL V1 Cross-phase Closure CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/Modules/Kol/**'
+      - 'database/migrations/*kol*'
+      - 'resources/js/Pages/Kol/**'
+      - 'tests/Feature/Kol/**'
+      - 'tests/Feature/OrderFulfillmentM1Test.php'
+      - 'tests/Feature/Products/ProductOrderIntegrationTest.php'
+      - 'tests/Feature/Logistics/CarrierWorkspaceTest.php'
+      - 'tests/Feature/Identity/UserManagementTest.php'
+      - 'tests/Feature/AppShellNavigationTest.php'
+      - 'tests/Feature/ErpNavigationTest.php'
+      - 'tests/Architecture/ModuleProviderTest.php'
+      - 'tests/Architecture/ModuleArchitectureTest.php'
+      - 'config/erp_shell_navigation.php'
+      - 'docs/10_Planning_Roadmap/12_WORK_PACKAGE_INDEX.md'
+      - 'docs/10_Planning_Roadmap/23_ERP_KOL_MODULE_V1_UNIFIED_ROADMAP.md'
+      - 'docs/60_Codex_Operations/work-packages/ERP-KOL-V1-CROSS-PHASE-CLOSURE-001.md'
+      - '.github/workflows/erp-kol-v1-cross-phase-closure.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  closure:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Install frontend dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Prepare compatibility paths
+        run: ln -s Pages resources/js/pages
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Full KOL frontend regression
+        run: npx vitest run resources/js/Pages/Kol
+      - name: Production build
+        run: npm run build
+      - name: Prepare test environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+      - name: Fresh migration rehearsal
+        run: php artisan migrate:fresh --force
+      - name: Full KOL backend regression
+        run: php artisan test tests/Feature/Kol
+      - name: Canonical cross-module boundary regression
+        run: >-
+          php artisan test
+          tests/Feature/OrderFulfillmentM1Test.php
+          tests/Feature/Products/ProductOrderIntegrationTest.php
+          tests/Feature/Logistics/CarrierWorkspaceTest.php
+          tests/Feature/Identity/UserManagementTest.php
+          tests/Feature/AppShellNavigationTest.php
+          tests/Feature/ErpNavigationTest.php
+          tests/Architecture/ModuleProviderTest.php
+      - name: Diff check
+        run: git diff --check origin/main...HEAD
+      - name: Assert no dev hot marker
+        run: test ! -e public/hot

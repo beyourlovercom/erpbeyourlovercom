@@ -326,3 +326,19 @@ ERP-KOL-M1.2A-COLLABORATION-001
 ```
 
 Each implementation package remains bounded and independently tested. M1.2B must only bridge to canonical Order/Inventory/Shipment/Tracking truth. Final KOL V1 closure requires full cross-phase regression, permissions/Owner-scope checks, migration rehearsal, build/typecheck, local UAT and Owner UAT. Merge remains separately authorized per PR.
+
+
+## 12. Execution status — 2026-09-01
+
+- M1.2A Collaboration: MERGED.
+- M1.2B Canonical Fulfillment Bridge: MERGED.
+- M1.3 Content: MERGED.
+- M1.4A AffiliateWP Connector Foundation: MERGED.
+- M1.4B Influencer Approval / Provisioning: MERGED.
+- M1.4C Coupon Sync / Provisioning: MERGED.
+- M1.4D Referral / Commission Sync: MERGED.
+- M1.4E Commission Payout Workflow: MERGED.
+- M1.4F Manager Approval Center / Dashboard: MERGED by PR #141 at `e2099498429fc6df939900ee029a0e42887ba7c1`.
+- `ERP-KOL-V1-CROSS-PHASE-CLOSURE-001`: OWNER UAT PASS / GIT DELIVERY PENDING.
+
+Cross-phase Closure remains verification/UAT only unless a regression proves a bounded compatibility defect. The deferred intelligence/automation list in section 10, including influencer discovery and Instagram/X automation, remains deferred and is not activated by V1 closure.
