@@ -66,11 +66,12 @@ final class EloquentBackupRepository implements BackupRepository
             $run->started_at,
             $run->error_code,
             $run->error_message,
+            $run->metadata ?? [],
         );
     }
 
     private function artifactData(BackupArtifact $artifact): BackupArtifactData
     {
-        return new BackupArtifactData((int) $artifact->id, (int) $artifact->backup_run_id, (string) $artifact->path);
+        return new BackupArtifactData((int) $artifact->id, (int) $artifact->backup_run_id, (string) $artifact->path, (string) $artifact->kind, (int) $artifact->size, (string) $artifact->checksum, (bool) $artifact->encrypted, $artifact->key_id === null ? null : (string) $artifact->key_id, $artifact->package_checksum === null ? null : (string) $artifact->package_checksum);
     }
 }

@@ -23,6 +23,13 @@ return [
         'repository' => 'beyourlovercom/erp-backups',
         'visibility' => 'private',
         'token' => env('BACKUP_GITHUB_TOKEN'),
+        'api_base' => env('BACKUP_GITHUB_API_BASE', 'https://api.github.com'),
+        'api_version' => env('BACKUP_GITHUB_API_VERSION', '2026-03-10'),
+        'timeout' => (int) env('BACKUP_GITHUB_TIMEOUT', 30),
+        'connect_timeout' => (int) env('BACKUP_GITHUB_CONNECT_TIMEOUT', 10),
+        'upload_timeout' => (int) env('BACKUP_GITHUB_UPLOAD_TIMEOUT', 3600),
+        'user_agent' => env('BACKUP_GITHUB_USER_AGENT', 'BYL-ERP-Backup'),
+        'max_asset_bytes' => (int) env('BACKUP_GITHUB_MAX_ASSET_BYTES', 2147483647),
     ],
     'manifest' => [
         'version' => 1,

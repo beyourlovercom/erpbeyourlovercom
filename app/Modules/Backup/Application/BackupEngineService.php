@@ -67,7 +67,7 @@ final class BackupEngineService
             BackupState::Queued->value => [BackupState::Dumping], BackupState::Dumping->value => [BackupState::Packaging],
             BackupState::Packaging->value => [BackupState::Checksumming], BackupState::Checksumming->value => [BackupState::Encrypting],
             BackupState::Encrypting->value => [BackupState::Ready], BackupState::Ready->value => [BackupState::Publishing, BackupState::Verified],
-            BackupState::Publishing->value => [BackupState::Verified],
+            BackupState::Publishing->value => [BackupState::Ready, BackupState::Verified],
         ];
         return in_array($to, $allowed[$from->value] ?? [], true);
     }

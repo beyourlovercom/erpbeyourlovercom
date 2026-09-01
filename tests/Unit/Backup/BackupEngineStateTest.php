@@ -23,4 +23,9 @@ final class BackupEngineStateTest extends TestCase
         $this->assertTrue(BackupEngineService::canTransition(BackupState::Ready, BackupState::Publishing));
         $this->assertFalse(BackupEngineService::canTransition(BackupState::Ready, BackupState::Encrypting));
     }
+
+    public function test_publishing_can_return_to_ready_for_retry(): void
+    {
+        $this->assertTrue(BackupEngineService::canTransition(BackupState::Publishing, BackupState::Ready));
+    }
 }
