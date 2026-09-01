@@ -6,6 +6,7 @@ use App\Modules\Kol\Application\AffiliateWp\PayoutSnapshotSyncService;
 use App\Modules\Kol\Application\AffiliateWp\PayoutWorkflowService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Inertia\Inertia;
 use Inertia\Response;
 use RuntimeException;
@@ -26,6 +27,7 @@ final class PayoutWorkflowController
             'eligible' => $workspace['eligible'],
             'requests' => $workspace['requests'],
             'canRequest' => $request->user()->can('kol.payouts.request'),
+            'canApprove' => $request->user()->can('kol.payouts.approve'),
             'canManage' => $request->user()->can('kol.payouts.manage'),
         ]);
     }
@@ -68,6 +70,7 @@ final class PayoutWorkflowController
     {
         $data = $request->validate(['paypal_transaction_id' => ['required','string','max:255'], 'paid_at' => ['required','date_format:Y-m-d']]);
         try { $this->workflow->complete($payoutRequest, $data['paypal_transaction_id'], $data['paid_at'], $request->user()); }
+        catch (ModelNotFoundException $e) { throw $e; }
         catch (RuntimeException $e) { return back()->withErrors(['payout_complete' => $e->getMessage()]); }
         return back()->with('success', 'Provider Payout 已完成并精确回读。');
     }

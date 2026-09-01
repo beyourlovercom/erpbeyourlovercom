@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Kol\Experience\Controllers\AffiliateWpSyncController;
+use App\Modules\Kol\Experience\Controllers\KolApprovalCenterController;
 use App\Modules\Kol\Experience\Controllers\KolCollaborationController;
 use App\Modules\Kol\Experience\Controllers\KolCommunicationController;
 use App\Modules\Kol\Experience\Controllers\KolContentController;
@@ -39,6 +40,19 @@ Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
         Route::post('/kol/views', [SavedViewController::class, 'store'])->name('kol.views.store');
         Route::patch('/kol/views/{savedView}', [SavedViewController::class, 'update'])->name('kol.views.update');
         Route::delete('/kol/views/{savedView}', [SavedViewController::class, 'destroy'])->name('kol.views.destroy');
+    });
+
+    Route::middleware('can:kol.approvals.manage')->group(function (): void {
+        Route::get('/kol/approvals', [KolApprovalCenterController::class, 'index'])->name('kol.approvals');
+        Route::get('/kol/approvals/kols', [KolApprovalCenterController::class, 'kols'])->name('kol.approvals.kols');
+        Route::get('/kol/approvals/collaborations', [KolApprovalCenterController::class, 'collaborations'])->name('kol.approvals.collaborations');
+        Route::get('/kol/approvals/payouts', [KolApprovalCenterController::class, 'payouts'])->name('kol.approvals.payouts');
+        Route::post('/kol/approvals/kols/{kol}/approve', [KolApprovalCenterController::class, 'approveKol'])->name('kol.approvals.kols.approve');
+        Route::post('/kol/approvals/kols/{kol}/reject', [KolApprovalCenterController::class, 'rejectKol'])->name('kol.approvals.kols.reject');
+        Route::post('/kol/approvals/collaborations/{collaboration}/approve', [KolApprovalCenterController::class, 'approveCollaboration'])->name('kol.approvals.collaborations.approve');
+        Route::post('/kol/approvals/collaborations/{collaboration}/reject', [KolApprovalCenterController::class, 'rejectCollaboration'])->name('kol.approvals.collaborations.reject');
+        Route::post('/kol/approvals/payouts/{payoutRequest}/approve', [KolApprovalCenterController::class, 'approvePayout'])->name('kol.approvals.payouts.approve');
+        Route::post('/kol/approvals/payouts/{payoutRequest}/reject', [KolApprovalCenterController::class, 'rejectPayout'])->name('kol.approvals.payouts.reject');
     });
 
     // Placeholder routes for M1.1+ menu items — real at nav level, no business engine yet

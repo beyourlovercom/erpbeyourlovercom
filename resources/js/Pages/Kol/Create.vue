@@ -28,11 +28,13 @@ const languageOptions = [
   { value: 'other', label: '其他' },
 ]
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   ownerOptions: OwnerOption[]
+  approvalManagerOptions?: OwnerOption[]
+  financeOwnerOptions?: OwnerOption[]
   currentUserId: number
   canManageViews: boolean
-}>()
+}>(), { approvalManagerOptions: () => [], financeOwnerOptions: () => [] })
 
 const form = useForm({
   display_name: '',
@@ -40,6 +42,8 @@ const form = useForm({
   language: 'en',
   status: 'active',
   owner_id: String(props.currentUserId),
+  approval_manager_id: '',
+  finance_owner_id: '',
   relationship_stage: 'prospect',
   cooperation_type: '免费发帖',
   joined_at: new Date().toISOString().slice(0, 10),
@@ -105,6 +109,8 @@ const submit = () => {
   form.transform(data => ({
     ...data,
     owner_id: data.owner_id ? Number(data.owner_id) : null,
+    approval_manager_id: data.approval_manager_id ? Number(data.approval_manager_id) : null,
+    finance_owner_id: data.finance_owner_id ? Number(data.finance_owner_id) : null,
     level: data.level || null,
     content_format: data.content_format || null,
     product_quantity: data.product_quantity !== '' ? Number(data.product_quantity) : null,
@@ -220,6 +226,16 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
                   <option v-for="o in ownerOptions" :key="o.value" :value="String(o.value)">{{ o.label }}</option>
                 </select>
                 <p v-if="form.errors.owner_id" class="erp-field-error">{{ form.errors.owner_id }}</p>
+              </div>
+              <div v-if="canManageViews" class="erp-form-field">
+                <label class="erp-form-label">审批经理</label>
+                <select v-model="form.approval_manager_id" class="erp-select"><option value="">未分配</option><option v-for="o in approvalManagerOptions" :key="o.value" :value="String(o.value)">{{ o.label }}</option></select>
+                <p class="erp-form-helper">只有该负责人可查看和处理此 KOL 的审批。</p>
+              </div>
+              <div v-if="canManageViews" class="erp-form-field">
+                <label class="erp-form-label">财务负责人</label>
+                <select v-model="form.finance_owner_id" class="erp-select"><option value="">未分配</option><option v-for="o in financeOwnerOptions" :key="o.value" :value="String(o.value)">{{ o.label }}</option></select>
+                <p class="erp-form-helper">只有该负责人可查看并完成此 KOL 的佣金付款。</p>
               </div>
             </div>
           </div>

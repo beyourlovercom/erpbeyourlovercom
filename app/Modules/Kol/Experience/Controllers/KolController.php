@@ -64,10 +64,13 @@ final class KolController
                 ->map(fn (User $u) => ['value' => $u->id, 'label' => $u->name])->values()->all();
         }
 
+        $canManageViews = KolScope::canManageViews($user);
         return Inertia::render('Kol/Create', [
             'ownerOptions' => $ownerOptions,
+            'approvalManagerOptions' => $canManageViews ? $this->usersWithPermission('kol.approvals.manage') : [],
+            'financeOwnerOptions' => $canManageViews ? $this->usersWithPermission('kol.payouts.manage') : [],
             'currentUserId' => (int) $user->getAuthIdentifier(),
-            'canManageViews' => KolScope::canManageViews($user),
+            'canManageViews' => $canManageViews,
         ]);
     }
 
@@ -80,6 +83,8 @@ final class KolController
             'language' => 'nullable|string|in:en,es,de,fr,it,zh,other',
             'status' => 'required|string|in:active,inactive',
             'owner_id' => 'nullable|integer|exists:users,id',
+            'approval_manager_id' => 'nullable|integer|exists:users,id',
+            'finance_owner_id' => 'nullable|integer|exists:users,id',
             'relationship_stage' => 'required|string|in:prospect,contacted,negotiating,cooperating,long_term,paused,ended',
             'cooperation_type' => 'nullable|string|in:免费发帖,长期合作,付费发帖',
             'joined_at' => 'nullable|date',
@@ -128,6 +133,8 @@ final class KolController
 
         if (! KolScope::isAllScope($user)) {
             $data['owner_id'] = (int) $user->getAuthIdentifier();
+            $data['approval_manager_id'] = null;
+            $data['finance_owner_id'] = null;
         }
 
         $kol = $this->kols->create($data, $data['social_accounts'] ?? [], $user, $data['sales_performance_entries'] ?? []);
@@ -138,7 +145,7 @@ final class KolController
     public function show(Request $request, Kol $kol): Response
     {
         $this->authorizeKolAccess($request, $kol);
-        $relations = ['owner', 'socialAccounts.latestMetric', 'socialAccounts.metrics'];
+        $relations = ['owner', 'approvalManager', 'financeOwner', 'socialAccounts.latestMetric', 'socialAccounts.metrics'];
         if (Schema::hasTable('kol_opportunities')) {
             $relations[] = 'opportunities.owner';
         }
@@ -170,7 +177,7 @@ final class KolController
     public function edit(Request $request, Kol $kol): Response
     {
         $this->authorizeKolAccess($request, $kol);
-        $editRelations = ['socialAccounts.latestMetric'];
+        $editRelations = ['approvalManager', 'financeOwner', 'socialAccounts.latestMetric'];
         if (Schema::hasTable('kol_opportunities')) {
             $editRelations[] = 'opportunities.owner';
         }
@@ -198,10 +205,13 @@ final class KolController
                 ->map(fn (User $u) => ['value' => $u->id, 'label' => $u->name])->values()->all();
         }
 
+        $canManageViews = KolScope::canManageViews($user);
         return Inertia::render('Kol/Edit', [
             'kol' => $this->kolDetailData($kol),
             'ownerOptions' => $ownerOptions,
-            'canManageViews' => KolScope::canManageViews($user),
+            'approvalManagerOptions' => $canManageViews ? $this->usersWithPermission('kol.approvals.manage') : [],
+            'financeOwnerOptions' => $canManageViews ? $this->usersWithPermission('kol.payouts.manage') : [],
+            'canManageViews' => $canManageViews,
             'canCreateOrders' => $user->can('orders.create'),
         ]);
     }
@@ -224,6 +234,8 @@ final class KolController
             'language' => 'nullable|string|in:en,es,de,fr,it,zh,other',
             'status' => 'required|string|in:active,inactive',
             'owner_id' => 'nullable|integer|exists:users,id',
+            'approval_manager_id' => 'nullable|integer|exists:users,id',
+            'finance_owner_id' => 'nullable|integer|exists:users,id',
             'relationship_stage' => 'required|string|in:prospect,contacted,negotiating,cooperating,long_term,paused,ended',
             'cooperation_type' => 'nullable|string|in:免费发帖,长期合作,付费发帖',
             'joined_at' => 'nullable|date',
@@ -272,7 +284,7 @@ final class KolController
         $user = $request->user();
 
         if (! KolScope::isAllScope($user)) {
-            unset($data['owner_id']);
+            unset($data['owner_id'], $data['approval_manager_id'], $data['finance_owner_id']);
         }
 
         $this->kols->update($kol, $data, $data['social_accounts'] ?? [], $user, $data['sales_performance_entries'] ?? []);
@@ -329,6 +341,16 @@ final class KolController
         }
     }
 
+    /** @return list<array{value:int,label:string}> */
+    private function usersWithPermission(string $permission): array
+    {
+        return User::query()->where('is_active', true)->where(function ($q) use ($permission): void {
+            $q->whereHas('roles.permissions', fn ($p) => $p->where('key', $permission))
+                ->orWhereHas('customPermissions', fn ($p) => $p->where('key', $permission));
+        })->orderBy('name')->get(['id', 'name'])
+            ->map(fn (User $u) => ['value' => (int) $u->id, 'label' => $u->name])->values()->all();
+    }
+
     private function kolData(Kol $kol): array
     {
         $latestFollowers = null;
@@ -356,6 +378,10 @@ final class KolController
             'status' => $kol->status,
             'relationship_stage' => $kol->relationship_stage,
             'owner' => $kol->owner ? ['id' => $kol->owner->id, 'name' => $kol->owner->name] : null,
+            'approval_manager_id' => $kol->approval_manager_id,
+            'approval_manager' => $kol->approvalManager ? ['id' => $kol->approvalManager->id, 'name' => $kol->approvalManager->name] : null,
+            'finance_owner_id' => $kol->finance_owner_id,
+            'finance_owner' => $kol->financeOwner ? ['id' => $kol->financeOwner->id, 'name' => $kol->financeOwner->name] : null,
             'primary_platform' => $primaryPlatform,
             'latest_followers' => $latestFollowers,
             'is_100k_plus' => $latestFollowers !== null && $latestFollowers >= 100000,

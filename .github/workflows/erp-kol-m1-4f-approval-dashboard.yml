@@ -1,0 +1,95 @@
+name: ERP KOL M1.4F Approval Dashboard CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/Modules/Identity/Application/AuthorizationKeys.php'
+      - 'app/Modules/Identity/Application/PermissionCatalog.php'
+      - 'app/Modules/Identity/Application/RolePreset.php'
+      - 'app/Modules/Kol/Application/AffiliateWp/PayoutWorkflowService.php'
+      - 'app/Modules/Kol/Application/Approval/**'
+      - 'app/Modules/Kol/Application/KolOperationalDashboardService.php'
+      - 'app/Modules/Kol/Experience/Controllers/KolApprovalCenterController.php'
+      - 'app/Modules/Kol/Experience/Controllers/KolController.php'
+      - 'app/Modules/Kol/Experience/Controllers/KolCollaborationController.php'
+      - 'app/Modules/Kol/Experience/Controllers/KolOverviewController.php'
+      - 'app/Modules/Kol/Experience/Controllers/PayoutWorkflowController.php'
+      - 'app/Modules/Kol/Experience/Routes/web.php'
+      - 'app/Modules/Kol/Infrastructure/Models/Kol.php'
+      - 'app/Modules/Kol/Infrastructure/Models/KolCollaboration*.php'
+      - 'app/Modules/Kol/Infrastructure/Models/KolPayoutRequest.php'
+      - 'config/erp_shell_navigation.php'
+      - 'database/migrations/2026_09_01_131000_add_kol_manager_approval_center.php'
+      - 'database/migrations/2026_09_01_153000_add_kol_responsibility_owners.php'
+      - 'resources/js/Pages/Kol/ApprovalCenter*'
+      - 'resources/js/Pages/Kol/Create*'
+      - 'resources/js/Pages/Kol/Edit*'
+      - 'resources/js/Pages/Kol/Collaborations.vue'
+      - 'resources/js/Pages/Kol/Overview*'
+      - 'resources/js/Pages/Kol/Payouts*'
+      - 'tests/Architecture/ModuleArchitectureTest.php'
+      - 'tests/Feature/Identity/UserManagementTest.php'
+      - 'tests/Feature/AppShellNavigationTest.php'
+      - 'tests/Feature/ErpNavigationTest.php'
+      - 'tests/Feature/Kol/KolApprovalServiceTest.php'
+      - 'tests/Feature/Kol/KolCollaborationTest.php'
+      - 'tests/Feature/Kol/KolM14FApprovalDashboardTest.php'
+      - 'tests/Feature/Kol/KolPayoutWorkflowTest.php'
+      - '.github/workflows/erp-kol-m1-4f-approval-dashboard.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  approval-dashboard:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Install frontend dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Frontend approval dashboard tests
+        run: >-
+          npx vitest run
+          resources/js/Pages/Kol/ApprovalCenter.test.ts
+          resources/js/Pages/Kol/Overview.test.ts
+          resources/js/Pages/Kol/Payouts.test.ts
+      - name: Build
+        run: npm run build
+      - name: Prepare test environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+          ln -s Pages resources/js/pages
+      - name: Fresh migration rehearsal
+        run: php artisan migrate:fresh --force
+      - name: Diff check
+        run: git diff --check origin/main...HEAD
+      - name: Focused PHP approval dashboard gate
+        run: >-
+          php artisan test
+          tests/Feature/Kol/KolM14FApprovalDashboardTest.php
+          tests/Feature/Kol/KolPayoutWorkflowTest.php
+          tests/Feature/Kol/KolApprovalServiceTest.php
+          tests/Feature/Kol/KolCollaborationTest.php
+          tests/Feature/Identity/UserManagementTest.php
+          tests/Feature/AppShellNavigationTest.php
+          tests/Feature/ErpNavigationTest.php

@@ -6,6 +6,7 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Kol\Application\Approval\CollaborationApprovalService;
 use App\Modules\Kol\Application\KolScope;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolCollaboration;
@@ -18,6 +19,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -26,6 +28,7 @@ final class KolCollaborationController
     public function __construct(
         private readonly AuditRecorder $audit,
         private readonly OrderService $orders,
+        private readonly CollaborationApprovalService $approvals,
     ) {}
 
     public function index(Request $request): Response
@@ -36,6 +39,9 @@ final class KolCollaborationController
         }
         if ($status = $request->string('status')->trim()->value()) {
             $query->where('status', $status);
+        }
+        if ($approvalStatus = $request->string('approval_status')->trim()->value()) {
+            $query->where('approval_status', $approvalStatus);
         }
         if ($request->string('post_url_status')->value() === 'missing') {
             $query->where(fn ($q) => $q->whereNull('post_url')->orWhere('post_url', ''));
@@ -52,7 +58,7 @@ final class KolCollaborationController
 
         return Inertia::render('Kol/Collaborations', [
             'collaborations' => $query->latest('id')->limit(100)->get()->map(fn (KolCollaboration $item) => $this->payload($item))->values()->all(),
-            'filters' => $request->only(['search', 'status', 'post_url_status']),
+            'filters' => $request->only(['search', 'status', 'post_url_status', 'approval_status']),
             'canOperate' => KolScope::canOperate($request->user()),
         ]);
     }
@@ -68,10 +74,11 @@ final class KolCollaborationController
         }
         $data['kol_id'] = $kol->id;
 
-        $collaboration = DB::transaction(function () use ($data, $products): KolCollaboration {
+        $collaboration = DB::transaction(function () use ($data, $products, $request): KolCollaboration {
             $item = KolCollaboration::create($data);
             $this->replaceProducts($item, $products);
-            return $item;
+            $this->approvals->initialize($item, $request->user());
+            return $item->refresh();
         });
         $this->recordAudit($request, 'kol.collaboration.created', $collaboration, null, $this->snapshot($collaboration));
 
@@ -89,10 +96,12 @@ final class KolCollaborationController
             $data['owner_id'] = (int) $request->user()->getAuthIdentifier();
         }
 
-        DB::transaction(function () use ($collaboration, $data, $products): void {
+        DB::transaction(function () use ($collaboration, $data, $products, $before, $request): void {
             $collaboration->update($data);
             $this->replaceProducts($collaboration, $products);
+            $this->approvals->reconcileAfterUpdate($collaboration, $before, $request->user());
         });
+        $collaboration->refresh();
         $this->recordAudit($request, 'kol.collaboration.updated', $collaboration, $before, $this->snapshot($collaboration));
 
         return response()->json(['collaboration' => $this->payload($collaboration->load(['owner', 'products.product', 'opportunity', 'order.shipment.warehouse', 'order.manualSync']))]);
@@ -112,8 +121,11 @@ final class KolCollaborationController
             'quantity' => 1,
         ])->all();
         $ownerId = KolScope::isAllScope($request->user()) ? ($opportunity->owner_id ?? $kol->owner_id) : (int) $request->user()->getAuthIdentifier();
+        if ($opportunity->cooperation_type === '付费发帖' && (float) ($opportunity->estimated_cost ?? 0) <= 0) {
+            abort(422, '付费合作必须先填写大于 0 的合作金额');
+        }
 
-        $collaboration = DB::transaction(function () use ($opportunity, $kol, $ownerId, $productRows): KolCollaboration {
+        $collaboration = DB::transaction(function () use ($opportunity, $kol, $ownerId, $productRows, $request): KolCollaboration {
             $item = KolCollaboration::create([
                 'kol_id' => $kol->id,
                 'opportunity_id' => $opportunity->id,
@@ -128,8 +140,9 @@ final class KolCollaborationController
                 'notes' => $opportunity->notes,
             ]);
             $this->replaceProducts($item, $productRows);
+            $this->approvals->initialize($item, $request->user());
             $opportunity->update(['stage' => 'confirmed', 'status' => 'completed']);
-            return $item;
+            return $item->refresh();
         });
         $this->recordAudit($request, 'kol.collaboration.created_from_opportunity', $collaboration, null, $this->snapshot($collaboration));
 
@@ -187,7 +200,7 @@ final class KolCollaborationController
 
     private function validated(Request $request, Kol $kol, ?KolCollaboration $collaboration = null): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'opportunity_id' => ['nullable', 'integer', Rule::exists('kol_opportunities', 'id')->where(fn ($q) => $q->where('kol_id', $kol->id)), Rule::unique('kol_collaborations', 'opportunity_id')->ignore($collaboration?->id)],
             'owner_id' => 'nullable|integer|exists:users,id',
             'title' => 'nullable|string|max:255',
@@ -206,6 +219,10 @@ final class KolCollaborationController
             'products.*.sku' => 'required|string|max:128',
             'products.*.quantity' => 'required|integer|min:1|max:9999',
         ]);
+        if (($data['cooperation_type'] ?? null) === '付费发帖' && (float) ($data['agreement_amount'] ?? 0) <= 0) {
+            throw ValidationException::withMessages(['agreement_amount' => '付费合作必须填写大于 0 的合作金额。']);
+        }
+        return $data;
     }
 
     private function replaceProducts(KolCollaboration $collaboration, array $rows): void
@@ -249,6 +266,10 @@ final class KolCollaborationController
             'post_url' => $item->post_url,
             'cooperation_type' => $item->cooperation_type,
             'status' => $item->status,
+            'approval_status' => $item->approval_status,
+            'approval_updated_at' => $item->approval_updated_at?->toIso8601String(),
+            'approved_by_user_id' => $item->approved_by_user_id,
+            'approved_at' => $item->approved_at?->toIso8601String(),
             'agreement_amount' => $item->agreement_amount !== null ? (float) $item->agreement_amount : null,
             'currency' => $item->currency,
             'agreed_at' => $item->agreed_at?->format('Y-m-d'),
@@ -270,7 +291,7 @@ final class KolCollaborationController
 
     private function snapshot(KolCollaboration $item): array
     {
-        return ['kol_id' => $item->kol_id, 'opportunity_id' => $item->opportunity_id, 'owner_id' => $item->owner_id, 'order_id' => $item->order_id, 'status' => $item->status, 'post_url' => $item->post_url, 'fulfillment_required' => (bool) $item->fulfillment_required];
+        return ['kol_id' => $item->kol_id, 'opportunity_id' => $item->opportunity_id, 'owner_id' => $item->owner_id, 'order_id' => $item->order_id, 'status' => $item->status, 'cooperation_type' => $item->cooperation_type, 'agreement_amount' => $item->agreement_amount, 'currency' => $item->currency, 'approval_status' => $item->approval_status, 'post_url' => $item->post_url, 'fulfillment_required' => (bool) $item->fulfillment_required];
     }
 
     private function fulfillmentOrderPayload($order): array

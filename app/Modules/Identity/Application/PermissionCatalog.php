@@ -47,7 +47,8 @@ final class PermissionCatalog
                     ['key' => 'kol.approvals.manage', 'label' => '管理网红审批'],
                     ['key' => 'kol.affiliates.manage', 'label' => '管理 AffiliateWP 网红'],
                     ['key' => 'kol.payouts.request', 'label' => '发起网红结算'],
-                    ['key' => 'kol.payouts.manage', 'label' => '审批并完成网红结算'],
+                    ['key' => 'kol.payouts.approve', 'label' => '审批网红结算'],
+                    ['key' => 'kol.payouts.manage', 'label' => '执行网红付款并同步 Provider'],
                 ],
             ],
             '库存' => [

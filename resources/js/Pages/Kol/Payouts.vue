@@ -4,8 +4,8 @@ import { Head, router, useForm } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
 type Eligible = { referral_id:number; affiliate_id:number; kol_id:number; amount:string; currency:string; order_reference:string; referral_date:string|null }
-type RequestRow = { id:number; kol_id:number; affiliate_id:number; amount:string; currency:string; status:string; provider_payout_id:number|null; payout_recipient:string|null; paid_at:string|null; requested_by_user_id:number; approved_by_user_id:number|null; referral_ids:number[]; created_at:string|null }
-const props = defineProps<{ connectionKey:string; eligible:Eligible[]; requests:RequestRow[]; canRequest:boolean; canManage:boolean }>()
+type RequestRow = { id:number; kol_id:number; affiliate_id:number; amount:string; currency:string; status:string; provider_payout_id:number|null; payout_recipient:string|null; can_approve?:boolean; can_complete?:boolean; paid_at:string|null; requested_by_user_id:number; approved_by_user_id:number|null; referral_ids:number[]; created_at:string|null }
+const props = defineProps<{ connectionKey:string; eligible:Eligible[]; requests:RequestRow[]; canRequest:boolean; canApprove:boolean; canManage:boolean }>()
 const selected = ref<number[]>([])
 const createForm = useForm<{ referral_ids:number[]; payout_request?:string }>({ referral_ids: [] })
 const evidence = reactive<Record<number,{transaction:string;paidAt:string}>>({})
@@ -16,8 +16,8 @@ const selectedTotal = computed(() => selectedRows.value.reduce((sum,row) => sum 
 const selectionValid = computed(() => selectedRows.value.length > 0 && new Set(selectedRows.value.map(r=>`${r.affiliate_id}|${r.kol_id}|${r.currency}`)).size === 1)
 function submitRequest():void { if(!props.canRequest || !selectionValid.value || createForm.processing) return; createForm.referral_ids=[...selected.value].sort((a,b)=>a-b); createForm.post('/kol/payouts',{preserveScroll:true,onSuccess:()=>{selected.value=[]}}) }
 function syncPayouts():void { if(props.canManage) router.post('/kol/payouts/sync',{}, { preserveScroll:true }) }
-function approve(id:number):void { if(props.canManage) router.post(`/kol/payouts/${id}/approve`,{}, { preserveScroll:true }) }
-function reject(id:number):void { const reason=(rejectReason[id]||'').trim(); if(props.canManage && reason) router.post(`/kol/payouts/${id}/reject`,{reason},{preserveScroll:true}) }
+function approve(id:number):void { if(props.canApprove) router.post(`/kol/payouts/${id}/approve`,{}, { preserveScroll:true }) }
+function reject(id:number):void { const reason=(rejectReason[id]||'').trim(); if(props.canApprove && reason) router.post(`/kol/payouts/${id}/reject`,{reason},{preserveScroll:true}) }
 function complete(id:number):void { const e=evidence[id]; if(props.canManage && e?.transaction && e?.paidAt) router.post(`/kol/payouts/${id}/complete`,{paypal_transaction_id:e.transaction,paid_at:e.paidAt},{preserveScroll:true}) }
 function ensureEvidence(id:number):{transaction:string;paidAt:string} { return evidence[id] ??= {transaction:'',paidAt:new Date().toISOString().slice(0,10)} }
 function money(currency:string,amount:string):string { return `${currency} ${amount}` }
@@ -28,7 +28,7 @@ function money(currency:string,amount:string):string { return `${currency} ${amo
   <AuthenticatedLayout title="结算工作流" :breadcrumbs="breadcrumbs">
     <section class="mvp-page payout-page">
       <div class="mvp-page-heading payout-heading">
-        <div><p class="mvp-kicker">KOL · Finance</p><h2>Commission Payout Workflow</h2><p>Referral 是佣金事实；ERP 先创建结算申请并审批，批准后才允许把人工 PayPal 付款证据写回 AffiliateWP。</p></div>
+        <div><p class="mvp-kicker">KOL · Payout</p><h2>Commission Payout Workflow</h2><p>Referral 是佣金事实；ERP 先创建结算申请并审批，批准后才允许把人工 PayPal 付款证据写回 AffiliateWP。</p></div>
         <button v-if="canManage" type="button" @click="syncPayouts">同步 Provider Payout</button>
       </div>
 
@@ -48,9 +48,9 @@ function money(currency:string,amount:string):string { return `${currency} ${amo
         <div v-if="requests.length" class="requests-list">
           <article v-for="row in requests" :key="row.id" class="request-row">
             <div class="request-main"><div><strong>#{{ row.id }} · {{ row.status }}</strong><p>Affiliate #{{ row.affiliate_id }} · KOL #{{ row.kol_id }} · Referral {{ row.referral_ids.map(id=>`#${id}`).join(', ') }}</p></div><strong>{{ money(row.currency,row.amount) }}</strong></div>
-            <div class="meta"><span>申请人 User #{{ row.requested_by_user_id }}</span><span v-if="row.approved_by_user_id">审批人 User #{{ row.approved_by_user_id }}</span><span v-if="row.provider_payout_id">Provider Payout #{{ row.provider_payout_id }}</span><span v-if="canManage && row.payout_recipient">PayPal 收款：{{ row.payout_recipient }}</span></div>
-            <div v-if="canManage && row.status==='pending_approval'" class="approval-actions"><button type="button" @click="approve(row.id)">批准</button><input v-model="rejectReason[row.id]" placeholder="驳回原因"><button type="button" :disabled="!(rejectReason[row.id]||'').trim()" @click="reject(row.id)">驳回</button></div>
-            <div v-if="canManage && ['approved','provider_error','readback_mismatch'].includes(row.status)" class="complete-actions"><input v-model="ensureEvidence(row.id).transaction" autocomplete="off" placeholder="PayPal Transaction ID"><input v-model="ensureEvidence(row.id).paidAt" type="date"><button type="button" @click="complete(row.id)">{{ row.status==='approved' ? '确认已付款并写回' : '按原证据重试写回' }}</button></div>
+            <div class="meta"><span>申请人 User #{{ row.requested_by_user_id }}</span><span v-if="row.approved_by_user_id">审批人 User #{{ row.approved_by_user_id }}</span><span v-if="row.provider_payout_id">Provider Payout #{{ row.provider_payout_id }}</span><span v-if="row.can_complete === true && row.payout_recipient">PayPal 收款：{{ row.payout_recipient }}</span></div>
+            <div v-if="row.can_approve === true && row.status==='pending_approval'" class="approval-actions"><button type="button" @click="approve(row.id)">批准</button><input v-model="rejectReason[row.id]" placeholder="驳回原因"><button type="button" :disabled="!(rejectReason[row.id]||'').trim()" @click="reject(row.id)">驳回</button></div>
+            <div v-if="row.can_complete === true && ['approved','provider_error','readback_mismatch'].includes(row.status)" class="complete-actions"><input v-model="ensureEvidence(row.id).transaction" autocomplete="off" placeholder="PayPal Transaction ID"><input v-model="ensureEvidence(row.id).paidAt" type="date"><button type="button" @click="complete(row.id)">{{ row.status==='approved' ? '确认已付款并写回' : '按原证据重试写回' }}</button></div>
           </article>
         </div>
         <div v-else class="empty">暂无结算申请。</div>

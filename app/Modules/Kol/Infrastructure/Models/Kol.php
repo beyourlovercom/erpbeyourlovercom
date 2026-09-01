@@ -23,6 +23,8 @@ class Kol extends Model
         'language',
         'status',
         'owner_id',
+        'approval_manager_id',
+        'finance_owner_id',
         'relationship_stage',
         'cooperation_type',
         'joined_at',
@@ -72,6 +74,16 @@ class Kol extends Model
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'owner_id');
+    }
+
+    public function approvalManager(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approval_manager_id');
+    }
+
+    public function financeOwner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'finance_owner_id');
     }
 
     public function socialAccounts(): HasMany
