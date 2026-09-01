@@ -182,3 +182,21 @@ Live Payout read UAT:
 - Round 2: Run #2 `completed`, `1550/1550` succeeded, mirror remained `1550`, duplicate payout IDs `0`, `1550` Sync Run Items / `1550` distinct provider references.
 - `kol_unresolved=1550` in the isolated payout-only UAT is expected because real KOL/Affiliate mapping data was intentionally not copied into the isolated database; it does not indicate provider or persistence failure.
 - No `/payouts/complete`, provisioning, affiliate status mutation, payout write, Production request or other WordPress mutation was executed.
+
+## M1.2D PR #142 CI / final review checkpoint — 2026-09-01
+
+Initial GitHub CI result:
+- ERP KOL M1.4C Coupon CI: PASS.
+- ERP KOL M1.4E Payout CI: PASS.
+- ERP WordPress Connector M1 CI: FAIL in `Focused PHP connector gate`; Typecheck and Build had already passed.
+
+Failure classification:
+- `tests/Feature/SyncWorkspaceTest.php` still asserted the pre-M1.2A Sync overview contract: four domain cards, and the `/sync/wpapi` card keyed as `marketing` and gated by `marketing.view`.
+- The canonical M1.2A behavior is five cards with a Sync-scoped `wordpress` Connector card visible under `sync.view`; Subscribers remain Marketing-owned only at the operation/domain-service level.
+- No controller, service, route or UI implementation change was required to resolve the CI failure.
+- Classification: `STALE_TEST_CONTRACT`, not Connector regression.
+
+Repair verification:
+- Updated only `tests/Feature/SyncWorkspaceTest.php` to assert the canonical unified Sync surface.
+- Re-ran the exact GitHub focused PHP test set plus `WordPressConnectorReadOrchestrationTest`: PASS, 83 tests / 337 assertions / 0 functional failures; pre-existing warning class remains.
+- Merge remains forbidden until GitHub rerun is green and explicit Owner authorization is provided.
