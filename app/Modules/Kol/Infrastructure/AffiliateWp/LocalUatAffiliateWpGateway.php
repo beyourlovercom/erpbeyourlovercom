@@ -81,6 +81,50 @@ final class LocalUatAffiliateWpGateway implements AffiliateWpGateway
             ]);
         }
 
+        if ($resource === 'referrals') {
+            return $this->response([
+                'items' => [
+                    [
+                        'referral_id' => 860001,
+                        'affiliate_id' => 810002,
+                        'reference' => '990001',
+                        'description' => 'Local UAT WooCommerce referral',
+                        'amount' => '12.50',
+                        'currency' => 'USD',
+                        'status' => 'paid',
+                        'context' => 'woocommerce',
+                        'date' => '2026-09-01T00:00:00+00:00',
+                        'payout_id' => 870001,
+                    ],
+                    [
+                        'referral_id' => 860002,
+                        'affiliate_id' => 810002,
+                        'reference' => '990001',
+                        'description' => 'Second referral for same order',
+                        'amount' => '5',
+                        'currency' => 'USD',
+                        'status' => 'unpaid',
+                        'context' => 'woocommerce',
+                        'date' => '2026-09-01T00:05:00+00:00',
+                        'payout_id' => null,
+                    ],
+                    [
+                        'referral_id' => 860003,
+                        'affiliate_id' => 899999,
+                        'reference' => '990099',
+                        'description' => 'Unresolved historical referral',
+                        'amount' => '3.25',
+                        'currency' => 'USD',
+                        'status' => 'pending',
+                        'context' => 'woocommerce',
+                        'date' => '2026-09-01T00:10:00+00:00',
+                        'payout_id' => null,
+                    ],
+                ],
+                'next_cursor' => null,
+            ]);
+        }
+
         throw new LogicException('Local UAT fake does not support snapshot resource: '.$resource);
     }
 

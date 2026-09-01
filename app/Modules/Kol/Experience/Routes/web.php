@@ -7,6 +7,7 @@ use App\Modules\Kol\Experience\Controllers\KolContentController;
 use App\Modules\Kol\Experience\Controllers\KolController;
 use App\Modules\Kol\Experience\Controllers\KolOpportunityController;
 use App\Modules\Kol\Experience\Controllers\KolOverviewController;
+use App\Modules\Kol\Experience\Controllers\ReferralCommissionController;
 use App\Modules\Kol\Experience\Controllers\SavedViewController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -52,7 +53,10 @@ Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
     Route::post('/kol/contents/{content}/sync-post-image', [KolContentController::class, 'syncPostImage'])->middleware('can:kol.operate')->name('kol.contents.sync-post-image');
     Route::get('/kol/contents/{content}/evidence/{attachment}', [KolContentController::class, 'showEvidence'])->name('kol.contents.evidence.show');
     Route::delete('/kol/contents/{content}/evidence/{attachment}', [KolContentController::class, 'deleteEvidence'])->middleware('can:kol.operate')->name('kol.contents.evidence.destroy');
-    Route::get('/kol/commissions', fn () => Inertia::render('Kol/PlaceholderPage', ['title' => '佣金与结算', 'note' => 'M1.4 财务包交付']))->name('kol.commissions');
+    Route::get('/kol/commissions', [ReferralCommissionController::class, 'index'])->name('kol.commissions');
+    Route::post('/kol/commissions/sync', [ReferralCommissionController::class, 'sync'])
+        ->middleware('can:kol.affiliates.manage')
+        ->name('kol.commissions.sync');
     Route::get('/kol/affiliatewp', [AffiliateWpSyncController::class, 'index'])->name('kol.affiliatewp');
     Route::post('/kol/affiliatewp/sync', [AffiliateWpSyncController::class, 'sync'])
         ->middleware('can:kol.affiliates.manage')

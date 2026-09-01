@@ -403,6 +403,16 @@ final class HttpAffiliateWpGatewayTest extends TestCase
         );
     }
 
+    public function test_snapshot_uses_provider_maximum_page_limit_to_stay_below_rate_limit(): void
+    {
+        Http::fake(fn () => Http::response($this->envelope(['items' => [], 'next_cursor' => null]), 200));
+
+        $this->gateway()->snapshot('referrals');
+
+        Http::assertSent(fn ($r): bool => str_contains($r->url(), '/snapshot/referrals')
+            && str_contains($r->url(), 'limit=100'));
+    }
+
     public function test_snapshot_passes_cursor_and_updated_after_as_query_params(): void
     {
         Http::fake(['*' => Http::response($this->envelope(['items' => []]), 200)]);
