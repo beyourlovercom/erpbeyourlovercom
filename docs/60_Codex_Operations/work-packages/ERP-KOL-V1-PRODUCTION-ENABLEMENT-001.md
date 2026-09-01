@@ -4,7 +4,7 @@ project: BYL ERP
 work_package_id: ERP-KOL-V1-PRODUCTION-ENABLEMENT-001
 status: KOL_SIDE_READINESS_PASS_WAITING_SHARED_RUNTIME_AND_REAL_DATA_SOURCE
 verification_tier: HIGH_RISK
-baseline: origin/main@247b585627395e010839aa21c30734cf93a9820f
+baseline: origin/main@e9912acbd49d27e47641f085e8877d4c508e14b4
 production_mutation_authorized: NO
 merge_authorized: NO
 ---
@@ -23,7 +23,7 @@ Move the already closed KOL V1 product from verified code/UAT state to a product
 
 ## Baseline
 - KOL V1 cross-phase closure merged by PR #143.
-- Exact activation baseline: `main@247b585627395e010839aa21c30734cf93a9820f`.
+- Exact activation baseline: `main@e9912acbd49d27e47641f085e8877d4c508e14b4`.
 - Branch: `feature/erp-kol-v1-production-enablement-001`.
 - Worktree: `/Users/a/AI/007/worktrees/erp-kol-v1-production-enablement-001`.
 - KOL V1 business implementation is closed; this package is activation/readiness first.
@@ -210,3 +210,13 @@ After an explicitly authorized Production deployment/migration:
 - Connected Library was searched twice for an existing real KOL master containing identity plus social/contact facts. No suitable source was found. Logistics evidence contains `KOL...` shipment references but not authoritative influencer identity and MUST NOT be used to infer/create KOL master rows.
 - Therefore `REAL_KOL_MASTER_SOURCE = SOURCE_IDENTIFIED_ACCESS_REQUIRED`. No fuzzy identity inference, shipment-to-KOL inference, Affiliate auto-conversion, import, Production mutation, or Provider write is authorized.
 - Rebased exact-head CI must pass again before any later Ready gate.
+
+
+## Current-main recovery / exact gate — main@e9912ac (2026-09-01)
+- `main` advanced through Backup Migration PR #146 to `e9912acbd49d27e47641f085e8877d4c508e14b4`.
+- PR #146 drift changed 15 Backup/Identity/Architecture files; overlap with the four Production Enablement PR files = none.
+- Recovery ref created before rebase: `recovery/erp-kol-v1-production-enablement-pre-rebase-20260901-051441` -> `d837b0ea65bb39e0e2cafb4c7f822d2a0107e048`.
+- Feature branch rebased cleanly onto `origin/main@e9912acbd49d27e47641f085e8877d4c508e14b4`; no conflict and no KOL business-code change was required.
+- Formal source state normalized to Tencent Docs `BYL-Influencer Master List`, sheet `Influencers`; readable access is still required (`SOURCE_IDENTIFIED_ACCESS_REQUIRED`).
+- Local exact gate on the rebased branch: typecheck PASS; production build PASS; disposable fresh migration PASS through `2026_09_01_210000_register_backup_permissions`; KOL + Identity regression completed with 1070 assertions and no failures; KOL frontend 80/80 PASS; cross-module closure completed with 844 assertions and no failures; `git diff --check` PASS; no `public/hot`; sensitive literal scan = 0.
+- Production mutation = NO. Provider mutation = NO. Merge authorization = NO. PR #145 must remain Draft until shared runtime and real-source access/responsibility blockers are resolved.
