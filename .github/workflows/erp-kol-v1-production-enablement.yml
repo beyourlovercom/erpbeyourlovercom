@@ -1,0 +1,62 @@
+name: ERP KOL V1 Production Enablement Readiness
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/Modules/Kol/**'
+      - 'app/Modules/Identity/**'
+      - 'database/migrations/*kol*'
+      - 'resources/js/Pages/Kol/**'
+      - 'tests/Feature/Kol/**'
+      - 'tests/Feature/Identity/UserManagementTest.php'
+      - 'tests/Feature/Identity/PermissionMatrixTest.php'
+      - 'docs/10_Planning_Roadmap/12_WORK_PACKAGE_INDEX.md'
+      - 'docs/10_Planning_Roadmap/23_ERP_KOL_MODULE_V1_UNIFIED_ROADMAP.md'
+      - 'docs/60_Codex_Operations/work-packages/ERP-KOL-V1-PRODUCTION-ENABLEMENT-001.md'
+      - '.github/workflows/erp-kol-v1-production-enablement.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  readiness:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          npm ci --no-audit --no-fund
+      - name: Prepare compatibility path
+        run: ln -s Pages resources/js/pages
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Production build
+        run: npm run build
+      - name: Prepare isolated database
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+      - name: Fresh migration rehearsal
+        run: php artisan migrate:fresh --force
+      - name: KOL and Identity activation regression
+        run: >-
+          php artisan test
+          tests/Feature/Kol
+          tests/Feature/Identity/UserManagementTest.php
+          tests/Feature/Identity/PermissionMatrixTest.php
+      - name: Assert no dev hot marker
+        run: test ! -e public/hot
+      - name: Diff check
+        run: git diff --check origin/main...HEAD

@@ -339,6 +339,15 @@ Each implementation package remains bounded and independently tested. M1.2B must
 - M1.4D Referral / Commission Sync: MERGED.
 - M1.4E Commission Payout Workflow: MERGED.
 - M1.4F Manager Approval Center / Dashboard: MERGED by PR #141 at `e2099498429fc6df939900ee029a0e42887ba7c1`.
-- `ERP-KOL-V1-CROSS-PHASE-CLOSURE-001`: OWNER UAT PASS / PR #143 / READY FOR REVIEW.
+- `ERP-KOL-V1-CROSS-PHASE-CLOSURE-001`: COMPLETE / MERGED PR #143 at `144a4975984cfc79ea4734f691ea47109ffc927c`.
 
 Cross-phase Closure remains verification/UAT only unless a regression proves a bounded compatibility defect. The deferred intelligence/automation list in section 10, including influencer discovery and Instagram/X automation, remains deferred and is not activated by V1 closure.
+
+
+## KOL V1 Production Enablement — current 2026-09-01
+
+- `ERP-KOL-V1-CROSS-PHASE-CLOSURE-001`: COMPLETE / MERGED PR #143.
+- `ERP-KOL-V1-PRODUCTION-ENABLEMENT-001`: CURRENT / KOL-SIDE READINESS PASS / WAITING SHARED RUNTIME + REAL KOL SOURCE.
+- Shared dependency: `ERP-PRODUCTION-RUNTIME-FOUNDATION-M2.0A-001` = ACTIVE / HOSTING_TARGET_REQUIRED.
+- Production deployment/migration/provider mutation remain separately Owner-gated.
+- KOL Intelligence / Discovery remains deferred until activation or explicit reprioritization.
