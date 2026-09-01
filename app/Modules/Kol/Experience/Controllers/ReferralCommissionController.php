@@ -24,6 +24,8 @@ final class ReferralCommissionController
 
         return Inertia::render('Kol/Commissions', [
             'canSync' => $request->user()->can('kol.affiliates.manage'),
+            'canRequestPayouts' => $request->user()->can('kol.payouts.request'),
+            'canManagePayouts' => $request->user()->can('kol.payouts.manage'),
             'connectionKey' => $connectionKey,
             'referrals' => $workspace['rows'],
             'summary' => $workspace['summary'],

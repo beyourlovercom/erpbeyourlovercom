@@ -1,0 +1,70 @@
+name: ERP KOL M1.4E Payout CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/Modules/Identity/Application/AuthorizationKeys.php'
+      - 'app/Modules/Identity/Application/PermissionCatalog.php'
+      - 'app/Modules/Identity/Application/RolePreset.php'
+      - 'app/Modules/Kol/Application/AffiliateWp/Payout*'
+      - 'app/Modules/Kol/Experience/Controllers/PayoutWorkflowController.php'
+      - 'app/Modules/Kol/Experience/Controllers/ReferralCommissionController.php'
+      - 'app/Modules/Kol/Experience/Routes/web.php'
+      - 'app/Modules/Kol/Infrastructure/Models/KolAffiliatePayout.php'
+      - 'app/Modules/Kol/Infrastructure/Models/KolPayoutRequest*.php'
+      - 'database/migrations/2026_09_01_120000_create_kol_payout_workflow_tables.php'
+      - 'resources/js/Pages/Kol/Commissions*'
+      - 'resources/js/Pages/Kol/Payouts*'
+      - 'tests/Feature/Kol/KolPayoutWorkflowTest.php'
+      - 'tests/Feature/Identity/UserManagementTest.php'
+      - '.github/workflows/erp-kol-m1-4e-commission-payout-workflow.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  payout:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Install frontend dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Frontend payout workspace tests
+        run: npx vitest run resources/js/Pages/Kol/Commissions.test.ts resources/js/Pages/Kol/Payouts.test.ts
+      - name: Build
+        run: npm run build
+      - name: Prepare test environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+          ln -s Pages resources/js/pages
+      - name: Fresh migration rehearsal
+        run: php artisan migrate:fresh --force
+      - name: Diff check
+        run: git diff --check origin/main...HEAD
+      - name: Focused PHP payout gate
+        run: >-
+          php artisan test
+          tests/Feature/Kol/KolPayoutWorkflowTest.php
+          tests/Feature/Kol/KolReferralCommissionSyncTest.php
+          tests/Feature/Kol/HttpAffiliateWpGatewayTest.php
+          tests/Feature/Identity/UserManagementTest.php

@@ -5,6 +5,7 @@ import Commissions from './Commissions.vue'
 const { postMock } = vi.hoisted(() => ({ postMock: vi.fn() }))
 vi.mock('@inertiajs/vue3', () => ({
   Head: { template: '<span />' },
+  Link: { props: ['href'], template: '<a :href="href"><slot /></a>' },
   useForm: () => ({ processing: false, errors: {}, post: postMock }),
 }))
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
@@ -25,7 +26,7 @@ const referrals = [
 describe('Referral commission workspace', () => {
   beforeEach(() => postMock.mockReset())
   it('renders provider referral, canonical KOL/order and payout evidence', () => {
-    const wrapper = mount(Commissions, { props: { canSync: true, connectionKey: 'test.example.com', referrals, summary } })
+    const wrapper = mount(Commissions, { props: { canSync: true, canRequestPayouts: true, canManagePayouts: false, connectionKey: 'test.example.com', referrals, summary } })
     expect(wrapper.text()).toContain('Referral / Commission')
     expect(wrapper.text()).toContain('Creator A')
     expect(wrapper.text()).toContain('ERP-9001')
@@ -33,12 +34,12 @@ describe('Referral commission workspace', () => {
     expect(wrapper.text()).toContain('#77')
   })
   it('manager sync calls the Referral sync endpoint', async () => {
-    const wrapper = mount(Commissions, { props: { canSync: true, connectionKey: 'test.example.com', referrals: [], summary } })
+    const wrapper = mount(Commissions, { props: { canSync: true, canRequestPayouts: true, canManagePayouts: false, connectionKey: 'test.example.com', referrals: [], summary } })
     await wrapper.get('button').trigger('click')
     expect(postMock).toHaveBeenCalledWith('/kol/commissions/sync', { preserveScroll: true })
   })
   it('read-only user keeps sync disabled', () => {
-    const wrapper = mount(Commissions, { props: { canSync: false, connectionKey: 'test.example.com', referrals: [], summary } })
+    const wrapper = mount(Commissions, { props: { canSync: false, canRequestPayouts: false, canManagePayouts: false, connectionKey: 'test.example.com', referrals: [], summary } })
     expect(wrapper.get('button').attributes('disabled')).toBeDefined()
   })
 })
