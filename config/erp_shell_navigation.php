@@ -92,5 +92,6 @@ return [
         ['key' => 'settings-roles-permissions', 'label' => '角色与权限', 'path' => '/settings/roles-permissions', 'route' => 'settings.roles-permissions', 'permission' => 'system.permissions.manage', 'placeholder' => false],
         ['key' => 'settings-audit-logs', 'label' => '操作日志', 'path' => '/settings/audit-logs', 'route' => 'settings.audit-logs', 'permission' => 'prototype.view', 'placeholder' => false],
         ['key' => 'settings-changelog', 'label' => '版本更新', 'path' => '/settings/changelog', 'route' => 'settings.changelog', 'permission' => 'system.permissions.manage', 'placeholder' => false],
+        ['key' => 'settings-backup', 'label' => '备份与迁移', 'path' => '/settings/backup', 'route' => 'backup.index', 'permission' => 'backup.view', 'placeholder' => false],
     ]],
 ];
