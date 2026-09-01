@@ -121,3 +121,18 @@ Create the implementation checkpoint and Draft PR only after the final main-drif
 - `git diff --check`: PASS.
 - Sensitive scan: 29 changed files / 0 hits.
 - Post-rebase divergence: 0 behind / 1 ahead.
+
+
+## Owner UAT Follow-up — Approval History
+
+Owner accepted the pending-approval Center and identified a required audit UX gap: previously approved/rejected decisions must remain visible as a reviewable list.
+
+The Approval Center now includes a fourth `审批记录` tab that projects existing canonical history without creating a second approval ledger:
+- KOL history comes from `kol_approval_decisions` approved/rejected facts.
+- paid Collaboration history comes from `kol_collaboration_approval_decisions` approved/rejected facts, including the frozen amount/currency terms.
+- payout approval history comes from the canonical payout request approver/rejector and decision timestamps.
+- records show type, outcome, object, actor, decision time, amount/currency when relevant, and rejection reason when present.
+- UI filters support approval type and approved/rejected outcome; newest decisions appear first.
+- the Center displays the most recent 300 unified audit records; canonical decision tables remain the durable full history.
+
+Follow-up focused evidence: M1.4F backend 5 scenarios / 38 assertions PASS; Approval Center frontend 4/4 PASS; Typecheck PASS; Build PASS (838 modules; existing chunk-size warning only).

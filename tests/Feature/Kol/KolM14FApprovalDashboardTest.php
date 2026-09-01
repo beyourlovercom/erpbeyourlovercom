@@ -97,11 +97,21 @@ class KolM14FApprovalDashboardTest extends TestCase
         $this->actingAs($specialist)->get('/kol/approvals')->assertForbidden();
         $response = $this->actingAs($manager)->get('/kol/approvals')->assertOk();
         $props = $response->original->getData()['page']['props']['workspace'];
-        $this->assertSame(['kols' => 1, 'collaborations' => 1, 'payouts' => 1], $props['counts']);
+        $this->assertSame(['kols' => 1, 'collaborations' => 1, 'payouts' => 1, 'history' => 0], $props['counts']);
 
         $this->actingAs($manager)->post("/kol/approvals/payouts/{$payout->id}/approve")->assertRedirect();
         $this->assertSame('approved', $payout->fresh()->status);
         $this->assertSame($manager->id, $payout->fresh()->approved_by_user_id);
+
+        $historyResponse = $this->actingAs($manager)->get('/kol/approvals')->assertOk();
+        $history = $historyResponse->original->getData()['page']['props']['workspace']['history'];
+        $payoutHistory = collect($history)->firstWhere('record_key', 'payout:'.$payout->id);
+        $this->assertNotNull($payoutHistory);
+        $this->assertSame('payout', $payoutHistory['type']);
+        $this->assertSame('approved', $payoutHistory['outcome']);
+        $this->assertSame($manager->name, $payoutHistory['actor_name']);
+        $this->assertSame('10.000000', $payoutHistory['amount']);
+        $this->assertSame('USD', $payoutHistory['currency']);
     }
 
     public function test_finance_cannot_approve_payout_but_retains_completion_permission_boundary(): void
