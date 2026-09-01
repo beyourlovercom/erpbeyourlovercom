@@ -24,7 +24,7 @@ final class InventoryFoundationM1Test extends TestCase
     public function test_six_owner_defined_warehouses_are_seeded_without_fake_addresses(): void
     {
         $this->assertSame([
-            '007'=>'007本地仓库','ca'=>'加拿大仓库','de'=>'德国仓','factory'=>'中国工厂','us-la'=>'美东洛杉矶仓','us-ny'=>'美西纽约仓',
+            '007'=>'007本地仓库','ca'=>'加拿大仓库','de'=>'德国仓','factory'=>'中国工厂','us-la'=>'美西洛杉矶仓','us-ny'=>'美东纽约仓',
         ], Warehouse::query()->orderBy('slug')->pluck('name','slug')->all());
         $this->assertSame(0, Warehouse::query()->whereNotNull('address_line1')->count());
         $this->assertSame(6, Warehouse::query()->where('ownership_type', 'owned')->count());

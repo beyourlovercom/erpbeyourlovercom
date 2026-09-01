@@ -4,6 +4,7 @@ namespace App\Modules\Inventory\Infrastructure;
 
 use App\Modules\Inventory\Application\Contracts\InventoryRepository;
 use App\Modules\Inventory\Infrastructure\Models\InventoryAdjustment;
+use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -14,24 +15,76 @@ final class EloquentInventoryRepository implements InventoryRepository
     public function dashboard(): array
     {
         $rows = WarehouseInventory::query()->get();
+        $warehouses = $this->warehouseList();
+
         return [
-            'warehouse_count' => Warehouse::query()->where('is_active', true)->count(),
+            'warehouse_count' => collect($warehouses)->where('is_active', true)->count(),
+            'warehouse_data_gap_count' => collect($warehouses)->where('inventory_state', 'never_imported')->count(),
+            'warehouse_confirmed_count' => collect($warehouses)->where('inventory_state', 'confirmed')->count(),
             'sku_rows' => $rows->count(),
             'quantity_on_hand' => $rows->sum('quantity_on_hand'),
             'quantity_reserved' => $rows->sum('quantity_reserved'),
             'quantity_available' => $rows->sum(fn ($row) => $row->quantity_available),
             'out_of_stock_rows' => $rows->filter(fn ($row) => $row->quantity_available === 0)->count(),
-            'warehouses' => $this->warehouseList(),
+            'warehouses' => $warehouses,
         ];
     }
 
     public function warehouseList(): array
     {
-        return Warehouse::query()->withCount('inventories')->withSum('inventories as quantity_on_hand_total','quantity_on_hand')->orderBy('priority')->orderBy('name')->get()->map(fn ($w) => [
-            'id'=>$w->id,'slug'=>$w->slug,'code'=>$w->code,'name'=>$w->name,'country_code'=>$w->country_code,
-            'address'=>$this->address($w),'ownership_type'=>$w->ownership_type,'is_active'=>$w->is_active,'priority'=>$w->priority,
-            'product_count'=>$w->inventories_count,'quantity_on_hand'=>(int)($w->quantity_on_hand_total ?? 0),
-        ])->all();
+        $confirmedBatches = InventorySyncBatch::query()
+            ->where('status', 'confirmed')
+            ->orderByDesc('confirmed_at')
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('warehouse_id');
+
+        return Warehouse::query()
+            ->withCount('inventories')
+            ->withSum('inventories as quantity_on_hand_total', 'quantity_on_hand')
+            ->withMax('inventories as inventory_updated_at', 'updated_at')
+            ->orderBy('priority')
+            ->orderBy('name')
+            ->get()
+            ->map(function ($w) use ($confirmedBatches): array {
+                $batches = $confirmedBatches->get($w->id, collect());
+                $latest = $batches->first();
+                $hasFullBaseline = $batches->contains(fn ($batch): bool => $batch->sync_mode === 'full');
+                $inventoryRows = (int) $w->inventories_count;
+
+                $state = match (true) {
+                    $hasFullBaseline => 'confirmed',
+                    $latest !== null => 'partial_only',
+                    $inventoryRows > 0 => 'manual',
+                    default => 'never_imported',
+                };
+
+                $lastInventoryAt = $latest?->stock_count_at ?? $latest?->confirmed_at;
+                if ($lastInventoryAt === null && $w->inventory_updated_at !== null) {
+                    $lastInventoryAt = \Illuminate\Support\Carbon::parse($w->inventory_updated_at);
+                }
+
+                $known = $state !== 'never_imported';
+
+                return [
+                    'id'=>$w->id,'slug'=>$w->slug,'code'=>$w->code,'name'=>$w->name,'country_code'=>$w->country_code,
+                    'address'=>$this->address($w),'ownership_type'=>$w->ownership_type,'is_active'=>$w->is_active,'priority'=>$w->priority,
+                    'product_count'=>$known ? $inventoryRows : null,
+                    'quantity_on_hand'=>$known ? (int)($w->quantity_on_hand_total ?? 0) : null,
+                    'inventory_state'=>$state,
+                    'inventory_state_label'=>match ($state) {
+                        'confirmed' => '已确认',
+                        'partial_only' => '仅部分数据',
+                        'manual' => '手工数据',
+                        default => '库存未导入',
+                    },
+                    'has_full_snapshot'=>$hasFullBaseline,
+                    'can_auto_allocate'=>$state === 'confirmed',
+                    'latest_sync_mode'=>$latest?->sync_mode,
+                    'latest_batch_id'=>$latest?->id,
+                    'last_inventory_at'=>$lastInventoryAt?->toIso8601String(),
+                ];
+            })->all();
     }
 
     public function findWarehouseBySlug(string $slug): ?Model { return Warehouse::query()->where('slug',$slug)->first(); }
