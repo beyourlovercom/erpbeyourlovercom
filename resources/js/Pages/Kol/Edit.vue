@@ -40,6 +40,7 @@ type CollaborationRecord = { id: number; opportunity_id: number | null; owner_id
 type KolDetail = {
   id: number; display_name: string; avatar_url?: string | null; avatar_source?: string | null; avatar_updated_at?: string | null; legal_name: string | null; country_code: string | null; language: string | null
   status: string; relationship_stage: string; cooperation_type: string | null; owner_id: number | null
+  approval_manager_id?: number | null; finance_owner_id?: number | null
   joined_at: string | null; notes: string | null
   contact_email: string | null; contact_phone: string | null; contact_whatsapp: string | null; other_contact: string | null
   preferred_contact_method: string
@@ -58,12 +59,14 @@ type KolDetail = {
   collaborations?: CollaborationRecord[]
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   kol: KolDetail
   ownerOptions: OwnerOption[]
+  approvalManagerOptions?: OwnerOption[]
+  financeOwnerOptions?: OwnerOption[]
   canManageViews: boolean
   canCreateOrders?: boolean
-}>()
+}>(), { approvalManagerOptions: () => [], financeOwnerOptions: () => [] })
 
 const opportunityRows = ref<OpportunityRecord[]>([...(props.kol.opportunities ?? [])])
 const opportunityModalOpen = ref(false)
@@ -272,6 +275,8 @@ const form = useForm({
   language: props.kol.language ?? 'en',
   status: props.kol.status,
   owner_id: props.kol.owner_id ? String(props.kol.owner_id) : '',
+  approval_manager_id: props.kol.approval_manager_id ? String(props.kol.approval_manager_id) : '',
+  finance_owner_id: props.kol.finance_owner_id ? String(props.kol.finance_owner_id) : '',
   relationship_stage: props.kol.relationship_stage,
   cooperation_type: ['免费发帖', '长期合作', '付费发帖'].includes(props.kol.cooperation_type ?? '') ? props.kol.cooperation_type! : '免费发帖',
   joined_at: props.kol.joined_at ?? '',
@@ -341,6 +346,8 @@ const submit = () => {
   form.transform(data => ({
     ...data,
     owner_id: data.owner_id ? Number(data.owner_id) : null,
+    approval_manager_id: data.approval_manager_id ? Number(data.approval_manager_id) : null,
+    finance_owner_id: data.finance_owner_id ? Number(data.finance_owner_id) : null,
     level: data.level || null,
     content_format: data.content_format || null,
     product_quantity: data.product_quantity !== '' ? Number(data.product_quantity) : null,
@@ -464,6 +471,16 @@ const breadcrumbs = [
                   <option v-for="o in ownerOptions" :key="o.value" :value="String(o.value)">{{ o.label }}</option>
                 </select>
                 <p v-if="form.errors.owner_id" class="erp-field-error">{{ form.errors.owner_id }}</p>
+              </div>
+              <div v-if="canManageViews" class="erp-form-field">
+                <label class="erp-form-label">审批经理</label>
+                <select v-model="form.approval_manager_id" class="erp-select"><option value="">未分配</option><option v-for="o in approvalManagerOptions" :key="o.value" :value="String(o.value)">{{ o.label }}</option></select>
+                <p class="erp-form-helper">审批中心仅显示分配给该经理的记录。</p>
+              </div>
+              <div v-if="canManageViews" class="erp-form-field">
+                <label class="erp-form-label">财务负责人</label>
+                <select v-model="form.finance_owner_id" class="erp-select"><option value="">未分配</option><option v-for="o in financeOwnerOptions" :key="o.value" :value="String(o.value)">{{ o.label }}</option></select>
+                <p class="erp-form-helper">Finance 仅能看到并完成分配给自己的付款记录。</p>
               </div>
             </div>
           </div>

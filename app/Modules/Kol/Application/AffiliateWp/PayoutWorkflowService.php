@@ -41,6 +41,9 @@ final class PayoutWorkflowService
             }
             if ($micros <= 0) { throw new UnexpectedValueException('Payout amount must be positive.'); }
             $kol=$kolClass::query()->lockForUpdate()->find($kolId);
+            if ($kol !== null && (int) $kol->owner_id !== (int) $actor->getAuthIdentifier()) {
+                throw new AuthorizationException('Payout requests are limited to KOLs owned by the current user.');
+            }
             $recipient=$kol === null ? '' : trim((string)$kol->payout_account);
             if ($kol === null || $kol->archived_at !== null || (string)$kol->status !== 'active' || (string)$kol->approval_status !== 'approved' || (string)$kol->payout_method !== 'paypal' || $recipient === '') {
                 throw new UnexpectedValueException('KOL must be active, approved, and have a PayPal payout account before requesting payout.');
@@ -60,7 +63,7 @@ final class PayoutWorkflowService
         if (! $actor->can('kol.payouts.approve')) { throw new AuthorizationException; }
         $requestClass=self::REQUEST;
         return DB::transaction(function () use ($requestId,$actor,$requestClass): object {
-            $request=$requestClass::query()->lockForUpdate()->findOrFail($requestId);
+            $request=$requestClass::query()->whereHas('kol', fn ($q) => $q->where('approval_manager_id', (int) $actor->getAuthIdentifier()))->lockForUpdate()->findOrFail($requestId);
             if ($request->status !== 'pending_approval') { throw new UnexpectedValueException('Only pending payout requests can be approved.'); }
             if ((int)$request->requested_by_user_id === (int)$actor->getAuthIdentifier()) { throw new AuthorizationException('Requester cannot approve their own payout request.'); }
             $request->update(['status'=>'approved','approved_by_user_id'=>(int)$actor->getAuthIdentifier(),'approved_at'=>now(),'rejected_by_user_id'=>null,'rejected_at'=>null,'rejection_reason'=>null]);
@@ -74,7 +77,7 @@ final class PayoutWorkflowService
         $reason=trim($reason); if ($reason==='' || mb_strlen($reason)>1000) { throw new UnexpectedValueException('Rejection reason is required.'); }
         $requestClass=self::REQUEST;
         return DB::transaction(function () use ($requestId,$reason,$actor,$requestClass): object {
-            $request=$requestClass::query()->lockForUpdate()->findOrFail($requestId);
+            $request=$requestClass::query()->whereHas('kol', fn ($q) => $q->where('approval_manager_id', (int) $actor->getAuthIdentifier()))->lockForUpdate()->findOrFail($requestId);
             if ($request->status !== 'pending_approval') { throw new UnexpectedValueException('Only pending payout requests can be rejected.'); }
             if ((int)$request->requested_by_user_id === (int)$actor->getAuthIdentifier()) { throw new AuthorizationException('Requester cannot reject their own payout request.'); }
             $request->update(['status'=>'rejected','rejected_by_user_id'=>(int)$actor->getAuthIdentifier(),'rejected_at'=>now(),'rejection_reason'=>$reason]);
@@ -89,7 +92,7 @@ final class PayoutWorkflowService
         if ($transactionId==='' || strlen($transactionId)>255 || ! preg_match('/^\\d{4}-\\d{2}-\\d{2}$/',$paidAt) || date('Y-m-d',strtotime($paidAt))!==$paidAt) { throw new UnexpectedValueException('Payment evidence is invalid.'); }
         $requestClass=self::REQUEST;
         $request=DB::transaction(function () use ($requestId,$transactionId,$paidAt,$actor,$requestClass): object {
-            $row=$requestClass::query()->with('items')->lockForUpdate()->findOrFail($requestId);
+            $row=$requestClass::query()->whereHas('kol', fn ($q) => $q->where('finance_owner_id', (int) $actor->getAuthIdentifier()))->with('items')->lockForUpdate()->findOrFail($requestId);
             if (! in_array($row->status,['approved','provider_error','readback_mismatch'],true)) { throw new UnexpectedValueException('Payout request is not ready for completion.'); }
             if ($row->approved_by_user_id === null) { throw new UnexpectedValueException('Payout request is not approved.'); }
             $payload=$this->payload($row,$transactionId,$paidAt); $hash=hash('sha256',json_encode($payload,JSON_UNESCAPED_SLASHES));
@@ -128,16 +131,23 @@ final class PayoutWorkflowService
         if (! $canRequest && ! $canApprove && ! $canManage) { throw new AuthorizationException; }
         $requestClass=self::REQUEST; $referralClass=self::REFERRAL;
         $connectionKey=(string)($this->gateway->descriptor()['connection_key']??'');
-        $requestQuery=$requestClass::query()->where('connection_key',$connectionKey)->with('items');
-        if (! $canApprove && ! $canManage) { $requestQuery->where('requested_by_user_id',(int)$actor->getAuthIdentifier()); }
+        $ownerId=(int)$actor->getAuthIdentifier();
+        $requestQuery=$requestClass::query()->where('connection_key',$connectionKey)
+            ->whereHas('kol', function ($q) use ($ownerId, $canRequest, $canApprove, $canManage): void {
+                $q->where(function ($scope) use ($ownerId, $canRequest, $canApprove, $canManage): void {
+                    if ($canRequest) { $scope->orWhere('owner_id', $ownerId); }
+                    if ($canApprove) { $scope->orWhere('approval_manager_id', $ownerId); }
+                    if ($canManage) { $scope->orWhere('finance_owner_id', $ownerId); }
+                });
+            })->with(['items','kol:id,approval_manager_id,finance_owner_id']);
         $requests=$requestQuery->orderByDesc('id')->limit(200)->get();
         $eligible=collect();
         if ($canRequest) {
-            $eligibleQuery=$referralClass::query()->where('connection_key',$connectionKey)->where('reconciliation_status','present')->where('provider_status','unpaid')->whereNull('payout_id')->where('affiliate_resolution_status','bound')->whereNotNull('kol_id');
-            if (! \App\Modules\Kol\Application\KolScope::isAllScope($actor)) { $eligibleQuery->whereHas('kol',fn($q)=>$q->where('owner_id',(int)$actor->getAuthIdentifier())); }
+            $eligibleQuery=$referralClass::query()->where('connection_key',$connectionKey)->where('reconciliation_status','present')->where('provider_status','unpaid')->whereNull('payout_id')->where('affiliate_resolution_status','bound')->whereNotNull('kol_id')
+                ->whereHas('kol',fn($q)=>$q->where('owner_id',$ownerId));
             $eligible=$eligibleQuery->orderBy('affiliate_id')->orderBy('referral_id')->limit(500)->get(['id','referral_id','affiliate_id','kol_id','commission_amount','currency','order_reference','referral_date']);
         }
-        return ['connection_key'=>$connectionKey,'requests'=>$requests->map(fn($r)=>$this->requestView($r,$canManage))->values()->all(),'eligible'=>$eligible->map(fn($r)=>['referral_id'=>(int)$r->referral_id,'affiliate_id'=>(int)$r->affiliate_id,'kol_id'=>(int)$r->kol_id,'amount'=>(string)$r->commission_amount,'currency'=>(string)$r->currency,'order_reference'=>(string)$r->order_reference,'referral_date'=>$r->referral_date?->toIso8601String()])->values()->all()];
+        return ['connection_key'=>$connectionKey,'requests'=>$requests->map(fn($r)=>$this->requestView($r, $canApprove && (int)($r->kol?->approval_manager_id ?? 0)===$ownerId, $canManage && (int)($r->kol?->finance_owner_id ?? 0)===$ownerId))->values()->all(),'eligible'=>$eligible->map(fn($r)=>['referral_id'=>(int)$r->referral_id,'affiliate_id'=>(int)$r->affiliate_id,'kol_id'=>(int)$r->kol_id,'amount'=>(string)$r->commission_amount,'currency'=>(string)$r->currency,'order_reference'=>(string)$r->order_reference,'referral_date'=>$r->referral_date?->toIso8601String()])->values()->all()];
     }
 
     private function payload(object $row, string $transactionId, string $paidAt): array
@@ -172,8 +182,8 @@ final class PayoutWorkflowService
     {
         $value=trim($value); if(!preg_match('/^(?:0|[1-9]\\d*)(?:\\.\\d{1,6})?$/',$value)){throw new UnexpectedValueException('Amount is invalid.');} [$w,$f]=array_pad(explode('.',$value,2),2,'');$f=rtrim($f,'0');return $f===''?$w:$w.'.'.$f;
     }
-    private function requestView(object $r, bool $includeRecipient): array
+    private function requestView(object $r, bool $canApprove, bool $canComplete): array
     {
-        return ['id'=>(int)$r->id,'kol_id'=>(int)$r->kol_id,'affiliate_id'=>(int)$r->affiliate_id,'amount'=>(string)$r->amount,'currency'=>(string)$r->currency,'status'=>(string)$r->status,'provider_payout_id'=>$r->provider_payout_id===null?null:(int)$r->provider_payout_id,'payout_recipient'=>$includeRecipient?(string)$r->payout_recipient:null,'paid_at'=>$r->paid_at?->format('Y-m-d'),'requested_by_user_id'=>(int)$r->requested_by_user_id,'approved_by_user_id'=>$r->approved_by_user_id===null?null:(int)$r->approved_by_user_id,'referral_ids'=>$r->items->pluck('referral_id')->map(fn($v)=>(int)$v)->values()->all(),'created_at'=>$r->created_at?->toIso8601String()];
+        return ['id'=>(int)$r->id,'kol_id'=>(int)$r->kol_id,'affiliate_id'=>(int)$r->affiliate_id,'amount'=>(string)$r->amount,'currency'=>(string)$r->currency,'status'=>(string)$r->status,'provider_payout_id'=>$r->provider_payout_id===null?null:(int)$r->provider_payout_id,'payout_recipient'=>$canComplete?(string)$r->payout_recipient:null,'can_approve'=>$canApprove,'can_complete'=>$canComplete,'paid_at'=>$r->paid_at?->format('Y-m-d'),'requested_by_user_id'=>(int)$r->requested_by_user_id,'approved_by_user_id'=>$r->approved_by_user_id===null?null:(int)$r->approved_by_user_id,'referral_ids'=>$r->items->pluck('referral_id')->map(fn($v)=>(int)$v)->values()->all(),'created_at'=>$r->created_at?->toIso8601String()];
     }
 }

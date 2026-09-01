@@ -170,3 +170,59 @@ Redesign focused evidence:
 
 
 Redesign owner visual UAT status: `AWAITING_OWNER` on US Mac local UAT; current visible page is `付费合作审批 -> 审批记录`.
+
+## Responsibility Isolation Follow-up
+
+Owner required approval/payment visibility to be private by responsible KOL rather than globally visible to every Manager or Finance user. M1.4F therefore freezes three explicit responsibility assignments on canonical KOL master data:
+
+- `owner_id`: Specialist responsible for operating the KOL and requesting payout.
+- `approval_manager_id`: Manager responsible for KOL / paid Collaboration / payout approval.
+- `finance_owner_id`: Finance user responsible for payment evidence and Provider completion.
+
+The scope is enforced in Application services, not only in Vue:
+
+- Manager pending queues and approval history use `approval_manager_id`.
+- Manager direct approve/reject on a foreign KOL/Collaboration/Payout is rejected before mutation.
+- Specialist payout creation and eligible Referral visibility use `owner_id`.
+- Finance payout workspace and `complete` use `finance_owner_id`.
+- Foreign Finance direct `complete` URL returns not-found before any Provider call.
+- PayPal recipient and completion controls are row-level capabilities and appear only when the current user is that KOL's `finance_owner_id`.
+- Manager/Finance assignment can be maintained from KOL Create/Edit by an all-scope KOL Manager; ordinary Specialists cannot alter responsibility assignments.
+- Missing responsibility assignment is fail-closed: the corresponding Manager/Finance record is not visible.
+
+A dedicated migration adds nullable `approval_manager_id` and `finance_owner_id` foreign keys without changing the existing Specialist `owner_id` contract.
+
+### Responsibility UAT Evidence
+
+US Mac local UAT used two independent responsibility chains. No Provider payout completion was executed.
+
+- Manager A saw only `M1.4F UAT Pending Creator`; Manager B's pending KOL was absent.
+- Manager B saw only `M1.4F UAT Scope B Pending Creator`; Manager A's KOL was absent.
+- Finance A saw only local Payout #1 / KOL #4; Payout #2 / KOL #7 was absent.
+- Finance B saw only local Payout #2 / KOL #7; Payout #1 / KOL #4 was absent.
+- Each Finance user saw PayPal recipient evidence only for the payout assigned to that Finance owner.
+- HTTP regression proves Finance B posting Finance A's `complete` URL returns 404 before Provider mutation.
+- Focused responsibility backend: 15 tests / 102 assertions PASS.
+- Responsibility UI suite: 57/57 PASS.
+- Typecheck: PASS.
+- Fresh migration through `2026_09_01_153000_add_kol_responsibility_owners`: PASS.
+
+### Responsibility Isolation Final Gate
+
+This section supersedes earlier pending cleanup/final-regression notes.
+
+- Final combined Typecheck: PASS.
+- Final frontend suite: 60/60 PASS.
+- Production build: PASS, 838 modules; existing chunk-size warning only.
+- Fresh migration including responsibility assignment migration: PASS.
+- Shared PHP regression: 83 tests / 737 assertions PASS.
+- US Mac A/B responsibility UAT cleanup: PASS; temporary Users, Roles, KOLs, Payouts, sessions, and UAT login audit rows removed.
+- No Provider payout completion or Production mutation was executed.
+- Local UAT server on port 18114 and dedicated Chrome profile were stopped.
+- Migration rollback/reapply uncovered and fixed MySQL FK/index drop ordering in `down()`.
+- Responsibility migration rollback: PASS; both responsibility columns removed.
+- Responsibility migration reapply: PASS; both responsibility columns restored.
+- Final local UAT DB cleanup leaves the unmerged responsibility migration rolled back/pending.
+- Current rebase base / `origin/main` guard: `4f2bc7fb51030e7acc231173d1b2d66bd28eca79`.
+
+Next gate: update frozen architecture evidence, create a new implementation checkpoint, push the exact head, and require the dedicated PR #141 CI to succeed before Ready-for-Review. Merge and Production deployment remain unauthorized.

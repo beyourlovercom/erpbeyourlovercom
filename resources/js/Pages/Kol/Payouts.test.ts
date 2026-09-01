@@ -15,7 +15,7 @@ const eligible = [
   { referral_id: 12, affiliate_id: 7, kol_id: 5, amount: '5.75', currency: 'USD', order_reference: '9002', referral_date: '2026-09-01T00:00:00+00:00' },
 ]
 const requests = [
-  { id: 101, kol_id: 5, affiliate_id: 7, amount: '10.000000', currency: 'USD', status: 'approved', provider_payout_id: null, payout_recipient: 'creator-paypal@example.test', paid_at: null, requested_by_user_id: 2, approved_by_user_id: 3, referral_ids: [11, 12], created_at: '2026-09-01T01:00:00+00:00' },
+  { id: 101, kol_id: 5, affiliate_id: 7, amount: '10.000000', currency: 'USD', status: 'approved', provider_payout_id: null, payout_recipient: 'creator-paypal@example.test', can_approve: false, can_complete: true, paid_at: null, requested_by_user_id: 2, approved_by_user_id: 3, referral_ids: [11, 12], created_at: '2026-09-01T01:00:00+00:00' },
 ]
 
 describe('KOL payout workflow', () => {
@@ -38,7 +38,7 @@ describe('KOL payout workflow', () => {
   })
 
   it('manager approval is separate from finance completion', async () => {
-    const pending = [{ ...requests[0], status: 'pending_approval', approved_by_user_id: null, payout_recipient: null }]
+    const pending = [{ ...requests[0], status: 'pending_approval', approved_by_user_id: null, payout_recipient: null, can_approve: true, can_complete: false }]
     const wrapper = mount(Payouts, { props: { connectionKey: 'test.example.com', eligible: [], requests: pending, canRequest: false, canApprove: true, canManage: false } })
     const button = wrapper.findAll('button').find(b => b.text() === '批准')!
     await button.trigger('click')
@@ -55,4 +55,12 @@ describe('KOL payout workflow', () => {
     await button.trigger('click')
     expect(postMock).toHaveBeenCalledWith('/kol/payouts/101/complete', { paypal_transaction_id: 'TXN-123', paid_at: '2026-09-01' }, { preserveScroll: true })
   })
+  it('multi-role user gets no row controls or recipient for an unassigned responsibility', () => {
+    const foreign = [{ ...requests[0], payout_recipient: null, can_approve: false, can_complete: false }]
+    const wrapper = mount(Payouts, { props: { connectionKey: 'test.example.com', eligible: [], requests: foreign, canRequest: true, canApprove: true, canManage: true } })
+    expect(wrapper.text()).not.toContain('PayPal 收款')
+    expect(wrapper.findAll('button').some(b => b.text() === '批准')).toBe(false)
+    expect(wrapper.findAll('button').some(b => b.text().includes('确认已付款并写回'))).toBe(false)
+  })
+
 })

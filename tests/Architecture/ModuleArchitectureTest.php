@@ -861,6 +861,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_09_01_100000_create_product_sku_aliases_table.php' => '8f8f6122d4955f73efe5ec2d95f56ab4a9f4a571adfb2c4e0acc1d7c7dc6921a',
         'database/migrations/2026_09_01_120000_create_kol_payout_workflow_tables.php' => '538f4e0bf8783abc068906db2edabcc9fa0192cd4c1d9341bae5406a3e8f8ab4',
         'database/migrations/2026_09_01_131000_add_kol_manager_approval_center.php' => '8d4248e613982994ee0dfc7abd31f9262a2d5982ff5c463f52a1c32060c2cb15',
+        'database/migrations/2026_09_01_153000_add_kol_responsibility_owners.php' => '7d4d54083b979b62f545e47036edf93c1abc819bd96d31134e9f2966a9e65b6a',
     ];
 
     private const FRONTEND_FILES = [
@@ -960,14 +961,14 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Kol/Content.test.ts' => 'b409dc025aae7551e5b65c8eb3c6795d7af9b511f4bade317b140b71ca0fb678',
         'resources/js/Pages/Kol/Content.vue' => '0d539d3e346cb5ebd57ff09b2c1794ac3c6f9b427ae78621896907133dc57de5',
         'resources/js/Pages/Kol/Create.test.ts' => '2f0beacb9c7f6a6cec7ffc210c43a9147151e34455f7be1a81e6bad24d861d56',
-        'resources/js/Pages/Kol/Create.vue' => 'ac820f8227d8a01608d08d98cec5105271805ef58b0646783f5cfb67e121eda2',
+        'resources/js/Pages/Kol/Create.vue' => 'cfb0858cf2645552ef83763e65faa9901e9f96de032879db460aa70548881d56',
         'resources/js/Pages/Kol/Edit.test.ts' => 'ef1a872ec59cd741a2518f3a466c753040d9002bf4580ef042d313dd5d692b9e',
-        'resources/js/Pages/Kol/Edit.vue' => '345e34f5b6f4fcca01ac2b2ee3dd8e1f0cba502bf9beec314d1665fe64a71ac2',
+        'resources/js/Pages/Kol/Edit.vue' => '9131e288e623e9843c282376f31160a3decbe9a680226cfa077ac8b1ae312ef3',
         'resources/js/Pages/Kol/Index.vue' => '870cf52c074c94cd987f974776d905129c90f1053bad7680b5388ae57c904d09',
         'resources/js/Pages/Kol/Overview.test.ts' => '046504dd56ab291596b94c02c97756cb44c6a1b25aadae43ec16f9f555757777',
         'resources/js/Pages/Kol/Overview.vue' => 'a86926f15e53c016879667de47ea285caeffffd7c7c64df00b1745daf43ae131',
-        'resources/js/Pages/Kol/Payouts.test.ts' => '00680c3259a3bcc00b60a115fc4498bfed133e6c8637e3459e5f403b935835e9',
-        'resources/js/Pages/Kol/Payouts.vue' => '003de4ca917a7b2960e3275b7d3e24de18a56d0ba1022fe38fa4a90c5c60dc7c',
+        'resources/js/Pages/Kol/Payouts.test.ts' => '0adf3e087814b9f5667819066dcb052b1ed064aaf1438241598cd832b9f3c67c',
+        'resources/js/Pages/Kol/Payouts.vue' => 'acba8cffda19a33c8e5ffaf3e618cc032f4e229ce135e26b65c2c2ba4f2fc081',
         'resources/js/Pages/Kol/PlaceholderPage.vue' => '17bcfd63e0f10267eccb24ff899ebb61d04265b1caceb5a35a7023c633fad595',
         'resources/js/Pages/Kol/Show.test.ts' => '4febe862caf8a8946af20c8c4f603e7f90e64ebd5db165d810e98b7ea1005b89',
         'resources/js/Pages/Kol/Show.vue' => 'dd08b59c07e1a04a82270951947359f74da9bcb5a0109e9c7dc382b85f7f611f',

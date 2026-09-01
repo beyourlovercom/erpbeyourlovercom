@@ -27,26 +27,28 @@ final class ManagerApprovalCenterService
         $this->authorize($actor);
 
         return match ($module) {
-            'kols' => $this->kolWorkspace(),
-            'collaborations' => $this->collaborationWorkspace(),
-            'payouts' => $this->payoutWorkspace(),
+            'kols' => $this->kolWorkspace($actor),
+            'collaborations' => $this->collaborationWorkspace($actor),
+            'payouts' => $this->payoutWorkspace($actor),
             default => throw new InvalidArgumentException('Unsupported approval module.'),
         };
     }
 
     /** @return array<string,mixed> */
-    private function kolWorkspace(): array
+    private function kolWorkspace(Authenticatable $actor): array
     {
         $kolClass = self::KOL;
         $decisionClass = self::KOL_DECISION;
+        $ownerId = (int) $actor->getAuthIdentifier();
         $pending = $kolClass::query()
-            ->whereNull('archived_at')->where('approval_status', 'pending')
+            ->where('approval_manager_id', $ownerId)->whereNull('archived_at')->where('approval_status', 'pending')
             ->with(['owner:id,name', 'socialAccounts' => fn ($q) => $q->where('is_active', true)->orderBy('id')])
             ->orderBy('approval_updated_at')->orderBy('id')->limit(100)->get();
         $latestReasons = $decisionClass::query()->whereIn('kol_id', $pending->pluck('id'))
             ->orderByDesc('id')->get()->unique('kol_id')->keyBy('kol_id');
         $history = $decisionClass::query()->whereIn('outcome', ['approved', 'rejected'])
-            ->with(['kol:id,display_name,country_code,cooperation_type', 'actor:id,name'])
+            ->whereHas('kol', fn ($q) => $q->where('approval_manager_id', $ownerId))
+            ->with(['kol:id,display_name,country_code,cooperation_type,owner_id', 'actor:id,name'])
             ->orderByDesc('decided_at')->orderByDesc('id')->limit(300)->get()
             ->map(fn ($row): array => [
                 'record_key' => 'kol:'.$row->id,
@@ -80,15 +82,18 @@ final class ManagerApprovalCenterService
     }
 
     /** @return array<string,mixed> */
-    private function collaborationWorkspace(): array
+    private function collaborationWorkspace(Authenticatable $actor): array
     {
         $collaborationClass = self::COLLABORATION;
         $decisionClass = self::COLLABORATION_DECISION;
+        $ownerId = (int) $actor->getAuthIdentifier();
         $pending = $collaborationClass::query()->where('approval_status', 'pending')
+            ->whereHas('kol', fn ($q) => $q->where('approval_manager_id', $ownerId))
             ->with(['kol:id,display_name,owner_id', 'owner:id,name'])
             ->orderBy('approval_updated_at')->orderBy('id')->limit(100)->get();
         $history = $decisionClass::query()->whereIn('outcome', ['approved', 'rejected'])
-            ->with(['collaboration:id,kol_id,title,owner_id', 'collaboration.kol:id,display_name', 'actor:id,name'])
+            ->whereHas('collaboration.kol', fn ($q) => $q->where('approval_manager_id', $ownerId))
+            ->with(['collaboration:id,kol_id,title,owner_id', 'collaboration.kol:id,display_name,owner_id', 'actor:id,name'])
             ->orderByDesc('decided_at')->orderByDesc('id')->limit(300)->get()
             ->map(fn ($row): array => [
                 'record_key' => 'collaboration:'.$row->id,
@@ -124,13 +129,16 @@ final class ManagerApprovalCenterService
     }
 
     /** @return array<string,mixed> */
-    private function payoutWorkspace(): array
+    private function payoutWorkspace(Authenticatable $actor): array
     {
         $payoutClass = self::PAYOUT_REQUEST;
+        $ownerId = (int) $actor->getAuthIdentifier();
         $pending = $payoutClass::query()->where('status', 'pending_approval')
+            ->whereHas('kol', fn ($q) => $q->where('approval_manager_id', $ownerId))
             ->with(['items', 'kol:id,display_name,owner_id', 'requestedBy:id,name'])
             ->orderBy('created_at')->orderBy('id')->limit(100)->get();
         $history = $payoutClass::query()->where(fn ($q) => $q->whereNotNull('approved_at')->orWhereNotNull('rejected_at'))
+            ->whereHas('kol', fn ($q) => $q->where('approval_manager_id', $ownerId))
             ->with(['kol:id,display_name,owner_id', 'requestedBy:id,name', 'approvedBy:id,name', 'rejectedBy:id,name'])
             ->orderByDesc('id')->limit(300)->get()
             ->map(function ($row): array {
@@ -165,12 +173,57 @@ final class ManagerApprovalCenterService
         ];
     }
 
-    public function approveKol(int $id, Authenticatable $actor): void { $this->authorize($actor); $kolClass = self::KOL; $this->kols->approve($kolClass::findOrFail($id), $actor); }
-    public function rejectKol(int $id, string $reason, Authenticatable $actor): void { $this->authorize($actor); $kolClass = self::KOL; $this->kols->reject($kolClass::findOrFail($id), $actor, $reason); }
-    public function approveCollaboration(int $id, Authenticatable $actor): void { $this->authorize($actor); $collaborationClass = self::COLLABORATION; $this->collaborations->approve($collaborationClass::findOrFail($id), $actor); }
-    public function rejectCollaboration(int $id, string $reason, Authenticatable $actor): void { $this->authorize($actor); $collaborationClass = self::COLLABORATION; $this->collaborations->reject($collaborationClass::findOrFail($id), $actor, $reason); }
-    public function approvePayout(int $id, Authenticatable $actor): void { $this->authorize($actor); $this->payouts->approve($id, $actor); }
-    public function rejectPayout(int $id, string $reason, Authenticatable $actor): void { $this->authorize($actor); $this->payouts->reject($id, $reason, $actor); }
+    public function approveKol(int $id, Authenticatable $actor): void
+    {
+        $this->authorize($actor);
+        $kolClass = self::KOL;
+        $kol = $kolClass::query()->where('approval_manager_id', (int) $actor->getAuthIdentifier())->findOrFail($id);
+        $this->kols->approve($kol, $actor);
+    }
+
+    public function rejectKol(int $id, string $reason, Authenticatable $actor): void
+    {
+        $this->authorize($actor);
+        $kolClass = self::KOL;
+        $kol = $kolClass::query()->where('approval_manager_id', (int) $actor->getAuthIdentifier())->findOrFail($id);
+        $this->kols->reject($kol, $actor, $reason);
+    }
+
+    public function approveCollaboration(int $id, Authenticatable $actor): void
+    {
+        $this->authorize($actor);
+        $collaborationClass = self::COLLABORATION;
+        $row = $collaborationClass::query()->whereHas('kol', fn ($q) => $q->where('approval_manager_id', (int) $actor->getAuthIdentifier()))->findOrFail($id);
+        $this->collaborations->approve($row, $actor);
+    }
+
+    public function rejectCollaboration(int $id, string $reason, Authenticatable $actor): void
+    {
+        $this->authorize($actor);
+        $collaborationClass = self::COLLABORATION;
+        $row = $collaborationClass::query()->whereHas('kol', fn ($q) => $q->where('approval_manager_id', (int) $actor->getAuthIdentifier()))->findOrFail($id);
+        $this->collaborations->reject($row, $actor, $reason);
+    }
+
+    public function approvePayout(int $id, Authenticatable $actor): void
+    {
+        $this->authorize($actor);
+        $this->assertOwnedPayout($id, $actor);
+        $this->payouts->approve($id, $actor);
+    }
+
+    public function rejectPayout(int $id, string $reason, Authenticatable $actor): void
+    {
+        $this->authorize($actor);
+        $this->assertOwnedPayout($id, $actor);
+        $this->payouts->reject($id, $reason, $actor);
+    }
+
+    private function assertOwnedPayout(int $id, Authenticatable $actor): void
+    {
+        $payoutClass = self::PAYOUT_REQUEST;
+        $payoutClass::query()->whereHas('kol', fn ($q) => $q->where('approval_manager_id', (int) $actor->getAuthIdentifier()))->findOrFail($id);
+    }
 
     private function authorize(Authenticatable $actor): void
     {

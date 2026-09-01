@@ -33,11 +33,11 @@ class KolM14FApprovalDashboardTest extends TestCase
         return $user;
     }
 
-    private function kol(User $owner, string $name, string $approval = 'approved'): Kol
+    private function kol(User $owner, string $name, string $approval = 'approved', ?User $manager = null, ?User $finance = null): Kol
     {
         return Kol::create([
             'display_name' => $name, 'status' => 'active', 'relationship_stage' => 'cooperating',
-            'owner_id' => $owner->id, 'approval_status' => $approval,
+            'owner_id' => $owner->id, 'approval_manager_id' => $manager?->id, 'finance_owner_id' => $finance?->id, 'approval_status' => $approval,
         ]);
     }
 
@@ -53,7 +53,7 @@ class KolM14FApprovalDashboardTest extends TestCase
     {
         $specialist = $this->userWith(['kol.view', 'kol.operate'], 'Specialist A');
         $manager = $this->userWith(['kol.view', 'kol.operate', 'kol.views.manage', 'kol.approvals.manage'], 'Manager A');
-        $kol = $this->kol($specialist, 'Paid Creator');
+        $kol = $this->kol($specialist, 'Paid Creator', 'approved', $manager);
 
         $created = $this->actingAs($specialist)->postJson("/kol/library/{$kol->id}/collaborations", $this->paidPayload());
         $created->assertCreated()->assertJsonPath('collaboration.approval_status', 'pending');
@@ -88,7 +88,7 @@ class KolM14FApprovalDashboardTest extends TestCase
     {
         $specialist = $this->userWith(['kol.view', 'kol.operate', 'kol.payouts.request'], 'Specialist B');
         $manager = $this->userWith(['kol.view', 'kol.views.manage', 'kol.approvals.manage', 'kol.payouts.approve'], 'Manager C');
-        $kol = $this->kol($specialist, 'Pending Creator', 'pending');
+        $kol = $this->kol($specialist, 'Pending Creator', 'pending', $manager);
         KolApprovalDecision::create(['kol_id' => $kol->id, 'outcome' => 'pending', 'source' => 'specialist_policy', 'actor_user_id' => $specialist->id, 'policy_mode' => 'ALL', 'threshold_snapshot' => [], 'reason_code' => 'policy_all_requires_manager', 'decided_at' => now()]);
         $collaboration = KolCollaboration::create(['kol_id' => $kol->id, 'owner_id' => $specialist->id, 'title' => 'Pending paid', 'cooperation_type' => '付费发帖', 'status' => 'confirmed', 'approval_status' => 'pending', 'agreement_amount' => 200, 'currency' => 'USD', 'approval_updated_at' => now()]);
         KolCollaborationApprovalDecision::create(['collaboration_id' => $collaboration->id, 'outcome' => 'pending', 'source' => 'specialist_created', 'actor_user_id' => $specialist->id, 'cooperation_type' => '付费发帖', 'agreement_amount' => 200, 'currency' => 'USD', 'decided_at' => now()]);
@@ -170,4 +170,26 @@ class KolM14FApprovalDashboardTest extends TestCase
         $this->assertSame(2, $all['publication_records']);
         $this->assertSame(2, $all['affiliate'][0]['sales_count']);
     }
+    public function test_manager_approval_visibility_and_actions_are_limited_to_assigned_kols(): void
+    {
+        $specialistA = $this->userWith(['kol.view', 'kol.operate'], 'Specialist Scope A');
+        $specialistB = $this->userWith(['kol.view', 'kol.operate'], 'Specialist Scope B');
+        $managerA = $this->userWith(['kol.view', 'kol.approvals.manage', 'kol.payouts.approve'], 'Manager Scope A');
+        $managerB = $this->userWith(['kol.view', 'kol.approvals.manage', 'kol.payouts.approve'], 'Manager Scope B');
+        $kolA = $this->kol($specialistA, 'Scope Creator A', 'pending', $managerA);
+        $kolB = $this->kol($specialistB, 'Scope Creator B', 'pending', $managerB);
+        foreach ([[$kolA,$specialistA],[$kolB,$specialistB]] as [$kol,$actor]) {
+            KolApprovalDecision::create(['kol_id'=>$kol->id,'outcome'=>'pending','source'=>'specialist_policy','actor_user_id'=>$actor->id,'policy_mode'=>'ALL','threshold_snapshot'=>[],'reason_code'=>'policy_all_requires_manager','decided_at'=>now()]);
+        }
+
+        $workspaceA = $this->actingAs($managerA)->get('/kol/approvals/kols')->assertOk()->original->getData()['page']['props']['workspace'];
+        $workspaceB = $this->actingAs($managerB)->get('/kol/approvals/kols')->assertOk()->original->getData()['page']['props']['workspace'];
+        $this->assertSame([$kolA->id], collect($workspaceA['pending'])->pluck('id')->all());
+        $this->assertSame([$kolB->id], collect($workspaceB['pending'])->pluck('id')->all());
+        $this->actingAs($managerA)->post("/kol/approvals/kols/{$kolB->id}/approve")->assertNotFound();
+        $this->actingAs($managerA)->post("/kol/approvals/kols/{$kolA->id}/approve")->assertRedirect();
+        $this->assertSame('approved', $kolA->fresh()->approval_status);
+        $this->assertSame('pending', $kolB->fresh()->approval_status);
+    }
+
 }

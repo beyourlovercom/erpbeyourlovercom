@@ -4,7 +4,7 @@ import { Head, router, useForm } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
 type Eligible = { referral_id:number; affiliate_id:number; kol_id:number; amount:string; currency:string; order_reference:string; referral_date:string|null }
-type RequestRow = { id:number; kol_id:number; affiliate_id:number; amount:string; currency:string; status:string; provider_payout_id:number|null; payout_recipient:string|null; paid_at:string|null; requested_by_user_id:number; approved_by_user_id:number|null; referral_ids:number[]; created_at:string|null }
+type RequestRow = { id:number; kol_id:number; affiliate_id:number; amount:string; currency:string; status:string; provider_payout_id:number|null; payout_recipient:string|null; can_approve?:boolean; can_complete?:boolean; paid_at:string|null; requested_by_user_id:number; approved_by_user_id:number|null; referral_ids:number[]; created_at:string|null }
 const props = defineProps<{ connectionKey:string; eligible:Eligible[]; requests:RequestRow[]; canRequest:boolean; canApprove:boolean; canManage:boolean }>()
 const selected = ref<number[]>([])
 const createForm = useForm<{ referral_ids:number[]; payout_request?:string }>({ referral_ids: [] })
@@ -48,9 +48,9 @@ function money(currency:string,amount:string):string { return `${currency} ${amo
         <div v-if="requests.length" class="requests-list">
           <article v-for="row in requests" :key="row.id" class="request-row">
             <div class="request-main"><div><strong>#{{ row.id }} · {{ row.status }}</strong><p>Affiliate #{{ row.affiliate_id }} · KOL #{{ row.kol_id }} · Referral {{ row.referral_ids.map(id=>`#${id}`).join(', ') }}</p></div><strong>{{ money(row.currency,row.amount) }}</strong></div>
-            <div class="meta"><span>申请人 User #{{ row.requested_by_user_id }}</span><span v-if="row.approved_by_user_id">审批人 User #{{ row.approved_by_user_id }}</span><span v-if="row.provider_payout_id">Provider Payout #{{ row.provider_payout_id }}</span><span v-if="canManage && row.payout_recipient">PayPal 收款：{{ row.payout_recipient }}</span></div>
-            <div v-if="canApprove && row.status==='pending_approval'" class="approval-actions"><button type="button" @click="approve(row.id)">批准</button><input v-model="rejectReason[row.id]" placeholder="驳回原因"><button type="button" :disabled="!(rejectReason[row.id]||'').trim()" @click="reject(row.id)">驳回</button></div>
-            <div v-if="canManage && ['approved','provider_error','readback_mismatch'].includes(row.status)" class="complete-actions"><input v-model="ensureEvidence(row.id).transaction" autocomplete="off" placeholder="PayPal Transaction ID"><input v-model="ensureEvidence(row.id).paidAt" type="date"><button type="button" @click="complete(row.id)">{{ row.status==='approved' ? '确认已付款并写回' : '按原证据重试写回' }}</button></div>
+            <div class="meta"><span>申请人 User #{{ row.requested_by_user_id }}</span><span v-if="row.approved_by_user_id">审批人 User #{{ row.approved_by_user_id }}</span><span v-if="row.provider_payout_id">Provider Payout #{{ row.provider_payout_id }}</span><span v-if="row.can_complete === true && row.payout_recipient">PayPal 收款：{{ row.payout_recipient }}</span></div>
+            <div v-if="row.can_approve === true && row.status==='pending_approval'" class="approval-actions"><button type="button" @click="approve(row.id)">批准</button><input v-model="rejectReason[row.id]" placeholder="驳回原因"><button type="button" :disabled="!(rejectReason[row.id]||'').trim()" @click="reject(row.id)">驳回</button></div>
+            <div v-if="row.can_complete === true && ['approved','provider_error','readback_mismatch'].includes(row.status)" class="complete-actions"><input v-model="ensureEvidence(row.id).transaction" autocomplete="off" placeholder="PayPal Transaction ID"><input v-model="ensureEvidence(row.id).paidAt" type="date"><button type="button" @click="complete(row.id)">{{ row.status==='approved' ? '确认已付款并写回' : '按原证据重试写回' }}</button></div>
           </article>
         </div>
         <div v-else class="empty">暂无结算申请。</div>
