@@ -7,6 +7,7 @@ use App\Modules\Products\Application\Contracts\SkuAliasRepository;
 use App\Modules\Products\Application\SkuMatchKey;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 final class ProductService
@@ -14,6 +15,7 @@ final class ProductService
     public function __construct(
         private readonly ProductRepository $products,
         private readonly SkuAliasRepository $skuAliases,
+        private readonly ProductWeightEvidenceService $weightEvidence,
     ) {}
 
     /** @return array{result: ProductImportResult, candidates: list<array<string, mixed>>} */
@@ -186,7 +188,10 @@ final class ProductService
             $this->assertNoAliasMatchKeyCollision((string) $sku);
         }
 
-        return $this->products->create([
+        $weightKg = $nullableFloat('weight_kg');
+        $shippingWeightKg = $nullableFloat('shipping_weight_kg');
+
+        $product = $this->products->create([
             'source_type' => 'manual',
             'woocommerce_product_id' => null,
             'product_type' => $attributes['product_type'] ?? 'simple',
@@ -195,10 +200,10 @@ final class ProductService
             'name' => $attributes['name'],
             'unit' => $nullable('unit'),
             'is_active' => isset($attributes['is_active']) ? (bool) $attributes['is_active'] : true,
-            'weight_kg' => $nullableFloat('weight_kg'),
+            'weight_kg' => null,
             'sale_price' => $nullableFloat('sale_price'),
             'regular_price' => $nullableFloat('regular_price'),
-            'shipping_weight_kg' => $nullableFloat('shipping_weight_kg'),
+            'shipping_weight_kg' => null,
             'length_cm' => $nullableFloat('length_cm'),
             'width_cm' => $nullableFloat('width_cm'),
             'height_cm' => $nullableFloat('height_cm'),
@@ -211,6 +216,20 @@ final class ProductService
             'cost_note' => $nullable('cost_note'),
             'notes' => $nullable('notes'),
         ]);
+
+        $actorUserId = Auth::id();
+
+        if ($weightKg !== null && $weightKg > 0) {
+            $this->weightEvidence->createAndAdoptManualEntry($product, 'product_weight', $weightKg, $actorUserId);
+            $product->refresh();
+        }
+
+        if ($shippingWeightKg !== null && $shippingWeightKg > 0) {
+            $this->weightEvidence->createAndAdoptManualEntry($product, 'shipping_reference_weight', $shippingWeightKg, $actorUserId);
+            $product->refresh();
+        }
+
+        return $product;
     }
 
     public function updateProduct(Model $product, array $attributes): void
@@ -223,6 +242,20 @@ final class ProductService
             $this->assertNoAliasMatchKeyCollision((string) $newSku);
         }
 
+        // Determine new weight values; weight changes require provenance creation.
+        $newWeightKg = array_key_exists('weight_kg', $attributes)
+            ? ($attributes['weight_kg'] !== '' && $attributes['weight_kg'] !== null ? (float) $attributes['weight_kg'] : null)
+            : null;
+        $newShippingWeightKg = array_key_exists('shipping_weight_kg', $attributes)
+            ? ($attributes['shipping_weight_kg'] !== '' && $attributes['shipping_weight_kg'] !== null ? (float) $attributes['shipping_weight_kg'] : null)
+            : null;
+
+        $currentWeightKg = $product->getAttribute('weight_kg') !== null ? (float) $product->getAttribute('weight_kg') : null;
+        $currentShippingWeightKg = $product->getAttribute('shipping_weight_kg') !== null ? (float) $product->getAttribute('shipping_weight_kg') : null;
+
+        $weightKgChanged = array_key_exists('weight_kg', $attributes) && $newWeightKg !== $currentWeightKg;
+        $shippingWeightKgChanged = array_key_exists('shipping_weight_kg', $attributes) && $newShippingWeightKg !== $currentShippingWeightKg;
+
         $this->products->update($product, [
             'product_type' => $attributes['product_type'] ?? $product->getAttribute('product_type'),
             'sku' => array_key_exists('sku', $attributes) ? ($attributes['sku'] ?: null) : $product->getAttribute('sku'),
@@ -230,10 +263,11 @@ final class ProductService
             'name' => $attributes['name'] ?? $product->getAttribute('name'),
             'unit' => $pick('unit', $product->getAttribute('unit')),
             'is_active' => array_key_exists('is_active', $attributes) ? (bool) $attributes['is_active'] : $product->getAttribute('is_active'),
-            'weight_kg' => $pickFloat('weight_kg', $product->getAttribute('weight_kg')),
+            // Weight fields written only by evidence adopt/clear below; generic update always keeps current DB value.
+            'weight_kg' => $currentWeightKg,
             'sale_price' => $pickFloat('sale_price', $product->getAttribute('sale_price')),
             'regular_price' => $pickFloat('regular_price', $product->getAttribute('regular_price')),
-            'shipping_weight_kg' => $pickFloat('shipping_weight_kg', $product->getAttribute('shipping_weight_kg')),
+            'shipping_weight_kg' => $currentShippingWeightKg,
             'length_cm' => $pickFloat('length_cm', $product->getAttribute('length_cm')),
             'width_cm' => $pickFloat('width_cm', $product->getAttribute('width_cm')),
             'height_cm' => $pickFloat('height_cm', $product->getAttribute('height_cm')),
@@ -246,6 +280,21 @@ final class ProductService
             'cost_note' => $pick('cost_note', $product->getAttribute('cost_note')),
             'notes' => $pick('notes', $product->getAttribute('notes')),
         ]);
+
+        $product->refresh();
+        $actorUserId = Auth::id();
+
+        if ($weightKgChanged && $newWeightKg !== null && $newWeightKg > 0) {
+            $this->weightEvidence->createAndAdoptManualEntry($product, 'product_weight', $newWeightKg, $actorUserId, confirmed: true);
+        } elseif ($weightKgChanged && $newWeightKg === null) {
+            $this->weightEvidence->clearWeight($product, 'product_weight', $actorUserId);
+        }
+
+        if ($shippingWeightKgChanged && $newShippingWeightKg !== null && $newShippingWeightKg > 0) {
+            $this->weightEvidence->createAndAdoptManualEntry($product, 'shipping_reference_weight', $newShippingWeightKg, $actorUserId, confirmed: true);
+        } elseif ($shippingWeightKgChanged && $newShippingWeightKg === null) {
+            $this->weightEvidence->clearWeight($product, 'shipping_reference_weight', $actorUserId);
+        }
     }
 
     public function deleteProduct(Model $product): void

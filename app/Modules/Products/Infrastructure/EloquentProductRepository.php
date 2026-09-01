@@ -95,4 +95,15 @@ final class EloquentProductRepository implements ProductRepository
     {
         return Product::count();
     }
+
+    public function coverageCounts(): array
+    {
+        $total = Product::count();
+
+        return [
+            'total' => $total,
+            'weight_filled' => Product::whereNotNull('weight_kg')->count(),
+            'shipping_filled' => Product::whereNotNull('shipping_weight_kg')->count(),
+        ];
+    }
 }

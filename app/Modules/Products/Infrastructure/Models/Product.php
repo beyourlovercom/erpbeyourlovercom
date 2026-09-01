@@ -3,6 +3,7 @@
 namespace App\Modules\Products\Infrastructure\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Product extends Model
@@ -17,9 +18,11 @@ class Product extends Model
         'unit',
         'is_active',
         'weight_kg',
+        'weight_evidence_id',
         'sale_price',
         'regular_price',
         'shipping_weight_kg',
+        'shipping_weight_evidence_id',
         'length_cm',
         'width_cm',
         'height_cm',
@@ -38,10 +41,22 @@ class Product extends Model
         return $this->hasMany(ProductSkuAlias::class);
     }
 
+    public function weightEvidence(): BelongsTo
+    {
+        return $this->belongsTo(ProductWeightEvidence::class, 'weight_evidence_id');
+    }
+
+    public function shippingWeightEvidence(): BelongsTo
+    {
+        return $this->belongsTo(ProductWeightEvidence::class, 'shipping_weight_evidence_id');
+    }
+
     protected $casts = [
         'woocommerce_product_id' => 'integer',
         'is_active' => 'boolean',
         'weight_kg' => 'decimal:4',
+        'weight_evidence_id' => 'integer',
+        'shipping_weight_evidence_id' => 'integer',
         'sale_price' => 'decimal:2',
         'regular_price' => 'decimal:2',
         'shipping_weight_kg' => 'decimal:4',

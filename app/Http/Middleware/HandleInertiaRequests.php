@@ -19,6 +19,8 @@ class HandleInertiaRequests extends Middleware
             'error' => $request->session()->get('error'),
             'warning' => $request->session()->get('warning'),
             'info' => $request->session()->get('info'),
+            'confirm_required' => $request->session()->get('confirm_required'),
+            'evidence_id' => $request->session()->get('evidence_id'),
         ];
         $hasFeedback = collect($flash)->contains(fn ($value): bool => is_string($value) && trim($value) !== '');
 

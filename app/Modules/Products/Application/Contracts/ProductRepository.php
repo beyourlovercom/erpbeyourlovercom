@@ -31,4 +31,7 @@ interface ProductRepository
     public function list(array $filters = [], int $perPage = 50): LengthAwarePaginator;
 
     public function totalCount(): int;
+
+    /** @return array{total: int, weight_filled: int, shipping_filled: int} */
+    public function coverageCounts(): array;
 }
