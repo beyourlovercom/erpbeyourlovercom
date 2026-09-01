@@ -4,7 +4,7 @@ project: BYL ERP
 work_package_id: ERP-KOL-V1-PRODUCTION-ENABLEMENT-001
 status: KOL_SIDE_READINESS_PASS_WAITING_SHARED_RUNTIME_AND_REAL_DATA_SOURCE
 verification_tier: HIGH_RISK
-baseline: origin/main@ef5b62d6ce1c082ecccf2ffc4e30680a2af3d731
+baseline: origin/main@247b585627395e010839aa21c30734cf93a9820f
 production_mutation_authorized: NO
 merge_authorized: NO
 ---
@@ -23,7 +23,7 @@ Move the already closed KOL V1 product from verified code/UAT state to a product
 
 ## Baseline
 - KOL V1 cross-phase closure merged by PR #143.
-- Exact activation baseline: `main@ef5b62d6ce1c082ecccf2ffc4e30680a2af3d731`.
+- Exact activation baseline: `main@247b585627395e010839aa21c30734cf93a9820f`.
 - Branch: `feature/erp-kol-v1-production-enablement-001`.
 - Worktree: `/Users/a/AI/007/worktrees/erp-kol-v1-production-enablement-001`.
 - KOL V1 business implementation is closed; this package is activation/readiness first.
@@ -176,7 +176,7 @@ After an explicitly authorized Production deployment/migration:
 `KOL_SIDE_ENGINEERING_READINESS = PASS`
 `LOCAL_REAL_MIRROR_AUDIT = PASS`
 `LOCAL_UAT_KOL_COPY_TO_PRODUCTION = PROHIBITED`
-`REAL_KOL_MASTER_SOURCE = REQUIRED`
+`REAL_KOL_MASTER_SOURCE = OWNER_INPUT_REQUIRED`
 `SHARED_PRODUCTION_RUNTIME = BLOCKED_HOSTING_TARGET_REQUIRED`
 `PRODUCTION_MUTATION = NO`
 `PROVIDER_MUTATION = NO`
@@ -200,3 +200,13 @@ After an explicitly authorized Production deployment/migration:
 - KOL + Identity activation regression: 264 tests / 1070 assertions PASS.
 - No KOL business-code remediation required.
 - Test-environment preparation is now exact-worktree local (`composer install`, `npm ci`, production build); no stale shared optimized autoload is reused.
+
+
+## Latest-main recovery / source gate — 2026-09-01
+- After exact-head CI passed at `41d8fe057e47a8fb3c8adde0321af25004888817`, `main` advanced by two corrective GitHub commits to `247b585627395e010839aa21c30734cf93a9820f`.
+- Those two commits represent an accidental metadata-file write followed immediately by its exact deletion; `main@247b585` and tested `main@ef5b62d` have the identical tree `6bb959bbb65e7c2b3106429b51e183e36b80af60`.
+- Recovery ref created before rebase: `recovery/erp-kol-v1-production-enablement-pre-rebase-20260901-044142`.
+- Feature branch rebased cleanly onto `origin/main@247b585627395e010839aa21c30734cf93a9820f`; no product-content conflict exists.
+- Connected Library was searched twice for an existing real KOL master containing identity plus social/contact facts. No suitable source was found. Logistics evidence contains `KOL...` shipment references but not authoritative influencer identity and MUST NOT be used to infer/create KOL master rows.
+- Therefore `REAL_KOL_MASTER_SOURCE = OWNER_INPUT_REQUIRED`. No fuzzy identity inference, shipment-to-KOL inference, Affiliate auto-conversion, import, Production mutation, or Provider write is authorized.
+- Rebased exact-head CI must pass again before any later Ready gate.
