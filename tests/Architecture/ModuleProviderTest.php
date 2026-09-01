@@ -3,6 +3,7 @@
 namespace Tests\Architecture;
 
 use App\Modules\Audit\Providers\AuditServiceProvider;
+use App\Modules\Backup\Providers\BackupServiceProvider;
 use App\Modules\Customers\Providers\CustomersServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Finance\Providers\FinanceServiceProvider;
@@ -63,6 +64,7 @@ final class ModuleProviderTest extends TestCase
             InventoryServiceProvider::class,
             MarketingServiceProvider::class,
             SupportServiceProvider::class,
+            BackupServiceProvider::class,
         ];
         self::assertSame($providers, ModuleManifest::providers());
         $application = $this->createMock(Application::class);
@@ -108,6 +110,7 @@ final class ModuleProviderTest extends TestCase
             CustomersServiceProvider::class,
             ProductsServiceProvider::class,
             InventoryServiceProvider::class,
+            BackupServiceProvider::class,
         ], ModuleManifest::validate([
             AppServiceProvider::class,
             ModulesServiceProvider::class,
@@ -124,6 +127,7 @@ final class ModuleProviderTest extends TestCase
             CustomersServiceProvider::class,
             ProductsServiceProvider::class,
             InventoryServiceProvider::class,
+            BackupServiceProvider::class,
         ]));
     }
 

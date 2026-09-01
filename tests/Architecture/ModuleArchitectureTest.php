@@ -3,6 +3,7 @@
 namespace Tests\Architecture;
 
 use App\Modules\Audit\Providers\AuditServiceProvider;
+use App\Modules\Backup\Providers\BackupServiceProvider;
 use App\Modules\Customers\Providers\CustomersServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Finance\Providers\FinanceServiceProvider;
@@ -52,6 +53,11 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Audit/Infrastructure/ImmutableAuditBuilder.php',
         'app/Modules/Audit/Infrastructure/Models/AuditRecord.php',
         'app/Modules/Audit/Providers/AuditServiceProvider.php',
+        'app/Modules/Backup/Application/BackupState.php',
+        'app/Modules/Backup/Application/BackupType.php',
+        'app/Modules/Backup/Application/ManifestContract.php',
+        'app/Modules/Backup/Application/RestoreState.php',
+        'app/Modules/Backup/Providers/BackupServiceProvider.php',
         'app/Modules/Customers/Application/CompanyService.php',
         'app/Modules/Customers/Application/CustomerGroupService.php',
         'app/Modules/Customers/Application/CustomerImportService.php',
@@ -336,6 +342,9 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Audit/Infrastructure',
         'app/Modules/Audit/Infrastructure/Models',
         'app/Modules/Audit/Providers',
+        'app/Modules/Backup',
+        'app/Modules/Backup/Application',
+        'app/Modules/Backup/Providers',
         'app/Modules/Customers',
         'app/Modules/Customers/Application',
         'app/Modules/Customers/Domain',
@@ -763,6 +772,13 @@ final class ModuleArchitectureTest extends TestCase
         'analysis.view',
         'architecture.foundation.view',
         'audit.view',
+        'backup.create',
+        'backup.delete',
+        'backup.download',
+        'backup.manage',
+        'backup.publish_github',
+        'backup.restore',
+        'backup.view',
         'customers.export',
         'customers.import',
         'customers.operate',
@@ -875,6 +891,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_09_01_131000_add_kol_manager_approval_center.php' => '8d4248e613982994ee0dfc7abd31f9262a2d5982ff5c463f52a1c32060c2cb15',
         'database/migrations/2026_09_01_153000_add_kol_responsibility_owners.php' => '7d4d54083b979b62f545e47036edf93c1abc819bd96d31134e9f2966a9e65b6a',
         'database/migrations/2026_09_01_200000_create_product_weight_evidences_table.php' => '1757cc30d5996342bf017349c57acef17bd3e55e95e79d8bd8088271dd962df2',
+        'database/migrations/2026_09_01_210000_register_backup_permissions.php' => 'f775e592182a1ae1f7635538e36e4f9c7a5f49c98a076db85c88eb81d0661bfd',
     ];
 
     private const FRONTEND_FILES = [
@@ -1057,6 +1074,10 @@ final class ModuleArchitectureTest extends TestCase
             'app/Modules/Audit/Application/Contracts/AuditRecorder.php',
             'app/Modules/Audit/Application/Contracts/AuditWriter.php',
             'app/Modules/Audit/Application/CustomerActivityProjection.php',
+            'app/Modules/Backup/Application/BackupState.php',
+            'app/Modules/Backup/Application/BackupType.php',
+            'app/Modules/Backup/Application/ManifestContract.php',
+            'app/Modules/Backup/Application/RestoreState.php',
             'app/Modules/Customers/Application/CompanyService.php',
             'app/Modules/Customers/Application/CustomerGroupService.php',
             'app/Modules/Customers/Application/CustomerImportService.php',
@@ -1323,6 +1344,7 @@ PHP;
             InventoryServiceProvider::class,
             MarketingServiceProvider::class,
             SupportServiceProvider::class,
+            BackupServiceProvider::class,
         ], ModuleManifest::providers());
         self::assertSame([AppServiceProvider::class, ModulesServiceProvider::class], require $this->path('bootstrap/providers.php'));
     }
