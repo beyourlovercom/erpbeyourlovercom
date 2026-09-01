@@ -339,6 +339,6 @@ Each implementation package remains bounded and independently tested. M1.2B must
 - M1.4D Referral / Commission Sync: MERGED.
 - M1.4E Commission Payout Workflow: MERGED.
 - M1.4F Manager Approval Center / Dashboard: MERGED by PR #141 at `e2099498429fc6df939900ee029a0e42887ba7c1`.
-- `ERP-KOL-V1-CROSS-PHASE-CLOSURE-001`: OWNER UAT PASS / GIT DELIVERY PENDING.
+- `ERP-KOL-V1-CROSS-PHASE-CLOSURE-001`: OWNER UAT PASS / PR #143 / READY FOR REVIEW.
 
 Cross-phase Closure remains verification/UAT only unless a regression proves a bounded compatibility defect. The deferred intelligence/automation list in section 10, including influencer discovery and Instagram/X automation, remains deferred and is not activated by V1 closure.
