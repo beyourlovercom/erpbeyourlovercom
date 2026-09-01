@@ -104,6 +104,13 @@ final class PermissionCatalog
                 'permissions' => [
                     ['key' => 'system.permissions.manage', 'label' => '管理系统权限'],
                     ['key' => 'audit.view', 'label' => '查看审计日志'],
+                    ['key' => 'backup.view', 'label' => '查看备份与迁移'],
+                    ['key' => 'backup.create', 'label' => '创建备份'],
+                    ['key' => 'backup.download', 'label' => '下载备份'],
+                    ['key' => 'backup.publish_github', 'label' => '发布备份到 GitHub'],
+                    ['key' => 'backup.delete', 'label' => '删除备份文件'],
+                    ['key' => 'backup.restore', 'label' => '执行恢复'],
+                    ['key' => 'backup.manage', 'label' => '管理备份策略'],
                 ],
             ],
             '兼容' => [

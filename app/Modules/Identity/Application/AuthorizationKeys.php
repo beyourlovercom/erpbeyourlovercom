@@ -44,4 +44,11 @@ enum AuthorizationKeys: string
     case AnalysisView = 'analysis.view';
     case MarketingView = 'marketing.view';
     case MarketingOperate = 'marketing.operate';
+    case BackupView = 'backup.view';
+    case BackupCreate = 'backup.create';
+    case BackupDownload = 'backup.download';
+    case BackupPublishGithub = 'backup.publish_github';
+    case BackupDelete = 'backup.delete';
+    case BackupRestore = 'backup.restore';
+    case BackupManage = 'backup.manage';
 }

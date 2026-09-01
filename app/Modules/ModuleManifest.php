@@ -3,6 +3,7 @@
 namespace App\Modules;
 
 use App\Modules\Audit\Providers\AuditServiceProvider;
+use App\Modules\Backup\Providers\BackupServiceProvider;
 use App\Modules\Customers\Providers\CustomersServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
@@ -47,6 +48,7 @@ final class ModuleManifest
             InventoryServiceProvider::class,
             MarketingServiceProvider::class,
             SupportServiceProvider::class,
+            BackupServiceProvider::class,
         ];
     }
 
