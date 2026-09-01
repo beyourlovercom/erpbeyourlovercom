@@ -176,7 +176,7 @@ After an explicitly authorized Production deployment/migration:
 `KOL_SIDE_ENGINEERING_READINESS = PASS`
 `LOCAL_REAL_MIRROR_AUDIT = PASS`
 `LOCAL_UAT_KOL_COPY_TO_PRODUCTION = PROHIBITED`
-`REAL_KOL_MASTER_SOURCE = OWNER_INPUT_REQUIRED`
+`REAL_KOL_MASTER_SOURCE = SOURCE_IDENTIFIED_ACCESS_REQUIRED`
 `SHARED_PRODUCTION_RUNTIME = BLOCKED_HOSTING_TARGET_REQUIRED`
 `PRODUCTION_MUTATION = NO`
 `PROVIDER_MUTATION = NO`
@@ -208,5 +208,5 @@ After an explicitly authorized Production deployment/migration:
 - Recovery ref created before rebase: `recovery/erp-kol-v1-production-enablement-pre-rebase-20260901-044142`.
 - Feature branch rebased cleanly onto `origin/main@247b585627395e010839aa21c30734cf93a9820f`; no product-content conflict exists.
 - Connected Library was searched twice for an existing real KOL master containing identity plus social/contact facts. No suitable source was found. Logistics evidence contains `KOL...` shipment references but not authoritative influencer identity and MUST NOT be used to infer/create KOL master rows.
-- Therefore `REAL_KOL_MASTER_SOURCE = OWNER_INPUT_REQUIRED`. No fuzzy identity inference, shipment-to-KOL inference, Affiliate auto-conversion, import, Production mutation, or Provider write is authorized.
+- Therefore `REAL_KOL_MASTER_SOURCE = SOURCE_IDENTIFIED_ACCESS_REQUIRED`. No fuzzy identity inference, shipment-to-KOL inference, Affiliate auto-conversion, import, Production mutation, or Provider write is authorized.
 - Rebased exact-head CI must pass again before any later Ready gate.

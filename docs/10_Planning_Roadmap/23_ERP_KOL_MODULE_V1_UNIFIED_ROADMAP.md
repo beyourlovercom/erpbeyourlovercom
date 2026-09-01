@@ -347,7 +347,7 @@ Cross-phase Closure remains verification/UAT only unless a regression proves a b
 ## KOL V1 Production Enablement — current 2026-09-01
 
 - `ERP-KOL-V1-CROSS-PHASE-CLOSURE-001`: COMPLETE / MERGED PR #143.
-- `ERP-KOL-V1-PRODUCTION-ENABLEMENT-001`: CURRENT / KOL-SIDE READINESS PASS / WAITING SHARED RUNTIME + OWNER REAL KOL SOURCE INPUT.
+- `ERP-KOL-V1-PRODUCTION-ENABLEMENT-001`: CURRENT / KOL-SIDE READINESS PASS / WAITING SHARED RUNTIME + TENCENT DOCS KOL SOURCE ACCESS.
 - Shared dependency: `ERP-PRODUCTION-RUNTIME-FOUNDATION-M2.0A-001` = ACTIVE / HOSTING_TARGET_REQUIRED.
 - Production deployment/migration/provider mutation remain separately Owner-gated.
 - KOL Intelligence / Discovery remains deferred until activation or explicit reprioritization.
