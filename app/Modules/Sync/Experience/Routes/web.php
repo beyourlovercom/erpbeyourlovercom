@@ -14,6 +14,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/sync/wpapi/affiliates', [SyncWorkspaceController::class, 'syncWordPressAffiliates'])->middleware(['can:sync.operate', 'can:kol.affiliates.manage']);
     Route::post('/sync/wpapi/coupons', [SyncWorkspaceController::class, 'syncWordPressCoupons'])->middleware(['can:sync.operate', 'can:kol.affiliates.manage']);
     Route::post('/sync/wpapi/referrals', [SyncWorkspaceController::class, 'syncWordPressReferrals'])->middleware(['can:sync.operate', 'can:kol.affiliates.manage']);
+    Route::post('/sync/wpapi/payouts', [SyncWorkspaceController::class, 'syncWordPressPayouts'])->middleware(['can:sync.operate', 'can:kol.payouts.manage']);
     Route::get('/sync/orders', [ManualSyncController::class, 'index'])->middleware('can:sync.view')->name('sync.orders');
     Route::get('/sync/warehouses', [SyncWorkspaceController::class, 'warehouses'])->middleware('can:sync.view')->name('sync.warehouses');
     Route::get('/sync/kol', [SyncWorkspaceController::class, 'kol'])->middleware('can:sync.view')->name('sync.kol');

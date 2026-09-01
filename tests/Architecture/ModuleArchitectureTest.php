@@ -1013,7 +1013,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Sync/RunShow.vue' => 'd21f6b55b871e5b5997524426f93da70bb5305b070ba630c79b110eeb220df1a',
         'resources/js/Pages/Sync/Warehouses.vue' => '59a2e6ae75d572c26f80bef5500979b02b20fc84756fdfe73110ceefbb10d06b',
         'resources/js/Pages/Sync/WooCommerceInbound.vue' => '92e2cdb622f10b403efcc90180471d32c5bed38375ac148ce2beb2e6ea1140b4',
-        'resources/js/Pages/Sync/WpApi.vue' => '8d23908764ad2f09c43ae36ab63316f01f5b15b6d747b6605768f2ac320c9cec',
+        'resources/js/Pages/Sync/WpApi.vue' => '24026ee2b4d4f404f039ebf4cd383215a8b8d88f6ad3b77ac6476e26a4d43652',
         'resources/js/app.js' => '40994ac10f73e394b96d6e4742be37921fc38e477dccfdfe9e8ab90cd5e6d7d4',
         'resources/js/app.ts' => 'c667a849465fad821d6d08babe410c6d44bd7412629198522f1d408f373823b3',
         'resources/js/lib/globalFeedback.test.ts' => '63887c4a11ca91d7014df88987bf6ccbaf54be0c03dc334f78711fec3ff519d6',

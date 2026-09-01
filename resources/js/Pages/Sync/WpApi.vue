@@ -12,7 +12,7 @@ type Connection = {
 }
 type Health = { status:string|null; checked_at:string|null; data:Record<string, unknown>|null }
 type ResourceKey = 'subscribers'|'affiliates'|'coupons'|'referrals'|'payouts'
-type Permissions = { can_manage_connection:boolean; can_sync_subscribers:boolean; can_sync_kol:boolean }
+type Permissions = { can_manage_connection:boolean; can_sync_subscribers:boolean; can_sync_kol:boolean; can_sync_payouts:boolean }
 
 const props = defineProps<{
   connection:Connection
@@ -34,19 +34,20 @@ const syncForms = {
   affiliates: useForm({}),
   coupons: useForm({}),
   referrals: useForm({}),
+  payouts: useForm({}),
 }
 const resources: Array<{key:ResourceKey; label:string; path:string|null; enabled:boolean; note:string}> = [
   { key:'subscribers', label:'Subscribers', path:'/sync/wpapi/subscribers', enabled:props.permissions.can_sync_subscribers, note:'Marketing canonical subscriber truth' },
   { key:'affiliates', label:'Affiliates', path:'/sync/wpapi/affiliates', enabled:props.permissions.can_sync_kol, note:'KOL Affiliate mirror' },
   { key:'coupons', label:'Coupons', path:'/sync/wpapi/coupons', enabled:props.permissions.can_sync_kol, note:'KOL Affiliate Coupon mirror' },
   { key:'referrals', label:'Referrals', path:'/sync/wpapi/referrals', enabled:props.permissions.can_sync_kol, note:'KOL Referral / Commission truth' },
-  { key:'payouts', label:'Payouts', path:null, enabled:false, note:'等待 KOL M1.4E canonical payout domain' },
+  { key:'payouts', label:'Payouts', path:'/sync/wpapi/payouts', enabled:props.permissions.can_sync_payouts, note:'KOL canonical Payout mirror' },
 ]
 
 const saveConnection = () => connectionForm.put('/sync/wpapi/connection', { preserveScroll: true })
 const testConnection = () => healthForm.post('/sync/wpapi/health', { preserveScroll: true })
-const syncResource = (key:Exclude<ResourceKey,'payouts'>, path:string) => syncForms[key].post(path, { preserveScroll: true })
-const isProcessing = (key:ResourceKey) => key === 'payouts' ? false : syncForms[key].processing
+const syncResource = (key:ResourceKey, path:string) => syncForms[key].post(path, { preserveScroll: true })
+const isProcessing = (key:ResourceKey) => syncForms[key].processing
 const runSummary = (key:ResourceKey) => {
   const run = props.runs[key]
   if (!run) return '尚未同步'
@@ -114,8 +115,8 @@ const runSummary = (key:ResourceKey) => {
         <div class="sync-list">
           <div v-for="resource in resources" :key="resource.key" class="sync-row">
             <div><strong>{{ resource.label }}</strong><span>{{ runSummary(resource.key) }}</span><small>{{ resource.note }}</small></div>
-            <button class="mvp-button" :class="resource.enabled && resource.path ? 'mvp-button-primary' : ''" :disabled="!resource.enabled || !resource.path || isProcessing(resource.key) || !props.connection.configured" @click="resource.path && resource.key !== 'payouts' && syncResource(resource.key, resource.path)">
-              {{ isProcessing(resource.key) ? '同步中…' : (resource.path ? '立即同步' : '待接入') }}
+            <button class="mvp-button" :class="resource.enabled && resource.path ? 'mvp-button-primary' : ''" :disabled="!resource.enabled || !resource.path || isProcessing(resource.key) || !props.connection.configured" @click="resource.path && syncResource(resource.key, resource.path)">
+              {{ isProcessing(resource.key) ? '同步中…' : '立即同步' }}
             </button>
           </div>
         </div>

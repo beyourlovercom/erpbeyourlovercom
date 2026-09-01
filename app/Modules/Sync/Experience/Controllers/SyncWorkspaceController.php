@@ -5,6 +5,7 @@ namespace App\Modules\Sync\Experience\Controllers;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Kol\Application\AffiliateWp\AffiliateSnapshotSyncService;
 use App\Modules\Kol\Application\AffiliateWp\CouponSnapshotSyncService;
+use App\Modules\Kol\Application\AffiliateWp\PayoutSnapshotSyncService;
 use App\Modules\Kol\Application\AffiliateWp\ReferralCommissionSyncService;
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
 use App\Modules\Kol\Infrastructure\AffiliateWp\ConnectorException;
@@ -29,6 +30,7 @@ final class SyncWorkspaceController
         private readonly AffiliateSnapshotSyncService $affiliateSync,
         private readonly CouponSnapshotSyncService $couponSync,
         private readonly ReferralCommissionSyncService $referralSync,
+        private readonly PayoutSnapshotSyncService $payoutSync,
     ) {}
 
     public function index(Request $request): Response
@@ -90,6 +92,7 @@ final class SyncWorkspaceController
                 'can_manage_connection' => (bool) $user?->can('sync.operate'),
                 'can_sync_subscribers' => (bool) ($user?->can('sync.operate') && $user?->can('marketing.operate')),
                 'can_sync_kol' => (bool) ($user?->can('sync.operate') && $user?->can('kol.affiliates.manage')),
+                'can_sync_payouts' => (bool) ($user?->can('sync.operate') && $user?->can('kol.payouts.manage')),
             ],
         ]);
     }
@@ -187,6 +190,16 @@ final class SyncWorkspaceController
         );
     }
 
+    public function syncWordPressPayouts(Request $request, AffiliateWpGateway $gateway): RedirectResponse
+    {
+        return $this->runWordPressKolSnapshot(
+            'payouts',
+            $request,
+            $gateway,
+            fn (string $connection, $actor): array => $this->payoutSync->sync($connection, $actor),
+        );
+    }
+
     public function warehouses(): Response
     {
         $warehouses = Warehouse::query()->orderBy('priority')->orderBy('id')->get();
@@ -260,7 +273,7 @@ final class SyncWorkspaceController
             $references = array_values(array_filter($references, static fn (string $value): bool => $value !== ''));
             $this->runs->setRequestedItems($run, count($references));
             $safeResult = [];
-            foreach (['synced', 'marked_missing', 'affiliate_unresolved', 'order_unresolved'] as $key) {
+            foreach (['synced', 'marked_missing', 'affiliate_unresolved', 'order_unresolved', 'kol_unresolved'] as $key) {
                 if (isset($result[$key]) && is_numeric($result[$key])) {
                     $safeResult[$key] = (int) $result[$key];
                 }
@@ -275,7 +288,7 @@ final class SyncWorkspaceController
                 $this->runs->finishItem($item, SyncRunItemStatus::Succeeded, 'imported');
             }
             $completed = $this->runs->complete($run, $actor);
-            $label = ['affiliates' => 'Affiliate', 'coupons' => 'Coupon', 'referrals' => 'Referral'][$resource] ?? $resource;
+            $label = ['affiliates' => 'Affiliate', 'coupons' => 'Coupon', 'referrals' => 'Referral', 'payouts' => 'Payout'][$resource] ?? $resource;
 
             return back()->with('success', sprintf('%s 同步完成：%d 条。', $label, (int) $completed->succeeded_items));
         } catch (Throwable $exception) {

@@ -18,23 +18,25 @@ final class WordPressConnectorReadOrchestrationTest extends TestCase
 
     public const CONNECTION = 'test.example.com';
 
-    public function test_unified_connector_runs_affiliate_coupon_and_referral_imports_with_row_level_sync_evidence(): void
+    public function test_unified_connector_runs_affiliate_coupon_referral_and_payout_imports_with_row_level_sync_evidence(): void
     {
         $this->bindGateway();
-        $user = $this->userWithPermissions(['sync.view', 'sync.operate', 'kol.affiliates.manage']);
+        $user = $this->userWithPermissions(['sync.view', 'sync.operate', 'kol.affiliates.manage', 'kol.payouts.manage']);
 
-        foreach (['affiliates', 'coupons', 'referrals'] as $resource) {
+        foreach (['affiliates', 'coupons', 'referrals', 'payouts'] as $resource) {
             $this->actingAs($user)->post('/sync/wpapi/'.$resource)->assertRedirect()->assertSessionHas('success');
         }
 
         $this->assertDatabaseHas('kol_affiliate_accounts', ['connection_key' => self::CONNECTION, 'affiliate_id' => 101]);
         $this->assertDatabaseHas('kol_affiliate_coupons', ['connection_key' => self::CONNECTION, 'coupon_id' => 201]);
         $this->assertDatabaseHas('kol_affiliate_referrals', ['connection_key' => self::CONNECTION, 'referral_id' => 301, 'provider_status' => 'failed']);
+        $this->assertDatabaseHas('kol_affiliate_payouts', ['connection_key' => self::CONNECTION, 'payout_id' => 401, 'provider_status' => 'paid']);
 
         foreach ([
             'wordpress_affiliates_snapshot' => '101',
             'wordpress_coupons_snapshot' => '201',
             'wordpress_referrals_snapshot' => '301',
+            'wordpress_payouts_snapshot' => '401',
         ] as $runType => $reference) {
             $this->assertDatabaseHas('sync_runs', [
                 'run_type' => $runType,
@@ -54,10 +56,11 @@ final class WordPressConnectorReadOrchestrationTest extends TestCase
         $this->actingAs($user)->get('/sync/wpapi')->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Sync/WpApi')
             ->where('permissions.can_sync_kol', true)
+            ->where('permissions.can_sync_payouts', true)
             ->where('runs.affiliates.status', 'completed')
             ->where('runs.coupons.status', 'completed')
             ->where('runs.referrals.status', 'completed')
-            ->where('runs.payouts', null)
+            ->where('runs.payouts.status', 'completed')
         );
     }
 
@@ -88,6 +91,7 @@ final class WordPressConnectorReadOrchestrationTest extends TestCase
         $this->actingAs($viewer)->get('/sync/wpapi')->assertOk()->assertInertia(fn (Assert $page) => $page
             ->where('permissions.can_sync_subscribers', false)
             ->where('permissions.can_sync_kol', false)
+            ->where('permissions.can_sync_payouts', false)
         );
 
         $syncOnly = $this->userWithPermissions(['sync.operate']);
@@ -95,6 +99,11 @@ final class WordPressConnectorReadOrchestrationTest extends TestCase
 
         $kolOnly = $this->userWithPermissions(['kol.affiliates.manage']);
         $this->actingAs($kolOnly)->post('/sync/wpapi/affiliates')->assertForbidden();
+
+        $this->actingAs($syncOnly)->post('/sync/wpapi/payouts')->assertForbidden();
+
+        $payoutOnly = $this->userWithPermissions(['kol.payouts.manage']);
+        $this->actingAs($payoutOnly)->post('/sync/wpapi/payouts')->assertForbidden();
     }
 
     private function bindGateway(?string $failResource = null): void
@@ -132,6 +141,11 @@ final class WordPressConnectorReadOrchestrationTest extends TestCase
                         'description' => 'Referral 301', 'amount' => '12.50', 'currency' => 'USD',
                         'status' => 'failed', 'context' => 'woocommerce',
                         'referred_at' => '2026-09-01T00:00:00+00:00', 'payout_id' => 0,
+                    ]],
+                    'payouts' => [[
+                        'payout_id' => 401, 'affiliate_id' => 101, 'referral_ids' => [301],
+                        'amount' => '12.50', 'currency' => 'USD', 'payout_method' => 'manual',
+                        'status' => 'paid', 'date' => '2026-09-01T00:00:00+00:00',
                     ]],
                     default => throw new \LogicException('unexpected resource'),
                 };

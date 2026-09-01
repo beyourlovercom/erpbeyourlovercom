@@ -7,7 +7,7 @@ Status: ACTIVE / PARALLEL INDEPENDENT WP
 - Delivery: `ONE WP / ONE BRANCH / ONE WORKTREE / ONE PR`.
 - Branch: `feature/erp-wordpress-connector-integration-m1-continuation-001`.
 - Worktree: `/Users/a/AI/007/worktrees/erp-wordpress-connector-integration-m1-continuation-001`.
-- Base: `origin/main@264fe20b79b7f145f3b976d939ddce0a07c57d8d`.
+- Current rebased base: `origin/main@4f2bc7fb51030e7acc231173d1b2d66bd28eca79`; original continuation base was `264fe20b79b7f145f3b976d939ddce0a07c57d8d`.
 - Historical ERP Connector PR #134 is already merged and must not be reused as a second delivery PR.
 - No Customer OS or Marketing OS redevelopment.
 - No direct work on `main`; no Production deployment without explicit Owner authorization.
@@ -20,21 +20,21 @@ Continue the remaining ERP WordPress Connector integration after PR #134 deliver
 - Affiliates → KOL `AffiliateSnapshotSyncService` / `KolAffiliateAccount`.
 - Coupons → KOL `CouponSnapshotSyncService` / `KolAffiliateCoupon`.
 - Referrals → KOL `ReferralCommissionSyncService` / `KolAffiliateReferral`.
-- Payouts → pending canonical KOL M1.4E / Finance domain implementation; do not invent a generic payout master.
+- Payouts → KOL M1.4E `PayoutSnapshotSyncService` / `KolAffiliatePayout`; reuse only. Payout write workflow remains owned by `PayoutWorkflowService`.
 - Transport → KOL `HttpAffiliateWpGateway` + `HmacV1Signer`.
 - Run evidence → `SyncRunService`, `sync_runs`, `sync_run_items`.
 
 ## External authority
 - Andy Core stable release: `v1.5.3@715b83e4df9591cc5d47eb73dc8f4df30d157054`.
-- Referral all-status contract authority: YBY-Core PR #28 / `1b5d1b2ad13d26c15cf47db259351083c418230e`. Current `origin/main@3619625b6a477b335e2c077cb4ef3dc4e643a947` also contains later PR #29 payout-only fixes; they are outside this read UAT runtime patch.
+- Connector authority for current live read UAT: YBY-Core `origin/main@3619625b6a477b335e2c077cb4ef3dc4e643a947`, containing PR #28 Referral all-status support and PR #29 Payout snapshot normalization/reconciliation fixes.
 - Contract version remains `1`; Referral snapshots include `paid`, `unpaid`, `rejected`, `pending`, `draft`, `failed`.
 
 ## Remaining scope
-1. Add unified `/sync/wpapi` manual actions for Affiliates, Coupons and Referrals using existing domain services.
+1. Add unified `/sync/wpapi` manual actions for Affiliates, Coupons, Referrals and Payouts using existing domain services.
 2. Record each Connector action in shared Sync Run / Sync Run Item evidence without a second sync engine.
 3. Present per-resource latest run status/counts on the unified Connector page.
 4. Preserve current Subscribers implementation unchanged except for unified presentation.
-5. Keep Payouts explicitly dependency-gated until canonical KOL M1.4E payout domain exists in `main`.
+5. Reuse the now-merged KOL M1.4E payout domain for Payout read synchronization; do not duplicate or move payout write ownership into Sync.
 6. Do not duplicate KOL master/mirror tables and do not refactor Marketing transport unless strictly required.
 
 ## Initial exact file-change map
@@ -148,3 +148,37 @@ Final checkpoint verification:
 - `git diff --check`: PASS.
 - `tests/Feature/Sync/WordPressConnectorReadOrchestrationTest.php`: PASS, 3 tests / 60 assertions / 0 functional failures; 3 instances of the pre-existing warning class remain.
 - `M1.2B` classification: `LIVE_PROVIDER_READ_UAT_PASS`.
+
+## M1.2C rebase / payout domain alignment / Draft PR gate — 2026-09-01
+
+`M1.2C = PAYOUT_READ_ALIGNMENT_UAT_PASS / DRAFT_PR_READY`
+
+Main drift / rebase:
+- Before Draft PR creation, `origin/main` had advanced by five commits to `4f2bc7fb51030e7acc231173d1b2d66bd28eca79`.
+- The new main includes ERP PR #139 / KOL M1.4E (`6ac92fd`, feature commit `44c4c91`) and ERP PR #140 Product SKU alias work.
+- Continuation branch rebased cleanly onto current main with no manual conflict; the only overlapping file was the frozen architecture hash baseline.
+- Because M1.4E is now canonical in `main`, the prior Payout dependency gate is resolved rather than carried into the Draft PR.
+
+Payout read alignment:
+- Reused M1.4E `PayoutSnapshotSyncService`; no payout table/domain was invented.
+- `PayoutSnapshotSyncService` now returns exact provider payout IDs as `provider_references` for shared Sync Run evidence; persistence/reconciliation behavior is unchanged.
+- Unified `/sync/wpapi/payouts` invokes the canonical Payout snapshot service under `sync.operate + kol.payouts.manage`.
+- Connector UI enables Payouts using a dedicated `can_sync_payouts` permission result; Subscribers/other KOL permissions remain unchanged.
+- Payout write/approval/complete remains exclusively owned by the existing KOL M1.4E workflow and was not called from Sync.
+
+Code verification:
+- Connector + M1.4E payout + settings suites: PASS, 14 tests / 136 assertions / 0 functional failures; existing warning class only.
+- `npm run typecheck`: PASS.
+- Architecture frozen boundary/hash tests: PASS, 460 assertions; existing one-risky classification only.
+- `npm run build`: PASS; existing chunk-size advisory only.
+- Updated frozen `WpApi.vue` SHA256: `24026ee2b4d4f404f039ebf4cd383215a8b8d88f6ad3b77ac6476e26a4d43652`.
+
+Live Payout read UAT:
+- Provider: Windows Local `localdev.beyourlover.com`; Production not used.
+- Windows Local Connector was advanced from PR #28 state to current merged YBY-Core connector authority including PR #29. The Windows raw file uses CRLF; after CRLF→LF normalization its SHA256 is exactly `77c8bd5e72e4acccceb97fabc81931f1025b1db076da69b6cc0d643acb070e2e`, matching current YBY-Core main connector content.
+- Signed health: PASS, contract `1`, matching connection key, Andy Core `1.5.3`, AffiliateWP active.
+- ERP persistence: isolated `/tmp/erp-wpconnector-payout-m12c.sqlite`; encrypted Connector setting copied without exposing Shared Secret.
+- Round 1: Run #1 `completed`, `1550/1550` succeeded, `0` failed, mirror `1550`, duplicate payout IDs `0`, provider status `paid=1550`.
+- Round 2: Run #2 `completed`, `1550/1550` succeeded, mirror remained `1550`, duplicate payout IDs `0`, `1550` Sync Run Items / `1550` distinct provider references.
+- `kol_unresolved=1550` in the isolated payout-only UAT is expected because real KOL/Affiliate mapping data was intentionally not copied into the isolated database; it does not indicate provider or persistence failure.
+- No `/payouts/complete`, provisioning, affiliate status mutation, payout write, Production request or other WordPress mutation was executed.
