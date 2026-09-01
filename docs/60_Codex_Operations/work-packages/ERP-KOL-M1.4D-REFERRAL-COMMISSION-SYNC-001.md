@@ -97,3 +97,24 @@ Replace the `/kol/commissions` placeholder with a real read-only Referral / Comm
 - Foundation implementation is ready for checkpoint + Draft PR.
 - Live Provider Referral full-sync UAT remains NOT RUN and is required before Ready-for-Review / merge authorization.
 - Payout write-back remains outside M1.4D and is NOT STARTED.
+
+## Live Provider UAT — 2026-09-01
+
+Authority: US Mac local ERP + Windows `localdev.beyourlover.com` AffiliateWP.
+
+- Connector health: PASS; contract version `1`.
+- Real provider total: `3,299` Referral rows.
+- Final full sync: `3,299` synced / `0` marked missing / `3,299` present.
+- Status parity: paid `1,548`; unpaid `834`; failed `598`; rejected `223`; pending `95`; draft `1`.
+- Payout ID present: `1,549`, matching provider truth.
+- Immediate repeat correctly hit Connector `60 requests / 60s` rate limit without mutating mirror.
+- Repeat after rate-limit window: `3,299` synced / `0` marked missing / `3,299` rows / `3,299` distinct Referral IDs.
+- `LIVE_FULL_REFERRAL_SYNC = PASS`.
+- `LIVE_PROVIDER_PARITY = PASS`.
+- `LIVE_IDEMPOTENCY = PASS`.
+- `NO_DUPLICATE_REFERRAL = PASS`.
+- Temporary User #2 role/permission cleanup: PASS; final roles exactly `1,4`.
+- Temporary worktree `.env` removed.
+- Local WordPress Connector restored to exact v1.5.3 base hash after UAT.
+
+Live UAT exposed a server-side Connector dependency: AffiliateWP excludes internal `failed`/`draft` statuses when `status` is omitted. The compatibility fix is isolated in YBY-Core PR #28 (`ANDY-CORE-ERP-REFERRAL-SNAPSHOT-ALL-STATUSES-001`). M1.4D must not merge/deploy ahead of that Connector dependency being formally delivered.
