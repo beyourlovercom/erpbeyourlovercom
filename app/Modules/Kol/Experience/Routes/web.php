@@ -8,6 +8,7 @@ use App\Modules\Kol\Experience\Controllers\KolController;
 use App\Modules\Kol\Experience\Controllers\KolOpportunityController;
 use App\Modules\Kol\Experience\Controllers\KolOverviewController;
 use App\Modules\Kol\Experience\Controllers\ReferralCommissionController;
+use App\Modules\Kol\Experience\Controllers\PayoutWorkflowController;
 use App\Modules\Kol\Experience\Controllers\SavedViewController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -77,4 +78,14 @@ Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
         ->middleware('can:kol.affiliates.manage')
         ->name('kol.affiliatewp.coupons.provision');
     Route::get('/kol/affiliate', fn () => redirect()->route('kol.affiliatewp'))->name('kol.affiliate');
+});
+
+
+Route::middleware(['web', 'auth'])->group(function (): void {
+    Route::get('/kol/payouts', [PayoutWorkflowController::class, 'index'])->name('kol.payouts');
+    Route::post('/kol/payouts/sync', [PayoutWorkflowController::class, 'sync'])->name('kol.payouts.sync');
+    Route::post('/kol/payouts', [PayoutWorkflowController::class, 'store'])->name('kol.payouts.store');
+    Route::post('/kol/payouts/{payoutRequest}/approve', [PayoutWorkflowController::class, 'approve'])->name('kol.payouts.approve');
+    Route::post('/kol/payouts/{payoutRequest}/reject', [PayoutWorkflowController::class, 'reject'])->name('kol.payouts.reject');
+    Route::post('/kol/payouts/{payoutRequest}/complete', [PayoutWorkflowController::class, 'complete'])->name('kol.payouts.complete');
 });

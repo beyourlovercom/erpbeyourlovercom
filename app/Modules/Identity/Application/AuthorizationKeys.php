@@ -24,6 +24,8 @@ enum AuthorizationKeys: string
     case KolViewsManage = 'kol.views.manage';
     case KolApprovalsManage = 'kol.approvals.manage';
     case KolAffiliatesManage = 'kol.affiliates.manage';
+    case KolPayoutsRequest = 'kol.payouts.request';
+    case KolPayoutsManage = 'kol.payouts.manage';
     case InventoryView = 'inventory.view';
     case InventoryOperate = 'inventory.operate';
     case InventoryWarehousesManage = 'inventory.warehouses.manage';

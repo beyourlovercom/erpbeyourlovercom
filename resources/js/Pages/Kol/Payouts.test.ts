@@ -1,0 +1,47 @@
+import { mount } from '@vue/test-utils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import Payouts from './Payouts.vue'
+
+const { postMock, formPostMock } = vi.hoisted(() => ({ postMock: vi.fn(), formPostMock: vi.fn() }))
+vi.mock('@inertiajs/vue3', () => ({
+  Head: { template: '<span />' },
+  router: { post: postMock },
+  useForm: (initial: Record<string, unknown>) => ({ ...initial, processing: false, errors: {}, post: formPostMock }),
+}))
+vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
+
+const eligible = [
+  { referral_id: 11, affiliate_id: 7, kol_id: 5, amount: '4.25', currency: 'USD', order_reference: '9001', referral_date: '2026-09-01T00:00:00+00:00' },
+  { referral_id: 12, affiliate_id: 7, kol_id: 5, amount: '5.75', currency: 'USD', order_reference: '9002', referral_date: '2026-09-01T00:00:00+00:00' },
+]
+const requests = [
+  { id: 101, kol_id: 5, affiliate_id: 7, amount: '10.000000', currency: 'USD', status: 'approved', provider_payout_id: null, payout_recipient: 'creator-paypal@example.test', paid_at: null, requested_by_user_id: 2, approved_by_user_id: 3, referral_ids: [11, 12], created_at: '2026-09-01T01:00:00+00:00' },
+]
+
+describe('KOL payout workflow', () => {
+  beforeEach(() => { postMock.mockReset(); formPostMock.mockReset() })
+  it('renders eligible referrals and approved payout requests', () => {
+    const wrapper = mount(Payouts, { props: { connectionKey: 'test.example.com', eligible, requests, canRequest: true, canManage: true } })
+    expect(wrapper.text()).toContain('Commission Payout Workflow')
+    expect(wrapper.text()).toContain('Affiliate #7 · KOL #5')
+    expect(wrapper.text()).toContain('#101 · approved')
+    expect(wrapper.text()).toContain('USD 10.000000')
+    expect(wrapper.text()).toContain('creator-paypal@example.test')
+  })
+  it('manager can select exact referrals and submit approval request', async () => {
+    const wrapper = mount(Payouts, { props: { connectionKey: 'test.example.com', eligible, requests: [], canRequest: true, canManage: false } })
+    const checks = wrapper.findAll('input[type="checkbox"]')
+    await checks[0].setValue(true); await checks[1].setValue(true)
+    const submit = wrapper.findAll('button').find(b => b.text().includes('提交审批'))!
+    await submit.trigger('click')
+    expect(formPostMock).toHaveBeenCalledWith('/kol/payouts', expect.objectContaining({ preserveScroll: true }))
+  })
+  it('finance completion posts manual PayPal evidence only from approved state', async () => {
+    const wrapper = mount(Payouts, { props: { connectionKey: 'test.example.com', eligible: [], requests, canRequest: false, canManage: true } })
+    const inputs = wrapper.findAll('input')
+    await inputs[0].setValue('TXN-123'); await inputs[1].setValue('2026-09-01')
+    const button = wrapper.findAll('button').find(b => b.text().includes('确认已付款并写回'))!
+    await button.trigger('click')
+    expect(postMock).toHaveBeenCalledWith('/kol/payouts/101/complete', { paypal_transaction_id: 'TXN-123', paid_at: '2026-09-01' }, { preserveScroll: true })
+  })
+})
