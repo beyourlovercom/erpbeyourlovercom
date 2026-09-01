@@ -26,6 +26,7 @@ final class PayoutWorkflowController
             'eligible' => $workspace['eligible'],
             'requests' => $workspace['requests'],
             'canRequest' => $request->user()->can('kol.payouts.request'),
+            'canApprove' => $request->user()->can('kol.payouts.approve'),
             'canManage' => $request->user()->can('kol.payouts.manage'),
         ]);
     }

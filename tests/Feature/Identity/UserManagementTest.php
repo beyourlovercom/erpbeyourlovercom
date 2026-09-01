@@ -216,8 +216,8 @@ final class UserManagementTest extends TestCase
         $expected = [
             RolePreset::Logistics->value => ['dashboard.view', 'logistics.operate', 'logistics.view', 'orders.view', 'sync.operate', 'sync.view'],
             RolePreset::SalesRepresentative->value => ['customers.operate', 'customers.view', 'dashboard.view', 'orders.create', 'orders.edit', 'orders.view'],
-            RolePreset::KolSpecialist->value => ['dashboard.view', 'kol.operate', 'kol.view', 'orders.create', 'orders.edit', 'orders.view'],
-            RolePreset::KolManager->value => ['dashboard.view', 'kol.affiliates.manage', 'kol.approvals.manage', 'kol.operate', 'kol.payouts.request', 'kol.view', 'kol.views.manage', 'orders.create', 'orders.edit', 'orders.view'],
+            RolePreset::KolSpecialist->value => ['dashboard.view', 'kol.operate', 'kol.payouts.request', 'kol.view', 'orders.create', 'orders.edit', 'orders.view'],
+            RolePreset::KolManager->value => ['dashboard.view', 'kol.affiliates.manage', 'kol.approvals.manage', 'kol.operate', 'kol.payouts.approve', 'kol.payouts.request', 'kol.view', 'kol.views.manage', 'orders.create', 'orders.edit', 'orders.view'],
             RolePreset::Finance->value => ['accounting.view', 'analysis.view', 'dashboard.view', 'kol.payouts.manage', 'orders.view'],
             RolePreset::Writer->value => ['dashboard.view', 'guides.manage', 'guides.view'],
         ];

@@ -57,7 +57,7 @@ final class PayoutWorkflowService
 
     public function approve(int $requestId, Authenticatable $actor): object
     {
-        if (! $actor->can('kol.payouts.manage')) { throw new AuthorizationException; }
+        if (! $actor->can('kol.payouts.approve')) { throw new AuthorizationException; }
         $requestClass=self::REQUEST;
         return DB::transaction(function () use ($requestId,$actor,$requestClass): object {
             $request=$requestClass::query()->lockForUpdate()->findOrFail($requestId);
@@ -70,7 +70,7 @@ final class PayoutWorkflowService
 
     public function reject(int $requestId, string $reason, Authenticatable $actor): object
     {
-        if (! $actor->can('kol.payouts.manage')) { throw new AuthorizationException; }
+        if (! $actor->can('kol.payouts.approve')) { throw new AuthorizationException; }
         $reason=trim($reason); if ($reason==='' || mb_strlen($reason)>1000) { throw new UnexpectedValueException('Rejection reason is required.'); }
         $requestClass=self::REQUEST;
         return DB::transaction(function () use ($requestId,$reason,$actor,$requestClass): object {
@@ -124,12 +124,19 @@ final class PayoutWorkflowService
     /** @return array<string,mixed> */
     public function workspace(Authenticatable $actor): array
     {
-        if (! $actor->can('kol.payouts.request') && ! $actor->can('kol.payouts.manage')) { throw new AuthorizationException; }
+        $canRequest=$actor->can('kol.payouts.request'); $canApprove=$actor->can('kol.payouts.approve'); $canManage=$actor->can('kol.payouts.manage');
+        if (! $canRequest && ! $canApprove && ! $canManage) { throw new AuthorizationException; }
         $requestClass=self::REQUEST; $referralClass=self::REFERRAL;
         $connectionKey=(string)($this->gateway->descriptor()['connection_key']??'');
-        $requests=$requestClass::query()->where('connection_key',$connectionKey)->with('items')->orderByDesc('id')->limit(200)->get();
-        $canManage=$actor->can('kol.payouts.manage');
-        $eligible=$referralClass::query()->where('connection_key',$connectionKey)->where('reconciliation_status','present')->where('provider_status','unpaid')->whereNull('payout_id')->where('affiliate_resolution_status','bound')->whereNotNull('kol_id')->orderBy('affiliate_id')->orderBy('referral_id')->limit(500)->get(['id','referral_id','affiliate_id','kol_id','commission_amount','currency','order_reference','referral_date']);
+        $requestQuery=$requestClass::query()->where('connection_key',$connectionKey)->with('items');
+        if (! $canApprove && ! $canManage) { $requestQuery->where('requested_by_user_id',(int)$actor->getAuthIdentifier()); }
+        $requests=$requestQuery->orderByDesc('id')->limit(200)->get();
+        $eligible=collect();
+        if ($canRequest) {
+            $eligibleQuery=$referralClass::query()->where('connection_key',$connectionKey)->where('reconciliation_status','present')->where('provider_status','unpaid')->whereNull('payout_id')->where('affiliate_resolution_status','bound')->whereNotNull('kol_id');
+            if (! \App\Modules\Kol\Application\KolScope::isAllScope($actor)) { $eligibleQuery->whereHas('kol',fn($q)=>$q->where('owner_id',(int)$actor->getAuthIdentifier())); }
+            $eligible=$eligibleQuery->orderBy('affiliate_id')->orderBy('referral_id')->limit(500)->get(['id','referral_id','affiliate_id','kol_id','commission_amount','currency','order_reference','referral_date']);
+        }
         return ['connection_key'=>$connectionKey,'requests'=>$requests->map(fn($r)=>$this->requestView($r,$canManage))->values()->all(),'eligible'=>$eligible->map(fn($r)=>['referral_id'=>(int)$r->referral_id,'affiliate_id'=>(int)$r->affiliate_id,'kol_id'=>(int)$r->kol_id,'amount'=>(string)$r->commission_amount,'currency'=>(string)$r->currency,'order_reference'=>(string)$r->order_reference,'referral_date'=>$r->referral_date?->toIso8601String()])->values()->all()];
     }
 
