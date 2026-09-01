@@ -2,9 +2,9 @@
 type: work-package
 project: BYL ERP
 work_package_id: ERP-KOL-V1-PRODUCTION-ENABLEMENT-001
-status: KOL_SIDE_READINESS_PASS_WAITING_SHARED_RUNTIME_AND_REAL_DATA_SOURCE
+status: KOL_SIDE_READINESS_PASS_WAITING_SHARED_RUNTIME_AND_REAL_DATA_RECONCILIATION
 verification_tier: HIGH_RISK
-baseline: origin/main@e9912acbd49d27e47641f085e8877d4c508e14b4
+baseline: origin/main@01d11061c7d02fc6275353deee59e69dbef62216
 production_mutation_authorized: NO
 merge_authorized: NO
 ---
@@ -23,7 +23,7 @@ Move the already closed KOL V1 product from verified code/UAT state to a product
 
 ## Baseline
 - KOL V1 cross-phase closure merged by PR #143.
-- Exact activation baseline: `main@e9912acbd49d27e47641f085e8877d4c508e14b4`.
+- Exact activation baseline: `main@01d11061c7d02fc6275353deee59e69dbef62216`.
 - Branch: `feature/erp-kol-v1-production-enablement-001`.
 - Worktree: `/Users/a/AI/007/worktrees/erp-kol-v1-production-enablement-001`.
 - KOL V1 business implementation is closed; this package is activation/readiness first.
@@ -170,13 +170,15 @@ After an explicitly authorized Production deployment/migration:
 1. `ERP-PRODUCTION-RUNTIME-FOUNDATION-M2.0A-001` has not reached `PRODUCTION_RUNTIME_READY`; hosting/origin remains required.
 2. Production DB identity / backup / pending migration list cannot be captured until the runtime exists.
 3. Production Connector URL/key/secret inventory cannot be verified until the runtime exists; values must remain redacted.
-4. Owner-approved source/list for the first real KOL Master records is identified as Tencent Docs `BYL-Influencer Master List`, sheet `Influencers`, but readable access is still required (`REAL_KOL_MASTER_SOURCE = SOURCE_IDENTIFIED_ACCESS_REQUIRED`). This does not justify building an import feature inside this WP.
+4. Owner-provided Tencent export `KOL-tencent.xlsx` is now readable and source access is resolved. The workbook is order-grained historical KOL/fulfillment business data rather than a clean one-row-per-influencer master. It is approved for read-only mapping/reconciliation evidence only; this WP still does not authorize or implement a bulk importer. AffiliateWP/WooCommerce remain the authoritative performance/attribution truth.
 
 ## Current checkpoint
 `KOL_SIDE_ENGINEERING_READINESS = PASS`
 `LOCAL_REAL_MIRROR_AUDIT = PASS`
 `LOCAL_UAT_KOL_COPY_TO_PRODUCTION = PROHIBITED`
-`REAL_KOL_MASTER_SOURCE = SOURCE_IDENTIFIED_ACCESS_REQUIRED`
+`REAL_KOL_SOURCE_ACCESS = RESOLVED`
+`REAL_KOL_SOURCE_STRUCTURE = ORDER_GRAINED_HISTORICAL_SOURCE`
+`REAL_DATA_RECONCILIATION = REQUIRED`
 `SHARED_PRODUCTION_RUNTIME = BLOCKED_HOSTING_TARGET_REQUIRED`
 `PRODUCTION_MUTATION = NO`
 `PROVIDER_MUTATION = NO`
@@ -220,3 +222,14 @@ After an explicitly authorized Production deployment/migration:
 - Formal source state normalized to Tencent Docs `BYL-Influencer Master List`, sheet `Influencers`; readable access is still required (`SOURCE_IDENTIFIED_ACCESS_REQUIRED`).
 - Local exact gate on the rebased branch: typecheck PASS; production build PASS; disposable fresh migration PASS through `2026_09_01_210000_register_backup_permissions`; KOL + Identity regression completed with 1070 assertions and no failures; KOL frontend 80/80 PASS; cross-module closure completed with 844 assertions and no failures; `git diff --check` PASS; no `public/hot`; sensitive literal scan = 0.
 - Production mutation = NO. Provider mutation = NO. Merge authorization = NO. PR #145 must remain Draft until shared runtime and real-source access/responsibility blockers are resolved.
+
+## Source-access / latest-main recovery gate — main@01d1106 (2026-09-02)
+- `main` advanced from `e9912acbd49d27e47641f085e8877d4c508e14b4` to `01d11061c7d02fc6275353deee59e69dbef62216` through Backup/Inventory work and Global Order Identity PR #151.
+- Drift since the prior PR #145 base changed 80+ files; overlap with the four Production Enablement PR files = none.
+- Recovery ref created before rebase: `recovery/erp-kol-v1-production-enablement-pre-rebase-20260902-073000` -> `8fa5e21380e03801570d4d5ebe36e67163ea1aa6`.
+- Feature branch rebased cleanly onto `origin/main@01d11061c7d02fc6275353deee59e69dbef62216`; rebase head before this evidence update = `8fb037dbe1ee4ef932e6454ad7acff24ac8892df`.
+- Global Order Identity PR #151 is now merged into `main`; KOL fulfillment identity uses `k{kols.id}` while source/legacy identifiers remain separately preserved.
+- Owner-provided `KOL-tencent.xlsx` is readable. Read-only source audit confirms 971 historical KOL/order-grained rows, not a canonical one-row-per-KOL master. The workbook contains CRM/contact/shipping/social/history evidence and must be normalized before any import.
+- Current source hierarchy is now explicit: Tencent/manual data = KOL CRM + historical collaboration/fulfillment evidence; WooCommerce = order truth; AffiliateWP = attribution/referral/commission/payout truth.
+- Real-data work therefore moves to a separate WP `ERP-KOL-REAL-DATA-RECONCILIATION-M1-001`; no importer feature is added to PR #145.
+- No fuzzy KOL↔Affiliate binding, Production import, Production migration/deploy, Provider mutation, merge, tag or release is authorized by this update.
