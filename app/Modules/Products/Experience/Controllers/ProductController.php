@@ -80,7 +80,11 @@ final class ProductController
             'notes' => ['nullable', 'string'],
         ]);
 
-        $product = $this->products->createManual($data);
+        try {
+            $product = $this->products->createManual($data);
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['sku' => $e->getMessage()])->withInput();
+        }
 
         return redirect()->route('products.edit', $product->id)->with('success', '产品已创建');
     }
@@ -153,7 +157,11 @@ final class ProductController
             'notes' => ['nullable', 'string'],
         ]);
 
-        $this->products->updateProduct($product, $data);
+        try {
+            $this->products->updateProduct($product, $data);
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['sku' => $e->getMessage()])->withInput();
+        }
 
         return redirect()->route('products.edit', $id)->with('success', '产品已更新');
     }

@@ -237,13 +237,26 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Orders/Infrastructure/WooCommerce/HttpWooCommerceOrderGateway.php',
         'app/Modules/Orders/Providers/OrdersServiceProvider.php',
         'app/Modules/Products/Application/Contracts/ProductRepository.php',
+        'app/Modules/Products/Application/Contracts/SkuAliasRepository.php',
+        'app/Modules/Products/Application/Contracts/SkuReconciliationRepository.php',
         'app/Modules/Products/Application/ProductImportResult.php',
         'app/Modules/Products/Application/ProductService.php',
+        'app/Modules/Products/Application/SkuAliasService.php',
+        'app/Modules/Products/Application/SkuIdentityResolver.php',
+        'app/Modules/Products/Application/SkuMatchKey.php',
+        'app/Modules/Products/Application/SkuReconciliationService.php',
+        'app/Modules/Products/Application/SkuResolveResult.php',
         'app/Modules/Products/Experience/Console/ImportWooCsvCommand.php',
         'app/Modules/Products/Experience/Controllers/ProductController.php',
+        'app/Modules/Products/Experience/Controllers/ProductSkuAliasController.php',
+        'app/Modules/Products/Experience/Controllers/ProductSkuController.php',
         'app/Modules/Products/Experience/Routes/web.php',
         'app/Modules/Products/Infrastructure/EloquentProductRepository.php',
+        'app/Modules/Products/Infrastructure/EloquentSkuAliasRepository.php',
+        'app/Modules/Products/Infrastructure/EloquentSkuReconciliationRepository.php',
         'app/Modules/Products/Infrastructure/Models/Product.php',
+        'app/Modules/Products/Infrastructure/Models/ProductSkuAlias.php',
+        'app/Modules/Products/Infrastructure/Models/ProductSkuReconciliation.php',
         'app/Modules/Products/Providers/ProductsServiceProvider.php',
         'app/Modules/Runtime/Application/Contracts/RedisRuntimeProbe.php',
         'app/Modules/Runtime/Application/QueueJobConvention.php',
@@ -647,7 +660,12 @@ final class ModuleArchitectureTest extends TestCase
         'products.import.store',
         'products.import.template',
         'products.list',
+        'products.reconciliations.ignore',
+        'products.reconciliations.reopen',
+        'products.reconciliations.resolve',
         'products.sku-aliases',
+        'products.sku-aliases.destroy',
+        'products.sku-aliases.store',
         'products.sku-search',
         'products.skus',
         'products.store',
@@ -824,6 +842,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_31_091500_create_wordpress_connector_settings_table.php' => 'c6f790f4f40820f0bd02ce8fa75400728538f848fcd5ac7a942e5088097cc07a',
         'database/migrations/2026_09_01_070000_create_kol_affiliate_coupons_table.php' => 'ab63302fce3805ff71e60ab9b77c290209cc1c93769a6b110262d26d19360aff',
         'database/migrations/2026_09_01_093000_create_kol_affiliate_referrals_table.php' => 'b73e73768eb4679e852f077d73daec7207a5eda2117fa583d37fcd7700d73ae2',
+        'database/migrations/2026_09_01_100000_create_product_sku_aliases_table.php' => '8f8f6122d4955f73efe5ec2d95f56ab4a9f4a571adfb2c4e0acc1d7c7dc6921a',
         'database/migrations/2026_09_01_120000_create_kol_payout_workflow_tables.php' => '538f4e0bf8783abc068906db2edabcc9fa0192cd4c1d9341bae5406a3e8f8ab4',
     ];
 
@@ -956,6 +975,8 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Products/Import.vue' => 'a5f30d1650e37e4b483e6376583f82226e96bd703d0a010cb67d97e17f9dc29c',
         'resources/js/Pages/Products/Index.test.ts' => '0dea6f018291aa009911da0cab40e199665955719118ad618dfcf5e2b630fdd6',
         'resources/js/Pages/Products/Index.vue' => '600a9c1c4f6c9c8440bc9035f24653b29824124aff3fc803aaa8d11a259794ce',
+        'resources/js/Pages/Products/SkuAliases.vue' => '4b3fd62779ce2197d167f793671568949fe16c6f5f9f94f9616f4966b889e840',
+        'resources/js/Pages/Products/Skus.vue' => 'e4f98aea0088f222d69d93ace754d268a905c64d230b3607212aa2a063b3b10e',
         'resources/js/Pages/Settings/Index.test.ts' => '45cbba34d62289d3bd7c99bf05b9aa099a2875425c93ae8e0d4464619a60a825',
         'resources/js/Pages/Settings/Index.vue' => 'd931499dca9a7b0ae06408ea196d097a863992ba160d749b8e4a7520322d9038',
         'resources/js/Pages/Shell/ModuleOverview.vue' => '7c4148ed1570444f4b2cb5763a1a8cfac3c6f7b958b95a4f3d98fbf40b6ca02c',
@@ -1063,8 +1084,15 @@ final class ModuleArchitectureTest extends TestCase
             'app/Modules/Orders/Application/OrderSourceType.php',
             'app/Modules/Orders/Application/OrderStatus.php',
             'app/Modules/Products/Application/Contracts/ProductRepository.php',
+            'app/Modules/Products/Application/Contracts/SkuAliasRepository.php',
+            'app/Modules/Products/Application/Contracts/SkuReconciliationRepository.php',
             'app/Modules/Products/Application/ProductImportResult.php',
             'app/Modules/Products/Application/ProductService.php',
+            'app/Modules/Products/Application/SkuAliasService.php',
+            'app/Modules/Products/Application/SkuIdentityResolver.php',
+            'app/Modules/Products/Application/SkuMatchKey.php',
+            'app/Modules/Products/Application/SkuReconciliationService.php',
+            'app/Modules/Products/Application/SkuResolveResult.php',
             'app/Modules/Runtime/Application/Contracts/RedisRuntimeProbe.php',
             'app/Modules/Runtime/Application/QueueJobConvention.php',
             'app/Modules/Runtime/Application/QueueName.php',
@@ -1223,7 +1251,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('5f097491072a787fa668d0de232c3110a00250bd5bbca2937026e6875f349370', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('89f7b09c22064db5369dd2c0e78f156f4294fbab5ed3f06b6bdda8b2f5e3c49f', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);

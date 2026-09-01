@@ -133,6 +133,82 @@ final class WooCommerceInboundTest extends TestCase
         Http::assertSent(fn (Request $request) => str_contains($request->url(), 'after=') && str_contains($request->url(), 'before=') && str_contains($request->url(), 'page=2'));
     }
 
+    // ── Finding 4: Woo inbound M1.2 SKU resolver integration ─────────────────
+
+    public function test_woo_inbound_alias_sku_stores_canonical_product_id_and_sku(): void
+    {
+        $user = $this->userWith(['sync.operate']);
+
+        $product = Product::create([
+            'source_type' => 'manual', 'woocommerce_product_id' => null,
+            'sku' => 'VM467A', 'name' => 'Canonical Product', 'product_type' => 'simple',
+        ]);
+        $aliasService = app(\App\Modules\Products\Application\SkuAliasService::class);
+        $aliasService->createAlias($product->id, 'VM467A DARK GREEN');
+
+        // Woo order with no woocommerce_product_id (=0) but SKU = alias
+        Http::fake(['https://shop.test/wp-json/wc/v3/orders/601' => Http::response(
+            $this->wooOrder(601, 'WC-601', 'processing', '19.00', 0, 'VM467A DARK GREEN'), 200
+        )]);
+
+        $this->actingAs($user)->post('/sync/woocommerce/single', ['woo_order_id' => 601])->assertSessionHasNoErrors();
+
+        $item = Order::firstOrFail()->items()->firstOrFail();
+        $this->assertSame($product->id, $item->product_id, 'must store canonical product_id');
+        $this->assertSame('VM467A', $item->sku, 'must store canonical sku, not alias');
+    }
+
+    public function test_woo_inbound_unknown_sku_stays_unresolved_and_creates_reconciliation_with_reference(): void
+    {
+        $user = $this->userWith(['sync.operate']);
+
+        Http::fake(['https://shop.test/wp-json/wc/v3/orders/602' => Http::response(
+            $this->wooOrder(602, 'WC-602', 'processing', '9.00', 0, 'BRAND-NEW-UNKNOWN'), 200
+        )]);
+
+        $this->actingAs($user)->post('/sync/woocommerce/single', ['woo_order_id' => 602])->assertSessionHasNoErrors();
+
+        $item = Order::firstOrFail()->items()->firstOrFail();
+        $this->assertNull($item->product_id, 'product_id must remain null for unresolved');
+        $this->assertSame('BRAND-NEW-UNKNOWN', $item->sku, 'raw sku preserved');
+
+        $reconciliation = \App\Modules\Products\Infrastructure\Models\ProductSkuReconciliation::where('raw_sku', 'BRAND-NEW-UNKNOWN')->first();
+        $this->assertNotNull($reconciliation, 'reconciliation observation must be created');
+        $this->assertSame('open', $reconciliation->status);
+        $this->assertSame('woocommerce_order', $reconciliation->last_source_type);
+        $this->assertStringContainsString('602', (string) $reconciliation->last_source_reference);
+    }
+
+    public function test_woo_inbound_strong_product_id_takes_precedence_over_alias_sku(): void
+    {
+        $user = $this->userWith(['sync.operate']);
+
+        // Product with Woo Product ID 5001 and canonical SKU CANON-5001
+        $product = Product::create([
+            'source_type' => 'woocommerce', 'woocommerce_product_id' => 5001,
+            'sku' => 'CANON-5001', 'name' => 'Strong Identity Product', 'product_type' => 'simple',
+        ]);
+
+        // Another product that has 'ALIAS-SKU' as an alias
+        $otherProduct = Product::create([
+            'source_type' => 'manual', 'woocommerce_product_id' => null,
+            'sku' => 'OTHER-PRODUCT', 'name' => 'Other Product', 'product_type' => 'simple',
+        ]);
+        $aliasService = app(\App\Modules\Products\Application\SkuAliasService::class);
+        $aliasService->createAlias($otherProduct->id, 'ALIAS-SKU');
+
+        // Woo order with strong product_id=5001 but line item SKU = ALIAS-SKU (an alias for other product)
+        Http::fake(['https://shop.test/wp-json/wc/v3/orders/603' => Http::response(
+            $this->wooOrder(603, 'WC-603', 'processing', '15.00', 5001, 'ALIAS-SKU'), 200
+        )]);
+
+        $this->actingAs($user)->post('/sync/woocommerce/single', ['woo_order_id' => 603])->assertSessionHasNoErrors();
+
+        $item = Order::firstOrFail()->items()->firstOrFail();
+        $this->assertSame($product->id, $item->product_id, 'strong Woo product_id must win');
+        $this->assertSame('CANON-5001', $item->sku, 'canonical sku of strong-identity product must be used');
+    }
+
     public function test_inbound_page_and_connection_probe_are_operator_accessible(): void
     {
         $user = $this->userWith(['sync.view', 'sync.operate']);

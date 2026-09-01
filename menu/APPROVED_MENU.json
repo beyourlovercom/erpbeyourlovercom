@@ -781,11 +781,11 @@
       "slug": "skus",
       "url": "/products/skus",
       "route": "products.skus",
-      "permission": "prototype.view",
+      "permission": "products.view",
       "emoji": null,
-      "function_zh": "管理SKU信息。",
-      "status": "planned",
-      "progress": 0,
+      "function_zh": "规范SKU注册表，支持SKU、产品名称和别名搜索。",
+      "status": "implemented",
+      "progress": 100,
       "sort": 20
     },
     {
@@ -796,11 +796,11 @@
       "slug": "sku-aliases",
       "url": "/products/sku-aliases",
       "route": "products.sku-aliases",
-      "permission": "prototype.view",
+      "permission": "products.view",
       "emoji": null,
-      "function_zh": "管理SKU别名信息。",
-      "status": "planned",
-      "progress": 0,
+      "function_zh": "管理SKU别名和待解析SKU队列，支持解析、忽略和重新开放操作。",
+      "status": "implemented",
+      "progress": 100,
       "sort": 30
     },
     {

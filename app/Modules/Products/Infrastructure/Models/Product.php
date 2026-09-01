@@ -3,6 +3,7 @@
 namespace App\Modules\Products\Infrastructure\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Product extends Model
 {
@@ -31,6 +32,11 @@ class Product extends Model
         'cost_note',
         'notes',
     ];
+
+    public function skuAliases(): HasMany
+    {
+        return $this->hasMany(ProductSkuAlias::class);
+    }
 
     protected $casts = [
         'woocommerce_product_id' => 'integer',

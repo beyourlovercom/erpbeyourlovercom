@@ -6,6 +6,7 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Products\Application\Contracts\ProductRepository;
+use App\Modules\Products\Application\SkuIdentityResolver;
 use App\Modules\Orders\Application\Inbound\NormalizedInboundOrder;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -30,6 +31,7 @@ final class OrderService
     public function __construct(
         private readonly AuditRecorder $audit,
         private readonly ProductRepository $productRepository,
+        private readonly SkuIdentityResolver $skuResolver,
     ) {}
 
     public function create(array $attributes, array $items, ?Authenticatable $actor): Model
@@ -117,8 +119,9 @@ final class OrderService
 
             $order->address()->updateOrCreate(['order_id' => $order->getKey()], $data->address);
             $order->items()->delete();
+            $wooReference = $data->provider.':'.$data->reference;
             foreach ($data->items as $item) {
-                $resolved = $this->resolveInboundProductFields($item);
+                $resolved = $this->resolveInboundProductFields($item, $wooReference);
                 $order->items()->create([
                     'product_id' => $resolved['product_id'],
                     'sku' => $resolved['sku'],
@@ -337,7 +340,7 @@ final class OrderService
         return $number;
     }
 
-    private function resolveInboundProductFields(array $item): array
+    private function resolveInboundProductFields(array $item, ?string $wooReference = null): array
     {
         $product = null;
         if (! empty($item['woocommerce_product_id'])) {
@@ -345,8 +348,17 @@ final class OrderService
         }
         $rawSku = trim((string) ($item['sku'] ?? ''));
         if (! $product && $rawSku !== '') {
-            $product = $this->productRepository->findBySku($rawSku);
+            $result = $this->skuResolver->resolve($rawSku);
+            if ($result->isResolved()) {
+                $product = $result->product;
+            } else {
+                $this->skuResolver->observeUnmatched($rawSku, 'woocommerce_order', $wooReference);
+            }
         }
+
+        // Always derive the persisted SKU from the resolved product's canonical SKU,
+        // regardless of whether resolution came from Woo Product ID or the SKU resolver.
+        $canonicalSku = $product !== null ? (string) $product->getAttribute('sku') : $rawSku;
 
         $summary = trim((string) ($item['product_summary'] ?? ''));
         if ($summary === '') {
@@ -355,7 +367,7 @@ final class OrderService
 
         return [
             'product_id' => $product?->getKey(),
-            'sku' => $product?->sku ? (string) $product->sku : $rawSku,
+            'sku' => $canonicalSku,
             'product_summary' => $summary,
         ];
     }

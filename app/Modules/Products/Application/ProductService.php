@@ -3,13 +3,18 @@
 namespace App\Modules\Products\Application;
 
 use App\Modules\Products\Application\Contracts\ProductRepository;
+use App\Modules\Products\Application\Contracts\SkuAliasRepository;
+use App\Modules\Products\Application\SkuMatchKey;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
 final class ProductService
 {
-    public function __construct(private readonly ProductRepository $products) {}
+    public function __construct(
+        private readonly ProductRepository $products,
+        private readonly SkuAliasRepository $skuAliases,
+    ) {}
 
     /** @return array{result: ProductImportResult, candidates: list<array<string, mixed>>} */
     public function preview(string $csvPath): array
@@ -54,8 +59,14 @@ final class ProductService
             if (($existingByWoo !== null && $existingByWoo->getAttribute('sku') !== $sku) || ($existingBySku !== null && (int) $existingBySku->getAttribute('woocommerce_product_id') !== $wooId)) {
                 $identity++; $errors[] = "Row {$rowNum}: Woo-ID/SKU identity conflict for {$sku}"; continue;
             }
-            if ($existingByWoo === null && $existingBySku === null) $new++;
-            elseif ($this->sameBootstrapValues($existingByWoo ?? $existingBySku, $values)) $unchanged++;
+            // Gate 5: new canonical SKU must not collide with an existing Alias match key.
+            if ($existingByWoo === null && $existingBySku === null) {
+                $skuMatchKey = SkuMatchKey::compute($sku);
+                if ($skuMatchKey !== null && $this->skuAliases->existsMatchKey($skuMatchKey)) {
+                    $identity++; $errors[] = "Row {$rowNum}: SKU '{$sku}' match key is already registered as a SKU alias"; continue;
+                }
+                $new++;
+            } elseif ($this->sameBootstrapValues($existingByWoo ?? $existingBySku, $values)) $unchanged++;
             else $updates++;
             $candidateRows[] = $values;
         }
@@ -73,7 +84,14 @@ final class ProductService
                 $byWoo = $this->products->findByWooId($wooId); $bySku = $this->products->findBySku($sku);
                 if (($byWoo !== null && $byWoo->getAttribute('sku') !== $sku) || ($bySku !== null && (int) $bySku->getAttribute('woocommerce_product_id') !== $wooId)) throw new \RuntimeException("Confirm blocked by identity conflict for {$sku}");
                 $product = $byWoo ?? $bySku;
-                if ($product === null) { $this->products->create($values); $inserted++; continue; }
+                if ($product === null) {
+                    // Gate 5: guard against alias collision that could have appeared since preview.
+                    $skuMatchKey = SkuMatchKey::compute($sku);
+                    if ($skuMatchKey !== null && $this->skuAliases->existsMatchKey($skuMatchKey)) {
+                        throw new \RuntimeException("Confirm blocked: SKU '{$sku}' match key is already registered as a SKU alias");
+                    }
+                    $this->products->create($values); $inserted++; continue;
+                }
                 $attributes = $this->bootstrapAttributes($values);
                 if ($product->getAttribute('weight_kg') === null && $values['weight_kg'] !== null) $attributes['weight_kg'] = $values['weight_kg'];
                 if ($this->sameBootstrapValues($product, $values)) $unchanged++; else { $this->products->update($product, $attributes); $updated++; }
@@ -142,10 +160,31 @@ final class ProductService
         return $this->products->totalCount();
     }
 
+    /**
+     * Throw if the given raw SKU's match key is already registered as an Alias match key.
+     * This prevents a new canonical SKU from silently taking over an existing Alias's identity.
+     * Pass $excludeProductId when updating so the product's own alias list is excluded.
+     */
+    private function assertNoAliasMatchKeyCollision(string $rawSku, ?int $excludeProductId = null): void
+    {
+        $matchKey = SkuMatchKey::compute($rawSku);
+        if ($matchKey === null) {
+            return;
+        }
+        if ($this->skuAliases->existsMatchKey($matchKey)) {
+            throw new \RuntimeException("SKU '{$rawSku}' match key '{$matchKey}' is already registered as a SKU alias. Delete the alias first.");
+        }
+    }
+
     public function createManual(array $attributes): Model
     {
         $nullable = fn (string $k) => isset($attributes[$k]) && $attributes[$k] !== '' ? $attributes[$k] : null;
         $nullableFloat = fn (string $k) => isset($attributes[$k]) && $attributes[$k] !== '' ? (float) $attributes[$k] : null;
+
+        $sku = $attributes['sku'] ?? null;
+        if ($sku !== null && $sku !== '') {
+            $this->assertNoAliasMatchKeyCollision((string) $sku);
+        }
 
         return $this->products->create([
             'source_type' => 'manual',
@@ -178,6 +217,11 @@ final class ProductService
     {
         $pick = fn (string $k, mixed $default) => array_key_exists($k, $attributes) ? ($attributes[$k] !== '' && $attributes[$k] !== null ? $attributes[$k] : null) : $default;
         $pickFloat = fn (string $k, mixed $default) => array_key_exists($k, $attributes) ? ($attributes[$k] !== '' && $attributes[$k] !== null ? (float) $attributes[$k] : null) : $default;
+
+        $newSku = array_key_exists('sku', $attributes) ? ($attributes['sku'] ?: null) : $product->getAttribute('sku');
+        if ($newSku !== null && $newSku !== $product->getAttribute('sku')) {
+            $this->assertNoAliasMatchKeyCollision((string) $newSku);
+        }
 
         $this->products->update($product, [
             'product_type' => $attributes['product_type'] ?? $product->getAttribute('product_type'),
