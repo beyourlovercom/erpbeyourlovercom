@@ -2,19 +2,19 @@
 type: external-integration-contract
 project: BYL ERP / Andy Core
 contract_id: ANDY-CORE-V1.5.3-WORDPRESS-CONNECTOR
-status: OWNER APPROVED / IMPLEMENT IN ANDY CORE CHAT
+status: RELEASED BASELINE / PR #28 POST-RELEASE PATCH AUTHORITY
 version: 1.0
-updated: 2026-08-29
+updated: 2026-09-01
 ---
 
 # Andy Core v1.5.3 — WordPress Connector Contract
 
 ## 1. Release boundary
 
-- Current released Andy Core baseline: `v1.5.2`.
-- Target connector release: `v1.5.3`.
-- Andy Core implementation is performed in the Andy Core repository and separate chat/window.
-- BYL ERP stores this contract and implements the ERP client; ERP must not directly mutate WordPress/AffiliateWP database tables.
+- Released stable Andy Core baseline: `v1.5.3` at `715b83e4df9591cc5d47eb73dc8f4df30d157054`.
+- Current Connector authority: YBY-Core `main@1b5d1b2ad13d26c15cf47db259351083c418230e`, which is `v1.5.3` plus merged PR #28 post-release Connector patch.
+- PR #28 does not change plugin version, tag, release, namespace, contract version, authentication, mutation surface, or Production deployment state.
+- Andy Core implementation remains owned by the Andy Core repository; BYL ERP stores and consumes the frozen Connector contract and must not directly mutate WordPress/AffiliateWP database tables.
 
 ## 2. Purpose
 
@@ -131,6 +131,11 @@ limit bounded by connector
 
 Response returns `items`, `next_cursor`, `provider_modified_at` where available. Snapshot is read-only and provider IDs are preserved exactly.
 
+PR #28 completeness rule for `referrals`:
+- the Connector explicitly requests all AffiliateWP referral statuses, including internal `draft` and `failed`;
+- ERP must preserve these provider statuses rather than silently filtering or coercing them;
+- this is a provider-truth completeness patch within contract version `1`, not a new Connector version.
+
 ### Affiliate item minimum
 - affiliate_id;
 - user_id;
@@ -174,7 +179,7 @@ The response identifies the actual connection/site source and returns the same b
 - reference;
 - amount;
 - currency;
-- status pending/unpaid/paid/rejected;
+- status `paid`, `unpaid`, `rejected`, `pending`, `draft`, or `failed` (all AffiliateWP provider statuses exposed by the Connector);
 - description nullable;
 - date/referred_at;
 - payout_id nullable.
@@ -346,7 +351,7 @@ No secret material is stored in audit output.
 
 Andy Core v1.5.3 is connector-ready only when:
 - health + signed auth + replay/idempotency tests pass;
-- all four snapshot resources are available where plugins support them;
+- all five snapshot resources (`affiliates`, `coupons`, `referrals`, `payouts`, `subscribers`) are available where providers support them;
 - provision is idempotent;
 - Coupon conflict/create/bind/read-back passes;
 - payout complete is idempotent and exact-referral based;

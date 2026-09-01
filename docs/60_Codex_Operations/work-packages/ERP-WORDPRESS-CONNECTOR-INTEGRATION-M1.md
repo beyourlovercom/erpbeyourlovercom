@@ -1,19 +1,21 @@
 # ERP-WORDPRESS-CONNECTOR-INTEGRATION-M1
 
-Status: CURRENT / OWNER AUTHORIZED / PARALLEL INDEPENDENT WP
+Status: CURRENT / REBASELINED / PARALLEL INDEPENDENT WP
 
 ## Governance
 - Execution model: `PARALLEL INDEPENDENT WP`.
 - Delivery: `ONE WP / ONE BRANCH / ONE WORKTREE / ONE PR`.
 - Branch: `feature/erp-wordpress-connector-integration-m1`.
 - Worktree: `/Users/a/AI/007/worktrees/erp-wordpress-connector-integration-m1`.
-- Base: `origin/main@e627f7391cf9975fbc509d23724967d67a6e0f9b`.
+- Current rebaseline: `origin/main@264fe20b79b7f145f3b976d939ddce0a07c57d8d`.
+- Historical first implementation base: `origin/main@e627f7391cf9975fbc509d23724967d67a6e0f9b`.
 - No direct work on `main`.
 - No reuse or modification of Customer M1.9 worktree.
 - No merge or production deployment without explicit Owner authorization.
 
 ## External authority
-- Andy Core: `v1.5.3` RELEASED / FROZEN.
+- Andy Core released stable baseline: `v1.5.3` at `715b83e4df9591cc5d47eb73dc8f4df30d157054`.
+- Current Connector authority: YBY-Core `main@1b5d1b2ad13d26c15cf47db259351083c418230e` (PR #28 post-release connector patch; no version/tag/release bump).
 - Connector contract version: `1`.
 - REST namespace: `/wp-json/andy-core/v1/erp`.
 - Frozen surface: 6 GET + 5 POST.
@@ -373,3 +375,51 @@ Delivery classification:
 - M1.5 `READY_FOR_MERGE`: PASS.
 
 Merge remains prohibited until explicit Owner merge authorization. Production deployment remains a separate gate.
+
+
+## M1.0 canonical rebaseline — 2026-09-01
+
+This section supersedes stale start-state statements above where repository history has advanced. Historical checkpoints remain preserved as delivery evidence.
+
+### Exact baseline
+- ERP `origin/main`: `264fe20b79b7f145f3b976d939ddce0a07c57d8d`.
+- Formal local branch: `feature/erp-wordpress-connector-integration-m1`.
+- Formal worktree: `/Users/a/AI/007/worktrees/erp-wordpress-connector-integration-m1`.
+- Worktree was recreated cleanly from the exact current `origin/main` SHA.
+- No push, new PR, merge or Production deployment was performed during rebaseline.
+
+### Historical delivery truth
+- ERP PR #134 used this same WP/branch and is already MERGED.
+- Merge commit: `9496144f825301c110c4ae688b353cee5b4f868b`.
+- PR #134 delivered the Connector settings/health foundation and M1.1 UI into `main`.
+- The old remote branch still points to `217b21c6483af5787ca63de98bc87987e7fadd95` and is behind current `origin/main`; it is not the baseline for new work.
+
+### Current domain ownership
+- Subscribers: existing Marketing WordPress subscriber import remains canonical. Marketing OS is not reopened.
+- Affiliates: existing KOL `AffiliateSnapshotSyncService` / `KolAffiliateAccount` are canonical.
+- Coupons: existing KOL `CouponSnapshotSyncService` / `KolAffiliateCoupon` are canonical.
+- Referrals: existing KOL `ReferralCommissionSyncService` / `KolAffiliateReferral` are canonical.
+- Payout business workflow remains owned by the independent KOL M1.4E package; Connector M1 must orchestrate rather than duplicate it.
+- `SyncRunService`, `sync_runs`, and `sync_run_items` remain the shared operation-evidence substrate; no second sync engine is permitted.
+
+### YBY-Core PR #28 authority
+- YBY-Core `main`: `1b5d1b2ad13d26c15cf47db259351083c418230e`.
+- PR #28 changes only Referral snapshot provider completeness: AffiliateWP `draft` and `failed` statuses are now explicitly included alongside `paid`, `unpaid`, `rejected`, and `pending`.
+- Connector REST surface remains 6 GET + 5 POST, HMAC-SHA256 V1, contract version `1`, replay protection and mutation idempotency.
+- ERP `ReferralCommissionSyncService` already preserves non-empty provider status strings and dynamically groups workspace totals by provider status; no runtime business-code compatibility patch is required for `draft` / `failed`.
+
+### Runtime / network truth
+- Current ERP runtime Connector credentials are not configured: URL empty, Key ID absent, Shared Secret absent.
+- US Mac DNS for `localdev.beyourlover.com` remains unresolved.
+- Tailnet transport is reachable: Windows peer `100.87.29.56`, TCP 443 PASS, HTTPS with correct Host/SNI PASS.
+- Tailnet IP is transport-only UAT plumbing and must never be hardcoded into ERP application configuration or source.
+- Classification: `NETWORK_TRANSPORT_GATE = PASS`; `CANONICAL_RUNTIME_DNS = NOT_CONFIGURED`.
+
+### Rebased M1.0 exact file-change map
+M1.0 rebaseline changes are documentation-only:
+1. `docs/60_Codex_Operations/work-packages/ERP-WORDPRESS-CONNECTOR-INTEGRATION-M1.md` — current baseline, history, ownership and gate truth.
+2. `docs/10_Planning_Roadmap/25_ANDY_CORE_V1.5.3_WORDPRESS_CONNECTOR_CONTRACT.md` — YBY-Core PR #28 authority and Referral all-status contract.
+
+No Customer, Marketing, KOL business/domain, navigation, production configuration, or YBY-Core source files belong in this M1.0 rebaseline patch.
+
+`M1.0_REBASELINE = CONTRACT_FROZEN`
