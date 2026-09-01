@@ -77,7 +77,7 @@ class KolReferralCommissionSyncTest extends TestCase
         return [
             'referral_id' => $referralId, 'affiliate_id' => $affiliateId, 'reference' => $reference,
             'description' => 'Woo referral', 'amount' => $amount, 'currency' => 'USD', 'status' => $status,
-            'context' => 'woocommerce', 'date' => '2026-09-01T00:00:00+00:00', 'payout_id' => $payoutId,
+            'context' => 'woocommerce', 'referred_at' => '2026-09-01T00:00:00+00:00', 'payout_id' => $payoutId,
         ];
     }
 
@@ -106,6 +106,20 @@ class KolReferralCommissionSyncTest extends TestCase
         self::assertSame(2, KolAffiliateReferral::where('order_id', $order->id)->count());
         self::assertSame([$kol->id], KolAffiliateReferral::pluck('kol_id')->unique()->values()->all());
         self::assertSame(7001, KolAffiliateReferral::where('referral_id', 101)->firstOrFail()->payout_id);
+    }
+
+    public function test_andy_core_v153_referred_at_and_zero_payout_sentinel_are_normalized(): void
+    {
+        $manager = $this->userWith(['kol.view', 'kol.views.manage', 'kol.affiliates.manage']);
+        $gateway = $this->mockGateway();
+        $gateway->shouldReceive('snapshot')->once()->andReturn($this->response([
+            'items' => [$this->item(150, 999, '150', '3.25', 'unpaid', 0)], 'next_cursor' => null,
+        ]));
+
+        $this->app->make(ReferralCommissionSyncService::class)->sync(self::CONNECTION, $manager);
+        $row = KolAffiliateReferral::where('referral_id', 150)->firstOrFail();
+        self::assertNull($row->payout_id);
+        self::assertSame('2026-09-01', $row->referral_date->toDateString());
     }
 
     public function test_unresolved_affiliate_and_order_are_retained_without_guessing(): void

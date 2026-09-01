@@ -222,14 +222,16 @@ final class ReferralCommissionSyncService
         if (! is_array($item)) {
             throw new UnexpectedValueException('Referral snapshot item must be an object.');
         }
-        $date = $this->requiredString($item['date'] ?? null, 64, 'date');
+        $date = $this->requiredString($item['referred_at'] ?? $item['date'] ?? null, 64, 'referred_at');
         try {
             $referralDate = CarbonImmutable::parse($date);
         } catch (Throwable) {
             throw new UnexpectedValueException('Referral snapshot date is invalid.');
         }
         $payout = $item['payout_id'] ?? null;
-        if ($payout !== null) {
+        if ($payout === 0 || $payout === '0' || $payout === '') {
+            $payout = null;
+        } elseif ($payout !== null) {
             $payout = $this->positiveInt($payout, 'payout_id');
         }
 
