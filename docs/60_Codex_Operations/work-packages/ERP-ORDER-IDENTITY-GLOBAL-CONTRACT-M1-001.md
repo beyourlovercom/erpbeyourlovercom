@@ -138,18 +138,18 @@ Current main already uses `orders.id` as relational truth, `internal_order_numbe
 `kols` has no separate influencer-number field; its canonical database identity is `kols.id`.
 PROJECT POSITION
 PROGRAM_ROADMAP: Architecture Foundation -> MVP1 Existing Operations -> Inquiry -> Woo Inbound -> Tracking Outbound -> Sync Orchestration -> Product/Media -> WordPress Product Sync -> Content/SEO -> Full Order Workspace -> Logistics OS -> KOL OS -> Inventory/Procurement -> Accounting/ROI -> Additional Integrations -> Production Hardening
-CURRENT_TRACK_PHASE_MAP: M1.0 Discovery [COMPLETE] -> M1.1 Contract Freeze [COMPLETE] -> M1.2 Data Model [COMPLETE] -> M1.3 Generator [COMPLETE] -> M1.4 Customer Integration [COMPLETE] -> M1.5 KOL Integration [COMPLETE] -> M1.6 Settings/Edit UX [COMPLETE] -> M1.7 Search/Export/API [COMPLETE] -> M1.8 Regression/UAT [COMPLETE] -> M1.9 Git Delivery [CURRENT]
+CURRENT_TRACK_PHASE_MAP: M1.0 Discovery [COMPLETE] -> M1.1 Contract Freeze [COMPLETE] -> M1.2 Data Model [COMPLETE] -> M1.3 Generator [COMPLETE] -> M1.4 Customer Integration [COMPLETE] -> M1.5 KOL Integration [COMPLETE] -> M1.6 Settings/Edit UX [COMPLETE] -> M1.7 Search/Export/API [COMPLETE] -> M1.8 Regression/UAT [COMPLETE] -> M1.9 Git Delivery [COMPLETE]
 COMPLETED_PHASES: READ_ONLY_DISCOVERY_GATE; OWNER PREFIX AMENDMENT; CONTRACT FREEZE
-CURRENT_PHASE: M1.9 Git Delivery
+CURRENT_PHASE: GitHub CI / Owner Review
 CURRENT_WORK_PACKAGE: ERP-ORDER-IDENTITY-GLOBAL-CONTRACT-M1-001
-PACKAGE_STATUS: VERIFIED / DRAFT PR AUTHORIZED / MERGE NOT AUTHORIZED
-WAITING_PHASES: M1.9 push + Draft PR only
+PACKAGE_STATUS: DRAFT PR #151 OPEN / CI PENDING / MERGE NOT AUTHORIZED
+WAITING_PHASES: GitHub CI + Owner merge authorization
 BASELINE: origin/main@392fbad
-GITHUB_STATE: PR #145 remains separate OPEN/DRAFT; this WP branch created from latest main; Draft PR not yet created
+GITHUB_STATE: PR #151 OPEN/DRAFT for this WP; PR #145 remains separate and untouched
 SOURCE_CONFLICTS: Uploaded handoff fixed prefix `007erp-` is superseded only for prefix mutability by Owner 2026-09-01 current instruction; latest main still treats external_order_number as visible business number, so this WP adds erp_order_id rather than destroying source evidence
 GLOBAL_GATE: ONE_WORK_PACKAGE_ONE_BRANCH_ONE_PR + ONE_ACTIVE_IMPLEMENTATION_PROVIDER_PER_WORKTREE
 PRODUCTION_DEPLOYMENT_STATUS: NO; explicitly not authorized
-NEXT_DEPENDENCY: Push verified branch and create Draft PR; Owner merge authorization remains separate
+NEXT_DEPENDENCY: GitHub CI must pass; merge requires separate explicit Owner authorization
 EVIDENCE_AS_OF: 2026-09-01 +08:00
 
 ROADMAP HOURS
