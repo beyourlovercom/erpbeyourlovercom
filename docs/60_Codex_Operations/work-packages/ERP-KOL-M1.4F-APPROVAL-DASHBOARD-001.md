@@ -1,7 +1,7 @@
 # ERP-KOL-M1.4F-APPROVAL-DASHBOARD-001
 
 Status: ENGINEERING_GATE_PASS_DRAFT_PR_PENDING
-Base: `main@6ac92fdd0e6e4f852cf1fd93225abd6bd143b933`
+Base: `main@4f2bc7fb51030e7acc231173d1b2d66bd28eca79`
 Branch: `feature/erp-kol-m1-4f-manager-approval-dashboard-001`
 
 ## Objective
@@ -102,3 +102,22 @@ Affiliate sales count uses distinct Woo `order_reference`, because one canonical
 ## Next Gate
 
 Create the implementation checkpoint and Draft PR only after the final main-drift, diff, sensitive scan, and local workflow evidence guards pass. Draft PR does not authorize merge or Production deployment.
+
+
+## Recovery / Rebase Gate
+
+- Original base: `main@6ac92fdd0e6e4f852cf1fd93225abd6bd143b933`.
+- `main` advanced via Product M1.2 / PR #140 to `4f2bc7fb51030e7acc231173d1b2d66bd28eca79`.
+- Business-file overlap: none; only `tests/Architecture/ModuleArchitectureTest.php` overlapped mechanically.
+- Recovery ref created before rebase.
+- Rebase onto `main@4f2bc7fb51030e7acc231173d1b2d66bd28eca79`: PASS, no conflicts.
+- Post-rebase focused M1.4F backend: 5 scenarios / 31 assertions / exit 0.
+- Post-rebase shared KOL/Identity regression: 54 scenarios / 257 assertions / exit 0.
+- Post-rebase frontend Approval Center + Overview + Payouts: 10/10 PASS.
+- Typecheck: PASS.
+- Production build: PASS; existing chunk-size warning only.
+- Fresh migration includes Product M1.2 + M1.4F migrations: PASS.
+- Architecture remains existing baseline: 1 failed / 1 risky / 6 passed / 507 assertions due only to 12 historical non-KOL APP-001 violations; M1.4F KOL APP-001 = 0.
+- `git diff --check`: PASS.
+- Sensitive scan: 29 changed files / 0 hits.
+- Post-rebase divergence: 0 behind / 1 ahead.
