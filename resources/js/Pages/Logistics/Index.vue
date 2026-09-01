@@ -3,11 +3,13 @@ import { Head, router } from '@inertiajs/vue3'
 import { reactive, ref, watch } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
-type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; quantity_on_hand: number; quantity_reserved: number; quantity_available: number }
+type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; inventory_state: string; can_auto_allocate: boolean; quantity_on_hand: number | null; quantity_reserved: number | null; quantity_available: number | null }
 type Item = { id: number; product_id: number | null; sku: string | null; product_summary: string | null; quantity: number; availability: Availability[] }
 type Shipment = { warehouse_id: number | null; warehouse_name: string | null; carrier: string | null; service: string | null; tracking_number: string | null; shipped_at: string | null; logistics_note: string | null }
-type Order = { id: number; external_order_number: string; order_kind_label: string; recipient_name: string | null; phone: string | null; country: string | null; owner_label: string | null; item_count: number; items: Item[]; shipment: Shipment | null }
-type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null }
+type RecommendationWarehouse = { id: number; slug: string; code: string; name: string }
+type Recommendation = { status: 'recommended' | 'blocked'; reason_code: string; reason_label: string; country_code: string | null; required_sku_count: number | null; candidate_count: number; warehouse: RecommendationWarehouse | null }
+type Order = { id: number; external_order_number: string; order_kind_label: string; recipient_name: string | null; phone: string | null; country: string | null; owner_label: string | null; item_count: number; items: Item[]; warehouse_recommendation: Recommendation; shipment: Shipment | null }
+type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null; priority: number; inventory_state: string; can_auto_allocate: boolean; service_regions: { country_code: string; priority: number }[] }
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; per_page: number; total: number }
 type Draft = { warehouse_id: number | ''; carrier: string; service: string; tracking_number: string; shipped_at: string; logistics_note: string }
 
@@ -28,6 +30,9 @@ const makeDraft = (order: Order): Draft => ({
 watch(() => props.orders.data, (orders) => { for (const order of orders) if (!drafts[order.id]) drafts[order.id] = makeDraft(order) }, { immediate: true })
 
 const toggle = (orderId: number) => { openOrderId.value = openOrderId.value === orderId ? null : orderId }
+const adoptRecommendation = (order: Order) => {
+  if (order.warehouse_recommendation.status === 'recommended' && order.warehouse_recommendation.warehouse) drafts[order.id].warehouse_id = order.warehouse_recommendation.warehouse.id
+}
 const saveDraft = (order: Order) => router.post(`/logistics/orders/${order.id}/draft`, drafts[order.id], { preserveScroll: true })
 const ship = (order: Order) => {
   const draft = drafts[order.id]
@@ -70,15 +75,19 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
   <Head title="物流 · BYL ERP" />
   <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP', '物流', '待发货']">
     <section class="mvp-page">
-      <div class="mvp-page-heading"><div><p class="mvp-kicker">Manual Fulfillment</p><h2>待发货</h2><p>查看各仓库存，人工选择发货仓库与物流，并保存履约记录。</p></div></div>
+      <div class="mvp-page-heading"><div><p class="mvp-kicker">Assisted Fulfillment</p><h2>待发货</h2><p>系统按服务区域与确认库存推荐仓库，由人工采用并完成履约。</p></div></div>
       <div class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th>订单号</th><th>类型</th><th>收件人</th><th>国家</th><th>商品数</th><th>仓库</th><th>操作</th></tr></thead><tbody>
         <template v-for="order in orders.data" :key="order.id">
           <tr><td>{{ order.external_order_number }}</td><td>{{ order.order_kind_label }}</td><td>{{ order.recipient_name ?? '—' }}<small>{{ order.phone ?? '—' }}</small></td><td>{{ order.country ?? '—' }}</td><td>{{ order.item_count }}</td><td>{{ order.shipment?.warehouse_name ?? '未选择' }}</td><td class="mvp-actions"><button class="mvp-button mvp-button-primary" type="button" @click="toggle(order.id)">{{ openOrderId === order.id ? '收起' : '履约处理' }}</button></td></tr>
           <tr v-if="openOrderId === order.id"><td colspan="7" class="fulfillment-cell">
             <div class="fulfillment-workspace">
-              <div><h3>库存可用量</h3><div class="inventory-grid" v-for="item in order.items" :key="item.id"><strong>{{ item.sku ?? '无 SKU' }} × {{ item.quantity }}</strong><span v-for="row in item.availability" :key="row.warehouse_id" :class="{ shortage: row.quantity_available < item.quantity }">{{ row.warehouse_name }}：可用 {{ row.quantity_available }} <small>(QOH {{ row.quantity_on_hand }} / Reserved {{ row.quantity_reserved }})</small></span></div></div>
+              <div class="recommendation-card" :class="{ blocked: order.warehouse_recommendation.status !== 'recommended' }">
+                <div><small>系统仓库建议</small><strong>{{ order.warehouse_recommendation.warehouse?.name ?? '暂不推荐' }}</strong><p>{{ order.warehouse_recommendation.reason_label }}</p></div>
+                <button v-if="order.warehouse_recommendation.status === 'recommended'" class="mvp-button mvp-button-primary" type="button" @click="adoptRecommendation(order)">采用推荐</button>
+              </div>
+              <div><h3>库存可用量</h3><div class="inventory-grid" v-for="item in order.items" :key="item.id"><strong>{{ item.sku ?? '无 SKU' }} × {{ item.quantity }}</strong><span v-for="row in item.availability" :key="row.warehouse_id" :class="{ shortage: row.quantity_available !== null && row.quantity_available < item.quantity, unknown: row.quantity_available === null }">{{ row.warehouse_name }}：{{ row.quantity_available === null ? '库存未知' : '可用 ' + row.quantity_available }} <small v-if="row.quantity_available !== null">(QOH {{ row.quantity_on_hand }} / Reserved {{ row.quantity_reserved }})</small><small v-else>未建立该 SKU 权威库存</small></span></div></div>
               <div class="fulfillment-form">
-                <label>发货仓库<select v-model="drafts[order.id].warehouse_id"><option value="">请选择</option><option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} ({{ warehouse.code }})</option></select></label>
+                <label>发货仓库<select v-model="drafts[order.id].warehouse_id"><option value="">请选择</option><option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} ({{ warehouse.code }}){{ warehouse.can_auto_allocate ? '' : ' · 库存未确认' }}</option></select></label>
                 <label>物流商<input v-model="drafts[order.id].carrier" placeholder="例如 UPS"></label>
                 <label>物流渠道<input v-model="drafts[order.id].service" placeholder="例如 Ground"></label>
                 <label>Tracking<input v-model="drafts[order.id].tracking_number" placeholder="追踪号"></label>
@@ -97,12 +106,19 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
 </template>
 
 <style scoped>
+.recommendation-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border: 1px solid #b8ddca; border-radius: 8px; background: #eff9f3; }
+.recommendation-card.blocked { border-color: #e4d7b5; background: #fff9eb; }
+.recommendation-card div { display: grid; gap: 3px; }
+.recommendation-card small { color: #627780; }
+.recommendation-card strong { font-size: 14px; color: #173c2b; }
+.recommendation-card p { margin: 0; font-size: 12px; color: #5f737c; }
 .fulfillment-cell { background: #f8fafb; padding: 18px !important; }
 .fulfillment-workspace { display: grid; gap: 18px; }
 .fulfillment-workspace h3 { margin: 0 0 10px; font-size: 14px; }
 .inventory-grid { display: grid; grid-template-columns: minmax(140px, 1fr) repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; padding: 8px 0; border-bottom: 1px solid #e4eaed; font-size: 13px; }
 .inventory-grid span { padding: 6px 8px; border-radius: 6px; background: #eef7f2; }
 .inventory-grid span.shortage { background: #fff1f2; }
+.inventory-grid span.unknown { background: #fff9eb; }
 .inventory-grid small { display: block; color: #6b7f87; }
 .fulfillment-form { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 12px; }
 .fulfillment-form label { display: grid; gap: 5px; font-size: 12px; color: #5f737c; }

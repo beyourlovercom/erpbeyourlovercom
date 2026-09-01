@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -91,6 +92,29 @@ final class ManualFulfillmentIntegrationTest extends TestCase
                     fn ($row) => $row['warehouse_id'] === $warehouse->id && $row['quantity_available'] === 6
                 ))
         );
+    }
+
+    public function test_logistics_projects_safe_warehouse_recommendation_without_persisting_it(): void
+    {
+        [$user, $order, $product, $warehouse] = $this->scenario();
+        $warehouse->serviceRegions()->create(['country_code' => 'US', 'priority' => 1]);
+        InventorySyncBatch::query()->create([
+            'warehouse_id' => $warehouse->id, 'source_type' => 'xlsx', 'sync_mode' => 'full',
+            'status' => 'confirmed', 'confirmed_at' => now(),
+        ]);
+        WarehouseInventory::query()->updateOrCreate(
+            ['warehouse_id' => $warehouse->id, 'product_id' => $product->id],
+            ['quantity_on_hand' => 5, 'quantity_reserved' => 1],
+        );
+
+        $this->actingAs($user)->get('/logistics/pending')->assertInertia(
+            fn (Assert $page) => $page
+                ->where('orders.data.0.warehouse_recommendation.status', 'recommended')
+                ->where('orders.data.0.warehouse_recommendation.warehouse.id', $warehouse->id)
+                ->where('orders.data.0.warehouse_recommendation.country_code', 'US')
+        );
+
+        $this->assertDatabaseMissing('shipments', ['order_id' => $order->id]);
     }
 
     private function scenario(): array

@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Logistics\Application\ShipmentService;
+use App\Modules\Logistics\Application\WarehouseRecommendationService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -17,6 +18,7 @@ final class LogisticsController
     public function __construct(
         private readonly ShipmentService $shipments,
         private readonly InventoryAvailabilityReader $availability,
+        private readonly WarehouseRecommendationService $recommendations,
     ) {}
 
     public function index(Request $request): Response
@@ -124,6 +126,13 @@ final class LogisticsController
                 'quantity' => $item->quantity,
                 'availability' => $availability[$item->product_id] ?? [],
             ])->values()->all(),
+            'warehouse_recommendation' => $this->recommendations->recommend(
+                $order->address?->country,
+                $order->items->map(fn ($item): array => [
+                    'product_id' => $item->product_id,
+                    'quantity' => (int) $item->quantity,
+                ])->values()->all(),
+            ),
             'shipment' => $order->shipment ? [
                 ...$order->shipment->only(['warehouse_id', 'warehouse_selection_source', 'carrier', 'service', 'carrier_selection_source', 'tracking_number', 'shipped_at', 'logistics_note']),
                 'warehouse_name' => $order->shipment->warehouse?->name,

@@ -16,7 +16,7 @@ const commonCurrencyOptions = [
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 
-type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; quantity_on_hand: number; quantity_reserved: number; quantity_available: number }
+type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; inventory_state: string; can_auto_allocate: boolean; quantity_on_hand: number | null; quantity_reserved: number | null; quantity_available: number | null }
 type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null }
 
 type OrderItem = {
@@ -243,9 +243,10 @@ const shipmentStatusLabel = computed(() => {
           <div v-for="item in order.items" :key="`inventory-${item.id}`" class="ord-inventory-row">
             <div class="ord-inventory-sku"><strong>{{ item.sku || '—' }}</strong><small>需求 {{ item.quantity }}</small></div>
             <div class="ord-inventory-warehouses">
-              <span v-for="row in inventoryAvailability?.[item.product_id ?? 0] ?? []" :key="row.warehouse_id" class="ord-inventory-pill" :class="{ shortage: row.quantity_available < item.quantity }">
-                {{ row.warehouse_name }} · 可用 {{ row.quantity_available }}
-                <small>QOH {{ row.quantity_on_hand }} / Reserved {{ row.quantity_reserved }}</small>
+              <span v-for="row in inventoryAvailability?.[item.product_id ?? 0] ?? []" :key="row.warehouse_id" class="ord-inventory-pill" :class="{ shortage: row.quantity_available !== null && row.quantity_available < item.quantity }">
+                {{ row.warehouse_name }} · {{ row.quantity_available === null ? '库存未知' : '可用 ' + row.quantity_available }}
+                <small v-if="row.quantity_available !== null">QOH {{ row.quantity_on_hand }} / Reserved {{ row.quantity_reserved }}</small>
+                <small v-else>未建立该 SKU 权威库存</small>
               </span>
             </div>
           </div>
