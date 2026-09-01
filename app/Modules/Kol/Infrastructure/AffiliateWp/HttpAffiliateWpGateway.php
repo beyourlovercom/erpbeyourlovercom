@@ -49,6 +49,7 @@ final class HttpAffiliateWpGateway implements AffiliateWpGateway
         }
 
         $query = array_filter([
+            'limit' => 100,
             'cursor' => $cursor,
             'updated_after' => $updatedAfter,
         ], fn ($v) => $v !== null);
