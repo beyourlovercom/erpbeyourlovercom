@@ -1,6 +1,6 @@
 # ERP-KOL-M1.4C-COUPON-SYNC-PROVISIONING-001
 
-Status: IN_PROGRESS
+Status: LIVE_PROVIDER_UAT_PASS
 Base authority: `main@1f60a7815c51b2b5ce9de6991e43f4dd52267cab`
 Execution: ONE WP / ONE BRANCH / ONE WORKTREE / ONE PR
 Branch: `feature/erp-kol-m1-4c-coupon-sync-provisioning-001`
@@ -67,8 +67,8 @@ Reuse the existing `kol.affiliates.manage` Manager/Admin boundary for M1.4C Coup
 - `M1.4C_COUPON_MIRROR_READY = PASS`
 - `M1.4C_COUPON_PROVISION_READY = PASS`
 - `M1.4C_COUPON_UI_READY = PASS`
-- Coupon focused regression: 10 scenarios / 45 assertions / exit 0.
-- M1.4C + M1.4B + shared Connector focused regression: 130 warning-marked tests / 464 assertions / exit 0. Warning markers are the repository's existing test-bootstrap warnings; there are no assertion failures.
+- Coupon focused regression: 13 scenarios / 59 assertions / exit 0.
+- M1.4C + M1.4B + shared Connector focused regression: 133 warning-marked tests / 478 assertions / exit 0. Warning markers are the repository's existing test-bootstrap warnings; there are no assertion failures.
 - Frontend AffiliateWP workspace: 10/10 Vitest PASS.
 - `npm run typecheck = PASS`.
 - `npm run build = PASS`.
@@ -84,4 +84,16 @@ Reuse the existing `kol.affiliates.manage` Manager/Admin boundary for M1.4C Coup
 - ERP create/provision contract remains unchanged and strict: only `percent`, `fixed_cart`, `fixed_product`; local + live duplicate check remains mandatory.
 - Diagnostic UAT Coupons #39911, #39912 and #39913 were each identity-checked, permanently deleted and verified absent after their respective diagnostic runs.
 - The third diagnostic run reached the provider's fixed 60 requests/minute rate limit only after repeated diagnostic/full-snapshot calls; the rate limit was not bypassed or changed.
-- Final `M1.4C_LIVE_PROVIDER_UAT` remains pending until a fresh rate window executes the minimal real read/create/replay/read-back/cleanup path.
+- Final minimal live path was rerun in a fresh provider rate window and passed.
+
+## M1.4C Live Provider UAT — PASS
+- `M1.4C_LIVE_PROVIDER_UAT = PASS`.
+- Real Andy Core health: PASS, contract version `1`.
+- Real WooCommerce Coupon read: PASS; first signed snapshot page returned 50 real Coupon items.
+- Real active Affiliate used: `affiliate_id=1`.
+- Reversible Coupon created through `CouponProvisioningService`: provider Coupon `#39914`.
+- Exact same six-field payload replayed with the same persisted idempotency key: PASS; provider returned the same Coupon ID.
+- Live `/coupons/check` read-back confirmed the exact Coupon ID + Affiliate binding: PASS.
+- Cleanup identity check + permanent delete of Coupon `#39914`: PASS.
+- Post-clean signed `/coupons/check` confirmed the UAT code is available again: PASS.
+- No Connector secret was committed or printed into the WP/PR; temporary credential transfer, SQLite DB and UAT scripts are cleanup-only artifacts.
