@@ -17,6 +17,7 @@ return [
         'algorithm' => 'AES-256-GCM',
         'key' => env('BACKUP_ENCRYPTION_KEY'),
         'key_id' => env('BACKUP_ENCRYPTION_KEY_ID'),
+        'chunk_size' => 1024 * 1024,
     ],
     'github' => [
         'repository' => 'beyourlovercom/erp-backups',
@@ -25,5 +26,10 @@ return [
     ],
     'manifest' => [
         'version' => 1,
+    ],
+    'tooling' => [
+        'mysqldump' => env('BACKUP_MYSQLDUMP_BINARY', 'mysqldump'),
+        'tar' => env('BACKUP_TAR_BINARY', 'tar'),
+        'zstd' => env('BACKUP_ZSTD_BINARY', 'zstd'),
     ],
 ];
