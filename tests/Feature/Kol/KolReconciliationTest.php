@@ -191,14 +191,14 @@ class KolReconciliationTest extends TestCase
 
     private function uploadedText(string $name, string $contents): UploadedFile
     {
-        $path = tempnam('/private/tmp', 'kol-upload-');
+        $path = tempnam(sys_get_temp_dir(), 'kol-upload-');
         file_put_contents($path, $contents);
         return UploadedFile::createFromBase(new \Symfony\Component\HttpFoundation\File\UploadedFile($path, $name, 'text/csv', null, true), true);
     }
 
     private function xlsxWithSharedStrings(array $values): UploadedFile
     {
-        $path = tempnam('/private/tmp', 'kol-xlsx-');
+        $path = tempnam(sys_get_temp_dir(), 'kol-xlsx-');
         $zip = new \ZipArchive();
         $zip->open($path, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
         $zip->addFromString('xl/workbook.xml', '<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Data" sheetId="4" r:id="rId7"/></sheets></workbook>');
@@ -212,7 +212,7 @@ class KolReconciliationTest extends TestCase
 
     private function xlsxWithMedia(int $mediaBytes): UploadedFile
     {
-        $path = tempnam('/private/tmp', 'kol-media-');
+        $path = tempnam(sys_get_temp_dir(), 'kol-media-');
         $zip = new \ZipArchive();
         $zip->open($path, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
         $zip->addFromString('xl/workbook.xml', '<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets></workbook>');
@@ -225,7 +225,7 @@ class KolReconciliationTest extends TestCase
 
     private function sparseUpload(string $name, int $bytes): UploadedFile
     {
-        $path = tempnam('/private/tmp', 'kol-sparse-');
+        $path = tempnam(sys_get_temp_dir(), 'kol-sparse-');
         $handle = fopen($path, 'wb');
         ftruncate($handle, $bytes);
         fclose($handle);
