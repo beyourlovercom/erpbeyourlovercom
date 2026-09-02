@@ -298,3 +298,42 @@ Owner explicitly authorized `M2.0A Production Migration + Cutover`.
 `PRODUCTION_IDENTITY_BOOTSTRAP = PASS`
 `M2.0A_RUNTIME_FOUNDATION = IMPLEMENTATION_COMPLETE`
 `NEXT_GATE = OWNER_LOGIN_UAT + GIT DELIVERY AUTHORIZATION`
+
+### Production Login Identifier Patch — Deploy Prep
+
+- Patch SHA: `1c0b6ec0215818af7e37bd19e77e40a8732f05ad`
+- Exact-SHA release artifact promoted to Production releases directory.
+- Dependency locks unchanged vs active `9d998c970b3994d81d3085419d9c30a172517e44`.
+- Composer platform requirements PASS.
+- Production Vite build PASS.
+- Release runtime health PASS.
+- No pending migrations introduced.
+- Login source contract present: `名称或邮箱` + default domain `beyourlover.com`.
+- Active `current` remains `9d998c970b3994d81d3085419d9c30a172517e44`.
+- Public `/login` remains HTTP 200 / TLS verify PASS.
+- `PRODUCTION_LOGIN_PATCH_DEPLOY = NOT EXECUTED`.
+- `NEXT_GATE = OWNER AUTHORIZATION TO SWITCH current TO 1c0b6ec... AND RESTART APP RUNTIME`.
+
+## Production Login Identifier Patch Deploy
+- Authorized deploy completed for `1c0b6ec0215818af7e37bd19e77e40a8732f05ad`.
+- `current` atomically switched from `9d998c970b3994d81d3085419d9c30a172517e44` to `1c0b6ec0215818af7e37bd19e77e40a8732f05ad`.
+- Production PHP-FPM restarted successfully; runtime health remains OK.
+- Public `/login`: HTTP 200, TLS verify PASS.
+- Browser-rendered login label: `名称或邮箱`; placeholder: `andy 或 andy@beyourlover.com`.
+- Public build assets: 4/4 HTTP 200 with TLS verify PASS.
+- Production read-only identifier check: full email resolves to existing administrator; display name resolves to same administrator.
+- Existing administrator email is not on the `@beyourlover.com` domain, so company-local-part alias is not applicable to that specific account.
+- No migration, Connector Signed Health, WordPress sync, or WordPress mutation executed.
+
+PRODUCTION_LOGIN_IDENTIFIER_PATCH = PASS
+NEXT_GATE = OWNER_LOGIN_UAT
+
+## Owner Login UAT Closure
+- OWNER_LOGIN_UAT = PASS
+- Production login identifier contract = PASS
+- Active Production release = 1c0b6ec0215818af7e37bd19e77e40a8732f05ad
+- Public login route = HTTP 200 / TLS verified
+- Runtime health = PASS
+- WordPress Connector Signed Health / Sync / Mutation = NOT EXECUTED
+- M2.0A functional gates = CLOSED
+- NEXT_GATE = GIT_DELIVERY_OWNER_AUTHORIZATION
