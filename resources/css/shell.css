@@ -873,6 +873,18 @@
     color: #142126;
     font-weight: 500;
 }
+.erp-identity-item-external {
+    flex: 1 1 360px;
+    min-width: 0;
+}
+.erp-identity-value-secondary {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    color: #53666e;
+}
 .erp-status-chip {
     display: inline-flex;
     align-items: center;
@@ -1130,6 +1142,10 @@
     }
     .erp-identity-item:last-child {
         border-bottom: none;
+    }
+    .erp-identity-value-secondary {
+        white-space: normal;
+        overflow-wrap: anywhere;
     }
     .erp-danger-zone {
         flex-direction: column;

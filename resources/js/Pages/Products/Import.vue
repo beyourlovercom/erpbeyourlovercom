@@ -12,6 +12,8 @@ type ImportResult = {
   active?: number
   inactive?: number
   skippedNoSkuVariations?: number
+  resolvedVariationMappings?: number
+  unresolvedVariationMappings?: number
   noSkuNonVariationReconciliation?: number
   invalid: number
   duplicateSkuConflicts?: number
@@ -69,7 +71,7 @@ const submit = () => {
         <div class="mvp-form-field">
           <label class="mvp-label">选择 CSV 文件</label>
           <input ref="fileInput" type="file" accept=".csv,text/csv" class="mvp-input">
-          <p class="mvp-muted">模板包含标准 9 列；Published：1=公开，0=私密，-1=草稿/未公开。</p>
+          <p class="mvp-muted">模板包含标准 10 列，含 Parent 列；Published：1=公开，0=私密，-1=草稿/未公开。Parent 可填写父产品的精确 SKU 或 id:&lt;Woo 产品 ID&gt;。</p>
           <p v-if="fieldError" class="mvp-error">{{ fieldError }}</p>
         </div>
       </form>
@@ -83,7 +85,9 @@ const submit = () => {
           <li>更新：{{ result.updates ?? 0 }} 条</li>
           <li>未变化：{{ result.unchanged ?? 0 }} 条</li>
           <li>启用：{{ result.active ?? 0 }} 条；停用：{{ result.inactive ?? 0 }} 条</li>
-          <li>跳过无 SKU 变体：{{ result.skippedNoSkuVariations ?? 0 }} 条</li>
+          <li>无 SKU 变体（合计）：{{ result.skippedNoSkuVariations ?? 0 }} 条</li>
+          <li>已映射父产品：{{ result.resolvedVariationMappings ?? 0 }} 条</li>
+          <li>未解析父产品：{{ result.unresolvedVariationMappings ?? 0 }} 条</li>
           <li>无 SKU 非变体待核对：{{ result.noSkuNonVariationReconciliation ?? 0 }} 条</li>
           <li>无效：{{ result.invalid }} 条</li>
           <li>重复 SKU 冲突：{{ result.duplicateSkuConflicts ?? 0 }} 条；身份冲突：{{ result.identityConflicts ?? 0 }} 条</li>

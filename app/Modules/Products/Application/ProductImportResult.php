@@ -18,6 +18,7 @@ final class ProductImportResult
         public readonly int $duplicateSkuConflicts = 0,
         public readonly int $identityConflicts = 0,
         public readonly array $errors = [],
+        public readonly int $resolvedVariationMappings = 0,
     ) {}
 
     public function toArray(): array
@@ -36,7 +37,9 @@ final class ProductImportResult
             'duplicateSkuConflicts' => $this->duplicateSkuConflicts,
             'identityConflicts' => $this->identityConflicts,
             'errors' => $this->errors,
-            'canConfirm' => $this->candidates > 0 && $this->duplicateSkuConflicts === 0 && $this->identityConflicts === 0,
+            'resolvedVariationMappings' => $this->resolvedVariationMappings,
+            'unresolvedVariationMappings' => max(0, $this->skippedNoSkuVariations - $this->resolvedVariationMappings),
+            'canConfirm' => ($this->candidates > 0 || $this->resolvedVariationMappings > 0) && $this->duplicateSkuConflicts === 0 && $this->identityConflicts === 0,
         ];
     }
 

@@ -5,6 +5,7 @@ namespace App\Modules\Orders\Application;
 use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
+use App\Modules\Products\Application\Contracts\ProductExternalReferenceRepository;
 use App\Modules\Products\Application\Contracts\ProductRepository;
 use App\Modules\Products\Application\SkuIdentityResolver;
 use App\Modules\Orders\Application\Inbound\NormalizedInboundOrder;
@@ -33,6 +34,7 @@ final class OrderService
         private readonly ProductRepository $productRepository,
         private readonly SkuIdentityResolver $skuResolver,
         private readonly OrderIdentityService $orderIdentities,
+        private readonly ProductExternalReferenceRepository $productExternalRefs,
     ) {}
 
     public function create(array $attributes, array $items, ?Authenticatable $actor): Model
@@ -126,7 +128,7 @@ final class OrderService
             $order->items()->delete();
             $wooReference = $data->provider.':'.$data->reference;
             foreach ($data->items as $item) {
-                $resolved = $this->resolveInboundProductFields($item, $wooReference);
+                $resolved = $this->resolveInboundProductFields($item, $wooReference, $data->connectionKey);
                 $order->items()->create([
                     'product_id' => $resolved['product_id'],
                     'sku' => $resolved['sku'],
@@ -346,14 +348,27 @@ final class OrderService
         return $number;
     }
 
-    private function resolveInboundProductFields(array $item, ?string $wooReference = null): array
+    private function resolveInboundProductFields(array $item, ?string $wooReference = null, ?string $connectionKey = null): array
     {
         $product = null;
-        if (! empty($item['woocommerce_product_id'])) {
-            $product = $this->productRepository->findByWooId((int) $item['woocommerce_product_id']);
+        $remoteId = $item['woocommerce_product_id'] ?? null;
+
+        if (! empty($remoteId)) {
+            // Step 1: connection-scoped external reference lookup (M1.4 authority).
+            if ($connectionKey !== null) {
+                $product = $this->productExternalRefs->findProduct('woocommerce', $connectionKey, (string) $remoteId);
+            }
+
+            // Step 2: legacy global Woo ID is a bounded compatibility path for the configured primary connection only.
+            $primaryConnectionKey = (string) config('services.woocommerce.connection_key', 'beyourlover.com');
+            if ($product === null && $connectionKey !== null && $connectionKey === $primaryConnectionKey) {
+                $product = $this->productRepository->findByWooId((int) $remoteId);
+            }
         }
+
         $rawSku = trim((string) ($item['sku'] ?? ''));
         if (! $product && $rawSku !== '') {
+            // Step 3: exact canonical SKU / SKU Alias resolver.
             $result = $this->skuResolver->resolve($rawSku);
             if ($result->isResolved()) {
                 $product = $result->product;
@@ -362,8 +377,7 @@ final class OrderService
             }
         }
 
-        // Always derive the persisted SKU from the resolved product's canonical SKU,
-        // regardless of whether resolution came from Woo Product ID or the SKU resolver.
+        // Always derive the persisted SKU from the resolved product's canonical SKU.
         $canonicalSku = $product !== null ? (string) $product->getAttribute('sku') : $rawSku;
 
         $summary = trim((string) ($item['product_summary'] ?? ''));

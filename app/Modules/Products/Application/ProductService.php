@@ -2,6 +2,7 @@
 
 namespace App\Modules\Products\Application;
 
+use App\Modules\Products\Application\Contracts\ProductExternalReferenceRepository;
 use App\Modules\Products\Application\Contracts\ProductRepository;
 use App\Modules\Products\Application\Contracts\SkuAliasRepository;
 use App\Modules\Products\Application\SkuMatchKey;
@@ -16,11 +17,20 @@ final class ProductService
         private readonly ProductRepository $products,
         private readonly SkuAliasRepository $skuAliases,
         private readonly ProductWeightEvidenceService $weightEvidence,
+        private readonly ProductExternalReferenceRepository $externalRefs,
     ) {}
 
-    /** @return array{result: ProductImportResult, candidates: list<array<string, mixed>>} */
-    public function preview(string $csvPath): array
+    /**
+     * @return array{result: ProductImportResult, candidates: list<array<string, mixed>>}
+     *
+     * $connectionKey scopes Woo product/variation external references.
+     * When null, falls back to the configured services.woocommerce.connection_key.
+     */
+    public function preview(string $csvPath, ?string $connectionKey = null): array
     {
+        $connectionKey = $connectionKey ?? (string) config('services.woocommerce.connection_key', 'beyourlover.com');
+        $usesLegacyWooId = $this->usesLegacyWooId($connectionKey);
+
         $handle = fopen($csvPath, 'r');
         if ($handle === false) return ['result' => new ProductImportResult(invalid: 1, errors: ["Cannot open file: {$csvPath}"]), 'candidates' => []];
         $headerLine = fgets($handle);
@@ -33,47 +43,209 @@ final class ProductService
         }
 
         $total = $candidates = $active = $inactive = $invalid = $skippedVariations = $reconciliation = 0;
-        $new = $updates = $unchanged = $duplicateSku = $identity = 0;
+        $new = $updates = $unchanged = $duplicateSku = $identity = $resolvedVariations = 0;
         $errors = $candidateRows = $seenSkus = $seenWooIds = [];
+
+        // First pass: collect all rows so we can build parent-lookup maps.
+        $allRows = [];
         $rowNum = 1;
         while (($row = fgetcsv($handle)) !== false) {
             $rowNum++;
             if ($this->rowIsEmpty($row)) continue;
+            $allRows[] = ['row' => $row, 'rowNum' => $rowNum];
+        }
+        fclose($handle);
+
+        $cell = static fn (array $row, array $map, string $column): ?string => isset($map[$column]) ? (($value = trim((string) ($row[$map[$column]] ?? ''))) === '' ? null : $value) : null;
+
+        // Pre-scan: build batch-level SKU -> wooId and wooId -> SKU maps for in-batch parent resolution.
+        // Only non-variation rows with a SKU can act as parents.
+        $batchSkuToWooId = [];  // SKU -> woo ID (for Parent=SKU lookup within batch)
+        $batchWooIdToSku = [];  // woo ID -> SKU (for Parent=id:<ID> lookup within batch)
+        foreach ($allRows as $entry) {
+            ['row' => $row] = $entry;
+            $bwooIdRaw = $cell($row, $headerMap, 'ID');
+            $bwooId = ctype_digit((string) $bwooIdRaw) ? (int) $bwooIdRaw : 0;
+            if ($bwooId <= 0) continue;
+            $btype = strtolower((string) ($cell($row, $headerMap, 'Type') ?? ''));
+            if ($btype === 'variation') continue;
+            $bsku = $cell($row, $headerMap, 'SKU');
+            if ($bsku === null) continue;
+            $batchSkuToWooId[$bsku] = $bwooId;
+            $batchWooIdToSku[$bwooId] = $bsku;
+        }
+
+        // Phase 1: process SKU-bearing rows (simple/variable/sku-variation).
+        $variationRows = [];  // deferred blank-SKU variations for phase 2
+        foreach ($allRows as $entry) {
+            ['row' => $row, 'rowNum' => $rowNum] = $entry;
             $total++;
-            $cell = static fn (array $row, array $map, string $column): ?string => isset($map[$column]) ? (($value = trim((string) ($row[$map[$column]] ?? ''))) === '' ? null : $value) : null;
             $wooIdRaw = $cell($row, $headerMap, 'ID');
             $wooId = ctype_digit((string) $wooIdRaw) ? (int) $wooIdRaw : 0;
             $type = strtolower((string) ($cell($row, $headerMap, 'Type') ?? ''));
             $sku = $cell($row, $headerMap, 'SKU');
             $name = $cell($row, $headerMap, 'Name');
+
             if ($wooId <= 0 || $name === null) { $invalid++; $errors[] = "Row {$rowNum}: invalid or missing ID/Name"; continue; }
-            if ($sku === null) { if ($type === 'variation') $skippedVariations++; else $reconciliation++; continue; }
+
+            if ($sku === null) {
+                if ($type === 'variation') {
+                    $variationRows[] = $entry;  // defer
+                    $total--;  // don't double-count deferred variations in phase 2
+                } else {
+                    $reconciliation++;
+                }
+                continue;
+            }
+
+            // SKU-bearing row.
             $values = $this->parseValues($row, $headerMap, $wooId, $type, $sku, $name);
             if ($values === null) { $invalid++; $errors[] = "Row {$rowNum}: invalid numeric value"; continue; }
+
+            $refType = ($type === 'variation') ? 'variation' : 'product';
+            $values['_ref_type'] = $refType;
+            $values['_connection_key'] = $connectionKey;
+            $values['_remote_woocommerce_id'] = $wooId;
+            $values['_write_legacy_woo_id'] = $usesLegacyWooId;
+            if (! $usesLegacyWooId) {
+                $values['woocommerce_product_id'] = null;
+            }
+
             $candidates++;
             if ($values['is_active']) $active++; else $inactive++;
             if (isset($seenSkus[$sku])) { $duplicateSku++; $errors[] = "Row {$rowNum}: duplicate SKU conflict: {$sku}"; continue; }
             if (isset($seenWooIds[$wooId])) { $identity++; $errors[] = "Row {$rowNum}: duplicate Woo Product ID conflict: {$wooId}"; continue; }
             $seenSkus[$sku] = true;
             $seenWooIds[$wooId] = true;
-            $existingByWoo = $this->products->findByWooId($wooId);
+
+            $existingByWoo = $usesLegacyWooId ? $this->products->findByWooId($wooId) : null;
             $existingBySku = $this->products->findBySku($sku);
-            if (($existingByWoo !== null && $existingByWoo->getAttribute('sku') !== $sku) || ($existingBySku !== null && (int) $existingBySku->getAttribute('woocommerce_product_id') !== $wooId)) {
-                $identity++; $errors[] = "Row {$rowNum}: Woo-ID/SKU identity conflict for {$sku}"; continue;
+            $extProduct = $this->externalRefs->findProduct('woocommerce', $connectionKey, (string) $wooId);
+
+            if ($extProduct !== null && $extProduct->getAttribute('sku') !== $sku) {
+                $identity++; $errors[] = "Row {$rowNum}: external reference {$wooId} already mapped to SKU '{$extProduct->getAttribute('sku')}'"; continue;
             }
-            // Gate 5: new canonical SKU must not collide with an existing Alias match key.
-            if ($existingByWoo === null && $existingBySku === null) {
+
+            if ($extProduct === null && $usesLegacyWooId) {
+                if (($existingByWoo !== null && $existingByWoo->getAttribute('sku') !== $sku) || ($existingBySku !== null && $existingBySku->getAttribute('woocommerce_product_id') !== null && (int) $existingBySku->getAttribute('woocommerce_product_id') !== $wooId)) {
+                    $identity++; $errors[] = "Row {$rowNum}: Woo-ID/SKU identity conflict for {$sku}"; continue;
+                }
+            }
+
+            if ($existingByWoo === null && $existingBySku === null && $extProduct === null) {
                 $skuMatchKey = SkuMatchKey::compute($sku);
                 if ($skuMatchKey !== null && $this->skuAliases->existsMatchKey($skuMatchKey)) {
                     $identity++; $errors[] = "Row {$rowNum}: SKU '{$sku}' match key is already registered as a SKU alias"; continue;
                 }
                 $new++;
-            } elseif ($this->sameBootstrapValues($existingByWoo ?? $existingBySku, $values)) $unchanged++;
+            } elseif ($this->sameBootstrapValues($existingByWoo ?? $existingBySku ?? $extProduct, $values)) $unchanged++;
             else $updates++;
+
             $candidateRows[] = $values;
         }
-        fclose($handle);
-        return ['result' => new ProductImportResult($total, $candidates, $new, $updates, $unchanged, $active, $inactive, $skippedVariations, $reconciliation, $invalid, $duplicateSku, $identity, $errors), 'candidates' => $candidateRows];
+
+        // Phase 2: process blank-SKU variation rows, resolving parent via DB or current batch.
+        foreach ($variationRows as $entry) {
+            ['row' => $row, 'rowNum' => $rowNum] = $entry;
+            $total++;
+            $wooIdRaw = $cell($row, $headerMap, 'ID');
+            $wooId = ctype_digit((string) $wooIdRaw) ? (int) $wooIdRaw : 0;
+            $name = $cell($row, $headerMap, 'Name');
+            if ($wooId <= 0 || $name === null) { $invalid++; $errors[] = "Row {$rowNum}: invalid or missing ID/Name"; continue; }
+
+            $parentRaw = $cell($row, $headerMap, 'Parent');
+            $parentProduct = $this->resolveParent($parentRaw, $connectionKey);
+            $inBatch = $parentProduct === null && $parentRaw !== null && $this->parentIsInBatch($parentRaw, $batchSkuToWooId, $batchWooIdToSku);
+
+            if ($parentProduct !== null) {
+                // Parent already in DB — store product_id directly.
+                $candidateRows[] = [
+                    '_external_ref_only' => true,
+                    '_parent_product_id' => $parentProduct->getKey(),
+                    '_variation_woo_id' => $wooId,
+                    '_connection_key' => $connectionKey,
+                ];
+                $skippedVariations++;
+                $resolvedVariations++;
+            } elseif ($inBatch) {
+                // Parent is in the same CSV batch but not yet in DB; confirm() will re-resolve.
+                $candidateRows[] = [
+                    '_external_ref_only' => true,
+                    '_parent_product_id' => null,
+                    '_parent_raw' => $parentRaw,
+                    '_variation_woo_id' => $wooId,
+                    '_connection_key' => $connectionKey,
+                ];
+                $skippedVariations++;
+                $resolvedVariations++;
+            } else {
+                $skippedVariations++;
+                $errors[] = "Row {$rowNum}: blank-SKU variation {$wooId} has unresolved Parent '{$parentRaw}' — skipped";
+            }
+        }
+
+        return ['result' => new ProductImportResult($total, $candidates, $new, $updates, $unchanged, $active, $inactive, $skippedVariations, $reconciliation, $invalid, $duplicateSku, $identity, $errors, $resolvedVariations), 'candidates' => $candidateRows];
+    }
+
+    /**
+     * Resolve Parent cell to a canonical ERP Product via exact SKU, SKU Alias, or id:<WooProductID>.
+     * $batchSkuToWooId and $batchWooIdToSku allow resolving parents that appear in the same CSV batch
+     * but are not yet persisted to the DB.
+     *
+     * @param array<string,int> $batchSkuToWooId
+     * @param array<int,string> $batchWooIdToSku
+     */
+    private function resolveParent(?string $parentRaw, string $connectionKey, array $batchSkuToWooId = [], array $batchWooIdToSku = []): ?\Illuminate\Database\Eloquent\Model
+    {
+        if ($parentRaw === null || $parentRaw === '') return null;
+
+        if (str_starts_with($parentRaw, 'id:')) {
+            $wooId = (int) substr($parentRaw, 3);
+            if ($wooId <= 0) return null;
+            // Try external reference first (proven Woo product reference).
+            $product = $this->externalRefs->findProduct('woocommerce', $connectionKey, (string) $wooId);
+            if ($product !== null) return $product;
+            // Legacy woocommerce_product_id belongs only to the configured primary Woo connection.
+            if ($this->usesLegacyWooId($connectionKey)) {
+                $product = $this->products->findByWooId($wooId);
+                if ($product !== null) return $product;
+            }
+            // In-batch: if this wooId appears as a parent candidate in the same CSV.
+            if (isset($batchWooIdToSku[$wooId])) {
+                return $this->products->findBySku($batchWooIdToSku[$wooId]);
+            }
+            return null;
+        }
+
+        // Exact canonical SKU (DB first, then batch).
+        $product = $this->products->findBySku($parentRaw);
+        if ($product !== null) return $product;
+
+        // SKU Alias.
+        $matchKey = SkuMatchKey::compute($parentRaw);
+        if ($matchKey !== null) {
+            $product = $this->products->findBySkuMatchKey($matchKey);
+            if ($product !== null) return $product;
+        }
+
+        return null;
+    }
+
+    /**
+     * Return true when $parentRaw refers to a non-variation, SKU-bearing row present in the
+     * current CSV batch (exact SKU match or exact id:<wooId> match).
+     * No fuzzy/name/attribute inference allowed.
+     *
+     * @param array<string,int> $batchSkuToWooId
+     * @param array<int,string> $batchWooIdToSku
+     */
+    private function parentIsInBatch(string $parentRaw, array $batchSkuToWooId, array $batchWooIdToSku): bool
+    {
+        if (str_starts_with($parentRaw, 'id:')) {
+            $wooId = (int) substr($parentRaw, 3);
+            return $wooId > 0 && isset($batchWooIdToSku[$wooId]);
+        }
+        return isset($batchSkuToWooId[$parentRaw]);
     }
 
     /** @param list<array<string, mixed>> $candidates */
@@ -81,29 +253,88 @@ final class ProductService
     {
         $inserted = $updated = $unchanged = 0;
         DB::transaction(function () use ($candidates, &$inserted, &$updated, &$unchanged): void {
+            // Phase 1: create/update canonical Products and write their external references.
+            // External-ref-only rows are skipped here and handled in phase 2.
             foreach ($candidates as $values) {
-                $sku = (string) $values['sku']; $wooId = (int) $values['woocommerce_product_id'];
-                $byWoo = $this->products->findByWooId($wooId); $bySku = $this->products->findBySku($sku);
-                if (($byWoo !== null && $byWoo->getAttribute('sku') !== $sku) || ($bySku !== null && (int) $bySku->getAttribute('woocommerce_product_id') !== $wooId)) throw new \RuntimeException("Confirm blocked by identity conflict for {$sku}");
-                $product = $byWoo ?? $bySku;
+                if ($values['_external_ref_only'] ?? false) continue;
+
+                $sku = (string) $values['sku'];
+                $connectionKey = (string) ($values['_connection_key'] ?? config('services.woocommerce.connection_key', 'beyourlover.com'));
+                $writeLegacyWooId = (bool) ($values['_write_legacy_woo_id'] ?? $this->usesLegacyWooId($connectionKey));
+                $wooId = (int) ($values['_remote_woocommerce_id'] ?? $values['woocommerce_product_id'] ?? 0);
+                if ($wooId <= 0) {
+                    throw new \RuntimeException("Confirm blocked: missing Woo remote ID for {$sku}");
+                }
+                $refType = (string) ($values['_ref_type'] ?? 'product');
+
+                $byWoo = $writeLegacyWooId ? $this->products->findByWooId($wooId) : null;
+                $bySku = $this->products->findBySku($sku);
+                $byExtRef = $this->externalRefs->findProduct('woocommerce', $connectionKey, (string) $wooId);
+
+                // Identity guard: the legacy global column is authoritative only on the configured primary Woo connection.
+                if ($writeLegacyWooId && (($byWoo !== null && $byWoo->getAttribute('sku') !== $sku) || ($bySku !== null && $bySku->getAttribute('woocommerce_product_id') !== null && (int) $bySku->getAttribute('woocommerce_product_id') !== $wooId))) {
+                    if ($byExtRef === null || $byExtRef->getAttribute('sku') !== $sku) {
+                        throw new \RuntimeException("Confirm blocked by identity conflict for {$sku}");
+                    }
+                }
+
+                $product = $byExtRef ?? $byWoo ?? $bySku;
+
                 if ($product === null) {
-                    // Gate 5: guard against alias collision that could have appeared since preview.
                     $skuMatchKey = SkuMatchKey::compute($sku);
                     if ($skuMatchKey !== null && $this->skuAliases->existsMatchKey($skuMatchKey)) {
                         throw new \RuntimeException("Confirm blocked: SKU '{$sku}' match key is already registered as a SKU alias");
                     }
-                    $this->products->create($values); $inserted++; continue;
+                    $cleanValues = $this->stripInternalKeys($values);
+                    $product = $this->products->create($cleanValues);
+                    $inserted++;
+                } else {
+                    $attributes = $this->bootstrapAttributes($values);
+                    if ($product->getAttribute('weight_kg') === null && $values['weight_kg'] !== null) $attributes['weight_kg'] = $values['weight_kg'];
+                    if ($this->sameBootstrapValues($product, $values)) $unchanged++;
+                    else { $this->products->update($product, $attributes); $updated++; }
                 }
-                $attributes = $this->bootstrapAttributes($values);
-                if ($product->getAttribute('weight_kg') === null && $values['weight_kg'] !== null) $attributes['weight_kg'] = $values['weight_kg'];
-                if ($this->sameBootstrapValues($product, $values)) $unchanged++; else { $this->products->update($product, $attributes); $updated++; }
+
+                $this->externalRefs->upsert((int) $product->getKey(), 'woocommerce', $connectionKey, (string) $wooId, $refType);
+            }
+
+            // Phase 2: write external references for blank-SKU variation rows.
+            // Parents created in phase 1 are now available in the DB.
+            foreach ($candidates as $values) {
+                if (! ($values['_external_ref_only'] ?? false)) continue;
+
+                $variationWooId = (string) $values['_variation_woo_id'];
+                $connectionKey = (string) $values['_connection_key'];
+
+                // If parent_product_id was resolved at preview time, use it directly.
+                // If null, the parent was in the same batch — re-resolve now that phase 1 created it.
+                if ($values['_parent_product_id'] !== null) {
+                    $parentId = (int) $values['_parent_product_id'];
+                } else {
+                    $parentRaw = (string) ($values['_parent_raw'] ?? '');
+                    $parent = $this->resolveParent($parentRaw, $connectionKey);
+                    if ($parent === null) {
+                        throw new \RuntimeException(
+                            "Confirm blocked: blank-SKU variation {$variationWooId} parent '{$parentRaw}' could not be resolved after phase-1 creation"
+                        );
+                    }
+                    $parentId = (int) $parent->getKey();
+                }
+
+                $this->externalRefs->upsert($parentId, 'woocommerce', $connectionKey, $variationWooId, 'variation');
             }
         });
+        $skuCandidates = array_filter($candidates, static fn (array $row): bool => ! ($row['_external_ref_only'] ?? false));
         $processed = $inserted + $updated + $unchanged;
-        $active = count(array_filter($candidates, static fn (array $row): bool => ($row['is_active'] ?? false) === true));
+        $active = count(array_filter($skuCandidates, static fn (array $row): bool => ($row['is_active'] ?? false) === true));
         $inactive = $processed - $active;
 
         return new ProductImportResult($processed, $processed, $inserted, $updated, $unchanged, $active, $inactive);
+    }
+
+    private function stripInternalKeys(array $values): array
+    {
+        return array_filter($values, static fn (string $key): bool => ! str_starts_with($key, '_'), ARRAY_FILTER_USE_KEY);
     }
 
     public function import(string $csvPath): ProductImportResult
@@ -126,7 +357,17 @@ final class ProductService
 
     private function bootstrapAttributes(array $values): array
     {
-        return ['woocommerce_product_id' => $values['woocommerce_product_id'], 'source_type' => 'woocommerce', 'product_type' => $values['product_type'], 'sku' => $values['sku'], 'gtin' => $values['gtin'], 'name' => $values['name'], 'sale_price' => $values['sale_price'], 'regular_price' => $values['regular_price'], 'is_active' => $values['is_active']];
+        $attributes = ['source_type' => 'woocommerce', 'product_type' => $values['product_type'], 'sku' => $values['sku'], 'gtin' => $values['gtin'], 'name' => $values['name'], 'sale_price' => $values['sale_price'], 'regular_price' => $values['regular_price'], 'is_active' => $values['is_active']];
+        if (($values['_write_legacy_woo_id'] ?? true) === true) {
+            $attributes['woocommerce_product_id'] = $values['woocommerce_product_id'];
+        }
+        return $attributes;
+    }
+
+    private function usesLegacyWooId(string $connectionKey): bool
+    {
+        $primaryConnectionKey = (string) config('services.woocommerce.connection_key', 'beyourlover.com');
+        return $connectionKey !== '' && $connectionKey === $primaryConnectionKey;
     }
 
     private function sameBootstrapValues(Model $product, array $values): bool
@@ -302,8 +543,8 @@ final class ProductService
         $this->products->delete($product);
     }
 
-    public function importFromUpload(string $tmpPath): array
+    public function importFromUpload(string $tmpPath, ?string $connectionKey = null): array
     {
-        return $this->preview($tmpPath);
+        return $this->preview($tmpPath, $connectionKey);
     }
 }

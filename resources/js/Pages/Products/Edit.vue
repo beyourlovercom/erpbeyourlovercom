@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+
+type ExternalReference = {
+  provider: string
+  connection_key: string
+  reference: string
+  reference_type: string
+}
 
 type Product = {
   id: number
@@ -32,6 +39,7 @@ type Product = {
   cost_currency: string | null
   cost_note: string | null
   notes: string | null
+  external_references: ExternalReference[]
 }
 
 const props = defineProps<{ product: Product }>()
@@ -69,6 +77,26 @@ const form = ref({
 const errors = ref<Record<string, string>>({})
 const submitting = ref(false)
 const confirmingDelete = ref(false)
+
+const externalReferenceSummary = computed(() => {
+  if (props.product.external_references.length === 0) return '—'
+
+  const grouped = new Map<string, string[]>()
+  for (const reference of props.product.external_references) {
+    const type = reference.reference_type === 'product' ? '产品' : '变体'
+    const refs = grouped.get(reference.connection_key) ?? []
+    refs.push(`${type} ${reference.reference}`)
+    grouped.set(reference.connection_key, refs)
+  }
+
+  return Array.from(grouped.entries())
+    .map(([connection, refs]) => `${connection} · ${refs.join(' / ')}`)
+    .join(' ｜ ')
+})
+
+const externalReferenceDetail = computed(() => props.product.external_references
+  .map((reference) => `${reference.provider === 'woocommerce' ? 'WooCommerce' : reference.provider} · ${reference.connection_key} · ${reference.reference_type === 'product' ? '产品' : '变体'} ${reference.reference}`)
+  .join(' ｜ '))
 
 const submit = () => {
   submitting.value = true
@@ -116,9 +144,13 @@ const doDelete = () => {
             <span class="erp-identity-label">来源</span>
             <span class="erp-identity-value">{{ product.source_type === 'manual' ? '手动' : 'WooCommerce' }}</span>
           </div>
-          <div class="erp-identity-item">
-            <span class="erp-identity-label">Woo ID</span>
-            <span class="erp-identity-value">{{ product.woocommerce_product_id ?? '—' }}</span>
+          <div class="erp-identity-item erp-identity-item-external" data-testid="external-references-compact">
+            <span class="erp-identity-label">外部引用</span>
+            <span
+              class="erp-identity-value erp-identity-value-secondary"
+              data-testid="external-reference-summary"
+              :title="externalReferenceDetail"
+            >{{ externalReferenceSummary }}</span>
           </div>
           <div class="erp-identity-item">
             <span class="erp-identity-label">状态</span>
@@ -500,3 +532,53 @@ const doDelete = () => {
     </div>
   </AuthenticatedLayout>
 </template>
+
+<style scoped>
+.erp-external-ref-table-wrap {
+  margin-top: 16px;
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+
+.erp-external-ref-table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.erp-external-ref-table th,
+.erp-external-ref-table td {
+  padding: 12px 16px;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.erp-external-ref-table th {
+  font-size: 12px;
+  font-weight: 600;
+  color: #667085;
+  background: #f8fafc;
+  white-space: nowrap;
+}
+
+.erp-external-ref-table td {
+  font-size: 14px;
+  color: #1f2937;
+  overflow-wrap: anywhere;
+}
+
+.erp-external-ref-table th:nth-child(1),
+.erp-external-ref-table td:nth-child(1) { width: 22%; }
+.erp-external-ref-table th:nth-child(2),
+.erp-external-ref-table td:nth-child(2) { width: 40%; }
+.erp-external-ref-table th:nth-child(3),
+.erp-external-ref-table td:nth-child(3) { width: 16%; }
+.erp-external-ref-table th:nth-child(4),
+.erp-external-ref-table td:nth-child(4) { width: 22%; }
+
+.erp-external-ref-table tbody tr:last-child td { border-bottom: 0; }
+</style>

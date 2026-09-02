@@ -305,7 +305,7 @@ final class ProductManagementTest extends TestCase
         $response->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
         $response->assertHeader('Content-Disposition', 'attachment; filename="product-import-csv-template.csv"');
         $this->assertStringStartsWith("\xEF\xBB\xBF", $response->getContent());
-        $this->assertStringContainsString('"ID","Type","SKU","GTIN, UPC, EAN, or ISBN","Name","Weight (kg)","Sale price","Regular price","Published"', $response->getContent());
+        $this->assertStringContainsString('"ID","Type","SKU","GTIN, UPC, EAN, or ISBN","Name","Weight (kg)","Sale price","Regular price","Published","Parent"', $response->getContent());
     }
 
     public function test_import_store_previews_then_confirms_csv_without_mutating_during_preview(): void
