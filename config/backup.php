@@ -35,6 +35,13 @@ return [
         'max_decrypted_package_bytes' => (int) env('BACKUP_RESTORE_MAX_DECRYPTED_PACKAGE_BYTES', 2147483647),
         'max_tar_bytes' => (int) env('BACKUP_RESTORE_MAX_TAR_BYTES', 4294967296),
     ],
+    'automatic' => [
+        'time' => '02:00',
+        'timezone' => env('BACKUP_AUTOMATIC_TIMEZONE', config('app.timezone', 'UTC')),
+        'weekly_day' => 1,
+        'monthly_day' => 1,
+        'retention_count' => 5,
+    ],
     'manifest' => [
         'version' => 1,
     ],

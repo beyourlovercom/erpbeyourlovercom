@@ -55,6 +55,29 @@ final class EloquentBackupRepository implements BackupRepository
         return $this->updateRun($id, ['state' => BackupState::Deleted, 'completed_at' => now()]);
     }
 
+    public function scheduledRunsNewestFirst(): array
+    {
+        return BackupRun::query()
+            ->where('state', '!=', BackupState::Deleted->value)
+            ->orderByDesc('created_at')
+            ->get()
+            ->filter(fn (BackupRun $run): bool => ($run->metadata['origin'] ?? null) === 'scheduled')
+            ->map(fn (BackupRun $run): BackupRunData => $this->runData($run))
+            ->values()
+            ->all();
+    }
+
+    public function recentRuns(int $limit = 5): array
+    {
+        return BackupRun::query()
+            ->where('state', '!=', BackupState::Deleted->value)
+            ->orderByDesc('created_at')
+            ->limit(max(1, $limit))
+            ->get()
+            ->map(fn (BackupRun $run): BackupRunData => $this->runData($run))
+            ->all();
+    }
+
     private function runData(BackupRun $run): BackupRunData
     {
         return new BackupRunData(
@@ -67,6 +90,8 @@ final class EloquentBackupRepository implements BackupRepository
             $run->error_code,
             $run->error_message,
             $run->metadata ?? [],
+            $run->completed_at,
+            $run->created_at,
         );
     }
 
