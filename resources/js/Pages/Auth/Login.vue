@@ -38,8 +38,8 @@ const submit = () => form.post('/login')
                 <h1 class="mt-5 text-4xl font-semibold tracking-tight sm:text-5xl">统一管理<br><span class="text-[var(--byl-accent)]">高效协同</span></h1>
                 <p class="mt-5 text-sm leading-7 text-[var(--byl-text-muted)]">连接订单、客户、物流与团队协作，<br>让每一项业务清晰可见、持续推进。</p>
                 <form class="mt-8 space-y-5" @submit.prevent="submit">
-                    <FormField id="email" v-slot="{ controlId, describedBy, invalid }" label="邮箱" required>
-                        <TextInput v-model="form.email" :id="controlId" name="email" type="text" autocomplete="username" required :aria-describedby="describedBy" :invalid="invalid" />
+                    <FormField id="email" v-slot="{ controlId, describedBy, invalid }" label="名称或邮箱" required>
+                        <TextInput v-model="form.email" :id="controlId" name="email" type="text" autocomplete="username" placeholder="andy 或 andy@beyourlover.com" required :aria-describedby="describedBy" :invalid="invalid" />
                     </FormField>
                     <FormField id="password" v-slot="{ controlId, describedBy, invalid }" label="密码" required>
                         <TextInput v-model="form.password" :id="controlId" name="password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" required :aria-describedby="describedBy" :invalid="invalid">
@@ -48,7 +48,7 @@ const submit = () => form.post('/login')
                             </template>
                         </TextInput>
                     </FormField>
-                    <UiAlert v-if="form.errors.email || form.errors.password || page.props.errors?.email" tone="error">邮箱或密码不正确，请重试。</UiAlert>
+                    <UiAlert v-if="form.errors.email || form.errors.password || page.props.errors?.email" tone="error">名称/邮箱或密码不正确，请重试。</UiAlert>
                     <UiButton class="w-full" type="submit" tone="primary" :loading="form.processing">
                         登录系统
                         <template #loading>验证中…</template>

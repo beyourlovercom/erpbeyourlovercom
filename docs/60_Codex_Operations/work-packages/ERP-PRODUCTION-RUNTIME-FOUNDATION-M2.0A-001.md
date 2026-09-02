@@ -279,3 +279,22 @@ Owner explicitly authorized `M2.0A Production Migration + Cutover`.
 - Fresh-install administrator coverage verifies `role_preset_administrator`, `system.permissions.manage`, and `backup.manage`.
 - Validation: PHP syntax PASS; `git diff --check` PASS; Vite production build PASS; targeted Identity suite completed with 215 assertions and zero failures.
 - Production remained live on the previous frozen release throughout patch development.
+
+## Production Identity Bootstrap — PASS
+
+- Active Production release: `9d998c970b3994d81d3085419d9c30a172517e44`
+- First Production user: created via canonical `erp:user:create`
+- Active users: `1`
+- Role: `role_preset_administrator`
+- Administrator permission contract: expected `43`, actual `43`, missing `0`
+- `system.permissions.manage`: PASS
+- `backup.manage`: PASS
+- Password: hashed at rest; plaintext not recorded
+- Audit: one `user.created` record with source `erp:user:create`
+- Runtime health: PASS
+- Public `/login`: HTTP 200, TLS verification PASS
+- WordPress Connector Signed Health / sync / mutation: NOT EXECUTED
+
+`PRODUCTION_IDENTITY_BOOTSTRAP = PASS`
+`M2.0A_RUNTIME_FOUNDATION = IMPLEMENTATION_COMPLETE`
+`NEXT_GATE = OWNER_LOGIN_UAT + GIT DELIVERY AUTHORIZATION`

@@ -46,6 +46,52 @@ class AuthHomeContractTest extends TestCase
         $this->assertNotNull($user->fresh()->remember_token);
     }
 
+    public function test_company_email_local_part_authenticates_in_production(): void
+    {
+        $user = $this->dashboardUser();
+        $user->update([
+            'name' => 'Andy Owner',
+            'email' => 'andy@beyourlover.com',
+            'password' => Hash::make('andy-password-123'),
+        ]);
+
+        $this->post('/login', ['email' => 'andy', 'password' => 'andy-password-123'])->assertRedirect('/dashboard');
+        $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_display_name_authenticates_when_company_email_alias_does_not_exist(): void
+    {
+        $user = $this->dashboardUser();
+        $user->update([
+            'name' => 'Dede',
+            'email' => 'operations@beyourlover.com',
+            'password' => Hash::make('dede-password-123'),
+        ]);
+
+        $this->post('/login', ['email' => 'dede', 'password' => 'dede-password-123'])->assertRedirect('/dashboard');
+        $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_company_email_alias_has_priority_over_a_matching_display_name(): void
+    {
+        $companyUser = $this->dashboardUser();
+        $companyUser->update([
+            'name' => 'Primary Andy',
+            'email' => 'andy@beyourlover.com',
+            'password' => Hash::make('company-password-123'),
+        ]);
+        $nameUser = User::factory()->create([
+            'name' => 'andy',
+            'email' => 'other@beyourlover.com',
+            'is_active' => true,
+            'password' => Hash::make('name-password-123'),
+        ]);
+
+        $this->post('/login', ['email' => 'andy', 'password' => 'company-password-123'])->assertRedirect('/dashboard');
+        $this->assertAuthenticatedAs($companyUser);
+        $this->assertFalse(auth()->user()->is($nameUser));
+    }
+
     public function test_local_uat_admin_alias_authenticates_only_in_non_production_environments(): void
     {
         $role = Role::create(['key' => 'uat-admin-alias', 'label' => 'UAT Admin Alias']);

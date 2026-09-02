@@ -19,9 +19,9 @@ describe('login page', () => {
 
     it('renders fields, approved account text, no registration and robots policy', () => {
         const wrapper = mount(Login)
-        expect(wrapper.get('input[name="email"]').attributes()).toMatchObject({ id: 'email', type: 'text', autocomplete: 'username' })
+        expect(wrapper.get('input[name="email"]').attributes()).toMatchObject({ id: 'email', type: 'text', autocomplete: 'username', placeholder: 'andy 或 andy@beyourlover.com' })
         expect(wrapper.get('input[name="password"]').attributes()).toMatchObject({ id: 'password', type: 'password', autocomplete: 'current-password' })
-        expect(wrapper.get('label[for="email"]').text()).toContain('邮箱')
+        expect(wrapper.get('label[for="email"]').text()).toContain('名称或邮箱')
         expect(wrapper.get('label[for="password"]').text()).toContain('密码')
         expect(wrapper.text()).toContain('登录系统')
         expect(wrapper.text()).toContain('申请开通账户')
@@ -65,7 +65,7 @@ describe('login page', () => {
     it('shows the generic server validation error through UiAlert', () => {
         form = { email: '', password: '', processing: false, errors: { email: 'Internal detail' }, post }
         const alert = mount(Login).get('[role="alert"]')
-        expect(alert.text()).toContain('邮箱或密码不正确，请重试。')
+        expect(alert.text()).toContain('名称/邮箱或密码不正确，请重试。')
         expect(alert.text()).not.toContain('Internal detail')
     })
 })
