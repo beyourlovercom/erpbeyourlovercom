@@ -13,7 +13,7 @@ final class BackupRun extends Model
 
     protected function casts(): array
     {
-        return ['backup_type' => BackupType::class, 'state' => BackupState::class, 'metadata' => 'array', 'started_at' => 'immutable_datetime', 'completed_at' => 'immutable_datetime'];
+        return ['backup_type' => BackupType::class, 'state' => BackupState::class, 'metadata' => 'array', 'started_at' => 'immutable_datetime', 'completed_at' => 'immutable_datetime', 'created_at' => 'immutable_datetime', 'updated_at' => 'immutable_datetime'];
     }
 
     public function artifacts(): HasMany

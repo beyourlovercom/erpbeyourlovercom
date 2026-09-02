@@ -16,10 +16,12 @@ final readonly class BackupRunData
         public ?string $errorCode = null,
         public ?string $errorMessage = null,
         public array $metadata = [],
+        public ?CarbonImmutable $completedAt = null,
+        public ?CarbonImmutable $createdAt = null,
     ) {}
 
     public function withState(BackupState $state): self
     {
-        return new self($this->id, $this->runUuid, $this->backupType, $state, $this->requestedBy, $this->startedAt, $this->errorCode, $this->errorMessage, $this->metadata);
+        return new self($this->id, $this->runUuid, $this->backupType, $state, $this->requestedBy, $this->startedAt, $this->errorCode, $this->errorMessage, $this->metadata, $this->completedAt, $this->createdAt);
     }
 }

@@ -23,4 +23,10 @@ interface BackupRepository
     public function deleteArtifact(int $id): void;
 
     public function markDeleted(int $id): BackupRunData;
+
+    /** @return list<BackupRunData> */
+    public function scheduledRunsNewestFirst(): array;
+
+    /** @return list<BackupRunData> */
+    public function recentRuns(int $limit = 5): array;
 }
