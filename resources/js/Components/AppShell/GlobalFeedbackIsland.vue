@@ -70,7 +70,11 @@ onBeforeUnmount(clearRetractTimer)
       @click="handleClick"
     >
       <span class="feedback-icon" aria-hidden="true">{{ feedback.state === 'ERROR' ? '!' : feedback.state === 'SUCCESS' ? '✓' : feedback.state === 'BLOCKED' ? '⚠' : '•' }}</span>
-      <span class="feedback-copy"><strong>{{ feedback.title }}</strong><span v-if="feedback.message">{{ feedback.message }}</span></span>
+      <span class="feedback-copy">
+        <strong>{{ feedback.title }}</strong>
+        <span v-if="feedback.message">{{ feedback.message }}</span>
+        <span v-if="feedback.next" class="feedback-next">下一步：{{ feedback.next }}</span>
+      </span>
     </button>
     <button v-else type="button" class="feedback-compact" aria-label="展开全局提醒" @click="expand">
       <span class="feedback-icon" aria-hidden="true">{{ feedback.state === 'IDLE' ? '•' : feedback.state === 'ERROR' ? '!' : feedback.state === 'SUCCESS' ? '✓' : '•' }}</span>

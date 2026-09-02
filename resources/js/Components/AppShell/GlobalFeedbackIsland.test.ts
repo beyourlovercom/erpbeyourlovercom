@@ -40,6 +40,13 @@ describe('global feedback island', () => {
     expect(layout).not.toMatch(/toast|snackbar/i)
   })
 
+  it('renders the optional next action in expanded feedback', () => {
+    const wrapper = mount(GlobalFeedbackIsland, {
+      props: { feedback: { state: 'BLOCKED', title: '订单无法创建', message: '请先选择订单商品', next: '选择 SKU / 产品后重新提交' } },
+    })
+    expect(wrapper.get('.feedback-expanded').text()).toContain('下一步：选择 SKU / 产品后重新提交')
+  })
+
   it('emits copy only from expanded copyable feedback', async () => {
     const wrapper = mount(GlobalFeedbackIsland, {
       props: { feedback: { state: 'ERROR', title: '保存失败', message: 'network error' } },

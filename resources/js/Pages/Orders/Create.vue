@@ -15,6 +15,7 @@ const currencyOptions = [
 ]
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
+import { publishGlobalFeedback } from '../../lib/globalFeedback'
 
 const props = defineProps<{
   defaultOrderKind: string
@@ -80,8 +81,47 @@ const removeItem = (index: number) => {
   if (form.items.length > 1) form.items.splice(index, 1)
 }
 
-const submit = () =>
-  form.post(isKol.value ? '/kol/orders' : '/customers/orders')
+const validationFeedback = (errors: Record<string, string>) => {
+  const keys = Object.keys(errors)
+  if (keys.some((key) => /^items\.\d+\.product_id$/.test(key))) {
+    return {
+      state: 'BLOCKED' as const,
+      title: '订单无法创建',
+      message: '请先选择订单商品',
+      next: '选择 SKU / 产品后重新提交',
+    }
+  }
+
+  const message = keys.some((key) => key === 'external_order_number')
+    ? '请检查业务订单号'
+    : keys.some((key) => key === 'order_date')
+      ? '请检查订单日期'
+      : keys.some((key) => key === 'currency')
+        ? '请检查订单币种'
+        : keys.some((key) => /^items\.\d+\.quantity$/.test(key))
+          ? '请检查商品数量'
+          : keys.some((key) => /^items\.\d+\.unit_price$/.test(key))
+            ? '请检查商品单价'
+            : '请检查标记为错误的字段'
+
+  return {
+    state: 'BLOCKED' as const,
+    title: '订单无法创建',
+    message,
+    next: '修正后重新提交',
+  }
+}
+
+const submit = () => {
+  form.post(isKol.value ? '/kol/orders' : '/customers/orders', {
+    onStart: () => publishGlobalFeedback({
+      state: 'SUBMITTING',
+      title: '正在创建订单',
+      message: '',
+    }),
+    onError: (errors) => publishGlobalFeedback(validationFeedback(errors as Record<string, string>)),
+  })
+}
 </script>
 
 <template>
