@@ -24,6 +24,8 @@ use Laravel\Fortify\Actions\PrepareAuthenticatedSession;
 
 final class IdentityFortify
 {
+    private const DEFAULT_LOGIN_DOMAIN = 'beyourlover.com';
+
     public static function boot(): void
     {
         Fortify::loginView(fn () => inertia('Auth/Login'));
@@ -33,11 +35,8 @@ final class IdentityFortify
             PrepareAuthenticatedSession::class,
         ]);
         Fortify::authenticateUsing(function ($request) {
-            $identifier = strtolower(trim((string) $request->email));
-            if (app()->environment(['local', 'testing']) && $identifier === 'admin') {
-                $identifier = 'admin@local.test';
-            }
-            $user = User::where('email', $identifier)->first();
+            $identifier = Str::lower(trim((string) $request->email));
+            $user = self::resolveLoginUser($identifier);
 
             return $user && $user->is_active && Hash::check($request->password, $user->password) ? $user : null;
         });
@@ -50,6 +49,29 @@ final class IdentityFortify
 
         self::registerAuthorization();
         self::registerAuditListeners();
+    }
+
+    private static function resolveLoginUser(string $identifier): ?User
+    {
+        if ($identifier === '') {
+            return null;
+        }
+
+        if (app()->environment(['local', 'testing']) && $identifier === 'admin') {
+            return User::where('email', 'admin@local.test')->first();
+        }
+
+        if (str_contains($identifier, '@')) {
+            return User::where('email', $identifier)->first();
+        }
+
+        $companyEmail = $identifier.'@'.self::DEFAULT_LOGIN_DOMAIN;
+        $companyUser = User::where('email', $companyEmail)->first();
+        if ($companyUser) {
+            return $companyUser;
+        }
+
+        return User::whereRaw('LOWER(name) = ?', [$identifier])->first();
     }
 
     private static function registerAuthorization(): void
