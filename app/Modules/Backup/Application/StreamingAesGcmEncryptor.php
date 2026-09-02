@@ -3,9 +3,10 @@
 namespace App\Modules\Backup\Application;
 
 use App\Modules\Backup\Application\Contracts\BackupEncryptor;
+use App\Modules\Backup\Application\Contracts\RestoreEncryptor;
 use RuntimeException;
 
-final class StreamingAesGcmEncryptor implements BackupEncryptor
+final class StreamingAesGcmEncryptor implements BackupEncryptor, RestoreEncryptor
 {
     private const MAGIC = 'BYLENC01';
     private const TAG_BYTES = 16;

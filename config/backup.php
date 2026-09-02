@@ -31,6 +31,10 @@ return [
         'user_agent' => env('BACKUP_GITHUB_USER_AGENT', 'BYL-ERP-Backup'),
         'max_asset_bytes' => (int) env('BACKUP_GITHUB_MAX_ASSET_BYTES', 2147483647),
     ],
+    'restore' => [
+        'max_decrypted_package_bytes' => (int) env('BACKUP_RESTORE_MAX_DECRYPTED_PACKAGE_BYTES', 2147483647),
+        'max_tar_bytes' => (int) env('BACKUP_RESTORE_MAX_TAR_BYTES', 4294967296),
+    ],
     'manifest' => [
         'version' => 1,
     ],
