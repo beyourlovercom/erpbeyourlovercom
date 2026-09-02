@@ -13,6 +13,7 @@ Route::middleware(['web', 'auth', 'can:products.view'])->group(function (): void
     Route::get('/products/skus', [ProductSkuController::class, 'index'])->name('products.skus');
     Route::get('/products/sku-aliases', [ProductSkuAliasController::class, 'index'])->name('products.sku-aliases');
     Route::get('/products/weight-evidence', [ProductWeightEvidenceController::class, 'index'])->name('products.weight-evidence.index');
+    Route::get('/products/{id}', [ProductController::class, 'show'])->whereNumber('id')->name('products.show');
 });
 
 Route::middleware(['web', 'auth', 'can:products.operate'])->group(function (): void {

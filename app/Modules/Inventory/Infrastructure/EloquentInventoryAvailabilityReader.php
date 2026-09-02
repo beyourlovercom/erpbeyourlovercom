@@ -59,7 +59,7 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
         $rows = WarehouseInventory::query()
             ->whereIn('product_id', $ids->all())
             ->whereIn('warehouse_id', $warehouses->pluck('id')->all())
-            ->get(['product_id', 'warehouse_id', 'quantity_on_hand', 'quantity_reserved'])
+            ->get(['product_id', 'warehouse_id', 'quantity_on_hand', 'quantity_reserved', 'expected_restock_qty'])
             ->keyBy(fn (WarehouseInventory $row): string => $row->product_id.':'.$row->warehouse_id);
 
         $result = [];
@@ -81,6 +81,8 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
                     'quantity_on_hand' => $onHand,
                     'quantity_reserved' => $reserved,
                     'quantity_available' => $knownForProduct ? max($onHand - $reserved, 0) : null,
+                    // A missing product row does not prove that expected restock is zero.
+                    'expected_restock_qty' => $row !== null && $row->expected_restock_qty !== null ? (int) $row->expected_restock_qty : null,
                 ];
             })->all();
         }

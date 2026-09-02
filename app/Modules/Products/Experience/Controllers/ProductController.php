@@ -3,7 +3,13 @@
 namespace App\Modules\Products\Experience\Controllers;
 
 use App\Modules\Identity\Application\AuthorizationKeys;
+use App\Modules\Audit\Application\ProductActivityProjection;
+use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
+use App\Modules\Kol\Application\ProductKolProjection;
+use App\Modules\Logistics\Application\ProductShipmentProjection;
+use App\Modules\Orders\Application\ProductOrderProjection;
 use App\Modules\Products\Application\Contracts\ProductExternalReferenceRepository;
+use App\Modules\Products\Application\Contracts\SkuAliasRepository;
 use App\Modules\Products\Application\ProductService;
 use App\Modules\Products\Application\ProductWeightEvidenceService;
 use Illuminate\Http\JsonResponse;
@@ -20,6 +26,12 @@ final class ProductController
         private readonly ProductService $products,
         private readonly ProductWeightEvidenceService $weightEvidence,
         private readonly ProductExternalReferenceRepository $externalRefs,
+        private readonly SkuAliasRepository $skuAliases,
+        private readonly InventoryAvailabilityReader $inventory,
+        private readonly ProductOrderProjection $orderProjection,
+        private readonly ProductShipmentProjection $shipmentProjection,
+        private readonly ProductKolProjection $kolProjection,
+        private readonly ProductActivityProjection $activityProjection,
     ) {}
 
     public function dashboard(): Response
@@ -58,6 +70,64 @@ final class ProductController
     public function create(): Response
     {
         return Inertia::render('Products/Create');
+    }
+
+    public function show(Request $request, int $id): Response|RedirectResponse
+    {
+        $product = $this->products->findById($id);
+        if ($product === null) {
+            return redirect()->route('products.list');
+        }
+
+        $orderData = $this->orderProjection->forProduct($id);
+        $inventoryRows = $this->inventory->forProductIds([$id])[$id] ?? [];
+        $weight = $product->weight_evidence_id ? $this->weightEvidence->findById((int) $product->weight_evidence_id) : null;
+        $shippingWeight = $product->shipping_weight_evidence_id ? $this->weightEvidence->findById((int) $product->shipping_weight_evidence_id) : null;
+
+        return Inertia::render('Products/Show', [
+            'product' => [
+                'id' => (int) $product->id,
+                'name' => $product->name,
+                'sku' => $product->sku,
+                'source_type' => $product->source_type,
+                'status' => $product->is_active ? 'active' : 'inactive',
+                'product_type' => $product->product_type,
+                'woocommerce_product_id' => $product->woocommerce_product_id,
+                'woo_url' => null,
+                'image_url' => null,
+                'sale_price' => $product->sale_price,
+                'regular_price' => $product->regular_price,
+                'weight_kg' => $product->weight_kg,
+                'shipping_weight_kg' => $product->shipping_weight_kg,
+                'weight_evidence_source_type' => $weight?->getAttribute('source_type'),
+                'weight_evidence_source_reference' => $weight?->getAttribute('source_reference'),
+                'shipping_weight_evidence_source_type' => $shippingWeight?->getAttribute('source_type'),
+                'shipping_weight_evidence_source_reference' => $shippingWeight?->getAttribute('source_reference'),
+                'length_cm' => $product->length_cm,
+                'width_cm' => $product->width_cm,
+                'height_cm' => $product->height_cm,
+                'standard_production_cost' => $product->standard_production_cost,
+                'standard_packaging_cost' => $product->standard_packaging_cost,
+                'standard_purchase_cost' => $product->standard_purchase_cost,
+                'cost_currency' => $product->cost_currency,
+                'cost_note' => $product->cost_note,
+                'country_of_origin' => $product->country_of_origin,
+                'hs_code' => $product->hs_code,
+            ],
+            'externalReferences' => $this->externalRefs->forProduct($id),
+            'skuAliases' => $this->skuAliases->listForProduct($id),
+            'sales' => [
+                ...$orderData['summary'],
+                'revenue_by_currency' => $orderData['revenue_by_currency'],
+                'recent_orders' => $orderData['recent_orders'],
+            ],
+            'inventory' => $inventoryRows,
+            'shipments' => $this->shipmentProjection->forProduct($id),
+            'collaborations' => $this->kolProjection->forProduct($id),
+            'kolShipping' => $this->kolProjection->shippingSummaryForProduct($id),
+            'audit' => $this->activityProjection->forProduct($id),
+            'canOperate' => Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false,
+        ]);
     }
 
     public function store(Request $request): RedirectResponse

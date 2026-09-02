@@ -9,7 +9,7 @@ interface InventoryAvailabilityReader
 
     /**
      * @param array<int, int> $productIds
-     * @return array<int, array<int, array{warehouse_id:int,warehouse_slug:string,warehouse_name:string,inventory_state:string,can_auto_allocate:bool,quantity_on_hand:?int,quantity_reserved:?int,quantity_available:?int}>>
+     * @return array<int, array<int, array{warehouse_id:int,warehouse_slug:string,warehouse_name:string,inventory_state:string,can_auto_allocate:bool,quantity_on_hand:?int,quantity_reserved:?int,quantity_available:?int,expected_restock_qty:?int}>>
      */
     public function forProductIds(array $productIds): array;
 }

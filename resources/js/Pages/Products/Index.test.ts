@@ -58,20 +58,20 @@ describe('Products/Index', () => {
     expect(wrapper.text()).toContain('116')
   })
 
-  it('renders SKU as edit link when SKU exists and canOperate', () => {
+  it('renders SKU as Product360 link when SKU exists', () => {
     const product = makeProduct({ sku: 'TEST-SKU' })
     const page = { ...emptyPage, data: [product], total: 1 }
     const wrapper = mount(Index, { props: { products: page, filters: {}, canOperate: true } })
-    const link = wrapper.find('a[href="/products/1/edit"]')
+    const link = wrapper.find('a[href="/products/1"]')
     expect(link.exists()).toBe(true)
     expect(link.text()).toBe('TEST-SKU')
   })
 
-  it('renders SKU as plain text when canOperate is false', () => {
+  it('renders SKU as Product360 link when canOperate is false', () => {
     const product = makeProduct({ sku: 'TEST-SKU' })
     const page = { ...emptyPage, data: [product], total: 1 }
     const wrapper = mount(Index, { props: { products: page, filters: {}, canOperate: false } })
-    expect(wrapper.find('a[href="/products/1/edit"]').exists()).toBe(false)
+    expect(wrapper.find('a[href="/products/1"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('TEST-SKU')
   })
 
@@ -92,6 +92,7 @@ describe('Products/Index', () => {
     const page = { ...emptyPage, data: [product], total: 1 }
     const wrapper = mount(Index, { props: { products: page, filters: {}, canOperate: true } })
     expect(wrapper.find('a[href="/products/5/edit"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/products/5"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('删除')
   })
 
@@ -100,6 +101,7 @@ describe('Products/Index', () => {
     const page = { ...emptyPage, data: [product], total: 1 }
     const wrapper = mount(Index, { props: { products: page, filters: {}, canOperate: false } })
     expect(wrapper.find('a[href="/products/5/edit"]').exists()).toBe(false)
+    expect(wrapper.find('a[href="/products/5"]').exists()).toBe(true)
     expect(wrapper.text()).not.toContain('编辑')
     expect(wrapper.text()).not.toContain('删除')
   })
