@@ -17,6 +17,25 @@ final readonly class RestorePackageValidator
     /** @return array<string, mixed> */
     public function validate(string $directory, RestoreMode $mode): array
     {
+        $manifest = $this->validateCore($directory, $mode);
+        $this->compatibility->assertCompatible($manifest);
+        return $manifest;
+    }
+
+    /** @return array<string, mixed> */
+    public function validateRollbackSnapshot(string $directory, RestoreMode $mode): array
+    {
+        $manifest = $this->validateCore($directory, $mode);
+        if (($manifest['backup_type'] ?? null) !== BackupType::PreRestore->value) {
+            throw new RestoreFailure('rollback_snapshot_type_invalid');
+        }
+        $this->compatibility->assertRollbackRuntimeCompatible($manifest);
+        return $manifest;
+    }
+
+    /** @return array<string, mixed> */
+    private function validateCore(string $directory, RestoreMode $mode): array
+    {
         $root = realpath($directory);
         if ($root === false || ! is_dir($root) || is_link($root)) {
             throw new RestoreFailure('package_missing');
@@ -87,8 +106,6 @@ final readonly class RestorePackageValidator
             || $manifest['storage_archive_size'] !== $storageSize) {
             throw new RestoreFailure('component_size_mismatch');
         }
-
-        $this->compatibility->assertCompatible($manifest);
 
         return $manifest;
     }

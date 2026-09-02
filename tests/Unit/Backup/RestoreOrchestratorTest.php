@@ -9,7 +9,7 @@ use App\Modules\Backup\Application\Contracts\DatabaseRestorer;
 use App\Modules\Backup\Application\Contracts\PreRestoreSnapshotter;
 use App\Modules\Backup\Application\Contracts\RestoreEncryptor;
 use App\Modules\Backup\Application\Contracts\RestoreHealthChecker;
-use App\Modules\Backup\Application\Contracts\RestoreMigrationRunner;
+use App\Modules\Backup\Application\Contracts\PostRestoreSchemaUpdater;
 use App\Modules\Backup\Application\Contracts\RestorePackageExtractor;
 use App\Modules\Backup\Application\Contracts\RestoreRollbackExecutor;
 use App\Modules\Backup\Application\Contracts\RestoreSource;
@@ -130,7 +130,7 @@ final class RestoreOrchestratorTest extends TestCase
         $database->shouldReceive('restore')->zeroOrMoreTimes()->ordered()->andReturnUsing(function () use (&$events, $failure): void { $events[] = 'database'; if ($failure === 'database') throw new \RuntimeException('database'); });
         $storage = Mockery::mock(StorageRestorer::class);
         $storage->shouldReceive('restore')->zeroOrMoreTimes()->ordered()->andReturnUsing(function () use (&$events, $failure): void { $events[] = 'storage'; if ($failure === 'storage') throw new \RuntimeException('storage'); });
-        $migrations = Mockery::mock(RestoreMigrationRunner::class);
+        $migrations = Mockery::mock(PostRestoreSchemaUpdater::class);
         $migrations->shouldReceive('run')->zeroOrMoreTimes()->ordered()->andReturnUsing(function () use (&$events, $failure): void { $events[] = 'migrations'; if ($failure === 'migrations') throw new \RuntimeException('migrations'); });
         $health = Mockery::mock(RestoreHealthChecker::class);
         $health->shouldReceive('check')->zeroOrMoreTimes()->ordered()->andReturnUsing(function () use (&$events, $failure): void { $events[] = 'health'; if ($failure === 'health') throw new \RuntimeException('health'); });

@@ -47,6 +47,7 @@ return [
     ],
     'tooling' => [
         'mysqldump' => env('BACKUP_MYSQLDUMP_BINARY', 'mysqldump'),
+        'mysql' => env('BACKUP_MYSQL_BINARY', 'mysql'),
         'tar' => env('BACKUP_TAR_BINARY', 'tar'),
         'zstd' => env('BACKUP_ZSTD_BINARY', 'zstd'),
     ],

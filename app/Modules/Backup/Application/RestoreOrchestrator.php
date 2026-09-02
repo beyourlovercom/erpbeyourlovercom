@@ -6,7 +6,7 @@ use App\Modules\Backup\Application\Contracts\DatabaseRestorer;
 use App\Modules\Backup\Application\Contracts\PreRestoreSnapshotter;
 use App\Modules\Backup\Application\Contracts\RestoreEncryptor;
 use App\Modules\Backup\Application\Contracts\RestoreHealthChecker;
-use App\Modules\Backup\Application\Contracts\RestoreMigrationRunner;
+use App\Modules\Backup\Application\Contracts\PostRestoreSchemaUpdater;
 use App\Modules\Backup\Application\Contracts\RestorePackageExtractor;
 use App\Modules\Backup\Application\Contracts\RestoreRollbackExecutor;
 use App\Modules\Backup\Application\Contracts\RestoreSource;
@@ -24,7 +24,7 @@ final readonly class RestoreOrchestrator
         private PreRestoreSnapshotter $snapshotter,
         private DatabaseRestorer $database,
         private StorageRestorer $storage,
-        private RestoreMigrationRunner $migrations,
+        private PostRestoreSchemaUpdater $migrations,
         private RestoreRollbackExecutor $rollback,
         private RestoreHealthChecker $health,
         private RestoreStateMachine $states = new RestoreStateMachine(),
