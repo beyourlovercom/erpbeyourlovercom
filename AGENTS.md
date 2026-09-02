@@ -60,6 +60,29 @@ These collision/handoff rules do not alter Owner UAT, explicit merge authorizati
 
 Parallel implementation is allowed only under `PARALLEL-WORK-EXEC-001`. Each active implementation stream must obey `ONE_WORK_PACKAGE_ONE_BRANCH_ONE_PR`, `ONE_ACTIVE_AGENT_ONE_WORKTREE`, declared dependencies and shared-foundation extraction rules.
 
+# HIGHEST OWNER VISUAL APPROVAL / UAT GATE
+
+**OWNER_APPROVED / ACTIVE / MANDATORY. Applies to every ERP UI/UX task and supersedes any workflow that would allow implementation before visual approval or closure without Owner review of the real page.**
+
+The canonical lifecycle is:
+
+`RENDER / VISUAL PROPOSAL → OWNER PASS → IMPLEMENT → REAL PAGE SCREENSHOT → OWNER PASS → CLOSE`
+
+Mandatory rules:
+
+- **PRE-DEVELOPMENT VISUAL GATE:** Before tracked-code implementation begins for any new page, component, layout, interaction, visual redesign, or material UI/UX change, GPT must first present the Owner with a rendered visual proposal/mockup that is sufficiently representative to judge layout, hierarchy, controls, spacing, and interaction intent.
+- No implementation provider may begin UI/UX implementation until the Owner explicitly returns `PASS` or an equivalently unambiguous approval for that rendered proposal.
+- `OWNER_VISUAL_PASS` is a hard implementation prerequisite. A Work Package must remain `DESIGN_PENDING_OWNER_PASS` while this gate is unresolved.
+- **POST-DEVELOPMENT REAL-PAGE GATE:** After implementation and local verification, GPT must proactively open the actual Local/UAT page on the US development machine and capture/provide real browser screenshot evidence to the Owner.
+- The Owner is not expected to open the page, capture screenshots, or produce UAT evidence for GPT. GPT owns the browser-opening, screenshot-capture, evidence-review, and remediation loop whenever the authorized environment/tooling permits it.
+- A mockup, Storybook/static approximation, automated test result, DOM inspection, build success, or agent self-review does **not** satisfy the post-development gate. The evidence must show the implemented real Local/UAT page.
+- No UI/UX Work Package may be marked `OWNER_UAT_PASS`, `COMPLETE`, `FROZEN`, `CLOSED`, merge-ready, or otherwise formally收口 until the Owner explicitly returns `PASS` or an equivalently unambiguous approval after reviewing the real-page screenshot evidence.
+- If the Owner does not PASS the real page, remediate within the approved scope, recapture the real page, and repeat the Owner review loop. Do not close based on agent judgment alone.
+- **FORBIDDEN:** implement first and seek visual approval afterward; treat silence as approval; substitute developer screenshots/mockups for the real page after implementation; require the Owner to supply routine screenshots; bypass either PASS gate because the change appears small or obvious.
+- Exception: non-visual backend-only, documentation-only, CI-only, test-only, migration-only, or infrastructure-only tasks do not require a rendered visual proposal unless they materially change an Owner-visible UI. If such a task changes visible UI behavior, this gate applies to the visible portion.
+
+This gate does not replace explicit Owner authorization required for commit/push/PR/merge/release, and it does not weaken security, canonical data-truth, migration, accounting, menu, or exact-revision verification requirements.
+
 # HIGHEST UI / FORM DESIGN GATE
 
 For any BYL ERP create/edit/data-entry form task, the highest UI/form authority is:
