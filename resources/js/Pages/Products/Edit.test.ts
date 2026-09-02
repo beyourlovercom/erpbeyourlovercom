@@ -22,6 +22,9 @@ const wooProduct = {
   country_of_origin: null, hs_code: null,
   standard_production_cost: null, standard_packaging_cost: null, standard_purchase_cost: null,
   cost_currency: null, cost_note: null, notes: null,
+  external_references: [
+    { provider: 'woocommerce', connection_key: 'beyourlover.com', reference: '9001', reference_type: 'product' },
+  ],
 }
 
 const manualProduct = {
@@ -34,6 +37,7 @@ const manualProduct = {
   country_of_origin: 'CN', hs_code: null,
   standard_production_cost: '12.5000', standard_packaging_cost: null, standard_purchase_cost: null,
   cost_currency: 'CNY', cost_note: null, notes: null,
+  external_references: [],
 }
 
 const inactiveProduct = {
@@ -59,13 +63,14 @@ describe('Products/Edit V2', () => {
     expect(hrefs).toContain('/products/list')
   })
 
-  it('shows identity strip with SKU, source, Woo ID and status', () => {
+  it('shows identity strip with SKU, source, compact external ref and status', () => {
     const wrapper = mount(Edit, { props: { product: wooProduct } })
     const strip = wrapper.find('.erp-identity-strip')
     expect(strip.exists()).toBe(true)
     expect(strip.text()).toContain('TEST-SKU')
     expect(strip.text()).toContain('WooCommerce')
-    expect(strip.text()).toContain('9001')
+    expect(strip.text()).toContain('beyourlover.com')
+    expect(strip.text()).toContain('产品 9001')
     expect(strip.text()).toContain('启用')
   })
 
@@ -184,5 +189,90 @@ describe('Products/Edit V2', () => {
   it('uses erp-form-card class for card sections', () => {
     const wrapper = mount(Edit, { props: { product: wooProduct } })
     expect(wrapper.findAll('.erp-form-card').length).toBeGreaterThanOrEqual(6)
+  })
+})
+
+describe('Products/Edit — 外部引用 compact identity', () => {
+  const base = {
+    id: 10, woocommerce_product_id: 5000, source_type: 'woocommerce', product_type: 'variable',
+    sku: 'EXT-001', gtin: null, name: 'External Ref Product', unit: null, is_active: true,
+    weight_kg: null, weight_evidence_id: null, weight_evidence_source_type: null,
+    sale_price: null, regular_price: null,
+    shipping_weight_kg: null, shipping_weight_evidence_id: null, shipping_weight_evidence_source_type: null,
+    length_cm: null, width_cm: null, height_cm: null, country_of_origin: null, hs_code: null,
+    standard_production_cost: null, standard_packaging_cost: null, standard_purchase_cost: null,
+    cost_currency: null, cost_note: null, notes: null,
+  }
+
+  const withRefs = {
+    ...base,
+    external_references: [
+      { provider: 'woocommerce', connection_key: 'site-a.example.com', reference: '5000', reference_type: 'product' },
+      { provider: 'woocommerce', connection_key: 'site-a.example.com', reference: '5001', reference_type: 'variation' },
+      { provider: 'woocommerce', connection_key: 'site-b.example.com', reference: '5000', reference_type: 'product' },
+    ],
+  }
+  const withNoRefs = { ...base, external_references: [] }
+
+  it('merges external references into the identity strip', () => {
+    const wrapper = mount(Edit, { props: { product: withRefs } })
+    const strip = wrapper.find('.erp-identity-strip')
+    const compact = strip.find('[data-testid="external-references-compact"]')
+    expect(compact.exists()).toBe(true)
+    expect(compact.text()).toContain('外部引用')
+  })
+
+  it('removes the standalone external-reference card and table', () => {
+    const wrapper = mount(Edit, { props: { product: withRefs } })
+    expect(wrapper.find('[data-testid="external-references-card"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="external-references-table"]').exists()).toBe(false)
+  })
+
+  it('groups same-connection product and variation refs into one compact line', () => {
+    const wrapper = mount(Edit, { props: { product: withRefs } })
+    const summary = wrapper.find('[data-testid="external-reference-summary"]')
+    expect(summary.text()).toContain('site-a.example.com')
+    expect(summary.text()).toContain('产品 5000')
+    expect(summary.text()).toContain('变体 5001')
+  })
+
+  it('keeps separate connection keys visible in the compact summary', () => {
+    const wrapper = mount(Edit, { props: { product: withRefs } })
+    const summary = wrapper.find('[data-testid="external-reference-summary"]')
+    expect(summary.text()).toContain('site-a.example.com')
+    expect(summary.text()).toContain('site-b.example.com')
+  })
+
+  it('keeps full provider-scoped detail in the summary title', () => {
+    const wrapper = mount(Edit, { props: { product: withRefs } })
+    const summary = wrapper.find('[data-testid="external-reference-summary"]')
+    const title = summary.attributes('title')
+    expect(title).toContain('WooCommerce · site-a.example.com · 产品 5000')
+    expect(title).toContain('WooCommerce · site-a.example.com · 变体 5001')
+    expect(title).toContain('WooCommerce · site-b.example.com · 产品 5000')
+  })
+
+  it('shows a minimal dash when there are no external references', () => {
+    const wrapper = mount(Edit, { props: { product: withNoRefs } })
+    expect(wrapper.find('[data-testid="external-reference-summary"]').text()).toBe('—')
+  })
+
+  it('compact external reference field has no mutation controls', () => {
+    const wrapper = mount(Edit, { props: { product: withRefs } })
+    const compact = wrapper.find('[data-testid="external-references-compact"]')
+    expect(compact.find('input').exists()).toBe(false)
+    expect(compact.find('select').exists()).toBe(false)
+    expect(compact.find('button').exists()).toBe(false)
+  })
+
+  it('keeps the compact external-reference field outside the edit form', () => {
+    const wrapper = mount(Edit, { props: { product: withRefs } })
+    expect(wrapper.find('form#product-edit-form').find('[data-testid="external-references-compact"]').exists()).toBe(false)
+  })
+
+  it('does not expose a separate legacy Woo ID identity cell', () => {
+    const wrapper = mount(Edit, { props: { product: withRefs } })
+    const strip = wrapper.find('.erp-identity-strip')
+    expect(strip.text()).not.toContain('Woo ID')
   })
 })

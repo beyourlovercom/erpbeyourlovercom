@@ -46,7 +46,7 @@ describe('Products/Import', () => {
     expect(wrapper.text()).toContain('候选产品：4 条')
     expect(wrapper.text()).toContain('新增：3 条')
     expect(wrapper.text()).toContain('更新：1 条')
-    expect(wrapper.text()).toContain('跳过无 SKU 变体：1 条')
+    expect(wrapper.text()).toContain('无 SKU 变体（合计）：1 条')
     expect(wrapper.text()).toContain('无效：0 条')
   })
 
@@ -54,5 +54,71 @@ describe('Products/Import', () => {
     const result = { invalid: 1, canConfirm: false, errors: ['Row 2: invalid or missing ID'] }
     const wrapper = mount(Import, { props: { result } })
     expect(wrapper.text()).toContain('Row 2: invalid or missing ID')
+  })
+})
+
+describe('Products/Import — Parent column and variation mapping stats', () => {
+  it('helper text mentions 10 columns', () => {
+    const wrapper = mount(Import)
+    expect(wrapper.text()).toContain('10 列')
+  })
+
+  it('helper text mentions Parent column', () => {
+    const wrapper = mount(Import)
+    expect(wrapper.text()).toContain('Parent')
+  })
+
+  it('helper text explains Parent accepts exact SKU or id: form', () => {
+    const wrapper = mount(Import)
+    expect(wrapper.text()).toContain('id:')
+    expect(wrapper.text()).toContain('SKU')
+  })
+
+  it('shows resolved variation mappings count separately', () => {
+    const result = {
+      totalRows: 3, candidates: 1, newCandidates: 1, updates: 0, unchanged: 0,
+      active: 1, inactive: 0, invalid: 0, duplicateSkuConflicts: 0, identityConflicts: 0,
+      skippedNoSkuVariations: 2, resolvedVariationMappings: 1, unresolvedVariationMappings: 1,
+      noSkuNonVariationReconciliation: 0, canConfirm: true, errors: [],
+    }
+    const wrapper = mount(Import, { props: { result } })
+    expect(wrapper.text()).toContain('无 SKU 变体（合计）：2 条')
+    expect(wrapper.text()).toContain('已映射父产品：1 条')
+    expect(wrapper.text()).toContain('未解析父产品：1 条')
+  })
+
+  it('shows zero unresolved when all variations are mapped', () => {
+    const result = {
+      totalRows: 2, candidates: 1, newCandidates: 1, updates: 0, unchanged: 0,
+      active: 1, inactive: 0, invalid: 0, duplicateSkuConflicts: 0, identityConflicts: 0,
+      skippedNoSkuVariations: 1, resolvedVariationMappings: 1, unresolvedVariationMappings: 0,
+      noSkuNonVariationReconciliation: 0, canConfirm: true, errors: [],
+    }
+    const wrapper = mount(Import, { props: { result } })
+    expect(wrapper.text()).toContain('已映射父产品：1 条')
+    expect(wrapper.text()).toContain('未解析父产品：0 条')
+  })
+
+  it('shows zero mapped when all variations are unresolved', () => {
+    const result = {
+      totalRows: 2, candidates: 0, newCandidates: 0, updates: 0, unchanged: 0,
+      active: 0, inactive: 0, invalid: 0, duplicateSkuConflicts: 0, identityConflicts: 0,
+      skippedNoSkuVariations: 1, resolvedVariationMappings: 0, unresolvedVariationMappings: 1,
+      noSkuNonVariationReconciliation: 0, canConfirm: false, errors: [],
+    }
+    const wrapper = mount(Import, { props: { result } })
+    expect(wrapper.text()).toContain('已映射父产品：0 条')
+    expect(wrapper.text()).toContain('未解析父产品：1 条')
+  })
+
+  it('resolvedVariationMappings and unresolvedVariationMappings default to 0 when absent', () => {
+    const result = {
+      totalRows: 1, candidates: 1, newCandidates: 1, updates: 0, unchanged: 0,
+      active: 1, inactive: 0, invalid: 0, duplicateSkuConflicts: 0, identityConflicts: 0,
+      skippedNoSkuVariations: 0, noSkuNonVariationReconciliation: 0, canConfirm: true, errors: [],
+    }
+    const wrapper = mount(Import, { props: { result } })
+    expect(wrapper.text()).toContain('已映射父产品：0 条')
+    expect(wrapper.text()).toContain('未解析父产品：0 条')
   })
 })

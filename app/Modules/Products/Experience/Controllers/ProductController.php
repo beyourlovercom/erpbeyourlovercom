@@ -3,6 +3,7 @@
 namespace App\Modules\Products\Experience\Controllers;
 
 use App\Modules\Identity\Application\AuthorizationKeys;
+use App\Modules\Products\Application\Contracts\ProductExternalReferenceRepository;
 use App\Modules\Products\Application\ProductService;
 use App\Modules\Products\Application\ProductWeightEvidenceService;
 use Illuminate\Http\JsonResponse;
@@ -18,6 +19,7 @@ final class ProductController
     public function __construct(
         private readonly ProductService $products,
         private readonly ProductWeightEvidenceService $weightEvidence,
+        private readonly ProductExternalReferenceRepository $externalRefs,
     ) {}
 
     public function dashboard(): Response
@@ -137,6 +139,7 @@ final class ProductController
                 'cost_currency' => $product->cost_currency,
                 'cost_note' => $product->cost_note,
                 'notes' => $product->notes,
+                'external_references' => $this->externalRefs->forProduct((int) $product->id),
             ],
         ]);
     }
@@ -198,7 +201,7 @@ final class ProductController
 
     public function importTemplate(): \Illuminate\Http\Response
     {
-        $csv = "\xEF\xBB\xBF".'"ID","Type","SKU","GTIN, UPC, EAN, or ISBN","Name","Weight (kg)","Sale price","Regular price","Published"'."\r\n";
+        $csv = "\xEF\xBB\xBF".'"ID","Type","SKU","GTIN, UPC, EAN, or ISBN","Name","Weight (kg)","Sale price","Regular price","Published","Parent"'."\r\n";
 
         return response($csv, 200, [
             'Content-Type' => 'text/csv; charset=UTF-8',

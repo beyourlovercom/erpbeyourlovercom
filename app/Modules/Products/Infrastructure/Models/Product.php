@@ -41,6 +41,11 @@ class Product extends Model
         return $this->hasMany(ProductSkuAlias::class);
     }
 
+    public function externalReferences(): HasMany
+    {
+        return $this->hasMany(ProductExternalReference::class);
+    }
+
     public function weightEvidence(): BelongsTo
     {
         return $this->belongsTo(ProductWeightEvidence::class, 'weight_evidence_id');
