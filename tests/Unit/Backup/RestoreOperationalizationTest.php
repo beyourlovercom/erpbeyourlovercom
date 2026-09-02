@@ -6,7 +6,6 @@ use App\Modules\Backup\Application\BackupArtifactData;
 use App\Modules\Backup\Application\BackupRunData;
 use App\Modules\Backup\Application\BackupState;
 use App\Modules\Backup\Application\BackupType;
-use App\Modules\Backup\Application\Contracts\BackupRepository;
 use App\Modules\Backup\Application\Contracts\DatabaseRestorer;
 use App\Modules\Backup\Application\Contracts\PreRestoreSnapshotter;
 use App\Modules\Backup\Application\Contracts\RestoreCompatibility;
@@ -117,10 +116,19 @@ final class RestoreOperationalizationTest extends TestCase
         $encrypted = $this->root.'/snapshot.tar.zst.enc';
         file_put_contents($encrypted, 'encrypted-snapshot');
         $artifact = new BackupArtifactData(1, 9, $encrypted, 'encrypted', filesize($encrypted), hash_file('sha256', $encrypted), true, 'test-key');
-        $snapshot = new BackupRunData(9, '11111111-1111-4111-8111-111111111111', BackupType::PreRestore, BackupState::Ready);
+        $snapshot = new BackupRunData(
+            9,
+            '11111111-1111-4111-8111-111111111111',
+            BackupType::PreRestore,
+            BackupState::Ready,
+            metadata: [
+                'pre_restore_artifact_path' => $artifact->path,
+                'pre_restore_artifact_size' => $artifact->size,
+                'pre_restore_artifact_sha256' => $artifact->checksum,
+                'pre_restore_artifact_key_id' => $artifact->keyId,
+            ],
+        );
 
-        $repository = Mockery::mock(BackupRepository::class);
-        $repository->shouldReceive('artifactsForRun')->once()->with(9)->andReturn([$artifact]);
         $encryptor = Mockery::mock(RestoreEncryptor::class);
         $encryptor->shouldReceive('inspect')->once()->with(realpath($encrypted))->andReturn(['header' => [], 'chunks' => 1]);
         $encryptor->shouldReceive('decrypt')->once()->andReturnUsing(fn (string $source, string $destination) => file_put_contents($destination, 'decrypted'));
@@ -136,9 +144,27 @@ final class RestoreOperationalizationTest extends TestCase
         $health->shouldReceive('check')->once()->ordered();
 
         $validator = new RestorePackageValidator(new RestoreCompatibilityValidator($this->compatibility(true)));
-        $executor = new SnapshotRestoreRollbackExecutor($repository, $encryptor, $extractor, $validator, $database, $storage, $migrations, $health);
+        $executor = new SnapshotRestoreRollbackExecutor($encryptor, $extractor, $validator, $database, $storage, $migrations, $health);
         $executor->rollback($snapshot, RestoreMode::Full);
         self::assertDirectoryDoesNotExist($this->root.'/rollback/11111111-1111-4111-8111-111111111111');
+    }
+
+    public function test_snapshot_rollback_requires_pre_destructive_artifact_evidence_without_repository_lookup(): void
+    {
+        $snapshot = new BackupRunData(9, '22222222-2222-4222-8222-222222222222', BackupType::PreRestore, BackupState::Ready);
+        $executor = new SnapshotRestoreRollbackExecutor(
+            Mockery::mock(RestoreEncryptor::class),
+            Mockery::mock(RestorePackageExtractor::class),
+            new RestorePackageValidator(new RestoreCompatibilityValidator($this->compatibility(true))),
+            Mockery::mock(DatabaseRestorer::class),
+            Mockery::mock(StorageRestorer::class),
+            Mockery::mock(PostRestoreSchemaUpdater::class),
+            Mockery::mock(RestoreHealthChecker::class),
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('evidence is invalid');
+        $executor->rollback($snapshot, RestoreMode::Full);
     }
 
     private function compatibility(bool $ledgerThrows = false): RestoreCompatibility

@@ -106,7 +106,19 @@ final class RestoreOrchestratorTest extends TestCase
     private function orchestrator(bool $verified = true, ?string $failure = null): array
     {
         $events = [];
-        $snapshot = new BackupRunData(7, 'snapshot-uuid', BackupType::PreRestore, BackupState::Verified, 1, CarbonImmutable::now());
+        $snapshot = new BackupRunData(
+            7,
+            'snapshot-uuid',
+            BackupType::PreRestore,
+            BackupState::Verified,
+            1,
+            CarbonImmutable::now(),
+            metadata: [
+                'pre_restore_artifact_path' => '/private/tmp/snapshot.tar.zst.enc',
+                'pre_restore_artifact_size' => 123,
+                'pre_restore_artifact_sha256' => str_repeat('a', 64),
+            ],
+        );
         $source = Mockery::mock(RestoreSource::class);
         $source->shouldReceive('materialize')->once()->andReturnUsing(function (string $source, string $destination, string $sha): void {
             file_put_contents($destination, 'encrypted fixture');

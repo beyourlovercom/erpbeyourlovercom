@@ -75,13 +75,21 @@ final readonly class RestoreOrchestrator
 
             $run = $this->transition($run, RestoreState::Snapshotting);
             $snapshot = $this->snapshotter->createAndVerify();
+            $snapshotChecksum = $snapshot->metadata['pre_restore_artifact_sha256'] ?? null;
+            $snapshotPath = $snapshot->metadata['pre_restore_artifact_path'] ?? null;
+            $snapshotSize = $snapshot->metadata['pre_restore_artifact_size'] ?? null;
             if ($snapshot->backupType !== BackupType::PreRestore
-                || ! in_array($snapshot->state, [BackupState::Ready, BackupState::Verified], true)) {
+                || ! in_array($snapshot->state, [BackupState::Ready, BackupState::Verified], true)
+                || ! is_string($snapshotPath) || $snapshotPath === ''
+                || ! is_int($snapshotSize) || $snapshotSize < 1
+                || ! is_string($snapshotChecksum) || ! preg_match('/^[a-f0-9]{64}$/', $snapshotChecksum)) {
                 throw new RestoreFailure('pre_restore_snapshot_not_verified');
             }
 
             $run = $this->transition($run, RestoreState::Restoring, [
                 'pre_restore_snapshot_run_uuid' => $snapshot->runUuid,
+                'pre_restore_snapshot_sha256' => $snapshotChecksum,
+                'pre_restore_snapshot_size' => $snapshotSize,
             ]);
             $destructive = true;
             $this->database->restore($package.'/database.sql.gz');

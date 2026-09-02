@@ -43,6 +43,13 @@ final readonly class LocalPreRestoreSnapshotter implements PreRestoreSnapshotter
             throw new RuntimeException('Pre-restore snapshot checksum verification failed.');
         }
 
-        return $run;
+        return $this->repository->updateRun($run->id, [
+            'metadata' => array_merge($run->metadata, [
+                'pre_restore_artifact_path' => $real,
+                'pre_restore_artifact_size' => $artifact->size,
+                'pre_restore_artifact_sha256' => $artifact->checksum,
+                'pre_restore_artifact_key_id' => $artifact->keyId,
+            ]),
+        ]);
     }
 }
