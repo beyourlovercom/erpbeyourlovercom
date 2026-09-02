@@ -181,12 +181,25 @@ final class ProductImportTest extends TestCase
 
     public function test_search_returns_prefix_match_first(): void
     {
-        Product::create(['woocommerce_product_id' => 5001, 'sku' => 'ABC-SUFFIX', 'name' => 'Suffix', 'product_type' => 'simple']);
+        Product::create(['woocommerce_product_id' => 5001, 'sku' => 'XABC-P-CONTAINS', 'name' => 'Contains', 'product_type' => 'simple']);
         Product::create(['woocommerce_product_id' => 5002, 'sku' => 'ABC-PREFIX', 'name' => 'Prefix', 'product_type' => 'simple']);
+        Product::create(['woocommerce_product_id' => 5003, 'sku' => 'ZZZ-NAME', 'name' => 'ABC-P Name Match', 'product_type' => 'simple']);
 
         $results = app(ProductService::class)->searchSkus('ABC-P');
 
-        $this->assertSame('ABC-PREFIX', $results[0]['sku']);
+        $this->assertSame(['ABC-PREFIX', 'XABC-P-CONTAINS', 'ZZZ-NAME'], array_column($results, 'sku'));
+    }
+
+    public function test_empty_search_returns_valid_skus_in_ascending_order(): void
+    {
+        Product::create(['woocommerce_product_id' => 5101, 'sku' => 'B100', 'name' => 'Beta', 'product_type' => 'simple']);
+        Product::create(['woocommerce_product_id' => 5102, 'sku' => 'A200', 'name' => 'Alpha Two', 'product_type' => 'simple']);
+        Product::create(['woocommerce_product_id' => 5103, 'sku' => 'A100', 'name' => 'Alpha One', 'product_type' => 'simple']);
+        Product::create(['woocommerce_product_id' => 5104, 'sku' => null, 'name' => 'No SKU', 'product_type' => 'simple']);
+
+        $results = app(ProductService::class)->searchSkus('');
+
+        $this->assertSame(['A100', 'A200', 'B100'], array_column($results, 'sku'));
     }
 
     public function test_import_does_not_delete_unrelated_products(): void

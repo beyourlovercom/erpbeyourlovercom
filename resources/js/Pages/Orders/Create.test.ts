@@ -1,6 +1,9 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { globalFeedback, publishGlobalFeedback } from '../../lib/globalFeedback'
 import Create from './Create.vue'
+
+const postMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
@@ -8,7 +11,7 @@ vi.mock('@inertiajs/vue3', () => ({
     ...initial,
     processing: false,
     errors: {},
-    post: vi.fn(),
+    post: postMock,
   }),
   usePage: () => ({ url: '/customers/orders/create', props: { auth: { user: { id: 1, name: 'Test', email: 't@t.com' } }, shellNavigation: [] } }),
 }))
@@ -34,6 +37,13 @@ const kolProps = {
 }
 
 describe('Orders/Create V2', () => {
+  beforeEach(() => {
+    postMock.mockReset()
+    publishGlobalFeedback({ state: 'IDLE', title: '', message: '' })
+  })
+
+  afterEach(() => publishGlobalFeedback({ state: 'IDLE', title: '', message: '' }))
+
   it('renders 新建客户订单 title for customer route', () => {
     const wrapper = mount(Create, { props: customerProps })
     expect(wrapper.text()).toContain('新建客户订单')
@@ -72,7 +82,7 @@ describe('Orders/Create V2', () => {
 
   it('shows 取消 secondary action linking to list', () => {
     const wrapper = mount(Create, { props: customerProps })
-    const actionBar = wrapper.find('.ord-action-bar')
+    const actionBar = wrapper.find('.erp-form-header-actions')
     const cancelLink = actionBar.find('a[href="/customers/orders"]')
     expect(cancelLink.exists()).toBe(true)
     expect(cancelLink.text()).toBe('取消')
@@ -173,5 +183,43 @@ describe('Orders/Create V2', () => {
     const texts = readonlyDivs.map(d => d.text())
     expect(texts.some(t => t.includes('客户订单'))).toBe(true)
     expect(texts.some(t => t.includes('手动创建'))).toBe(true)
+  })
+
+  it('publishes submitting feedback when order creation starts', async () => {
+    const wrapper = mount(Create, { props: customerProps })
+    await wrapper.get('form').trigger('submit')
+
+    const callbacks = postMock.mock.calls[0]?.[1] as { onStart?: () => void }
+    callbacks.onStart?.()
+
+    expect(globalFeedback.value).toMatchObject({
+      state: 'SUBMITTING',
+      title: '正在创建订单',
+    })
+  })
+
+  it('maps missing Product validation to a human-readable blocker', async () => {
+    const wrapper = mount(Create, { props: customerProps })
+    await wrapper.get('form').trigger('submit')
+
+    const callbacks = postMock.mock.calls[0]?.[1] as { onError?: (errors: Record<string, string>) => void }
+    callbacks.onError?.({ 'items.0.product_id': 'The items.0.product_id field is required.' })
+
+    expect(globalFeedback.value).toEqual({
+      state: 'BLOCKED',
+      title: '订单无法创建',
+      message: '请先选择订单商品',
+      next: '选择 SKU / 产品后重新提交',
+    })
+    expect(JSON.stringify(globalFeedback.value)).not.toContain('items.0.product_id')
+  })
+
+  it('posts customer and KOL forms to their existing endpoints', async () => {
+    await mount(Create, { props: customerProps }).get('form').trigger('submit')
+    expect(postMock.mock.calls[0]?.[0]).toBe('/customers/orders')
+
+    postMock.mockReset()
+    await mount(Create, { props: kolProps }).get('form').trigger('submit')
+    expect(postMock.mock.calls[0]?.[0]).toBe('/kol/orders')
   })
 })

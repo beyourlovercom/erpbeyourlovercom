@@ -241,9 +241,6 @@ final class ProductController
     public function skuSearch(Request $request): JsonResponse
     {
         $query = trim((string) $request->input('q', ''));
-        if ($query === '') {
-            return response()->json([]);
-        }
         $results = $this->products->searchSkus($query);
 
         return response()->json($results);

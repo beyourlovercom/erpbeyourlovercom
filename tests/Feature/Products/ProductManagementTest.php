@@ -94,6 +94,19 @@ final class ProductManagementTest extends TestCase
         $this->actingAs($user)->get('/products/sku-search?q=test')->assertOk();
     }
 
+    public function test_empty_sku_search_returns_default_sku_ascending_options(): void
+    {
+        $user = $this->userWith(['products.view']);
+        Product::create(['woocommerce_product_id' => 9101, 'sku' => 'B200', 'name' => 'Beta', 'product_type' => 'simple']);
+        Product::create(['woocommerce_product_id' => 9102, 'sku' => 'A100', 'name' => 'Alpha', 'product_type' => 'simple']);
+        Product::create(['woocommerce_product_id' => 9103, 'sku' => null, 'name' => 'No SKU', 'product_type' => 'simple']);
+
+        $response = $this->actingAs($user)->getJson('/products/sku-search');
+
+        $response->assertOk();
+        $this->assertSame(['A100', 'B200'], array_column($response->json(), 'sku'));
+    }
+
     // ── Create ────────────────────────────────────────────────────────────────
 
     public function test_create_page_is_accessible(): void

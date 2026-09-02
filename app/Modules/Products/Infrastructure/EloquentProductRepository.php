@@ -60,15 +60,33 @@ final class EloquentProductRepository implements ProductRepository
 
     public function searchSkus(string $query, int $limit = 20): array
     {
-        return Product::query()
+        $query = trim($query);
+        $builder = Product::query()
             ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->where(function ($q) use ($query): void {
-                $q->where('sku', 'like', $query.'%')
-                    ->orWhere('sku', 'like', '%'.$query.'%')
-                    ->orWhere('name', 'like', '%'.$query.'%');
-            })
-            ->orderByRaw('CASE WHEN sku LIKE ? THEN 0 ELSE 1 END, sku', [$query.'%'])
+            ->where('sku', '!=', '');
+
+        if ($query === '') {
+            $builder
+                ->orderBy('sku')
+                ->orderBy('name')
+                ->orderBy('id');
+        } else {
+            $builder
+                ->where(function ($q) use ($query): void {
+                    $q->where('sku', 'like', $query.'%')
+                        ->orWhere('sku', 'like', '%'.$query.'%')
+                        ->orWhere('name', 'like', '%'.$query.'%');
+                })
+                ->orderByRaw(
+                    'CASE WHEN sku LIKE ? THEN 0 WHEN sku LIKE ? THEN 1 WHEN name LIKE ? THEN 2 ELSE 3 END',
+                    [$query.'%', '%'.$query.'%', '%'.$query.'%']
+                )
+                ->orderBy('sku')
+                ->orderBy('name')
+                ->orderBy('id');
+        }
+
+        return $builder
             ->limit($limit)
             ->get(['id', 'sku', 'name'])
             ->map(fn ($p): array => ['id' => $p->id, 'sku' => $p->sku, 'name' => $p->name])

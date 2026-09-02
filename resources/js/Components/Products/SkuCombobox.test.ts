@@ -1,76 +1,93 @@
-import { mount, flushPromises } from '@vue/test-utils'
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SkuCombobox from './SkuCombobox.vue'
 
 const mockFetch = vi.fn()
-global.fetch = mockFetch
 
 describe('SkuCombobox', () => {
   beforeEach(() => {
     mockFetch.mockReset()
-    vi.useRealTimers()
+    vi.stubGlobal('fetch', mockFetch)
   })
 
-  it('renders text input', () => {
-    const wrapper = mount(SkuCombobox, { props: { modelValue: '', productId: null } })
-    expect(wrapper.find('input[type="text"]').exists()).toBe(true)
-    wrapper.unmount()
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
   })
 
-  it('emits update:modelValue on input', async () => {
-    vi.useFakeTimers()
+  it('opens and loads default options when focused with an empty query', async () => {
+    mockFetch.mockResolvedValue({
+      json: async () => [{ id: 1, sku: 'A001', name: 'Product A' }],
+    })
     const wrapper = mount(SkuCombobox, { props: { modelValue: '', productId: null } })
-    mockFetch.mockResolvedValue({ json: async () => [] })
-    await wrapper.find('input').setValue('AB')
-    await wrapper.find('input').trigger('input')
-    expect(wrapper.emitted('update:modelValue')).toBeTruthy()
-    expect(wrapper.emitted('update:productId')).toBeTruthy()
-    expect(wrapper.emitted('update:productId')![0]).toEqual([null])
-    vi.clearAllTimers()
-    vi.useRealTimers()
-    wrapper.unmount()
-  })
 
-  it('shows dropdown with SKU — name format when results returned', async () => {
-    vi.useFakeTimers()
-    mockFetch.mockResolvedValue({ json: async () => [{ id: 1, sku: 'SKU-A', name: 'Product A' }] })
-    const wrapper = mount(SkuCombobox, { props: { modelValue: '', productId: null } })
-    await wrapper.find('input').setValue('SKU')
-    await wrapper.find('input').trigger('input')
-    vi.runAllTimers()
-    vi.useRealTimers()
+    await wrapper.get('input').trigger('focus')
     await flushPromises()
-    await wrapper.vm.$nextTick()
-    expect(wrapper.text()).toContain('SKU-A')
+
+    expect(mockFetch).toHaveBeenCalledWith('/products/sku-search?q=', expect.any(Object))
+    expect(wrapper.find('.sku-combobox-dropdown').exists()).toBe(true)
+    expect(wrapper.text()).toContain('A001')
     expect(wrapper.text()).toContain('Product A')
-    wrapper.unmount()
   })
 
-  it('selects item and emits product_id', async () => {
+  it('debounces typed searches and clears a previous product id', async () => {
     vi.useFakeTimers()
-    mockFetch.mockResolvedValue({ json: async () => [{ id: 42, sku: 'SEL-001', name: 'Selected' }] })
-    const wrapper = mount(SkuCombobox, { props: { modelValue: '', productId: null } })
-    await wrapper.find('input').setValue('SEL')
-    await wrapper.find('input').trigger('input')
-    vi.runAllTimers()
-    vi.useRealTimers()
+    mockFetch.mockResolvedValue({ json: async () => [] })
+    const wrapper = mount(SkuCombobox, { props: { modelValue: 'OLD-1', productId: 42 } })
+
+    await wrapper.get('input').setValue('AB')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['AB'])
+    expect(wrapper.emitted('update:productId')?.at(-1)).toEqual([null])
+
+    await vi.advanceTimersByTimeAsync(180)
     await flushPromises()
-    await wrapper.vm.$nextTick()
-    const item = wrapper.find('.sku-combobox-dropdown li')
-    await item.trigger('mousedown')
+    expect(mockFetch).toHaveBeenCalledWith('/products/sku-search?q=AB', expect.any(Object))
+  })
+
+  it('selects an option and emits canonical sku and product id', async () => {
+    mockFetch.mockResolvedValue({
+      json: async () => [{ id: 42, sku: 'SEL-001', name: 'Selected Product' }],
+    })
+    const wrapper = mount(SkuCombobox, { props: { modelValue: '', productId: null } })
+
+    await wrapper.get('input').trigger('focus')
+    await flushPromises()
+    await wrapper.get('.sku-combobox-option').trigger('mousedown')
+
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['SEL-001'])
     expect(wrapper.emitted('update:productId')?.at(-1)).toEqual([42])
-    wrapper.unmount()
+    expect((wrapper.get('input').element as HTMLInputElement).value).toBe('SEL-001')
+    expect(wrapper.find('.sku-combobox-dropdown').exists()).toBe(false)
   })
 
-  it('does not show dropdown for empty query', async () => {
-    vi.useFakeTimers()
+  it('supports keyboard navigation and Enter selection', async () => {
+    mockFetch.mockResolvedValue({
+      json: async () => [
+        { id: 1, sku: 'A001', name: 'Product A' },
+        { id: 2, sku: 'A002', name: 'Product B' },
+      ],
+    })
     const wrapper = mount(SkuCombobox, { props: { modelValue: '', productId: null } })
-    await wrapper.find('input').setValue('')
-    await wrapper.find('input').trigger('input')
-    expect(wrapper.find('.sku-combobox-dropdown').exists()).toBe(false)
-    vi.clearAllTimers()
-    vi.useRealTimers()
-    wrapper.unmount()
+    const input = wrapper.get('input')
+
+    await input.trigger('focus')
+    await flushPromises()
+    await input.trigger('keydown', { key: 'ArrowDown' })
+    await input.trigger('keydown', { key: 'Enter' })
+
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['A002'])
+    expect(wrapper.emitted('update:productId')?.at(-1)).toEqual([2])
+  })
+
+  it('keeps an empty dropdown open and renders no selectable fake option', async () => {
+    mockFetch.mockResolvedValue({ json: async () => [] })
+    const wrapper = mount(SkuCombobox, { props: { modelValue: '', productId: null } })
+
+    await wrapper.get('input').trigger('focus')
+    await flushPromises()
+
+    expect(wrapper.find('.sku-combobox-dropdown').exists()).toBe(true)
+    expect(wrapper.text()).toContain('暂无可选产品')
+    expect(wrapper.find('.sku-combobox-option').exists()).toBe(false)
   })
 })
