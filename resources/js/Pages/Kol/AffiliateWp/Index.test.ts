@@ -6,6 +6,7 @@ const { postMock } = vi.hoisted(() => ({ postMock: vi.fn() }))
 
 vi.mock('@inertiajs/vue3', () => ({
   Head: { template: '<span />' },
+  Link: { template: '<a><slot /></a>' },
   useForm: (initial: Record<string, unknown>) => ({ ...initial, processing: false, errors: {}, post: postMock }),
 }))
 vi.mock('../../../Layouts/AuthenticatedLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
@@ -73,6 +74,12 @@ describe('AffiliateWP workspace', () => {
     expect(couponTab.attributes('disabled')).toBeUndefined()
     await couponTab.trigger('click')
     expect(wrapper.text()).toContain('暂无 Coupon mirror')
+  })
+
+  it('shows the authorized real-data reconciliation header action', () => {
+    const wrapper = mount(Index, { props: props({ canManageAffiliates: true }) })
+    const link = wrapper.find('a')
+    expect(link.text()).toContain('真实数据核对')
   })
 
 

@@ -8,6 +8,7 @@ use App\Modules\Kol\Application\AffiliateWp\AffiliateSnapshotSyncService;
 use App\Modules\Kol\Application\AffiliateWp\CouponProvisioningService;
 use App\Modules\Kol\Application\AffiliateWp\CouponSnapshotSyncService;
 use App\Modules\Kol\Application\AffiliateWp\KolProvisioningService;
+use App\Modules\Kol\Application\Reconciliation\KolReconciliationService;
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
 use App\Modules\Kol\Application\KolScope;
 use App\Modules\Kol\Infrastructure\Models\Kol;
@@ -16,6 +17,7 @@ use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Inertia\Inertia;
 use Inertia\Response;
 use RuntimeException;
@@ -29,6 +31,7 @@ final class AffiliateWpSyncController
         private readonly CouponSnapshotSyncService $couponSyncService,
         private readonly CouponProvisioningService $couponProvisioningService,
         private readonly AffiliateWpGateway $gateway,
+        private readonly KolReconciliationService $reconciliationService,
     ) {}
 
     public function index(Request $request): Response
@@ -71,6 +74,32 @@ final class AffiliateWpSyncController
             'kolOptions' => $kolOptions,
             'ownerOptions' => $ownerOptions,
         ]);
+    }
+
+    public function reconciliation(Request $request): Response
+    {
+        $connectionKey = (string) ($this->gateway->descriptor()['connection_key'] ?? '');
+        return Inertia::render('Kol/AffiliateWp/Reconciliation', [
+            'connectionKey' => $connectionKey,
+            'batches' => $this->reconciliationService->workspace($connectionKey),
+        ]);
+    }
+
+    public function previewReconciliation(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $request->validate(['file' => 'required|file|mimes:csv,txt,xlsx|max:10240']);
+        $connectionKey = (string) ($this->gateway->descriptor()['connection_key'] ?? '');
+        $batch = $this->reconciliationService->preview($request->file('file'), $connectionKey, $request->user());
+        return response()->json(['batch' => [
+            'id' => $batch->id, 'source_type' => $batch->source_type, 'original_filename' => $batch->original_filename,
+            'checksum' => $batch->checksum, 'total_rows' => $batch->total_rows, 'distinct_source_identities' => $batch->distinct_source_identities,
+            'summary' => $batch->preview_summary, 'rows' => $batch->rows->map(fn ($row) => [
+                'source_row_number' => $row->source_row_number, 'identity' => $row->normalized_identity, 'evidence' => $row->exact_match_evidence,
+                'kol' => $row->kol ? ['id' => $row->kol->id, 'display_name' => $row->kol->display_name] : null,
+                'affiliate_account_id' => $row->matched_affiliate_account_id, 'kol_status' => $row->kol_status,
+                'affiliate_status' => $row->affiliate_status, 'status' => $row->reconciliation_status, 'message' => $row->message,
+            ])->values()->all(),
+        ]]);
     }
 
     public function bind(Request $request): RedirectResponse
