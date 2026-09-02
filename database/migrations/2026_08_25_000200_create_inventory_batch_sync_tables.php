@@ -41,7 +41,7 @@ return new class extends Migration {
             $table->unsignedInteger('quantity')->default(0);
             $table->foreignId('sync_batch_id')->nullable()->constrained('inventory_sync_batches')->nullOnDelete();
             $table->timestamps();
-            $table->index(['warehouse_id', 'product_id', 'stock_status']);
+            $table->index(['warehouse_id', 'product_id', 'stock_status'], 'wh_inv_lots_wh_product_status_idx');
         });
 
         Schema::create('inventory_sync_rows', function (Blueprint $table): void {
