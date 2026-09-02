@@ -5,7 +5,6 @@ namespace App\Modules\Backup\Infrastructure;
 use App\Modules\Backup\Application\BackupRunData;
 use App\Modules\Backup\Application\BackupState;
 use App\Modules\Backup\Application\BackupType;
-use App\Modules\Backup\Application\Contracts\BackupRepository;
 use App\Modules\Backup\Application\Contracts\DatabaseRestorer;
 use App\Modules\Backup\Application\Contracts\RestoreEncryptor;
 use App\Modules\Backup\Application\Contracts\RestoreHealthChecker;
@@ -20,7 +19,6 @@ use RuntimeException;
 final readonly class SnapshotRestoreRollbackExecutor implements RestoreRollbackExecutor
 {
     public function __construct(
-        private BackupRepository $repository,
         private RestoreEncryptor $encryptor,
         private RestorePackageExtractor $extractor,
         private RestorePackageValidator $validator,
@@ -35,19 +33,24 @@ final readonly class SnapshotRestoreRollbackExecutor implements RestoreRollbackE
         if ($snapshot->backupType !== BackupType::PreRestore || ! in_array($snapshot->state, [BackupState::Ready, BackupState::Verified], true)) {
             throw new RuntimeException('Rollback snapshot is not usable.');
         }
-        $artifacts = $this->repository->artifactsForRun($snapshot->id);
-        if (count($artifacts) !== 1 || $artifacts[0]->kind !== 'encrypted' || $artifacts[0]->encrypted !== true) throw new RuntimeException('Rollback snapshot artifact is invalid.');
-        $artifact = $artifacts[0];
-        $encrypted = realpath($artifact->path);
+        $path = $snapshot->metadata['pre_restore_artifact_path'] ?? null;
+        $size = $snapshot->metadata['pre_restore_artifact_size'] ?? null;
+        $checksum = $snapshot->metadata['pre_restore_artifact_sha256'] ?? null;
+        if (! is_string($path) || $path === '' || ! is_int($size) || $size < 1
+            || ! is_string($checksum) || ! preg_match('/^[a-f0-9]{64}$/', $checksum)) {
+            throw new RuntimeException('Rollback snapshot artifact evidence is invalid.');
+        }
+
+        $encrypted = realpath($path);
         $configuredWorkspace = (string) config('backup.storage.workspace', 'storage/app/backups');
         $workspacePath = str_starts_with($configuredWorkspace, DIRECTORY_SEPARATOR) ? $configuredWorkspace : base_path($configuredWorkspace);
         $workspace = realpath($workspacePath);
-        if ($encrypted === false || $workspace === false || ! is_file($encrypted) || is_link($artifact->path)
+        if ($encrypted === false || $workspace === false || ! is_file($encrypted) || is_link($path)
             || ! str_starts_with($encrypted, rtrim($workspace, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR)
             || ! str_ends_with($encrypted, (string) config('backup.format.asset_suffix', '.tar.zst.enc'))
-            || filesize($encrypted) !== $artifact->size) throw new RuntimeException('Rollback snapshot artifact is unavailable.');
+            || filesize($encrypted) !== $size) throw new RuntimeException('Rollback snapshot artifact is unavailable.');
         $sha = hash_file('sha256', $encrypted);
-        if ($sha === false || ! hash_equals($artifact->checksum, $sha)) throw new RuntimeException('Rollback snapshot checksum verification failed.');
+        if ($sha === false || ! hash_equals($checksum, $sha)) throw new RuntimeException('Rollback snapshot checksum verification failed.');
 
         $workspace = $this->createWorkspace($snapshot->runUuid);
         try {
