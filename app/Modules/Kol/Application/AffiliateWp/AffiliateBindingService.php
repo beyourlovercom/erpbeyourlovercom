@@ -23,6 +23,7 @@ final class AffiliateBindingService
     public function __construct(
         private readonly KolService $kols,
         private readonly AuditRecorder $audit,
+        private readonly ReferralResolutionService $referrals,
     ) {}
 
     public function bind(string $connectionKey, int $accountId, int $kolId, Authenticatable $actor): Model
@@ -38,7 +39,8 @@ final class AffiliateBindingService
             }
 
             if ($account->kol_id === $kolId) {
-                return $account;
+                $this->referrals->resolve($connectionKey, (int) $account->affiliate_id);
+                return $account->fresh(['kol']);
             }
             if ($account->kol_id !== null) {
                 throw new DomainException('Affiliate is already bound to another KOL.');
@@ -61,6 +63,7 @@ final class AffiliateBindingService
                 'origin' => $account->origin,
                 'provider_status' => $account->provider_status,
             ]);
+            $this->referrals->resolve($connectionKey, (int) $account->affiliate_id);
 
             return $account->fresh(['kol']);
         });
@@ -114,6 +117,7 @@ final class AffiliateBindingService
                 'origin' => 'erp_conversion',
                 'provider_status' => $account->provider_status,
             ]);
+            $this->referrals->resolve($connectionKey, (int) $account->affiliate_id);
 
             return ['affiliate' => $account->fresh(['kol']), 'kol' => $kol->fresh()];
         });

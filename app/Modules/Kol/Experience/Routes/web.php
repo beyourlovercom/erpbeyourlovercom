@@ -73,6 +73,10 @@ Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
         ->middleware('can:kol.affiliates.manage')
         ->name('kol.commissions.sync');
     Route::get('/kol/affiliatewp', [AffiliateWpSyncController::class, 'index'])->name('kol.affiliatewp');
+    Route::get('/kol/affiliatewp/reconciliation', [AffiliateWpSyncController::class, 'reconciliation'])
+        ->middleware('can:kol.affiliates.manage')->name('kol.affiliatewp.reconciliation');
+    Route::post('/kol/affiliatewp/reconciliation/preview', [AffiliateWpSyncController::class, 'previewReconciliation'])
+        ->middleware('can:kol.affiliates.manage')->name('kol.affiliatewp.reconciliation.preview');
     Route::post('/kol/affiliatewp/sync', [AffiliateWpSyncController::class, 'sync'])
         ->middleware('can:kol.affiliates.manage')
         ->name('kol.affiliatewp.sync');

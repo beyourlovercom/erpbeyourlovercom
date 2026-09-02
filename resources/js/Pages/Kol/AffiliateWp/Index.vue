@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Head, useForm } from '@inertiajs/vue3'
+import { Head, Link, useForm } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 import CouponPanel, { type CouponCandidate, type CouponRow } from './CouponPanel.vue'
 
@@ -129,9 +129,12 @@ function formatSyncTime(value: string | null): string {
           <h2>AffiliateWP</h2>
           <p>统一操作 AffiliateWP Influencer 与 WooCommerce Coupon，并保持 Provider truth 可核验。</p>
         </div>
+        <div class="page-header-actions">
+        <Link v-if="canManageAffiliates" class="affiliatewp-sync" href="/kol/affiliatewp/reconciliation">真实数据核对</Link>
         <button v-if="activeMode === 'influencer'" class="affiliatewp-sync" type="button" :disabled="!canManageAffiliates || syncForm.processing" :title="canManageAffiliates ? '从 WordPress / AffiliateWP 读取完整 Influencer 快照' : '需要 Affiliate 管理权限'" @click="syncNow">
           {{ syncForm.processing ? '同步中…' : '立即同步' }}
         </button>
+        </div>
       </div>
 
       <div class="affiliatewp-tabs" role="tablist" aria-label="AffiliateWP workspace modes">
