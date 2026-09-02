@@ -923,7 +923,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_08_24_100000_create_products_table.php' => 'a7ddaa6125c296d3b67fd85eb8c3728764630207a121d57046702defb3bda1c0',
         'database/migrations/2026_08_25_000100_create_inventory_foundation_tables.php' => '5c04ba76e1e90e51970b492aca4f386ed02270eb4f201493d1d90ccd74794e07',
         'database/migrations/2026_08_25_000101_seed_initial_warehouses.php' => '47ac9451febaa5b34ddc0ab6e76e2a208264227551caf4818dd0624afc0f5fa9',
-        'database/migrations/2026_08_25_000200_create_inventory_batch_sync_tables.php' => 'a2e1ecba6592740d3708503e3260523ec33a2601618a591c1abf75f5ed8eb5c4',
+        'database/migrations/2026_08_25_000200_create_inventory_batch_sync_tables.php' => '2d4048d7ccc8ddbe916fdf6b2cf5158ba30585ddc6083ff0e106359e2e004098',
         'database/migrations/2026_08_27_000000_repair_inventory_sync_preview_metrics.php' => 'd791cc4fc3aebecafcfff2c0fc8f5b02b51f142b3dc9986ee7f8fdcd17b7aded',
         'database/migrations/2026_08_27_020000_add_manual_fulfillment_fields_to_shipments.php' => '44d755cd840a87bbc96c48311f53751c6fc375f85d1fff5293090b5b8c2be0ad',
         'database/migrations/2026_08_27_171200_add_warehouse_ownership_type.php' => '758912e9318255ee88471503f3a1785f1430479e371e17f1add06e1d5cd5edad',
