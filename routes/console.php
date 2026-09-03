@@ -34,3 +34,11 @@ Schedule::command('backup:scheduled-run monthly')
     ->timezone((string) config('backup.automatic.timezone', 'UTC'))
     ->withoutOverlapping(180)
     ->onOneServer();
+
+if ((bool) config('services.woocommerce.product_sync_enabled', false)) {
+    Schedule::command('products:sync-woocommerce --incremental')
+        ->hourly()
+        ->name('products.woocommerce.inbound.hourly')
+        ->withoutOverlapping(55)
+        ->onOneServer();
+}

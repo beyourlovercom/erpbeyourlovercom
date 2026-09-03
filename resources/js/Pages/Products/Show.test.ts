@@ -17,7 +17,8 @@ const baseProps = {
   skuAliases: [],
   sales: { units_30d: 0, order_count_30d: 0, units_90d: 0, order_count_90d: 0, lifetime_units: 0, lifetime_order_count: 0, revenue_by_currency: [], recent_orders: [] },
   kolShipping: { units_30d: 0, shipment_count_30d: 0, units_90d: 0, shipment_count_90d: 0, lifetime_units: 0, lifetime_shipment_count: 0 },
-  inventory: [], shipments: [], collaborations: [], audit: [], canOperate: false,
+  inventory: [], shipments: [], collaborations: [], audit: [], canOperate: false, canSync: false, hasWooProductReference: false,
+  media: [], woo: null, wooSyncHistory: [],
 }
 
 describe('Products/Show Product360', () => {
@@ -102,6 +103,53 @@ describe('Products/Show Product360', () => {
     expect(panel).toContain('€90.00')
     expect(panel).toContain('US$170.00')
     expect(panel).toContain('收入（按原始币种）')
+  })
+
+  it('renders local Product media and exposes refresh only for an authorized configured Product ref', () => {
+    const wrapper = mount(Show, { props: {
+      ...baseProps,
+      product: { ...baseProps.product, image_url: '/products/media/9', woo_sync_status: 'synced' },
+      media: [
+        { id: 9, url: '/products/media/9', alt_text: 'Primary', position: 0, is_primary: true },
+        { id: 10, url: '/products/media/10', alt_text: 'Second', position: 1, is_primary: false },
+      ],
+      canSync: true,
+      hasWooProductReference: true,
+    } })
+    expect(wrapper.find('.product360-image img').attributes('src')).toBe('/products/media/9')
+    expect(wrapper.findAll('.product360-thumbnails img')).toHaveLength(2)
+    expect(wrapper.text()).toContain('Woo 同步：已同步')
+    expect(wrapper.find('a[href="/products/1/sync-woocommerce"]').exists()).toBe(true)
+
+    const noProductRef = mount(Show, { props: { ...baseProps, canSync: true, hasWooProductReference: false } })
+    expect(noProductRef.find('a[href="/products/1/sync-woocommerce"]').exists()).toBe(false)
+  })
+
+  it('distinguishes mapped-not-synced from unconfigured Woo state', () => {
+    const mapped = mount(Show, { props: { ...baseProps, product: { ...baseProps.product, woo_sync_status: 'not_synced' }, hasWooProductReference: true } })
+    expect(mapped.text()).toContain('Woo 同步：未同步')
+    const manual = mount(Show, { props: { ...baseProps, product: { ...baseProps.product, woo_sync_status: 'not_configured' }, externalReferences: [] } })
+    expect(manual.text()).toContain('Woo 同步：未配置')
+    expect(manual.text()).toContain('暂无 WooCommerce 产品数据')
+  })
+
+  it('shows provider snapshot evidence and sync history while preserving M1.4 external refs', async () => {
+    const wrapper = mount(Show, { props: {
+      ...baseProps,
+      woo: { provider_status: 'publish', categories: ['Category A', 'Category B'], description: 'Provider description', short_description: 'Short provider description', variation_count: 2, provider_created_at: '2026-08-01T10:00:00Z', provider_modified_at: '2026-09-03T08:00:00Z', last_synced_at: '2026-09-03T09:00:00Z', connection_key: 'shop-a' },
+      wooSyncHistory: [{ status: 'succeeded', result_code: 'updated', error_message: null, completed_at: '2026-09-03T09:00:00Z', run_id: 15 }],
+    } })
+    expect(wrapper.find('#product360-0').text()).toContain('Short provider description')
+    await wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'Woo 信息')!.trigger('click')
+    const panel = wrapper.find('#product360-5')
+    expect(panel.text()).toContain('shop-a')
+    expect(panel.text()).toContain('Product 101')
+    expect(panel.text()).toContain('Variation 102')
+    expect(panel.text()).toContain('Category A、Category B')
+    expect(panel.text()).toContain('变体数：2')
+    expect(panel.text()).toContain('Provider description')
+    expect(panel.text()).toContain('最近同步历史')
+    expect(panel.text()).toContain('updated')
   })
 
   it('uses M1.4 external references as the Hero Woo identity', () => {

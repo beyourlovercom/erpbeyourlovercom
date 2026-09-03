@@ -94,6 +94,7 @@ final class SyncRunService
                 'operation' => (string) $attributes['operation'],
                 'order_id' => $attributes['order_id'] ?? null,
                 'shipment_id' => $attributes['shipment_id'] ?? null,
+                'product_id' => $attributes['product_id'] ?? null,
                 'outbox_id' => $attributes['outbox_id'] ?? null,
                 'provider_reference' => $attributes['provider_reference'] ?? null,
                 'status' => SyncRunItemStatus::Pending,
