@@ -162,6 +162,14 @@ class KolReconciliationTest extends TestCase
         self::assertDatabaseCount('kol_affiliate_referrals', 0);
     }
 
+    public function test_http_reconciliation_route_accepts_xlsx_over_ten_mib_within_sixty_four_mib_limit(): void
+    {
+        $user = $this->manager();
+        $file = $this->xlsxWithMedia(11 * 1024 * 1024);
+        $this->actingAs($user)->post('/kol/affiliatewp/reconciliation/preview', ['file' => $file])
+            ->assertOk()->assertJsonPath('batch.total_rows', 1);
+    }
+
     public function test_xlsx_rejects_single_zip_entry_over_sixteen_mib(): void
     {
         $user = $this->manager();
@@ -235,8 +243,10 @@ class KolReconciliationTest extends TestCase
     private function manager(): User
     {
         $role = Role::create(['key' => 'test_reconcile_'.uniqid(), 'label' => 'Test']);
-        $permission = Permission::firstOrCreate(['key' => 'kol.affiliates.manage'], ['label' => 'Affiliate manage']);
-        $role->permissions()->attach($permission);
+        foreach (['kol.view', 'kol.affiliates.manage'] as $key) {
+            $permission = Permission::firstOrCreate(['key' => $key], ['label' => $key]);
+            $role->permissions()->attach($permission);
+        }
         $user = User::factory()->create(['is_active' => true]);
         $user->roles()->attach($role);
         return $user;
