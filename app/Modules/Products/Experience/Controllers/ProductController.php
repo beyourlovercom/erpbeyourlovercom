@@ -12,10 +12,14 @@ use App\Modules\Products\Application\Contracts\ProductExternalReferenceRepositor
 use App\Modules\Products\Application\Contracts\SkuAliasRepository;
 use App\Modules\Products\Application\ProductService;
 use App\Modules\Products\Application\ProductWeightEvidenceService;
+use App\Modules\Products\Application\WooCommerceProductInboundService;
+use App\Modules\Products\Infrastructure\Models\ProductMedia;
+use App\Modules\Products\Infrastructure\Models\ProductProviderSnapshot;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -32,6 +36,7 @@ final class ProductController
         private readonly ProductShipmentProjection $shipmentProjection,
         private readonly ProductKolProjection $kolProjection,
         private readonly ProductActivityProjection $activityProjection,
+        private readonly WooCommerceProductInboundService $wooInbound,
     ) {}
 
     public function dashboard(): Response
@@ -83,6 +88,11 @@ final class ProductController
         $inventoryRows = $this->inventory->forProductIds([$id])[$id] ?? [];
         $weight = $product->weight_evidence_id ? $this->weightEvidence->findById((int) $product->weight_evidence_id) : null;
         $shippingWeight = $product->shipping_weight_evidence_id ? $this->weightEvidence->findById((int) $product->shipping_weight_evidence_id) : null;
+        $connection = (string) config('services.woocommerce.connection_key', 'beyourlover.com');
+        $configuredProductReference = collect($this->externalRefs->forProduct($id))->first(fn (array $reference): bool => $reference['provider'] === 'woocommerce' && $reference['connection_key'] === $connection && $reference['reference_type'] === 'product');
+        $snapshot = ProductProviderSnapshot::query()->where(['product_id' => $id, 'provider' => 'woocommerce', 'connection_key' => $connection])->first();
+        $media = ProductMedia::query()->where(['product_id' => $id, 'provider' => 'woocommerce', 'connection_key' => $connection])->orderBy('position')->get();
+        $recentProductRuns = \App\Modules\Sync\Infrastructure\Models\SyncRunItem::query()->with('run')->where('product_id', $id)->where('operation', 'woocommerce.product_inbound')->latest('id')->limit(10)->get()->map(fn ($item): array => ['status' => $item->status?->value ?? $item->status, 'result_code' => $item->result_code, 'error_message' => $item->error_message, 'completed_at' => $item->completed_at?->toIso8601String(), 'run_id' => $item->sync_run_id])->all();
 
         return Inertia::render('Products/Show', [
             'product' => [
@@ -93,8 +103,9 @@ final class ProductController
                 'status' => $product->is_active ? 'active' : 'inactive',
                 'product_type' => $product->product_type,
                 'woocommerce_product_id' => $product->woocommerce_product_id,
-                'woo_url' => null,
-                'image_url' => null,
+                'woo_url' => $snapshot?->permalink,
+                'image_url' => $media->firstWhere('is_primary', true) ? route('products.media.show', $media->firstWhere('is_primary', true)->id) : null,
+                'woo_sync_status' => $snapshot ? 'synced' : ($configuredProductReference ? 'not_synced' : 'not_configured'),
                 'sale_price' => $product->sale_price,
                 'regular_price' => $product->regular_price,
                 'weight_kg' => $product->weight_kg,
@@ -115,6 +126,9 @@ final class ProductController
                 'hs_code' => $product->hs_code,
             ],
             'externalReferences' => $this->externalRefs->forProduct($id),
+            'woo' => $snapshot ? ['provider_status' => $snapshot->provider_status, 'categories' => $snapshot->category_names ?? [], 'description' => $snapshot->description_text, 'short_description' => $snapshot->short_description_text, 'variation_count' => $snapshot->variation_count, 'provider_created_at' => $snapshot->provider_created_at?->toIso8601String(), 'provider_modified_at' => $snapshot->provider_modified_at?->toIso8601String(), 'last_synced_at' => $snapshot->last_synced_at?->toIso8601String(), 'connection_key' => $snapshot->connection_key] : null,
+            'media' => $media->map(fn (ProductMedia $item): array => ['id' => $item->id, 'url' => route('products.media.show', $item->id), 'alt_text' => $item->alt_text, 'position' => $item->position, 'is_primary' => $item->is_primary])->values()->all(),
+            'wooSyncHistory' => $recentProductRuns,
             'skuAliases' => $this->skuAliases->listForProduct($id),
             'sales' => [
                 ...$orderData['summary'],
@@ -127,7 +141,30 @@ final class ProductController
             'kolShipping' => $this->kolProjection->shippingSummaryForProduct($id),
             'audit' => $this->activityProjection->forProduct($id),
             'canOperate' => Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false,
+            'canSync' => Auth::user()?->can(AuthorizationKeys::SyncOperate->value) ?? false,
+            'hasWooProductReference' => $configuredProductReference !== null,
         ]);
+    }
+
+    public function media(int $media): \Symfony\Component\HttpFoundation\StreamedResponse|JsonResponse
+    {
+        $item = ProductMedia::query()->whereKey($media)->first();
+        if ($item === null || ! $item->product()->exists() || ! Storage::disk('local')->exists($item->storage_path)) abort(404);
+        return Storage::disk('local')->response($item->storage_path, null, ['Content-Type' => $item->mime_type, 'Cache-Control' => 'private, no-store']);
+    }
+
+    public function syncWooCommerce(Request $request, int $id): RedirectResponse
+    {
+        $reference = \App\Modules\Products\Infrastructure\Models\ProductExternalReference::query()->where(['product_id' => $id, 'provider' => 'woocommerce', 'connection_key' => config('services.woocommerce.connection_key')])->where('reference_type', 'product')->first();
+        if ($reference === null) return back()->with('error', '当前产品没有配置 WooCommerce 产品引用。');
+        try {
+            $result = $this->wooInbound->sync($request->user(), false, (int) $reference->reference);
+            $status = $result['run']->status instanceof \BackedEnum ? $result['run']->status->value : (string) $result['run']->status;
+            if ($status !== 'completed') return back()->with('error', 'WooCommerce 产品同步未完成，请查看同步历史。');
+        } catch (\Throwable $e) {
+            return back()->with('error', 'WooCommerce 产品同步失败：'.$e->getMessage());
+        }
+        return back()->with('success', 'WooCommerce 产品已刷新。');
     }
 
     public function store(Request $request): RedirectResponse

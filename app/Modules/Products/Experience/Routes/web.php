@@ -14,6 +14,8 @@ Route::middleware(['web', 'auth', 'can:products.view'])->group(function (): void
     Route::get('/products/sku-aliases', [ProductSkuAliasController::class, 'index'])->name('products.sku-aliases');
     Route::get('/products/weight-evidence', [ProductWeightEvidenceController::class, 'index'])->name('products.weight-evidence.index');
     Route::get('/products/{id}', [ProductController::class, 'show'])->whereNumber('id')->name('products.show');
+    Route::get('/products/media/{media}', [ProductController::class, 'media'])->whereNumber('media')->name('products.media.show');
+    Route::post('/products/{id}/sync-woocommerce', [ProductController::class, 'syncWooCommerce'])->whereNumber('id')->middleware('can:sync.operate')->name('products.sync-woocommerce');
 });
 
 Route::middleware(['web', 'auth', 'can:products.operate'])->group(function (): void {

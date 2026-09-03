@@ -46,6 +46,16 @@ class Product extends Model
         return $this->hasMany(ProductExternalReference::class);
     }
 
+    public function providerSnapshots(): HasMany
+    {
+        return $this->hasMany(ProductProviderSnapshot::class);
+    }
+
+    public function media(): HasMany
+    {
+        return $this->hasMany(ProductMedia::class)->orderBy('position');
+    }
+
     public function weightEvidence(): BelongsTo
     {
         return $this->belongsTo(ProductWeightEvidence::class, 'weight_evidence_id');

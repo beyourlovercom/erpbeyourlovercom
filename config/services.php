@@ -33,6 +33,8 @@ return [
         'consumer_secret' => env('WOO_CONSUMER_SECRET', ''),
         'connection_key' => env('WOO_CONNECTION_KEY', 'beyourlover.com'),
         'timeout' => (int) env('WOO_TIMEOUT_SECONDS', 15),
+        'product_sync_enabled' => (bool) env('WOO_PRODUCT_SYNC_ENABLED', false),
+        'media_allowed_hosts' => env('WOO_MEDIA_ALLOWED_HOSTS', ''),
     ],
 
     'postmark' => [

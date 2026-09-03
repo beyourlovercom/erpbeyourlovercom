@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 final class SyncRunItem extends Model
 {
     protected $fillable = [
-        'sync_run_id', 'sequence', 'operation', 'order_id', 'shipment_id',
+        'sync_run_id', 'sequence', 'operation', 'order_id', 'shipment_id', 'product_id',
         'outbox_id', 'provider_reference', 'status', 'result_code',
         'error_code', 'error_message', 'started_at', 'completed_at',
     ];
@@ -37,6 +37,11 @@ final class SyncRunItem extends Model
     public function shipment(): BelongsTo
     {
         return $this->belongsTo('App\\Modules\\Logistics\\Infrastructure\\Models\\Shipment');
+    }
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo('App\\Modules\\Products\\Infrastructure\\Models\\Product');
     }
 
     public function outbox(): BelongsTo
