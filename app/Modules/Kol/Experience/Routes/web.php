@@ -8,6 +8,7 @@ use App\Modules\Kol\Experience\Controllers\KolContentController;
 use App\Modules\Kol\Experience\Controllers\KolController;
 use App\Modules\Kol\Experience\Controllers\KolImportPreviewController;
 use App\Modules\Kol\Experience\Controllers\KolOpportunityController;
+use App\Modules\Kol\Experience\Controllers\KolOwnerMappingController;
 use App\Modules\Kol\Experience\Controllers\KolOverviewController;
 use App\Modules\Kol\Experience\Controllers\ReferralCommissionController;
 use App\Modules\Kol\Experience\Controllers\PayoutWorkflowController;
@@ -82,6 +83,16 @@ Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
         ->middleware(['can:kol.operate', 'can:kol.affiliates.manage'])->name('kol.import-preview');
     Route::post('/kol/import-preview/generate', [KolImportPreviewController::class, 'generate'])
         ->middleware(['can:kol.operate', 'can:kol.affiliates.manage'])->name('kol.import-preview.generate');
+    Route::get('/kol/owner-mapping', [KolOwnerMappingController::class, 'index'])
+        ->middleware(['can:kol.approvals.manage', 'can:kol.affiliates.manage'])->name('kol.owner-mapping');
+    Route::post('/kol/owner-mapping/source', [KolOwnerMappingController::class, 'storeSource'])
+        ->middleware(['can:kol.approvals.manage', 'can:kol.affiliates.manage'])->name('kol.owner-mapping.source.store');
+    Route::delete('/kol/owner-mapping/source/{mapping}', [KolOwnerMappingController::class, 'destroySource'])
+        ->middleware(['can:kol.approvals.manage', 'can:kol.affiliates.manage'])->name('kol.owner-mapping.source.destroy');
+    Route::post('/kol/owner-mapping/decision', [KolOwnerMappingController::class, 'storeDecision'])
+        ->middleware(['can:kol.approvals.manage', 'can:kol.affiliates.manage'])->name('kol.owner-mapping.decision.store');
+    Route::delete('/kol/owner-mapping/decision/{decision}', [KolOwnerMappingController::class, 'destroyDecision'])
+        ->middleware(['can:kol.approvals.manage', 'can:kol.affiliates.manage'])->name('kol.owner-mapping.decision.destroy');
     Route::post('/kol/affiliatewp/sync', [AffiliateWpSyncController::class, 'sync'])
         ->middleware('can:kol.affiliates.manage')
         ->name('kol.affiliatewp.sync');

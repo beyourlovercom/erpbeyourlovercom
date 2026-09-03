@@ -27,6 +27,19 @@ describe('Kol ImportPreview', () => {
     expect(actions).not.toContain('绑定 Affiliate')
   })
 
+  it('shows Owner mapping as the next bounded step only to authorized managers', () => {
+    const previewBatch = { ...batch, import_preview: {
+      id: 3, reconciliation_batch_id: 4, source_filename: '0902-网红订单.xlsx', total_source_rows: 1077, candidate_count: 961, unresolved_source_rows: 12,
+      summary: { ready_new_kol: 0, needs_review: 961, existing_kol: 0, conflict: 0 }, candidates: [],
+    } }
+    const allowed = mount(ImportPreview, { props: { batches: [previewBatch], canManageOwnerMapping: true } })
+    const link = allowed.findAll('a').find((item) => item.text().includes('下一步：Owner 映射'))
+    expect(link?.attributes('href')).toBe('/kol/owner-mapping?preview_batch_id=3')
+
+    const denied = mount(ImportPreview, { props: { batches: [previewBatch], canManageOwnerMapping: false } })
+    expect(denied.text()).not.toContain('下一步：Owner 映射')
+  })
+
   it('generates and renders deterministic preview candidates', async () => {
     vi.mocked(axios.post).mockResolvedValueOnce({ data: { batch: {
       id: 1, reconciliation_batch_id: 4, source_filename: '0902-网红订单.xlsx', total_source_rows: 1077,

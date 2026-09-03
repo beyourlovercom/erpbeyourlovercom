@@ -14,7 +14,10 @@ final class KolImportPreviewController
 
     public function index(Request $request): Response
     {
-        return Inertia::render('Kol/ImportPreview', ['batches' => $this->service->workspace()]);
+        return Inertia::render('Kol/ImportPreview', [
+            'batches' => $this->service->workspace(),
+            'canManageOwnerMapping' => $request->user()->can('kol.approvals.manage') && $request->user()->can('kol.affiliates.manage'),
+        ]);
     }
 
     public function generate(Request $request): JsonResponse
