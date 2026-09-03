@@ -6,6 +6,9 @@ on:
     paths:
       - 'app/Modules/Kol/Infrastructure/AffiliateWp/**'
       - 'app/Modules/Marketing/Experience/Routes/web.php'
+      - 'app/Modules/Marketing/Infrastructure/AndyCore/**'
+      - 'tests/Feature/Marketing/WordPressSubscriberSyncTest.php'
+      - 'tests/Feature/Marketing/HttpWordPressSubscriberGatewayTest.php'
       - 'app/Modules/Sync/**'
       - 'app/Providers/AppServiceProvider.php'
       - 'database/migrations/2026_08_31_091500_create_wordpress_connector_settings_table.php'
