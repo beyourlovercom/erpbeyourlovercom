@@ -73,5 +73,5 @@ AI/CURRENT_CONTEXT.md
 - New implementation Work Packages use one Work Package → one branch → one Draft delivery PR.
 - Each simultaneously active Claude implementation stream uses a dedicated worktree.
 - Parallel dependencies must be explicit; shared foundations are extracted first unless Owner authorizes a stacked dependency.
-- Owner authorization is required before merge or remote deployment.
+- Routine commit/push/PR/merge is continuously authorized within an Owner-confirmed Work Package/Roadmap under `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1`; mandatory Owner UAT, irreversible real-data operations, Owner-only credentials, material scope changes, and Production formal release/deployment remain hard Owner gates.
 - Documentation/design work must not contaminate unrelated implementation PRs.

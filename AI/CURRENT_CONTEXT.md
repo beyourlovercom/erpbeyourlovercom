@@ -132,7 +132,7 @@ PRODUCTION DIRECT EDIT: FORBIDDEN
 
 ```text
 1. Deliver ERP-GOV-ROADMAP-RECONCILIATION-001 as docs/governance only.
-2. Owner reviews and separately authorizes merge.
+2. Apply `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1`: once applicable Owner UAT/checks are satisfied, merge routine in-scope delivery without a separate merge-authorization prompt.
 3. After merge, Owner chooses exactly one next bounded product track.
 4. No stale Draft PR may override the merged main roadmap.
 5. No KOL work may duplicate canonical Product / Inventory / Order / Shipment / Tracking truth.
