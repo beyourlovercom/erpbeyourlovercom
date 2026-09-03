@@ -81,3 +81,18 @@ Restore/upgrade/activate the canonical Andy Core Connector on Production WordPre
   - `Mozilla/5.0 BYL-ERP-AffiliateWP-Connector/1.0` -> HTTP 400 JSON Connector contract rejection.
 - Conclusion: the origin/server layer rejects the pure custom User-Agent before WordPress; Cloudflare WAF is not the blocking layer.
 - M2.1 compatibility fix: retain the identifiable Connector token but prefix it with `Mozilla/5.0`; HMAC, timestamp, nonce, TLS, redirect and contract controls are unchanged.
+
+## Production closure — 2026-09-03
+
+- Owner backup: completed manually with All-in-One WP Migration before deploy.
+- Production Andy Core candidate installed and activated; REST namespace present.
+- Production connector identity: enabled, connection key `beyourlover.com`, key id `prod-20260903-v1`.
+- Shared secret generated once in WordPress and transferred to ERP Production without disclosure; clipboard cleared after transfer.
+- Origin behavior identified: pure custom UA `BYL-ERP-AffiliateWP-Connector/1.0` receives HTTP 445, while a browser-compatible UA reaches WordPress JSON normally.
+- ERP runtime compatibility fix merged in PR #167 / merge commit `162f7208c557ca6542b80b6e04823c5a001db2d1`: `Mozilla/5.0 BYL-ERP-AffiliateWP-Connector/1.0`.
+- Required CI on PR #167: connector PASS, coupon PASS, closure PASS.
+- Production release: `1c0b6ec0215818af7e37bd19e77e40a8732f05ad-m21-162f7208c557`.
+- Rollback release retained unchanged: `1c0b6ec0215818af7e37bd19e77e40a8732f05ad`.
+- Final signed health: PASS; contract v1; Andy Core 1.5.3; WordPress 7.0.2; WooCommerce active; AffiliateWP active; writable true.
+- Business snapshot/sync/mutation executed in M2.1: **0**.
+- M2.1 stops here. M2.2 Production Read-Only First Sync remains an explicit Owner gate.
