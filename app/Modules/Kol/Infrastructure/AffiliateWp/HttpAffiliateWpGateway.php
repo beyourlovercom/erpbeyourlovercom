@@ -15,7 +15,7 @@ final class HttpAffiliateWpGateway implements AffiliateWpGateway
 {
     private const string Namespace = '/wp-json/andy-core/v1/erp';
 
-    private const string UserAgent = 'BYL-ERP-AffiliateWP-Connector/1.0';
+    private const string UserAgent = 'Mozilla/5.0 BYL-ERP-AffiliateWP-Connector/1.0';
 
     private const string SupportedContractVersion = '1';
 
