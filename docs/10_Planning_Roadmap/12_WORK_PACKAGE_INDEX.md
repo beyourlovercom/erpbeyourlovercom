@@ -413,10 +413,14 @@ ERP-KOL-V1-CROSS-PHASE-CLOSURE-001 = COMPLETE / MERGED PR #143
 Boundary: closure performs full regression, responsibility-scope verification, migration rehearsal, Product/Order/Shipment/Affiliate truth checks and Owner UAT. KOL Intelligence / influencer discovery remains deferred and is not part of this package.
 
 
-## KOL V1 Production Enablement — current 2026-09-01
+## KOL V1 Production Enablement — current 2026-09-03
 
 - `ERP-KOL-V1-CROSS-PHASE-CLOSURE-001`: COMPLETE / MERGED PR #143.
-- `ERP-KOL-V1-PRODUCTION-ENABLEMENT-001`: CURRENT / KOL-SIDE READINESS PASS / WAITING SHARED RUNTIME + REAL KOL SOURCE.
-- Shared dependency: `ERP-PRODUCTION-RUNTIME-FOUNDATION-M2.0A-001` = ACTIVE / HOSTING_TARGET_REQUIRED.
-- Production deployment/migration/provider mutation remain separately Owner-gated.
+- `ERP-KOL-V1-PRODUCTION-ENABLEMENT-001`: CURRENT / READINESS RECONCILED / WAITING OWNER REAL-USER RESPONSIBILITY MAPPING + PRODUCTION RELEASE/MUTATION GATE.
+- Shared Production runtime M2.0A: READY; Production login/TLS/runtime evidence exists.
+- Production Connector M2.1/M2.2: signed health PASS; current composite release is live; Provider writes remain frozen.
+- KOL real-data chain: P1 reconciliation PR #158 MERGED; P2 import preview PR #163 MERGED; P3 owner-mapping capability PR #166 MERGED.
+- Latest retained preview evidence: 1077 source rows → 970 exact identities → 961 deterministic KOL candidates; 12 source rows unresolved.
+- Production KOL Master remains 0 rows; current real Specialist/Manager/Finance responsibility assignment is not yet reviewed.
+- Production deployment/migration/import/provider mutation remain separately Owner-gated.
 - KOL Intelligence / Discovery remains deferred until activation or explicit reprioritization.

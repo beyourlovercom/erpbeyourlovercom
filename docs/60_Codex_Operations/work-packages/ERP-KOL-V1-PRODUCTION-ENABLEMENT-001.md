@@ -2,9 +2,9 @@
 type: work-package
 project: BYL ERP
 work_package_id: ERP-KOL-V1-PRODUCTION-ENABLEMENT-001
-status: KOL_SIDE_READINESS_PASS_WAITING_SHARED_RUNTIME_AND_REAL_DATA_RECONCILIATION
+status: READINESS_RECONCILED_WAITING_OWNER_REAL_USER_MAPPING_AND_PRODUCTION_MUTATION_GATE
 verification_tier: HIGH_RISK
-baseline: origin/main@01d11061c7d02fc6275353deee59e69dbef62216
+baseline: origin/main@ec725cef57762f7ddbdf067bfcfaf1bbce9a2f78
 production_mutation_authorized: NO
 merge_authorized: NO
 ---
@@ -233,3 +233,71 @@ After an explicitly authorized Production deployment/migration:
 - Current source hierarchy is now explicit: Tencent/manual data = KOL CRM + historical collaboration/fulfillment evidence; WooCommerce = order truth; AffiliateWP = attribution/referral/commission/payout truth.
 - Real-data work therefore moves to a separate WP `ERP-KOL-REAL-DATA-RECONCILIATION-M1-001`; no importer feature is added to PR #145.
 - No fuzzy KOL↔Affiliate binding, Production import, Production migration/deploy, Provider mutation, merge, tag or release is authorized by this update.
+
+## Current-main / Production reconciliation — 2026-09-03
+
+This section supersedes earlier dynamic blocker statements in this Work Package. Historical checkpoints above remain evidence of how the branch reached this state.
+
+### Git / branch
+- Current canonical main: `ec725cef57762f7ddbdf067bfcfaf1bbce9a2f78` (PR #169 merge).
+- Production Enablement branch was protected with recovery ref `recovery/erp-kol-v1-production-enablement-pre-rebase-20260903-1830` and rebased cleanly onto current `origin/main`.
+- Main drift since prior base: 200 files; overlap with the four PR #145 files: 0.
+- Post-rebase divergence before this evidence update: `0 behind / 7 ahead`.
+
+### Production runtime / Connector
+- Shared Production runtime M2.0A is no longer a blocker.
+- Current Production release is the composite Connector release `1c0b6ec0215818af7e37bd19e77e40a8732f05ad-m21-162f7208c557-m22-ec725cef5776`.
+- This composite release is not equivalent to deploying the complete current GitHub `main`; do not infer full-main code parity from the release suffix.
+- Production signed AffiliateWP health: PASS. Contract version `1`; Andy Core `1.5.3`; WordPress `7.0.2`; WooCommerce active; AffiliateWP active.
+- Connector reports Provider write capability, but Affiliate/Coupon/Payout Provider writes remain explicitly frozen by this WP.
+
+### Production schema / exact pending migration evidence
+- All KOL V1 core migrations through `2026_09_01_153000_add_kol_responsibility_owners` are `Ran` in Production.
+- Current composite Production release does not contain the later P1/P2/P3 real-data workflow migrations.
+- Comparing the Production `migrations` table to complete current `main` yields exactly five main migrations not yet recorded in Production:
+  1. `2026_09_02_100000_create_kol_reconciliation_tables`
+  2. `2026_09_02_150000_create_kol_import_preview_tables`
+  3. `2026_09_03_000000_create_product_provider_snapshots_and_media`
+  4. `2026_09_03_000100_add_product_id_to_sync_run_items`
+  5. `2026_09_03_103000_create_kol_owner_mapping_tables`
+- The two Product migrations are current-main release dependencies, not KOL data authority. Do not run a full-main Production migration merely to activate KOL without an exact approved release contract.
+
+### Production real-data baseline — read-only
+- Canonical KOL rows: `0`.
+- Affiliate mirror rows: `1774`; authoritative Affiliate→KOL bindings: `0`.
+- Coupon mirror rows: `2843`.
+- Referral mirror rows: `3351`; KOL-resolved: `0`; canonical Order-resolved: `0`.
+- Affiliate payout mirror rows: `1584`; ERP payout requests: `0`.
+- Production users: `4`.
+- Persisted Production role presets/users for `kol_specialist`, `kol_manager`, `finance`: none currently assigned/persisted. Role presets remain lazily created by canonical Identity mechanics and absence alone is not a code defect.
+
+### Real-source / preview chain
+- `ERP-KOL-REAL-DATA-RECONCILIATION-M1-001` merged by PR #158 with Owner UAT PASS.
+- `ERP-KOL-HISTORICAL-IMPORT-PREVIEW-M2-001` merged by PR #163 with Owner UAT PASS.
+- `ERP-KOL-OWNER-MAPPING-CLOSURE-M3-001` merged by PR #166 with Owner UAT PASS.
+- Latest retained local preview evidence: `1077` source rows, `970` distinct exact identities, `961` deterministic KOL candidates, `12` unresolved source rows.
+- Owner-mapping capability was verified in P3, but the current shared local DB retains `0` real source-owner mappings and `0` candidate decisions. No mapping may be reconstructed by fuzzy name/email inference.
+
+### Current activation gate
+`KOL_V1_PRODUCT = CLOSED`
+`KOL_CORE_PRODUCTION_SCHEMA = READY / RAN`
+`SHARED_PRODUCTION_RUNTIME = READY`
+`PRODUCTION_CONNECTOR_SIGNED_HEALTH = PASS`
+`REAL_SOURCE_RECONCILIATION = COMPLETE / MERGED PR #158`
+`REAL_SOURCE_IMPORT_PREVIEW = COMPLETE / MERGED PR #163`
+`OWNER_MAPPING_CAPABILITY = COMPLETE / MERGED PR #166`
+`REAL_KOL_MASTER_IN_PRODUCTION = 0`
+`REAL_RESPONSIBILITY_MAPPING = OWNER REVIEW REQUIRED`
+`PRODUCTION_RELEASE_CONTRACT = OWNER REVIEW REQUIRED`
+`PRODUCTION_MUTATION = NO`
+`PROVIDER_MUTATION = NO`
+`MERGE_AUTHORIZED = NO`
+`STATUS = WAITING_OWNER_REAL_USER_MAPPING_AND_PRODUCTION_MUTATION_GATE`
+
+### Next exact gate
+1. Keep Provider writes frozen.
+2. Produce the reviewed mapping from the seven historical source-owner values / 961 candidates to real ERP Specialist ownership, including explicit decisions for the 42 multi-owner candidates.
+3. Identify real Manager and Finance responsibility assignments; missing assignment remains fail-closed.
+4. Freeze the exact release strategy and rollback contract. Full-main deployment and a bounded composite release are materially different release choices and must not be silently substituted.
+5. At the explicit Production mutation/deployment Owner gate, execute only the approved release/migration/import scope.
+6. After activation, run real-role login isolation, Connector health, read-only reconciliation and zero-unapproved-Provider-write smoke.
