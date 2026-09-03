@@ -2,7 +2,7 @@
 type: repository-governance-standard
 project: BYL ERP
 standard_id: PARALLEL-WORK-EXEC-001
-version: 1.3
+version: 1.4
 status: MANDATORY_SUPPLEMENT
 parent_standard: LARGE-PROJECT-EXEC-001
 effective_when: MERGED_TO_MAIN
@@ -14,7 +14,7 @@ effective_when: MERGED_TO_MAIN
 
 ```text
 Standard ID: PARALLEL-WORK-EXEC-001
-Version: 1.3
+Version: 1.4
 Parent Standard: LARGE-PROJECT-EXEC-001
 Status: MANDATORY_SUPPLEMENT
 Effective: when the governance PR containing this version is merged to main
@@ -33,7 +33,7 @@ MULTIPLE_IMPLEMENTATION_PROVIDER_SESSIONS = ALLOWED
 MULTIPLE_DEDICATED_WORKTREES = ALLOWED
 ```
 
-Parallel execution never weakens existing Owner gates, scope boundaries, validation requirements, merge authorization, Migration authorization, UAT authorization, deployment authorization, or repository-truth rules.
+Parallel execution never weakens hard Owner gates, scope boundaries, validation requirements, continuous-delivery eligibility, Migration authorization, UAT authorization, deployment authorization, or repository-truth rules.
 
 ## Execution Role Boundary
 
@@ -126,12 +126,12 @@ Ready for independent review
         ↓
 Independent review PASS
         ↓
-Owner merge authorization
+Continuous delivery gate satisfied under `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1`
         ↓
 Merge to main
 ```
 
-A Draft PR may therefore exist before implementation begins. Draft state is the container for the Work Package contract and later implementation evidence; opening the Draft PR does not itself authorize implementation or merge.
+A Draft PR may therefore exist before implementation begins. Draft state is the container for the Work Package contract and later implementation evidence; opening the Draft PR does not itself authorize implementation. Merge eligibility derives from the Owner-confirmed scope, required checks, applicable Owner UAT, and `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1`.
 
 Do not create a second Implementation PR or a third Closure PR for the same newly activated Work Package identity.
 
@@ -231,7 +231,7 @@ Foundation Branch
         ↓
 Foundation Delivery PR
         ↓
-Owner-authorized merge
+Continuously authorized merge after required checks/gates
         ↓
 Updated canonical main baseline
         ↓
@@ -328,7 +328,7 @@ Parallel PRs remain independently reviewable and independently gated.
 
 ```text
 PR A PASS does not imply PR B PASS.
-PR A merge authorization does not authorize PR B merge.
+PR A validation/merge eligibility does not imply PR B validation/merge eligibility; each PR must independently satisfy its checks, dependencies, applicable Owner UAT, and the continuous-delivery gate.
 PR A failure does not automatically block unrelated PR C.
 ```
 
@@ -352,7 +352,7 @@ DEPENDENCY_GATE
 WORKTREE_ISOLATION_GATE
 TEST_GATE
 REVIEW_GATE
-OWNER_MERGE_GATE
+CONTINUOUS_DELIVERY_GATE
 ```
 
 A PASS or authorization for one Work Package is not inherited by another.

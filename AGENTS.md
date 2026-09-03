@@ -8,6 +8,32 @@ Before any formal task, read:
 - `AI/PARALLEL_WORK_EXECUTION_STANDARD.md`
 - `AI/CURRENT_CONTEXT.md`
 
+# HIGHEST OWNER CONTINUOUS AUTHORIZATION / DELIVERY GATE
+
+**Rule ID: `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1`. OWNER_APPROVED / ACTIVE / TOP-LEVEL. This gate supersedes all historical wording that requires repeated Owner approval for routine Git delivery or normal in-scope execution.**
+
+Within the same Owner-confirmed Work Package / Roadmap / material scope, the canonical execution loop is:
+
+`IMPLEMENT / FIX / TEST → COMMIT → PUSH → CREATE OR UPDATE PR → WAIT FOR REQUIRED CHECKS → MERGE WHEN GREEN → SYNC LATEST origin/main → CREATE NEXT APPROVED BRANCH / WORKTREE → CONTINUE`
+
+Mandatory rules:
+
+- Once the Owner has confirmed the Work Package, Roadmap item, or equivalent material scope, GPT may execute the full loop above continuously without asking for separate authorization at commit, push, PR creation/update, CI wait, merge, branch creation, ordinary bug remediation, automated testing, or Local/UAT test-environment deployment.
+- Required checks and repository protections still apply. If CI/checks fail, diagnose and remediate within the already-approved scope, rerun the checks, and continue. Do not stop merely because a routine check failed.
+- Waiting for checks means GPT owns the follow-through: observe the required checks and, once the branch is merge-eligible and all other applicable gates are satisfied, merge without requesting a separate Owner merge approval.
+- After merge, refresh from the latest `origin/main` before creating the next sequential Work Package branch/worktree. Do not continue a sequential roadmap package from a stale pre-merge baseline.
+- Merging code is not Production release authorization. Production remains a separate hard gate.
+
+GPT must stop and request Owner action/approval only when one of these conditions is reached:
+
+1. **Owner UAT:** any mandatory Owner visual proposal PASS, real-page screenshot PASS, or other explicit Owner acceptance gate required by the approved workflow.
+2. **Irreversible real-data operation:** destructive or materially irreversible migration, deletion, purge, rewrite, or transformation of real/canonical business data.
+3. **Production formal release/deployment:** any action that publishes or deploys to the formal Production environment, including a Production release/tag step when it changes live production state.
+4. **Owner-only access is required:** login, password, API key, secret, 2FA, account approval, or another credential/action that GPT cannot legitimately supply itself.
+5. **Material scope change:** requirements, product behavior, architecture, data model, permissions, business rules, or roadmap scope would materially exceed or contradict the Owner-confirmed Work Package / Roadmap.
+
+Routine implementation decisions that are necessary to realize an already-approved design do not become a new Owner gate merely because they require code changes. Historical documents, Work Packages, comments, or agent instructions that say commit/push/PR/merge requires a separate explicit Owner authorization are subordinate to this rule unless the Owner explicitly revokes or narrows this continuous authorization.
+
 Role authority is governed by the Owner-approved execution-provider routing below:
 
 - GPT Web + Owner: architecture, design, diagnosis, root cause, next-step decisions, and bounded exact remediation/implementation when behavior and scope are already approved.
@@ -15,7 +41,7 @@ Role authority is governed by the Owner-approved execution-provider routing belo
 - China Codex CLI: test, verification and evidence only on exact GitHub revisions.
 - GitHub: unique source of truth and only code synchronization path.
 
-Codex must not modify tracked files, fix failures, commit, push, open implementation PRs, design or diagnose. Claude must not invent architecture, diagnose root cause, widen scope or choose the next Work Package. GPT bounded implementation must not widen approved product scope or bypass Owner merge/release gates.
+Codex must not modify tracked files, fix failures, commit, push, open implementation PRs, design or diagnose. Claude must not invent architecture, diagnose root cause, widen scope or choose the next Work Package. GPT bounded implementation must not widen approved product scope or bypass Owner UAT, Production release, irreversible real-data, credential, or material-scope gates. Routine Git delivery is governed by `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1`.
 
 # HIGHEST EXECUTION PROVIDER / MODEL BUDGET GATE
 
@@ -30,7 +56,7 @@ Default provider selection must minimize unnecessary Claude context/token consum
 - Use **US Claude Code** for complex/high-ambiguity implementation, materially interdependent schema/data-model work, complex external integrations, large cross-module refactors, concurrency/state-machine work, or other implementation whose ambiguity materially benefits from Claude.
 - When Claude is used, keep the same approved Work Package/session context where practical. Avoid repeated fresh Claude sessions for implementation → remediation → cleanup → hardening when the follow-up is bounded enough for GPT.
 - Claude usage requires a concrete complexity reason, not historical habit. If GPT can implement the approved change safely and run the required gates, GPT is the default for the remediation.
-- GPT-direct implementation may perform bounded local edits, tests, typecheck, build, runtime/UAT verification, and authorized Git delivery for that Work Package. Commit/push/PR/merge/release authority remains subject to existing Owner and Work Package gates; merge and production release still require explicit Owner authorization.
+- GPT-direct implementation may perform bounded local edits, tests, typecheck, build, runtime/UAT verification, and authorized Git delivery for that Work Package. Commit/push/PR/merge and subsequent in-scope branch creation follow `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1`; Production formal release/deployment remains an explicit Owner gate.
 - US Codex may be an implementation provider under `AI/EXECUTION_ROLE_MODEL.md` v1.3. China Mac is not part of the default development/verification chain.
 
 Provider choice must never weaken canonical data truth, authorization/security, migrations, accounting, menu governance, UAT evidence, or exact-revision verification requirements.
@@ -56,7 +82,7 @@ Mandatory rules:
 - Parallel implementation is allowed only in separate worktrees with declared non-overlapping ownership or an approved shared-foundation extraction. If two streams need the same file, serialize them or extract/merge the shared foundation first.
 - GitHub remains the final synchronization boundary. Never use agent memory, an old local session, or machine-to-machine copying as authority over the current branch/worktree and GitHub history.
 
-These collision/handoff rules do not alter Owner UAT, explicit merge authorization, production release authorization, security, data-truth, migration, or verification gates.
+These collision/handoff rules do not alter Owner UAT, Production release authorization, irreversible real-data, credential, security, data-truth, migration, or verification gates. Routine merge authorization is governed by `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1`.
 
 Parallel implementation is allowed only under `PARALLEL-WORK-EXEC-001`. Each active implementation stream must obey `ONE_WORK_PACKAGE_ONE_BRANCH_ONE_PR`, `ONE_ACTIVE_AGENT_ONE_WORKTREE`, declared dependencies and shared-foundation extraction rules.
 
@@ -81,7 +107,7 @@ Mandatory rules:
 - **FORBIDDEN:** implement first and seek visual approval afterward; treat silence as approval; substitute developer screenshots/mockups for the real page after implementation; require the Owner to supply routine screenshots; bypass either PASS gate because the change appears small or obvious.
 - Exception: non-visual backend-only, documentation-only, CI-only, test-only, migration-only, or infrastructure-only tasks do not require a rendered visual proposal unless they materially change an Owner-visible UI. If such a task changes visible UI behavior, this gate applies to the visible portion.
 
-This gate does not replace explicit Owner authorization required for commit/push/PR/merge/release, and it does not weaken security, canonical data-truth, migration, accounting, menu, or exact-revision verification requirements.
+This gate remains a mandatory Owner UAT stop where applicable, but commit/push/PR/merge after the required Owner PASS follows `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1` without an additional delivery-authorization prompt. Production formal release/deployment remains a separate explicit Owner gate, and this rule does not weaken security, canonical data-truth, migration, accounting, menu, or exact-revision verification requirements.
 
 # HIGHEST UI / FORM DESIGN GATE
 

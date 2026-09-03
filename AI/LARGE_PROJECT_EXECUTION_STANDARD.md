@@ -2,7 +2,7 @@
 type: execution-governance-standard
 project: BYL ERP
 standard_id: LARGE-PROJECT-EXEC-001
-version: 1.4
+version: 1.5
 ---
 
 # Large Project Execution Standard
@@ -11,7 +11,7 @@ version: 1.4
 
 ```text
 Standard ID: LARGE-PROJECT-EXEC-001
-Version: 1.4
+Version: 1.5
 ```
 
 ## Applicability
@@ -57,7 +57,7 @@ VERIFICATION_TIER = HIGH_RISK
 VERIFICATION_TIER = OWNER_OVERRIDE
 ```
 
-If omitted after version 1.4 becomes effective, the default is `DAILY`. Historical/open packages do not require retrospective rewrites solely for this field.
+If omitted after version 1.5 becomes effective, the default is `DAILY`. Historical/open packages do not require retrospective rewrites solely for this field.
 
 ## Repository-Local Implementation
 
@@ -69,10 +69,10 @@ Merging this standard does not automatically govern another repository, and no t
 
 ## Version Transition
 
-- version 1.4 becomes effective when its governance PR merges;
+- version 1.5 becomes effective when its governance PR merges;
 - it applies to newly activated formal tasks and materially re-scoped open work;
 - historical merged packages remain governed by their issued version and are not retroactively invalidated;
-- version 1.4 adopts Execution Role Model v1.3: US Codex gains frozen deterministic implementation authority, Claude remains the complex/high-ambiguity provider, and China is removed from the default verification chain;
+- version 1.5 adopts Execution Role Model v1.4 and `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1`: US Codex retains frozen deterministic implementation authority, Claude remains the complex/high-ambiguity provider, China remains outside the default verification chain, and routine in-scope Git delivery no longer requires repeated Owner approval;
 - historical Codex/OpenCode/China verification records remain history only and do not override current role authority;
 - the legacy `ESTIMATED CODEX HOURS` footer remains schema-compatible, while new packages declare their actual `EXECUTION_PROVIDER`.
 
@@ -229,10 +229,10 @@ Positive variance means over estimate; negative variance means under estimate; z
 
 ## Downstream Activity Inclusion
 
-`OWNER_REVIEW`, `MERGE`, `MIGRATION`, `UAT` and `DEPLOYMENT` are mandatory INCLUDED/EXCLUDED fields. `INCLUDED` means estimated Codex work is in scope; it never grants authorization. Any activity lacking its required explicit Owner authorization must be `EXCLUDED`.
+`OWNER_REVIEW`, `MERGE`, `MIGRATION`, `UAT` and `DEPLOYMENT` are mandatory INCLUDED/EXCLUDED fields. `INCLUDED` means estimated execution work is in scope; it does not override any hard Owner gate. Within an Owner-confirmed Work Package/Roadmap, routine `MERGE` is continuously authorized by `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1`; Owner UAT, irreversible real-data execution, Owner-only credential actions, material scope changes, and Production formal release/deployment remain hard gates.
 
-`MERGE`, `MIGRATION`, `UAT` and `DEPLOYMENT` may be marked `INCLUDED` only when the package contains the required explicit Owner authorization, bounded scope, acceptance criteria and validation contract for that activity.
+`MERGE` may be marked `INCLUDED` when the Work Package is Owner-confirmed, bounded, and has acceptance criteria plus a validation contract; no additional per-merge Owner prompt is required. `MIGRATION`, `UAT` and `DEPLOYMENT` may be marked `INCLUDED` only when their applicable hard-gate authorization and validation contract are present. Authoring a reversible migration file is not the same as executing an irreversible real-data migration.
 
 Owner waiting time is always excluded from effective hours, including when preparation for Owner review is included. Manual stakeholder UAT time and passive deployment observation are excluded unless the package defines measurable authorized Codex work for them.
 
-No downstream activity is inferred from another: Owner review does not imply Merge; Merge does not imply Migration; Migration does not imply UAT; UAT does not imply Deployment.
+No downstream hard-gate activity is inferred from another: Merge does not imply irreversible real-data Migration execution; Migration does not imply Owner UAT; UAT does not imply Production Deployment. Routine merge authority instead derives from the active Owner-confirmed scope plus `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1`.

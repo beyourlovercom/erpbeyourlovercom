@@ -1,7 +1,7 @@
 ---
 type: execution-role-model
 project: BYL ERP
-version: 1.3
+version: 1.4
 status: mandatory
 effective_date: 2026-08-29
 ---
@@ -10,10 +10,10 @@ effective_date: 2026-08-29
 
 ## Authority
 
-This document supersedes v1.2 and implements the Owner-approved provider model for all newly activated BYL ERP work after v1.3 is merged to `main`.
+This document supersedes v1.3 and implements the Owner-approved provider model plus `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1` for all newly activated BYL ERP work after v1.4 is merged to `main`.
 
 ```text
-OWNER = final product / UAT / merge / release authority
+OWNER = final product / UAT / material-scope / irreversible-real-data / Production release authority; routine in-scope Git delivery is continuously authorized
 GPT_WEB = architecture / design / diagnosis / root-cause / task definition + bounded approved implementation
 US_CODEX_CLI = frozen deterministic low-to-medium complexity implementation + US-local verification
 US_CLAUDE_CODE = complex / high-ambiguity / broad implementation provider
@@ -61,9 +61,9 @@ Typical eligible work includes:
 - deterministic test coverage and local runtime wiring;
 - bounded follow-up implementation that is larger than a practical GPT-direct remediation but does not require new design decisions.
 
-US Codex may modify tracked files, create migrations and tests, run full US-local verification, and perform commit/push/Draft-PR delivery only when the active Work Package authorizes those Git actions.
+US Codex may modify tracked files, create migrations and tests, run full US-local verification, and perform commit/push/Draft-PR delivery when the active Owner-confirmed Work Package authorizes implementation. Routine Git delivery then follows `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1`.
 
-US Codex must not invent architecture or business rules, choose a replacement design, widen scope, select the next Work Package, merge without Owner authorization, or deploy without explicit release authorization.
+US Codex must not invent architecture or business rules, choose a replacement design, widen scope, select an unapproved next Work Package, bypass mandatory Owner UAT, perform irreversible real-data operations without Owner approval, or deploy Production without explicit release authorization. Routine in-scope merge follows `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1`.
 
 When implementation becomes ambiguous or a failure requires a non-frozen remediation decision, Codex stops and returns raw evidence to GPT Web. GPT diagnoses and issues the next bounded instruction.
 ## US Claude Code role
@@ -78,7 +78,7 @@ Typical Claude work includes:
 - broad implementation where multiple valid technical approaches remain and GPT has frozen the required choice/constraints;
 - other high-complexity packages explicitly assigned to Claude by GPT/Owner.
 
-Claude may implement only an Owner/GPT-approved Work Package and must not invent architecture or business rules, diagnose root cause beyond observed facts, widen scope, select the next Work Package, merge without Owner authorization or deploy without explicit release authorization.
+Claude may implement only an Owner/GPT-approved Work Package and must not invent architecture or business rules, diagnose root cause beyond observed facts, widen scope, select an unapproved next Work Package, bypass mandatory Owner UAT, perform irreversible real-data operations without Owner approval, or deploy Production without explicit release authorization. Routine in-scope merge follows `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1`.
 
 Claude usage requires a concrete complexity reason. Do not start Claude merely because a task is new or spans several files when the Work Package is frozen and deterministic enough for US Codex.
 
