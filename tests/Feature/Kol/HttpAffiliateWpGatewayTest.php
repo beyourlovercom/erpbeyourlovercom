@@ -88,6 +88,20 @@ final class HttpAffiliateWpGatewayTest extends TestCase
         });
     }
 
+    public function test_requests_use_origin_compatible_connector_user_agent(): void
+    {
+        Http::fake(['*' => Http::response($this->envelope(), 200)]);
+
+        $this->gateway()->health();
+
+        Http::assertSent(function (Request $request): bool {
+            $userAgent = $request->header('User-Agent')[0] ?? '';
+
+            return str_starts_with($userAgent, 'Mozilla/5.0')
+                && str_contains($userAgent, 'BYL-ERP-AffiliateWP-Connector/1.0');
+        });
+    }
+
     public function test_post_mutation_sends_idempotency_key_header(): void
     {
         Http::fake(['*' => Http::response($this->envelope(), 200)]);
