@@ -105,10 +105,10 @@ const sourceLabel = (s: string) => s === 'manual' ? '手动' : 'Woo'
           <tbody>
             <tr v-for="p in products.data" :key="p.id">
               <td>
-                <a v-if="p.sku && canOperate" :href="`/products/${p.id}/edit`" class="mvp-link">{{ p.sku }}</a>
+                <a v-if="p.sku" :href="`/products/${p.id}`" class="mvp-link">{{ p.sku }}</a>
                 <span v-else>{{ p.sku ?? '—' }}</span>
               </td>
-              <td>{{ p.name }}</td>
+              <td><a :href="`/products/${p.id}`" class="mvp-link">{{ p.name }}</a></td>
               <td>{{ sourceLabel(p.source_type) }}</td>
               <td>{{ fmt(p.unit) }}</td>
               <td>{{ fmt(p.shipping_weight_kg) }}</td>
@@ -120,7 +120,8 @@ const sourceLabel = (s: string) => s === 'manual' ? '手动' : 'Woo'
               <td>{{ p.is_active ? '启用' : '停用' }}</td>
               <td class="mvp-actions-cell">
                 <template v-if="canOperate">
-                  <a :href="`/products/${p.id}/edit`" class="mvp-link">编辑</a>
+                  <a :href="`/products/${p.id}`" class="mvp-link">查看</a>
+                  <a v-if="canOperate" :href="`/products/${p.id}/edit`" class="mvp-link">编辑</a>
                   <button class="mvp-link mvp-link-danger" @click="confirmDelete(p.id)">删除</button>
                 </template>
                 <span v-else>—</span>
