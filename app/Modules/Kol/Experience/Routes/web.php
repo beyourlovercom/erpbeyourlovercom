@@ -6,6 +6,7 @@ use App\Modules\Kol\Experience\Controllers\KolCollaborationController;
 use App\Modules\Kol\Experience\Controllers\KolCommunicationController;
 use App\Modules\Kol\Experience\Controllers\KolContentController;
 use App\Modules\Kol\Experience\Controllers\KolController;
+use App\Modules\Kol\Experience\Controllers\KolImportPreviewController;
 use App\Modules\Kol\Experience\Controllers\KolOpportunityController;
 use App\Modules\Kol\Experience\Controllers\KolOverviewController;
 use App\Modules\Kol\Experience\Controllers\ReferralCommissionController;
@@ -77,6 +78,10 @@ Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
         ->middleware('can:kol.affiliates.manage')->name('kol.affiliatewp.reconciliation');
     Route::post('/kol/affiliatewp/reconciliation/preview', [AffiliateWpSyncController::class, 'previewReconciliation'])
         ->middleware('can:kol.affiliates.manage')->name('kol.affiliatewp.reconciliation.preview');
+    Route::get('/kol/import-preview', [KolImportPreviewController::class, 'index'])
+        ->middleware(['can:kol.operate', 'can:kol.affiliates.manage'])->name('kol.import-preview');
+    Route::post('/kol/import-preview/generate', [KolImportPreviewController::class, 'generate'])
+        ->middleware(['can:kol.operate', 'can:kol.affiliates.manage'])->name('kol.import-preview.generate');
     Route::post('/kol/affiliatewp/sync', [AffiliateWpSyncController::class, 'sync'])
         ->middleware('can:kol.affiliates.manage')
         ->name('kol.affiliatewp.sync');

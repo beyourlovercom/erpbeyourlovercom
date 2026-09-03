@@ -82,12 +82,13 @@ final class AffiliateWpSyncController
         return Inertia::render('Kol/AffiliateWp/Reconciliation', [
             'connectionKey' => $connectionKey,
             'batches' => $this->reconciliationService->workspace($connectionKey),
+            'canOperate' => $request->user()->can('kol.operate'),
         ]);
     }
 
     public function previewReconciliation(Request $request): \Illuminate\Http\JsonResponse
     {
-        $request->validate(['file' => 'required|file|mimes:csv,txt,xlsx|max:10240']);
+        $request->validate(['file' => 'required|file|mimes:csv,txt,xlsx|max:65536']);
         $connectionKey = (string) ($this->gateway->descriptor()['connection_key'] ?? '');
         $batch = $this->reconciliationService->preview($request->file('file'), $connectionKey, $request->user());
         return response()->json(['batch' => [

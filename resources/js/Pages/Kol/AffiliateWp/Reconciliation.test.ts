@@ -23,7 +23,7 @@ describe('AffiliateWP reconciliation workspace', () => {
   beforeEach(() => postMock.mockReset())
 
   it('renders evidence summary and review rows', () => {
-    const wrapper = mount(Reconciliation, { props: { connectionKey: 'test.example.com', batches: [batch] } })
+    const wrapper = mount(Reconciliation, { props: { connectionKey: 'test.example.com', canOperate: true, batches: [batch] } })
     expect(wrapper.text()).toContain('真实数据核对')
     expect(wrapper.text()).toContain('Batch #4 · tencent.csv')
     expect(wrapper.text()).toContain('1 行')
@@ -31,7 +31,7 @@ describe('AffiliateWP reconciliation workspace', () => {
 
   it('posts the selected file through the canonical preview action', async () => {
     postMock.mockResolvedValue({ data: { batch } })
-    const wrapper = mount(Reconciliation, { props: { connectionKey: 'test.example.com', batches: [] } })
+    const wrapper = mount(Reconciliation, { props: { connectionKey: 'test.example.com', canOperate: true, batches: [] } })
     const input = wrapper.find('input[type="file"]')
     const file = new File(['email\ncreator@example.com'], 'rows.csv', { type: 'text/csv' })
     Object.defineProperty(input.element, 'files', { value: [file] })
