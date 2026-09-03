@@ -26,7 +26,7 @@ Mandatory rules:
 
 GPT must stop and request Owner action/approval only when one of these conditions is reached:
 
-1. **Owner UAT:** any mandatory Owner visual proposal PASS, real-page screenshot PASS, or other explicit Owner acceptance gate required by the approved workflow.
+1. **Owner UAT:** any mandatory Owner visual proposal PASS, live Local/UAT page inspection PASS, or other explicit Owner acceptance gate required by the approved workflow.
 2. **Irreversible real-data operation:** destructive or materially irreversible migration, deletion, purge, rewrite, or transformation of real/canonical business data.
 3. **Production formal release/deployment:** any action that publishes or deploys to the formal Production environment, including a Production release/tag step when it changes live production state.
 4. **Owner-only access is required:** login, password, API key, secret, 2FA, account approval, or another credential/action that GPT cannot legitimately supply itself.
@@ -88,26 +88,28 @@ Parallel implementation is allowed only under `PARALLEL-WORK-EXEC-001`. Each act
 
 # HIGHEST OWNER VISUAL APPROVAL / UAT GATE
 
-**OWNER_APPROVED / ACTIVE / MANDATORY. Applies to every ERP UI/UX task and supersedes any workflow that would allow implementation before visual approval or closure without Owner review of the real page.**
+**OWNER_APPROVED / ACTIVE / MANDATORY. Applies to every ERP UI/UX task and supersedes any workflow that would allow implementation before visual approval or closure without Owner inspection of the real Local/UAT page.**
 
 The canonical lifecycle is:
 
-`RENDER / VISUAL PROPOSAL → OWNER PASS → IMPLEMENT → REAL PAGE SCREENSHOT → OWNER PASS → CLOSE`
+`RENDER / VISUAL PROPOSAL → OWNER PASS → IMPLEMENT → UAT AUTO-OPEN READY → OWNER PASS → CLOSE`
 
 Mandatory rules:
 
 - **PRE-DEVELOPMENT VISUAL GATE:** Before tracked-code implementation begins for any new page, component, layout, interaction, visual redesign, or material UI/UX change, GPT must first present the Owner with a rendered visual proposal/mockup that is sufficiently representative to judge layout, hierarchy, controls, spacing, and interaction intent.
 - No implementation provider may begin UI/UX implementation until the Owner explicitly returns `PASS` or an equivalently unambiguous approval for that rendered proposal.
 - `OWNER_VISUAL_PASS` is a hard implementation prerequisite. A Work Package must remain `DESIGN_PENDING_OWNER_PASS` while this gate is unresolved.
-- **POST-DEVELOPMENT REAL-PAGE GATE:** After implementation and local verification, GPT must proactively open the actual Local/UAT page on the US development machine and capture/provide real browser screenshot evidence to the Owner.
-- The Owner is not expected to open the page, capture screenshots, or produce UAT evidence for GPT. GPT owns the browser-opening, screenshot-capture, evidence-review, and remediation loop whenever the authorized environment/tooling permits it.
-- A mockup, Storybook/static approximation, automated test result, DOM inspection, build success, or agent self-review does **not** satisfy the post-development gate. The evidence must show the implemented real Local/UAT page.
-- No UI/UX Work Package may be marked `OWNER_UAT_PASS`, `COMPLETE`, `FROZEN`, `CLOSED`, merge-ready, or otherwise formally收口 until the Owner explicitly returns `PASS` or an equivalently unambiguous approval after reviewing the real-page screenshot evidence.
-- If the Owner does not PASS the real page, remediate within the approved scope, recapture the real page, and repeat the Owner review loop. Do not close based on agent judgment alone.
-- **FORBIDDEN:** implement first and seek visual approval afterward; treat silence as approval; substitute developer screenshots/mockups for the real page after implementation; require the Owner to supply routine screenshots; bypass either PASS gate because the change appears small or obvious.
-- Exception: non-visual backend-only, documentation-only, CI-only, test-only, migration-only, or infrastructure-only tasks do not require a rendered visual proposal unless they materially change an Owner-visible UI. If such a task changes visible UI behavior, this gate applies to the visible portion.
+- **POST-DEVELOPMENT UAT AUTO-OPEN GATE:** After implementation and local verification, GPT must proactively prepare the US development machine for Owner UAT and open every relevant Local/UAT page affected by the Work Package.
+- Before asking the Owner to inspect anything, GPT must complete the routine UAT setup itself: start/verify the required local services, use the approved Local/UAT credential, complete login, handle any local browser/domain/SSL/interstitial bypass required for the authorized test environment, navigate to the relevant routes, and leave the pages open in a directly reviewable state.
+- For a change spanning multiple pages, views, tabs, or states, GPT must open all materially relevant pages/states needed to judge the implementation rather than presenting only one convenient page.
+- The Owner's UAT responsibility is limited to visually/behaviorally checking the already-open real pages and returning `PASS` or feedback. The Owner must not be required to log in, type credentials, perform routine browser bypass steps, navigate to the target pages, or capture/upload screenshots.
+- **SCREENSHOT DELIVERY IS NOT A UAT REQUIREMENT.** Files written to `/tmp`, local screenshot artifacts, mockups, automated test output, DOM inspection, or build success are not substitutes for the Owner inspecting the live Local/UAT page. GPT may use screenshots internally for diagnosis, but must not make screenshot delivery the Owner acceptance mechanism unless the Owner explicitly requests screenshots.
+- No UI/UX Work Package may be marked `OWNER_UAT_PASS`, `COMPLETE`, `FROZEN`, `CLOSED`, merge-ready, or otherwise formally收口 until the Owner explicitly returns `PASS` or an equivalently unambiguous approval after inspecting the prepared live Local/UAT pages.
+- If the Owner does not PASS, remediate within the approved scope, refresh/reopen the affected real pages in the correct state, and repeat the Owner inspection loop. Do not close based on agent judgment alone.
+- **FORBIDDEN:** implement first and seek design approval afterward; treat silence as approval; make `/tmp` screenshots the required acceptance evidence; ask the Owner to perform routine login/bypass/navigation/screenshot work; open only a subset of materially affected pages; bypass either PASS gate because the change appears small or obvious.
+- Exception: non-visual backend-only, documentation-only, CI-only, test-only, migration-only, or infrastructure-only tasks do not require a rendered visual proposal or Owner live-page inspection unless they materially change an Owner-visible UI. If such a task changes visible UI behavior, this gate applies to the visible portion.
 
-This gate remains a mandatory Owner UAT stop where applicable, but commit/push/PR/merge after the required Owner PASS follows `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1` without an additional delivery-authorization prompt. Production formal release/deployment remains a separate explicit Owner gate, and this rule does not weaken security, canonical data-truth, migration, accounting, menu, or exact-revision verification requirements.
+This gate remains a mandatory Owner UAT stop where applicable, but commit/push/PR/merge after the required Owner PASS follows `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1` without an additional delivery-authorization prompt. Production formal release/deployment remains a separate explicit Owner gate, and this rule does not weaken security, canonical data-truth, migration, accounting, menu, or exact-revision verification requirements. Local browser/domain/SSL bypass in this rule means only authorized Local/UAT environment setup; it never authorizes bypassing application permissions, authentication policy, or Production security controls.
 
 # HIGHEST UI / FORM DESIGN GATE
 
@@ -133,9 +135,9 @@ If proposed behavior conflicts with the approved baseline and there is no explic
 
 # LOCAL / UAT CREDENTIAL GATE
 
-For every Owner-facing Local/UAT browser test, provision and provide the default temporary credential `admin` / `password`. The alias is restricted to `local` or `testing`; never create, enable, seed, or document this credential as a production login.
+For every Owner-facing Local/UAT browser test, provision the default temporary credential `admin` / `password` and use it directly to complete the Owner UAT login before handoff. The alias is restricted to `local` or `testing`; never create, enable, seed, or document this credential as a production login.
 
-When a fresh Local/UAT database is created, use `Database\Seeders\LocalUatSeeder` (or an equivalent local-only provisioning step) so the credential exists before handing the UAT URL to the Owner.
+When a fresh Local/UAT database is created, use `Database\Seeders\LocalUatSeeder` (or an equivalent local-only provisioning step) so the credential exists before UAT. GPT must perform the routine login and authorized Local/UAT browser/domain/SSL bypass itself, then leave all relevant UAT pages open and ready for Owner inspection.
 
 # DEFAULT OWNER UAT VERIFICATION POLICY
 
