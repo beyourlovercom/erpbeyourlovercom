@@ -81,6 +81,20 @@ final class HttpWordPressSubscriberGatewayTest extends TestCase
         });
     }
 
+    public function test_subscriber_snapshot_uses_origin_compatible_connector_user_agent(): void
+    {
+        $this->fakeSuccessfulSnapshot();
+
+        app(HttpWordPressSubscriberGateway::class)->snapshotSubscribers();
+
+        Http::assertSent(function (Request $request): bool {
+            $userAgent = $request->header('User-Agent')[0] ?? '';
+
+            return str_starts_with($userAgent, 'Mozilla/5.0')
+                && str_contains($userAgent, 'BYL-ERP-Marketing-WordPress-Connector/1.0');
+        });
+    }
+
     public function test_snapshot_rejects_connection_key_mismatch(): void
     {
         Http::fake(['*' => Http::response([

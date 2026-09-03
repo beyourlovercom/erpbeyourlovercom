@@ -23,7 +23,7 @@ final class HttpWordPressSubscriberGateway implements WordPressSubscriberGateway
         $path = self::Namespace.'/snapshot/subscribers?'.http_build_query($query);
         [$timestamp, $nonce] = [(string) CarbonImmutable::now('UTC')->getTimestamp(), Str::uuid()->toString()];
         $canonical = implode("\n", ['GET', $path, $timestamp, $nonce, $this->connectionKey(), '', hash('sha256', '')]);
-        $headers = ['X-YBY-Key-Id' => $this->keyId(), 'X-YBY-Connection-Key' => $this->connectionKey(), 'X-YBY-Timestamp' => $timestamp, 'X-YBY-Nonce' => $nonce, 'X-YBY-Signature-Version' => 'v1', 'X-YBY-Signature' => hash_hmac('sha256', $canonical, $this->secret()), 'User-Agent' => 'BYL-ERP-Marketing-WordPress-Connector/1.0'];
+        $headers = ['X-YBY-Key-Id' => $this->keyId(), 'X-YBY-Connection-Key' => $this->connectionKey(), 'X-YBY-Timestamp' => $timestamp, 'X-YBY-Nonce' => $nonce, 'X-YBY-Signature-Version' => 'v1', 'X-YBY-Signature' => hash_hmac('sha256', $canonical, $this->secret()), 'User-Agent' => 'Mozilla/5.0 BYL-ERP-Marketing-WordPress-Connector/1.0'];
         $request = Http::withHeaders($headers)
             ->acceptJson()
             ->timeout(15)
