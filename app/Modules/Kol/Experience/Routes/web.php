@@ -8,6 +8,7 @@ use App\Modules\Kol\Experience\Controllers\KolContentController;
 use App\Modules\Kol\Experience\Controllers\KolController;
 use App\Modules\Kol\Experience\Controllers\KolImportPreviewController;
 use App\Modules\Kol\Experience\Controllers\KolImportActivationController;
+use App\Modules\Kol\Experience\Controllers\KolAffiliateBindingActivationController;
 use App\Modules\Kol\Experience\Controllers\KolOpportunityController;
 use App\Modules\Kol\Experience\Controllers\KolOwnerMappingController;
 use App\Modules\Kol\Experience\Controllers\KolOverviewController;
@@ -100,6 +101,12 @@ Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
         ->middleware(['can:system.permissions.manage', 'can:kol.operate', 'can:kol.affiliates.manage'])->name('kol.import-activation.prepare');
     Route::post('/kol/import-activation/{activationBatch}/apply', [KolImportActivationController::class, 'apply'])
         ->middleware(['can:system.permissions.manage', 'can:kol.operate', 'can:kol.affiliates.manage'])->name('kol.import-activation.apply');
+    Route::get('/kol/affiliatewp/binding-activation', [KolAffiliateBindingActivationController::class, 'index'])
+        ->middleware(['can:system.permissions.manage', 'can:kol.operate', 'can:kol.affiliates.manage'])->name('kol.affiliatewp.binding-activation');
+    Route::post('/kol/affiliatewp/binding-activation/prepare', [KolAffiliateBindingActivationController::class, 'prepare'])
+        ->middleware(['can:system.permissions.manage', 'can:kol.operate', 'can:kol.affiliates.manage'])->name('kol.affiliatewp.binding-activation.prepare');
+    Route::post('/kol/affiliatewp/binding-activation/{bindingBatch}/apply', [KolAffiliateBindingActivationController::class, 'apply'])
+        ->middleware(['can:system.permissions.manage', 'can:kol.operate', 'can:kol.affiliates.manage'])->name('kol.affiliatewp.binding-activation.apply');
     Route::post('/kol/affiliatewp/sync', [AffiliateWpSyncController::class, 'sync'])
         ->middleware('can:kol.affiliates.manage')
         ->name('kol.affiliatewp.sync');
