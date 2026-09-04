@@ -1,0 +1,51 @@
+ERP-KOL-V1-BOUNDED-PRODUCTION-RELEASE-MANIFEST-001
+STATUS: REHEARSAL_PASS / PRODUCTION_NOT_AUTHORIZED
+BASE_RUNTIME: current Production composite release 1c0b6ec0215818af7e37bd19e77e40a8732f05ad-m21-162f7208c557-m22-ec725cef5776
+SOURCE_TRUTH: main@c094b95b09ba46b63e3ae7535decd3eb8c57392e
+SOURCE_PRS: #158 #163 #166 #170 #172
+RUNTIME_FILE_COUNT: 35
+KOL_MIGRATION_COUNT: 5
+EXCLUDED_CURRENT_MAIN_MIGRATIONS: 2026_09_03_000000_create_product_provider_snapshots_and_media.php; 2026_09_03_000100_add_product_id_to_sync_run_items.php
+CACHE_CONTRACT: clear stale caches before validation; rebuild config/route/view caches before release cutover
+ROLLBACK_APP_RELEASE: current Production composite release above
+PRODUCTION_DEPLOYMENT: NO
+PRODUCTION_MIGRATION: NO
+REAL_DATA_IMPORT: NO
+PROVIDER_MUTATION: NO
+
+RUNTIME_OVERLAY_PATHS
+app/Modules/Kol/Application/AffiliateWp/AffiliateBindingService.php
+app/Modules/Kol/Application/AffiliateWp/KolAffiliateBindingActivationService.php
+app/Modules/Kol/Application/AffiliateWp/ReferralResolutionService.php
+app/Modules/Kol/Application/ImportActivation/KolImportActivationService.php
+app/Modules/Kol/Application/ImportPreview/KolImportPreviewService.php
+app/Modules/Kol/Application/OwnerMapping/KolOwnerMappingService.php
+app/Modules/Kol/Application/Reconciliation/KolReconciliationService.php
+app/Modules/Kol/Experience/Controllers/AffiliateWpSyncController.php
+app/Modules/Kol/Experience/Controllers/KolAffiliateBindingActivationController.php
+app/Modules/Kol/Experience/Controllers/KolImportActivationController.php
+app/Modules/Kol/Experience/Controllers/KolImportPreviewController.php
+app/Modules/Kol/Experience/Controllers/KolOwnerMappingController.php
+app/Modules/Kol/Experience/Routes/web.php
+app/Modules/Kol/Infrastructure/Models/KolAffiliateBindingActivationBatch.php
+app/Modules/Kol/Infrastructure/Models/KolAffiliateBindingActivationItem.php
+app/Modules/Kol/Infrastructure/Models/KolImportActivationBatch.php
+app/Modules/Kol/Infrastructure/Models/KolImportActivationItem.php
+app/Modules/Kol/Infrastructure/Models/KolImportPreviewBatch.php
+app/Modules/Kol/Infrastructure/Models/KolImportPreviewCandidate.php
+app/Modules/Kol/Infrastructure/Models/KolOwnerCandidateDecision.php
+app/Modules/Kol/Infrastructure/Models/KolOwnerSourceMapping.php
+app/Modules/Kol/Infrastructure/Models/KolReconciliationBatch.php
+app/Modules/Kol/Infrastructure/Models/KolReconciliationRow.php
+config/kol.php
+database/migrations/2026_09_02_100000_create_kol_reconciliation_tables.php
+database/migrations/2026_09_02_150000_create_kol_import_preview_tables.php
+database/migrations/2026_09_03_103000_create_kol_owner_mapping_tables.php
+database/migrations/2026_09_03_230000_create_kol_import_activation_tables.php
+database/migrations/2026_09_04_020000_create_kol_affiliate_binding_activation_tables.php
+resources/js/Pages/Kol/AffiliateWp/BindingActivation.vue
+resources/js/Pages/Kol/AffiliateWp/Index.vue
+resources/js/Pages/Kol/AffiliateWp/Reconciliation.vue
+resources/js/Pages/Kol/ImportActivation.vue
+resources/js/Pages/Kol/ImportPreview.vue
+resources/js/Pages/Kol/OwnerMapping.vue

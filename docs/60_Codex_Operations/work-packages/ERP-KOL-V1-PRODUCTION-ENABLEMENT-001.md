@@ -2,7 +2,7 @@
 type: work-package
 project: BYL ERP
 work_package_id: ERP-KOL-V1-PRODUCTION-ENABLEMENT-001
-status: OWNER_DECISION_REQUIRED_SOURCE_BYTES_MANAGER_FINANCE_AND_PRODUCTION_RELEASE_GATE
+status: WAITING_AUTHORITATIVE_SOURCE_BYTES_MANAGER_FINANCE_AND_PRODUCTION_MUTATION_GATE
 verification_tier: HIGH_RISK
 baseline: origin/main@c094b95b09ba46b63e3ae7535decd3eb8c57392e
 production_mutation_authorized: NO
@@ -406,5 +406,31 @@ Total: 919 single-owner candidates plus 42 multi-owner candidates. Name-only aut
 2. Restore `0902-网红订单.xlsx` (or Owner explicitly designates a replacement authoritative source); regenerate P1→P4 exact evidence.
 3. Review the resulting 42 multi-owner candidates and save explicit decisions unless the seven approved mappings converge deterministically.
 4. Owner confirms Approval Manager and Finance Owner responsibility policy for imported KOLs.
-5. Freeze exact Production release strategy (bounded KOL composite vs full-main) plus backup/rollback and exact pending migration scope.
-6. Stop at the explicit Production deployment / real-data mutation Owner gate before any live migration/import/binding.
+5. Bounded KOL composite is the rehearsed release candidate; retain the current live composite as application rollback target and take a verified pre-migration Production DB backup before any live migration.
+6. Stop at the explicit Production deployment / real-data mutation Owner gate before creating the bounded release, running the five KOL migrations, importing KOLs or applying Affiliate bindings.
+## Bounded KOL composite release rehearsal — 2026-09-04
+
+- Owner source-owner account provisioning removed the missing-Specialist-account blocker: Young/Hiko/Summer/Zhixi/Aries/Kelsey were created through canonical `UserService` as KOL Specialist users; existing `emma@beyourlover.com` remains the exact Emma ERP user and existing KOL Manager. Password material is not recorded in repository evidence.
+- Approved source-owner mapping contract is now exact by Owner direction: Young→#5, Emma→#3, Hiko→#6, Summer→#7, Zhixi→#8, Aries→#9, Kelsey→#10.
+- Current Production composite contains none of the P1/P2/P3/P4/P4B runtime services/pages. Therefore a bounded activation release must overlay the complete final runtime surface from PRs #158/#163/#166/#170/#172 rather than only adding P4/P4B migrations.
+- Exact bounded runtime manifest is tracked in `ERP-KOL-V1-BOUNDED-PRODUCTION-RELEASE-MANIFEST-001.txt`: 35 runtime files plus five KOL migrations. The two unrelated Product/Sync current-main migrations are explicitly excluded.
+- Rehearsal base was a secret-free copy of the current Production composite runtime. No Production `.env` or secret was copied into the rehearsal.
+- Initial rehearsal correctly exposed stale Production Laravel route-cache behavior (new routes returned 404). Release contract is therefore explicit: stale caches MUST be cleared and config/route/view caches rebuilt before cutover.
+- Bounded release cache-build contract: PASS. New reconciliation/import-preview/owner-mapping/import-activation/binding-activation routes are present after cache rebuild.
+- Bounded fresh migration rehearsal: PASS with P1/P2/P3/P4/P4B only; Product provider-snapshot and Sync `product_id` migrations remain absent.
+- Bounded frontend: typecheck PASS; KOL frontend 14 files / 97 tests PASS; production build PASS.
+- Bounded P1→P4B focused backend after test-cache isolation: 31 tests / 202 assertions PASS.
+- Bounded full KOL backend: 269 tests / 1,096 assertions PASS.
+- Application rollback target for any future bounded deploy is the current live composite release `1c0b6ec0215818af7e37bd19e77e40a8732f05ad-m21-162f7208c557-m22-ec725cef5776`. A pre-migration DB backup remains mandatory; after any real-data import, DB restore is the authoritative rollback path rather than assuming migration `down()` can undo business mutation.
+- No Production code deployment, migration, KOL import, Affiliate binding, Referral mutation, or Provider write was executed by this rehearsal.
+
+`BOUNDED_KOL_RELEASE_ENGINEERING = PASS`
+`BOUNDED_KOL_RUNTIME_FILES = 35`
+`BOUNDED_KOL_MIGRATIONS = 5`
+`FULL_MAIN_PRODUCT_SYNC_MIGRATIONS_REQUIRED = NO`
+`SOURCE_OWNER_ACCOUNT_AND_MAPPING_GATE = PASS`
+`AUTHORITATIVE_SOURCE_BYTES = STILL_REQUIRED`
+`42_MULTI_OWNER_DECISIONS = WAITING_SOURCE_REPLAY`
+`APPROVAL_MANAGER_POLICY = OWNER DECISION REQUIRED`
+`FINANCE_OWNER_POLICY = OWNER DECISION REQUIRED`
+`PRODUCTION_DEPLOYMENT_AND_REAL_DATA_MUTATION = NOT AUTHORIZED`
