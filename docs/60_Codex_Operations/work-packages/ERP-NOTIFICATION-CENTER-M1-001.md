@@ -1,8 +1,10 @@
 # ERP-NOTIFICATION-CENTER-M1-001
 
-Status: OWNER_PASS / IMPLEMENTED / DELIVERY_PENDING
+Status: COMPLETE / OWNER_PASS / MERGED / CLOSED
 Base: `main@c9070f2005821648768a071ccbc22188a0cd8d82`
-Branch: `feature/erp-notification-center-m1-001`
+Implementation Branch: `feature/erp-notification-center-m1-001`
+Merged PR: `#176`
+Merge SHA: `8feea0bab4d9ff25dd61148fbe7fe790b56dcc9b`
 
 ## Purpose
 
@@ -32,9 +34,11 @@ Add one persistent in-app Notification Center to the authenticated BYL ERP shell
 - Selecting a notification switches the center from the list to the approved `通知详情` view; it does not navigate away from the current ERP page.
 - Detail view exposes full content, creator, time, and structured related-business links such as order / procurement requirement / product.
 - Related-business identifiers themselves are the navigation actions; generic `打开业务页面` buttons are not the primary detail interaction.
-- `标记已读` is explicit in the detail header; opening the detail alone does not create Global Feedback.
+- Opening a notification into `通知详情` immediately marks it read; the unread dot and global unread badge update immediately.
+- There is no separate per-notification `标记已读` action in the final Owner-approved interaction; opening detail is the read action.
+- Opening detail does not create Global Feedback.
 - When a target is deleted/unavailable, the historical notification remains readable but has no navigation action.
-- Individual `标记已读` and global `全部已读` are supported.
+- Per-notification read state is updated by opening detail; global `全部已读` remains supported.
 - Empty state is calm and explicit; no fake alerts are rendered.
 
 ## Security / Authorization
@@ -80,7 +84,7 @@ Before tracked implementation, Owner must approve desktop and mobile rendering f
 4. `全部 / 未读` filtering and `全部已读` action.
 5. Mobile full-height notification sheet.
 
-OWNER UI GATE: PASS. NEXT EXACT GATE: final delivery reconciliation → commit → push → PR → CI → merge. No Production deployment in this WP.
+OWNER UI GATE: PASS. DELIVERY GATE: PASS / MERGED BY PR #176. No Production deployment in this WP.
 ## Feedback Island coexistence rule — OWNER CONFIRMED
 - Global Feedback Island and Notification Center use separate state and separate persistence.
 - Feedback Island = transient result of the current user's explicit action; never unread, never history.
@@ -95,3 +99,18 @@ OWNER UI GATE: PASS. NEXT EXACT GATE: final delivery reconciliation → commit �
 - Clicking a notification opens the designed notification-detail view and immediately marks that notification read.
 - The unread dot and global unread badge update immediately; no separate `标记已读` action is shown.
 - Related business entities are explicit clickable links inside the detail view.
+
+## Formal Closure
+
+- Owner closure command: `ERP-NOTIFICATION-CENTER-M1-001 正式关闭` on 2026-09-04.
+- Owner UAT: PASS, including final notification-detail design and `open detail = read` interaction.
+- Pull Request: `#176` — `feat: add global notification center M1`.
+- Merge SHA: `8feea0bab4d9ff25dd61148fbe7fe790b56dcc9b`.
+- GitHub CI: PASS, including Typecheck, frontend regression, production build, fresh migration rehearsal, backend regression, cross-module boundary regression, diff check, and no-dev-hot-marker assertion.
+- Runtime/Production: no Production deployment was performed or authorized by this WP.
+- Global Feedback Island remains a separate transient-feedback system; Notification Center remains persistent recipient business-event history.
+- Package status is frozen as `COMPLETE / OWNER_PASS / MERGED / CLOSED`.
+
+## Next Exact Gate
+
+`ERP-PROCUREMENT-ORDER-REQUIREMENT-M1-001` pre-development contract + UI/interaction gate.
