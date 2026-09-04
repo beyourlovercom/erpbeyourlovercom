@@ -1,6 +1,6 @@
 # ERP-KOL-AFFILIATE-BINDING-REFERRAL-RERESOLUTION-M4B-001
 
-STATUS: OWNER_UAT_PASS / GIT_DELIVERY_IN_PROGRESS
+STATUS: MERGED / PASS / COMPLETE / CLOSED
 EXECUTION_PROVIDER: GPT_WEB_DIRECT_IMPLEMENTATION
 BASELINE: origin/main@e23d5c27c153f5bba5c1811bf8e6c91645021942
 
@@ -98,10 +98,10 @@ This is a material UI workflow. Per `AGENTS.md`, tracked UI implementation MUST 
 - No new navigation item.
 - No tracked UI implementation before pre-development Owner visual PASS.
 
-PROJECT_POSITION: P1 COMPLETE → P2 COMPLETE → P3A COMPLETE → P4 CLOSED/MERGED → P4B CURRENT/DESIGN_PENDING_OWNER_PASS → post-import validation → Production activation gate
+PROJECT_POSITION: P1 COMPLETE → P2 COMPLETE → P3A COMPLETE → P4 CLOSED/MERGED → P4B CLOSED/MERGED → Production enablement reconciliation CURRENT → Production activation gate
 CURRENT_WORK_PACKAGE: ERP-KOL-AFFILIATE-BINDING-REFERRAL-RERESOLUTION-M4B-001
-PACKAGE_STATUS: OWNER_UAT_PASS / GIT_DELIVERY_IN_PROGRESS
-NEXT_EXACT_GATE: final regression → commit → push → PR → CI → merge → main reconciliation under continuous Owner authorization
+PACKAGE_STATUS: MERGED / PASS / COMPLETE / CLOSED
+NEXT_EXACT_GATE: resume ERP-KOL-V1-PRODUCTION-ENABLEMENT-001 against latest main; reconcile remaining Production/real-data gates before any live mutation
 
 ## Owner visual gate — 2026-09-04
 - Pre-development rendered P4B visual proposal: PASS.
@@ -121,4 +121,5 @@ NEXT_EXACT_GATE: final regression → commit → push → PR → CI → merge �
 - Real browser validation on `127.0.0.1:18126`: 12 plan rows, detail expansion PASS, apply enabled only under explicit Local/UAT gate, mobile 390px document width=390, console/page errors=[].
 - Owner live-page UAT: PASS on 2026-09-04 after direct inspection of the real P4B Local/UAT page. This authorizes Git delivery only; Production deployment/migration and real Affiliate binding remain prohibited.
 - Post-UAT final regression: focused P4B 46 assertions PASS; KOL + Identity 1,312 assertions / 0 failures; KOL frontend 97/97 PASS; typecheck/build/diff-check PASS.
+- Git delivery complete: feature commit `196d21315b21a023afec571ee1a62e627a62f611`; PR #172 four required CI checks PASS; squash merged to `main@66159c5abd12cf1169a5f3a419b4daefdaa958b2` on 2026-09-04.
 - Production and all Provider systems remain untouched.
