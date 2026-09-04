@@ -90,3 +90,12 @@ describe('TopBar mobile toggle', () => {
     expect(wrapper.find('.shell-mobile-toggle').attributes('aria-expanded')).toBe('true')
   })
 })
+
+
+describe('TopBar notification center', () => {
+  it('renders the global bell before the mobile navigation control', () => {
+    const wrapper = mount(TopBar, { props: { title: '首页', breadcrumbs: ['BYL ERP'], mobileExpanded: false, notificationCenter: { unread_count: 3, items: [] } } })
+    expect(wrapper.find('[aria-label="打开通知中心"]').exists()).toBe(true)
+    expect(wrapper.find('.notification-badge').text()).toBe('3')
+  })
+})

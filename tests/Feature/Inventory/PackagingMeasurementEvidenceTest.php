@@ -23,6 +23,7 @@ final class PackagingMeasurementEvidenceTest extends TestCase
     {
         Storage::fake('local');
         $factory = $this->userWith(['inventory.packaging.submit']);
+        $reviewer = $this->userWith(['inventory.packaging.review']);
         $product = Product::create(['name'=>'Factory Product','sku'=>'FACT-001']);
         $this->actingAs($factory)->get('/inventory')->assertForbidden();
         $this->actingAs($factory)->get('/products')->assertForbidden();
@@ -34,6 +35,9 @@ final class PackagingMeasurementEvidenceTest extends TestCase
         $this->actingAs($factory)->post("/inventory/packaging/{$record->id}/submit", ['product_id'=>$product->id,'packaging_length_cm'=>'10','packaging_width_cm'=>'8','packaging_height_cm'=>'5','packaged_weight_kg'=>'0.250','measured_at'=>'2026-09-03 10:00:00'])->assertRedirect()->assertSessionDoesntHaveErrors();
         $this->assertDatabaseHas('packaging_measurement_records', ['id'=>$record->id,'status'=>'submitted','product_id'=>$product->id,'packaging_method_key'=>null]);
         $this->assertNull(Product::find($product->id)->weight_kg);
+        $this->assertSame(1, $reviewer->fresh()->unreadNotifications()->count());
+        $this->assertSame('新的包装测量待审核', $reviewer->fresh()->unreadNotifications()->firstOrFail()->data['title']);
+        $this->assertSame(0, $factory->fresh()->unreadNotifications()->count());
         Storage::disk('local')->assertExists($record->media()->where('kind','measurement')->firstOrFail()->path);
     }
 
@@ -64,6 +68,8 @@ final class PackagingMeasurementEvidenceTest extends TestCase
         $record = PackagingMeasurementRecord::create(['product_id'=>$product->id,'status'=>'submitted','created_by'=>$submitter->id,'submitted_at'=>now(),'packaging_length_cm'=>1,'packaging_width_cm'=>2,'packaging_height_cm'=>3,'packaged_weight_kg'=>'0.100','measured_at'=>now()]);
         $this->actingAs($reviewer)->post("/inventory/packaging/{$record->id}/review", ['decision'=>'approved'])->assertRedirect();
         $this->assertDatabaseHas('packaging_measurement_records', ['id'=>$record->id,'status'=>'approved','reviewed_by'=>$reviewer->id]);
+        $this->assertSame(1, $submitter->fresh()->unreadNotifications()->count());
+        $this->assertSame('包装测量已批准', $submitter->fresh()->unreadNotifications()->firstOrFail()->data['title']);
         $this->actingAs($submitter)->patch("/inventory/packaging/{$record->id}", ['product_id'=>$product->id])->assertForbidden();
     }
 

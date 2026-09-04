@@ -7,7 +7,7 @@ import AuthenticatedLayout from './AuthenticatedLayout.vue'
 const shellCss = readFileSync(resolve(process.cwd(), 'resources/css/shell.css'), 'utf8')
 let currentUrl = '/sync'
 const items = [{ key: 'dashboard', label: 'Dashboard', emoji: '📊', path: '/dashboard', route: 'dashboard', placeholder: false, children: [] }, { key: 'sync', label: '同步', emoji: '🔄', path: '/sync', route: 'shell.sync', placeholder: true, children: [{ key: 'pending', label: '待处理', emoji: '⏳', path: '/sync/pending', route: 'sync.pending', placeholder: true, children: [] }] }]
-vi.mock('@inertiajs/vue3', () => ({ Link: { props: ['href'], template: '<a :href="href"><slot /></a>' }, router: { post: vi.fn() }, usePage: () => ({ url: currentUrl, props: { auth: { user: { id: 1, name: 'Owner', email: 'owner@example.test' } }, shellNavigation: items } }) }))
+vi.mock('@inertiajs/vue3', () => ({ Link: { props: ['href'], template: '<a :href="href"><slot /></a>' }, router: { post: vi.fn() }, usePage: () => ({ url: currentUrl, props: { auth: { user: { id: 1, name: 'Owner', email: 'owner@example.test' } }, shellNavigation: items, notificationCenter: { unread_count: 0, items: [] } } }) }))
 
 // Node's experimental global localStorage is unavailable under the project's jsdom/vitest
 // combination (window.localStorage is undefined), unlike a real browser. This deterministic
@@ -68,7 +68,7 @@ describe('authenticated layout', () => {
     expect(wrapper.classes()).toContain('sidebar-collapsed')
   })
 
-  it('keeps the page header free of account controls', () => { const wrapper = mount(AuthenticatedLayout, { props: { title: '同步', breadcrumbs: ['同步'] } }); const topbar = wrapper.find('.shell-topbar'); expect(topbar.findAll('button')).toHaveLength(1); expect(topbar.text()).not.toContain('Owner'); expect(topbar.text()).not.toContain('退出登录') })
+  it('keeps the page header free of account controls', () => { const wrapper = mount(AuthenticatedLayout, { props: { title: '同步', breadcrumbs: ['同步'] } }); const topbar = wrapper.find('.shell-topbar'); expect(topbar.findAll('button')).toHaveLength(2); expect(topbar.find('[aria-label="打开通知中心"]').exists()).toBe(true); expect(topbar.text()).not.toContain('Owner'); expect(topbar.text()).not.toContain('退出登录') })
 
   it('does not fabricate unauthorized navigation', () => { const wrapper = mount(AuthenticatedLayout, { props: { title: '同步', breadcrumbs: ['同步'] } }); expect(wrapper.text()).toContain('同步'); expect(wrapper.text()).not.toContain('设置') })
 

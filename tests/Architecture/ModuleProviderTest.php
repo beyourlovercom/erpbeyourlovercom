@@ -13,6 +13,7 @@ use App\Modules\Inventory\Providers\InventoryServiceProvider;
 use App\Modules\Kol\Providers\KolServiceProvider;
 use App\Modules\Logistics\Providers\LogisticsServiceProvider;
 use App\Modules\Marketing\Providers\MarketingServiceProvider;
+use App\Modules\NotificationCenter\Providers\NotificationCenterServiceProvider;
 use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
 use App\Modules\Orders\Providers\OrdersServiceProvider;
@@ -63,6 +64,7 @@ final class ModuleProviderTest extends TestCase
             ProductsServiceProvider::class,
             InventoryServiceProvider::class,
             MarketingServiceProvider::class,
+            NotificationCenterServiceProvider::class,
             SupportServiceProvider::class,
             BackupServiceProvider::class,
         ];
