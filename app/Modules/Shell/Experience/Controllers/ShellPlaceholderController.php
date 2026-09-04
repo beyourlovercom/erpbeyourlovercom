@@ -41,7 +41,7 @@ final class ShellPlaceholderController
         return match ($key) {
             'customers' => '客户资料与客户订单的统一入口。',
             'kol' => '网红履约订单与相关操作的统一入口。',
-            'procurement' => '外采记录、文件与后续采购工作的统一入口。',
+            'procurement' => '采购记录、文件与后续采购工作的统一入口。',
             'guides' => 'ERP 操作教程、视频与手册的统一入口。',
             'accounting' => '订单成本、费用分析与会计相关工作的统一入口。',
             'settings' => '用户、权限、仓库与系统配置的统一入口。',

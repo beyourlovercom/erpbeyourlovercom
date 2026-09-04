@@ -85,7 +85,7 @@ final class OrderController
     public function show(Request $request, Order $order): Response
     {
         $this->authorizeKind($request, $order);
-        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync', 'operationalMarkers']);
+        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync', 'operationalMarkers', 'procurementOrder']);
         $inventoryAvailability = $this->availability->forProductIds($order->items->pluck('product_id')->filter()->unique()->values()->all());
 
         return Inertia::render('Orders/Show', [
@@ -94,6 +94,7 @@ final class OrderController
             'packagingReferences' => $this->packagingReferences->forOrder($order),
             'warehouses' => $this->availability->activeWarehouses(),
             'canMarkOperational' => $request->user()?->can('orders.edit') ?? false,
+            'canCreateProcurement' => ($request->user()?->can('procurement.create') ?? false) && $order->operationalMarkers->contains('marker', 'stockout'),
             'canManageProductPackaging' => $request->user()?->can('products.operate') ?? false,
             'canViewPackagingEvidence' => ($request->user()?->can('inventory.view') ?? false) || ($request->user()?->can('inventory.packaging.review') ?? false),
             'audit' => AuditRecord::query()
@@ -194,6 +195,7 @@ final class OrderController
                 'warehouse_name' => $order->shipment->warehouse?->name,
             ] : null,
             'operational_markers' => $order->relationLoaded('operationalMarkers') ? $order->operationalMarkers->pluck('marker')->values()->all() : [],
+            'procurement_order' => $order->relationLoaded('procurementOrder') && $order->procurementOrder ? ['id' => $order->procurementOrder->id, 'procurement_number' => $order->procurementOrder->procurement_number] : null,
             'manual_sync' => $order->manualSync ? [
                 'status' => $order->manualSync->website_sync_status->value,
                 'synced_at' => $order->manualSync->synced_at?->toIso8601String(),

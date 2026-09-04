@@ -61,10 +61,11 @@ final class PermissionCatalog
                     ['key' => 'inventory.packaging.review', 'label' => '审核包装与测量证据'],
                 ],
             ],
-            '外采' => [
-                'label' => '外采',
+            '采购' => [
+                'label' => '采购',
                 'permissions' => [
-                    ['key' => 'procurement.view', 'label' => '查看外采'],
+                    ['key' => 'procurement.view', 'label' => '查看采购'],
+                    ['key' => 'procurement.create', 'label' => '创建采购订单'],
                 ],
             ],
             '产品' => [

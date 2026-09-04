@@ -22,10 +22,10 @@ return [
         'list' => ['label' => '仓库清单', 'path' => '/inventory/list'],
         'products' => ['label' => '产品库存', 'path' => '/inventory/products'],
     ]],
-    'procurement' => ['icon' => '📦', 'label' => '外采', 'children' => [
-        'overview' => ['label' => '外采总览', 'path' => '/procurement'],
-        'files' => ['label' => '外采文件', 'path' => '/procurement/files'],
-        'records' => ['label' => '记录', 'path' => '/procurement/records'],
+    'procurement' => ['icon' => '📦', 'label' => '采购', 'children' => [
+        'overview' => ['label' => '采购总览', 'path' => '/purchase'],
+        'files' => ['label' => '采购文件', 'path' => '/purchase/files'],
+        'records' => ['label' => '记录', 'path' => '/purchase/records'],
     ]],
     'products' => ['icon' => '🏷️', 'label' => '产品', 'children' => [
         'index' => ['label' => '产品索引', 'path' => '/products'],

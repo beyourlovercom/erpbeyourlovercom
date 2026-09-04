@@ -11,7 +11,7 @@ const user = { id: 1, name: 'Test User', email: 'test@example.com' }
 const defaults = [
   ['dashboard', 'Dashboard', '📊'], ['logistics', '物流', '🚚'], ['sync', '同步', '🔄'],
   ['customers', '客户', '👥'], ['kol', '网红', '⭐'], ['inventory', '库存', '📦'],
-  ['procurement', '外采', '🛒'], ['products', '产品', '🏷️'], ['guides', '指南', '📖'],
+  ['procurement', '采购', '🛒'], ['products', '产品', '🏷️'], ['guides', '指南', '📖'],
   ['accounting', '会计', '🧾'], ['settings', '设置', '⚙️'],
 ].map(([key, label, emoji]) => ({ key, label, emoji, path: key === 'dashboard' ? '/dashboard' : `/${key}`, route: key, placeholder: key !== 'dashboard', children: [] }))
 
