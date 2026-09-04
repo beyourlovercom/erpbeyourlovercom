@@ -72,4 +72,9 @@ class Order extends Model
         return $this->hasMany(OrderOperationalMarker::class);
     }
 
+    public function procurementOrder(): HasOne
+    {
+        return $this->hasOne('App\\Modules\\Procurement\\Infrastructure\\Models\\ProcurementOrder', 'source_order_id');
+    }
+
 }

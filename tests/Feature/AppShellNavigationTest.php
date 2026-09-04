@@ -182,7 +182,8 @@ class AppShellNavigationTest extends TestCase
     public function test_only_exact_legacy_root_path_collisions_fall_back_for_prototype_users(): void
     {
         $prototypeUser = $this->userWith(['prototype.view'], 'prototype-operator');
-        $this->actingAs($prototypeUser)->get('/procurement')->assertOk()->assertViewIs('erp.shell');
+        $this->actingAs($prototypeUser)->get('/procurement')->assertForbidden();
+        $this->actingAs($prototypeUser)->get('/purchase')->assertForbidden();
         // Guides is now a formal knowledge-base module and no longer falls back to prototype access.
         $this->actingAs($prototypeUser)->get('/guides')->assertForbidden();
         // /products now requires products.view (not prototype.view); prototype-only users are forbidden
@@ -196,7 +197,7 @@ class AppShellNavigationTest extends TestCase
     {
         $permissionsByPath = [
             '/orders' => 'orders.view', '/logistics' => 'logistics.view', '/sync' => 'sync.view', '/customers' => 'customers.view',
-            '/kol' => 'kol.view', '/marketing' => 'marketing.view', '/inventory' => 'inventory.view', '/procurement' => 'procurement.view',
+            '/kol' => 'kol.view', '/marketing' => 'marketing.view', '/inventory' => 'inventory.view', '/purchase' => 'procurement.view',
             '/products' => 'products.view', '/guides' => 'guides.view', '/accounting' => 'accounting.view',
             '/settings' => 'system.permissions.manage',
         ];
@@ -214,6 +215,7 @@ class AppShellNavigationTest extends TestCase
                     '/guides' => 'Guides/Index',
                     '/settings' => 'Settings/Index',
                     '/customers' => 'Customers/Dashboard',
+                    '/purchase' => 'Procurement/Orders/Index',
                     default => 'Shell/ModuleOverview',
                 }));
         }
@@ -222,7 +224,7 @@ class AppShellNavigationTest extends TestCase
     public function test_users_without_formal_or_prototype_permission_receive_forbidden_for_all_modules(): void
     {
         $user = $this->userWith([], 'restricted-operator');
-        foreach (['/orders', '/logistics', '/sync', '/customers', '/kol', '/marketing', '/inventory', '/procurement', '/products', '/guides', '/accounting', '/settings'] as $path) {
+        foreach (['/orders', '/logistics', '/sync', '/customers', '/kol', '/marketing', '/inventory', '/purchase', '/procurement', '/products', '/guides', '/accounting', '/settings'] as $path) {
             $this->actingAs($user)->get($path)->assertForbidden();
         }
     }

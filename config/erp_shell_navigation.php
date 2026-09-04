@@ -57,10 +57,10 @@ return [
         ['key' => 'inventory-sync', 'label' => '批量同步', 'path' => '/inventory/sync', 'route' => 'inventory.sync', 'permission' => 'inventory.operate', 'placeholder' => false],
         ['key' => 'inventory-packaging', 'label' => '包装与测量', 'path' => '/inventory/packaging', 'route' => 'inventory.packaging.index', 'permission' => 'inventory.packaging.submit', 'permissions_any' => ['inventory.packaging.review', 'inventory.view'], 'placeholder' => false],
     ]],
-    ['key' => 'procurement', 'label' => '外采', 'emoji' => '🛒', 'path' => '/procurement', 'route' => 'shell.procurement', 'permission' => 'procurement.view', 'placeholder' => false, 'children' => [
-        ['key' => 'procurement-overview', 'label' => '外采总览', 'path' => '/procurement', 'route' => 'shell.procurement', 'permission' => 'procurement.view', 'placeholder' => false],
-        ['key' => 'procurement-files', 'label' => '外采文件', 'path' => '/procurement/files', 'route' => 'procurement.files', 'permission' => 'prototype.view', 'placeholder' => false],
-        ['key' => 'procurement-records', 'label' => '记录', 'path' => '/procurement/records', 'route' => 'procurement.records', 'permission' => 'prototype.view', 'placeholder' => false],
+    ['key' => 'procurement', 'label' => '采购', 'emoji' => '🛒', 'path' => '/purchase', 'route' => 'procurement.index', 'permission' => 'procurement.view', 'placeholder' => false, 'children' => [
+        ['key' => 'procurement-overview', 'label' => '采购总览', 'path' => '/purchase', 'route' => 'procurement.index', 'permission' => 'procurement.view', 'placeholder' => false],
+        ['key' => 'procurement-files', 'label' => '采购文件', 'path' => '/purchase/files', 'route' => 'procurement.files', 'permission' => 'prototype.view', 'placeholder' => false],
+        ['key' => 'procurement-records', 'label' => '记录', 'path' => '/purchase/records', 'route' => 'procurement.records', 'permission' => 'prototype.view', 'placeholder' => false],
     ]],
     ['key' => 'products', 'label' => '产品', 'emoji' => '🏷️', 'path' => '/products', 'route' => 'products.dashboard', 'permission' => 'products.view', 'placeholder' => false, 'children' => [
         ['key' => 'products-list', 'label' => '产品列表', 'path' => '/products/list', 'route' => 'products.list', 'permission' => 'products.view', 'placeholder' => false],

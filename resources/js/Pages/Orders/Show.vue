@@ -73,6 +73,7 @@ type Order = {
   } | null
   manual_sync: { status: string; synced_at: string | null } | null
   operational_markers: string[]
+  procurement_order: { id: number; procurement_number: string } | null
 }
 
 const props = withDefaults(defineProps<{
@@ -83,7 +84,8 @@ const props = withDefaults(defineProps<{
   canMarkOperational?: boolean
   canManageProductPackaging?: boolean
   canViewPackagingEvidence?: boolean
-}>(), { canMarkOperational: false, canManageProductPackaging: false, canViewPackagingEvidence: false })
+  canCreateProcurement?: boolean
+}>(), { canMarkOperational: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false })
 
 const isKol = computed(() => props.order.order_kind === 'kol_fulfillment')
 const basePath = computed(() => isKol.value ? '/kol/orders' : '/customers/orders')
@@ -181,6 +183,8 @@ const shipmentStatusLabel = computed(() => {
           <div class="erp-form-header-actions page-header-actions">
             <button v-if="editMode" type="button" class="erp-btn erp-btn-secondary" @click="cancelEdit">取消编辑</button>
             <a :href="basePath" class="erp-btn erp-btn-secondary">返回列表</a>
+            <a v-if="canCreateProcurement && !order.procurement_order" :href="`/purchase/orders/from-order/${order.id}/create`" class="erp-btn erp-btn-primary">创建采购订单</a>
+            <a v-if="order.procurement_order" :href="`/purchase/orders/${order.procurement_order.id}`" class="erp-btn erp-btn-secondary">查看采购订单 · {{ order.procurement_order.procurement_number }}</a>
             <button v-if="!editMode" type="button" class="erp-btn erp-btn-primary" @click="enterEditMode">编辑订单</button>
             <button v-else type="button" class="erp-btn erp-btn-primary" :disabled="form.processing" @click="submit">保存订单</button>
           </div>

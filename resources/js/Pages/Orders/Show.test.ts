@@ -58,6 +58,7 @@ const baseOrder = {
   shipment: { shipment_status: 'pending', carrier: null, tracking_number: null, shipped_at: null },
   manual_sync: null,
   operational_markers: [],
+  procurement_order: null,
 }
 
 const kolOrder = { ...baseOrder, order_kind: 'kol_fulfillment', order_kind_label: '网红履约订单' }
@@ -123,6 +124,23 @@ describe('Orders/Show V2', () => {
   it('shows 返回列表 link for kol', () => {
     const wrapper = mount(Show, { props: { order: kolOrder, audit } })
     expect(wrapper.find('a[href="/kol/orders"]').exists()).toBe(true)
+  })
+
+  it('shows procurement creation only for a stockout order without a linked procurement order', () => {
+    const wrapper = mount(Show, { props: { order: { ...baseOrder, operational_markers: ['stockout'] }, audit, canCreateProcurement: true } })
+    expect(wrapper.find('a[href="/purchase/orders/from-order/1/create"]').text()).toBe('创建采购订单')
+    expect(wrapper.find('.page-header-actions').text()).not.toContain('查看采购订单')
+  })
+
+  it('replaces procurement creation with the linked procurement action', () => {
+    const wrapper = mount(Show, { props: { order: { ...baseOrder, operational_markers: ['stockout'], procurement_order: { id: 4, procurement_number: 'PO-20260904-0001' } }, audit, canCreateProcurement: true } })
+    expect(wrapper.find('a[href="/purchase/orders/from-order/1/create"]').exists()).toBe(false)
+    expect(wrapper.find('a[href="/purchase/orders/4"]').text()).toContain('PO-20260904-0001')
+  })
+
+  it('does not show procurement creation for a non-stockout order', () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canCreateProcurement: false } })
+    expect(wrapper.find('a[href="/purchase/orders/from-order/1/create"]').exists()).toBe(false)
   })
 
   // View Mode tests
