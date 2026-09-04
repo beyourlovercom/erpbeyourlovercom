@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import UiButton from '../UI/UiButton.vue'
+import NotificationBell from './NotificationBell.vue'
+import type { NotificationCenterSummary } from '../../types/navigation'
 
 export type BreadcrumbItem = { label: string; href?: string }
 
-const props = defineProps<{ title: string; breadcrumbs: (string | BreadcrumbItem)[]; mobileExpanded: boolean }>()
+const props = withDefaults(defineProps<{ title: string; breadcrumbs: (string | BreadcrumbItem)[]; mobileExpanded: boolean; notificationCenter?: NotificationCenterSummary }>(), { notificationCenter: () => ({ unread_count: 0, items: [] }) })
 const emit = defineEmits<{ toggleMobile: [] }>()
 
 const parentHref = computed<string | null>(() => {
@@ -30,6 +32,7 @@ const parentHref = computed<string | null>(() => {
       </div>
     </div>
     <div class="shell-topbar-trailing">
+      <NotificationBell :center="notificationCenter" />
       <UiButton class="shell-icon-button shell-mobile-toggle" tone="secondary" size="sm" :aria-expanded="mobileExpanded" :aria-label="mobileExpanded ? '关闭导航' : '打开导航'" @click="emit('toggleMobile')">☰</UiButton>
     </div>
   </header>

@@ -114,6 +114,7 @@ const currentPath = computed(() => page.url.split('?')[0])
         :title="title"
         :breadcrumbs="breadcrumbs"
         :mobile-expanded="mobileOpen"
+        :notification-center="page.props.notificationCenter"
         @toggle-mobile="toggleMobile"
       />
       <main id="main-content" class="shell-content" tabindex="-1"><slot /></main>

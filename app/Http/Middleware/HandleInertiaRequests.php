@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Modules\NotificationCenter\Application\NotificationCenterProjector;
 use App\Modules\Shell\Application\ErpShellNavigation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -28,6 +29,7 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'auth' => ['user' => $user?->only(['id', 'name', 'email'])],
             'shellNavigation' => $user ? app(ErpShellNavigation::class)->for($user) : [],
+            'notificationCenter' => $user ? app(NotificationCenterProjector::class)->summary($user) : ['unread_count'=>0, 'items'=>[]],
             'flash' => [
                 'feedback_id' => $hasFeedback ? (string) Str::uuid() : null,
                 ...$flash,

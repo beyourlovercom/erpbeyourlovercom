@@ -9,6 +9,7 @@ use App\Modules\Identity\Application\AuthorizationKeys;
 use App\Modules\Inventory\Infrastructure\Models\PackagingMeasurementMedia;
 use App\Modules\Inventory\Infrastructure\Models\PackagingMeasurementRecord;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\NotificationCenter\Application\NotificationPublisher;
 use App\Modules\Products\Application\PackagingPresetCatalog;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductPackagingProfile;
@@ -23,7 +24,7 @@ use Inertia\Response;
 
 final class PackagingMeasurementController
 {
-    public function __construct(private readonly AuditRecorder $audit, private readonly PackagingPresetCatalog $presets) {}
+    public function __construct(private readonly AuditRecorder $audit, private readonly PackagingPresetCatalog $presets, private readonly NotificationPublisher $notifications) {}
 
     public function index(Request $request): Response
     {
@@ -140,6 +141,16 @@ final class PackagingMeasurementController
         abort_unless($record->media()->where('kind','measurement')->exists() && $record->media()->where('kind','weight')->exists(), 422, '提交前必须上传尺寸测量图和称重记录图');
         $record->update([...$data, 'status'=>'submitted', 'submitted_at'=>now()]);
         $this->audit($request, 'packaging_measurement.submitted', $record, 'packaging_measurement_submitted');
+        $record->loadMissing('product:id,sku,name');
+        $this->notifications->publishToPermission(AuthorizationKeys::InventoryPackagingReview->value, [
+            'category'=>'inventory',
+            'title'=>'新的包装测量待审核',
+            'message'=>$record->product->sku.' 已提交包装尺寸与重量证据。',
+            'action_url'=>'/inventory/packaging/'.$record->id,
+            'entity_type'=>'packaging_measurement',
+            'entity_id'=>$record->id,
+            'actor_name'=>$request->user()->name,
+        ], (int) $request->user()->getAuthIdentifier());
         return redirect()->route('inventory.packaging.show', $record)->with('success', '记录已提交审核');
     }
 
@@ -149,6 +160,22 @@ final class PackagingMeasurementController
         $data = $request->validate(['decision'=>['required', Rule::in(['approved','rejected'])], 'review_note'=>['nullable','string','max:5000']]);
         $record->update(['status'=>$data['decision'], 'review_note'=>$data['review_note'] ?? null, 'reviewed_by'=>$request->user()->getAuthIdentifier(), 'reviewed_at'=>now()]);
         $this->audit($request, 'packaging_measurement.'.$data['decision'], $record, 'packaging_measurement_'.$data['decision']);
+        $record->loadMissing(['product:id,sku,name','creator:id,name']);
+        if ($record->creator && (int) $record->creator->id !== (int) $request->user()->getAuthIdentifier()) {
+            $approved = $data['decision'] === 'approved';
+            $this->notifications->publishToUser($record->creator, [
+                'category'=>'inventory',
+                'title'=>$approved ? '包装测量已批准' : '包装测量已驳回',
+                'message'=>$record->product->sku.($approved ? ' 的包装尺寸与重量证据已通过审核。' : ' 的包装尺寸与重量证据需要调整。'),
+                'action_url'=>'/inventory/packaging/'.$record->id,
+                'required_permission'=>AuthorizationKeys::InventoryPackagingSubmit->value,
+                'entity_type'=>'packaging_measurement',
+                'entity_id'=>$record->id,
+                'related_links'=>[['label'=>'包装记录','value'=>'#'.$record->id,'url'=>'/inventory/packaging/'.$record->id], ['label'=>'相关产品','value'=>$record->product->sku,'url'=>'/products/'.$record->product_id]],
+                'related_links'=>[['label'=>'包装记录','value'=>'#'.$record->id,'url'=>'/inventory/packaging/'.$record->id], ['label'=>'相关产品','value'=>$record->product->sku,'url'=>'/products/'.$record->product_id]],
+                'actor_name'=>$request->user()->name,
+            ]);
+        }
         return back()->with('success', $data['decision'] === 'approved' ? '已批准' : '已驳回');
     }
 
