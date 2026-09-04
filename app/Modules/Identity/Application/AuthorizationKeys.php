@@ -30,6 +30,8 @@ enum AuthorizationKeys: string
     case InventoryView = 'inventory.view';
     case InventoryOperate = 'inventory.operate';
     case InventoryWarehousesManage = 'inventory.warehouses.manage';
+    case InventoryPackagingSubmit = 'inventory.packaging.submit';
+    case InventoryPackagingReview = 'inventory.packaging.review';
     case ProcurementView = 'procurement.view';
     case ProductsView = 'products.view';
     case ProductsOperate = 'products.operate';

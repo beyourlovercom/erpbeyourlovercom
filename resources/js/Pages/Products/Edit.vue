@@ -129,6 +129,7 @@ const doDelete = () => {
           <div class="erp-form-header-actions page-header-actions">
             <a href="/products/list" class="erp-btn erp-btn-secondary">取消</a>
             <a href="/products/list" class="erp-btn erp-btn-secondary">返回列表</a>
+            <a :href="`/products/${product.id}/packaging`" class="erp-btn erp-btn-secondary">包装方案</a>
             <button type="button" class="erp-btn-danger" @click="confirmingDelete = true">删除产品</button>
             <button type="submit" form="product-edit-form" class="erp-btn erp-btn-primary" :disabled="submitting">{{ submitting ? '保存中…' : '保存产品' }}</button>
           </div>

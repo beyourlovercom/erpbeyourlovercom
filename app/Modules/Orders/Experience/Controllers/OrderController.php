@@ -4,6 +4,7 @@ namespace App\Modules\Orders\Experience\Controllers;
 
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Orders\Application\OrderKind;
+use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Kol\Application\SavedViewService;
@@ -21,6 +22,7 @@ final class OrderController
         private readonly OrderService $orders,
         private readonly InventoryAvailabilityReader $availability,
         private readonly SavedViewService $views,
+        private readonly OrderPackagingReferenceProjection $packagingReferences,
     ) {}
 
     public function index(Request $request): Response
@@ -89,8 +91,11 @@ final class OrderController
         return Inertia::render('Orders/Show', [
             'order' => $this->orderData($order),
             'inventoryAvailability' => $inventoryAvailability,
+            'packagingReferences' => $this->packagingReferences->forOrder($order),
             'warehouses' => $this->availability->activeWarehouses(),
             'canMarkOperational' => $request->user()?->can('orders.edit') ?? false,
+            'canManageProductPackaging' => $request->user()?->can('products.operate') ?? false,
+            'canViewPackagingEvidence' => ($request->user()?->can('inventory.view') ?? false) || ($request->user()?->can('inventory.packaging.review') ?? false),
             'audit' => AuditRecord::query()
                 ->where('entity_type', Order::class)
                 ->where('entity_id', (string) $order->getKey())

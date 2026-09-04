@@ -50,11 +50,12 @@ return [
         ['key' => 'kol-commissions', 'label' => '佣金与结算', 'path' => '/kol/commissions', 'route' => 'kol.commissions', 'permission' => 'kol.view', 'placeholder' => false],
         ['key' => 'kol-affiliatewp', 'label' => 'AffiliateWP', 'path' => '/kol/affiliatewp', 'route' => 'kol.affiliatewp', 'permission' => 'kol.view', 'placeholder' => false],
     ]],
-    ['key' => 'inventory', 'label' => '库存', 'emoji' => '📦', 'path' => '/inventory', 'route' => 'shell.inventory', 'permission' => 'inventory.view', 'placeholder' => false, 'children' => [
+    ['key' => 'inventory', 'label' => '库存', 'emoji' => '📦', 'path' => '/inventory', 'route' => 'shell.inventory', 'permission' => 'inventory.view', 'allow_child_entry' => true, 'placeholder' => false, 'children' => [
         ['key' => 'inventory-overview', 'label' => '库存总览', 'path' => '/inventory', 'route' => 'shell.inventory', 'permission' => 'inventory.view', 'placeholder' => false],
         ['key' => 'inventory-list', 'label' => '仓库清单', 'path' => '/inventory/list', 'route' => 'inventory.list', 'permission' => 'inventory.view', 'placeholder' => false],
         ['key' => 'inventory-products', 'label' => '产品库存', 'path' => '/inventory/products', 'route' => 'inventory.products', 'permission' => 'inventory.view', 'placeholder' => false],
         ['key' => 'inventory-sync', 'label' => '批量同步', 'path' => '/inventory/sync', 'route' => 'inventory.sync', 'permission' => 'inventory.operate', 'placeholder' => false],
+        ['key' => 'inventory-packaging', 'label' => '包装与测量', 'path' => '/inventory/packaging', 'route' => 'inventory.packaging.index', 'permission' => 'inventory.packaging.submit', 'permissions_any' => ['inventory.packaging.review', 'inventory.view'], 'placeholder' => false],
     ]],
     ['key' => 'procurement', 'label' => '外采', 'emoji' => '🛒', 'path' => '/procurement', 'route' => 'shell.procurement', 'permission' => 'procurement.view', 'placeholder' => false, 'children' => [
         ['key' => 'procurement-overview', 'label' => '外采总览', 'path' => '/procurement', 'route' => 'shell.procurement', 'permission' => 'procurement.view', 'placeholder' => false],

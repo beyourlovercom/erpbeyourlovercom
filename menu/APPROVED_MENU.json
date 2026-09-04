@@ -729,6 +729,21 @@
       "sort": 40
     },
     {
+      "code": "inventory-packaging",
+      "parent_code": "inventory",
+      "level": 2,
+      "label_zh": "包装与测量",
+      "slug": "packaging",
+      "url": "/inventory/packaging",
+      "route": "inventory.packaging.index",
+      "permission": "inventory.packaging.submit",
+      "emoji": null,
+      "function_zh": "工厂包装操作员记录产品包装尺寸、包装重量和图片证据，形成不可篡改的审核历史。",
+      "status": "in_progress",
+      "progress": 0,
+      "sort": 50
+    },
+    {
       "code": "procurement",
       "parent_code": null,
       "level": 1,

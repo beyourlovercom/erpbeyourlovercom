@@ -5,10 +5,13 @@ namespace Tests\Feature;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
+use App\Modules\Inventory\Infrastructure\Models\PackagingMeasurementRecord;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
+use App\Modules\Logistics\Infrastructure\Models\ShipmentItemPackagingSnapshot;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Products\Infrastructure\Models\ProductPackagingProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -115,6 +118,51 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         );
 
         $this->assertDatabaseMissing('shipments', ['order_id' => $order->id]);
+    }
+
+
+    public function test_order_uses_current_product_packaging_standard_and_fulfillment_freezes_snapshot(): void
+    {
+        [$user, $order, $product, $warehouse] = $this->scenario();
+        $measurement = PackagingMeasurementRecord::query()->create([
+            'product_id'=>$product->id,'warehouse_id'=>$warehouse->id,'status'=>'approved','packaging_method_key'=>'bubble_wrap_cut',
+            'packaging_length_cm'=>'32.00','packaging_width_cm'=>'18.00','packaging_height_cm'=>'12.00','packaged_weight_kg'=>'0.850',
+            'measured_at'=>'2026-09-04 10:00:00','created_by'=>$user->id,'reviewed_by'=>$user->id,'reviewed_at'=>now(),
+        ]);
+        $profile = ProductPackagingProfile::query()->create([
+            'product_id'=>$product->id,'preset_key'=>'bubble_wrap_cut','current_measurement_record_id'=>$measurement->id,'is_active'=>true,
+        ]);
+        $item = $order->items()->firstOrFail();
+
+        $this->actingAs($user)->get('/customers/orders/'.$order->id)->assertInertia(
+            fn (Assert $page) => $page
+                ->where("packagingReferences.{$item->id}.source", 'current_product_standard')
+                ->where("packagingReferences.{$item->id}.packaged_weight_kg", '0.850')
+                ->where("packagingReferences.{$item->id}.packaging_length_cm", '32.00')
+        );
+
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/draft', ['warehouse_id'=>$warehouse->id])->assertRedirect();
+        $shipment = $order->fresh()->shipment()->firstOrFail();
+        $snapshot = ShipmentItemPackagingSnapshot::query()->where('shipment_id',$shipment->id)->where('order_item_id',$item->id)->firstOrFail();
+        $this->assertSame('0.850', $snapshot->packaged_weight_kg);
+        $this->assertSame($measurement->id, $snapshot->packaging_measurement_record_id);
+
+        $newMeasurement = PackagingMeasurementRecord::query()->create([
+            'product_id'=>$product->id,'warehouse_id'=>$warehouse->id,'status'=>'approved','packaging_method_key'=>'carton',
+            'packaging_length_cm'=>'30.00','packaging_width_cm'=>'17.00','packaging_height_cm'=>'11.00','packaged_weight_kg'=>'0.720',
+            'measured_at'=>'2026-10-01 10:00:00','created_by'=>$user->id,'reviewed_by'=>$user->id,'reviewed_at'=>now(),
+        ]);
+        $profile->update(['current_measurement_record_id'=>$newMeasurement->id,'preset_key'=>'carton']);
+
+        $this->actingAs($user)->get('/customers/orders/'.$order->id)->assertInertia(
+            fn (Assert $page) => $page
+                ->where("packagingReferences.{$item->id}.source", 'shipment_snapshot')
+                ->where("packagingReferences.{$item->id}.packaged_weight_kg", '0.850')
+                ->where("packagingReferences.{$item->id}.packaging_method_label", '气泡袋裁剪')
+        );
+        $this->actingAs($user)->get('/logistics/orders/'.$order->id.'/payload')
+            ->assertJsonPath('items.0.packaging_reference.source', 'shipment_snapshot')
+            ->assertJsonPath('items.0.packaging_reference.packaged_weight_kg', '0.850');
     }
 
     private function scenario(): array

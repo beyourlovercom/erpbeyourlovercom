@@ -56,6 +56,11 @@ class Product extends Model
         return $this->hasMany(ProductMedia::class)->orderBy('position');
     }
 
+    public function packagingProfile(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(ProductPackagingProfile::class);
+    }
+
     public function weightEvidence(): BelongsTo
     {
         return $this->belongsTo(ProductWeightEvidence::class, 'weight_evidence_id');
