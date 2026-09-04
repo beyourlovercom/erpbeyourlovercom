@@ -416,12 +416,12 @@ Boundary: closure performs full regression, responsibility-scope verification, m
 ## KOL V1 Production Enablement — current 2026-09-04
 
 - `ERP-KOL-V1-CROSS-PHASE-CLOSURE-001`: COMPLETE / MERGED PR #143.
-- `ERP-KOL-V1-PRODUCTION-ENABLEMENT-001`: CURRENT / P4+P4B MERGED / WAITING OWNER SOURCE-OWNER→ERP-USER MAPPING + AUTHORITATIVE SOURCE BYTES + PRODUCTION RELEASE/MUTATION GATE.
+- `ERP-KOL-V1-PRODUCTION-ENABLEMENT-001`: CURRENT / P4+P4B MERGED / SOURCE-OWNER ACCOUNTS PROVISIONED + MAPPING POLICY APPROVED / WAITING AUTHORITATIVE SOURCE BYTES + MANAGER/FINANCE + PRODUCTION RELEASE/MUTATION GATE.
 - Shared Production runtime M2.0A: READY; Production login/TLS/runtime evidence exists.
 - Production Connector M2.1/M2.2: signed health PASS; current composite release is live; Provider writes remain frozen.
 - KOL real-data chain: P1 PR #158, P2 PR #163, P3 PR #166, P4 PR #170 and P4B PR #172 are MERGED with required Owner UAT PASS.
 - Latest retained preview evidence: 1077 source rows → 970 exact identities → 961 deterministic KOL candidates; 12 source rows unresolved.
 - Latest authoritative source bytes `0902-网红订单.xlsx` are not currently recoverable from the US Mac or ChatGPT Library; retained aggregates/Synthetic UAT MUST NOT be used as Production import input.
-- Production KOL Master remains 0 rows. Existing Production users include two KOL Manager presets and two Administrators, but source-owner→ERP-user, Specialist ownership and Finance responsibility remain Owner decisions.
+- Production KOL Master remains 0 rows. Six missing source-owner ERP accounts have been provisioned as KOL Specialists; existing Emma is reused as the exact Emma mapping. Manager/Finance responsibility and the 42 multi-owner decisions after source replay remain gated.
 - Production deployment/migration/import/provider mutation remain separately Owner-gated.
 - KOL Intelligence / Discovery remains deferred until activation or explicit reprioritization.

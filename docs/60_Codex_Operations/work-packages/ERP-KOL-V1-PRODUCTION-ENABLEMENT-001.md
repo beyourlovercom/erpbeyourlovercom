@@ -2,7 +2,7 @@
 type: work-package
 project: BYL ERP
 work_package_id: ERP-KOL-V1-PRODUCTION-ENABLEMENT-001
-status: OWNER_DECISION_REQUIRED_REAL_USER_MAPPING_SOURCE_BYTES_AND_PRODUCTION_RELEASE_GATE
+status: OWNER_DECISION_REQUIRED_SOURCE_BYTES_MANAGER_FINANCE_AND_PRODUCTION_RELEASE_GATE
 verification_tier: HIGH_RISK
 baseline: origin/main@c094b95b09ba46b63e3ae7535decd3eb8c57392e
 production_mutation_authorized: NO
@@ -357,6 +357,25 @@ Retained P3 evidence contains seven source `Belongs to` values:
 - Kelsey: 1 / 1
 Total: 919 single-owner candidates plus 42 multi-owner candidates. Name-only auto-assignment remains prohibited. Even `Emma` → Production user `emma` requires Owner confirmation rather than inferred identity.
 
+
+### Owner-approved Production source-owner account provisioning — 2026-09-04
+- Owner explicitly authorized ChatGPT to create the required ERP user accounts directly; no manual Owner account setup is required.
+- Owner defined the account convention from the historical source-owner names with `@beyourlover.com` email addresses and one shared initial password. The password is intentionally NOT recorded in repository evidence.
+- Exact Production conflict check found only the existing `emma@beyourlover.com` account; it was preserved without password reset or role downgrade.
+- Six missing Production accounts were created through canonical `Identity\Application\UserService::create()` using the `kol_specialist` preset, preserving canonical password hashing, role creation and audit behavior.
+- Production account mapping policy is now Owner-approved as:
+  - Young → ERP user #5 `Young` / `young@beyourlover.com` / KOL Specialist
+  - Emma → existing ERP user #3 `emma` / `emma@beyourlover.com` / KOL Manager
+  - Hiko → ERP user #6 `Hiko` / `hiko@beyourlover.com` / KOL Specialist
+  - Summer → ERP user #7 `Summer` / `summer@beyourlover.com` / KOL Specialist
+  - Zhixi → ERP user #8 `Zhixi` / `zhixi@beyourlover.com` / KOL Specialist
+  - Aries → ERP user #9 `Aries` / `aries@beyourlover.com` / KOL Specialist
+  - Kelsey → ERP user #10 `Kelsey` / `kelsey@beyourlover.com` / KOL Specialist
+- Read-only post-create verification confirms all seven mapped users are active and have `kol.view` + `kol.operate`; the six newly created users are on `role_preset_kol_specialist`.
+- Six matching `user.created` audit records exist for the six new users.
+- This authorization covered Production ERP user provisioning only. It does NOT authorize P1-P4B Production migrations, real KOL import, Affiliate binding, Provider mutation or release deployment.
+- The seven single-source-owner mappings are now policy-resolved. They cannot yet be persisted into `kol_owner_source_mappings` because the P3 Production migration remains pending and Production migration execution is separately gated.
+
 ### Authoritative source-bytes gate
 - Latest authoritative historical source remains `0902-网红订单.xlsx`, whose verified aggregate evidence was 1,077 source rows → 970 distinct exact identities → 961 deterministic KOL candidates, with 12 unresolved source rows.
 - The original/replay source bytes are not currently recoverable from the US Mac retained temp data or ChatGPT Library. A fresh Library semantic search and recent-spreadsheet metadata listing on 2026-09-04 returned no recoverable spreadsheet.
@@ -373,7 +392,7 @@ Total: 919 single-owner candidates plus 42 multi-owner candidates. Name-only aut
 `PRODUCTION_CANONICAL_KOL = 0`
 `PRODUCTION_AFFILIATE_BINDING = 0`
 `REAL_SOURCE_BYTES = REQUIRED / NOT CURRENTLY RECOVERABLE`
-`REAL_SOURCE_OWNER_TO_ERP_USER_MAPPING = OWNER DECISION REQUIRED`
+`REAL_SOURCE_OWNER_TO_ERP_USER_MAPPING = OWNER APPROVED / ACCOUNTS PROVISIONED`
 `42_MULTI_OWNER_CANDIDATE_DECISIONS = REQUIRED AFTER SOURCE PREVIEW RESTORE`
 `APPROVAL_MANAGER_ASSIGNMENT = OWNER DECISION REQUIRED`
 `FINANCE_OWNER_ASSIGNMENT = OWNER DECISION REQUIRED`
@@ -383,8 +402,9 @@ Total: 919 single-owner candidates plus 42 multi-owner candidates. Name-only aut
 `STATUS = WAITING_OWNER_MAPPING_SOURCE_AND_PRODUCTION_GATE`
 
 ### Next exact gate
-1. Owner confirms the seven historical source-owner → ERP user mapping policy and the Manager/Finance responsibility policy.
+1. Source-owner → ERP user policy is complete; after P3 migration is authorized, persist the seven approved mappings exactly as recorded above.
 2. Restore `0902-网红订单.xlsx` (or Owner explicitly designates a replacement authoritative source); regenerate P1→P4 exact evidence.
-3. Review the resulting 42 multi-owner candidates and save explicit decisions unless mappings converge deterministically.
-4. Freeze exact Production release strategy (bounded KOL composite vs full-main) plus backup/rollback and exact pending migration scope.
-5. Stop at the explicit Production deployment / real-data mutation Owner gate before any live migration/import/binding.
+3. Review the resulting 42 multi-owner candidates and save explicit decisions unless the seven approved mappings converge deterministically.
+4. Owner confirms Approval Manager and Finance Owner responsibility policy for imported KOLs.
+5. Freeze exact Production release strategy (bounded KOL composite vs full-main) plus backup/rollback and exact pending migration scope.
+6. Stop at the explicit Production deployment / real-data mutation Owner gate before any live migration/import/binding.

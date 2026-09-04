@@ -347,12 +347,12 @@ Cross-phase Closure remains verification/UAT only unless a regression proves a b
 ## KOL V1 Production Enablement — current 2026-09-04
 
 - `ERP-KOL-V1-CROSS-PHASE-CLOSURE-001`: COMPLETE / MERGED PR #143.
-- `ERP-KOL-V1-PRODUCTION-ENABLEMENT-001`: CURRENT / P4+P4B MERGED / WAITING OWNER SOURCE-OWNER→ERP-USER MAPPING + AUTHORITATIVE SOURCE BYTES + PRODUCTION RELEASE/MUTATION GATE.
+- `ERP-KOL-V1-PRODUCTION-ENABLEMENT-001`: CURRENT / P4+P4B MERGED / SOURCE-OWNER ACCOUNTS PROVISIONED + MAPPING POLICY APPROVED / WAITING AUTHORITATIVE SOURCE BYTES + MANAGER/FINANCE + PRODUCTION RELEASE/MUTATION GATE.
 - Shared Production runtime M2.0A is READY; Production Connector signed health is PASS.
 - P1 PR #158, P2 PR #163, P3 PR #166, P4 PR #170 and P4B PR #172 are MERGED with required Owner UAT PASS.
 - Latest retained preview evidence is 1077 source rows → 970 exact identities → 961 deterministic candidates, with 12 unresolved source rows.
 - Latest authoritative source bytes `0902-网红订单.xlsx` are not currently recoverable from the US Mac or ChatGPT Library; retained aggregates/Synthetic UAT MUST NOT be used as Production import input.
 - Production currently has 0 canonical KOL rows. Provider mirrors are populated, but exact Affiliate→KOL and Referral→KOL/Order bindings remain 0 rather than being guessed.
-- Remaining activation gates are authoritative `0902-网红订单.xlsx` source bytes, explicit source-owner→ERP-user / 42 multi-owner / Manager / Finance decisions, and the exact Production release/migration/import contract.
+- Source-owner→ERP-user policy is Owner-approved and required accounts are provisioned. Remaining activation gates are authoritative `0902-网红订单.xlsx` source bytes, 42 multi-owner decisions after replay, Manager/Finance responsibility policy, and the exact Production release/migration/import contract.
 - Production deployment/migration/import/provider mutation remain separately Owner-gated.
 - KOL Intelligence / Discovery remains deferred until activation or explicit reprioritization.
