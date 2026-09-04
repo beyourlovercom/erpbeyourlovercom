@@ -1,8 +1,8 @@
 # ERP-KOL-AFFILIATE-BINDING-REFERRAL-RERESOLUTION-M4B-001
 
-STATUS: DESIGN_PENDING_OWNER_PASS
-EXECUTION_PROVIDER: TBD_AFTER_OWNER_VISUAL_PASS
-BASELINE: origin/main@76f0f0342dbb0a6fb67b1318f5bb2517c7e0593e
+STATUS: OWNER_UAT_PASS / GIT_DELIVERY_IN_PROGRESS
+EXECUTION_PROVIDER: GPT_WEB_DIRECT_IMPLEMENTATION
+BASELINE: origin/main@e23d5c27c153f5bba5c1811bf8e6c91645021942
 
 ## Dependency chain
 
@@ -100,5 +100,25 @@ This is a material UI workflow. Per `AGENTS.md`, tracked UI implementation MUST 
 
 PROJECT_POSITION: P1 COMPLETE → P2 COMPLETE → P3A COMPLETE → P4 CLOSED/MERGED → P4B CURRENT/DESIGN_PENDING_OWNER_PASS → post-import validation → Production activation gate
 CURRENT_WORK_PACKAGE: ERP-KOL-AFFILIATE-BINDING-REFERRAL-RERESOLUTION-M4B-001
-PACKAGE_STATUS: DESIGN_PENDING_OWNER_PASS
-NEXT_EXACT_GATE: rendered P4B visual proposal → Owner PASS → tracked implementation
+PACKAGE_STATUS: OWNER_UAT_PASS / GIT_DELIVERY_IN_PROGRESS
+NEXT_EXACT_GATE: final regression → commit → push → PR → CI → merge → main reconciliation under continuous Owner authorization
+
+## Owner visual gate — 2026-09-04
+- Pre-development rendered P4B visual proposal: PASS.
+- Tracked UI implementation is authorized within the frozen P4B scope.
+
+## Implementation / verification evidence — 2026-09-04
+- Owner pre-development P4B visual proposal: PASS.
+- Binding Activation batch/item persistence, plan generation, current-mirror exact recheck, environment lock, checksum confirmation and transactional apply implemented.
+- Actual mutation delegates only to existing `AffiliateBindingService::bind()`; `convert()` and Provider writes are absent from the P4B execution path.
+- Referral Provider-fact checksum is verified before/after bind; only ERP-local `kol_id` and `affiliate_resolution_status` may change.
+- Focused backend: 6 tests / 46 assertions / 0 failures.
+- Full KOL + Identity backend: 1,312 assertions / 0 failures; existing warning-only file-read notices remain.
+- Full KOL frontend: 14 files / 97 tests PASS; P4+P4B focused frontend: 8 tests PASS.
+- Typecheck, production build and `git diff --check`: PASS.
+- P4B migration isolated SQLite contract: fresh tables=2, rollback=0, reapply=2.
+- Local/UAT uses `P4B-UAT-SYNTHETIC-12.csv`: 12 canonical KOL / 7 ready / 2 already bound / 1 no Affiliate / 2 blocked.
+- Real browser validation on `127.0.0.1:18126`: 12 plan rows, detail expansion PASS, apply enabled only under explicit Local/UAT gate, mobile 390px document width=390, console/page errors=[].
+- Owner live-page UAT: PASS on 2026-09-04 after direct inspection of the real P4B Local/UAT page. This authorizes Git delivery only; Production deployment/migration and real Affiliate binding remain prohibited.
+- Post-UAT final regression: focused P4B 46 assertions PASS; KOL + Identity 1,312 assertions / 0 failures; KOL frontend 97/97 PASS; typecheck/build/diff-check PASS.
+- Production and all Provider systems remain untouched.
