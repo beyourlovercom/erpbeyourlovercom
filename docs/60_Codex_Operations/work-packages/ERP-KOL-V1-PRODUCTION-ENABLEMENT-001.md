@@ -2,11 +2,11 @@
 type: work-package
 project: BYL ERP
 work_package_id: ERP-KOL-V1-PRODUCTION-ENABLEMENT-001
-status: READINESS_RECONCILED_WAITING_OWNER_REAL_USER_MAPPING_AND_PRODUCTION_MUTATION_GATE
+status: OWNER_DECISION_REQUIRED_REAL_USER_MAPPING_SOURCE_BYTES_AND_PRODUCTION_RELEASE_GATE
 verification_tier: HIGH_RISK
-baseline: origin/main@ec725cef57762f7ddbdf067bfcfaf1bbce9a2f78
+baseline: origin/main@c094b95b09ba46b63e3ae7535decd3eb8c57392e
 production_mutation_authorized: NO
-merge_authorized: NO
+merge_authorized: NOT_YET_READY
 ---
 
 # KOL V1 — Production Enablement / Real Data Activation
@@ -301,3 +301,90 @@ This section supersedes earlier dynamic blocker statements in this Work Package.
 4. Freeze the exact release strategy and rollback contract. Full-main deployment and a bounded composite release are materially different release choices and must not be silently substituted.
 5. At the explicit Production mutation/deployment Owner gate, execute only the approved release/migration/import scope.
 6. After activation, run real-role login isolation, Connector health, read-only reconciliation and zero-unapproved-Provider-write smoke.
+
+## Latest-main / P4-P4B Production activation gate — 2026-09-04
+
+This section supersedes all earlier dynamic blocker/checkpoint statements in this Work Package. Historical sections remain evidence only.
+
+### Git / product readiness
+- Canonical GitHub main: `c094b95b09ba46b63e3ae7535decd3eb8c57392e`.
+- PR #170 P4 Canonical KOL Import Activation: MERGED / Owner UAT PASS.
+- PR #172 P4B Exact Affiliate Binding + local Referral re-resolution: MERGED / Owner UAT PASS.
+- PR #173 P4B post-merge closure: MERGED.
+- PR #145 branch was protected by recovery ref and rebased cleanly onto current main; no business-code conflict.
+
+### Production runtime / Connector — read-only recheck
+- Current Production release remains composite release `1c0b6ec0215818af7e37bd19e77e40a8732f05ad-m21-162f7208c557-m22-ec725cef5776`; this is NOT equivalent to full current main.
+- Signed Connector health rechecked PASS: contract v1, connection `beyourlover.com`, WooCommerce active, AffiliateWP active. Connector advertises write capability but Provider writes remain frozen.
+- Production KOL core schema through `2026_09_01_153000_add_kol_responsibility_owners` remains Ran.
+
+### Exact main → Production migration delta
+Current main has 77 migration files; Production migration table has 70 recorded migrations. Exactly 7 current-main migrations are not recorded in Production:
+1. `2026_09_02_100000_create_kol_reconciliation_tables`
+2. `2026_09_02_150000_create_kol_import_preview_tables`
+3. `2026_09_03_000000_create_product_provider_snapshots_and_media`
+4. `2026_09_03_000100_add_product_id_to_sync_run_items`
+5. `2026_09_03_103000_create_kol_owner_mapping_tables`
+6. `2026_09_03_230000_create_kol_import_activation_tables`
+7. `2026_09_04_020000_create_kol_affiliate_binding_activation_tables`
+The two Product/Sync migrations are full-main dependencies, not KOL activation truth. A full-main deploy versus a bounded KOL composite release remains a material release choice and MUST NOT be silently selected.
+
+### Production business-data baseline — read-only recheck
+- Canonical KOL rows: `0`.
+- Affiliate mirror: `1774`; bound Affiliate→KOL: `0`.
+- Coupon mirror: `2843`.
+- Referral mirror: `3351`; KOL-resolved: `0`; canonical Order-resolved: `0`.
+- Affiliate payout mirror: `1584`; ERP payout requests: `0`.
+- Production users: `4`; all active.
+
+### Production real-user capability baseline
+- `andy` (#1): Administrator; KOL operate/approve/affiliate/payout-manage capable.
+- `guts` (#2): KOL Manager preset; KOL operate/approve/affiliate-manage capable; NOT payout-manage.
+- `emma` (#3): KOL Manager preset; KOL operate/approve/affiliate-manage capable; NOT payout-manage.
+- `admin` (#4): Administrator; KOL operate/approve/affiliate/payout-manage capable.
+- No Production user currently has the KOL Specialist preset.
+- No Production user currently has the Finance preset.
+- Administrator capability is not permission to silently assign business responsibility. `owner_id`, `approval_manager_id`, and `finance_owner_id` remain explicit business decisions.
+
+### Real owner evidence requiring Owner decision
+Retained P3 evidence contains seven source `Belongs to` values:
+- Young: 265 mentions / 237 single-owner candidates
+- Emma: 222 / 199
+- Hiko: 198 / 195
+- Summer: 144 / 128
+- Zhixi: 100 / 88
+- Aries: 78 / 71
+- Kelsey: 1 / 1
+Total: 919 single-owner candidates plus 42 multi-owner candidates. Name-only auto-assignment remains prohibited. Even `Emma` → Production user `emma` requires Owner confirmation rather than inferred identity.
+
+### Authoritative source-bytes gate
+- Latest authoritative historical source remains `0902-网红订单.xlsx`, whose verified aggregate evidence was 1,077 source rows → 970 distinct exact identities → 961 deterministic KOL candidates, with 12 unresolved source rows.
+- The original/replay source bytes are not currently recoverable from the US Mac retained temp data or ChatGPT Library. A fresh Library semantic search and recent-spreadsheet metadata listing on 2026-09-04 returned no recoverable spreadsheet.
+- Older `KOL-tencent.xlsx` / 971-row evidence MUST NOT be silently substituted for the later 1,077-row authoritative source.
+- Therefore Production P1→P4 staging/import cannot be executed until the authoritative source bytes are restored or the Owner explicitly designates a replacement source. Retained aggregates and Synthetic UAT are evidence only, never import input.
+
+### Current exact gate
+`KOL_V1_PRODUCT = CLOSED`
+`P1_P2_P3_P4_P4B_ENGINEERING = COMPLETE / MERGED`
+`SHARED_PRODUCTION_RUNTIME = READY`
+`PRODUCTION_CONNECTOR_SIGNED_HEALTH = PASS`
+`PRODUCTION_KOL_CORE_SCHEMA = READY / RAN`
+`PRODUCTION_CURRENT_MAIN_MIGRATION_DELTA = 7`
+`PRODUCTION_CANONICAL_KOL = 0`
+`PRODUCTION_AFFILIATE_BINDING = 0`
+`REAL_SOURCE_BYTES = REQUIRED / NOT CURRENTLY RECOVERABLE`
+`REAL_SOURCE_OWNER_TO_ERP_USER_MAPPING = OWNER DECISION REQUIRED`
+`42_MULTI_OWNER_CANDIDATE_DECISIONS = REQUIRED AFTER SOURCE PREVIEW RESTORE`
+`APPROVAL_MANAGER_ASSIGNMENT = OWNER DECISION REQUIRED`
+`FINANCE_OWNER_ASSIGNMENT = OWNER DECISION REQUIRED`
+`PRODUCTION_RELEASE_STRATEGY = OWNER REVIEW REQUIRED`
+`PRODUCTION_DEPLOYMENT_MIGRATION_IMPORT = NOT AUTHORIZED`
+`PROVIDER_MUTATION = NOT AUTHORIZED`
+`STATUS = WAITING_OWNER_MAPPING_SOURCE_AND_PRODUCTION_GATE`
+
+### Next exact gate
+1. Owner confirms the seven historical source-owner → ERP user mapping policy and the Manager/Finance responsibility policy.
+2. Restore `0902-网红订单.xlsx` (or Owner explicitly designates a replacement authoritative source); regenerate P1→P4 exact evidence.
+3. Review the resulting 42 multi-owner candidates and save explicit decisions unless mappings converge deterministically.
+4. Freeze exact Production release strategy (bounded KOL composite vs full-main) plus backup/rollback and exact pending migration scope.
+5. Stop at the explicit Production deployment / real-data mutation Owner gate before any live migration/import/binding.

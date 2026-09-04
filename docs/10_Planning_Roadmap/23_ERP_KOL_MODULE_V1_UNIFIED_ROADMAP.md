@@ -344,14 +344,15 @@ Each implementation package remains bounded and independently tested. M1.2B must
 Cross-phase Closure remains verification/UAT only unless a regression proves a bounded compatibility defect. The deferred intelligence/automation list in section 10, including influencer discovery and Instagram/X automation, remains deferred and is not activated by V1 closure.
 
 
-## KOL V1 Production Enablement — current 2026-09-03
+## KOL V1 Production Enablement — current 2026-09-04
 
 - `ERP-KOL-V1-CROSS-PHASE-CLOSURE-001`: COMPLETE / MERGED PR #143.
-- `ERP-KOL-V1-PRODUCTION-ENABLEMENT-001`: CURRENT / READINESS RECONCILED / WAITING OWNER REAL-USER RESPONSIBILITY MAPPING + PRODUCTION RELEASE/MUTATION GATE.
+- `ERP-KOL-V1-PRODUCTION-ENABLEMENT-001`: CURRENT / P4+P4B MERGED / WAITING OWNER SOURCE-OWNER→ERP-USER MAPPING + AUTHORITATIVE SOURCE BYTES + PRODUCTION RELEASE/MUTATION GATE.
 - Shared Production runtime M2.0A is READY; Production Connector signed health is PASS.
-- P1 real-data reconciliation PR #158, P2 historical import preview PR #163 and P3 owner-mapping capability PR #166 are MERGED with Owner UAT PASS.
+- P1 PR #158, P2 PR #163, P3 PR #166, P4 PR #170 and P4B PR #172 are MERGED with required Owner UAT PASS.
 - Latest retained preview evidence is 1077 source rows → 970 exact identities → 961 deterministic candidates, with 12 unresolved source rows.
+- Latest authoritative source bytes `0902-网红订单.xlsx` are not currently recoverable from the US Mac or ChatGPT Library; retained aggregates/Synthetic UAT MUST NOT be used as Production import input.
 - Production currently has 0 canonical KOL rows. Provider mirrors are populated, but exact Affiliate→KOL and Referral→KOL/Order bindings remain 0 rather than being guessed.
-- Real Specialist / Manager / Finance responsibility mapping and the exact Production release/migration/import contract are the remaining activation gates.
+- Remaining activation gates are authoritative `0902-网红订单.xlsx` source bytes, explicit source-owner→ERP-user / 42 multi-owner / Manager / Finance decisions, and the exact Production release/migration/import contract.
 - Production deployment/migration/import/provider mutation remain separately Owner-gated.
 - KOL Intelligence / Discovery remains deferred until activation or explicit reprioritization.
