@@ -19,6 +19,19 @@ class KolAffiliateBindingActivationTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_p4b_migration_uses_mysql_safe_explicit_foreign_key_names(): void
+    {
+        $source = file_get_contents(database_path('migrations/2026_09_04_020000_create_kol_affiliate_binding_activation_tables.php'));
+        self::assertIsString($source);
+        preg_match_all("/'(kol_bind_[^']+_fk)'/", $source, $matches);
+        $names = $matches[1] ?? [];
+        self::assertCount(9, $names);
+        foreach ($names as $name) {
+            self::assertLessThanOrEqual(64, strlen($name), $name);
+        }
+        self::assertStringNotContainsString("->constrained('kol_", $source);
+    }
+
     public function test_routes_require_elevated_administrator_kol_authority(): void
     {
         $manager = $this->userWith(['kol.view', 'kol.operate', 'kol.affiliates.manage', 'kol.approvals.manage']);
