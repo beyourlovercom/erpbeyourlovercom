@@ -7,6 +7,7 @@ use App\Modules\Kol\Experience\Controllers\KolCommunicationController;
 use App\Modules\Kol\Experience\Controllers\KolContentController;
 use App\Modules\Kol\Experience\Controllers\KolController;
 use App\Modules\Kol\Experience\Controllers\KolImportPreviewController;
+use App\Modules\Kol\Experience\Controllers\KolImportActivationController;
 use App\Modules\Kol\Experience\Controllers\KolOpportunityController;
 use App\Modules\Kol\Experience\Controllers\KolOwnerMappingController;
 use App\Modules\Kol\Experience\Controllers\KolOverviewController;
@@ -93,6 +94,12 @@ Route::middleware(['web', 'auth', 'can:kol.view'])->group(function (): void {
         ->middleware(['can:kol.approvals.manage', 'can:kol.affiliates.manage'])->name('kol.owner-mapping.decision.store');
     Route::delete('/kol/owner-mapping/decision/{decision}', [KolOwnerMappingController::class, 'destroyDecision'])
         ->middleware(['can:kol.approvals.manage', 'can:kol.affiliates.manage'])->name('kol.owner-mapping.decision.destroy');
+    Route::get('/kol/import-activation', [KolImportActivationController::class, 'index'])
+        ->middleware(['can:system.permissions.manage', 'can:kol.operate', 'can:kol.affiliates.manage'])->name('kol.import-activation');
+    Route::post('/kol/import-activation/prepare', [KolImportActivationController::class, 'prepare'])
+        ->middleware(['can:system.permissions.manage', 'can:kol.operate', 'can:kol.affiliates.manage'])->name('kol.import-activation.prepare');
+    Route::post('/kol/import-activation/{activationBatch}/apply', [KolImportActivationController::class, 'apply'])
+        ->middleware(['can:system.permissions.manage', 'can:kol.operate', 'can:kol.affiliates.manage'])->name('kol.import-activation.apply');
     Route::post('/kol/affiliatewp/sync', [AffiliateWpSyncController::class, 'sync'])
         ->middleware('can:kol.affiliates.manage')
         ->name('kol.affiliatewp.sync');
