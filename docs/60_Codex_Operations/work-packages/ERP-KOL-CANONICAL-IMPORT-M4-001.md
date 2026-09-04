@@ -1,6 +1,6 @@
 # ERP-KOL-CANONICAL-IMPORT-M4-001
 
-STATUS: OWNER_UAT_PASS / GIT_DELIVERY_IN_PROGRESS
+STATUS: MERGED / PASS / COMPLETE / CLOSED
 EXECUTION_PROVIDER: GPT_WEB_DIRECT_IMPLEMENTATION
 VERIFICATION_TIER: HIGH_RISK
 OWNER: Harr
@@ -153,6 +153,7 @@ Mobile/narrow layouts preserve semantic order; KPI cards stack and the table may
 - Real browser validation on `127.0.0.1:18125`: 961 grid rows, apply disabled at ready=0, row details render, mobile 390px has no document overflow, console/page errors=[] .
 - Owner live-page UAT: PASS on 2026-09-04. This authorizes Git delivery for P4; Production deployment/migration and real KOL import remain prohibited.
 - Post-UAT final regression rerun: KOL + Identity 1,266 assertions / 0 failures; P4 focused 37 assertions PASS; KOL frontend 93/93 PASS; typecheck/build/diff-check PASS.
+- Git delivery complete: feature commit `fc46b590eeb38b59ab80342247edf90eae48ac5c`; PR #170 four required CI checks PASS; squash merged to `main@76f0f0342dbb0a6fb67b1318f5bb2517c7e0593e` on 2026-09-04.
 - Production and Packaging worktrees were not touched.
 
 ## Authorization
@@ -164,7 +165,8 @@ PRODUCTION DEPLOYMENT / MIGRATION / REAL KOL IMPORT: NOT AUTHORIZED.
 PROVIDER MUTATION: NOT AUTHORIZED.
 
 PROJECT POSITION
-CURRENT_TRACK_PHASE_MAP: P1 reconciliation COMPLETE → P2 identity preview COMPLETE → P3A Owner Mapping COMPLETE → P4 canonical KOL import CURRENT / DESIGN GATE → P4B exact Affiliate binding + Referral re-resolution WAITING → post-import validation → Production activation gate
+CURRENT_TRACK_PHASE_MAP: P1 reconciliation COMPLETE → P2 identity preview COMPLETE → P3A Owner Mapping COMPLETE → P4 canonical KOL import CLOSED / MERGED PR #170 → P4B exact Affiliate binding + Referral re-resolution CURRENT / DESIGN_PENDING_OWNER_PASS → post-import validation → Production activation gate
 CURRENT_WORK_PACKAGE: ERP-KOL-CANONICAL-IMPORT-M4-001
-PACKAGE_STATUS: OWNER_UAT_PASS / GIT_DELIVERY_IN_PROGRESS
-NEXT_EXACT_GATE: Git delivery — final regression, commit, push, PR, CI, merge and main reconciliation under continuous Owner authorization
+PACKAGE_STATUS: MERGED / PASS / COMPLETE / CLOSED
+GITHUB_STATE: PR #170 MERGED / main squash 76f0f0342dbb0a6fb67b1318f5bb2517c7e0593e
+NEXT_EXACT_GATE: ERP-KOL-AFFILIATE-BINDING-REFERRAL-RERESOLUTION-M4B-001 pre-development visual proposal / Owner PASS
