@@ -38,6 +38,7 @@ final class LocalUatSeeder extends Seeder
         $permissions = $this->permissions();
         $roles = $this->roles($permissions);
         $users = $this->users($roles);
+        $this->call(PackagingProfileUatSeeder::class);
 
         $websitePending = $this->order($users['owner'], OrderSourceType::Website, OrderKind::Customer, 'UAT-WEB-001', 'UAT Website Pending', 'pending@example.test', [
             ['product_summary' => 'Synthetic Website Bundle A', 'sku' => 'UAT-WEB-A', 'quantity' => 2, 'unit_price' => '24.50'],
@@ -88,7 +89,7 @@ final class LocalUatSeeder extends Seeder
             'dashboard.view', 'orders.view', 'orders.create', 'orders.edit', 'logistics.view', 'logistics.operate',
             'sync.view', 'sync.operate', 'analysis.view', 'customers.view', 'customers.operate', 'customers.import', 'customers.export',
             'kol.view', 'kol.operate', 'kol.views.manage', 'inventory.view', 'inventory.operate',
-            'procurement.view', 'products.view', 'products.operate', 'guides.view', 'guides.manage', 'accounting.view', 'system.permissions.manage',
+            'procurement.view', 'products.view', 'products.operate', 'guides.view', 'guides.manage', 'accounting.view', 'system.permissions.manage', 'inventory.packaging.submit', 'inventory.packaging.review',
         ];
 
         return collect($keys)->mapWithKeys(fn (string $key): array => [$key => Permission::create(['key' => $key, 'label' => $key])])->all();
@@ -102,8 +103,10 @@ final class LocalUatSeeder extends Seeder
         $logistics->permissions()->attach(array_map(fn (string $key): int => $permissions[$key]->id, ['dashboard.view', 'orders.view', 'logistics.view', 'logistics.operate', 'sync.view', 'sync.operate']));
         $restricted = Role::create(['key' => 'uat_restricted_operator', 'label' => 'UAT Restricted Operator']);
         $restricted->permissions()->attach([$permissions['dashboard.view']->id, $permissions['orders.view']->id]);
+        $factory = Role::create(['key' => 'uat_factory_packaging_operator', 'label' => 'UAT Factory Packaging Operator']);
+        $factory->permissions()->attach([$permissions['inventory.packaging.submit']->id]);
 
-        return compact('owner', 'logistics', 'restricted');
+        return compact('owner', 'logistics', 'restricted', 'factory');
     }
 
     private function users(array $roles): array
@@ -113,11 +116,13 @@ final class LocalUatSeeder extends Seeder
             'owner' => User::create(['name' => 'UAT Owner/Admin', 'email' => 'owner@example.test', 'password' => Hash::make((string) env(self::PASSWORDS['owner@example.test'], '')), 'is_active' => true]),
             'logistics' => User::create(['name' => 'UAT Logistics Operator', 'email' => 'logistics@example.test', 'password' => Hash::make((string) env(self::PASSWORDS['logistics@example.test'], '')), 'is_active' => true]),
             'restricted' => User::create(['name' => 'UAT Restricted Operator', 'email' => 'restricted@example.test', 'password' => Hash::make((string) env(self::PASSWORDS['restricted@example.test'], '')), 'is_active' => true]),
+            'factory' => User::create(['name' => 'UAT Factory Operator', 'email' => 'factory@example.test', 'password' => Hash::make('password'), 'is_active' => true]),
         ];
         $users['admin']->roles()->attach($roles['owner']);
         $users['owner']->roles()->attach($roles['owner']);
         $users['logistics']->roles()->attach($roles['logistics']);
         $users['restricted']->roles()->attach($roles['restricted']);
+        $users['factory']->roles()->attach($roles['factory']);
 
         return $users;
     }

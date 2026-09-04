@@ -3,13 +3,36 @@
 use App\Modules\Inventory\Experience\Controllers\InventoryController;
 use App\Modules\Inventory\Experience\Controllers\InventorySyncController;
 use App\Modules\Inventory\Experience\Controllers\WarehouseController;
+use App\Modules\Inventory\Experience\Controllers\PackagingMeasurementController;
 use Illuminate\Support\Facades\Route;
+
+Route::middleware(['web','auth'])->group(function (): void {
+    Route::get('/inventory/packaging/media/{media}', [PackagingMeasurementController::class, 'media'])->whereNumber('media')->name('inventory.packaging.media');
+    Route::get('/inventory/packaging', [PackagingMeasurementController::class, 'index'])->name('inventory.packaging.index');
+    Route::get('/inventory/packaging/create', [PackagingMeasurementController::class, 'create'])->name('inventory.packaging.create');
+    Route::get('/inventory/packaging/{record}/edit', [PackagingMeasurementController::class, 'edit'])->whereNumber('record')->name('inventory.packaging.edit');
+    Route::get('/inventory/packaging/{record}', [PackagingMeasurementController::class, 'show'])->whereNumber('record')->name('inventory.packaging.show');
+    Route::get('/inventory/product-search',[InventoryController::class,'productSearch'])->name('inventory.product-search');
+    Route::get('/inventory/packaging/product/{product}/guide', [PackagingMeasurementController::class, 'productGuide'])->whereNumber('product')->name('inventory.packaging.product-guide');
+});
+
+Route::middleware(['web','auth','can:inventory.packaging.submit'])->group(function (): void {
+    Route::post('/inventory/packaging', [PackagingMeasurementController::class, 'store'])->name('inventory.packaging.store');
+    Route::patch('/inventory/packaging/{record}', [PackagingMeasurementController::class, 'update'])->whereNumber('record')->name('inventory.packaging.update');
+    Route::post('/inventory/packaging/{record}/submit', [PackagingMeasurementController::class, 'submit'])->whereNumber('record')->name('inventory.packaging.submit');
+    Route::post('/inventory/packaging/{record}/media', [PackagingMeasurementController::class, 'upload'])->whereNumber('record')->name('inventory.packaging.media.store');
+    Route::delete('/inventory/packaging/media/{media}', [PackagingMeasurementController::class, 'removeMedia'])->whereNumber('media')->name('inventory.packaging.media.destroy');
+});
+
+Route::middleware(['web','auth','can:inventory.packaging.review'])->group(function (): void {
+    Route::post('/inventory/packaging/{record}/review', [PackagingMeasurementController::class, 'review'])->whereNumber('record')->name('inventory.packaging.review');
+    Route::post('/inventory/packaging/{record}/adopt-standard', [PackagingMeasurementController::class, 'adoptStandard'])->whereNumber('record')->name('inventory.packaging.adopt-standard');
+});
 
 Route::middleware(['web','auth','can:inventory.view'])->group(function (): void {
     Route::get('/inventory',[InventoryController::class,'dashboard'])->name('shell.inventory');
     Route::get('/inventory/list',[InventoryController::class,'warehouses'])->name('inventory.list');
     Route::get('/inventory/products',[InventoryController::class,'products'])->name('inventory.products');
-    Route::get('/inventory/product-search',[InventoryController::class,'productSearch'])->name('inventory.product-search');
     Route::get('/inventory/warehouses',fn()=>redirect()->route('inventory.list'))->name('inventory.warehouses');
     Route::get('/inventory/{warehouse}',[WarehouseController::class,'show'])->where('warehouse','^(?!add$|list$|products$|product-search$|warehouses$|sync$)[^/]+$')->name('inventory.warehouse.show');
 });

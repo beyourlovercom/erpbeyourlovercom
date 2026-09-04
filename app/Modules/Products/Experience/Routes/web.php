@@ -1,10 +1,13 @@
 <?php
 
 use App\Modules\Products\Experience\Controllers\ProductController;
+use App\Modules\Products\Experience\Controllers\ProductPackagingProfileController;
 use App\Modules\Products\Experience\Controllers\ProductSkuController;
 use App\Modules\Products\Experience\Controllers\ProductSkuAliasController;
 use App\Modules\Products\Experience\Controllers\ProductWeightEvidenceController;
 use Illuminate\Support\Facades\Route;
+
+Route::middleware(['web', 'auth'])->get('/products/packaging/media/{media}', [ProductPackagingProfileController::class, 'media'])->whereNumber('media')->name('products.packaging.media');
 
 Route::middleware(['web', 'auth', 'can:products.view'])->group(function (): void {
     Route::get('/products', [ProductController::class, 'dashboard'])->name('products.dashboard');
@@ -33,6 +36,10 @@ Route::middleware(['web', 'auth', 'can:products.operate'])->group(function (): v
     Route::get('/products/import/template', [ProductController::class, 'importTemplate'])->name('products.import.template');
     Route::post('/products/import', [ProductController::class, 'importStore'])->name('products.import.store');
     Route::get('/products/{id}/edit', [ProductController::class, 'edit'])->name('products.edit');
+    Route::get('/products/{product}/packaging', [ProductPackagingProfileController::class, 'edit'])->whereNumber('product')->name('products.packaging.edit');
+    Route::put('/products/{product}/packaging', [ProductPackagingProfileController::class, 'update'])->whereNumber('product')->name('products.packaging.update');
+    Route::post('/products/{product}/packaging/media', [ProductPackagingProfileController::class, 'upload'])->whereNumber('product')->name('products.packaging.media.store');
+    Route::delete('/products/packaging/media/{media}', [ProductPackagingProfileController::class, 'destroyMedia'])->whereNumber('media')->name('products.packaging.media.destroy');
     Route::patch('/products/{id}', [ProductController::class, 'update'])->name('products.update');
     Route::delete('/products/{id}', [ProductController::class, 'destroy'])->name('products.destroy');
 

@@ -54,8 +54,20 @@ final class ErpShellNavigation
 
     private function allowed(Authenticatable $user, array $item): bool
     {
-        if (! Gate::forUser($user)->allows($item['permission'])) {
-            return false;
+        $permissionsAny = array_values(array_filter([
+            $item['permission'] ?? null,
+            ...($item['permissions_any'] ?? []),
+        ]));
+
+        if ($permissionsAny !== [] && ! collect($permissionsAny)->contains(fn (string $permission) => Gate::forUser($user)->allows($permission))) {
+            // Only explicitly opted-in modules may be exposed through a narrower
+            // authorized child. This avoids leaking unrelated prototype-backed
+            // modules when a user lacks the parent module permission.
+            if (! ($item['allow_child_entry'] ?? false)
+                || empty($item['children'])
+                || ! collect($item['children'])->contains(fn (array $child) => $this->allowed($user, $child))) {
+                return false;
+            }
         }
 
         foreach ($item['permissions_all'] ?? [] as $permission) {

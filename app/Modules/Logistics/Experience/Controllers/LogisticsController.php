@@ -5,6 +5,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Logistics\Application\WarehouseRecommendationService;
+use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -19,6 +20,7 @@ final class LogisticsController
         private readonly ShipmentService $shipments,
         private readonly InventoryAvailabilityReader $availability,
         private readonly WarehouseRecommendationService $recommendations,
+        private readonly OrderPackagingReferenceProjection $packagingReferences,
     ) {}
 
     public function index(Request $request): Response
@@ -67,6 +69,7 @@ final class LogisticsController
     public function payload(Order $order): \Illuminate\Http\JsonResponse
     {
         $order->load(['address', 'items', 'shipment.warehouse']);
+        $packaging = $this->packagingReferences->forOrder($order);
 
         return response()->json([
             'order_number' => $order->external_order_number,
@@ -79,7 +82,10 @@ final class LogisticsController
             'address_line_1' => $order->address?->address_line_1,
             'address_line_2' => $order->address?->address_line_2,
             'postal_code' => $order->address?->postal_code,
-            'items' => $order->items->map(fn ($item): array => $item->only(['product_summary', 'sku', 'quantity', 'unit_price']))->values(),
+            'items' => $order->items->map(fn ($item): array => [
+                ...$item->only(['product_summary', 'sku', 'quantity', 'unit_price']),
+                'packaging_reference' => $packaging[(int) $item->id] ?? null,
+            ])->values(),
             'warehouse' => $order->shipment?->warehouse?->name,
             'carrier' => $order->shipment?->carrier,
             'service' => $order->shipment?->service,

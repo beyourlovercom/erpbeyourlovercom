@@ -88,7 +88,7 @@ class AppShellNavigationTest extends TestCase
 
         $user = $this->userWith(['dashboard.view', 'inventory.view']);
         $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
-            ->has('shellNavigation.1.children', 5)
+            ->has('shellNavigation.1.children', 6)
             ->where('shellNavigation.1.key', 'inventory')
             ->where('shellNavigation.1.children.0.key', 'inventory-overview')
             ->where('shellNavigation.1.children.1.key', 'inventory-list')
@@ -97,9 +97,22 @@ class AppShellNavigationTest extends TestCase
             ->where('shellNavigation.1.children.2.path', '/inventory/de')
             ->where('shellNavigation.1.children.3.key', 'inventory-warehouse-'.$second->id)
             ->where('shellNavigation.1.children.3.label', '美东仓')
-            ->where('shellNavigation.1.children.4.key', 'inventory-products'));
+            ->where('shellNavigation.1.children.4.key', 'inventory-products')
+            ->where('shellNavigation.1.children.5.key', 'inventory-packaging'));
 
         $this->actingAs($user)->get('/inventory/de')->assertOk();
+    }
+
+    public function test_packaging_permission_exposes_inventory_only_through_packaging_child(): void
+    {
+        $user = $this->userWith(['dashboard.view', 'inventory.packaging.submit'], 'factory-packaging-menu');
+
+        $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
+            ->has('shellNavigation', 2)
+            ->where('shellNavigation.1.key', 'inventory')
+            ->has('shellNavigation.1.children', 1)
+            ->where('shellNavigation.1.children.0.key', 'inventory-packaging')
+            ->where('shellNavigation.1.children.0.path', '/inventory/packaging'));
     }
 
     public function test_accounting_expense_analysis_group_is_non_link_with_real_nested_children(): void

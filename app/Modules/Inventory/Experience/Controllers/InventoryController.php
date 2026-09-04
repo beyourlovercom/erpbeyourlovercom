@@ -30,6 +30,7 @@ final class InventoryController
     }
     public function productSearch(Request $request): JsonResponse
     {
+        abort_unless($request->user()?->can('inventory.view') || $request->user()?->can('inventory.packaging.submit'), 403);
         $q=trim((string)$request->input('q',''));
         return response()->json($q==='' ? [] : $this->inventory->searchProducts($q));
     }

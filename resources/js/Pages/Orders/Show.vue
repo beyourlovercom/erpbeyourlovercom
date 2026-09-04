@@ -28,6 +28,20 @@ type OrderItem = {
   unit_price: string
 }
 
+type PackagingReference = {
+  source: 'current_product_standard' | 'shipment_snapshot'
+  source_label: string
+  measurement_record_id: number | null
+  packaging_method_key: string | null
+  packaging_method_label: string | null
+  packaging_length_cm: string
+  packaging_width_cm: string
+  packaging_height_cm: string
+  packaged_weight_kg: string
+  measured_at?: string | null
+  captured_at?: string | null
+}
+
 type Order = {
   id: number
   erp_order_id?: string | null
@@ -64,9 +78,12 @@ type Order = {
 const props = withDefaults(defineProps<{
   order: Order
   inventoryAvailability?: Record<number, Availability[]>
+  packagingReferences?: Record<number, PackagingReference>
   audit: { action: string; actor_id: number | null; created_at: string; reason?: string }[]
   canMarkOperational?: boolean
-}>(), { canMarkOperational: false })
+  canManageProductPackaging?: boolean
+  canViewPackagingEvidence?: boolean
+}>(), { canMarkOperational: false, canManageProductPackaging: false, canViewPackagingEvidence: false })
 
 const isKol = computed(() => props.order.order_kind === 'kol_fulfillment')
 const basePath = computed(() => isKol.value ? '/kol/orders' : '/customers/orders')
@@ -249,6 +266,30 @@ const shipmentStatusLabel = computed(() => {
                 <small v-else>未建立该 SKU 权威库存</small>
               </span>
             </div>
+          </div>
+        </div>
+
+        <!-- Product packaging standard / fulfillment snapshot -->
+        <div class="erp-form-card">
+          <h2 class="erp-form-card-title">包装与重量参考</h2>
+          <p class="ord-inventory-help">待发货订单读取产品当前包装标准；进入履约后保存为订单商品履约快照，后续产品标准变化不会改写已冻结的发货参考。</p>
+          <div v-for="item in order.items" :key="`packaging-${item.id}`" class="ord-packaging-row">
+            <div class="ord-packaging-identity">
+              <strong>{{ item.sku || '—' }}</strong>
+              <small>{{ item.product_summary }} · 数量 {{ item.quantity }}</small>
+              <a v-if="canManageProductPackaging && item.product_id" class="ord-packaging-link" :href="`/products/${item.product_id}/packaging`">包装方案 →</a>
+            </div>
+            <template v-if="packagingReferences?.[item.id]">
+              <div class="ord-packaging-metric"><small>包装方式</small><strong>{{ packagingReferences[item.id].packaging_method_label || '未指定' }}</strong></div>
+              <div class="ord-packaging-metric"><small>包装尺寸</small><strong>{{ packagingReferences[item.id].packaging_length_cm }} × {{ packagingReferences[item.id].packaging_width_cm }} × {{ packagingReferences[item.id].packaging_height_cm }} cm</strong></div>
+              <div class="ord-packaging-metric"><small>打包后重量</small><strong>{{ packagingReferences[item.id].packaged_weight_kg }} kg</strong></div>
+              <div class="ord-packaging-source">
+                <span>{{ packagingReferences[item.id].source_label }}</span>
+                <a v-if="canViewPackagingEvidence && packagingReferences[item.id].measurement_record_id" class="ord-packaging-link" :href="`/inventory/packaging/${packagingReferences[item.id].measurement_record_id}`">查看包装记录 #{{ packagingReferences[item.id].measurement_record_id }} →</a>
+                <small v-else>测量记录 #{{ packagingReferences[item.id].measurement_record_id }}</small>
+              </div>
+            </template>
+            <div v-else class="ord-packaging-empty">该产品尚未设定“当前包装标准”</div>
           </div>
         </div>
 
@@ -568,6 +609,14 @@ const shipmentStatusLabel = computed(() => {
 .ord-inventory-pill.shortage { background: #fff1f2; }
 .ord-inventory-pill small { display: block; color: #6b7f87; }
 
+.ord-packaging-row { display: grid; grid-template-columns: 1.2fr 1fr 1.35fr .8fr .9fr; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid #e4eaed; }
+.ord-packaging-row:last-child { border-bottom: 0; }
+.ord-packaging-identity,.ord-packaging-metric,.ord-packaging-source { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ord-packaging-identity small,.ord-packaging-metric small,.ord-packaging-source small { color: #7a8c94; font-size: 11px; }
+.ord-packaging-metric strong { color: #263b43; font-size: 13px; }
+.ord-packaging-source span { width: fit-content; padding: 4px 8px; border-radius: 999px; background: #eef7f2; color: #16705f; font-size: 11px; font-weight: 700; }
+.ord-packaging-empty { grid-column: 2 / -1; padding: 10px 12px; border-radius: 8px; background: #f7f9fa; color: #87969c; font-size: 12px; }
+
 /* span-2 within erp-form-grid */
 .ord-span-2 {
   grid-column: span 2;
@@ -659,9 +708,11 @@ const shipmentStatusLabel = computed(() => {
     grid-template-columns: repeat(2, 1fr);
   }
   .ord-item-row,
-  .ord-item-row-view {
+  .ord-item-row-view,
+  .ord-packaging-row {
     grid-template-columns: 1fr;
   }
+  .ord-packaging-empty { grid-column: 1; }
   .ord-identity-strip {
     flex-direction: column;
     align-items: flex-start;
@@ -671,4 +722,5 @@ const shipmentStatusLabel = computed(() => {
 
 <style scoped>
 .ord-marker-row{display:flex;gap:8px;flex-wrap:wrap}.ord-marker.active{background:var(--byl-status-bg);color:var(--byl-status-ink);font-weight:700}.ord-marker:disabled{opacity:.55;cursor:not-allowed}
+.ord-packaging-link{display:inline-flex;width:max-content;color:#0f766e;text-decoration:none;font-size:12px;font-weight:700}.ord-packaging-link:hover{text-decoration:underline}.ord-packaging-link:focus-visible{outline:2px solid #0f766e;outline-offset:2px;border-radius:4px}
 </style>

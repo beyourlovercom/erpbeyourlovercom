@@ -57,6 +57,8 @@ final class PermissionCatalog
                     ['key' => 'inventory.view', 'label' => '查看库存'],
                     ['key' => 'inventory.operate', 'label' => '编辑库存'],
                     ['key' => 'inventory.warehouses.manage', 'label' => '管理仓库'],
+                    ['key' => 'inventory.packaging.submit', 'label' => '提交包装与测量证据'],
+                    ['key' => 'inventory.packaging.review', 'label' => '审核包装与测量证据'],
                 ],
             ],
             '外采' => [

@@ -5,6 +5,8 @@ namespace App\Modules\Logistics\Application;
 use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
+use App\Modules\Inventory\Application\ProductPackagingStandardReader;
+use App\Modules\Logistics\Infrastructure\Models\ShipmentItemPackagingSnapshot;
 use App\Modules\Sync\Application\ManualSyncService;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
@@ -15,6 +17,7 @@ final class ShipmentService
     public function __construct(
         private readonly AuditRecorder $audit,
         private readonly ManualSyncService $manualSync,
+        private readonly ProductPackagingStandardReader $packagingStandards,
     ) {}
 
     public function saveDraft(Model $order, array $attributes, ?Authenticatable $actor): Model
@@ -39,6 +42,7 @@ final class ShipmentService
             ]);
             $changed = $shipment->isDirty();
             $shipment->save();
+            $this->syncPackagingSnapshots($lockedOrder, $shipment);
 
             if ($changed) {
                 $this->record($actor, 'shipment.fulfillment_draft_saved', $shipment, $before, $this->snapshot($shipment), 'manual_fulfillment_draft');
@@ -54,6 +58,7 @@ final class ShipmentService
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $shipment = $lockedOrder->shipment()->firstOrCreate(['order_id' => $lockedOrder->getKey()]);
+            $alreadyShipped = $lockedOrder->order_status?->value === 'shipped' && $shipment->shipment_status === 'shipped';
             $before = $this->snapshot($shipment);
             $shipment->fill([
                 'shipment_status' => 'shipped',
@@ -69,6 +74,9 @@ final class ShipmentService
             ]);
             $changed = $shipment->isDirty() || $lockedOrder->order_status?->value !== 'shipped';
             $shipment->save();
+            if (! $alreadyShipped) {
+                $this->syncPackagingSnapshots($lockedOrder, $shipment);
+            }
             if ($lockedOrder->order_status?->value !== 'shipped') {
                 $lockedOrder->forceFill(['order_status' => 'shipped'])->save();
             }
@@ -110,6 +118,44 @@ final class ShipmentService
 
             return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync', 'financials', 'costEntries']);
         });
+    }
+
+    private function syncPackagingSnapshots(Model $order, Model $shipment): void
+    {
+        $order->loadMissing('items');
+        $items = $order->items;
+        $standards = $this->packagingStandards->forProductIds($items->pluck('product_id')->filter()->unique()->values()->all());
+        $validOrderItemIds = $items->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        foreach ($items as $item) {
+            $existing = ShipmentItemPackagingSnapshot::query()
+                ->where('shipment_id', $shipment->getKey())
+                ->where('order_item_id', $item->id)
+                ->first();
+            if ($existing) continue;
+
+            $standard = $item->product_id ? ($standards[(int) $item->product_id] ?? null) : null;
+            if (! $standard) continue;
+
+            ShipmentItemPackagingSnapshot::query()->create([
+                'shipment_id' => $shipment->getKey(),
+                'order_item_id' => $item->id,
+                'product_id' => $item->product_id,
+                'product_packaging_profile_id' => $standard['product_packaging_profile_id'],
+                'packaging_measurement_record_id' => $standard['measurement_record_id'],
+                'packaging_method_key' => $standard['packaging_method_key'],
+                'packaging_method_label' => $standard['packaging_method_label'],
+                'packaging_length_cm' => $standard['packaging_length_cm'],
+                'packaging_width_cm' => $standard['packaging_width_cm'],
+                'packaging_height_cm' => $standard['packaging_height_cm'],
+                'packaged_weight_kg' => $standard['packaged_weight_kg'],
+                'measured_at' => $standard['measured_at'],
+                'captured_at' => now(),
+            ]);
+        }
+
+        $stale = ShipmentItemPackagingSnapshot::query()->where('shipment_id', $shipment->getKey());
+        $validOrderItemIds === [] ? $stale->delete() : $stale->whereNotIn('order_item_id', $validOrderItemIds)->delete();
     }
 
     private function snapshot(Model $shipment): array
