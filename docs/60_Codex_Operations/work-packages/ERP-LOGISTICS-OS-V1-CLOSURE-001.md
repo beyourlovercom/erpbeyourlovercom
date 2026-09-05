@@ -179,19 +179,19 @@ CURRENT_TRACK_PHASE_MAP: Logistics Core existing → Pending fulfillment impleme
 COMPLETED_PHASES: Existing canonical Shipment core; pending shipment queue; fulfillment draft; warehouse recommendation/manual override; Carrier Master; packaging snapshots; ship/reopen; Audit; Manual Sync foundation
 CURRENT_PHASE: Logistics OS V1 Closure
 CURRENT_WORK_PACKAGE: ERP-LOGISTICS-OS-V1-CLOSURE-001
-PACKAGE_STATUS: OWNER AUTHORIZED / IMPLEMENTATION READY
+PACKAGE_STATUS: IMPLEMENTED / VERIFIED / READY FOR OWNER UAT
 WAITING_PHASES: Owner UAT; merge; ERP-LOGISTICS-HISTORICAL-IMPORT-M1-001; Production release
 BASELINE: origin/main@1d7cd0e22880cf6aea0183c57fc0e0c3da726d8d
 GITHUB_STATE: dedicated branch feature/erp-logistics-os-v1-closure-001
 SOURCE_CONFLICTS: User-stated earlier main@6f854b9 is superseded by merged PR #188; current GitHub origin/main@1d7cd0e is authoritative.
 GLOBAL_GATE: PASS for implementation; merge/deploy remain Owner-gated
 PRODUCTION_DEPLOYMENT_STATUS: NO — explicitly excluded from this WP
-NEXT_DEPENDENCY: US Claude implementation and full package verification
+NEXT_DEPENDENCY: Owner UAT on exact branch SHA; merge remains Owner-gated
 EVIDENCE_AS_OF: 2026-09-05
 
 ROADMAP HOURS
 CURRENT_PACKAGE_ESTIMATE: planning value 4.0h; range 2.5–6.0h
-KNOWN_CURRENT_TRACK_REMAINING: Logistics V1 implementation/test + Owner UAT; Historical Logistics Import is a separate successor package and not included here
+KNOWN_CURRENT_TRACK_REMAINING: Logistics V1 Owner UAT only; Historical Logistics Import is a separate successor package and not included here
 ARCHITECTURE_GATE_REMAINING: 0h for this package; architecture foundation already exists
 MVP1_TOTAL_ESTIMATE: historical / not recomputed by this WP
 MVP1_PLANNING_BASELINE: historical / not recomputed by this WP
@@ -220,3 +220,19 @@ MIGRATION_FILE_AUTHORING: EXCLUDED
 MIGRATION_EXECUTION: EXCLUDED
 UAT: INCLUDED
 DEPLOYMENT: EXCLUDED
+## Implementation + Independent Verification Evidence — 2026-09-05
+
+- Implementation commit: `0c71df4429e2e1eef220c18d019a0bf66fff0df2`.
+- Canonical lifecycle implemented on existing `orders + shipments`; no schema migration or legacy logistics truth table.
+- Dispatch supports tracking-later while retaining required warehouse, active carrier, service, and shipped_at validation.
+- Three approved queues are real Logistics routes: `/logistics/awaiting-tracking`, `/logistics/in-transit`, `/logistics/exceptions`; obsolete Shell placeholder ownership was removed.
+- Tracking update reuses the same Shipment and arms Manual/Woo tracking sync only once tracking exists.
+- Exception mark/resolve preserves shipped Order truth; explicit reopen remains the correction path back to pending shipment.
+- Independent focused regression: 57 tests / 2039 assertions PASS, including Logistics V1, Manual Fulfillment, Woo Tracking, App Shell, Approved Menu, and MVP1 workflow compatibility.
+- Vue `npm run typecheck`: PASS.
+- Vite production `npm run build`: PASS.
+- `git diff --check`: PASS.
+- Accidental npm worktree-name-only `package-lock.json` drift removed before Owner UAT.
+- Production deploy: NOT performed. Historical Logistics Import: NOT started.
+
+STATUS: READY FOR OWNER UAT. Merge remains forbidden until explicit Owner PASS.
