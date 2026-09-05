@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
+use App\Modules\Logistics\Application\AssistedFulfillmentService;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Logistics\Application\WarehouseRecommendationService;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
@@ -22,6 +23,7 @@ final class LogisticsController
 
     public function __construct(
         private readonly ShipmentService $shipments,
+        private readonly AssistedFulfillmentService $assistedFulfillment,
         private readonly InventoryAvailabilityReader $availability,
         private readonly WarehouseRecommendationService $recommendations,
         private readonly OrderPackagingReferenceProjection $packagingReferences,
@@ -50,9 +52,16 @@ final class LogisticsController
 
     public function saveDraft(Request $request, Order $order): \Illuminate\Http\RedirectResponse
     {
-        $this->shipments->saveDraft($order, $request->validate($this->draftRules()), $request->user());
+        $this->assistedFulfillment->saveDraft($order, $request->validate($this->draftRules()), $request->user());
 
         return back()->with('success', '履约草稿已保存');
+    }
+
+    public function adoptRecommendation(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    {
+        $this->assistedFulfillment->adoptRecommendation($order, $request->user());
+
+        return back()->with('success', '已采用系统推荐并预留库存');
     }
 
     public function awaitingTracking(Request $request): Response
@@ -167,7 +176,7 @@ final class LogisticsController
             'tracking_number' => ['nullable', 'string', 'max:128'],
             'logistics_note' => ['nullable', 'string', 'max:5000'],
         ]);
-        $this->shipments->markShipped($order, $data, $request->user());
+        $this->assistedFulfillment->markShipped($order, $data, $request->user());
         $msg = empty($data['tracking_number']) ? '已标记发货，追踪号待填入' : '已标记发货，已生成待同步任务';
 
         return back()->with('success', $msg);

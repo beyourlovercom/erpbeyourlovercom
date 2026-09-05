@@ -6,7 +6,7 @@ import StatusBar from '../../Components/Logistics/StatusBar.vue'
 
 type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; inventory_state: string; can_auto_allocate: boolean; quantity_on_hand: number | null; quantity_reserved: number | null; quantity_available: number | null }
 type Item = { id: number; product_id: number | null; sku: string | null; product_summary: string | null; quantity: number; availability: Availability[] }
-type Shipment = { warehouse_id: number | null; warehouse_name: string | null; carrier: string | null; service: string | null; tracking_number: string | null; shipped_at: string | null; logistics_note: string | null }
+type Shipment = { warehouse_id: number | null; warehouse_name: string | null; warehouse_selection_source: string | null; carrier: string | null; service: string | null; tracking_number: string | null; shipped_at: string | null; logistics_note: string | null }
 type RecommendationWarehouse = { id: number; slug: string; code: string; name: string }
 type Recommendation = { status: 'recommended' | 'blocked'; reason_code: string; reason_label: string; country_code: string | null; required_sku_count: number | null; candidate_count: number; warehouse: RecommendationWarehouse | null }
 type Order = { id: number; external_order_number: string; order_kind_label: string; order_url?: string | null; recipient_name: string | null; phone: string | null; country: string | null; owner_label: string | null; item_count: number; items: Item[]; warehouse_recommendation: Recommendation; shipment: Shipment | null }
@@ -34,7 +34,8 @@ watch(() => props.orders.data, (orders) => { for (const order of orders) if (!dr
 
 const toggle = (orderId: number) => { openOrderId.value = openOrderId.value === orderId ? null : orderId }
 const adoptRecommendation = (order: Order) => {
-  if (order.warehouse_recommendation.status === 'recommended' && order.warehouse_recommendation.warehouse) drafts[order.id].warehouse_id = order.warehouse_recommendation.warehouse.id
+  if (order.warehouse_recommendation.status !== 'recommended' || !order.warehouse_recommendation.warehouse) return
+  router.post(`/logistics/orders/${order.id}/adopt-recommendation`, {}, { preserveScroll: true })
 }
 const saveDraft = (order: Order) => router.post(`/logistics/orders/${order.id}/draft`, drafts[order.id], { preserveScroll: true })
 const ship = (order: Order) => {
@@ -91,9 +92,9 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
             <div class="fulfillment-workspace">
               <div class="recommendation-card" :class="{ blocked: order.warehouse_recommendation.status !== 'recommended' }">
                 <div><small>系统仓库建议</small><strong>{{ order.warehouse_recommendation.warehouse?.name ?? '暂不推荐' }}</strong><p>{{ order.warehouse_recommendation.reason_label }}</p><p v-if="order.warehouse_recommendation.status !== 'recommended'" class="manual-warehouse-hint">系统暂不推荐时，仍可人工选择任一启用仓库发货。</p></div>
-                <button v-if="order.warehouse_recommendation.status === 'recommended'" class="mvp-button mvp-button-primary" type="button" @click="adoptRecommendation(order)">采用推荐</button>
+                <button v-if="order.warehouse_recommendation.status === 'recommended'" class="mvp-button mvp-button-primary" type="button" :disabled="order.shipment?.warehouse_selection_source === 'recommended'" @click="adoptRecommendation(order)">{{ order.shipment?.warehouse_selection_source === 'recommended' ? '已采用推荐并预留' : '采用推荐并预留库存' }}</button>
               </div>
-              <div><h3>库存可用量</h3><div class="inventory-grid" v-for="item in order.items" :key="item.id"><strong><Link v-if="item.product_id" :href="`/products/${item.product_id}`" class="mvp-link">{{ item.sku ?? item.product_summary ?? '无 SKU' }}</Link><span v-else>{{ item.sku ?? item.product_summary ?? '无 SKU' }}</span> × {{ item.quantity }}</strong><span v-for="row in item.availability" :key="row.warehouse_id" :class="{ shortage: row.quantity_available !== null && row.quantity_available < item.quantity, unknown: row.quantity_available === null }">{{ row.warehouse_name }}：{{ row.quantity_available === null ? '库存未知' : '可用 ' + row.quantity_available }} <small v-if="row.quantity_available !== null">(QOH {{ row.quantity_on_hand }} / Reserved {{ row.quantity_reserved }})</small><small v-else>未建立该 SKU 权威库存</small></span></div></div>
+              <div><h3>库存可用量</h3><p v-if="order.shipment?.warehouse_selection_source === 'recommended'" class="reservation-hint">库存已预留；确认发货时会自动提交预留并扣减在库库存。</p><div class="inventory-grid" v-for="item in order.items" :key="item.id"><strong><Link v-if="item.product_id" :href="`/products/${item.product_id}`" class="mvp-link">{{ item.sku ?? item.product_summary ?? '无 SKU' }}</Link><span v-else>{{ item.sku ?? item.product_summary ?? '无 SKU' }}</span> × {{ item.quantity }}</strong><span v-for="row in item.availability" :key="row.warehouse_id" :class="{ shortage: row.quantity_available !== null && row.quantity_available < item.quantity, unknown: row.quantity_available === null }">{{ row.warehouse_name }}：{{ row.quantity_available === null ? '库存未知' : '可用 ' + row.quantity_available }} <small v-if="row.quantity_available !== null">(QOH {{ row.quantity_on_hand }} / Reserved {{ row.quantity_reserved }})</small><small v-else>未建立该 SKU 权威库存</small></span></div></div>
               <div class="fulfillment-form">
                 <label>发货仓库<select v-model="drafts[order.id].warehouse_id"><option value="">请选择</option><option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} ({{ warehouse.code }}){{ warehouse.can_auto_allocate ? '' : ' · 库存未确认' }}</option></select></label>
                 <label>物流商<select v-model="drafts[order.id].carrier" aria-label="物流商"><option value="">请选择承运商</option><option v-for="carrier in carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select></label>
@@ -123,7 +124,7 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
 .fulfillment-cell { background: #f8fafb; padding: 18px !important; }
 .fulfillment-workspace { display: grid; gap: 18px; }
 .fulfillment-workspace h3 { margin: 0 0 10px; font-size: 14px; }
-.inventory-grid { display: grid; grid-template-columns: minmax(140px, 1fr) repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; padding: 8px 0; border-bottom: 1px solid #e4eaed; font-size: 13px; }
+.reservation-hint{margin:0 0 8px;color:#166534;font-size:12px;font-weight:600}.inventory-grid { display: grid; grid-template-columns: minmax(140px, 1fr) repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; padding: 8px 0; border-bottom: 1px solid #e4eaed; font-size: 13px; }
 .inventory-grid span { padding: 6px 8px; border-radius: 6px; background: #eef7f2; }
 .inventory-grid span.shortage { background: #fff1f2; }
 .inventory-grid span.unknown { background: #fff9eb; }

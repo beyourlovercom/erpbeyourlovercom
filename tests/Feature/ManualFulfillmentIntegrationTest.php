@@ -165,6 +165,120 @@ final class ManualFulfillmentIntegrationTest extends TestCase
             ->assertJsonPath('items.0.packaging_reference.packaged_weight_kg', '0.850');
     }
 
+    public function test_adopting_recommendation_creates_reservation_and_recommended_shipment_draft_idempotently(): void
+    {
+        [$user, $order, $product, $warehouse] = $this->scenario();
+        $warehouse->serviceRegions()->create(['country_code' => 'US', 'priority' => 1]);
+        InventorySyncBatch::query()->create([
+            'warehouse_id' => $warehouse->id, 'source_type' => 'xlsx', 'sync_mode' => 'full',
+            'status' => 'confirmed', 'confirmed_at' => now(),
+        ]);
+        WarehouseInventory::query()->updateOrCreate(
+            ['warehouse_id' => $warehouse->id, 'product_id' => $product->id],
+            ['quantity_on_hand' => 5, 'quantity_reserved' => 0],
+        );
+
+        $url = '/logistics/orders/'.$order->id.'/adopt-recommendation';
+        $this->actingAs($user)->post($url)->assertRedirect();
+        $this->actingAs($user)->post($url)->assertRedirect();
+
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id,
+            'shipment_status' => 'pending',
+            'warehouse_id' => $warehouse->id,
+            'warehouse_selection_source' => 'recommended',
+        ]);
+        $this->assertDatabaseHas('inventory_reservations', [
+            'order_id' => $order->id,
+            'warehouse_id' => $warehouse->id,
+            'status' => 'reserved',
+        ]);
+        $this->assertDatabaseCount('inventory_reservations', 1);
+        $this->assertSame(2, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $product->id)->value('quantity_reserved'));
+    }
+
+    public function test_recommended_reservation_commits_when_order_is_marked_shipped(): void
+    {
+        [$user, $order, $product, $warehouse] = $this->scenario();
+        $warehouse->serviceRegions()->create(['country_code' => 'US', 'priority' => 1]);
+        InventorySyncBatch::query()->create([
+            'warehouse_id' => $warehouse->id, 'source_type' => 'xlsx', 'sync_mode' => 'full',
+            'status' => 'confirmed', 'confirmed_at' => now(),
+        ]);
+        WarehouseInventory::query()->updateOrCreate(
+            ['warehouse_id' => $warehouse->id, 'product_id' => $product->id],
+            ['quantity_on_hand' => 5, 'quantity_reserved' => 0],
+        );
+
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/adopt-recommendation')->assertRedirect();
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/ship', [
+            'warehouse_id' => $warehouse->id,
+            'carrier' => 'UPS',
+            'service' => 'Ground',
+            'tracking_number' => 'ASSIST-TRACK',
+            'shipped_at' => '2026-09-05T12:00:00Z',
+        ])->assertRedirect();
+
+        $inventory = WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $product->id)->firstOrFail();
+        $this->assertSame(3, $inventory->quantity_on_hand);
+        $this->assertSame(0, $inventory->quantity_reserved);
+        $this->assertDatabaseHas('inventory_reservations', ['order_id' => $order->id, 'status' => 'committed']);
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'warehouse_selection_source' => 'recommended', 'shipment_status' => 'shipped']);
+    }
+
+    public function test_shipping_cannot_bypass_an_active_reservation_with_another_warehouse(): void
+    {
+        [$user, $order, $product, $warehouse] = $this->scenario();
+        $warehouse->serviceRegions()->create(['country_code' => 'US', 'priority' => 1]);
+        InventorySyncBatch::query()->create([
+            'warehouse_id' => $warehouse->id, 'source_type' => 'xlsx', 'sync_mode' => 'full',
+            'status' => 'confirmed', 'confirmed_at' => now(),
+        ]);
+        WarehouseInventory::query()->updateOrCreate(
+            ['warehouse_id' => $warehouse->id, 'product_id' => $product->id],
+            ['quantity_on_hand' => 5, 'quantity_reserved' => 0],
+        );
+        $other = Warehouse::query()->where('id', '!=', $warehouse->id)->where('is_active', true)->firstOrFail();
+
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/adopt-recommendation')->assertRedirect();
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/ship', [
+            'warehouse_id' => $other->id,
+            'carrier' => 'UPS',
+            'service' => 'Ground',
+            'shipped_at' => '2026-09-05T12:00:00Z',
+        ])->assertStatus(409);
+
+        $this->assertDatabaseHas('inventory_reservations', ['order_id' => $order->id, 'status' => 'reserved', 'warehouse_id' => $warehouse->id]);
+        $this->assertSame(2, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $product->id)->value('quantity_reserved'));
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'shipment_status' => 'pending', 'warehouse_id' => $warehouse->id]);
+    }
+
+    public function test_manual_warehouse_override_releases_recommended_reservation(): void
+    {
+        [$user, $order, $product, $warehouse] = $this->scenario();
+        $warehouse->serviceRegions()->create(['country_code' => 'US', 'priority' => 1]);
+        InventorySyncBatch::query()->create([
+            'warehouse_id' => $warehouse->id, 'source_type' => 'xlsx', 'sync_mode' => 'full',
+            'status' => 'confirmed', 'confirmed_at' => now(),
+        ]);
+        WarehouseInventory::query()->updateOrCreate(
+            ['warehouse_id' => $warehouse->id, 'product_id' => $product->id],
+            ['quantity_on_hand' => 5, 'quantity_reserved' => 0],
+        );
+        $other = Warehouse::query()->where('id', '!=', $warehouse->id)->where('is_active', true)->firstOrFail();
+
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/adopt-recommendation')->assertRedirect();
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/draft', [
+            'warehouse_id' => $other->id,
+            'carrier' => 'UPS',
+            'service' => 'Ground',
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('inventory_reservations', ['order_id' => $order->id, 'status' => 'released', 'release_reason' => 'manual_warehouse_override']);
+        $this->assertSame(0, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $product->id)->value('quantity_reserved'));
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'warehouse_id' => $other->id, 'warehouse_selection_source' => 'manual']);
+    }
+
     private function scenario(): array
     {
         $user = $this->userWith(['orders.view', 'orders.create', 'logistics.view', 'logistics.operate']);

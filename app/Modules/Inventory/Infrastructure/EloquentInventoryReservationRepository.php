@@ -16,6 +16,17 @@ use Illuminate\Support\Carbon;
 
 final class EloquentInventoryReservationRepository implements InventoryReservationRepository
 {
+    public function activeForOrder(int $orderId): ?array
+    {
+        $reservation = InventoryReservation::query()
+            ->where('order_id', $orderId)
+            ->where('status', 'reserved')
+            ->lockForUpdate()
+            ->first();
+
+        return $reservation ? $this->snapshot($reservation->load('items'), true) : null;
+    }
+
     public function reserve(int $orderId, int $warehouseId, string $reservationKey, ?DateTimeInterface $expiresAt, ?int $actorUserId): array
     {
         $order = Order::query()->whereKey($orderId)->lockForUpdate()->first();
@@ -55,6 +66,9 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
 
         $active = InventoryReservation::query()->where('order_id', $orderId)->where('status', 'reserved')->lockForUpdate()->first();
         if ($active) {
+            if ((int) $active->warehouse_id === $warehouseId && hash_equals((string) $active->payload_hash, $payloadHash)) {
+                return $this->snapshot($active->load('items'), true);
+            }
             throw new DomainException('Order already has an active inventory reservation.');
         }
 

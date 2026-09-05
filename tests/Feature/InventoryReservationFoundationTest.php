@@ -41,16 +41,17 @@ final class InventoryReservationFoundationTest extends TestCase
         $this->assertSame(1, $this->auditCount('inventory.reservation.reserved'));
     }
 
-    public function test_one_order_cannot_hold_two_active_reservations(): void
+    public function test_same_order_same_payload_reuses_active_reservation_across_retry_keys(): void
     {
         $user = $this->userWith(['inventory.operate']);
         [$order, $warehouse] = $this->scenario(10, [2]);
         $service = app(InventoryReservationService::class);
-        $service->reserve($order->id, $warehouse->id, 'res-active-1', null, $user);
+        $first = $service->reserve($order->id, $warehouse->id, 'res-active-1', null, $user);
+        $second = $service->reserve($order->id, $warehouse->id, 'res-active-2', null, $user);
 
-        $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('already has an active');
-        $service->reserve($order->id, $warehouse->id, 'res-active-2', null, $user);
+        $this->assertSame($first['id'], $second['id']);
+        $this->assertTrue($second['idempotent']);
+        $this->assertDatabaseCount('inventory_reservations', 1);
     }
 
     public function test_same_key_with_changed_payload_conflicts(): void
@@ -166,6 +167,16 @@ final class InventoryReservationFoundationTest extends TestCase
         $this->expectException(DomainException::class);
         $this->expectExceptionMessage('canonical product identity');
         app(InventoryReservationService::class)->reserve($order->id, $warehouse->id, 'res-unresolved', null, $user);
+    }
+
+    public function test_logistics_operator_can_reserve_for_assisted_fulfillment(): void
+    {
+        $user = $this->userWith(['logistics.operate']);
+        [$order, $warehouse, $product] = $this->scenario(10, [2]);
+        $result = app(InventoryReservationService::class)->reserve($order->id, $warehouse->id, 'res-logistics', null, $user);
+
+        $this->assertSame('reserved', $result['status']);
+        $this->assertSame(2, WarehouseInventory::query()->where('product_id', $product->id)->value('quantity_reserved'));
     }
 
     public function test_inventory_operate_permission_is_required(): void

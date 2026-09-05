@@ -4,7 +4,9 @@ import Index from './Index.vue'
 
 vi.mock('@inertiajs/vue3', () => ({
   Head: { template: '<span />' },
+  Link: { props: ['href'], template: '<a :href="href"><slot /></a>' },
   router: { post: vi.fn(), get: vi.fn() },
+  usePage: () => ({ url: '/logistics/pending' }),
 }))
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
 
@@ -19,12 +21,13 @@ const carrierOptions = [{ value: 'DHL', label: 'DHL' }, { value: 'UPS', label: '
 const props = { orders: { data: [order], current_page: 1, last_page: 1, per_page: 50, total: 1 }, warehouses: [warehouse], carrierOptions }
 
 describe('Logistics warehouse recommendation', () => {
-  it('adopts a recommendation into the local draft without saving automatically', async () => {
+  it('adopts a recommendation through the reservation endpoint', async () => {
     const wrapper = mount(Index, { props })
+    const { router } = await import('@inertiajs/vue3')
     await wrapper.findAll('button').find(button => button.text() === '履约处理')!.trigger('click')
     expect((wrapper.get('select').element as HTMLSelectElement).value).toBe('')
-    await wrapper.findAll('button').find(button => button.text() === '采用推荐')!.trigger('click')
-    expect((wrapper.get('select').element as HTMLSelectElement).value).toBe('2')
+    await wrapper.findAll('button').find(button => button.text() === '采用推荐并预留库存')!.trigger('click')
+    expect(router.post).toHaveBeenCalledWith('/logistics/orders/10/adopt-recommendation', {}, { preserveScroll: true })
   })
 
 
@@ -65,6 +68,6 @@ describe('Logistics warehouse recommendation', () => {
     const wrapper = mount(Index, { props: { ...props, orders: { ...props.orders, data: [blocked] } } })
     await wrapper.findAll('button').find(button => button.text() === '履约处理')!.trigger('click')
     expect(wrapper.text()).toContain('服务区域未配置')
-    expect(wrapper.findAll('button').some(button => button.text() === '采用推荐')).toBe(false)
+    expect(wrapper.findAll('button').some(button => button.text() === '采用推荐并预留库存')).toBe(false)
   })
 })

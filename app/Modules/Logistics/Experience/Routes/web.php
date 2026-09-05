@@ -18,6 +18,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/carriers', [CarrierController::class, 'store'])->middleware('can:logistics.operate')->name('logistics.carriers.store');
     Route::get('/logistics/carriers/{carrier}', [CarrierController::class, 'show'])->middleware('can:logistics.view')->name('logistics.carriers.show');
     Route::post('/logistics/orders/{order}/draft', [LogisticsController::class, 'saveDraft'])->middleware('can:logistics.operate')->name('logistics.draft');
+    Route::post('/logistics/orders/{order}/adopt-recommendation', [LogisticsController::class, 'adoptRecommendation'])->middleware('can:logistics.operate')->name('logistics.adopt-recommendation');
     Route::get('/logistics/orders/{order}/payload', [LogisticsController::class, 'payload'])->middleware('can:logistics.view')->name('logistics.payload');
     Route::post('/logistics/orders/{order}/ship', [LogisticsController::class, 'markShipped'])->middleware('can:logistics.operate')->name('logistics.ship');
     Route::post('/logistics/orders/{order}/reopen', [LogisticsController::class, 'reopen'])->middleware('can:logistics.operate')->name('logistics.reopen');
