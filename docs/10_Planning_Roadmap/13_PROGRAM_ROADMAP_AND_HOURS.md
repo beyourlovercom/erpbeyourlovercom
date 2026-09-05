@@ -7,6 +7,11 @@ updated: 2026-08-28
 
 # Program Roadmap and Hours
 
+## V2 current-status overlay — 2026-09-05
+
+This overlay supersedes older mutable `CURRENT_*` markers below while preserving them as historical planning records. Canonical current status is `27_ERP_ROADMAP_PRODUCTION_RECONCILIATION_V2.md`. Strategic line: **Production Consolidation → Fulfillment Intelligence**. KOL V1 and Purchase OS V1 are closed; Purchase is now live in the current bounded Production release; Product final cross-phase closure/promotion, Inventory/Packaging production closure, Logistics V1 and MVP2 Reservation are the next active-ready lanes.
+
+
 This document is the repository source of truth for the complete Program Roadmap, estimate classifications, known and unknown remaining hours, actual-hours evidence and no-double-counting rules.
 
 ## Program Roadmap

@@ -298,3 +298,8 @@ Execution Role Model v1.3 adds `US_CODEX_CLI` as a formal implementation provide
 Provider choice is based on ambiguity and complexity, not file count or historical habit. US Codex must stop and return raw evidence when a frozen contract becomes ambiguous or requires a new design/remediation decision. `ONE_ACTIVE_IMPLEMENTATION_PROVIDER_PER_WORKTREE` applies equally to GPT+DC, US Codex CLI and US Claude Code.
 
 D-038 remains the verification baseline: US Mac verification/UAT is sufficient by default. China Mac is removed from the default execution and verification chain and is used only when explicitly requested or required by a concrete cross-machine/region-specific defect. GitHub remains the unique source of truth. Merge and Production deployment remain separately Owner-gated.
+
+
+## D-044 Reconcile Roadmap, menu progress and bounded Production truth V2
+
+Owner directed a second full reconciliation on 2026-09-05 after substantial Product, Customer, KOL, Inventory, Connector and Purchase progress plus multiple bounded Production releases. `main@a36e9d3`, formal Closure/UAT evidence, `menu/APPROVED_MENU.json`, and the live Production release are now four explicit independent truth dimensions. Menu progress means approved surface implementation only. Production must never be inferred from main because ERP uses bounded exact releases. KOL historical import + Affiliate binding is now Production CLOSED (961 canonical KOLs; 856 exact bindings; 2,416 referrals resolved; no unresolved ambiguity). Current strategic line becomes `Production Consolidation → Fulfillment Intelligence`. Four parallel packages may run only with exclusive worktree/file ownership and no cross-lane shared-file edits.
