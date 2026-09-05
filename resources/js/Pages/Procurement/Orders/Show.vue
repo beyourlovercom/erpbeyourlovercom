@@ -27,6 +27,8 @@ type ProcurementOrder = {
   created_at: string | null
   updated_at: string | null
   status_updated_at: string | null
+  completion_reason: string | null
+  completed_at: string | null
   items: PurchaseItem[]
 }
 
@@ -84,6 +86,7 @@ const queryTracking = async () => {
 }
 const submit = () => form.patch(`/purchase/orders/${props.procurementOrder.id}`, { preserveScroll: true })
 const formatDate = (value: string | null) => value ? new Date(value).toLocaleString('zh-CN') : '—'
+const completionReasonLabel = (value: string | null) => value === 'source_order_shipped' ? '源订单已发货自动完成' : value === 'manual' ? '手动完成' : '—'
 </script>
 
 <template>
@@ -169,6 +172,8 @@ const formatDate = (value: string | null) => value ? new Date(value).toLocaleStr
             <dt>创建时间</dt><dd>{{ formatDate(procurementOrder.created_at) }}</dd>
             <dt>最近更新人</dt><dd>{{ procurementOrder.updated_by_name || '—' }}</dd>
             <dt>状态更新时间</dt><dd>{{ formatDate(procurementOrder.status_updated_at) }}</dd>
+            <dt>完成方式</dt><dd>{{ completionReasonLabel(procurementOrder.completion_reason) }}</dd>
+            <dt>完成时间</dt><dd>{{ formatDate(procurementOrder.completed_at) }}</dd>
           </dl>
         </section>
       </div>

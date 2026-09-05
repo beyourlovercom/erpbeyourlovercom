@@ -192,25 +192,22 @@ final class WooCommerceTrackingOutboundService
     private function resolveCarrier(string $carrier): string
     {
         $normalized = strtolower(trim(preg_replace('/\s+/', ' ', str_replace(['_', '-'], ' ', $carrier)) ?? $carrier));
-        $aliases = [
-            '4px' => '4px',
-            '4px express' => '4px',
-            'dhl' => 'dhl-api',
-            'dhl api' => 'dhl-api',
-            'dhl express' => 'dhl-api',
-            'usps' => 'usps',
-            'united states postal service' => 'usps',
-            'ups' => 'ups',
-            'fedex' => 'fedex',
-            'canada post' => 'canada-post',
-            'sf express' => 'sf-express',
-            'singapore post' => 'singapore-post',
-        ];
 
-        if (! isset($aliases[$normalized])) {
-            throw new DomainException("承运商 {$carrier} 尚未配置 AfterShip provider slug。只有显式映射的承运商可以自动写回。");
+        foreach ((array) config('erp_logistics.carriers', []) as $definition) {
+            $aliases = (array) ($definition['aliases'] ?? []);
+            $value = trim((string) ($definition['value'] ?? ''));
+            if ($value !== '') {
+                $aliases[] = $value;
+            }
+
+            foreach ($aliases as $alias) {
+                $normalizedAlias = strtolower(trim(preg_replace('/\s+/', ' ', str_replace(['_', '-'], ' ', (string) $alias)) ?? (string) $alias));
+                if ($normalized === $normalizedAlias) {
+                    return (string) $definition['aftership_slug'];
+                }
+            }
         }
 
-        return $aliases[$normalized];
+        throw new DomainException("承运商 {$carrier} 尚未配置 AfterShip provider slug。只有显式映射的承运商可以自动写回。");
     }
 }

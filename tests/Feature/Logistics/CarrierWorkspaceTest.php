@@ -5,6 +5,7 @@ namespace Tests\Feature\Logistics;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -16,39 +17,56 @@ final class CarrierWorkspaceTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_carrier_index_and_detail_are_aggregated_from_canonical_shipments(): void
+    public function test_carrier_index_uses_master_data_and_shipment_history_only_for_statistics(): void
     {
         $user = $this->userWith(['logistics.view']);
         $this->shipment($user, 'DHL', 'DHL-1', 2.500, 18.50, 'USD', 'delivered');
-        $this->shipment($user, 'DHL', 'DHL-2', 1.250, 11.50, 'USD', 'in_transit');
-        $this->shipment($user, 'UPS', 'UPS-1', 3.000, 20.00, 'USD', null);
+        $this->shipment($user, 'UAT Carrier', 'UAT-1', 1.000, 5.00, 'USD', null);
 
-        $shipmentCount = Shipment::query()->count();
+        $this->assertSame(8, Carrier::query()->count());
 
         $this->actingAs($user)->get('/logistics/carriers')->assertInertia(
             fn (Assert $page) => $page
                 ->component('Logistics/Carriers/Index')
-                ->has('carriers', 2)
-                ->where('carriers.0.name', 'DHL')
-                ->where('carriers.0.shipment_count', 2)
-                ->where('carriers.0.chargeable_weight_kg', 3.75)
-                ->where('carriers.0.costs_by_currency.0.currency', 'USD')
-                ->where('carriers.0.costs_by_currency.0.total', 30)
+                ->has('carriers', 8)
+                ->where('carriers.0.name', '4PX')
+                ->where('carriers.0.shipment_count', 0)
+                ->where('carriers.1.name', 'DHL')
+                ->where('carriers.1.shipment_count', 1)
+                ->where('canOperate', false)
         );
 
         $this->actingAs($user)->get('/logistics/carriers/DHL')->assertInertia(
             fn (Assert $page) => $page
                 ->component('Logistics/Carriers/Show')
                 ->where('carrier', 'DHL')
-                ->where('summary.shipment_count', 2)
+                ->where('summary.shipment_count', 1)
                 ->where('summary.delivered_count', 1)
-                ->where('summary.in_transit_count', 1)
-                ->where('shipments.total', 2)
-                ->where('shipments.data.0.carrier', 'DHL')
-                ->where('shipments.data.1.carrier', 'DHL')
+                ->where('shipments.total', 1)
         );
 
-        $this->assertSame($shipmentCount, Shipment::query()->count(), 'Carrier workspace reads canonical shipments and must not create a second shipment truth.');
+        $this->actingAs($user)->get('/logistics/carriers/4PX')->assertInertia(
+            fn (Assert $page) => $page
+                ->where('carrier', '4PX')
+                ->where('summary.shipment_count', 0)
+                ->where('shipments.total', 0)
+        );
+    }
+
+    public function test_operator_can_add_carrier_and_it_immediately_becomes_a_fulfillment_option(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+
+        $this->actingAs($user)->post('/logistics/carriers', ['name' => 'UniUni'])
+            ->assertRedirect('/logistics/carriers');
+
+        $this->assertDatabaseHas('logistics_carriers', ['name' => 'UniUni', 'is_active' => 1]);
+
+        $this->actingAs($user)->get('/logistics')->assertInertia(
+            fn (Assert $page) => $page
+                ->where('carrierOptions.8.value', 'UniUni')
+                ->where('carrierOptions.8.label', 'UniUni')
+        );
     }
 
     public function test_billing_extension_keeps_cost_and_raw_evidence_without_copying_shipment_identity(): void
@@ -78,6 +96,7 @@ final class CarrierWorkspaceTest extends TestCase
         $user = User::factory()->create(['is_active' => true]);
         $this->actingAs($user)->get('/logistics/carriers')->assertForbidden();
         $this->actingAs($user)->get('/logistics/carriers/DHL')->assertForbidden();
+        $this->actingAs($user)->post('/logistics/carriers', ['name' => 'Blocked Carrier'])->assertForbidden();
     }
 
     private function shipment(User $user, string $carrier, string $tracking, float $weight, float $cost, string $currency, ?string $deliveryStatus): Shipment
