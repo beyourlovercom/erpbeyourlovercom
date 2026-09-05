@@ -49,7 +49,10 @@ describe('Procurement/Orders/Show', () => {
     await wrapper.find('form').trigger('submit')
     expect(patchMock).toHaveBeenCalledWith('/purchase/orders/4', { preserveScroll: true })
     expect(wrapper.find('a[href="/customers/orders/7"]').exists()).toBe(true)
-    expect(wrapper.find('a[href="https://shop.test/item"]').attributes('target')).toBe('_blank')
+    const purchaseLink = wrapper.find('a[href="https://shop.test/item"]')
+    expect(purchaseLink.attributes('target')).toBe('_blank')
+    expect(purchaseLink.text()).toBe('https://shop.test/item')
+    expect(purchaseLink.attributes('title')).toBe('https://shop.test/item')
   })
 
 
