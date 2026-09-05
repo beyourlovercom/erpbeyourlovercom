@@ -78,7 +78,7 @@ final class WooCommerceProductInboundTest extends TestCase
             'source_type' => 'manual', 'product_type' => 'simple', 'sku' => 'SYNC-001',
             'name' => 'Old name', 'weight_kg' => 0.42, 'shipping_weight_kg' => 0.58,
         ]);
-        $payload = $this->payload(101, 'SYNC-001', [['id' => 501, 'src' => 'https://shop.test/media/a.png', 'alt' => 'Primary']]);
+        $payload = $this->payload(101, 'SYNC-001', [['id' => 501, 'src' => 'https://shop.test/media/a.png', 'alt' => 'Primary']], ['related_ids' => [11, 12, 13]]);
         $this->fakeSingle($payload, ['https://shop.test/media/a.png' => $this->png()]);
 
         $first = app(WooCommerceProductInboundService::class)->sync(null, false, 101);
@@ -92,6 +92,7 @@ final class WooCommerceProductInboundTest extends TestCase
         $this->assertDatabaseHas('product_provider_snapshots', ['product_id' => $product->id, 'remote_product_id' => '101']);
         $this->assertDatabaseCount('product_media', 1);
 
+        $payload['related_ids'] = [21, 22, 23];
         $this->fakeSingle($payload, ['https://shop.test/media/a.png' => $this->png()]);
         $second = app(WooCommerceProductInboundService::class)->sync(null, false, 101);
         $this->assertSame('unchanged', DB::table('sync_run_items')->where('sync_run_id', $second['run']->id)->value('result_code'));
