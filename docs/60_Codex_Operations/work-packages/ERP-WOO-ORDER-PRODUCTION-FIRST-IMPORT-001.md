@@ -286,17 +286,17 @@ Full history remains a separately frozen Production data operation; do not silen
 
 ## Current gate state
 `B1_RUNTIME_CONTRACT = PASS`
-`B2_CREDENTIAL_MUTATION_PLAN = FROZEN / REVERSIBLE`
-`B3_READ_ONLY_PROBE_PLAN = FROZEN`
+`B2_CREDENTIAL_MUTATION_PLAN = PASS / READ_ONLY_INSTALLED`
+`B3_READ_ONLY_PROBE_PLAN = PASS / HTTP_200`
 `WOO_FOCUSED_TESTS = PASS`
-`PRODUCTION_CREDENTIALS = OWNER_ONLY_ENTRY_REQUIRED`
+`PRODUCTION_CREDENTIALS = PASS / READ_ONLY`
 `LANE_A_DEPENDENCY = PASS`
-`REAL_ORDER_WRITE = NOT_EXECUTED / BACKUP_READY`
-`SMALL_WINDOW_IMPORT = NOT_EXECUTED`
-`FULL_HISTORY_IMPORT = NOT_EXECUTED`
+`REAL_ORDER_WRITE = PASS / ONE_ORDER_CANARY`
+`SMALL_WINDOW_IMPORT = PASS / 2026-09-05_UTC`
+`FULL_HISTORY_IMPORT = NOT_EXECUTED / SEPARATE_PRODUCTION_OPERATION`
 
 Current stop marker:
-`LANE_B = PRODUCTION_GATE_ACTIVE / WAITING_OWNER_CREDENTIAL_ENTRY`
+`LANE_B = FIRST_IMPORT_GATE_PASS / FULL_HISTORY_NOT_EXECUTED`
 
 ## Production execution evidence after Owner `pass` — 2026-09-05
 - Owner explicitly authorized the frozen Production First Import Gate with `pass`.
@@ -313,9 +313,9 @@ Current stop marker:
 - WooCommerce REST API Keys admin page was opened on the Owner China Mac for the required Owner-only credential creation action.
 
 Current blocker:
-`PRODUCTION_WOO_READONLY_CREDENTIAL = OWNER_ONLY_ENTRY_REQUIRED`
+`PRODUCTION_WOO_READONLY_CREDENTIAL = PASS / OWNER_ENTERED_SECURELY`
 
-No real Woo order has been read through the Production Woo gateway and no canonical Order has been written yet.
+The Owner credential gate was cleared without rendering Woo secret values into chat or repository history. Production Woo read-only probe returned HTTP 200 before any order write.
 
 ## Next exact gate
 Owner returns:
@@ -334,3 +334,35 @@ That single bounded authorization permits only this frozen sequence:
 10. if canary PASS, execute only the frozen small historical window and reconcile exact counts.
 
 Full historical import remains excluded from this `pass`.
+
+
+## Production first-import completion evidence — 2026-09-05
+- Dedicated Woo REST credential was entered by Owner through the Production-host local terminal flow; secret values were never rendered into chat or committed.
+- Production Woo credential presence: URL/key/secret/connection-key/timeout all `SET`.
+- Read-only Woo probe: `ok=true`, HTTP `200`.
+- Production moved to bounded Product OS release `product-os-m15-m16-bounded-20260905-041413-98405b11` before canary execution; `/up` remained HTTP `200`.
+- Read-only candidate scan checked the 10 newest Woo orders. Every line item in all 10 candidates resolved to a Production Product; canary Woo order `40198` had two mapped items and no unresolved Product identity.
+- Pre-canary Woo order external-reference count for provider reference `40198`: `0`.
+- One-order canary first import: `seen=1`, `created=1`, `updated=0`, `failed=0`, `errors=[]`.
+- Canonical canary ERP order ID: `007erp-0905-c1`; source `woocommerce`; kind `customer`; status `pending_shipment`; currency `CAD`; address persisted; 2 items persisted; one Woo external reference persisted.
+- Canary item Product bindings: ERP Product `1350` / SKU `gift`; ERP Product `1352` / SKU `VA617A-GREEN`.
+- `customer_id = null` remains expected under the frozen Customer identity boundary; no implicit Customer Master linking was introduced.
+- Source order had no phone value; ERP phone remained empty by source truth, not by import loss.
+- Same-order idempotency re-import: `seen=1`, `created=0`, `updated=1`, `failed=0`; ERP order ID unchanged; provider-reference count remained `1`; canonical order count remained `1`.
+- Audit evidence includes `order.inbound_created` followed by `order.inbound_updated` for the same canonical order.
+- Frozen small historical window: `2026-09-05T00:00:00Z` through `2026-09-05T23:59:59Z`.
+- Read-only small-window preflight: 10 Woo orders / 15 items / 1 page / 100% Product mapping / 0 unmatched items.
+- Small-window import: `seen=10`, `created=9`, `updated=1`, `failed=0`, `pages=1`, `errors=[]`.
+- Post-window reconciliation: Woo canonical orders `10`; Woo external references `10`; duplicate refs `0`; Woo items with `product_id = null` `0`; open SKU reconciliations `0`; failed jobs `0`.
+- Production health after import: `/up` HTTP `200`.
+
+Acceptance result:
+`WOO_PRODUCTION_FIRST_IMPORT_GATE = PASS`
+
+`WOO_ONE_ORDER_CANARY = PASS`
+
+`WOO_IDEMPOTENCY = PASS`
+
+`WOO_SMALL_WINDOW_RECONCILIATION = PASS`
+
+`FULL_HISTORICAL_IMPORT = NOT_EXECUTED / REQUIRES_SEPARATE_FROZEN_PRODUCTION_OPERATION`
