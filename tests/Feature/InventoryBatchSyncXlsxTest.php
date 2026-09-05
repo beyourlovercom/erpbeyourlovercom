@@ -93,6 +93,206 @@ XML);
         return $xml.'</sheetData></worksheet>';
     }
 
+    // ── Phase 1 real-data header alias tests ──────────────────────────────────
+
+    public function test_quantity_aliases_zai_ku_ku_cun(): void
+    {
+        $this->assertQuantityAlias('在库库存', 42);
+    }
+
+    public function test_quantity_aliases_dang_qian_ku_cun(): void
+    {
+        $this->assertQuantityAlias('当前库存', 7);
+    }
+
+    public function test_quantity_aliases_ku_cun_shu_liang(): void
+    {
+        $this->assertQuantityAlias('库存数量', 15);
+    }
+
+    public function test_quantity_alias_quantity(): void
+    {
+        $this->assertQuantityAlias('Quantity', 30);
+    }
+
+    public function test_quantity_alias_quantity_on_hand(): void
+    {
+        $this->assertQuantityAlias('Quantity on hand', 20);
+    }
+
+    public function test_quantity_alias_on_hand(): void
+    {
+        $this->assertQuantityAlias('On Hand', 11);
+    }
+
+    public function test_inbound_time_maps_to_putaway_date(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'inv-inbound-');
+        $this->assertNotFalse($path);
+        $zip = new ZipArchive();
+        $this->assertTrue($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true);
+        $this->addWorkbookRels($zip, 'xl/worksheets/sheet1.xml');
+        $zip->addFromString('xl/worksheets/sheet1.xml', $this->worksheetXml([
+            ['SKU', 'Qty/数量', 'Inbound Time'],
+            ['PROD-X', 5, '2026-06-01'],
+        ]));
+        $zip->close();
+
+        try {
+            $rows = (new XlsxAdapter())->parse(new UploadedFile($path, 'f.xlsx', null, null, true));
+            $this->assertCount(1, $rows);
+            $this->assertSame('2026-06-01', $rows[0]->putawayDate);
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function test_standard_qoh_only_emits_sellable_row(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'inv-stdqoh-');
+        $this->assertNotFalse($path);
+        $zip = new ZipArchive();
+        $this->assertTrue($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true);
+        $this->addWorkbookRels($zip, 'xl/worksheets/sheet1.xml');
+        $zip->addFromString('xl/worksheets/sheet1.xml', $this->worksheetXml([
+            ['SKU', 'Standard_QoH'],
+            ['PROD-A', 50],
+        ]));
+        $zip->close();
+
+        try {
+            $rows = (new XlsxAdapter())->parse(new UploadedFile($path, 'f.xlsx', null, null, true));
+            $this->assertCount(1, $rows);
+            $this->assertSame('PROD-A', $rows[0]->sku);
+            $this->assertSame('sellable', $rows[0]->stockStatus);
+            $this->assertSame(50, $rows[0]->quantity);
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function test_damage_qoh_zero_suppresses_defective_row(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'inv-dmg0-');
+        $this->assertNotFalse($path);
+        $zip = new ZipArchive();
+        $this->assertTrue($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true);
+        $this->addWorkbookRels($zip, 'xl/worksheets/sheet1.xml');
+        $zip->addFromString('xl/worksheets/sheet1.xml', $this->worksheetXml([
+            ['SKU', 'Standard_QoH', 'Damage_QoH'],
+            ['PROD-ZERO', 50, 0],
+        ]));
+        $zip->close();
+
+        try {
+            $rows = (new XlsxAdapter())->parse(new UploadedFile($path, 'f.xlsx', null, null, true));
+            $this->assertCount(1, $rows, 'Damage_QoH=0 must not emit a defective row');
+            $this->assertSame('sellable', $rows[0]->stockStatus);
+            $this->assertSame(50, $rows[0]->quantity);
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function test_damage_qoh_blank_suppresses_defective_row(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'inv-dmgblank-');
+        $this->assertNotFalse($path);
+        $zip = new ZipArchive();
+        $this->assertTrue($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true);
+        $this->addWorkbookRels($zip, 'xl/worksheets/sheet1.xml');
+        $zip->addFromString('xl/worksheets/sheet1.xml', $this->worksheetXml([
+            ['SKU', 'Standard_QoH', 'Damage_QoH'],
+            ['PROD-BLANK', 50, ''],
+        ]));
+        $zip->close();
+
+        try {
+            $rows = (new XlsxAdapter())->parse(new UploadedFile($path, 'f.xlsx', null, null, true));
+            $this->assertCount(1, $rows, 'blank Damage_QoH must not emit a defective row');
+            $this->assertSame('sellable', $rows[0]->stockStatus);
+            $this->assertSame(50, $rows[0]->quantity);
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function test_standard_and_damage_qoh_emit_two_rows(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'inv-dmgqoh-');
+        $this->assertNotFalse($path);
+        $zip = new ZipArchive();
+        $this->assertTrue($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true);
+        $this->addWorkbookRels($zip, 'xl/worksheets/sheet1.xml');
+        $zip->addFromString('xl/worksheets/sheet1.xml', $this->worksheetXml([
+            ['SKU', 'Standard_QoH', 'Damage_QoH', 'Inbound Time'],
+            ['PROD-B', 100, 5, '2026-08-15'],
+        ]));
+        $zip->close();
+
+        try {
+            $rows = (new XlsxAdapter())->parse(new UploadedFile($path, 'f.xlsx', null, null, true));
+            $this->assertCount(2, $rows);
+
+            $sellable  = collect($rows)->firstWhere('stockStatus', 'sellable');
+            $defective = collect($rows)->firstWhere('stockStatus', 'defective');
+
+            $this->assertNotNull($sellable);
+            $this->assertNotNull($defective);
+            $this->assertSame('PROD-B', $sellable->sku);
+            $this->assertSame(100, $sellable->quantity);
+            $this->assertSame('PROD-B', $defective->sku);
+            $this->assertSame(5, $defective->quantity);
+            $this->assertSame('2026-08-15', $sellable->putawayDate);
+            $this->assertSame('2026-08-15', $defective->putawayDate);
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private function assertQuantityAlias(string $header, int $qty): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'inv-alias-');
+        $this->assertNotFalse($path);
+        $zip = new ZipArchive();
+        $this->assertTrue($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true);
+        $this->addWorkbookRels($zip, 'xl/worksheets/sheet1.xml');
+        $zip->addFromString('xl/worksheets/sheet1.xml', $this->worksheetXml([
+            ['SKU', $header],
+            ['ALIAS-SKU', $qty],
+        ]));
+        $zip->close();
+
+        try {
+            $rows = (new XlsxAdapter())->parse(new UploadedFile($path, 'f.xlsx', null, null, true));
+            $this->assertCount(1, $rows, "Expected 1 row for header '{$header}'");
+            $this->assertSame($qty, $rows[0]->quantity, "Wrong quantity for header '{$header}'");
+            $this->assertSame('sellable', $rows[0]->stockStatus);
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    private function addWorkbookRels(ZipArchive $zip, string $worksheetTarget): void
+    {
+        $relId = 'rId1';
+        $zip->addFromString('xl/workbook.xml', <<<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Sheet1" sheetId="1" r:id="{$relId}"/></sheets>
+</workbook>
+XML);
+        $target = str_replace('xl/', '', $worksheetTarget);
+        $zip->addFromString('xl/_rels/workbook.xml.rels', <<<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="{$relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="{$target}"/>
+</Relationships>
+XML);
+    }
+
     private function columnLetters(int $number): string
     {
         $letters = '';

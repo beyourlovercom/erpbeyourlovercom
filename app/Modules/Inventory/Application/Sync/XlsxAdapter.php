@@ -20,37 +20,83 @@ final class XlsxAdapter
 
         $headers = array_map(fn ($v) => trim((string) $v), $rows[0]);
         $colMap = $this->mapHeaders($headers);
-        if (!isset($colMap['sku']) || !isset($colMap['quantity'])) return [];
+
+        $hasSplitQoH = isset($colMap['standard_qoh']);
+        if (!isset($colMap['sku']) || (!isset($colMap['quantity']) && !$hasSplitQoH)) return [];
 
         $result = [];
         foreach (array_slice($rows, 1, null, true) as $rowIdx => $cells) {
             $get = fn (string $key) => isset($colMap[$key]) ? ($cells[$colMap[$key]] ?? null) : null;
             $rawSku = trim((string) $get('sku'));
-            $rawQty = trim((string) $get('quantity'));
-            if ($rawSku === '' && $rawQty === '') continue;
 
-            $rawStatus = $get('stock_status');
-            $rawCnt = $get('stock_count_at');
-            $rawPutaway = $get('putaway_date');
+            if ($hasSplitQoH) {
+                $rawStdQty = trim((string) $get('standard_qoh'));
+                if ($rawSku === '' && $rawStdQty === '') continue;
 
-            $result[] = new NormalizedRow(
-                sourceRowNo: $rowIdx + 1,
-                sku: RowNormalizer::normalizeSku($rawSku ?: null),
-                stockStatus: ($rawStatus === null || trim((string) $rawStatus) === '')
-                    ? 'sellable'
-                    : RowNormalizer::normalizeStockStatus((string) $rawStatus),
-                stockCountAt: $this->normalizeExcelDate($rawCnt),
-                putawayDate: $this->normalizeExcelDate($rawPutaway),
-                quantity: RowNormalizer::normalizeQuantity($rawQty ?: null),
-                rawProductName: $this->nullableString($get('product_name')),
-                rawWarehouseName: $this->nullableString($get('warehouse')),
-                rawDimension: $this->nullableString($get('dimension')),
-                rawTotalVolume: $this->nullableString($get('total_volume')),
-                rawStockStatus: $this->nullableString($rawStatus),
-                rawStockCountDate: $this->nullableString($rawCnt),
-                rawPutawayDate: $this->nullableString($rawPutaway),
-                rawQuantity: $rawQty !== '' ? $rawQty : null,
-            );
+                $rawCnt    = $get('stock_count_at');
+                $rawPutaway = $get('putaway_date');
+                $common = [
+                    'sourceRowNo'    => $rowIdx + 1,
+                    'sku'            => RowNormalizer::normalizeSku($rawSku ?: null),
+                    'stockCountAt'   => $this->normalizeExcelDate($rawCnt),
+                    'putawayDate'    => $this->normalizeExcelDate($rawPutaway),
+                    'rawProductName' => $this->nullableString($get('product_name')),
+                    'rawWarehouseName' => $this->nullableString($get('warehouse')),
+                    'rawDimension'   => $this->nullableString($get('dimension')),
+                    'rawTotalVolume' => $this->nullableString($get('total_volume')),
+                    'rawStockStatus' => null,
+                    'rawStockCountDate' => $this->nullableString($rawCnt),
+                    'rawPutawayDate' => $this->nullableString($rawPutaway),
+                ];
+
+                // Sellable row from Standard_QoH
+                $result[] = new NormalizedRow(
+                    ...$common,
+                    stockStatus: 'sellable',
+                    quantity: RowNormalizer::normalizeQuantity($rawStdQty ?: null),
+                    rawQuantity: $rawStdQty !== '' ? $rawStdQty : null,
+                );
+
+                // Defective row from Damage_QoH — suppressed when blank or zero
+                if (isset($colMap['damage_qoh'])) {
+                    $rawDmgQty = trim((string) $get('damage_qoh'));
+                    $dmgQty = RowNormalizer::normalizeQuantity($rawDmgQty ?: null);
+                    if ($dmgQty !== null && $dmgQty !== 0) {
+                        $result[] = new NormalizedRow(
+                            ...$common,
+                            stockStatus: 'defective',
+                            quantity: $dmgQty,
+                            rawQuantity: $rawDmgQty,
+                        );
+                    }
+                }
+            } else {
+                $rawQty = trim((string) $get('quantity'));
+                if ($rawSku === '' && $rawQty === '') continue;
+
+                $rawStatus  = $get('stock_status');
+                $rawCnt     = $get('stock_count_at');
+                $rawPutaway = $get('putaway_date');
+
+                $result[] = new NormalizedRow(
+                    sourceRowNo: $rowIdx + 1,
+                    sku: RowNormalizer::normalizeSku($rawSku ?: null),
+                    stockStatus: ($rawStatus === null || trim((string) $rawStatus) === '')
+                        ? 'sellable'
+                        : RowNormalizer::normalizeStockStatus((string) $rawStatus),
+                    stockCountAt: $this->normalizeExcelDate($rawCnt),
+                    putawayDate: $this->normalizeExcelDate($rawPutaway),
+                    quantity: RowNormalizer::normalizeQuantity($rawQty ?: null),
+                    rawProductName: $this->nullableString($get('product_name')),
+                    rawWarehouseName: $this->nullableString($get('warehouse')),
+                    rawDimension: $this->nullableString($get('dimension')),
+                    rawTotalVolume: $this->nullableString($get('total_volume')),
+                    rawStockStatus: $this->nullableString($rawStatus),
+                    rawStockCountDate: $this->nullableString($rawCnt),
+                    rawPutawayDate: $this->nullableString($rawPutaway),
+                    rawQuantity: $rawQty !== '' ? $rawQty : null,
+                );
+            }
         }
 
         return $result;
@@ -214,12 +260,24 @@ final class XlsxAdapter
         $map = [];
         foreach ($headers as $idx => $h) {
             $norm = mb_strtolower(trim($h));
+            $raw  = trim($h); // preserve original case for exact-match aliases
             match (true) {
                 str_contains($norm, 'sku') => $map['sku'] = $idx,
-                str_contains($norm, 'qty') || str_contains($norm, '数量') => $map['quantity'] = $idx,
+                // Standard_QoH and Damage_QoH split-mode (checked before generic qty)
+                $raw === 'Standard_QoH' || $norm === 'standard_qoh' => $map['standard_qoh'] = $idx,
+                $raw === 'Damage_QoH'   || $norm === 'damage_qoh'   => $map['damage_qoh']   = $idx,
+                // Generic quantity aliases (warehouse real-data headers)
+                str_contains($norm, 'qty') || str_contains($norm, '数量')
+                    || str_contains($norm, '在库库存') || str_contains($norm, '当前库存')
+                    || str_contains($norm, '库存数量')
+                    || $norm === 'quantity' || $norm === 'quantity on hand' || $norm === 'on hand'
+                    => $map['quantity'] = $idx,
                 str_contains($norm, 'stock prop') || str_contains($norm, '库存属性') => $map['stock_status'] = $idx,
                 str_contains($norm, 'stock count') || str_contains($norm, '库存统计') => $map['stock_count_at'] = $idx,
-                str_contains($norm, 'putaway') || str_contains($norm, '上架') => $map['putaway_date'] = $idx,
+                // Inbound Time accepted as putaway date
+                str_contains($norm, 'putaway') || str_contains($norm, '上架')
+                    || str_contains($norm, 'inbound time')
+                    => $map['putaway_date'] = $idx,
                 str_contains($norm, 'product') || str_contains($norm, '产品') => $map['product_name'] = $idx,
                 str_contains($norm, 'warehouse') || str_contains($norm, '仓库') => $map['warehouse'] = $idx,
                 str_contains($norm, 'dimension') || str_contains($norm, '尺寸') => $map['dimension'] = $idx,
