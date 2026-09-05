@@ -12,6 +12,7 @@ use App\Modules\Kol\Infrastructure\Models\KolAffiliateAccount;
 use App\Modules\Kol\Infrastructure\Models\KolSocialAccount;
 use App\Modules\Kol\Infrastructure\Models\KolSocialMetric;
 use App\Modules\Kol\Infrastructure\Models\SavedView;
+use App\Modules\Shell\Infrastructure\Models\UserUiPreference;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -162,6 +163,27 @@ class KolFoundationTest extends TestCase
         $ids = array_column($data, 'id');
         $this->assertContains($ownKol->id, $ids);
         $this->assertNotContains($otherKol->id, $ids);
+    }
+
+    public function test_library_projects_account_synced_grid_preference_namespace_and_value(): void
+    {
+        $user = $this->userWith(['kol.view']);
+        UserUiPreference::create([
+            'user_id' => $user->id,
+            'namespace' => 'grid.kol.library.v1',
+            'value' => ['columns' => [
+                ['key' => 'followers', 'visible' => true],
+                ['key' => 'account', 'visible' => false],
+            ]],
+        ]);
+
+        $response = $this->actingAs($user)->get('/kol/library');
+        $response->assertOk();
+        $props = $response->original->getData()['page']['props'];
+
+        self::assertSame('grid.kol.library.v1', $props['gridPreferenceNamespace']);
+        self::assertSame('followers', $props['gridPreference']['columns'][0]['key']);
+        self::assertFalse($props['gridPreference']['columns'][1]['visible']);
     }
 
     public function test_library_projects_current_wordpress_account_and_affiliate_id_without_binding_unbound_kol(): void

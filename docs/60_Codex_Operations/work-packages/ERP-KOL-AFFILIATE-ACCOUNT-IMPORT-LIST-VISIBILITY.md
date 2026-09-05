@@ -72,6 +72,12 @@ Direct Andy Core source verification established that Affiliate snapshot `userna
    - `AffiliateWP: #<affiliate_id>`
    - unbound KOL: muted `未绑定 Affiliate`
 7. WordPress email, provider status and reconciliation state remain in the mirror/workspace but are intentionally not sent in normal KOL-list props.
+8. `/kol/library` reuses the canonical Customer/KOL account-synced grid VI rather than introducing a KOL-only variant:
+   - right-edge `…` column settings trigger
+   - `红人名称` pinned as the identity column
+   - configurable visibility + drag reorder + `恢复默认`
+   - namespace `grid.kol.library.v1` persisted through the existing `/ui/preferences/{namespace}` account preference service with local cache fallback
+   - the existing misaligned `城市` header now projects canonical `shipping_city`; unsupported `店铺数量` is not exposed as a fake configurable column.
 
 ## Safety boundaries
 
@@ -91,8 +97,10 @@ Direct Andy Core source verification established that Affiliate snapshot `userna
   - exact Affiliate binding activation
   - migration rollback → reapply
 - Rebased exact-head full KOL backend suite: **exit 0 / 1,253 assertions**. Existing asset/manifest notices are warning-only; no test failure.
-- KOL frontend: **15 files / 101 tests PASS**
-- new KOL Index account visibility tests: **3 / 3 PASS**
+- KOL frontend before grid-VI reconciliation: **15 files / 101 tests PASS**
+- KOL frontend after canonical grid-VI reconciliation: **15 files / 104 tests PASS**
+- KOL Index account + column-settings tests: **6 / 6 PASS**
+- targeted KOL foundation after grid-preference projection: **21 tests / 48 assertions PASS**
 - `vue-tsc --noEmit`: PASS
 - Vite production build: PASS
 - `git diff --check`: PASS
