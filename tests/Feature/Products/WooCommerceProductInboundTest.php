@@ -168,6 +168,23 @@ final class WooCommerceProductInboundTest extends TestCase
         $this->assertDatabaseMissing('products', ['sku' => 'DIFFERENT-SKU']);
     }
 
+    public function test_blank_name_fails_closed_without_creating_or_overwriting_product(): void
+    {
+        $unbound = $this->payload(303, 'NAMELESS-NEW', [], ['name' => '']);
+        $this->fakeSingle($unbound);
+        $newRun = app(WooCommerceProductInboundService::class)->sync(null, false, 303);
+        $this->assertSame('conflict', DB::table('sync_run_items')->where('sync_run_id', $newRun['run']->id)->value('result_code'));
+        $this->assertDatabaseMissing('products', ['sku' => 'NAMELESS-NEW']);
+
+        $product = Product::create(['source_type' => 'manual', 'product_type' => 'simple', 'sku' => 'NAME-BOUND', 'name' => 'Keep Me']);
+        ProductExternalReference::create(['product_id' => $product->id, 'provider' => 'woocommerce', 'connection_key' => 'shop.test', 'reference' => '304', 'reference_type' => 'product']);
+        $bound = $this->payload(304, 'NAME-BOUND', [], ['name' => '']);
+        $this->fakeSingle($bound);
+        $boundRun = app(WooCommerceProductInboundService::class)->sync(null, false, 304);
+        $this->assertSame('conflict', DB::table('sync_run_items')->where('sync_run_id', $boundRun['run']->id)->value('result_code'));
+        $this->assertSame('Keep Me', $product->fresh()->name);
+    }
+
     public function test_invalid_image_body_and_cross_host_redirect_are_rejected(): void
     {
         Product::create(['source_type' => 'manual', 'product_type' => 'simple', 'sku' => 'SEC-001', 'name' => 'Security']);
