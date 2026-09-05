@@ -295,3 +295,69 @@ Current marker:
 `WOO_HISTORICAL_ORDER_IMPORT_GATE = PAUSED_AT_H15 / WAITING_OWNER_SCHEMA_DEPLOY_PASS`
 
 A new Owner `pass` authorizes only the bounded schema/deploy continuation: create another fresh DB backup, deploy this branch candidate, apply the single 255→512 migration, verify Production schema and health, import Woo `35260`, then continue H16→H20 under the already accepted 29-row admin-shell exclusion contract and perform final aggregate reconciliation.
+
+## Production schema deploy and H16-H20 closure
+Owner authorized the bounded Production schema deploy with `pass`.
+
+Fresh pre-schema backup:
+- backup run `#18`
+- UUID `747b2ae8-a5c7-4e88-a69d-53480771d49f`
+- state `ready`
+- one encrypted artifact
+- live SHA-256 verification `PASS`
+
+The first deploy attempt used an unscoped `migrate --force` and exposed pre-existing Production migration-ledger drift: two unrelated Packaging migrations (`2026_09_03_120000`, `2026_09_03_121000`) were still pending and executed before a third Packaging migration failed on a MySQL identifier-length limit. The release symlink was automatically restored before any target migration ran.
+
+Recovery was bounded and data-preserving:
+- the four Packaging tables created by that attempt were verified to contain exactly `0` rows;
+- only those four empty tables were dropped;
+- only the two newly-added Packaging migration ledger rows were removed;
+- `order_addresses.address_line_2` remained `varchar(255)`;
+- `/up` remained HTTP `200`.
+
+The target migration was then executed path-scoped only:
+`2026_09_05_170500_expand_order_address_line_2_for_woo_history`
+
+Result:
+- `order_addresses.address_line_2 = varchar(512)`;
+- target migration ledger count = `1`;
+- unrelated Packaging migration ledger counts remain `0`;
+- `/up = 200`.
+Woo `35260` was then imported successfully:
+- `seen=1 / created=1 / updated=0 / failed=0`;
+- Product `1338`, SKU `VF644A`;
+- persisted `address_line_2` length `268`;
+- SHA-256 equality against the Woo source snapshot `PASS`;
+- provider ref count `1`.
+
+H16-H20 all passed under the already accepted admin-shell exclusions:
+- H16: `345 seen / 339 created / 6 accepted exclusions`;
+- H17: `293 / 286 / 7 exclusions`;
+- H18: `453 / 451 / 2 exclusions`;
+- H19: `461 / 457 / 4 exclusions`;
+- H20: `75 / 75 / 0 failures`.
+
+Final set-level reconciliation re-fetched the frozen Woo historical corpus through `2026-09-04T23:59:59Z`:
+- source IDs: `6047` across `61` pages;
+- source read errors: `0`;
+- explicit admin-shell exclusions: `29`;
+- expected historical canonical IDs: `6018`;
+- missing historical refs: `0`;
+- excluded refs present: `0`;
+- First Import Gate refs present: exact expected `10`;
+- unexpected extra refs: `0`;
+- total canonical Woo refs: `6028`;
+- duplicate refs: `0`;
+- bounded null-Product items: `18`;
+- open SKU reconciliations: `0`;
+- failed jobs: `0`;
+- `order.inbound_created` audits: `6028`;
+- `order.inbound_updated` audits: `2` (idempotency evidence);
+- `/up = 200`.
+
+Final marker:
+`WOO_HISTORICAL_ORDER_IMPORT_GATE = PASS / PRODUCTION_ACCEPTED`
+
+`WOO_HISTORICAL_CANONICAL_ORDERS = 6018`
+
+`WOO_TOTAL_CANONICAL_REFS_AFTER_FIRST_IMPORT_PLUS_HISTORY = 6028`
