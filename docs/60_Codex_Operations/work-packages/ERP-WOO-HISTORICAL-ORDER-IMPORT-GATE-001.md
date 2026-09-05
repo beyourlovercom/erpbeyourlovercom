@@ -185,3 +185,53 @@ Current stop marker:
 `WOO_HISTORICAL_ORDER_IMPORT_GATE = PAUSED_AT_H09 / WAITING_OWNER_ACCEPTANCE_OF_3_NON_PRODUCT_ADMIN_SHELLS`
 
 H10 and later chunks have not executed.
+
+## H10-H20 pre-scan after Owner acceptance of first 3 admin shells
+Owner accepted the H09 non-product admin-shell exception with `pass`.
+
+Before resuming writes, a read-only pre-scan was executed for `2025-11-01T00:00:00Z` through `2026-09-04T23:59:59Z` using the frozen Woo Order normalizer against all remaining 3,756 source rows.
+
+Result:
+- remaining source rows: `3756`;
+- pages: `38`;
+- normalizer failures: `26`;
+- every failure is `InvalidArgumentException: WooCommerce order <id> has no line items.`;
+- every failed source row is `created_via=admin` and `line_items=0`;
+- no other normalizer failure class was observed.
+
+Monthly zero-line admin-shell counts:
+- 2025-11: `1`
+- 2025-12: `0`
+- 2026-01: `2`
+- 2026-02: `1`
+- 2026-03: `3`
+- 2026-04: `0`
+- 2026-05: `6`
+- 2026-06: `7`
+- 2026-07: `2`
+- 2026-08: `4`
+- 2026-09-01..04: `0`
+Exact additional zero-line Woo IDs:
+`30964, 32899, 33209, 33799, 34183, 34464, 34983, 36497, 36513, 36632, 36735, 37060, 37128, 37293, 37487, 37521, 37688, 37974, 37987, 37998, 38464, 38820, 39430, 39804, 39976, 39978`.
+
+These 26 rows are the same structural class as the 3 H09 exceptions already accepted: non-product admin shells with zero canonical product line items. No synthetic Product, fake SKU, guessed product identity, or synthetic line item is permitted.
+
+Combined historical non-product admin-shell set:
+- H09 accepted: `3`;
+- H10-H20 pre-scan: `26`;
+- total explicit excluded source rows: `29`.
+
+Revised canonical historical expectation:
+- frozen Woo historical source rows: `6047`;
+- explicit non-product admin-shell exclusions: `29`;
+- canonical historical product Orders expected: `6018`;
+- First Import Gate canonical Woo Orders already present: `10`;
+- expected canonical Woo refs after historical closure: `6028`, unless a separately authorized incremental import adds newer refs before final reconciliation.
+
+Current Production remains paused after H09 with `2298` Woo refs, duplicate refs `0`, SKU reconciliation `0`, failed jobs `0` at the H09 stop evidence point.
+
+New hard gate:
+`HISTORICAL_NON_PRODUCT_ADMIN_EXCEPTION = 29 SOURCE ROWS TOTAL / 26 ADDITIONAL OWNER ACCEPTANCE REQUIRED`
+
+Current marker:
+`WOO_HISTORICAL_ORDER_IMPORT_GATE = PAUSED_AFTER_H09 / H10-H20_PRE_SCAN_COMPLETE / WAITING_OWNER_ACCEPTANCE_OF_26_ADDITIONAL_NON_PRODUCT_ADMIN_SHELLS`
