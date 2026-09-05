@@ -998,8 +998,22 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_09_01_220000_create_backup_runs_and_artifacts_tables.php' => '46c1da578ee91cc7d3e80e93c3a464b9ad4e866e053e373fe46a67882ec3dc54',
         'database/migrations/2026_09_01_223000_correct_us_warehouse_names.php' => '06376276bb20e1fadc7f758c038d1b2281387bcedc8db80116cd5bbb05b7d173',
         'database/migrations/2026_09_02_100000_create_backup_schedule_settings_table.php' => '7e5b7aba56f90b4e52321e1f3049c0f0c476b7890c692ba9f8adc13dea2f3fd2',
+        'database/migrations/2026_09_02_100000_create_kol_reconciliation_tables.php' => 'aacf2ff6326107e4315cc5c657e035d03b22428659acbd6723a645032ffb91aa',
+        'database/migrations/2026_09_02_150000_create_kol_import_preview_tables.php' => '1da4ea9e9d479dc5ebaca9e228306b25f15512330b43cb49d143b0f00c5cb77c',
         'database/migrations/2026_09_03_000000_create_product_provider_snapshots_and_media.php' => '8caf887a13702ee4c920f34c97c7ac9b754d2e0137bde9416882335a877ee6e6',
         'database/migrations/2026_09_03_000100_add_product_id_to_sync_run_items.php' => 'd9fe7220a66f3d56a8bc129af4d17fc7bb1ea4989e0d776bcb7a4050d643e559',
+        'database/migrations/2026_09_03_103000_create_kol_owner_mapping_tables.php' => '3024f7f73fd30d0f26eda804d40aefb9b83f10e617431395074ae911b173bddd',
+        'database/migrations/2026_09_03_120000_create_packaging_measurement_evidence_tables.php' => '7b71fd96588112e1523126a2d5d656b9b603de5a620a1c7e0fdf6bce1eca0ce1',
+        'database/migrations/2026_09_03_121000_create_product_packaging_profiles_table.php' => 'aba83d219e3488ad22bef6c0c6cd7385db1d9b06891de511006976b270b348c3',
+        'database/migrations/2026_09_03_230000_create_kol_import_activation_tables.php' => '8e3e6b138289d8df09e7934ae2b9e336b2eb75d9c4ad0c9402bb0d4852e20c02',
+        'database/migrations/2026_09_04_020000_create_kol_affiliate_binding_activation_tables.php' => 'b034d361cad8b0a28e67594fbbc3e92fe13c6b5ec4e5858eace5d162a382719f',
+        'database/migrations/2026_09_04_090000_create_product_packaging_profile_media_table.php' => '6b6f92d01e90e56e694be27dfb7e0cf0865a35b68d1357dd84a1dfff1736640c',
+        'database/migrations/2026_09_04_100000_create_shipment_item_packaging_snapshots_table.php' => 'e67a2ef4e91d528a9e9320877190895d1bae6ef1affa9032a82a2a7505422a30',
+        'database/migrations/2026_09_04_130000_create_notifications_table.php' => 'd77239d320f2597ad8e347aec678ea8ab50c0c08f03a53a82b8d0470f7582a16',
+        'database/migrations/2026_09_04_140000_create_procurement_orders_tables.php' => 'dca0865643cef10a063b03c8fcc258057a0672e1e13bf0cfa076010f7a9d237e',
+        'database/migrations/2026_09_04_173500_extend_procurement_orders_workspace_fields.php' => 'd6e47588d6e812c3f7ca420f158019d8d952482964e22f79790c28f30bd249b2',
+        'database/migrations/2026_09_05_113000_add_procurement_completion_fields.php' => '357f17ec1bdbaa24ded229c83da451aa1cadf8c381951fa8676f78762035dce9',
+        'database/migrations/2026_09_05_121500_create_logistics_carriers_table.php' => '739417fd101c8538d18e8f801283de236f726be33ba3b03e82fe5e9c0e8c5ddb',
     ];
 
     private const FRONTEND_FILES = [

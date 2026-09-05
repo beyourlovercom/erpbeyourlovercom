@@ -6,6 +6,7 @@ use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Logistics\Application\WarehouseRecommendationService;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
+use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\Request;
@@ -50,17 +51,86 @@ final class LogisticsController
         return back()->with('success', '履约草稿已保存');
     }
 
+    public function awaitingTracking(Request $request): Response
+    {
+        $shipments = Shipment::query()
+            ->with(['order.address', 'warehouse'])
+            ->where('shipment_status', 'shipped')
+            ->whereNotNull('shipped_at')
+            ->whereNull('tracking_number')
+            ->latest('shipped_at')->latest('id')
+            ->paginate(self::PER_PAGE)->withQueryString();
+
+        return Inertia::render('Logistics/AwaitingTracking', [
+            'shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(),
+        ]);
+    }
+
+    public function inTransit(Request $request): Response
+    {
+        $shipments = Shipment::query()
+            ->with(['order.address', 'warehouse'])
+            ->where('shipment_status', 'shipped')
+            ->whereNotNull('tracking_number')
+            ->where('tracking_number', '!=', '')
+            ->latest('shipped_at')->latest('id')
+            ->paginate(self::PER_PAGE)->withQueryString();
+
+        return Inertia::render('Logistics/InTransit', [
+            'shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(),
+        ]);
+    }
+
+    public function exceptions(Request $request): Response
+    {
+        $shipments = Shipment::query()
+            ->with(['order.address', 'warehouse'])
+            ->where('shipment_status', 'exception')
+            ->latest('shipped_at')->latest('id')
+            ->paginate(self::PER_PAGE)->withQueryString();
+
+        return Inertia::render('Logistics/Exceptions', [
+            'shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(),
+        ]);
+    }
+
+    public function updateTracking(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    {
+        $data = $request->validate(['tracking_number' => ['required', 'string', 'max:128']]);
+        $this->shipments->updateTracking($order, $data['tracking_number'], $request->user());
+
+        return back()->with('success', '追踪号已更新');
+    }
+
+    public function markException(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    {
+        $data = $request->validate(['logistics_note' => ['required', 'string', 'max:5000']]);
+        $this->shipments->markException($order, $data['logistics_note'], $request->user());
+
+        return back()->with('success', '已标记物流异常');
+    }
+
+    public function resolveException(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    {
+        $this->shipments->resolveException($order, $request->user());
+
+        return back()->with('success', '异常已解除，物流已恢复运输中');
+    }
+
     public function markShipped(Request $request, Order $order): \Illuminate\Http\RedirectResponse
     {
         $data = $request->validate([
-            ...$this->draftRules(),
+            'warehouse_id' => ['required', 'integer', Rule::exists('warehouses', 'id')->where('is_active', true)],
             'carrier' => ['required', 'string', 'max:128', Rule::exists('logistics_carriers', 'name')->where('is_active', true)],
-            'tracking_number' => ['required', 'string', 'max:128'],
+            'service' => ['required', 'string', 'max:128'],
             'shipped_at' => ['required', 'date'],
+            'tracking_number' => ['nullable', 'string', 'max:128'],
+            'logistics_note' => ['nullable', 'string', 'max:5000'],
         ]);
         $this->shipments->markShipped($order, $data, $request->user());
+        $msg = empty($data['tracking_number']) ? '已标记发货，追踪号待填入' : '已标记发货，已生成待同步任务';
 
-        return back()->with('success', '已标记发货，已生成待同步任务');
+        return back()->with('success', $msg);
     }
 
     public function reopen(Request $request, Order $order): \Illuminate\Http\RedirectResponse
@@ -97,6 +167,27 @@ final class LogisticsController
             'tracking_number' => $order->shipment?->tracking_number,
             'shipped_at' => $order->shipment?->shipped_at?->toIso8601String(),
         ]);
+    }
+
+    private function queueRow(Shipment $shipment): array
+    {
+        $order = $shipment->order;
+
+        return [
+            'shipment_id' => $shipment->id,
+            'order_id' => $order?->id,
+            'external_order_number' => $order?->external_order_number,
+            'erp_order_id' => $order?->erp_order_id,
+            'recipient_name' => $order?->address?->recipient_name,
+            'country' => $order?->address?->country,
+            'warehouse_name' => $shipment->warehouse?->name,
+            'carrier' => $shipment->carrier,
+            'service' => $shipment->service,
+            'tracking_number' => $shipment->tracking_number,
+            'shipped_at' => $shipment->shipped_at?->toIso8601String(),
+            'logistics_note' => $shipment->logistics_note,
+            'shipment_status' => $shipment->shipment_status,
+        ];
     }
 
     private function draftRules(): array

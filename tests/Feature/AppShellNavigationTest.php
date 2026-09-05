@@ -63,11 +63,15 @@ class AppShellNavigationTest extends TestCase
     {
         $user = $this->userWith(['dashboard.view', 'logistics.view'], 'operator-without-prototype');
         $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
-            ->has('shellNavigation.1.children', 2)
+            ->has('shellNavigation.1.children', 5)
             ->where('shellNavigation.1.children.0.key', 'logistics-pending')
             ->where('shellNavigation.1.children.0.label', '待发货')
-            ->where('shellNavigation.1.children.1.key', 'logistics-carriers')
-            ->where('shellNavigation.1.children.1.label', '承运商'));
+            ->where('shellNavigation.1.children.1.key', 'logistics-awaiting-tracking')
+            ->where('shellNavigation.1.children.1.label', '已发待单号')
+            ->where('shellNavigation.1.children.2.label', '运输中')
+            ->where('shellNavigation.1.children.3.label', '异常订单')
+            ->where('shellNavigation.1.children.4.key', 'logistics-carriers')
+            ->where('shellNavigation.1.children.4.label', '承运商'));
 
         $withPrototype = $this->userWith(['dashboard.view', 'logistics.view', 'prototype.view'], 'operator-with-prototype');
         $this->actingAs($withPrototype)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
