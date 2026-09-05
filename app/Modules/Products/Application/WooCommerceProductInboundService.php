@@ -136,21 +136,42 @@ final class WooCommerceProductInboundService
     /** @return array{failed:bool,error:?string,items:list<array<string,mixed>>} */
     private function prepareMedia(Model $product, array $remote, string $connection): array
     {
-        $prepared = [];
-        foreach (($remote['images'] ?? []) as $position => $image) {
-            if (! is_array($image)) continue;
-            try {
-                $url = $this->validatedUrl((string) ($image['src'] ?? $image['url'] ?? ''));
-                [$body, $mime] = $this->downloadImage($url);
-                $prepared[] = ['provider_media_key' => (string) (($image['id'] ?? '') ?: hash('sha256', $url)), 'remote_media_id' => isset($image['id']) ? (string) $image['id'] : null, 'source_url' => $url, 'mime_type' => $mime, 'body' => $body, 'size_bytes' => strlen($body), 'sha256' => hash('sha256', $body), 'alt_text' => trim((string) ($image['alt'] ?? '')) ?: null, 'position' => (int) $position, 'is_primary' => $position === 0];
-            } catch (\Throwable $e) { return ['failed' => true, 'error' => $e->getMessage(), 'items' => []]; }
+        $images = array_values(array_filter($remote['images'] ?? [], 'is_array'));
+        $image = $images[0] ?? null;
+        if (! is_array($image)) return ['failed' => false, 'error' => null, 'items' => []];
+
+        try {
+            $url = $this->validatedUrl((string) ($image['src'] ?? $image['url'] ?? ''));
+            if ($this->isGifUrl($url)) return ['failed' => false, 'error' => null, 'items' => []];
+            [$body, $mime] = $this->downloadImage($url);
+            if ($mime === 'image/gif') return ['failed' => false, 'error' => null, 'items' => []];
+
+            return ['failed' => false, 'error' => null, 'items' => [[
+                'provider_media_key' => (string) (($image['id'] ?? '') ?: hash('sha256', $url)),
+                'remote_media_id' => isset($image['id']) ? (string) $image['id'] : null,
+                'source_url' => $url,
+                'mime_type' => $mime,
+                'body' => $body,
+                'size_bytes' => strlen($body),
+                'sha256' => hash('sha256', $body),
+                'alt_text' => trim((string) ($image['alt'] ?? '')) ?: null,
+                'position' => 0,
+                'is_primary' => true,
+            ]]];
+        } catch (\Throwable $e) {
+            return ['failed' => true, 'error' => $e->getMessage(), 'items' => []];
         }
-        return ['failed' => false, 'error' => null, 'items' => $prepared];
     }
 
     private function replaceMedia(Model $product, array $media, string $connection): void
     {
         $this->store->reconcileMedia((int) $product->id, 'woocommerce', $connection, $media['items']);
+    }
+
+    private function isGifUrl(string $url): bool
+    {
+        $path = (string) (parse_url($url, PHP_URL_PATH) ?? '');
+        return strtolower((string) pathinfo($path, PATHINFO_EXTENSION)) === 'gif';
     }
 
     private function validatedUrl(string $url): string
@@ -170,13 +191,15 @@ final class WooCommerceProductInboundService
             $response = Http::withOptions(['allow_redirects' => false])->get($url);
             if ($response->redirect()) { $url = $this->validatedUrl((string) $response->header('Location')); continue; }
             if (! $response->successful()) throw new RuntimeException('Media download failed.');
-            $body = $response->body();
-            $maxBodyBytes = max(1, (int) config('services.woocommerce.media_max_bytes', 10485760));
-            if (strlen($body) > $maxBodyBytes) throw new RuntimeException('Media exceeds configured size limit.');
             $headerMime = strtolower(trim(explode(';', (string) $response->header('Content-Type'))[0]));
+            if ($headerMime === 'image/gif') return ['', 'image/gif'];
+            $body = $response->body();
             $detected = (new \finfo(FILEINFO_MIME_TYPE))->buffer($body) ?: '';
             $imageInfo = @getimagesizefromstring($body);
             $decodedMime = is_array($imageInfo) ? strtolower((string) ($imageInfo['mime'] ?? '')) : '';
+            if ($detected === 'image/gif' || $decodedMime === 'image/gif') return ['', 'image/gif'];
+            $maxBodyBytes = max(1, (int) config('services.woocommerce.media_max_bytes', 10485760));
+            if (strlen($body) > $maxBodyBytes) throw new RuntimeException('Media exceeds configured size limit.');
             if (! in_array($headerMime, self::AllowedMimes, true) || ! in_array($detected, self::AllowedMimes, true) || $headerMime !== $detected || $decodedMime !== $detected) throw new RuntimeException('Media MIME type is not allowed.');
             return [$body, $detected];
         }

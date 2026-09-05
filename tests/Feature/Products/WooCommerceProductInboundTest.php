@@ -141,12 +141,30 @@ final class WooCommerceProductInboundTest extends TestCase
             return Http::response([], 404);
         });
         app(WooCommerceProductInboundService::class)->sync(null, false, 202);
-        $this->assertDatabaseCount('product_media', 2);
+        $this->assertDatabaseCount('product_media', 1);
+        $this->assertDatabaseHas('product_media', ['provider_media_key' => '701', 'position' => 0, 'is_primary' => 1]);
+        $this->assertDatabaseMissing('product_media', ['provider_media_key' => '702']);
 
         app(WooCommerceProductInboundService::class)->sync(null, false, 202);
         $this->assertDatabaseCount('product_media', 1);
-        $this->assertDatabaseHas('product_media', ['provider_media_key' => '702']);
+        $this->assertDatabaseHas('product_media', ['provider_media_key' => '702', 'position' => 0, 'is_primary' => 1]);
         $this->assertDatabaseMissing('product_media', ['provider_media_key' => '701']);
+    }
+
+    public function test_gif_cover_is_ignored_and_secondary_static_image_is_not_promoted(): void
+    {
+        Product::create(['source_type' => 'manual', 'product_type' => 'simple', 'sku' => 'GIF-COVER', 'name' => 'Gif Cover']);
+        $payload = $this->payload(203, 'GIF-COVER', [
+            ['id' => 703, 'src' => 'https://shop.test/media/cover.gif'],
+            ['id' => 704, 'src' => 'https://shop.test/media/fallback.png'],
+        ]);
+        $this->fakeSingle($payload, ['https://shop.test/media/fallback.png' => $this->png()]);
+
+        $result = app(WooCommerceProductInboundService::class)->sync(null, false, 203);
+
+        $this->assertSame('updated', DB::table('sync_run_items')->where('sync_run_id', $result['run']->id)->value('result_code'));
+        $this->assertDatabaseCount('product_media', 0);
+        Http::assertNotSent(fn (Request $request): bool => in_array($request->url(), ['https://shop.test/media/cover.gif', 'https://shop.test/media/fallback.png'], true));
     }
 
     public function test_blank_sku_and_changed_bound_sku_fail_closed_without_rebinding(): void
