@@ -223,6 +223,16 @@ final class WooCommerceProductInboundTest extends TestCase
         $this->actingAs($viewer)->get("/products/media/{$media->id}")->assertOk()->assertHeader('Content-Type', 'image/png');
     }
 
+    public function test_product_gateway_sends_byl_user_agent(): void
+    {
+        Http::fake(['https://shop.test/wp-json/wc/v3/products*' => Http::response([], 200)]);
+
+        app(WooCommerceProductInboundService::class)->sync(null, true, null);
+
+        Http::assertSent(fn (Request $request): bool => str_starts_with((string) $request->header('User-Agent')[0], 'Mozilla/5.0')
+            && str_contains((string) $request->header('User-Agent')[0], 'BYL-ERP-WooCommerce-Inbound/1.0'));
+    }
+
     public function test_incremental_sync_uses_latest_provider_modified_time_with_overlap(): void
     {
         $product = Product::create(['source_type' => 'woocommerce', 'product_type' => 'simple', 'sku' => 'CURSOR-001', 'name' => 'Cursor']);

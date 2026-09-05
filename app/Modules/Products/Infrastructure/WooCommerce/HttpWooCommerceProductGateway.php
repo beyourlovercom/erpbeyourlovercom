@@ -43,7 +43,7 @@ final class HttpWooCommerceProductGateway implements WooCommerceProductGateway
 
     private function client(): PendingRequest
     {
-        return Http::acceptJson()->withBasicAuth((string) config('services.woocommerce.consumer_key'), (string) config('services.woocommerce.consumer_secret'))->timeout(max(1, (int) config('services.woocommerce.timeout', 15)));
+        return Http::acceptJson()->withHeaders(['User-Agent' => 'Mozilla/5.0 (compatible; BYL-ERP-WooCommerce-Inbound/1.0; +https://www.beyourlover.com/)'])->withBasicAuth((string) config('services.woocommerce.consumer_key'), (string) config('services.woocommerce.consumer_secret'))->timeout(max(1, (int) config('services.woocommerce.timeout', 15)));
     }
     private function assertConfigured(): void { if (! $this->configured()) throw new RuntimeException('WooCommerce connection is not configured.'); }
     private function configured(): bool { return $this->baseUrl() !== '' && trim((string) config('services.woocommerce.consumer_key')) !== '' && trim((string) config('services.woocommerce.consumer_secret')) !== ''; }
