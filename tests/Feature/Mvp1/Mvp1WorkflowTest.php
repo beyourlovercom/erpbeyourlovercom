@@ -6,6 +6,8 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Finance\Application\OrderAnalysisService;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Sync\Application\ManualSyncStatus;
@@ -30,11 +32,15 @@ final class Mvp1WorkflowTest extends TestCase
         $this->assertDatabaseHas('order_items', ['order_id' => $order->id, 'quantity' => 2, 'line_revenue' => '39.98']);
         $this->assertDatabaseHas('audit_records', ['action' => 'order.created', 'entity_id' => (string) $order->id]);
 
+        $carrier = Carrier::query()->firstOrCreate(['name' => 'Synthetic Carrier'], ['is_active' => true]);
+        $warehouse = Warehouse::query()->where('is_active', true)->orderBy('priority')->firstOrFail();
         $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/ship', [
-            'carrier' => 'Synthetic Carrier', 'tracking_number' => 'SYNTH-001', 'shipped_at' => '2026-08-05T08:00:00Z',
+            'warehouse_id' => $warehouse->id, 'carrier' => $carrier->name, 'service' => 'Ground',
+            'tracking_number' => 'SYNTH-001', 'shipped_at' => '2026-08-05T08:00:00Z',
         ])->assertRedirect();
         $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/ship', [
-            'carrier' => 'Synthetic Carrier', 'tracking_number' => 'SYNTH-002', 'shipped_at' => '2026-08-05T09:00:00Z',
+            'warehouse_id' => $warehouse->id, 'carrier' => $carrier->name, 'service' => 'Ground',
+            'tracking_number' => 'SYNTH-002', 'shipped_at' => '2026-08-05T09:00:00Z',
         ])->assertRedirect();
 
         $this->assertDatabaseHas('orders', ['id' => $order->id, 'order_status' => 'shipped']);
@@ -107,7 +113,12 @@ final class Mvp1WorkflowTest extends TestCase
         $user = $this->userWith(['orders.view', 'orders.create', 'orders.edit', 'logistics.view', 'logistics.operate', 'sync.view', 'sync.operate']);
         $this->actingAs($user)->post('/customers/orders', $this->orderPayload())->assertRedirect();
         $order = Order::query()->firstOrFail();
-        $shipmentPayload = ['carrier' => 'Synthetic Carrier', 'tracking_number' => 'SYNTH-IDEMPOTENT', 'shipped_at' => '2026-08-05T08:00:00Z'];
+        $carrier = Carrier::query()->firstOrCreate(['name' => 'Synthetic Carrier'], ['is_active' => true]);
+        $warehouse = Warehouse::query()->where('is_active', true)->orderBy('priority')->firstOrFail();
+        $shipmentPayload = [
+            'warehouse_id' => $warehouse->id, 'carrier' => $carrier->name, 'service' => 'Ground',
+            'tracking_number' => 'SYNTH-IDEMPOTENT', 'shipped_at' => '2026-08-05T08:00:00Z',
+        ];
 
         $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/ship', $shipmentPayload)->assertRedirect();
         $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/ship', $shipmentPayload)->assertRedirect();

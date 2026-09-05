@@ -7,6 +7,13 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics', [LogisticsController::class, 'index'])->middleware('can:logistics.view')->name('shell.logistics');
     Route::get('/logistics/pending', [LogisticsController::class, 'index'])->middleware('any.permission:logistics.view,prototype.view')->name('logistics.pending');
+    Route::get('/logistics/awaiting-tracking', [LogisticsController::class, 'awaitingTracking'])->middleware('can:logistics.view')->name('logistics.awaiting-tracking');
+    Route::get('/logistics/in-transit', [LogisticsController::class, 'inTransit'])->middleware('can:logistics.view')->name('logistics.in-transit');
+    Route::get('/logistics/exceptions', [LogisticsController::class, 'exceptions'])->middleware('can:logistics.view')->name('logistics.exceptions');
+    Route::get('/logistics/review', [LogisticsController::class, 'review'])->middleware('can:logistics.view')->name('logistics.review');
+    Route::get('/logistics/completed', [LogisticsController::class, 'completed'])->middleware('can:logistics.view')->name('logistics.completed');
+    Route::get('/logistics/cancelled', [LogisticsController::class, 'cancelled'])->middleware('can:logistics.view')->name('logistics.cancelled');
+    Route::get('/logistics/loss', [LogisticsController::class, 'loss'])->middleware('can:logistics.view')->name('logistics.loss');
     Route::get('/logistics/carriers', [CarrierController::class, 'index'])->middleware('can:logistics.view')->name('logistics.carriers');
     Route::post('/logistics/carriers', [CarrierController::class, 'store'])->middleware('can:logistics.operate')->name('logistics.carriers.store');
     Route::get('/logistics/carriers/{carrier}', [CarrierController::class, 'show'])->middleware('can:logistics.view')->name('logistics.carriers.show');
@@ -14,4 +21,14 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics/orders/{order}/payload', [LogisticsController::class, 'payload'])->middleware('can:logistics.view')->name('logistics.payload');
     Route::post('/logistics/orders/{order}/ship', [LogisticsController::class, 'markShipped'])->middleware('can:logistics.operate')->name('logistics.ship');
     Route::post('/logistics/orders/{order}/reopen', [LogisticsController::class, 'reopen'])->middleware('can:logistics.operate')->name('logistics.reopen');
+    Route::post('/logistics/orders/{order}/update-tracking', [LogisticsController::class, 'updateTracking'])->middleware('can:logistics.operate')->name('logistics.update-tracking');
+    Route::post('/logistics/orders/{order}/mark-exception', [LogisticsController::class, 'markException'])->middleware('can:logistics.operate')->name('logistics.mark-exception');
+    Route::post('/logistics/orders/{order}/resolve-exception', [LogisticsController::class, 'resolveException'])->middleware('can:logistics.operate')->name('logistics.resolve-exception');
+    Route::post('/logistics/orders/{order}/review', [LogisticsController::class, 'decideReview'])->middleware('can:logistics.operate')->name('logistics.review.decide');
+    Route::post('/logistics/orders/{order}/pause', [LogisticsController::class, 'pause'])->middleware('can:logistics.operate')->name('logistics.pause');
+    Route::post('/logistics/orders/{order}/redispatch', [LogisticsController::class, 'redispatch'])->middleware('can:logistics.operate')->name('logistics.redispatch');
+    Route::post('/logistics/orders/{order}/reship', [LogisticsController::class, 'reship'])->middleware('can:logistics.operate')->name('logistics.reship');
+    Route::post('/logistics/orders/{order}/contact-user', [LogisticsController::class, 'contactUser'])->middleware('can:logistics.operate')->name('logistics.contact-user');
+    Route::post('/logistics/orders/{order}/cancel-exception', [LogisticsController::class, 'cancelException'])->middleware('can:logistics.operate')->name('logistics.cancel-exception');
+    Route::post('/logistics/orders/{order}/mark-completed', [LogisticsController::class, 'markCompleted'])->middleware('can:logistics.operate')->name('logistics.mark-completed');
 });

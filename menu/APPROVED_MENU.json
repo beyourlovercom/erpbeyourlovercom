@@ -94,8 +94,8 @@
       "permission": "logistics.view",
       "emoji": "🚚",
       "function_zh": "管理发货、物流状态、运输信息和物流异常。",
-      "status": "in_progress",
-      "progress": 40,
+      "status": "implemented",
+      "progress": 100,
       "sort": 30
     },
     {
@@ -121,11 +121,11 @@
       "slug": "awaiting-tracking",
       "url": "/logistics/awaiting-tracking",
       "route": "logistics.awaiting-tracking",
-      "permission": "prototype.view",
+      "permission": "logistics.view",
       "emoji": null,
       "function_zh": "管理已发货但物流单号尚未回填的订单。",
-      "status": "planned",
-      "progress": 0,
+      "status": "implemented",
+      "progress": 100,
       "sort": 20
     },
     {
@@ -136,11 +136,11 @@
       "slug": "in-transit",
       "url": "/logistics/in-transit",
       "route": "logistics.in-transit",
-      "permission": "prototype.view",
+      "permission": "logistics.view",
       "emoji": null,
       "function_zh": "查看运输中的物流订单状态。",
-      "status": "planned",
-      "progress": 0,
+      "status": "implemented",
+      "progress": 100,
       "sort": 30
     },
     {
@@ -151,11 +151,11 @@
       "slug": "exceptions",
       "url": "/logistics/exceptions",
       "route": "logistics.exceptions",
-      "permission": "prototype.view",
+      "permission": "logistics.view",
       "emoji": null,
       "function_zh": "处理物流异常订单。",
-      "status": "planned",
-      "progress": 0,
+      "status": "implemented",
+      "progress": 100,
       "sort": 40
     },
     {

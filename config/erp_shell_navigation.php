@@ -7,11 +7,11 @@ return [
         ['key' => 'orders-kol', 'label' => '网红订单', 'path' => '/kol/orders', 'route' => 'kol.orders', 'permission' => 'orders.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'orders-procurement', 'label' => '外采订单', 'path' => '/orders/procurement', 'route' => 'orders.procurement', 'permission' => 'orders.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
     ]],
-    ['key' => 'logistics', 'label' => '物流', 'emoji' => '🚚', 'path' => '/logistics', 'route' => 'shell.logistics', 'permission' => 'logistics.view', 'status' => 'in_progress', 'progress' => 40, 'placeholder' => false, 'children' => [
+    ['key' => 'logistics', 'label' => '物流', 'emoji' => '🚚', 'path' => '/logistics', 'route' => 'shell.logistics', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false, 'children' => [
         ['key' => 'logistics-pending', 'label' => '待发货', 'path' => '/logistics/pending', 'route' => 'logistics.pending', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
-        ['key' => 'logistics-awaiting-tracking', 'label' => '已发待单号', 'path' => '/logistics/awaiting-tracking', 'route' => 'logistics.awaiting-tracking', 'permission' => 'prototype.view', 'status' => 'planned', 'progress' => 0, 'placeholder' => false],
-        ['key' => 'logistics-in-transit', 'label' => '运输中', 'path' => '/logistics/in-transit', 'route' => 'logistics.in-transit', 'permission' => 'prototype.view', 'status' => 'planned', 'progress' => 0, 'placeholder' => false],
-        ['key' => 'logistics-exceptions', 'label' => '异常订单', 'path' => '/logistics/exceptions', 'route' => 'logistics.exceptions', 'permission' => 'prototype.view', 'status' => 'planned', 'progress' => 0, 'placeholder' => false],
+        ['key' => 'logistics-awaiting-tracking', 'label' => '已发待单号', 'path' => '/logistics/awaiting-tracking', 'route' => 'logistics.awaiting-tracking', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
+        ['key' => 'logistics-in-transit', 'label' => '运输中', 'path' => '/logistics/in-transit', 'route' => 'logistics.in-transit', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
+        ['key' => 'logistics-exceptions', 'label' => '异常订单', 'path' => '/logistics/exceptions', 'route' => 'logistics.exceptions', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'logistics-carriers', 'label' => '承运商', 'path' => '/logistics/carriers', 'route' => 'logistics.carriers', 'permission' => 'logistics.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
     ]],
     ['key' => 'sync', 'label' => '同步', 'emoji' => '🔄', 'path' => '/sync', 'route' => 'shell.sync', 'permission' => 'sync.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false, 'children' => [

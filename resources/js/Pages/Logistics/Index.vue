@@ -1,20 +1,21 @@
 <script setup lang="ts">
-import { Head, router } from '@inertiajs/vue3'
+import { Head, Link, router } from '@inertiajs/vue3'
 import { reactive, ref, watch } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+import StatusBar from '../../Components/Logistics/StatusBar.vue'
 
 type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; inventory_state: string; can_auto_allocate: boolean; quantity_on_hand: number | null; quantity_reserved: number | null; quantity_available: number | null }
 type Item = { id: number; product_id: number | null; sku: string | null; product_summary: string | null; quantity: number; availability: Availability[] }
 type Shipment = { warehouse_id: number | null; warehouse_name: string | null; carrier: string | null; service: string | null; tracking_number: string | null; shipped_at: string | null; logistics_note: string | null }
 type RecommendationWarehouse = { id: number; slug: string; code: string; name: string }
 type Recommendation = { status: 'recommended' | 'blocked'; reason_code: string; reason_label: string; country_code: string | null; required_sku_count: number | null; candidate_count: number; warehouse: RecommendationWarehouse | null }
-type Order = { id: number; external_order_number: string; order_kind_label: string; recipient_name: string | null; phone: string | null; country: string | null; owner_label: string | null; item_count: number; items: Item[]; warehouse_recommendation: Recommendation; shipment: Shipment | null }
+type Order = { id: number; external_order_number: string; order_kind_label: string; order_url?: string | null; recipient_name: string | null; phone: string | null; country: string | null; owner_label: string | null; item_count: number; items: Item[]; warehouse_recommendation: Recommendation; shipment: Shipment | null }
 type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null; priority: number; inventory_state: string; can_auto_allocate: boolean; service_regions: { country_code: string; priority: number }[] }
 type CarrierOption = { value: string; label: string }
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; per_page: number; total: number }
 type Draft = { warehouse_id: number | ''; carrier: string; service: string; tracking_number: string; shipped_at: string; logistics_note: string }
 
-const props = defineProps<{ orders: Paginated<Order>; warehouses: Warehouse[]; carrierOptions: CarrierOption[] }>()
+const props = defineProps<{ orders: Paginated<Order>; warehouses: Warehouse[]; carrierOptions: CarrierOption[]; statusBar?: { key: string; label: string; url: string; count: number }[] }>()
 const drafts = reactive<Record<number, Draft>>({})
 const openOrderId = ref<number | null>(null)
 const copyState = ref<Record<number, 'success' | 'error'>>({})
@@ -42,7 +43,6 @@ const ship = (order: Order) => {
   if (!draft.warehouse_id) { shipValidation.value[order.id] = '请先选择发货仓库'; return }
   if (!draft.carrier.trim()) { shipValidation.value[order.id] = '请先选择物流商'; return }
   if (!draft.service.trim()) { shipValidation.value[order.id] = '请填写物流渠道'; return }
-  if (!draft.tracking_number.trim()) { shipValidation.value[order.id] = '请填写 Tracking'; return }
   if (!draft.shipped_at) { shipValidation.value[order.id] = '请选择发货时间'; return }
   router.post(`/logistics/orders/${order.id}/ship`, draft, { preserveScroll: true })
 }
@@ -82,17 +82,18 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
   <Head title="物流 · BYL ERP" />
   <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP', '物流', '待发货']">
     <section class="mvp-page">
+      <StatusBar :statuses="props.statusBar ?? []" />
       <div class="mvp-page-heading"><div><p class="mvp-kicker">Assisted Fulfillment</p><h2>待发货</h2><p>系统按服务区域与确认库存推荐仓库，由人工采用并完成履约。</p></div></div>
       <div class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th>订单号</th><th>类型</th><th>收件人</th><th>国家</th><th>商品数</th><th>仓库</th><th>操作</th></tr></thead><tbody>
         <template v-for="order in orders.data" :key="order.id">
-          <tr><td>{{ order.external_order_number }}</td><td>{{ order.order_kind_label }}</td><td>{{ order.recipient_name ?? '—' }}<small>{{ order.phone ?? '—' }}</small></td><td>{{ order.country ?? '—' }}</td><td>{{ order.item_count }}</td><td>{{ order.shipment?.warehouse_name ?? '未选择' }}</td><td class="mvp-actions"><button class="mvp-button mvp-button-primary" type="button" @click="toggle(order.id)">{{ openOrderId === order.id ? '收起' : '履约处理' }}</button></td></tr>
+          <tr><td><Link v-if="order.order_url" :href="order.order_url" class="mvp-link">{{ order.external_order_number }}</Link><span v-else>{{ order.external_order_number }}</span></td><td>{{ order.order_kind_label }}</td><td>{{ order.recipient_name ?? '—' }}<small>{{ order.phone ?? '—' }}</small></td><td>{{ order.country ?? '—' }}</td><td>{{ order.item_count }}</td><td>{{ order.shipment?.warehouse_name ?? '未选择' }}</td><td class="mvp-actions"><button class="mvp-button mvp-button-primary" type="button" @click="toggle(order.id)">{{ openOrderId === order.id ? '收起' : '履约处理' }}</button></td></tr>
           <tr v-if="openOrderId === order.id"><td colspan="7" class="fulfillment-cell">
             <div class="fulfillment-workspace">
               <div class="recommendation-card" :class="{ blocked: order.warehouse_recommendation.status !== 'recommended' }">
                 <div><small>系统仓库建议</small><strong>{{ order.warehouse_recommendation.warehouse?.name ?? '暂不推荐' }}</strong><p>{{ order.warehouse_recommendation.reason_label }}</p><p v-if="order.warehouse_recommendation.status !== 'recommended'" class="manual-warehouse-hint">系统暂不推荐时，仍可人工选择任一启用仓库发货。</p></div>
                 <button v-if="order.warehouse_recommendation.status === 'recommended'" class="mvp-button mvp-button-primary" type="button" @click="adoptRecommendation(order)">采用推荐</button>
               </div>
-              <div><h3>库存可用量</h3><div class="inventory-grid" v-for="item in order.items" :key="item.id"><strong>{{ item.sku ?? '无 SKU' }} × {{ item.quantity }}</strong><span v-for="row in item.availability" :key="row.warehouse_id" :class="{ shortage: row.quantity_available !== null && row.quantity_available < item.quantity, unknown: row.quantity_available === null }">{{ row.warehouse_name }}：{{ row.quantity_available === null ? '库存未知' : '可用 ' + row.quantity_available }} <small v-if="row.quantity_available !== null">(QOH {{ row.quantity_on_hand }} / Reserved {{ row.quantity_reserved }})</small><small v-else>未建立该 SKU 权威库存</small></span></div></div>
+              <div><h3>库存可用量</h3><div class="inventory-grid" v-for="item in order.items" :key="item.id"><strong><Link v-if="item.product_id" :href="`/products/${item.product_id}`" class="mvp-link">{{ item.sku ?? item.product_summary ?? '无 SKU' }}</Link><span v-else>{{ item.sku ?? item.product_summary ?? '无 SKU' }}</span> × {{ item.quantity }}</strong><span v-for="row in item.availability" :key="row.warehouse_id" :class="{ shortage: row.quantity_available !== null && row.quantity_available < item.quantity, unknown: row.quantity_available === null }">{{ row.warehouse_name }}：{{ row.quantity_available === null ? '库存未知' : '可用 ' + row.quantity_available }} <small v-if="row.quantity_available !== null">(QOH {{ row.quantity_on_hand }} / Reserved {{ row.quantity_reserved }})</small><small v-else>未建立该 SKU 权威库存</small></span></div></div>
               <div class="fulfillment-form">
                 <label>发货仓库<select v-model="drafts[order.id].warehouse_id"><option value="">请选择</option><option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} ({{ warehouse.code }}){{ warehouse.can_auto_allocate ? '' : ' · 库存未确认' }}</option></select></label>
                 <label>物流商<select v-model="drafts[order.id].carrier" aria-label="物流商"><option value="">请选择承运商</option><option v-for="carrier in carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select></label>

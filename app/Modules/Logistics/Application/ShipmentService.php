@@ -7,6 +7,10 @@ use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Inventory\Application\ProductPackagingStandardReader;
 use App\Modules\Logistics\Infrastructure\Models\ShipmentItemPackagingSnapshot;
+use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
+use App\Modules\Logistics\Infrastructure\Models\LogisticsReviewHistory;
+use App\Modules\Logistics\Infrastructure\Models\ShipmentAttempt;
+use App\Modules\Orders\Application\OrderStatus;
 use App\Modules\Sync\Application\ManualSyncService;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
@@ -25,6 +29,7 @@ final class ShipmentService
         return DB::transaction(function () use ($order, $attributes, $actor): Model {
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertNoPendingReview($lockedOrder);
             abort_unless($lockedOrder->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以保存履约草稿');
 
             $shipment = $lockedOrder->shipment()->firstOrCreate(['order_id' => $lockedOrder->getKey()]);
@@ -57,9 +62,11 @@ final class ShipmentService
         return DB::transaction(function () use ($order, $attributes, $actor): Model {
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertNoPendingReview($lockedOrder);
             $shipment = $lockedOrder->shipment()->firstOrCreate(['order_id' => $lockedOrder->getKey()]);
             $alreadyShipped = $lockedOrder->order_status?->value === 'shipped' && $shipment->shipment_status === 'shipped';
             $before = $this->snapshot($shipment);
+            $trackingNumber = $attributes['tracking_number'] ?? null;
             $shipment->fill([
                 'shipment_status' => 'shipped',
                 'warehouse_id' => $attributes['warehouse_id'] ?? $shipment->warehouse_id,
@@ -67,7 +74,7 @@ final class ShipmentService
                 'carrier' => $attributes['carrier'],
                 'service' => $attributes['service'] ?? $shipment->service,
                 'carrier_selection_source' => array_key_exists('service', $attributes) || array_key_exists('carrier', $attributes) ? 'manual' : $shipment->carrier_selection_source,
-                'tracking_number' => $attributes['tracking_number'],
+                'tracking_number' => $trackingNumber ?: null,
                 'shipped_at' => $attributes['shipped_at'],
                 'logistics_note' => $attributes['logistics_note'] ?? null,
                 'handled_by' => $actor?->getAuthIdentifier(),
@@ -80,7 +87,9 @@ final class ShipmentService
             if ($lockedOrder->order_status?->value !== 'shipped') {
                 $lockedOrder->forceFill(['order_status' => 'shipped'])->save();
             }
-            $this->manualSync->ensurePending($lockedOrder, $actor);
+            if ($trackingNumber) {
+                $this->manualSync->ensurePending($lockedOrder, $actor);
+            }
             if ($changed) {
                 $this->record($actor, 'shipment.marked_shipped', $shipment, $before, $this->snapshot($shipment), 'manual_fulfillment');
             }
@@ -89,21 +98,207 @@ final class ShipmentService
         });
     }
 
+    public function updateTracking(Model $order, string $trackingNumber, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($order, $trackingNumber, $actor): Model {
+            $orderClass = get_class($order);
+            $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
+            $this->assertNoPendingReview($lockedOrder);
+            abort_unless(in_array($shipment->shipment_status, ['shipped', 'exception'], true), 409, '只有已发货或异常状态的物流单可更新追踪号');
+            $before = $this->snapshot($shipment);
+            $shipment->fill(['tracking_number' => $trackingNumber]);
+            $changed = $shipment->isDirty();
+            $shipment->save();
+            $this->manualSync->ensurePending($lockedOrder, $actor);
+            if ($changed) {
+                $this->record($actor, 'shipment.tracking_updated', $shipment, $before, $this->snapshot($shipment), 'tracking_update');
+            }
+
+            return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync']);
+        });
+    }
+
+    public function markException(Model $order, string $note, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($order, $note, $actor): Model {
+            $orderClass = get_class($order);
+            $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
+            $this->assertNoPendingReview($lockedOrder);
+            if ($shipment->shipment_status === 'exception') {
+                return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync']);
+            }
+            abort_unless($shipment->shipment_status === 'shipped', 409, '只有运输中的物流单可标记异常');
+            $before = $this->snapshot($shipment);
+            $shipment->fill(['shipment_status' => 'exception', 'logistics_note' => $note]);
+            $shipment->save();
+            $this->record($actor, 'shipment.exception_marked', $shipment, $before, $this->snapshot($shipment), 'logistics_exception');
+
+            return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync']);
+        });
+    }
+
+    public function resolveException(Model $order, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($order, $actor): Model {
+            $orderClass = get_class($order);
+            $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
+            $this->assertNoPendingReview($lockedOrder);
+            if ($shipment->shipment_status === 'shipped') {
+                return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync']);
+            }
+            abort_unless($shipment->shipment_status === 'exception', 409, '只有异常状态的物流单可解除异常');
+            $before = $this->snapshot($shipment);
+            $shipment->fill(['shipment_status' => 'shipped']);
+            $shipment->save();
+            $this->record($actor, 'shipment.exception_resolved', $shipment, $before, $this->snapshot($shipment), 'logistics_exception_resolved');
+
+            return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync']);
+        });
+    }
+
+    public function pauseException(Model $order, string $note, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($order, $note, $actor): Model {
+            $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
+            $this->assertNoPendingReview($lockedOrder);
+            abort_unless($shipment->shipment_status === 'exception', 409, '只有异常订单可以暂停');
+            $before = $this->snapshot($shipment);
+            $shipment->forceFill(['logistics_note' => $note])->save();
+            $lockedOrder->operationalMarkers()->updateOrCreate(['marker' => 'logistics_paused'], ['marked_by' => $actor?->getAuthIdentifier(), 'marked_at' => now()]);
+            $this->record($actor, 'shipment.exception_paused', $shipment, $before, $this->snapshot($shipment), 'logistics_exception_pause');
+            return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync']);
+        });
+    }
+
+    public function requestReview(Model $order, string $trigger, string $reason, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($order, $trigger, $reason, $actor): Model {
+            $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
+            abort_unless($shipment->shipment_status === 'exception', 409, '只有异常订单可以提交复核');
+            $review = LogisticsReview::query()->where('order_id', $lockedOrder->getKey())->lockForUpdate()->first();
+            if ($review?->status === 'pending') return $lockedOrder->fresh(['shipment.warehouse', 'logisticsReview']);
+            $review = LogisticsReview::query()->updateOrCreate(['order_id' => $lockedOrder->getKey()], [
+                'status' => 'pending', 'requested_by' => $actor?->getAuthIdentifier(), 'reviewed_by' => null,
+                'requested_at' => now(), 'reviewed_at' => null, 'reason' => $reason, 'trigger' => $trigger,
+                'destination' => null, 'decision_note' => null,
+            ]);
+            $this->reviewHistory($review, $lockedOrder, 'requested', $actor, null, $reason, $this->snapshot($shipment));
+            $this->record($actor, 'logistics.review_requested', $shipment, $this->snapshot($shipment), $this->snapshot($shipment), $trigger);
+            return $lockedOrder->fresh(['shipment.warehouse', 'logisticsReview']);
+        });
+    }
+
+    public function decideReview(Model $order, string $destination, string $note, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($order, $destination, $note, $actor): Model {
+            $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $review = $lockedOrder->logisticsReview()->lockForUpdate()->firstOrFail();
+            abort_unless($review->status === 'pending', 409, '复核已处理');
+            abort_unless(in_array($destination, ['pending', 'awaiting_tracking', 'in_transit', 'exception', 'completed', 'cancelled'], true), 422, '无效复核去向');
+            $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
+            if (in_array($destination, ['awaiting_tracking', 'in_transit', 'completed'], true)) {
+                abort_unless($shipment->shipped_at !== null, 422, '该去向需要发货时间');
+            }
+            if ($destination === 'awaiting_tracking') abort_unless(blank($shipment->tracking_number), 422, '已发货去单号必须没有追踪号');
+            if ($destination === 'in_transit') abort_unless(filled($shipment->tracking_number), 422, '运输中必须有追踪号');
+            if ($destination === 'completed') abort_unless(in_array($shipment->shipment_status, ['shipped', 'exception'], true), 422, '完结必须来自已发货或异常');
+            $before = $this->snapshot($shipment);
+            if ($destination === 'pending') {
+                $this->snapshotAndReset($lockedOrder, $shipment, $actor, $note);
+            } else {
+                $status = $destination === 'awaiting_tracking' || $destination === 'in_transit' ? 'shipped' : ($destination === 'cancelled' ? $shipment->shipment_status : $destination);
+                $shipment->forceFill(['shipment_status' => $status])->save();
+            }
+            $lockedOrder->forceFill(['order_status' => $destination === 'cancelled' ? OrderStatus::Cancelled : ($destination === 'pending' ? OrderStatus::PendingShipment : OrderStatus::Shipped)])->save();
+            $review->forceFill(['status' => 'decided', 'reviewed_by' => $actor?->getAuthIdentifier(), 'reviewed_at' => now(), 'destination' => $destination, 'decision_note' => $note])->save();
+            $this->reviewHistory($review, $lockedOrder, 'decided', $actor, $destination, $note, $this->snapshot($shipment));
+            $this->record($actor, 'logistics.review_decided', $shipment, $before, $this->snapshot($shipment), 'logistics_review');
+            return $lockedOrder->fresh(['items', 'shipment.warehouse', 'logisticsReview']);
+        });
+    }
+
+    public function reship(Model $order, array $attributes, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($order, $attributes, $actor): Model {
+            $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertNoPendingReview($lockedOrder);
+            $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
+            abort_unless($shipment->shipment_status === 'exception', 409, '只有异常订单可以重新发货');
+            $attempt = (int) $lockedOrder->shipmentAttempts()->max('attempt_number') + 1;
+            $before = $this->snapshot($shipment);
+            $this->snapshotAndReset($lockedOrder, $shipment, $actor, $attributes['logistics_note'] ?? '重新发货', $attempt);
+            $this->record($actor, 'shipment.reshipped', $shipment, $before, $this->snapshot($shipment), 'logistics_reship');
+            return $lockedOrder->fresh(['items', 'shipment.warehouse', 'shipmentAttempts']);
+        });
+    }
+
+    public function contactUser(Model $order, string $note, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($order, $note, $actor): Model {
+            $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertNoPendingReview($lockedOrder);
+            $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
+            abort_unless($shipment->shipment_status === 'exception', 409, '只有异常订单可以联系用户');
+            $this->record($actor, 'shipment.user_contact_recorded', $shipment, $this->snapshot($shipment), ['note' => $note, ...$this->snapshot($shipment)], 'logistics_contact_user');
+            return $lockedOrder->fresh(['shipment.warehouse']);
+        });
+    }
+
+    public function cancelException(Model $order, string $note, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($order, $note, $actor): Model {
+            $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertNoPendingReview($lockedOrder);
+            $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
+            abort_unless($shipment->shipment_status === 'exception', 409, '只有异常订单可以退款取消');
+            $before = $this->snapshot($shipment);
+            $shipment->forceFill(['logistics_note' => $note])->save();
+            $lockedOrder->forceFill(['order_status' => OrderStatus::Cancelled])->save();
+            $this->record($actor, 'order.cancelled_from_exception', $shipment, $before, ['order_status' => 'cancelled', ...$this->snapshot($shipment)], 'logistics_refund_cancel');
+            return $lockedOrder->fresh(['shipment.warehouse']);
+        });
+    }
+
+    public function markCompleted(Model $order, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($order, $actor): Model {
+            $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertNoPendingReview($lockedOrder);
+            $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
+            abort_unless($shipment->shipment_status === 'shipped' && filled($shipment->tracking_number), 409, '只有有追踪号的运输中订单可以完结');
+            $before = $this->snapshot($shipment);
+            $shipment->forceFill(['shipment_status' => 'completed', 'handled_by' => $actor?->getAuthIdentifier()])->save();
+            $this->record($actor, 'shipment.completed', $shipment, $before, $this->snapshot($shipment), 'logistics_completed');
+            return $lockedOrder->fresh(['shipment.warehouse']);
+        });
+    }
+
     public function reopen(Model $order, ?Authenticatable $actor, ?string $note = null): Model
     {
         return DB::transaction(function () use ($order, $actor, $note): Model {
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertNoPendingReview($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
+            if ($shipment->shipment_status !== 'pending') {
+                $this->snapshotAndReset($lockedOrder, $shipment, $actor, $note);
+            }
             $before = $this->snapshot($shipment);
             $shipment->fill([
                 'shipment_status' => 'pending',
+                'warehouse_id' => null,
+                'warehouse_selection_source' => null,
                 'carrier' => null,
                 'service' => null,
                 'carrier_selection_source' => null,
                 'tracking_number' => null,
                 'shipped_at' => null,
-                'logistics_note' => $note,
+                'logistics_note' => null,
                 'handled_by' => null,
             ]);
             $changed = $shipment->isDirty() || $lockedOrder->order_status?->value !== 'pending_shipment';
@@ -166,6 +361,21 @@ final class ShipmentService
         ]);
     }
 
+    private function snapshotAndReset(Model $order, Model $shipment, ?Authenticatable $actor, ?string $note = null, ?int $attemptNumber = null): ShipmentAttempt
+    {
+        $attemptNumber ??= (int) $order->shipmentAttempts()->max('attempt_number') + 1;
+        $packaging = ShipmentItemPackagingSnapshot::query()->where('shipment_id', $shipment->getKey())->get()->toArray();
+        $billingModel = $shipment->billingEvidence()->first();
+        $billing = $billingModel?->toArray();
+        $attempt = ShipmentAttempt::query()->create([...$this->snapshot($shipment), 'order_id' => $order->getKey(), 'shipment_id' => $shipment->getKey(), 'attempt_number' => $attemptNumber, 'snapshotted_by' => $actor?->getAuthIdentifier(), 'snapshotted_at' => now(), 'evidence_snapshot' => ['packaging' => $packaging, 'billing' => $billing]]);
+        ShipmentItemPackagingSnapshot::query()->where('shipment_id', $shipment->getKey())->delete();
+        $billingModel?->delete();
+        $shipment->forceFill(['shipment_status' => 'pending', 'warehouse_id' => null, 'warehouse_selection_source' => null, 'carrier' => null, 'service' => null, 'carrier_selection_source' => null, 'tracking_number' => null, 'shipped_at' => null, 'logistics_note' => null, 'handled_by' => null])->save();
+        $order->forceFill(['order_status' => OrderStatus::PendingShipment])->save();
+        $this->manualSync->reopen($order, $actor, $note);
+        return $attempt;
+    }
+
     private function record(?Authenticatable $actor, string $action, Model $shipment, array $before, array $after, string $reason): void
     {
         $this->audit->record(
@@ -177,5 +387,15 @@ final class ShipmentService
             after: $after,
             reason: $reason,
         );
+    }
+
+    private function assertNoPendingReview(Model $order): void
+    {
+        abort_unless($order->logisticsReview()->where('status', 'pending')->doesntExist(), 409, '订单正在复核，暂不可执行履约操作');
+    }
+
+    private function reviewHistory(LogisticsReview $review, Model $order, string $event, ?Authenticatable $actor, ?string $destination, ?string $note, array $snapshot): void
+    {
+        LogisticsReviewHistory::query()->create(['logistics_review_id' => $review->getKey(), 'order_id' => $order->getKey(), 'event' => $event, 'status' => $review->status, 'actor_id' => $actor?->getAuthIdentifier(), 'destination' => $destination, 'note' => $note, 'snapshot' => $snapshot, 'created_at' => now()]);
     }
 }
