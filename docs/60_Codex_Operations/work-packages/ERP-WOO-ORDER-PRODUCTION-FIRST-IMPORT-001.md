@@ -1,6 +1,6 @@
 # ERP-WOO-ORDER-PRODUCTION-FIRST-IMPORT-001
 
-Status: PRE-PRODUCTION PREPARED / WAITING LANE A + PRODUCTION AUTHORIZATION
+Status: READY_FOR_PRODUCTION / OWNER PASS REQUIRED
 Execution provider: GPT_WEB + Remote Desktop Commander
 Production write authorization: NOT GRANTED
 Real Woo order write: NOT EXECUTED
@@ -15,9 +15,9 @@ This is a Production data gate, not a Woo Order OS rebuild.
 - Lane branch: `feature/erp-woo-order-production-first-import-001`.
 - Lane worktree: `/Users/a/AI/007/worktrees/erp-woo-order-production-first-import-001`.
 - Original handoff baseline `6f854b9fa0b1e144fd8455a3e05ca2147839d8bf` advanced during execution.
-- Current reconciled `origin/main`: `1d7cd0e22880cf6aea0183c57fc0e0c3da726d8d`.
-- Drift from `6f854b9` to `1d7cd0e` is Inventory-only PR #188 and has no Woo/Orders file overlap.
-- Lane branch was cleanly fast-forwarded to exact current `origin/main@1d7cd0e` before any Lane B tracked write.
+- Current reconciled `origin/main`: `a470b13a1b89077b1da9461587541647b35fc1bb` (Product OS Final Closure / Real Data Readiness #192).
+- Main has advanced through Inventory PR #188 and Product OS Final Closure PR #192; Lane B was rebased on exact current main before this readiness transition.
+- Lane B contains documentation/runbook evidence only; no Woo/Orders application code has been modified.
 - Production is a bounded composition and is not assumed to equal current `main`.
 
 ## Frozen scope
@@ -168,11 +168,22 @@ Any future deterministic Woo Customer identity integration must be a separate Cu
 Required before the first real Woo order write:
 `LANE_A = READY_FOR_PRODUCTION_INTEGRATION`
 
-Current observed Lane A worktree:
-- branch: `feature/erp-product-os-final-closure-production-001`
-- HEAD: `1d7cd0e22880cf6aea0183c57fc0e0c3da726d8d`
-- clean worktree
-- readiness marker `LANE_A = READY_FOR_PRODUCTION_INTEGRATION`: NOT YET PRESENT
+Lane A is now complete and merged:
+- merged main: `a470b13a1b89077b1da9461587541647b35fc1bb`
+- readiness marker: `LANE_A = READY_FOR_PRODUCTION_INTEGRATION` = PRESENT
+- `PRODUCT_OS_REAL_DATA_READINESS = PASS`
+
+Production Product identity read-only evidence at readiness transition:
+- canonical Products: 247
+- Products with SKU: 247
+- SKU Aliases: 6
+- Woo Product external references: 310
+- open SKU reconciliations: 0
+- existing Woo Order external references: 0
+
+Production currently has the final Order-side resolver path (Woo external reference → legacy primary Woo ID compatibility → canonical SKU/SKU Alias), plus the required alias/reconciliation/external-reference tables. `product_provider_snapshots` is not present in Production, but that M1.6 surface is not required for Order item identity resolution.
+
+For the first canary, every source line item must be proven resolvable against current Production Product identity before the write. Any unresolved item aborts the canary before persistence.
 
 Reason: unresolved Product/SKU is technically importable, but the first formal historical import should not intentionally create avoidable reconciliation debt.
 
@@ -279,20 +290,28 @@ Full history remains a separately frozen Production data operation; do not silen
 `B3_READ_ONLY_PROBE_PLAN = FROZEN`
 `WOO_FOCUSED_TESTS = PASS`
 `PRODUCTION_CREDENTIALS = NOT_PROVISIONED`
-`LANE_A_DEPENDENCY = NOT_READY`
+`LANE_A_DEPENDENCY = PASS`
 `REAL_ORDER_WRITE = NOT_EXECUTED`
 `SMALL_WINDOW_IMPORT = NOT_EXECUTED`
 `FULL_HISTORY_IMPORT = NOT_EXECUTED`
 
 Current stop marker:
-`LANE_B = PREPARED / WAITING_LANE_A_READY_FOR_PRODUCTION_INTEGRATION`
-
-## Next exact gate
-When Lane A reports:
-`LANE_A = READY_FOR_PRODUCTION_INTEGRATION`
-
-then re-check current `origin/main`, Production release composition and credential presence. If no contract drift exists, freeze the exact credential + probe + one-order canary operation and transition to:
 `LANE_B = READY_FOR_PRODUCTION`
 
-Then stop for Owner:
+## Next exact gate
+Owner returns:
 `pass`
+
+That single bounded authorization permits only this frozen sequence:
+1. create/securely install the dedicated Read-only Woo REST credential into Production;
+2. verify credential presence without rendering values;
+3. execute the existing read-only Woo probe;
+4. select one recent source order read-only;
+5. prove every line item resolves against current Production Product identity; if any item is unresolved, STOP with no order write;
+6. create and verify a Production database-only encrypted backup;
+7. import exactly that one canary order;
+8. verify canonical Order/address/items/external-reference/audit invariants;
+9. re-import the same order and prove idempotency;
+10. if canary PASS, execute only the frozen small historical window and reconcile exact counts.
+
+Full historical import remains excluded from this `pass`.
