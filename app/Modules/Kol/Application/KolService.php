@@ -27,10 +27,17 @@ final class KolService
     /**
      * @param  array<string, mixed>  $filters
      */
-    public function list(array $filters, ?int $ownerScopeId = null): LengthAwarePaginator
+    public function list(array $filters, ?int $ownerScopeId = null, ?string $affiliateConnectionKey = null): LengthAwarePaginator
     {
         $kolClass = self::KOL;
-        $query = $kolClass::with(['owner', 'socialAccounts.latestMetric'])
+        $affiliateConnectionKey = trim((string) ($affiliateConnectionKey ?? config('services.andy_core.connection_key', 'beyourlover.com'))) ?: 'beyourlover.com';
+        $query = $kolClass::with([
+            'owner',
+            'socialAccounts.latestMetric',
+            'affiliateAccounts' => fn ($q) => $q
+                ->where('connection_key', $affiliateConnectionKey)
+                ->select(['id', 'kol_id', 'connection_key', 'affiliate_id', 'wordpress_user_id', 'wordpress_user_login']),
+        ])
             ->withSum('salesPerformances as historical_order_count', 'order_count')
             ->withExists(['contents as has_published_content' => fn (Builder $q) => $q->where('publication_status', 'published')])
             ->active();

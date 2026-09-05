@@ -13,6 +13,7 @@ use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateAccount;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Mockery;
 use Tests\TestCase;
 use UnexpectedValueException;
@@ -74,10 +75,22 @@ class AffiliateSnapshotSyncTest extends TestCase
         ], $overrides));
     }
 
+    public function test_wordpress_user_login_migration_rolls_back_and_reapplies_cleanly(): void
+    {
+        $path = database_path('migrations/2026_09_05_130000_add_wordpress_user_login_to_kol_affiliate_accounts.php');
+        $migration = require $path;
+
+        self::assertTrue(Schema::hasColumn('kol_affiliate_accounts', 'wordpress_user_login'));
+        $migration->down();
+        self::assertFalse(Schema::hasColumn('kol_affiliate_accounts', 'wordpress_user_login'));
+        $migration->up();
+        self::assertTrue(Schema::hasColumn('kol_affiliate_accounts', 'wordpress_user_login'));
+    }
+
     public function test_sync_reads_canonical_items_and_maps_wordpress_user_facts(): void
     {
         $gateway = $this->gatewayReturning([
-            ['affiliate_id' => 101, 'user_id' => 5001, 'display_name' => 'Alice', 'email' => 'alice@example.com', 'status' => 'active'],
+            ['affiliate_id' => 101, 'user_id' => 5001, 'username' => 'alice-login', 'display_name' => 'Alice', 'email' => 'alice@example.com', 'status' => 'active'],
         ]);
 
         $result = (new AffiliateSnapshotSyncService($gateway))->sync('test.example.com', $this->manager());
@@ -86,6 +99,7 @@ class AffiliateSnapshotSyncTest extends TestCase
         self::assertSame(0, $result['marked_missing']);
         $alice = KolAffiliateAccount::where('affiliate_id', 101)->firstOrFail();
         self::assertSame(5001, $alice->wordpress_user_id);
+        self::assertSame('alice-login', $alice->wordpress_user_login);
         self::assertSame('alice@example.com', $alice->wordpress_user_email);
         self::assertSame('alice@example.com', $alice->email);
         self::assertSame('active', $alice->provider_status);
@@ -132,7 +146,7 @@ class AffiliateSnapshotSyncTest extends TestCase
             'provision_idempotency_key' => 'stable-key',
         ]);
         $gateway = $this->gatewayReturning([
-            ['affiliate_id' => 401, 'user_id' => 8001, 'display_name' => 'Provider Rename', 'email' => 'bound@example.com', 'status' => 'active'],
+            ['affiliate_id' => 401, 'user_id' => 8001, 'username' => 'bound-login', 'display_name' => 'Provider Rename', 'email' => 'bound@example.com', 'status' => 'active'],
         ]);
 
         (new AffiliateSnapshotSyncService($gateway))->sync('test.example.com', $this->manager());
@@ -141,6 +155,7 @@ class AffiliateSnapshotSyncTest extends TestCase
         self::assertSame($kol->id, $row->kol_id);
         self::assertSame('erp_conversion', $row->origin);
         self::assertSame('active', $row->provisioning_status);
+        self::assertSame('bound-login', $row->wordpress_user_login);
         self::assertSame('stable-key', $row->provision_idempotency_key);
     }
 

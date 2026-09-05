@@ -129,6 +129,7 @@ final class AffiliateSnapshotSyncService
                 'id' => $row->id,
                 'affiliate_id' => $row->affiliate_id,
                 'wordpress_user_id' => $row->wordpress_user_id,
+                'wordpress_user_login' => $row->wordpress_user_login,
                 'wordpress_user_email' => $row->wordpress_user_email,
                 'display_name' => $row->display_name,
                 'email' => $row->email,
@@ -153,6 +154,11 @@ final class AffiliateSnapshotSyncService
         $providerStatus = $this->requiredString($item['status'] ?? null, 32, 'status');
         $wordpressUserIdRaw = $item['user_id'] ?? $item['wordpress_user_id'] ?? null;
         $wordpressUserId = $wordpressUserIdRaw === null ? null : $this->positiveInteger($wordpressUserIdRaw, 'user_id');
+        $wordpressUserLogin = $this->nullableString(
+            $item['user_login'] ?? $item['username'] ?? null,
+            255,
+            'username',
+        );
         $wordpressUserEmail = $this->nullableString(
             $item['user_email'] ?? $item['wordpress_user_email'] ?? $email,
             255,
@@ -162,6 +168,7 @@ final class AffiliateSnapshotSyncService
         return [
             'affiliate_id' => $affiliateId,
             'wordpress_user_id' => $wordpressUserId,
+            'wordpress_user_login' => $wordpressUserLogin,
             'wordpress_user_email' => $wordpressUserEmail,
             'display_name' => $displayName,
             'email' => $email,

@@ -396,6 +396,8 @@ final class KolController
             }
         }
 
+        $affiliateAccount = $kol->relationLoaded('affiliateAccounts') ? $kol->affiliateAccounts->first() : null;
+
         return [
             'id' => $kol->id,
             'display_name' => $kol->display_name,
@@ -425,6 +427,11 @@ final class KolController
             'is_mcn_managed' => $kol->is_mcn_managed,
             'historical_order_count' => (int) ($kol->historical_order_count ?? 0),
             'has_published_content' => (bool) ($kol->has_published_content ?? false),
+            'affiliate_account' => $affiliateAccount ? [
+                'affiliate_id' => (int) $affiliateAccount->affiliate_id,
+                'wordpress_user_id' => $affiliateAccount->wordpress_user_id !== null ? (int) $affiliateAccount->wordpress_user_id : null,
+                'wordpress_user_login' => $affiliateAccount->wordpress_user_login,
+            ] : null,
         ];
     }
 

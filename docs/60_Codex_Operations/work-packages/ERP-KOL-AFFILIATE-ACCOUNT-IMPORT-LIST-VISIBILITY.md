@@ -1,0 +1,130 @@
+# ERP-KOL-AFFILIATE-ACCOUNT-IMPORT-LIST-VISIBILITY
+
+STATUS: ACTIVE — PHASE 2 IMPLEMENTED / EXACT-HEAD + OWNER UAT PENDING
+EXECUTION_PROVIDER: GPT_WEB + Remote Desktop Commander
+VERIFICATION_TIER: DAILY
+START_BASELINE: `main@6f854b9fa0b1e144fd8455a3e05ca2147839d8bf`
+LATEST_MAIN_RECONCILED: `1d7cd0e22880cf6aea0183c57fc0e0c3da726d8d` (Inventory PR #188; no KOL/shared-file overlap)
+DEPENDENCIES: KOL historical canonical import + exact AffiliateWP binding Production closure (#186); Andy Core Affiliate snapshot contract v1.
+DEPENDENCY_TYPE: MERGED_PR + EXTERNAL
+PARALLEL_SAFE: YES — dedicated worktree; no dependency on parallel Inventory/Procurement implementation.
+
+## Goal
+
+Refresh real provider-backed AffiliateWP / WordPress account facts without reopening historical KOL identity work, then expose the exact WordPress account and AffiliateWP ID in the existing paginated KOL library. Historical KOL identity and the audited exact bindings remain frozen authority.
+
+## Frozen business baseline
+
+- canonical KOLs: **961**
+- exact established AffiliateWP bindings: **856**
+- historical `no_affiliate`: **105**
+- remaining manual Affiliate conflicts: **0**
+- no fuzzy identity matching and no retroactive provisioning for the 105 unbound KOLs
+
+## Phase 1 — Production read-only Preview — PASS
+
+The preview uses only signed `AffiliateWpGateway::snapshot('affiliates')` GET calls plus ERP SELECTs. It does not call `AffiliateSnapshotSyncService::sync()`, does not write Provider state and does not mutate ERP rows.
+
+Real Production evidence:
+
+- snapshot pages: **18**
+- Provider Affiliates: **1,789** / unique IDs **1,789**
+- ERP Affiliate mirror before refresh: **1,774**
+- established exact bindings: **856**
+- canonical KOLs: **961**
+- KOLs without bound Affiliate: **105**
+- missing Provider IDs for established bindings: **0**
+- bound WordPress user-ID drift: **0**
+- bound WordPress email drift: **0**
+- Provider status drift: **0**
+- Affiliate-ID / WP-user-ID / username collision groups: **0**
+- unbound Provider Affiliates: **933**
+- Provider has **15** Affiliates not yet present in the ERP mirror
+
+Identity capability evidence:
+
+- `user_id`: 1,789 / 1,789; bound 856 / 856
+- `email`: 1,786 / 1,789; bound 856 / 856
+- `user_login` key: 0 / 1,789
+- `username`: 1,786 / 1,789; bound 856 / 856
+
+Direct Andy Core source verification established that Affiliate snapshot `username` is exactly WordPress `$user->user_login`; it is not inferred from email, display name or social handle.
+
+## Phase 1 implementation
+
+- `AffiliateAccountPreviewService`: full cursor-chain fetch, aggregate/redacted evidence, fail-closed structural and established-binding identity guards.
+- `kol:affiliate-account-preview --json`: redacted aggregate console surface.
+- focused tests prove complete pagination, zero DB mutation, no fuzzy binding, redacted JSON and fail-closed collisions/missing-bound behavior.
+
+## Phase 2 — minimal mirror + KOL list visibility — IMPLEMENTED LOCALLY
+
+1. Extend the existing `kol_affiliate_accounts` table only; no second Affiliate table.
+2. Add nullable `wordpress_user_login` to the existing mirror.
+3. Existing `AffiliateSnapshotSyncService` maps explicit Provider `user_login ?? username` to `wordpress_user_login` while preserving exact `(connection_key, affiliate_id)` upsert and persisted `kol_id` binding.
+4. Add the existing-mirror relation to `Kol` and eager-load only the configured connection key to avoid N+1.
+5. Normal `/kol/library` projection exposes only the minimum account fields needed by this UI:
+   - `affiliate_id`
+   - `wordpress_user_id`
+   - `wordpress_user_login`
+6. UI compact display:
+   - `WordPress: <provider user_login>`
+   - fallback only when login absent: `WP User #<id>`
+   - `AffiliateWP: #<affiliate_id>`
+   - unbound KOL: muted `未绑定 Affiliate`
+7. WordPress email, provider status and reconciliation state remain in the mirror/workspace but are intentionally not sent in normal KOL-list props.
+
+## Safety boundaries
+
+- Existing 856 exact bindings are never recomputed from names/emails/usernames.
+- The 105 historical `no_affiliate` KOLs remain unbound; list rendering cannot provision or bind them.
+- No password is imported, persisted, displayed or logged.
+- No Coupon / Referral / Payout mutation in this WP.
+- Historical KOLs never enter the M5 new-KOL provisioning flow.
+- No Production snapshot sync, migration, deployment or other write occurs without the separate Production Owner gate.
+
+## Verification evidence before latest-main rebase
+
+- PHP focused/regression: **48 tests / 216 assertions PASS**
+  - read-only Preview
+  - Affiliate snapshot sync
+  - KOL library scope/projection
+  - exact Affiliate binding activation
+  - migration rollback → reapply
+- KOL frontend: **15 files / 101 tests PASS**
+- new KOL Index account visibility tests: **3 / 3 PASS**
+- `vue-tsc --noEmit`: PASS
+- Vite production build: PASS
+- `git diff --check`: PASS
+- build only emits existing non-fatal chunk/plugin timing warnings.
+
+## Current Git / parallel reconciliation
+
+Branch: `feature/erp-kol-affiliate-account-import-list-visibility`
+Worktree: `/Users/a/AI/007/worktrees/erp-kol-affiliate-account-import-list-visibility`
+Start HEAD: `6f854b9fa0b1e144fd8455a3e05ca2147839d8bf`
+Latest reconciled `origin/main`: `1d7cd0e22880cf6aea0183c57fc0e0c3da726d8d`
+
+Inventory PR #188 changed only:
+- `app/Modules/Inventory/Application/Sync/XlsxAdapter.php`
+- `docs/60_Codex_Operations/work-packages/ERP-INVENTORY-REAL-DATA-IMPORT-V1-001.md`
+- `tests/Feature/InventoryBatchSyncXlsxTest.php`
+
+There is no file overlap with this KOL WP and no migration-name/timestamp collision.
+
+## NEXT EXACT GATE
+
+1. Commit the coherent KOL WP implementation.
+2. Rebase onto exact latest `origin/main`.
+3. Re-run exact-head backend/KOL frontend/typecheck/build/diff checks.
+4. Push/open the single WP delivery PR after exact-head verification.
+5. Prepare the real US-Mac KOL library page for Owner UAT.
+6. Stop at Owner UAT / Production write gates. A Production migration + normal Affiliate snapshot sync is a separate explicit Owner-authorized event.
+
+## PROJECT POSITION
+
+CURRENT_TRACK_PHASE_MAP: historical KOL import CLOSED → exact Affiliate binding CLOSED → Production read-only Affiliate preview PASS → mirror/list visibility IMPLEMENTED → exact-head verification CURRENT → Owner UAT WAITING → Production write/deploy WAITING.
+CURRENT_WORK_PACKAGE: `ERP-KOL-AFFILIATE-ACCOUNT-IMPORT-LIST-VISIBILITY`
+PACKAGE_STATUS: ACTIVE — implementation complete before latest-main rebase.
+GLOBAL_GATE: Production write prohibited until explicit Owner authorization.
+PRODUCTION_DEPLOYMENT_STATUS: NO.
+EVIDENCE_AS_OF: 2026-09-05.

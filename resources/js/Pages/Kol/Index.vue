@@ -24,6 +24,11 @@ type KolRow = {
   is_mcn_managed: boolean
   historical_order_count: number
   has_published_content: boolean
+  affiliate_account: {
+    affiliate_id: number
+    wordpress_user_id: number | null
+    wordpress_user_login: string | null
+  } | null
 }
 
 type SavedView = {
@@ -234,6 +239,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
           <thead>
             <tr>
               <th>红人名称</th>
+              <th>账号</th>
               <th>等级</th>
               <th>城市</th>
               <th>主营品类</th>
@@ -256,6 +262,13 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
                 <Link :href="`/kol/library/${kol.id}`">{{ kol.display_name }}</Link>
                 <span v-if="kol.is_100k_plus" class="badge-100k">100K+</span>
               </td>
+              <td class="account-cell">
+                <template v-if="kol.affiliate_account">
+                  <strong>WordPress: {{ kol.affiliate_account.wordpress_user_login || (kol.affiliate_account.wordpress_user_id ? `WP User #${kol.affiliate_account.wordpress_user_id}` : '—') }}</strong>
+                  <small>AffiliateWP: #{{ kol.affiliate_account.affiliate_id }}</small>
+                </template>
+                <span v-else class="account-muted">未绑定 Affiliate</span>
+              </td>
               <td><span v-if="kol.level" class="tag-chip">{{ kol.level }}</span><span v-else>—</span></td>
               <td>{{ tagList(kol.categories) }}</td>
               <td>{{ tagList(kol.products) }}</td>
@@ -272,7 +285,7 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
               </td>
             </tr>
             <tr v-if="kols.data.length === 0">
-              <td colspan="15" class="mvp-empty">暂无符合条件的 KOL</td>
+              <td colspan="16" class="mvp-empty">暂无符合条件的 KOL</td>
             </tr>
           </tbody>
         </table>
@@ -323,6 +336,9 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
 .view-tab-add { color: #0f766e; border-color: #0f766e; }
 .kol-toolbar { flex-wrap: wrap; }
 .kol-dense-table { font-size: 13px; }
+.account-cell strong, .account-cell small { display: block; white-space: nowrap; }
+.account-cell strong { font-size: 12px; font-weight: 600; color: #334155; }
+.account-cell small, .account-muted { color: #94a3b8; font-size: 11px; }
 .tag-chip { display: inline-block; padding: 1px 8px; background: #f0fdfa; color: #0f766e; border-radius: 10px; font-size: 11px; }
 .platform-hint { color: #94a3b8; font-size: 11px; }
 .badge-100k { margin-left: 6px; padding: 1px 6px; background: #fef3c7; color: #92400e; border-radius: 10px; font-size: 11px; }
