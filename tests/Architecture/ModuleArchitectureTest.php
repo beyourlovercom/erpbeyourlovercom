@@ -1014,9 +1014,11 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_09_04_173500_extend_procurement_orders_workspace_fields.php' => 'd6e47588d6e812c3f7ca420f158019d8d952482964e22f79790c28f30bd249b2',
         'database/migrations/2026_09_05_113000_add_procurement_completion_fields.php' => '357f17ec1bdbaa24ded229c83da451aa1cadf8c381951fa8676f78762035dce9',
         'database/migrations/2026_09_05_121500_create_logistics_carriers_table.php' => '739417fd101c8538d18e8f801283de236f726be33ba3b03e82fe5e9c0e8c5ddb',
+        'database/migrations/2026_09_05_130000_create_logistics_review_and_attempt_history.php' => '8affc3c3bf0d6479bc451dc4f3526d52a12bbb7c591250e052bbe9fff8ba0106',
     ];
 
     private const FRONTEND_FILES = [
+        'resources/js/Components/Logistics/StatusBar.vue' => '5a1e0b77fc5b8972d48083fb6e177df8a3f5c3facb13233e469effec5afbd2f0',
         'resources/js/Components/AppShell/GlobalFeedbackIsland.test.ts' => '36d4310edf520357dd153cc19de772d774e3473606881298d734ed28e1725ce1',
         'resources/js/Components/AppShell/GlobalFeedbackIsland.vue' => '17e7bcf0d540843934215cb537b82d243e3492b0760518f523500c15b1916cd9',
         'resources/js/Components/AppShell/GlobalNavigation.test.ts' => '49d9b31f8a296a545117a6593de4eba26126c5a9865b5df9c39b6dd5688d5e49',

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { Head, router } from '@inertiajs/vue3'
+import { Head, Link, router } from '@inertiajs/vue3'
 import { ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+import StatusBar from '../../Components/Logistics/StatusBar.vue'
 
 type ShipmentRow = {
   shipment_id: number
@@ -17,10 +18,11 @@ type ShipmentRow = {
   shipped_at: string | null
   logistics_note: string | null
   shipment_status: string
+  order_url: string | null
 }
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; per_page: number; total: number }
 
-const props = defineProps<{ shipments: Paginated<ShipmentRow> }>()
+const props = defineProps<{ shipments: Paginated<ShipmentRow>; statusBar?: { key: string; label: string; url: string; count: number }[] }>()
 const exceptionNotes = ref<Record<number, string>>({})
 const exceptionOpen = ref<number | null>(null)
 const copyState = ref<Record<number, 'success' | 'error'>>({})
@@ -57,13 +59,14 @@ const goToPage = (page: number) => router.get('/logistics/in-transit', { page },
   <Head title="运输中 · BYL ERP" />
   <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP', '物流', '运输中']">
     <section class="mvp-page">
+      <StatusBar :statuses="props.statusBar ?? []" />
       <div class="mvp-page-heading"><div><p class="mvp-kicker">Logistics OS V1</p><h2>运输中</h2><p>已有追踪号、正在运输的物流单。</p></div></div>
       <div class="mvp-table-wrap"><table class="mvp-table"><thead><tr>
         <th>订单号</th><th>收件人</th><th>国家</th><th>仓库</th><th>物流商 / 渠道</th><th>追踪号</th><th>发货时间</th><th>操作</th>
       </tr></thead><tbody>
         <template v-for="row in shipments.data" :key="row.shipment_id">
           <tr>
-            <td>{{ row.external_order_number ?? row.erp_order_id ?? '—' }}</td>
+            <td><Link v-if="row.order_url" :href="row.order_url" class="mvp-link">{{ row.external_order_number ?? row.erp_order_id ?? '—' }}</Link><span v-else>—</span></td>
             <td>{{ row.recipient_name ?? '—' }}</td>
             <td>{{ row.country ?? '—' }}</td>
             <td>{{ row.warehouse_name ?? '—' }}</td>

@@ -77,4 +77,14 @@ class Order extends Model
         return $this->hasOne('App\\Modules\\Procurement\\Infrastructure\\Models\\ProcurementOrder', 'source_order_id');
     }
 
+    public function logisticsReview(): HasOne
+    {
+        return $this->hasOne('App\\Modules\\Logistics\\Infrastructure\\Models\\LogisticsReview');
+    }
+
+    public function shipmentAttempts(): HasMany
+    {
+        return $this->hasMany('App\\Modules\\Logistics\\Infrastructure\\Models\\ShipmentAttempt');
+    }
+
 }

@@ -15,4 +15,9 @@ class OrderItem extends Model
     {
         return $this->belongsTo(Order::class);
     }
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo('App\\Modules\\Products\\Infrastructure\\Models\\Product');
+    }
 }

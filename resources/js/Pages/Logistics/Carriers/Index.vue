@@ -2,10 +2,11 @@
 import { Head, Link, useForm } from '@inertiajs/vue3'
 import { ref } from 'vue'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
+import StatusBar from '../../../Components/Logistics/StatusBar.vue'
 
 type CurrencyCost = { currency: string; total: number; average: number | null; shipments: number }
 type Carrier = { id: number; name: string; is_active: boolean; shipment_count: number; chargeable_weight_kg: number | null; chargeable_weight_coverage: number; costs_by_currency: CurrencyCost[]; this_month_count: number; last_shipped_at: string | null }
-const props = defineProps<{ carriers: Carrier[]; canOperate: boolean }>()
+const props = defineProps<{ carriers: Carrier[]; canOperate: boolean; statusBar?: {key:string;label:string;url:string;count:number}[] }>()
 const createOpen = ref(false)
 const form = useForm({ name: '' })
 const createCarrier = () => form.post('/logistics/carriers', { preserveScroll: true, onSuccess: () => { form.reset(); createOpen.value = false } })
@@ -17,6 +18,7 @@ const dateTime = (value: string | null) => value ? new Date(value).toLocaleStrin
   <Head title="承运商 · BYL ERP" />
   <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP', '物流', '承运商']">
     <section class="mvp-page carrier-page">
+      <StatusBar :statuses="props.statusBar ?? []" />
       <div class="mvp-page-heading">
         <div><p class="mvp-kicker">Carrier Master</p><h2>承运商</h2><p>Carrier Master 是海外仓发货的承运商事实源；Shipment 仅补充真实发货、重量与费用统计。</p></div>
         <div class="mvp-actions"><button v-if="props.canOperate" class="mvp-button mvp-button-primary" type="button" @click="createOpen = !createOpen">＋ 新增承运商</button></div>

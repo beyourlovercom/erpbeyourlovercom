@@ -5,7 +5,7 @@
 WORK_PACKAGE_ID: ERP-LOGISTICS-OS-V1-CLOSURE-001
 TITLE: Logistics OS V1 — Canonical Shipment Lifecycle Closure
 OWNER_AUTHORIZATION: Owner explicitly instructed `执行支线 4 — Logistics OS V1` on 2026-09-05 and explicitly identified 已发待单号 / 运输中 / 异常订单 / 完整 Shipment lifecycle as the remaining V1 scope.
-EXECUTION_PROVIDER: CLAUDE_CODE
+EXECUTION_PROVIDER: US_CODEX_CLI
 BASELINE: origin/main@1d7cd0e22880cf6aea0183c57fc0e0c3da726d8d
 BRANCH: feature/erp-logistics-os-v1-closure-001
 DEPENDENCIES: NONE beyond merged main. Product closure, Woo first import, Inventory first snapshot, Accounting, and Historical Logistics Import are not implementation dependencies for this WP.
@@ -173,6 +173,16 @@ After push, China Codex performs DAILY exact-SHA smoke only: exact revision, cle
 - Production deployment is not authorized by this WP.
 - Historical Logistics Import starts as a separate successor WP only after Logistics OS V1 is accepted and canonical historical Orders are available.
 
+## Extension Implementation + Verification Evidence — 2026-09-05
+
+- Added canonical `logistics_reviews`, `logistics_review_histories`, and immutable `shipment_attempts` persistence while preserving the unique active `shipments.order_id` invariant; attempt evidence includes packaging and carrier-billing JSON snapshots.
+- Added review blocking/default and custom destination validation, exception pause/redispatch/reship/contact/cancel actions, completed/cancelled/loss projections, and the eight-tab Logistics status bar.
+- Added server-provided customer/KOL order URLs and canonical product URLs across pending, queue, carrier-ledger, review, completed, cancelled, and loss surfaces; Tracking is optional in pending dispatch validation. Internal links use Inertia navigation and the status bar uses exact active matching.
+- Focused extension regression: 60 tests / 2109 assertions PASS, including the existing Logistics, Manual Fulfillment, Woo Tracking, App Shell, Approved Menu, and Order Saved Views coverage.
+- `npm run typecheck`: PASS. `npm run build`: PASS. `git diff --check`: PASS. Review and exception controls are inline and prompt-free.
+- Architecture baseline records the new migration hash. The architecture suite still has two pre-existing repository-baseline directory-list mismatches unrelated to this Work Package; no unrelated baseline refresh was applied.
+- Production deploy: NOT performed. Historical Logistics Import: NOT started. PR remains Draft and merge remains Owner-UAT gated.
+
 PROJECT POSITION
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate [COMPLETE] → MVP1 Existing Operations [IMPLEMENTED] → ERP Inquiry and intervening merged expansions → WooCommerce Inbound → Tracking Outbound → Sync Orchestration → Product / Media → Full Order Workspace → Logistics OS [CURRENT CLOSURE] → KOL / Inventory / Procurement / Accounting / later expansion
 CURRENT_TRACK_PHASE_MAP: Logistics Core existing → Pending fulfillment implemented → Awaiting Tracking current → In Transit current → Exceptions current → Logistics V1 Owner UAT → Historical Logistics Import successor
@@ -212,27 +222,32 @@ TEST_AND_VALIDATION: 1.0h planning value; 0.75–1.5h
 REMEDIATION_BUFFER: 0.5h planning value; 0.25–0.75h
 ESTIMATED_EFFECTIVE_HOURS: 4.0h
 ESTIMATE_RANGE: 2.5–6.0h
-ESTIMATE_BASIS: existing canonical Shipment/Logistics Core already implements the difficult fulfillment foundation; V1 closes three queue projections and bounded lifecycle actions without schema/provider work
+ESTIMATE_BASIS: existing canonical Shipment/Logistics Core plus additive review/attempt evidence persistence; no provider integration or real-data migration
 OWNER_REVIEW: INCLUDED
 MERGE: EXCLUDED
-MIGRATION: EXCLUDED
-MIGRATION_FILE_AUTHORING: EXCLUDED
-MIGRATION_EXECUTION: EXCLUDED
+MIGRATION: INCLUDED — additive canonical review/attempt evidence only
+MIGRATION_FILE_AUTHORING: INCLUDED
+MIGRATION_EXECUTION: INCLUDED in automated RefreshDatabase validation; no real-data migration run
 UAT: INCLUDED
 DEPLOYMENT: EXCLUDED
-## Implementation + Independent Verification Evidence — 2026-09-05
+## Provider Handoff — 2026-09-05
 
-- Implementation commit: `0c71df4429e2e1eef220c18d019a0bf66fff0df2`.
-- Canonical lifecycle implemented on existing `orders + shipments`; no schema migration or legacy logistics truth table.
-- Dispatch supports tracking-later while retaining required warehouse, active carrier, service, and shipped_at validation.
-- Three approved queues are real Logistics routes: `/logistics/awaiting-tracking`, `/logistics/in-transit`, `/logistics/exceptions`; obsolete Shell placeholder ownership was removed.
-- Tracking update reuses the same Shipment and arms Manual/Woo tracking sync only once tracking exists.
-- Exception mark/resolve preserves shipped Order truth; explicit reopen remains the correction path back to pending shipment.
-- Independent focused regression: 57 tests / 2039 assertions PASS, including Logistics V1, Manual Fulfillment, Woo Tracking, App Shell, Approved Menu, and MVP1 workflow compatibility.
-- Vue `npm run typecheck`: PASS.
-- Vite production `npm run build`: PASS.
-- `git diff --check`: PASS.
-- Accidental npm worktree-name-only `package-lock.json` drift removed before Owner UAT.
-- Production deploy: NOT performed. Historical Logistics Import: NOT started.
+Initial extension assignment to US Claude Code stopped before tracked product mutation because Claude returned an account session-limit error. Current repository authority permits frozen deterministic implementation by US Codex CLI. Architecture/business behavior is frozen in this WP; provider is serially reassigned to `US_CODEX_CLI` in the same worktree/branch/PR. No concurrent provider mutation exists.
 
-STATUS: READY FOR OWNER UAT. Merge remains forbidden until explicit Owner PASS.
+## Owner UAT Extension — 2026-09-05
+
+Owner accepted the initial Logistics V1 queue lifecycle and explicitly extended this same closure WP before merge.
+
+Additional acceptance scope:
+- Enforce the global entity-link contract in Logistics: every visible Order number links to the correct customer/KOL Order detail; visible Product/SKU identities link to Product detail when a canonical product exists.
+- Add a reusable KOL-style Logistics status bar across Logistics workspaces with: 待发货 / 已发货 / 运输中 / 异常单 / 复核单 / 已完结 / 已取消 / 亏本单.
+- Keep categories mutually exclusive except 亏本单, which remains a derived finance projection and never mutates logistics state.
+- Add a real review gate for exception handling. Pending review blocks normal fulfillment. Default approval destination is 待发货; reviewer may choose another valid destination subject to invariant validation.
+- Exception actions: 暂停订单 / 重新派件→复核 / 重新发货 / 联系用户 / 退款取消.
+- Re-shipment MUST preserve prior carrier/tracking/shipped_at/exception truth. Current `shipments.order_id` stays canonical one-to-one; prior fulfillment rounds are frozen into canonical immutable shipment-attempt/history records before resetting the active Shipment.
+- Add explicit completion/cancellation projections and actions needed for 已完结 / 已取消.
+- Fix the pending-page stale frontend validation: Tracking is optional at dispatch; warehouse + active carrier + service + shipped_at remain required.
+- Reuse existing Orders loss projection for 亏本单; do not create a logistics loss status.
+- Historical Logistics Import remains excluded and is still the successor WP.
+
+Owner UAT for the initial slice = PASS. Merge remains forbidden until this extension passes focused regression + exact-SHA Owner UAT.

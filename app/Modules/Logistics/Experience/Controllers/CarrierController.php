@@ -4,6 +4,8 @@ namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
+use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
+use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -33,6 +35,7 @@ final class CarrierController
         return Inertia::render('Logistics/Carriers/Index', [
             'carriers' => $carriers,
             'canOperate' => (bool) $request->user()?->can('logistics.operate'),
+            'statusBar' => $this->statusBar(),
         ]);
     }
 
@@ -64,7 +67,7 @@ final class CarrierController
             ->get();
 
         $shipments = Shipment::query()
-            ->with(['order.address', 'order.items', 'warehouse', 'handler', 'billingEvidence'])
+            ->with(['order.address', 'order.items.product', 'warehouse', 'handler', 'billingEvidence'])
             ->where('carrier', $carrier)
             ->latest('shipped_at')
             ->latest('id')
@@ -75,6 +78,7 @@ final class CarrierController
             'carrier' => $carrier,
             'summary' => $this->summary($summaryRows),
             'shipments' => $shipments->through(fn (Shipment $shipment): array => $this->ledgerRow($shipment))->toArray(),
+            'statusBar' => $this->statusBar(),
         ]);
     }
 
@@ -142,6 +146,7 @@ final class CarrierController
             'erp_order_id' => $order?->erp_order_id,
             'internal_order_number' => $order?->internal_order_number,
             'order_kind' => $order?->order_kind?->value,
+            'order_url' => $order?->order_kind?->value === 'kol_fulfillment' ? "/kol/orders/{$order->id}" : ($order ? "/customers/orders/{$order->id}" : null),
             'warehouse_name' => $shipment->warehouse?->name,
             'destination_country' => $order?->address?->country,
             'carrier' => $shipment->carrier,
@@ -150,6 +155,8 @@ final class CarrierController
             'items' => $order?->items->map(fn ($item): array => [
                 'sku' => $item->sku,
                 'product_summary' => $item->product_summary,
+                'product_id' => $item->product_id,
+                'product_url' => $item->product ? "/products/{$item->product_id}" : null,
                 'quantity' => $item->quantity,
             ])->values()->all() ?? [],
             'chargeable_weight_kg' => $billing?->chargeable_weight_kg,
@@ -164,6 +171,20 @@ final class CarrierController
             'data_source' => $billing?->data_source,
             'billed_at' => $billing?->billed_at?->toIso8601String(),
             'raw_evidence' => $billing?->raw_evidence,
+        ];
+    }
+
+    private function statusBar(): array
+    {
+        return [
+            ['key' => 'pending', 'label' => '待发货', 'url' => '/logistics/pending', 'count' => Order::query()->where('order_status', 'pending_shipment')->whereDoesntHave('logisticsReview', fn ($q) => $q->where('status', 'pending'))->count()],
+            ['key' => 'awaiting', 'label' => '已发货', 'url' => '/logistics/awaiting-tracking', 'count' => Shipment::query()->where('shipment_status', 'shipped')->whereNotNull('shipped_at')->where(fn ($q) => $q->whereNull('tracking_number')->orWhere('tracking_number', ''))->count()],
+            ['key' => 'transit', 'label' => '运输中', 'url' => '/logistics/in-transit', 'count' => Shipment::query()->where('shipment_status', 'shipped')->whereNotNull('tracking_number')->where('tracking_number', '!=', '')->count()],
+            ['key' => 'exception', 'label' => '异常单', 'url' => '/logistics/exceptions', 'count' => Shipment::query()->where('shipment_status', 'exception')->count()],
+            ['key' => 'review', 'label' => '复核单', 'url' => '/logistics/review', 'count' => LogisticsReview::query()->where('status', 'pending')->count()],
+            ['key' => 'completed', 'label' => '已完结', 'url' => '/logistics/completed', 'count' => Shipment::query()->where('shipment_status', 'completed')->count()],
+            ['key' => 'cancelled', 'label' => '已取消', 'url' => '/logistics/cancelled', 'count' => Order::query()->where('order_status', 'cancelled')->count()],
+            ['key' => 'loss', 'label' => '亏本单', 'url' => '/logistics/loss', 'count' => 0],
         ];
     }
 }

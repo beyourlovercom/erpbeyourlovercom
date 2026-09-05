@@ -260,6 +260,59 @@ final class LogisticsOsV1ClosureTest extends TestCase
         $this->assertEquals(1, Shipment::query()->where('order_id', $order->id)->count());
     }
 
+    public function test_review_blocks_fulfillment_and_default_approval_returns_to_pending(): void
+    {
+        [$user, $order, $carrier] = $this->scenario();
+        $this->dispatch($user, $order, $carrier, 'TN-REVIEW');
+        $this->actingAs($user)->post("/logistics/orders/{$order->id}/mark-exception", ['logistics_note' => 'Need review'])->assertRedirect();
+        $this->actingAs($user)->post("/logistics/orders/{$order->id}/redispatch", ['logistics_note' => 'Redispatch review'])->assertRedirect();
+        $this->actingAs($user)->post("/logistics/orders/{$order->id}/resolve-exception")->assertStatus(409);
+        $this->assertDatabaseHas('logistics_reviews', ['order_id' => $order->id, 'status' => 'pending', 'trigger' => 'redispatch']);
+        $this->actingAs($user)->post("/logistics/orders/{$order->id}/review", ['destination' => 'pending', 'decision_note' => 'Approved for pending'])->assertRedirect();
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'order_status' => 'pending_shipment']);
+        $this->assertDatabaseHas('logistics_review_histories', ['order_id' => $order->id, 'event' => 'decided']);
+    }
+
+    public function test_reship_snapshots_immutable_attempt_and_resets_active_one_to_one_shipment(): void
+    {
+        [$user, $order, $carrier] = $this->scenario();
+        $this->dispatch($user, $order, $carrier, 'TN-OLD');
+        $this->actingAs($user)->post("/logistics/orders/{$order->id}/mark-exception", ['logistics_note' => 'Reship'])->assertRedirect();
+        $this->actingAs($user)->post("/logistics/orders/{$order->id}/reship", ['logistics_note' => 'New attempt'])->assertRedirect();
+        $this->assertDatabaseHas('shipment_attempts', ['order_id' => $order->id, 'tracking_number' => 'TN-OLD', 'shipment_status' => 'exception']);
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'tracking_number' => null, 'shipment_status' => 'pending']);
+        $this->assertEquals(1, Shipment::query()->where('order_id', $order->id)->count());
+    }
+
+    public function test_cancelled_projection_includes_cancelled_order_without_shipment(): void
+    {
+        [$user, $order] = $this->scenario();
+        $order->forceFill(['order_status' => 'cancelled'])->save();
+        $this->actingAs($user)->get('/logistics/cancelled')->assertInertia(fn (Assert $page) => $page
+            ->where('orders.data.0.order_id', $order->id)
+            ->where('orders.data.0.order_url', "/customers/orders/{$order->id}"));
+    }
+
+    public function test_entity_links_and_status_bar_are_server_provided(): void
+    {
+        [$user, $order, $carrier] = $this->scenario();
+        $this->dispatch($user, $order, $carrier, 'TN-LINK');
+        $this->actingAs($user)->get('/logistics/in-transit')->assertInertia(fn (Assert $page) => $page
+            ->where('shipments.data.0.order_url', "/customers/orders/{$order->id}")
+            ->where('shipments.data.0.items.0.product_url', '/products/'.$order->items()->firstOrFail()->product_id)
+            ->where('statusBar.0.label', '待发货')
+            ->where('statusBar.7.label', '亏本单'));
+    }
+
+    public function test_mark_completed_moves_shipment_to_completed_projection(): void
+    {
+        [$user, $order, $carrier] = $this->scenario();
+        $this->dispatch($user, $order, $carrier, 'TN-COMPLETE');
+        $this->actingAs($user)->post("/logistics/orders/{$order->id}/mark-completed")->assertRedirect();
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'shipment_status' => 'completed']);
+        $this->actingAs($user)->get('/logistics/completed')->assertInertia(fn (Assert $page) => $page->where('shipments.data.0.order_id', $order->id));
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private function scenario(): array

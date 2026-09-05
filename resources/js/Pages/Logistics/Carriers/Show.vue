@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
+import StatusBar from '../../../Components/Logistics/StatusBar.vue'
 
 type CurrencyCost = { currency: string; total: number; average: number | null; shipments: number }
 type Summary = {
@@ -15,10 +16,10 @@ type Summary = {
   exception_count: number
   last_shipped_at: string | null
 }
-type Item = { sku: string | null; product_summary: string | null; quantity: number }
+type Item = { sku: string | null; product_summary: string | null; product_url?: string | null; quantity: number }
 type LedgerRow = {
   id: number; shipped_at: string | null; external_order_number: string | null; internal_order_number: string | null
-  order_kind: string | null; warehouse_name: string | null; destination_country: string | null; carrier: string | null
+  order_kind: string | null; order_url?: string | null; warehouse_name: string | null; destination_country: string | null; carrier: string | null
   service: string | null; tracking_number: string | null; items: Item[]; chargeable_weight_kg: string | number | null
   actual_cost: string | number | null; currency: string | null; shipment_status: string | null; delivery_status: string | null
   handler_name: string | null; recipient_name: string | null; billing_document_number: string | null; provider_reference: string | null
@@ -26,7 +27,7 @@ type LedgerRow = {
 }
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; total: number }
 
-const props = defineProps<{ carrier: string; summary: Summary; shipments: Paginated<LedgerRow> }>()
+const props = defineProps<{ carrier: string; summary: Summary; shipments: Paginated<LedgerRow>; statusBar?: {key:string;label:string;url:string;count:number}[] }>()
 const dateTime = (value: string | null) => value ? new Date(value).toLocaleString() : '—'
 const money = (costs: CurrencyCost[], field: 'total' | 'average') => costs.length === 0 ? '—' : costs.map((row) => {
   const value = row[field]
@@ -43,6 +44,7 @@ const goToPage = (page: number) => router.get(`/logistics/carriers/${encodeURICo
   <Head :title="`${carrier} · 承运商 · BYL ERP`" />
   <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP', '物流', '承运商', carrier]">
     <section class="mvp-page carrier-detail-page">
+      <StatusBar :statuses="props.statusBar ?? []" />
       <div class="mvp-page-heading carrier-heading">
         <div><p class="mvp-kicker">Carrier Shipment Ledger</p><h2>{{ carrier }}</h2><p>真实 Shipment 历史、计费重量、实际物流费用与 Provider raw evidence。</p></div>
         <Link class="mvp-button" href="/logistics/carriers">返回承运商</Link>
@@ -66,9 +68,9 @@ const goToPage = (page: number) => router.get(`/logistics/carriers/${encodeURICo
           <tbody>
             <tr v-for="row in shipments.data" :key="row.id">
               <td>{{ dateTime(row.shipped_at) }}</td>
-              <td><strong>{{ row.external_order_number ?? '—' }}</strong><small>{{ row.internal_order_number ?? '' }}</small></td>
+              <td><Link v-if="row.order_url" :href="row.order_url" class="mvp-link"><strong>{{ row.external_order_number ?? '—' }}</strong></Link><span v-else>—</span><small>{{ row.internal_order_number ?? '' }}</small></td>
               <td>{{ orderKind(row.order_kind) }}</td><td>{{ row.warehouse_name ?? '—' }}</td><td>{{ row.destination_country ?? '—' }}</td>
-              <td>{{ row.service ?? '—' }}</td><td>{{ row.tracking_number ?? '—' }}</td><td class="items-cell">{{ itemText(row.items) }}</td>
+              <td>{{ row.service ?? '—' }}</td><td>{{ row.tracking_number ?? '—' }}</td><td class="items-cell"><template v-for="item in row.items" :key="item.product_url ?? item.sku"><Link v-if="item.product_url" :href="item.product_url" class="mvp-link">{{ item.sku || item.product_summary || '未命名' }}</Link><span v-else>{{ item.sku || item.product_summary || '未命名' }}</span> × {{ item.quantity }}；</template></td>
               <td>{{ row.chargeable_weight_kg === null ? '—' : `${Number(row.chargeable_weight_kg).toFixed(3)} kg` }}</td><td>{{ rowMoney(row) }}</td>
               <td>{{ row.shipment_status ?? '—' }}</td><td>{{ row.delivery_status ?? '—' }}</td><td>{{ row.handler_name ?? '—' }}</td><td>{{ row.recipient_name ?? '—' }}</td>
               <td>{{ row.billing_document_number ?? row.provider_reference ?? '—' }}</td><td>{{ row.data_source ?? '—' }}</td>
