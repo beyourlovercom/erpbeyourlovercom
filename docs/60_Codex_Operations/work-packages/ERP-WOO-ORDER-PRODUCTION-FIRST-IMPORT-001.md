@@ -1,0 +1,298 @@
+# ERP-WOO-ORDER-PRODUCTION-FIRST-IMPORT-001
+
+Status: PRE-PRODUCTION PREPARED / WAITING LANE A + PRODUCTION AUTHORIZATION
+Execution provider: GPT_WEB + Remote Desktop Commander
+Production write authorization: NOT GRANTED
+Real Woo order write: NOT EXECUTED
+
+## Objective
+Prepare and execute the first real WooCommerce order import into canonical ERP Orders with the smallest possible Production blast radius.
+
+This is a Production data gate, not a Woo Order OS rebuild.
+
+## Reconciled baseline — 2026-09-05
+- Repository: `beyourlovercom/erpbeyourlovercom`.
+- Lane branch: `feature/erp-woo-order-production-first-import-001`.
+- Lane worktree: `/Users/a/AI/007/worktrees/erp-woo-order-production-first-import-001`.
+- Original handoff baseline `6f854b9fa0b1e144fd8455a3e05ca2147839d8bf` advanced during execution.
+- Current reconciled `origin/main`: `1d7cd0e22880cf6aea0183c57fc0e0c3da726d8d`.
+- Drift from `6f854b9` to `1d7cd0e` is Inventory-only PR #188 and has no Woo/Orders file overlap.
+- Lane branch was cleanly fast-forwarded to exact current `origin/main@1d7cd0e` before any Lane B tracked write.
+- Production is a bounded composition and is not assumed to equal current `main`.
+
+## Frozen scope
+1. Verify existing Production Woo inbound runtime contract.
+2. Freeze secure Production credential provisioning and rollback procedure.
+3. Freeze a read-only Woo API probe and one-order source inspection procedure.
+4. After Lane A readiness and explicit Owner Production authorization, create a Production DB backup and import exactly one real Woo order.
+5. Re-import the same Woo order and prove idempotency.
+6. After canary PASS, import one explicit small historical date window and reconcile source vs ERP counts.
+7. Prepare full-history chunking strategy; do not auto-run full history from this gate.
+
+## Explicit exclusions
+- No Woo inbound redesign.
+- No Product, Inventory, Logistics, Sync shared implementation, menu or global Roadmap change.
+- No Product auto-creation.
+- No fuzzy SKU or Customer identity matching.
+- No Woo Customer Master matching/backfill in this lane.
+- No full historical import before Lane A readiness and successful canary/small-window evidence.
+- No Production secret value in Git, chat, logs, tests or audit payloads.
+
+## B1 — Runtime contract verification
+### Production runtime
+Actual current Production pointer on the US Mac:
+`/Users/a/AI/production/erp.beyourlover.com/current`
+→ `releases/purchase-os-v1-loginfix-20260904-235807-a36e9d`
+
+Public/runtime evidence:
+- `/up` = HTTP 200.
+- unauthenticated `/sync/woocommerce` = HTTP 302 to authentication flow.
+- Production route list contains all five expected Woo inbound routes:
+  - `woocommerce.inbound.index`
+  - `woocommerce.inbound.probe`
+  - `woocommerce.inbound.single`
+  - `woocommerce.inbound.incremental`
+  - `woocommerce.inbound.historical`
+
+### Existing Woo inbound behavior
+Current implementation supports:
+- read-only connection probe;
+- single provider-order import;
+- incremental import with overlap-safe modified timestamp cursor;
+- explicit historical date-range import;
+- Woo pagination at 100 rows/page;
+- hard safety limit of 100 pages / 10,000 rows per one historical invocation;
+- idempotent identity by `(provider, connection_key, reference)`;
+- canonical Order / OrderAddress / OrderItem / external-reference persistence;
+- Woo currency/status/order number/provider modification timestamp;
+- Product resolution by strong Woo product/variation identity then canonical SKU/SKU Alias;
+- unresolved SKU preserved explicitly without Product auto-creation;
+- inbound create/update audit records.
+
+### Exact-revision focused verification
+US verification worktree was created detached at exact `main@1d7cd0e`.
+- Vite production build: PASS.
+- `tests/Feature/WooCommerceInboundTest.php`: PASS, 9 tests / 65 assertions / zero failures.
+- Initial page-test failure before the build was only missing `public/build/manifest.json`; after building the exact revision, the full focused suite passed.
+
+### Global Architecture baseline note
+`tests/Architecture/ModuleArchitectureTest.php` currently fails on exact unmodified `main@1d7cd0e` because frozen module/migration file-set snapshots lag already-merged KOL / Notification / Procurement / Logistics / other mainline additions.
+
+This failure exists before any Lane B tracked-file change and is not a Woo inbound regression. Lane B must not repair those cross-lane architecture snapshots.
+
+Marker:
+`GLOBAL_ARCHITECTURE_BASELINE_DRIFT = PRE_EXISTING / OUT_OF_LANE_B_SCOPE`
+
+## Current Production credential presence
+Presence only; values were never rendered:
+- `WOO_BASE_URL` = MISSING
+- `WOO_CONSUMER_KEY` = MISSING
+- `WOO_CONSUMER_SECRET` = MISSING
+- `WOO_CONNECTION_KEY` = SET
+- `WOO_TIMEOUT_SECONDS` = SET
+
+Production release `.env` is a symlink to:
+`/Users/a/AI/production/erp.beyourlover.com/shared/.env.production`
+
+Laravel config cache is currently absent; runtime config presence matches the environment presence above.
+
+A bounded search of existing canonical local/US ERP environment files found no reusable real Woo URL/key/secret. `.env.example` files contain placeholders only.
+
+## B2 — Frozen credential provisioning plan
+### Required credential
+Use a dedicated WooCommerce REST API credential with **Read** permission only for the BeYourLover WooCommerce store.
+
+Required Production values:
+- `WOO_BASE_URL`
+- `WOO_CONSUMER_KEY`
+- `WOO_CONSUMER_SECRET`
+
+Existing Production values remain authoritative unless a verified conflict exists:
+- `WOO_CONNECTION_KEY`
+- `WOO_TIMEOUT_SECONDS`
+
+### Secret handling
+- Never paste the Consumer Key or Consumer Secret into chat.
+- Never pass secret values as visible shell arguments.
+- Secret entry must occur through a local hidden-input/secure credential step on the US Production host.
+- Never commit Production credentials.
+- Never copy an unrelated broad-scope Woo key merely because one is available elsewhere.
+
+### Exact Production mutation boundary after Owner `pass`
+1. Freeze the exact target store URL and Read-only Woo REST key.
+2. Create mode-600 rollback copy:
+   `shared/.env.production.pre-woo-first-import-<timestamp>`.
+3. Update only `WOO_BASE_URL`, `WOO_CONSUMER_KEY`, `WOO_CONSUMER_SECRET`; preserve the existing connection key and timeout unless separately proven incorrect.
+4. Preserve `.env.production` mode 600.
+5. If a Laravel config cache exists at execution time, clear/rebuild it through canonical Artisan commands; currently no config cache exists.
+6. Verify only `SET/MISSING` state through Laravel config, never values.
+7. Verify `/up` remains HTTP 200.
+
+### Reversible rollback
+If configuration validation/probe fails:
+1. restore the pre-change `.env.production` snapshot;
+2. clear any config cache created during the operation;
+3. verify the three Woo secret-bearing fields return to their prior presence state;
+4. verify `/up` HTTP 200;
+5. do not execute any order import.
+
+## B3 — Read-only probe and canary selection
+After credential provisioning and before any ERP order write:
+1. Execute existing Woo `probe()` contract. It performs Woo REST `GET /wc/v3/orders?per_page=1` and persists nothing.
+2. Require HTTP success from Woo.
+3. Fetch one recent order through the existing Woo gateway with `per_page=1`, `status=any`, newest-first ordering.
+4. Print/store only bounded non-secret canary metadata needed for the gate: provider order ID, Woo order number, status, currency, created/modified time and line-item count. Do not expose customer PII in chat evidence.
+5. Confirm the chosen provider ID has no existing ERP external reference for the active Woo connection key.
+
+`B3_DB_MUTATION = NONE`
+
+## Customer identity boundary discovered during reconciliation
+Customer OS was added after the original Woo inbound implementation.
+
+Current Woo inbound:
+- persists recipient name, phone and shipping/billing address snapshot into `order_addresses`;
+- does not persist Woo billing email in the Order snapshot;
+- does not set `orders.customer_id`;
+- does not create or infer Customer Master identity.
+
+Customer V1 governance explicitly permits historical `orders.customer_id = NULL` and excludes Woo identity matching/backfill/fuzzy identity inference.
+
+Therefore Lane B canary must verify the **order recipient/contact/address snapshot**, not claim a Customer Master linkage that does not exist.
+
+Marker:
+`WOO_CUSTOMER_MASTER_LINKAGE = DEFERRED / NOT_A_LANE_B_BLOCKER / CUSTOMER_ID_NULL_IS_VALID`
+
+Any future deterministic Woo Customer identity integration must be a separate Customer↔Order integration Work Package and must not be smuggled into this Production gate.
+
+## Lane A dependency
+Required before the first real Woo order write:
+`LANE_A = READY_FOR_PRODUCTION_INTEGRATION`
+
+Current observed Lane A worktree:
+- branch: `feature/erp-product-os-final-closure-production-001`
+- HEAD: `1d7cd0e22880cf6aea0183c57fc0e0c3da726d8d`
+- clean worktree
+- readiness marker `LANE_A = READY_FOR_PRODUCTION_INTEGRATION`: NOT YET PRESENT
+
+Reason: unresolved Product/SKU is technically importable, but the first formal historical import should not intentionally create avoidable reconciliation debt.
+
+## B4 — Frozen one-order Production canary
+Execute only after BOTH:
+1. `LANE_A = READY_FOR_PRODUCTION_INTEGRATION`
+2. Owner returns explicit `pass` for this frozen Production operation.
+
+### Step 1 — Production DB backup
+Use the canonical Backup engine, database-only type, before the real order write.
+- Create `BackupType::Database` run.
+- Execute it synchronously for this gate.
+- Require final state `ready` and exactly one tracked encrypted artifact before proceeding.
+- Record run UUID/checksum evidence without exposing encryption material.
+
+If backup is not `ready`, STOP. No Woo write.
+
+### Step 2 — Pre-import evidence
+For the selected provider order ID:
+- source metadata captured from B3;
+- ERP external-reference count for `(woocommerce, connection_key, provider_order_id)` = 0;
+- capture pre-import canonical Order count for reconciliation only.
+
+### Step 3 — Import exactly one order
+Use the existing `WooCommerceInboundService::importOne()` contract with an existing active Production administrator/operator as audit actor.
+
+Expected summary:
+- `seen = 1`
+- `created = 1`
+- `updated = 0`
+- `failed = 0`
+
+### Step 4 — Canonical verification
+Verify exactly one canonical Order and exactly one Woo external reference.
+Verify:
+- provider reference / connection key identity;
+- Woo order number → `external_order_number`;
+- ERP Order identity allocated once;
+- order kind = customer;
+- source type = woocommerce;
+- normalized status;
+- currency;
+- order date / provider modified timestamp;
+- recipient name / phone / address snapshot;
+- item count, quantity, unit price and line revenue;
+- Product mapping for every item, or explicit unresolved `product_id = NULL` + preserved raw SKU + Product reconciliation evidence;
+- `order.inbound_created` audit record;
+- `orders.customer_id` expected to remain NULL under the current frozen Customer contract unless a separately approved integration has superseded it before execution.
+
+### Step 5 — Idempotency re-import
+Re-import the same Woo provider order ID.
+Expected summary:
+- `seen = 1`
+- `created = 0`
+- `updated = 1`
+- `failed = 0`
+
+Require:
+- total canonical Order count for this provider reference remains 1;
+- external-reference count remains 1;
+- ERP Order ID unchanged;
+- source snapshot may refresh, but no duplicate Order/Item identity is created;
+- `order.inbound_updated` audit record exists.
+
+If any invariant fails, STOP before historical import.
+
+## B5 — Small historical window
+Only after B4 PASS.
+
+Default first window: the single calendar day containing the canary order. If that day is abnormally large, freeze a smaller explicit safe date after inspecting source counts.
+
+For the frozen window record:
+- source Woo count;
+- ERP `seen`;
+- created;
+- updated;
+- failed;
+- pages;
+- unresolved Product item count;
+- each failure class and affected provider reference.
+
+Acceptance:
+- `failed = 0`, or every nonzero failure is individually understood and explicitly resolved before widening;
+- imported provider references are unique under `(woocommerce, connection_key, reference)`;
+- source count reconciles to ERP seen count for the exact window;
+- unresolved Product mappings are zero for the intended first formal historical run after Lane A closure, unless explicitly accepted by Owner as a bounded exception.
+
+## B6 — Full historical readiness
+Do not execute as one unbounded request.
+
+After B5 PASS:
+1. read source historical min/max order dates;
+2. divide history into explicit non-overlapping date chunks sized safely below the existing 10,000-row invocation ceiling;
+3. run chunks oldest → newest;
+4. persist per-chunk source/seen/created/updated/failed/pages/unresolved evidence;
+5. stop on any unexplained failure class or count mismatch;
+6. run final provider-reference uniqueness and aggregate count reconciliation.
+
+Full history remains a separately frozen Production data operation; do not silently auto-run it from development preparation.
+
+## Current gate state
+`B1_RUNTIME_CONTRACT = PASS`
+`B2_CREDENTIAL_MUTATION_PLAN = FROZEN / REVERSIBLE`
+`B3_READ_ONLY_PROBE_PLAN = FROZEN`
+`WOO_FOCUSED_TESTS = PASS`
+`PRODUCTION_CREDENTIALS = NOT_PROVISIONED`
+`LANE_A_DEPENDENCY = NOT_READY`
+`REAL_ORDER_WRITE = NOT_EXECUTED`
+`SMALL_WINDOW_IMPORT = NOT_EXECUTED`
+`FULL_HISTORY_IMPORT = NOT_EXECUTED`
+
+Current stop marker:
+`LANE_B = PREPARED / WAITING_LANE_A_READY_FOR_PRODUCTION_INTEGRATION`
+
+## Next exact gate
+When Lane A reports:
+`LANE_A = READY_FOR_PRODUCTION_INTEGRATION`
+
+then re-check current `origin/main`, Production release composition and credential presence. If no contract drift exists, freeze the exact credential + probe + one-order canary operation and transition to:
+`LANE_B = READY_FOR_PRODUCTION`
+
+Then stop for Owner:
+`pass`
