@@ -56,3 +56,68 @@ Recover real historical carrier/tracking evidence from the canonical manual KOL 
 - No historical shipping-cost/accounting import.
 - No active Shipment mutation.
 - No Production write/deploy without a separate Owner gate.
+
+## Implementation evidence — continuation
+
+- Owner visual proposal gate: PASS explicitly received after proposal session 01a071b7-fe5f-76d0-a6cd-fa7b8a1162ea, before this implementation continuation.
+- Continuation provenance: current ChatGPT continuation session; its runtime session ID is not exposed to this API agent, so no identifier is invented.
+- Execution provider: GPT_WEB direct bounded implementation under the frozen contract; no concurrent provider was used in this worktree.
+- Added only additive historical-import tables/models/service/controller/routes/page/tests. Current orders, shipments, kol_collaborations, and active Logistics queue code are not mutated by preview or commit.
+- Source parser reads only the approved nine logistics columns and rejects malformed/missing required XLSX structure. No source workbook bytes or PII columns are stored.
+- KOL resolution uses only the matching reconciliation batch checksum, preview candidate source_row_ids, and applied activation item created_kol_id; no fuzzy identity matching is used.
+- Commit gate is config logistics.historical_import_commit_enabled, default false; committed rows are ready-only and idempotent by source checksum + source row + evidence hash. Audit actions are emitted for preview and commit.
+- MENU_IMPACT: NO; APPROVED_MENU_CHECK: PASS. This is a level-3 page under the existing Logistics menu.
+- Static verification completed: PHP syntax checks pass for all new PHP files; git diff --check passes.
+- Runtime verification pending environment dependency restoration: vendor/autoload.php is absent in this worktree, so php artisan, PHPUnit, route listing, typecheck, build, and browser UAT cannot run from this checkout yet.
+
+## Completion record
+
+Implementation is committed locally only after the required dependency-backed checks are available. Push, PR, merge, deployment, Production writes, and Owner live-page UAT remain intentionally unperformed in this continuation.
+
+PROJECT POSITION
+PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Existing Operations / Tencent Docs Replacement → ERP-INQUIRY-M1 B2B Inquiry Foundation → ERP-INQUIRY-M1 Local Milestone UAT → milestone-gated remote release → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Production Hardening / Expansion
+CURRENT_TRACK_PHASE_MAP: Logistics OS V1 merged foundation → Historical Import M1 additive evidence workspace → Owner live-page UAT → merge; current package implementation complete pending dependency-backed verification
+COMPLETED_PHASES: Logistics OS V1 / PR #189; frozen historical-import design and Owner visual proposal approval
+CURRENT_PHASE: Historical Logistics Evidence Import M1
+CURRENT_WORK_PACKAGE: ERP-LOGISTICS-HISTORICAL-IMPORT-M1-001
+PACKAGE_STATUS: IMPLEMENTED / LOCAL COMMIT PENDING VERIFICATION
+WAITING_PHASES: Owner live Local/UAT inspection; dependency-backed tests/typecheck/build; merge
+BASELINE: origin/main@50afe18d0e6c30907fe404d0edbfa5e5ee44647e; branch HEAD recorded at continuation start as 8da6428
+GITHUB_STATE: Local branch ahead 1 and behind 2 at continuation start; no push performed
+SOURCE_CONFLICTS: NONE WITH EVIDENCE
+GLOBAL_GATE: Owner visual proposal PASS recorded; Owner live UAT still required
+PRODUCTION_DEPLOYMENT_STATUS: NO WITH EVIDENCE — no Production write/deploy command executed
+NEXT_DEPENDENCY: Restore/install repository vendor dependencies, run full verification, prepare Local/UAT page, obtain Owner PASS
+EVIDENCE_AS_OF: 2026-09-05
+
+ROADMAP HOURS
+CURRENT_PACKAGE_ESTIMATE: inherited frozen WP estimate; see issued planning record; no retrospective rewrite
+KNOWN_CURRENT_TRACK_REMAINING: Owner UAT and merge for this package; later Logistics OS closure packages remain frozen outside scope
+ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE — not recalculated by this package
+MVP1_TOTAL_ESTIMATE: UNKNOWN WITH EVIDENCE — not recalculated by this package
+MVP1_PLANNING_BASELINE: UNKNOWN WITH EVIDENCE — issued roadmap source not changed
+MVP1_MAXIMUM_ENVELOPE: UNKNOWN WITH EVIDENCE — issued roadmap source not changed
+MVP1_REMAINING: UNKNOWN WITH EVIDENCE — no accepted Work Log ledger available in this continuation
+POST_MVP_KNOWN_INCREMENT: UNKNOWN WITH EVIDENCE
+LONG_TERM_CUMULATIVE_RANGE: UNKNOWN WITH EVIDENCE
+PROGRAM_REMAINING: UNKNOWN WITH EVIDENCE
+COMPLETED_ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE — no accepted Work Log ledger supplied
+ESTIMATE_CONFIDENCE: inherited from frozen WP; not recalculated
+ESTIMATE_AS_OF: issued WP estimate
+ESTIMATE_METHOD: inherited issued Work Package estimate; no retrospective rewrite
+
+ESTIMATED CODEX HOURS
+PREFLIGHT_AND_SCOPE: inherited issued WP value; not changed
+CORE_EXECUTION: inherited issued WP value; not changed
+TEST_AND_VALIDATION: inherited issued WP value; not changed
+REMEDIATION_BUFFER: inherited issued WP value; not changed
+ESTIMATED_EFFECTIVE_HOURS: inherited issued WP value; not changed
+ESTIMATE_RANGE: inherited issued WP range; not changed
+ESTIMATE_BASIS: frozen Work Package estimate
+OWNER_REVIEW: INCLUDED
+MERGE: INCLUDED
+MIGRATION: INCLUDED
+MIGRATION_FILE_AUTHORING: INCLUDED
+MIGRATION_EXECUTION: EXCLUDED
+UAT: INCLUDED
+DEPLOYMENT: EXCLUDED

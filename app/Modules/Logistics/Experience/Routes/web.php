@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Logistics\Experience\Controllers\CarrierController;
+use App\Modules\Logistics\Experience\Controllers\HistoricalImportController;
 use App\Modules\Logistics\Experience\Controllers\LogisticsController;
 use Illuminate\Support\Facades\Route;
 
@@ -17,6 +18,9 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics/carriers', [CarrierController::class, 'index'])->middleware('can:logistics.view')->name('logistics.carriers');
     Route::post('/logistics/carriers', [CarrierController::class, 'store'])->middleware('can:logistics.operate')->name('logistics.carriers.store');
     Route::get('/logistics/carriers/{carrier}', [CarrierController::class, 'show'])->middleware('can:logistics.view')->name('logistics.carriers.show');
+    Route::get('/logistics/historical-import', [HistoricalImportController::class, 'index'])->middleware('can:logistics.view')->name('logistics.historical-import');
+    Route::post('/logistics/historical-import/preview', [HistoricalImportController::class, 'preview'])->middleware('can:logistics.operate')->name('logistics.historical-import.preview');
+    Route::post('/logistics/historical-import/{batch}/commit', [HistoricalImportController::class, 'commit'])->middleware('can:logistics.operate')->name('logistics.historical-import.commit');
     Route::post('/logistics/orders/{order}/draft', [LogisticsController::class, 'saveDraft'])->middleware('can:logistics.operate')->name('logistics.draft');
     Route::post('/logistics/orders/{order}/adopt-recommendation', [LogisticsController::class, 'adoptRecommendation'])->middleware('can:logistics.operate')->name('logistics.adopt-recommendation');
     Route::get('/logistics/orders/{order}/payload', [LogisticsController::class, 'payload'])->middleware('can:logistics.view')->name('logistics.payload');
