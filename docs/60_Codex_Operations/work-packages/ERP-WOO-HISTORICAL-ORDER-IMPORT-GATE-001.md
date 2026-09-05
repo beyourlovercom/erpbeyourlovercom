@@ -235,3 +235,63 @@ New hard gate:
 
 Current marker:
 `WOO_HISTORICAL_ORDER_IMPORT_GATE = PAUSED_AFTER_H09 / H10-H20_PRE_SCAN_COMPLETE / WAITING_OWNER_ACCEPTANCE_OF_26_ADDITIONAL_NON_PRODUCT_ADMIN_SHELLS`
+
+## Resume after Owner acceptance of all 29 admin-shell exclusions — schema stop at H15
+Owner accepted the complete 29-row zero-line non-product admin-shell exclusion set with `pass`.
+
+A fresh midpoint Production database-only backup was created before resuming historical writes:
+- backup run `#16`
+- UUID `baceb2dd-ee0f-440f-82d0-c623e3a055ca`
+- state `ready`
+- exactly one encrypted artifact
+- live checksum verification `PASS`
+
+H10 through H14 then passed under the frozen exclusion-aware reconciliation contract:
+- H10 2025-11: source `470`, created `469`, expected exclusion `30964`, unexpected failures `0`
+- H11 2025-12: source `415`, created `415`, failures `0`
+- H12 2026-01: source `375`, created `373`, expected exclusions `32899, 33209`, unexpected failures `0`
+- H13 2026-02: source `322`, created `321`, expected exclusion `33799`, unexpected failures `0`
+- H14 2026-03: source `305`, created `302`, expected exclusions `34183, 34464, 34983`, unexpected failures `0`
+
+At H15 (`2026-04`) the gate stopped on a new canonical-order failure:
+- source / seen: `242`
+- created: `241`
+- failed: `1`
+- failed Woo ID: `35260`
+- duplicate refs: `0`
+- open SKU reconciliations: `0`
+- failed jobs: `0`
+- Production Woo refs after stop: `4419`
+- bounded null-Product items persisted so far: `17`
+
+Woo `35260` is a normal checkout product order, not an admin shell. Its product identity is healthy: Woo product `26152`, SKU `VF644A`, and all resolver paths point to ERP Product `1338`.
+
+The failure is a lossless snapshot capacity issue only: normalized `address_line_2` is `268` characters while Production `order_addresses.address_line_2` remains `varchar(255)`. The transaction rolled back and provider ref `35260` was not created.
+
+A read-only schema-length scan of all `1869` source orders from `2026-04-01` through `2026-09-04` found exactly one schema overflow: Woo `35260`, `address_line_2`, length `268`, limit `255`. No other Order, address, item name, SKU, phone, city, postal-code, or external-order-number field exceeded the current schema.
+
+Bounded fix prepared on branch:
+- migration `2026_09_05_170500_expand_order_address_line_2_for_woo_history.php`
+- only change: `order_addresses.address_line_2` from `varchar(255)` to `varchar(512)`
+- no truncation, no Product resolver change, no normalizer guessing
+- rollback refuses to shrink while values longer than 255 exist, preventing silent data loss
+- regression test adds a 300-character Woo address-line-2 snapshot case
+- patch commit: `24c33119d888671e9e2873f3eefaa39fbb13df5b`
+
+Isolated runtime verification on the Production host passed using a temporary SQLite database and the real Woo inbound service:
+- all migrations including the new expansion migration: PASS
+- one fake Woo order with 300-character `address_2`: `seen=1 / created=1 / failed=0`
+- stored `address_line_2` length: `300`
+- stored address equals source exactly: `true`
+- Product mapping: PASS
+- Woo external reference count: `1`
+
+Production remains unchanged at this stop: `/up=200`, `woo_refs=4419`, duplicate refs `0`, open SKU reconciliations `0`, failed jobs `0`, and `address_line_2` is still `varchar(255)`.
+
+New hard gate:
+`HISTORICAL_ADDRESS_SNAPSHOT_CAPACITY_FIX = CODE_READY / ISOLATED_RUNTIME_PASS / PRODUCTION_SCHEMA_NOT_CHANGED`
+
+Current marker:
+`WOO_HISTORICAL_ORDER_IMPORT_GATE = PAUSED_AT_H15 / WAITING_OWNER_SCHEMA_DEPLOY_PASS`
+
+A new Owner `pass` authorizes only the bounded schema/deploy continuation: create another fresh DB backup, deploy this branch candidate, apply the single 255→512 migration, verify Production schema and health, import Woo `35260`, then continue H16→H20 under the already accepted 29-row admin-shell exclusion contract and perform final aggregate reconciliation.
