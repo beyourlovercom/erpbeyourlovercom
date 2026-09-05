@@ -3,6 +3,7 @@
 namespace App\Modules\Inventory\Infrastructure;
 
 use App\Modules\Inventory\Application\Contracts\InventoryRepository;
+use App\Modules\Inventory\Application\InventoryStockStatus;
 use App\Modules\Inventory\Infrastructure\Models\InventoryAdjustment;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
@@ -17,6 +18,8 @@ final class EloquentInventoryRepository implements InventoryRepository
         $rows = WarehouseInventory::query()->get();
         $warehouses = $this->warehouseList();
 
+        $statusCounts = $rows->countBy(fn ($row) => InventoryStockStatus::classify((int) $row->quantity_available));
+
         return [
             'warehouse_count' => collect($warehouses)->where('is_active', true)->count(),
             'warehouse_data_gap_count' => collect($warehouses)->where('inventory_state', 'never_imported')->count(),
@@ -25,7 +28,10 @@ final class EloquentInventoryRepository implements InventoryRepository
             'quantity_on_hand' => $rows->sum('quantity_on_hand'),
             'quantity_reserved' => $rows->sum('quantity_reserved'),
             'quantity_available' => $rows->sum(fn ($row) => $row->quantity_available),
-            'out_of_stock_rows' => $rows->filter(fn ($row) => $row->quantity_available === 0)->count(),
+            'out_of_stock_rows' => (int) $statusCounts->get(InventoryStockStatus::OUT_OF_STOCK, 0),
+            'low_stock_rows' => (int) $statusCounts->get(InventoryStockStatus::LOW_STOCK, 0),
+            'in_stock_rows' => (int) $statusCounts->get(InventoryStockStatus::IN_STOCK, 0),
+            'stock_alert_rows' => (int) $statusCounts->get(InventoryStockStatus::OUT_OF_STOCK, 0) + (int) $statusCounts->get(InventoryStockStatus::LOW_STOCK, 0),
             'warehouses' => $warehouses,
         ];
     }

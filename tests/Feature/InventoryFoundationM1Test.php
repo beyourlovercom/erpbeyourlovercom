@@ -111,6 +111,29 @@ final class InventoryFoundationM1Test extends TestCase
             ->where('rows.data.0.product.sku','INV-STAY')->where('rows.data.0.quantity_available',18)->where('rows.data.0.stay_days',5));
     }
 
+    public function test_stock_status_uses_available_quantity_and_never_imported_warehouses_are_not_false_out_of_stock(): void
+    {
+        $warehouse=Warehouse::query()->where('slug','us-la')->firstOrFail();
+        $out=$this->product('STATUS-OUT');
+        $low=$this->product('STATUS-LOW');
+        $in=$this->product('STATUS-IN');
+        WarehouseInventory::create(['warehouse_id'=>$warehouse->id,'product_id'=>$out->id,'quantity_on_hand'=>1,'quantity_reserved'=>0]);
+        WarehouseInventory::create(['warehouse_id'=>$warehouse->id,'product_id'=>$low->id,'quantity_on_hand'=>11,'quantity_reserved'=>2]);
+        WarehouseInventory::create(['warehouse_id'=>$warehouse->id,'product_id'=>$in->id,'quantity_on_hand'=>10,'quantity_reserved'=>0]);
+
+        $user=$this->userWith(['inventory.view']);
+        $this->actingAs($user)->get('/inventory')->assertOk()->assertInertia(fn($p)=>$p
+            ->where('summary.out_of_stock_rows',1)
+            ->where('summary.low_stock_rows',1)
+            ->where('summary.in_stock_rows',1)
+            ->where('summary.stock_alert_rows',2));
+
+        $this->actingAs($user)->get('/inventory/products?search=STATUS-LOW')->assertOk()->assertInertia(fn($p)=>$p
+            ->where('rows.data.0.quantity_available',9)
+            ->where('rows.data.0.stock_status','low_stock')
+            ->where('rows.data.0.stock_status_label','库存紧张'));
+    }
+
     public function test_billing_markdown_and_service_regions_are_editable_and_audited(): void
     {
         $user=$this->userWith(['inventory.view','inventory.warehouses.manage']);
@@ -128,6 +151,11 @@ final class InventoryFoundationM1Test extends TestCase
         Product::create(['sku'=>'SEARCH-INV','name'=>'Search Inventory','source_type'=>'manual','product_type'=>'simple']);
         $user=$this->userWith(['inventory.view']);
         $this->actingAs($user)->getJson('/inventory/product-search?q=SEARCH')->assertOk()->assertJsonFragment(['sku'=>'SEARCH-INV']);
+    }
+
+    private function product(string $sku): Product
+    {
+        return Product::create(['sku'=>$sku,'name'=>$sku,'source_type'=>'manual','product_type'=>'simple']);
     }
 
     private function userWith(array $permissions): User
