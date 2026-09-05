@@ -67,7 +67,9 @@ final class WooCommerceProductInboundService
         try {
             if ($remoteId <= 0) throw new RuntimeException('WooCommerce Product has no valid ID.');
             ['product' => $product, 'created' => $productCreated] = $this->resolveProduct($remote, $connection);
-            $hash = hash('sha256', json_encode($remote, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+            $hashPayload = $remote;
+            unset($hashPayload['related_ids']);
+            $hash = hash('sha256', json_encode($hashPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
             $media = $this->prepareMedia($product, $remote, $connection);
             $changed = $this->upsertSnapshotAndCore($product, $remote, $connection, $hash);
             $this->runs->annotateItem($item, ['product_id' => $product->id]);
