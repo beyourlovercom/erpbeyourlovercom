@@ -6,6 +6,9 @@ use DateTimeInterface;
 
 interface InventoryReservationRepository
 {
+    /** @return array<string,mixed>|null */
+    public function activeForOrder(int $orderId): ?array;
+
     /** @return array<string,mixed> */
     public function reserve(int $orderId, int $warehouseId, string $reservationKey, ?DateTimeInterface $expiresAt, ?int $actorUserId): array;
 

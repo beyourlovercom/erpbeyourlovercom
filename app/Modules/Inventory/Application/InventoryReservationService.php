@@ -19,6 +19,12 @@ final class InventoryReservationService
         private readonly AuditRecorder $audit,
     ) {}
 
+    /** @return array<string,mixed>|null */
+    public function activeForOrder(int $orderId): ?array
+    {
+        return $this->reservations->activeForOrder($orderId);
+    }
+
     /** @return array<string,mixed> */
     public function reserve(int $orderId, int $warehouseId, string $reservationKey, ?DateTimeInterface $expiresAt, Authenticatable $actor): array
     {
@@ -89,7 +95,7 @@ final class InventoryReservationService
 
     private function authorize(Authenticatable $actor): void
     {
-        if (! $actor->can('inventory.operate')) {
+        if (! $actor->can('inventory.operate') && ! $actor->can('logistics.operate')) {
             throw new AuthorizationException;
         }
     }

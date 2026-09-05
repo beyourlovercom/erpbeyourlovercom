@@ -34,15 +34,19 @@ final class ShipmentService
 
             $shipment = $lockedOrder->shipment()->firstOrCreate(['order_id' => $lockedOrder->getKey()]);
             $before = $this->snapshot($shipment);
+            $warehouseProvided = array_key_exists('warehouse_id', $attributes);
+            $carrierProvided = array_key_exists('carrier', $attributes) || array_key_exists('service', $attributes);
             $shipment->fill([
                 'shipment_status' => 'pending',
-                'warehouse_id' => $attributes['warehouse_id'] ?? null,
-                'warehouse_selection_source' => isset($attributes['warehouse_id']) ? 'manual' : null,
-                'carrier' => $attributes['carrier'] ?? null,
-                'service' => $attributes['service'] ?? null,
-                'carrier_selection_source' => ($attributes['carrier'] ?? null) || ($attributes['service'] ?? null) ? 'manual' : null,
-                'tracking_number' => $attributes['tracking_number'] ?? null,
-                'logistics_note' => $attributes['logistics_note'] ?? null,
+                'warehouse_id' => $warehouseProvided ? $attributes['warehouse_id'] : $shipment->warehouse_id,
+                'warehouse_selection_source' => $warehouseProvided
+                    ? ($attributes['warehouse_selection_source'] ?? 'manual')
+                    : $shipment->warehouse_selection_source,
+                'carrier' => array_key_exists('carrier', $attributes) ? $attributes['carrier'] : $shipment->carrier,
+                'service' => array_key_exists('service', $attributes) ? $attributes['service'] : $shipment->service,
+                'carrier_selection_source' => $carrierProvided ? 'manual' : $shipment->carrier_selection_source,
+                'tracking_number' => array_key_exists('tracking_number', $attributes) ? $attributes['tracking_number'] : $shipment->tracking_number,
+                'logistics_note' => array_key_exists('logistics_note', $attributes) ? $attributes['logistics_note'] : $shipment->logistics_note,
                 'handled_by' => $actor?->getAuthIdentifier(),
             ]);
             $changed = $shipment->isDirty();
@@ -67,10 +71,15 @@ final class ShipmentService
             $alreadyShipped = $lockedOrder->order_status?->value === 'shipped' && $shipment->shipment_status === 'shipped';
             $before = $this->snapshot($shipment);
             $trackingNumber = $attributes['tracking_number'] ?? null;
+            $selectedWarehouseId = $attributes['warehouse_id'] ?? $shipment->warehouse_id;
+            $preserveRecommendedSource = $shipment->warehouse_selection_source === 'recommended'
+                && (int) $shipment->warehouse_id === (int) $selectedWarehouseId;
             $shipment->fill([
                 'shipment_status' => 'shipped',
-                'warehouse_id' => $attributes['warehouse_id'] ?? $shipment->warehouse_id,
-                'warehouse_selection_source' => array_key_exists('warehouse_id', $attributes) && $attributes['warehouse_id'] !== null ? 'manual' : $shipment->warehouse_selection_source,
+                'warehouse_id' => $selectedWarehouseId,
+                'warehouse_selection_source' => array_key_exists('warehouse_id', $attributes) && $attributes['warehouse_id'] !== null
+                    ? ($preserveRecommendedSource ? 'recommended' : 'manual')
+                    : $shipment->warehouse_selection_source,
                 'carrier' => $attributes['carrier'],
                 'service' => $attributes['service'] ?? $shipment->service,
                 'carrier_selection_source' => array_key_exists('service', $attributes) || array_key_exists('carrier', $attributes) ? 'manual' : $shipment->carrier_selection_source,
