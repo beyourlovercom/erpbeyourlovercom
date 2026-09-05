@@ -88,6 +88,8 @@ final class WooCommerceProductInboundService
     private function resolveProduct(array $remote, string $connection): array
     {
         $id = (string) ((int) ($remote['id'] ?? 0));
+        $name = $this->text($remote['name'] ?? '');
+        if ($name === '') throw new IdentityConflictException('Blank-name Woo Product cannot update or create canonical Product.');
         $existing = $this->externalRefs->findProduct('woocommerce', $connection, $id);
         $sku = trim((string) ($remote['sku'] ?? ''));
         if ($existing !== null) {
