@@ -15,7 +15,7 @@ type WarehouseSummary = {
     last_inventory_at: string | null
 }
 
-defineProps<{summary:{warehouse_count:number;warehouse_data_gap_count:number;warehouse_confirmed_count:number;sku_rows:number;quantity_on_hand:number;quantity_reserved:number;quantity_available:number;out_of_stock_rows:number;warehouses:WarehouseSummary[]};canManage:boolean}>()
+defineProps<{summary:{warehouse_count:number;warehouse_data_gap_count:number;warehouse_confirmed_count:number;sku_rows:number;quantity_on_hand:number;quantity_reserved:number;quantity_available:number;out_of_stock_rows:number;low_stock_rows:number;in_stock_rows:number;stock_alert_rows:number;warehouses:WarehouseSummary[]};canManage:boolean}>()
 const breadcrumbs=[{label:'BYL ERP',href:'/dashboard'},'库存']
 const formatDate=(value:string|null)=>value?new Intl.DateTimeFormat('zh-CN',{dateStyle:'medium'}).format(new Date(value)):'—'
 </script>
@@ -30,8 +30,10 @@ const formatDate=(value:string|null)=>value?new Intl.DateTimeFormat('zh-CN',{dat
 <article class="mvp-card mvp-stat-card"><small>已记录库存</small><strong>{{summary.quantity_on_hand}}</strong></article>
 <article class="mvp-card mvp-stat-card"><small>可用库存</small><strong>{{summary.quantity_available}}</strong></article>
 <article class="mvp-card mvp-stat-card"><small>预留库存</small><strong>{{summary.quantity_reserved}}</strong></article>
-<article class="mvp-card mvp-stat-card"><small>无可用库存记录</small><strong>{{summary.out_of_stock_rows}}</strong></article>
+<article class="mvp-card mvp-stat-card alert-danger"><small>🔴 没货 SKU</small><strong>{{summary.out_of_stock_rows}}</strong></article>
+<article class="mvp-card mvp-stat-card alert-warning"><small>🟠 库存紧张 SKU</small><strong>{{summary.low_stock_rows}}</strong></article>
+<article class="mvp-card mvp-stat-card"><small>🟢 有货 SKU</small><strong>{{summary.in_stock_rows}}</strong></article>
 </div>
 <div class="mvp-card"><h3>仓库</h3><div class="inventory-grid"><Link v-for="w in summary.warehouses" :key="w.slug" class="warehouse-card" :href="`/inventory/${w.slug}`"><strong>{{w.name}}</strong><span>{{w.country_code||'国家未填写'}} · {{w.address||'地址未填写'}}</span><span>{{w.inventory_state_label}} · {{formatDate(w.last_inventory_at)}}</span><span v-if="w.inventory_state==='never_imported'">— 个产品 · 库存 —</span><span v-else>{{w.product_count}} 个产品 · 库存 {{w.quantity_on_hand}}</span></Link></div></div>
 </section></AuthenticatedLayout></template>
-<style scoped>.inventory-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.warehouse-card{display:flex;flex-direction:column;gap:6px;padding:14px;border:1px solid #e5e7eb;border-radius:12px;text-decoration:none;color:inherit}.warehouse-card:hover{border-color:#0f766e}.warehouse-card span{font-size:13px;color:#64748b}</style>
+<style scoped>.inventory-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.warehouse-card{display:flex;flex-direction:column;gap:6px;padding:14px;border:1px solid #e5e7eb;border-radius:12px;text-decoration:none;color:inherit}.warehouse-card:hover{border-color:#0f766e}.warehouse-card span{font-size:13px;color:#64748b}.alert-danger{border-color:#fecaca}.alert-warning{border-color:#fed7aa}</style>

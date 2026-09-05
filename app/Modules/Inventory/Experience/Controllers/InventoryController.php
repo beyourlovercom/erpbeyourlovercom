@@ -3,6 +3,7 @@
 namespace App\Modules\Inventory\Experience\Controllers;
 
 use App\Modules\Inventory\Application\InventoryService;
+use App\Modules\Inventory\Application\InventoryStockStatus;
 use App\Modules\Identity\Application\AuthorizationKeys;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,6 +24,7 @@ final class InventoryController
                 'product'=>['id'=>$i->product->id,'sku'=>$i->product->sku,'name'=>$i->product->name],
                 'inbound_at'=>$i->inbound_at?->format('Y-m-d'),'stay_days'=>$i->stay_days,'location'=>$i->location,
                 'quantity_on_hand'=>$i->quantity_on_hand,'quantity_reserved'=>$i->quantity_reserved,'quantity_available'=>$i->quantity_available,
+                'stock_status'=>InventoryStockStatus::classify((int)$i->quantity_available),'stock_status_label'=>InventoryStockStatus::label(InventoryStockStatus::classify((int)$i->quantity_available)),
                 'standard_qoh'=>$i->standard_qoh,'expected_restock_qty'=>$i->expected_restock_qty,
             ])->toArray(),
             'warehouses'=>$this->inventory->warehouses(),'filters'=>$request->only(['search','warehouse']),
