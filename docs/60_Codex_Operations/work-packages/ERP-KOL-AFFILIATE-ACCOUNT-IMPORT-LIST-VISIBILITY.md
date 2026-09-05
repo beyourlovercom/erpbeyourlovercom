@@ -1,6 +1,6 @@
 # ERP-KOL-AFFILIATE-ACCOUNT-IMPORT-LIST-VISIBILITY
 
-STATUS: ACTIVE — PHASE 2 IMPLEMENTED / EXACT-HEAD + OWNER UAT PENDING
+STATUS: PR_READY — PHASE 2 IMPLEMENTED / EXACT-HEAD VERIFIED / OWNER UAT PENDING
 EXECUTION_PROVIDER: GPT_WEB + Remote Desktop Commander
 VERIFICATION_TIER: DAILY
 START_BASELINE: `main@6f854b9fa0b1e144fd8455a3e05ca2147839d8bf`
@@ -82,7 +82,7 @@ Direct Andy Core source verification established that Affiliate snapshot `userna
 - Historical KOLs never enter the M5 new-KOL provisioning flow.
 - No Production snapshot sync, migration, deployment or other write occurs without the separate Production Owner gate.
 
-## Verification evidence before latest-main rebase
+## Verification evidence on latest-main exact head
 
 - PHP focused/regression: **48 tests / 216 assertions PASS**
   - read-only Preview
@@ -90,6 +90,7 @@ Direct Andy Core source verification established that Affiliate snapshot `userna
   - KOL library scope/projection
   - exact Affiliate binding activation
   - migration rollback → reapply
+- Rebased exact-head full KOL backend suite: **exit 0 / 1,253 assertions**. Existing asset/manifest notices are warning-only; no test failure.
 - KOL frontend: **15 files / 101 tests PASS**
 - new KOL Index account visibility tests: **3 / 3 PASS**
 - `vue-tsc --noEmit`: PASS
@@ -103,6 +104,7 @@ Branch: `feature/erp-kol-affiliate-account-import-list-visibility`
 Worktree: `/Users/a/AI/007/worktrees/erp-kol-affiliate-account-import-list-visibility`
 Start HEAD: `6f854b9fa0b1e144fd8455a3e05ca2147839d8bf`
 Latest reconciled `origin/main`: `1d7cd0e22880cf6aea0183c57fc0e0c3da726d8d`
+Rebased implementation HEAD verified before this documentation-only closure update: `392ce4644a8dc461f3c248107f26014ddd74cdc0`
 
 Inventory PR #188 changed only:
 - `app/Modules/Inventory/Application/Sync/XlsxAdapter.php`
@@ -113,18 +115,16 @@ There is no file overlap with this KOL WP and no migration-name/timestamp collis
 
 ## NEXT EXACT GATE
 
-1. Commit the coherent KOL WP implementation.
-2. Rebase onto exact latest `origin/main`.
-3. Re-run exact-head backend/KOL frontend/typecheck/build/diff checks.
-4. Push/open the single WP delivery PR after exact-head verification.
-5. Prepare the real US-Mac KOL library page for Owner UAT.
-6. Stop at Owner UAT / Production write gates. A Production migration + normal Affiliate snapshot sync is a separate explicit Owner-authorized event.
+1. Push/open the single WP delivery PR from the verified rebased branch.
+2. Let CI complete and review the exact PR diff.
+3. Prepare the real US-Mac KOL library page for Owner UAT without Production write.
+4. Stop at Owner UAT / Production write gates. A Production migration + normal Affiliate snapshot sync is a separate explicit Owner-authorized event.
 
 ## PROJECT POSITION
 
-CURRENT_TRACK_PHASE_MAP: historical KOL import CLOSED → exact Affiliate binding CLOSED → Production read-only Affiliate preview PASS → mirror/list visibility IMPLEMENTED → exact-head verification CURRENT → Owner UAT WAITING → Production write/deploy WAITING.
+CURRENT_TRACK_PHASE_MAP: historical KOL import CLOSED → exact Affiliate binding CLOSED → Production read-only Affiliate preview PASS → mirror/list visibility IMPLEMENTED → exact-head verification PASS → PR DELIVERY CURRENT → Owner UAT WAITING → Production write/deploy WAITING.
 CURRENT_WORK_PACKAGE: `ERP-KOL-AFFILIATE-ACCOUNT-IMPORT-LIST-VISIBILITY`
-PACKAGE_STATUS: ACTIVE — implementation complete before latest-main rebase.
+PACKAGE_STATUS: PR_READY — implementation and latest-main exact-head verification complete.
 GLOBAL_GATE: Production write prohibited until explicit Owner authorization.
 PRODUCTION_DEPLOYMENT_STATUS: NO.
 EVIDENCE_AS_OF: 2026-09-05.
