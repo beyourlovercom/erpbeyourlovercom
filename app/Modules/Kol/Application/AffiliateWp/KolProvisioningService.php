@@ -36,7 +36,7 @@ final class KolProvisioningService
             throw new AuthorizationException;
         }
 
-        return $this->provisionInternal($connectionKey, $kolId, $actor, null);
+        return $this->provisionInternal($connectionKey, $kolId, $actor, null, true);
     }
 
     public function provisionForCreate(string $connectionKey, int $kolId, Authenticatable $actor, string $password): Model
@@ -48,20 +48,36 @@ final class KolProvisioningService
             throw new DomainException('WordPress password does not satisfy the create-provision policy.');
         }
 
-        return $this->provisionInternal($connectionKey, $kolId, $actor, $password);
+        return $this->provisionInternal($connectionKey, $kolId, $actor, $password, true);
     }
 
-    private function provisionInternal(string $connectionKey, int $kolId, Authenticatable $actor, ?string $password): Model
+    public function provisionForExisting(string $connectionKey, int $kolId, Authenticatable $actor, string $password): Model
+    {
+        if (! $actor->can('kol.operate')) {
+            throw new AuthorizationException;
+        }
+        if (strlen($password) < 12 || strlen($password) > 128 || ! preg_match('/[A-Za-z]/', $password) || ! preg_match('/\d/', $password)) {
+            throw new DomainException('WordPress password does not satisfy the provision policy.');
+        }
+
+        return $this->provisionInternal($connectionKey, $kolId, $actor, $password, false);
+    }
+
+    private function provisionInternal(string $connectionKey, int $kolId, Authenticatable $actor, ?string $password, bool $requireApproval): Model
     {
         $kolClass = self::KOL;
-        $kol = $kolClass::query()
-            ->whereKey($kolId)
-            ->where('approval_status', 'approved')
-            ->whereNull('archived_at')
-            ->first();
+        $query = $kolClass::query()->whereKey($kolId)->whereNull('archived_at');
+        if ($requireApproval) {
+            $query->where('approval_status', 'approved');
+        } else {
+            $query->where('status', 'active');
+        }
+        $kol = $query->first();
 
         if (! $kol) {
-            throw new DomainException('KOL must be approved and active to provision.');
+            throw new DomainException($requireApproval
+                ? 'KOL must be approved and active to provision.'
+                : 'KOL must be active to provision a WordPress / Affiliate account.');
         }
 
         [$account, $idempotencyKey] = DB::transaction(function () use ($connectionKey, $kolId, $kol): array {
