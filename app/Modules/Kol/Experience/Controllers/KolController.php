@@ -3,6 +3,7 @@
 namespace App\Modules\Kol\Experience\Controllers;
 
 use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Kol\Application\KolCreateAutoProvisionService;
 use App\Modules\Kol\Application\KolScope;
 use App\Modules\Kol\Application\KolService;
 use App\Modules\Kol\Application\SavedViewService;
@@ -20,6 +21,7 @@ final class KolController
     public function __construct(
         private readonly KolService $kols,
         private readonly SavedViewService $views,
+        private readonly KolCreateAutoProvisionService $autoProvision,
     ) {}
 
     public function index(Request $request): Response
@@ -89,7 +91,10 @@ final class KolController
             'cooperation_type' => 'nullable|string|in:免费发帖,长期合作,付费发帖',
             'joined_at' => 'nullable|date',
             'notes' => 'nullable|string|max:5000',
-            'contact_email' => 'nullable|email|max:255',
+            'contact_email' => 'required|email|max:255',
+            'wordpress_password' => ['required', 'string', 'min:12', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
+            'wordpress_password_confirmation' => 'required|string|max:128',
+            'affiliate_coupon_code' => 'required|string|max:255',
             'contact_phone' => 'nullable|string|max:64',
             'contact_whatsapp' => 'nullable|string|max:64',
             'other_contact' => 'nullable|string|max:255',
@@ -137,9 +142,32 @@ final class KolController
             $data['finance_owner_id'] = null;
         }
 
-        $kol = $this->kols->create($data, $data['social_accounts'] ?? [], $user, $data['sales_performance_entries'] ?? []);
+        $password = (string) $data['wordpress_password'];
+        $couponCode = (string) $data['affiliate_coupon_code'];
+        $socialAccounts = $data['social_accounts'] ?? [];
+        $salesPerformanceEntries = $data['sales_performance_entries'] ?? [];
+        unset(
+            $data['wordpress_password'],
+            $data['wordpress_password_confirmation'],
+            $data['affiliate_coupon_code'],
+            $data['social_accounts'],
+            $data['sales_performance_entries'],
+        );
 
-        return redirect()->route('kol.library.show', $kol)->with('success', 'KOL 已创建');
+        $result = $this->autoProvision->create(
+            $data,
+            $socialAccounts,
+            $salesPerformanceEntries,
+            $password,
+            $couponCode,
+            $user,
+        );
+        unset($password);
+
+        $redirect = redirect()->route('kol.library.show', $result['kol']);
+        return $result['success']
+            ? $redirect->with('success', 'KOL 已创建；WordPress / AffiliateWP / Coupon 自动开通完成。')
+            : $redirect->with('warning', 'KOL 已创建，但自动开通未完整完成，系统已发送处理通知。');
     }
 
     public function show(Request $request, Kol $kol): Response

@@ -36,6 +36,23 @@ final class KolProvisioningService
             throw new AuthorizationException;
         }
 
+        return $this->provisionInternal($connectionKey, $kolId, $actor, null);
+    }
+
+    public function provisionForCreate(string $connectionKey, int $kolId, Authenticatable $actor, string $password): Model
+    {
+        if (! $actor->can('kol.operate')) {
+            throw new AuthorizationException;
+        }
+        if (strlen($password) < 12 || strlen($password) > 128 || ! preg_match('/[A-Za-z]/', $password) || ! preg_match('/\d/', $password)) {
+            throw new DomainException('WordPress password does not satisfy the create-provision policy.');
+        }
+
+        return $this->provisionInternal($connectionKey, $kolId, $actor, $password);
+    }
+
+    private function provisionInternal(string $connectionKey, int $kolId, Authenticatable $actor, ?string $password): Model
+    {
         $kolClass = self::KOL;
         $kol = $kolClass::query()
             ->whereKey($kolId)
@@ -106,9 +123,14 @@ final class KolProvisioningService
             'requested_affiliate_status' => 'active',
             'payment_email' => $email,
         ];
+        if ($password !== null) {
+            $payload['password'] = $password;
+            $payload['existing_account_policy'] = 'reject';
+        }
 
         try {
             $response = $this->gateway->provisionAffiliate($payload, $idempotencyKey);
+            unset($payload['password'], $password);
         } catch (RuntimeException $e) {
             // Detect provider-signalled Affiliate ID conflict without importing Infrastructure.
             $errorCode = property_exists($e, 'errorCode') && is_string($e->errorCode)

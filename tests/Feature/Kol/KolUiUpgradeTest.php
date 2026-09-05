@@ -5,6 +5,8 @@ namespace Tests\Feature\Kol;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
+use App\Modules\Kol\Infrastructure\AffiliateWp\LocalUatAffiliateWpGateway;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolSalesPerformance;
 use App\Modules\Products\Infrastructure\Models\Product;
@@ -14,6 +16,18 @@ use Tests\TestCase;
 class KolUiUpgradeTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config([
+            'services.andy_core.connection_key' => 'beyourlover.com',
+            'kol.create_auto_provision.coupon_discount_type' => 'percent',
+            'kol.create_auto_provision.coupon_amount' => '15',
+            'kol.create_auto_provision.coupon_expiry' => null,
+        ]);
+        $this->app->instance(AffiliateWpGateway::class, new LocalUatAffiliateWpGateway);
+    }
 
     private function userWith(array $permissions): User
     {
@@ -39,6 +53,10 @@ class KolUiUpgradeTest extends TestCase
             'display_name' => 'UI Upgrade KOL',
             'status' => 'active',
             'relationship_stage' => 'prospect',
+            'contact_email' => 'ui-upgrade-kol@example.test',
+            'wordpress_password' => 'StrongPassword123',
+            'wordpress_password_confirmation' => 'StrongPassword123',
+            'affiliate_coupon_code' => 'UIUPGRADE15',
             'social_accounts' => [],
         ], $overrides);
     }

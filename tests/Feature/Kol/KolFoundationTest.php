@@ -5,6 +5,8 @@ namespace Tests\Feature\Kol;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
+use App\Modules\Kol\Infrastructure\AffiliateWp\LocalUatAffiliateWpGateway;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolSocialAccount;
 use App\Modules\Kol\Infrastructure\Models\KolSocialMetric;
@@ -36,6 +38,17 @@ class KolFoundationTest extends TestCase
     private function specialistUser(): User
     {
         return $this->userWith(['kol.view', 'kol.operate']);
+    }
+
+    private function enableCreateAutoProvisionFake(): void
+    {
+        config([
+            'services.andy_core.connection_key' => 'beyourlover.com',
+            'kol.create_auto_provision.coupon_discount_type' => 'percent',
+            'kol.create_auto_provision.coupon_amount' => '15',
+            'kol.create_auto_provision.coupon_expiry' => null,
+        ]);
+        $this->app->instance(AffiliateWpGateway::class, new LocalUatAffiliateWpGateway);
     }
 
     private function makeKol(array $attrs = []): Kol
@@ -180,12 +193,17 @@ class KolFoundationTest extends TestCase
     public function test_admin_can_store_kol(): void
     {
         $admin = $this->adminUser();
+        $this->enableCreateAutoProvisionFake();
 
         $this->actingAs($admin)->post('/kol/library', [
             'display_name' => 'New KOL',
             'status' => 'active',
             'relationship_stage' => 'prospect',
             'owner_id' => $admin->id,
+            'contact_email' => 'admin-new-kol@example.test',
+            'wordpress_password' => 'StrongPassword123',
+            'wordpress_password_confirmation' => 'StrongPassword123',
+            'affiliate_coupon_code' => 'ADMIN15',
             'social_accounts' => [],
         ])->assertRedirect();
 
@@ -196,12 +214,17 @@ class KolFoundationTest extends TestCase
     {
         $specialist = $this->specialistUser();
         $admin = $this->adminUser();
+        $this->enableCreateAutoProvisionFake();
 
         $this->actingAs($specialist)->post('/kol/library', [
             'display_name' => 'Specialist KOL',
             'status' => 'active',
             'relationship_stage' => 'prospect',
             'owner_id' => $admin->id,
+            'contact_email' => 'specialist-new-kol@example.test',
+            'wordpress_password' => 'StrongPassword123',
+            'wordpress_password_confirmation' => 'StrongPassword123',
+            'affiliate_coupon_code' => 'SPECIAL15',
             'social_accounts' => [],
         ])->assertRedirect();
 

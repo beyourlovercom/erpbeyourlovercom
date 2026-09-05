@@ -57,6 +57,11 @@ final class HttpAffiliateWpGateway implements AffiliateWpGateway
         return $this->get('/snapshot/'.rawurlencode($resource), $query);
     }
 
+    public function checkAffiliateIdentity(string $email): ConnectorResponse
+    {
+        return $this->post('/affiliates/check', ['email' => $email], null);
+    }
+
     public function provisionAffiliate(array $payload, string $idempotencyKey): ConnectorResponse
     {
         return $this->post('/affiliates/provision', $payload, $idempotencyKey);
@@ -271,6 +276,8 @@ final class HttpAffiliateWpGateway implements AffiliateWpGateway
             'REPLAY_DETECTED',
             'CONTRACT_VERSION_UNSUPPORTED',
             'AFFILIATE_ID_CONFLICT',
+            'WP_USER_CONFLICT',
+            'AFFILIATE_CONFLICT',
             'COUPON_CONFLICT',
             'REFERRAL_NOT_ELIGIBLE',
             'VALIDATION_FAILED' => ConnectorException::nonRetryable($message, $errorCode, $httpStatus),
@@ -301,8 +308,8 @@ final class HttpAffiliateWpGateway implements AffiliateWpGateway
 
     private function guardMutationIdempotencyKey(string $path, ?string $idempotencyKey): void
     {
-        // /coupons/check is a read-only POST and does not require an idempotency key
-        if ($path === '/coupons/check') {
+        // Read-only POST checks do not require an idempotency key.
+        if (in_array($path, ['/coupons/check', '/affiliates/check'], true)) {
             return;
         }
         if ($idempotencyKey === null || trim($idempotencyKey) === '') {

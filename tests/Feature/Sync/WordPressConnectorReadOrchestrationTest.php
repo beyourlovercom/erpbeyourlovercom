@@ -121,6 +121,7 @@ final class WordPressConnectorReadOrchestrationTest extends TestCase
                 return $this->response([]);
             }
 
+            public function checkAffiliateIdentity(string $email): ConnectorResponse { throw new \LogicException('not used'); }
             public function snapshot(string $resource, ?string $cursor = null, ?string $updatedAfter = null): ConnectorResponse
             {
                 if ($resource === $this->failResource) {

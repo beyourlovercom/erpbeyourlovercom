@@ -58,6 +58,7 @@ final class WordPressConnectorSettingsTest extends TestCase
                 'woocommerce_active' => true, 'affiliatewp_active' => true,
                 'writable' => true, 'secret' => 'must-not-persist',
             ]); }
+            public function checkAffiliateIdentity(string $email): ConnectorResponse { throw new \LogicException('not used'); }
             public function snapshot(string $resource, ?string $cursor = null, ?string $updatedAfter = null): ConnectorResponse { throw new \LogicException('not used'); }
             public function provisionAffiliate(array $payload, string $idempotencyKey): ConnectorResponse { throw new \LogicException('not used'); }
             public function setAffiliateStatus(int $affiliateId, string $status, string $idempotencyKey): ConnectorResponse { throw new \LogicException('not used'); }
