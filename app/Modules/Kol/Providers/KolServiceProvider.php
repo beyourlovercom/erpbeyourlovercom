@@ -4,6 +4,7 @@ namespace App\Modules\Kol\Providers;
 
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
 use App\Modules\Kol\Experience\Console\Commands\AffiliateWpHealthCommand;
+use App\Modules\Kol\Experience\Console\Commands\ApplyKolAffiliateBindingProductionCommand;
 use App\Modules\Kol\Infrastructure\AffiliateWp\HttpAffiliateWpGateway;
 use App\Modules\Kol\Infrastructure\AffiliateWp\LocalUatAffiliateWpGateway;
 use Illuminate\Support\ServiceProvider;
@@ -24,7 +25,7 @@ final class KolServiceProvider extends ServiceProvider
         $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/web.php');
 
         if ($this->app->runningInConsole()) {
-            $this->commands([AffiliateWpHealthCommand::class]);
+            $this->commands([AffiliateWpHealthCommand::class, ApplyKolAffiliateBindingProductionCommand::class]);
         }
     }
 }
