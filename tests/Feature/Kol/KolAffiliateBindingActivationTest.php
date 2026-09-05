@@ -165,6 +165,80 @@ class KolAffiliateBindingActivationTest extends TestCase
         self::assertNull($account->fresh()->kol_id);
     }
 
+    public function test_production_authorized_service_path_is_forbidden_outside_production(): void
+    {
+        $admin = $this->admin();
+        [$activation] = $this->activationWithKol($admin, 'prod-only@example.com');
+        $account = $this->account(1001, 'prod-only@example.com');
+        $activation->items()->firstOrFail()->update(['affiliate_evidence' => ['account_ids' => [$account->id]]]);
+        $plan = $this->service()->prepare($activation->id, $admin);
+
+        try {
+            $this->service()->applyProductionAuthorized(
+                $plan,
+                $plan->plan_checksum,
+                $plan->ready_count,
+                $admin,
+                KolAffiliateBindingActivationService::PRODUCTION_CONFIRMATION,
+            );
+            self::fail('Production-authorized path must be unavailable outside Production.');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            self::assertSame(403, $e->getStatusCode());
+        }
+        self::assertNull($account->fresh()->kol_id);
+    }
+
+    public function test_production_web_apply_stays_locked_while_exact_console_command_can_apply(): void
+    {
+        config(['kol.affiliate_binding_activation_enabled' => true]);
+        $admin = $this->admin();
+        [$activation, $kol] = $this->activationWithKol($admin, 'production-console@example.com');
+        $account = $this->account(1002, 'production-console@example.com');
+        $activation->items()->firstOrFail()->update(['affiliate_evidence' => ['account_ids' => [$account->id]]]);
+        $referral = $this->referral(1002, 9202);
+        $plan = $this->service()->prepare($activation->id, $admin);
+        $originalEnvironment = $this->app->environment();
+        $this->app->detectEnvironment(fn (): string => 'production');
+
+        try {
+            try {
+                $this->service()->apply($plan, $plan->plan_checksum, $plan->ready_count, $admin);
+                self::fail('Web apply must remain locked in Production.');
+            } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+                self::assertSame(403, $e->getStatusCode());
+            }
+
+            $this->artisan('kol:affiliate-binding-apply-production', [
+                'batch_id' => $plan->id,
+                '--plan-checksum' => $plan->plan_checksum,
+                '--ready-count' => (string) $plan->ready_count,
+                '--actor-id' => (string) $admin->id,
+                '--confirm' => 'WRONG',
+            ])->assertExitCode(1);
+            self::assertNull($account->fresh()->kol_id);
+
+            $this->artisan('kol:affiliate-binding-apply-production', [
+                'batch_id' => $plan->id,
+                '--plan-checksum' => $plan->plan_checksum,
+                '--ready-count' => (string) $plan->ready_count,
+                '--actor-id' => (string) $admin->id,
+                '--confirm' => 'APPLY_EXACT_KOL_AFFILIATE_BINDINGS',
+                '--json' => true,
+            ])->assertExitCode(0);
+        } finally {
+            $this->app->detectEnvironment(fn (): string => $originalEnvironment);
+        }
+
+        self::assertSame($kol->id, $account->fresh()->kol_id);
+        self::assertSame($kol->id, $referral->fresh()->kol_id);
+        self::assertSame('bound', $referral->fresh()->affiliate_resolution_status);
+        $this->assertDatabaseHas('audit_records', [
+            'action' => 'kol.affiliate_binding_activation.applied',
+            'entity_id' => (string) $plan->id,
+            'after->execution_surface' => 'production_console',
+        ]);
+    }
+
     private function service(): KolAffiliateBindingActivationService
     {
         return $this->app->make(KolAffiliateBindingActivationService::class);

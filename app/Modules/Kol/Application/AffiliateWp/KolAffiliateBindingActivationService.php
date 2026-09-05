@@ -19,6 +19,8 @@ use Illuminate\Support\Facades\DB;
 
 final class KolAffiliateBindingActivationService
 {
+    public const PRODUCTION_CONFIRMATION = 'APPLY_EXACT_KOL_AFFILIATE_BINDINGS';
+
     private const PLAN_VERSION = 1;
     private const READY = 'ready_for_binding';
     private const ALREADY_BOUND = 'already_bound';
@@ -129,7 +131,35 @@ final class KolAffiliateBindingActivationService
         $this->authorize($actor);
         if (! $this->bindingEnabled()) abort(403, 'KOL Affiliate binding activation is disabled for this environment.');
 
-        return DB::transaction(function () use ($batch, $expectedChecksum, $expectedReadyCount, $actor): KolAffiliateBindingActivationBatch {
+        return $this->applyAuthorized($batch, $expectedChecksum, $expectedReadyCount, $actor, 'web');
+    }
+
+    public function applyProductionAuthorized(
+        KolAffiliateBindingActivationBatch $batch,
+        string $expectedChecksum,
+        int $expectedReadyCount,
+        Authenticatable $actor,
+        string $confirmation,
+    ): KolAffiliateBindingActivationBatch {
+        $this->authorize($actor);
+        if (! app()->environment('production') || ! app()->runningInConsole()) {
+            abort(403, 'Production Affiliate binding authorization is available only from the Production console.');
+        }
+        if (! hash_equals(self::PRODUCTION_CONFIRMATION, $confirmation)) {
+            abort(403, 'Exact Production Affiliate binding confirmation is required.');
+        }
+
+        return $this->applyAuthorized($batch, $expectedChecksum, $expectedReadyCount, $actor, 'production_console');
+    }
+
+    private function applyAuthorized(
+        KolAffiliateBindingActivationBatch $batch,
+        string $expectedChecksum,
+        int $expectedReadyCount,
+        Authenticatable $actor,
+        string $executionSurface,
+    ): KolAffiliateBindingActivationBatch {
+        return DB::transaction(function () use ($batch, $expectedChecksum, $expectedReadyCount, $actor, $executionSurface): KolAffiliateBindingActivationBatch {
             $locked = KolAffiliateBindingActivationBatch::query()
                 ->lockForUpdate()
                 ->with(['items', 'importActivationBatch.reconciliationBatch', 'importActivationBatch.items.createdKol'])
@@ -196,7 +226,7 @@ final class KolAffiliateBindingActivationService
                 'kol_affiliate_binding_activation_batch',
                 $locked->id,
                 ['status' => 'prepared'],
-                ['status' => 'applied', 'binding_count' => $applied, 'plan_checksum' => $locked->plan_checksum],
+                ['status' => 'applied', 'binding_count' => $applied, 'plan_checksum' => $locked->plan_checksum, 'execution_surface' => $executionSurface],
             );
             return $locked->fresh(['items.kol', 'items.affiliateAccount']);
         });
