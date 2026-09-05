@@ -325,7 +325,6 @@ final class ShipmentService
         foreach ($items as $item) {
             $existing = ShipmentItemPackagingSnapshot::query()
                 ->where('shipment_id', $shipment->getKey())
-                ->whereNull('shipment_attempt_id')
                 ->where('order_item_id', $item->id)
                 ->first();
             if ($existing) continue;
@@ -365,10 +364,12 @@ final class ShipmentService
     private function snapshotAndReset(Model $order, Model $shipment, ?Authenticatable $actor, ?string $note = null, ?int $attemptNumber = null): ShipmentAttempt
     {
         $attemptNumber ??= (int) $order->shipmentAttempts()->max('attempt_number') + 1;
-        $packaging = ShipmentItemPackagingSnapshot::query()->where('shipment_id', $shipment->getKey())->whereNull('shipment_attempt_id')->get()->toArray();
-        $billing = $shipment->billingEvidence()->first()?->toArray();
+        $packaging = ShipmentItemPackagingSnapshot::query()->where('shipment_id', $shipment->getKey())->get()->toArray();
+        $billingModel = $shipment->billingEvidence()->first();
+        $billing = $billingModel?->toArray();
         $attempt = ShipmentAttempt::query()->create([...$this->snapshot($shipment), 'order_id' => $order->getKey(), 'shipment_id' => $shipment->getKey(), 'attempt_number' => $attemptNumber, 'snapshotted_by' => $actor?->getAuthIdentifier(), 'snapshotted_at' => now(), 'evidence_snapshot' => ['packaging' => $packaging, 'billing' => $billing]]);
-        ShipmentItemPackagingSnapshot::query()->where('shipment_id', $shipment->getKey())->whereNull('shipment_attempt_id')->update(['shipment_attempt_id' => $attempt->getKey()]);
+        ShipmentItemPackagingSnapshot::query()->where('shipment_id', $shipment->getKey())->delete();
+        $billingModel?->delete();
         $shipment->forceFill(['shipment_status' => 'pending', 'warehouse_id' => null, 'warehouse_selection_source' => null, 'carrier' => null, 'service' => null, 'carrier_selection_source' => null, 'tracking_number' => null, 'shipped_at' => null, 'logistics_note' => null, 'handled_by' => null])->save();
         $order->forceFill(['order_status' => OrderStatus::PendingShipment])->save();
         $this->manualSync->reopen($order, $actor, $note);

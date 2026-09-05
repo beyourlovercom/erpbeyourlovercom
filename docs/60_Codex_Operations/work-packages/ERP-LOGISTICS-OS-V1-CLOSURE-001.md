@@ -183,6 +183,19 @@ After push, China Codex performs DAILY exact-SHA smoke only: exact revision, cle
 - Architecture baseline records the new migration hash. The architecture suite still has two pre-existing repository-baseline directory-list mismatches unrelated to this Work Package; no unrelated baseline refresh was applied.
 - Production deploy: NOT performed. Historical Logistics Import: NOT started. PR remains Draft and merge remains Owner-UAT gated.
 
+## Recovery Packaging Evidence — 2026-09-05
+
+- `95371d3` is an intermediate revision and is not a merge candidate. It contains the abandoned packaging-history experiment that attempted to add `shipment_attempt_id` to the active packaging table.
+- The prior same-provider session `01a07162-7e62-7f31-975c-4e7007d6fa4d` was terminated after the Codex runtime history error `Custom tool call output is missing`; no concurrent provider mutation exists. This recovery session resumed the exact worktree and branch after inspecting the dirty diff.
+- Final packaging architecture: `shipment_item_packaging_snapshots` remains active/current-only with its original `UNIQUE(shipment_id, order_item_id)` migration unchanged. Historical packaging and billing are stored only in `ShipmentAttempt.evidence_snapshot.packaging` and `.billing`; active packaging and billing are deleted after the immutable attempt is created.
+- `grep -R shipment_attempt_id` across `app`, `database/migrations/2026_09_05_130000_create_logistics_review_and_attempt_history.php`, and `tests/Feature/Logistics/LogisticsOsV1ClosureTest.php`: zero matches.
+- Focused strong reship evidence test: 1 test / 15 assertions PASS.
+- Full `LogisticsOsV1ClosureTest.php`: 24 tests / 194 assertions PASS.
+- Final requested backend regression set: 62 tests / 2,135 assertions PASS (Logistics closure, Manual Fulfillment, WooCommerce Tracking Outbound, App Shell Navigation, Approved Menu Baseline, and Order Saved Views).
+- `npm run typecheck`: PASS. `npm run build`: PASS. `git diff --check`: PASS.
+- Architecture/hash assertion: updated only the hash for the intentionally changed review/attempt migration; 5/8 architecture tests PASS, with 3 inherited failures consisting of two directory-list baseline mismatches and the unrelated pre-existing `GlobalFeedbackIsland.test.ts` FE hash mismatch.
+- Final follow-up revision after this recovery is the Owner-UAT candidate only. PR #189 remains Draft. No merge, Production deployment, or Historical Logistics Import was performed.
+
 PROJECT POSITION
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate [COMPLETE] → MVP1 Existing Operations [IMPLEMENTED] → ERP Inquiry and intervening merged expansions → WooCommerce Inbound → Tracking Outbound → Sync Orchestration → Product / Media → Full Order Workspace → Logistics OS [CURRENT CLOSURE] → KOL / Inventory / Procurement / Accounting / later expansion
 CURRENT_TRACK_PHASE_MAP: Logistics Core existing → Pending fulfillment implemented → Awaiting Tracking current → In Transit current → Exceptions current → Logistics V1 Owner UAT → Historical Logistics Import successor

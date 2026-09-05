@@ -60,19 +60,10 @@ return new class extends Migration {
             $table->index(['order_id', 'snapshotted_at']);
         });
 
-        Schema::table('shipment_item_packaging_snapshots', function (Blueprint $table): void {
-            $table->foreignId('shipment_attempt_id')->nullable()->after('shipment_id')->constrained('shipment_attempts')->nullOnDelete();
-            $table->index(['shipment_id', 'shipment_attempt_id']);
-        });
     }
 
     public function down(): void
     {
-        Schema::table('shipment_item_packaging_snapshots', function (Blueprint $table): void {
-            $table->dropIndex(['shipment_id', 'shipment_attempt_id']);
-            $table->dropForeign(['shipment_attempt_id']);
-            $table->dropColumn('shipment_attempt_id');
-        });
         Schema::dropIfExists('shipment_attempts');
         Schema::dropIfExists('logistics_review_histories');
         Schema::dropIfExists('logistics_reviews');

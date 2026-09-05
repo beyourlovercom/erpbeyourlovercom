@@ -1014,7 +1014,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_09_04_173500_extend_procurement_orders_workspace_fields.php' => 'd6e47588d6e812c3f7ca420f158019d8d952482964e22f79790c28f30bd249b2',
         'database/migrations/2026_09_05_113000_add_procurement_completion_fields.php' => '357f17ec1bdbaa24ded229c83da451aa1cadf8c381951fa8676f78762035dce9',
         'database/migrations/2026_09_05_121500_create_logistics_carriers_table.php' => '739417fd101c8538d18e8f801283de236f726be33ba3b03e82fe5e9c0e8c5ddb',
-        'database/migrations/2026_09_05_130000_create_logistics_review_and_attempt_history.php' => '8affc3c3bf0d6479bc451dc4f3526d52a12bbb7c591250e052bbe9fff8ba0106',
+        'database/migrations/2026_09_05_130000_create_logistics_review_and_attempt_history.php' => '58619af11ff4e8b6f8f25cd5448d3c7e6dc7f88af0038076f340f2babb8a4833',
     ];
 
     private const FRONTEND_FILES = [

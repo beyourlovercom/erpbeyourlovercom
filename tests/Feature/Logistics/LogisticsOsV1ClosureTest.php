@@ -7,6 +7,12 @@ use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
+use App\Modules\Logistics\Infrastructure\Models\ShipmentAttempt;
+use App\Modules\Logistics\Infrastructure\Models\ShipmentCarrierBilling;
+use App\Modules\Logistics\Infrastructure\Models\ShipmentItemPackagingSnapshot;
+use App\Modules\Inventory\Infrastructure\Models\PackagingMeasurementRecord;
+use App\Modules\Products\Infrastructure\Models\ProductPackagingProfile;
+use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -291,6 +297,41 @@ final class LogisticsOsV1ClosureTest extends TestCase
         $this->actingAs($user)->get('/logistics/cancelled')->assertInertia(fn (Assert $page) => $page
             ->where('orders.data.0.order_id', $order->id)
             ->where('orders.data.0.order_url', "/customers/orders/{$order->id}"));
+    }
+
+    public function test_reship_archives_packaging_and_billing_and_next_fulfillment_creates_fresh_active_packaging(): void
+    {
+        [$user, $order, $carrier] = $this->scenario();
+        $warehouse = Warehouse::query()->where('is_active', true)->orderBy('priority')->firstOrFail();
+        $product = $order->items()->firstOrFail()->product_id;
+        $measurement = PackagingMeasurementRecord::query()->create([
+            'product_id' => $product, 'warehouse_id' => $warehouse->id, 'status' => 'approved', 'packaging_method_key' => 'bubble_wrap_cut',
+            'packaging_length_cm' => '32.00', 'packaging_width_cm' => '18.00', 'packaging_height_cm' => '12.00', 'packaged_weight_kg' => '0.850',
+            'measured_at' => '2026-09-04 10:00:00', 'created_by' => $user->id, 'reviewed_by' => $user->id, 'reviewed_at' => now(),
+        ]);
+        ProductPackagingProfile::query()->create(['product_id' => $product, 'preset_key' => 'bubble_wrap_cut', 'current_measurement_record_id' => $measurement->id, 'is_active' => true]);
+        $this->dispatch($user, $order, $carrier, 'TN-BILLING');
+        $shipment = $order->fresh()->shipment()->firstOrFail();
+        $activePackaging = ShipmentItemPackagingSnapshot::query()->where('shipment_id', $shipment->id)->firstOrFail();
+        ShipmentCarrierBilling::query()->create(['shipment_id' => $shipment->id, 'chargeable_weight_kg' => '1.250', 'actual_cost' => '18.75', 'currency' => 'USD', 'billing_document_number' => 'BILL-OLD', 'provider_reference' => 'PROVIDER-OLD', 'delivery_status' => 'exception', 'data_source' => 'carrier_bill', 'raw_evidence' => ['source' => 'test']]);
+        $this->actingAs($user)->post("/logistics/orders/{$order->id}/mark-exception", ['logistics_note' => 'Billing evidence'])->assertRedirect();
+        $this->actingAs($user)->post("/logistics/orders/{$order->id}/reship", ['logistics_note' => 'New attempt'])->assertRedirect();
+
+        $attempt = ShipmentAttempt::query()->where('order_id', $order->id)->firstOrFail();
+        $this->assertSame('TN-BILLING', $attempt->tracking_number);
+        $this->assertSame('BILL-OLD', data_get($attempt->evidence_snapshot, 'billing.billing_document_number'));
+        $this->assertSame('18.7500', data_get($attempt->evidence_snapshot, 'billing.actual_cost'));
+        $this->assertSame($activePackaging->id, data_get($attempt->evidence_snapshot, 'packaging.0.id'));
+        $this->assertDatabaseMissing('shipment_item_packaging_snapshots', ['id' => $activePackaging->id]);
+        $this->assertDatabaseMissing('shipment_carrier_billing', ['shipment_id' => $shipment->id]);
+        $references = app(OrderPackagingReferenceProjection::class)->forOrder($order->fresh());
+        $this->assertSame('current_product_standard', $references[$order->items()->firstOrFail()->id]['source'] ?? null);
+
+        $this->dispatch($user, $order->fresh(), $carrier, 'TN-NEW');
+        $freshPackaging = ShipmentItemPackagingSnapshot::query()->where('shipment_id', $shipment->id)->firstOrFail();
+        $this->assertSame($measurement->id, $freshPackaging->packaging_measurement_record_id);
+        $this->assertNotSame($activePackaging->id, $freshPackaging->id);
+        $this->assertSame($activePackaging->id, data_get($attempt->fresh()->evidence_snapshot, 'packaging.0.id'));
     }
 
     public function test_entity_links_and_status_bar_are_server_provided(): void
