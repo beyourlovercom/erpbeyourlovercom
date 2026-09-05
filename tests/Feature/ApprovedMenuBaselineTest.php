@@ -23,10 +23,10 @@ class ApprovedMenuBaselineTest extends TestCase
         $this->assertFileExists($path, self::MISMATCH.': approved file is missing');
         $baseline = $this->baseline();
 
-        $this->assertSame('2.0', $baseline['version'] ?? null, self::MISMATCH.': version');
+        $this->assertSame('2.1', $baseline['version'] ?? null, self::MISMATCH.': version');
         $this->assertSame('OWNER_APPROVED', $baseline['status'] ?? null, self::MISMATCH.': status');
-        $this->assertSame('2026-09-01', $baseline['approved_at'] ?? null, self::MISMATCH.': approved_at');
-        $this->assertSame('e9912acbd49d27e47641f085e8877d4c508e14b4', $baseline['approved_head'] ?? null, self::MISMATCH.': approved_head');
+        $this->assertSame('2026-09-05', $baseline['approved_at'] ?? null, self::MISMATCH.': approved_at');
+        $this->assertSame('9443d91410968288e54c587bc85f226b8b772cad', $baseline['approved_head'] ?? null, self::MISMATCH.': approved_head');
         $this->assertSame([1, 2], $baseline['governed_levels'] ?? null, self::MISMATCH.': governed_levels');
         $this->assertIsArray($baseline['items'] ?? null, self::MISMATCH.': items');
     }
@@ -175,6 +175,8 @@ class ApprovedMenuBaselineTest extends TestCase
             'route' => $item['route'],
             'permission' => $item['permission'],
             'emoji' => $item['emoji'],
+            'status' => $item['status'],
+            'progress' => $item['progress'],
             'sort' => $item['sort'],
         ];
     }
@@ -197,6 +199,8 @@ class ApprovedMenuBaselineTest extends TestCase
                 'route' => $item['route'],
                 'permission' => $item['permission'],
                 'emoji' => $item['emoji'] ?? null,
+                'status' => $item['status'] ?? null,
+                'progress' => $item['progress'] ?? null,
                 'sort' => ($index + 1) * 10,
             ];
 

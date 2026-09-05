@@ -1,8 +1,8 @@
 {
-  "version": "2.0",
+  "version": "2.1",
   "status": "OWNER_APPROVED",
-  "approved_at": "2026-09-01",
-  "approved_head": "e9912acbd49d27e47641f085e8877d4c508e14b4",
+  "approved_at": "2026-09-05",
+  "approved_head": "9443d91410968288e54c587bc85f226b8b772cad",
   "governed_levels": [
     1,
     2
@@ -94,8 +94,8 @@
       "permission": "logistics.view",
       "emoji": "🚚",
       "function_zh": "管理发货、物流状态、运输信息和物流异常。",
-      "status": "planned",
-      "progress": 0,
+      "status": "in_progress",
+      "progress": 40,
       "sort": 30
     },
     {
@@ -184,8 +184,8 @@
       "permission": "sync.view",
       "emoji": "🔄",
       "function_zh": "管理外部系统、数据源及同步任务。",
-      "status": "planned",
-      "progress": 0,
+      "status": "implemented",
+      "progress": 100,
       "sort": 40
     },
     {
@@ -274,8 +274,8 @@
       "permission": "customers.view",
       "emoji": "👥",
       "function_zh": "管理客户资料、客户状态和客户关系信息。",
-      "status": "planned",
-      "progress": 0,
+      "status": "implemented",
+      "progress": 100,
       "sort": 50
     },
     {
@@ -454,8 +454,8 @@
       "permission": "kol.view",
       "emoji": "⭐",
       "function_zh": "管理网红资料、合作订单、内容进度和付款状态。",
-      "status": "planned",
-      "progress": 0,
+      "status": "in_progress",
+      "progress": 77,
       "sort": 70
     },
     {
@@ -574,8 +574,8 @@
       "permission": "kol.view",
       "emoji": null,
       "function_zh": "查看 KOL 合作记录、产品/样品关联和发货投影（M1.2 合作包交付）。",
-      "status": "planned",
-      "progress": 0,
+      "status": "implemented",
+      "progress": 100,
       "sort": 80
     },
     {
@@ -619,8 +619,8 @@
       "permission": "kol.view",
       "emoji": null,
       "function_zh": "管理 KOL 内容发布记录和发布证据（M1.3 内容包交付）。",
-      "status": "planned",
-      "progress": 0,
+      "status": "implemented",
+      "progress": 100,
       "sort": 110
     },
     {
@@ -634,8 +634,8 @@
       "permission": "kol.view",
       "emoji": null,
       "function_zh": "管理 KOL 佣金记录和结算历史（M1.4 财务包交付）。",
-      "status": "planned",
-      "progress": 0,
+      "status": "implemented",
+      "progress": 100,
       "sort": 120
     },
     {
@@ -649,8 +649,8 @@
       "permission": "kol.view",
       "emoji": null,
       "function_zh": "AffiliateWP 网红同步、KOL 绑定、审批状态与 provisioning 工作台；M1.4B 先交付 Influencer 模式，Coupon 模式属于 M1.4C。",
-      "status": "in_progress",
-      "progress": 25,
+      "status": "implemented",
+      "progress": 100,
       "sort": 130
     },
     {
@@ -664,8 +664,8 @@
       "permission": "inventory.view",
       "emoji": "📦",
       "function_zh": "管理库存数量、仓库、库存变动和库存异常。",
-      "status": "in_progress",
-      "progress": 80,
+      "status": "implemented",
+      "progress": 100,
       "sort": 80
     },
     {
@@ -679,8 +679,8 @@
       "permission": "inventory.view",
       "emoji": null,
       "function_zh": "查看仓库、SKU、库存量和库存异常概览。",
-      "status": "in_progress",
-      "progress": 80,
+      "status": "implemented",
+      "progress": 100,
       "sort": 10
     },
     {
@@ -694,8 +694,8 @@
       "permission": "inventory.view",
       "emoji": null,
       "function_zh": "查看全部仓库、仓库地址及每仓产品和库存汇总。",
-      "status": "in_progress",
-      "progress": 80,
+      "status": "implemented",
+      "progress": 100,
       "sort": 20
     },
     {
@@ -709,8 +709,8 @@
       "permission": "inventory.view",
       "emoji": null,
       "function_zh": "按产品与仓库查看跨仓 SKU 库存、停留时间和预计备货数量。",
-      "status": "in_progress",
-      "progress": 80,
+      "status": "implemented",
+      "progress": 100,
       "sort": 30
     },
     {
@@ -724,8 +724,8 @@
       "permission": "inventory.operate",
       "emoji": null,
       "function_zh": "通过复制粘贴、CSV 或 XLSX 批量同步仓库库存，支持部分/全量模式、多批次预览与确认。",
-      "status": "in_progress",
-      "progress": 80,
+      "status": "implemented",
+      "progress": 100,
       "sort": 40
     },
     {
@@ -739,8 +739,8 @@
       "permission": "inventory.packaging.submit",
       "emoji": null,
       "function_zh": "工厂包装操作员记录产品包装尺寸、包装重量和图片证据，形成不可篡改的审核历史。",
-      "status": "in_progress",
-      "progress": 0,
+      "status": "implemented",
+      "progress": 100,
       "sort": 50
     },
     {
@@ -754,8 +754,8 @@
       "permission": "procurement.view",
       "emoji": "🛒",
       "function_zh": "管理采购需求、采购任务、供应商及采购进度。",
-      "status": "planned",
-      "progress": 0,
+      "status": "in_progress",
+      "progress": 33,
       "sort": 90
     },
     {
@@ -814,8 +814,8 @@
       "permission": "products.view",
       "emoji": "🏷️",
       "function_zh": "管理产品、SKU、产品资料和相关业务配置。",
-      "status": "in_progress",
-      "progress": 50,
+      "status": "implemented",
+      "progress": 100,
       "sort": 100
     },
     {
@@ -949,8 +949,8 @@
       "permission": "accounting.view",
       "emoji": "🧾",
       "function_zh": "管理收入、支出、应收、应付及业务财务记录。",
-      "status": "planned",
-      "progress": 0,
+      "status": "in_progress",
+      "progress": 25,
       "sort": 120
     },
     {
@@ -1024,8 +1024,8 @@
       "permission": "system.permissions.manage",
       "emoji": "⚙️",
       "function_zh": "管理ERP系统配置，并查看当前版本与近期发布摘要。",
-      "status": "implemented",
-      "progress": 100,
+      "status": "in_progress",
+      "progress": 46,
       "sort": 130
     },
     {

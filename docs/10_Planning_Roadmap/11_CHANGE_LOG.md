@@ -635,3 +635,8 @@ GitHub: unique source of truth.
 Merge / Production release: separately Owner-gated; unchanged.
 Historical records: preserved, not rewritten.
 ```
+
+
+## 2026-09-05 — Roadmap + Production Reconciliation V2
+
+Reconciled stale menu progress against main, Closure/UAT and live bounded Production. Purchase OS V1 is now live after the earlier 404 snapshot. Added a four-dimension truth model, corrected approved menu completion metadata, and changed the strategic current line to Production Consolidation → Fulfillment Intelligence. Decision: D-044.

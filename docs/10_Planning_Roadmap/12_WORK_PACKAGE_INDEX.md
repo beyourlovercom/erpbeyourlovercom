@@ -411,3 +411,9 @@ ERP-KOL-V1-CROSS-PHASE-CLOSURE-001 = OWNER UAT PASS / PR #143 / READY FOR REVIEW
 ```
 
 Boundary: closure performs full regression, responsibility-scope verification, migration rehearsal, Product/Order/Shipment/Affiliate truth checks and Owner UAT. KOL Intelligence / influencer discovery remains deferred and is not part of this package.
+
+
+## ERP-ROADMAP-PRODUCTION-RECONCILIATION-V2-001
+Status: IMPLEMENTATION COMPLETE / FOCUSED VERIFICATION PASS / PREEXISTING ARCH BASELINE DRIFT RECORDED
+Scope: governance/menu progress/main/Closure/Production truth reconciliation; no Production mutation.
+Authority: `docs/10_Planning_Roadmap/27_ERP_ROADMAP_PRODUCTION_RECONCILIATION_V2.md`.
