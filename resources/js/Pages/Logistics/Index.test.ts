@@ -47,6 +47,19 @@ describe('Logistics warehouse recommendation', () => {
     expect(wrapper.text()).not.toContain('美西洛杉矶仓：可用 0')
   })
 
+  it('keeps manual warehouse selection available and explains why shipping is blocked', async () => {
+    const blocked = { ...order, warehouse_recommendation: { ...order.warehouse_recommendation, status: 'blocked' as const, reason_code: 'missing_product_master', reason_label: '订单存在未关联 Product Master 的商品，需人工处理。', warehouse: null } }
+    const wrapper = mount(Index, { props: { ...props, orders: { ...props.orders, data: [blocked] } } })
+    await wrapper.findAll('button').find(button => button.text() === '履约处理')!.trigger('click')
+    expect(wrapper.text()).toContain('仍可人工选择任一启用仓库发货')
+    const warehouseSelect = wrapper.findAll('select')[0]
+    expect(warehouseSelect.text()).toContain('美东纽约仓 (US-NY)')
+    const shipButton = wrapper.findAll('button').find(button => button.text() === '确认发货')!
+    expect(shipButton.attributes('disabled')).toBeUndefined()
+    await shipButton.trigger('click')
+    expect(wrapper.text()).toContain('请先选择发货仓库')
+  })
+
   it('does not render adopt action when recommendation is blocked', async () => {
     const blocked = { ...order, warehouse_recommendation: { ...order.warehouse_recommendation, status: 'blocked' as const, reason_code: 'service_regions_unconfigured', reason_label: '服务区域未配置', warehouse: null } }
     const wrapper = mount(Index, { props: { ...props, orders: { ...props.orders, data: [blocked] } } })

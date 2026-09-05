@@ -18,6 +18,7 @@ const props = defineProps<{ orders: Paginated<Order>; warehouses: Warehouse[]; c
 const drafts = reactive<Record<number, Draft>>({})
 const openOrderId = ref<number | null>(null)
 const copyState = ref<Record<number, 'success' | 'error'>>({})
+const shipValidation = ref<Record<number, string>>({})
 
 const localDateTime = (value: string | null) => value ? value.slice(0, 16) : new Date().toISOString().slice(0, 16)
 const makeDraft = (order: Order): Draft => ({
@@ -37,7 +38,12 @@ const adoptRecommendation = (order: Order) => {
 const saveDraft = (order: Order) => router.post(`/logistics/orders/${order.id}/draft`, drafts[order.id], { preserveScroll: true })
 const ship = (order: Order) => {
   const draft = drafts[order.id]
-  if (!draft.warehouse_id || !draft.carrier.trim() || !draft.service.trim() || !draft.tracking_number.trim()) return
+  delete shipValidation.value[order.id]
+  if (!draft.warehouse_id) { shipValidation.value[order.id] = '请先选择发货仓库'; return }
+  if (!draft.carrier.trim()) { shipValidation.value[order.id] = '请先选择物流商'; return }
+  if (!draft.service.trim()) { shipValidation.value[order.id] = '请填写物流渠道'; return }
+  if (!draft.tracking_number.trim()) { shipValidation.value[order.id] = '请填写 Tracking'; return }
+  if (!draft.shipped_at) { shipValidation.value[order.id] = '请选择发货时间'; return }
   router.post(`/logistics/orders/${order.id}/ship`, draft, { preserveScroll: true })
 }
 
@@ -83,7 +89,7 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
           <tr v-if="openOrderId === order.id"><td colspan="7" class="fulfillment-cell">
             <div class="fulfillment-workspace">
               <div class="recommendation-card" :class="{ blocked: order.warehouse_recommendation.status !== 'recommended' }">
-                <div><small>系统仓库建议</small><strong>{{ order.warehouse_recommendation.warehouse?.name ?? '暂不推荐' }}</strong><p>{{ order.warehouse_recommendation.reason_label }}</p></div>
+                <div><small>系统仓库建议</small><strong>{{ order.warehouse_recommendation.warehouse?.name ?? '暂不推荐' }}</strong><p>{{ order.warehouse_recommendation.reason_label }}</p><p v-if="order.warehouse_recommendation.status !== 'recommended'" class="manual-warehouse-hint">系统暂不推荐时，仍可人工选择任一启用仓库发货。</p></div>
                 <button v-if="order.warehouse_recommendation.status === 'recommended'" class="mvp-button mvp-button-primary" type="button" @click="adoptRecommendation(order)">采用推荐</button>
               </div>
               <div><h3>库存可用量</h3><div class="inventory-grid" v-for="item in order.items" :key="item.id"><strong>{{ item.sku ?? '无 SKU' }} × {{ item.quantity }}</strong><span v-for="row in item.availability" :key="row.warehouse_id" :class="{ shortage: row.quantity_available !== null && row.quantity_available < item.quantity, unknown: row.quantity_available === null }">{{ row.warehouse_name }}：{{ row.quantity_available === null ? '库存未知' : '可用 ' + row.quantity_available }} <small v-if="row.quantity_available !== null">(QOH {{ row.quantity_on_hand }} / Reserved {{ row.quantity_reserved }})</small><small v-else>未建立该 SKU 权威库存</small></span></div></div>
@@ -95,7 +101,7 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
                 <label>发货时间<input v-model="drafts[order.id].shipped_at" type="datetime-local"></label>
                 <label class="wide">物流备注<textarea v-model="drafts[order.id].logistics_note" rows="2" /></label>
               </div>
-              <div class="mvp-actions"><button class="mvp-button" @click="copy(order, 'recipient')">复制收件人</button><button class="mvp-button" @click="copy(order, 'full')">复制完整信息</button><button class="mvp-button" @click="copy(order, 'tracking')">复制追踪</button><button class="mvp-button" @click="saveDraft(order)">保存草稿</button><button class="mvp-button mvp-button-primary" :disabled="!drafts[order.id].warehouse_id || !drafts[order.id].carrier || !drafts[order.id].service || !drafts[order.id].tracking_number" @click="ship(order)">确认发货</button><span v-if="copyState[order.id] === 'success'" class="mvp-success">已复制</span><span v-else-if="copyState[order.id] === 'error'" class="mvp-error">复制失败</span></div>
+              <div class="mvp-actions"><button class="mvp-button" @click="copy(order, 'recipient')">复制收件人</button><button class="mvp-button" @click="copy(order, 'full')">复制完整信息</button><button class="mvp-button" @click="copy(order, 'tracking')">复制追踪</button><button class="mvp-button" @click="saveDraft(order)">保存草稿</button><button class="mvp-button mvp-button-primary" @click="ship(order)">确认发货</button><span v-if="shipValidation[order.id]" class="mvp-error" role="alert">{{ shipValidation[order.id] }}</span><span v-if="copyState[order.id] === 'success'" class="mvp-success">已复制</span><span v-else-if="copyState[order.id] === 'error'" class="mvp-error">复制失败</span></div>
             </div>
           </td></tr>
         </template>
@@ -112,7 +118,7 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
 .recommendation-card div { display: grid; gap: 3px; }
 .recommendation-card small { color: #627780; }
 .recommendation-card strong { font-size: 14px; color: #173c2b; }
-.recommendation-card p { margin: 0; font-size: 12px; color: #5f737c; }
+.recommendation-card p { margin: 0; font-size: 12px; color: #5f737c; }.recommendation-card .manual-warehouse-hint{margin-top:3px;font-weight:600;color:#7a5f18}
 .fulfillment-cell { background: #f8fafb; padding: 18px !important; }
 .fulfillment-workspace { display: grid; gap: 18px; }
 .fulfillment-workspace h3 { margin: 0 0 10px; font-size: 14px; }
