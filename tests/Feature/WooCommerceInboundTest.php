@@ -65,6 +65,25 @@ final class WooCommerceInboundTest extends TestCase
         $this->assertDatabaseHas('audit_records', ['action' => 'order.inbound_updated']);
     }
 
+    public function test_single_import_preserves_long_woo_address_line_2_snapshot(): void
+    {
+        $user = $this->userWith(['sync.operate']);
+        $product = Product::create([
+            'woocommerce_product_id' => 5002, 'sku' => 'WOO-5002', 'name' => 'Long Address Widget', 'product_type' => 'simple',
+        ]);
+        $addressLine2 = str_repeat('A', 300);
+        $payload = $this->wooOrder(102, 'WC-102', 'processing', '19.95', 5002, 'WOO-5002');
+        $payload['shipping']['address_2'] = $addressLine2;
+        Http::fake(['https://shop.test/wp-json/wc/v3/orders/102' => Http::response($payload, 200)]);
+
+        $this->actingAs($user)->post('/sync/woocommerce/single', ['woo_order_id' => 102])->assertSessionHasNoErrors();
+
+        $order = Order::with('address')->firstOrFail();
+        $this->assertSame($product->id, $order->items()->firstOrFail()->product_id);
+        $this->assertSame(300, strlen((string) $order->address->address_line_2));
+        $this->assertSame($addressLine2, $order->address->address_line_2);
+    }
+
     public function test_unmatched_woo_product_does_not_create_product_master_record(): void
     {
         $user = $this->userWith(['sync.operate']);
