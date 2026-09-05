@@ -135,17 +135,32 @@ describe('Kol/Create VI contract', () => {
     expect(wrapper.text()).not.toContain('Telegram')
   })
 
-  it('keeps only phone and email contact inputs inside the shipping-address card', () => {
+  it('keeps shipping contact lean and moves account email into the approved WordPress/Affiliate card', () => {
     const wrapper = mount(Create, { props: defaultProps })
     const addressCard = wrapper.findAll('.erp-form-card').find(card => card.text().includes('收件地址'))
+    const accountCard = wrapper.find('.kol-account-card')
     expect(addressCard).toBeTruthy()
     expect(addressCard!.text()).toContain('电话')
-    expect(addressCard!.text()).toContain('邮箱')
+    expect(addressCard!.text()).not.toContain('Email')
+    expect(accountCard.exists()).toBe(true)
+    expect(accountCard.text()).toContain('Email')
     expect(wrapper.text()).not.toContain('WhatsApp')
     expect(wrapper.text()).not.toContain('其他联系方式')
     expect(wrapper.text()).not.toContain('首选联系方式')
     expect(addressCard!.find('.kol-address-grid').exists()).toBe(true)
-    expect(addressCard!.findAll('.erp-form-field')).toHaveLength(8)
+    expect(addressCard!.findAll('.erp-form-field')).toHaveLength(7)
+  })
+
+  it('shows the approved WordPress / Affiliate account fields and password-safety copy', () => {
+    const wrapper = mount(Create, { props: defaultProps })
+    const card = wrapper.find('.kol-account-card')
+    expect(card.exists()).toBe(true)
+    expect(card.text()).toContain('WordPress / Affiliate 账号')
+    expect(card.find('input[type="email"]').exists()).toBe(true)
+    expect(card.findAll('input[type="password"]')).toHaveLength(2)
+    expect(card.text()).toContain('不保存到 ERP')
+    expect(card.find('input[placeholder="例如 ANDY15"]').exists()).toBe(true)
+    expect(card.text()).toContain('冲突不会覆盖现有 Coupon')
   })
 
   it('defaults cooperation type, joined date, owner and primary social platforms', () => {

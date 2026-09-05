@@ -128,6 +128,24 @@ final class LocalUatAffiliateWpGateway implements AffiliateWpGateway
         throw new LogicException('Local UAT fake does not support snapshot resource: '.$resource);
     }
 
+    public function checkAffiliateIdentity(string $email): ConnectorResponse
+    {
+        $normalized = mb_strtolower(trim($email));
+        if (str_contains($normalized, 'existing')) {
+            return $this->response([
+                'available' => false,
+                'wordpress_user_id' => 719999,
+                'affiliate_id' => str_contains($normalized, 'affiliate') ? 819999 : null,
+            ]);
+        }
+
+        return $this->response([
+            'available' => true,
+            'wordpress_user_id' => null,
+            'affiliate_id' => null,
+        ]);
+    }
+
     public function provisionAffiliate(array $payload, string $idempotencyKey): ConnectorResponse
     {
         $kolId = (int) ($payload['erp_kol_id'] ?? 0);

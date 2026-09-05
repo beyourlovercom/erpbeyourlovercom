@@ -27,6 +27,22 @@ final class CouponProvisioningService
             throw new AuthorizationException;
         }
 
+        return $this->provisionInternal($connectionKey, $input, $actor);
+    }
+
+    /** @param array{kol_id:int,code:string,discount_type:string,amount:string,expiry:?string} $input */
+    public function provisionForCreate(string $connectionKey, array $input, Authenticatable $actor): Model
+    {
+        if (! $actor->can('kol.operate')) {
+            throw new AuthorizationException;
+        }
+
+        return $this->provisionInternal($connectionKey, $input, $actor);
+    }
+
+    /** @param array{kol_id:int,code:string,discount_type:string,amount:string,expiry:?string} $input */
+    private function provisionInternal(string $connectionKey, array $input, Authenticatable $actor): Model
+    {
         $kolClass = self::KOL;
         $kol = $kolClass::query()->whereKey($input['kol_id'])->whereNull('archived_at')->first();
         if (! $kol) {

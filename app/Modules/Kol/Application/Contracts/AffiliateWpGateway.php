@@ -12,6 +12,8 @@ interface AffiliateWpGateway
 
     public function snapshot(string $resource, ?string $cursor = null, ?string $updatedAfter = null): ConnectorResponse;
 
+    public function checkAffiliateIdentity(string $email): ConnectorResponse;
+
     public function provisionAffiliate(array $payload, string $idempotencyKey): ConnectorResponse;
 
     public function setAffiliateStatus(int $affiliateId, string $status, string $idempotencyKey): ConnectorResponse;

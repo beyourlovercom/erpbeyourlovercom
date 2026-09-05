@@ -95,6 +95,50 @@ final class KolApprovalService
         });
     }
 
+    public function approveVerifiedCreate(Model $kol, Authenticatable $actor): Model
+    {
+        return $this->recordAutomaticCreateDecision($kol, $actor, 'approved', 'create_credentials_verified');
+    }
+
+    public function markCreateNeedsAttention(Model $kol, Authenticatable $actor, string $reasonCode): Model
+    {
+        if (! preg_match('/^[a-z][a-z0-9_.-]*$/', $reasonCode)) {
+            throw new InvalidArgumentException('Automatic approval reason must be a stable machine-readable key.');
+        }
+
+        return $this->recordAutomaticCreateDecision($kol, $actor, 'pending', $reasonCode);
+    }
+
+    private function recordAutomaticCreateDecision(Model $kol, Authenticatable $actor, string $outcome, string $reasonCode): Model
+    {
+        if (! KolScope::canOperate($actor)) {
+            throw new AuthorizationException('KOL operation permission is required.');
+        }
+
+        $decisionClass = self::DECISION;
+        $decision = DB::transaction(function () use ($kol, $actor, $outcome, $reasonCode, $decisionClass): Model {
+            $lockedKol = $kol->newQuery()->whereKey($kol->getKey())->lockForUpdate()->firstOrFail();
+            $prior = $decisionClass::query()->where('kol_id', $lockedKol->getKey())->orderByDesc('id')->first();
+            $created = $decisionClass::create([
+                'kol_id' => $lockedKol->getKey(),
+                'policy_id' => $prior?->policy_id,
+                'outcome' => $outcome,
+                'source' => 'system_auto_provision',
+                'actor_user_id' => $actor->getAuthIdentifier(),
+                'policy_mode' => $prior?->policy_mode,
+                'threshold_snapshot' => $prior?->threshold_snapshot ?? [],
+                'reason_code' => $reasonCode,
+                'reason_text' => null,
+                'decided_at' => now(),
+            ]);
+            $lockedKol->update(['approval_status' => $outcome, 'approval_updated_at' => now()]);
+            return $created;
+        });
+
+        $kol->refresh();
+        return $decision;
+    }
+
     public function approve(Model $kol, Authenticatable $actor, ?string $reasonText = null): Model
     {
         return $this->recordManualDecision($kol, $actor, 'approved', 'manager_approved', $reasonText);

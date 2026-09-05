@@ -265,7 +265,7 @@ final class KolService
      * @param  array<int, array<string, mixed>>  $socialAccounts
      * @param  array<int, array<string, mixed>>  $salesPerformanceEntries
      */
-    public function create(array $data, array $socialAccounts, Authenticatable $actor, array $salesPerformanceEntries = []): Model
+    public function create(array $data, array $socialAccounts, Authenticatable $actor, array $salesPerformanceEntries = [], bool $evaluateApproval = true): Model
     {
         $kolClass = self::KOL;
         $kol = $kolClass::create($data);
@@ -289,7 +289,9 @@ final class KolService
             }
         }
 
-        $this->approvals->evaluateAndRecord($kol, $actor, KolScope::canManageApprovals($actor));
+        if ($evaluateApproval) {
+            $this->approvals->evaluateAndRecord($kol, $actor, KolScope::canManageApprovals($actor));
+        }
 
         $this->audit->record(
             AuditActor::user($actor, AuditSource::Web),
