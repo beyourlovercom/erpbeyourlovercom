@@ -289,14 +289,33 @@ Full history remains a separately frozen Production data operation; do not silen
 `B2_CREDENTIAL_MUTATION_PLAN = FROZEN / REVERSIBLE`
 `B3_READ_ONLY_PROBE_PLAN = FROZEN`
 `WOO_FOCUSED_TESTS = PASS`
-`PRODUCTION_CREDENTIALS = NOT_PROVISIONED`
+`PRODUCTION_CREDENTIALS = OWNER_ONLY_ENTRY_REQUIRED`
 `LANE_A_DEPENDENCY = PASS`
-`REAL_ORDER_WRITE = NOT_EXECUTED`
+`REAL_ORDER_WRITE = NOT_EXECUTED / BACKUP_READY`
 `SMALL_WINDOW_IMPORT = NOT_EXECUTED`
 `FULL_HISTORY_IMPORT = NOT_EXECUTED`
 
 Current stop marker:
-`LANE_B = READY_FOR_PRODUCTION`
+`LANE_B = PRODUCTION_GATE_ACTIVE / WAITING_OWNER_CREDENTIAL_ENTRY`
+
+## Production execution evidence after Owner `pass` — 2026-09-05
+- Owner explicitly authorized the frozen Production First Import Gate with `pass`.
+- Production health before mutation: `/up` HTTP 200; `orders=0`; Woo order external references `=0`; failed jobs `=0`.
+- Current bounded Production release: `inventory-real-data-v1-rc-20260905-a36e9d-plus-4902bca`.
+- Production Product identity readiness observed: `products=247`; `products_with_sku=247`; Woo Product external references `=310`; SKU Aliases `=6`; open SKU reconciliations `=0`.
+- Canonical Production database-only backup created before any Woo order write.
+- Backup run: `#11`; run UUID `ece3cdfa-7a50-4c51-8ecc-5d7ffcc655f1`; state `ready`; exactly one encrypted artifact.
+- Backup artifact: `byl-erp-database-20260905-111356.tar.zst.enc`; size `1464888` bytes.
+- Backup SHA-256: `d95600f7c034ba65c850519779f24d929653e7ca91f30ead5c8547c99eba9f2c`; live file checksum verification `PASS`.
+- No Woo credential values were found in existing controlled ERP environment/config files.
+- Existing WordPress Connector signed channel does not expose Woo Order read or Woo REST-key provisioning; it cannot replace the required Woo Read-only credential.
+- A direct cross-device secret-transfer attempt was rejected by platform safety controls and was not bypassed.
+- WooCommerce REST API Keys admin page was opened on the Owner China Mac for the required Owner-only credential creation action.
+
+Current blocker:
+`PRODUCTION_WOO_READONLY_CREDENTIAL = OWNER_ONLY_ENTRY_REQUIRED`
+
+No real Woo order has been read through the Production Woo gateway and no canonical Order has been written yet.
 
 ## Next exact gate
 Owner returns:
