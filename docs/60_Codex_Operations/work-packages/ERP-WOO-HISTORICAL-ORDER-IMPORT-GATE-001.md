@@ -141,3 +141,47 @@ Current stop marker:
 `WOO_HISTORICAL_ORDER_IMPORT_GATE = READY_FOR_PRODUCTION / OWNER PASS REQUIRED`
 
 A new Owner `pass` authorizes only the frozen H01 → H20 historical operation, including acceptance of the explicit 18-item null-Product historical exception. It does not authorize any Product identity fabrication or unrelated Production changes.
+## Production execution after Owner pass — partial stop at H09
+
+Owner authorized the frozen historical import gate. A fresh Production database-only backup was created before historical writes:
+- backup run `#13`
+- UUID `51a05d04-47e7-4847-a2bd-bd923c9ca593`
+- state `ready`
+- exactly one encrypted artifact
+- live SHA-256 verification `PASS`
+
+H01 through H08 passed exactly: source count = seen = created, `updated=0`, `failed=0`, duplicate Woo refs `=0`, SKU reconciliations `=0`, failed jobs `=0`. After H08, Production contained `1836` Woo refs including the 10 current-day First Import Gate orders, and `15` bounded null-Product historical items.
+
+H09 (`2025-10-01` through `2025-10-31`) stopped the gate:
+- source / seen: `465`
+- created: `462`
+- failed: `3`
+- Production Woo refs after stop: `2298`
+- duplicate refs: `0`
+- SKU reconciliations: `0`
+- failed jobs: `0`
+
+The exact failed Woo IDs are `29486`, `29660`, `29662`. All three are `created_via=admin`, have zero `line_items`, and are intentionally rejected by the existing Order normalizer (`WooCommerce order <id> has no line items.`).
+
+Classification:
+- `29486`: fee-only admin shell, USD 10.00, no product line.
+- `29660`: resend-shipping admin shell, USD 10.00, references original Woo order `29217`.
+- `29662`: resend-shipping admin shell, USD 10.00, references original Woo order `29091`.
+- Original product orders `29217` and `29091` each have one real line item and are already present in ERP.
+
+Do not synthesize an Order item, SKU, Product identity, or fabricated external reference for these three rows. They are not representable as canonical product Orders under the frozen inbound contract.
+
+New explicit gate:
+`HISTORICAL_NON_PRODUCT_ADMIN_EXCEPTION = 3 SOURCE ROWS / OWNER ACCEPTANCE REQUIRED`
+
+If Owner accepts this exception, historical acceptance is redefined as:
+- frozen source rows through cutoff: `6047`
+- canonical product Orders expected from historical import: `6044`
+- excluded non-product admin shells: exactly `3` (`29486`, `29660`, `29662`)
+- plus current-day First Import Gate refs: `10`
+- expected canonical Woo refs after historical closure: `6054`, unless a separately authorized incremental import has added newer refs.
+
+Current stop marker:
+`WOO_HISTORICAL_ORDER_IMPORT_GATE = PAUSED_AT_H09 / WAITING_OWNER_ACCEPTANCE_OF_3_NON_PRODUCT_ADMIN_SHELLS`
+
+H10 and later chunks have not executed.
