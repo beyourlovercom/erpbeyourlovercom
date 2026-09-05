@@ -50,6 +50,46 @@ describe('Procurement/Orders/Show', () => {
     expect(wrapper.find('a[href="https://shop.test/item"]').attributes('target')).toBe('_blank')
   })
 
+
+  it('opens Kuaidi100 and copies the tracking number', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const wrapper = mount(Show, { props: { procurementOrder, statusOptions, canOperate: true } })
+
+    const button = wrapper.get('[data-testid="query-tracking"]')
+    expect(button.attributes('disabled')).toBeUndefined()
+    await button.trigger('click')
+
+    expect(open).toHaveBeenCalledWith('https://www.kuaidi100.com/', '_blank', 'noopener,noreferrer')
+    expect(writeText).toHaveBeenCalledWith('SF123456')
+    await vi.waitFor(() => expect(wrapper.text()).toContain('快递单号已复制，请在快递100粘贴查询'))
+    open.mockRestore()
+  })
+
+  it('falls back to execCommand copy when Clipboard API is unavailable', async () => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })
+    const execCommand = vi.fn().mockReturnValue(true)
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: execCommand })
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const wrapper = mount(Show, { props: { procurementOrder, statusOptions, canOperate: true } })
+
+    await wrapper.get('[data-testid="query-tracking"]').trigger('click')
+
+    expect(execCommand).toHaveBeenCalledWith('copy')
+    expect(open).toHaveBeenCalledWith('https://www.kuaidi100.com/', '_blank', 'noopener,noreferrer')
+    expect(wrapper.text()).toContain('快递单号已复制，请在快递100粘贴查询')
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: undefined })
+    open.mockRestore()
+  })
+
+  it('disables one-click tracking query when tracking number is empty', () => {
+    const wrapper = mount(Show, {
+      props: { procurementOrder: { ...procurementOrder, tracking_number: null }, statusOptions, canOperate: true },
+    })
+    expect(wrapper.get('[data-testid="query-tracking"]').attributes('disabled')).toBeDefined()
+  })
+
   it('keeps workspace read only without operate permission', () => {
     const wrapper = mount(Show, { props: { procurementOrder, statusOptions, canOperate: false } })
     expect(wrapper.findAll('select')).toHaveLength(0)
