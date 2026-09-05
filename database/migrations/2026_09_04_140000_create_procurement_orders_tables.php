@@ -28,7 +28,7 @@ return new class extends Migration {
             $table->string('purchase_size', 255)->nullable();
             $table->unsignedInteger('purchase_quantity');
             $table->timestamps();
-            $table->unique(['procurement_order_id', 'source_order_item_id']);
+            $table->unique(['procurement_order_id', 'source_order_item_id'], 'proc_order_item_source_unique');
         });
     }
 
