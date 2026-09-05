@@ -15,11 +15,16 @@ final class RoleAwareLoginResponse implements LoginResponseContract
         }
 
         $user = $request->user();
-        $fallback = $user?->can(AuthorizationKeys::InventoryPackagingSubmit->value)
-            && ! $user?->can(AuthorizationKeys::DashboardView->value)
-                ? route('inventory.packaging.index')
-                : Fortify::redirects('login');
+        $hasDashboard = $user?->can(AuthorizationKeys::DashboardView->value) ?? false;
 
-        return redirect()->intended($fallback);
+        if (! $hasDashboard && $user?->can(AuthorizationKeys::InventoryPackagingSubmit->value)) {
+            return redirect()->intended(route('inventory.packaging.index'));
+        }
+
+        if (! $hasDashboard && $user?->can(AuthorizationKeys::ProcurementView->value)) {
+            return redirect()->intended(route('procurement.index'));
+        }
+
+        return redirect()->intended(Fortify::redirects('login'));
     }
 }

@@ -66,6 +66,7 @@ final class PermissionCatalog
                 'permissions' => [
                     ['key' => 'procurement.view', 'label' => '查看采购'],
                     ['key' => 'procurement.create', 'label' => '创建采购订单'],
+                    ['key' => 'procurement.operate', 'label' => '执行采购订单'],
                 ],
             ],
             '产品' => [
