@@ -10,10 +10,11 @@ type RecommendationWarehouse = { id: number; slug: string; code: string; name: s
 type Recommendation = { status: 'recommended' | 'blocked'; reason_code: string; reason_label: string; country_code: string | null; required_sku_count: number | null; candidate_count: number; warehouse: RecommendationWarehouse | null }
 type Order = { id: number; external_order_number: string; order_kind_label: string; recipient_name: string | null; phone: string | null; country: string | null; owner_label: string | null; item_count: number; items: Item[]; warehouse_recommendation: Recommendation; shipment: Shipment | null }
 type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null; priority: number; inventory_state: string; can_auto_allocate: boolean; service_regions: { country_code: string; priority: number }[] }
+type CarrierOption = { value: string; label: string }
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; per_page: number; total: number }
 type Draft = { warehouse_id: number | ''; carrier: string; service: string; tracking_number: string; shipped_at: string; logistics_note: string }
 
-const props = defineProps<{ orders: Paginated<Order>; warehouses: Warehouse[] }>()
+const props = defineProps<{ orders: Paginated<Order>; warehouses: Warehouse[]; carrierOptions: CarrierOption[] }>()
 const drafts = reactive<Record<number, Draft>>({})
 const openOrderId = ref<number | null>(null)
 const copyState = ref<Record<number, 'success' | 'error'>>({})
@@ -88,7 +89,7 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
               <div><h3>库存可用量</h3><div class="inventory-grid" v-for="item in order.items" :key="item.id"><strong>{{ item.sku ?? '无 SKU' }} × {{ item.quantity }}</strong><span v-for="row in item.availability" :key="row.warehouse_id" :class="{ shortage: row.quantity_available !== null && row.quantity_available < item.quantity, unknown: row.quantity_available === null }">{{ row.warehouse_name }}：{{ row.quantity_available === null ? '库存未知' : '可用 ' + row.quantity_available }} <small v-if="row.quantity_available !== null">(QOH {{ row.quantity_on_hand }} / Reserved {{ row.quantity_reserved }})</small><small v-else>未建立该 SKU 权威库存</small></span></div></div>
               <div class="fulfillment-form">
                 <label>发货仓库<select v-model="drafts[order.id].warehouse_id"><option value="">请选择</option><option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} ({{ warehouse.code }}){{ warehouse.can_auto_allocate ? '' : ' · 库存未确认' }}</option></select></label>
-                <label>物流商<input v-model="drafts[order.id].carrier" placeholder="例如 UPS"></label>
+                <label>物流商<select v-model="drafts[order.id].carrier" aria-label="物流商"><option value="">请选择承运商</option><option v-for="carrier in carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select></label>
                 <label>物流渠道<input v-model="drafts[order.id].service" placeholder="例如 Ground"></label>
                 <label>Tracking<input v-model="drafts[order.id].tracking_number" placeholder="追踪号"></label>
                 <label>发货时间<input v-model="drafts[order.id].shipped_at" type="datetime-local"></label>

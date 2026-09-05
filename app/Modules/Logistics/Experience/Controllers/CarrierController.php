@@ -2,7 +2,9 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
+use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
@@ -12,37 +14,54 @@ final class CarrierController
 {
     private const PER_PAGE = 50;
 
-    public function index(): Response
+    public function index(Request $request): Response
     {
+        $masters = Carrier::query()->orderBy('id')->get();
         $shipments = Shipment::query()
             ->with('billingEvidence')
-            ->whereNotNull('carrier')
-            ->where('carrier', '<>', '')
-            ->get();
+            ->whereIn('carrier', $masters->pluck('name'))
+            ->get()
+            ->groupBy(fn (Shipment $shipment): string => trim((string) $shipment->carrier));
 
-        $carriers = $shipments
-            ->groupBy(fn (Shipment $shipment): string => trim((string) $shipment->carrier))
-            ->filter(fn (Collection $rows, string $carrier): bool => $carrier !== '')
-            ->map(fn (Collection $rows, string $carrier): array => [
-                'name' => $carrier,
-                ...$this->summary($rows),
-            ])
-            ->sortByDesc('shipment_count')
-            ->values();
+        $carriers = $masters->map(fn (Carrier $carrier): array => [
+            'id' => $carrier->id,
+            'name' => $carrier->name,
+            'is_active' => $carrier->is_active,
+            ...$this->summary($shipments->get($carrier->name, collect())),
+        ])->values();
 
-        return Inertia::render('Logistics/Carriers/Index', ['carriers' => $carriers]);
+        return Inertia::render('Logistics/Carriers/Index', [
+            'carriers' => $carriers,
+            'canOperate' => (bool) $request->user()?->can('logistics.operate'),
+        ]);
+    }
+
+    public function store(Request $request): RedirectResponse
+    {
+        $request->merge(['name' => trim((string) $request->input('name'))]);
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:128', 'unique:logistics_carriers,name'],
+        ]);
+
+        Carrier::query()->create([
+            'name' => $validated['name'],
+            'is_active' => true,
+            'created_by' => $request->user()?->getAuthIdentifier(),
+        ]);
+
+        return redirect()->route('logistics.carriers')->with('success', '承运商已新增');
     }
 
     public function show(Request $request, string $carrier): Response
     {
         $carrier = trim($carrier);
         abort_if($carrier === '', 404);
+        Carrier::query()->where('name', $carrier)->firstOrFail();
 
         $summaryRows = Shipment::query()
             ->with('billingEvidence')
             ->where('carrier', $carrier)
             ->get();
-        abort_if($summaryRows->isEmpty(), 404);
 
         $shipments = Shipment::query()
             ->with(['order.address', 'order.items', 'warehouse', 'handler', 'billingEvidence'])

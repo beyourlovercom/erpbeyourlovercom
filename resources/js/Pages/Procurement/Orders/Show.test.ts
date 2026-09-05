@@ -24,6 +24,8 @@ const procurementOrder = {
   created_at: '2026-09-04T08:00:00Z',
   updated_at: '2026-09-04T09:00:00Z',
   status_updated_at: '2026-09-04T09:00:00Z',
+  completion_reason: null,
+  completed_at: null,
   items: [{ id: 10, sku: 'SKU-10', product_summary: '测试产品', source_quantity: 2, purchase_url: 'https://shop.test/item', purchase_size: 'M', purchase_quantity: 2 }],
 }
 const statusOptions = [{ value: 'pending', label: '待采购' }, { value: 'ordered', label: '已下单' }]
@@ -88,6 +90,18 @@ describe('Procurement/Orders/Show', () => {
       props: { procurementOrder: { ...procurementOrder, tracking_number: null }, statusOptions, canOperate: true },
     })
     expect(wrapper.get('[data-testid="query-tracking"]').attributes('disabled')).toBeDefined()
+  })
+
+
+  it('shows automatic completion evidence as read-only record data', () => {
+    const wrapper = mount(Show, { props: {
+      procurementOrder: { ...procurementOrder, status: 'completed', status_label: '已完成', completion_reason: 'source_order_shipped', completed_at: '2026-09-05T03:00:00Z' },
+      statusOptions,
+      canOperate: true,
+    } })
+    expect(wrapper.text()).toContain('完成方式')
+    expect(wrapper.text()).toContain('源订单已发货自动完成')
+    expect(wrapper.text()).toContain('完成时间')
   })
 
   it('keeps workspace read only without operate permission', () => {

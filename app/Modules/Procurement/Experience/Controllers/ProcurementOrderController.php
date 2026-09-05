@@ -126,7 +126,7 @@ final class ProcurementOrderController
         $status = ProcurementOrderStatus::tryFrom($procurementOrder->status);
         return Inertia::render('Procurement/Orders/Show', [
             'procurementOrder' => $procurementOrder->only([
-                'id', 'procurement_number', 'status', 'carrier', 'tracking_number',
+                'id', 'procurement_number', 'status', 'carrier', 'tracking_number', 'completion_reason', 'completed_at',
                 'source_order_id', 'created_at', 'updated_at', 'status_updated_at',
             ]) + [
                 'status_label' => $status?->label() ?? $procurementOrder->status,
@@ -151,10 +151,13 @@ final class ProcurementOrderController
             'tracking_number' => ['nullable', 'string', 'max:128'],
         ]);
         $statusChanged = $procurementOrder->status !== $data['status'];
+        $nextCompleted = $data['status'] === ProcurementOrderStatus::Completed->value;
         $procurementOrder->fill([
             'status' => $data['status'],
             'carrier' => $this->nullableTrim($data['carrier'] ?? null),
             'tracking_number' => $this->nullableTrim($data['tracking_number'] ?? null),
+            'completion_reason' => $nextCompleted ? ($procurementOrder->status === ProcurementOrderStatus::Completed->value ? $procurementOrder->completion_reason : 'manual') : null,
+            'completed_at' => $nextCompleted ? ($procurementOrder->completed_at ?? now()) : null,
             'updated_by' => $request->user()->getAuthIdentifier(),
             'status_updated_at' => $statusChanged ? now() : $procurementOrder->status_updated_at,
         ])->save();

@@ -15,7 +15,8 @@ const order = {
   warehouse_recommendation: { status: 'recommended' as const, reason_code: 'recommended', reason_label: '可采用系统推荐。', country_code: 'US', required_sku_count: 1, candidate_count: 1, warehouse: { id: 2, slug: 'us-ny', code: 'US-NY', name: '美东纽约仓' } },
   shipment: null,
 }
-const props = { orders: { data: [order], current_page: 1, last_page: 1, per_page: 50, total: 1 }, warehouses: [warehouse] }
+const carrierOptions = [{ value: 'DHL', label: 'DHL' }, { value: 'UPS', label: 'UPS' }, { value: 'FedEx', label: 'FedEx' }]
+const props = { orders: { data: [order], current_page: 1, last_page: 1, per_page: 50, total: 1 }, warehouses: [warehouse], carrierOptions }
 
 describe('Logistics warehouse recommendation', () => {
   it('adopts a recommendation into the local draft without saving automatically', async () => {
@@ -24,6 +25,18 @@ describe('Logistics warehouse recommendation', () => {
     expect((wrapper.get('select').element as HTMLSelectElement).value).toBe('')
     await wrapper.findAll('button').find(button => button.text() === '采用推荐')!.trigger('click')
     expect((wrapper.get('select').element as HTMLSelectElement).value).toBe('2')
+  })
+
+
+  it('uses the canonical carrier dropdown instead of free text', async () => {
+    const wrapper = mount(Index, { props })
+    await wrapper.findAll('button').find(button => button.text() === '履约处理')!.trigger('click')
+    const carrierSelect = wrapper.get('select[aria-label="物流商"]')
+    expect(carrierSelect.text()).toContain('请选择承运商')
+    expect(carrierSelect.text()).toContain('DHL')
+    expect(carrierSelect.text()).toContain('UPS')
+    expect(carrierSelect.text()).toContain('FedEx')
+    expect(wrapper.find('input[placeholder="例如 UPS"]').exists()).toBe(false)
   })
 
   it('renders unknown inventory as unknown instead of numeric zero', async () => {

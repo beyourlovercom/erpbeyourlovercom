@@ -5,6 +5,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Logistics\Application\WarehouseRecommendationService;
+use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\Request;
@@ -35,6 +36,10 @@ final class LogisticsController
         return Inertia::render('Logistics/Index', [
             'orders' => $orders->through(fn (Order $order): array => $this->data($order, $availability))->toArray(),
             'warehouses' => $this->availability->activeWarehouses(),
+            'carrierOptions' => Carrier::query()->where('is_active', true)->orderBy('id')->get(['name'])->map(fn (Carrier $carrier): array => [
+                'value' => $carrier->name,
+                'label' => $carrier->name,
+            ])->values()->all(),
         ]);
     }
 
@@ -49,7 +54,7 @@ final class LogisticsController
     {
         $data = $request->validate([
             ...$this->draftRules(),
-            'carrier' => ['required', 'string', 'max:128'],
+            'carrier' => ['required', 'string', 'max:128', Rule::exists('logistics_carriers', 'name')->where('is_active', true)],
             'tracking_number' => ['required', 'string', 'max:128'],
             'shipped_at' => ['required', 'date'],
         ]);
@@ -98,7 +103,7 @@ final class LogisticsController
     {
         return [
             'warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('is_active', true)],
-            'carrier' => ['nullable', 'string', 'max:128'],
+            'carrier' => ['nullable', 'string', 'max:128', Rule::exists('logistics_carriers', 'name')->where('is_active', true)],
             'service' => ['nullable', 'string', 'max:128'],
             'tracking_number' => ['nullable', 'string', 'max:128'],
             'shipped_at' => ['nullable', 'date'],

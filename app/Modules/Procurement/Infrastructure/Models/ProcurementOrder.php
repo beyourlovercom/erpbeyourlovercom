@@ -9,11 +9,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProcurementOrder extends Model
 {
-    protected $fillable = ['procurement_number', 'source_order_id', 'status', 'carrier', 'tracking_number', 'created_by', 'updated_by', 'status_updated_at'];
+    protected $fillable = ['procurement_number', 'source_order_id', 'status', 'carrier', 'tracking_number', 'completion_reason', 'completed_at', 'created_by', 'updated_by', 'status_updated_at'];
 
     protected function casts(): array
     {
-        return ['status_updated_at' => 'immutable_datetime'];
+        return ['status_updated_at' => 'immutable_datetime', 'completed_at' => 'immutable_datetime'];
     }
 
     public function sourceOrder(): BelongsTo { return $this->belongsTo(Order::class, 'source_order_id'); }
