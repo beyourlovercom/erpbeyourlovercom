@@ -91,6 +91,11 @@ class Kol extends Model
         return $this->hasMany(KolSocialAccount::class, 'kol_id');
     }
 
+    public function affiliateAccounts(): HasMany
+    {
+        return $this->hasMany(KolAffiliateAccount::class, 'kol_id');
+    }
+
     public function opportunities(): HasMany
     {
         return $this->hasMany(KolOpportunity::class, 'kol_id')->orderByDesc('created_at')->orderByDesc('id');

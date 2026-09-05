@@ -8,6 +8,7 @@ use App\Modules\Kol\Application\KolScope;
 use App\Modules\Kol\Application\KolService;
 use App\Modules\Kol\Application\SavedViewService;
 use App\Modules\Kol\Infrastructure\Models\Kol;
+use App\Modules\Shell\Application\UserUiPreferenceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,10 +19,13 @@ use Inertia\Response;
 
 final class KolController
 {
+    private const GRID_NAMESPACE = 'grid.kol.library.v1';
+
     public function __construct(
         private readonly KolService $kols,
         private readonly SavedViewService $views,
         private readonly KolCreateAutoProvisionService $autoProvision,
+        private readonly UserUiPreferenceService $uiPreferences,
     ) {}
 
     public function index(Request $request): Response
@@ -53,6 +57,8 @@ final class KolController
             'canOperate' => KolScope::canOperate($user),
             'canManageViews' => $canManageViews,
             'isAllScope' => KolScope::isAllScope($user),
+            'gridPreferenceNamespace' => self::GRID_NAMESPACE,
+            'gridPreference' => $user ? $this->uiPreferences->get($user, self::GRID_NAMESPACE) : null,
         ]);
     }
 
@@ -396,6 +402,8 @@ final class KolController
             }
         }
 
+        $affiliateAccount = $kol->relationLoaded('affiliateAccounts') ? $kol->affiliateAccounts->first() : null;
+
         return [
             'id' => $kol->id,
             'display_name' => $kol->display_name,
@@ -403,6 +411,7 @@ final class KolController
             'avatar_source' => $kol->avatar_source,
             'avatar_updated_at' => $kol->avatar_updated_at?->toIso8601String(),
             'country_code' => $kol->country_code,
+            'shipping_city' => $kol->shipping_city,
             'status' => $kol->status,
             'relationship_stage' => $kol->relationship_stage,
             'owner' => $kol->owner ? ['id' => $kol->owner->id, 'name' => $kol->owner->name] : null,
@@ -425,6 +434,11 @@ final class KolController
             'is_mcn_managed' => $kol->is_mcn_managed,
             'historical_order_count' => (int) ($kol->historical_order_count ?? 0),
             'has_published_content' => (bool) ($kol->has_published_content ?? false),
+            'affiliate_account' => $affiliateAccount ? [
+                'affiliate_id' => (int) $affiliateAccount->affiliate_id,
+                'wordpress_user_id' => $affiliateAccount->wordpress_user_id !== null ? (int) $affiliateAccount->wordpress_user_id : null,
+                'wordpress_user_login' => $affiliateAccount->wordpress_user_login,
+            ] : null,
         ];
     }
 

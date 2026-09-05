@@ -8,9 +8,11 @@ use App\Models\User;
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
 use App\Modules\Kol\Infrastructure\AffiliateWp\LocalUatAffiliateWpGateway;
 use App\Modules\Kol\Infrastructure\Models\Kol;
+use App\Modules\Kol\Infrastructure\Models\KolAffiliateAccount;
 use App\Modules\Kol\Infrastructure\Models\KolSocialAccount;
 use App\Modules\Kol\Infrastructure\Models\KolSocialMetric;
 use App\Modules\Kol\Infrastructure\Models\SavedView;
+use App\Modules\Shell\Infrastructure\Models\UserUiPreference;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -161,6 +163,61 @@ class KolFoundationTest extends TestCase
         $ids = array_column($data, 'id');
         $this->assertContains($ownKol->id, $ids);
         $this->assertNotContains($otherKol->id, $ids);
+    }
+
+    public function test_library_projects_account_synced_grid_preference_namespace_and_value(): void
+    {
+        $user = $this->userWith(['kol.view']);
+        UserUiPreference::create([
+            'user_id' => $user->id,
+            'namespace' => 'grid.kol.library.v1',
+            'value' => ['columns' => [
+                ['key' => 'followers', 'visible' => true],
+                ['key' => 'account', 'visible' => false],
+            ]],
+        ]);
+
+        $response = $this->actingAs($user)->get('/kol/library');
+        $response->assertOk();
+        $props = $response->original->getData()['page']['props'];
+
+        self::assertSame('grid.kol.library.v1', $props['gridPreferenceNamespace']);
+        self::assertSame('followers', $props['gridPreference']['columns'][0]['key']);
+        self::assertFalse($props['gridPreference']['columns'][1]['visible']);
+    }
+
+    public function test_library_projects_current_wordpress_account_and_affiliate_id_without_binding_unbound_kol(): void
+    {
+        config(['services.andy_core.connection_key' => 'beyourlover.com']);
+        $user = $this->userWith(['kol.view']);
+        $bound = $this->makeKol(['display_name' => 'Bound Account KOL', 'owner_id' => $user->id]);
+        $unbound = $this->makeKol(['display_name' => 'No Affiliate KOL', 'owner_id' => $user->id]);
+
+        KolAffiliateAccount::create([
+            'connection_key' => 'beyourlover.com',
+            'affiliate_id' => 1430,
+            'kol_id' => $bound->id,
+            'wordpress_user_id' => 8811,
+            'wordpress_user_login' => 'provider-login',
+            'wordpress_user_email' => 'provider@example.test',
+            'provider_status' => 'active',
+            'origin' => 'external_sync',
+            'sync_status' => 'synced',
+            'reconciliation_status' => 'present',
+            'provisioning_status' => 'not_requested',
+        ]);
+
+        $response = $this->actingAs($user)->get('/kol/library');
+        $response->assertOk();
+        $rows = collect($response->original->getData()['page']['props']['kols']['data'] ?? [])->keyBy('id');
+
+        self::assertSame(1430, $rows[$bound->id]['affiliate_account']['affiliate_id']);
+        self::assertSame(8811, $rows[$bound->id]['affiliate_account']['wordpress_user_id']);
+        self::assertSame('provider-login', $rows[$bound->id]['affiliate_account']['wordpress_user_login']);
+        self::assertArrayNotHasKey('wordpress_user_email', $rows[$bound->id]['affiliate_account']);
+        self::assertArrayNotHasKey('provider_status', $rows[$bound->id]['affiliate_account']);
+        self::assertNull($rows[$unbound->id]['affiliate_account']);
+        self::assertNull(KolAffiliateAccount::where('kol_id', $unbound->id)->first(), 'List projection must never auto-bind/provision an unbound historical KOL.');
     }
 
     public function test_specialist_cannot_access_other_owner_kol_directly(): void

@@ -2,11 +2,13 @@
 import { Head, Link, router } from '@inertiajs/vue3'
 import { computed, reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+import { useAccountGridPreferences, type GridColumnDefinition, type GridPreferenceValue } from '../../Composables/useAccountGridPreferences'
 
 type KolRow = {
   id: number
   display_name: string
   country_code: string | null
+  shipping_city: string | null
   status: string
   relationship_stage: string
   owner: { id: number; name: string } | null
@@ -24,6 +26,11 @@ type KolRow = {
   is_mcn_managed: boolean
   historical_order_count: number
   has_published_content: boolean
+  affiliate_account: {
+    affiliate_id: number
+    wordpress_user_id: number | null
+    wordpress_user_login: string | null
+  } | null
 }
 
 type SavedView = {
@@ -37,6 +44,7 @@ type SavedView = {
 }
 
 type OwnerOption = { value: number; label: string }
+type ColumnKey = 'account' | 'level' | 'city' | 'country_region' | 'categories' | 'products' | 'content_format' | 'product_quantity' | 'relationship_stage' | 'status' | 'mcn_agency' | 'owner' | 'followers' | 'published' | 'historical_order_count' | 'joined_at' | 'internal_contact'
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; per_page: number; total: number }
 
 const props = defineProps<{
@@ -47,7 +55,44 @@ const props = defineProps<{
   canOperate: boolean
   canManageViews: boolean
   isAllScope: boolean
+  gridPreferenceNamespace: string
+  gridPreference: GridPreferenceValue<ColumnKey> | null
 }>()
+
+const defaultColumns: GridColumnDefinition<ColumnKey>[] = [
+  { key: 'account', label: '账号' },
+  { key: 'level', label: '等级' },
+  { key: 'city', label: '城市' },
+  { key: 'country_region', label: '国家 / 地区', defaultVisible: false },
+  { key: 'categories', label: '主营品类' },
+  { key: 'products', label: '主推产品' },
+  { key: 'content_format', label: '内容形式' },
+  { key: 'product_quantity', label: '产品数量' },
+  { key: 'relationship_stage', label: '合作阶段' },
+  { key: 'status', label: '状态', defaultVisible: false },
+  { key: 'mcn_agency', label: 'MCN机构' },
+  { key: 'owner', label: '负责人' },
+  { key: 'followers', label: '粉丝数' },
+  { key: 'published', label: '是否已发布' },
+  { key: 'historical_order_count', label: '历史带货数量' },
+  { key: 'joined_at', label: '加入日期', defaultVisible: false },
+  { key: 'internal_contact', label: '内部对接人', defaultVisible: false },
+]
+
+const columnSettingsOpen = ref(false)
+const {
+  columns: columnPreferences,
+  visibleColumns,
+  syncState: columnPreferenceSyncState,
+  toggle: toggleColumn,
+  startDrag: startColumnDrag,
+  drop: dropColumn,
+  reset: resetColumns,
+} = useAccountGridPreferences<ColumnKey>({
+  namespace: props.gridPreferenceNamespace,
+  definitions: defaultColumns,
+  serverValue: props.gridPreference,
+})
 
 const filters = reactive({
   search: props.filters.search ?? '',
@@ -229,53 +274,92 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
       </form>
 
       <!-- Table -->
-      <div class="mvp-table-wrap">
-        <table class="mvp-table kol-dense-table">
-          <thead>
-            <tr>
-              <th>红人名称</th>
-              <th>等级</th>
-              <th>城市</th>
-              <th>主营品类</th>
-              <th>主推产品</th>
-              <th>内容形式</th>
-              <th>产品数量</th>
-              <th>店铺数量</th>
-              <th>合作阶段</th>
-              <th>MCN机构</th>
-              <th>负责人</th>
-              <th>粉丝数</th>
-              <th>是否已发布</th>
-              <th>历史带货数量</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="kol in kols.data" :key="kol.id">
-              <td>
-                <Link :href="`/kol/library/${kol.id}`">{{ kol.display_name }}</Link>
-                <span v-if="kol.is_100k_plus" class="badge-100k">100K+</span>
-              </td>
-              <td><span v-if="kol.level" class="tag-chip">{{ kol.level }}</span><span v-else>—</span></td>
-              <td>{{ tagList(kol.categories) }}</td>
-              <td>{{ tagList(kol.products) }}</td>
-              <td>{{ kol.content_format ?? '—' }}</td>
-              <td>{{ kol.product_quantity ?? '—' }}</td>
-              <td>{{ stageLabel(kol.relationship_stage) }}</td>
-              <td>{{ kol.mcn_agency ?? (kol.is_mcn_managed ? '是' : '—') }}</td>
-              <td>{{ kol.owner?.name ?? '—' }}</td>
-              <td>{{ followersLabel(kol.latest_followers) }}<span v-if="kol.primary_platform" class="platform-hint"> ({{ platformLabel(kol.primary_platform) }})</span></td>
-              <td><span :class="['tag-chip', kol.has_published_content ? 'is-published' : '']">{{ kol.has_published_content ? '已发布' : '未发布' }}</span></td>
-              <td>{{ kol.historical_order_count }}</td>
-              <td>
-                <Link :href="`/kol/library/${kol.id}`">查看</Link>
-              </td>
-            </tr>
-            <tr v-if="kols.data.length === 0">
-              <td colspan="15" class="mvp-empty">暂无符合条件的 KOL</td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="kol-grid-shell">
+        <div class="kol-grid-settings-anchor">
+          <button
+            class="column-settings-trigger"
+            type="button"
+            aria-label="设置红人列表列"
+            title="设置显示列和列顺序"
+            @click="columnSettingsOpen = !columnSettingsOpen"
+          >…</button>
+          <div v-if="columnSettingsOpen" class="column-settings-panel" @click.stop>
+            <div class="column-settings-heading">
+              <strong>列设置</strong>
+              <button type="button" class="column-reset-btn" @click="resetColumns">恢复默认</button>
+            </div>
+            <p class="column-settings-help">勾选显示列；按住拖动柄上下调整列顺序。设置绑定当前账号并跨设备同步。</p>
+            <p v-if="columnPreferenceSyncState !== 'idle'" class="column-sync-state" :data-state="columnPreferenceSyncState">{{ columnPreferenceSyncState === 'saving' ? '正在同步…' : columnPreferenceSyncState === 'error' ? '同步失败，已保留本地缓存' : '已同步到账号' }}</p>
+            <div class="column-setting-row column-setting-pinned">
+              <span class="column-drag-handle column-drag-disabled">⋮⋮</span>
+              <input type="checkbox" checked disabled aria-label="红人名称固定显示">
+              <span>红人名称</span>
+              <small>固定</small>
+            </div>
+            <div
+              v-for="column in columnPreferences"
+              :key="column.key"
+              class="column-setting-row"
+              draggable="true"
+              :data-column-key="column.key"
+              @dragstart="startColumnDrag(column.key)"
+              @dragover.prevent
+              @drop="dropColumn(column.key)"
+            >
+              <span class="column-drag-handle" title="拖动调整顺序">⋮⋮</span>
+              <input type="checkbox" :checked="column.visible" :aria-label="`显示${column.label}`" @change="toggleColumn(column.key)">
+              <span>{{ column.label }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="mvp-table-wrap kol-grid-scroll">
+          <table class="mvp-table kol-dense-table kol-data-grid">
+            <thead>
+              <tr>
+                <th class="kol-grid-identity">红人名称</th>
+                <th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th>
+                <th class="kol-grid-action-head"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="kol in kols.data" :key="kol.id">
+                <td class="kol-grid-identity">
+                  <Link :href="`/kol/library/${kol.id}`">{{ kol.display_name }}</Link>
+                  <span v-if="kol.is_100k_plus" class="badge-100k">100K+</span>
+                </td>
+                <td v-for="column in visibleColumns" :key="column.key" :class="{ 'account-cell': column.key === 'account' }">
+                  <template v-if="column.key === 'account'">
+                    <template v-if="kol.affiliate_account">
+                      <strong>WordPress: {{ kol.affiliate_account.wordpress_user_login || (kol.affiliate_account.wordpress_user_id ? `WP User #${kol.affiliate_account.wordpress_user_id}` : '—') }}</strong>
+                      <small>AffiliateWP: #{{ kol.affiliate_account.affiliate_id }}</small>
+                    </template>
+                    <span v-else class="account-muted">未绑定 Affiliate</span>
+                  </template>
+                  <template v-else-if="column.key === 'level'"><span v-if="kol.level" class="tag-chip">{{ kol.level }}</span><span v-else>—</span></template>
+                  <template v-else-if="column.key === 'city'">{{ kol.shipping_city ?? '—' }}</template>
+                  <template v-else-if="column.key === 'country_region'">{{ kol.country_code ?? '—' }}</template>
+                  <template v-else-if="column.key === 'categories'">{{ tagList(kol.categories) }}</template>
+                  <template v-else-if="column.key === 'products'">{{ tagList(kol.products) }}</template>
+                  <template v-else-if="column.key === 'content_format'">{{ kol.content_format ?? '—' }}</template>
+                  <template v-else-if="column.key === 'product_quantity'">{{ kol.product_quantity ?? '—' }}</template>
+                  <template v-else-if="column.key === 'relationship_stage'">{{ stageLabel(kol.relationship_stage) }}</template>
+                  <template v-else-if="column.key === 'status'">{{ kol.status === 'active' ? '活跃' : kol.status === 'inactive' ? '停用' : kol.status }}</template>
+                  <template v-else-if="column.key === 'mcn_agency'">{{ kol.mcn_agency ?? (kol.is_mcn_managed ? '是' : '—') }}</template>
+                  <template v-else-if="column.key === 'owner'">{{ kol.owner?.name ?? '—' }}</template>
+                  <template v-else-if="column.key === 'followers'">{{ followersLabel(kol.latest_followers) }}<span v-if="kol.primary_platform" class="platform-hint"> ({{ platformLabel(kol.primary_platform) }})</span></template>
+                  <template v-else-if="column.key === 'published'"><span :class="['tag-chip', kol.has_published_content ? 'is-published' : '']">{{ kol.has_published_content ? '已发布' : '未发布' }}</span></template>
+                  <template v-else-if="column.key === 'historical_order_count'">{{ kol.historical_order_count }}</template>
+                  <template v-else-if="column.key === 'joined_at'">{{ kol.joined_at ?? '—' }}</template>
+                  <template v-else-if="column.key === 'internal_contact'">{{ kol.internal_contact ?? '—' }}</template>
+                </td>
+                <td class="kol-grid-action-cell"><Link :href="`/kol/library/${kol.id}`">查看</Link></td>
+              </tr>
+              <tr v-if="kols.data.length === 0">
+                <td :colspan="visibleColumns.length + 2" class="mvp-empty">暂无符合条件的 KOL</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <!-- Pagination -->
@@ -323,6 +407,33 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, '网红', '红人
 .view-tab-add { color: #0f766e; border-color: #0f766e; }
 .kol-toolbar { flex-wrap: wrap; }
 .kol-dense-table { font-size: 13px; }
+.kol-grid-shell { position: relative; }
+.kol-grid-scroll { overflow-x: auto; scrollbar-width: thin; }
+.kol-data-grid { min-width: 1420px; }
+.kol-data-grid th, .kol-data-grid td { white-space: nowrap; }
+.kol-grid-identity { position: sticky; left: 0; min-width: 190px; background: #fff; z-index: 3; }
+thead .kol-grid-identity { z-index: 5; }
+.kol-grid-action-head, .kol-grid-action-cell { position: sticky; right: 0; width: 76px; min-width: 76px; background: #fff; z-index: 4; }
+.kol-grid-settings-anchor { position: absolute; top: 0; right: 0; width: 76px; height: 46px; display: flex; align-items: center; justify-content: center; background: #fff; border-left: 1px solid #E4EAED; border-bottom: 1px solid #E4EAED; z-index: 20; }
+.column-settings-trigger { width: 42px; height: 32px; border: 1px solid #DCE5E8; border-radius: 8px; background: #fff; color: #344B53; font-size: 22px; line-height: 1; cursor: pointer; }
+.column-settings-trigger:hover { background: #F4F7F8; }
+.column-settings-panel { position: absolute; top: 40px; right: 0; width: 300px; max-height: 520px; overflow-y: auto; padding: 12px; background: #fff; border: 1px solid #DCE5E8; border-radius: 10px; box-shadow: 0 12px 32px rgba(20, 33, 38, 0.14); text-align: left; z-index: 40; }
+.column-settings-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.column-settings-help { margin: 8px 0; font-size: 11px; line-height: 1.45; color: #7A8C94; }
+.column-sync-state { margin: 0 0 8px; font-size: 10px; color: #7A8C94; }
+.column-sync-state[data-state="saved"] { color: #2D8C84; }
+.column-sync-state[data-state="error"] { color: #B42318; }
+.column-reset-btn { border: 0; background: transparent; color: #2D8C84; font-size: 12px; cursor: pointer; }
+.column-setting-row { display: grid; grid-template-columns: 22px 22px 1fr auto; align-items: center; gap: 6px; min-height: 34px; padding: 4px 5px; border-radius: 6px; font-size: 13px; cursor: grab; }
+.column-setting-row:hover { background: #F4F7F8; }
+.column-setting-row:active { cursor: grabbing; }
+.column-setting-pinned { background: #F8FAFA; cursor: default; }
+.column-setting-row small { color: #7A8C94; font-size: 10px; }
+.column-drag-handle { color: #7A8C94; letter-spacing: -2px; user-select: none; }
+.column-drag-disabled { opacity: 0.35; }
+.account-cell strong, .account-cell small { display: block; white-space: nowrap; }
+.account-cell strong { font-size: 12px; font-weight: 600; color: #334155; }
+.account-cell small, .account-muted { color: #94a3b8; font-size: 11px; }
 .tag-chip { display: inline-block; padding: 1px 8px; background: #f0fdfa; color: #0f766e; border-radius: 10px; font-size: 11px; }
 .platform-hint { color: #94a3b8; font-size: 11px; }
 .badge-100k { margin-left: 6px; padding: 1px 6px; background: #fef3c7; color: #92400e; border-radius: 10px; font-size: 11px; }
