@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { Head, Link, useForm } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 
@@ -46,6 +46,42 @@ const form = useForm({
   carrier: props.procurementOrder.carrier || '',
   tracking_number: props.procurementOrder.tracking_number || '',
 })
+const trackingQueryMessage = ref('')
+const fallbackCopyTrackingNumber = (trackingNumber: string): boolean => {
+  if (typeof document.execCommand !== 'function') return false
+  const textarea = document.createElement('textarea')
+  textarea.value = trackingNumber
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  const copied = document.execCommand('copy')
+  textarea.remove()
+  return copied
+}
+const queryTracking = async () => {
+  const trackingNumber = form.tracking_number.trim()
+  if (!trackingNumber) return
+
+  let copied = false
+  if (navigator.clipboard?.writeText) {
+    const copyPromise = navigator.clipboard.writeText(trackingNumber)
+      .then(() => true)
+      .catch(() => false)
+    window.open('https://www.kuaidi100.com/', '_blank', 'noopener,noreferrer')
+    copied = await copyPromise
+  } else {
+    // HTTP/internal-network browsers do not expose Clipboard API. Copy synchronously
+    // before opening the new tab so the legacy command still has the click user gesture.
+    copied = fallbackCopyTrackingNumber(trackingNumber)
+    window.open('https://www.kuaidi100.com/', '_blank', 'noopener,noreferrer')
+  }
+
+  trackingQueryMessage.value = copied
+    ? '快递单号已复制，请在快递100粘贴查询'
+    : '已打开快递100，请手动复制快递单号'
+}
 const submit = () => form.patch(`/purchase/orders/${props.procurementOrder.id}`, { preserveScroll: true })
 const formatDate = (value: string | null) => value ? new Date(value).toLocaleString('zh-CN') : '—'
 </script>
@@ -86,7 +122,17 @@ const formatDate = (value: string | null) => value ? new Date(value).toLocaleStr
             </label>
             <label>
               <span>快递单号</span>
-              <input v-model="form.tracking_number" class="erp-input" placeholder="填写采购物流单号" />
+              <div class="tracking-query-row">
+                <input v-model="form.tracking_number" class="erp-input" placeholder="填写采购物流单号" />
+                <button
+                  class="erp-btn erp-btn-secondary tracking-query-button"
+                  type="button"
+                  :disabled="!form.tracking_number.trim()"
+                  data-testid="query-tracking"
+                  @click="queryTracking"
+                >一键查询物流</button>
+              </div>
+              <small v-if="trackingQueryMessage" class="tracking-query-feedback">{{ trackingQueryMessage }}</small>
             </label>
           </div>
           <div class="form-actions">
@@ -131,6 +177,6 @@ const formatDate = (value: string | null) => value ? new Date(value).toLocaleStr
 </template>
 
 <style scoped>
-.workspace-fields{display:grid;grid-template-columns:180px minmax(200px,1fr) minmax(240px,1fr);gap:14px}.workspace-fields label{display:grid;gap:6px}.workspace-fields label>span{font-size:12px;color:#64748b}.form-actions{display:flex;justify-content:flex-end;margin-top:16px}.read-only-grid,.purchase-item dl{display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px 14px;margin:0}.read-only-grid dt,.purchase-item dt{color:#7a8c94}.read-only-grid dd,.purchase-item dd{margin:0;min-width:0;overflow-wrap:anywhere}.purchase-item{padding:14px 0;border-bottom:1px solid #e5e7eb}.purchase-item:last-child{border-bottom:0}.purchase-item>div{display:flex;justify-content:space-between;gap:12px;margin-bottom:12px}.purchase-item>div span{color:#7a8c94}.field-error{color:#b91c1c}.page-header-actions{display:flex;gap:8px;flex-wrap:wrap}
-@media(max-width:767px){.workspace-fields{grid-template-columns:1fr}.form-actions .erp-btn{width:100%}.read-only-grid,.purchase-item dl{grid-template-columns:90px 1fr}.page-header-actions{width:100%}.page-header-actions .erp-btn{flex:1}.purchase-item>div{display:grid}}
+.workspace-fields{display:grid;grid-template-columns:180px minmax(200px,1fr) minmax(320px,1fr);gap:14px}.workspace-fields label{display:grid;gap:6px}.workspace-fields label>span{font-size:12px;color:#64748b}.tracking-query-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}.tracking-query-button{white-space:nowrap}.tracking-query-feedback{color:#64748b}.form-actions{display:flex;justify-content:flex-end;margin-top:16px}.read-only-grid,.purchase-item dl{display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px 14px;margin:0}.read-only-grid dt,.purchase-item dt{color:#7a8c94}.read-only-grid dd,.purchase-item dd{margin:0;min-width:0;overflow-wrap:anywhere}.purchase-item{padding:14px 0;border-bottom:1px solid #e5e7eb}.purchase-item:last-child{border-bottom:0}.purchase-item>div{display:flex;justify-content:space-between;gap:12px;margin-bottom:12px}.purchase-item>div span{color:#7a8c94}.field-error{color:#b91c1c}.page-header-actions{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:767px){.workspace-fields{grid-template-columns:1fr}.tracking-query-row{grid-template-columns:1fr}.tracking-query-button{width:100%}.form-actions .erp-btn{width:100%}.read-only-grid,.purchase-item dl{grid-template-columns:90px 1fr}.page-header-actions{width:100%}.page-header-actions .erp-btn{flex:1}.purchase-item>div{display:grid}}
 </style>
