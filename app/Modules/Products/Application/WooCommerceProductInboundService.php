@@ -18,7 +18,6 @@ use RuntimeException;
 final class WooCommerceProductInboundService
 {
     private const int MaxPages = 100;
-    private const int MaxBodyBytes = 10485760;
     private const array AllowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
     public function __construct(
@@ -172,7 +171,8 @@ final class WooCommerceProductInboundService
             if ($response->redirect()) { $url = $this->validatedUrl((string) $response->header('Location')); continue; }
             if (! $response->successful()) throw new RuntimeException('Media download failed.');
             $body = $response->body();
-            if (strlen($body) > self::MaxBodyBytes) throw new RuntimeException('Media exceeds 10 MiB.');
+            $maxBodyBytes = max(1, (int) config('services.woocommerce.media_max_bytes', 10485760));
+            if (strlen($body) > $maxBodyBytes) throw new RuntimeException('Media exceeds configured size limit.');
             $headerMime = strtolower(trim(explode(';', (string) $response->header('Content-Type'))[0]));
             $detected = (new \finfo(FILEINFO_MIME_TYPE))->buffer($body) ?: '';
             $imageInfo = @getimagesizefromstring($body);

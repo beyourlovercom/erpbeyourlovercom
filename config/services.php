@@ -35,6 +35,7 @@ return [
         'timeout' => (int) env('WOO_TIMEOUT_SECONDS', 15),
         'product_sync_enabled' => (bool) env('WOO_PRODUCT_SYNC_ENABLED', false),
         'media_allowed_hosts' => env('WOO_MEDIA_ALLOWED_HOSTS', ''),
+        'media_max_bytes' => max(1, (int) env('WOO_MEDIA_MAX_BYTES', 10485760)),
     ],
 
     'postmark' => [

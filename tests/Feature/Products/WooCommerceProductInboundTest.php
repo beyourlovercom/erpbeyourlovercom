@@ -208,6 +208,25 @@ final class WooCommerceProductInboundTest extends TestCase
     }
 
 
+    public function test_media_size_limit_can_be_increased_without_changing_the_default(): void
+    {
+        $product = Product::create(['source_type' => 'manual', 'product_type' => 'simple', 'sku' => 'SIZE-CONFIG', 'name' => 'Size Config']);
+        $body = $this->png();
+        $payload = $this->payload(403, 'SIZE-CONFIG', [['id' => 804, 'src' => 'https://shop.test/media/config.png']]);
+
+        config(['services.woocommerce.media_max_bytes' => max(1, strlen($body) - 1)]);
+        $this->fakeSingle($payload, ['https://shop.test/media/config.png' => $body]);
+        $blocked = app(WooCommerceProductInboundService::class)->sync(null, false, 403);
+        $this->assertSame('media_failed', DB::table('sync_run_items')->where('sync_run_id', $blocked['run']->id)->value('result_code'));
+        $this->assertDatabaseCount('product_media', 0);
+
+        config(['services.woocommerce.media_max_bytes' => strlen($body) + 1]);
+        $this->fakeSingle($payload, ['https://shop.test/media/config.png' => $body]);
+        $allowed = app(WooCommerceProductInboundService::class)->sync(null, false, 403);
+        $this->assertSame('unchanged', DB::table('sync_run_items')->where('sync_run_id', $allowed['run']->id)->value('result_code'));
+        $this->assertDatabaseCount('product_media', 1);
+    }
+
     public function test_media_larger_than_ten_mib_is_rejected_without_persisting_media(): void
     {
         Product::create(['source_type' => 'manual', 'product_type' => 'simple', 'sku' => 'SIZE-001', 'name' => 'Size']);
