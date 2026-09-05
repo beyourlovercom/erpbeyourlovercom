@@ -157,14 +157,13 @@ describe('Products/Edit V2', () => {
     expect(wrapper.text()).toContain('参考/计算值')
   })
 
-  it('danger zone is present and separated from the action bar', () => {
+  it('keeps delete in the standardized page header and hides confirmation until requested', () => {
     const wrapper = mount(Edit, { props: { product: wooProduct } })
-    const dangerZone = wrapper.find('.erp-danger-zone')
-    expect(dangerZone.exists()).toBe(true)
-    expect(dangerZone.text()).toContain('删除此产品')
-    expect(dangerZone.text()).toContain('删除产品')
-    // Save button is NOT inside danger zone
-    expect(dangerZone.find('button[type="submit"]').exists()).toBe(false)
+    const headerActions = wrapper.find('.page-header-actions')
+    expect(headerActions.exists()).toBe(true)
+    expect(headerActions.find('.erp-btn-danger').text()).toBe('删除产品')
+    expect(headerActions.find('button[type="submit"]').text()).toBe('保存产品')
+    expect(wrapper.find('.erp-danger-zone').exists()).toBe(false)
   })
 
   it('danger zone shows confirmation dialog on delete click', async () => {
@@ -182,7 +181,8 @@ describe('Products/Edit V2', () => {
     const cancelBtn = wrapper.findAll('button').find(b => b.text().includes('取消') && b.attributes('type') !== 'submit')
     expect(cancelBtn).toBeDefined()
     await cancelBtn!.trigger('click')
-    expect(wrapper.text()).toContain('删除此产品')
+    expect(wrapper.text()).toContain('删除产品')
+    expect(wrapper.find('.erp-danger-zone').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('确认删除「')
   })
 
