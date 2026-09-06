@@ -76,6 +76,26 @@ final class OrderIdentityService
 
     public function generate(string $type, int|string $sourceNumber, string $businessDate, ?string $suffix = null): string
     {
+        [$type, $sourceNumber, $suffix] = $this->validatedParts($type, $sourceNumber, $suffix);
+        $identity = $this->format($this->prefix(), $type, $sourceNumber, $businessDate, $suffix);
+        if (Order::query()->where('erp_order_id', $identity)->exists()) {
+            throw new RuntimeException('ERP order identity already exists; an explicit collision suffix is required.');
+        }
+
+        return $identity;
+    }
+
+    public function previewCandidate(string $type, int|string $sourceNumber, string $businessDate, ?string $suffix = null): string
+    {
+        [$type, $sourceNumber, $suffix] = $this->validatedParts($type, $sourceNumber, $suffix);
+        $prefix = (string) (OrderIdentitySetting::query()->whereKey(1)->value('prefix_token') ?: self::DEFAULT_PREFIX);
+
+        return $this->format($prefix, $type, $sourceNumber, $businessDate, $suffix);
+    }
+
+    /** @return array{0:string,1:string,2:?string} */
+    private function validatedParts(string $type, int|string $sourceNumber, ?string $suffix): array
+    {
         if (! in_array($type, ['c', 'k'], true)) {
             throw new RuntimeException('Unsupported ERP order identity type.');
         }
@@ -87,12 +107,7 @@ final class OrderIdentityService
             throw new RuntimeException('ERP order identity suffix must be one uppercase letter.');
         }
 
-        $identity = $this->format($this->prefix(), $type, $sourceNumber, $businessDate, $suffix);
-        if (Order::query()->where('erp_order_id', $identity)->exists()) {
-            throw new RuntimeException('ERP order identity already exists; an explicit collision suffix is required.');
-        }
-
-        return $identity;
+        return [$type, $sourceNumber, $suffix];
     }
 
     private function format(string $prefix, string $type, int|string $number, string $businessDate, ?string $suffix = null): string

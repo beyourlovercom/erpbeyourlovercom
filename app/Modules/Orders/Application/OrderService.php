@@ -37,9 +37,9 @@ final class OrderService
         private readonly ProductExternalReferenceRepository $productExternalRefs,
     ) {}
 
-    public function create(array $attributes, array $items, ?Authenticatable $actor): Model
+    public function create(array $attributes, array $items, ?Authenticatable $actor, bool $allowMissingAddress = false): Model
     {
-        return DB::transaction(function () use ($attributes, $items, $actor): Model {
+        return DB::transaction(function () use ($attributes, $items, $actor, $allowMissingAddress): Model {
             $orderClass = 'App\\Modules\\Orders\\Infrastructure\\Models\\Order';
             $address = array_intersect_key($attributes, array_flip(self::ADDRESS_FIELDS));
             $orderAttributes = array_diff_key($attributes, $address);
@@ -53,7 +53,13 @@ final class OrderService
                 'order_status' => OrderStatus::PendingShipment,
                 'owner_id' => $orderAttributes['owner_id'] ?? $actor?->getAuthIdentifier(),
             ]);
-            $order->address()->create($address);
+            $requiredAddressFields = ['recipient_name', 'phone', 'country', 'province_state', 'city', 'address_line_1'];
+            $hasCompleteRequiredAddress = collect($requiredAddressFields)->every(
+                fn (string $field): bool => trim((string) ($address[$field] ?? '')) !== '',
+            );
+            if (! $allowMissingAddress || $hasCompleteRequiredAddress) {
+                $order->address()->create($address);
+            }
 
             foreach ($items as $item) {
                 $resolved = $this->resolveProductFields($item);
