@@ -138,6 +138,21 @@ final class HistoricalShipmentAttemptProjectionTest extends TestCase
         }
     }
 
+    public function test_apply_accepts_semantically_identical_manifest_with_reordered_json_keys(): void
+    {
+        $f = $this->fixture();
+        $service = app(HistoricalShipmentAttemptProjectionService::class);
+        $preview = $service->preview($f['batch'], $f['user']);
+        $row = $preview->rows()->firstOrFail();
+        $row->forceFill(['projection_manifest' => array_reverse($row->projection_manifest, true)])->save();
+        config()->set('logistics.historical_shipment_attempt_apply_enabled', true);
+
+        $applied = $service->apply($preview->fresh(), $f['user']);
+
+        self::assertSame('applied', $applied->status);
+        self::assertSame(1, ShipmentAttempt::query()->count());
+    }
+
     public function test_apply_creates_only_historical_attempt_is_idempotent_and_inventory_demand_stays_zero(): void
     {
         $f = $this->fixture('USA 美西仓', '速达');
