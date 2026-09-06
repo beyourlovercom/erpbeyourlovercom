@@ -334,6 +334,26 @@ final class LogisticsOsV1ClosureTest extends TestCase
         $this->assertSame($activePackaging->id, data_get($attempt->fresh()->evidence_snapshot, 'packaging.0.id'));
     }
 
+    public function test_historical_logistics_orders_are_isolated_from_operational_queues(): void
+    {
+        [$user, $historical, $carrier] = $this->scenario();
+        $historical->externalReferences()->create([
+            'provider' => 'historical_logistics',
+            'connection_key' => 'historical:test',
+            'reference' => 'KOL-HIST-TEST',
+        ]);
+        [, $operational] = $this->scenario();
+
+        $this->actingAs($user)->get('/logistics/pending')->assertInertia(fn (Assert $page) => $page
+            ->where('orders.total', 1)
+            ->where('orders.data.0.id', $operational->id)
+            ->where('statusBar.0.count', 1));
+
+        $this->dispatch($user, $historical, $carrier, 'HIST-TRACK');
+        $this->actingAs($user)->get('/logistics/in-transit')->assertInertia(fn (Assert $page) => $page
+            ->where('shipments.total', 0));
+    }
+
     public function test_entity_links_and_status_bar_are_server_provided(): void
     {
         [$user, $order, $carrier] = $this->scenario();

@@ -53,6 +53,21 @@ final class CarrierWorkspaceTest extends TestCase
         );
     }
 
+    public function test_historical_logistics_shipments_do_not_pollute_carrier_workspace(): void
+    {
+        $user = $this->userWith(['logistics.view']);
+        $shipment = $this->shipment($user, 'DHL', 'DHL-HIST', 1.000, 9.00, 'USD', 'delivered');
+        $shipment->order->externalReferences()->create([
+            'provider' => 'historical_logistics',
+            'connection_key' => 'historical:test',
+            'reference' => 'KOL-HIST-CARRIER',
+        ]);
+
+        $this->actingAs($user)->get('/logistics/carriers/DHL')->assertInertia(fn (Assert $page) => $page
+            ->where('summary.shipment_count', 0)
+            ->where('shipments.total', 0));
+    }
+
     public function test_operator_can_add_carrier_and_it_immediately_becomes_a_fulfillment_option(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
