@@ -180,6 +180,36 @@ After Line 1 passes Owner UAT and the Owner separately authorizes the required P
 
 Any mismatch stops the pilot before B1/B2/B3.
 
+## P1 Production-ready evidence — 2026-09-06
+
+Concurrent Line 1 completed the bounded Production code-only release for PR #224. Manual Pilot did not perform the deploy or routing write. Canonical Production truth now is:
+
+```text
+release = inventory-autoalloc-v1-codeonly-20260906-080907-76deca48
+auto_allocation.enabled = false
+dry_run = true
+scheduler_enabled = false
+country_allowlist = DE
+warehouse_service_regions = 1
+DE -> DE warehouse priority = 1
+reservations = 0
+shipments = 0
+```
+
+Exact A1 Production dry-run:
+
+```text
+Order 6011 / 007erp-0903-c6010 / Woo 40120
+Country = DE
+State = READY_AUTO_ALLOCATE
+Warehouse = DE
+mutated = 0
+```
+
+Post-preview mutation check remains `Reservations=0 / Shipments=0`. MF414A at DE remains QOH 5 / reserved 0 / available 5.
+
+The next operation is the first real Production business-data mutation: create A1 Reservation + Shipment Draft. It requires a separate explicit Owner data-write authorization and must not be inferred from `next` / `pass`.
+
 ## Current gate
 
 `READY_FOR_PRODUCTION_DEPLOY_GATE`
