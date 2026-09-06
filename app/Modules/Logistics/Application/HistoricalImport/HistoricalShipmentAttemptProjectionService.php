@@ -80,7 +80,7 @@ final class HistoricalShipmentAttemptProjectionService
             foreach ($locked->rows->where('decision', 'ready') as $row) {
                 $source = $row->materializationRow;
                 $current = $this->decide($source, $locked->source_checksum, (int) $locked->materializationBatch->historical_import_batch_id);
-                if ($current['decision'] !== 'ready' || $current['manifest'] !== $row->projection_manifest) {
+                if ($current['decision'] !== 'ready' || ! $this->manifestsEqual($current['manifest'], $row->projection_manifest)) {
                     throw ValidationException::withMessages(['batch' => 'Frozen historical shipment attempt evidence drifted; re-preview is required.']);
                 }
                 if (ShipmentAttempt::query()->where('order_id', $source->order_id)->exists()) throw ValidationException::withMessages(['batch' => 'A shipment attempt now exists for a frozen historical order.']);
@@ -137,6 +137,20 @@ final class HistoricalShipmentAttemptProjectionService
         if (ShipmentAttempt::query()->where('order_id', $row->order_id)->exists()) return ['decision' => 'review', 'reason' => 'preexisting_shipment_attempt', 'manifest' => $manifest];
         if (Shipment::query()->where('order_id', $row->order_id)->whereNotIn('shipment_status', ['cancelled', 'completed'])->exists()) return ['decision' => 'review', 'reason' => 'active_shipment', 'manifest' => $manifest];
         return ['decision' => 'ready', 'reason' => 'deterministic_historical_attempt', 'manifest' => $manifest];
+    }
+
+    private function manifestsEqual(array $left, array $right): bool
+    {
+        return $this->canonicalize($left) === $this->canonicalize($right);
+    }
+
+    private function canonicalize(array $value): array
+    {
+        foreach ($value as $key => $item) {
+            if (is_array($item)) $value[$key] = $this->canonicalize($item);
+        }
+        if (! array_is_list($value)) ksort($value);
+        return $value;
     }
 
     private function authorize(Authenticatable $actor): void { if (! $actor->can('logistics.operate')) abort(403); }
