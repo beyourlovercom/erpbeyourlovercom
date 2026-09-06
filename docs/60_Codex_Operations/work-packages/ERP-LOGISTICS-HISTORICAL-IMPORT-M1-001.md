@@ -121,3 +121,20 @@ MIGRATION_FILE_AUTHORING: INCLUDED
 MIGRATION_EXECUTION: EXCLUDED
 UAT: INCLUDED
 DEPLOYMENT: EXCLUDED
+
+## 2026-09-06 final verification continuation — supersedes stale pending-verification text above
+- Owner visual/UI proposal gate: PASS.
+- Provider provenance: proposal `01a071b7-fe5f-76d0-a6cd-fa7b8a1162ea`; interrupted Codex implementation `01a071be-60cd-79b3-a43f-23e2ba828a86`; recovery Codex `01a071c2-9976-7f13-b612-d1422b874623`; both Codex child processes were explicitly terminated before GPT_WEB bounded remediation continued.
+- Implementation commit already present locally: `dc21245e69d71b12ef4f7f8bb8ed28432939fe42`; final verification/test commit follows this record.
+- Focused backend: `8 tests / 59 assertions` PASS under PHPUnit 12.5.33 with no failures.
+- Broader backend regression: `92 tests / 2296 assertions`, 0 failures, covering Logistics OS V1, Manual Fulfillment/Inventory integration, Woo tracking outbound, shell/menu, KOL reconciliation/preview/activation. Artisan's existing `file_get_contents` warnings are repository-baseline warnings; focused PHPUnit run is clean.
+- New Historical Import frontend test: `2/2` PASS.
+- `npm run typecheck`: PASS.
+- `npm run build`: PASS (generic existing chunk-size warning only).
+- Historical migration fresh -> rollback -> reapply: PASS.
+- `git diff --check`: PASS.
+- Architecture suite on this branch: 5 pass / 3 fail. Exact `origin/main` baseline independently reproduces the same 5 pass / 3 fail categories (`frozen module and support boundaries`, `layer scans`, `all rule ids`), so unrelated frozen-baseline drift is not modified in this WP.
+- Logistics Carrier frontend legacy test independently fails on both this branch and exact `origin/main` for the same stale Inertia `usePage` mock; this WP does not update that unrelated baseline.
+- Latest-main reconciliation after verification: `origin/main@ac091842322d5cf3aef014f6d1ca4933c1a143b9` (Inventory V2 replenishment/safety-stock merge). Drift from prior base is Inventory-only and has zero path overlap with this WP. Rebase onto this exact main is required before UAT delivery.
+- Production historical evidence commit gate remains OFF; no Production write/deploy has been performed.
+- Real-data UAT source recovered from Library: `0902-网红订单.xlsx`, 58,827,902 bytes. First isolated UAT uses 10 safe, non-PII logistics rows while preserving original source row numbers. No PII columns are copied into the fixture.
