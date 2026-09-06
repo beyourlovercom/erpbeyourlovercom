@@ -380,50 +380,56 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
                 </table>
             </div>
 
-            <section v-if="editingRow" class="finance-editor" aria-label="订单财务事实编辑">
-                <div class="finance-editor-header">
-                    <div>
-                        <p class="finance-editor-kicker">正在编辑</p>
-                        <h3>{{ orderNumber(editingRow) }}</h3>
-                    </div>
-                    <button class="mvp-button" type="button" @click="editing = null">关闭</button>
-                </div>
-
-                <div class="fact-meta">
-                    <span>收入来源：<b>{{ editingRow.revenue_provenance || '未入账' }}</b></span>
-                    <span>Woo 状态：<b>{{ editingRow.provider_order_status || '—' }}</b></span>
-                    <span>Woo 对账：<b>{{ editingRow.provider_reconciliation_status || '—' }}</b></span>
-                    <span>付款时间：<b>{{ editingRow.paid_at || '—' }}</b></span>
-                </div>
-                <p class="editor-note">手工修改收入字段会明确切换为 confirmed_manual；只补成本且收入值未变化时，会保留 Woo provider_import 来源。</p>
-
-                <div class="finance-editor-columns">
-                    <section class="finance-editor-column">
-                        <div class="finance-editor-section-title">收入事实</div>
-                        <div class="finance-editor-table">
-                            <label v-for="field in revenueFields" :key="field" class="finance-editor-field">
-                                <span>{{ fieldLabels[field] ?? field }}</span>
-                                <input v-model="editValues[field]" inputmode="decimal">
-                            </label>
+            <Teleport to="body">
+                <div v-if="editingRow" class="finance-drawer-backdrop" @click.self="editing = null">
+                    <aside class="finance-drawer" aria-label="订单财务事实编辑" role="dialog" aria-modal="true">
+                        <div class="finance-editor-header">
+                            <div>
+                                <p class="finance-editor-kicker">财务事实 / 成本</p>
+                                <h3>{{ orderNumber(editingRow) }}</h3>
+                            </div>
+                            <button class="finance-drawer-close" type="button" aria-label="关闭" title="关闭" @click="editing = null">×</button>
                         </div>
-                    </section>
 
-                    <section class="finance-editor-column">
-                        <div class="finance-editor-section-title">成本事实</div>
-                        <div class="finance-editor-table">
-                            <label v-for="field in costFields" :key="field" class="finance-editor-field">
-                                <span>{{ fieldLabels[field] ?? field }}</span>
-                                <input v-model="editValues[field]" inputmode="decimal">
-                            </label>
+                        <div class="finance-drawer-scroll">
+                            <div class="fact-meta">
+                                <span>收入来源：<b>{{ editingRow.revenue_provenance || '未入账' }}</b></span>
+                                <span>Woo 状态：<b>{{ editingRow.provider_order_status || '—' }}</b></span>
+                                <span>Woo 对账：<b>{{ editingRow.provider_reconciliation_status || '—' }}</b></span>
+                                <span>付款时间：<b>{{ editingRow.paid_at || '—' }}</b></span>
+                            </div>
+                            <p class="editor-note">手工修改收入字段会明确切换为 confirmed_manual；只补成本且收入值未变化时，会保留 Woo provider_import 来源。</p>
+
+                            <div class="finance-editor-columns">
+                                <section class="finance-editor-column">
+                                    <div class="finance-editor-section-title">收入事实</div>
+                                    <div class="finance-editor-table">
+                                        <label v-for="field in revenueFields" :key="field" class="finance-editor-field">
+                                            <span>{{ fieldLabels[field] ?? field }}</span>
+                                            <input v-model="editValues[field]" inputmode="decimal">
+                                        </label>
+                                    </div>
+                                </section>
+
+                                <section class="finance-editor-column">
+                                    <div class="finance-editor-section-title">成本事实</div>
+                                    <div class="finance-editor-table">
+                                        <label v-for="field in costFields" :key="field" class="finance-editor-field">
+                                            <span>{{ fieldLabels[field] ?? field }}</span>
+                                            <input v-model="editValues[field]" inputmode="decimal">
+                                        </label>
+                                    </div>
+                                </section>
+                            </div>
                         </div>
-                    </section>
-                </div>
 
-                <div class="row-actions finance-editor-actions">
-                    <button class="mvp-button" type="button" @click="editing = null">取消</button>
-                    <button class="mvp-button mvp-button-primary" type="button" @click="save(editingRow)">保存财务事实</button>
+                        <div class="row-actions finance-editor-actions">
+                            <button class="mvp-button" type="button" @click="editing = null">取消</button>
+                            <button class="mvp-button mvp-button-primary" type="button" @click="save(editingRow)">保存财务事实</button>
+                        </div>
+                    </aside>
                 </div>
-            </section>
+            </Teleport>
 
             <nav v-if="pagination.last_page > 1" class="pagination" aria-label="分页">
                 <Link
@@ -465,28 +471,33 @@ thead .identity-column, thead .action-column { z-index: 4; }
 .status-confirmed, .status-reconciled { background: #e7f5ec; }
 .status-estimated { background: #fff4d6; }
 .status-incomplete, .status-unposted { background: #f2f3f4; }
-.finance-editor { width: 100%; margin: 16px 0 0; border: 1px solid #cfdadd; border-radius: 8px; background: #fff; overflow: hidden; }
-.finance-editor-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 16px; border-bottom: 1px solid #dfe6e8; background: #f7f9f9; }
+.finance-drawer-backdrop { position: fixed; inset: 0; z-index: 1000; background: rgb(18 31 36 / 26%); }
+.finance-drawer { position: absolute; top: 0; right: 0; width: min(780px, 94vw); height: 100vh; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: #fff; border-left: 1px solid #cfdadd; box-shadow: -14px 0 36px rgb(20 33 38 / 18%); }
+.finance-editor-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 18px; border-bottom: 1px solid #dfe6e8; background: #f7f9f9; }
 .finance-editor-header h3 { margin: 2px 0 0; font-size: 18px; color: #18282d; }
 .finance-editor-kicker { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .08em; color: #65777c; }
-.fact-meta { display: flex; flex-wrap: wrap; gap: 8px 24px; padding: 12px 16px 0; font-size: 12px; color: #5f7075; }
-.editor-note { margin: 8px 16px 14px; color: #5f7075; font-size: 12px; }
-.finance-editor-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 16px; padding: 0 16px 16px; }
+.finance-drawer-close { width: 34px; height: 34px; padding: 0; border: 1px solid #c9d4d7; border-radius: 6px; background: #fff; color: #40545a; font-size: 24px; line-height: 30px; cursor: pointer; }
+.finance-drawer-close:hover { border-color: #879aa0; background: #f1f5f5; color: #18282d; }
+.finance-drawer-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.fact-meta { display: flex; flex-wrap: wrap; gap: 8px 24px; padding: 14px 18px 0; font-size: 12px; color: #5f7075; }
+.editor-note { margin: 8px 18px 14px; color: #5f7075; font-size: 12px; }
+.finance-editor-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 14px; padding: 0 18px 18px; }
 .finance-editor-column { min-width: 0; border: 1px solid #d8e0e3; border-radius: 6px; overflow: hidden; background: #fff; }
 .finance-editor-section-title { padding: 10px 12px; border-bottom: 1px solid #d8e0e3; background: #eef3f4; font-size: 13px; font-weight: 700; color: #24383e; text-align: left; }
 .finance-editor-table { display: grid; }
-.finance-editor-field { display: grid; grid-template-columns: minmax(150px, 42%) minmax(140px, 1fr); align-items: center; min-height: 48px; margin: 0; border-bottom: 1px solid #e6ecee; background: #fff; }
+.finance-editor-field { display: grid; grid-template-columns: minmax(120px, 42%) minmax(110px, 1fr); align-items: center; min-height: 48px; margin: 0; border-bottom: 1px solid #e6ecee; background: #fff; }
 .finance-editor-field:last-child { border-bottom: 0; }
-.finance-editor-field > span { align-self: stretch; display: flex; align-items: center; padding: 9px 12px; border-right: 1px solid #e6ecee; background: #fafbfb; color: #40545a; font-size: 12px; text-align: left; }
-.finance-editor-field input { width: calc(100% - 20px); min-width: 0; height: 34px; margin: 6px 10px; padding: 6px 9px; border: 1px solid #9fb0b5; border-radius: 4px; background: #fff; color: #18282d; font: inherit; box-sizing: border-box; }
+.finance-editor-field > span { align-self: stretch; display: flex; align-items: center; padding: 9px 10px; border-right: 1px solid #e6ecee; background: #fafbfb; color: #40545a; font-size: 12px; text-align: left; }
+.finance-editor-field input { width: calc(100% - 16px); min-width: 0; height: 34px; margin: 6px 8px; padding: 6px 9px; border: 1px solid #9fb0b5; border-radius: 4px; background: #fff; color: #18282d; font: inherit; box-sizing: border-box; }
 .finance-editor-field input:hover { border-color: #617a82; }
 .finance-editor-field input:focus { outline: 2px solid rgba(27, 95, 114, .18); outline-offset: 0; border-color: #1b5f72; }
 .row-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.finance-editor-actions { padding: 12px 16px; border-top: 1px solid #dfe6e8; background: #f7f9f9; }
+.finance-editor-actions { padding: 12px 18px; border-top: 1px solid #dfe6e8; background: #f7f9f9; }
 .pagination { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 16px; }
 .pagination a { padding: 5px 9px; border: 1px solid #d8e0e3; border-radius: 4px; }
 .pagination a.active { background: #18282d; color: #fff; }
 .pagination a.disabled { opacity: .45; pointer-events: none; }
-@media (max-width: 1100px) { .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .filter-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); } .finance-editor-columns { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .filter-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); } }
+@media (max-width: 720px) { .finance-drawer { width: 100vw; } .finance-editor-columns { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .kpi-grid, .filter-grid { grid-template-columns: 1fr; } }
 </style>
