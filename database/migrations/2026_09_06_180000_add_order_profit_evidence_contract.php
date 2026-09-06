@@ -47,6 +47,7 @@ return new class extends Migration {
     public function down(): void
     {
         Schema::table('order_cost_entries', function (Blueprint $table): void {
+            $table->dropIndex(['provenance', 'status']);
             $table->dropForeign(['created_by']); $table->dropForeign(['confirmed_by']);
             $table->dropColumn(['provenance', 'status', 'source_reference', 'effective_at', 'source_at', 'created_by', 'confirmed_by', 'exchange_rate', 'exchange_rate_date', 'exchange_rate_source', 'base_amount', 'base_currency']);
         });

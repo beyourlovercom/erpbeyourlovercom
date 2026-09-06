@@ -56,8 +56,7 @@ type Row = {
     values: Record<string, string | null>
 }
 
-type Paginator = {
-    data: Row[]
+type Pagination = {
     current_page: number
     last_page: number
     total: number
@@ -93,7 +92,8 @@ type Kpis = {
 }
 
 const props = defineProps<{
-    orders: Paginator
+    orders: Row[]
+    pagination: Pagination
     fields: string[]
     filters: Record<string, string>
     kpis: Kpis
@@ -306,7 +306,7 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
             </form>
 
             <div class="grid-toolbar">
-                <span>共 {{ orders.total }} 条运营订单事实</span>
+                <span>共 {{ pagination.total }} 条运营订单事实</span>
                 <div class="column-settings">
                     <button class="mvp-button column-trigger" type="button" aria-label="列设置" @click="settingsOpen = !settingsOpen">…</button>
                     <div v-if="settingsOpen" class="column-menu">
@@ -337,7 +337,7 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
                         </tr>
                     </thead>
                     <tbody>
-                        <template v-for="row in orders.data" :key="row.id">
+                        <template v-for="row in orders" :key="row.id">
                             <tr>
                                 <td class="identity-column">
                                     <Link class="record-link" :href="orderPath(row)">{{ orderNumber(row) }}</Link>
@@ -401,16 +401,16 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
                                 </td>
                             </tr>
                         </template>
-                        <tr v-if="!orders.data.length">
+                        <tr v-if="!orders.length">
                             <td :colspan="visibleColumns.length + 2" class="mvp-empty">暂无符合条件的订单利润事实</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
 
-            <nav v-if="orders.last_page > 1" class="pagination" aria-label="分页">
+            <nav v-if="pagination.last_page > 1" class="pagination" aria-label="分页">
                 <Link
-                    v-for="link in orders.links"
+                    v-for="link in pagination.links"
                     :key="link.label"
                     :href="link.url ?? '#'"
                     :class="{ active: link.active, disabled: !link.url }"

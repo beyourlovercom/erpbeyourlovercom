@@ -28,11 +28,18 @@ final class OrderAnalysisController
 
     public function index(Request $request): Response
     {
-        $orders = $this->filteredOrders($request)->paginate(50)->withQueryString();
-        $orders->getCollection()->transform(fn (Order $order): array => $this->row($order));
+        $paginator = $this->filteredOrders($request)->paginate(50)->withQueryString();
+        $orders = $paginator->getCollection()
+            ->map(fn (Order $order): array => $this->row($order))
+            ->values()
+            ->all();
+        $pagination = $paginator->toArray();
+        unset($pagination['data']);
 
         return Inertia::render('Finance/OrderAnalysis', [
+            // Preserve the inherited `orders[]` Inertia contract while exposing pagination separately.
             'orders' => $orders,
+            'pagination' => $pagination,
             'fields' => $this->analysis->fields(),
             'filters' => $request->only([
                 'search', 'source_type', 'completeness', 'profit_status', 'date_from', 'date_to',
