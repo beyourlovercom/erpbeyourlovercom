@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import Index from './Index.vue'
 
@@ -35,13 +35,59 @@ describe('Logistics warehouse recommendation', () => {
     expect((warehouseSelect.element as HTMLSelectElement).value).toBe('2')
   })
 
-  it('adopts a recommendation through the reservation endpoint', async () => {
+  it('adopts a recommendation through JSON fetch without Inertia navigation', async () => {
     const wrapper = mount(Index, { props })
     const { router } = await import('@inertiajs/vue3')
+    vi.mocked(router.post).mockClear()
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ warehouse_id: 2, warehouse_name: '美东纽约仓' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    document.cookie = 'XSRF-TOKEN=test-token'
+
     await wrapper.findAll('button').find(button => button.text() === '履约处理')!.trigger('click')
     expect((wrapper.get('select').element as HTMLSelectElement).value).toBe('')
     await wrapper.findAll('button').find(button => button.text() === '采用推荐并预留库存')!.trigger('click')
-    expect(router.post).toHaveBeenCalledWith('/logistics/orders/10/adopt-recommendation', {}, { preserveScroll: true })
+    await flushPromises()
+
+    expect(router.post).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(fetchMock.mock.calls[0][0]).toBe('/logistics/orders/10/adopt-recommendation')
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST', headers: expect.objectContaining({ Accept: 'application/json' }) })
+    vi.unstubAllGlobals()
+  })
+
+  it('updates only row warehouse and warehouse select after adopt while preserving the open draft', async () => {
+    const draftOrder = {
+      ...order,
+      warehouse_recommendation: { ...order.warehouse_recommendation, status: 'recommended' as const },
+      shipment: { warehouse_id: null, warehouse_name: null, warehouse_selection_source: null, carrier: 'UPS', service: 'Ground', tracking_number: 'TRK-001', shipped_at: '2026-09-01T10:00:00', logistics_note: 'keep-note' },
+    }
+    const wrapper = mount(Index, { props: { ...props, orders: { ...props.orders, data: [draftOrder] } } })
+    const { router } = await import('@inertiajs/vue3')
+    vi.mocked(router.post).mockClear()
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ warehouse_id: 2, warehouse_name: '美东纽约仓' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    document.cookie = 'XSRF-TOKEN=test-token'
+
+    await wrapper.findAll('button').find(button => button.text() === '履约处理')!.trigger('click')
+    const warehouseSelect = wrapper.findAll('select')[0]
+    const carrierSelect = wrapper.get('select[aria-label="物流商"]')
+    expect((warehouseSelect.element as HTMLSelectElement).value).toBe('')
+    expect((carrierSelect.element as HTMLSelectElement).value).toBe('UPS')
+
+    await wrapper.findAll('button').find(button => button.text() === '采用推荐并预留库存')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('td')[5].text()).toBe('美东纽约仓')
+    expect((warehouseSelect.element as HTMLSelectElement).value).toBe('2')
+    expect((carrierSelect.element as HTMLSelectElement).value).toBe('UPS')
+    expect((wrapper.get('input[placeholder="例如 Ground"]').element as HTMLInputElement).value).toBe('Ground')
+    expect((wrapper.get('input[placeholder="追踪号"]').element as HTMLInputElement).value).toBe('TRK-001')
+    expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('keep-note')
+    expect(wrapper.findAll('button').some(button => button.text() === '收起')).toBe(true)
+    const adoptButton = wrapper.findAll('button').find(button => button.text() === '采用推荐并预留库存')!
+    expect(adoptButton.attributes('disabled')).toBeUndefined()
+    expect(router.post).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
   })
 
 

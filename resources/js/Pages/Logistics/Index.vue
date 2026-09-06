@@ -20,6 +20,8 @@ const drafts = reactive<Record<number, Draft>>({})
 const openOrderId = ref<number | null>(null)
 const copyState = ref<Record<number, 'success' | 'error'>>({})
 const shipValidation = ref<Record<number, string>>({})
+const localWarehouseNames = reactive<Record<number, string>>({})
+const adoptError = ref<Record<number, string>>({})
 
 const localDateTime = (value: string | null) => value ? value.slice(0, 16) : new Date().toISOString().slice(0, 16)
 const makeDraft = (order: Order): Draft => ({
@@ -41,9 +43,35 @@ watch(() => props.orders.data, (orders) => {
 }, { immediate: true, deep: true })
 
 const toggle = (orderId: number) => { openOrderId.value = openOrderId.value === orderId ? null : orderId }
-const adoptRecommendation = (order: Order) => {
+
+function getXsrfToken(): string {
+  return decodeURIComponent(document.cookie.split('; ').find(r => r.startsWith('XSRF-TOKEN='))?.split('=')[1] ?? '')
+}
+
+const adoptRecommendation = async (order: Order) => {
   if (order.warehouse_recommendation.status !== 'recommended' || !order.warehouse_recommendation.warehouse) return
-  router.post(`/logistics/orders/${order.id}/adopt-recommendation`, {}, { preserveScroll: true })
+  delete adoptError.value[order.id]
+  try {
+    const resp = await fetch(`/logistics/orders/${order.id}/adopt-recommendation`, {
+      method: 'POST',
+      headers: { 'Accept': 'application/json', 'X-XSRF-TOKEN': getXsrfToken(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}))
+      adoptError.value[order.id] = (body as { message?: string }).message ?? `操作失败（${resp.status}）`
+      return
+    }
+    const data = await resp.json() as { warehouse_id: number; warehouse_name: string | null }
+    if (drafts[order.id]) {
+      drafts[order.id].warehouse_id = data.warehouse_id
+    }
+    if (data.warehouse_name) {
+      localWarehouseNames[order.id] = data.warehouse_name
+    }
+  } catch {
+    adoptError.value[order.id] = '网络错误，请重试'
+  }
 }
 const saveDraft = (order: Order) => router.post(`/logistics/orders/${order.id}/draft`, drafts[order.id], { preserveScroll: true })
 const ship = (order: Order) => {
@@ -95,12 +123,13 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
       <div class="mvp-page-heading"><div><p class="mvp-kicker">Assisted Fulfillment</p><h2>待发货</h2><p>系统按服务区域与确认库存推荐仓库，由人工采用并完成履约。</p></div></div>
       <div class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th>订单号</th><th>类型</th><th>收件人</th><th>国家</th><th>商品数</th><th>仓库</th><th>操作</th></tr></thead><tbody>
         <template v-for="order in orders.data" :key="order.id">
-          <tr><td><Link v-if="order.order_url" :href="order.order_url" class="mvp-link">{{ order.external_order_number }}</Link><span v-else>{{ order.external_order_number }}</span></td><td>{{ order.order_kind_label }}</td><td>{{ order.recipient_name ?? '—' }}<small>{{ order.phone ?? '—' }}</small></td><td>{{ order.country ?? '—' }}</td><td>{{ order.item_count }}</td><td>{{ order.shipment?.warehouse_name ?? '未选择' }}</td><td class="mvp-actions"><button class="mvp-button mvp-button-primary" type="button" @click="toggle(order.id)">{{ openOrderId === order.id ? '收起' : '履约处理' }}</button></td></tr>
+          <tr><td><Link v-if="order.order_url" :href="order.order_url" class="mvp-link">{{ order.external_order_number }}</Link><span v-else>{{ order.external_order_number }}</span></td><td>{{ order.order_kind_label }}</td><td>{{ order.recipient_name ?? '—' }}<small>{{ order.phone ?? '—' }}</small></td><td>{{ order.country ?? '—' }}</td><td>{{ order.item_count }}</td><td>{{ localWarehouseNames[order.id] ?? order.shipment?.warehouse_name ?? '未选择' }}</td><td class="mvp-actions"><button class="mvp-button mvp-button-primary" type="button" @click="toggle(order.id)">{{ openOrderId === order.id ? '收起' : '履约处理' }}</button></td></tr>
           <tr v-if="openOrderId === order.id"><td colspan="7" class="fulfillment-cell">
             <div class="fulfillment-workspace">
               <div class="recommendation-card" :class="{ blocked: order.warehouse_recommendation.status !== 'recommended' }">
                 <div><small>系统仓库建议</small><strong>{{ order.warehouse_recommendation.warehouse?.name ?? '暂不推荐' }}</strong><p>{{ order.warehouse_recommendation.reason_label }}</p><p v-if="order.warehouse_recommendation.status !== 'recommended'" class="manual-warehouse-hint">系统暂不推荐时，仍可人工选择任一启用仓库发货。</p></div>
                 <button v-if="order.warehouse_recommendation.status === 'recommended'" class="mvp-button mvp-button-primary" type="button" :disabled="order.shipment?.warehouse_selection_source === 'recommended'" @click="adoptRecommendation(order)">{{ order.shipment?.warehouse_selection_source === 'recommended' ? '已采用推荐并预留' : '采用推荐并预留库存' }}</button>
+                <span v-if="adoptError[order.id]" class="mvp-error" role="alert">{{ adoptError[order.id] }}</span>
               </div>
               <div><h3>库存可用量</h3><p v-if="order.shipment?.warehouse_selection_source === 'recommended'" class="reservation-hint">库存已预留；确认发货时会自动提交预留并扣减在库库存。</p><div class="inventory-grid" v-for="item in order.items" :key="item.id"><strong><Link v-if="item.product_id" :href="`/products/${item.product_id}`" class="mvp-link">{{ item.sku ?? item.product_summary ?? '无 SKU' }}</Link><span v-else>{{ item.sku ?? item.product_summary ?? '无 SKU' }}</span> × {{ item.quantity }}</strong><span v-for="row in item.availability" :key="row.warehouse_id" :class="{ shortage: row.quantity_available !== null && row.quantity_available < item.quantity, unknown: row.quantity_available === null }">{{ row.warehouse_name }}：{{ row.quantity_available === null ? '库存未知' : '可用 ' + row.quantity_available }} <small v-if="row.quantity_available !== null">(QOH {{ row.quantity_on_hand }} / Reserved {{ row.quantity_reserved }})</small><small v-else>未建立该 SKU 权威库存</small></span></div></div>
               <div class="fulfillment-form">
