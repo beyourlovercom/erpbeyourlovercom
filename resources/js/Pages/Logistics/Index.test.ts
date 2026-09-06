@@ -21,6 +21,20 @@ const carrierOptions = [{ value: 'DHL', label: 'DHL' }, { value: 'UPS', label: '
 const props = { orders: { data: [order], current_page: 1, last_page: 1, per_page: 50, total: 1 }, warehouses: [warehouse], carrierOptions }
 
 describe('Logistics warehouse recommendation', () => {
+  it('syncs warehouse_id into existing draft when props refresh with adopted recommended shipment', async () => {
+    const wrapper = mount(Index, { props })
+    await wrapper.findAll('button').find(b => b.text() === '履约处理')!.trigger('click')
+    const warehouseSelect = wrapper.findAll('select')[0]
+    expect((warehouseSelect.element as HTMLSelectElement).value).toBe('')
+
+    const adoptedOrder = {
+      ...order,
+      shipment: { warehouse_id: 2, warehouse_name: '美东纽约仓', warehouse_selection_source: 'recommended', carrier: null, service: null, tracking_number: null, shipped_at: null, logistics_note: null },
+    }
+    await wrapper.setProps({ orders: { ...props.orders, data: [adoptedOrder] } })
+    expect((warehouseSelect.element as HTMLSelectElement).value).toBe('2')
+  })
+
   it('adopts a recommendation through the reservation endpoint', async () => {
     const wrapper = mount(Index, { props })
     const { router } = await import('@inertiajs/vue3')
