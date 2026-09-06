@@ -4,7 +4,7 @@ import { reactive } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
 type Connection = { configured: boolean; url: string; connection_key: string; last_import_at: string | null }
-type Summary = { seen: number; created: number; updated: number; failed: number; pages: number; errors: Array<{ reference: string; message: string }> }
+type Summary = { seen: number; created: number; updated: number; skipped?: number; failed: number; pages: number; errors: Array<{ reference: string; message: string }> }
 const props = defineProps<{ connection: Connection; summary: Summary | null }>()
 const single = reactive({ woo_order_id: '' })
 const historical = reactive({ from: '', to: '' })
@@ -41,10 +41,9 @@ const post = (path: string, data: any = {}) => router.post(path, data, { preserv
         </article>
 
         <article class="mvp-card">
-          <p class="mvp-kicker">增量</p><h3>从上次观察点继续</h3>
-          <p>使用 5 分钟 overlap，重复记录由 external reference 幂等去重。</p>
-          <button class="mvp-button mvp-button-primary" :disabled="!props.connection.configured || !props.connection.last_import_at" @click="post('/sync/woocommerce/incremental')">增量导入</button>
-          <p v-if="!props.connection.last_import_at">首次请先做单笔或历史导入。</p>
+          <p class="mvp-kicker">手动同步</p><h3>同步今天订单</h3>
+          <p>自动同步每 1 小时执行一次。手动同步仅处理今天 00:00 至当前创建的 Woo 订单，昨天及更早订单不会回补。</p>
+          <button class="mvp-button mvp-button-primary" :disabled="!props.connection.configured" @click="post('/sync/woocommerce/incremental')">手动同步今日订单</button>
         </article>
       </div>
 
@@ -59,7 +58,7 @@ const post = (path: string, data: any = {}) => router.post(path, data, { preserv
 
       <article v-if="props.summary" class="mvp-card">
         <p class="mvp-kicker">最近一次结果</p>
-        <h3>Seen {{ props.summary.seen }} · 新建 {{ props.summary.created }} · 更新 {{ props.summary.updated }} · 失败 {{ props.summary.failed }}</h3>
+        <h3>Seen {{ props.summary.seen }} · 新建 {{ props.summary.created }} · 更新 {{ props.summary.updated }} · 跳过 {{ props.summary.skipped ?? 0 }} · 失败 {{ props.summary.failed }}</h3>
         <p>API pages: {{ props.summary.pages }}</p>
         <div v-if="props.summary.errors.length" class="mvp-table-wrap">
           <table class="mvp-table"><thead><tr><th>Woo ID</th><th>失败原因</th></tr></thead><tbody><tr v-for="error in props.summary.errors" :key="error.reference + error.message"><td>{{ error.reference }}</td><td>{{ error.message }}</td></tr></tbody></table>

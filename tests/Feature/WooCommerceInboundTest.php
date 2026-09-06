@@ -7,6 +7,7 @@ use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Orders\Infrastructure\Models\OrderExternalReference;
 use App\Modules\Products\Infrastructure\Models\Product;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -116,27 +117,52 @@ final class WooCommerceInboundTest extends TestCase
         $this->assertDatabaseHas('order_external_references', ['provider' => 'woocommerce', 'connection_key' => 'shop-b', 'reference' => '303']);
     }
 
-    public function test_incremental_import_requires_cursor_then_uses_modified_after_with_overlap(): void
+    public function test_manual_sync_imports_only_today_from_midnight_without_cursor(): void
     {
-        $user = $this->userWith(['sync.operate']);
-        Http::fake(function (Request $request) {
-            if (str_ends_with($request->url(), '/orders/404')) {
-                return Http::response($this->wooOrder(404, 'WC-404'), 200);
-            }
-            if (str_contains($request->url(), '/orders?')) {
-                return Http::response([$this->wooOrder(405, 'WC-405')], 200, ['X-WP-TotalPages' => '1']);
-            }
-            return Http::response([], 404);
-        });
+        CarbonImmutable::setTestNow('2026-08-27T15:30:00+00:00');
+        try {
+            $user = $this->userWith(['sync.operate']);
+            Http::fake(function (Request $request) {
+                if (str_contains($request->url(), '/orders?')) {
+                    $valid = $this->wooOrder(405, 'WC-405');
+                    $shell = $this->wooOrder(406, 'WC-406');
+                    $shell['created_via'] = 'admin';
+                    $shell['line_items'] = [];
+                    return Http::response([$valid, $shell], 200, ['X-WP-TotalPages' => '1']);
+                }
+                return Http::response([], 404);
+            });
 
-        $this->actingAs($user)->post('/sync/woocommerce/incremental')->assertSessionHas('error');
-        $this->actingAs($user)->post('/sync/woocommerce/single', ['woo_order_id' => 404])->assertSessionHasNoErrors();
-        $this->actingAs($user)->post('/sync/woocommerce/incremental')->assertSessionHasNoErrors();
-        $this->assertSame(2, Order::count());
+            $response = $this->actingAs($user)->post('/sync/woocommerce/incremental');
+            $response->assertSessionHasNoErrors();
+            $response->assertSessionHas('woocommerce_import_summary', fn (array $summary): bool =>
+                $summary['seen'] === 2
+                && $summary['created'] === 1
+                && $summary['updated'] === 0
+                && $summary['skipped'] === 1
+                && $summary['failed'] === 0
+            );
+            $this->assertSame(1, Order::count());
+            $this->assertTrue(OrderExternalReference::where('reference', '405')->exists());
+            $this->assertFalse(OrderExternalReference::where('reference', '406')->exists());
 
-        Http::assertSent(fn (Request $request) => str_contains($request->url(), '/orders?')
-            && str_contains($request->url(), 'modified_after=')
-            && str_contains($request->url(), 'per_page=100'));
+            Http::assertSent(function (Request $request): bool {
+                if (! str_contains($request->url(), '/orders?')) {
+                    return false;
+                }
+                $query = [];
+                parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+                return ($query['after'] ?? null) === '2026-08-27T00:00:00+00:00'
+                    && ($query['before'] ?? null) === '2026-08-27T15:30:00+00:00'
+                    && ($query['status'] ?? null) === 'any'
+                    && ($query['orderby'] ?? null) === 'date'
+                    && ($query['order'] ?? null) === 'asc'
+                    && ($query['per_page'] ?? null) === '100'
+                    && ! array_key_exists('modified_after', $query);
+            });
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
     }
 
     public function test_historical_import_paginates_explicit_date_range(): void
