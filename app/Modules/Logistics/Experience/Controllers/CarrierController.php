@@ -2,6 +2,7 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
+use App\Modules\Finance\Application\Contracts\ConfirmedLossReader;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
@@ -15,6 +16,8 @@ use Inertia\Response;
 final class CarrierController
 {
     private const PER_PAGE = 50;
+
+    public function __construct(private readonly ConfirmedLossReader $confirmedLosses) {}
 
     public function index(Request $request): Response
     {
@@ -187,7 +190,7 @@ final class CarrierController
             ['key' => 'review', 'label' => '复核单', 'url' => '/logistics/review', 'count' => LogisticsReview::query()->where('status', 'pending')->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))->count()],
             ['key' => 'completed', 'label' => '已完结', 'url' => '/logistics/completed', 'count' => Shipment::query()->where('shipment_status', 'completed')->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))->count()],
             ['key' => 'cancelled', 'label' => '已取消', 'url' => '/logistics/cancelled', 'count' => Order::query()->where('order_status', 'cancelled')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->count()],
-            ['key' => 'loss', 'label' => '亏本单', 'url' => '/logistics/loss', 'count' => 0],
+            ['key' => 'loss', 'label' => '亏本单', 'url' => '/logistics/loss', 'count' => $this->confirmedLosses->applyConfirmedLossScope(Order::query()->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics')))->count()],
         ];
     }
 }
