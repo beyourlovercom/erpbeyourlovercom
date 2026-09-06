@@ -6,13 +6,14 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Sync\Application\Contracts\SyncRunRepository;
+use App\Modules\Sync\Application\Contracts\SyncRunTracker;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
-final class SyncRunService
+final class SyncRunService implements SyncRunTracker
 {
     public function __construct(
         private readonly AuditRecorder $audit,
@@ -149,6 +150,25 @@ final class SyncRunService
         return $this->repository->freshItem($item);
     }
 
+    public function finishSucceeded(Model $item, ?string $resultCode = null): Model
+    {
+        return $this->finishItem($item, SyncRunItemStatus::Succeeded, $resultCode);
+    }
+
+    public function finishSkipped(Model $item, ?string $resultCode = null): Model
+    {
+        return $this->finishItem($item, SyncRunItemStatus::Skipped, $resultCode);
+    }
+
+    public function finishFailed(
+        Model $item,
+        ?string $resultCode = null,
+        ?string $errorCode = null,
+        ?string $errorMessage = null,
+    ): Model {
+        return $this->finishItem($item, SyncRunItemStatus::Failed, $resultCode, $errorCode, $errorMessage);
+    }
+
     public function complete(Model $run, ?Authenticatable $actor): Model
     {
         return DB::transaction(function () use ($run, $actor): Model {
@@ -210,6 +230,27 @@ final class SyncRunService
     public function detail(int $runId): Model
     {
         return $this->repository->detail($runId);
+    }
+
+    public function latestContextString(
+        string $runType,
+        ?string $providerKey,
+        ?string $connectionKey,
+        string $key,
+    ): ?string {
+        foreach ($this->repository->recentForScope($runType, $providerKey, $connectionKey, 50) as $run) {
+            $status = $run->status instanceof \BackedEnum ? $run->status->value : (string) $run->status;
+            if (! in_array($status, [SyncRunStatus::Completed->value, SyncRunStatus::Partial->value], true)) {
+                continue;
+            }
+            $context = is_array($run->context) ? $run->context : [];
+            $value = trim((string) ($context[$key] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
     }
 
     /** @return array<string,mixed> */
