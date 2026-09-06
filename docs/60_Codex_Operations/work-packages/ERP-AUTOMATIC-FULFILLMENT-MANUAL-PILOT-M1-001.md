@@ -287,3 +287,23 @@ MIGRATION_FILE_AUTHORING: EXCLUDED
 MIGRATION_EXECUTION: EXCLUDED
 UAT: INCLUDED
 DEPLOYMENT: EXCLUDED
+
+## A1 Production Canary Result — 2026-09-06
+
+Owner explicitly authorized `A1 Reservation + Shipment Draft canary`.
+
+Production result for Order 6011 / `007erp-0903-c6010` / Woo 40120:
+- Reservation #1 created with `reservation_key=automatic-order-6011`.
+- Reservation status: `reserved`; warehouse_id=3 / DE; product_id=1336 / MF414A; quantity=1.
+- Shipment #1 created with status `pending`, warehouse_id=3 / DE, `warehouse_selection_source=automatic`.
+- Carrier, service, tracking and shipped_at remain null.
+- MF414A DE inventory: QOH remained 5; reserved changed 0 → 1; available changed 5 → 4.
+- Global Production active Reservation count = 1; Shipment count = 1. No unrelated Order was allocated.
+- Manual Sync remains absent; Shipment sync outbox count = 0; no Woo Tracking outbound occurred.
+- Automatic allocation persistent runtime remains fail-closed: enabled=false, dry_run=true, scheduler=false.
+
+Canary verdict: `PASS` for Reservation + Shipment Draft invariants.
+
+Operational finding: no visible fresh pre-canary backup artifact was found in the Production backup directory. The write had already been performed by a concurrent authorized ERP lane before this pilot process reached its own backup step. Do not repeat this pattern; the next business-data write gate must verify backup evidence before mutation.
+
+Next gate: `WAITING_REAL_CARRIER_SERVICE_TRACKING_AND_MARK_SHIPPED_OWNER_GATE`.
