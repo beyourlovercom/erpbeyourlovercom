@@ -119,6 +119,27 @@ final class WooCommerceAutomaticOrderSyncTest extends TestCase
         $this->assertFalse(OrderExternalReference::where('reference', '712')->exists());
     }
 
+    public function test_checkpoint_ignores_newer_non_terminal_run_context(): void
+    {
+        $tracker = app(SyncRunTracker::class);
+        $completed = $tracker->start(
+            'woocommerce_order_incremental', 0, null, 'woocommerce', 'shop-a',
+            ['checkpoint_modified_at' => '2026-08-27T01:10:00+00:00'],
+        );
+        $tracker->complete($completed, null);
+        $tracker->start(
+            'woocommerce_order_incremental', 0, null, 'woocommerce', 'shop-a',
+            ['checkpoint_modified_at' => '2026-08-27T01:20:00+00:00'],
+        );
+
+        $this->assertSame(
+            '2026-08-27T01:10:00+00:00',
+            $tracker->latestContextString(
+                'woocommerce_order_incremental', 'woocommerce', 'shop-a', 'checkpoint_modified_at',
+            ),
+        );
+    }
+
     public function test_scheduler_registers_bounded_order_sync_when_enabled(): void
     {
         config(['services.woocommerce.order_sync_enabled' => true]);

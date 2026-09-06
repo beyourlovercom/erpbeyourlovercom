@@ -239,6 +239,10 @@ final class SyncRunService implements SyncRunTracker
         string $key,
     ): ?string {
         foreach ($this->repository->recentForScope($runType, $providerKey, $connectionKey, 50) as $run) {
+            $status = $run->status instanceof \BackedEnum ? $run->status->value : (string) $run->status;
+            if (! in_array($status, [SyncRunStatus::Completed->value, SyncRunStatus::Partial->value], true)) {
+                continue;
+            }
             $context = is_array($run->context) ? $run->context : [];
             $value = trim((string) ($context[$key] ?? ''));
             if ($value !== '') {
