@@ -155,3 +155,13 @@ DEPLOYMENT: EXCLUDED
 - Owner UAT runtime is served from the US Mac on port 18132 and China Mac reachability was independently verified with HTTP 200 to the login page over Tailscale.
 - Production historical import commit gate remains OFF; no Production data mutation, push, PR, merge or deployment is authorized by this UAT setup.
 - NEXT GATE: Owner inspects the 10-row Historical Logistics Evidence page and replies PASS or lists remediation.
+
+## Owner Real-Data UAT — PASS — 2026-09-06
+- Owner inspected the isolated Historical Logistics Evidence workspace containing the ten real, non-PII source rows and explicitly replied `pass`.
+- Owner Real-Data UAT status: PASS.
+- Latest-main reconciliation after PASS: rebased cleanly onto `origin/main@152d3290e59ad6cf7881a9b850b2b36d5d6da698`; intervening main drift is Woo automatic-order-sync only and has zero path overlap with this WP.
+- Post-rebase focused backend: 8 tests / 59 assertions PASS.
+- Post-rebase Historical Import frontend: 2/2 PASS.
+- Post-rebase typecheck + diff-check: PASS.
+- Production Historical Evidence Apply remains separately gated and OFF. Owner UAT PASS authorizes Git delivery of the reviewed M1 workspace; it does not mutate Production historical data.
+- PACKAGE_STATUS: OWNER_UAT_PASS / READY_FOR_GIT_DELIVERY.
