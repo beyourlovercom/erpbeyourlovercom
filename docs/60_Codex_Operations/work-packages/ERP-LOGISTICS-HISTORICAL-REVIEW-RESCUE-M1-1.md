@@ -1,7 +1,7 @@
 # ERP-LOGISTICS-HISTORICAL-REVIEW-RESCUE-M1-1
 
-Status: DESIGN_PENDING_OWNER_PASS
-Base: origin/main@2a7f0208000a1f9ba7325fcdc430307f9be3c975
+Status: OWNER_UAT_PASS / READY_FOR_GIT_DELIVERY
+Base at proposal: origin/main@2a7f0208000a1f9ba7325fcdc430307f9be3c975
 
 ## Production truth entering M1.1
 - Batch #1 source: `0902-网红订单.xlsx`, checksum `164fe6242ec612d024bd521623879b0d3ede7afef2054347a8bce07f8f9d8c41`.
@@ -32,5 +32,25 @@ Base: origin/main@2a7f0208000a1f9ba7325fcdc430307f9be3c975
 ## UI proposal
 Extend the existing `/logistics/historical-import` page only. Add one Review Rescue card below the current summary: `可安全救回 141 / 277 tracking evidence / 人工复核 3`, breakdown chips, multi-tracking preview chips, and a separate `提交可安全复核证据` action. No redesign of the approved M1 page.
 
-## Next gate
-OWNER_VISUAL_PASS required before tracked UI implementation.
+## Owner visual gate — PASS — 2026-09-06
+- Owner reviewed the rendered M1.1 Review Rescue proposal and replied `pass`.
+- Implementation proceeded only after this PASS.
+
+## Implementation verification
+- Focused backend: 11 tests / 109 assertions / 0 failures.
+- Historical Import frontend: 2/2 PASS.
+- Full Logistics regression: 39 tests / 382 assertions / 0 failures (warnings only).
+- Typecheck PASS; build PASS; `git diff --check` PASS.
+- Production-safe 144-row replay through the implemented PHP extractor: 141 rescueable rows / 277 candidate evidence / 3 manual rows.
+- US Mac Local/UAT used isolated SQLite with only Historical Import safe fields; no Production DB was mounted into UAT.
+
+## Owner Local/UAT — PASS — 2026-09-06
+Owner reviewed the real US Mac Local/UAT page at `/logistics/historical-import` and replied `pass`. Verified presentation included:
+- source totals 1077 / Ready 788 / Review 144 / Skip 145;
+- Review Rescue 141 rows / 277 Tracking Evidence / 3 manual;
+- breakdown 1→1 carrier, 75→153 multi-tracking, 54→108 compound, 9→10 duplicate Order, 2→5 replacement/transfer;
+- Rescue commit action disabled while gate is OFF;
+- explicit Historical Evidence-only / Active Shipment unchanged messaging.
+
+## Production gate
+`LOGISTICS_HISTORICAL_REVIEW_RESCUE_COMMIT_ENABLED` remains OFF by default. Owner UAT PASS authorizes normal Git delivery/merge under `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1`; it does **not** authorize Production deployment or writing the 277 Rescue Evidence rows.

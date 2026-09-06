@@ -18,19 +18,35 @@ const batch = {
   pagination: { current_page: 1, last_page: 22, per_page: 50, total: 1077 },
 }
 
+const reviewRescue = {
+  rescueable_rows: 141, candidate_evidence_count: 277, existing_evidence_count: 0, pending_evidence_count: 277, manual_review_rows: 3,
+  groups: [
+    { reason: 'multiple_tracking_candidates', rows: 75, evidence: 153 },
+    { reason: 'suspicious_compound_tracking', rows: 54, evidence: 108 },
+    { reason: 'duplicate_source_order_no', rows: 9, evidence: 10 },
+    { reason: 'replacement_or_transfer_ambiguity', rows: 2, evidence: 5 },
+    { reason: 'carrier_requires_review', rows: 1, evidence: 1 },
+  ],
+}
+
 describe('Historical shipment evidence workspace', () => {
   it('renders exact KOL links and makes the non-canonical impact explicit', () => {
-    const wrapper = mount(HistoricalImport, { props: { batch, commitEnabled: false, canOperate: false } })
+    const wrapper = mount(HistoricalImport, { props: { batch, commitEnabled: false, reviewRescue, rescueCommitEnabled: false, canOperate: false } })
     expect(wrapper.text()).toContain('历史发货证据导入')
     expect(wrapper.text()).toContain('Active Shipment 保持不变')
     expect(wrapper.text()).toContain('OFF · 默认')
     expect(wrapper.find('a[href="/kol/library/920"]').exists()).toBe(true)
     expect(wrapper.find('input[type="file"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Review 多段物流证据救回')
+    expect(wrapper.text()).toContain('141 行')
+    expect(wrapper.text()).toContain('277')
+    expect(wrapper.text()).toContain('仍需人工')
+    expect(wrapper.text()).toContain('3 行')
   })
 
   it('uses server pagination and only exposes import controls to operators', async () => {
     routerGet.mockClear()
-    const wrapper = mount(HistoricalImport, { props: { batch, commitEnabled: true, canOperate: true } })
+    const wrapper = mount(HistoricalImport, { props: { batch, commitEnabled: true, reviewRescue, rescueCommitEnabled: true, canOperate: true } })
     expect(wrapper.find('input[type="file"]').exists()).toBe(true)
     const next = wrapper.findAll('button').find((button) => button.text().includes('下一页'))
     expect(next).toBeTruthy()
