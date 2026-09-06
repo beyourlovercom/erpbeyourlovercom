@@ -21,6 +21,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics/historical-import', [HistoricalImportController::class, 'index'])->middleware('can:logistics.view')->name('logistics.historical-import');
     Route::post('/logistics/historical-import/preview', [HistoricalImportController::class, 'preview'])->middleware('can:logistics.operate')->name('logistics.historical-import.preview');
     Route::post('/logistics/historical-import/{batch}/commit', [HistoricalImportController::class, 'commit'])->middleware('can:logistics.operate')->name('logistics.historical-import.commit');
+    Route::post('/logistics/historical-import/{batch}/review-rescue/commit', [HistoricalImportController::class, 'commitReviewRescue'])->middleware('can:logistics.operate')->name('logistics.historical-import.review-rescue.commit');
     Route::post('/logistics/orders/{order}/draft', [LogisticsController::class, 'saveDraft'])->middleware('can:logistics.operate')->name('logistics.draft');
     Route::post('/logistics/orders/{order}/adopt-recommendation', [LogisticsController::class, 'adoptRecommendation'])->middleware('can:logistics.operate')->name('logistics.adopt-recommendation');
     Route::get('/logistics/orders/{order}/payload', [LogisticsController::class, 'payload'])->middleware('can:logistics.view')->name('logistics.payload');

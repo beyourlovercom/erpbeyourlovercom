@@ -11,6 +11,7 @@ use App\Modules\Kol\Infrastructure\Models\KolImportPreviewBatch;
 use App\Modules\Kol\Infrastructure\Models\KolImportPreviewCandidate;
 use App\Modules\Kol\Infrastructure\Models\KolReconciliationBatch;
 use App\Modules\Kol\Infrastructure\Models\KolReconciliationRow;
+use App\Modules\Logistics\Application\HistoricalImport\HistoricalReviewRescueService;
 use App\Modules\Logistics\Application\HistoricalImport\HistoricalShipmentImportService;
 use App\Modules\Logistics\Infrastructure\Models\HistoricalEvidence;
 use App\Modules\Logistics\Infrastructure\Models\HistoricalImportBatch;
@@ -157,6 +158,79 @@ final class HistoricalImportTest extends TestCase
         self::assertSame($before['collaborations'], \DB::table('kol_collaborations')->count());
         self::assertDatabaseHas('audit_records', ['action' => 'logistics.historical_import.committed']);
         self::assertStringNotContainsString('private@example.test', json_encode(HistoricalEvidence::all()->toArray(), JSON_THROW_ON_ERROR));
+    }
+
+    public function test_review_rescue_plan_keeps_all_safe_multileg_tracking_and_unresolved_rows_manual(): void
+    {
+        $operator = $this->userWith(['logistics.view', 'logistics.operate']);
+        $kol = Kol::create(['display_name' => 'Rescue Exact KOL', 'status' => 'active', 'owner_id' => $operator->id, 'relationship_stage' => 'prospect']);
+        $batch = HistoricalImportBatch::create([
+            'original_filename' => '0902-网红订单.xlsx', 'source_checksum' => str_repeat('b', 64), 'source_sheet' => '工作表1',
+            'status' => 'committed', 'total_rows' => 4, 'review_count' => 4, 'created_by' => $operator->id,
+        ]);
+        $rows = [
+            [24, 'KOL120911', $kol->id, '纬狮', "WSHMX0216843230YQ\nJMX101606052877", 'multiple_tracking_candidates'],
+            [35, 'KOL121205', $kol->id, '纬狮', 'WSHCO3495625702YQCO3495625702', 'suspicious_compound_tracking'],
+            [27, 'KOL120914', $kol->id, '更改地址成功，新单号请查收：KOL120914-1==WSHCO3465574711YQ=CO3465574711', 'WSHCO3455805884YQCO3455805884', 'replacement_or_transfer_ambiguity'],
+            [109, 'KOL122101', null, '', 'JJD000030242945000000004367', 'kol_unresolved_exact_graph'],
+        ];
+        foreach ($rows as [$sourceRow, $orderNo, $kolId, $carrier, $tracking, $reason]) {
+            HistoricalImportRow::create([
+                'batch_id' => $batch->id, 'source_row_number' => $sourceRow, 'source_order_no' => $orderNo, 'kol_id' => $kolId,
+                'source_status_raw' => '2.1 Shipping 运输中', 'source_carrier_raw' => $carrier, 'source_tracking_raw' => $tracking,
+                'classification' => 'review', 'classification_reason' => $reason, 'evidence_hash' => hash('sha256', 'row-'.$sourceRow),
+            ]);
+        }
+
+        $service = $this->app->make(HistoricalReviewRescueService::class);
+        $plan = $service->plan($batch);
+        self::assertSame(3, $plan['rescueable_rows']);
+        self::assertSame(8, $plan['candidate_evidence_count']);
+        self::assertSame(8, $plan['pending_evidence_count']);
+        self::assertSame(1, $plan['manual_review_rows']);
+        self::assertSame(['WSHMX0216843230YQ', 'JMX101606052877'], $service->rescueCandidates($batch->rows()->where('source_row_number', 24)->firstOrFail()));
+        self::assertSame(['WSHCO3495625702YQ', 'CO3495625702'], $service->rescueCandidates($batch->rows()->where('source_row_number', 35)->firstOrFail()));
+        self::assertSame(['WSHCO3455805884YQ', 'CO3455805884', 'WSHCO3465574711YQ', 'CO3465574711'], $service->rescueCandidates($batch->rows()->where('source_row_number', 27)->firstOrFail()));
+
+        $this->actingAs($operator)->postJson("/logistics/historical-import/{$batch->id}/review-rescue/commit")->assertForbidden();
+        self::assertDatabaseCount('logistics_historical_evidences', 0);
+    }
+
+    public function test_enabled_review_rescue_commit_is_idempotent_and_never_mutates_current_fulfillment_truth(): void
+    {
+        $operator = $this->userWith(['logistics.view', 'logistics.operate']);
+        $kol = Kol::create(['display_name' => 'Rescue Exact KOL', 'status' => 'active', 'owner_id' => $operator->id, 'relationship_stage' => 'prospect']);
+        $batch = HistoricalImportBatch::create([
+            'original_filename' => '0902-网红订单.xlsx', 'source_checksum' => str_repeat('c', 64), 'source_sheet' => '工作表1',
+            'status' => 'committed', 'total_rows' => 2, 'review_count' => 2, 'created_by' => $operator->id,
+        ]);
+        foreach ([
+            [24, 'KOL120911', '纬狮', "WSHMX0216843230YQ\nJMX101606052877", 'multiple_tracking_candidates'],
+            [35, 'KOL121205', '纬狮', 'WSHCO3495625702YQCO3495625702', 'suspicious_compound_tracking'],
+        ] as [$sourceRow, $orderNo, $carrier, $tracking, $reason]) {
+            HistoricalImportRow::create([
+                'batch_id' => $batch->id, 'source_row_number' => $sourceRow, 'source_order_no' => $orderNo, 'kol_id' => $kol->id,
+                'source_status_raw' => '2.1 Shipping 运输中', 'source_carrier_raw' => $carrier, 'source_tracking_raw' => $tracking,
+                'classification' => 'review', 'classification_reason' => $reason, 'evidence_hash' => hash('sha256', 'rescue-'.$sourceRow),
+            ]);
+        }
+        $before = ['orders' => \DB::table('orders')->count(), 'shipments' => \DB::table('shipments')->count(), 'collaborations' => \DB::table('kol_collaborations')->count()];
+        config(['logistics.historical_review_rescue_commit_enabled' => true]);
+        $service = $this->app->make(HistoricalReviewRescueService::class);
+        $service->commit($batch, $operator);
+        $service->commit($batch->fresh(), $operator);
+
+        self::assertSame(4, HistoricalEvidence::count());
+        self::assertSame('committed', $batch->fresh()->status);
+        self::assertSame(0, $service->plan($batch->fresh())['pending_evidence_count']);
+        self::assertSame($before['orders'], \DB::table('orders')->count());
+        self::assertSame($before['shipments'], \DB::table('shipments')->count());
+        self::assertSame($before['collaborations'], \DB::table('kol_collaborations')->count());
+        self::assertDatabaseHas('audit_records', ['action' => 'logistics.historical_import.review_rescue_committed']);
+        foreach (HistoricalEvidence::all() as $evidence) {
+            self::assertSame('historical-review-rescue-v1', $evidence->evidence_snapshot['rescue']['version']);
+            self::assertSame('review', $evidence->evidence_snapshot['rescue']['original_classification']);
+        }
     }
 
     /** @return array{Kol,Kol} */
