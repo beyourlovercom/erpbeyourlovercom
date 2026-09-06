@@ -1,6 +1,6 @@
 # ERP-SYNC-OVERVIEW-WOO-CONTROL-001
 
-Status: CODE COMPLETE / VERIFIED / PRODUCTION NOT DEPLOYED
+Status: CLOSED / DEPLOYED TO ERP / PRODUCTION ACCEPTED
 
 ## Owner intent
 
@@ -53,7 +53,14 @@ View-only users see the panel but cannot execute the manual action.
 
 Architecture test remains 3 failures / 8 tests / 128 assertions. A clean detached `main@1d2c0d1` produces the exact same 3 failures, confirming pre-existing global frozen-baseline drift unrelated to this WP.
 
-## Production gate
+## Production acceptance
 
-No migration. No Production mutation has been performed by this WP.
-Deploy only after explicit Owner `pass`.
+Owner `pass` authorized Production deployment on 2026-09-06.
+- no migration; bounded runtime + frontend deploy only;
+- `/sync` live props show Woo sync enabled, frequency `每 1 小时`, manual action `/sync/woocommerce/incremental`, latest automatic Run #531 completed;
+- Owner clicked `手动同步今日订单`; Production created manual SyncRun #533 with `initiated_by=1`;
+- #533 completed: requested4 / processed4 / succeeded4 / skipped0 / failed0 / conflict0;
+- four source orders (40212, 40213, 40214, 40215) were all created on 2026-09-06 UTC inside the exact manual window;
+- post-UAT `/up` = 200 and Woo duplicate refs remain 0.
+
+`ERP-SYNC-OVERVIEW-WOO-CONTROL-001 = CLOSED / DEPLOYED TO ERP / PRODUCTION ACCEPTED`.

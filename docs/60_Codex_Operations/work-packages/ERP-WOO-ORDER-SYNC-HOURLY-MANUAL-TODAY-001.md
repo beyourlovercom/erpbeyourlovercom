@@ -36,6 +36,14 @@ Vue/Vite full build PASS. `git diff --check` PASS.
 
 ## Current gate
 
-`WOO_ORDER_SYNC_HOURLY_MANUAL_TODAY = CODE_READY / INTEGRATION_PASS / PRODUCTION_NOT_CHANGED`
+`WOO_ORDER_SYNC_HOURLY_MANUAL_TODAY = CLOSED / DEPLOYED TO ERP / PRODUCTION ACCEPTED`
 
-Production currently remains on the accepted every-5-minutes scheduler until the Owner deployment gate is explicitly authorized.
+Production acceptance on 2026-09-06:
+- fresh database backup Run #27 ready; encrypted artifact checksum verified;
+- bounded deploy only, no migration;
+- live scheduler changed to `0 * * * *`; scheduler restarted successfully;
+- automatic canary SyncRun #531 completed: seen2 / created1 / updated1 / failed0;
+- Owner manual UAT SyncRun #533 completed: requested4 / succeeded4 / skipped0 / failed0 / conflict0;
+- manual context: `2026-09-06T00:00:00+00:00 -> 2026-09-06T04:26:45+00:00`;
+- source Woo orders 40212-40215 all have `date_created_gmt` inside that window;
+- post-UAT health: Woo refs6041 / duplicate refs0 / null Product items18 / open SKU reconciliation0 / failed_jobs0 / `/up`200.
