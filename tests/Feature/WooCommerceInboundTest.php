@@ -7,6 +7,7 @@ use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Orders\Infrastructure\Models\OrderExternalReference;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Sync\Infrastructure\Models\SyncRun;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -145,6 +146,17 @@ final class WooCommerceInboundTest extends TestCase
             $this->assertSame(1, Order::count());
             $this->assertTrue(OrderExternalReference::where('reference', '405')->exists());
             $this->assertFalse(OrderExternalReference::where('reference', '406')->exists());
+
+            $run = SyncRun::query()->where('run_type', 'woocommerce_order_manual_today')->firstOrFail();
+            $this->assertSame($user->id, $run->initiated_by);
+            $this->assertSame('partial', $run->status->value);
+            $this->assertSame(2, $run->requested_items);
+            $this->assertSame(1, $run->succeeded_items);
+            $this->assertSame(1, $run->skipped_items);
+            $this->assertSame(0, $run->failed_items);
+            $this->assertSame('orders', $run->context['domain']);
+            $this->assertSame('manual_today', $run->context['mode']);
+            $this->assertCount(2, $run->items()->get());
 
             Http::assertSent(function (Request $request): bool {
                 if (! str_contains($request->url(), '/orders?')) {
