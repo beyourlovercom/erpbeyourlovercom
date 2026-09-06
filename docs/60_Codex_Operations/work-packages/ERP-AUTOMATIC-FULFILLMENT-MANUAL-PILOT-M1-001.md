@@ -129,6 +129,57 @@ Record every human decision, missing data source, external lookup, override and 
 - Production deploy and Production business-data write are separate Owner gates.
 - The pilot does not expand US routing policy.
 
+## P1 preflight — exact single-order Woo tracking outbound contract
+
+Production read-only reconciliation confirms:
+
+- `services.woocommerce.tracking_sync_enabled = false`; tracking is not automatically pushed by scheduler.
+- Woo outbound descriptor is configured for `https://beyourlover.com` with `connection_key=beyourlover.com`.
+- Current `manual_syncs = 0`; no prior pilot shipment has entered the manual sync queue.
+- Mark Shipped creates/ensures the canonical Manual Sync pending record.
+- Exact single-order outbound route is `POST /sync/orders/{order}/tracking-outbound`.
+- Pilot must never use `tracking/all-pending`; only the exact Pilot A1 Order may be pushed.
+
+Single-order outbound is fail-closed:
+
+1. Order source must be WooCommerce.
+2. Shipment must be `shipped`.
+3. Carrier, Tracking number, and `shipped_at` must all exist.
+4. Order must carry a numeric Woo reference for the configured connection.
+5. Carrier must resolve through the explicit ERP carrier → AfterShip slug map.
+6. ERP writes Tracking, then verifies the remote state before marking Manual Sync complete.
+7. Repeating an already-completed identical outbound is idempotent.
+8. If Woo already has a different Tracking value, result is `conflict`; ERP must not overwrite remote truth.
+9. Transient provider failure uses the canonical outbox/retry flow, maximum 3 attempts.
+
+Currently mapped carrier values are:
+
+`4PX`, `DHL`, `USPS`, `UPS`, `FedEx`, `Canada Post`, `SF Express`, `Singapore Post`.
+
+Pilot rule: the real carrier must be selected from actual shipment evidence. The pilot must not choose a carrier merely because it is mapped.
+
+## P1 exact canary sequence — Pilot A1
+
+Pilot A1 remains Woo `40120`, ERP `007erp-0903-c6010`, destination DE, SKU `MF414A ×1`.
+
+After Line 1 passes Owner UAT and the Owner separately authorizes the required Production runtime/data-write step, execute only this order:
+
+1. Fresh backup + exact preflight snapshot.
+2. Confirm Order is still `pending_shipment`, has no Shipment and no active Reservation.
+3. Reconfirm DE warehouse authoritative stock and exact MF414A available quantity.
+4. Create/accept the canonical DE allocation through the approved Inventory V2 path.
+5. Verify Reservation is `reserved`, Shipment Draft exists, and QOH is unchanged.
+6. Stop until real carrier/service/tracking facts are available. No fake shipment facts.
+7. Enter the real carrier/service/tracking and actual shipped time, then Mark Shipped.
+8. Verify Reservation becomes `committed`, reserved quantity returns exactly, and QOH decreases exactly once.
+9. Confirm one Manual Sync pending row exists for the Order.
+10. From `/sync/orders`, execute the exact single-order Tracking outbound only.
+11. Verify Woo remote Tracking matches ERP and Manual Sync becomes `completed`.
+12. Re-run the same exact outbound once to prove idempotency; no duplicate remote Tracking/evidence may be created.
+13. Reconcile Order / Shipment / Reservation / inventory / Sync Outbox / Manual Sync / audit records.
+
+Any mismatch stops the pilot before B1/B2/B3.
+
 ## Current gate
 
 `WAITING_FOR_LINE1_OWNER_UAT_AND_PRODUCTION_RUNTIME_GATE`
