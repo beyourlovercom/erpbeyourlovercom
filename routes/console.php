@@ -45,8 +45,8 @@ if ((bool) config('services.woocommerce.product_sync_enabled', false)) {
 
 if ((bool) config('services.woocommerce.order_sync_enabled', false)) {
     Schedule::command('orders:sync-woocommerce --no-interaction')
-        ->everyFiveMinutes()
-        ->name('orders.woocommerce.inbound.every-five-minutes')
-        ->withoutOverlapping(10)
+        ->hourly()
+        ->name('orders.woocommerce.inbound.hourly')
+        ->withoutOverlapping(55)
         ->onOneServer();
 }

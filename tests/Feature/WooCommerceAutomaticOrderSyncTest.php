@@ -146,12 +146,12 @@ final class WooCommerceAutomaticOrderSyncTest extends TestCase
         require base_path('routes/console.php');
 
         $events = collect(app(Schedule::class)->events())
-            ->filter(fn ($event): bool => $event->description === 'orders.woocommerce.inbound.every-five-minutes');
+            ->filter(fn ($event): bool => $event->description === 'orders.woocommerce.inbound.hourly');
         $this->assertCount(1, $events);
         $event = $events->first();
-        $this->assertSame('*/5 * * * *', $event->expression);
+        $this->assertSame('0 * * * *', $event->expression);
         $this->assertTrue($event->withoutOverlapping);
-        $this->assertSame(10, $event->expiresAt);
+        $this->assertSame(55, $event->expiresAt);
         $this->assertTrue($event->onOneServer);
         $this->assertStringContainsString('orders:sync-woocommerce', $event->command);
         $this->assertStringContainsString('--no-interaction', $event->command);

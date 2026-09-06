@@ -39,7 +39,7 @@ final class WooCommerceInboundController
 
     public function incremental(Request $request): RedirectResponse
     {
-        return $this->run(fn () => $this->inbound->importIncremental($request->user()));
+        return $this->run(fn () => $this->inbound->importToday($request->user()));
     }
 
     public function historical(Request $request): RedirectResponse
@@ -55,7 +55,7 @@ final class WooCommerceInboundController
     {
         try {
             $summary = $callback();
-            return back()->with('success', sprintf('导入完成：新建 %d，更新 %d，失败 %d', $summary['created'], $summary['updated'], $summary['failed']))
+            return back()->with('success', sprintf('导入完成：新建 %d，更新 %d，跳过 %d，失败 %d', $summary['created'], $summary['updated'], $summary['skipped'] ?? 0, $summary['failed']))
                 ->with('woocommerce_import_summary', $summary);
         } catch (Throwable $e) {
             return back()->with('error', 'WooCommerce 导入失败：'.$e->getMessage());

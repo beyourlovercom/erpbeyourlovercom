@@ -58,6 +58,20 @@ final class WooCommerceInboundService
         ], $actor);
     }
 
+    public function importToday(?Authenticatable $actor): array
+    {
+        $now = CarbonImmutable::now('UTC');
+
+        return $this->importPages([
+            'after' => $now->startOfDay()->toIso8601String(),
+            'before' => $now->toIso8601String(),
+            'status' => 'any',
+            'orderby' => 'date',
+            'order' => 'asc',
+            'per_page' => self::PER_PAGE,
+        ], $actor, true);
+    }
+
     public function importAutomaticIncremental(): array
     {
         $descriptor = $this->gateway->descriptor();
@@ -121,7 +135,7 @@ final class WooCommerceInboundService
         ], $actor);
     }
 
-    private function importPages(array $baseQuery, ?Authenticatable $actor): array
+    private function importPages(array $baseQuery, ?Authenticatable $actor, bool $skipNonProductAdminShells = false): array
     {
         $summary = $this->emptySummary();
         $page = 1;
@@ -132,7 +146,7 @@ final class WooCommerceInboundService
             if ((int) $result['total_pages'] > self::MAX_PAGES) {
                 throw new DomainException('WooCommerce 导入范围超过单次 10000 单上限，请缩小历史日期范围。');
             }
-            $pageSummary = $this->importPayloads($result['items'], $actor);
+            $pageSummary = $this->importPayloads($result['items'], $actor, $skipNonProductAdminShells);
             $summary = $this->mergeSummary($summary, $pageSummary);
             $totalPages = max(1, (int) $result['total_pages']);
             $page++;
@@ -207,7 +221,7 @@ final class WooCommerceInboundService
     }
 
     /** @param list<array<string,mixed>> $payloads */
-    private function importPayloads(array $payloads, ?Authenticatable $actor): array
+    private function importPayloads(array $payloads, ?Authenticatable $actor, bool $skipNonProductAdminShells = false): array
     {
         $summary = $this->emptySummary();
         $connectionKey = $this->gateway->descriptor()['connection_key'];
@@ -215,6 +229,10 @@ final class WooCommerceInboundService
         foreach ($payloads as $payload) {
             $summary['seen']++;
             $reference = (string) ($payload['id'] ?? '?');
+            if ($skipNonProductAdminShells && $this->isNonProductAdminShell($payload)) {
+                $summary['skipped']++;
+                continue;
+            }
             try {
                 $normalized = $this->normalizer->normalize($payload, $connectionKey);
                 $result = $this->orders->upsertInbound($normalized, $actor);
@@ -298,7 +316,7 @@ final class WooCommerceInboundService
 
     private function emptySummary(): array
     {
-        return ['seen' => 0, 'created' => 0, 'updated' => 0, 'failed' => 0, 'pages' => 0, 'errors' => []];
+        return ['seen' => 0, 'created' => 0, 'updated' => 0, 'skipped' => 0, 'failed' => 0, 'pages' => 0, 'errors' => []];
     }
 
     private function automaticEmptySummary(): array
@@ -311,7 +329,7 @@ final class WooCommerceInboundService
 
     private function mergeSummary(array $left, array $right): array
     {
-        foreach (['seen', 'created', 'updated', 'failed'] as $key) {
+        foreach (['seen', 'created', 'updated', 'skipped', 'failed'] as $key) {
             $left[$key] += $right[$key];
         }
         $left['errors'] = array_slice([...$left['errors'], ...$right['errors']], 0, 20);
