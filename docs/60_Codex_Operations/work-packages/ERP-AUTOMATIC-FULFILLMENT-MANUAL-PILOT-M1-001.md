@@ -4,7 +4,7 @@ STATUS: READ_ONLY_AUDIT_COMPLETE / PRODUCTION_WRITE_GATE_PENDING
 EXECUTION_PROVIDER: GPT_WEB
 VERIFICATION_TIER: HIGH_RISK
 PARALLEL_SAFE: YES — documentation/read-only pilot coordination only until exact Production write gate
-BASELINE: origin/main@5d7a694a1e510d3ff91c38260e84751018aec35e
+BASELINE: origin/main@7247c3a41b51a8b3878dc3193a1215bb59168d3b
 DEPENDENCIES: Inventory V2 Automatic Allocation WP is implemented/verification-pass and Owner Local/UAT pending; Production runtime remains pre-auto-allocation.
 DEPENDENCY_TYPE: EXTERNAL
 
@@ -182,26 +182,47 @@ Any mismatch stops the pilot before B1/B2/B3.
 
 ## Current gate
 
-`WAITING_FOR_LINE1_OWNER_UAT_AND_PRODUCTION_RUNTIME_GATE`
+`READY_FOR_PRODUCTION_DEPLOY_GATE`
 
 No Production business-data write has been performed by this Work Package.
 
 ## PROJECT POSITION
 
 PROGRAM_ROADMAP: Real Data Onboarding complete → Fulfillment Intelligence → Manual Fulfillment Pilot → Packing/Chargeable Weight → Shipping Cost → Transport Mode → Carrier Rules → Warehouse Connectors → Automatic Dispatch → Accounting feedback
-CURRENT_TRACK_PHASE_MAP: Readiness M1 COMPLETE → Manual Pilot P0 COMPLETE → P1 waiting → P2-P6 waiting → Automatic Fulfillment M2+ paused
+CURRENT_TRACK_PHASE_MAP: Readiness M1 COMPLETE → Manual Pilot P0 COMPLETE → Inventory V2 Owner UAT+Merge COMPLETE → P1 Production Deploy Gate CURRENT → P2-P6 waiting → Automatic Fulfillment M2+ paused
 COMPLETED_PHASES: Automatic Fulfillment Readiness M1; Manual Pilot read-only screening
 CURRENT_PHASE: Manual Fulfillment Pilot gate
 CURRENT_WORK_PACKAGE: ERP-AUTOMATIC-FULFILLMENT-MANUAL-PILOT-M1-001
-PACKAGE_STATUS: READ_ONLY_AUDIT_COMPLETE / PRODUCTION_WRITE_GATE_PENDING
-WAITING_PHASES: Inventory V2 Owner UAT; Production runtime gate; exact real-order write gate; real shipment facts; Woo outbound verification
-BASELINE: origin/main@5d7a694a1e510d3ff91c38260e84751018aec35e
-GITHUB_STATE: dedicated branch/worktree; delivery PR pending
-SOURCE_CONFLICTS: NONE WITH EVIDENCE; Production has 0 service regions while Inventory V2 branch is not yet deployed
+PACKAGE_STATUS: PRODUCTION_DEPLOY_READY / BUSINESS_DATA_WRITE_NOT_AUTHORIZED
+WAITING_PHASES: Production runtime deploy authorization; DE→DE routing config write authorization; exact A1 allocation write gate; real shipment facts; Woo outbound verification
+BASELINE: origin/main@7247c3a41b51a8b3878dc3193a1215bb59168d3b
+GITHUB_STATE: Inventory V2 PR #224 merged as 76deca4846d912009c182f4934e658643484c808; this Pilot continues in Draft PR #226
+SOURCE_CONFLICTS: NONE WITH EVIDENCE; Accounting PR #222 advanced main after #224 but did not change the 11 Inventory V2 runtime paths; Production still has 0 service regions
 GLOBAL_GATE: PASS FOR READ-ONLY / STOP FOR PRODUCTION WRITE
 PRODUCTION_DEPLOYMENT_STATUS: NO for this WP
-NEXT_DEPENDENCY: Inventory V2 Owner Local/UAT PASS and explicit Production deployment gate
+NEXT_DEPENDENCY: explicit Owner authorization for bounded Inventory V2 Production runtime deploy with automatic apply OFF
 EVIDENCE_AS_OF: 2026-09-06
+
+## P1 Production Release Preflight — READY
+
+Inventory V2 PR #224 is merged. Merge commit: `76deca4846d912009c182f4934e658643484c808`. Owner Local/UAT PASS and 419 regression retest PASS are recorded in the merged package.
+
+Production current release at this preflight is based on `5d7a694a1e510d3ff91c38260e84751018aec35e`, which is the direct parent of PR #224. No PR #224 runtime path has drifted in later `main@7247c3a41b51a8b3878dc3193a1215bb59168d3b`. Therefore the Inventory V2 runtime can be deployed as an exact bounded overlay rather than deploying unrelated concurrent Accounting/Historical changes.
+
+Bounded runtime paths: `InventoryReservationService.php`, `AssistedFulfillmentService.php`, `AutomaticAllocationEligibilityService.php`, `AutomaticAllocationService.php`, `AutomaticAllocationCommand.php`, `LogisticsController.php`, `bootstrap/app.php`, `config/inventory_auto_allocation.php`, `resources/js/Pages/Logistics/Index.vue`, `resources/views/app.blade.php`, and `routes/console.php`. No migration is required.
+
+Production currently has no explicit `INVENTORY_AUTO_ALLOCATION_*` environment flags. After runtime deploy, defaults remain fail-closed: `enabled=false`, `dry_run=true`, `scheduler_enabled=false`, country allowlist `DE`. Code deploy alone cannot mutate Reservations or Shipments.
+
+A1 exact preflight remains clean: Order `6011` / Woo `40120` / ERP `007erp-0903-c6010` is `pending_shipment`, has no Shipment, no active Reservation, and MF414A has DE QOH `5`, reserved `0`, available `5`.
+
+Production `warehouse_service_regions` remains empty. The required routing fact is exactly one row: warehouse id `3` / code `DE`, country `DE`, priority `1`. The table has a unique `(warehouse_id, country_code)` constraint. This routing-config write is separate from runtime deployment and is not authorized by the current gate. Rollback is exact deletion of that one `(3, DE)` row only if it was created by the pilot and no later approved dependency exists.
+
+Gate separation:
+1. Owner authorizes bounded runtime deploy — no business-data write.
+2. Verify Production preview still fails closed before routing config.
+3. Owner separately authorizes the one-row `DE→DE` routing config write.
+4. Run exact A1 preview.
+5. Owner separately authorizes exact A1 Reservation + Shipment Draft mutation.
 
 ## ROADMAP HOURS
 
