@@ -145,6 +145,30 @@ final class OrderService
                 ]);
             }
             $reference->forceFill(['provider_modified_at' => $data->providerModifiedAt])->save();
+            if ($data->settlementEvidence !== null) {
+                $evidence = $data->settlementEvidence;
+                $financials = $order->financials()->lockForUpdate()->first();
+                if ($financials === null) {
+                    $order->financials()->create([
+                        ...$evidence,
+                        'revenue_provenance' => 'provider_import',
+                        'completeness_status' => 'INCOMPLETE',
+                    ]);
+                } elseif ($financials->revenue_provenance !== 'confirmed_manual') {
+                    $currencyChanged = $financials->currency !== $evidence['currency'];
+                    $financials->fill([
+                        ...$evidence,
+                        'revenue_provenance' => 'provider_import',
+                        'completeness_status' => 'INCOMPLETE',
+                    ]);
+                    if ($currencyChanged) {
+                        $financials->fx_rate = null;
+                        $financials->fx_rate_date = null;
+                        $financials->fx_rate_source = null;
+                    }
+                    $financials->save();
+                }
+            }
             $order = $order->fresh(['items', 'owner', 'address', 'externalReferences']);
             $this->record(
                 $actor,
@@ -436,6 +460,13 @@ final class OrderService
         $data['address'] = $order->address?->toArray();
         $data['items'] = $order->items()->get()->toArray();
         $data['external_references'] = $order->externalReferences()->get(['provider', 'connection_key', 'reference', 'provider_modified_at'])->toArray();
+        $financials = $order->financials()->first();
+        $data['financial_evidence'] = $financials?->only([
+            'currency', 'merchandise_list_amount', 'discount_amount', 'shipping_revenue', 'tax_collected',
+            'provider_order_total', 'refund_amount', 'refund_tax', 'payment_method', 'paid_at', 'provider',
+            'provider_reference', 'provider_order_status', 'provider_modified_at', 'revenue_provenance',
+            'reconciliation_status', 'reconciliation_exception',
+        ]);
         return $data;
     }
 

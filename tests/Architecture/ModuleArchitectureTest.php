@@ -1022,6 +1022,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_09_05_160000_create_inventory_reservations_tables.php' => 'dedaed09bbf0b8e9244aca098c1934edc0d7c570848c0c6ade4beb9a3d41b890',
         'database/migrations/2026_09_05_170500_expand_order_address_line_2_for_woo_history.php' => 'eb110853a19c8e6084cc7425001d4092b6101efe85e874e25a6bd69390ffc967',
         'database/migrations/2026_09_05_171000_add_replenishment_policy_to_warehouses.php' => 'fb051a4d03a01f52b1e734b0a1d2a2efd1e09576d66f82b592b647e151c54ee7',
+        'database/migrations/2026_09_06_180000_add_order_profit_evidence_contract.php' => 'a80d69865ef2351332e93840a9f2d227cf2a5c34e3830bd81300ff3c2d385ccc',
     ];
 
     private const FRONTEND_FILES = [
@@ -1084,7 +1085,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Customers/Support/TicketForm.vue' => '28e2198067ef12bd82ad19765e8a6a7fd4c5761211bce16f6a89de6898dc1c05',
         'resources/js/Pages/Dashboard/Index.test.ts' => '27c63e094fcdec28a0e5677508723e149c90a5130efb98d4448fa2b7f51b4ae4',
         'resources/js/Pages/Dashboard/Index.vue' => '0c28a768afcaa181b54ab01c4ec08457a04f7ed98e5ba3b52a041d98492bc2bb',
-        'resources/js/Pages/Finance/OrderAnalysis.vue' => '178c7a3a2e96b8d548f20b9924c27bd4760be43c8fceb513c628b673ce6f2ff8',
+        'resources/js/Pages/Finance/OrderAnalysis.vue' => '4d189202c225730a52d91f2e151c5c2ebf837b8b2f17bf1463ef86f43aaac083',
         'resources/js/Pages/Guides/Edit.vue' => '47b31eb218c25505b2037e27460f99f52c80d42eee4057583d2ea680e9bd890b',
         'resources/js/Pages/Guides/Index.test.ts' => 'b751aca1f6cc636b969306643ad1278159dd3be28192c129df9033a62f92e0c9',
         'resources/js/Pages/Guides/Index.vue' => 'b4121443c078f0f386cbe204673386bf75d73fd187b9f642e61a05adabcc35ad',
