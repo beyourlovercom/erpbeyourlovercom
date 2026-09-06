@@ -1,8 +1,8 @@
 # ERP-ACCOUNTING-ORDER-PROFIT-V1-001
 
-STATUS: OWNER_VISUAL_PASS / IMPLEMENTATION_AUTHORIZED / A1 COMPLETE / A2 FROZEN
+STATUS: LOCAL_UAT_READY / A3-A6 IMPLEMENTED / OWNER_VISUAL_PASS
 EXECUTION_PROVIDER: US_CODEX_CLI
-BASELINE: origin/main@3aa26cf25da8ebbef95200f49d9e8093e85e33a0
+BASELINE: origin/main@5d7a694a1e510d3ff91c38260e84751018aec35e (reconciled into Accounting branch)
 BRANCH: feature/erp-accounting-order-profit-v1-001
 WORKTREE: /Users/a/AI/007/worktrees/erp-accounting-order-profit-v1-001
 VERIFICATION_TIER: HIGH_RISK
@@ -194,27 +194,42 @@ Avoid edits to Logistics, Product, Inventory, Procurement, menu baseline and unr
 - Visible UI implementation is authorized within this frozen Work Package scope.
 - Production deploy and Production data writes remain unauthorized.
 
+## Implementation / verification evidence — 2026-09-06
+
+- Latest-main reconciliation: merged `origin/main@5d7a694a1e510d3ff91c38260e84751018aec35e`; PR #225 changed only Historical Logistics/date-correction paths and has no Accounting/Woo overlap.
+- Woo settlement evidence, provenance/completeness, cost snapshot fields, original-currency profit semantics, Grid V1.1 pagination, canonical Order/Product links and manual Finance correction compatibility are implemented.
+- Focused Finance + Woo verification: 100 assertions, 0 failures; 10 Woo cases are warning-only because of inherited file-read warnings.
+- MVP1 Finance regression subset: 43 assertions, 0 failures; warning-only inherited file-read notices remain.
+- Frontend `vue-tsc --noEmit`: PASS. Production Vite build: PASS, 914 modules transformed; existing large-chunk warning only.
+- Isolated SQLite migration rehearsal after latest-main merge: fresh UP PASS → rollback PASS → reapply PASS.
+- `git diff --check`: PASS.
+- Full Architecture test remains blocked by pre-existing stale frozen module/application/migration file lists that omit already-merged KOL, NotificationCenter, Procurement, Inventory and Historical Logistics paths; Accounting-specific migration/Vue hashes are updated.
+- Full MVP1 regression has one pre-existing Logistics failure: `shipment.reopened` Audit count remains 0 because `snapshotAndReset()` resets the Shipment before the later changed-state check. `ShipmentService.php` and that regression test are byte-identical to `origin/main`; Accounting does not widen scope to repair Logistics.
+- Production remains untouched. No Production migration/backfill/deploy is authorized.
+
 ## Current gate
 
 `A1_CANONICAL_RECONCILIATION = COMPLETE`
 `A2_FACT_CONTRACT = FROZEN`
 `A6_PRE_DEVELOPMENT_VISUAL = OWNER_PASS / 2026-09-06`
-`TRACKED_UI_IMPLEMENTATION = AUTHORIZED`
+`A3_A4_A5_A6_IMPLEMENTATION = COMPLETE`
+`ACCOUNTING_FOCUSED_VERIFICATION = PASS`
+`LOCAL_UAT = READY / OWNER_PASS_PENDING`
 `PRODUCTION_WRITE = NOT_AUTHORIZED`
 PROJECT POSITION
 PROGRAM_ROADMAP: Architecture COMPLETE → Core Operations COMPLETE → Product/Woo/Logistics real-data foundation COMPLETE → Accounting / ROI Expansion CURRENT → Production Hardening / Expansion WAITING
-CURRENT_TRACK_PHASE_MAP: A1 COMPLETE → A2 FROZEN → A6 VISUAL GATE CURRENT → A3/A4/A5/A6 IMPLEMENTATION WAITING → A7/A8 WAITING → LOCAL UAT → PRODUCTION GATES
-COMPLETED_PHASES: A1 canonical reconciliation; A2 fact contract
-CURRENT_PHASE: IMPLEMENTATION / A3-A6
+CURRENT_TRACK_PHASE_MAP: A1 COMPLETE → A2 FROZEN → VISUAL PASS → A3/A4/A5/A6 IMPLEMENTATION + FOCUSED VERIFICATION COMPLETE → LOCAL UAT CURRENT → A7/A8 WAITING → PRODUCTION GATES
+COMPLETED_PHASES: A1 canonical reconciliation; A2 fact contract; A3 completeness engine; A4 Woo revenue projection; A5 cost snapshot foundation; A6 Order Profit UI implementation + focused verification
+CURRENT_PHASE: OWNER LOCAL UAT GATE
 CURRENT_WORK_PACKAGE: ERP-ACCOUNTING-ORDER-PROFIT-V1-001
-PACKAGE_STATUS: IMPLEMENTATION_AUTHORIZED / OWNER_VISUAL_PASS
-WAITING_PHASES: Implementation; validation; Owner Local/UAT; Production release/data gates
-BASELINE: origin/main@3aa26cf25da8ebbef95200f49d9e8093e85e33a0
-GITHUB_STATE: dedicated branch/worktree created; Draft PR pending first contract commit
-SOURCE_CONFLICTS: AI/CURRENT_CONTEXT is stale versus current GitHub; Accounting Contract example base currency differs from later frozen USD contract; later Owner-frozen USD contract governs
+PACKAGE_STATUS: LOCAL_UAT_READY / OWNER_PASS_PENDING
+WAITING_PHASES: Owner Local/UAT; final closure/CI/merge; A7/A8; Production release/data gates
+BASELINE: origin/main@5d7a694a1e510d3ff91c38260e84751018aec35e (reconciled into Accounting branch)
+GITHUB_STATE: dedicated branch/worktree active; Draft PR #222; merge-candidate implementation prepared; Owner Local UAT pending
+SOURCE_CONFLICTS: AI/CURRENT_CONTEXT is stale versus current GitHub; Accounting Contract example base currency differs from later frozen USD contract and later Owner-frozen USD contract governs; repository Architecture frozen file lists are stale versus current main; latest-main MVP1 Logistics reopen Audit regression is outside Accounting scope
 GLOBAL_GATE: OWNER_VISUAL_PASS_SATISFIED / LOCAL_UAT_OWNER_PASS_REQUIRED_BEFORE_CLOSURE
 PRODUCTION_DEPLOYMENT_STATUS: NO — current package authorizes neither Production deploy nor Production accounting writes
-NEXT_DEPENDENCY: A3/A4/A5/A6 implementation + verification
+NEXT_DEPENDENCY: Owner Local/UAT PASS on the isolated US Mac Accounting runtime
 EVIDENCE_AS_OF: 2026-09-06
 
 ROADMAP HOURS
