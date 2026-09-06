@@ -15,4 +15,5 @@ class HistoricalOrderMaterializationRow extends Model
     public function batch(): BelongsTo { return $this->belongsTo(HistoricalOrderMaterializationBatch::class, 'materialization_batch_id'); }
     public function evidence(): BelongsTo { return $this->belongsTo(HistoricalEvidence::class, 'historical_evidence_id'); }
     public function order(): BelongsTo { return $this->belongsTo(Order::class); }
+    public function dateCorrectionRows(): \Illuminate\Database\Eloquent\Relations\HasMany { return $this->hasMany(HistoricalOrderDateCorrectionRow::class, 'materialization_row_id'); }
 }
