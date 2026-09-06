@@ -65,6 +65,17 @@ final class EloquentSyncRunRepository implements SyncRunRepository
             ->get();
     }
 
+    public function recentForScope(string $runType, ?string $providerKey, ?string $connectionKey, int $limit): Collection
+    {
+        return SyncRun::query()
+            ->where('run_type', $runType)
+            ->when($providerKey !== null, fn ($query) => $query->where('provider_key', $providerKey))
+            ->when($connectionKey !== null, fn ($query) => $query->where('connection_key', $connectionKey))
+            ->latest('id')
+            ->limit(max(1, min($limit, 100)))
+            ->get();
+    }
+
     public function detail(int $id): Model
     {
         return SyncRun::query()

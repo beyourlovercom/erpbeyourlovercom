@@ -29,5 +29,8 @@ interface SyncRunRepository
     /** @return Collection<int,Model> */
     public function recent(int $limit): Collection;
 
+    /** @return Collection<int,Model> */
+    public function recentForScope(string $runType, ?string $providerKey, ?string $connectionKey, int $limit): Collection;
+
     public function detail(int $id): Model;
 }

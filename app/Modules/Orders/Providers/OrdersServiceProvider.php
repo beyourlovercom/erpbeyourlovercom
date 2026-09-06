@@ -16,5 +16,9 @@ final class OrdersServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/web.php');
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([\App\Modules\Orders\Experience\Console\SyncWooCommerceOrdersCommand::class]);
+        }
     }
 }

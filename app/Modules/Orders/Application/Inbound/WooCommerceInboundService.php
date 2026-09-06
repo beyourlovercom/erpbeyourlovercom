@@ -4,6 +4,7 @@ namespace App\Modules\Orders\Application\Inbound;
 
 use App\Modules\Orders\Application\Contracts\WooCommerceOrderGateway;
 use App\Modules\Orders\Application\OrderService;
+use App\Modules\Sync\Application\Contracts\SyncRunTracker;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -14,11 +15,13 @@ final class WooCommerceInboundService
     private const PER_PAGE = 100;
     private const MAX_PAGES = 100;
     private const OVERLAP_MINUTES = 5;
+    private const AUTOMATIC_RUN_TYPE = 'woocommerce_order_incremental';
 
     public function __construct(
         private readonly WooCommerceOrderGateway $gateway,
         private readonly WooCommerceOrderNormalizer $normalizer,
         private readonly OrderService $orders,
+        private readonly SyncRunTracker $runs,
     ) {}
 
     public function descriptor(): array
@@ -53,6 +56,55 @@ final class WooCommerceInboundService
             'status' => 'any',
             'per_page' => self::PER_PAGE,
         ], $actor);
+    }
+
+    public function importAutomaticIncremental(): array
+    {
+        $descriptor = $this->gateway->descriptor();
+        $connectionKey = (string) $descriptor['connection_key'];
+        $checkpoint = $this->automaticCheckpoint($connectionKey);
+        if ($checkpoint === null) {
+            throw new DomainException('尚无 WooCommerce 自动增量游标，请先完成单笔或历史导入。');
+        }
+
+        $modifiedAfter = CarbonImmutable::parse($checkpoint)
+            ->subMinutes(self::OVERLAP_MINUTES)
+            ->utc()
+            ->toIso8601String();
+        $run = $this->runs->start(
+            self::AUTOMATIC_RUN_TYPE,
+            0,
+            null,
+            'woocommerce',
+            $connectionKey,
+            ['mode' => 'automatic', 'checkpoint_before' => $checkpoint, 'modified_after' => $modifiedAfter],
+        );
+
+        try {
+            $summary = $this->importAutomaticPages([
+                'modified_after' => $modifiedAfter,
+                'status' => 'any',
+                'per_page' => self::PER_PAGE,
+            ], $run, $connectionKey);
+            $this->runs->setRequestedItems($run, $summary['seen']);
+            $checkpointAfter = $checkpoint;
+            if ($summary['failed'] === 0 && $summary['source_max_modified_at'] !== null) {
+                $checkpointAfter = $summary['source_max_modified_at'];
+                $run = $this->runs->annotateContext($run, ['checkpoint_modified_at' => $checkpointAfter]);
+            }
+            $completed = $this->runs->complete($run, null);
+
+            return [
+                ...$summary,
+                'run_id' => (int) $completed->getKey(),
+                'run_status' => $completed->status instanceof \BackedEnum ? $completed->status->value : (string) $completed->status,
+                'checkpoint_before' => $checkpoint,
+                'checkpoint_after' => $summary['failed'] === 0 ? $checkpointAfter : $checkpoint,
+            ];
+        } catch (Throwable $e) {
+            $this->recordAutomaticBatchFailure($run, $e);
+            throw $e;
+        }
     }
 
     public function importHistorical(string $from, string $to, ?Authenticatable $actor): array
@@ -90,6 +142,70 @@ final class WooCommerceInboundService
         return $summary;
     }
 
+    private function importAutomaticPages(array $baseQuery, $run, string $connectionKey): array
+    {
+        $summary = $this->automaticEmptySummary();
+        $page = 1;
+        $totalPages = 1;
+        do {
+            $result = $this->gateway->fetchOrders([...$baseQuery, 'page' => $page]);
+            if ((int) $result['total_pages'] > self::MAX_PAGES) {
+                throw new DomainException('WooCommerce 自动增量范围超过单次 10000 单上限。');
+            }
+            $summary = $this->mergeAutomaticSummary(
+                $summary,
+                $this->importAutomaticPayloads($result['items'], $run, $connectionKey),
+            );
+            $totalPages = max(1, (int) $result['total_pages']);
+            $page++;
+        } while ($page <= $totalPages);
+        $summary['pages'] = $page - 1;
+
+        return $summary;
+    }
+
+    /** @param list<array<string,mixed>> $payloads */
+    private function importAutomaticPayloads(array $payloads, $run, string $connectionKey): array
+    {
+        $summary = $this->automaticEmptySummary();
+        foreach ($payloads as $payload) {
+            $summary['seen']++;
+            $reference = (string) ($payload['id'] ?? '?');
+            $summary['source_max_modified_at'] = $this->laterTimestamp(
+                $summary['source_max_modified_at'],
+                $this->payloadModifiedAt($payload),
+            );
+            $item = $this->runs->addItem($run, [
+                'operation' => 'woocommerce.order_inbound',
+                'provider_reference' => $reference === '?' ? null : $reference,
+            ]);
+            $item = $this->runs->markProcessing($item);
+
+            if ($this->isNonProductAdminShell($payload)) {
+                $summary['skipped']++;
+                $this->runs->finishSkipped($item, 'non_product_admin_shell');
+                continue;
+            }
+
+            try {
+                $normalized = $this->normalizer->normalize($payload, $connectionKey);
+                $result = $this->orders->upsertInbound($normalized, null);
+                $outcome = $result['created'] ? 'created' : 'updated';
+                $summary[$outcome]++;
+                $this->runs->annotateItem($item, ['order_id' => $result['order']->getKey()]);
+                $this->runs->finishSucceeded($item, $outcome);
+            } catch (Throwable $e) {
+                $summary['failed']++;
+                if (count($summary['errors']) < 20) {
+                    $summary['errors'][] = ['reference' => $reference, 'message' => $e->getMessage()];
+                }
+                $this->runs->finishFailed($item, 'failed', 'order_inbound_failed', $e->getMessage());
+            }
+        }
+
+        return $summary;
+    }
+
     /** @param list<array<string,mixed>> $payloads */
     private function importPayloads(array $payloads, ?Authenticatable $actor): array
     {
@@ -114,6 +230,61 @@ final class WooCommerceInboundService
         return $summary;
     }
 
+    private function automaticCheckpoint(string $connectionKey): ?string
+    {
+        return $this->runs->latestContextString(
+            self::AUTOMATIC_RUN_TYPE,
+            'woocommerce',
+            $connectionKey,
+            'checkpoint_modified_at',
+        ) ?? $this->lastImportedAt($connectionKey);
+    }
+
+    private function isNonProductAdminShell(array $payload): bool
+    {
+        return strtolower(trim((string) ($payload['created_via'] ?? ''))) === 'admin'
+            && is_array($payload['line_items'] ?? null)
+            && $payload['line_items'] === [];
+    }
+
+    private function payloadModifiedAt(array $payload): ?string
+    {
+        $value = trim((string) ($payload['date_modified_gmt'] ?? $payload['date_modified'] ?? ''));
+        if ($value === '') {
+            return null;
+        }
+        try {
+            return CarbonImmutable::parse($value)->utc()->toIso8601String();
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    private function laterTimestamp(?string $current, ?string $candidate): ?string
+    {
+        if ($candidate === null) {
+            return $current;
+        }
+        if ($current === null) {
+            return $candidate;
+        }
+
+        return CarbonImmutable::parse($candidate)->greaterThan(CarbonImmutable::parse($current)) ? $candidate : $current;
+    }
+
+    private function recordAutomaticBatchFailure($run, Throwable $error): void
+    {
+        try {
+            $this->runs->setRequestedItems($run, 1);
+            $item = $this->runs->addItem($run, ['operation' => 'woocommerce.order_inbound.batch']);
+            $item = $this->runs->markProcessing($item);
+            $this->runs->finishFailed($item, 'failed', 'batch_failed', $error->getMessage());
+            $this->runs->complete($run, null);
+        } catch (Throwable) {
+            // Preserve the original provider/runtime exception for the command exit path.
+        }
+    }
+
     private function lastImportedAt(string $connectionKey): ?string
     {
         $referenceClass = 'App\\Modules\\Orders\\Infrastructure\\Models\\OrderExternalReference';
@@ -130,12 +301,34 @@ final class WooCommerceInboundService
         return ['seen' => 0, 'created' => 0, 'updated' => 0, 'failed' => 0, 'pages' => 0, 'errors' => []];
     }
 
+    private function automaticEmptySummary(): array
+    {
+        return [
+            'seen' => 0, 'created' => 0, 'updated' => 0, 'skipped' => 0, 'failed' => 0,
+            'pages' => 0, 'errors' => [], 'source_max_modified_at' => null,
+        ];
+    }
+
     private function mergeSummary(array $left, array $right): array
     {
         foreach (['seen', 'created', 'updated', 'failed'] as $key) {
             $left[$key] += $right[$key];
         }
         $left['errors'] = array_slice([...$left['errors'], ...$right['errors']], 0, 20);
+        return $left;
+    }
+
+    private function mergeAutomaticSummary(array $left, array $right): array
+    {
+        foreach (['seen', 'created', 'updated', 'skipped', 'failed'] as $key) {
+            $left[$key] += $right[$key];
+        }
+        $left['errors'] = array_slice([...$left['errors'], ...$right['errors']], 0, 20);
+        $left['source_max_modified_at'] = $this->laterTimestamp(
+            $left['source_max_modified_at'],
+            $right['source_max_modified_at'],
+        );
+
         return $left;
     }
 }
