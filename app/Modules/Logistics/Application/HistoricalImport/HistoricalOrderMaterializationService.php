@@ -27,6 +27,7 @@ use Illuminate\Validation\ValidationException;
 final class HistoricalOrderMaterializationService
 {
     private const PROVIDER = 'historical_logistics';
+    private const HISTORICAL_AS_OF = '2026-09-06';
 
     public function __construct(
         private readonly SkuIdentityResolver $skuResolver,
@@ -149,6 +150,7 @@ final class HistoricalOrderMaterializationService
         $reason = null;
         if ($tokens === []) $reason = 'sku_unmatched_or_invalid';
         elseif ($date === null) $reason = 'order_date_unparseable';
+        elseif ($date > self::HISTORICAL_AS_OF) $reason = 'order_date_future_requires_review';
         elseif (count($tokens) === 1 && ! preg_match('/^[1-9][0-9]*$/', $quantity)) $reason = 'quantity_not_positive_integer';
         elseif (count($tokens) > 1 && ! $this->validMultiQuantity($quantity, count($tokens))) $reason = 'ambiguous_multi_item_quantity';
         elseif (count(array_unique(array_map(fn ($t) => (int) $t['product_id'], $tokens))) !== count($tokens)) $reason = 'duplicate_product_token';

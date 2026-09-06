@@ -143,7 +143,7 @@ class HistoricalOrderMaterializationTest extends TestCase
         self::assertSame('duplicate_product_token', $preview->rows->first()->decision_reason);
     }
 
-    public function test_unparseable_date_is_review_and_excel_serial_is_frozen_to_business_date(): void
+    public function test_unparseable_and_future_dates_are_review_with_fixed_historical_boundary(): void
     {
         $this->product('TL278A');
         $batch = $this->committedBatch([
@@ -153,8 +153,8 @@ class HistoricalOrderMaterializationTest extends TestCase
 
         $preview = app(HistoricalOrderMaterializationService::class)->preview($batch, $this->operator());
 
-        self::assertSame(1, $preview->ready_count);
-        self::assertSame('2026-12-01', $preview->rows[0]->materialization_manifest['order_date']);
+        self::assertSame(0, $preview->ready_count);
+        self::assertSame('order_date_future_requires_review', $preview->rows[0]->decision_reason);
         self::assertSame('order_date_unparseable', $preview->rows[1]->decision_reason);
     }
 

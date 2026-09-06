@@ -13,4 +13,5 @@ class HistoricalOrderMaterializationBatch extends Model
 
     public function importBatch(): BelongsTo { return $this->belongsTo(HistoricalImportBatch::class, 'historical_import_batch_id'); }
     public function rows(): HasMany { return $this->hasMany(HistoricalOrderMaterializationRow::class, 'materialization_batch_id')->orderBy('source_row_number'); }
+    public function dateCorrectionBatches(): HasMany { return $this->hasMany(HistoricalOrderDateCorrectionBatch::class, 'materialization_batch_id'); }
 }
