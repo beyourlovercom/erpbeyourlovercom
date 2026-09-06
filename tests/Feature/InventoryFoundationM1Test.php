@@ -7,6 +7,8 @@ use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
+use App\Modules\Logistics\Infrastructure\Models\ShipmentAttempt;
+use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -132,6 +134,110 @@ final class InventoryFoundationM1Test extends TestCase
             ->where('rows.data.0.quantity_available',9)
             ->where('rows.data.0.stock_status','low_stock')
             ->where('rows.data.0.stock_status_label','库存紧张'));
+    }
+
+    public function test_replenishment_uses_recent_90_day_shipped_quantity_and_configured_warehouse_policy(): void
+    {
+        $warehouse=Warehouse::query()->where('slug','de')->firstOrFail();
+        $warehouse->update([
+            'replenishment_lead_time_days'=>5,
+            'replenishment_safety_stock_days'=>3,
+            'replenishment_target_cover_days'=>14,
+        ]);
+        $product=$this->product('REPLENISH-90D');
+        WarehouseInventory::create([
+            'warehouse_id'=>$warehouse->id,'product_id'=>$product->id,
+            'quantity_on_hand'=>4,'quantity_reserved'=>1,'expected_restock_qty'=>1,
+        ]);
+
+        $recent=Order::create([
+            'internal_order_number'=>'REPL-RECENT','source_type'=>'manual','order_kind'=>'customer',
+            'order_date'=>now()->subDays(10)->toDateString(),'order_status'=>'shipped',
+        ]);
+        $recent->items()->create([
+            'product_id'=>$product->id,'sku'=>$product->sku,'product_summary'=>$product->name,
+            'quantity'=>90,'unit_price'=>'1.00','line_revenue'=>'90.00',
+        ]);
+        $recent->shipment()->create([
+            'warehouse_id'=>$warehouse->id,'shipment_status'=>'completed','shipped_at'=>now()->subDays(10),
+        ]);
+
+        $old=Order::create([
+            'internal_order_number'=>'REPL-OLD','source_type'=>'manual','order_kind'=>'customer',
+            'order_date'=>now()->subDays(100)->toDateString(),'order_status'=>'shipped',
+        ]);
+        $old->items()->create([
+            'product_id'=>$product->id,'sku'=>$product->sku,'product_summary'=>$product->name,
+            'quantity'=>900,'unit_price'=>'1.00','line_revenue'=>'900.00',
+        ]);
+        $old->shipment()->create([
+            'warehouse_id'=>$warehouse->id,'shipment_status'=>'completed','shipped_at'=>now()->subDays(100),
+        ]);
+
+        $user=$this->userWith(['inventory.view']);
+        $this->actingAs($user)->get('/inventory/products?search=REPLENISH-90D')->assertOk()->assertInertia(fn($p)=>$p
+            ->where('rows.data.0.quantity_available',3)
+            ->where('rows.data.0.replenishment.shipped_90d_qty',90)
+            ->where('rows.data.0.replenishment.monthly_average',30)
+            ->where('rows.data.0.replenishment.daily_average',1)
+            ->where('rows.data.0.replenishment.days_of_cover',3)
+            ->where('rows.data.0.replenishment.safety_stock_qty',3)
+            ->where('rows.data.0.replenishment.reorder_point_qty',8)
+            ->where('rows.data.0.replenishment.target_stock_qty',14)
+            ->where('rows.data.0.replenishment.recommended_restock_qty',10)
+            ->where('rows.data.0.replenishment.reorder_needed',true)
+            ->where('rows.data.0.replenishment.policy_label','建议补货'));
+    }
+
+    public function test_replenishment_counts_historical_reship_attempts_as_real_dispatch_demand(): void
+    {
+        $warehouse=Warehouse::query()->where('slug','de')->firstOrFail();
+        $warehouse->update([
+            'replenishment_lead_time_days'=>5,
+            'replenishment_safety_stock_days'=>3,
+            'replenishment_target_cover_days'=>14,
+        ]);
+        $product=$this->product('REPLENISH-RESHIP');
+        WarehouseInventory::create([
+            'warehouse_id'=>$warehouse->id,'product_id'=>$product->id,
+            'quantity_on_hand'=>100,'quantity_reserved'=>0,'expected_restock_qty'=>0,
+        ]);
+        $order=Order::create([
+            'internal_order_number'=>'REPL-RESHIP','source_type'=>'manual','order_kind'=>'customer',
+            'order_date'=>now()->subDays(20)->toDateString(),'order_status'=>'shipped',
+        ]);
+        $order->items()->create([
+            'product_id'=>$product->id,'sku'=>$product->sku,'product_summary'=>$product->name,
+            'quantity'=>30,'unit_price'=>'1.00','line_revenue'=>'30.00',
+        ]);
+        $shipment=$order->shipment()->create([
+            'warehouse_id'=>$warehouse->id,'shipment_status'=>'shipped','shipped_at'=>now()->subDays(5),
+        ]);
+        ShipmentAttempt::create([
+            'order_id'=>$order->id,'shipment_id'=>$shipment->id,'attempt_number'=>1,
+            'shipment_status'=>'exception','warehouse_id'=>$warehouse->id,
+            'shipped_at'=>now()->subDays(20),'snapshotted_at'=>now()->subDays(10),
+        ]);
+
+        $user=$this->userWith(['inventory.view']);
+        $this->actingAs($user)->get('/inventory/products?search=REPLENISH-RESHIP')->assertOk()->assertInertia(fn($p)=>$p
+            ->where('rows.data.0.replenishment.shipped_90d_qty',60)
+            ->where('rows.data.0.replenishment.monthly_average',20)
+            ->where('rows.data.0.replenishment.daily_average',0.67));
+    }
+
+    public function test_replenishment_does_not_invent_policy_when_warehouse_policy_is_unconfigured(): void
+    {
+        $warehouse=Warehouse::query()->where('slug','us-la')->firstOrFail();
+        $product=$this->product('REPLENISH-NO-POLICY');
+        WarehouseInventory::create(['warehouse_id'=>$warehouse->id,'product_id'=>$product->id,'quantity_on_hand'=>5,'quantity_reserved'=>0]);
+        $user=$this->userWith(['inventory.view']);
+
+        $this->actingAs($user)->get('/inventory/products?search=REPLENISH-NO-POLICY')->assertOk()->assertInertia(fn($p)=>$p
+            ->where('rows.data.0.replenishment.policy_status','unconfigured')
+            ->where('rows.data.0.replenishment.policy_label','补货策略未配置')
+            ->where('rows.data.0.replenishment.recommended_restock_qty',null)
+            ->where('rows.data.0.replenishment.reorder_needed',null));
     }
 
     public function test_billing_markdown_and_service_regions_are_editable_and_audited(): void

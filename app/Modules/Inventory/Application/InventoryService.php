@@ -10,6 +10,7 @@ use App\Modules\Products\Application\Contracts\ProductRepository;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 final class InventoryService
 {
@@ -23,6 +24,52 @@ final class InventoryService
     public function warehouses(): array { return $this->inventory->warehouseList(); }
     public function productInventory(array $filters = []): mixed { return $this->inventory->productInventory($filters); }
     public function searchProducts(string $query): array { return $this->products->searchSkus($query, 20); }
+
+    public function replenishmentMetrics(Model $inventory): array
+    {
+        $shipped90d = max(0, (int) ($inventory->shipped_90d_qty ?? 0));
+        $dailyRaw = $shipped90d / 90;
+        $available = max(0, (int) $inventory->quantity_available);
+        $expectedRestock = max(0, (int) ($inventory->expected_restock_qty ?? 0));
+        $warehouse = $inventory->warehouse;
+        $lead = $warehouse?->replenishment_lead_time_days;
+        $safetyDays = $warehouse?->replenishment_safety_stock_days;
+        $targetDays = $warehouse?->replenishment_target_cover_days;
+        $configured = $lead !== null && $safetyDays !== null && $targetDays !== null;
+        $daysOfCover = $dailyRaw > 0 ? round($available / $dailyRaw, 1) : null;
+
+        if (! $configured) {
+            return [
+                'policy_status' => 'unconfigured', 'policy_label' => '补货策略未配置',
+                'shipped_90d_qty' => $shipped90d, 'monthly_average' => round($shipped90d / 3, 2),
+                'daily_average' => round($dailyRaw, 2), 'days_of_cover' => $daysOfCover,
+                'lead_time_days' => null, 'safety_stock_days' => null, 'target_cover_days' => null,
+                'safety_stock_qty' => null, 'reorder_point_qty' => null, 'target_stock_qty' => null,
+                'recommended_restock_qty' => null, 'reorder_needed' => null,
+            ];
+        }
+
+        $safetyQty = (int) ceil($dailyRaw * (int) $safetyDays);
+        $reorderPoint = (int) ceil($dailyRaw * ((int) $lead + (int) $safetyDays));
+        $targetStock = (int) ceil($dailyRaw * (int) $targetDays);
+        $needsReorder = $dailyRaw > 0 && $available <= $reorderPoint;
+        $recommended = $needsReorder ? max($targetStock - $available - $expectedRestock, 0) : 0;
+        $policyStatus = $dailyRaw <= 0 ? 'no_demand' : ($needsReorder ? 'reorder' : 'healthy');
+        $policyLabel = match ($policyStatus) {
+            'no_demand' => '近90天无发货',
+            'reorder' => $recommended > 0 ? '建议补货' : '已由预计到货覆盖',
+            default => '库存覆盖正常',
+        };
+
+        return [
+            'policy_status' => $policyStatus, 'policy_label' => $policyLabel,
+            'shipped_90d_qty' => $shipped90d, 'monthly_average' => round($shipped90d / 3, 2),
+            'daily_average' => round($dailyRaw, 2), 'days_of_cover' => $daysOfCover,
+            'lead_time_days' => (int) $lead, 'safety_stock_days' => (int) $safetyDays, 'target_cover_days' => (int) $targetDays,
+            'safety_stock_qty' => $safetyQty, 'reorder_point_qty' => $reorderPoint, 'target_stock_qty' => $targetStock,
+            'recommended_restock_qty' => $recommended, 'reorder_needed' => $needsReorder,
+        ];
+    }
 
     public function warehouse(string $slug): Model
     {
@@ -100,6 +147,16 @@ final class InventoryService
     {
         foreach (['slug','code'] as $key) if (isset($attributes[$key])) $attributes[$key] = strtolower(trim((string) $attributes[$key]));
         if (isset($attributes['country_code']) && $attributes['country_code'] !== '') $attributes['country_code'] = strtoupper(trim((string) $attributes['country_code']));
+        $keys = ['replenishment_lead_time_days','replenishment_safety_stock_days','replenishment_target_cover_days'];
+        $values = collect($keys)->mapWithKeys(fn ($key): array => [$key => array_key_exists($key, $attributes) && $attributes[$key] !== '' ? $attributes[$key] : null]);
+        $provided = $values->filter(fn ($value): bool => $value !== null)->count();
+        if ($provided > 0 && $provided < 3) {
+            throw ValidationException::withMessages(['replenishment_policy' => '补货策略必须同时填写补货周期、安全库存天数和目标覆盖天数。']);
+        }
+        if ($provided === 3 && (int) $values['replenishment_target_cover_days'] < (int) $values['replenishment_lead_time_days'] + (int) $values['replenishment_safety_stock_days']) {
+            throw ValidationException::withMessages(['replenishment_target_cover_days' => '目标覆盖天数必须不少于补货周期 + 安全库存天数。']);
+        }
+        foreach ($keys as $key) if (array_key_exists($key, $attributes)) $attributes[$key] = $values[$key] === null ? null : (int) $values[$key];
         return $attributes;
     }
 
@@ -121,7 +178,7 @@ final class InventoryService
 
     private function warehouseAudit(Model $w): array
     {
-        return $w->only(['slug','code','name','country_code','address_line1','address_line2','city','state_region','postal_code','timezone','type','is_active','priority']);
+        return $w->only(['slug','code','name','country_code','address_line1','address_line2','city','state_region','postal_code','timezone','type','is_active','priority','replenishment_lead_time_days','replenishment_safety_stock_days','replenishment_target_cover_days']);
     }
 
     private function inventoryAudit(Model $i): array
