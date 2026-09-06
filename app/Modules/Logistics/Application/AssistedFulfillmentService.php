@@ -57,7 +57,8 @@ final class AssistedFulfillmentService
             if ($active && $requestedWarehouseId !== (int) $active['warehouse_id']) {
                 $this->reservations->release((int) $active['id'], $actor, 'manual_warehouse_override');
             } elseif ($active && $requestedWarehouseId === (int) $active['warehouse_id']) {
-                $attributes['warehouse_selection_source'] = 'recommended';
+                $currentSource = $order->shipment?->warehouse_selection_source;
+                $attributes['warehouse_selection_source'] = $currentSource === 'automatic' ? 'automatic' : 'recommended';
             }
 
             return $this->shipments->saveDraft($order, $attributes, $actor);
@@ -70,6 +71,10 @@ final class AssistedFulfillmentService
             $active = $this->reservations->activeForOrder((int) $order->getKey());
             if ($active && (int) ($attributes['warehouse_id'] ?? 0) !== (int) $active['warehouse_id']) {
                 abort(409, '发货仓库与已预留库存仓库不一致，请先保存新的人工仓库选择。');
+            }
+
+            if ($active && $order->shipment?->warehouse_selection_source === 'automatic') {
+                unset($attributes['warehouse_id']);
             }
 
             $updated = $this->shipments->markShipped($order, $attributes, $actor);

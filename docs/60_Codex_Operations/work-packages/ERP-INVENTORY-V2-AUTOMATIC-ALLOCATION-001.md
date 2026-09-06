@@ -1,13 +1,13 @@
 # ERP-INVENTORY-V2-AUTOMATIC-ALLOCATION-001
 
-STATUS: OWNER_VISUAL_PASS / IMPLEMENTATION_AUTHORIZED
+STATUS: IMPLEMENTED / VERIFICATION_PASS / OWNER_LOCAL_UAT_PENDING
 EXECUTION_PROVIDER: GPT_WEB
-BASELINE: origin/main@3aa26cf25da8ebbef95200f49d9e8093e85e33a0
+BASELINE: origin/main@069b00b4c0d79c77f2085b4eae17f2dde2e32a3d
 BRANCH: feature/erp-inventory-v2-automatic-allocation-001
 WORKTREE: /Users/a/AI/007/worktrees/erp-inventory-v2-automatic-allocation-001
 VERIFICATION_TIER: HIGH_RISK
 PARALLEL_SAFE: YES
-DEPENDENCIES: Reservation Foundation + Warehouse Recommendation + Assisted Allocation merged to main
+DEPENDENCIES: Reservation Foundation + Warehouse Recommendation + Assisted Allocation + Automatic Fulfillment Readiness M1 merged to main
 DEPENDENCY_TYPE: MERGED_PR
 
 ## Objective
@@ -57,6 +57,7 @@ Default configuration is fail-closed:
 `INVENTORY_AUTO_ALLOCATION_ENABLED=false`
 `INVENTORY_AUTO_ALLOCATION_DRY_RUN=true`
 `INVENTORY_AUTO_ALLOCATION_COUNTRY_ALLOWLIST=DE`
+`INVENTORY_AUTO_ALLOCATION_SCHEDULER_ENABLED=false`
 ## Eligibility contract
 
 Canonical result states:
@@ -135,29 +136,43 @@ Minimal shared changes allowed:
 
 Avoid Accounting Woo normalizer/OrderService and unrelated Packaging implementation.
 
+## Verification evidence — 2026-09-06
+
+- Automatic Allocation focused suite: 8 tests / 46 assertions / PASS, including explicit CLI dry-run and fail-closed apply gates.
+- Combined Logistics + Automatic Fulfillment Readiness + Assisted Fulfillment + Reservation regression: 96 tests / 788 assertions / PASS.
+- Logistics page Vitest: 7 tests / PASS.
+- TypeScript `vue-tsc --noEmit`: PASS.
+- Vite production build: PASS; existing large-chunk warning only.
+- CLI temp-SQLite smoke: explicit `--dry-run` returned `mutated=0`; default-gated `--apply` rejected with non-zero exit.
+- `git diff --check`: PASS.
+- Architecture: 22 tests / 196 assertions / 3 known repository snapshot-drift failures. These are the same three failure IDs documented on merged PR #223/current main; this package does not widen scope to rewrite unrelated global baselines.
+- Production mutation during implementation/verification: 0.
+
 ## Current gate
 
 `CANONICAL_RECONCILIATION = COMPLETE`
 `ROUTING_POLICY = OWNER_PASS`
 `PRE_DEVELOPMENT_VISUAL = OWNER_PASS`
-`IMPLEMENTATION = AUTHORIZED`
+`IMPLEMENTATION = COMPLETE`
+`FOCUSED_VERIFICATION = PASS`
+`OWNER_LOCAL_UAT = PENDING`
 `PRODUCTION_DEPLOY = NOT_AUTHORIZED`
 `PRODUCTION_AUTO_APPLY = NOT_AUTHORIZED`
 
 PROJECT POSITION
 PROGRAM_ROADMAP: Real Data Onboarding COMPLETE → Fulfillment Intelligence CURRENT → Automatic Fulfillment WAITING → Accounting feedback / hardening WAITING
-CURRENT_TRACK_PHASE_MAP: AA1 COMPLETE → AA2 OWNER_PASS → AA3/AA4/AA5 IMPLEMENTATION CURRENT → LOCAL/UAT → PRODUCTION DEPLOY GATE → PRODUCTION APPLY CANARY GATE → AUTOMATIC MODE
-COMPLETED_PHASES: AA1 canonical audit; AA2 routing policy + visual proposal
-CURRENT_PHASE: AA3-AA5 implementation
+CURRENT_TRACK_PHASE_MAP: AA1 COMPLETE → AA2 OWNER_PASS → AA3/AA4/AA5 IMPLEMENTATION+VERIFICATION COMPLETE → OWNER LOCAL/UAT CURRENT → PRODUCTION DEPLOY GATE → PRODUCTION APPLY CANARY GATE → AUTOMATIC MODE
+COMPLETED_PHASES: AA1 canonical audit; AA2 routing policy + visual proposal; AA3 eligibility/orchestrator; AA4 command/scheduler; AA5 UI status; focused verification
+CURRENT_PHASE: Owner Local/UAT preparation
 CURRENT_WORK_PACKAGE: ERP-INVENTORY-V2-AUTOMATIC-ALLOCATION-001
-PACKAGE_STATUS: IMPLEMENTATION_AUTHORIZED / OWNER_VISUAL_PASS
-WAITING_PHASES: validation; Owner Local/UAT; Production deploy gate; Production canary/apply gate
-BASELINE: origin/main@3aa26cf25da8ebbef95200f49d9e8093e85e33a0
-GITHUB_STATE: dedicated branch/worktree created; Draft PR pending contract commit
-SOURCE_CONFLICTS: AI/CURRENT_CONTEXT is stale versus current main; current GitHub/runtime/Handoff audit governs
+PACKAGE_STATUS: IMPLEMENTED / VERIFICATION_PASS / OWNER_LOCAL_UAT_PENDING
+WAITING_PHASES: Owner Local/UAT; Production deploy gate; Production canary/apply gate
+BASELINE: origin/main@069b00b4c0d79c77f2085b4eae17f2dde2e32a3d
+GITHUB_STATE: Draft PR #224 open; branch rebased onto main@069b00b after merged PR #223; implementation changes pending final commit/push
+SOURCE_CONFLICTS: AI/CURRENT_CONTEXT is stale versus current main; main advanced from 3aa26cf to 069b00b via PR #223. PR #223 explicitly defines Line 1 as Recommendation → Reservation → Shipment Draft and Line 4 as post-allocation readiness, matching this package boundary.
 GLOBAL_GATE: OWNER_VISUAL_PASS_SATISFIED / OWNER_LOCAL_UAT_PASS_REQUIRED_BEFORE_CLOSURE
 PRODUCTION_DEPLOYMENT_STATUS: NO — no Production deploy or automatic allocation mutation authorized
-NEXT_DEPENDENCY: implementation + focused verification
+NEXT_DEPENDENCY: prepare real US Mac Local/UAT page and obtain Owner PASS
 EVIDENCE_AS_OF: 2026-09-06
 
 ROADMAP HOURS

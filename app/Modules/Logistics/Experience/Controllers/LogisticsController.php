@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
+use App\Modules\Logistics\Application\AutomaticAllocationEligibilityService;
 use App\Modules\Logistics\Application\AssistedFulfillmentService;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Logistics\Application\WarehouseRecommendationService;
@@ -23,6 +24,7 @@ final class LogisticsController
 
     public function __construct(
         private readonly ShipmentService $shipments,
+        private readonly AutomaticAllocationEligibilityService $automaticAllocationEligibility,
         private readonly AssistedFulfillmentService $assistedFulfillment,
         private readonly InventoryAvailabilityReader $availability,
         private readonly WarehouseRecommendationService $recommendations,
@@ -274,6 +276,14 @@ final class LogisticsController
 
     private function data(Order $order, array $availability): array
     {
+        $recommendation = $this->recommendations->recommend(
+            $order->address?->country,
+            $order->items->map(fn ($item): array => [
+                'product_id' => $item->product_id,
+                'quantity' => (int) $item->quantity,
+            ])->values()->all(),
+        );
+
         return [
             'id' => $order->id,
             'external_order_number' => $order->external_order_number,
@@ -300,13 +310,8 @@ final class LogisticsController
                 'quantity' => $item->quantity,
                 'availability' => $availability[$item->product_id] ?? [],
             ])->values()->all(),
-            'warehouse_recommendation' => $this->recommendations->recommend(
-                $order->address?->country,
-                $order->items->map(fn ($item): array => [
-                    'product_id' => $item->product_id,
-                    'quantity' => (int) $item->quantity,
-                ])->values()->all(),
-            ),
+            'warehouse_recommendation' => $recommendation,
+            'automatic_allocation' => $this->automaticAllocationEligibility->evaluate($order, $recommendation),
             'shipment' => $order->shipment ? [
                 ...$order->shipment->only(['warehouse_id', 'warehouse_selection_source', 'carrier', 'service', 'carrier_selection_source', 'tracking_number', 'shipped_at', 'logistics_note']),
                 'warehouse_name' => $order->shipment->warehouse?->name,

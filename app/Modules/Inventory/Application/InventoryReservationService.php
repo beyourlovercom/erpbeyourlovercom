@@ -29,13 +29,26 @@ final class InventoryReservationService
     public function reserve(int $orderId, int $warehouseId, string $reservationKey, ?DateTimeInterface $expiresAt, Authenticatable $actor): array
     {
         $this->authorize($actor);
+
+        return $this->reserveInternal($orderId, $warehouseId, $reservationKey, $expiresAt, $actor);
+    }
+
+    /** @return array<string,mixed> */
+    public function reserveAsSystem(int $orderId, int $warehouseId, string $reservationKey, ?DateTimeInterface $expiresAt = null): array
+    {
+        return $this->reserveInternal($orderId, $warehouseId, $reservationKey, $expiresAt, null);
+    }
+
+    /** @return array<string,mixed> */
+    private function reserveInternal(int $orderId, int $warehouseId, string $reservationKey, ?DateTimeInterface $expiresAt, ?Authenticatable $actor): array
+    {
         $reservationKey = trim($reservationKey);
         if ($reservationKey === '' || mb_strlen($reservationKey) > 64) {
             throw new DomainException('Reservation key is invalid.');
         }
 
         return DB::transaction(function () use ($orderId, $warehouseId, $reservationKey, $expiresAt, $actor): array {
-            $result = $this->reservations->reserve($orderId, $warehouseId, $reservationKey, $expiresAt, (int) $actor->getAuthIdentifier());
+            $result = $this->reservations->reserve($orderId, $warehouseId, $reservationKey, $expiresAt, $actor ? (int) $actor->getAuthIdentifier() : null);
             if (! ($result['idempotent'] ?? false)) {
                 $this->record($actor, 'inventory.reservation.reserved', $result, null, $result, 'inventory_reservation');
             }
@@ -101,10 +114,10 @@ final class InventoryReservationService
     }
 
     /** @param array<string,mixed> $result */
-    private function record(Authenticatable $actor, string $action, array $result, ?array $before, array $after, string $reason): void
+    private function record(?Authenticatable $actor, string $action, array $result, ?array $before, array $after, string $reason): void
     {
         $this->audit->record(
-            AuditActor::user($actor, AuditSource::InternalSystem),
+            $actor ? AuditActor::user($actor, AuditSource::InternalSystem) : AuditActor::system(AuditSource::InternalSystem),
             $action,
             'inventory_reservation',
             $result['id'] ?? null,

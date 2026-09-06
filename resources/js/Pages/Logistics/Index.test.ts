@@ -15,6 +15,7 @@ const order = {
   id: 10, external_order_number: 'TEST-10', order_kind_label: '客户订单', recipient_name: 'Tester', phone: null, country: 'US', owner_label: null, item_count: 1,
   items: [{ id: 1, product_id: 99, sku: 'SKU-99', product_summary: 'Product', quantity: 1, availability: [{ warehouse_id: 2, warehouse_slug: 'us-ny', warehouse_name: '美东纽约仓', inventory_state: 'confirmed', can_auto_allocate: true, quantity_on_hand: 5, quantity_reserved: 0, quantity_available: 5 }] }],
   warehouse_recommendation: { status: 'recommended' as const, reason_code: 'recommended', reason_label: '可采用系统推荐。', country_code: 'US', required_sku_count: 1, candidate_count: 1, warehouse: { id: 2, slug: 'us-ny', code: 'US-NY', name: '美东纽约仓' } },
+  automatic_allocation: { state: 'COUNTRY_NOT_AUTO_ENABLED', status: 'blocked' as const, reason_code: 'country_not_auto_enabled', reason_label: 'US 尚未开放自动分配，继续使用人工履约。', country_code: 'US', warehouse: null, can_apply: false },
   shipment: null,
 }
 const carrierOptions = [{ value: 'DHL', label: 'DHL' }, { value: 'UPS', label: 'UPS' }, { value: 'FedEx', label: 'FedEx' }]
