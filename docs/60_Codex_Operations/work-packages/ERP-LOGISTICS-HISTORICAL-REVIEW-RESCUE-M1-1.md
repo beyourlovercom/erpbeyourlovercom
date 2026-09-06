@@ -1,6 +1,6 @@
 # ERP-LOGISTICS-HISTORICAL-REVIEW-RESCUE-M1-1
 
-Status: OWNER_UAT_PASS / READY_FOR_GIT_DELIVERY
+Status: CLOSED / DEPLOYED / PRODUCTION ACCEPTED
 Base at proposal: origin/main@2a7f0208000a1f9ba7325fcdc430307f9be3c975
 
 ## Production truth entering M1.1
@@ -64,4 +64,15 @@ Owner reviewed the real US Mac Local/UAT page at `/logistics/historical-import` 
 - Typecheck PASS; build PASS; `git diff --check` PASS.
 - Post-rebase real 144-row safe UAT replay using the implemented PHP service: 141 rescueable / 277 evidence / 3 manual; Rescue gate=false.
 
-`PACKAGE_STATUS: OWNER_UAT_PASS / READY_FOR_GIT_DELIVERY`
+`PACKAGE_STATUS: CLOSED / DEPLOYED / PRODUCTION_ACCEPTED`
+## Production completion and closure — 2026-09-06
+- PR #216 merged with merge commit `b044ec0aa3e1b791154d1dbca2237c4b8409d1f0`.
+- M1.1 was deployed as bounded Production release `logistics-review-rescue-m1-1-20260905-223939-b044ec0a`; no migration was required.
+- Production Rescue plan before commit: **141 rescueable rows / 277 pending evidence / 3 manual unresolved**.
+- Owner explicitly authorized the Production Rescue commit; exactly **277** Rescue Historical Evidence rows were created.
+- Final evidence state: **788 legacy M1 evidence + 277 M1.1 rescue evidence = 1,065 total**.
+- Rescue evidence covers exactly **141 source rows** with **277 unique evidence hashes**.
+- The remaining **3 unresolved Review rows have 0 evidence and are intentionally accepted as unresolved by Owner; no further processing is required**.
+- Orders / Shipments / KOL Collaborations were not mutated by the Rescue service transaction. A concurrent unrelated process changed the global Orders count before the Rescue transaction; Rescue itself preserved its immediate transaction baseline.
+- Production `LOGISTICS_HISTORICAL_REVIEW_RESCUE_COMMIT_ENABLED` is OFF after commit; the original Historical Import commit gate is also OFF.
+- Final status: **CLOSED / DEPLOYED / PRODUCTION ACCEPTED**. No M1.2 is planned.
