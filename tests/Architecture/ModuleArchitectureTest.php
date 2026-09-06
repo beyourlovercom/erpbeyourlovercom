@@ -1010,7 +1010,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_09_03_121000_create_product_packaging_profiles_table.php' => 'aba83d219e3488ad22bef6c0c6cd7385db1d9b06891de511006976b270b348c3',
         'database/migrations/2026_09_03_230000_create_kol_import_activation_tables.php' => '8e3e6b138289d8df09e7934ae2b9e336b2eb75d9c4ad0c9402bb0d4852e20c02',
         'database/migrations/2026_09_04_020000_create_kol_affiliate_binding_activation_tables.php' => 'b034d361cad8b0a28e67594fbbc3e92fe13c6b5ec4e5858eace5d162a382719f',
-        'database/migrations/2026_09_04_090000_create_product_packaging_profile_media_table.php' => '6b6f92d01e90e56e694be27dfb7e0cf0865a35b68d1357dd84a1dfff1736640c',
+        'database/migrations/2026_09_04_090000_create_product_packaging_profile_media_table.php' => '9bf43833c8f54ee1264243f833644a067321812930b0ee1cee10684b4f3b5b2e',
         'database/migrations/2026_09_04_100000_create_shipment_item_packaging_snapshots_table.php' => 'e67a2ef4e91d528a9e9320877190895d1bae6ef1affa9032a82a2a7505422a30',
         'database/migrations/2026_09_04_130000_create_notifications_table.php' => 'd77239d320f2597ad8e347aec678ea8ab50c0c08f03a53a82b8d0470f7582a16',
         'database/migrations/2026_09_04_140000_create_procurement_orders_tables.php' => 'dca0865643cef10a063b03c8fcc258057a0672e1e13bf0cfa076010f7a9d237e',

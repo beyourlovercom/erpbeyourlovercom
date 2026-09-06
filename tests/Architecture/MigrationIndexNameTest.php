@@ -17,4 +17,26 @@ final class MigrationIndexNameTest extends TestCase
             $migration,
         );
     }
+
+    public function test_product_packaging_profile_media_uses_mysql_safe_explicit_fk_and_index_names(): void
+    {
+        $fkName    = 'ppm_media_ppp_id_foreign';
+        $indexName = 'ppm_media_ppp_id_kind_idx';
+        $migration = file_get_contents(dirname(__DIR__, 2).'/database/migrations/2026_09_04_090000_create_product_packaging_profile_media_table.php');
+
+        self::assertLessThanOrEqual(64, strlen($fkName));
+        self::assertLessThanOrEqual(64, strlen($indexName));
+        self::assertStringContainsString("'".  $fkName  ."'", $migration);
+        self::assertStringContainsString("'". $indexName ."'", $migration);
+
+        // Auto-generated names must not appear — they exceed 64 chars.
+        self::assertStringNotContainsString(
+            'product_packaging_profile_media_product_packaging_profile_id_foreign',
+            $migration,
+        );
+        self::assertStringNotContainsString(
+            'product_packaging_profile_media_product_packaging_profile_id_kind_index',
+            $migration,
+        );
+    }
 }
