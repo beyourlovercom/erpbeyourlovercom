@@ -3,7 +3,7 @@ type: work-package
 project: BYL ERP
 work_package_id: ERP-AUTOMATIC-FULFILLMENT-READINESS-M1-001
 title: Automatic Fulfillment Readiness Gate
-status: implemented-verified
+status: merge-ready
 updated: 2026-09-06
 ---
 
@@ -249,14 +249,14 @@ CURRENT_TRACK_PHASE_MAP: Inventory Auto Allocation [PARALLEL LINE 1] + Accountin
 COMPLETED_PHASES: Real Data Onboarding; Logistics OS V1; Inventory Reservation Foundation; Warehouse Recommendation; Assisted Allocation foundation
 CURRENT_PHASE: Automatic Fulfillment / Line 4 readiness foundation
 CURRENT_WORK_PACKAGE: ERP-AUTOMATIC-FULFILLMENT-READINESS-M1-001
-PACKAGE_STATUS: IMPLEMENTED / VERIFIED / DELIVERY IN PROGRESS
+PACKAGE_STATUS: COMPLETE / PASS / MERGE READY
 WAITING_PHASES: Packing/Weight; Shipping Cost Estimator; Transport Mode; Carrier Rule Engine; WMS Connector; Automatic Dispatch
 BASELINE: origin/main@3aa26cf25da8ebbef95200f49d9e8093e85e33a0
-GITHUB_STATE: dedicated branch/worktree created; delivery PR pending
+GITHUB_STATE: PR #223 OPEN / DRAFT at candidate head c66183cc34b93b70b3516a08c30ffd8842984d39; no required GitHub checks reported
 SOURCE_CONFLICTS: AI/CURRENT_CONTEXT.md is stale relative to current main/Production; current main and Production runtime facts take precedence for mutable execution status
 GLOBAL_GATE: PASS FOR READ-ONLY IMPLEMENTATION
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: Git delivery for M1; later Line 1 output supplies allocated Shipment Draft + Reservation facts
+NEXT_DEPENDENCY: merge PR #223; later Line 1 output supplies allocated Shipment Draft + Reservation facts
 EVIDENCE_AS_OF: 2026-09-06
 
 ROADMAP HOURS
@@ -283,6 +283,10 @@ REMEDIATION_BUFFER: 0.5h planning value; 0.25–1.0h
 ESTIMATED_EFFECTIVE_HOURS: 4.0h
 ESTIMATE_RANGE: 2.5–6.0h
 ESTIMATE_BASIS: read-only readiness projection over existing canonical Order/Shipment/Reservation/Packaging facts; no schema, UI, external connector or Production mutation
+ACTUAL_EFFECTIVE_HOURS: 0.8h
+ACTUAL_HOURS_BREAKDOWN: preflight/scope 0.20h; implementation 0.20h; validation/environment remediation 0.35h; Git delivery 0.05h
+VARIANCE: -3.2h / -80.0%
+VARIANCE_REASON: M1 was intentionally narrowed to a read-only two-file runtime/test foundation with no schema, UI, connector or Production execution; Work Log records the bounded implementation and validation.
 OWNER_REVIEW: EXCLUDED
 MERGE: INCLUDED
 MIGRATION: EXCLUDED
