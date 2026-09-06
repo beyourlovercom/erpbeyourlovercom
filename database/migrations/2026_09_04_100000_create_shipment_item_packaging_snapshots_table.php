@@ -12,8 +12,10 @@ return new class extends Migration {
             $table->foreignId('shipment_id')->constrained('shipments')->cascadeOnDelete();
             $table->foreignId('order_item_id')->constrained('order_items')->cascadeOnDelete();
             $table->foreignId('product_id')->nullable()->constrained('products')->nullOnDelete();
-            $table->foreignId('product_packaging_profile_id')->nullable()->constrained('product_packaging_profiles')->nullOnDelete();
-            $table->foreignId('packaging_measurement_record_id')->nullable()->constrained('packaging_measurement_records')->nullOnDelete();
+            $table->foreignId('product_packaging_profile_id')->nullable()->nullOnDelete();
+            $table->foreign('product_packaging_profile_id', 'sips_product_pkg_profile_id_fk')->references('id')->on('product_packaging_profiles')->nullOnDelete();
+            $table->foreignId('packaging_measurement_record_id')->nullable()->nullOnDelete();
+            $table->foreign('packaging_measurement_record_id', 'sips_pkg_measurement_record_id_fk')->references('id')->on('packaging_measurement_records')->nullOnDelete();
             $table->string('packaging_method_key', 64)->nullable();
             $table->string('packaging_method_label', 128)->nullable();
             $table->decimal('packaging_length_cm', 10, 2);
