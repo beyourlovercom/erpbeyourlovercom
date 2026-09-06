@@ -41,8 +41,18 @@ final class AutomaticAllocationCommand extends Command
         if ($orderId = $this->option('order')) {
             $query->whereKey((int) $orderId);
         } else {
+            $allowlist = collect(config('inventory_auto_allocation.country_allowlist', []))
+                ->map(fn ($country): string => strtoupper(trim((string) $country)))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
             $query->where('order_status', 'pending_shipment')
                 ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))
+                ->whereHas('address', function ($q) use ($allowlist): void {
+                    $q->whereIn('country', $allowlist);
+                })
                 ->limit($limit);
         }
 
