@@ -4,7 +4,7 @@ namespace App\Modules\Orders\Application\Inbound;
 
 final readonly class NormalizedInboundOrder
 {
-    /** @param array<string,string> $address @param list<array<string,mixed>> $items */
+    /** @param array<string,string> $address @param list<array<string,mixed>> $items @param array<string,mixed>|null $settlementEvidence */
     public function __construct(
         public string $provider,
         public string $connectionKey,
@@ -17,5 +17,6 @@ final readonly class NormalizedInboundOrder
         public ?string $orderNote,
         public array $address,
         public array $items,
+        public ?array $settlementEvidence = null,
     ) {}
 }

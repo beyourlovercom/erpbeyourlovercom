@@ -42,7 +42,126 @@ final class WooCommerceOrderNormalizer
             orderNote: $this->nullable((string) ($payload['customer_note'] ?? '')),
             address: $this->address($payload),
             items: $items,
+            settlementEvidence: $this->settlementEvidence($payload, $currency, (string) $id, $modified),
         );
+    }
+
+    /** @return array<string,mixed> */
+    private function settlementEvidence(array $payload, string $currency, string $reference, string $modified): array
+    {
+        $listAmountCents = 0;
+        $hasListAmount = true;
+        foreach (($payload['line_items'] ?? []) as $line) {
+            if (! is_array($line) || ! array_key_exists('subtotal', $line) || $line['subtotal'] === '') {
+                $hasListAmount = false;
+                break;
+            }
+            $listAmountCents += $this->moneyCents($line['subtotal']);
+        }
+
+        $discountCents = $this->optionalMoneyCents($payload, 'discount_total');
+        $shippingCents = $this->optionalMoneyCents($payload, 'shipping_total');
+        $taxCents = $this->optionalMoneyCents($payload, 'total_tax');
+        $providerTotalCents = $this->optionalMoneyCents($payload, 'total');
+
+        $refundAmountCents = null;
+        $refundTaxCents = null;
+        if (array_key_exists('refunds', $payload) && is_array($payload['refunds'])) {
+            $refundAmountCents = 0;
+            $refundTaxCents = 0;
+            foreach ($payload['refunds'] as $refund) {
+                if (! is_array($refund)) {
+                    $refundAmountCents = null;
+                    $refundTaxCents = null;
+                    break;
+                }
+                if ($refundAmountCents !== null) {
+                    if (! array_key_exists('total', $refund) || $refund['total'] === '') {
+                        $refundAmountCents = null;
+                    } else {
+                        $refundAmountCents += abs($this->moneyCents($refund['total']));
+                    }
+                }
+                if ($refundTaxCents !== null) {
+                    if (! array_key_exists('total_tax', $refund) || $refund['total_tax'] === '') {
+                        $refundTaxCents = null;
+                    } else {
+                        $refundTaxCents += abs($this->moneyCents($refund['total_tax']));
+                    }
+                }
+            }
+        }
+
+        $canReconcile = $hasListAmount
+            && $discountCents !== null
+            && $shippingCents !== null
+            && $taxCents !== null
+            && $providerTotalCents !== null;
+        $reconciliationException = null;
+        $reconciliationStatus = 'incomplete';
+        if ($canReconcile) {
+            $expectedProviderTotalCents = $listAmountCents - $discountCents + $shippingCents + $taxCents;
+            $differenceCents = $expectedProviderTotalCents - $providerTotalCents;
+            $reconciliationException = abs($differenceCents) > 1 ? [
+                'expected_provider_total' => $this->formatCents($expectedProviderTotalCents),
+                'provider_total' => $this->formatCents($providerTotalCents),
+                'difference' => $this->formatCents($differenceCents),
+            ] : null;
+            $reconciliationStatus = $reconciliationException === null ? 'matched' : 'exception';
+        }
+
+        return [
+            'provider' => 'woocommerce',
+            'provider_reference' => $reference,
+            'provider_modified_at' => $modified,
+            'provider_order_status' => strtolower(trim((string) ($payload['status'] ?? 'pending'))),
+            'currency' => $currency,
+            'merchandise_list_amount' => $hasListAmount ? $this->formatCents($listAmountCents) : null,
+            'discount_amount' => $this->formatNullableCents($discountCents),
+            'shipping_revenue' => $this->formatNullableCents($shippingCents),
+            'tax_collected' => $this->formatNullableCents($taxCents),
+            'provider_order_total' => $this->formatNullableCents($providerTotalCents),
+            'refund_amount' => $this->formatNullableCents($refundAmountCents),
+            'refund_tax' => $this->formatNullableCents($refundTaxCents),
+            'payment_method' => $this->nullable((string) ($payload['payment_method'] ?? '')),
+            'paid_at' => $this->nullable((string) ($payload['date_paid_gmt'] ?? $payload['date_paid'] ?? '')),
+            'reconciliation_status' => $reconciliationStatus,
+            'reconciliation_exception' => $reconciliationException,
+        ];
+    }
+
+    private function optionalMoneyCents(array $payload, string $key): ?int
+    {
+        if (! array_key_exists($key, $payload) || $payload[$key] === '') {
+            return null;
+        }
+        return $this->moneyCents($payload[$key]);
+    }
+
+    private function formatNullableCents(?int $cents): ?string
+    {
+        return $cents === null ? null : $this->formatCents($cents);
+    }
+
+    private function moneyCents(mixed $value): int
+    {
+        $value = trim((string) $value);
+        if (! preg_match('/^(?<sign>-)?(?<whole>\\d{1,16})(?:\\.(?<fraction>\\d{1,6}))?$/D', $value, $matches)) {
+            throw new InvalidArgumentException('WooCommerce money value is not a supported decimal.');
+        }
+        $fraction = str_pad($matches['fraction'] ?? '', 3, '0');
+        $cents = ((int) $matches['whole'] * 100) + (int) substr($fraction, 0, 2);
+        if ((int) $fraction[2] >= 5) {
+            $cents++;
+        }
+        return ($matches['sign'] ?? '') === '-' ? -$cents : $cents;
+    }
+
+    private function formatCents(int $cents): string
+    {
+        $sign = $cents < 0 ? '-' : '';
+        $absolute = abs($cents);
+        return $sign.intdiv($absolute, 100).'.'.str_pad((string) ($absolute % 100), 2, '0', STR_PAD_LEFT);
     }
 
     private function status(string $status): string

@@ -7,17 +7,32 @@ use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 final class OrderAnalysisService
 {
+    public const FINANCE_STATUSES = ['UNPOSTED', 'INCOMPLETE', 'ESTIMATED', 'CONFIRMED', 'RECONCILED'];
+
     private const COST_FIELDS = [
         'product_cost', 'warehouse_cost', 'first_mile_cost', 'overseas_handling_cost', 'last_mile_cost',
         'kol_commission', 'payment_fee', 'customs_tax', 'refund_replacement_loss', 'other_variable_cost',
     ];
 
+    private const LOGISTICS_COST_FIELDS = [
+        'warehouse_cost', 'first_mile_cost', 'overseas_handling_cost', 'last_mile_cost',
+    ];
+
+    private const OTHER_COST_FIELDS = [
+        'kol_commission', 'payment_fee', 'customs_tax', 'refund_replacement_loss', 'other_variable_cost',
+    ];
+
     private const FINANCIAL_FIELDS = [
         'merchandise_list_amount', 'discount_amount', 'shipping_revenue', 'amount_paid', 'refund_amount',
+    ];
+
+    private const CONFIRMED_COST_PROVENANCE = [
+        'actual', 'confirmed_manual', 'provider_import', 'allocated_actual',
     ];
 
     public function __construct(private readonly AuditRecorder $audit) {}
@@ -27,32 +42,73 @@ final class OrderAnalysisService
         return DB::transaction(function () use ($order, $attributes, $actor): Model {
             $financials = $order->financials()->lockForUpdate()->firstOrCreate(
                 ['order_id' => $order->getKey()],
-                ['currency' => $attributes['currency'] ?? 'USD'],
+                ['currency' => $attributes['currency'] ?? $order->currency ?? 'USD'],
             );
             $before = [
                 'financials' => $financials->toArray(),
                 'costs' => $order->costEntries()->get()->toArray(),
             ];
-            $financials->fill(array_intersect_key($attributes, array_flip([...self::FINANCIAL_FIELDS, 'currency'])))->save();
+
+            $financialAttributes = array_intersect_key(
+                $attributes,
+                array_flip([...self::FINANCIAL_FIELDS, 'currency']),
+            );
+            if ($financialAttributes !== []) {
+                $revenueChanged = $this->financialValuesChanged($financials, $financialAttributes);
+                $financials->fill($financialAttributes);
+                if ($revenueChanged || $financials->revenue_provenance === null) {
+                    $financials->revenue_provenance = 'confirmed_manual';
+                    $financials->reconciliation_status = null;
+                    $financials->reconciliation_exception = null;
+                }
+                $financials->save();
+            }
 
             foreach (self::COST_FIELDS as $field) {
                 if (! array_key_exists($field, $attributes)) {
                     continue;
                 }
-                $entry = $order->costEntries()->where('cost_type', $field)->first();
+                $entry = $order->costEntries()->where('cost_type', $field)->lockForUpdate()->first();
                 if ($attributes[$field] === null) {
                     $entry?->delete();
                     continue;
                 }
-                $order->costEntries()->updateOrCreate(
-                    ['cost_type' => $field],
-                    ['amount' => $attributes[$field], 'currency' => $attributes['currency'] ?? $financials->currency],
-                );
+
+                $currency = $attributes['currency'] ?? $financials->currency ?? $order->currency ?? 'USD';
+                if ($entry && $this->sameDecimal($entry->amount, $attributes[$field]) && $entry->currency === $currency) {
+                    continue;
+                }
+
+                $values = [
+                    'amount' => $attributes[$field],
+                    'currency' => $currency,
+                    'provenance' => 'confirmed_manual',
+                    'status' => 'confirmed',
+                    'confirmed_by' => $actor?->getAuthIdentifier(),
+                    'effective_at' => now(),
+                    'source_at' => now(),
+                ];
+                if ($entry) {
+                    $entry->fill($values)->save();
+                } else {
+                    $order->costEntries()->create([
+                        'cost_type' => $field,
+                        ...$values,
+                        'created_by' => $actor?->getAuthIdentifier(),
+                    ]);
+                }
             }
 
+            $projectedOrder = $order->fresh(['financials', 'costEntries']);
+            $projection = $this->projection($projectedOrder, preserveReconciled: false);
+            $projectedOrder->financials->forceFill([
+                'completeness_status' => $projection['finance_status'],
+                'missing_facts' => $projection['missing_facts'],
+            ])->save();
+
             $after = [
-                'financials' => $financials->fresh()->toArray(),
-                'costs' => $order->costEntries()->get()->toArray(),
+                'financials' => $projectedOrder->financials->fresh()->toArray(),
+                'costs' => $projectedOrder->costEntries()->get()->toArray(),
             ];
             $this->audit->record(
                 $actor ? AuditActor::user($actor, AuditSource::InternalSystem) : AuditActor::system(AuditSource::InternalSystem),
@@ -70,30 +126,7 @@ final class OrderAnalysisService
 
     public function summary(Model $order): array
     {
-        $financials = $order->relationLoaded('financials') ? $order->financials : $order->financials()->first();
-        $entries = $order->relationLoaded('costEntries') ? $order->costEntries : $order->costEntries()->get();
-        $byType = $entries->keyBy('cost_type');
-        $complete = $financials?->amount_paid !== null
-            && $financials?->refund_amount !== null
-            && collect(self::COST_FIELDS)->every(fn (string $field): bool => $byType->has($field));
-
-        if (! $complete) {
-            return [
-                'completeness' => 'incomplete', 'profit_status' => 'not_confirmed',
-                'net_revenue' => null, 'total_cost' => null, 'contribution_profit' => null, 'margin' => null,
-            ];
-        }
-
-        $netRevenueCents = $this->cents($financials->amount_paid) - $this->cents($financials->refund_amount);
-        $totalCostCents = collect(self::COST_FIELDS)->sum(fn (string $field): int => $this->cents($byType->get($field)->amount));
-        $profitCents = $netRevenueCents - $totalCostCents;
-
-        return [
-            'completeness' => 'complete', 'profit_status' => 'confirmed',
-            'net_revenue' => $this->money($netRevenueCents), 'total_cost' => $this->money($totalCostCents),
-            'contribution_profit' => $this->money($profitCents),
-            'margin' => $netRevenueCents === 0 ? null : bcdiv((string) $profitCents, (string) $netRevenueCents, 4),
-        ];
+        return $this->projection($order, preserveReconciled: true);
     }
 
     public function fields(): array
@@ -117,14 +150,224 @@ final class OrderAnalysisService
         return $values;
     }
 
+    private function projection(Model $order, bool $preserveReconciled): array
+    {
+        $financials = $order->relationLoaded('financials') ? $order->financials : $order->financials()->first();
+        /** @var Collection<string,Model> $byType */
+        $byType = ($order->relationLoaded('costEntries') ? $order->costEntries : $order->costEntries()->get())->keyBy('cost_type');
+
+        $revenue = $this->revenueAssessment($financials);
+        $costs = $this->costAssessment($byType);
+        $missingFacts = [...$revenue['missing'], ...$costs['missing']];
+
+        if ($financials === null && $byType->isEmpty()) {
+            $financeStatus = 'UNPOSTED';
+        } elseif ($missingFacts !== []) {
+            $financeStatus = 'INCOMPLETE';
+        } elseif ($costs['estimated']) {
+            $financeStatus = 'ESTIMATED';
+        } else {
+            $financeStatus = 'CONFIRMED';
+        }
+        if ($preserveReconciled && $financeStatus === 'CONFIRMED' && $financials?->completeness_status === 'RECONCILED') {
+            $financeStatus = 'RECONCILED';
+        }
+
+        $commercialBeforeRefund = $revenue['commercial_before_refund_cents'];
+        $netRevenueCents = $revenue['net_revenue_cents'];
+        $totalCostCents = $costs['total_cents'];
+        $profitCents = $netRevenueCents !== null && $totalCostCents !== null ? $netRevenueCents - $totalCostCents : null;
+        $margin = $profitCents !== null && $netRevenueCents !== 0
+            ? bcdiv((string) $profitCents, (string) $netRevenueCents, 4)
+            : null;
+
+        $currency = strtoupper((string) ($financials?->currency ?? $order->currency ?? 'USD'));
+        $fxFrozen = $currency === 'USD' || ($financials?->fx_rate !== null && $financials?->fx_rate_date !== null && $financials?->fx_rate_source !== null);
+        $aggregationMissing = $fxFrozen ? [] : ['transaction_fx_snapshot'];
+
+        return [
+            'completeness' => match ($financeStatus) {
+                'CONFIRMED', 'RECONCILED' => 'complete',
+                'ESTIMATED' => 'estimated',
+                default => 'incomplete',
+            },
+            'finance_status' => $financeStatus,
+            'revenue_status' => $revenue['ready'] ? 'confirmed' : 'incomplete',
+            'cost_status' => $costs['ready'] ? ($costs['estimated'] ? 'estimated' : 'confirmed') : 'incomplete',
+            'profit_status' => match ($financeStatus) {
+                'CONFIRMED', 'RECONCILED' => 'confirmed',
+                'ESTIMATED' => 'estimated',
+                default => 'not_confirmed',
+            },
+            'missing_facts' => $missingFacts,
+            'aggregation_missing_facts' => $aggregationMissing,
+            'fx_status' => $currency === 'USD' ? 'not_required' : ($fxFrozen ? 'frozen' : 'missing'),
+            'base_currency_aggregate_eligible' => $fxFrozen,
+            'commercial_revenue_before_refund' => $commercialBeforeRefund === null ? null : $this->money($commercialBeforeRefund),
+            'net_revenue' => $netRevenueCents === null ? null : $this->money($netRevenueCents),
+            'total_cost' => $totalCostCents === null ? null : $this->money($totalCostCents),
+            'contribution_profit' => $profitCents === null ? null : $this->money($profitCents),
+            'margin' => $margin,
+            'cost_breakdown' => [
+                'product_cost' => $this->groupMoney(['product_cost'], $byType),
+                'logistics_cost' => $this->groupMoney(self::LOGISTICS_COST_FIELDS, $byType),
+                'other_cost' => $this->groupMoney(self::OTHER_COST_FIELDS, $byType),
+            ],
+        ];
+    }
+
+    private function revenueAssessment(?Model $financials): array
+    {
+        if ($financials === null) {
+            return [
+                'ready' => false,
+                'missing' => ['settlement_components'],
+                'commercial_before_refund_cents' => null,
+                'net_revenue_cents' => null,
+            ];
+        }
+
+        $componentFields = ['merchandise_list_amount', 'discount_amount', 'shipping_revenue', 'refund_amount'];
+        $hasComponents = collect($componentFields)->every(fn (string $field): bool => $financials->{$field} !== null);
+        $legacyManual = $financials->merchandise_list_amount === null
+            && $financials->amount_paid !== null
+            && $financials->refund_amount !== null;
+        $provenance = $financials->revenue_provenance;
+        $missing = [];
+
+        if ($provenance === 'provider_import') {
+            foreach ($componentFields as $field) {
+                if ($financials->{$field} === null) {
+                    $missing[] = $field;
+                }
+            }
+            if ($financials->provider_order_total === null) {
+                $missing[] = 'provider_order_total';
+            }
+            if ($financials->tax_collected === null) {
+                $missing[] = 'tax_collected';
+            }
+            if ($financials->paid_at === null) {
+                $missing[] = 'payment_settlement';
+            }
+            if (! in_array((string) $financials->provider_order_status, ['processing', 'completed', 'refunded'], true)) {
+                $missing[] = 'provider_order_status_not_revenue_eligible';
+            }
+            if ($financials->reconciliation_status !== 'matched') {
+                $missing[] = 'provider_reconciliation';
+            }
+        } elseif ($provenance === 'confirmed_manual' || ($provenance === null && $legacyManual)) {
+            if (! $hasComponents && ! $legacyManual) {
+                $missing[] = 'settlement_components';
+            }
+        } else {
+            $missing[] = 'revenue_provenance';
+            if (! $hasComponents && ! $legacyManual) {
+                $missing[] = 'settlement_components';
+            }
+        }
+
+        $commercialBeforeRefundCents = null;
+        $netRevenueCents = null;
+        if ($hasComponents) {
+            $commercialBeforeRefundCents = $this->cents($financials->merchandise_list_amount)
+                - $this->cents($financials->discount_amount)
+                + $this->cents($financials->shipping_revenue);
+            $netRevenueCents = $commercialBeforeRefundCents - $this->cents($financials->refund_amount);
+        } elseif ($legacyManual) {
+            $commercialBeforeRefundCents = $this->cents($financials->amount_paid);
+            $netRevenueCents = $commercialBeforeRefundCents - $this->cents($financials->refund_amount);
+        }
+
+        return [
+            'ready' => $missing === [],
+            'missing' => array_values(array_unique($missing)),
+            'commercial_before_refund_cents' => $missing === [] ? $commercialBeforeRefundCents : null,
+            'net_revenue_cents' => $missing === [] ? $netRevenueCents : null,
+        ];
+    }
+
+    private function costAssessment(Collection $byType): array
+    {
+        $missing = [];
+        $estimated = false;
+        foreach (self::COST_FIELDS as $field) {
+            $entry = $byType->get($field);
+            if (! $entry) {
+                $missing[] = $field;
+                continue;
+            }
+            $provenance = (string) ($entry->provenance ?? 'confirmed_manual');
+            $status = (string) ($entry->status ?? 'confirmed');
+            if ($provenance === 'estimated_reference' || $status === 'estimated') {
+                $estimated = true;
+                continue;
+            }
+            if (! in_array($status, ['confirmed', 'adjusted'], true)) {
+                $missing[] = $field.'_not_confirmed';
+                continue;
+            }
+            if (! in_array($provenance, self::CONFIRMED_COST_PROVENANCE, true)) {
+                $missing[] = $field.'_provenance_unapproved';
+            }
+        }
+
+        $totalCents = null;
+        if ($missing === []) {
+            $totalCents = collect(self::COST_FIELDS)->sum(fn (string $field): int => $this->cents($byType->get($field)->amount));
+        }
+
+        return [
+            'ready' => $missing === [],
+            'estimated' => $estimated,
+            'missing' => $missing,
+            'total_cents' => $totalCents,
+        ];
+    }
+
+    private function groupMoney(array $fields, Collection $byType): ?string
+    {
+        foreach ($fields as $field) {
+            if (! $byType->has($field)) {
+                return null;
+            }
+        }
+        $cents = collect($fields)->sum(fn (string $field): int => $this->cents($byType->get($field)->amount));
+        return $this->money($cents);
+    }
+
+    private function financialValuesChanged(Model $financials, array $attributes): bool
+    {
+        foreach ($attributes as $field => $value) {
+            if ($field === 'currency') {
+                if (strtoupper((string) $financials->{$field}) !== strtoupper((string) $value)) {
+                    return true;
+                }
+                continue;
+            }
+            if (! $this->sameDecimal($financials->{$field}, $value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function sameDecimal(mixed $left, mixed $right): bool
+    {
+        if ($left === null || $right === null) {
+            return $left === null && $right === null;
+        }
+        return $this->cents($left) === $this->cents($right);
+    }
+
     private function cents(mixed $amount): int
     {
         $value = trim((string) $amount);
-        if (! preg_match('/^\+?(?<whole>\d+)(?:\.(?<fraction>\d{1,2}))?$/D', $value, $matches)) {
+        if (! preg_match('/^(?<sign>-)?(?<whole>\d+)(?:\.(?<fraction>\d{1,2}))?$/D', $value, $matches)) {
             throw new \UnexpectedValueException('Financial amounts must be decimal values with at most two fractional digits.');
         }
-
-        return ((int) $matches['whole'] * 100) + (int) str_pad($matches['fraction'] ?? '', 2, '0');
+        $cents = ((int) $matches['whole'] * 100) + (int) str_pad($matches['fraction'] ?? '', 2, '0');
+        return ($matches['sign'] ?? '') === '-' ? -$cents : $cents;
     }
 
     private function money(int $cents): string

@@ -1,6 +1,6 @@
 # ERP-ACCOUNTING-ORDER-PROFIT-V1-001
 
-STATUS: DESIGN_PENDING_OWNER_PASS / A1 COMPLETE / A2 FROZEN
+STATUS: OWNER_VISUAL_PASS / IMPLEMENTATION_AUTHORIZED / A1 COMPLETE / A2 FROZEN
 EXECUTION_PROVIDER: US_CODEX_CLI
 BASELINE: origin/main@3aa26cf25da8ebbef95200f49d9e8093e85e33a0
 BRANCH: feature/erp-accounting-order-profit-v1-001
@@ -188,27 +188,33 @@ Avoid edits to Logistics, Product, Inventory, Procurement, menu baseline and unr
 - Owner live Local/UAT PASS is required before closure.
 - Production deploy and any Production backfill/write remain separate explicit Owner gates.
 
+## Owner visual gate — 2026-09-06
+
+- Owner reviewed the pre-development Order Profit V1 visual proposal and returned `pass`.
+- Visible UI implementation is authorized within this frozen Work Package scope.
+- Production deploy and Production data writes remain unauthorized.
+
 ## Current gate
 
 `A1_CANONICAL_RECONCILIATION = COMPLETE`
 `A2_FACT_CONTRACT = FROZEN`
-`A6_PRE_DEVELOPMENT_VISUAL = PENDING_OWNER_PASS`
-`TRACKED_UI_IMPLEMENTATION = BLOCKED_UNTIL_OWNER_PASS`
+`A6_PRE_DEVELOPMENT_VISUAL = OWNER_PASS / 2026-09-06`
+`TRACKED_UI_IMPLEMENTATION = AUTHORIZED`
 `PRODUCTION_WRITE = NOT_AUTHORIZED`
 PROJECT POSITION
 PROGRAM_ROADMAP: Architecture COMPLETE → Core Operations COMPLETE → Product/Woo/Logistics real-data foundation COMPLETE → Accounting / ROI Expansion CURRENT → Production Hardening / Expansion WAITING
 CURRENT_TRACK_PHASE_MAP: A1 COMPLETE → A2 FROZEN → A6 VISUAL GATE CURRENT → A3/A4/A5/A6 IMPLEMENTATION WAITING → A7/A8 WAITING → LOCAL UAT → PRODUCTION GATES
 COMPLETED_PHASES: A1 canonical reconciliation; A2 fact contract
-CURRENT_PHASE: PRE-DEVELOPMENT VISUAL GATE
+CURRENT_PHASE: IMPLEMENTATION / A3-A6
 CURRENT_WORK_PACKAGE: ERP-ACCOUNTING-ORDER-PROFIT-V1-001
-PACKAGE_STATUS: DESIGN_PENDING_OWNER_PASS
+PACKAGE_STATUS: IMPLEMENTATION_AUTHORIZED / OWNER_VISUAL_PASS
 WAITING_PHASES: Implementation; validation; Owner Local/UAT; Production release/data gates
 BASELINE: origin/main@3aa26cf25da8ebbef95200f49d9e8093e85e33a0
 GITHUB_STATE: dedicated branch/worktree created; Draft PR pending first contract commit
 SOURCE_CONFLICTS: AI/CURRENT_CONTEXT is stale versus current GitHub; Accounting Contract example base currency differs from later frozen USD contract; later Owner-frozen USD contract governs
-GLOBAL_GATE: OWNER_VISUAL_PASS_REQUIRED_BEFORE_VISIBLE_UI_IMPLEMENTATION
+GLOBAL_GATE: OWNER_VISUAL_PASS_SATISFIED / LOCAL_UAT_OWNER_PASS_REQUIRED_BEFORE_CLOSURE
 PRODUCTION_DEPLOYMENT_STATUS: NO — current package authorizes neither Production deploy nor Production accounting writes
-NEXT_DEPENDENCY: Owner visual PASS
+NEXT_DEPENDENCY: A3/A4/A5/A6 implementation + verification
 EVIDENCE_AS_OF: 2026-09-06
 
 ROADMAP HOURS
