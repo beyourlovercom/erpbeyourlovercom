@@ -5,6 +5,7 @@ namespace App\Modules\Orders\Application;
 use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
+use App\Modules\Finance\Application\Contracts\ConfirmedLossReader;
 use App\Modules\Products\Application\Contracts\ProductExternalReferenceRepository;
 use App\Modules\Products\Application\Contracts\ProductRepository;
 use App\Modules\Products\Application\SkuIdentityResolver;
@@ -24,17 +25,13 @@ final class OrderService
 
     private const OPERATIONAL_MARKERS = ['exception', 'in_transit', 'return', 'stockout'];
 
-    private const FINAL_COST_TYPES = [
-        'product_cost', 'warehouse_cost', 'first_mile_cost', 'overseas_handling_cost', 'last_mile_cost',
-        'kol_commission', 'payment_fee', 'customs_tax', 'refund_replacement_loss', 'other_variable_cost',
-    ];
-
     public function __construct(
         private readonly AuditRecorder $audit,
         private readonly ProductRepository $productRepository,
         private readonly SkuIdentityResolver $skuResolver,
         private readonly OrderIdentityService $orderIdentities,
         private readonly ProductExternalReferenceRepository $productExternalRefs,
+        private readonly ConfirmedLossReader $confirmedLosses,
     ) {}
 
     public function create(array $attributes, array $items, ?Authenticatable $actor, bool $allowMissingAddress = false): Model
@@ -314,15 +311,7 @@ final class OrderService
 
     private function applyLossView(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
     {
-        $placeholders = implode(',', array_fill(0, count(self::FINAL_COST_TYPES), '?'));
-
-        return $query
-            ->whereHas('financials', fn ($financials) => $financials->whereNotNull('amount_paid')->whereNotNull('refund_amount'))
-            ->whereHas('costEntries', fn ($costs) => $costs->whereIn('cost_type', self::FINAL_COST_TYPES), '>=', count(self::FINAL_COST_TYPES))
-            ->whereRaw(
-                "(SELECT CAST(order_financials.amount_paid AS NUMERIC) - CAST(order_financials.refund_amount AS NUMERIC) FROM order_financials WHERE order_financials.order_id = orders.id) - (SELECT COALESCE(SUM(CAST(order_cost_entries.amount AS NUMERIC)), 0) FROM order_cost_entries WHERE order_cost_entries.order_id = orders.id AND order_cost_entries.cost_type IN ({$placeholders})) < 0",
-                self::FINAL_COST_TYPES,
-            );
+        return $this->confirmedLosses->applyConfirmedLossScope($query);
     }
 
     private function applyStockoutView(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder

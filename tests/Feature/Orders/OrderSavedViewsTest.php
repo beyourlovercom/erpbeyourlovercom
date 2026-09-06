@@ -3,6 +3,7 @@
 namespace Tests\Feature\Orders;
 
 use App\Models\Role;
+use App\Modules\Finance\Application\Contracts\ConfirmedLossReader;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
@@ -52,18 +53,47 @@ final class OrderSavedViewsTest extends TestCase
 
     public function test_loss_view_reads_complete_finance_authority_and_does_not_create_loss_status(): void
     {
-        $user = $this->userWith(['orders.view']);
+        $user = $this->userWith(['orders.view', 'logistics.view']);
         $loss = $this->order($user, 'LOSS', 'shipped');
         $profit = $this->order($user, 'PROFIT', 'shipped');
         $incomplete = $this->order($user, 'INCOMPLETE', 'shipped');
+        $estimated = $this->order($user, 'ESTIMATED', 'shipped');
 
-        $this->finance($loss, 10.00, 0.00, 2.00); // 10 revenue - 20 total costs = -10
+        $this->finance($loss, 10.00, 0.00, 2.00); // 10 revenue - 20 confirmed costs = -10
         $this->finance($profit, 100.00, 0.00, 2.00); // +80
         $incomplete->financials()->create(['amount_paid' => '1.00', 'refund_amount' => '0.00', 'currency' => 'USD']);
+        $this->finance($estimated, 10.00, 0.00, 2.00);
+        $estimated->costEntries()->where('cost_type', 'product_cost')->update(['provenance' => 'estimated_reference', 'status' => 'estimated']);
 
         $this->assertViewContainsOnly($user, 'loss', 'ORDER-LOSS');
+        $this->actingAs($user)->get('/logistics/loss')->assertInertia(fn (Assert $page) => $page
+            ->has('orders', 1)
+            ->where('orders.0.order_number', 'ORDER-LOSS')
+            ->where('statusBar.7.count', 1));
+        $this->actingAs($user)->get('/logistics/carriers')->assertInertia(fn (Assert $page) => $page
+            ->where('statusBar.7.count', 1));
         $this->assertDatabaseMissing('order_operational_markers', ['order_id' => $loss->id, 'marker' => 'loss']);
         $this->assertSame('shipped', $loss->fresh()->order_status->value);
+    }
+
+    public function test_confirmed_loss_reader_supports_authoritative_woo_revenue_and_excludes_unsettled_woo(): void
+    {
+        $user = $this->userWith(['orders.view']);
+        $wooLoss = $this->order($user, 'WOO-LOSS', 'shipped');
+        $unsettled = $this->order($user, 'WOO-UNSETTLED', 'shipped');
+
+        $this->wooFinance($wooLoss, paidAt: true);
+        $this->wooFinance($unsettled, paidAt: false);
+
+        /** @var ConfirmedLossReader $reader */
+        $reader = app(ConfirmedLossReader::class);
+        $query = Order::query();
+        $ids = $reader->applyConfirmedLossScope($query)->pluck('id')->all();
+
+        $this->assertTrue($reader->isConfirmedLoss($wooLoss->fresh(['financials', 'costEntries'])));
+        $this->assertFalse($reader->isConfirmedLoss($unsettled->fresh(['financials', 'costEntries'])));
+        $this->assertContains($wooLoss->id, $ids);
+        $this->assertNotContains($unsettled->id, $ids);
     }
 
     public function test_overweight_view_requires_confirmed_chargeable_weight_and_explicit_domestic_warehouse_config(): void
@@ -180,6 +210,28 @@ final class OrderSavedViewsTest extends TestCase
         $order->financials()->create(['amount_paid' => number_format($paid, 2, '.', ''), 'refund_amount' => number_format($refund, 2, '.', ''), 'currency' => 'USD']);
         foreach (self::COST_TYPES as $type) {
             $order->costEntries()->create(['cost_type' => $type, 'amount' => number_format($eachCost, 2, '.', ''), 'currency' => 'USD']);
+        }
+    }
+
+    private function wooFinance(Order $order, bool $paidAt): void
+    {
+        $order->financials()->create([
+            'merchandise_list_amount' => '10.00',
+            'discount_amount' => '0.00',
+            'shipping_revenue' => '0.00',
+            'refund_amount' => '0.00',
+            'tax_collected' => '0.00',
+            'provider_order_total' => '10.00',
+            'currency' => 'USD',
+            'paid_at' => $paidAt ? now() : null,
+            'provider' => 'woocommerce',
+            'provider_reference' => (string) $order->external_order_number,
+            'provider_order_status' => 'completed',
+            'revenue_provenance' => 'provider_import',
+            'reconciliation_status' => 'matched',
+        ]);
+        foreach (self::COST_TYPES as $type) {
+            $order->costEntries()->create(['cost_type' => $type, 'amount' => '2.00', 'currency' => 'USD']);
         }
     }
 
