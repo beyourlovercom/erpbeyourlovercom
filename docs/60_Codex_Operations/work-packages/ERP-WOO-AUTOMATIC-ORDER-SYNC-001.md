@@ -66,3 +66,26 @@ Current gate:
 `WOO_AUTOMATIC_ORDER_SYNC = CODE_READY / FOCUSED_TESTS_PASS / PRODUCTION_DISABLED`
 
 Next gate is read-only Production catch-up reconciliation, followed by explicit Owner authorization before setting `WOO_ORDER_SYNC_ENABLED=true` or otherwise activating scheduled Production writes.
+
+## Production read-only catch-up pre-scan
+Production cursor at scan start: `2026-09-05 10:17:48 UTC`; canonical Woo refs: `6028`; failed jobs: `0`; `/up=200`.
+
+Woo query from five-minute overlap returned 13 changed source rows across one page:
+- 1 row already exists in ERP and is overlap/idempotency coverage;
+- 12 rows are not yet canonical ERP Orders: `40199, 40200, 40201, 40206, 40207, 40208, 40209, 40210, 40211, 40212, 40213, 40214`;
+- source statuses: 12 processing, 1 pending across the whole overlap window;
+- source created_via: checkout/store-api only;
+- new zero-line admin shells: 0;
+- normalizer failures: 0.
+The 12 canonical candidates contain 18 line items. Read-only resolution using the same precedence as Order inbound produced:
+- resolved items: 18/18;
+- unresolved usable-SKU items: 0;
+- blank-identity items: 0.
+
+A second read-only normalized-field vs live Production schema scan found 0 overflows. Maximum observed lengths include `address_line_2=36`, `sku=12`, `product_summary=29`, and `external_order_number=31`.
+
+Frozen first automatic-run expectation at this scan point:
+`13 overlap-window rows = 1 existing idempotent update + 12 new canonical Orders + 0 admin shells + 0 failures`.
+
+Current gate:
+`WOO_AUTOMATIC_ORDER_SYNC = CODE_READY / FOCUSED_TESTS_PASS / CATCHUP_PRE_SCAN_PASS / PRODUCTION_DISABLED`
