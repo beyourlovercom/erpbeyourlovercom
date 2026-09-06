@@ -1085,7 +1085,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Customers/Support/TicketForm.vue' => '28e2198067ef12bd82ad19765e8a6a7fd4c5761211bce16f6a89de6898dc1c05',
         'resources/js/Pages/Dashboard/Index.test.ts' => '27c63e094fcdec28a0e5677508723e149c90a5130efb98d4448fa2b7f51b4ae4',
         'resources/js/Pages/Dashboard/Index.vue' => '0c28a768afcaa181b54ab01c4ec08457a04f7ed98e5ba3b52a041d98492bc2bb',
-        'resources/js/Pages/Finance/OrderAnalysis.vue' => 'e0502f47e0993e5a158214f81b2db51c8d4c657a800f30d5d4e45e2811ec00a3',
+        'resources/js/Pages/Finance/OrderAnalysis.vue' => '11949216515ef7858733e5f6e6485c07336bfa8cab1e0f231b34e1ebe4751c8e',
         'resources/js/Pages/Guides/Edit.vue' => '47b31eb218c25505b2037e27460f99f52c80d42eee4057583d2ea680e9bd890b',
         'resources/js/Pages/Guides/Index.test.ts' => 'b751aca1f6cc636b969306643ad1278159dd3be28192c129df9033a62f92e0c9',
         'resources/js/Pages/Guides/Index.vue' => 'b4121443c078f0f386cbe204673386bf75d73fd187b9f642e61a05adabcc35ad',
