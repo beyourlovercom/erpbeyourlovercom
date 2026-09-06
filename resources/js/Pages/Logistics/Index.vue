@@ -30,7 +30,15 @@ const makeDraft = (order: Order): Draft => ({
   shipped_at: localDateTime(order.shipment?.shipped_at ?? null),
   logistics_note: order.shipment?.logistics_note ?? '',
 })
-watch(() => props.orders.data, (orders) => { for (const order of orders) if (!drafts[order.id]) drafts[order.id] = makeDraft(order) }, { immediate: true })
+watch(() => props.orders.data, (orders) => {
+  for (const order of orders) {
+    if (!drafts[order.id]) {
+      drafts[order.id] = makeDraft(order)
+    } else if (order.shipment?.warehouse_selection_source === 'recommended' && order.shipment.warehouse_id != null) {
+      drafts[order.id].warehouse_id = order.shipment.warehouse_id
+    }
+  }
+}, { immediate: true, deep: true })
 
 const toggle = (orderId: number) => { openOrderId.value = openOrderId.value === orderId ? null : orderId }
 const adoptRecommendation = (order: Order) => {
