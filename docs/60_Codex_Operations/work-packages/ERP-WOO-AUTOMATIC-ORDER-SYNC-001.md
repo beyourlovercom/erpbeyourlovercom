@@ -88,4 +88,20 @@ Frozen first automatic-run expectation at this scan point:
 `13 overlap-window rows = 1 existing idempotent update + 12 new canonical Orders + 0 admin shells + 0 failures`.
 
 Current gate:
-`WOO_AUTOMATIC_ORDER_SYNC = CODE_READY / FOCUSED_TESTS_PASS / CATCHUP_PRE_SCAN_PASS / PRODUCTION_DISABLED`
+`WOO_AUTOMATIC_ORDER_SYNC = PASS / PRODUCTION ACCEPTED`
+
+## Production activation closure — 2026-09-06
+- Owner activation authorization: PASS.
+- PR #204 merged as `152d3290e59ad6cf7881a9b850b2b36d5d6da698`.
+- Fresh encrypted DB backup before activation: run #23, UUID `582a5844-96dd-4977-ab70-52460f3c1a63`, state `ready`.
+- Backup artifact checksum verified live: `4b5a5e09fe82b428b60fe2405eb994c238e6166be3911c0ba2b3069afda4cbf3`.
+- Production deployment was bounded to the 10 #204 runtime files only; no migration was executed.
+- Runtime rollback package: `backups/woo-order-auto-runtime-20260906-031715`.
+- Deployed runtime fingerprint: 10/10 files match merge commit `152d3290...`.
+- `WOO_ORDER_SYNC_ENABLED=true`; schedule declaration is `*/5 * * * *`.
+- Manual activation canary: SyncRun #516, completed, seen=1, created=0, updated=1, skipped=0, failed=0.
+- First verified scheduler-owned tick: 2026-09-06 03:20:02 UTC; SyncRun #517 completed, processed=1, succeeded=1, failed=0.
+- Final health: Woo refs=6040, duplicate refs=0, null-Product historical exception items=18, open SKU reconciliation=0, failed_jobs=0, `/up`=200.
+- Scheduler process restarted successfully and is running with the automatic Woo Order event loaded.
+
+Formal status: **WooCommerce Automatic Order Sync — CLOSED / DEPLOYED TO ERP / PRODUCTION ACCEPTED**.
