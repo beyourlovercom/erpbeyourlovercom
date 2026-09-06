@@ -307,3 +307,21 @@ Canary verdict: `PASS` for Reservation + Shipment Draft invariants.
 Operational finding: no visible fresh pre-canary backup artifact was found in the Production backup directory. The write had already been performed by a concurrent authorized ERP lane before this pilot process reached its own backup step. Do not repeat this pattern; the next business-data write gate must verify backup evidence before mutation.
 
 Next gate: `WAITING_REAL_CARRIER_SERVICE_TRACKING_AND_MARK_SHIPPED_OWNER_GATE`.
+
+## A1 Packaging Readiness Finding — 2026-09-06
+
+Production readiness assessment for A1 / Order 6011 returned stage `packaging` with blockers `packaging_snapshot_missing` and `carrier_decision_missing`.
+
+Exact Production facts:
+- Shipment #1 exists and matches Reservation #1 at DE warehouse.
+- `shipment_item_packaging_snapshots = 0`.
+- `product_packaging_profiles = 0` globally.
+- `packaging_measurement_records = 0` globally.
+- MF414A / Product 1336 has no Product packaging profile, no approved measurement record, and no current weight/dimension evidence.
+- Product fields `weight_kg`, `shipping_weight_kg`, `length_cm`, `width_cm`, `height_cm` are all null.
+
+Canonical Packaging workflow already exists at `/inventory/packaging` and must be reused: create measurement draft → upload measurement/weight evidence → submit → review → adopt approved record as current product standard. No fake measurement values are permitted for the pilot.
+
+Once MF414A has an approved/current packaging standard, the canonical `ShipmentService::syncPackagingSnapshots()` path can freeze the product packaging facts into Shipment #1. The pilot remains stopped before Carrier/Tracking/Mark Shipped until that snapshot exists.
+
+Current gate: `WAITING_REAL_PACKAGING_FACTS`.
