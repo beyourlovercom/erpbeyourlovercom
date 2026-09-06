@@ -325,3 +325,20 @@ Canonical Packaging workflow already exists at `/inventory/packaging` and must b
 Once MF414A has an approved/current packaging standard, the canonical `ShipmentService::syncPackagingSnapshots()` path can freeze the product packaging facts into Shipment #1. The pilot remains stopped before Carrier/Tracking/Mark Shipped until that snapshot exists.
 
 Current gate: `WAITING_REAL_PACKAGING_FACTS`.
+
+## Production administrator Packaging permission repair — 2026-09-06
+
+Owner explicitly approved `Administrator Packaging permissions`.
+
+Production pre-write snapshot:
+`/Users/a/AI/production/erp.beyourlover.com/backups/admin-packaging-permissions-pre-20260906-083916.json`
+SHA256: `efba4251f9b51bcb0585e9f99d394149ade49aa45e6d9275983e387efb37b3d9`
+
+Exact mutation: role `role_preset_administrator` received only:
+- `inventory.packaging.review`
+- `inventory.packaging.submit`
+
+Post-write verification:
+- `svakomandy@gmail.com`: inventory.view=true / packaging.submit=true / packaging.review=true
+- `admin@beyourlover.com`: inventory.view=true / packaging.submit=true / packaging.review=true
+- No user-specific permission workaround was used; the role preset is canonical.
