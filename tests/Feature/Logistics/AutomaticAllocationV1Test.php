@@ -168,6 +168,26 @@ final class AutomaticAllocationV1Test extends TestCase
             ->value('quantity_on_hand'));
     }
 
+    public function test_cli_limit_is_applied_after_country_allowlist_filter(): void
+    {
+        [, $usOrder] = $this->scenario('US', 'US-LA');
+        [, $deOrder, $product, $warehouse] = $this->scenario('DE', 'DE');
+        $this->authoritative($warehouse, $product, 'DE', 5);
+        $this->configure(true, false);
+
+        $this->assertLessThan($deOrder->id, $usOrder->id);
+
+        $this->artisan('inventory:auto-allocate', ['--limit' => 1, '--apply' => true])
+            ->assertSuccessful();
+
+        $this->assertDatabaseMissing('inventory_reservations', ['order_id' => $usOrder->id]);
+        $this->assertDatabaseHas('inventory_reservations', [
+            'order_id' => $deOrder->id,
+            'warehouse_id' => $warehouse->id,
+            'status' => 'reserved',
+        ]);
+    }
+
     public function test_cli_apply_is_blocked_by_default_runtime_gate(): void
     {
         [, $order, $product, $warehouse] = $this->scenario('DE', 'DE');
