@@ -1,0 +1,158 @@
+<?php
+
+namespace App\Modules\Logistics\Application;
+
+use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
+use App\Modules\Orders\Infrastructure\Models\Order;
+
+final class AutomaticAllocationEligibilityService
+{
+    public function __construct(private readonly WarehouseRecommendationService $recommendations) {}
+
+    /** @return array<string,mixed> */
+    public function evaluate(Order $order, ?array $recommendation = null): array
+    {
+        $order->loadMissing(['address', 'items', 'shipment.warehouse', 'externalReferences']);
+
+        if ($order->externalReferences->contains('provider', 'historical_logistics')) {
+            return $this->blocked('HISTORICAL_EXCLUDED', 'historical_excluded', '历史物流订单永久排除自动分配。');
+        }
+
+        if ($order->order_status?->value !== 'pending_shipment') {
+            return $this->blocked('BLOCKED_OTHER', 'order_not_pending', '只有待发货订单可以自动分配。');
+        }
+
+        $activeReservation = InventoryReservation::query()
+            ->where('order_id', $order->id)
+            ->where('status', 'reserved')
+            ->first();
+        if ($activeReservation) {
+            if ($order->shipment?->warehouse_selection_source === 'automatic'
+                && (int) $order->shipment->warehouse_id === (int) $activeReservation->warehouse_id) {
+                return $this->result(
+                    'ALREADY_RESERVED',
+                    'allocated',
+                    'already_automatic',
+                    '已自动分配并预留库存。',
+                    $this->shipmentWarehouse($order),
+                );
+            }
+
+            return $this->blocked('ALREADY_RESERVED', 'already_reserved', '订单已有库存预留，不自动覆盖现有履约选择。');
+        }
+
+        if ($order->shipment) {
+            if ($order->shipment->warehouse_id !== null) {
+                return $this->blocked(
+                    $order->shipment->warehouse_selection_source === 'manual' ? 'MANUAL_WAREHOUSE_SELECTED' : 'ALREADY_HAS_DRAFT',
+                    'existing_shipment_draft',
+                    '订单已有履约草稿或仓库选择，不自动覆盖。',
+                );
+            }
+
+            return $this->blocked('ALREADY_HAS_DRAFT', 'existing_shipment_draft', '订单已有履约草稿，不自动覆盖。');
+        }
+
+        $countryCode = strtoupper(trim((string) $order->address?->country));
+        if ($countryCode === '') {
+            return $this->blocked('MISSING_COUNTRY', 'missing_country', '订单缺少国家代码，无法自动分配。');
+        }
+        if (! preg_match('/^[A-Z]{2}$/', $countryCode)) {
+            return $this->blocked('INVALID_COUNTRY', 'invalid_country_code', '订单国家必须使用 ISO 2 位代码后才能自动分配。');
+        }
+
+        $allowlist = collect(config('inventory_auto_allocation.country_allowlist', []))
+            ->map(fn ($country): string => strtoupper(trim((string) $country)));
+        if (! $allowlist->contains($countryCode)) {
+            return $this->blocked(
+                'COUNTRY_NOT_AUTO_ENABLED',
+                'country_not_auto_enabled',
+                "{$countryCode} 尚未开放自动分配，继续使用人工履约。",
+            );
+        }
+
+        $recommendation ??= $this->recommendations->recommend(
+            $countryCode,
+            $order->items->map(fn ($item): array => [
+                'product_id' => $item->product_id,
+                'quantity' => (int) $item->quantity,
+            ])->values()->all(),
+        );
+
+        if (($recommendation['status'] ?? null) !== 'recommended') {
+            return $this->fromRecommendationBlock($recommendation);
+        }
+
+        $expectedWarehouseCode = strtoupper((string) config("inventory_auto_allocation.warehouse_by_country.{$countryCode}", ''));
+        $recommendedCode = strtoupper((string) ($recommendation['warehouse']['code'] ?? ''));
+        if ($expectedWarehouseCode === '' || $recommendedCode !== $expectedWarehouseCode) {
+            return $this->blocked(
+                'MULTIPLE_POLICY_AMBIGUITY',
+                'routing_policy_mismatch',
+                '推荐结果与已冻结自动分配路由策略不一致，已停止自动分配。',
+            );
+        }
+
+        return $this->result(
+            'READY_AUTO_ALLOCATE',
+            'ready',
+            'ready_auto_allocate',
+            '库存与路由均满足，可自动分配。',
+            $recommendation['warehouse'],
+            $countryCode,
+        );
+    }
+
+    /** @param array<string,mixed> $recommendation */
+    private function fromRecommendationBlock(array $recommendation): array
+    {
+        $reasonCode = (string) ($recommendation['reason_code'] ?? 'blocked_other');
+        $state = match ($reasonCode) {
+            'missing_country' => 'MISSING_COUNTRY',
+            'invalid_country_code' => 'INVALID_COUNTRY',
+            'unresolved_product' => 'UNRESOLVED_PRODUCT',
+            'service_regions_unconfigured', 'no_service_region_match' => 'NO_SERVICE_REGION',
+            'no_inventory_authority' => 'NO_FULL_SNAPSHOT_AUTHORITY',
+            'insufficient_stock' => 'INSUFFICIENT_STOCK',
+            default => 'BLOCKED_OTHER',
+        };
+
+        return $this->blocked($state, $reasonCode, (string) ($recommendation['reason_label'] ?? '当前无法自动分配。'));
+    }
+    /** @return array<string,mixed> */
+    private function blocked(string $state, string $reasonCode, string $reasonLabel): array
+    {
+        return $this->result($state, 'blocked', $reasonCode, $reasonLabel);
+    }
+
+    /** @param array<string,mixed>|null $warehouse */
+    private function result(
+        string $state,
+        string $status,
+        string $reasonCode,
+        string $reasonLabel,
+        ?array $warehouse = null,
+        ?string $countryCode = null,
+    ): array {
+        return [
+            'state' => $state,
+            'status' => $status,
+            'reason_code' => $reasonCode,
+            'reason_label' => $reasonLabel,
+            'country_code' => $countryCode,
+            'warehouse' => $warehouse,
+            'can_apply' => $state === 'READY_AUTO_ALLOCATE',
+        ];
+    }
+
+    /** @return array<string,mixed>|null */
+    private function shipmentWarehouse(Order $order): ?array
+    {
+        $warehouse = $order->shipment?->warehouse;
+        if (! $warehouse) {
+            return null;
+        }
+
+        return ['id' => (int) $warehouse->id, 'slug' => (string) $warehouse->slug, 'code' => (string) $warehouse->code, 'name' => (string) $warehouse->name];
+    }
+}

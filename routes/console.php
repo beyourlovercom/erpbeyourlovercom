@@ -50,3 +50,11 @@ if ((bool) config('services.woocommerce.order_sync_enabled', false)) {
         ->withoutOverlapping(55)
         ->onOneServer();
 }
+
+if ((bool) config('inventory_auto_allocation.scheduler_enabled', false)) {
+    Schedule::command('inventory:auto-allocate --limit='.(int) config('inventory_auto_allocation.catch_up_limit', 100).' --apply')
+        ->hourly()
+        ->name('inventory.auto-allocation.catch-up.hourly')
+        ->withoutOverlapping(55)
+        ->onOneServer();
+}
