@@ -37,6 +37,10 @@ describe('Logistics warehouse recommendation', () => {
   })
 
   it('adopts a recommendation through JSON fetch without Inertia navigation', async () => {
+    const csrfMeta = document.createElement('meta')
+    csrfMeta.name = 'csrf-token'
+    csrfMeta.content = 'test-csrf-token'
+    document.head.appendChild(csrfMeta)
     const wrapper = mount(Index, { props })
     const { router } = await import('@inertiajs/vue3')
     vi.mocked(router.post).mockClear()
@@ -52,7 +56,12 @@ describe('Logistics warehouse recommendation', () => {
     expect(router.post).not.toHaveBeenCalled()
     expect(fetchMock).toHaveBeenCalledOnce()
     expect(fetchMock.mock.calls[0][0]).toBe('/logistics/orders/10/adopt-recommendation')
-    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST', headers: expect.objectContaining({ Accept: 'application/json' }) })
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: expect.objectContaining({ Accept: 'application/json', 'X-CSRF-TOKEN': 'test-csrf-token' }),
+    })
+    csrfMeta.remove()
     vi.unstubAllGlobals()
   })
 

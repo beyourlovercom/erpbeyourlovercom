@@ -45,8 +45,11 @@ watch(() => props.orders.data, (orders) => {
 
 const toggle = (orderId: number) => { openOrderId.value = openOrderId.value === orderId ? null : orderId }
 
-function getXsrfToken(): string {
-  return decodeURIComponent(document.cookie.split('; ').find(r => r.startsWith('XSRF-TOKEN='))?.split('=')[1] ?? '')
+function csrfHeaders(): Record<string, string> {
+  const metaToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? ''
+  if (metaToken) return { 'X-CSRF-TOKEN': metaToken }
+  const xsrfToken = decodeURIComponent(document.cookie.split('; ').find(r => r.startsWith('XSRF-TOKEN='))?.split('=')[1] ?? '')
+  return xsrfToken ? { 'X-XSRF-TOKEN': xsrfToken } : {}
 }
 
 const adoptRecommendation = async (order: Order) => {
@@ -55,7 +58,8 @@ const adoptRecommendation = async (order: Order) => {
   try {
     const resp = await fetch(`/logistics/orders/${order.id}/adopt-recommendation`, {
       method: 'POST',
-      headers: { 'Accept': 'application/json', 'X-XSRF-TOKEN': getXsrfToken(), 'Content-Type': 'application/json' },
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', ...csrfHeaders() },
+      credentials: 'same-origin',
       body: JSON.stringify({}),
     })
     if (!resp.ok) {
