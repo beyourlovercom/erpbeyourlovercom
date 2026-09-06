@@ -24,7 +24,7 @@ final class SyncWorkspaceTest extends TestCase
             'started_at' => now()->subMinute(), 'completed_at' => now(),
         ]);
         SyncRun::create([
-            'run_type' => 'scheduled_incremental', 'provider_key' => 'woocommerce',
+            'run_type' => 'woocommerce_order_incremental', 'provider_key' => 'woocommerce',
             'status' => 'completed', 'requested_items' => 2, 'processed_items' => 2,
             'succeeded_items' => 2, 'initiated_by' => null,
             'started_at' => now()->subMinutes(2), 'completed_at' => now()->subMinute(),
@@ -40,7 +40,12 @@ final class SyncWorkspaceTest extends TestCase
             ->where('domains.4.key', 'wordpress')
             ->where('manualRuns.0.id', $manual->id)
             ->where('manualRuns.0.initiator', $user->name)
-            ->where('automaticRuns.0.run_type', 'scheduled_incremental')
+            ->where('automaticRuns.0.run_type', 'woocommerce_order_incremental')
+            ->where('wooOrderSync.frequency', '每 1 小时')
+            ->where('wooOrderSync.can_operate', false)
+            ->where('wooOrderSync.manual_action', '/sync/woocommerce/incremental')
+            ->where('wooOrderSync.advanced_href', '/sync/woocommerce')
+            ->where('wooOrderSync.latest_run.run_type', 'woocommerce_order_incremental')
         );
 
         $this->actingAs($user)->get('/sync/orders')->assertOk()->assertInertia(fn (Assert $page) => $page
@@ -51,6 +56,20 @@ final class SyncWorkspaceTest extends TestCase
         );
     }
 
+
+    public function test_sync_overview_exposes_manual_today_control_to_sync_operators(): void
+    {
+        config(['services.woocommerce.order_sync_enabled' => true]);
+        $user = $this->userWithPermissions(['sync.view', 'sync.operate']);
+
+        $this->actingAs($user)->get('/sync')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Sync/Index')
+            ->where('wooOrderSync.enabled', true)
+            ->where('wooOrderSync.frequency', '每 1 小时')
+            ->where('wooOrderSync.can_operate', true)
+            ->where('wooOrderSync.manual_action', '/sync/woocommerce/incremental')
+        );
+    }
 
     public function test_wordpress_connector_card_is_sync_scoped(): void
     {

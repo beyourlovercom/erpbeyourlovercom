@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3'
+import { Head, router } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
 type DomainCard = {
@@ -12,17 +12,23 @@ type SyncRun = {
   requested_items: number; succeeded_items: number; failed_items: number; conflict_items: number
 }
 type QueueSummary = { retry_due: number; retry_waiting: number; processing: number; failed: number; conflicts: number }
+type WooOrderSync = {
+  enabled: boolean; frequency: string; can_operate: boolean; manual_action: string; advanced_href: string
+  latest_run: SyncRun | null
+}
 
 const props = defineProps<{
   domains: DomainCard[]
   manualRuns: SyncRun[]
   automaticRuns: SyncRun[]
   queueSummary: QueueSummary
+  wooOrderSync: WooOrderSync
 }>()
 
 const formatTime = (value: string | null) => value
   ? new Date(value).toLocaleString('zh-CN', { hour12: false })
   : '尚未同步'
+const manualSyncToday = () => router.post(props.wooOrderSync.manual_action, {}, { preserveScroll: true })
 </script>
 <template>
   <Head title="同步总览 · BYL ERP" />
@@ -48,6 +54,28 @@ const formatTime = (value: string | null) => value
           </dl>
         </a>
       </div>
+
+      <section class="mvp-panel woo-order-sync-panel">
+        <div class="mvp-page-heading compact-heading">
+          <div>
+            <p class="mvp-kicker">WooCommerce Orders</p>
+            <h3>WooCommerce 订单同步</h3>
+            <p>自动同步每 1 小时执行一次；需要立即拉取时，可手动同步今天 00:00 至当前创建的订单。</p>
+          </div>
+          <div class="mvp-form-actions">
+            <a class="mvp-button" :href="props.wooOrderSync.advanced_href">高级设置</a>
+            <button class="mvp-button mvp-button-primary" type="button" :disabled="!props.wooOrderSync.can_operate" @click="manualSyncToday">手动同步今日订单</button>
+          </div>
+        </div>
+        <div class="sync-metrics woo-order-sync-metrics">
+          <div><strong>{{ props.wooOrderSync.enabled ? '正常' : '未启用' }}</strong><span>自动同步</span></div>
+          <div><strong>{{ props.wooOrderSync.frequency }}</strong><span>执行频率</span></div>
+          <div><strong>{{ formatTime(props.wooOrderSync.latest_run?.completed_at ?? props.wooOrderSync.latest_run?.started_at ?? null) }}</strong><span>上次自动同步</span></div>
+          <div><strong>{{ props.wooOrderSync.latest_run ? `${props.wooOrderSync.latest_run.succeeded_items} 成功 / ${props.wooOrderSync.latest_run.failed_items} 失败` : '—' }}</strong><span>最近结果</span></div>
+        </div>
+        <p v-if="!props.wooOrderSync.can_operate" class="mvp-empty">当前账号只有查看权限，不能执行手动同步。</p>
+      </section>
+
       <section class="mvp-panel">
         <div class="mvp-page-heading compact-heading"><div><h3>订单同步队列</h3></div><a class="mvp-button" href="/sync/orders">进入同步订单</a></div>
         <div class="sync-metrics">
@@ -108,8 +136,12 @@ dd { margin: 0; font-weight: 600; }
 .sync-metrics div { display: grid; gap: var(--byl-space-4); padding: var(--byl-space-12); border-radius: var(--byl-radius-md); background: var(--byl-readonly-bg); }
 .sync-metrics strong { font-size: var(--byl-font-size-20); }
 .sync-metrics span { color: var(--byl-text-muted); }
+.woo-order-sync-panel { border-width: 2px; }
+.woo-order-sync-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.woo-order-sync-metrics strong { font-size: var(--byl-font-size-16); }
 @media (max-width: 800px) {
   .sync-domain-grid { grid-template-columns: 1fr; }
   .sync-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .woo-order-sync-metrics { grid-template-columns: 1fr; }
 }
 </style>

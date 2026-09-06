@@ -16,6 +16,7 @@ final class WooCommerceInboundService
     private const MAX_PAGES = 100;
     private const OVERLAP_MINUTES = 5;
     private const AUTOMATIC_RUN_TYPE = 'woocommerce_order_incremental';
+    private const MANUAL_TODAY_RUN_TYPE = 'woocommerce_order_manual_today';
 
     public function __construct(
         private readonly WooCommerceOrderGateway $gateway,
@@ -60,16 +61,41 @@ final class WooCommerceInboundService
 
     public function importToday(?Authenticatable $actor): array
     {
+        $descriptor = $this->gateway->descriptor();
+        $connectionKey = (string) $descriptor['connection_key'];
         $now = CarbonImmutable::now('UTC');
+        $after = $now->startOfDay()->toIso8601String();
+        $before = $now->toIso8601String();
+        $run = $this->runs->start(
+            self::MANUAL_TODAY_RUN_TYPE,
+            0,
+            $actor,
+            'woocommerce',
+            $connectionKey,
+            ['mode' => 'manual_today', 'domain' => 'orders', 'after' => $after, 'before' => $before],
+        );
 
-        return $this->importPages([
-            'after' => $now->startOfDay()->toIso8601String(),
-            'before' => $now->toIso8601String(),
-            'status' => 'any',
-            'orderby' => 'date',
-            'order' => 'asc',
-            'per_page' => self::PER_PAGE,
-        ], $actor, true);
+        try {
+            $summary = $this->importManualTodayPages([
+                'after' => $after,
+                'before' => $before,
+                'status' => 'any',
+                'orderby' => 'date',
+                'order' => 'asc',
+                'per_page' => self::PER_PAGE,
+            ], $run, $connectionKey, $actor);
+            $this->runs->setRequestedItems($run, $summary['seen']);
+            $completed = $this->runs->complete($run, $actor);
+
+            return [
+                ...$summary,
+                'run_id' => (int) $completed->getKey(),
+                'run_status' => $completed->status instanceof \BackedEnum ? $completed->status->value : (string) $completed->status,
+            ];
+        } catch (Throwable $e) {
+            $this->recordManualBatchFailure($run, $actor, $e);
+            throw $e;
+        }
     }
 
     public function importAutomaticIncremental(): array
@@ -153,6 +179,67 @@ final class WooCommerceInboundService
         } while ($page <= $totalPages);
 
         $summary['pages'] = $page - 1;
+        return $summary;
+    }
+
+    private function importManualTodayPages(array $baseQuery, $run, string $connectionKey, ?Authenticatable $actor): array
+    {
+        $summary = $this->emptySummary();
+        $page = 1;
+        $totalPages = 1;
+
+        do {
+            $result = $this->gateway->fetchOrders([...$baseQuery, 'page' => $page]);
+            if ((int) $result['total_pages'] > self::MAX_PAGES) {
+                throw new DomainException('WooCommerce 今日手动同步范围超过单次 10000 单上限。');
+            }
+            $summary = $this->mergeSummary(
+                $summary,
+                $this->importManualTodayPayloads($result['items'], $run, $connectionKey, $actor),
+            );
+            $totalPages = max(1, (int) $result['total_pages']);
+            $page++;
+        } while ($page <= $totalPages);
+
+        $summary['pages'] = $page - 1;
+        return $summary;
+    }
+
+    /** @param list<array<string,mixed>> $payloads */
+    private function importManualTodayPayloads(array $payloads, $run, string $connectionKey, ?Authenticatable $actor): array
+    {
+        $summary = $this->emptySummary();
+        foreach ($payloads as $payload) {
+            $summary['seen']++;
+            $reference = (string) ($payload['id'] ?? '?');
+            $item = $this->runs->addItem($run, [
+                'operation' => 'woocommerce.order_inbound.manual_today',
+                'provider_reference' => $reference === '?' ? null : $reference,
+            ]);
+            $item = $this->runs->markProcessing($item);
+
+            if ($this->isNonProductAdminShell($payload)) {
+                $summary['skipped']++;
+                $this->runs->finishSkipped($item, 'non_product_admin_shell');
+                continue;
+            }
+
+            try {
+                $normalized = $this->normalizer->normalize($payload, $connectionKey);
+                $result = $this->orders->upsertInbound($normalized, $actor);
+                $outcome = $result['created'] ? 'created' : 'updated';
+                $summary[$outcome]++;
+                $this->runs->annotateItem($item, ['order_id' => $result['order']->getKey()]);
+                $this->runs->finishSucceeded($item, $outcome);
+            } catch (Throwable $e) {
+                $summary['failed']++;
+                if (count($summary['errors']) < 20) {
+                    $summary['errors'][] = ['reference' => $reference, 'message' => $e->getMessage()];
+                }
+                $this->runs->finishFailed($item, 'failed', 'order_inbound_failed', $e->getMessage());
+            }
+        }
+
         return $summary;
     }
 
@@ -288,6 +375,19 @@ final class WooCommerceInboundService
         }
 
         return CarbonImmutable::parse($candidate)->greaterThan(CarbonImmutable::parse($current)) ? $candidate : $current;
+    }
+
+    private function recordManualBatchFailure($run, ?Authenticatable $actor, Throwable $error): void
+    {
+        try {
+            $this->runs->setRequestedItems($run, 1);
+            $item = $this->runs->addItem($run, ['operation' => 'woocommerce.order_inbound.manual_today.batch']);
+            $item = $this->runs->markProcessing($item);
+            $this->runs->finishFailed($item, 'failed', 'batch_failed', $error->getMessage());
+            $this->runs->complete($run, $actor);
+        } catch (Throwable) {
+            // Preserve the original provider/runtime exception for the controller response.
+        }
     }
 
     private function recordAutomaticBatchFailure($run, Throwable $error): void

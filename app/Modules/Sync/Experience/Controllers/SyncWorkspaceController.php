@@ -47,9 +47,23 @@ final class SyncWorkspaceController
         $connectorRuns = $runs->filter(fn (Model $run): bool => $this->isWordPressConnectorRun($run));
         $domains[] = $this->domainCard('wordpress', 'WordPress Connector', '连接、健康检查与 WordPress / AffiliateWP 数据同步', '/sync/wpapi', $connectorRuns);
 
+        $latestWooOrderAutomatic = $runs->first(fn (Model $run): bool =>
+            $run->initiated_by === null
+            && $run->provider_key === 'woocommerce'
+            && $run->run_type === 'woocommerce_order_incremental'
+        );
+
         return Inertia::render('Sync/Index', [
             'domains' => $domains,
             'queueSummary' => $this->orchestration->queueSummary(),
+            'wooOrderSync' => [
+                'enabled' => (bool) config('services.woocommerce.order_sync_enabled', false),
+                'frequency' => '每 1 小时',
+                'can_operate' => (bool) $request->user()?->can('sync.operate'),
+                'manual_action' => '/sync/woocommerce/incremental',
+                'advanced_href' => '/sync/woocommerce',
+                'latest_run' => $latestWooOrderAutomatic ? $this->runData($latestWooOrderAutomatic) : null,
+            ],
             'manualRuns' => $runs->filter(fn (Model $run): bool => $run->initiated_by !== null)
                 ->take(15)->map(fn (Model $run): array => $this->runData($run))->values()->all(),
             'automaticRuns' => $runs->filter(fn (Model $run): bool => $run->initiated_by === null)
