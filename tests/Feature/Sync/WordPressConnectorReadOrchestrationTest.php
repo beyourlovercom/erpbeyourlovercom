@@ -156,6 +156,7 @@ final class WordPressConnectorReadOrchestrationTest extends TestCase
 
             public function provisionAffiliate(array $payload, string $idempotencyKey): ConnectorResponse { throw new \LogicException('not used'); }
             public function setAffiliateStatus(int $affiliateId, string $status, string $idempotencyKey): ConnectorResponse { throw new \LogicException('not used'); }
+            public function updateWordpressPassword(int $wordpressUserId, array $payload, string $idempotencyKey): ConnectorResponse { throw new \LogicException('not used'); }
             public function checkCoupon(string $code): ConnectorResponse { throw new \LogicException('not used'); }
             public function provisionCoupon(array $payload, string $idempotencyKey): ConnectorResponse { throw new \LogicException('not used'); }
             public function completePayout(array $payload, string $idempotencyKey): ConnectorResponse { throw new \LogicException('not used'); }

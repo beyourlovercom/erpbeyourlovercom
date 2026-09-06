@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import axios from 'axios'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SearchableSelect from '../../Components/SearchableSelect.vue'
@@ -29,6 +29,22 @@ const languageOptions = [
   { value: 'zh', label: 'Chinese' },
   { value: 'other', label: '其他' },
 ]
+type AffiliateCoupon = { coupon_id: number | null; code: string | null; provider_status: string | null; provisioning_status: string | null; sync_status: string | null }
+type AffiliateAccount = {
+  connection_key: string
+  affiliate_id: number | null
+  wordpress_user_id: number | null
+  wordpress_user_login: string | null
+  wordpress_user_email: string | null
+  provider_status: string | null
+  provisioning_status: string | null
+  sync_status: string | null
+  reconciliation_status: string | null
+  last_successful_sync_at: string | null
+  last_error_code: string | null
+  coupon: AffiliateCoupon | null
+}
+
 type SocialMetric = { followers: number | null; raw_followers_value: string | null; measured_at: string | null }
 type SocialAccount = { id: number; platform: string; handle: string | null; profile_url: string | null; is_active: boolean; latest_metric: SocialMetric | null }
 type SalesPerformanceEvent = { id: number; order_count: number; recorded_at: string | null; source: string | null; note: string | null }
@@ -61,12 +77,83 @@ type KolDetail = {
 
 const props = withDefaults(defineProps<{
   kol: KolDetail
+  affiliateAccount?: AffiliateAccount | null
   ownerOptions: OwnerOption[]
   approvalManagerOptions?: OwnerOption[]
   financeOwnerOptions?: OwnerOption[]
   canManageViews: boolean
   canCreateOrders?: boolean
-}>(), { approvalManagerOptions: () => [], financeOwnerOptions: () => [] })
+}>(), { affiliateAccount: null, approvalManagerOptions: () => [], financeOwnerOptions: () => [] })
+
+const affiliateAccountState = ref<AffiliateAccount | null>(props.affiliateAccount ?? null)
+const accountIsBound = computed(() => Boolean(affiliateAccountState.value?.affiliate_id && affiliateAccountState.value?.wordpress_user_id))
+const accountProvisioning = ref(false)
+const accountError = ref('')
+const accountMessage = ref('')
+const accountPassword = ref('')
+const accountPasswordConfirmation = ref('')
+const accountCouponCode = ref('')
+const passwordResetOpen = ref(false)
+const passwordResetting = ref(false)
+const passwordResetError = ref('')
+const passwordResetMessage = ref('')
+const newWordpressPassword = ref('')
+const newWordpressPasswordConfirmation = ref('')
+const accountEmail = computed(() => props.kol.contact_email?.trim() ?? '')
+
+const apiErrorMessage = (error: any, fallback: string) => {
+  const errors = error?.response?.data?.errors
+  if (errors && typeof errors === 'object') return Object.values(errors).flat().join('；')
+  return error?.response?.data?.message || fallback
+}
+
+const validWordpressPassword = (value: string) => value.length >= 12 && value.length <= 128 && /[A-Za-z]/.test(value) && /[0-9]/.test(value)
+
+const provisionAffiliateAccount = async () => {
+  accountError.value = ''
+  accountMessage.value = ''
+  if (!accountEmail.value) { accountError.value = '请先保存有效联系邮箱，再创建 WordPress / Affiliate 账号。'; return }
+  if (!validWordpressPassword(accountPassword.value)) { accountError.value = 'Password 需为 12–128 位，并至少包含 1 个英文字母和 1 个数字。'; return }
+  if (accountPassword.value !== accountPasswordConfirmation.value) { accountError.value = '两次输入的 Password 不一致。'; return }
+  if (!accountCouponCode.value.trim()) { accountError.value = 'Code 必填。'; return }
+  accountProvisioning.value = true
+  try {
+    const response = await axios.post(`/kol/library/${props.kol.id}/affiliate-account`, {
+      password: accountPassword.value,
+      password_confirmation: accountPasswordConfirmation.value,
+      affiliate_coupon_code: accountCouponCode.value.trim(),
+    })
+    affiliateAccountState.value = response.data.affiliate_account as AffiliateAccount
+    accountMessage.value = response.data.message || '账号操作完成。'
+    if (response.data.success) {
+      accountPassword.value = ''
+      accountPasswordConfirmation.value = ''
+      accountCouponCode.value = ''
+    }
+  } catch (error: any) {
+    accountError.value = apiErrorMessage(error, 'WordPress / Affiliate 账号创建失败。')
+  } finally { accountProvisioning.value = false }
+}
+
+const updateWordpressPassword = async () => {
+  passwordResetError.value = ''
+  passwordResetMessage.value = ''
+  if (!validWordpressPassword(newWordpressPassword.value)) { passwordResetError.value = '新 Password 需为 12–128 位，并至少包含 1 个英文字母和 1 个数字。'; return }
+  if (newWordpressPassword.value !== newWordpressPasswordConfirmation.value) { passwordResetError.value = '两次输入的新 Password 不一致。'; return }
+  passwordResetting.value = true
+  try {
+    const response = await axios.post(`/kol/library/${props.kol.id}/wordpress-password`, {
+      password: newWordpressPassword.value,
+      password_confirmation: newWordpressPasswordConfirmation.value,
+    })
+    newWordpressPassword.value = ''
+    newWordpressPasswordConfirmation.value = ''
+    passwordResetMessage.value = response.data.message || 'WordPress 密码已更新。'
+    passwordResetOpen.value = false
+  } catch (error: any) {
+    passwordResetError.value = apiErrorMessage(error, 'WordPress 密码更新失败。')
+  } finally { passwordResetting.value = false }
+}
 
 const opportunityRows = ref<OpportunityRecord[]>([...(props.kol.opportunities ?? [])])
 const opportunityModalOpen = ref(false)
@@ -483,6 +570,80 @@ const breadcrumbs = [
                 <p class="erp-form-helper">Finance 仅能看到并完成分配给自己的付款记录。</p>
               </div>
             </div>
+          </div>
+
+          <!-- Restored: WordPress / Affiliate 账号 -->
+          <div class="erp-form-card kol-account-card">
+            <div class="kol-card-header-row">
+              <div>
+                <h2 class="erp-form-card-title">WordPress / Affiliate 账号</h2>
+                <p class="erp-form-card-helper">账号操作与「保存修改」完全分离。普通保存不会创建账号、修改 AffiliateWP/Coupon，也不会修改 WordPress 密码。</p>
+              </div>
+              <span :class="['kol-account-badge', accountIsBound ? 'is-bound' : 'is-unbound']">{{ accountIsBound ? '已绑定' : '未开通' }}</span>
+            </div>
+
+            <template v-if="accountIsBound && affiliateAccountState">
+              <div class="kol-account-facts">
+                <div><span>WordPress Username</span><strong>{{ affiliateAccountState.wordpress_user_login || '—' }}</strong></div>
+                <div><span>WordPress User ID</span><strong>{{ affiliateAccountState.wordpress_user_id ? `#${affiliateAccountState.wordpress_user_id}` : '—' }}</strong></div>
+                <div><span>WordPress Email</span><strong>{{ affiliateAccountState.wordpress_user_email || kol.contact_email || '—' }}</strong></div>
+                <div><span>AffiliateWP ID</span><strong>{{ affiliateAccountState.affiliate_id ? `#${affiliateAccountState.affiliate_id}` : '—' }}</strong></div>
+                <div><span>Affiliate 状态</span><strong>{{ affiliateAccountState.provider_status || affiliateAccountState.provisioning_status || '—' }}</strong></div>
+                <div><span>Coupon Code</span><strong>{{ affiliateAccountState.coupon?.code || '—' }}</strong></div>
+                <div><span>Coupon 状态</span><strong>{{ affiliateAccountState.coupon?.provider_status || affiliateAccountState.coupon?.provisioning_status || '—' }}</strong></div>
+                <div><span>最近同步</span><strong>{{ affiliateAccountState.last_successful_sync_at ? affiliateAccountState.last_successful_sync_at.replace('T', ' ').replace('Z', '') : (affiliateAccountState.sync_status || '—') }}</strong></div>
+              </div>
+              <p v-if="affiliateAccountState.last_error_code" class="kol-account-warning">最近账号异常：{{ affiliateAccountState.last_error_code }}</p>
+              <div class="kol-account-actions">
+                <button type="button" class="erp-btn erp-btn-secondary" @click="passwordResetOpen = !passwordResetOpen; passwordResetError = ''; passwordResetMessage = ''">{{ passwordResetOpen ? '取消设置新密码' : '设置新的 WordPress 密码' }}</button>
+              </div>
+              <div v-if="passwordResetOpen" class="kol-account-password-panel">
+                <div class="erp-form-grid">
+                  <div class="erp-form-field">
+                    <label class="erp-form-label">新 Password <span class="erp-form-required">*</span></label>
+                    <input v-model="newWordpressPassword" type="password" autocomplete="new-password" class="erp-input" minlength="12" maxlength="128">
+                  </div>
+                  <div class="erp-form-field">
+                    <label class="erp-form-label">确认新 Password <span class="erp-form-required">*</span></label>
+                    <input v-model="newWordpressPasswordConfirmation" type="password" autocomplete="new-password" class="erp-input" minlength="12" maxlength="128">
+                  </div>
+                </div>
+                <p class="erp-form-helper">12–128 位，至少包含 1 个英文字母和 1 个数字；仅用于本次修改，不保存到 ERP。</p>
+                <p v-if="passwordResetError" class="erp-field-error">{{ passwordResetError }}</p>
+                <button type="button" class="erp-btn erp-btn-primary" :disabled="passwordResetting" @click="updateWordpressPassword">{{ passwordResetting ? '更新中…' : '更新 WordPress 密码' }}</button>
+              </div>
+              <p v-if="passwordResetMessage" class="kol-account-success">{{ passwordResetMessage }}</p>
+            </template>
+
+            <template v-else>
+              <p v-if="affiliateAccountState?.provisioning_status && affiliateAccountState.provisioning_status !== 'active'" class="kol-account-warning">上次开户状态：{{ affiliateAccountState.provisioning_status }}<span v-if="affiliateAccountState.last_error_code"> · {{ affiliateAccountState.last_error_code }}</span>。可使用原始凭据重试。</p>
+              <div class="erp-form-field">
+                <label class="erp-form-label">Email <span class="erp-form-required">*</span></label>
+                <input :value="accountEmail" type="email" class="erp-input" readonly placeholder="请先在本页收件地址中保存联系邮箱">
+                <p class="erp-form-helper">使用已保存的 KOL 联系邮箱，同时作为 WordPress User 邮箱与 AffiliateWP payment email。若要修改，请先保存 KOL 资料。</p>
+              </div>
+              <div class="erp-form-grid kol-account-password-grid">
+                <div class="erp-form-field">
+                  <label class="erp-form-label">Password <span class="erp-form-required">*</span></label>
+                  <input v-model="accountPassword" type="password" autocomplete="new-password" class="erp-input" minlength="12" maxlength="128">
+                </div>
+                <div class="erp-form-field">
+                  <label class="erp-form-label">确认 Password <span class="erp-form-required">*</span></label>
+                  <input v-model="accountPasswordConfirmation" type="password" autocomplete="new-password" class="erp-input" minlength="12" maxlength="128">
+                </div>
+              </div>
+              <p class="erp-form-helper">12–128 位，至少包含 1 个英文字母和 1 个数字；仅用于本次创建，不保存到 ERP。</p>
+              <div class="erp-form-field">
+                <label class="erp-form-label">Code <span class="erp-form-required">*</span></label>
+                <input v-model="accountCouponCode" type="text" autocomplete="off" class="erp-input" maxlength="255" placeholder="例如 ANDY15">
+                <p class="erp-form-helper">创建前同时检查 ERP Coupon mirror 与实时 WooCommerce；冲突只阻止，不覆盖现有 Coupon。</p>
+              </div>
+              <p v-if="accountError" class="erp-field-error">{{ accountError }}</p>
+              <p v-if="accountMessage" :class="affiliateAccountState?.last_error_code ? 'kol-account-warning' : 'kol-account-success'">{{ accountMessage }}</p>
+              <div class="kol-account-actions">
+                <button type="button" class="erp-btn erp-btn-primary" :disabled="accountProvisioning || !accountEmail" @click="provisionAffiliateAccount">{{ accountProvisioning ? '创建中…' : '创建 WordPress / Affiliate 账号' }}</button>
+              </div>
+            </template>
           </div>
 
           <!-- Card 2: 收件地址 -->
@@ -1076,7 +1237,22 @@ const breadcrumbs = [
 .kol-communication-admin-row > div { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; color: #64748b; }
 .kol-communication-admin-row p { margin: 0; color: #334155; font-size: 13px; }
 
+.kol-account-card { border-color: #d9e4e2; }
+.kol-account-badge { display: inline-flex; align-items: center; padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.kol-account-badge.is-bound { background: #e8f6f1; color: #16745f; }
+.kol-account-badge.is-unbound { background: #f1f5f9; color: #64748b; }
+.kol-account-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.kol-account-facts > div { min-height: 70px; padding: 12px 14px; border: 1px solid #e4eaed; border-radius: 10px; background: #f8fafc; }
+.kol-account-facts span { display: block; margin-bottom: 6px; color: #7a8c94; font-size: 12px; }
+.kol-account-facts strong { display: block; overflow-wrap: anywhere; color: #263238; font-size: 14px; }
+.kol-account-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.kol-account-password-panel { margin-top: 16px; padding: 16px; border: 1px solid #dbe5e8; border-radius: 10px; background: #f8fafc; }
+.kol-account-warning { margin: 12px 0 0; padding: 10px 12px; border-radius: 8px; background: #fff7e6; color: #9a6700; font-size: 13px; }
+.kol-account-success { margin: 12px 0 0; padding: 10px 12px; border-radius: 8px; background: #e8f6f1; color: #16745f; font-size: 13px; }
+.kol-account-password-grid { margin-top: 12px; }
+
 @media (max-width: 767px) {
+  .kol-account-facts { grid-template-columns: 1fr; }
   .kol-avatar-business-row { align-items: flex-start; flex-direction: column; }
   .kol-address-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -4,10 +4,13 @@ namespace App\Modules\Kol\Experience\Controllers;
 
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Kol\Application\KolCreateAutoProvisionService;
+use App\Modules\Kol\Application\KolEditAccountService;
 use App\Modules\Kol\Application\KolScope;
 use App\Modules\Kol\Application\KolService;
 use App\Modules\Kol\Application\SavedViewService;
 use App\Modules\Kol\Infrastructure\Models\Kol;
+use App\Modules\Kol\Infrastructure\Models\KolAffiliateAccount;
+use App\Modules\Kol\Infrastructure\Models\KolAffiliateCoupon;
 use App\Modules\Shell\Application\UserUiPreferenceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -25,6 +28,7 @@ final class KolController
         private readonly KolService $kols,
         private readonly SavedViewService $views,
         private readonly KolCreateAutoProvisionService $autoProvision,
+        private readonly KolEditAccountService $editAccount,
         private readonly UserUiPreferenceService $uiPreferences,
     ) {}
 
@@ -242,6 +246,7 @@ final class KolController
         $canManageViews = KolScope::canManageViews($user);
         return Inertia::render('Kol/Edit', [
             'kol' => $this->kolDetailData($kol),
+            'affiliateAccount' => $this->affiliateAccountData($kol),
             'ownerOptions' => $ownerOptions,
             'approvalManagerOptions' => $canManageViews ? $this->usersWithPermission('kol.approvals.manage') : [],
             'financeOwnerOptions' => $canManageViews ? $this->usersWithPermission('kol.payouts.manage') : [],
@@ -326,6 +331,52 @@ final class KolController
         return redirect()->route('kol.library.show', $kol)->with('success', 'KOL 已更新');
     }
 
+
+    public function provisionAffiliateAccount(Request $request, Kol $kol): JsonResponse
+    {
+        $this->authorizeKolAccess($request, $kol);
+        $data = $request->validate([
+            'password' => ['required', 'string', 'min:12', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
+            'password_confirmation' => 'required|string|max:128',
+            'affiliate_coupon_code' => 'required|string|max:255',
+        ]);
+
+        $password = (string) $data['password'];
+        $result = $this->editAccount->provision(
+            $kol,
+            $password,
+            (string) $data['affiliate_coupon_code'],
+            $request->user(),
+        );
+        unset($password, $data['password'], $data['password_confirmation']);
+
+        $kol->refresh();
+        return response()->json([
+            'message' => $result['success']
+                ? 'WordPress / AffiliateWP / Coupon 账号已创建并完成 read-back。'
+                : '账号创建已执行，但 provider read-back 尚未完整通过，请检查账号状态。',
+            'success' => $result['success'],
+            'affiliate_account' => $this->affiliateAccountData($kol),
+        ], $result['success'] ? 200 : 202);
+    }
+
+    public function updateWordpressPassword(Request $request, Kol $kol): JsonResponse
+    {
+        $this->authorizeKolAccess($request, $kol);
+        $data = $request->validate([
+            'password' => ['required', 'string', 'min:12', 'max:128', 'regex:/[A-Za-z]/', 'regex:/[0-9]/', 'confirmed'],
+            'password_confirmation' => 'required|string|max:128',
+        ]);
+
+        $password = (string) $data['password'];
+        $this->editAccount->updatePassword($kol, $password, $request->user());
+        unset($password, $data['password'], $data['password_confirmation']);
+
+        return response()->json([
+            'message' => 'WordPress 密码已更新并完成 exact read-back。',
+        ]);
+    }
+
     public function uploadAvatar(Request $request, Kol $kol): JsonResponse
     {
         $this->authorizeKolAccess($request, $kol);
@@ -365,6 +416,48 @@ final class KolController
         $this->kols->reactivate($kol, $request->user());
 
         return redirect()->route('kol.library.show', $kol)->with('success', 'KOL 已重新激活');
+    }
+
+
+    /** @return array<string,mixed>|null */
+    private function affiliateAccountData(Kol $kol): ?array
+    {
+        $connectionKey = trim((string) config('services.andy_core.connection_key', 'beyourlover.com')) ?: 'beyourlover.com';
+        $account = KolAffiliateAccount::query()
+            ->where('connection_key', $connectionKey)
+            ->where('kol_id', $kol->getKey())
+            ->first();
+
+        $coupon = KolAffiliateCoupon::query()
+            ->where('connection_key', $connectionKey)
+            ->where('kol_id', $kol->getKey())
+            ->orderByDesc('id')
+            ->first();
+
+        if (! $account && ! $coupon) {
+            return null;
+        }
+
+        return [
+            'connection_key' => $connectionKey,
+            'affiliate_id' => $account?->affiliate_id !== null ? (int) $account->affiliate_id : null,
+            'wordpress_user_id' => $account?->wordpress_user_id !== null ? (int) $account->wordpress_user_id : null,
+            'wordpress_user_login' => $account?->wordpress_user_login,
+            'wordpress_user_email' => $account?->wordpress_user_email,
+            'provider_status' => $account?->provider_status,
+            'provisioning_status' => $account?->provisioning_status,
+            'sync_status' => $account?->sync_status,
+            'reconciliation_status' => $account?->reconciliation_status,
+            'last_successful_sync_at' => $account?->last_successful_sync_at?->toIso8601String(),
+            'last_error_code' => $account?->last_error_code,
+            'coupon' => $coupon ? [
+                'coupon_id' => $coupon->coupon_id !== null ? (int) $coupon->coupon_id : null,
+                'code' => $coupon->code,
+                'provider_status' => $coupon->provider_status,
+                'provisioning_status' => $coupon->provisioning_status,
+                'sync_status' => $coupon->sync_status,
+            ] : null,
+        ];
     }
 
     private function authorizeKolAccess(Request $request, Kol $kol): void

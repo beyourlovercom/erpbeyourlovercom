@@ -174,6 +174,20 @@ final class LocalUatAffiliateWpGateway implements AffiliateWpGateway
         return $this->response(['affiliate_id' => $affiliateId, 'status' => $status]);
     }
 
+    public function updateWordpressPassword(int $wordpressUserId, array $payload, string $idempotencyKey): ConnectorResponse
+    {
+        $password = (string) ($payload['password'] ?? '');
+        if (str_contains($password, 'provider-error')) {
+            throw ConnectorException::retryable('Synthetic local UAT password provider timeout.', 'PROVIDER_UNAVAILABLE');
+        }
+
+        return $this->response([
+            'wordpress_user_id' => $wordpressUserId,
+            'affiliate_id' => (int) ($payload['affiliate_id'] ?? 0),
+            'password_updated' => true,
+        ]);
+    }
+
     public function checkCoupon(string $code): ConnectorResponse
     {
         $normalized = mb_strtolower(trim($code));

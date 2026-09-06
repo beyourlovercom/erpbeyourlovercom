@@ -72,6 +72,15 @@ final class HttpAffiliateWpGateway implements AffiliateWpGateway
         return $this->post('/affiliates/'.$affiliateId.'/status', ['status' => $status], $idempotencyKey);
     }
 
+    public function updateWordpressPassword(int $wordpressUserId, array $payload, string $idempotencyKey): ConnectorResponse
+    {
+        if ($wordpressUserId <= 0) {
+            throw ConnectorException::nonRetryable('WordPress user ID must be positive.', 'VALIDATION_FAILED');
+        }
+
+        return $this->post('/wordpress/users/'.$wordpressUserId.'/password', $payload, $idempotencyKey);
+    }
+
     public function checkCoupon(string $code): ConnectorResponse
     {
         return $this->post('/coupons/check', ['code' => $code], null);
@@ -278,6 +287,10 @@ final class HttpAffiliateWpGateway implements AffiliateWpGateway
             'AFFILIATE_ID_CONFLICT',
             'WP_USER_CONFLICT',
             'AFFILIATE_CONFLICT',
+            'BINDING_MISMATCH',
+            'PROVIDER_IDENTITY_MISMATCH',
+            'WP_USER_NOT_FOUND',
+            'AFFILIATE_NOT_FOUND',
             'COUPON_CONFLICT',
             'REFERRAL_NOT_ELIGIBLE',
             'VALIDATION_FAILED' => ConnectorException::nonRetryable($message, $errorCode, $httpStatus),

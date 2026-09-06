@@ -499,6 +499,43 @@ final class HttpAffiliateWpGatewayTest extends TestCase
         );
     }
 
+    public function test_update_wordpress_password_hits_exact_user_endpoint_and_preserves_idempotency_key(): void
+    {
+        Http::fake(['*' => Http::response($this->envelope([
+            'wordpress_user_id' => 71,
+            'affiliate_id' => 81,
+            'password_updated' => true,
+        ]), 200)]);
+
+        $this->gateway()->updateWordpressPassword(71, [
+            'erp_kol_id' => 9,
+            'affiliate_id' => 81,
+            'password' => 'ReplacementPassword123',
+        ], 'idem-password-001');
+
+        Http::assertSent(fn (Request $r) =>
+            $r->method() === 'POST'
+            && str_ends_with(parse_url($r->url(), PHP_URL_PATH), '/wp-json/andy-core/v1/erp/wordpress/users/71/password')
+            && ($r->header('X-YBY-Idempotency-Key')[0] ?? '') === 'idem-password-001'
+            && $r['erp_kol_id'] === 9
+            && $r['affiliate_id'] === 81
+            && $r['password'] === 'ReplacementPassword123'
+        );
+    }
+
+    public function test_update_wordpress_password_rejects_non_positive_user_id_before_transport(): void
+    {
+        Http::fake();
+        $this->expectException(ConnectorException::class);
+        $this->expectExceptionMessage('WordPress user ID must be positive.');
+
+        $this->gateway()->updateWordpressPassword(0, [
+            'erp_kol_id' => 9,
+            'affiliate_id' => 81,
+            'password' => 'ReplacementPassword123',
+        ], 'idem-password-002');
+    }
+
     // -------------------------------------------------------------------------
     // DI contract
     // -------------------------------------------------------------------------

@@ -18,6 +18,8 @@ interface AffiliateWpGateway
 
     public function setAffiliateStatus(int $affiliateId, string $status, string $idempotencyKey): ConnectorResponse;
 
+    public function updateWordpressPassword(int $wordpressUserId, array $payload, string $idempotencyKey): ConnectorResponse;
+
     public function checkCoupon(string $code): ConnectorResponse;
 
     public function provisionCoupon(array $payload, string $idempotencyKey): ConnectorResponse;
