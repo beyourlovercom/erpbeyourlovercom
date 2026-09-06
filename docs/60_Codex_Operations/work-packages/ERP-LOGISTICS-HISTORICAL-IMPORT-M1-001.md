@@ -1,6 +1,6 @@
 # ERP-LOGISTICS-HISTORICAL-IMPORT-M1-001
 
-STATUS: ACTIVE / DESIGN FROZEN / IMPLEMENTATION AUTHORIZED / PRODUCTION WRITE NOT AUTHORIZED
+STATUS: CLOSED / DEPLOYED / PRODUCTION ACCEPTED
 EXECUTION_PROVIDER: US_CODEX_CLI
 SYSTEM: BYL ERP
 BASELINE: origin/main@50afe18d0e6c30907fe404d0edbfa5e5ee44647e
@@ -165,3 +165,14 @@ DEPLOYMENT: EXCLUDED
 - Post-rebase typecheck + diff-check: PASS.
 - Production Historical Evidence Apply remains separately gated and OFF. Owner UAT PASS authorizes Git delivery of the reviewed M1 workspace; it does not mutate Production historical data.
 - PACKAGE_STATUS: OWNER_UAT_PASS / READY_FOR_GIT_DELIVERY.
+## Final closure — 2026-09-06
+- Final status: **CLOSED / DEPLOYED / PRODUCTION ACCEPTED**. This section supersedes all earlier pending/authorization status text in this historical work log.
+- Production Batch #1 source remains `0902-网红订单.xlsx`, 1,077 source rows, checksum `164fe6242ec612d024bd521623879b0d3ede7afef2054347a8bce07f8f9d8c41`.
+- M1 committed exactly **788 Ready rows -> 788 Historical Evidence**.
+- M1.1 subsequently rescued **141 Review rows -> 277 additional Historical Evidence**, preserving multi-leg tracking as separate evidence.
+- Final Production Historical Evidence total for this source: **1,065**.
+- The remaining **3 exact-KOL-unresolved Review rows are intentionally left uncommitted by explicit Owner decision**; no M1.2 remediation is required.
+- The **145 Skip rows remain skipped by design** and are not imported.
+- Historical Import did not create active Shipments or KOL Collaborations; current fulfillment truth remains separate from historical evidence.
+- Production Ready commit gate and Review Rescue commit gate are both OFF after completion.
+- Historical Import M1/M1.1 is fully closed. Reopening requires a new explicit Owner work package.
