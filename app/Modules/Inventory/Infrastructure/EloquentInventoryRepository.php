@@ -10,6 +10,8 @@ use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 final class EloquentInventoryRepository implements InventoryRepository
 {
@@ -96,14 +98,21 @@ final class EloquentInventoryRepository implements InventoryRepository
     public function findWarehouseBySlug(string $slug): ?Model { return Warehouse::query()->where('slug',$slug)->first(); }
     public function createWarehouse(array $attributes): Model { return Warehouse::query()->create($attributes); }
     public function updateWarehouse(Model $warehouse, array $attributes): Model { $warehouse->fill($attributes)->save(); return $warehouse->fresh(); }
-    public function warehouseDetail(Model $warehouse): Model { return $warehouse->load(['inventories.product','serviceRegions'])->loadCount('inventories'); }
+    public function warehouseDetail(Model $warehouse): Model
+    {
+        $warehouse = $warehouse->load(['inventories.product','inventories.warehouse','serviceRegions'])->loadCount('inventories');
+        $this->attachShippedDemand($warehouse->inventories);
+        return $warehouse;
+    }
 
     public function productInventory(array $filters = [], int $perPage = 100): LengthAwarePaginator
     {
-        return WarehouseInventory::query()->with(['warehouse','product'])
+        $page = WarehouseInventory::query()->with(['warehouse','product'])
             ->when($filters['warehouse'] ?? null, fn ($q,$slug) => $q->whereHas('warehouse', fn ($w) => $w->where('slug',$slug)))
             ->when($filters['search'] ?? null, fn ($q,$search) => $q->whereHas('product', fn ($p) => $p->where('sku','like',"%{$search}%")->orWhere('name','like',"%{$search}%")))
             ->orderByDesc('inbound_at')->orderBy('id')->paginate($perPage)->withQueryString();
+        $this->attachShippedDemand($page->getCollection());
+        return $page;
     }
 
     public function upsertInventory(Model $warehouse, Model $product, array $attributes): Model
@@ -137,6 +146,36 @@ final class EloquentInventoryRepository implements InventoryRepository
     {
         $warehouse->serviceRegions()->delete();
         foreach ($countryCodes as $index=>$code) $warehouse->serviceRegions()->create(['country_code'=>$code,'priority'=>$index+1]);
+    }
+
+    private function attachShippedDemand(Collection $rows): void
+    {
+        if ($rows->isEmpty()) return;
+        $warehouseIds = $rows->pluck('warehouse_id')->filter()->unique()->values()->all();
+        $productIds = $rows->pluck('product_id')->filter()->unique()->values()->all();
+        if ($warehouseIds === [] || $productIds === []) return;
+
+        $totals = collect();
+        foreach (['shipments', 'shipment_attempts'] as $source) {
+            $sourceTotals = DB::table($source)
+                ->join('order_items', 'order_items.order_id', '=', $source.'.order_id')
+                ->whereIn($source.'.warehouse_id', $warehouseIds)
+                ->whereIn('order_items.product_id', $productIds)
+                ->whereNotNull($source.'.shipped_at')
+                ->where($source.'.shipped_at', '>=', now()->subDays(90))
+                ->groupBy($source.'.warehouse_id', 'order_items.product_id')
+                ->selectRaw($source.'.warehouse_id, order_items.product_id, SUM(order_items.quantity) as shipped_90d_qty')
+                ->get();
+
+            foreach ($sourceTotals as $total) {
+                $key = $total->warehouse_id.':'.$total->product_id;
+                $totals->put($key, (int) $totals->get($key, 0) + (int) $total->shipped_90d_qty);
+            }
+        }
+
+        foreach ($rows as $row) {
+            $row->setAttribute('shipped_90d_qty', (int) $totals->get($row->warehouse_id.':'.$row->product_id, 0));
+        }
     }
 
     private function address(Model $w): string

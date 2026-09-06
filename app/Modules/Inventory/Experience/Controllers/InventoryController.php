@@ -26,6 +26,7 @@ final class InventoryController
                 'quantity_on_hand'=>$i->quantity_on_hand,'quantity_reserved'=>$i->quantity_reserved,'quantity_available'=>$i->quantity_available,
                 'stock_status'=>InventoryStockStatus::classify((int)$i->quantity_available),'stock_status_label'=>InventoryStockStatus::label(InventoryStockStatus::classify((int)$i->quantity_available)),
                 'standard_qoh'=>$i->standard_qoh,'expected_restock_qty'=>$i->expected_restock_qty,
+                'replenishment'=>$this->inventory->replenishmentMetrics($i),
             ])->toArray(),
             'warehouses'=>$this->inventory->warehouses(),'filters'=>$request->only(['search','warehouse']),
         ]);
