@@ -279,6 +279,54 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'warehouse_id' => $other->id, 'warehouse_selection_source' => 'manual']);
     }
 
+    public function test_adopt_recommendation_returns_json_warehouse_when_accept_json(): void
+    {
+        [$user, $order, $product, $warehouse] = $this->scenario();
+        $warehouse->serviceRegions()->create(['country_code' => 'US', 'priority' => 1]);
+        InventorySyncBatch::query()->create([
+            'warehouse_id' => $warehouse->id, 'source_type' => 'xlsx', 'sync_mode' => 'full',
+            'status' => 'confirmed', 'confirmed_at' => now(),
+        ]);
+        WarehouseInventory::query()->updateOrCreate(
+            ['warehouse_id' => $warehouse->id, 'product_id' => $product->id],
+            ['quantity_on_hand' => 5, 'quantity_reserved' => 0],
+        );
+
+        $response = $this->actingAs($user)
+            ->postJson('/logistics/orders/'.$order->id.'/adopt-recommendation');
+
+        $response->assertOk()
+            ->assertJsonStructure(['warehouse_id', 'warehouse_name'])
+            ->assertJsonPath('warehouse_id', $warehouse->id)
+            ->assertJsonPath('warehouse_name', $warehouse->name);
+
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id,
+            'warehouse_id' => $warehouse->id,
+            'warehouse_selection_source' => 'recommended',
+        ]);
+    }
+
+    public function test_adopt_recommendation_json_non_redirect_does_not_navigate(): void
+    {
+        [$user, $order, $product, $warehouse] = $this->scenario();
+        $warehouse->serviceRegions()->create(['country_code' => 'US', 'priority' => 1]);
+        InventorySyncBatch::query()->create([
+            'warehouse_id' => $warehouse->id, 'source_type' => 'xlsx', 'sync_mode' => 'full',
+            'status' => 'confirmed', 'confirmed_at' => now(),
+        ]);
+        WarehouseInventory::query()->updateOrCreate(
+            ['warehouse_id' => $warehouse->id, 'product_id' => $product->id],
+            ['quantity_on_hand' => 5, 'quantity_reserved' => 0],
+        );
+
+        $response = $this->actingAs($user)
+            ->postJson('/logistics/orders/'.$order->id.'/adopt-recommendation');
+
+        $response->assertOk()->assertHeader('content-type', 'application/json');
+        $this->assertFalse($response->isRedirect(), 'JSON path must not redirect (no Inertia navigation)');
+    }
+
     private function scenario(): array
     {
         $user = $this->userWith(['orders.view', 'orders.create', 'logistics.view', 'logistics.operate']);

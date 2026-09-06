@@ -57,9 +57,18 @@ final class LogisticsController
         return back()->with('success', '履约草稿已保存');
     }
 
-    public function adoptRecommendation(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    public function adoptRecommendation(Request $request, Order $order): \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
     {
-        $this->assistedFulfillment->adoptRecommendation($order, $request->user());
+        $result = $this->assistedFulfillment->adoptRecommendation($order, $request->user());
+
+        if ($request->expectsJson()) {
+            $shipment = $result->shipment;
+
+            return response()->json([
+                'warehouse_id' => $shipment?->warehouse_id,
+                'warehouse_name' => $shipment?->warehouse?->name,
+            ]);
+        }
 
         return back()->with('success', '已采用系统推荐并预留库存');
     }
