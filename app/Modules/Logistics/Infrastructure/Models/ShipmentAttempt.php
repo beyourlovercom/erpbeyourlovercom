@@ -11,5 +11,9 @@ class ShipmentAttempt extends Model
     protected $casts = ['shipped_at' => 'datetime', 'snapshotted_at' => 'datetime', 'evidence_snapshot' => 'array'];
     public function order(): BelongsTo { return $this->belongsTo('App\\Modules\\Orders\\Infrastructure\\Models\\Order'); }
 
+    public function shipment(): BelongsTo { return $this->belongsTo(Shipment::class); }
+
+    public function warehouse(): BelongsTo { return $this->belongsTo('App\\Modules\\Inventory\\Infrastructure\\Models\\Warehouse'); }
+
     public function packagingSnapshots(): \Illuminate\Database\Eloquent\Relations\HasMany { return $this->hasMany(ShipmentItemPackagingSnapshot::class); }
 }
