@@ -165,3 +165,15 @@ DEPLOYMENT: EXCLUDED
 - Post-rebase typecheck + diff-check: PASS.
 - Production Historical Evidence Apply remains separately gated and OFF. Owner UAT PASS authorizes Git delivery of the reviewed M1 workspace; it does not mutate Production historical data.
 - PACKAGE_STATUS: OWNER_UAT_PASS / READY_FOR_GIT_DELIVERY.
+
+## 2026-09-06 Production preview deploy preflight — MySQL FK hotfix gate
+- Production cutover was NOT performed. Historical Import Apply remained OFF throughout.
+- Pre-migration backup created before schema mutation: `byl_erp_prod-pre-historical-import-20260906-033358.sql.gz`, SHA-256 `87231400d42ba76352742d06e563c1b7b30c6898cee407b2a2cfb2aa436169ab`.
+- The single Historical Import migration failed before cutover because Laravel's implicit FK identifier `logistics_historical_import_batches_reconciliation_batch_id_foreign` exceeds MySQL's 64-character identifier limit.
+- MySQL DDL left only `logistics_historical_import_batches` as an empty partial table; migration ledger remained unrecorded and the other two Historical Import tables were absent.
+- The empty partial table was removed immediately. Post-cleanup verification: all three Historical Import tables absent; Production `/up` remained HTTP 200; current release symlink unchanged.
+- Root-cause remediation: all Historical Import foreign keys now use explicit short deterministic names below 64 characters.
+- Regression added to assert every explicit FK name is present, <=64 characters, and the rejected implicit long name is absent.
+- Hotfix focused verification: 9 tests / 85 assertions PASS; `migrate:fresh --env=testing` PASS; `git diff --check` PASS.
+- No historical XLSX preview/commit was executed against Production. No Orders, Shipments, KOL Collaborations or historical evidence rows were mutated.
+- NEXT GATE: hotfix PR review/explicit merge authorization, then retry the same single migration + Apply-OFF Production smoke.

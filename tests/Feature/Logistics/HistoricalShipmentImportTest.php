@@ -97,6 +97,22 @@ class HistoricalShipmentImportTest extends TestCase
         self::assertSame(['cancelled_or_no_shipment', 'multiple_tracking_candidates', 'missing_order_no'], $batch->rows->pluck('classification_reason')->all());
     }
 
+    public function test_historical_import_migration_uses_mysql_safe_explicit_foreign_key_names(): void
+    {
+        $migration = file_get_contents(database_path('migrations/2026_09_05_140000_create_logistics_historical_import_tables.php'));
+        self::assertIsString($migration);
+        $names = [
+            'log_hist_batch_recon_fk', 'log_hist_batch_created_fk', 'log_hist_batch_committed_fk',
+            'log_hist_row_batch_fk', 'log_hist_row_kol_fk',
+            'log_hist_evd_batch_fk', 'log_hist_evd_row_fk', 'log_hist_evd_kol_fk',
+        ];
+        foreach ($names as $name) {
+            self::assertLessThanOrEqual(64, strlen($name));
+            self::assertStringContainsString("'{$name}'", $migration);
+        }
+        self::assertStringNotContainsString('logistics_historical_import_batches_reconciliation_batch_id_foreign', $migration);
+    }
+
     private function operator(): User
     {
         $role = Role::create(['key' => 'historical_import_'.uniqid(), 'label' => 'Historical import test']);
