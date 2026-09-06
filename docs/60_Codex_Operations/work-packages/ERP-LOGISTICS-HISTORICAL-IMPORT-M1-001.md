@@ -138,3 +138,20 @@ DEPLOYMENT: EXCLUDED
 - Latest-main reconciliation after verification: `origin/main@ac091842322d5cf3aef014f6d1ca4933c1a143b9` (Inventory V2 replenishment/safety-stock merge). Drift from prior base is Inventory-only and has zero path overlap with this WP. Rebase onto this exact main is required before UAT delivery.
 - Production historical evidence commit gate remains OFF; no Production write/deploy has been performed.
 - Real-data UAT source recovered from Library: `0902-网红订单.xlsx`, 58,827,902 bytes. First isolated UAT uses 10 safe, non-PII logistics rows while preserving original source row numbers. No PII columns are copied into the fixture.
+
+## 2026-09-06 post-rebase real-data isolated UAT gate
+- Rebased cleanly onto latest `origin/main@ac091842322d5cf3aef014f6d1ca4933c1a143b9`; path overlap with Inventory V2 main drift: ZERO.
+- Post-rebase focused backend: `8 tests / 59 assertions` PASS.
+- Post-rebase broad regression: `92 tests / 2296 assertions`, 0 failures.
+- Post-rebase Historical Import frontend: `2/2` PASS; typecheck PASS; production build PASS; diff-check PASS.
+- Architecture comparison against exact latest main: branch and main both report the identical three pre-existing failure categories; this WP does not rewrite architecture baselines.
+- Real source recovered from the Owner-provided `0902-网红订单.xlsx`; UAT fixture contains only approved safe logistics columns and rows 6, 7, 9, 10, 12, 15, 18, 19, 28, 32. No PII columns are copied.
+- Isolated UAT database: `/tmp/erp-logistics-historical-uat.sqlite`; no Production database is used.
+- Exact two-batch source-row -> KOL activation graph is seeded locally only for the ten real source rows; no fuzzy matching.
+- Real ten-row preview result: total=10, ready=10, review=0, skip=0.
+- First Evidence Commit result: 10 historical evidence rows.
+- Replay result: still exactly 10 historical evidence rows (idempotency PASS).
+- Canonical truth isolation: Orders count unchanged, Shipments count unchanged, KOL Collaborations count unchanged.
+- Owner UAT runtime is served from the US Mac on port 18132 and China Mac reachability was independently verified with HTTP 200 to the login page over Tailscale.
+- Production historical import commit gate remains OFF; no Production data mutation, push, PR, merge or deployment is authorized by this UAT setup.
+- NEXT GATE: Owner inspects the 10-row Historical Logistics Evidence page and replies PASS or lists remediation.
