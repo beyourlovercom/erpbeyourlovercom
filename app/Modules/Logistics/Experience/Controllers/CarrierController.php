@@ -21,6 +21,7 @@ final class CarrierController
         $masters = Carrier::query()->orderBy('id')->get();
         $shipments = Shipment::query()
             ->with('billingEvidence')
+            ->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
             ->whereIn('carrier', $masters->pluck('name'))
             ->get()
             ->groupBy(fn (Shipment $shipment): string => trim((string) $shipment->carrier));
@@ -63,11 +64,13 @@ final class CarrierController
 
         $summaryRows = Shipment::query()
             ->with('billingEvidence')
+            ->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
             ->where('carrier', $carrier)
             ->get();
 
         $shipments = Shipment::query()
             ->with(['order.address', 'order.items.product', 'warehouse', 'handler', 'billingEvidence'])
+            ->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
             ->where('carrier', $carrier)
             ->latest('shipped_at')
             ->latest('id')
@@ -177,13 +180,13 @@ final class CarrierController
     private function statusBar(): array
     {
         return [
-            ['key' => 'pending', 'label' => '待发货', 'url' => '/logistics/pending', 'count' => Order::query()->where('order_status', 'pending_shipment')->whereDoesntHave('logisticsReview', fn ($q) => $q->where('status', 'pending'))->count()],
-            ['key' => 'awaiting', 'label' => '已发货', 'url' => '/logistics/awaiting-tracking', 'count' => Shipment::query()->where('shipment_status', 'shipped')->whereNotNull('shipped_at')->where(fn ($q) => $q->whereNull('tracking_number')->orWhere('tracking_number', ''))->count()],
-            ['key' => 'transit', 'label' => '运输中', 'url' => '/logistics/in-transit', 'count' => Shipment::query()->where('shipment_status', 'shipped')->whereNotNull('tracking_number')->where('tracking_number', '!=', '')->count()],
-            ['key' => 'exception', 'label' => '异常单', 'url' => '/logistics/exceptions', 'count' => Shipment::query()->where('shipment_status', 'exception')->count()],
-            ['key' => 'review', 'label' => '复核单', 'url' => '/logistics/review', 'count' => LogisticsReview::query()->where('status', 'pending')->count()],
-            ['key' => 'completed', 'label' => '已完结', 'url' => '/logistics/completed', 'count' => Shipment::query()->where('shipment_status', 'completed')->count()],
-            ['key' => 'cancelled', 'label' => '已取消', 'url' => '/logistics/cancelled', 'count' => Order::query()->where('order_status', 'cancelled')->count()],
+            ['key' => 'pending', 'label' => '待发货', 'url' => '/logistics/pending', 'count' => Order::query()->where('order_status', 'pending_shipment')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->whereDoesntHave('logisticsReview', fn ($q) => $q->where('status', 'pending'))->count()],
+            ['key' => 'awaiting', 'label' => '已发货', 'url' => '/logistics/awaiting-tracking', 'count' => Shipment::query()->where('shipment_status', 'shipped')->whereNotNull('shipped_at')->where(fn ($q) => $q->whereNull('tracking_number')->orWhere('tracking_number', ''))->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))->count()],
+            ['key' => 'transit', 'label' => '运输中', 'url' => '/logistics/in-transit', 'count' => Shipment::query()->where('shipment_status', 'shipped')->whereNotNull('tracking_number')->where('tracking_number', '!=', '')->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))->count()],
+            ['key' => 'exception', 'label' => '异常单', 'url' => '/logistics/exceptions', 'count' => Shipment::query()->where('shipment_status', 'exception')->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))->count()],
+            ['key' => 'review', 'label' => '复核单', 'url' => '/logistics/review', 'count' => LogisticsReview::query()->where('status', 'pending')->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))->count()],
+            ['key' => 'completed', 'label' => '已完结', 'url' => '/logistics/completed', 'count' => Shipment::query()->where('shipment_status', 'completed')->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))->count()],
+            ['key' => 'cancelled', 'label' => '已取消', 'url' => '/logistics/cancelled', 'count' => Order::query()->where('order_status', 'cancelled')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->count()],
             ['key' => 'loss', 'label' => '亏本单', 'url' => '/logistics/loss', 'count' => 0],
         ];
     }

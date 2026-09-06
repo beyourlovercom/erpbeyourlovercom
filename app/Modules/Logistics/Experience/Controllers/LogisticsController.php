@@ -33,7 +33,7 @@ final class LogisticsController
     public function index(Request $request): Response
     {
         $orders = Order::query()->with(['address', 'items.product', 'owner', 'shipment.warehouse'])
-            ->where('order_status', 'pending_shipment')->whereDoesntHave('logisticsReview', fn ($q) => $q->where('status', 'pending'))->latest('order_date')->latest('id')
+            ->where('order_status', 'pending_shipment')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->whereDoesntHave('logisticsReview', fn ($q) => $q->where('status', 'pending'))->latest('order_date')->latest('id')
             ->paginate(self::PER_PAGE)->withQueryString();
 
         $productIds = collect($orders->items())->flatMap(fn (Order $order) => $order->items->pluck('product_id'))->filter()->unique()->values()->all();
@@ -81,7 +81,7 @@ final class LogisticsController
             ->whereNotNull('shipped_at')
             ->whereNull('tracking_number')
             ->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))
-            ->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled'))
+            ->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
             ->latest('shipped_at')->latest('id')
             ->paginate(self::PER_PAGE)->withQueryString();
 
@@ -99,7 +99,7 @@ final class LogisticsController
             ->whereNotNull('tracking_number')
             ->where('tracking_number', '!=', '')
             ->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))
-            ->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled'))
+            ->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
             ->latest('shipped_at')->latest('id')
             ->paginate(self::PER_PAGE)->withQueryString();
 
@@ -115,7 +115,7 @@ final class LogisticsController
             ->with(['order.address', 'order.items.product', 'order.logisticsReview', 'warehouse'])
             ->where('shipment_status', 'exception')
             ->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))
-            ->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled'))
+            ->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
             ->latest('shipped_at')->latest('id')
             ->paginate(self::PER_PAGE)->withQueryString();
 
@@ -128,19 +128,20 @@ final class LogisticsController
     public function review(Request $request): Response
     {
         $reviews = LogisticsReview::query()->with(['order.address', 'order.items.product', 'order.shipment.warehouse'])
-            ->where('status', 'pending')->latest('requested_at')->paginate(self::PER_PAGE)->withQueryString();
+            ->where('status', 'pending')->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
+            ->latest('requested_at')->paginate(self::PER_PAGE)->withQueryString();
         return Inertia::render('Logistics/Review', ['reviews' => $reviews->through(fn (LogisticsReview $review): array => [...$this->queueRow($review->order->shipment), 'review_id' => $review->id, 'reason' => $review->reason, 'trigger' => $review->trigger, 'requested_at' => $review->requested_at?->toIso8601String()])->toArray(), 'statusBar' => $this->statusBar()]);
     }
 
     public function completed(Request $request): Response { return $this->projection($request, 'completed', 'Logistics/Completed', fn ($q) => $q->where('shipment_status', 'completed')); }
     public function cancelled(Request $request): Response
     {
-        $orders = Order::query()->with(['address', 'items.product', 'shipment.warehouse'])->where('order_status', 'cancelled')->latest('order_date')->latest('id')->paginate(self::PER_PAGE)->withQueryString();
+        $orders = Order::query()->with(['address', 'items.product', 'shipment.warehouse'])->where('order_status', 'cancelled')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->latest('order_date')->latest('id')->paginate(self::PER_PAGE)->withQueryString();
         return Inertia::render('Logistics/Cancelled', ['orders' => $orders->through(fn (Order $order) => $this->orderProjection($order))->toArray(), 'statusBar' => $this->statusBar()]);
     }
     public function loss(Request $request): Response
     {
-        $orders = Order::query()->with(['address', 'items.product', 'shipment.warehouse'])->latest('order_date')->latest('id')->get()->filter(fn (Order $order) => $this->analysis->summary($order)['contribution_profit'] !== null && (float) $this->analysis->summary($order)['contribution_profit'] < 0)->values();
+        $orders = Order::query()->with(['address', 'items.product', 'shipment.warehouse'])->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->latest('order_date')->latest('id')->get()->filter(fn (Order $order) => $this->analysis->summary($order)['contribution_profit'] !== null && (float) $this->analysis->summary($order)['contribution_profit'] < 0)->values();
         return Inertia::render('Logistics/Loss', ['orders' => $orders->map(fn (Order $order) => $this->orderProjection($order))->values()->all(), 'statusBar' => $this->statusBar()]);
     }
 
@@ -253,10 +254,11 @@ final class LogisticsController
         ];
     }
 
-    private function projection(Request $request, string $kind, string $component, \Closure $filter): Response { $shipments = Shipment::query()->with(['order.address', 'order.items.product', 'order.logisticsReview', 'warehouse'])->where($filter)->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled'))->latest('shipped_at')->latest('id')->paginate(self::PER_PAGE)->withQueryString(); return Inertia::render($component, ['shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(), 'statusBar' => $this->statusBar()]); }
+    private function projection(Request $request, string $kind, string $component, \Closure $filter): Response { $shipments = Shipment::query()->with(['order.address', 'order.items.product', 'order.logisticsReview', 'warehouse'])->where($filter)->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
+            ->latest('shipped_at')->latest('id')->paginate(self::PER_PAGE)->withQueryString(); return Inertia::render($component, ['shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(), 'statusBar' => $this->statusBar()]); }
     private function orderProjection(Order $order): array { return ['id' => $order->id, 'order_id' => $order->id, 'order_number' => $order->external_order_number ?? $order->erp_order_id, 'order_url' => $this->orderUrl($order), 'items' => $order->items->map(fn ($item) => ['sku' => $item->sku, 'product_summary' => $item->product_summary, 'product_id' => $item->product_id, 'product_url' => $item->product ? "/products/{$item->product_id}" : null])->all()]; }
     private function orderUrl(?Order $order): ?string { if (! $order) return null; return $order->order_kind?->value === 'kol_fulfillment' ? "/kol/orders/{$order->id}" : "/customers/orders/{$order->id}"; }
-    private function statusBar(): array { $review = LogisticsReview::query()->where('status', 'pending')->count(); $active = fn ($q) => $q->whereDoesntHave('order.logisticsReview', fn ($r) => $r->where('status', 'pending'))->whereHas('order', fn ($o) => $o->where('order_status', '!=', 'cancelled')); $loss = Order::query()->with(['financials', 'costEntries'])->get()->filter(fn ($o) => ($s = $this->analysis->summary($o))['contribution_profit'] !== null && (float) $s['contribution_profit'] < 0)->count(); return [['key' => 'pending', 'label' => '待发货', 'url' => '/logistics/pending', 'count' => Order::query()->where('order_status', 'pending_shipment')->whereDoesntHave('logisticsReview', fn ($q) => $q->where('status', 'pending'))->count()], ['key' => 'awaiting', 'label' => '已发货', 'url' => '/logistics/awaiting-tracking', 'count' => Shipment::query()->where('shipment_status', 'shipped')->whereNotNull('shipped_at')->where(fn ($q) => $q->whereNull('tracking_number')->orWhere('tracking_number', ''))->where($active)->count()], ['key' => 'transit', 'label' => '运输中', 'url' => '/logistics/in-transit', 'count' => Shipment::query()->where('shipment_status', 'shipped')->whereNotNull('tracking_number')->where('tracking_number', '!=', '')->where($active)->count()], ['key' => 'exception', 'label' => '异常单', 'url' => '/logistics/exceptions', 'count' => Shipment::query()->where('shipment_status', 'exception')->where($active)->count()], ['key' => 'review', 'label' => '复核单', 'url' => '/logistics/review', 'count' => $review], ['key' => 'completed', 'label' => '已完结', 'url' => '/logistics/completed', 'count' => Shipment::query()->where('shipment_status', 'completed')->where($active)->count()], ['key' => 'cancelled', 'label' => '已取消', 'url' => '/logistics/cancelled', 'count' => Order::query()->where('order_status', 'cancelled')->count()], ['key' => 'loss', 'label' => '亏本单', 'url' => '/logistics/loss', 'count' => $loss]]; }
+    private function statusBar(): array { $review = LogisticsReview::query()->where('status', 'pending')->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))->count(); $active = fn ($q) => $q->whereDoesntHave('order.logisticsReview', fn ($r) => $r->where('status', 'pending'))->whereHas('order', fn ($o) => $o->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics'))); $loss = Order::query()->with(['financials', 'costEntries'])->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->get()->filter(fn ($o) => ($s = $this->analysis->summary($o))['contribution_profit'] !== null && (float) $s['contribution_profit'] < 0)->count(); return [['key' => 'pending', 'label' => '待发货', 'url' => '/logistics/pending', 'count' => Order::query()->where('order_status', 'pending_shipment')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->whereDoesntHave('logisticsReview', fn ($q) => $q->where('status', 'pending'))->count()], ['key' => 'awaiting', 'label' => '已发货', 'url' => '/logistics/awaiting-tracking', 'count' => Shipment::query()->where('shipment_status', 'shipped')->whereNotNull('shipped_at')->where(fn ($q) => $q->whereNull('tracking_number')->orWhere('tracking_number', ''))->where($active)->count()], ['key' => 'transit', 'label' => '运输中', 'url' => '/logistics/in-transit', 'count' => Shipment::query()->where('shipment_status', 'shipped')->whereNotNull('tracking_number')->where('tracking_number', '!=', '')->where($active)->count()], ['key' => 'exception', 'label' => '异常单', 'url' => '/logistics/exceptions', 'count' => Shipment::query()->where('shipment_status', 'exception')->where($active)->count()], ['key' => 'review', 'label' => '复核单', 'url' => '/logistics/review', 'count' => $review], ['key' => 'completed', 'label' => '已完结', 'url' => '/logistics/completed', 'count' => Shipment::query()->where('shipment_status', 'completed')->where($active)->count()], ['key' => 'cancelled', 'label' => '已取消', 'url' => '/logistics/cancelled', 'count' => Order::query()->where('order_status', 'cancelled')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->count()], ['key' => 'loss', 'label' => '亏本单', 'url' => '/logistics/loss', 'count' => $loss]]; }
 
     private function draftRules(): array
     {
