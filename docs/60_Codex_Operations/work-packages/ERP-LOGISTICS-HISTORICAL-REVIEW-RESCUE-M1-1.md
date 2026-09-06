@@ -54,3 +54,14 @@ Owner reviewed the real US Mac Local/UAT page at `/logistics/historical-import` 
 
 ## Production gate
 `LOGISTICS_HISTORICAL_REVIEW_RESCUE_COMMIT_ENABLED` remains OFF by default. Owner UAT PASS authorizes normal Git delivery/merge under `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1`; it does **not** authorize Production deployment or writing the 277 Rescue Evidence rows.
+
+## Final latest-main reconciliation — 2026-09-06
+- Rebasing target: `origin/main@b578ea6ab858caa9cfc3dac0ce9872043afe11e0`.
+- Only overlapping path was `config/logistics.php`; resolved as an additive union preserving both the existing Historical Order Materialization apply gate and the new Review Rescue commit gate.
+- Post-rebase full Logistics backend: 53 tests / 456 assertions / 0 failures.
+- Historical Import frontend: 2/2 PASS.
+- Logistics Index frontend: 6/6 PASS.
+- Typecheck PASS; build PASS; `git diff --check` PASS.
+- Post-rebase real 144-row safe UAT replay using the implemented PHP service: 141 rescueable / 277 evidence / 3 manual; Rescue gate=false.
+
+`PACKAGE_STATUS: OWNER_UAT_PASS / READY_FOR_GIT_DELIVERY`
