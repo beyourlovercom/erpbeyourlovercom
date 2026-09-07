@@ -4,13 +4,13 @@
 |--------------------------------------------------------------------------
 | Warehouse Routing Policy — Single Source of Truth
 |--------------------------------------------------------------------------
-| Business routing, fallback and warehouse priority rules belong here.
+| Business routing, fallback, aliases and warehouse priority rules live here.
 | Do not hard-code warehouse routing policy inside recommendation or
 | automatic-allocation services. Runtime safety switches live separately.
 */
 
 return [
-    'version' => '2026-09-07-v1',
+    'version' => '2026-09-07-v2',
 
     'global' => [
         'require_active_warehouse' => true,
@@ -18,6 +18,12 @@ return [
         'require_fulfillment_ready' => true,
         'allow_split_shipment' => false,
         'allow_cross_region_fallback' => false,
+    ],
+
+    'aliases' => [
+        'US-NY' => ['US-NY', 'US-NJ', '美东纽约仓', '美东仓'],
+        'US-LA' => ['US-LA', 'MorePlus', '美西洛杉矶仓', 'USA 美西仓'],
+        'US-SJ' => ['US-SJ', 'SMGJ', '美西加州3仓', '世纪仓', '世迈仓', '世迈国际仓', 'SMGJ 世迈国际仓'],
     ],
 
     'countries' => [
@@ -30,14 +36,25 @@ return [
         ],
 
         'US' => [
+            // Keep assisted-only until Owner explicitly opens the US automatic gate.
             'automatic' => false,
-            'strategy' => 'discovery',
+            'strategy' => 'east_zone_then_priority',
+            'allow_cross_region_fallback' => true,
             'warehouses' => [
-                ['code' => 'US-LA', 'role' => 'west_current'],
-                ['code' => 'US-NY', 'role' => 'east_current'],
-                ['code' => 'SMGJ', 'role' => 'west_in_transit'],
+                ['code' => 'US-NY', 'role' => 'east'],
+                ['code' => 'US-SJ', 'role' => 'west_primary'],
+                ['code' => 'US-LA', 'role' => 'west_secondary'],
             ],
-            'rules' => [],
+            'rules' => [
+                'east_zone' => [
+                    'warehouse' => 'US-NY',
+                    'max_zone' => 4,
+                    'data_file' => 'resources/data/usps/us-ny-zone-ranges-2026-05-01.php',
+                    'source_effective_date' => '2026-05-01',
+                    'unknown_behavior' => 'fallback_priority',
+                ],
+                'fallback_priority' => ['US-SJ', 'US-LA', 'US-NY'],
+            ],
         ],
     ],
 ];

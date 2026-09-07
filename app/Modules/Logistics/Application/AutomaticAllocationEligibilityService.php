@@ -78,6 +78,7 @@ final class AutomaticAllocationEligibilityService
                 'product_id' => $item->product_id,
                 'quantity' => (int) $item->quantity,
             ])->values()->all(),
+            $order->address?->postal_code,
         );
 
         if (($recommendation['status'] ?? null) !== 'recommended') {
