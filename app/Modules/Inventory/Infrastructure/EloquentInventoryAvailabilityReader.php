@@ -24,7 +24,7 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
             ->where('is_active', true)
             ->orderBy('priority')
             ->orderBy('name')
-            ->get(['id', 'slug', 'name', 'code', 'country_code', 'priority'])
+            ->get(['id', 'slug', 'name', 'code', 'country_code', 'priority', 'fulfillment_available_on'])
             ->map(function (Warehouse $warehouse) use ($confirmedBatches): array {
                 $batches = $confirmedBatches->get($warehouse->id, collect());
                 $latest = $batches->first();
@@ -40,7 +40,8 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
                     'id' => $warehouse->id, 'slug' => $warehouse->slug, 'name' => $warehouse->name,
                     'code' => $warehouse->code, 'country_code' => $warehouse->country_code,
                     'priority' => (int) $warehouse->priority, 'inventory_state' => $state,
-                    'can_auto_allocate' => $state === 'confirmed',
+                    'fulfillment_available_on' => $warehouse->fulfillment_available_on?->toDateString(),
+                    'can_auto_allocate' => $state === 'confirmed' && ($warehouse->fulfillment_available_on === null || $warehouse->fulfillment_available_on->isToday() || $warehouse->fulfillment_available_on->isPast()),
                     'service_regions' => $warehouse->serviceRegions->map(fn ($region): array => [
                         'country_code' => strtoupper((string) $region->country_code), 'priority' => (int) $region->priority,
                     ])->values()->all(),
