@@ -129,6 +129,22 @@ final class OrderAnalysisService
         return $this->projection($order, preserveReconciled: true);
     }
 
+    public function refreshCompleteness(Model $order, bool $preserveReconciled = false): Model
+    {
+        $financials = $order->financials()->firstOrCreate(
+            ['order_id' => $order->getKey()],
+            ['currency' => $order->currency ?? 'USD'],
+        );
+        $projectedOrder = $order->fresh(['financials', 'costEntries']);
+        $projection = $this->projection($projectedOrder, preserveReconciled: $preserveReconciled);
+        $financials->forceFill([
+            'completeness_status' => $projection['finance_status'],
+            'missing_facts' => $projection['missing_facts'],
+        ])->save();
+
+        return $order->fresh(['financials', 'costEntries']);
+    }
+
     public function fields(): array
     {
         return [...self::FINANCIAL_FIELDS, ...self::COST_FIELDS];
