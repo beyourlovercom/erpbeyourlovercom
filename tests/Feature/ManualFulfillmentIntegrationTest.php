@@ -23,10 +23,7 @@ final class ManualFulfillmentIntegrationTest extends TestCase
     public function test_logistics_shows_inventory_and_saves_manual_fulfillment(): void
     {
         [$user, $order, $product, $warehouse] = $this->scenario();
-        WarehouseInventory::query()->updateOrCreate(
-            ['warehouse_id' => $warehouse->id, 'product_id' => $product->id],
-            ['quantity_on_hand' => 12, 'quantity_reserved' => 3],
-        );
+        $this->makeReservable($warehouse, $product, 12, 3);
 
         $this->actingAs($user)->get('/logistics/pending')->assertInertia(
             fn (Assert $page) => $page
@@ -54,6 +51,12 @@ final class ManualFulfillmentIntegrationTest extends TestCase
             'tracking_number' => 'DRAFT-TRACK',
         ]);
         $this->assertDatabaseHas('audit_records', ['action' => 'shipment.fulfillment_draft_saved']);
+        $this->assertDatabaseHas('inventory_reservations', [
+            'order_id' => $order->id,
+            'warehouse_id' => $warehouse->id,
+            'status' => 'reserved',
+        ]);
+        $this->assertSame(5, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $product->id)->value('quantity_reserved'));
 
         $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/ship', [
             'warehouse_id' => $warehouse->id,
@@ -79,10 +82,7 @@ final class ManualFulfillmentIntegrationTest extends TestCase
     public function test_order_detail_exposes_inventory_and_selected_warehouse(): void
     {
         [$user, $order, $product, $warehouse] = $this->scenario();
-        WarehouseInventory::query()->updateOrCreate(
-            ['warehouse_id' => $warehouse->id, 'product_id' => $product->id],
-            ['quantity_on_hand' => 8, 'quantity_reserved' => 2],
-        );
+        $this->makeReservable($warehouse, $product, 8, 2);
         $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/draft', [
             'warehouse_id' => $warehouse->id,
         ])->assertRedirect();
@@ -92,7 +92,7 @@ final class ManualFulfillmentIntegrationTest extends TestCase
                 ->where('order.shipment.warehouse_id', $warehouse->id)
                 ->where('order.shipment.warehouse_name', $warehouse->name)
                 ->where("inventoryAvailability.{$product->id}", fn ($rows) => collect($rows)->contains(
-                    fn ($row) => $row['warehouse_id'] === $warehouse->id && $row['quantity_available'] === 6
+                    fn ($row) => $row['warehouse_id'] === $warehouse->id && $row['quantity_available'] === 4
                 ))
         );
     }
@@ -124,6 +124,7 @@ final class ManualFulfillmentIntegrationTest extends TestCase
     public function test_order_uses_current_product_packaging_standard_and_fulfillment_freezes_snapshot(): void
     {
         [$user, $order, $product, $warehouse] = $this->scenario();
+        $this->makeReservable($warehouse, $product, 10);
         $measurement = PackagingMeasurementRecord::query()->create([
             'product_id'=>$product->id,'warehouse_id'=>$warehouse->id,'status'=>'approved','packaging_method_key'=>'bubble_wrap_cut',
             'packaging_length_cm'=>'32.00','packaging_width_cm'=>'18.00','packaging_height_cm'=>'12.00','packaged_weight_kg'=>'0.850',
@@ -266,6 +267,7 @@ final class ManualFulfillmentIntegrationTest extends TestCase
             ['quantity_on_hand' => 5, 'quantity_reserved' => 0],
         );
         $other = Warehouse::query()->where('id', '!=', $warehouse->id)->where('is_active', true)->firstOrFail();
+        $this->makeReservable($other, $product, 6);
 
         $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/adopt-recommendation')->assertRedirect();
         $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/draft', [
@@ -275,7 +277,9 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         ])->assertRedirect();
 
         $this->assertDatabaseHas('inventory_reservations', ['order_id' => $order->id, 'status' => 'released', 'release_reason' => 'manual_warehouse_override']);
+        $this->assertDatabaseHas('inventory_reservations', ['order_id' => $order->id, 'warehouse_id' => $other->id, 'status' => 'reserved']);
         $this->assertSame(0, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $product->id)->value('quantity_reserved'));
+        $this->assertSame(2, WarehouseInventory::query()->where('warehouse_id', $other->id)->where('product_id', $product->id)->value('quantity_reserved'));
         $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'warehouse_id' => $other->id, 'warehouse_selection_source' => 'manual']);
     }
 
@@ -325,6 +329,53 @@ final class ManualFulfillmentIntegrationTest extends TestCase
 
         $response->assertOk()->assertHeader('content-type', 'application/json');
         $this->assertFalse($response->isRedirect(), 'JSON path must not redirect (no Inertia navigation)');
+    }
+
+    public function test_manual_override_rolls_back_when_target_warehouse_cannot_reserve(): void
+    {
+        [$user, $order, $product, $warehouse] = $this->scenario();
+        $warehouse->serviceRegions()->create(['country_code' => 'US', 'priority' => 1]);
+        $this->makeReservable($warehouse, $product, 5);
+        $other = Warehouse::query()->where('id', '!=', $warehouse->id)->where('is_active', true)->firstOrFail();
+
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/adopt-recommendation')->assertRedirect();
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/draft', [
+            'warehouse_id' => $other->id,
+            'carrier' => 'UPS',
+            'service' => 'Ground',
+        ])->assertStatus(409);
+
+        $this->assertDatabaseHas('inventory_reservations', [
+            'order_id' => $order->id,
+            'warehouse_id' => $warehouse->id,
+            'status' => 'reserved',
+        ]);
+        $this->assertDatabaseMissing('inventory_reservations', [
+            'order_id' => $order->id,
+            'warehouse_id' => $other->id,
+            'status' => 'reserved',
+        ]);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id,
+            'warehouse_id' => $warehouse->id,
+            'warehouse_selection_source' => 'recommended',
+        ]);
+        $this->assertSame(2, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $product->id)->value('quantity_reserved'));
+    }
+
+    private function makeReservable(Warehouse $warehouse, Product $product, int $quantityOnHand, int $quantityReserved = 0): void
+    {
+        InventorySyncBatch::query()->create([
+            'warehouse_id' => $warehouse->id,
+            'source_type' => 'xlsx',
+            'sync_mode' => 'full',
+            'status' => 'confirmed',
+            'confirmed_at' => now(),
+        ]);
+        WarehouseInventory::query()->updateOrCreate(
+            ['warehouse_id' => $warehouse->id, 'product_id' => $product->id],
+            ['quantity_on_hand' => $quantityOnHand, 'quantity_reserved' => $quantityReserved],
+        );
     }
 
     private function scenario(): array
