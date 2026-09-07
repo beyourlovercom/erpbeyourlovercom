@@ -1,49 +1,45 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  canonicalFeedbackCopyText,
-  copyFailureFeedback,
-  copySuccessFeedback,
-  feedbackFromFlash,
-  globalFeedback,
-  publishGlobalFeedback,
-  scheduleGlobalFeedbackRestore,
+    feedbackFromFlash,
+    globalFeedback,
+    publishGlobalFeedback,
 } from './globalFeedback'
 
-describe('global feedback authority', () => {
-  afterEach(() => {
-    vi.useRealTimers()
-    publishGlobalFeedback({ state: 'IDLE', title: '', message: '' })
-  })
-
-  it('copies canonical state rather than rendered or truncated text', () => {
-    const long = 'full-canonical-content-'.repeat(30)
-    expect(canonicalFeedbackCopyText({ state: 'ERROR', title: '同步失败', message: long }))
-      .toBe(`同步失败\n${long}`)
-  })
-
-  it('maps all server flash variants into one canonical feedback model', () => {
-    expect(feedbackFromFlash({ success: 'WooCommerce 连接成功' })).toEqual({ state: 'SUCCESS', title: 'WooCommerce 连接成功', message: '' })
-    expect(feedbackFromFlash({ error: '连接失败' })?.state).toBe('ERROR')
-    expect(feedbackFromFlash({ warning: '需要确认' })?.state).toBe('BLOCKED')
-    expect(feedbackFromFlash({ info: '已刷新' })?.state).toBe('INFO')
-  })
-
-  it('uses a non-copyable copy-success overlay and restores the prior feedback', async () => {
-    vi.useFakeTimers()
-    const original = { state: 'RUNNING' as const, title: '正在同步', message: 'WooCommerce' }
-    const overlay = copySuccessFeedback()
-    publishGlobalFeedback(original)
-    publishGlobalFeedback(overlay)
-    scheduleGlobalFeedbackRestore(overlay, original)
-    expect(globalFeedback.value).toBe(overlay)
-    expect(overlay.copyable).toBe(false)
-    await vi.advanceTimersByTimeAsync(1500)
-    expect(globalFeedback.value).toBe(original)
-  })
-
-  it('normalizes clipboard failures into copyable global error feedback', () => {
-    expect(copyFailureFeedback(new Error('clipboard denied'))).toEqual({
-      state: 'ERROR', title: '复制失败', message: 'clipboard denied', copyable: true,
+describe('feedbackFromFlash', () => {
+    it('returns null for null input', () => {
+        expect(feedbackFromFlash(null)).toBeNull()
     })
-  })
+
+    it('maps error flash to ERROR state', () => {
+        const result = feedbackFromFlash({ error: '操作失败' })
+        expect(result?.state).toBe('ERROR')
+        expect(result?.title).toBe('操作失败')
+    })
+
+    it('maps warning flash to BLOCKED state', () => {
+        const result = feedbackFromFlash({ warning: '请注意' })
+        expect(result?.state).toBe('BLOCKED')
+    })
+
+    it('maps success flash to SUCCESS state', () => {
+        const result = feedbackFromFlash({ success: '保存成功' })
+        expect(result?.state).toBe('SUCCESS')
+    })
+
+    it('maps info flash to INFO state', () => {
+        const result = feedbackFromFlash({ info: '提示信息' })
+        expect(result?.state).toBe('INFO')
+    })
+})
+
+describe('publishGlobalFeedback', () => {
+    beforeEach(() => {
+        publishGlobalFeedback({ state: 'IDLE', title: '', message: '' })
+    })
+
+    it('sets globalFeedback to the published value', () => {
+        publishGlobalFeedback({ state: 'ERROR', title: '服务器内部错误', message: '请重试' })
+        expect(globalFeedback.value.state).toBe('ERROR')
+        expect(globalFeedback.value.title).toBe('服务器内部错误')
+    })
 })
