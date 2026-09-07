@@ -103,6 +103,31 @@ final class WooFinancialEvidenceBootstrapTest extends TestCase
         self::assertSame($before, $order->fresh()->only(array_keys($before)));
     }
 
+    public function test_reconciliation_exception_key_order_is_semantically_idempotent(): void
+    {
+        $order = $this->order();
+        $this->wooReference($order, '202', 'primary');
+        $source = $this->source($order, '202', [
+            'reconciliation_status' => 'exception',
+            'reconciliation_exception' => [
+                'expected_provider_total' => '100.00',
+                'provider_total' => '90.00',
+                'difference' => '10.00',
+            ],
+        ]);
+        $this->service()->apply($source);
+
+        $financials = $order->financials()->firstOrFail();
+        $financials->reconciliation_exception = [
+            'difference' => '10.00',
+            'provider_total' => '90.00',
+            'expected_provider_total' => '100.00',
+        ];
+        $financials->save();
+
+        self::assertSame('noop', $this->service()->preview($source)['disposition']);
+    }
+
     public function test_provider_update_is_allowed_and_currency_change_clears_frozen_fx(): void
     {
         $order = $this->order();
