@@ -7,7 +7,10 @@ use App\Modules\Orders\Infrastructure\Models\Order;
 
 final class AutomaticAllocationEligibilityService
 {
-    public function __construct(private readonly WarehouseRecommendationService $recommendations) {}
+    public function __construct(
+        private readonly WarehouseRecommendationService $recommendations,
+        private readonly WarehouseRoutingPolicy $routingPolicy,
+    ) {}
 
     /** @return array<string,mixed> */
     public function evaluate(Order $order, ?array $recommendation = null): array
@@ -61,9 +64,7 @@ final class AutomaticAllocationEligibilityService
             return $this->blocked('INVALID_COUNTRY', 'invalid_country_code', '订单国家必须使用 ISO 2 位代码后才能自动分配。');
         }
 
-        $allowlist = collect(config('inventory_auto_allocation.country_allowlist', []))
-            ->map(fn ($country): string => strtoupper(trim((string) $country)));
-        if (! $allowlist->contains($countryCode)) {
+        if (! $this->routingPolicy->automaticEnabled($countryCode)) {
             return $this->blocked(
                 'COUNTRY_NOT_AUTO_ENABLED',
                 'country_not_auto_enabled',
@@ -83,13 +84,23 @@ final class AutomaticAllocationEligibilityService
             return $this->fromRecommendationBlock($recommendation);
         }
 
-        $expectedWarehouseCode = strtoupper((string) config("inventory_auto_allocation.warehouse_by_country.{$countryCode}", ''));
         $recommendedCode = strtoupper((string) ($recommendation['warehouse']['code'] ?? ''));
-        if ($expectedWarehouseCode === '' || $recommendedCode !== $expectedWarehouseCode) {
+        $allowedWarehouseCodes = $this->routingPolicy->warehouseCodes($countryCode);
+        if ($allowedWarehouseCodes === [] || ! in_array($recommendedCode, $allowedWarehouseCodes, true)) {
             return $this->blocked(
                 'MULTIPLE_POLICY_AMBIGUITY',
                 'routing_policy_mismatch',
-                '推荐结果与已冻结自动分配路由策略不一致，已停止自动分配。',
+                '推荐结果不在统一 Warehouse Routing Policy 允许的仓库范围内，已停止自动分配。',
+            );
+        }
+
+        $fixedWarehouseCode = $this->routingPolicy->fixedWarehouseCode($countryCode);
+        if ($this->routingPolicy->strategy($countryCode) === 'fixed'
+            && ($fixedWarehouseCode === null || $recommendedCode !== $fixedWarehouseCode)) {
+            return $this->blocked(
+                'MULTIPLE_POLICY_AMBIGUITY',
+                'routing_policy_mismatch',
+                '推荐结果与统一 Warehouse Routing Policy 的固定仓规则不一致，已停止自动分配。',
             );
         }
 

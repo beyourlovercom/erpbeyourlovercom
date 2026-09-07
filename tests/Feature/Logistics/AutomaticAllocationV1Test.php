@@ -246,8 +246,20 @@ final class AutomaticAllocationV1Test extends TestCase
         config([
             'inventory_auto_allocation.enabled' => $enabled,
             'inventory_auto_allocation.dry_run' => $dryRun,
-            'inventory_auto_allocation.country_allowlist' => ['DE'],
-            'inventory_auto_allocation.warehouse_by_country' => ['DE' => 'DE'],
+            'warehouse_routing.countries.DE' => [
+                'automatic' => true,
+                'strategy' => 'fixed',
+                'warehouses' => [['code' => 'DE', 'priority' => 1, 'role' => 'primary']],
+            ],
+            'warehouse_routing.countries.US' => [
+                'automatic' => false,
+                'strategy' => 'discovery',
+                'warehouses' => [
+                    ['code' => 'US-LA'],
+                    ['code' => 'US-NY'],
+                    ['code' => 'SMGJ'],
+                ],
+            ],
         ]);
     }
 

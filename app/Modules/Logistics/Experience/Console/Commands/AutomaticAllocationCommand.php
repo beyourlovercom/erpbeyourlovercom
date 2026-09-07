@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Experience\Console\Commands;
 
 use App\Modules\Logistics\Application\AutomaticAllocationService;
+use App\Modules\Logistics\Application\WarehouseRoutingPolicy;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Console\Command;
 
@@ -16,8 +17,10 @@ final class AutomaticAllocationCommand extends Command
 
     protected $description = 'Preview or apply bounded automatic warehouse allocation.';
 
-    public function __construct(private readonly AutomaticAllocationService $allocation)
-    {
+    public function __construct(
+        private readonly AutomaticAllocationService $allocation,
+        private readonly WarehouseRoutingPolicy $routingPolicy,
+    ) {
         parent::__construct();
     }
 
@@ -41,12 +44,7 @@ final class AutomaticAllocationCommand extends Command
         if ($orderId = $this->option('order')) {
             $query->whereKey((int) $orderId);
         } else {
-            $allowlist = collect(config('inventory_auto_allocation.country_allowlist', []))
-                ->map(fn ($country): string => strtoupper(trim((string) $country)))
-                ->filter()
-                ->unique()
-                ->values()
-                ->all();
+            $allowlist = $this->routingPolicy->automaticCountries();
 
             $query->where('order_status', 'pending_shipment')
                 ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))
