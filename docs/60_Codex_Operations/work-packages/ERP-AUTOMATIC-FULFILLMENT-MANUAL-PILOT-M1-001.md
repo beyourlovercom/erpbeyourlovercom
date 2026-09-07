@@ -342,3 +342,26 @@ Post-write verification:
 - `svakomandy@gmail.com`: inventory.view=true / packaging.submit=true / packaging.review=true
 - `admin@beyourlover.com`: inventory.view=true / packaging.submit=true / packaging.review=true
 - No user-specific permission workaround was used; the role preset is canonical.
+
+## B1 US Manual Warehouse Reservation Canary — 2026-09-07
+
+Owner entered Production verification for Woo 40249 / ERP `007erp-0906-c6060` / Product `VA617A-PINK ×1` after PR #237 was merged and deployed as a bounded one-file runtime hotfix.
+
+Pre-write evidence:
+- Order 6826 status `pending_shipment`; Shipment absent; active Reservation absent.
+- US-LA warehouse id=1; QOH=53; reserved=0; available=53.
+- Latest confirmed authoritative full inventory snapshot for US-LA: batch #15.
+- Snapshot artifact: `/Users/a/AI/production/erp.beyourlover.com/backups/pre-woo40249-manual-reservation-20260907T065707Z.json`.
+- Snapshot SHA256: `51ced6ee36869e7c9c2ab80855fe5c6c06345ed7cc4eaa78a6a8cf8e6801a489`.
+
+Canary mutation was wrapped in an outer DB transaction with postcondition assertions. Result:
+- Shipment #11 created as `pending`, warehouse_id=1 / US-LA, `warehouse_selection_source=manual`.
+- Reservation #11 created as `reserved`, warehouse_id=1, key `manual-6826-e323e5fb-bb28-400c-88d6-91ad89eae558`.
+- VA617A-PINK inventory: QOH remained 53; reserved changed 0 → 1; available changed 53 → 52.
+- Order remained `pending_shipment`.
+- Carrier, service, tracking and shipped_at remain null.
+- `manual_syncs=0`; `shipment_attempts=0`; `sync_outbox` remains empty.
+
+Canary verdict: `PASS` for the US manual warehouse → Reservation → Shipment Draft safety chain.
+
+Current gate: `WAITING_REAL_PACKAGING_AND_CARRIER_FACTS_BEFORE_MARK_SHIPPED`.
