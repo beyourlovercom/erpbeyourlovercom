@@ -14,7 +14,7 @@ final class WarehouseRecommendationService
     ) {}
 
     /** @param array<int, array{product_id:int|null,quantity:int}> $items */
-    public function recommend(?string $country, array $items, ?string $postalCode = null): array
+    public function recommend(?string $country, array $items, ?string $postalCode = null, array $costEvidence = []): array
     {
         $countryCode = strtoupper(trim((string) $country));
         if ($countryCode === '') {
@@ -39,8 +39,21 @@ final class WarehouseRecommendationService
         }
 
         $strategy = $this->routing->strategy($countryCode);
+        if ($strategy === 'blocked') {
+            return $this->blocked(
+                'country_policy_blocked',
+                $this->routing->blockedReason($countryCode) ?? "{$countryCode} 当前 Policy 不使用德国仓。",
+                $countryCode,
+            );
+        }
         if ($strategy === 'fixed') {
             return $this->recommendFixedWarehouse($countryCode, $requirements, $warehouses);
+        }
+        if ($strategy === 'de_preferred') {
+            return $this->recommendDePreferred($countryCode, $requirements, $warehouses);
+        }
+        if ($strategy === 'de_cost_gate') {
+            return $this->recommendDeCostGate($countryCode, $requirements, $warehouses, $costEvidence);
         }
         if ($strategy === 'east_zone_then_priority') {
             return $this->recommendEastZoneThenPriority($countryCode, $postalCode, $requirements, $warehouses);
@@ -86,6 +99,126 @@ final class WarehouseRecommendationService
             'recommended_fixed_warehouse',
             "{$countryCode} 固定由 {$fixedCode} 履约，且库存可整单满足。",
         );
+    }
+
+    private function recommendDePreferred(
+        string $countryCode,
+        Collection $requirements,
+        Collection $warehouses,
+    ): array {
+        $warehouse = $this->deWarehouse($countryCode, $requirements, $warehouses);
+        if (isset($warehouse['blocked'])) return $warehouse['blocked'];
+
+        return $this->recommended(
+            $warehouse,
+            $countryCode,
+            $requirements->count(),
+            1,
+            'recommended_de_preferred',
+            "{$countryCode} 属于德国仓优先国家，DE 可整单履约，推荐德国仓。",
+            ['strategy' => 'de_preferred', 'carrier' => 'DHL'],
+        );
+    }
+
+    private function recommendDeCostGate(
+        string $countryCode,
+        Collection $requirements,
+        Collection $warehouses,
+        array $costEvidence,
+    ): array {
+        $warehouse = $this->deWarehouse($countryCode, $requirements, $warehouses);
+        if (isset($warehouse['blocked'])) return $warehouse['blocked'];
+
+        $gate = $this->routing->deCostGate($countryCode) ?? [];
+        $required = (array) ($gate['required_evidence'] ?? []);
+        foreach ($required as $field) {
+            if (! array_key_exists($field, $costEvidence) || $costEvidence[$field] === null || $costEvidence[$field] === '') {
+                return $this->blocked(
+                    'missing_de_cost_evidence',
+                    "{$countryCode} 属于德国仓成本比较国家；缺少真实成本证据 {$field}，不自动推荐德国仓。",
+                    $countryCode,
+                    ['strategy' => 'de_cost_gate', 'missing_field' => $field],
+                );
+            }
+        }
+
+        $china = $this->numericCost($costEvidence['china_historical_shipping_cost_eur'] ?? null);
+        $deDhl = $this->numericCost($costEvidence['de_dhl_shipping_cost_eur'] ?? null);
+        if ($china === null || $deDhl === null) {
+            return $this->blocked(
+                'invalid_de_cost_evidence',
+                '成本证据必须是非负 EUR 数值；无法比较时不自动推荐德国仓。',
+                $countryCode,
+                ['strategy' => 'de_cost_gate'],
+            );
+        }
+
+        $handling = max(0.0, (float) ($gate['per_order_handling_cost_eur'] ?? 1.0));
+        $deTotal = round($deDhl + $handling, 4);
+        $context = [
+            'strategy' => 'de_cost_gate',
+            'currency' => 'EUR',
+            'de_dhl_shipping_cost_eur' => $deDhl,
+            'de_handling_cost_eur' => $handling,
+            'de_total_routing_cost_eur' => $deTotal,
+            'china_historical_shipping_cost_eur' => $china,
+            'china_historical_cost_source' => (string) $costEvidence['china_historical_cost_source'],
+            'de_dhl_quote_source' => (string) $costEvidence['de_dhl_quote_source'],
+            'storage_cost_in_routing' => false,
+        ];
+
+        if ($deTotal >= $china) {
+            return $this->blocked(
+                'de_cost_not_lower',
+                "德国仓 DHL + €1 成本 €{$deTotal} 未低于中国历史直发成本 €{$china}，不推荐德国仓。",
+                $countryCode,
+                $context,
+            );
+        }
+
+        return $this->recommended(
+            $warehouse,
+            $countryCode,
+            $requirements->count(),
+            1,
+            'recommended_de_cost_lower',
+            "德国仓 DHL + €1 成本 €{$deTotal} 低于中国历史直发成本 €{$china}，推荐德国仓。",
+            $context,
+        );
+    }
+
+    /** @return array<string,mixed> */
+    private function deWarehouse(string $countryCode, Collection $requirements, Collection $warehouses): array
+    {
+        $allowed = $this->routing->warehouseCodes($countryCode);
+        $warehouse = $warehouses->first(fn (array $candidate): bool =>
+            in_array($this->routing->canonicalWarehouseCode((string) ($candidate['code'] ?? '')), $allowed, true)
+        );
+        if ($warehouse === null) {
+            return ['blocked' => $this->blocked(
+                'no_inventory_authority',
+                '德国仓当前没有 Full Snapshot 权威库存。',
+                $countryCode,
+            )];
+        }
+
+        $availability = $this->inventory->forProductIds($requirements->keys()->all());
+        if (! $this->covers($warehouse, $requirements, $availability)) {
+            return ['blocked' => $this->blocked(
+                'insufficient_stock',
+                '德国仓无法一次满足订单全部商品数量，不自动拆单或跨区补发。',
+                $countryCode,
+            )];
+        }
+
+        return $warehouse;
+    }
+
+    private function numericCost(mixed $value): ?float
+    {
+        if (! is_numeric($value)) return null;
+        $number = (float) $value;
+        return $number >= 0 ? round($number, 4) : null;
     }
 
     private function recommendEastZoneThenPriority(
@@ -271,8 +404,12 @@ final class WarehouseRecommendationService
         ];
     }
 
-    private function blocked(string $reasonCode, string $reasonLabel, ?string $countryCode = null): array
-    {
+    private function blocked(
+        string $reasonCode,
+        string $reasonLabel,
+        ?string $countryCode = null,
+        ?array $routingContext = null,
+    ): array {
         return [
             'status' => 'blocked',
             'reason_code' => $reasonCode,
@@ -281,7 +418,7 @@ final class WarehouseRecommendationService
             'required_sku_count' => null,
             'candidate_count' => 0,
             'warehouse' => null,
-            'routing_context' => null,
+            'routing_context' => $routingContext,
         ];
     }
 }

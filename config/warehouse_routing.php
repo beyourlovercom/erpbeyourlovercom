@@ -9,8 +9,97 @@
 | automatic-allocation services. Runtime safety switches live separately.
 */
 
+$dePreferredCountries = ['CZ', 'PL', 'SK', 'HU', 'SI', 'AT', 'NL', 'BE'];
+$deCostGateCountries = ['FR', 'ES', 'IT', 'PT', 'GR', 'EE'];
+$deBlockedCountries = ['DK', 'FI', 'SE'];
+
+$countries = [
+    'DE' => [
+        'automatic' => true,
+        'strategy' => 'fixed',
+        'warehouses' => [
+            ['code' => 'DE', 'priority' => 1, 'role' => 'primary'],
+        ],
+    ],
+
+    'CA' => [
+        // Assisted-only until Owner opens the Canada automatic gate.
+        'automatic' => false,
+        'strategy' => 'fixed',
+        'allow_cross_region_fallback' => false,
+        'warehouses' => [
+            ['code' => 'CA', 'priority' => 1, 'role' => 'primary'],
+        ],
+    ],
+
+    'US' => [
+        // Keep assisted-only until Owner explicitly opens the US automatic gate.
+        'automatic' => false,
+        'strategy' => 'east_zone_then_priority',
+        'allow_cross_region_fallback' => true,
+        'warehouses' => [
+            ['code' => 'US-NY', 'role' => 'east'],
+            ['code' => 'US-SJ', 'role' => 'west_primary'],
+            ['code' => 'US-LA', 'role' => 'west_secondary'],
+        ],
+        'rules' => [
+            'east_zone' => [
+                'warehouse' => 'US-NY',
+                'max_zone' => 4,
+                'data_file' => 'resources/data/usps/us-ny-zone-ranges-2026-05-01.php',
+                'source_effective_date' => '2026-05-01',
+                'unknown_behavior' => 'fallback_priority',
+            ],
+            'fallback_priority' => ['US-SJ', 'US-LA', 'US-NY'],
+        ],
+    ],
+];
+
+foreach ($dePreferredCountries as $country) {
+    $countries[$country] = [
+        'automatic' => false,
+        'strategy' => 'de_preferred',
+        'allow_cross_region_fallback' => false,
+        'warehouses' => [['code' => 'DE', 'priority' => 1, 'role' => 'eu_regional']],
+    ];
+}
+
+foreach ($deCostGateCountries as $country) {
+    $countries[$country] = [
+        'automatic' => false,
+        'strategy' => 'de_cost_gate',
+        'allow_cross_region_fallback' => false,
+        'warehouses' => [['code' => 'DE', 'priority' => 1, 'role' => 'eu_regional']],
+        'rules' => [
+            'cost_gate' => [
+                'currency' => 'EUR',
+                'warehouse' => 'DE',
+                'carrier' => 'DHL',
+                'per_order_handling_cost_eur' => 1.00,
+                'required_evidence' => [
+                    'china_historical_shipping_cost_eur',
+                    'china_historical_cost_source',
+                    'de_dhl_shipping_cost_eur',
+                    'de_dhl_quote_source',
+                ],
+                'comparison' => 'de_dhl_plus_handling_strictly_lower_than_china_historical',
+                'missing_evidence_behavior' => 'blocked',
+            ],
+        ],
+    ];
+}
+
+foreach ($deBlockedCountries as $country) {
+    $countries[$country] = [
+        'automatic' => false,
+        'strategy' => 'blocked',
+        'reason' => '当前德国 DHL 成本偏高，默认不使用德国仓；如未来有新的真实成本证据，再由 Owner 调整 Policy。',
+        'warehouses' => [],
+    ];
+}
+
 return [
-    'version' => '2026-09-07-v3',
+    'version' => '2026-09-07-v4',
 
     'global' => [
         'require_active_warehouse' => true,
@@ -25,47 +114,20 @@ return [
         'US-LA' => ['US-LA', 'MorePlus', '美西洛杉矶仓', 'USA 美西仓'],
         'US-SJ' => ['US-SJ', 'SMGJ', '美西加州3仓', '世纪仓', '世迈仓', '世迈国际仓', 'SMGJ 世迈国际仓'],
         'CA' => ['CA', 'CA02', '加拿大仓库', '加拿大仓'],
+        'DE' => ['DE', '德国仓', '天运德国', '天运仓', '德国仓/天运仓'],
     ],
 
-    'countries' => [
-        'DE' => [
-            'automatic' => true,
-            'strategy' => 'fixed',
-            'warehouses' => [
-                ['code' => 'DE', 'priority' => 1, 'role' => 'primary'],
-            ],
-        ],
-
-        'CA' => [
-            // Assisted-only until Owner opens the Canada automatic gate.
-            'automatic' => false,
-            'strategy' => 'fixed',
-            'allow_cross_region_fallback' => false,
-            'warehouses' => [
-                ['code' => 'CA', 'priority' => 1, 'role' => 'primary'],
-            ],
-        ],
-
-        'US' => [
-            // Keep assisted-only until Owner explicitly opens the US automatic gate.
-            'automatic' => false,
-            'strategy' => 'east_zone_then_priority',
-            'allow_cross_region_fallback' => true,
-            'warehouses' => [
-                ['code' => 'US-NY', 'role' => 'east'],
-                ['code' => 'US-SJ', 'role' => 'west_primary'],
-                ['code' => 'US-LA', 'role' => 'west_secondary'],
-            ],
-            'rules' => [
-                'east_zone' => [
-                    'warehouse' => 'US-NY',
-                    'max_zone' => 4,
-                    'data_file' => 'resources/data/usps/us-ny-zone-ranges-2026-05-01.php',
-                    'source_effective_date' => '2026-05-01',
-                    'unknown_behavior' => 'fallback_priority',
-                ],
-                'fallback_priority' => ['US-SJ', 'US-LA', 'US-NY'],
-            ],
+    'regional_policies' => [
+        'DE-EU' => [
+            'warehouse' => 'DE',
+            'carrier' => 'DHL',
+            'per_order_handling_cost_eur' => 1.00,
+            'storage_cost_in_routing' => false,
+            'group_a_de_preferred' => ['DE', ...$dePreferredCountries],
+            'group_b_cost_gate' => $deCostGateCountries,
+            'group_c_default_china' => $deBlockedCountries,
         ],
     ],
+
+    'countries' => $countries,
 ];

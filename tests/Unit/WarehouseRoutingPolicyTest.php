@@ -52,6 +52,45 @@ final class WarehouseRoutingPolicyTest extends TestCase
         $this->assertFalse($ca['auto_rank_carriers']);
     }
 
+
+    public function test_germany_three_tier_policy_is_explicit_and_non_de_countries_stay_assisted_only(): void
+    {
+        $policy = app(WarehouseRoutingPolicy::class);
+
+        foreach (['CZ', 'PL', 'SK', 'HU', 'SI', 'AT', 'NL', 'BE'] as $country) {
+            $this->assertFalse($policy->automaticEnabled($country));
+            $this->assertSame('de_preferred', $policy->strategy($country));
+            $this->assertSame(['DE'], $policy->warehouseCodes($country));
+        }
+
+        foreach (['FR', 'ES', 'IT', 'PT', 'GR', 'EE'] as $country) {
+            $this->assertFalse($policy->automaticEnabled($country));
+            $this->assertSame('de_cost_gate', $policy->strategy($country));
+            $this->assertSame(['DE'], $policy->warehouseCodes($country));
+            $this->assertSame(1.0, (float) $policy->deCostGate($country)['per_order_handling_cost_eur']);
+        }
+
+        foreach (['DK', 'FI', 'SE'] as $country) {
+            $this->assertFalse($policy->automaticEnabled($country));
+            $this->assertSame('blocked', $policy->strategy($country));
+            $this->assertNotNull($policy->blockedReason($country));
+        }
+    }
+
+    public function test_germany_alias_and_dhl_only_carrier_policy_are_frozen(): void
+    {
+        $policy = app(WarehouseRoutingPolicy::class);
+        $this->assertSame('DE', $policy->canonicalWarehouseCode('天运德国'));
+        $this->assertSame('DE', $policy->canonicalWarehouseCode('天运仓'));
+
+        foreach (['DE', 'CZ', 'PL', 'SK', 'HU', 'SI', 'AT', 'NL', 'BE', 'FR', 'ES', 'IT', 'PT', 'GR', 'EE'] as $country) {
+            $carrier = config("carrier_routing.countries.{$country}");
+            $this->assertSame('DHL', $carrier['warehouses']['DE']['carrier']);
+            $this->assertSame([], $carrier['manual_overrides']);
+            $this->assertFalse($carrier['compare_price']);
+        }
+    }
+
     public function test_runtime_config_contains_no_business_routing_rules(): void
     {
         $runtime = config('inventory_auto_allocation');

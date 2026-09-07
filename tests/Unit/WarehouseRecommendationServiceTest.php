@@ -137,6 +137,82 @@ final class WarehouseRecommendationServiceTest extends TestCase
         $this->assertNull($result['warehouse']);
     }
 
+
+    public function test_de_group_a_prefers_de_when_whole_order_stock_is_available(): void
+    {
+        $warehouses = [$this->warehouse(3, 'DE', true, [], 30)];
+        $availability = [10 => [$this->stock(3, 5)]];
+        $result = $this->service($warehouses, $availability)
+            ->recommend('CZ', [['product_id' => 10, 'quantity' => 2]]);
+
+        $this->assertSame('recommended', $result['status']);
+        $this->assertSame('recommended_de_preferred', $result['reason_code']);
+        $this->assertSame('DE', $result['warehouse']['code']);
+        $this->assertSame('DHL', $result['routing_context']['carrier']);
+    }
+
+    public function test_de_group_b_blocks_without_real_cost_evidence(): void
+    {
+        $warehouses = [$this->warehouse(3, 'DE', true, [], 30)];
+        $availability = [10 => [$this->stock(3, 5)]];
+        $result = $this->service($warehouses, $availability)
+            ->recommend('FR', [['product_id' => 10, 'quantity' => 1]]);
+
+        $this->assertSame('blocked', $result['status']);
+        $this->assertSame('missing_de_cost_evidence', $result['reason_code']);
+        $this->assertSame('china_historical_shipping_cost_eur', $result['routing_context']['missing_field']);
+    }
+
+    public function test_de_group_b_recommends_de_only_when_dhl_plus_one_euro_is_strictly_lower(): void
+    {
+        $warehouses = [$this->warehouse(3, 'DE', true, [], 30)];
+        $availability = [10 => [$this->stock(3, 5)]];
+        $evidence = [
+            'china_historical_shipping_cost_eur' => 11.20,
+            'china_historical_cost_source' => 'historical-domestic-bill-001',
+            'de_dhl_shipping_cost_eur' => 9.10,
+            'de_dhl_quote_source' => 'tianyun-de-dhl-2025-05-05',
+        ];
+        $result = $this->service($warehouses, $availability)
+            ->recommend('FR', [['product_id' => 10, 'quantity' => 1]], null, $evidence);
+
+        $this->assertSame('recommended', $result['status']);
+        $this->assertSame('recommended_de_cost_lower', $result['reason_code']);
+        $this->assertSame(10.10, $result['routing_context']['de_total_routing_cost_eur']);
+        $this->assertSame(11.20, $result['routing_context']['china_historical_shipping_cost_eur']);
+        $this->assertFalse($result['routing_context']['storage_cost_in_routing']);
+    }
+
+    public function test_de_group_b_does_not_recommend_de_when_total_cost_is_not_lower(): void
+    {
+        $warehouses = [$this->warehouse(3, 'DE', true, [], 30)];
+        $availability = [10 => [$this->stock(3, 5)]];
+        $evidence = [
+            'china_historical_shipping_cost_eur' => 10.00,
+            'china_historical_cost_source' => 'historical-domestic-bill-002',
+            'de_dhl_shipping_cost_eur' => 9.00,
+            'de_dhl_quote_source' => 'tianyun-de-dhl-2025-05-05',
+        ];
+        $result = $this->service($warehouses, $availability)
+            ->recommend('IT', [['product_id' => 10, 'quantity' => 1]], null, $evidence);
+
+        $this->assertSame('blocked', $result['status']);
+        $this->assertSame('de_cost_not_lower', $result['reason_code']);
+        $this->assertSame(10.0, $result['routing_context']['de_total_routing_cost_eur']);
+    }
+
+    public function test_de_group_c_never_routes_to_de_without_owner_policy_change(): void
+    {
+        $warehouses = [$this->warehouse(3, 'DE', true, [], 30)];
+        $availability = [10 => [$this->stock(3, 50)]];
+        $result = $this->service($warehouses, $availability)
+            ->recommend('SE', [['product_id' => 10, 'quantity' => 1]]);
+
+        $this->assertSame('blocked', $result['status']);
+        $this->assertSame('country_policy_blocked', $result['reason_code']);
+        $this->assertNull($result['warehouse']);
+    }
+
     public function test_unconfirmed_warehouse_is_never_considered(): void
     {
         $result = $this->service([$this->warehouse(2, 'US-NY', false, [])], [10 => [$this->stock(2, 100)]])
