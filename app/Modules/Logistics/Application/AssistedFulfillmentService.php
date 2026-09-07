@@ -23,6 +23,7 @@ final class AssistedFulfillmentService
             $recommendation = $this->recommendations->recommend(
                 $lockedOrder->address?->country,
                 $lockedOrder->items->map(fn ($item): array => ['product_id' => $item->product_id, 'quantity' => (int) $item->quantity])->values()->all(),
+                $lockedOrder->address?->postal_code,
             );
             if (($recommendation['status'] ?? null) !== 'recommended' || empty($recommendation['warehouse']['id'])) {
                 abort(409, (string) ($recommendation['reason_label'] ?? '当前无法采用系统推荐仓库。'));

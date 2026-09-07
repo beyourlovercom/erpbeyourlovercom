@@ -283,6 +283,7 @@ final class LogisticsController
                 'product_id' => $item->product_id,
                 'quantity' => (int) $item->quantity,
             ])->values()->all(),
+            $order->address?->postal_code,
         );
 
         return [
