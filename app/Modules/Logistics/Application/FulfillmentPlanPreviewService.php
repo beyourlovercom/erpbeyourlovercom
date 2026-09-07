@@ -16,6 +16,7 @@ final class FulfillmentPlanPreviewService
     public function __construct(
         private readonly InventoryAvailabilityReader $inventory,
         private readonly WarehouseRoutingPolicy $routing,
+        private readonly ?FulfillmentPlanCostEstimator $costEstimator = null,
     ) {}
 
     /**
@@ -56,15 +57,15 @@ final class FulfillmentPlanPreviewService
         $plans = [];
         foreach ($warehouses as $warehouse) {
             if ($this->covers($warehouse, $requirements, $availability)) {
-                $plans[] = $this->singleWarehousePlan($countryCode, $warehouse, $requirements, $costEvidence);
+                $plans[] = $this->singleWarehousePlan($countryCode, $warehouse, $requirements, $costEvidence, $destinationContext);
             }
         }
         if ($factoryAllowed) {
-            $plans[] = $this->factoryPlan($requirements, $costEvidence);
+            $plans[] = $this->factoryPlan($countryCode, $requirements, $costEvidence, $destinationContext);
         }
 
         if ($this->routing->splitShipmentAllowed()) {
-            foreach ($this->splitPlans($countryCode, $requirements, $warehouses, $availability, $factoryAllowed, $costEvidence) as $plan) {
+            foreach ($this->splitPlans($countryCode, $requirements, $warehouses, $availability, $factoryAllowed, $costEvidence, $destinationContext) as $plan) {
                 $plans[] = $plan;
             }
         }
@@ -131,7 +132,7 @@ final class FulfillmentPlanPreviewService
         return max(0, (int) ($row['quantity_available'] ?? 0));
     }
 
-    private function singleWarehousePlan(string $countryCode, array $warehouse, Collection $requirements, array $costEvidence): array
+    private function singleWarehousePlan(string $countryCode, array $warehouse, Collection $requirements, array $costEvidence, array $destinationContext): array
     {
         $code = $this->routing->canonicalWarehouseCode((string) ($warehouse['code'] ?? '')) ?? (string) ($warehouse['code'] ?? '');
         $segments = [[
@@ -142,10 +143,10 @@ final class FulfillmentPlanPreviewService
             'source_class' => $this->sourceClass($countryCode, $code),
             'items' => $this->items($requirements),
         ]];
-        return $this->plan('single', $segments, $costEvidence, true);
+        return $this->plan('single', $segments, $costEvidence, true, $countryCode, $destinationContext);
     }
 
-    private function factoryPlan(Collection $requirements, array $costEvidence): array
+    private function factoryPlan(string $countryCode, Collection $requirements, array $costEvidence, array $destinationContext): array
     {
         $factory = $this->routing->factoryFallback();
         $segments = [[
@@ -158,7 +159,7 @@ final class FulfillmentPlanPreviewService
             'rate_source' => $factory['rate_source'] ?? null,
             'items' => $this->items($requirements),
         ]];
-        return $this->plan('factory', $segments, $costEvidence, false);
+        return $this->plan('factory', $segments, $costEvidence, false, $countryCode, $destinationContext);
     }
 
     /** @return list<array<string,mixed>> */
@@ -169,6 +170,7 @@ final class FulfillmentPlanPreviewService
         array $availability,
         bool $factoryAllowed,
         array $costEvidence,
+        array $destinationContext,
     ): array {
         if ($requirements->count() < 2) return [];
 
@@ -225,7 +227,7 @@ final class FulfillmentPlanPreviewService
                 $groups[$key]['items'][] = ['product_id' => $row['product_id'], 'quantity' => $row['quantity']];
             }
             if (count($groups) <= 1) continue;
-            $plans[] = $this->plan('split', array_values($groups), $costEvidence, false);
+            $plans[] = $this->plan('split', array_values($groups), $costEvidence, false, $countryCode, $destinationContext);
             if (count($plans) >= self::MAX_SPLIT_PLANS) break;
         }
 
@@ -233,7 +235,7 @@ final class FulfillmentPlanPreviewService
     }
 
     /** @param list<array<string,mixed>> $segments */
-    private function plan(string $type, array $segments, array $costEvidence, bool $singleExecutable): array
+    private function plan(string $type, array $segments, array $costEvidence, bool $singleExecutable, string $countryCode, array $destinationContext): array
     {
         usort($segments, fn (array $a, array $b): int => strcmp((string) $a['source_code'], (string) $b['source_code']));
         foreach ($segments as &$segment) {
@@ -246,7 +248,7 @@ final class FulfillmentPlanPreviewService
             return $segment['source_code'].'['.$items.']';
         }, $segments));
         $planKey = $type.':'.substr(hash('sha256', $signature), 0, 16);
-        $cost = $this->cost($planKey, $costEvidence);
+        $cost = $this->cost($planKey, $costEvidence, $countryCode, $segments, $destinationContext);
 
         return [
             'plan_key' => $planKey,
@@ -263,10 +265,11 @@ final class FulfillmentPlanPreviewService
     }
 
     /** @return array<string,mixed> */
-    private function cost(string $planKey, array $costEvidence): array
+    private function cost(string $planKey, array $costEvidence, string $countryCode, array $segments, array $destinationContext): array
     {
         $evidence = $costEvidence['plan_costs'][$planKey] ?? null;
         if (! is_array($evidence) || ! is_numeric($evidence['amount'] ?? null) || (float) $evidence['amount'] < 0 || blank($evidence['currency'] ?? null)) {
+            if ($this->costEstimator !== null) return $this->costEstimator->estimate($countryCode, $segments, $destinationContext);
             return ['status' => 'missing_evidence', 'amount' => null, 'currency' => null, 'source' => null];
         }
         return [
