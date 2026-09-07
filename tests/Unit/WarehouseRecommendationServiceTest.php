@@ -106,6 +106,37 @@ final class WarehouseRecommendationServiceTest extends TestCase
         $this->assertSame(1, $result['candidate_count']);
     }
 
+
+    public function test_canada_fixed_policy_only_recommends_ca_even_when_other_warehouse_has_ca_region(): void
+    {
+        $warehouses = [
+            $this->warehouse(4, 'CA', true, [['country_code' => 'CA', 'priority' => 2]], 40),
+            $this->warehouse(1, 'US-LA', true, [['country_code' => 'CA', 'priority' => 1]], 10),
+        ];
+        $availability = [10 => [$this->stock(4, 10), $this->stock(1, 10)]];
+        $result = $this->service($warehouses, $availability)
+            ->recommend('CA', [['product_id' => 10, 'quantity' => 1]], 'M5V 2T6');
+
+        $this->assertSame('recommended_fixed_warehouse', $result['reason_code']);
+        $this->assertSame('CA', $result['warehouse']['code']);
+        $this->assertSame(4, $result['warehouse']['id']);
+    }
+
+    public function test_canada_fixed_policy_blocks_instead_of_falling_back_to_us_when_ca_stock_is_short(): void
+    {
+        $warehouses = [
+            $this->warehouse(4, 'CA', true, [['country_code' => 'CA', 'priority' => 1]], 40),
+            $this->warehouse(1, 'US-LA', true, [['country_code' => 'CA', 'priority' => 1]], 10),
+        ];
+        $availability = [10 => [$this->stock(4, 0), $this->stock(1, 10)]];
+        $result = $this->service($warehouses, $availability)
+            ->recommend('CA', [['product_id' => 10, 'quantity' => 1]]);
+
+        $this->assertSame('blocked', $result['status']);
+        $this->assertSame('insufficient_stock', $result['reason_code']);
+        $this->assertNull($result['warehouse']);
+    }
+
     public function test_unconfirmed_warehouse_is_never_considered(): void
     {
         $result = $this->service([$this->warehouse(2, 'US-NY', false, [])], [10 => [$this->stock(2, 100)]])

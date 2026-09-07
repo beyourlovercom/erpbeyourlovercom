@@ -38,11 +38,54 @@ final class WarehouseRecommendationService
             return $this->blocked('no_inventory_authority', '当前没有具备 Full Snapshot 权威库存的仓库。');
         }
 
-        if ($this->routing->strategy($countryCode) === 'east_zone_then_priority') {
+        $strategy = $this->routing->strategy($countryCode);
+        if ($strategy === 'fixed') {
+            return $this->recommendFixedWarehouse($countryCode, $requirements, $warehouses);
+        }
+        if ($strategy === 'east_zone_then_priority') {
             return $this->recommendEastZoneThenPriority($countryCode, $postalCode, $requirements, $warehouses);
         }
 
         return $this->recommendServiceRegion($countryCode, $requirements, $warehouses);
+    }
+
+    private function recommendFixedWarehouse(
+        string $countryCode,
+        Collection $requirements,
+        Collection $warehouses,
+    ): array {
+        $fixedCode = $this->routing->fixedWarehouseCode($countryCode);
+        if ($fixedCode === null) {
+            return $this->blocked('fixed_warehouse_unconfigured', '固定仓策略未配置唯一仓库。', $countryCode);
+        }
+
+        $warehouse = $warehouses->first(fn (array $candidate): bool =>
+            $this->routing->canonicalWarehouseCode((string) ($candidate['code'] ?? '')) === $fixedCode
+        );
+        if ($warehouse === null) {
+            return $this->blocked('no_inventory_authority', "固定仓 {$fixedCode} 当前没有 Full Snapshot 权威库存。", $countryCode);
+        }
+
+        $region = collect($warehouse['service_regions'] ?? [])->first(
+            fn (array $item): bool => strtoupper((string) ($item['country_code'] ?? '')) === $countryCode
+        );
+        if ($region === null) {
+            return $this->blocked('no_service_region_match', "固定仓 {$fixedCode} 尚未配置 {$countryCode} 服务区域。", $countryCode);
+        }
+
+        $availability = $this->inventory->forProductIds($requirements->keys()->all());
+        if (! $this->covers($warehouse, $requirements, $availability)) {
+            return $this->blocked('insufficient_stock', "固定仓 {$fixedCode} 无法一次满足订单全部商品数量。", $countryCode);
+        }
+
+        return $this->recommended(
+            $warehouse,
+            $countryCode,
+            $requirements->count(),
+            1,
+            'recommended_fixed_warehouse',
+            "{$countryCode} 固定由 {$fixedCode} 履约，且库存可整单满足。",
+        );
     }
 
     private function recommendEastZoneThenPriority(
