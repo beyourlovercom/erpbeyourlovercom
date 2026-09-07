@@ -92,6 +92,15 @@ final class HistoricalRescueShipmentAttemptProjectionService
         });
     }
 
+    public function inspect(HistoricalRescueOrderProjectionBatch $orderBatch): array
+    {
+        if ($orderBatch->status !== 'applied') {
+            throw ValidationException::withMessages(['batch' => 'Historical rescue shipment attempt inspection requires an applied rescue order projection batch.']);
+        }
+
+        return $this->buildPlan($orderBatch);
+    }
+
     public function apply(HistoricalRescueShipmentAttemptProjectionBatch $batch, Authenticatable $actor): HistoricalRescueShipmentAttemptProjectionBatch
     {
         $this->authorize($actor);
