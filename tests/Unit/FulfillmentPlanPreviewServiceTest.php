@@ -1,0 +1,133 @@
+<?php
+
+namespace Tests\Unit;
+
+use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
+use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
+use App\Modules\Logistics\Application\WarehouseRoutingPolicy;
+use Tests\TestCase;
+
+final class FulfillmentPlanPreviewServiceTest extends TestCase
+{
+    public function test_military_address_excludes_china_factory_and_can_offer_us_split_preview(): void
+    {
+        $warehouses = [
+            $this->warehouse(1, 'US-LA'),
+            $this->warehouse(2, 'US-NY'),
+        ];
+        $availability = [
+            10 => [$this->stock(1, 2), $this->stock(2, 0)],
+            20 => [$this->stock(1, 0), $this->stock(2, 3)],
+        ];
+
+        $preview = $this->service($warehouses, $availability)->preview('US', [
+            ['product_id' => 10, 'quantity' => 1],
+            ['product_id' => 20, 'quantity' => 1],
+        ], ['city' => 'APO', 'province_state' => 'AE']);
+
+        $this->assertSame('preview', $preview['status']);
+        $this->assertTrue($preview['constraints']['military_address']);
+        $this->assertTrue($preview['constraints']['must_use_us_warehouse']);
+        $this->assertFalse($preview['constraints']['factory_allowed']);
+        $this->assertNotEmpty($preview['plans']);
+        $this->assertTrue(collect($preview['plans'])->every(fn (array $plan): bool =>
+            collect($plan['segments'])->every(fn (array $segment): bool => $segment['source_type'] === 'warehouse')
+        ));
+        $this->assertTrue(collect($preview['plans'])->contains(fn (array $plan): bool => $plan['is_split'] === true));
+    }
+
+    public function test_ak_hi_includes_us_and_factory_options_and_requires_human_review(): void
+    {
+        $preview = $this->service(
+            [$this->warehouse(1, 'US-LA')],
+            [10 => [$this->stock(1, 5)]],
+        )->preview('US', [['product_id' => 10, 'quantity' => 1]], ['province_state' => 'HI']);
+
+        $this->assertTrue($preview['constraints']['ak_hi']);
+        $this->assertTrue($preview['constraints']['factory_allowed']);
+        $this->assertTrue($preview['constraints']['human_review_required']);
+        $sourceTypes = collect($preview['plans'])->flatMap(fn (array $plan) => collect($plan['segments'])->pluck('source_type'))->unique()->values()->all();
+        $this->assertContains('warehouse', $sourceTypes);
+        $this->assertContains('factory', $sourceTypes);
+    }
+
+    public function test_cost_evidence_can_compare_best_split_and_best_unsplit_without_auto_executing_split(): void
+    {
+        $service = $this->service([
+            $this->warehouse(1, 'US-LA'),
+            $this->warehouse(2, 'US-NY'),
+            $this->warehouse(7, 'US-SJ'),
+        ], [
+            10 => [$this->stock(1, 0), $this->stock(2, 5), $this->stock(7, 5)],
+            20 => [$this->stock(1, 5), $this->stock(2, 5), $this->stock(7, 0)],
+        ]);
+        $items = [['product_id' => 10, 'quantity' => 1], ['product_id' => 20, 'quantity' => 1]];
+        $first = $service->preview('US', $items, ['province_state' => 'CA']);
+        $single = collect($first['plans'])->first(fn (array $plan): bool => ! $plan['is_split'] && $plan['segments'][0]['source_code'] === 'US-NY');
+        $split = collect($first['plans'])->first(fn (array $plan): bool => $plan['is_split'] && collect($plan['segments'])->pluck('source_code')->sort()->values()->all() === ['US-LA', 'US-SJ']);
+        $this->assertNotNull($single);
+        $this->assertNotNull($split);
+
+        $second = $service->preview('US', $items, ['province_state' => 'CA'], [
+            'plan_costs' => [
+                $single['plan_key'] => ['amount' => 17.40, 'currency' => 'USD', 'source' => 'usps-quote'],
+                $split['plan_key'] => ['amount' => 11.80, 'currency' => 'USD', 'source' => 'split-usps-quotes'],
+            ],
+        ]);
+
+        $this->assertSame('USD', $second['comparison']['currency']);
+        $this->assertSame($split['plan_key'], $second['comparison']['lowest_cost_plan_key']);
+        $this->assertSame($single['plan_key'], $second['comparison']['best_single_plan_key']);
+        $this->assertSame($split['plan_key'], $second['comparison']['best_split_plan_key']);
+        $this->assertSame(5.6, $second['comparison']['split_saving']);
+        $splitPlan = collect($second['plans'])->firstWhere('plan_key', $split['plan_key']);
+        $this->assertSame('preview_only_multi_shipment_schema_required', $splitPlan['execution_status']);
+    }
+
+    public function test_factory_is_final_fallback_when_no_overseas_warehouse_can_cover_items(): void
+    {
+        $preview = $this->service(
+            [$this->warehouse(3, 'DE')],
+            [10 => [$this->stock(3, 0)]],
+        )->preview('CZ', [['product_id' => 10, 'quantity' => 1]]);
+
+        $this->assertCount(1, $preview['plans']);
+        $plan = $preview['plans'][0];
+        $this->assertSame('factory', $plan['plan_type']);
+        $this->assertSame('FACTORY', $plan['segments'][0]['source_code']);
+        $this->assertSame('SD经济挂号-带电', $plan['segments'][0]['carrier']);
+        $this->assertSame('manual_review_only', $plan['execution_status']);
+    }
+
+    private function service(array $warehouses, array $availability): FulfillmentPlanPreviewService
+    {
+        return new FulfillmentPlanPreviewService($this->reader($warehouses, $availability), app(WarehouseRoutingPolicy::class));
+    }
+
+    private function warehouse(int $id, string $code): array
+    {
+        return [
+            'id' => $id, 'slug' => strtolower($code), 'name' => $code, 'code' => $code,
+            'country_code' => null, 'priority' => 10, 'can_auto_allocate' => true, 'service_regions' => [],
+        ];
+    }
+
+    private function stock(int $warehouseId, int $available): array
+    {
+        return [
+            'warehouse_id' => $warehouseId, 'warehouse_slug' => 'w-'.$warehouseId, 'warehouse_name' => 'W'.$warehouseId,
+            'inventory_state' => 'confirmed', 'can_auto_allocate' => true, 'quantity_on_hand' => $available,
+            'quantity_reserved' => 0, 'quantity_available' => $available, 'expected_restock_qty' => 0,
+        ];
+    }
+
+    private function reader(array $warehouses, array $availability): InventoryAvailabilityReader
+    {
+        return new class($warehouses, $availability) implements InventoryAvailabilityReader
+        {
+            public function __construct(private array $warehouses, private array $availability) {}
+            public function activeWarehouses(): array { return $this->warehouses; }
+            public function forProductIds(array $productIds): array { return collect($this->availability)->only($productIds)->all(); }
+        };
+    }
+}

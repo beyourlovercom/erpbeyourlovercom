@@ -24,6 +24,13 @@ final class AssistedFulfillmentService
                 $lockedOrder->address?->country,
                 $lockedOrder->items->map(fn ($item): array => ['product_id' => $item->product_id, 'quantity' => (int) $item->quantity])->values()->all(),
                 $lockedOrder->address?->postal_code,
+                [],
+                [
+                    'province_state' => $lockedOrder->address?->province_state,
+                    'city' => $lockedOrder->address?->city,
+                    'address_line_1' => $lockedOrder->address?->address_line_1,
+                    'address_line_2' => $lockedOrder->address?->address_line_2,
+                ],
             );
             if (($recommendation['status'] ?? null) !== 'recommended' || empty($recommendation['warehouse']['id'])) {
                 abort(409, (string) ($recommendation['reason_label'] ?? '当前无法采用系统推荐仓库。'));

@@ -14,7 +14,7 @@ final class WarehouseRecommendationService
     ) {}
 
     /** @param array<int, array{product_id:int|null,quantity:int}> $items */
-    public function recommend(?string $country, array $items, ?string $postalCode = null, array $costEvidence = []): array
+    public function recommend(?string $country, array $items, ?string $postalCode = null, array $costEvidence = [], array $destinationContext = []): array
     {
         $countryCode = strtoupper(trim((string) $country));
         if ($countryCode === '') {
@@ -38,6 +38,21 @@ final class WarehouseRecommendationService
             return $this->blocked('no_inventory_authority', '当前没有具备 Full Snapshot 权威库存的仓库。');
         }
 
+        if ($countryCode === 'US' && $this->routing->isUsAkHiDestination($destinationContext)) {
+            $state = strtoupper(trim((string) ($destinationContext['province_state'] ?? $destinationContext['state'] ?? '')));
+            return $this->blocked(
+                'us_ak_hi_cost_review_required',
+                "{$state} 订单必须比较美国 USPS 与中国工厂 SD经济挂号-带电成本后由人工选择，不提供一键美国仓推荐。",
+                $countryCode,
+                [
+                    'strategy' => 'cost_compare_us_vs_factory',
+                    'state' => $state,
+                    'factory_allowed' => true,
+                    'human_review_required' => true,
+                ],
+            );
+        }
+
         $strategy = $this->routing->strategy($countryCode);
         if ($strategy === 'blocked') {
             return $this->blocked(
@@ -56,7 +71,11 @@ final class WarehouseRecommendationService
             return $this->recommendDeCostGate($countryCode, $requirements, $warehouses, $costEvidence);
         }
         if ($strategy === 'east_zone_then_priority') {
-            return $this->recommendEastZoneThenPriority($countryCode, $postalCode, $requirements, $warehouses);
+            $result = $this->recommendEastZoneThenPriority($countryCode, $postalCode, $requirements, $warehouses);
+            if ($countryCode === 'US' && $this->routing->isUsMilitaryDestination($destinationContext)) {
+                return $this->militaryResult($result);
+            }
+            return $result;
         }
 
         return $this->recommendServiceRegion($countryCode, $requirements, $warehouses);
@@ -206,12 +225,37 @@ final class WarehouseRecommendationService
         if (! $this->covers($warehouse, $requirements, $availability)) {
             return ['blocked' => $this->blocked(
                 'insufficient_stock',
-                '德国仓无法一次满足订单全部商品数量，不自动拆单或跨区补发。',
+                '德国仓无法一次满足订单全部商品数量；请进入整单/拆单履约方案评估。',
                 $countryCode,
             )];
         }
 
         return $warehouse;
+    }
+
+    /** @param array<string,mixed> $result */
+    private function militaryResult(array $result): array
+    {
+        $context = array_merge((array) ($result['routing_context'] ?? []), [
+            'military_address' => true,
+            'must_use_us_warehouse' => true,
+            'factory_allowed' => false,
+            'human_review_if_split_required' => true,
+        ]);
+
+        if (($result['status'] ?? null) === 'recommended') {
+            $result['reason_code'] = 'recommended_military_us_local';
+            $result['reason_label'] = '军事地址必须由美国仓当地发货；当前推荐美国仓可整单履约。';
+            $result['routing_context'] = $context;
+            return $result;
+        }
+
+        return $this->blocked(
+            'military_us_warehouse_review_required',
+            '军事地址禁止中国工厂直发；当前没有单一美国仓可整单履约，请评估美国仓之间拆单。',
+            'US',
+            $context,
+        );
     }
 
     private function numericCost(mixed $value): ?float

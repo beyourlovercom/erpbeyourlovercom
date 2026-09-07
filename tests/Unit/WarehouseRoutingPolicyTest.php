@@ -91,6 +91,20 @@ final class WarehouseRoutingPolicyTest extends TestCase
         }
     }
 
+    public function test_global_policy_allows_split_preview_but_never_automatic_split(): void
+    {
+        $policy = app(WarehouseRoutingPolicy::class);
+        $this->assertTrue($policy->splitShipmentAllowed());
+        $this->assertFalse($policy->automaticSplitShipmentEnabled());
+        $this->assertSame('human_review_only', $policy->splitExecutionMode());
+        $this->assertSame('SD经济挂号-带电', $policy->factoryFallback()['carrier']);
+        $this->assertSame('SD经济挂号-带电', config('carrier_routing.factory_fallback.carrier'));
+        $this->assertTrue($policy->isUsMilitaryDestination(['city' => 'FPO', 'province_state' => 'AP']));
+        $this->assertFalse($policy->factoryAllowed(['city' => 'FPO', 'province_state' => 'AP']));
+        $this->assertTrue($policy->isUsAkHiDestination(['province_state' => 'AK']));
+        $this->assertFalse($policy->isUsAkHiDestination(['province_state' => 'AE', 'city' => 'APO']));
+    }
+
     public function test_runtime_config_contains_no_business_routing_rules(): void
     {
         $runtime = config('inventory_auto_allocation');
