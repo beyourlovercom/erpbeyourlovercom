@@ -3,12 +3,10 @@
 namespace Tests\Feature\Guides;
 
 use App\Modules\Guides\Infrastructure\Models\GuideArticle;
-use App\Modules\Guides\Infrastructure\Models\ReleaseNote;
 use App\Modules\Identity\Infrastructure\Models\Permission;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Schema;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -77,29 +75,36 @@ final class GuidesKnowledgeBaseTest extends TestCase
         $this->actingAs($viewer)->post('/guides/'.$guide->slug.'/unpublish')->assertForbidden();
     }
 
-    public function test_release_notes_are_publishable_records_not_git_dump_rows(): void
+    public function test_changelog_is_read_only_and_comes_from_the_single_markdown_source(): void
     {
-        $manager = $this->userWith(['guides.view','guides.manage']);
         $viewer = $this->userWith(['guides.view']);
-        $this->actingAs($manager)->post('/settings/changelog', [
-            'version'=>'v1.6.0','title'=>'ERP 1.6.0','summary'=>'Release summary','markdown_body'=>"# Release\n\n## Added\n- Guides",'released_on'=>'2026-08-28',
-        ])->assertRedirect();
-        $note = ReleaseNote::where('version','v1.6.0')->firstOrFail();
+        $manager = $this->userWith(['guides.view', 'guides.manage']);
+
         $this->actingAs($viewer)->get('/guides/changelog')->assertRedirect('/settings/changelog');
-        $this->actingAs($viewer)->get('/settings/changelog')->assertOk()->assertInertia(fn (Assert $p) => $p->has('releaseNotes',0));
-        $this->actingAs($manager)->post('/settings/changelog/'.$note->id.'/publish')->assertRedirect();
-        $this->actingAs($viewer)->get('/settings/changelog')->assertOk()->assertInertia(fn (Assert $p) => $p->has('releaseNotes',1)->where('releaseNotes.0.version','v1.6.0'));
-        $this->actingAs($viewer)->get('/settings/changelog/'.$note->id)->assertOk()->assertInertia(fn (Assert $p) => $p->where('toc.0.label','Added'));
-        $settingsAdmin = $this->userWith(['system.permissions.manage','guides.manage']);
-        $this->actingAs($settingsAdmin)->get('/settings')->assertOk()->assertInertia(fn (Assert $p) => $p->component('Settings/Index')->where('currentRelease.version','v1.6.0')->where('orderIdentity.prefix_token', '007erp')->where('orderIdentity.example', '007erp-0901-c3721')->has('recentReleases',1));
+        $this->actingAs($viewer)->get('/settings/changelog?date=2026-09-07')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Guides/Releases/Index')
+            ->where('initialDate', '2026-09-07')
+            ->where('entries.0.date', '2026-09-07')
+            ->where('entries.0.html', fn (string $html): bool => str_contains($html, 'Accounting / Order Profit')));
+
+        $this->actingAs($manager)->get('/settings/changelog/create')->assertNotFound();
+        $this->actingAs($manager)->post('/settings/changelog', [])->assertStatus(405);
+    }
+
+    public function test_settings_release_summary_uses_the_same_markdown_changelog(): void
+    {
+        $settingsAdmin = $this->userWith(['system.permissions.manage']);
+
+        $this->actingAs($settingsAdmin)->get('/settings')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Settings/Index')
+            ->where('currentRelease.version', '2026-09-07')
+            ->where('currentRelease.released_on', '2026-09-07')
+            ->where('orderIdentity.prefix_token', '007erp')
+            ->where('orderIdentity.example', '007erp-0901-c3721')
+            ->has('recentReleases', 1));
+
         $this->actingAs($settingsAdmin)->put('/settings/order-identity', ['prefix_token' => ' 007 '])->assertRedirect();
         $this->assertDatabaseHas('order_identity_settings', ['id' => 1, 'prefix_token' => '007', 'updated_by' => $settingsAdmin->id]);
-        $this->actingAs($viewer)->put('/settings/order-identity', ['prefix_token' => 'blocked'])->assertForbidden();
-        $columns = Schema::getColumnListing('release_notes');
-        $this->assertContains('markdown_body', $columns);
-        $this->assertNotContains('commit_sha', $columns);
-        $this->assertNotContains('raw_git', $columns);
-        $this->assertDatabaseHas('audit_records',['action'=>'release_note.published']);
     }
 
     private function userWith(array $permissions): User
