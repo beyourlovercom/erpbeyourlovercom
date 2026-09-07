@@ -76,17 +76,19 @@ final class WooCommerceOrderNormalizer
                     break;
                 }
                 if ($refundAmountCents !== null) {
-                    if (! array_key_exists('total', $refund) || $refund['total'] === '') {
+                    $refundTotal = array_key_exists('total', $refund) ? trim((string) $refund['total']) : '';
+                    if ($refundTotal === '' || $refundTotal === '-') {
                         $refundAmountCents = null;
                     } else {
-                        $refundAmountCents += abs($this->moneyCents($refund['total']));
+                        $refundAmountCents += abs($this->moneyCents($refundTotal));
                     }
                 }
                 if ($refundTaxCents !== null) {
-                    if (! array_key_exists('total_tax', $refund) || $refund['total_tax'] === '') {
+                    $refundTax = array_key_exists('total_tax', $refund) ? trim((string) $refund['total_tax']) : '';
+                    if ($refundTax === '' || $refundTax === '-') {
                         $refundTaxCents = null;
                     } else {
-                        $refundTaxCents += abs($this->moneyCents($refund['total_tax']));
+                        $refundTaxCents += abs($this->moneyCents($refundTax));
                     }
                 }
             }

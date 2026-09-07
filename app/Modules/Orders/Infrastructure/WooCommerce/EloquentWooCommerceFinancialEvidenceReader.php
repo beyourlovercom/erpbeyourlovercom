@@ -44,12 +44,6 @@ final class EloquentWooCommerceFinancialEvidenceReader implements WooCommerceFin
             return $this->error('invalid_provider_reference', $reference, $connectionKey);
         }
 
-        try {
-            $normalized = $this->normalizer->normalize($payload, $connectionKey);
-        } catch (Throwable) {
-            return $this->error('settlement_normalization_failed', $reference, $connectionKey);
-        }
-
         $references = OrderExternalReference::query()
             ->with('order')
             ->where('provider', 'woocommerce')
@@ -58,30 +52,36 @@ final class EloquentWooCommerceFinancialEvidenceReader implements WooCommerceFin
             ->get();
 
         if ($references->isEmpty()) {
-            return $this->source('unresolved', $reference, $connectionKey, $normalized->settlementEvidence, null, 'canonical_order_not_found');
+            return $this->source('unresolved', $reference, $connectionKey, null, null, 'canonical_order_not_found');
         }
         if ($references->count() !== 1) {
-            return $this->source('ambiguous', $reference, $connectionKey, $normalized->settlementEvidence, null, 'canonical_order_reference_ambiguous');
+            return $this->source('ambiguous', $reference, $connectionKey, null, null, 'canonical_order_reference_ambiguous');
         }
 
         $order = $references->firstOrFail()->order;
         if (! $order) {
-            return $this->source('unresolved', $reference, $connectionKey, $normalized->settlementEvidence, null, 'canonical_order_not_found');
+            return $this->source('unresolved', $reference, $connectionKey, null, null, 'canonical_order_not_found');
         }
 
         $kind = $order->order_kind;
         $kind = $kind instanceof BackedEnum ? $kind->value : (string) $kind;
         if ($kind !== 'customer') {
-            return $this->source('blocked', $reference, $connectionKey, $normalized->settlementEvidence, (int) $order->getKey(), 'order_kind_not_customer');
+            return $this->source('blocked', $reference, $connectionKey, null, (int) $order->getKey(), 'order_kind_not_customer');
         }
         if ($order->externalReferences()->where('provider', 'historical_logistics')->exists()) {
-            return $this->source('blocked', $reference, $connectionKey, $normalized->settlementEvidence, (int) $order->getKey(), 'historical_logistics_excluded');
+            return $this->source('blocked', $reference, $connectionKey, null, (int) $order->getKey(), 'historical_logistics_excluded');
+        }
+
+        try {
+            $normalized = $this->normalizer->normalize($payload, $connectionKey);
+        } catch (Throwable) {
+            return $this->error('settlement_normalization_failed', $reference, $connectionKey, (int) $order->getKey());
         }
 
         return $this->source('resolved', $reference, $connectionKey, $normalized->settlementEvidence, (int) $order->getKey(), null);
     }
 
-    private function source(string $status, string $reference, string $connectionKey, array $evidence, ?int $orderId, ?string $blocker): array
+    private function source(string $status, string $reference, string $connectionKey, ?array $evidence, ?int $orderId, ?string $blocker): array
     {
         return [
             'source_status' => $status,
@@ -95,14 +95,14 @@ final class EloquentWooCommerceFinancialEvidenceReader implements WooCommerceFin
         ];
     }
 
-    private function error(string $code, string $reference, string $connectionKey): array
+    private function error(string $code, string $reference, string $connectionKey, ?int $orderId = null): array
     {
         return [
             'source_status' => 'error',
             'provider' => 'woocommerce',
             'provider_reference' => $reference,
             'connection_key' => $connectionKey,
-            'order_id' => null,
+            'order_id' => $orderId,
             'blocker' => $code,
             'settlement_evidence' => null,
         ];
