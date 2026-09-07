@@ -72,6 +72,30 @@ final class OrderProfitV1Test extends TestCase
         self::assertSame('incomplete', $normalized->settlementEvidence['reconciliation_status']);
     }
 
+    public function test_legacy_woocommerce_refund_dash_placeholder_remains_missing_instead_of_becoming_zero_or_error(): void
+    {
+        $normalized = (new WooCommerceOrderNormalizer())->normalize([
+            'id' => 16193,
+            'number' => '16193',
+            'status' => 'refunded',
+            'date_created_gmt' => '2025-04-13T00:00:00',
+            'date_modified_gmt' => '2025-04-14T00:00:00',
+            'currency' => 'USD',
+            'total' => '100.00',
+            'discount_total' => '0.00',
+            'shipping_total' => '0.00',
+            'total_tax' => '0.00',
+            'line_items' => [[
+                'subtotal' => '100.00', 'total' => '100.00', 'quantity' => 1, 'name' => 'Item',
+            ]],
+            'refunds' => [['total' => '-', 'total_tax' => '0.00']],
+        ], 'primary');
+
+        self::assertNull($normalized->settlementEvidence['refund_amount']);
+        self::assertSame('0.00', $normalized->settlementEvidence['refund_tax']);
+        self::assertSame('matched', $normalized->settlementEvidence['reconciliation_status']);
+    }
+
     public function test_woocommerce_settlement_decimal_rounding_is_deterministic_without_float_summing(): void
     {
         $normalized = (new WooCommerceOrderNormalizer())->normalize([

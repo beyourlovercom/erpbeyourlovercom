@@ -65,6 +65,21 @@ final class WooFinancialEvidenceBootstrapTest extends TestCase
         self::assertSame('historical_logistics_excluded', $reader->fetchOne(103)['blocker']);
     }
 
+    public function test_woo_only_order_without_canonical_reference_is_unresolved_before_settlement_normalization(): void
+    {
+        $payload = $this->wooPayload(104);
+        $payload['line_items'] = [];
+        $reader = new EloquentWooCommerceFinancialEvidenceReader(
+            new FakeWooFinancialGateway('primary', [$payload]),
+            new WooCommerceOrderNormalizer(),
+        );
+
+        $source = $reader->fetchOne(104);
+        self::assertSame('unresolved', $source['source_status']);
+        self::assertSame('canonical_order_not_found', $source['blocker']);
+        self::assertNull($source['settlement_evidence']);
+    }
+
     public function test_apply_creates_provider_financials_then_becomes_noop_without_duplicate_or_order_core_mutation(): void
     {
         $order = $this->order();
