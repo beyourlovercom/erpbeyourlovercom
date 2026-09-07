@@ -176,6 +176,17 @@ class AppShellNavigationTest extends TestCase
             ->where('shellNavigation.0.path', '/sync'));
     }
 
+    public function test_settings_fx_child_menu_is_implemented_with_settings_permission(): void
+    {
+        $settings = collect(config('erp_shell_navigation'))->firstWhere('key', 'settings');
+        $fx = collect($settings['children'] ?? [])->firstWhere('key', 'settings-fx');
+        $this->assertSame('汇率计算', $fx['label']);
+        $this->assertSame('/settings/fx', $fx['path']);
+        $this->assertSame('settings.fx', $fx['route']);
+        $this->assertSame('system.permissions.manage', $fx['permission']);
+        $this->assertSame('implemented', $fx['status']);
+    }
+
     public function test_backup_child_menu_uses_backup_view_permission_and_canonical_route(): void
     {
         $user = $this->userWith(['dashboard.view', 'system.permissions.manage', 'backup.view'], 'backup-menu-user');
