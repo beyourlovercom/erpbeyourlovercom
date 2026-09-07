@@ -87,3 +87,15 @@ ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE — no accepted Work Log ledger su
 ACTUAL_HOURS_BREAKDOWN: UNKNOWN WITH EVIDENCE — no accepted Work Log ledger
 VARIANCE: UNKNOWN WITH EVIDENCE
 VARIANCE_REASON: UNKNOWN WITH EVIDENCE — actual effective hours are not available from an accepted Work Log ledger
+
+## Final merge-candidate evidence — 2026-09-07
+
+- Owner Local/UAT: PASS on isolated SQLite runtime `/accounting` at `127.0.0.1:18134`.
+- Finance Dashboard + Order Profit + approved-menu + AppShell focused gate: 30 tests / 1819 assertions PASS after latest-main reconciliation.
+- Architecture behavior rules (domain/application/infrastructure, cross-module, namespace/path, provider): 4 tests / 28 assertions PASS.
+- `npm run typecheck`: PASS.
+- `npm run build`: PASS.
+- `git diff --check`: PASS.
+- Known non-A8 red item: repository-wide frozen layer/file list drift remains reproducible on the A7 baseline and has expanded with later Inventory/Logistics mainline files; not remediated in this WP.
+- Latest main reconciled before merge candidate; no A8 file overlap with intervening Inventory/Logistics changes.
+- Production deployment/migration/data write remains NOT AUTHORIZED.
