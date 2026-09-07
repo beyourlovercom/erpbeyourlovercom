@@ -32,7 +32,7 @@ final class BootstrapWooFinancialEvidenceCommand extends Command
             $this->error('Apply is not enabled in this environment.');
             return self::FAILURE;
         }
-        if ($this->option('apply') && DB::connection()->getDriverName() === 'mysql') {
+        if (DB::connection()->getDriverName() === 'mysql') {
             DB::statement("SET time_zone = '+00:00'");
         }
 
