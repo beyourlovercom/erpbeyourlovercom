@@ -10,7 +10,7 @@
 */
 
 return [
-    'version' => '2026-09-07-v2',
+    'version' => '2026-09-07-v3',
 
     'global' => [
         'require_active_warehouse' => true,
@@ -24,6 +24,7 @@ return [
         'US-NY' => ['US-NY', 'US-NJ', '美东纽约仓', '美东仓'],
         'US-LA' => ['US-LA', 'MorePlus', '美西洛杉矶仓', 'USA 美西仓'],
         'US-SJ' => ['US-SJ', 'SMGJ', '美西加州3仓', '世纪仓', '世迈仓', '世迈国际仓', 'SMGJ 世迈国际仓'],
+        'CA' => ['CA', 'CA02', '加拿大仓库', '加拿大仓'],
     ],
 
     'countries' => [
@@ -32,6 +33,16 @@ return [
             'strategy' => 'fixed',
             'warehouses' => [
                 ['code' => 'DE', 'priority' => 1, 'role' => 'primary'],
+            ],
+        ],
+
+        'CA' => [
+            // Assisted-only until Owner opens the Canada automatic gate.
+            'automatic' => false,
+            'strategy' => 'fixed',
+            'allow_cross_region_fallback' => false,
+            'warehouses' => [
+                ['code' => 'CA', 'priority' => 1, 'role' => 'primary'],
             ],
         ],
 

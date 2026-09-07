@@ -3,9 +3,21 @@
 return [
     // Carrier routing business policy single source of truth.
     // Do not hard-code carrier selection policy in Shipment services.
-    'version' => '2026-09-07-v2',
+    'version' => '2026-09-07-v3',
 
     'countries' => [
+        'CA' => [
+            'automatic' => true,
+            'strategy' => 'fixed_by_warehouse',
+            'warehouses' => [
+                'CA' => ['carrier' => 'Canada Post', 'service' => null],
+            ],
+            'manual_overrides' => [],
+            'auto_rank_carriers' => false,
+            'compare_price' => false,
+            'compare_transit_time' => false,
+        ],
+
         'US' => [
             'automatic' => true,
             'strategy' => 'fixed_by_warehouse',

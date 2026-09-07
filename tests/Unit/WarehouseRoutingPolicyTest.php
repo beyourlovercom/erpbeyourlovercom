@@ -17,6 +17,11 @@ final class WarehouseRoutingPolicyTest extends TestCase
         $this->assertSame(['DE'], $policy->warehouseCodes('DE'));
         $this->assertSame('DE', $policy->fixedWarehouseCode('DE'));
 
+        $this->assertFalse($policy->automaticEnabled('CA'));
+        $this->assertSame('fixed', $policy->strategy('CA'));
+        $this->assertSame(['CA'], $policy->warehouseCodes('CA'));
+        $this->assertSame('CA', $policy->fixedWarehouseCode('CA'));
+
         $this->assertFalse($policy->automaticEnabled('US'));
         $this->assertSame('east_zone_then_priority', $policy->strategy('us'));
         $this->assertSame(['US-NY', 'US-SJ', 'US-LA'], $policy->warehouseCodes('US'));
@@ -33,6 +38,18 @@ final class WarehouseRoutingPolicyTest extends TestCase
         $this->assertSame('US-SJ', $policy->canonicalWarehouseCode('SMGJ'));
         $this->assertSame('US-SJ', $policy->canonicalWarehouseCode('世纪仓'));
         $this->assertSame('US-SJ', $policy->canonicalWarehouseCode('世迈国际仓'));
+        $this->assertSame('CA', $policy->canonicalWarehouseCode('CA02'));
+        $this->assertSame('CA', $policy->canonicalWarehouseCode('加拿大仓'));
+    }
+
+    public function test_canada_carrier_policy_is_canada_post_only(): void
+    {
+        $ca = config('carrier_routing.countries.CA');
+        $this->assertTrue($ca['automatic']);
+        $this->assertSame('fixed_by_warehouse', $ca['strategy']);
+        $this->assertSame('Canada Post', $ca['warehouses']['CA']['carrier']);
+        $this->assertSame([], $ca['manual_overrides']);
+        $this->assertFalse($ca['auto_rank_carriers']);
     }
 
     public function test_runtime_config_contains_no_business_routing_rules(): void
