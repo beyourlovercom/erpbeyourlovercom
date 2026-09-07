@@ -103,6 +103,7 @@ final class AutomaticAllocationV1Test extends TestCase
         app(AutomaticAllocationService::class)->allocate($order);
 
         $other = Warehouse::query()->where('id', '!=', $warehouse->id)->where('is_active', true)->orderBy('id')->firstOrFail();
+        $this->authoritative($other, $product, 'US', 6);
         $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/draft', [
             'warehouse_id' => $other->id,
             'carrier' => 'UPS',
@@ -119,6 +120,15 @@ final class AutomaticAllocationV1Test extends TestCase
             'warehouse_id' => $other->id,
             'warehouse_selection_source' => 'manual',
         ]);
+        $this->assertDatabaseHas('inventory_reservations', [
+            'order_id' => $order->id,
+            'warehouse_id' => $other->id,
+            'status' => 'reserved',
+        ]);
+        $this->assertSame(2, WarehouseInventory::query()
+            ->where('warehouse_id', $other->id)
+            ->where('product_id', $product->id)
+            ->value('quantity_reserved'));
         $this->assertSame(0, WarehouseInventory::query()
             ->where('warehouse_id', $warehouse->id)
             ->where('product_id', $product->id)

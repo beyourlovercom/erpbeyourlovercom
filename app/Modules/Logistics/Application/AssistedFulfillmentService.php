@@ -55,11 +55,28 @@ final class AssistedFulfillmentService
             $active = $this->reservations->activeForOrder((int) $order->getKey());
             $requestedWarehouseId = isset($attributes['warehouse_id']) ? (int) $attributes['warehouse_id'] : null;
 
-            if ($active && $requestedWarehouseId !== (int) $active['warehouse_id']) {
-                $this->reservations->release((int) $active['id'], $actor, 'manual_warehouse_override');
-            } elseif ($active && $requestedWarehouseId === (int) $active['warehouse_id']) {
+            if ($active && $requestedWarehouseId === (int) $active['warehouse_id']) {
                 $currentSource = $order->shipment?->warehouse_selection_source;
                 $attributes['warehouse_selection_source'] = $currentSource === 'automatic' ? 'automatic' : 'recommended';
+            } else {
+                if ($active) {
+                    $this->reservations->release((int) $active['id'], $actor, 'manual_warehouse_override');
+                }
+
+                if ($requestedWarehouseId !== null) {
+                    try {
+                        $this->reservations->reserve(
+                            (int) $order->getKey(),
+                            $requestedWarehouseId,
+                            'manual-'.$order->getKey().'-'.Str::uuid(),
+                            null,
+                            $actor,
+                        );
+                    } catch (\DomainException $e) {
+                        abort(409, $e->getMessage());
+                    }
+                    $attributes['warehouse_selection_source'] = 'manual';
+                }
             }
 
             return $this->shipments->saveDraft($order, $attributes, $actor);
