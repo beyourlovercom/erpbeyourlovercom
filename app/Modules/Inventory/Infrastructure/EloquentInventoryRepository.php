@@ -73,10 +73,26 @@ final class EloquentInventoryRepository implements InventoryRepository
                 }
 
                 $known = $state !== 'never_imported';
+                $dateOpen = $w->fulfillment_available_on === null || $w->fulfillment_available_on->isToday() || $w->fulfillment_available_on->isPast();
+                $canAutoAllocate = $state === 'confirmed' && $dateOpen;
+                $fulfillmentState = match (true) {
+                    $w->fulfillment_available_on !== null && ! $dateOpen => 'preparing',
+                    $w->fulfillment_available_on !== null && $state !== 'confirmed' => 'awaiting_inventory',
+                    $canAutoAllocate => 'ready',
+                    default => 'not_ready',
+                };
 
                 return [
                     'id'=>$w->id,'slug'=>$w->slug,'code'=>$w->code,'name'=>$w->name,'country_code'=>$w->country_code,
                     'address'=>$this->address($w),'ownership_type'=>$w->ownership_type,'is_active'=>$w->is_active,'priority'=>$w->priority,
+                    'fulfillment_available_on'=>$w->fulfillment_available_on?->toDateString(),
+                    'fulfillment_state'=>$fulfillmentState,
+                    'fulfillment_state_label'=>match ($fulfillmentState) {
+                        'preparing' => '备货中',
+                        'awaiting_inventory' => '待库存确认',
+                        'ready' => '可履约',
+                        default => '未就绪',
+                    },
                     'product_count'=>$known ? $inventoryRows : null,
                     'quantity_on_hand'=>$known ? (int)($w->quantity_on_hand_total ?? 0) : null,
                     'inventory_state'=>$state,
@@ -87,7 +103,7 @@ final class EloquentInventoryRepository implements InventoryRepository
                         default => '库存未导入',
                     },
                     'has_full_snapshot'=>$hasFullBaseline,
-                    'can_auto_allocate'=>$state === 'confirmed',
+                    'can_auto_allocate'=>$canAutoAllocate,
                     'latest_sync_mode'=>$latest?->sync_mode,
                     'latest_batch_id'=>$latest?->id,
                     'last_inventory_at'=>$lastInventoryAt?->toIso8601String(),

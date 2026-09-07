@@ -4,6 +4,7 @@ namespace App\Modules\Inventory\Experience\Controllers;
 
 use App\Modules\Inventory\Application\InventoryService;
 use App\Modules\Inventory\Application\InventoryStockStatus;
+use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Identity\Application\AuthorizationKeys;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -73,9 +74,27 @@ final class WarehouseController
             'address_line1'=>['nullable','string','max:255'],'address_line2'=>['nullable','string','max:255'],'city'=>['nullable','string','max:128'],
             'state_region'=>['nullable','string','max:128'],'postal_code'=>['nullable','string','max:32'],'timezone'=>['nullable','string','max:64'],
             'type'=>['required','string','max:32'],'ownership_type'=>['sometimes','in:owned,external'],'is_domestic'=>['boolean'],'is_active'=>['boolean'],'priority'=>['integer','min:0','max:9999'],
+            'fulfillment_available_on'=>['nullable','date'],
             'replenishment_lead_time_days'=>['nullable','integer','min:0','max:365'],'replenishment_safety_stock_days'=>['nullable','integer','min:0','max:365'],'replenishment_target_cover_days'=>['nullable','integer','min:0','max:365'],
         ];
     }
+    private function fulfillmentState($w): string
+    {
+        if ($w->fulfillment_available_on !== null && $w->fulfillment_available_on->isFuture()) return 'preparing';
+        $hasFullSnapshot = InventorySyncBatch::query()
+            ->where('warehouse_id', $w->id)->where('status', 'confirmed')->where('sync_mode', 'full')->exists();
+        return $hasFullSnapshot ? 'ready' : 'awaiting_inventory';
+    }
+
+    private function fulfillmentStateLabel($w): string
+    {
+        return match ($this->fulfillmentState($w)) {
+            'preparing' => '备货中',
+            'awaiting_inventory' => '待库存确认',
+            default => '可履约',
+        };
+    }
+
     private function inventoryRules(bool $withProduct=true): array
     {
         $rules=[
@@ -92,6 +111,9 @@ final class WarehouseController
             'id'=>$w->id,'slug'=>$w->slug,'code'=>$w->code,'name'=>$w->name,'country_code'=>$w->country_code,
             'address_line1'=>$w->address_line1,'address_line2'=>$w->address_line2,'city'=>$w->city,'state_region'=>$w->state_region,'postal_code'=>$w->postal_code,
             'timezone'=>$w->timezone,'type'=>$w->type,'ownership_type'=>$w->ownership_type,'is_domestic'=>$w->is_domestic,'is_active'=>$w->is_active,'priority'=>$w->priority,
+            'fulfillment_available_on'=>$w->fulfillment_available_on?->format('Y-m-d'),
+            'fulfillment_state'=>$this->fulfillmentState($w),
+            'fulfillment_state_label'=>$this->fulfillmentStateLabel($w),
             'replenishment_lead_time_days'=>$w->replenishment_lead_time_days,'replenishment_safety_stock_days'=>$w->replenishment_safety_stock_days,'replenishment_target_cover_days'=>$w->replenishment_target_cover_days,'billing_markdown'=>$w->billing_markdown,
             'service_regions'=>$w->serviceRegions->pluck('country_code')->all(),
             'inventories'=>$w->inventories->map(fn($i)=>[

@@ -147,6 +147,7 @@ final class InventoryService
     {
         foreach (['slug','code'] as $key) if (isset($attributes[$key])) $attributes[$key] = strtolower(trim((string) $attributes[$key]));
         if (isset($attributes['country_code']) && $attributes['country_code'] !== '') $attributes['country_code'] = strtoupper(trim((string) $attributes['country_code']));
+        if (array_key_exists('fulfillment_available_on', $attributes) && $attributes['fulfillment_available_on'] === '') $attributes['fulfillment_available_on'] = null;
         $keys = ['replenishment_lead_time_days','replenishment_safety_stock_days','replenishment_target_cover_days'];
         $values = collect($keys)->mapWithKeys(fn ($key): array => [$key => array_key_exists($key, $attributes) && $attributes[$key] !== '' ? $attributes[$key] : null]);
         $provided = $values->filter(fn ($value): bool => $value !== null)->count();
@@ -178,7 +179,7 @@ final class InventoryService
 
     private function warehouseAudit(Model $w): array
     {
-        return $w->only(['slug','code','name','country_code','address_line1','address_line2','city','state_region','postal_code','timezone','type','is_active','priority','replenishment_lead_time_days','replenishment_safety_stock_days','replenishment_target_cover_days']);
+        return $w->only(['slug','code','name','country_code','address_line1','address_line2','city','state_region','postal_code','timezone','type','is_active','priority','fulfillment_available_on','replenishment_lead_time_days','replenishment_safety_stock_days','replenishment_target_cover_days']);
     }
 
     private function inventoryAudit(Model $i): array

@@ -4,7 +4,7 @@ namespace App\Modules\Inventory\Application\Contracts;
 
 interface InventoryAvailabilityReader
 {
-    /** @return array<int, array{id:int,slug:string,name:string,code:string,country_code:?string,priority:int,inventory_state:string,can_auto_allocate:bool,service_regions:array<int,array{country_code:string,priority:int}>}> */
+    /** @return array<int, array{id:int,slug:string,name:string,code:string,country_code:?string,priority:int,inventory_state:string,fulfillment_available_on:?string,can_auto_allocate:bool,service_regions:array<int,array{country_code:string,priority:int}>}> */
     public function activeWarehouses(): array;
 
     /**
