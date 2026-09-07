@@ -134,7 +134,10 @@ const filters = reactive({
     search: props.filters.search ?? '',
     source_type: props.filters.source_type ?? '',
     country: props.filters.country ?? '',
-    sku: props.filters.sku ?? '',
+    product: props.filters.product ?? props.filters.sku ?? '',
+    fx_status: props.filters.fx_status ?? '',
+    country_missing: props.filters.country_missing ?? '',
+    product_missing: props.filters.product_missing ?? '',
     date_from: props.filters.date_from ?? '',
     date_to: props.filters.date_to ?? '',
     completeness: props.filters.completeness ?? '',
@@ -277,9 +280,14 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
                     <option value="other">other</option>
                 </select>
                 <input v-model="filters.country" aria-label="国家" placeholder="国家代码，如 US">
-                <input v-model="filters.sku" aria-label="SKU" placeholder="SKU">
+                <input v-model="filters.product" aria-label="产品或 SKU" placeholder="SKU / 产品名称">
                 <input v-model="filters.date_from" aria-label="开始日期" type="date">
                 <input v-model="filters.date_to" aria-label="结束日期" type="date">
+                <select v-model="filters.fx_status" aria-label="USD 汇总 FX 状态">
+                    <option value="">全部 FX 状态</option>
+                    <option value="aggregate_ready">USD 汇总可用</option>
+                    <option value="pending">FX 待处理</option>
+                </select>
                 <select v-model="filters.completeness" aria-label="完整性">
                     <option value="">全部财务状态</option>
                     <option value="UNPOSTED">未入账</option>

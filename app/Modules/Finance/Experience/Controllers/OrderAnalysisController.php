@@ -43,7 +43,7 @@ final class OrderAnalysisController
             'fields' => $this->analysis->fields(),
             'filters' => $request->only([
                 'search', 'source_type', 'completeness', 'profit_status', 'date_from', 'date_to',
-                'country', 'sku', 'sort', 'direction',
+                'country', 'sku', 'product', 'fx_status', 'country_missing', 'product_missing', 'sort', 'direction',
             ]),
             'kpis' => $this->kpis($request),
             'gridPreferenceNamespace' => self::GRID_NAMESPACE,
@@ -115,6 +115,18 @@ final class OrderAnalysisController
             ->when($request->input('date_to'), fn (Builder $orders, string $date) => $orders->whereDate('order_date', '<=', $date))
             ->when($request->input('country'), fn (Builder $orders, string $country) => $orders->whereHas('address', fn (Builder $address) => $address->where('country', strtoupper(trim($country)))))
             ->when($request->input('sku'), fn (Builder $orders, string $sku) => $orders->whereHas('items', fn (Builder $items) => $items->where('sku', 'like', '%'.trim($sku).'%')))
+            ->when($request->input('product'), function (Builder $orders, string $product): void {
+                $product = trim($product);
+                $orders->whereHas('items', fn (Builder $items) => $items
+                    ->where('sku', 'like', '%'.$product.'%')
+                    ->orWhere('product_summary', 'like', '%'.$product.'%'));
+            })
+            ->when($request->boolean('country_missing'), fn (Builder $orders) => $orders->where(function (Builder $missing): void {
+                $missing->whereDoesntHave('address')->orWhereHas('address', fn (Builder $address) => $address->whereNull('country')->orWhere('country', ''));
+            }))
+            ->when($request->boolean('product_missing'), fn (Builder $orders) => $orders->where(function (Builder $missing): void {
+                $missing->whereDoesntHave('items')->orWhereHas('items', fn (Builder $items) => $items->whereNull('sku')->whereNull('product_summary'));
+            }))
             ->when($request->input('search'), function (Builder $orders, string $search): void {
                 $search = trim($search);
                 $orders->where(function (Builder $nested) use ($search): void {
@@ -146,6 +158,31 @@ final class OrderAnalysisController
             } else {
                 $query->whereHas('financials', fn (Builder $financials) => $financials->where('completeness_status', $status));
             }
+        }
+
+        if ($request->input('fx_status') === 'aggregate_ready') {
+            $query->where(function (Builder $orders): void {
+                $orders->where(function (Builder $withoutFinance): void {
+                    $withoutFinance->whereDoesntHave('financials')->where('currency', 'USD');
+                })->orWhereHas('financials', function (Builder $financials): void {
+                    $financials->where('currency', 'USD')->orWhere(function (Builder $foreign): void {
+                        $foreign->where('currency', '!=', 'USD')
+                            ->whereNotNull('fx_rate')
+                            ->whereNotNull('fx_rate_date')
+                            ->whereNotNull('fx_rate_source');
+                    });
+                });
+            });
+        } elseif ($request->input('fx_status') === 'pending') {
+            $query->where(function (Builder $orders): void {
+                $orders->where(function (Builder $withoutFinance): void {
+                    $withoutFinance->whereDoesntHave('financials')->where('currency', '!=', 'USD');
+                })->orWhereHas('financials', function (Builder $financials): void {
+                    $financials->where('currency', '!=', 'USD')->where(function (Builder $missing): void {
+                        $missing->whereNull('fx_rate')->orWhereNull('fx_rate_date')->orWhereNull('fx_rate_source');
+                    });
+                });
+            });
         }
 
         if ($request->input('profit_status') === 'confirmed') {

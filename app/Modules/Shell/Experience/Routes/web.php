@@ -17,7 +17,7 @@ $legacyPaths = app(LegacyErpNavigationPaths::class);
 $formalPaths = collect(config('erp_shell_navigation'))->pluck('path')->map($legacyPaths->normalize(...))->all();
 $implementedPaths = [
     '/orders', '/customers/orders', '/customers/orders/create', '/kol/orders', '/kol/orders/create',
-    '/dashboard', '/logistics', '/sync', '/kol', '/products', '/accounting/order-costs', '/settings/users', '/settings/roles-permissions',
+    '/dashboard', '/logistics', '/sync', '/kol', '/products', '/accounting', '/accounting/order-costs', '/settings/users', '/settings/roles-permissions',
     '/inventory', '/inventory/warehouses', '/guides', '/guides/videos', '/guides/manuals', '/settings', '/settings/changelog',
     '/customers', '/purchase',
     '/logistics/awaiting-tracking', '/logistics/in-transit', '/logistics/exceptions',

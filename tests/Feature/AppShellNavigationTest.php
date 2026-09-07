@@ -119,16 +119,17 @@ class AppShellNavigationTest extends TestCase
             ->where('shellNavigation.1.children.0.path', '/inventory/packaging'));
     }
 
-    public function test_accounting_expense_analysis_group_is_non_link_with_real_nested_children(): void
+    public function test_accounting_navigation_closes_to_overview_and_order_profit(): void
     {
         $user = $this->userWith(['dashboard.view', 'accounting.view', 'analysis.view', 'prototype.view']);
         $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
-            ->has('shellNavigation.1.children', 4)
-            ->where('shellNavigation.1.children.2.key', 'accounting-expense-analysis')
-            ->where('shellNavigation.1.children.2.group', true)
-            ->where('shellNavigation.1.children.2.route', null)
-            ->has('shellNavigation.1.children.2.children', 6)
-            ->where('shellNavigation.1.children.2.children.0.label', '2025实际'));
+            ->where('shellNavigation.1.key', 'accounting')
+            ->has('shellNavigation.1.children', 2)
+            ->where('shellNavigation.1.children.0.key', 'accounting-overview')
+            ->where('shellNavigation.1.children.0.path', '/accounting')
+            ->where('shellNavigation.1.children.1.key', 'accounting-order-costs')
+            ->where('shellNavigation.1.children.1.label', '订单利润')
+            ->where('shellNavigation.1.children.1.path', '/accounting/order-costs'));
     }
 
 
@@ -217,6 +218,7 @@ class AppShellNavigationTest extends TestCase
                     '/kol' => 'Kol/Overview',
                     '/marketing' => 'Marketing/Overview',
                     '/guides' => 'Guides/Index',
+                    '/accounting' => 'Finance/ProfitDashboard',
                     '/settings' => 'Settings/Index',
                     '/customers' => 'Customers/Dashboard',
                     '/purchase' => 'Procurement/Orders/Index',

@@ -73,18 +73,9 @@ return [
         ['key' => 'guides-videos', 'label' => '视频教程', 'path' => '/guides/videos', 'route' => 'guides.videos', 'permission' => 'guides.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'guides-manuals', 'label' => '操作手册', 'path' => '/guides/manuals', 'route' => 'guides.manuals', 'permission' => 'guides.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
     ]],
-    ['key' => 'accounting', 'label' => '会计', 'emoji' => '🧾', 'path' => '/accounting', 'route' => 'shell.accounting', 'permission' => 'accounting.view', 'status' => 'in_progress', 'progress' => 25, 'placeholder' => false, 'children' => [
-        ['key' => 'accounting-cost-calculation', 'label' => '成本核算表', 'path' => '/accounting/cost-calculation', 'route' => 'accounting.cost-calculation', 'permission' => 'prototype.view', 'status' => 'planned', 'progress' => 0, 'placeholder' => false],
-        ['key' => 'accounting-order-costs', 'label' => '每一单成本表', 'path' => '/accounting/order-costs', 'route' => 'accounting.order-costs', 'permission' => 'analysis.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
-        ['key' => 'accounting-expense-analysis', 'label' => '费用分析表', 'group' => true, 'path' => '/accounting/expense-analysis', 'route' => null, 'permission' => 'prototype.view', 'status' => 'planned', 'progress' => 0, 'placeholder' => false, 'children' => [
-            ['key' => 'accounting-expense-analysis-actual-2025', 'label' => '2025实际', 'path' => '/accounting/expense-analysis/2025-actual', 'route' => 'accounting.actual-2025', 'permission' => 'prototype.view', 'placeholder' => false],
-            ['key' => 'accounting-expense-analysis-execution-2026', 'label' => '2026执行', 'path' => '/accounting/expense-analysis/2026-execution', 'route' => 'accounting.execution-2026', 'permission' => 'prototype.view', 'placeholder' => false],
-            ['key' => 'accounting-expense-analysis-forecast-2027', 'label' => '2027预估', 'path' => '/accounting/expense-analysis/2027-forecast', 'route' => 'accounting.forecast-2027', 'permission' => 'prototype.view', 'placeholder' => false],
-            ['key' => 'accounting-expense-analysis-monthly', 'label' => '每月明细表', 'path' => '/accounting/expense-analysis/monthly', 'route' => 'accounting.monthly', 'permission' => 'prototype.view', 'placeholder' => false],
-            ['key' => 'accounting-expense-analysis-optimization', 'label' => '可优化的部分', 'path' => '/accounting/expense-analysis/optimization', 'route' => 'accounting.optimization', 'permission' => 'prototype.view', 'placeholder' => false],
-            ['key' => 'accounting-expense-analysis-variance', 'label' => '预估和实际的差别', 'path' => '/accounting/expense-analysis/variance', 'route' => 'accounting.variance', 'permission' => 'prototype.view', 'placeholder' => false],
-        ]],
-        ['key' => 'accounting-kol-commissions', 'label' => '网红佣金表', 'path' => '/accounting/kol-commissions', 'route' => 'accounting.kol-commissions', 'permission' => 'prototype.view', 'status' => 'planned', 'progress' => 0, 'placeholder' => false],
+    ['key' => 'accounting', 'label' => '会计', 'emoji' => '🧾', 'path' => '/accounting', 'route' => 'accounting.index', 'permission' => 'accounting.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false, 'children' => [
+        ['key' => 'accounting-overview', 'label' => '概览', 'path' => '/accounting', 'route' => 'accounting.index', 'permission' => 'accounting.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
+        ['key' => 'accounting-order-costs', 'label' => '订单利润', 'path' => '/accounting/order-costs', 'route' => 'accounting.order-costs', 'permission' => 'analysis.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
     ]],
     ['key' => 'settings', 'label' => '设置', 'emoji' => '⚙️', 'path' => '/settings', 'route' => 'shell.settings', 'permission' => 'system.permissions.manage', 'status' => 'in_progress', 'progress' => 46, 'placeholder' => false, 'children' => [
         ['key' => 'settings-statuses', 'label' => '状态设置', 'path' => '/settings/statuses', 'route' => 'settings.statuses', 'permission' => 'prototype.view', 'status' => 'planned', 'progress' => 0, 'placeholder' => false],
