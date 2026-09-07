@@ -80,16 +80,16 @@ final class ConfirmedLossProjection implements ConfirmedLossReader
              AND order_financials.discount_amount IS NOT NULL
              AND order_financials.shipping_revenue IS NOT NULL
              AND order_financials.refund_amount IS NOT NULL
-            THEN CAST(order_financials.merchandise_list_amount AS NUMERIC)
-               - CAST(order_financials.discount_amount AS NUMERIC)
-               + CAST(order_financials.shipping_revenue AS NUMERIC)
-               - CAST(order_financials.refund_amount AS NUMERIC)
-            ELSE CAST(order_financials.amount_paid AS NUMERIC)
-               - CAST(order_financials.refund_amount AS NUMERIC)
+            THEN order_financials.merchandise_list_amount
+               - order_financials.discount_amount
+               + order_financials.shipping_revenue
+               - order_financials.refund_amount
+            ELSE order_financials.amount_paid
+               - order_financials.refund_amount
           END
           FROM order_financials
           WHERE order_financials.order_id = orders.id)
-          - (SELECT COALESCE(SUM(CAST(order_cost_entries.amount AS NUMERIC)), 0)
+          - (SELECT COALESCE(SUM(order_cost_entries.amount), 0)
              FROM order_cost_entries
              WHERE order_cost_entries.order_id = orders.id
                AND order_cost_entries.cost_type IN ({$costPlaceholders})
