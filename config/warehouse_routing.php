@@ -51,6 +51,22 @@ $countries = [
                 'unknown_behavior' => 'fallback_priority',
             ],
             'fallback_priority' => ['US-SJ', 'US-LA', 'US-NY'],
+            'destination_constraints' => [
+                'military' => [
+                    'city_codes' => ['APO', 'FPO', 'DPO'],
+                    'state_codes' => ['AA', 'AE', 'AP'],
+                    'must_use_us_warehouse' => true,
+                    'factory_allowed' => false,
+                    'human_review_if_split_required' => true,
+                ],
+                'ak_hi' => [
+                    'state_codes' => ['AK', 'HI'],
+                    'strategy' => 'cost_compare_us_vs_factory',
+                    'automatic' => false,
+                    'factory_allowed' => true,
+                    'human_review_required' => true,
+                ],
+            ],
         ],
     ],
 ];
@@ -99,13 +115,17 @@ foreach ($deBlockedCountries as $country) {
 }
 
 return [
-    'version' => '2026-09-07-v4',
+    'version' => '2026-09-07-v5',
 
     'global' => [
         'require_active_warehouse' => true,
         'require_full_snapshot' => true,
         'require_fulfillment_ready' => true,
-        'allow_split_shipment' => false,
+        'allow_split_shipment' => true,
+        'automatic_split_shipment' => false,
+        'split_execution_mode' => 'human_review_only',
+        'compare_split_vs_unsplit_cost' => true,
+        'selection_order' => ['local_country_warehouse', 'approved_nearby_warehouse', 'china_factory'],
         'allow_cross_region_fallback' => false,
     ],
 
@@ -127,6 +147,20 @@ return [
             'group_b_cost_gate' => $deCostGateCountries,
             'group_c_default_china' => $deBlockedCountries,
         ],
+    ],
+
+    'factory_fallback' => [
+        'enabled' => true,
+        'warehouse_code' => 'FACTORY',
+        'label' => '中国工厂',
+        'inventory_authority_required' => false,
+        'carrier' => 'SD经济挂号-带电',
+        'rate_source' => [
+            'file' => '仓库-物流-国内小包费用.xlsx',
+            'sheet' => 'SD经济挂号-带电',
+        ],
+        'use_when' => 'overseas_options_unavailable_or_costlier',
+        'automatic_execution' => false,
     ],
 
     'countries' => $countries,

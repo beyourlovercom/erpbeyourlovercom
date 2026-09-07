@@ -5,6 +5,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Logistics\Application\AutomaticAllocationEligibilityService;
 use App\Modules\Logistics\Application\AssistedFulfillmentService;
+use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Logistics\Application\WarehouseRecommendationService;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
@@ -28,6 +29,7 @@ final class LogisticsController
         private readonly AssistedFulfillmentService $assistedFulfillment,
         private readonly InventoryAvailabilityReader $availability,
         private readonly WarehouseRecommendationService $recommendations,
+        private readonly FulfillmentPlanPreviewService $fulfillmentPlans,
         private readonly OrderPackagingReferenceProjection $packagingReferences,
         private readonly ConfirmedLossReader $confirmedLosses,
     ) {}
@@ -277,13 +279,28 @@ final class LogisticsController
 
     private function data(Order $order, array $availability): array
     {
+        $destinationContext = [
+            'province_state' => $order->address?->province_state,
+            'city' => $order->address?->city,
+            'address_line_1' => $order->address?->address_line_1,
+            'address_line_2' => $order->address?->address_line_2,
+        ];
+        $planItems = $order->items->map(fn ($item): array => [
+            'product_id' => $item->product_id,
+            'quantity' => (int) $item->quantity,
+            'sku' => $item->sku,
+        ])->values()->all();
         $recommendation = $this->recommendations->recommend(
             $order->address?->country,
-            $order->items->map(fn ($item): array => [
-                'product_id' => $item->product_id,
-                'quantity' => (int) $item->quantity,
-            ])->values()->all(),
+            $planItems,
             $order->address?->postal_code,
+            [],
+            $destinationContext,
+        );
+        $fulfillmentPlanPreview = $this->fulfillmentPlans->preview(
+            $order->address?->country,
+            $planItems,
+            $destinationContext,
         );
 
         return [
@@ -313,6 +330,7 @@ final class LogisticsController
                 'availability' => $availability[$item->product_id] ?? [],
             ])->values()->all(),
             'warehouse_recommendation' => $recommendation,
+            'fulfillment_plan_preview' => $fulfillmentPlanPreview,
             'automatic_allocation' => $this->automaticAllocationEligibility->evaluate($order, $recommendation),
             'shipment' => $order->shipment ? [
                 ...$order->shipment->only(['warehouse_id', 'warehouse_selection_source', 'carrier', 'service', 'carrier_selection_source', 'tracking_number', 'shipped_at', 'logistics_note']),

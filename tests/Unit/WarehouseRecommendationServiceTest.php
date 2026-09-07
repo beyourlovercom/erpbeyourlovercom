@@ -107,6 +107,42 @@ final class WarehouseRecommendationServiceTest extends TestCase
     }
 
 
+    public function test_us_military_address_keeps_local_us_recommendation_and_forbids_factory(): void
+    {
+        $warehouses = [$this->warehouse(2, 'US-NY', true, [])];
+        $availability = [10 => [$this->stock(2, 10)]];
+        $result = $this->service($warehouses, $availability)->recommend(
+            'US',
+            [['product_id' => 10, 'quantity' => 1]],
+            '09012',
+            [],
+            ['city' => 'APO', 'province_state' => 'AE'],
+        );
+
+        $this->assertSame('recommended', $result['status']);
+        $this->assertSame('recommended_military_us_local', $result['reason_code']);
+        $this->assertTrue($result['routing_context']['military_address']);
+        $this->assertFalse($result['routing_context']['factory_allowed']);
+    }
+
+    public function test_us_ak_hi_blocks_one_click_us_recommendation_for_cost_review(): void
+    {
+        $warehouses = [$this->warehouse(1, 'US-LA', true, [])];
+        $availability = [10 => [$this->stock(1, 10)]];
+        $result = $this->service($warehouses, $availability)->recommend(
+            'US',
+            [['product_id' => 10, 'quantity' => 1]],
+            '96815',
+            [],
+            ['province_state' => 'HI', 'city' => 'Honolulu'],
+        );
+
+        $this->assertSame('blocked', $result['status']);
+        $this->assertSame('us_ak_hi_cost_review_required', $result['reason_code']);
+        $this->assertTrue($result['routing_context']['factory_allowed']);
+        $this->assertTrue($result['routing_context']['human_review_required']);
+    }
+
     public function test_canada_fixed_policy_only_recommends_ca_even_when_other_warehouse_has_ca_region(): void
     {
         $warehouses = [

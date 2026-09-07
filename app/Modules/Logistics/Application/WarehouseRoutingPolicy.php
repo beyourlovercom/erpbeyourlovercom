@@ -88,4 +88,64 @@ final class WarehouseRoutingPolicy
         $reason = $this->country($country)['reason'] ?? null;
         return is_string($reason) && trim($reason) !== '' ? trim($reason) : null;
     }
+
+    public function splitShipmentAllowed(): bool
+    {
+        return (bool) config('warehouse_routing.global.allow_split_shipment', false);
+    }
+
+    public function automaticSplitShipmentEnabled(): bool
+    {
+        return (bool) config('warehouse_routing.global.automatic_split_shipment', false);
+    }
+
+    public function splitExecutionMode(): string
+    {
+        return (string) config('warehouse_routing.global.split_execution_mode', 'human_review_only');
+    }
+
+    /** @return array<string,mixed> */
+    public function factoryFallback(): array
+    {
+        $policy = config('warehouse_routing.factory_fallback', []);
+        return is_array($policy) ? $policy : [];
+    }
+
+    public function factoryAllowed(array $destinationContext = []): bool
+    {
+        if (! (bool) ($this->factoryFallback()['enabled'] ?? false)) return false;
+        return ! $this->isUsMilitaryDestination($destinationContext);
+    }
+
+    /** @return array<string,mixed> */
+    public function usMilitaryRule(): array
+    {
+        $rule = config('warehouse_routing.countries.US.rules.destination_constraints.military', []);
+        return is_array($rule) ? $rule : [];
+    }
+
+    /** @return array<string,mixed> */
+    public function usAkHiRule(): array
+    {
+        $rule = config('warehouse_routing.countries.US.rules.destination_constraints.ak_hi', []);
+        return is_array($rule) ? $rule : [];
+    }
+
+    public function isUsMilitaryDestination(array $destinationContext): bool
+    {
+        $rule = $this->usMilitaryRule();
+        $city = strtoupper(trim((string) ($destinationContext['city'] ?? '')));
+        $state = strtoupper(trim((string) ($destinationContext['province_state'] ?? $destinationContext['state'] ?? '')));
+        $cities = array_map(fn ($v): string => strtoupper(trim((string) $v)), (array) ($rule['city_codes'] ?? []));
+        $states = array_map(fn ($v): string => strtoupper(trim((string) $v)), (array) ($rule['state_codes'] ?? []));
+        return ($city !== '' && in_array($city, $cities, true)) || ($state !== '' && in_array($state, $states, true));
+    }
+
+    public function isUsAkHiDestination(array $destinationContext): bool
+    {
+        if ($this->isUsMilitaryDestination($destinationContext)) return false;
+        $state = strtoupper(trim((string) ($destinationContext['province_state'] ?? $destinationContext['state'] ?? '')));
+        $states = array_map(fn ($v): string => strtoupper(trim((string) $v)), (array) ($this->usAkHiRule()['state_codes'] ?? []));
+        return $state !== '' && in_array($state, $states, true);
+    }
 }

@@ -47,6 +47,16 @@ foreach ($deFulfillmentCountries as $country) {
 return [
     // Carrier routing business policy single source of truth.
     // Do not hard-code carrier selection policy in Shipment services.
-    'version' => '2026-09-07-v4',
+    'version' => '2026-09-07-v5',
+    'factory_fallback' => [
+        'warehouse_code' => 'FACTORY',
+        'carrier' => 'SD经济挂号-带电',
+        'service' => null,
+        'automatic_execution' => false,
+        'rate_source' => [
+            'file' => '仓库-物流-国内小包费用.xlsx',
+            'sheet' => 'SD经济挂号-带电',
+        ],
+    ],
     'countries' => $countries,
 ];
