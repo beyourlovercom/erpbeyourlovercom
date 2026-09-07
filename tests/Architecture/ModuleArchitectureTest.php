@@ -153,7 +153,9 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Dashboard/Providers/DashboardServiceProvider.php',
         'app/Modules/Finance/Application/EcbFxService.php',
         'app/Modules/Finance/Application/OrderAnalysisService.php',
+        'app/Modules/Finance/Application/ProfitDashboardService.php',
         'app/Modules/Finance/Experience/Controllers/OrderAnalysisController.php',
+        'app/Modules/Finance/Experience/Controllers/ProfitDashboardController.php',
         'app/Modules/Finance/Experience/Routes/web.php',
         'app/Modules/Finance/Infrastructure/Models/OrderCostEntry.php',
         'app/Modules/Finance/Infrastructure/Models/OrderFinancial.php',
@@ -817,7 +819,7 @@ final class ModuleArchitectureTest extends TestCase
         'settings.roles-permissions.update',
         'settings.statuses',
         'settings.warehouses',
-        'shell.accounting',
+        'accounting.index',
         'shell.customers',
         'shell.guides',
         'shell.inventory',
@@ -1026,6 +1028,7 @@ final class ModuleArchitectureTest extends TestCase
     ];
 
     private const FRONTEND_FILES = [
+        'resources/js/Pages/Finance/ProfitDashboard.vue' => '806e8727de4919f216511d32134556e2a6ad3aaadbaa59f40a28784a7e5cdae8',
         'resources/js/Components/Logistics/StatusBar.vue' => '5a1e0b77fc5b8972d48083fb6e177df8a3f5c3facb13233e469effec5afbd2f0',
         'resources/js/Components/AppShell/GlobalFeedbackIsland.test.ts' => '36d4310edf520357dd153cc19de772d774e3473606881298d734ed28e1725ce1',
         'resources/js/Components/AppShell/GlobalFeedbackIsland.vue' => '17e7bcf0d540843934215cb537b82d243e3492b0760518f523500c15b1916cd9',
@@ -1085,7 +1088,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Customers/Support/TicketForm.vue' => '28e2198067ef12bd82ad19765e8a6a7fd4c5761211bce16f6a89de6898dc1c05',
         'resources/js/Pages/Dashboard/Index.test.ts' => '27c63e094fcdec28a0e5677508723e149c90a5130efb98d4448fa2b7f51b4ae4',
         'resources/js/Pages/Dashboard/Index.vue' => '0c28a768afcaa181b54ab01c4ec08457a04f7ed98e5ba3b52a041d98492bc2bb',
-        'resources/js/Pages/Finance/OrderAnalysis.vue' => '4d189202c225730a52d91f2e151c5c2ebf837b8b2f17bf1463ef86f43aaac083',
+        'resources/js/Pages/Finance/OrderAnalysis.vue' => 'faab24eb5dc6d131d8bf89688c529949b7df237e9ac66049309c59aec7570f85',
         'resources/js/Pages/Guides/Edit.vue' => '47b31eb218c25505b2037e27460f99f52c80d42eee4057583d2ea680e9bd890b',
         'resources/js/Pages/Guides/Index.test.ts' => 'b751aca1f6cc636b969306643ad1278159dd3be28192c129df9033a62f92e0c9',
         'resources/js/Pages/Guides/Index.vue' => 'b4121443c078f0f386cbe204673386bf75d73fd187b9f642e61a05adabcc35ad',
@@ -1269,6 +1272,7 @@ final class ModuleArchitectureTest extends TestCase
             'app/Modules/Dashboard/Application/DashboardMetrics.php',
             'app/Modules/Finance/Application/EcbFxService.php',
             'app/Modules/Finance/Application/OrderAnalysisService.php',
+            'app/Modules/Finance/Application/ProfitDashboardService.php',
             'app/Modules/Guides/Application/KnowledgeBaseService.php',
             'app/Modules/Guides/Application/MarkdownContentRenderer.php',
             'app/Modules/Identity/Application/AuthorizationKeys.php',
@@ -1505,7 +1509,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('b9d48157509144d939e5542596ca165aa0993921bf2187605fe181c7414d961d', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('c2a8bf0d330081142af9d26f24ec1b78bddb89b20c66dc8bfdb48c15fd77e4d5', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);
