@@ -3,6 +3,7 @@
 namespace App\Modules\Products\Providers;
 
 use App\Modules\Products\Application\Contracts\ProductExternalReferenceRepository;
+use App\Modules\Products\Application\Contracts\ProductCostEvidenceReader;
 use App\Modules\Products\Application\Contracts\ProductRepository;
 use App\Modules\Products\Application\Contracts\SkuAliasRepository;
 use App\Modules\Products\Application\Contracts\SkuReconciliationRepository;
@@ -12,6 +13,7 @@ use App\Modules\Products\Application\Contracts\WooCommerceProductInboundStore;
 use App\Modules\Products\Application\WooCommerceProductInboundService;
 use App\Modules\Products\Experience\Console\ImportWooCsvCommand;
 use App\Modules\Products\Infrastructure\EloquentProductExternalReferenceRepository;
+use App\Modules\Products\Infrastructure\EloquentProductCostEvidenceReader;
 use App\Modules\Products\Infrastructure\EloquentProductRepository;
 use App\Modules\Products\Infrastructure\EloquentSkuAliasRepository;
 use App\Modules\Products\Infrastructure\EloquentSkuReconciliationRepository;
@@ -29,6 +31,7 @@ final class ProductsServiceProvider extends ServiceProvider
         $this->app->bind(SkuReconciliationRepository::class, EloquentSkuReconciliationRepository::class);
         $this->app->bind(WeightEvidenceRepository::class, EloquentWeightEvidenceRepository::class);
         $this->app->bind(ProductExternalReferenceRepository::class, EloquentProductExternalReferenceRepository::class);
+        $this->app->bind(ProductCostEvidenceReader::class, EloquentProductCostEvidenceReader::class);
         $this->app->bind(WooCommerceProductGateway::class, HttpWooCommerceProductGateway::class);
         $this->app->bind(WooCommerceProductInboundStore::class, EloquentWooCommerceProductInboundStore::class);
     }
