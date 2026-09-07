@@ -73,4 +73,19 @@ final class WarehouseRoutingPolicy
             ->map(fn ($code): string => strtoupper(trim((string) $code)))
             ->filter()->unique()->values()->all();
     }
+
+    /** @return array<string,mixed>|null */
+    public function deCostGate(string $country): ?array
+    {
+        if ($this->strategy($country) !== 'de_cost_gate') return null;
+        $rule = $this->country($country)['rules']['cost_gate'] ?? null;
+        return is_array($rule) ? $rule : null;
+    }
+
+    public function blockedReason(string $country): ?string
+    {
+        if ($this->strategy($country) !== 'blocked') return null;
+        $reason = $this->country($country)['reason'] ?? null;
+        return is_string($reason) && trim($reason) !== '' ? trim($reason) : null;
+    }
 }
