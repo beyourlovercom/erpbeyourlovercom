@@ -140,6 +140,11 @@ final class HistoricalOrderMaterializationService
         });
     }
 
+    public function evaluateEvidence(HistoricalEvidence $evidence): array
+    {
+        return $this->decide($evidence);
+    }
+
     private function decide(HistoricalEvidence $evidence): array
     {
         $snapshot = $evidence->evidence_snapshot ?? [];

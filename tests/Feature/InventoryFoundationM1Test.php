@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Modules\Identity\Infrastructure\Models\Permission;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
+use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Logistics\Infrastructure\Models\ShipmentAttempt;
@@ -60,6 +62,50 @@ final class InventoryFoundationM1Test extends TestCase
         ])->assertRedirect();
         $this->assertDatabaseHas('warehouses',['slug'=>'test-wh','code'=>'test-wh','name'=>'测试仓库','ownership_type'=>'external','address_line1'=>'100 Test Ave']);
         $this->assertDatabaseHas('audit_records',['action'=>'warehouse.created']);
+    }
+
+    public function test_warehouse_fulfillment_date_is_editable_and_future_date_blocks_auto_allocation(): void
+    {
+        $user=$this->userWith(['inventory.view','inventory.warehouses.manage']);
+        $warehouse=Warehouse::query()->where('slug','us-la')->firstOrFail();
+        InventorySyncBatch::query()->create([
+            'warehouse_id'=>$warehouse->id,'source_type'=>'csv','sync_mode'=>'full','status'=>'confirmed','confirmed_at'=>now(),
+        ]);
+
+        $this->actingAs($user)->patch('/inventory/us-la',[
+            'name'=>$warehouse->name,'code'=>$warehouse->code,'country_code'=>'US',
+            'address_line1'=>$warehouse->address_line1,'address_line2'=>$warehouse->address_line2,
+            'city'=>$warehouse->city,'state_region'=>$warehouse->state_region,'postal_code'=>$warehouse->postal_code,
+            'timezone'=>'America/Los_Angeles','type'=>$warehouse->type,'ownership_type'=>$warehouse->ownership_type,
+            'is_domestic'=>false,'is_active'=>true,'priority'=>$warehouse->priority,
+            'fulfillment_available_on'=>now()->addWeek()->toDateString(),
+        ])->assertRedirect();
+
+        $row=collect(app(InventoryAvailabilityReader::class)->activeWarehouses())->firstWhere('id',$warehouse->id);
+        $this->assertFalse($row['can_auto_allocate']);
+        $this->assertSame(now()->addWeek()->toDateString(),$row['fulfillment_available_on']);
+        $this->actingAs($user)->get('/inventory/us-la')->assertOk()->assertInertia(fn($p)=>$p
+            ->where('warehouse.fulfillment_state','preparing')
+            ->where('warehouse.fulfillment_state_label','备货中'));
+    }
+
+    public function test_fulfillment_date_does_not_open_without_full_snapshot_and_opens_after_snapshot(): void
+    {
+        $warehouse=Warehouse::query()->where('slug','us-ny')->firstOrFail();
+        $warehouse->update(['fulfillment_available_on'=>now()->subDay()->toDateString()]);
+
+        $row=collect(app(InventoryAvailabilityReader::class)->activeWarehouses())->firstWhere('id',$warehouse->id);
+        $this->assertFalse($row['can_auto_allocate']);
+        $list=collect(app(\App\Modules\Inventory\Application\InventoryService::class)->warehouses())->firstWhere('id',$warehouse->id);
+        $this->assertSame('awaiting_inventory',$list['fulfillment_state']);
+
+        InventorySyncBatch::query()->create([
+            'warehouse_id'=>$warehouse->id,'source_type'=>'csv','sync_mode'=>'full','status'=>'confirmed','confirmed_at'=>now(),
+        ]);
+        $row=collect(app(InventoryAvailabilityReader::class)->activeWarehouses())->firstWhere('id',$warehouse->id);
+        $this->assertTrue($row['can_auto_allocate']);
+        $list=collect(app(\App\Modules\Inventory\Application\InventoryService::class)->warehouses())->firstWhere('id',$warehouse->id);
+        $this->assertSame('ready',$list['fulfillment_state']);
     }
 
     public function test_warehouse_manager_can_explicitly_configure_domestic_fulfillment_authority(): void
