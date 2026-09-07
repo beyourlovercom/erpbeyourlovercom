@@ -4,6 +4,8 @@ namespace Tests\Unit;
 
 use App\Modules\Logistics\Application\ChinaFactoryRoutingCostCalculator;
 use App\Modules\Logistics\Application\GermanyDhlRoutingCostCalculator;
+use App\Modules\Logistics\Application\FulfillmentPlanCostEstimator;
+use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use Tests\TestCase;
 
 final class FulfillmentRoutingCostCalculatorTest extends TestCase
@@ -48,6 +50,14 @@ final class FulfillmentRoutingCostCalculatorTest extends TestCase
         $this->assertSame(1.0, $domestic['components'][1]['amount']);
         $this->assertSame(8.555, $france['components'][0]['amount']);
         $this->assertSame(10.26, $austria['components'][0]['amount'] + $austria['components'][1]['amount']);
+    }
+
+    public function test_container_wires_fulfillment_plan_cost_estimator(): void
+    {
+        $service = app(FulfillmentPlanPreviewService::class);
+        $property = new \ReflectionProperty(FulfillmentPlanPreviewService::class, 'costEstimator');
+
+        $this->assertInstanceOf(FulfillmentPlanCostEstimator::class, $property->getValue($service));
     }
 
     public function test_unsupported_country_and_weight_fail_closed(): void
