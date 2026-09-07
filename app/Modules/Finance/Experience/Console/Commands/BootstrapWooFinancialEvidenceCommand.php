@@ -6,6 +6,7 @@ use App\Modules\Finance\Application\WooFinancialEvidenceBootstrapService;
 use App\Modules\Orders\Application\Contracts\WooCommerceFinancialEvidenceReader;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 final class BootstrapWooFinancialEvidenceCommand extends Command
@@ -30,6 +31,9 @@ final class BootstrapWooFinancialEvidenceCommand extends Command
         if ($this->option('apply') && ! app()->environment(['local', 'testing', 'production'])) {
             $this->error('Apply is not enabled in this environment.');
             return self::FAILURE;
+        }
+        if ($this->option('apply') && DB::connection()->getDriverName() === 'mysql') {
+            DB::statement("SET time_zone = '+00:00'");
         }
 
         $limit = max(1, min(10000, (int) $this->option('limit')));
