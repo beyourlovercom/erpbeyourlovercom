@@ -201,8 +201,11 @@ final class WooFinancialEvidenceBootstrapService
         if ($right instanceof \DateTimeInterface) {
             $right = $right->format('Y-m-d H:i:s');
         }
+        if (is_array($left) && is_array($right)) {
+            return $left == $right;
+        }
         if (is_array($left) || is_array($right)) {
-            return json_encode($left, JSON_UNESCAPED_SLASHES) === json_encode($right, JSON_UNESCAPED_SLASHES);
+            return false;
         }
         $leftString = str_replace('T', ' ', (string) $left);
         $rightString = str_replace('T', ' ', (string) $right);

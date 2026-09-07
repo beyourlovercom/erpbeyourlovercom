@@ -77,6 +77,10 @@ final class OrderService
     /** @return array{order:Model,created:bool} */
     public function upsertInbound(NormalizedInboundOrder $data, ?Authenticatable $actor): array
     {
+        if (DB::connection()->getDriverName() === 'mysql') {
+            DB::statement("SET time_zone = '+00:00'");
+        }
+
         return DB::transaction(function () use ($data, $actor): array {
             $orderClass = 'App\\Modules\\Orders\\Infrastructure\\Models\\Order';
             $referenceClass = 'App\\Modules\\Orders\\Infrastructure\\Models\\OrderExternalReference';
