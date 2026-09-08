@@ -10,6 +10,7 @@ use App\Modules\Logistics\Infrastructure\Models\ShipmentCarrierBilling;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 final class CostMaterializationTest extends TestCase
@@ -223,16 +224,20 @@ final class CostMaterializationTest extends TestCase
         self::assertSame('USD', $customs['currency']);
         self::assertSame('apply', $customs['materialization_status']);
 
+        Http::fake(['ecb.europa.eu/*' => Http::response($this->ecbXml(), 200)]);
         $overseasEur = $this->order('EUR');
+        $overseasEur->financials()->create(['currency' => 'EUR', 'revenue_provenance' => 'provider_import', 'completeness_status' => 'INCOMPLETE']);
         $this->attachWarehouseShipment($overseasEur, 'de');
         $preview = $this->service()->preview($overseasEur);
         $firstMile = $this->candidate($preview, 'first_mile_cost');
-        self::assertSame('blocked', $firstMile['materialization_status']);
-        self::assertSame('first_mile_fx_conversion_required', $firstMile['blocker']);
-        self::assertSame('1.00', $firstMile['source_amount']);
+        self::assertSame('apply', $firstMile['materialization_status']);
+        self::assertSame('0.91', $firstMile['amount']);
         self::assertSame('USD', $firstMile['source_currency']);
-        self::assertSame('EUR', $firstMile['order_currency']);
+        self::assertSame('1.00', $firstMile['source_amount']);
         self::assertSame('0.00', $this->candidate($preview, 'customs_tax')['amount']);
+        $this->service()->apply($overseasEur);
+        self::assertSame('0.91', $overseasEur->costEntries()->where('cost_type', 'first_mile_cost')->firstOrFail()->amount);
+        self::assertSame('1.10000000', $overseasEur->financials()->firstOrFail()->fresh()->fx_rate);
 
         $chinaDirect = $this->order('EUR');
         $this->attachWarehouseShipment($chinaDirect, 'factory');
@@ -280,6 +285,17 @@ final class CostMaterializationTest extends TestCase
         $entry->forceFill(['source_reference' => $billingCandidate['source_reference']])->save();
         $this->service()->apply($order->fresh());
         self::assertSame('CONFIRMED', $order->financials()->firstOrFail()->fresh()->completeness_status);
+    }
+
+
+    private function ecbXml(): string
+    {
+        return <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01" xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref">
+  <Cube><Cube time="2026-09-07"><Cube currency="USD" rate="1.10"/><Cube currency="EUR" rate="1.00"/><Cube currency="CNY" rate="7.81"/></Cube></Cube>
+</gesmes:Envelope>
+XML;
     }
 
     private function service(): CostMaterializationService
