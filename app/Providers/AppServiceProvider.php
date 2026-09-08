@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Http\RequestPerformance;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -12,6 +13,7 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->singleton(RequestPerformance::class);
     }
 
     public function boot(): void

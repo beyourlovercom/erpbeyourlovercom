@@ -7,11 +7,13 @@ use App\Modules\Identity\Experience\Middleware\ApplyLocalAdminBypass;
 use App\Modules\Identity\Experience\Middleware\EnsureActiveAuthenticatedUser;
 use App\Modules\Identity\Experience\Middleware\RequireAnyPermission;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\ObserveErpRequest;
 use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -30,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
             EnsureActiveAuthenticatedUser::class,
             HandleInertiaRequests::class,
         ]);
+        $middleware->prepend(ObserveErpRequest::class);
         $middleware->alias(['any.permission' => RequireAnyPermission::class]);
         $middleware->prependToPriorityList(
             AuthenticatesRequests::class,
@@ -40,4 +43,28 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*'),
         );
+        $exceptions->render(function (\Throwable $exception, Request $request) {
+            $status = $exception instanceof HttpExceptionInterface ? $exception->getStatusCode() : 500;
+            if ($request->expectsJson() || ! $request->header('X-Inertia') || config('app.debug') || $status < 500) {
+                return null;
+            }
+
+            $errorId = (string) $request->attributes->get('erp_request_id');
+
+            $response = \Inertia\Inertia::render('Errors/ServerError', [
+                'errorId' => $errorId,
+            ])->toResponse($request);
+            $response->setStatusCode($status);
+            $response->headers->set((string) config('observability.request_id_header'), $errorId);
+
+            return $response;
+        });
+        $exceptions->respond(function (\Symfony\Component\HttpFoundation\Response $response): \Symfony\Component\HttpFoundation\Response {
+            $requestId = request()->attributes->get('erp_request_id');
+            if (is_string($requestId) && $requestId !== '') {
+                $response->headers->set((string) config('observability.request_id_header'), $requestId);
+            }
+
+            return $response;
+        });
     })->create();

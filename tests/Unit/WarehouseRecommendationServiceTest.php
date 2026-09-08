@@ -256,6 +256,40 @@ final class WarehouseRecommendationServiceTest extends TestCase
         $this->assertSame('no_inventory_authority', $result['reason_code']);
     }
 
+    public function test_prepared_context_reuses_batched_reads_for_fifty_recommendations(): void
+    {
+        $reader = new class implements InventoryAvailabilityReader
+        {
+            public int $warehouseReads = 0;
+            public int $availabilityReads = 0;
+            public function activeWarehouses(): array
+            {
+                $this->warehouseReads++;
+
+                return [[
+                    'id' => 2, 'slug' => 'w-gb', 'name' => 'W-GB', 'code' => 'W-GB',
+                    'country_code' => 'GB', 'priority' => 1, 'can_auto_allocate' => true,
+                    'service_regions' => [['country_code' => 'GB', 'priority' => 1]],
+                ]];
+            }
+            public function forProductIds(array $productIds): array
+            {
+                $this->availabilityReads++;
+
+                return [10 => [['warehouse_id' => 2, 'quantity_available' => 100]]];
+            }
+        };
+        $service = new WarehouseRecommendationService($reader, app(WarehouseRoutingPolicy::class), app(UspsZoneResolver::class));
+        $context = $service->prepare([10]);
+
+        for ($i = 0; $i < 50; $i++) {
+            $this->assertSame('recommended', $service->recommend('GB', [['product_id' => 10, 'quantity' => 1]], null, [], [], $context)['status']);
+        }
+
+        $this->assertSame(1, $reader->warehouseReads);
+        $this->assertSame(1, $reader->availabilityReads);
+    }
+
     private function service(array $warehouses, array $availability): WarehouseRecommendationService
     {
         return new WarehouseRecommendationService(

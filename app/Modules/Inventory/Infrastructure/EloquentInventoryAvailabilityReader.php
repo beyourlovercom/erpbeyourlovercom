@@ -9,8 +9,15 @@ use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 
 final class EloquentInventoryAvailabilityReader implements InventoryAvailabilityReader
 {
+    /** @var array<int,array<string,mixed>>|null */
+    private ?array $activeWarehousesCache = null;
+
     public function activeWarehouses(): array
     {
+        if ($this->activeWarehousesCache !== null) {
+            return $this->activeWarehousesCache;
+        }
+
         $confirmedBatches = InventorySyncBatch::query()
             ->where('status', 'confirmed')
             ->orderByDesc('confirmed_at')
@@ -18,7 +25,7 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
             ->get()
             ->groupBy('warehouse_id');
 
-        return Warehouse::query()
+        return $this->activeWarehousesCache = Warehouse::query()
             ->with(['serviceRegions' => fn ($query) => $query->orderBy('priority')->orderBy('country_code')])
             ->withCount('inventories')
             ->where('is_active', true)
