@@ -13,7 +13,7 @@ final class AutomaticAllocationEligibilityService
     ) {}
 
     /** @return array<string,mixed> */
-    public function evaluate(Order $order, ?array $recommendation = null): array
+    public function evaluate(Order $order, ?array $recommendation = null, ?array $activeReservationsByOrderId = null): array
     {
         $order->loadMissing(['address', 'items', 'shipment.warehouse', 'externalReferences']);
 
@@ -25,10 +25,12 @@ final class AutomaticAllocationEligibilityService
             return $this->blocked('BLOCKED_OTHER', 'order_not_pending', '只有待发货订单可以自动分配。');
         }
 
-        $activeReservation = InventoryReservation::query()
-            ->where('order_id', $order->id)
-            ->where('status', 'reserved')
-            ->first();
+        $activeReservation = $activeReservationsByOrderId !== null
+            ? ($activeReservationsByOrderId[$order->id] ?? null)
+            : InventoryReservation::query()
+                ->where('order_id', $order->id)
+                ->where('status', 'reserved')
+                ->first();
         if ($activeReservation) {
             if ($order->shipment?->warehouse_selection_source === 'automatic'
                 && (int) $order->shipment->warehouse_id === (int) $activeReservation->warehouse_id) {

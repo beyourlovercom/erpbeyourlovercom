@@ -13,8 +13,23 @@ final class WarehouseRecommendationService
         private readonly UspsZoneResolver $zones,
     ) {}
 
+    /** @param array<int,int> $productIds */
+    public function prepare(array $productIds): array
+    {
+        $warehouses = $this->inventory->activeWarehouses();
+
+        return ['warehouses' => $warehouses, 'availability' => $this->inventory->forProductIds($productIds)];
+    }
+
     /** @param array<int, array{product_id:int|null,quantity:int}> $items */
-    public function recommend(?string $country, array $items, ?string $postalCode = null, array $costEvidence = [], array $destinationContext = []): array
+    public function recommend(
+        ?string $country,
+        array $items,
+        ?string $postalCode = null,
+        array $costEvidence = [],
+        array $destinationContext = [],
+        ?array $context = null,
+    ): array
     {
         $countryCode = strtoupper(trim((string) $country));
         if ($countryCode === '') {
@@ -32,7 +47,8 @@ final class WarehouseRecommendationService
             return $this->blocked('no_items', '订单没有可用于库存判断的商品。');
         }
 
-        $warehouses = collect($this->inventory->activeWarehouses())
+        $context ??= $this->prepare($requirements->keys()->all());
+        $warehouses = collect($context['warehouses'])
             ->filter(fn (array $warehouse): bool => (bool) ($warehouse['can_auto_allocate'] ?? false));
         if ($warehouses->isEmpty()) {
             return $this->blocked('no_inventory_authority', '当前没有具备 Full Snapshot 权威库存的仓库。');
@@ -62,29 +78,31 @@ final class WarehouseRecommendationService
             );
         }
         if ($strategy === 'fixed') {
-            return $this->recommendFixedWarehouse($countryCode, $requirements, $warehouses);
+            return $this->recommendFixedWarehouse($countryCode, $requirements, $warehouses, $context);
         }
         if ($strategy === 'de_preferred') {
-            return $this->recommendDePreferred($countryCode, $requirements, $warehouses);
+            return $this->recommendDePreferred($countryCode, $requirements, $warehouses, $context);
         }
         if ($strategy === 'de_cost_gate') {
-            return $this->recommendDeCostGate($countryCode, $requirements, $warehouses, $costEvidence);
+            return $this->recommendDeCostGate($countryCode, $requirements, $warehouses, $costEvidence, $context);
         }
         if ($strategy === 'east_zone_then_priority') {
-            $result = $this->recommendEastZoneThenPriority($countryCode, $postalCode, $requirements, $warehouses);
+            $result = $this->recommendEastZoneThenPriority($countryCode, $postalCode, $requirements, $warehouses, $context);
             if ($countryCode === 'US' && $this->routing->isUsMilitaryDestination($destinationContext)) {
                 return $this->militaryResult($result);
             }
+
             return $result;
         }
 
-        return $this->recommendServiceRegion($countryCode, $requirements, $warehouses);
+        return $this->recommendServiceRegion($countryCode, $requirements, $warehouses, $context);
     }
 
     private function recommendFixedWarehouse(
         string $countryCode,
         Collection $requirements,
         Collection $warehouses,
+        array $context,
     ): array {
         $fixedCode = $this->routing->fixedWarehouseCode($countryCode);
         if ($fixedCode === null) {
@@ -105,8 +123,7 @@ final class WarehouseRecommendationService
             return $this->blocked('no_service_region_match', "固定仓 {$fixedCode} 尚未配置 {$countryCode} 服务区域。", $countryCode);
         }
 
-        $availability = $this->inventory->forProductIds($requirements->keys()->all());
-        if (! $this->covers($warehouse, $requirements, $availability)) {
+        if (! $this->covers($warehouse, $requirements, $context['availability'])) {
             return $this->blocked('insufficient_stock', "固定仓 {$fixedCode} 无法一次满足订单全部商品数量。", $countryCode);
         }
 
@@ -124,8 +141,9 @@ final class WarehouseRecommendationService
         string $countryCode,
         Collection $requirements,
         Collection $warehouses,
+        array $context,
     ): array {
-        $warehouse = $this->deWarehouse($countryCode, $requirements, $warehouses);
+        $warehouse = $this->deWarehouse($countryCode, $requirements, $warehouses, $context);
         if (isset($warehouse['blocked'])) return $warehouse['blocked'];
 
         return $this->recommended(
@@ -144,8 +162,9 @@ final class WarehouseRecommendationService
         Collection $requirements,
         Collection $warehouses,
         array $costEvidence,
+        array $context,
     ): array {
-        $warehouse = $this->deWarehouse($countryCode, $requirements, $warehouses);
+        $warehouse = $this->deWarehouse($countryCode, $requirements, $warehouses, $context);
         if (isset($warehouse['blocked'])) return $warehouse['blocked'];
 
         $gate = $this->routing->deCostGate($countryCode) ?? [];
@@ -207,7 +226,7 @@ final class WarehouseRecommendationService
     }
 
     /** @return array<string,mixed> */
-    private function deWarehouse(string $countryCode, Collection $requirements, Collection $warehouses): array
+    private function deWarehouse(string $countryCode, Collection $requirements, Collection $warehouses, array $context): array
     {
         $allowed = $this->routing->warehouseCodes($countryCode);
         $warehouse = $warehouses->first(fn (array $candidate): bool =>
@@ -221,8 +240,7 @@ final class WarehouseRecommendationService
             )];
         }
 
-        $availability = $this->inventory->forProductIds($requirements->keys()->all());
-        if (! $this->covers($warehouse, $requirements, $availability)) {
+        if (! $this->covers($warehouse, $requirements, $context['availability'])) {
             return ['blocked' => $this->blocked(
                 'insufficient_stock',
                 '德国仓无法一次满足订单全部商品数量；请进入整单/拆单履约方案评估。',
@@ -270,6 +288,7 @@ final class WarehouseRecommendationService
         ?string $postalCode,
         Collection $requirements,
         Collection $warehouses,
+        array $context,
     ): array {
         $allowedCodes = $this->routing->warehouseCodes($countryCode);
         $policyWarehouses = $warehouses->filter(function (array $warehouse) use ($allowedCodes): bool {
@@ -281,9 +300,8 @@ final class WarehouseRecommendationService
             return $this->blocked('no_inventory_authority', '路由策略中的仓库当前没有可用 Full Snapshot 权威库存。', $countryCode);
         }
 
-        $availability = $this->inventory->forProductIds($requirements->keys()->all());
         $eligible = $policyWarehouses->filter(
-            fn (array $warehouse): bool => $this->covers($warehouse, $requirements, $availability)
+            fn (array $warehouse): bool => $this->covers($warehouse, $requirements, $context['availability'])
         )->values();
         if ($eligible->isEmpty()) {
             return $this->blocked('insufficient_stock', '美国候选仓无法由单一仓库一次满足订单全部商品数量。', $countryCode);
@@ -343,7 +361,7 @@ final class WarehouseRecommendationService
         );
     }
 
-    private function recommendServiceRegion(string $countryCode, Collection $requirements, Collection $warehouses): array
+    private function recommendServiceRegion(string $countryCode, Collection $requirements, Collection $warehouses, array $context): array
     {
         if (! $warehouses->contains(fn (array $warehouse): bool => ! empty($warehouse['service_regions']))) {
             return $this->blocked('service_regions_unconfigured', '可自动分配仓库尚未配置服务国家/地区。');
@@ -360,9 +378,8 @@ final class WarehouseRecommendationService
             return $this->blocked('no_service_region_match', "没有可自动分配仓库覆盖 {$countryCode}。", $countryCode);
         }
 
-        $availability = $this->inventory->forProductIds($requirements->keys()->all());
         $eligible = $regional->filter(
-            fn (array $warehouse): bool => $this->covers($warehouse, $requirements, $availability)
+            fn (array $warehouse): bool => $this->covers($warehouse, $requirements, $context['availability'])
         );
         if ($eligible->isEmpty()) {
             return $this->blocked('insufficient_stock', '覆盖该国家的仓库无法一次满足订单全部商品数量。', $countryCode);

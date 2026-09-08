@@ -2,7 +2,6 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
-use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Logistics\Application\AutomaticAllocationEligibilityService;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\AssistedFulfillmentService;
@@ -14,7 +13,11 @@ use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
 use Illuminate\Http\Request;
+use Illuminate\Database\QueryException;
+use PDOException;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -27,7 +30,6 @@ final class LogisticsController
         private readonly ShipmentService $shipments,
         private readonly AutomaticAllocationEligibilityService $automaticAllocationEligibility,
         private readonly AssistedFulfillmentService $assistedFulfillment,
-        private readonly InventoryAvailabilityReader $availability,
         private readonly WarehouseRecommendationService $recommendations,
         private readonly FulfillmentPlanPreviewService $fulfillmentPlans,
         private readonly CarrierRoutingPolicy $carrierRouting,
@@ -41,11 +43,17 @@ final class LogisticsController
             ->paginate(self::PER_PAGE)->withQueryString();
 
         $productIds = collect($orders->items())->flatMap(fn (Order $order) => $order->items->pluck('product_id'))->filter()->unique()->values()->all();
-        $availability = $this->availability->forProductIds($productIds);
+        $recommendationContext = $this->recommendations->prepare($productIds);
+        $activeReservations = InventoryReservation::query()
+            ->whereIn('order_id', collect($orders->items())->pluck('id')->all())
+            ->where('status', 'reserved')
+            ->get()
+            ->keyBy('order_id')
+            ->all();
 
         return Inertia::render('Logistics/Index', [
-            'orders' => $orders->through(fn (Order $order): array => $this->data($order, $availability))->toArray(),
-            'warehouses' => $this->availability->activeWarehouses(),
+            'orders' => $orders->through(fn (Order $order): array => $this->data($order, $recommendationContext, $activeReservations))->toArray(),
+            'warehouses' => $recommendationContext['warehouses'],
             'carrierOptions' => Carrier::query()->where('is_active', true)->orderBy('id')->get(['name'])->map(fn (Carrier $carrier): array => [
                 'value' => $carrier->name,
                 'label' => $this->carrierRouting->displayName($carrier->name),
@@ -290,7 +298,7 @@ final class LogisticsController
         ];
     }
 
-    private function data(Order $order, array $availability): array
+    private function data(Order $order, array $context, array $activeReservationsByOrderId = []): array
     {
         $destinationContext = [
             'province_state' => $order->address?->province_state,
@@ -303,17 +311,13 @@ final class LogisticsController
             'quantity' => (int) $item->quantity,
             'sku' => $item->sku,
         ])->values()->all();
-        $recommendation = $this->recommendations->recommend(
-            $order->address?->country,
-            $planItems,
-            $order->address?->postal_code,
-            [],
-            $destinationContext,
-        );
+        $recommendation = $this->recommendationFor($order, $context, $destinationContext, $planItems);
         $fulfillmentPlanPreview = $this->fulfillmentPlans->preview(
             $order->address?->country,
             $planItems,
             $destinationContext,
+            [],
+            $context,
         );
 
         return [
@@ -340,15 +344,49 @@ final class LogisticsController
                 'sku' => $item->sku,
                 'product_summary' => $item->product_summary,
                 'quantity' => $item->quantity,
-                'availability' => $availability[$item->product_id] ?? [],
+                'availability' => $context['availability'][$item->product_id] ?? [],
             ])->values()->all(),
             'warehouse_recommendation' => $recommendation,
             'fulfillment_plan_preview' => $fulfillmentPlanPreview,
-            'automatic_allocation' => $this->automaticAllocationEligibility->evaluate($order, $recommendation),
+            'automatic_allocation' => $this->automaticAllocationEligibility->evaluate($order, $recommendation, $activeReservationsByOrderId),
             'shipment' => $order->shipment ? [
                 ...$order->shipment->only(['warehouse_id', 'warehouse_selection_source', 'carrier', 'service', 'carrier_selection_source', 'tracking_number', 'shipped_at', 'logistics_note']),
                 'warehouse_name' => $order->shipment->warehouse?->name,
             ] : null,
         ];
+    }
+
+    /** @return array<string,mixed> */
+    private function recommendationFor(Order $order, array $context, array $destinationContext, array $items): array
+    {
+        try {
+            return $this->recommendations->recommend(
+                $order->address?->country,
+                $items,
+                $order->address?->postal_code,
+                [],
+                $destinationContext,
+                $context,
+            );
+        } catch (QueryException|PDOException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            Log::warning('erp.logistics.recommendation_row_failed', [
+                'order_id' => $order->id,
+                'exception_class' => $exception::class,
+                'exception_message' => $exception->getMessage(),
+            ]);
+
+            return [
+                'status' => 'blocked',
+                'reason_code' => 'recommendation_failed',
+                'reason_label' => '该订单推荐计算暂时失败，请人工处理。',
+                'country_code' => $order->address?->country,
+                'required_sku_count' => null,
+                'candidate_count' => 0,
+                'warehouse' => null,
+                'routing_context' => null,
+            ];
+        }
     }
 }

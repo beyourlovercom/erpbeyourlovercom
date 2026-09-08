@@ -115,6 +115,30 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
         $this->assertSame('KingTrans', $plan['segments'][0]['carrier']);
     }
 
+    public function test_prepared_context_prevents_per_order_inventory_rereads(): void
+    {
+        $warehouses = [$this->warehouse(2, 'US-NY')];
+        $availability = [10 => [$this->stock(2, 100)]];
+        $reader = new class($warehouses, $availability) implements InventoryAvailabilityReader
+        {
+            public int $warehouseReads = 0;
+            public int $availabilityReads = 0;
+            public function __construct(private array $warehouses, private array $availability) {}
+            public function activeWarehouses(): array { $this->warehouseReads++; return $this->warehouses; }
+            public function forProductIds(array $productIds): array { $this->availabilityReads++; return collect($this->availability)->only($productIds)->all(); }
+        };
+        $service = new FulfillmentPlanPreviewService($reader, app(WarehouseRoutingPolicy::class), app(CarrierRoutingPolicy::class));
+        $context = ['warehouses' => $warehouses, 'availability' => $availability];
+
+        for ($i = 0; $i < 50; $i++) {
+            $preview = $service->preview('US', [['product_id' => 10, 'quantity' => 1]], ['province_state' => 'NY'], [], $context);
+            $this->assertSame('preview', $preview['status']);
+        }
+
+        $this->assertSame(0, $reader->warehouseReads);
+        $this->assertSame(0, $reader->availabilityReads);
+    }
+
     private function service(array $warehouses, array $availability): FulfillmentPlanPreviewService
     {
         return new FulfillmentPlanPreviewService($this->reader($warehouses, $availability), app(WarehouseRoutingPolicy::class), app(CarrierRoutingPolicy::class));

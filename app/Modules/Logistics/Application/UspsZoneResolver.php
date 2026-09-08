@@ -4,6 +4,9 @@ namespace App\Modules\Logistics\Application;
 
 final class UspsZoneResolver
 {
+    /** @var array<string,array<string,mixed>> */
+    private array $dataCache = [];
+
     /** @return array{status:string,zone:?int,prefix:?int,postal_code:?string,source:?array} */
     public function resolve(?string $postalCode, string $dataFile): array
     {
@@ -18,7 +21,7 @@ final class UspsZoneResolver
             return $this->result('zone_data_missing', null, (int) substr($match[1], 0, 3), $match[1], null);
         }
 
-        $data = require $path;
+        $data = $this->dataCache[$path] ??= (array) require $path;
         $prefix = (int) substr($match[1], 0, 3);
         $zones = [];
         foreach (($data['ranges'] ?? []) as $range) {

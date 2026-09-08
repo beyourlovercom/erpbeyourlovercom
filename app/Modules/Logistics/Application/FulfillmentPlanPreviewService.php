@@ -31,6 +31,7 @@ final class FulfillmentPlanPreviewService
         array $items,
         array $destinationContext = [],
         array $costEvidence = [],
+        ?array $context = null,
     ): array {
         $countryCode = strtoupper(trim((string) $country));
         $requirements = $this->requirements($items);
@@ -47,13 +48,13 @@ final class FulfillmentPlanPreviewService
         $akHi = $countryCode === 'US' && $this->routing->isUsAkHiDestination($destinationContext);
         $factoryAllowed = $this->routing->factoryAllowed($destinationContext);
         $warehouseCodes = $this->routing->warehouseCodes($countryCode);
-        $warehouses = collect($this->inventory->activeWarehouses())
+        $warehouses = collect($context['warehouses'] ?? $this->inventory->activeWarehouses())
             ->filter(fn (array $warehouse): bool => (bool) ($warehouse['can_auto_allocate'] ?? false))
             ->filter(function (array $warehouse) use ($warehouseCodes): bool {
                 $canonical = $this->routing->canonicalWarehouseCode((string) ($warehouse['code'] ?? ''));
                 return $canonical !== null && in_array($canonical, $warehouseCodes, true);
             })->values();
-        $availability = $this->inventory->forProductIds($requirements->keys()->all());
+        $availability = $context['availability'] ?? $this->inventory->forProductIds($requirements->keys()->all());
 
         $plans = [];
         foreach ($warehouses as $warehouse) {
