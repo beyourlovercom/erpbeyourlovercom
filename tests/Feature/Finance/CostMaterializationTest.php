@@ -360,6 +360,45 @@ final class CostMaterializationTest extends TestCase
         self::assertSame(1, $order->costEntries()->where('cost_type', 'payment_fee')->count());
     }
 
+    public function test_payment_fee_production_apply_requires_process_gate_and_exact_preflight_counts(): void
+    {
+        Http::fake(['ecb.europa.eu/*' => Http::response($this->ecbXml(), 200)]);
+        $order = $this->order('EUR');
+        $order->financials()->create([
+            'currency' => 'EUR', 'provider_order_total' => '100.00', 'refund_amount' => '0.00',
+            'revenue_provenance' => 'provider_import', 'completeness_status' => 'INCOMPLETE',
+        ]);
+
+        $previousEnv = $this->app['env'];
+        $this->app['env'] = 'production';
+        putenv('ERP_ACCOUNTING_PAYMENT_FEE_PRODUCTION_APPLY_ENABLED');
+        try {
+            $base = [
+                '--order' => $order->id, '--apply' => true,
+                '--expect-seen' => '1', '--expect-apply' => '1',
+                '--expect-blocked' => '0', '--expect-fx-freeze' => '1',
+            ];
+            $this->artisan('finance:materialize-payment-fees', $base)->assertFailed();
+            self::assertSame(0, $order->costEntries()->count());
+
+            putenv('ERP_ACCOUNTING_PAYMENT_FEE_PRODUCTION_APPLY_ENABLED=true');
+            $wrong = $base;
+            $wrong['--expect-apply'] = '2';
+            $this->artisan('finance:materialize-payment-fees', $wrong)->assertFailed();
+            self::assertSame(0, $order->costEntries()->count());
+            self::assertNull($order->financials()->firstOrFail()->fresh()->fx_rate);
+
+            $this->artisan('finance:materialize-payment-fees', $base)->assertSuccessful();
+            self::assertSame(1, $order->costEntries()->where('cost_type', 'payment_fee')->count());
+            self::assertFalse($order->costEntries()->where('cost_type', 'product_cost')->exists());
+            self::assertFalse($order->costEntries()->where('cost_type', 'customs_tax')->exists());
+            self::assertSame('1.10000000', $order->financials()->firstOrFail()->fresh()->fx_rate);
+        } finally {
+            putenv('ERP_ACCOUNTING_PAYMENT_FEE_PRODUCTION_APPLY_ENABLED');
+            $this->app['env'] = $previousEnv;
+        }
+    }
+
     public function test_owner_fixed_cost_rules_are_exact_and_fail_closed(): void
     {
         $overseasUsd = $this->order('USD');
