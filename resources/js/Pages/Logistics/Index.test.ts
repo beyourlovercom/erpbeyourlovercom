@@ -89,7 +89,7 @@ describe('Logistics warehouse recommendation', () => {
     const draftOrder = {
       ...order,
       warehouse_recommendation: { ...order.warehouse_recommendation, status: 'recommended' as const },
-      shipment: { warehouse_id: null, warehouse_name: null, warehouse_selection_source: null, carrier: 'UPS', service: 'Ground', tracking_number: 'TRK-001', shipped_at: '2026-09-01T10:00:00', logistics_note: 'keep-note' },
+      shipment: { warehouse_id: null, warehouse_name: null, warehouse_selection_source: null, carrier: 'UPS', service: '加急', tracking_number: 'TRK-001', shipped_at: '2026-09-01T10:00:00', logistics_note: 'keep-note' },
     }
     const wrapper = mount(Index, { props: { ...props, orders: { ...props.orders, data: [draftOrder] } } })
     const { router } = await import('@inertiajs/vue3')
@@ -110,8 +110,8 @@ describe('Logistics warehouse recommendation', () => {
     expect(wrapper.findAll('td')[5].text()).toBe('美东纽约仓')
     expect((warehouseSelect.element as HTMLSelectElement).value).toBe('2')
     expect((carrierSelect.element as HTMLSelectElement).value).toBe('UPS')
-    expect((wrapper.get('input[placeholder="例如 Ground"]').element as HTMLInputElement).value).toBe('Ground')
-    expect((wrapper.get('input[placeholder="追踪号"]').element as HTMLInputElement).value).toBe('TRK-001')
+    expect((wrapper.get('select[aria-label="物流渠道"]').element as HTMLSelectElement).value).toBe('加急')
+    expect((wrapper.get('input[placeholder="发货单号"]').element as HTMLInputElement).value).toBe('TRK-001')
     expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('keep-note')
     expect(wrapper.findAll('button').some(button => button.text() === '收起')).toBe(true)
     const adoptButton = wrapper.findAll('button').find(button => button.text() === '采用推荐并预留库存')!
@@ -130,6 +130,30 @@ describe('Logistics warehouse recommendation', () => {
     expect(carrierSelect.text()).toContain('UPS')
     expect(carrierSelect.text()).toContain('FedEx')
     expect(wrapper.find('input[placeholder="例如 UPS"]').exists()).toBe(false)
+  })
+
+  it('uses the two-row shipping form, simple service options, and operator copy actions', async () => {
+    const wrapper = mount(Index, { props })
+    await wrapper.findAll('button').find(button => button.text() === '履约处理')!.trigger('click')
+    expect(wrapper.findAll('.fulfillment-form-row')).toHaveLength(2)
+    const serviceSelect = wrapper.get('select[aria-label="物流渠道"]')
+    expect(serviceSelect.text()).toContain('普通（默认）')
+    expect(serviceSelect.text()).toContain('加急')
+    expect(serviceSelect.text()).toContain('特快')
+    expect((serviceSelect.element as HTMLSelectElement).value).toBe('普通')
+    expect(wrapper.find('input[placeholder="发货单号"]').exists()).toBe(true)
+    const shippingCopy = wrapper.findAll('button').find(button => button.text() === '复制发货信息')!
+    expect(shippingCopy.attributes('title')).toContain('物流商和发货单号')
+    expect(wrapper.findAll('button').find(button => button.text() === '复制收件人')!.attributes('title')).toContain('姓名、电话和完整地址')
+    expect(wrapper.findAll('button').find(button => button.text() === '确认发货')!.attributes('title')).toContain('确认本单已实际发货')
+    await wrapper.get('select[aria-label="物流商"]').setValue('UPS')
+    await wrapper.get('input[placeholder="发货单号"]').setValue('SHIP-001')
+    Object.defineProperty(document, 'execCommand', { value: vi.fn(() => true), configurable: true })
+    await shippingCopy.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.copy-feedback').text()).toContain('复制成功 · 发货信息')
+    expect(wrapper.get('.copy-feedback').text()).toContain('物流商：UPS')
+    expect(wrapper.get('.copy-feedback').text()).toContain('发货单号：SHIP-001')
   })
 
   it('renders unknown inventory as unknown instead of numeric zero', async () => {

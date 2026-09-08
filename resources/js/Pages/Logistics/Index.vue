@@ -22,7 +22,8 @@ type ColumnKey = 'order_number' | 'type' | 'recipient' | 'country' | 'item_count
 const props = defineProps<{ orders: Paginated<Order>; warehouses: Warehouse[]; carrierOptions: CarrierOption[]; statusBar?: { key: string; label: string; url: string; count: number }[]; gridPreferenceNamespace?: string; gridPreference?: GridPreferenceValue<ColumnKey> | null }>()
 const drafts = reactive<Record<number, Draft>>({})
 const openOrderId = ref<number | null>(null)
-const copyState = ref<Record<number, 'success' | 'error'>>({})
+type CopyFeedback = { status: 'success' | 'error'; label: string; text: string }
+const copyFeedback = ref<Record<number, CopyFeedback>>({})
 const shipValidation = ref<Record<number, string>>({})
 const localWarehouseNames = reactive<Record<number, string>>({})
 const adoptError = ref<Record<number, string>>({})
@@ -52,7 +53,7 @@ const localDateTime = (value: string | null) => value ? value.slice(0, 16) : new
 const makeDraft = (order: Order): Draft => ({
   warehouse_id: order.shipment?.warehouse_id ?? '',
   carrier: order.shipment?.carrier ?? '',
-  service: order.shipment?.service ?? '',
+  service: ['普通', '加急', '特快'].includes(order.shipment?.service ?? '') ? (order.shipment?.service ?? '普通') : '普通',
   tracking_number: order.shipment?.tracking_number ?? '',
   shipped_at: localDateTime(order.shipment?.shipped_at ?? null),
   logistics_note: order.shipment?.logistics_note ?? '',
@@ -130,16 +131,34 @@ async function writeClipboard(text: string): Promise<boolean> {
   }
   return copyToClipboardFallback(text)
 }
-const copy = async (order: Order, mode: 'recipient' | 'full' | 'tracking') => {
-  delete copyState.value[order.id]
-  const response = await fetch(`/logistics/orders/${order.id}/payload`, { headers: { Accept: 'application/json' } })
-  if (!response.ok) { copyState.value[order.id] = 'error'; return }
-  const p = await response.json()
-  const recipient = `${p.recipient_name ?? '—'}\n${p.phone ?? '—'}\n${[p.country, p.province_state, p.city, p.address_line_1, p.address_line_2, p.postal_code].filter(Boolean).join(', ')}`
-  const full = `${p.order_number}\n${recipient}\n${p.items.map((item: { product_summary: string; sku: string | null; quantity: number }) => `${item.product_summary} (${item.sku ?? '无 SKU'}) × ${item.quantity}`).join('\n')}\n仓库: ${p.warehouse ?? ''}\n物流: ${[p.carrier, p.service].filter(Boolean).join(' ')}\nTracking: ${p.tracking_number ?? ''}`
-  const text = mode === 'recipient' ? recipient : mode === 'tracking' ? `${[p.carrier, p.service].filter(Boolean).join(' ')} ${p.tracking_number ?? ''}`.trim() : full
-  copyState.value[order.id] = await writeClipboard(text) ? 'success' : 'error'
-  window.setTimeout(() => { delete copyState.value[order.id] }, 2500)
+const carrierLabel = (value: string) => props.carrierOptions.find(carrier => carrier.value === value)?.label ?? value
+const copy = async (order: Order, mode: 'recipient' | 'full' | 'shipping') => {
+  delete copyFeedback.value[order.id]
+  try {
+    const draft = drafts[order.id]
+    let label = ''
+    let text = ''
+    if (mode === 'shipping') {
+      label = '发货信息'
+      text = `物流商：${carrierLabel(draft.carrier) || '未选择'}\n发货单号：${draft.tracking_number.trim() || '未填写'}`
+    } else {
+      const response = await fetch(`/logistics/orders/${order.id}/payload`, { headers: { Accept: 'application/json' } })
+      if (!response.ok) throw new Error(`payload ${response.status}`)
+      const p = await response.json()
+      const recipient = `${p.recipient_name ?? '—'}\n${p.phone ?? '—'}\n${[p.country, p.province_state, p.city, p.address_line_1, p.address_line_2, p.postal_code].filter(Boolean).join(', ')}`
+      if (mode === 'recipient') {
+        label = '收件人信息'
+        text = recipient
+      } else {
+        label = '完整信息'
+        text = `${p.order_number}\n${recipient}\n${p.items.map((item: { product_summary: string; sku: string | null; quantity: number }) => `${item.product_summary} (${item.sku ?? '无 SKU'}) × ${item.quantity}`).join('\n')}\n物流商：${carrierLabel(draft.carrier) || '未选择'}\n发货单号：${draft.tracking_number.trim() || '未填写'}\n物流渠道：${draft.service}`
+      }
+    }
+    const ok = await writeClipboard(text)
+    copyFeedback.value[order.id] = { status: ok ? 'success' : 'error', label, text }
+  } catch {
+    copyFeedback.value[order.id] = { status: 'error', label: '复制', text: '' }
+  }
 }
 const goToPage = (page: number) => router.get('/logistics/pending', { page }, { preserveState: true, replace: true })
 </script>
@@ -172,14 +191,29 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
               </div>
               <div><h3>库存可用量</h3><p v-if="['recommended', 'automatic'].includes(order.shipment?.warehouse_selection_source ?? '')" class="reservation-hint">库存已预留；确认发货时会自动提交预留并扣减在库库存。</p><div class="inventory-grid" v-for="item in order.items" :key="item.id"><strong><Link v-if="item.product_id" :href="`/products/${item.product_id}`" class="mvp-link">{{ item.sku ?? item.product_summary ?? '无 SKU' }}</Link><span v-else>{{ item.sku ?? item.product_summary ?? '无 SKU' }}</span> × {{ item.quantity }}</strong><span v-for="row in item.availability" :key="row.warehouse_id" :class="{ shortage: row.quantity_available !== null && row.quantity_available < item.quantity, unknown: row.quantity_available === null }">{{ row.warehouse_name }}：{{ row.quantity_available === null ? '库存未知' : '可用 ' + row.quantity_available }} <small v-if="row.quantity_available !== null">(QOH {{ row.quantity_on_hand }} / Reserved {{ row.quantity_reserved }})</small><small v-else>未建立该 SKU 权威库存</small></span></div></div>
               <div class="fulfillment-form">
-                <label>发货仓库<select v-model="drafts[order.id].warehouse_id"><option value="">请选择</option><option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} ({{ warehouse.code }}){{ warehouse.can_auto_allocate ? '' : ' · 库存未确认' }}</option></select></label>
-                <label>物流商<select v-model="drafts[order.id].carrier" aria-label="物流商"><option value="">请选择承运商</option><option v-for="carrier in carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select></label>
-                <label>物流渠道<input v-model="drafts[order.id].service" placeholder="例如 Ground"></label>
-                <label>Tracking<input v-model="drafts[order.id].tracking_number" placeholder="追踪号"></label>
-                <label>发货时间<input v-model="drafts[order.id].shipped_at" type="datetime-local"></label>
-                <label class="wide">物流备注<textarea v-model="drafts[order.id].logistics_note" rows="2" /></label>
+                <div class="fulfillment-form-row">
+                  <label>发货仓库<select v-model="drafts[order.id].warehouse_id"><option value="">请选择</option><option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} ({{ warehouse.code }}){{ warehouse.can_auto_allocate ? '' : ' · 库存未确认' }}</option></select></label>
+                  <label>物流商<select v-model="drafts[order.id].carrier" aria-label="物流商"><option value="">请选择承运商</option><option v-for="carrier in carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select></label>
+                  <label>发货单号<input v-model="drafts[order.id].tracking_number" placeholder="发货单号"></label>
+                </div>
+                <div class="fulfillment-form-row">
+                  <label>发货时间<input v-model="drafts[order.id].shipped_at" type="datetime-local"></label>
+                  <label>物流渠道<select v-model="drafts[order.id].service" aria-label="物流渠道"><option value="普通">普通（默认）</option><option value="加急">加急</option><option value="特快">特快</option></select></label>
+                  <label>物流备注<textarea v-model="drafts[order.id].logistics_note" rows="1" placeholder="选填" /></label>
+                </div>
               </div>
-              <div class="mvp-actions"><button class="mvp-button" @click="copy(order, 'recipient')">复制收件人</button><button class="mvp-button" @click="copy(order, 'full')">复制完整信息</button><button class="mvp-button" @click="copy(order, 'tracking')">复制追踪</button><button class="mvp-button" @click="saveDraft(order)">保存草稿</button><button class="mvp-button mvp-button-primary" @click="ship(order)">确认发货</button><span v-if="shipValidation[order.id]" class="mvp-error" role="alert">{{ shipValidation[order.id] }}</span><span v-if="copyState[order.id] === 'success'" class="mvp-success">已复制</span><span v-else-if="copyState[order.id] === 'error'" class="mvp-error">复制失败</span></div>
+              <div class="fulfillment-actions">
+                <button class="mvp-button" type="button" title="复制收件人姓名、电话和完整地址" @click="copy(order, 'recipient')">复制收件人</button>
+                <button class="mvp-button" type="button" title="复制订单号、收件信息、商品和当前发货信息" @click="copy(order, 'full')">复制完整信息</button>
+                <button class="mvp-button" type="button" title="复制当前物流商和发货单号" @click="copy(order, 'shipping')">复制发货信息</button>
+                <button class="mvp-button" type="button" title="保存当前填写内容，不确认发货" @click="saveDraft(order)">保存草稿</button>
+                <button class="mvp-button mvp-button-primary" type="button" title="确认本单已实际发货并提交物流信息" @click="ship(order)">确认发货</button>
+              </div>
+              <div v-if="copyFeedback[order.id]" class="copy-feedback" :class="{ error: copyFeedback[order.id].status === 'error' }" role="status">
+                <strong>{{ copyFeedback[order.id].status === 'success' ? `复制成功 · ${copyFeedback[order.id].label}` : '复制失败' }}</strong>
+                <pre v-if="copyFeedback[order.id].status === 'success'">{{ copyFeedback[order.id].text }}</pre>
+              </div>
+              <p v-if="shipValidation[order.id]" class="mvp-error fulfillment-validation" role="alert">{{ shipValidation[order.id] }}</p>
             </div>
           </td></tr>
         </template>
@@ -221,9 +255,15 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
 .inventory-grid span.shortage { background: #fff1f2; }
 .inventory-grid span.unknown { background: #fff9eb; }
 .inventory-grid small { display: block; color: #6b7f87; }
-.fulfillment-form { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 12px; }
+.fulfillment-form { display: grid; gap: 12px; }
+.fulfillment-form-row { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 12px; align-items: end; }
 .fulfillment-form label { display: grid; gap: 5px; font-size: 12px; color: #5f737c; }
-.fulfillment-form input, .fulfillment-form select, .fulfillment-form textarea { width: 100%; border: 1px solid #cfdade; border-radius: 7px; padding: 8px 10px; background: #fff; color: #142126; }
-.fulfillment-form .wide { grid-column: 1 / -1; }
-@media (max-width: 900px) { .fulfillment-form { grid-template-columns: 1fr; } .inventory-grid { grid-template-columns: 1fr; } }
+.fulfillment-form input, .fulfillment-form select, .fulfillment-form textarea { width: 100%; min-height: 40px; border: 1px solid #cfdade; border-radius: 7px; padding: 8px 10px; background: #fff; color: #142126; }
+.fulfillment-form textarea { resize: vertical; }
+.fulfillment-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.copy-feedback { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid #b8ddca; border-radius: 8px; background: #eff9f3; color: #173c2b; }
+.copy-feedback.error { border-color: #f2c8c8; background: #fff4f4; color: #9b1c1c; }
+.copy-feedback pre { margin: 0; padding: 8px 10px; border-radius: 6px; background: rgba(255,255,255,.72); color: #31454d; font: inherit; font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.fulfillment-validation { margin: -6px 0 0; }
+@media (max-width: 900px) { .fulfillment-form-row { grid-template-columns: 1fr; } .inventory-grid { grid-template-columns: 1fr; } }
 </style>
