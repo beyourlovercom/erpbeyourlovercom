@@ -6,7 +6,9 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Shell\Application\ErpShellNavigation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -23,6 +25,7 @@ class AppShellNavigationTest extends TestCase
         }
         $user = User::factory()->create(['is_active' => true]);
         $user->roles()->attach($role);
+
         return $user;
     }
 
@@ -30,6 +33,42 @@ class AppShellNavigationTest extends TestCase
     {
         $this->get('/dashboard')->assertRedirect('/login');
         $this->get('/sync')->assertRedirect('/login');
+    }
+
+    public function test_shell_navigation_permission_resolution_has_bounded_query_count(): void
+    {
+        Warehouse::query()->delete();
+        Warehouse::query()->create(['slug' => 'de', 'code' => 'DE', 'name' => '德国仓', 'is_active' => true, 'priority' => 10]);
+
+        $permissions = collect(config('erp_shell_navigation'))
+            ->flatMap(function (array $item): array {
+                $keys = array_values(array_filter([
+                    $item['permission'] ?? null,
+                    ...($item['permissions_any'] ?? []),
+                    ...($item['permissions_all'] ?? []),
+                ]));
+                foreach ($item['children'] ?? [] as $child) {
+                    $keys = [...$keys, ...array_values(array_filter([
+                        $child['permission'] ?? null,
+                        ...($child['permissions_any'] ?? []),
+                        ...($child['permissions_all'] ?? []),
+                    ]))];
+                }
+
+                return $keys;
+            })
+            ->unique()->values()->all();
+        $user = $this->userWith($permissions, 'navigation-query-budget');
+
+        $queryCount = 0;
+        DB::listen(function () use (&$queryCount): void {
+            $queryCount++;
+        });
+
+        $navigation = app(ErpShellNavigation::class)->for($user);
+
+        $this->assertNotEmpty($navigation);
+        $this->assertLessThanOrEqual(4, $queryCount, 'Shell navigation must not query once per permission check.');
     }
 
     public function test_dashboard_renders_formal_shell_with_safe_shared_props(): void
@@ -134,7 +173,6 @@ class AppShellNavigationTest extends TestCase
             ->where('shellNavigation.1.children.2.label', '亏损订单')
             ->where('shellNavigation.1.children.2.path', '/accounting/order-costs?profit_status=loss'));
     }
-
 
     public function test_customer_import_is_available_from_customer_and_sync_navigation_with_the_same_workspace(): void
     {
