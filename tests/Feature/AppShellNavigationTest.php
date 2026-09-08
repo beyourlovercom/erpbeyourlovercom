@@ -124,12 +124,15 @@ class AppShellNavigationTest extends TestCase
         $user = $this->userWith(['dashboard.view', 'accounting.view', 'analysis.view', 'prototype.view']);
         $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
             ->where('shellNavigation.1.key', 'accounting')
-            ->has('shellNavigation.1.children', 2)
+            ->has('shellNavigation.1.children', 3)
             ->where('shellNavigation.1.children.0.key', 'accounting-overview')
             ->where('shellNavigation.1.children.0.path', '/accounting')
             ->where('shellNavigation.1.children.1.key', 'accounting-order-costs')
             ->where('shellNavigation.1.children.1.label', '订单利润')
-            ->where('shellNavigation.1.children.1.path', '/accounting/order-costs'));
+            ->where('shellNavigation.1.children.1.path', '/accounting/order-costs')
+            ->where('shellNavigation.1.children.2.key', 'accounting-loss-orders')
+            ->where('shellNavigation.1.children.2.label', '亏损订单')
+            ->where('shellNavigation.1.children.2.path', '/accounting/order-costs?profit_status=loss'));
     }
 
 

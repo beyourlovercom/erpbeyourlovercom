@@ -298,6 +298,7 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
                 </select>
                 <select v-model="filters.profit_status" aria-label="利润状态">
                     <option value="">全部利润状态</option>
+                    <option value="loss">亏损订单</option>
                     <option value="confirmed">已确认利润</option>
                     <option value="not_confirmed">未确认利润</option>
                 </select>

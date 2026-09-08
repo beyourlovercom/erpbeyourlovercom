@@ -984,6 +984,21 @@
       "sort": 20
     },
     {
+      "code": "accounting-loss-orders",
+      "parent_code": "accounting",
+      "level": 2,
+      "label_zh": "亏损订单",
+      "slug": "loss-orders",
+      "url": "/accounting/order-costs?profit_status=loss",
+      "route": "accounting.order-costs",
+      "permission": "analysis.view",
+      "emoji": null,
+      "function_zh": "仅供财务查看已确认亏损订单，复用订单利润分析。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 30
+    },
+    {
       "code": "settings",
       "parent_code": null,
       "level": 1,

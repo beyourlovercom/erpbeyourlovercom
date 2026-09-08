@@ -2,6 +2,7 @@
 
 namespace App\Modules\Finance\Experience\Controllers;
 
+use App\Modules\Finance\Application\Contracts\ConfirmedLossReader;
 use App\Modules\Finance\Application\OrderAnalysisService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Shell\Application\UserUiPreferenceService;
@@ -23,6 +24,7 @@ final class OrderAnalysisController
 
     public function __construct(
         private readonly OrderAnalysisService $analysis,
+        private readonly ConfirmedLossReader $confirmedLosses,
         private readonly UserUiPreferenceService $uiPreferences,
     ) {}
 
@@ -185,7 +187,9 @@ final class OrderAnalysisController
             });
         }
 
-        if ($request->input('profit_status') === 'confirmed') {
+        if ($request->input('profit_status') === 'loss') {
+            $query = $this->confirmedLosses->applyConfirmedLossScope($query);
+        } elseif ($request->input('profit_status') === 'confirmed') {
             $query->whereHas('financials', fn (Builder $financials) => $financials->whereIn('completeness_status', ['CONFIRMED', 'RECONCILED']));
         } elseif ($request->input('profit_status') === 'not_confirmed') {
             $query->where(function (Builder $orders): void {
