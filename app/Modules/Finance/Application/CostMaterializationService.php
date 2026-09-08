@@ -53,6 +53,61 @@ final class CostMaterializationService
     }
 
     /** @return array<string, mixed> */
+    public function previewFixedRules(Model $order): array
+    {
+        $scopeBlocker = $this->operationalBlocker($order);
+        $candidates = [$this->firstMileCandidate($order), $this->customsCandidate($order)];
+        if ($scopeBlocker !== null) {
+            $candidates = array_map(fn (array $candidate): array => $this->forceBlocked($candidate, $scopeBlocker), $candidates);
+        }
+
+        return [
+            'order_id' => (int) $order->getKey(),
+            'scope_status' => $scopeBlocker === null ? 'operational' : 'blocked',
+            'scope_blocker' => $scopeBlocker,
+            'candidates' => array_values(array_map(fn (array $candidate): array => $this->annotateDisposition($order, $candidate), $candidates)),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function applyFixedRules(Model $order): array
+    {
+        return DB::transaction(function () use ($order): array {
+            $locked = $order->newQuery()->lockForUpdate()->findOrFail($order->getKey());
+            $preview = $this->previewFixedRules($locked);
+            $result = $preview + ['applied' => [], 'noop' => [], 'blocked' => []];
+
+            foreach ($preview['candidates'] as $candidate) {
+                $disposition = $candidate['materialization_status'];
+                if ($disposition === 'blocked') {
+                    $result['blocked'][] = $candidate;
+                    continue;
+                }
+                if ($disposition === 'noop') {
+                    $result['noop'][] = $candidate;
+                    continue;
+                }
+                $outcome = $this->writeCandidate($locked, $candidate);
+                $result[$outcome['status']][] = $outcome['entry'];
+            }
+
+            if ($result['applied'] !== []) {
+                $this->analysis->refreshCompleteness($locked, preserveReconciled: false);
+                $this->audit->record(
+                    AuditActor::system(AuditSource::InternalSystem),
+                    'finance.fixed_cost_materialization.applied',
+                    $locked::class,
+                    $locked->getKey(),
+                    after: ['applied' => $result['applied'], 'blocked' => $result['blocked']],
+                    reason: 'fixed_cost_materialization',
+                );
+            }
+
+            return $result;
+        });
+    }
+
+    /** @return array<string, mixed> */
     public function apply(Model $order): array
     {
         return DB::transaction(function () use ($order): array {

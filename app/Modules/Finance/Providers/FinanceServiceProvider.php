@@ -9,6 +9,7 @@ use App\Modules\Finance\Application\Contracts\WooFinancialBootstrapOrderStore;
 use App\Modules\Finance\Infrastructure\EloquentFxManualRateRepository;
 use App\Modules\Finance\Infrastructure\EloquentWooFinancialBootstrapOrderStore;
 use App\Modules\Finance\Experience\Console\Commands\BootstrapWooFinancialEvidenceCommand;
+use App\Modules\Finance\Experience\Console\Commands\MaterializeFixedCostsCommand;
 use App\Modules\Finance\Experience\Console\Commands\MaterializeOrderCostsCommand;
 use Illuminate\Support\ServiceProvider;
 
@@ -25,7 +26,7 @@ final class FinanceServiceProvider extends ServiceProvider
     {
         $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/web.php');
         if ($this->app->runningInConsole()) {
-            $this->commands([MaterializeOrderCostsCommand::class, BootstrapWooFinancialEvidenceCommand::class]);
+            $this->commands([MaterializeOrderCostsCommand::class, MaterializeFixedCostsCommand::class, BootstrapWooFinancialEvidenceCommand::class]);
         }
     }
 }

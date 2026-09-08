@@ -147,6 +147,47 @@ final class CostMaterializationTest extends TestCase
         self::assertSame('4.00', $order->costEntries()->where('cost_type', 'product_cost')->firstOrFail()->amount);
     }
 
+    public function test_fixed_cost_command_is_dry_run_and_writes_only_fixed_rules(): void
+    {
+        $order = $this->order('USD');
+        $this->attachWarehouseShipment($order, 'us-la');
+        $this->attachProduct($order, ['standard_purchase_cost' => '4.0000', 'cost_currency' => 'USD']);
+
+        $this->artisan('finance:materialize-fixed-costs', ['--order' => $order->id])->assertSuccessful();
+        self::assertSame(0, $order->costEntries()->count());
+
+        $this->artisan('finance:materialize-fixed-costs', ['--order' => $order->id, '--apply' => true])->assertSuccessful();
+        self::assertSame('1.00', $order->costEntries()->where('cost_type', 'first_mile_cost')->firstOrFail()->amount);
+        self::assertSame('0.00', $order->costEntries()->where('cost_type', 'customs_tax')->firstOrFail()->amount);
+        self::assertFalse($order->costEntries()->where('cost_type', 'product_cost')->exists());
+
+        $this->artisan('finance:materialize-fixed-costs', ['--order' => $order->id, '--apply' => true])->assertSuccessful();
+        self::assertSame(1, $order->costEntries()->where('cost_type', 'first_mile_cost')->count());
+        self::assertSame(1, $order->costEntries()->where('cost_type', 'customs_tax')->count());
+    }
+
+    public function test_fixed_cost_production_apply_requires_explicit_single_process_gate(): void
+    {
+        $order = $this->order('USD');
+        $this->attachWarehouseShipment($order, 'us-la');
+        $previousEnv = $this->app['env'];
+        $this->app['env'] = 'production';
+        putenv('ERP_ACCOUNTING_FIXED_COSTS_PRODUCTION_APPLY_ENABLED');
+
+        try {
+            $args = ['--order' => $order->id, '--apply' => true];
+            $this->artisan('finance:materialize-fixed-costs', $args)->assertFailed();
+            self::assertSame(0, $order->costEntries()->count());
+
+            putenv('ERP_ACCOUNTING_FIXED_COSTS_PRODUCTION_APPLY_ENABLED=true');
+            $this->artisan('finance:materialize-fixed-costs', $args)->assertSuccessful();
+            self::assertSame(2, $order->costEntries()->count());
+        } finally {
+            putenv('ERP_ACCOUNTING_FIXED_COSTS_PRODUCTION_APPLY_ENABLED');
+            $this->app['env'] = $previousEnv;
+        }
+    }
+
     public function test_operational_scope_is_fail_closed_and_payment_fee_is_never_guessed(): void
     {
         $historical = $this->order('USD');
