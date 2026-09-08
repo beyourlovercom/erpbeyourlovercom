@@ -6,7 +6,7 @@ use App\Modules\Audit\Application\CustomerActivityProjection;
 use App\Modules\Customers\Application\CustomerService;
 use App\Modules\Customers\Application\CustomerGroupService;
 use App\Modules\Customers\Application\CustomerSubscriberProjection;
-use App\Modules\Finance\Application\EcbFxService;
+use App\Modules\Finance\Application\FxReferenceSettingsService;
 use App\Modules\Customers\Domain\CountryCodeNormalizer;
 use App\Modules\Customers\Domain\Exceptions\InvalidCompanyAttributeException;
 use App\Modules\Customers\Infrastructure\Models\Customer;
@@ -48,7 +48,7 @@ final class CustomerController
         private readonly CustomerService $customers,
         private readonly CustomerGroupService $customerGroups,
         private readonly CustomerSubscriberProjection $subscriberProjection,
-        private readonly EcbFxService $fx,
+        private readonly FxReferenceSettingsService $fx,
         private readonly UserUiPreferenceService $uiPreferences,
         private readonly CustomerSupportProjection $supportProjection,
         private readonly CustomerShipmentProjection $shipmentProjection,

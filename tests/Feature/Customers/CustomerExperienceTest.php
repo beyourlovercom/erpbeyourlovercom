@@ -568,6 +568,10 @@ final class CustomerExperienceTest extends TestCase
         )]);
 
         $user = $this->userWith(['customers.view'], 'rmb_test_user');
+        DB::table('finance_fx_manual_rates')->insert([
+            'currency' => 'USD', 'manual_rate_to_cny' => 6.78, 'use_auto' => 0,
+            'updated_by' => $user->id, 'created_at' => now(), 'updated_at' => now(),
+        ]);
         $c = Customer::query()->create(['name' => 'RMB Test', 'source_type' => 'manual']);
         $oid = DB::table('orders')->insertGetId([
             'internal_order_number' => 'RMB-001', 'source_type' => 'manual', 'order_kind' => 'customer',
@@ -585,8 +589,10 @@ final class CustomerExperienceTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->has('stats.rmb_estimate')
                 ->where('stats.rmb_estimate.available', true)
-                ->where('stats.rmb_estimate.source', 'ECB')
-                ->has('stats.rmb_estimate.amount_cny')
+                ->where('stats.rmb_estimate.source', 'SETTINGS_FX')
+                ->where('stats.rmb_estimate.amount_cny', 745.8)
+                ->where('stats.rmb_estimate.conversions.0.source', 'manual')
+                ->where('stats.rmb_estimate.conversions.0.rate_to_cny', 6.78)
                 ->has('stats.rmb_estimate.reference_date')
                 ->has('stats.rmb_estimate.stale')
                 ->has('stats.rmb_estimate.conversions'));

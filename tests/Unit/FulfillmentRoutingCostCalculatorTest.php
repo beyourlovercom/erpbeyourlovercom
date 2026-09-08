@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Modules\Finance\Application\FxReferenceSettingsService;
 use App\Modules\Logistics\Application\ChinaFactoryRoutingCostCalculator;
 use App\Modules\Logistics\Application\GermanyDhlRoutingCostCalculator;
 use App\Modules\Logistics\Application\FulfillmentPlanCostEstimator;
@@ -57,7 +58,11 @@ final class FulfillmentRoutingCostCalculatorTest extends TestCase
         $service = app(FulfillmentPlanPreviewService::class);
         $property = new \ReflectionProperty(FulfillmentPlanPreviewService::class, 'costEstimator');
 
-        $this->assertInstanceOf(FulfillmentPlanCostEstimator::class, $property->getValue($service));
+        $estimator = $property->getValue($service);
+        $this->assertInstanceOf(FulfillmentPlanCostEstimator::class, $estimator);
+
+        $fxProperty = new \ReflectionProperty(FulfillmentPlanCostEstimator::class, 'fx');
+        $this->assertInstanceOf(FxReferenceSettingsService::class, $fxProperty->getValue($estimator));
     }
 
     public function test_unsupported_country_and_weight_fail_closed(): void
