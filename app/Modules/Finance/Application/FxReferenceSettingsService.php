@@ -12,6 +12,7 @@ final class FxReferenceSettingsService
         'GBP' => '英镑',
         'CAD' => '加元',
         'AUD' => '澳元',
+        'PHP' => '菲律宾比索',
         'CNY' => '人民币',
     ];
 

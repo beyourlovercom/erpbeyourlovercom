@@ -18,8 +18,8 @@ final class FxSettingsController extends Controller
 
     public function update(Request $request, FxReferenceSettingsService $settings): RedirectResponse
     {
-        $rules = ['rates' => ['required', 'array:USD,EUR,GBP,CAD,AUD']];
-        foreach (['USD', 'EUR', 'GBP', 'CAD', 'AUD'] as $currency) {
+        $rules = ['rates' => ['required', 'array:USD,EUR,GBP,CAD,AUD,PHP']];
+        foreach (['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'PHP'] as $currency) {
             $rules['rates.'.$currency] = ['nullable', 'numeric', 'gt:0', 'max:100000'];
         }
         $validated = $request->validate($rules);

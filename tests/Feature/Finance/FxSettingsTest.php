@@ -26,19 +26,29 @@ final class FxSettingsTest extends TestCase
             ->where('reference.stale', false)
             ->where('rows.0.currency', 'USD')
             ->where('rows.0.ecbRate', 7.1)
-            ->where('rows.0.source', 'ecb'));
+            ->where('rows.0.source', 'ecb')
+            ->where('rows.5.currency', 'PHP')
+            ->where('rows.5.label', '菲律宾比索')
+            ->where('rows.5.ecbRate', 0.12203125)
+            ->where('rows.5.source', 'ecb'));
 
         $this->actingAs($admin)->put('/settings/fx', ['rates' => [
-            'USD' => 7.12, 'EUR' => null, 'GBP' => null, 'CAD' => null, 'AUD' => null,
+            'USD' => 7.12, 'EUR' => null, 'GBP' => null, 'CAD' => null, 'AUD' => null, 'PHP' => 0.125,
         ]])->assertRedirect();
 
         $this->assertDatabaseHas('finance_fx_manual_rates', [
             'currency' => 'USD', 'manual_rate_to_cny' => 7.12, 'updated_by' => $admin->id,
         ]);
+        $this->assertDatabaseHas('finance_fx_manual_rates', [
+            'currency' => 'PHP', 'manual_rate_to_cny' => 0.125, 'updated_by' => $admin->id,
+        ]);
         $this->actingAs($admin)->get('/settings/fx')->assertInertia(fn (Assert $page) => $page
             ->where('rows.0.manualRate', 7.12)
             ->where('rows.0.effectiveRate', 7.12)
-            ->where('rows.0.source', 'manual'));
+            ->where('rows.0.source', 'manual')
+            ->where('rows.5.manualRate', 0.125)
+            ->where('rows.5.effectiveRate', 0.125)
+            ->where('rows.5.source', 'manual'));
     }
 
     public function test_clearing_manual_rate_restores_ecb_without_touching_finance_facts(): void
@@ -80,7 +90,7 @@ final class FxSettingsTest extends TestCase
         return <<<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
 <gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01" xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref">
-  <Cube><Cube time="2026-09-07"><Cube currency="USD" rate="1.10"/><Cube currency="GBP" rate="0.85"/><Cube currency="CAD" rate="1.50"/><Cube currency="AUD" rate="1.70"/><Cube currency="CNY" rate="7.81"/></Cube></Cube>
+  <Cube><Cube time="2026-09-07"><Cube currency="USD" rate="1.10"/><Cube currency="GBP" rate="0.85"/><Cube currency="CAD" rate="1.50"/><Cube currency="AUD" rate="1.70"/><Cube currency="PHP" rate="64.00"/><Cube currency="CNY" rate="7.81"/></Cube></Cube>
 </gesmes:Envelope>
 XML;
     }

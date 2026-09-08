@@ -13,6 +13,7 @@ vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({ default:{ template:'<d
 const rows = [
   { currency:'USD', label:'美元', ecbRate:7.09, manualRate:7.12, effectiveRate:7.12, source:'manual', manualEditable:true },
   { currency:'EUR', label:'欧元', ecbRate:7.8, manualRate:null, effectiveRate:7.8, source:'ecb', manualEditable:true },
+  { currency:'PHP', label:'菲律宾比索', ecbRate:0.122, manualRate:null, effectiveRate:0.122, source:'ecb', manualEditable:true },
   { currency:'CNY', label:'人民币', ecbRate:1, manualRate:null, effectiveRate:1, source:'fixed', manualEditable:false },
 ] as any
 const reference = { source:'ECB', available:true, referenceDate:'2026-09-07', stale:false, refreshHours:12, policy:'manual_first' }
