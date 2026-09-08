@@ -14,6 +14,31 @@ final class ConfirmedProductCostSourceTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_production_cli_apply_requires_explicit_single_process_gate(): void
+    {
+        $product = $this->product('PROD-GATE-1');
+        $file = tempnam(sys_get_temp_dir(), 'confirmed-product-cost-');
+        self::assertNotFalse($file);
+        file_put_contents($file, "erp_product_id,erp_sku,source_variant_key,unit_cost,currency\n{$product->id},{$product->sku},LONG-1,12.34,CNY\n");
+
+        $previousEnv = $this->app['env'];
+        $this->app['env'] = 'production';
+        putenv('ERP_ACCOUNTING_CONFIRMED_PRODUCT_COST_PRODUCTION_APPLY_ENABLED');
+        try {
+            $args = ['--file' => $file, '--effective-from' => '2026-07-01', '--source-reference' => 'source.xlsx', '--apply' => true];
+            $this->artisan('finance:import-confirmed-product-costs', $args)->assertFailed();
+            self::assertSame(0, ProductCostSource::query()->count());
+
+            putenv('ERP_ACCOUNTING_CONFIRMED_PRODUCT_COST_PRODUCTION_APPLY_ENABLED=true');
+            $this->artisan('finance:import-confirmed-product-costs', $args)->assertSuccessful();
+            self::assertSame(1, ProductCostSource::query()->count());
+        } finally {
+            putenv('ERP_ACCOUNTING_CONFIRMED_PRODUCT_COST_PRODUCTION_APPLY_ENABLED');
+            $this->app['env'] = $previousEnv;
+            @unlink($file);
+        }
+    }
+
     public function test_import_plan_is_dry_run_and_same_cost_variants_can_be_applied_idempotently(): void
     {
         $product = $this->product('READY-1');

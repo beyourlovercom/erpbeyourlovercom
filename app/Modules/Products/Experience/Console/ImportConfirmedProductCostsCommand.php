@@ -13,7 +13,7 @@ final class ImportConfirmedProductCostsCommand extends Command
         {--effective-from= : YYYY-MM-DD applicability start date}
         {--source-reference= : Human-readable authoritative source reference; defaults to CSV basename}
         {--source-at= : Optional evidence timestamp/date}
-        {--apply : Persist confirmed cost sources; local/testing only}';
+        {--apply : Persist confirmed cost sources; Production requires explicit single-process gate}';
 
     protected $description = 'Dry-run or locally import owner-confirmed product unit-cost source evidence.';
 
@@ -29,8 +29,8 @@ final class ImportConfirmedProductCostsCommand extends Command
             $this->error('CSV file is not readable.');
             return self::FAILURE;
         }
-        if ($this->option('apply') && ! app()->environment(['local', 'testing'])) {
-            $this->error('The --apply option is restricted to local and testing environments.');
+        if ($this->option('apply') && ! $this->applyAllowed()) {
+            $this->error('The --apply option requires local/testing or the explicit Production apply gate.');
             return self::FAILURE;
         }
 
@@ -57,6 +57,22 @@ final class ImportConfirmedProductCostsCommand extends Command
             $this->error($e->getMessage());
             return self::FAILURE;
         }
+    }
+
+
+    private function applyAllowed(): bool
+    {
+        if (app()->environment(['local', 'testing'])) {
+            return true;
+        }
+        if (! app()->environment('production')) {
+            return false;
+        }
+
+        return filter_var(
+            getenv('ERP_ACCOUNTING_CONFIRMED_PRODUCT_COST_PRODUCTION_APPLY_ENABLED') ?: 'false',
+            FILTER_VALIDATE_BOOL,
+        );
     }
 
     /** @return list<array<string,string|null>> */
