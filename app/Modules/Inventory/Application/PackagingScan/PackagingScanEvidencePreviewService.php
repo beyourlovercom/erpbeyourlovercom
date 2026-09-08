@@ -21,8 +21,15 @@ final class PackagingScanEvidencePreviewService
             'summary' => [
                 'rows' => $collection->count(),
                 'matched_orders' => $collection->where('order_match_status', 'matched')->count(),
-                'ready_single_unit_evidence' => $collection->where('evidence_status', 'ready_product_evidence')->count(),
-                'placeholder_dimensions' => $collection->where('evidence_status', 'placeholder_dimensions')->count(),
+                'ready_weight_evidence' => $collection->where('can_be_weight_evidence', true)->count(),
+                'ready_dimension_evidence' => $collection->where('can_be_dimension_evidence', true)->count(),
+                'ready_weight_and_dimension_evidence' => $collection->where('evidence_status', 'ready_weight_and_dimension_evidence')->count(),
+                'ready_weight_only_evidence' => $collection->where('evidence_status', 'ready_weight_evidence_only')->count(),
+                'ready_dimension_only_evidence' => $collection->where('evidence_status', 'ready_dimension_evidence_only')->count(),
+                'ready_single_unit_evidence' => $collection->where('can_be_product_evidence', true)->count(),
+                'placeholder_dimensions' => $collection->where('dimension_evidence_status', 'placeholder_dimensions')->count(),
+                'missing_dimensions' => $collection->where('dimension_evidence_status', 'missing_dimensions')->count(),
+                'missing_actual_weight' => $collection->where('weight_evidence_status', 'missing_actual_weight')->count(),
                 'multi_unit' => $collection->where('classification', 'single_sku_multi_unit')->count(),
                 'multi_sku' => $collection->where('classification', 'multi_sku')->count(),
                 'unmatched_orders' => $collection->where('order_match_status', 'not_found')->count(),
@@ -85,10 +92,10 @@ final class PackagingScanEvidencePreviewService
             'height_cm' => $this->number($row['height_cm'] ?? null),
             'measured_at' => $this->text($row['measured_at'] ?? null),
         ];
-        if ($ids === []) return [...$base, 'order_match_status'=>'not_found','classification'=>'unresolved','evidence_status'=>'order_not_found','can_be_product_evidence'=>false,'order'=>null,'product'=>null];
-        if (count($ids) > 1) return [...$base, 'order_match_status'=>'ambiguous','classification'=>'unresolved','evidence_status'=>'ambiguous_order','can_be_product_evidence'=>false,'order'=>null,'product'=>null];
+        if ($ids === []) return $this->unresolved($base, 'not_found', 'order_not_found');
+        if (count($ids) > 1) return $this->unresolved($base, 'ambiguous', 'ambiguous_order');
         $order = $orders->get($ids[0]);
-        if (! $order) return [...$base, 'order_match_status'=>'not_found','classification'=>'unresolved','evidence_status'=>'order_not_found','can_be_product_evidence'=>false,'order'=>null,'product'=>null];
+        if (! $order) return $this->unresolved($base, 'not_found', 'order_not_found');
         $items = $order->items->filter(fn ($item) => (int) $item->quantity > 0);
         if ($items->isEmpty()) return $this->resolvedBase($base, $order, 'no_items', 'order_has_no_items');
         if ($items->contains(fn ($item) => $item->product_id === null || $item->product === null)) return $this->resolvedBase($base, $order, 'unresolved_product', 'unresolved_product');
@@ -97,17 +104,114 @@ final class PackagingScanEvidencePreviewService
         $entry = $byProduct->first(); $item = $entry['item']; $qty = (int) $entry['quantity'];
         $classification = $qty === 1 ? 'single_sku_single_unit' : 'single_sku_multi_unit';
         $product = ['id'=>$item->product->id,'sku'=>$item->product->sku,'name'=>$item->product->name,'quantity'=>$qty];
-        if ($qty !== 1) return [...$base,'order_match_status'=>'matched','classification'=>$classification,'evidence_status'=>'multi_unit_parcel','can_be_product_evidence'=>false,'order'=>$this->order($order),'product'=>$product];
-        $weight = $base['inbound_weight_kg']; $dims = [$base['length_cm'],$base['width_cm'],$base['height_cm']];
-        if ($weight === null || $weight <= 0) $status = 'missing_actual_weight';
-        elseif (collect($dims)->contains(fn ($v) => $v === null || $v <= 0)) $status = 'missing_dimensions';
-        elseif ($this->placeholderDimensions($dims)) $status = 'placeholder_dimensions';
-        else $status = 'ready_product_evidence';
-        return [...$base,'order_match_status'=>'matched','classification'=>$classification,'evidence_status'=>$status,'can_be_product_evidence'=>$status === 'ready_product_evidence','order'=>$this->order($order),'product'=>$product];
+        if ($qty !== 1) return [
+            ...$base,
+            'order_match_status'=>'matched',
+            'classification'=>$classification,
+            'evidence_status'=>'multi_unit_parcel',
+            'weight_evidence_status'=>'ineligible_multi_unit',
+            'dimension_evidence_status'=>'ineligible_multi_unit',
+            'can_be_product_evidence'=>false,
+            'can_be_weight_evidence'=>false,
+            'can_be_dimension_evidence'=>false,
+            'weight_evidence_candidate'=>null,
+            'dimension_evidence_candidate'=>null,
+            'order'=>$this->order($order),
+            'product'=>$product,
+        ];
+
+        $weightReady = $base['inbound_weight_kg'] !== null && $base['inbound_weight_kg'] > 0;
+        $dims = [$base['length_cm'],$base['width_cm'],$base['height_cm']];
+        $hasAllDimensions = ! collect($dims)->contains(fn ($v) => $v === null || $v <= 0);
+        $placeholder = $hasAllDimensions && $this->placeholderDimensions($dims);
+        $dimensionReady = $hasAllDimensions && ! $placeholder;
+
+        $weightStatus = $weightReady ? 'ready_weight_evidence' : 'missing_actual_weight';
+        $dimensionStatus = $dimensionReady ? 'ready_dimension_evidence' : ($placeholder ? 'placeholder_dimensions' : 'missing_dimensions');
+        $combinedStatus = match (true) {
+            $weightReady && $dimensionReady => 'ready_weight_and_dimension_evidence',
+            $weightReady => 'ready_weight_evidence_only',
+            $dimensionReady => 'ready_dimension_evidence_only',
+            default => 'no_product_measurement_evidence',
+        };
+
+        $weightCandidate = $weightReady ? [
+            'product_id' => (int) $item->product->id,
+            'weight_kind' => 'shipping_reference_weight',
+            'observed_weight_kg' => $base['inbound_weight_kg'],
+            'raw_sku' => $item->product->sku,
+            'source_type' => 'logistics_scan',
+            'source_reference' => $base['tracking_number'] ?? $ref,
+            'source_order_reference' => $ref,
+            'observed_at' => $base['measured_at'],
+        ] : null;
+
+        $dimensionCandidate = $dimensionReady ? [
+            'product_id' => (int) $item->product->id,
+            'sku' => $item->product->sku,
+            'length_cm' => $base['length_cm'],
+            'width_cm' => $base['width_cm'],
+            'height_cm' => $base['height_cm'],
+            'volume_cm3' => round((float) $base['length_cm'] * (float) $base['width_cm'] * (float) $base['height_cm'], 3),
+            'source_reference' => $base['tracking_number'] ?? $ref,
+            'source_order_reference' => $ref,
+            'observed_at' => $base['measured_at'],
+        ] : null;
+
+        return [
+            ...$base,
+            'order_match_status'=>'matched',
+            'classification'=>$classification,
+            'evidence_status'=>$combinedStatus,
+            'weight_evidence_status'=>$weightStatus,
+            'dimension_evidence_status'=>$dimensionStatus,
+            'can_be_product_evidence'=>$weightReady || $dimensionReady,
+            'can_be_weight_evidence'=>$weightReady,
+            'can_be_dimension_evidence'=>$dimensionReady,
+            'weight_evidence_candidate'=>$weightCandidate,
+            'dimension_evidence_candidate'=>$dimensionCandidate,
+            'order'=>$this->order($order),
+            'product'=>$product,
+        ];
+    }
+
+    private function unresolved(array $base, string $matchStatus, string $status): array
+    {
+        return [
+            ...$base,
+            'order_match_status'=>$matchStatus,
+            'classification'=>'unresolved',
+            'evidence_status'=>$status,
+            'weight_evidence_status'=>'ineligible_unresolved_order',
+            'dimension_evidence_status'=>'ineligible_unresolved_order',
+            'can_be_product_evidence'=>false,
+            'can_be_weight_evidence'=>false,
+            'can_be_dimension_evidence'=>false,
+            'weight_evidence_candidate'=>null,
+            'dimension_evidence_candidate'=>null,
+            'order'=>null,
+            'product'=>null,
+        ];
     }
 
     private function resolvedBase(array $base, Order $order, string $classification, string $status): array
-    { return [...$base,'order_match_status'=>'matched','classification'=>$classification,'evidence_status'=>$status,'can_be_product_evidence'=>false,'order'=>$this->order($order),'product'=>null]; }
+    {
+        return [
+            ...$base,
+            'order_match_status'=>'matched',
+            'classification'=>$classification,
+            'evidence_status'=>$status,
+            'weight_evidence_status'=>'ineligible_'.$classification,
+            'dimension_evidence_status'=>'ineligible_'.$classification,
+            'can_be_product_evidence'=>false,
+            'can_be_weight_evidence'=>false,
+            'can_be_dimension_evidence'=>false,
+            'weight_evidence_candidate'=>null,
+            'dimension_evidence_candidate'=>null,
+            'order'=>$this->order($order),
+            'product'=>null,
+        ];
+    }
     private function order(Order $order): array
     { return ['id'=>$order->id,'external_order_number'=>$order->external_order_number,'internal_order_number'=>$order->internal_order_number,'erp_order_id'=>$order->erp_order_id]; }
     private function placeholderDimensions(array $dims): bool

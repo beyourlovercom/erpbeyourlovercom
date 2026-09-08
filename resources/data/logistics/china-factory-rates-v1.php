@@ -1,13 +1,15 @@
 <?php
 
 return [
-    'version' => 'china-factory-sd-economy-registered-battery-v1',
+    'version' => 'china-factory-sd-economy-registered-battery-v2',
     'source' => [
         'file' => '仓库-物流-国内小包费用.xlsx',
         'sheet' => 'SD经济挂号-带电',
         'effective_date' => null,
     ],
-    'formula' => 'max(actual_weight_kg, volume_cm3 / 8000), rounded_up_to_gram',
+    'formula' => 'actual_weight_kg, rounded_up_to_gram',
+    'billing_basis' => 'actual_weight_only',
+    'billing_basis_source' => 'owner_operational_rule_2026-09-08',
     'countries' => [
         'US' => ['minimum_billing_kg' => 0.05, 'bands' => [
             ['max_kg' => 0.10, 'per_kg_rmb' => 131, 'base_rmb' => 25], ['max_kg' => 0.20, 'per_kg_rmb' => 131, 'base_rmb' => 23],

@@ -6,6 +6,7 @@ use App\Modules\Inventory\Application\PackagingScan\PackagingScanEvidencePreview
 use App\Modules\Inventory\Application\PackagingScan\PackagingScanXlsxReader;
 use App\Modules\Inventory\Infrastructure\Models\PackagingMeasurementRecord;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Application\ProductWeightEvidenceService;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -36,7 +37,7 @@ final class InventoryPackagingScanEvidenceTest extends TestCase
         $this->assertSame('20', $rows[0]['length_cm']);
     }
 
-    public function test_preview_only_promotes_single_sku_single_unit_with_real_dimensions(): void
+    public function test_preview_separates_weight_and_dimension_evidence_for_single_unit_orders(): void
     {
         $p1 = $this->product('SKU-ONE');
         $p2 = $this->product('SKU-TWO');
@@ -50,25 +51,55 @@ final class InventoryPackagingScanEvidenceTest extends TestCase
 
         $rows = [
             $this->row(2, 'ORDER-1', 1.36, 20, 10, 8),
-            $this->row(3, 'ORDER-1', 1.36, 1, 1, 1),
-            $this->row(4, 'ORDER-2', 2.70, 30, 20, 12),
-            $this->row(5, 'ORDER-3', 1.80, 25, 18, 10),
-            $this->row(6, 'UNKNOWN', 1.10, 20, 10, 8),
+            $this->row(3, 'ORDER-1', 1.37, 1, 1, 1),
+            $this->row(4, 'ORDER-1', 1.38, null, null, null),
+            $this->row(5, 'ORDER-1', null, 21, 11, 9),
+            $this->row(6, 'ORDER-2', 2.70, 30, 20, 12),
+            $this->row(7, 'ORDER-3', 1.80, 25, 18, 10),
+            $this->row(8, 'UNKNOWN', 1.10, 20, 10, 8),
         ];
         $result = app(PackagingScanEvidencePreviewService::class)->preview($rows);
-        $this->assertSame(5, $result['summary']['rows']);
-        $this->assertSame(4, $result['summary']['matched_orders']);
-        $this->assertSame(1, $result['summary']['ready_single_unit_evidence']);
+
+        $this->assertSame(7, $result['summary']['rows']);
+        $this->assertSame(6, $result['summary']['matched_orders']);
+        $this->assertSame(3, $result['summary']['ready_weight_evidence']);
+        $this->assertSame(2, $result['summary']['ready_dimension_evidence']);
+        $this->assertSame(1, $result['summary']['ready_weight_and_dimension_evidence']);
+        $this->assertSame(2, $result['summary']['ready_weight_only_evidence']);
+        $this->assertSame(1, $result['summary']['ready_dimension_only_evidence']);
         $this->assertSame(1, $result['summary']['placeholder_dimensions']);
+        $this->assertSame(1, $result['summary']['missing_dimensions']);
+        $this->assertSame(1, $result['summary']['missing_actual_weight']);
         $this->assertSame(1, $result['summary']['multi_unit']);
         $this->assertSame(1, $result['summary']['multi_sku']);
         $this->assertSame(1, $result['summary']['unmatched_orders']);
-        $this->assertTrue($result['rows'][0]['can_be_product_evidence']);
-        $this->assertSame('SKU-ONE', $result['rows'][0]['product']['sku']);
-        $this->assertSame('placeholder_dimensions', $result['rows'][1]['evidence_status']);
-        $this->assertSame('single_sku_multi_unit', $result['rows'][2]['classification']);
-        $this->assertSame('multi_sku', $result['rows'][3]['classification']);
+
+        $this->assertSame('ready_weight_and_dimension_evidence', $result['rows'][0]['evidence_status']);
+        $this->assertTrue($result['rows'][0]['can_be_weight_evidence']);
+        $this->assertTrue($result['rows'][0]['can_be_dimension_evidence']);
+        $this->assertSame('shipping_reference_weight', $result['rows'][0]['weight_evidence_candidate']['weight_kind']);
+        $this->assertSame('logistics_scan', $result['rows'][0]['weight_evidence_candidate']['source_type']);
+        $this->assertSame(1600.0, $result['rows'][0]['dimension_evidence_candidate']['volume_cm3']);
+
+        $this->assertSame('ready_weight_evidence_only', $result['rows'][1]['evidence_status']);
+        $this->assertTrue($result['rows'][1]['can_be_weight_evidence']);
+        $this->assertFalse($result['rows'][1]['can_be_dimension_evidence']);
+        $this->assertSame('placeholder_dimensions', $result['rows'][1]['dimension_evidence_status']);
+
+        $this->assertSame('ready_weight_evidence_only', $result['rows'][2]['evidence_status']);
+        $this->assertSame('missing_dimensions', $result['rows'][2]['dimension_evidence_status']);
+        $this->assertTrue($result['rows'][2]['can_be_product_evidence']);
+
+        $this->assertSame('ready_dimension_evidence_only', $result['rows'][3]['evidence_status']);
+        $this->assertFalse($result['rows'][3]['can_be_weight_evidence']);
+        $this->assertTrue($result['rows'][3]['can_be_dimension_evidence']);
+        $this->assertSame('missing_actual_weight', $result['rows'][3]['weight_evidence_status']);
+
+        $this->assertSame('single_sku_multi_unit', $result['rows'][4]['classification']);
+        $this->assertSame('multi_sku', $result['rows'][5]['classification']);
+        $this->assertContains('logistics_scan', ProductWeightEvidenceService::SOURCE_TYPES);
         $this->assertDatabaseCount('packaging_measurement_records', 0);
+        $this->assertDatabaseCount('product_weight_evidences', 0);
     }
 
     private function product(string $sku): Product
@@ -81,9 +112,17 @@ final class InventoryPackagingScanEvidenceTest extends TestCase
         return Order::create(['internal_order_number'=>'ERP-'.$number,'source_type'=>'woocommerce','order_kind'=>'customer','external_order_number'=>$number,'order_date'=>'2026-09-08','order_status'=>'pending_shipment']);
     }
 
-    private function row(int $row, string $order, float $weight, float $l, float $w, float $h): array
+    private function row(int $row, string $order, ?float $weight, ?float $l, ?float $w, ?float $h): array
     {
-        return ['source_row_number'=>$row,'order_reference'=>$order,'tracking_number'=>'TRACK-'.$row,'inbound_weight_kg'=>(string)$weight,'length_cm'=>(string)$l,'width_cm'=>(string)$w,'height_cm'=>(string)$h];
+        return [
+            'source_row_number'=>$row,
+            'order_reference'=>$order,
+            'tracking_number'=>'TRACK-'.$row,
+            'inbound_weight_kg'=>$weight === null ? null : (string)$weight,
+            'length_cm'=>$l === null ? null : (string)$l,
+            'width_cm'=>$w === null ? null : (string)$w,
+            'height_cm'=>$h === null ? null : (string)$h,
+        ];
     }
 
     /** @param list<list<string>> $rows */
