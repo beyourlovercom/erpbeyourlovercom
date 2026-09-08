@@ -1,6 +1,6 @@
 # ERP-SETTINGS-FX-M1-001
 
-Status: IMPLEMENTATION / LOCAL VERIFICATION
+Status: OWNER UAT PASS / MERGE AUTHORIZED
 Owner Visual Gate: PASS (2026-09-07)
 Owner Interaction Revision: APPROVED / EXECUTE (2026-09-08) — per-currency slide switch; automatic ON = green; manual OFF = gray; switching to automatic preserves the stored manual value.
 
@@ -8,7 +8,7 @@ Owner Interaction Revision: APPROVED / EXECUTE (2026-09-08) — per-currency sli
 - Repository: `beyourlovercom/erpbeyourlovercom`
 - Branch: `feature/erp-settings-fx-m1-001`
 - Worktree: `/Users/a/AI/007/worktrees/erp-settings-fx-m1-001`
-- Base after 2026-09-08 reconciliation: `origin/main@cf72a2eadb489ff27cf6b21700d7c86d6b4686ca`
+- Base after final 2026-09-08 reconciliation: `origin/main@e37d5fa4827384d407ea81e14ada8335e11e87f5`
 - Execution provider: GPT_WEB
 - Verification tier: DAILY / focused affected regression + build
 
@@ -59,8 +59,18 @@ Required before Owner UAT:
 ## Inherited architecture baseline drift
 `tests/Architecture/ModuleArchitectureTest.php` already fails on the exact `origin/main@813f9fe4...` source tree because its frozen directory/file sets lag substantial previously merged modules (including Procurement, NotificationCenter, KOL/Logistics additions and existing Finance contracts). This WP does not take ownership of repairing that global 100+ file architecture baseline debt. The FX-specific module boundaries are verified separately and this WP must not weaken or broadly rewrite the architecture test.
 
+## Final verification / closure evidence
+- Owner visual proposal: PASS.
+- Owner live-page UAT: PASS (2026-09-08) — Owner response: “完美。可以封口。”
+- Final affected PHP regression after latest-main reconciliation: FX/ECB/AppShell PASS; the only Approved Menu failures are inherited from main's newly merged `accounting-loss-orders` query-URL baseline mismatch and level-2 count drift.
+- Frontend FX + Settings tests: PASS.
+- TypeScript: PASS.
+- Vite production build: PASS.
+- GitHub Actions did not start because account billing/spending-limit blocked jobs; annotations explicitly report billing, not code/test failure.
+- `git diff --check`: PASS.
+
 ## Hard gates
 - Owner visual proposal: PASS.
-- Owner live-page UAT: PENDING.
-- Merge: after Owner UAT + current-main reconciliation + checks.
-- Production deploy/schema migration: separate Owner Gate; not authorized by this WP alone.
+- Owner live-page UAT: PASS.
+- Merge: OWNER AUTHORIZED by closure instruction on 2026-09-08.
+- Production deploy/schema migration: separate Owner Gate; NOT AUTHORIZED by this closure.
