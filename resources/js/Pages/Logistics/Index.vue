@@ -198,7 +198,7 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
                 </div>
                 <div class="fulfillment-form-row">
                   <label>发货时间<input v-model="drafts[order.id].shipped_at" type="datetime-local"></label>
-                  <label>物流渠道<select v-model="drafts[order.id].service" aria-label="物流渠道"><option value="普通">普通（默认）</option><option value="加急">加急</option><option value="特快">特快</option></select></label>
+                  <label>物流渠道<select v-model="drafts[order.id].service" aria-label="物流渠道"><option value="特快">特快</option><option value="加急">加急</option><option value="普通">普通（默认）</option></select></label>
                   <label>物流备注<textarea v-model="drafts[order.id].logistics_note" rows="1" placeholder="选填" /></label>
                 </div>
               </div>
