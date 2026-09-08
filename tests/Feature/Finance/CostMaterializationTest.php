@@ -272,25 +272,92 @@ final class CostMaterializationTest extends TestCase
         }
     }
 
-    public function test_operational_scope_is_fail_closed_and_payment_fee_is_never_guessed(): void
+    public function test_operational_scope_is_fail_closed_and_payment_fee_requires_provider_total(): void
     {
         $historical = $this->order('USD');
         $historical->externalReferences()->create([
             'provider' => 'historical_logistics', 'connection_key' => 'default', 'reference' => 'HIST-COST-1',
         ]);
-        $this->attachProduct($historical, ['standard_purchase_cost' => '5.0000', 'cost_currency' => 'USD']);
-
+        $historical->financials()->create(['currency' => 'USD', 'provider_order_total' => '100.00']);
         $preview = $this->service()->preview($historical);
         self::assertSame('blocked', $preview['scope_status']);
         self::assertSame('historical_logistics_excluded', $preview['scope_blocker']);
         $this->service()->apply($historical);
-        self::assertSame(0, $historical->costEntries()->count());
+        self::assertFalse($historical->costEntries()->where('cost_type', 'payment_fee')->exists());
 
-        $normal = $this->order('USD');
-        $normalPreview = $this->service()->preview($normal);
-        self::assertContains('payment_fee', $normalPreview['unsupported']);
-        $this->service()->apply($normal);
-        self::assertFalse($normal->costEntries()->where('cost_type', 'payment_fee')->exists());
+        $missingFinancials = $this->order('USD');
+        $candidate = $this->candidate($this->service()->preview($missingFinancials), 'payment_fee');
+        self::assertSame('payment_fee_order_financials_missing', $candidate['blocker']);
+
+        $missingTotal = $this->order('USD');
+        $missingTotal->financials()->create(['currency' => 'USD']);
+        $candidate = $this->candidate($this->service()->preview($missingTotal), 'payment_fee');
+        self::assertSame('payment_fee_provider_order_total_missing', $candidate['blocker']);
+        self::assertNotContains('payment_fee', $this->service()->preview($missingTotal)['unsupported']);
+    }
+
+    public function test_payment_fee_is_provider_order_total_times_3_5_percent_and_refund_is_separate(): void
+    {
+        $order = $this->order('USD');
+        $order->financials()->create([
+            'currency' => 'USD', 'provider_order_total' => '100.00', 'refund_amount' => '25.00',
+            'revenue_provenance' => 'provider_import', 'completeness_status' => 'INCOMPLETE',
+        ]);
+
+        $candidate = $this->candidate($this->service()->previewPaymentFeeGate($order), 'payment_fee');
+        self::assertSame('3.50', $candidate['amount']);
+        self::assertSame('provider_order_total', $candidate['basis']);
+        self::assertSame('100.00', $candidate['basis_amount']);
+        self::assertSame('0.03500000', $candidate['fee_rate']);
+        self::assertSame('separate_no_fee_reversal', $candidate['refund_policy']);
+        self::assertSame('confirmed_manual', $candidate['provenance']);
+        self::assertSame('confirmed', $candidate['status']);
+
+        $this->service()->applyPaymentFeeGate($order);
+        $entry = $order->costEntries()->where('cost_type', 'payment_fee')->firstOrFail();
+        self::assertSame('3.50', $entry->amount);
+        self::assertSame('owner-rule:payment-fee:v1:provider-order-total:3.5pct', $entry->source_reference);
+
+        $order->financials()->update(['refund_amount' => '90.00']);
+        $candidate = $this->candidate($this->service()->previewPaymentFeeGate($order->fresh()), 'payment_fee');
+        self::assertSame('noop', $candidate['materialization_status']);
+        self::assertSame('3.50', $order->costEntries()->where('cost_type', 'payment_fee')->firstOrFail()->amount);
+
+        $zero = $this->order('USD');
+        $zero->financials()->create(['currency' => 'USD', 'provider_order_total' => '0.00']);
+        self::assertSame('0.00', $this->candidate($this->service()->previewPaymentFeeGate($zero), 'payment_fee')['amount']);
+
+        $negative = $this->order('USD');
+        $negative->financials()->create(['currency' => 'USD', 'provider_order_total' => '-1.00']);
+        self::assertSame('payment_fee_provider_order_total_negative', $this->candidate($this->service()->previewPaymentFeeGate($negative), 'payment_fee')['blocker']);
+    }
+
+    public function test_payment_fee_non_usd_freezes_fx_and_command_is_scoped_and_idempotent(): void
+    {
+        Http::fake(['ecb.europa.eu/*' => Http::response($this->ecbXml(), 200)]);
+        $order = $this->order('EUR');
+        $order->financials()->create([
+            'currency' => 'EUR', 'provider_order_total' => '100.00', 'refund_amount' => '0.00',
+            'revenue_provenance' => 'provider_import', 'completeness_status' => 'INCOMPLETE',
+        ]);
+        $this->attachWarehouseShipment($order, 'de');
+
+        $this->artisan('finance:materialize-payment-fees', ['--order' => $order->id])->assertSuccessful();
+        self::assertSame(0, $order->costEntries()->count());
+        $this->artisan('finance:materialize-payment-fees', ['--order' => $order->id, '--apply' => true])->assertSuccessful();
+
+        $entry = $order->costEntries()->where('cost_type', 'payment_fee')->firstOrFail();
+        self::assertSame('3.50', $entry->amount);
+        self::assertSame('EUR', $entry->currency);
+        self::assertSame('1.10000000', $entry->exchange_rate);
+        self::assertSame('3.85', $entry->base_amount);
+        self::assertSame('USD', $entry->base_currency);
+        self::assertSame('1.10000000', $order->financials()->firstOrFail()->fresh()->fx_rate);
+        self::assertFalse($order->costEntries()->where('cost_type', 'first_mile_cost')->exists());
+        self::assertFalse($order->costEntries()->where('cost_type', 'customs_tax')->exists());
+
+        $this->artisan('finance:materialize-payment-fees', ['--order' => $order->id, '--apply' => true])->assertSuccessful();
+        self::assertSame(1, $order->costEntries()->where('cost_type', 'payment_fee')->count());
     }
 
     public function test_owner_fixed_cost_rules_are_exact_and_fail_closed(): void
@@ -342,7 +409,7 @@ final class CostMaterializationTest extends TestCase
 
         self::assertNotContains('first_mile_cost', $preview['unsupported']);
         self::assertNotContains('customs_tax', $preview['unsupported']);
-        self::assertContains('payment_fee', $preview['unsupported']);
+        self::assertNotContains('payment_fee', $preview['unsupported']);
     }
 
     public function test_materialization_invalidates_reconciled_status_when_cost_truth_changes(): void

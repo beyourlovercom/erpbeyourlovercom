@@ -11,6 +11,7 @@ use App\Modules\Finance\Infrastructure\EloquentWooFinancialBootstrapOrderStore;
 use App\Modules\Finance\Experience\Console\Commands\BootstrapWooFinancialEvidenceCommand;
 use App\Modules\Finance\Experience\Console\Commands\MaterializeFixedCostsCommand;
 use App\Modules\Finance\Experience\Console\Commands\MaterializeOrderCostsCommand;
+use App\Modules\Finance\Experience\Console\Commands\MaterializePaymentFeesCommand;
 use App\Modules\Finance\Experience\Console\Commands\MaterializeProductCostsCommand;
 use Illuminate\Support\ServiceProvider;
 
@@ -27,7 +28,7 @@ final class FinanceServiceProvider extends ServiceProvider
     {
         $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/web.php');
         if ($this->app->runningInConsole()) {
-            $this->commands([MaterializeOrderCostsCommand::class, MaterializeFixedCostsCommand::class, MaterializeProductCostsCommand::class, BootstrapWooFinancialEvidenceCommand::class]);
+            $this->commands([MaterializeOrderCostsCommand::class, MaterializeFixedCostsCommand::class, MaterializeProductCostsCommand::class, MaterializePaymentFeesCommand::class, BootstrapWooFinancialEvidenceCommand::class]);
         }
     }
 }

@@ -18,6 +18,7 @@ final class CostMaterializationService
     private const STRONG_PROVENANCE = ['actual', 'confirmed_manual', 'provider_import', 'allocated_actual'];
     private const OVERSEAS_WAREHOUSE_SLUGS = ['us-la', 'us-ny', 'de', 'ca', 'us-sj'];
     private const CHINA_DIRECT_WAREHOUSE_SLUGS = ['factory', '007'];
+    private const PAYMENT_FEE_RATE = '0.03500000';
 
     public function __construct(
         private readonly ProductCostEvidenceReader $products,
@@ -39,6 +40,7 @@ final class CostMaterializationService
             $this->affiliateCandidate($order),
             $this->firstMileCandidate($order),
             $this->customsCandidate($order),
+            $this->paymentFeeCandidate($order),
         ];
         if ($scopeBlocker !== null) {
             $candidates = array_map(fn (array $candidate): array => $this->forceBlocked($candidate, $scopeBlocker), $candidates);
@@ -49,8 +51,59 @@ final class CostMaterializationService
             'scope_status' => $scopeBlocker === null ? 'operational' : 'blocked',
             'scope_blocker' => $scopeBlocker,
             'candidates' => array_values(array_map(fn (array $candidate): array => $this->annotateDisposition($order, $candidate), $candidates)),
-            'unsupported' => ['payment_fee', 'warehouse_cost', 'overseas_handling_cost', 'refund_replacement_loss', 'other_variable_cost'],
+            'unsupported' => ['warehouse_cost', 'overseas_handling_cost', 'refund_replacement_loss', 'other_variable_cost'],
         ];
+    }
+
+    /** @return array<string, mixed> */
+    public function previewPaymentFeeGate(Model $order): array
+    {
+        $scopeBlocker = $this->operationalBlocker($order);
+        $candidate = $this->paymentFeeCandidate($order);
+        if ($scopeBlocker !== null) {
+            $candidate = $this->forceBlocked($candidate, $scopeBlocker);
+        }
+
+        return [
+            'order_id' => (int) $order->getKey(),
+            'scope_status' => $scopeBlocker === null ? 'operational' : 'blocked',
+            'scope_blocker' => $scopeBlocker,
+            'candidates' => [$this->annotateDisposition($order, $candidate)],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function applyPaymentFeeGate(Model $order): array
+    {
+        return DB::transaction(function () use ($order): array {
+            $locked = $order->newQuery()->lockForUpdate()->findOrFail($order->getKey());
+            $preview = $this->previewPaymentFeeGate($locked);
+            $result = $preview + ['applied' => [], 'noop' => [], 'blocked' => []];
+            $candidate = $preview['candidates'][0];
+            $disposition = $candidate['materialization_status'];
+            if ($disposition === 'blocked') {
+                $result['blocked'][] = $candidate;
+            } elseif ($disposition === 'noop') {
+                $result['noop'][] = $candidate;
+            } else {
+                $outcome = $this->writeCandidate($locked, $candidate);
+                $result[$outcome['status']][] = $outcome['entry'];
+            }
+
+            if ($result['applied'] !== []) {
+                $this->analysis->refreshCompleteness($locked, preserveReconciled: false);
+                $this->audit->record(
+                    AuditActor::system(AuditSource::InternalSystem),
+                    'finance.payment_fee_materialization.applied',
+                    $locked::class,
+                    $locked->getKey(),
+                    after: ['applied' => $result['applied'], 'blocked' => $result['blocked']],
+                    reason: 'payment_fee_materialization',
+                );
+            }
+
+            return $result;
+        });
     }
 
     /** @return array<string, mixed> */
@@ -390,6 +443,55 @@ final class CostMaterializationService
         return $this->blocked('first_mile_cost', 'first_mile_warehouse_classification_unknown', $context);
     }
 
+    private function paymentFeeCandidate(Model $order): array
+    {
+        $financials = $order->financials()->first();
+        if ($financials === null) {
+            return $this->blocked('payment_fee', 'payment_fee_order_financials_missing');
+        }
+        if ($financials->provider_order_total === null) {
+            return $this->blocked('payment_fee', 'payment_fee_provider_order_total_missing');
+        }
+
+        $providerTotal = trim((string) $financials->provider_order_total);
+        if (! preg_match('/^-?\d+(?:\.\d+)?$/D', $providerTotal)) {
+            return $this->blocked('payment_fee', 'payment_fee_provider_order_total_invalid');
+        }
+        if (bccomp($providerTotal, '0', 8) < 0) {
+            return $this->blocked('payment_fee', 'payment_fee_provider_order_total_negative', ['provider_order_total' => $providerTotal]);
+        }
+
+        $currency = $this->orderCurrency($order);
+        $amount = DecimalMoney::round(DecimalMoney::multiply($providerTotal, self::PAYMENT_FEE_RATE, 8));
+        $extra = [
+            'rule' => 'provider_order_total_x_3_5_percent',
+            'fee_rate' => self::PAYMENT_FEE_RATE,
+            'basis' => 'provider_order_total',
+            'basis_amount' => DecimalMoney::round($providerTotal),
+            'refund_policy' => 'separate_no_fee_reversal',
+        ];
+
+        if ($currency !== 'USD') {
+            $fx = $this->fxBridge->preview($order, $currency);
+            if (! ($fx['available'] ?? false)) {
+                return $this->blocked('payment_fee', 'payment_fee_fx_snapshot_unavailable', $extra + [
+                    'order_currency' => $currency,
+                    'fx_reason' => $fx['reason'] ?? 'fx_unavailable',
+                ]);
+            }
+            $extra['posting_fx'] = $fx + [
+                'base_amount' => DecimalMoney::round(DecimalMoney::multiply($amount, (string) $fx['source_to_usd_rate'], 8)),
+            ];
+        }
+
+        return $this->candidate(
+            'payment_fee', $amount, $currency, 'confirmed_manual', 'confirmed',
+            'owner-rule:payment-fee:v1:provider-order-total:3.5pct',
+            $financials->provider_modified_at ?? $financials->paid_at ?? null,
+            $extra,
+        );
+    }
+
     private function customsCandidate(Model $order): array
     {
         return $this->candidate(
@@ -567,7 +669,8 @@ final class CostMaterializationService
         return str_starts_with($source, 'product-reference:v1:')
             || str_starts_with($source, 'carrier-billing:v1:')
             || str_starts_with($source, 'affiliatewp-referrals:v1:')
-            || str_starts_with($source, 'product-cost-source:v1:');
+            || str_starts_with($source, 'product-cost-source:v1:')
+            || str_starts_with($source, 'owner-rule:payment-fee:v1:');
     }
 
     private function orderCurrency(Model $order): string
