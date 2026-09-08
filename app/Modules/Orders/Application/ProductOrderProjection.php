@@ -31,14 +31,16 @@ final class ProductOrderProjection
             ->map(fn (object $row): array => ['currency' => (string) $row->currency, 'revenue' => (float) $row->revenue])->values()->all();
 
         $recent = $base()
-            ->select('orders.id', 'orders.external_order_number', 'orders.internal_order_number', 'orders.order_date', 'orders.order_status', 'orders.currency')
+            ->select('orders.id', 'orders.erp_order_id', 'orders.external_order_number', 'orders.order_date', 'orders.order_status', 'orders.currency')
             ->selectRaw('SUM(order_items.quantity) as quantity')
             ->selectRaw('COALESCE(SUM(order_items.line_revenue), 0) as revenue')
-            ->groupBy('orders.id', 'orders.external_order_number', 'orders.internal_order_number', 'orders.order_date', 'orders.order_status', 'orders.currency')
+            ->groupBy('orders.id', 'orders.erp_order_id', 'orders.external_order_number', 'orders.order_date', 'orders.order_status', 'orders.currency')
             ->orderByDesc('orders.order_date')->orderByDesc('orders.id')->limit($recentLimit)->get()
             ->map(fn (object $order): array => [
                 'id' => (int) $order->id,
-                'number' => $order->external_order_number ?: $order->internal_order_number,
+                'erp_order_id' => $order->erp_order_id,
+                'external_order_number' => $order->external_order_number,
+                'number' => $order->erp_order_id,
                 'order_date' => $order->order_date ? substr((string) $order->order_date, 0, 10) : null,
                 'status' => (string) $order->order_status,
                 'quantity' => (int) $order->quantity,

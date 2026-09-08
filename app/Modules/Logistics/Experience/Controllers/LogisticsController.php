@@ -220,7 +220,8 @@ final class LogisticsController
         $packaging = $this->packagingReferences->forOrder($order);
 
         return response()->json([
-            'order_number' => $order->external_order_number,
+            'order_number' => $order->erp_order_id,
+            'source_order_number' => $order->external_order_number,
             'erp_order_id' => $order->erp_order_id,
             'recipient_name' => $order->address?->recipient_name,
             'phone' => $order->address?->phone,
@@ -270,7 +271,7 @@ final class LogisticsController
 
     private function projection(Request $request, string $kind, string $component, \Closure $filter): Response { $shipments = Shipment::query()->with(['order.address', 'order.items.product', 'order.logisticsReview', 'warehouse'])->where($filter)->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
             ->latest('shipped_at')->latest('id')->paginate(self::PER_PAGE)->withQueryString(); return Inertia::render($component, ['shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(), 'statusBar' => $this->statusBar()]); }
-    private function orderProjection(Order $order): array { return ['id' => $order->id, 'order_id' => $order->id, 'order_number' => $order->external_order_number ?? $order->erp_order_id, 'order_url' => $this->orderUrl($order), 'items' => $order->items->map(fn ($item) => ['sku' => $item->sku, 'product_summary' => $item->product_summary, 'product_id' => $item->product_id, 'product_url' => $item->product ? "/products/{$item->product_id}" : null])->all()]; }
+    private function orderProjection(Order $order): array { return ['id' => $order->id, 'order_id' => $order->id, 'order_number' => $order->erp_order_id, 'erp_order_id' => $order->erp_order_id, 'external_order_number' => $order->external_order_number, 'order_url' => $this->orderUrl($order), 'items' => $order->items->map(fn ($item) => ['sku' => $item->sku, 'product_summary' => $item->product_summary, 'product_id' => $item->product_id, 'product_url' => $item->product ? "/products/{$item->product_id}" : null])->all()]; }
     private function orderUrl(?Order $order): ?string { if (! $order) return null; return $order->order_kind?->value === 'kol_fulfillment' ? "/kol/orders/{$order->id}" : "/customers/orders/{$order->id}"; }
     private function statusBar(): array
     {

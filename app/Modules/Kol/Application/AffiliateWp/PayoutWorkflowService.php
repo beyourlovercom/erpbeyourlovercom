@@ -139,15 +139,15 @@ final class PayoutWorkflowService
                     if ($canApprove) { $scope->orWhere('approval_manager_id', $ownerId); }
                     if ($canManage) { $scope->orWhere('finance_owner_id', $ownerId); }
                 });
-            })->with(['items','kol:id,approval_manager_id,finance_owner_id']);
+            })->with(['items.referral.order:id,erp_order_id,external_order_number','kol:id,approval_manager_id,finance_owner_id']);
         $requests=$requestQuery->orderByDesc('id')->limit(200)->get();
         $eligible=collect();
         if ($canRequest) {
             $eligibleQuery=$referralClass::query()->where('connection_key',$connectionKey)->where('reconciliation_status','present')->where('provider_status','unpaid')->whereNull('payout_id')->where('affiliate_resolution_status','bound')->whereNotNull('kol_id')
                 ->whereHas('kol',fn($q)=>$q->where('owner_id',$ownerId));
-            $eligible=$eligibleQuery->orderBy('affiliate_id')->orderBy('referral_id')->limit(500)->get(['id','referral_id','affiliate_id','kol_id','commission_amount','currency','order_reference','referral_date']);
+            $eligible=$eligibleQuery->with('order:id,erp_order_id,external_order_number')->orderBy('affiliate_id')->orderBy('referral_id')->limit(500)->get(['id','referral_id','affiliate_id','kol_id','order_id','commission_amount','currency','order_reference','referral_date']);
         }
-        return ['connection_key'=>$connectionKey,'requests'=>$requests->map(fn($r)=>$this->requestView($r, $canApprove && (int)($r->kol?->approval_manager_id ?? 0)===$ownerId, $canManage && (int)($r->kol?->finance_owner_id ?? 0)===$ownerId))->values()->all(),'eligible'=>$eligible->map(fn($r)=>['referral_id'=>(int)$r->referral_id,'affiliate_id'=>(int)$r->affiliate_id,'kol_id'=>(int)$r->kol_id,'amount'=>(string)$r->commission_amount,'currency'=>(string)$r->currency,'order_reference'=>(string)$r->order_reference,'referral_date'=>$r->referral_date?->toIso8601String()])->values()->all()];
+        return ['connection_key'=>$connectionKey,'requests'=>$requests->map(fn($r)=>$this->requestView($r, $canApprove && (int)($r->kol?->approval_manager_id ?? 0)===$ownerId, $canManage && (int)($r->kol?->finance_owner_id ?? 0)===$ownerId))->values()->all(),'eligible'=>$eligible->map(fn($r)=>['referral_id'=>(int)$r->referral_id,'affiliate_id'=>(int)$r->affiliate_id,'kol_id'=>(int)$r->kol_id,'amount'=>(string)$r->commission_amount,'currency'=>(string)$r->currency,'order_number'=>$r->order?->erp_order_id,'source_order_number'=>$r->order?->external_order_number,'order_reference'=>(string)$r->order_reference,'referral_date'=>$r->referral_date?->toIso8601String()])->values()->all()];
     }
 
     private function payload(object $row, string $transactionId, string $paidAt): array

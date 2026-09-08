@@ -18,14 +18,16 @@ final class ProductShipmentProjection
                     ->whereColumn('order_items.order_id', 'shipments.order_id')
                     ->where('order_items.product_id', $productId);
             })
-            ->select('shipments.id', 'shipments.order_id', 'orders.external_order_number', 'orders.internal_order_number',
+            ->select('shipments.id', 'shipments.order_id', 'orders.erp_order_id', 'orders.external_order_number',
                 'shipments.carrier', 'shipments.service', 'shipments.tracking_number', 'shipments.shipped_at',
                 'shipments.shipment_status', 'warehouses.name as warehouse_name')
             ->orderByDesc('shipments.shipped_at')->orderByDesc('shipments.id')->limit($limit)->get()
             ->map(fn (object $shipment): array => [
                 'id' => (int) $shipment->id,
                 'order_id' => (int) $shipment->order_id,
-                'order_number' => $shipment->external_order_number ?: $shipment->internal_order_number,
+                'erp_order_id' => $shipment->erp_order_id,
+                'external_order_number' => $shipment->external_order_number,
+                'order_number' => $shipment->erp_order_id,
                 'carrier' => $shipment->carrier,
                 'service' => $shipment->service,
                 'tracking_number' => $shipment->tracking_number,

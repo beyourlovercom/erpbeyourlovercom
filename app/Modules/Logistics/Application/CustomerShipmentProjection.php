@@ -24,7 +24,9 @@ final class CustomerShipmentProjection
             ->latest('shipped_at')->latest('id')->limit($limit)->get()
             ->map(fn (Shipment $shipment): array => [
                 'id' => $shipment->id,
-                'order_number' => $shipment->order?->external_order_number ?: $shipment->order?->internal_order_number,
+                'erp_order_id' => $shipment->order?->erp_order_id,
+                'external_order_number' => $shipment->order?->external_order_number,
+                'order_number' => $shipment->order?->erp_order_id,
                 'order_id' => $shipment->order_id,
                 'carrier' => $shipment->carrier,
                 'tracking_number' => $shipment->tracking_number,

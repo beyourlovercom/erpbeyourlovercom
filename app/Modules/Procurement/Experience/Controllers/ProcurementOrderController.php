@@ -28,13 +28,13 @@ final class ProcurementOrderController
         abort_if($rawStatus !== '' && $status === null, 422, '无效的采购状态。');
         $search = trim((string) $request->query('search', ''));
 
-        $query = ProcurementOrder::query()->with(['sourceOrder:id,external_order_number', 'items']);
+        $query = ProcurementOrder::query()->with(['sourceOrder:id,erp_order_id,external_order_number', 'items']);
         if ($status) $query->where('status', $status->value);
         if ($search !== '') {
             $query->where(function ($q) use ($search): void {
                 $like = '%'.$search.'%';
                 $q->where('procurement_number', 'like', $like)
-                    ->orWhereHas('sourceOrder', fn ($order) => $order->where('external_order_number', 'like', $like))
+                    ->orWhereHas('sourceOrder', fn ($order) => $order->where('erp_order_id', 'like', $like)->orWhere('external_order_number', 'like', $like))
                     ->orWhereHas('items', fn ($items) => $items->where('sku', 'like', $like)->orWhere('product_summary', 'like', $like));
             });
         }
@@ -47,7 +47,9 @@ final class ProcurementOrderController
                 'status' => $order->status,
                 'status_label' => $status?->label() ?? $order->status,
                 'source_order_id' => $order->source_order_id,
-                'source_order_number' => $order->sourceOrder?->external_order_number ?? '—',
+                'source_order_number' => $order->sourceOrder?->erp_order_id,
+                'source_order_erp_id' => $order->sourceOrder?->erp_order_id,
+                'source_order_external_number' => $order->sourceOrder?->external_order_number,
                 'item_summary' => $order->items->take(2)->map(fn ($item) => $item->product_summary ?: ($item->sku ?: '—'))->implode(' / '),
                 'item_count' => $order->items->count(),
                 'purchase_quantity' => (int) $order->items->sum('purchase_quantity'),

@@ -2,8 +2,10 @@
 import { computed, reactive, ref } from 'vue'
 import { Head, router, useForm } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
+import { useAccountGridPreferences, type GridColumnDefinition } from '../../Composables/useAccountGridPreferences'
 
-type Eligible = { referral_id:number; affiliate_id:number; kol_id:number; amount:string; currency:string; order_reference:string; referral_date:string|null }
+type Eligible = { referral_id:number; affiliate_id:number; kol_id:number; amount:string; currency:string; order_number:string|null; source_order_number:string|null; order_reference:string; referral_date:string|null }
 type RequestRow = { id:number; kol_id:number; affiliate_id:number; amount:string; currency:string; status:string; provider_payout_id:number|null; payout_recipient:string|null; can_approve?:boolean; can_complete?:boolean; paid_at:string|null; requested_by_user_id:number; approved_by_user_id:number|null; referral_ids:number[]; created_at:string|null }
 const props = defineProps<{ connectionKey:string; eligible:Eligible[]; requests:RequestRow[]; canRequest:boolean; canApprove:boolean; canManage:boolean }>()
 const selected = ref<number[]>([])
@@ -13,6 +15,11 @@ const rejectReason = reactive<Record<number,string>>({})
 const breadcrumbs = [{ label:'BYL ERP', href:'/dashboard' }, '网红', '结算工作流']
 const selectedRows = computed(() => props.eligible.filter(row => selected.value.includes(row.referral_id)))
 const selectedTotal = computed(() => selectedRows.value.reduce((sum,row) => sum + Number(row.amount), 0).toFixed(2))
+type ColumnKey = 'order_number' | 'affiliate' | 'commission' | 'date'
+const definitions: GridColumnDefinition<ColumnKey>[] = [
+  { key: 'order_number', label: 'ERP订单号' }, { key: 'affiliate', label: 'Affiliate / KOL' }, { key: 'commission', label: '佣金' }, { key: 'date', label: '时间' },
+]
+const { columns, visibleColumns, syncState, toggle, startDrag, drop, reset } = useAccountGridPreferences<ColumnKey>({ namespace: 'grid.kol.payouts.eligible-referrals.v1', definitions, requiredKeys: ['order_number'] })
 const selectionValid = computed(() => selectedRows.value.length > 0 && new Set(selectedRows.value.map(r=>`${r.affiliate_id}|${r.kol_id}|${r.currency}`)).size === 1)
 function submitRequest():void { if(!props.canRequest || !selectionValid.value || createForm.processing) return; createForm.referral_ids=[...selected.value].sort((a,b)=>a-b); createForm.post('/kol/payouts',{preserveScroll:true,onSuccess:()=>{selected.value=[]}}) }
 function syncPayouts():void { if(props.canManage) router.post('/kol/payouts/sync',{}, { preserveScroll:true }) }
@@ -36,8 +43,8 @@ function money(currency:string,amount:string):string { return `${currency} ${amo
         <div class="request-head"><div><strong>新建结算申请</strong><p>只能选择同一 KOL / Affiliate / Currency 的 eligible unpaid Referral。</p></div><div class="request-total"><span>{{ selected.length }} 条</span><strong>{{ selectedRows[0]?.currency || '—' }} {{ selectedTotal }}</strong></div></div>
         <div v-if="createForm.errors.payout_request" class="error">{{ createForm.errors.payout_request }}</div>
         <div class="eligible-wrap">
-          <table><thead><tr><th></th><th>Referral</th><th>Affiliate / KOL</th><th>订单</th><th>佣金</th><th>时间</th></tr></thead>
-            <tbody><tr v-for="row in eligible" :key="row.referral_id"><td><input v-model="selected" type="checkbox" :value="row.referral_id"></td><td>#{{ row.referral_id }}</td><td>Affiliate #{{ row.affiliate_id }} · KOL #{{ row.kol_id }}</td><td>Woo #{{ row.order_reference || '—' }}</td><td>{{ money(row.currency,row.amount) }}</td><td>{{ row.referral_date ? new Date(row.referral_date).toLocaleDateString() : '—' }}</td></tr></tbody>
+          <table><thead><tr><th></th><th>Referral</th><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" /></tr></thead>
+            <tbody><tr v-for="row in eligible" :key="row.referral_id"><td><input v-model="selected" type="checkbox" :value="row.referral_id"></td><td>#{{ row.referral_id }}</td><td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><strong>{{ row.order_number ?? '—' }}</strong><small v-if="row.source_order_number">来源订单：{{ row.source_order_number }}</small></template><template v-else-if="column.key === 'affiliate'">Affiliate #{{ row.affiliate_id }} · KOL #{{ row.kol_id }}</template><template v-else-if="column.key === 'commission'">{{ money(row.currency,row.amount) }}</template><template v-else>{{ row.referral_date ? new Date(row.referral_date).toLocaleDateString() : '—' }}</template></td></tr></tbody>
           </table>
         </div>
         <div class="request-actions"><span v-if="selected.length && !selectionValid" class="error">选择项必须属于同一 Affiliate / KOL / Currency。</span><button type="button" :disabled="!selectionValid || createForm.processing" @click="submitRequest">提交审批</button></div>

@@ -3,6 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3'
 import { computed, reactive, ref, watch } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import StatusBar from '../../Components/Logistics/StatusBar.vue'
+import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
 import { useAccountGridPreferences, type GridColumnDefinition, type GridPreferenceValue } from '../../Composables/useAccountGridPreferences'
 
 type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; inventory_state: string; can_auto_allocate: boolean; quantity_on_hand: number | null; quantity_reserved: number | null; quantity_available: number | null }
@@ -11,7 +12,7 @@ type Shipment = { warehouse_id: number | null; warehouse_name: string | null; wa
 type RecommendationWarehouse = { id: number; slug: string; code: string; name: string }
 type Recommendation = { status: 'recommended' | 'blocked'; reason_code: string; reason_label: string; country_code: string | null; required_sku_count: number | null; candidate_count: number; warehouse: RecommendationWarehouse | null }
 type AutomaticAllocation = { state: string; status: 'ready' | 'blocked' | 'allocated'; reason_code: string; reason_label: string; country_code: string | null; warehouse: RecommendationWarehouse | null; can_apply: boolean }
-type Order = { id: number; external_order_number: string | null; order_kind_label: string; order_url?: string | null; recipient_name: string | null; phone: string | null; country: string | null; owner_label: string | null; item_count: number; items: Item[]; warehouse_recommendation: Recommendation; automatic_allocation: AutomaticAllocation; shipment: Shipment | null }
+type Order = { id: number; erp_order_id: string | null; external_order_number: string | null; order_kind_label: string; order_url?: string | null; recipient_name: string | null; phone: string | null; country: string | null; owner_label: string | null; item_count: number; items: Item[]; warehouse_recommendation: Recommendation; automatic_allocation: AutomaticAllocation; shipment: Shipment | null }
 type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null; priority: number; inventory_state: string; can_auto_allocate: boolean; service_regions: { country_code: string; priority: number }[] }
 type CarrierOption = { value: string; label: string }
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; per_page: number; total: number }
@@ -25,7 +26,6 @@ const copyState = ref<Record<number, 'success' | 'error'>>({})
 const shipValidation = ref<Record<number, string>>({})
 const localWarehouseNames = reactive<Record<number, string>>({})
 const adoptError = ref<Record<number, string>>({})
-const columnSettingsOpen = ref(false)
 const defaultColumns: GridColumnDefinition<ColumnKey>[] = [
   { key: 'order_number', label: '订单号' },
   { key: 'type', label: '类型' },
@@ -150,27 +150,11 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
     <section class="mvp-page">
       <StatusBar :statuses="props.statusBar ?? []" />
       <div class="mvp-page-heading"><div><p class="mvp-kicker">Assisted Fulfillment</p><h2>待发货</h2><p>系统按服务区域与确认库存推荐仓库，由人工采用并完成履约。</p></div></div>
-      <div class="logistics-grid-toolbar">
-        <div class="column-settings-anchor">
-          <button class="column-settings-trigger" type="button" aria-label="设置待发货列表列" title="设置显示列和列顺序" @click="columnSettingsOpen = !columnSettingsOpen">…</button>
-          <div v-if="columnSettingsOpen" class="column-settings-panel" @click.stop>
-            <div class="column-settings-heading"><strong>列设置</strong><button type="button" class="column-reset-btn" @click="resetColumns">恢复默认</button></div>
-            <p class="column-settings-help">勾选显示列；按住拖动柄上下调整列顺序。设置绑定当前账号并跨设备同步。</p>
-            <p v-if="columnPreferenceSyncState !== 'idle'" class="column-sync-state" :data-state="columnPreferenceSyncState">{{ columnPreferenceSyncState === 'saving' ? '正在同步…' : columnPreferenceSyncState === 'error' ? '同步失败，已保留本地缓存' : '已同步到账号' }}</p>
-            <div v-for="column in columnPreferences" :key="column.key" class="column-setting-row" draggable="true" :data-column-key="column.key" @dragstart="startColumnDrag(column.key)" @dragover.prevent @drop="dropColumn(column.key)">
-              <span class="column-drag-handle" title="拖动调整顺序">⋮⋮</span>
-              <input v-if="column.key === 'order_number'" type="checkbox" checked disabled aria-label="订单号固定显示">
-              <input v-else type="checkbox" :checked="column.visible" :aria-label="`显示${column.label}`" @change="toggleColumn(column.key)">
-              <span>{{ column.label }}</span><small v-if="column.key === 'order_number'">固定显示</small>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="mvp-table-wrap"><table class="mvp-table logistics-pending-grid"><thead><tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>操作</th></tr></thead><tbody>
+      <div class="mvp-table-wrap"><table class="mvp-table logistics-pending-grid"><thead><tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>操作</th><ColumnSettingsHeader :columns="columnPreferences" :required-keys="['order_number']" :sync-state="columnPreferenceSyncState" @toggle="toggleColumn" @start-drag="startColumnDrag" @drop="dropColumn" @reset="resetColumns" /></tr></thead><tbody>
         <template v-for="order in orders.data" :key="order.id">
           <tr>
             <td v-for="column in visibleColumns" :key="column.key">
-              <template v-if="column.key === 'order_number'"><Link v-if="order.order_url" :href="order.order_url" class="mvp-link">{{ order.external_order_number || '—' }}</Link><span v-else>{{ order.external_order_number || '—' }}</span></template>
+              <template v-if="column.key === 'order_number'"><Link v-if="order.order_url" :href="order.order_url" class="mvp-link">{{ order.erp_order_id ?? '—' }}</Link><span v-else>{{ order.erp_order_id ?? '—' }}</span><small v-if="order.external_order_number">来源订单：{{ order.external_order_number }}</small></template>
               <template v-else-if="column.key === 'type'">{{ order.order_kind_label }}</template>
               <template v-else-if="column.key === 'recipient'">{{ order.recipient_name ?? '—' }}<small>{{ order.phone ?? '—' }}</small></template>
               <template v-else-if="column.key === 'country'">{{ order.country ?? '—' }}</template>
