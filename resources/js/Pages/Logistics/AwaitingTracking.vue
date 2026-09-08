@@ -3,6 +3,8 @@ import { Head, Link, router } from '@inertiajs/vue3'
 import { ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import StatusBar from '../../Components/Logistics/StatusBar.vue'
+import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
+import { useAccountGridPreferences, type GridColumnDefinition } from '../../Composables/useAccountGridPreferences'
 
 type ShipmentRow = {
   shipment_id: number
@@ -23,6 +25,13 @@ type ShipmentRow = {
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; per_page: number; total: number }
 
 const props = defineProps<{ shipments: Paginated<ShipmentRow>; statusBar?: { key: string; label: string; url: string; count: number }[] }>()
+type ColumnKey = 'order_number' | 'recipient' | 'country' | 'warehouse' | 'carrier' | 'shipped_at' | 'tracking'
+const definitions: GridColumnDefinition<ColumnKey>[] = [
+  { key: 'order_number', label: '订单号' },
+  { key: 'recipient', label: '收件人' }, { key: 'country', label: '国家' }, { key: 'warehouse', label: '仓库' },
+  { key: 'carrier', label: '物流商 / 渠道' }, { key: 'shipped_at', label: '发货时间' }, { key: 'tracking', label: '追踪号' },
+]
+const { columns, visibleColumns, syncState, toggle, startDrag, drop, reset } = useAccountGridPreferences<ColumnKey>({ namespace: 'grid.logistics.awaiting-tracking.v1', definitions, requiredKeys: ['order_number'] })
 const trackingInputs = ref<Record<number, string>>({})
 const getTracking = (row: ShipmentRow) => trackingInputs.value[row.order_id] ?? ''
 const setTracking = (row: ShipmentRow, v: string) => { trackingInputs.value[row.order_id] = v }
@@ -43,19 +52,13 @@ const goToPage = (page: number) => router.get('/logistics/awaiting-tracking', { 
       <StatusBar :statuses="props.statusBar ?? []" />
       <div class="mvp-page-heading"><div><p class="mvp-kicker">Logistics OS V1</p><h2>已发待单号</h2><p>已确认发货但追踪号尚未填入的物流单。</p></div></div>
       <div class="mvp-table-wrap"><table class="mvp-table"><thead><tr>
-        <th>订单号</th><th>收件人</th><th>国家</th><th>仓库</th><th>物流商 / 渠道</th><th>发货时间</th><th>追踪号</th><th>操作</th>
+        <th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" />
       </tr></thead><tbody>
         <tr v-for="row in shipments.data" :key="row.shipment_id">
-          <td><Link v-if="row.order_url" :href="row.order_url" class="mvp-link">{{ row.external_order_number ?? row.erp_order_id ?? '—' }}</Link><span v-else>—</span></td>
-          <td>{{ row.recipient_name ?? '—' }}</td>
-          <td>{{ row.country ?? '—' }}</td>
-          <td>{{ row.warehouse_name ?? '—' }}</td>
-          <td>{{ [row.carrier, row.service].filter(Boolean).join(' / ') || '—' }}</td>
-          <td>{{ row.shipped_at ? row.shipped_at.slice(0, 10) : '—' }}</td>
-          <td><input class="tracking-input" :value="getTracking(row)" @input="setTracking(row, ($event.target as HTMLInputElement).value)" placeholder="填入追踪号" /></td>
+          <td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link v-if="row.order_url" :href="row.order_url" class="mvp-link">{{ row.erp_order_id ?? '—' }}</Link><span v-else>{{ row.erp_order_id ?? '—' }}</span><small v-if="row.external_order_number">来源订单：{{ row.external_order_number }}</small></template><template v-else-if="column.key === 'recipient'">{{ row.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'country'">{{ row.country ?? '—' }}</template><template v-else-if="column.key === 'warehouse'">{{ row.warehouse_name ?? '—' }}</template><template v-else-if="column.key === 'carrier'">{{ [row.carrier, row.service].filter(Boolean).join(' / ') || '—' }}</template><template v-else-if="column.key === 'shipped_at'">{{ row.shipped_at ? row.shipped_at.slice(0, 10) : '—' }}</template><template v-else-if="column.key === 'tracking'"> <input class="tracking-input" :value="getTracking(row)" @input="setTracking(row, ($event.target as HTMLInputElement).value)" placeholder="填入追踪号" /></template></td>
           <td class="mvp-actions"><button class="mvp-button mvp-button-primary" type="button" @click="saveTracking(row)">保存</button></td>
         </tr>
-        <tr v-if="shipments.data.length === 0"><td colspan="8" class="mvp-empty">暂无已发待单号订单</td></tr>
+        <tr v-if="shipments.data.length === 0"><td :colspan="visibleColumns.length + 2" class="mvp-empty">暂无已发待单号订单</td></tr>
       </tbody></table></div>
       <div v-if="shipments.last_page > 1" class="mvp-pagination">
         <button class="mvp-button" :disabled="shipments.current_page <= 1" @click="goToPage(shipments.current_page - 1)">上一页</button>

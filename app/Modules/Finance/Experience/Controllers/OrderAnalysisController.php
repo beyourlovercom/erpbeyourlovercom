@@ -17,7 +17,7 @@ final class OrderAnalysisController
 
     private const SORTS = [
         'order_date' => 'order_date',
-        'order_number' => 'external_order_number',
+        'order_number' => 'erp_order_id',
         'currency' => 'currency',
         'source' => 'source_type',
     ];
@@ -219,7 +219,6 @@ final class OrderAnalysisController
         return [
             'id' => $order->id,
             'erp_order_id' => $order->erp_order_id,
-            'internal_order_number' => $order->internal_order_number,
             'external_order_number' => $order->external_order_number,
             'order_date' => $order->order_date?->format('Y-m-d'),
             'currency' => $order->currency,

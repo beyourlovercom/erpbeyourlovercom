@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3'
 import { computed, reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
 import {
     useAccountGridPreferences,
     type GridColumnDefinition,
@@ -40,8 +41,8 @@ type ProductRef = {
 
 type Row = {
     id: number
+    erp_order_id: string | null
     external_order_number: string | null
-    internal_order_number: string
     order_date: string | null
     currency: string
     source_type: string
@@ -64,6 +65,7 @@ type Pagination = {
 }
 
 type ColumnKey =
+    | 'order_number'
     | 'date'
     | 'source'
     | 'country'
@@ -102,6 +104,7 @@ const props = defineProps<{
 }>()
 
 const definitions: GridColumnDefinition<ColumnKey>[] = [
+    { key: 'order_number', label: 'ERP订单号' },
     { key: 'date', label: '日期' },
     { key: 'source', label: '来源' },
     { key: 'country', label: '国家' },
@@ -120,13 +123,13 @@ const definitions: GridColumnDefinition<ColumnKey>[] = [
     { key: 'missing', label: '缺失项' },
 ]
 
-const { columns, visibleColumns, toggle, startDrag, drop, reset } = useAccountGridPreferences<ColumnKey>({
+const { columns, visibleColumns, syncState, toggle, startDrag, drop, reset } = useAccountGridPreferences<ColumnKey>({
     namespace: props.gridPreferenceNamespace,
     definitions,
+    requiredKeys: ['order_number'],
     serverValue: props.gridPreference,
 })
 
-const settingsOpen = ref(false)
 const editing = ref<number | null>(null)
 const editingRow = computed(() => props.orders.find(row => row.id === editing.value) ?? null)
 const editValues = reactive<Record<string, string>>({})
@@ -208,7 +211,7 @@ const save = (row: Row) => router.put(`/accounting/order-costs/${row.id}`, editV
 
 const orderPath = (row: Row) => `/customers/orders/${row.id}`
 const productPath = (product: ProductRef) => product.product_id ? `/products/${product.product_id}` : null
-const orderNumber = (row: Row) => row.external_order_number || row.internal_order_number
+const orderNumber = (row: Row) => row.erp_order_id ?? '—'
 const money = (value: string | null, row: Row) => value === null ? '—' : `${row.currency} ${value}`
 const margin = (value: string | null) => value === null ? '—' : `${(Number(value) * 100).toFixed(2)}%`
 const statusLabel = (status: string) => ({
@@ -223,6 +226,7 @@ const missingText = (row: Row) => {
     return all.length ? all.map(item => missingLabels[item] ?? item.replace(/_/g, ' ')).join('、') : '—'
 }
 const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
+    order_number: orderNumber(row),
     date: row.order_date ?? '—',
     source: row.source_type,
     country: row.country ?? '—',
@@ -315,44 +319,22 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
                 <button class="mvp-button" type="submit">筛选</button>
             </form>
 
-            <div class="grid-toolbar">
-                <span>共 {{ pagination.total }} 条运营订单事实</span>
-                <div class="column-settings">
-                    <button class="mvp-button column-trigger" type="button" aria-label="列设置" @click="settingsOpen = !settingsOpen">…</button>
-                    <div v-if="settingsOpen" class="column-menu">
-                        <p>显示 / 排序中间列</p>
-                        <label
-                            v-for="column in columns"
-                            :key="column.key"
-                            draggable="true"
-                            @dragstart="startDrag(column.key)"
-                            @dragover.prevent
-                            @drop="drop(column.key)"
-                        >
-                            <input type="checkbox" :checked="column.visible" @change="toggle(column.key)">
-                            {{ column.label }}
-                        </label>
-                        <button type="button" @click="reset">恢复默认</button>
-                    </div>
-                </div>
-            </div>
+            <div class="grid-toolbar"><span>共 {{ pagination.total }} 条运营订单事实</span></div>
 
             <div class="mvp-table-wrap order-profit-grid">
                 <table class="mvp-table">
                     <thead>
                         <tr>
-                            <th class="identity-column">订单号</th>
                             <th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th>
                             <th class="action-column">操作</th>
+                            <ColumnSettingsHeader :columns="columns" :required-keys="['order_number']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" />
                         </tr>
                     </thead>
                     <tbody>
                         <template v-for="row in orders" :key="row.id">
                             <tr>
-                                <td class="identity-column">
-                                    <Link class="record-link" :href="orderPath(row)">{{ orderNumber(row) }}</Link>
-                                </td>
                                 <td v-for="column in visibleColumns" :key="column.key">
+                                    <template v-if="column.key === 'order_number'"><Link class="record-link" :href="orderPath(row)">{{ orderNumber(row) }}</Link><small v-if="row.external_order_number">来源订单：{{ row.external_order_number }}</small></template>
                                     <template v-if="column.key === 'products'">
                                         <div v-if="row.products.length" class="product-links">
                                             <template v-for="product in row.products" :key="`${product.product_id}-${product.sku}-${product.name}`">
@@ -383,7 +365,7 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
                             </tr>
                         </template>
                         <tr v-if="!orders.length">
-                            <td :colspan="visibleColumns.length + 2" class="mvp-empty">暂无符合条件的订单利润事实</td>
+                            <td :colspan="visibleColumns.length + 3" class="mvp-empty">暂无符合条件的订单利润事实</td>
                         </tr>
                     </tbody>
                 </table>

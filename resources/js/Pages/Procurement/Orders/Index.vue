@@ -2,6 +2,8 @@
 import { Head, Link, router } from '@inertiajs/vue3'
 import { ref } from 'vue'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
+import ColumnSettingsHeader from '../../../Components/DataGrid/ColumnSettingsHeader.vue'
+import { useAccountGridPreferences, type GridColumnDefinition } from '../../../Composables/useAccountGridPreferences'
 
 type ProcurementRow = {
   id: number
@@ -9,7 +11,9 @@ type ProcurementRow = {
   status: string
   status_label: string
   source_order_id: number
-  source_order_number: string
+  source_order_number: string | null
+  source_order_erp_id?: string | null
+  source_order_external_number?: string | null
   item_summary: string
   item_count: number
   purchase_quantity: number
@@ -19,6 +23,12 @@ type ProcurementRow = {
 }
 type StatusOption = { value: string; label: string }
 type Filters = { search?: string; status?: string }
+type ColumnKey = 'procurement' | 'order_number' | 'items' | 'quantity' | 'status' | 'logistics' | 'updated'
+const definitions: GridColumnDefinition<ColumnKey>[] = [
+  { key: 'procurement', label: '采购单' }, { key: 'order_number', label: 'ERP订单号' }, { key: 'items', label: '商品' },
+  { key: 'quantity', label: '数量' }, { key: 'status', label: '状态' }, { key: 'logistics', label: '采购物流' }, { key: 'updated', label: '更新' },
+]
+const { columns, visibleColumns, syncState, toggle, startDrag, drop, reset } = useAccountGridPreferences<ColumnKey>({ namespace: 'grid.procurement.orders.index.v1', definitions, requiredKeys: ['order_number'] })
 
 const props = defineProps<{
   orders: ProcurementRow[]
@@ -80,20 +90,14 @@ const logistics = (order: ProcurementRow) => {
       <div class="mvp-card purchase-table-wrap desktop-list">
         <table class="mvp-table">
           <thead>
-            <tr><th>采购单</th><th>源订单</th><th>商品</th><th>数量</th><th>状态</th><th>采购物流</th><th>更新</th><th></th></tr>
+            <tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" /></tr>
           </thead>
           <tbody>
             <tr v-for="order in props.orders" :key="order.id">
-              <td><strong>{{ order.procurement_number }}</strong></td>
-              <td><Link :href="`/customers/orders/${order.source_order_id}`">{{ order.source_order_number }}</Link></td>
-              <td>{{ order.item_summary || '—' }}<span v-if="order.item_count > 2"> 等 {{ order.item_count }} 项</span></td>
-              <td>{{ order.purchase_quantity }}</td>
-              <td><span class="mvp-status">{{ order.status_label }}</span></td>
-              <td class="logistics-cell">{{ logistics(order) }}</td>
-              <td>{{ formatDate(order.updated_at) }}</td>
+              <td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'procurement'"><strong>{{ order.procurement_number }}</strong></template><template v-else-if="column.key === 'order_number'"><Link v-if="order.source_order_erp_id" :href="`/customers/orders/${order.source_order_id}`">{{ order.source_order_erp_id }}</Link><span v-else>—</span><small v-if="order.source_order_external_number || order.source_order_number">来源订单：{{ order.source_order_external_number ?? order.source_order_number }}</small></template><template v-else-if="column.key === 'items'">{{ order.item_summary || '—' }}<span v-if="order.item_count > 2"> 等 {{ order.item_count }} 项</span></template><template v-else-if="column.key === 'quantity'">{{ order.purchase_quantity }}</template><template v-else-if="column.key === 'status'"><span class="mvp-status">{{ order.status_label }}</span></template><template v-else-if="column.key === 'logistics'" class="logistics-cell">{{ logistics(order) }}</template><template v-else>{{ formatDate(order.updated_at) }}</template></td>
               <td><Link :href="`/purchase/orders/${order.id}`">查看</Link></td>
             </tr>
-            <tr v-if="props.orders.length === 0"><td colspan="8" class="mvp-empty">暂无匹配的采购订单</td></tr>
+            <tr v-if="props.orders.length === 0"><td :colspan="visibleColumns.length + 1" class="mvp-empty">暂无匹配的采购订单</td></tr>
           </tbody>
         </table>
       </div>
@@ -105,7 +109,7 @@ const logistics = (order: ProcurementRow) => {
             <span class="mvp-status">{{ order.status_label }}</span>
           </div>
           <dl>
-            <dt>源订单</dt><dd><Link :href="`/customers/orders/${order.source_order_id}`">{{ order.source_order_number }}</Link></dd>
+            <dt>源订单</dt><dd><Link :href="`/customers/orders/${order.source_order_id}`">{{ order.source_order_erp_id ?? '—' }}</Link><small v-if="order.source_order_external_number || order.source_order_number">来源订单：{{ order.source_order_external_number ?? order.source_order_number }}</small></dd>
             <dt>商品</dt><dd>{{ order.item_summary || '—' }}<span v-if="order.item_count > 2"> 等 {{ order.item_count }} 项</span></dd>
             <dt>采购数量</dt><dd>{{ order.purchase_quantity }}</dd>
             <dt>采购物流</dt><dd>{{ logistics(order) }}</dd>

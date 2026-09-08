@@ -2,10 +2,13 @@
 import { Head, Link, router } from '@inertiajs/vue3'
 import { computed, reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
+import { useAccountGridPreferences, type GridColumnDefinition } from '../../Composables/useAccountGridPreferences'
 
 type Order = { id: number; erp_order_id: string | null; external_order_number: string; internal_order_number: string; source_label: string; order_kind?: string; order_date: string; order_status_label: string; address?: { recipient_name: string; country: string }; owner?: { name: string }; owner_label?: string | null }
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; per_page: number; total: number }
 type SavedView = { id: number; name: string; filters_json: Record<string, string>; is_pinned: boolean; created_by: number }
+type ColumnKey = 'order_number' | 'source' | 'date' | 'recipient' | 'country' | 'status' | 'owner'
 
 const props = defineProps<{
   orderKind: string
@@ -74,6 +77,12 @@ const deleteSavedView = (saved: SavedView) => router.delete(`/orders/views/${sav
 const exportUrl = () => `${basePath.value}/export?${new globalThis.URLSearchParams(filters).toString()}`
 const goToPage = (page: number) => router.get(basePath.value, { ...filters, page }, { preserveState: true, replace: true })
 const orderPath = (order: Order) => order.order_kind === 'kol_fulfillment' ? `/kol/orders/${order.id}` : `/customers/orders/${order.id}`
+const definitions: GridColumnDefinition<ColumnKey>[] = [
+  { key: 'order_number', label: 'ERP订单号' },
+  { key: 'source', label: '来源' }, { key: 'date', label: '订单日期' }, { key: 'recipient', label: '收件人' },
+  { key: 'country', label: '国家' }, { key: 'status', label: '状态' }, { key: 'owner', label: '负责人' },
+]
+const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = useAccountGridPreferences<ColumnKey>({ namespace: 'grid.orders.index.v1', definitions, requiredKeys: ['order_number'] })
 </script>
 
 <template>
@@ -115,7 +124,7 @@ const orderPath = (order: Order) => order.order_kind === 'kol_fulfillment' ? `/k
         <button class="mvp-button" type="submit">筛选</button>
       </form>
 
-      <div class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th>ERP订单号 / 来源单号</th><th>来源</th><th>订单日期</th><th>收件人</th><th>国家</th><th>状态</th><th>负责人</th><th></th></tr></thead><tbody><tr v-for="order in orders.data" :key="order.id"><td><Link :href="orderPath(order)">{{ order.erp_order_id ?? '—' }}</Link><small>{{ order.external_order_number }}</small></td><td>{{ order.source_label }}</td><td>{{ order.order_date }}</td><td>{{ order.address?.recipient_name ?? '—' }}</td><td>{{ order.address?.country ?? '—' }}</td><td><span class="mvp-status">{{ order.order_status_label }}</span></td><td>{{ order.owner_label ?? '—' }}</td><td><Link :href="orderPath(order)">查看</Link></td></tr><tr v-if="orders.data.length === 0"><td colspan="8" class="mvp-empty">暂无符合条件的订单</td></tr></tbody></table></div>
+      <div class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" /></tr></thead><tbody><tr v-for="order in orders.data" :key="order.id"><td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link :href="orderPath(order)">{{ order.erp_order_id ?? '—' }}</Link><small v-if="order.external_order_number">来源订单：{{ order.external_order_number }}</small></template><template v-else-if="column.key === 'source'">{{ order.source_label }}</template><template v-else-if="column.key === 'date'">{{ order.order_date }}</template><template v-else-if="column.key === 'recipient'">{{ order.address?.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'country'">{{ order.address?.country ?? '—' }}</template><template v-else-if="column.key === 'status'"><span class="mvp-status">{{ order.order_status_label }}</span></template><template v-else>{{ order.owner_label ?? '—' }}</template></td><td><Link :href="orderPath(order)">查看</Link></td></tr><tr v-if="orders.data.length === 0"><td :colspan="visibleColumns.length + 2" class="mvp-empty">暂无符合条件的订单</td></tr></tbody></table></div>
       <div v-if="orders.last_page > 1" class="mvp-pagination"><button class="mvp-button" type="button" :disabled="orders.current_page <= 1" @click="goToPage(orders.current_page - 1)">上一页</button><span>第 {{ orders.current_page }} / {{ orders.last_page }} 页 · 共 {{ orders.total }} 条</span><button class="mvp-button" type="button" :disabled="orders.current_page >= orders.last_page" @click="goToPage(orders.current_page + 1)">下一页</button></div>
     </section>
   </AuthenticatedLayout>

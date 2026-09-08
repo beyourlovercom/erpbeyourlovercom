@@ -12,7 +12,7 @@ vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({ default: { template: '
 
 const warehouse = { id: 2, slug: 'us-ny', name: '美东纽约仓', code: 'US-NY', country_code: null, priority: 20, inventory_state: 'confirmed', can_auto_allocate: true, service_regions: [{ country_code: 'US', priority: 1 }] }
 const order = {
-  id: 10, external_order_number: 'TEST-10', order_kind_label: '客户订单', recipient_name: 'Tester', phone: null, country: 'US', owner_label: null, item_count: 1,
+  id: 10, erp_order_id: null, external_order_number: 'TEST-10', order_kind_label: '客户订单', recipient_name: 'Tester', phone: null, country: 'US', owner_label: null, item_count: 1,
   items: [{ id: 1, product_id: 99, sku: 'SKU-99', product_summary: 'Product', quantity: 1, availability: [{ warehouse_id: 2, warehouse_slug: 'us-ny', warehouse_name: '美东纽约仓', inventory_state: 'confirmed', can_auto_allocate: true, quantity_on_hand: 5, quantity_reserved: 0, quantity_available: 5 }] }],
   warehouse_recommendation: { status: 'recommended' as const, reason_code: 'recommended', reason_label: '可采用系统推荐。', country_code: 'US', required_sku_count: 1, candidate_count: 1, warehouse: { id: 2, slug: 'us-ny', code: 'US-NY', name: '美东纽约仓' } },
   automatic_allocation: { state: 'COUNTRY_NOT_AUTO_ENABLED', status: 'blocked' as const, reason_code: 'country_not_auto_enabled', reason_label: 'US 尚未开放自动分配，继续使用人工履约。', country_code: 'US', warehouse: null, can_apply: false },
@@ -20,6 +20,26 @@ const order = {
 }
 const carrierOptions = [{ value: 'DHL', label: 'DHL' }, { value: 'UPS', label: 'UPS' }, { value: 'FedEx', label: 'FedEx' }]
 const props = { orders: { data: [order], current_page: 1, last_page: 1, per_page: 50, total: 1 }, warehouses: [warehouse], carrierOptions }
+
+describe('Logistics pending grid contract', () => {
+  it('renders ERP order id first and source as secondary text', () => {
+    const publicOrder = { ...order, external_order_number: '40301-VA617A-gift', erp_order_id: '007-0908-c6091', internal_order_number: 'ERP-TECH-6091' }
+    const wrapper = mount(Index, { props: { ...props, orders: { ...props.orders, data: [publicOrder] } } })
+    expect(wrapper.text()).toContain('007-0908-c6091')
+    expect(wrapper.text()).toContain('来源订单：40301-VA617A-gift')
+    expect(wrapper.text()).not.toContain('ERP-TECH-6091')
+  })
+
+  it('provides account-synced column visibility and ordering from the top-right ellipsis', async () => {
+    const wrapper = mount(Index, { props: { ...props, gridPreferenceNamespace: 'grid.logistics.pending.v1', gridPreference: null } })
+    expect(wrapper.find('.column-settings-panel').exists()).toBe(false)
+    await wrapper.get('.column-settings-trigger').trigger('click')
+    const panel = wrapper.get('.column-settings-panel')
+    expect(panel.text()).toContain('列设置')
+    expect(panel.text()).toContain('固定显示')
+    expect(wrapper.get('input[aria-label="订单号固定显示"]').attributes('disabled')).toBeDefined()
+  })
+})
 
 describe('Logistics warehouse recommendation', () => {
   it('syncs warehouse_id into existing draft when props refresh with adopted recommended shipment', async () => {

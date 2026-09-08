@@ -220,10 +220,11 @@ describe('Products/Show Product360', () => {
   })
 
   it('renders canonical Order, Shipment, and KOL relations as compact read-only tables', async () => {
-    const wrapper = mount(Show, { props: { ...baseProps, sales: { ...baseProps.sales, recent_orders: [{ id: 8, number: 'M15-S4-30D', order_date: '2026-08-25', status: 'pending_shipment', quantity: 2, revenue: 50, currency: 'USD' }] }, shipments: [{ id: 5, order_id: 8, order_number: 'M15-S4-30D', carrier: 'UPS', tracking_number: 'M15-S9-TRACK-001', shipped_at: '2026-09-01', status: 'shipped' }], collaborations: [{ id: 1, title: 'M1.5 Product360 UAT Collaboration', status: 'active', kol_id: 1, kol_name: 'M1.5 UAT Creator' }] } })
+    const wrapper = mount(Show, { props: { ...baseProps, sales: { ...baseProps.sales, recent_orders: [{ id: 8, erp_order_id: '007-0825-c0008', external_order_number: 'M15-S4-30D', number: 'M15-S4-30D', order_date: '2026-08-25', status: 'pending_shipment', quantity: 2, revenue: 50, currency: 'USD' }] }, shipments: [{ id: 5, order_id: 8, erp_order_id: '007-0825-c0008', external_order_number: 'M15-S4-30D', order_number: 'M15-S4-30D', carrier: 'UPS', tracking_number: 'M15-S9-TRACK-001', shipped_at: '2026-09-01', status: 'shipped' }], collaborations: [{ id: 1, title: 'M1.5 Product360 UAT Collaboration', status: 'active', kol_id: 1, kol_name: 'M1.5 UAT Creator' }] } })
     await wrapper.findAll('[role="tab"]').find(tab => tab.text() === '业务关联')!.trigger('click')
     const panel = wrapper.find('#product360-7')
-    expect(panel.text()).toContain('M15-S4-30D')
+    expect(panel.text()).toContain('007-0825-c0008')
+    expect(panel.text()).toContain('来源订单：M15-S4-30D')
     expect(panel.text()).toContain('M15-S9-TRACK-001')
     expect(panel.text()).toContain('UPS')
     expect(panel.text()).toContain('M1.5 UAT Creator')

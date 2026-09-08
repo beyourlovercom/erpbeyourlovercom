@@ -17,6 +17,7 @@ const orders = [{
   status_label: '已下单',
   source_order_id: 7,
   source_order_number: 'ORD-007',
+  source_order_erp_id: '007-0904-c0007',
   item_summary: '测试产品',
   item_count: 1,
   purchase_quantity: 2,
@@ -30,7 +31,8 @@ describe('Procurement/Orders/Index', () => {
   it('renders procurement status, logistics and canonical links', () => {
     const wrapper = mount(Index, { props: { orders, filters: {}, statusOptions, canOperate: true } })
     expect(wrapper.text()).toContain('PO-20260904-0001')
-    expect(wrapper.text()).toContain('ORD-007')
+    expect(wrapper.text()).toContain('007-0904-c0007')
+    expect(wrapper.text()).toContain('来源订单：ORD-007')
     expect(wrapper.text()).toContain('已下单')
     expect(wrapper.text()).toContain('顺丰 · SF123456')
     expect(wrapper.find('a[href="/customers/orders/7"]').exists()).toBe(true)

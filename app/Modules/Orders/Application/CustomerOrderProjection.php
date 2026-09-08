@@ -34,13 +34,15 @@ final class CustomerOrderProjection
 
         $recent = $base()
             ->leftJoin('order_items', 'order_items.order_id', '=', 'orders.id')
-            ->select('orders.id', 'orders.external_order_number', 'orders.internal_order_number', 'orders.order_date', 'orders.order_status', 'orders.currency')
+            ->select('orders.id', 'orders.erp_order_id', 'orders.external_order_number', 'orders.order_date', 'orders.order_status', 'orders.currency')
             ->selectRaw('COALESCE(SUM(order_items.line_revenue), 0) as revenue')
-            ->groupBy('orders.id', 'orders.external_order_number', 'orders.internal_order_number', 'orders.order_date', 'orders.order_status', 'orders.currency')
+            ->groupBy('orders.id', 'orders.erp_order_id', 'orders.external_order_number', 'orders.order_date', 'orders.order_status', 'orders.currency')
             ->latest('orders.order_date')->latest('orders.id')->limit(20)->get()
             ->map(fn (object $order): array => [
                 'id' => (int) $order->id,
-                'number' => $order->external_order_number ?: $order->internal_order_number,
+                'erp_order_id' => $order->erp_order_id,
+                'external_order_number' => $order->external_order_number,
+                'number' => $order->erp_order_id,
                 'order_date' => $order->order_date ? substr((string) $order->order_date, 0, 10) : null,
                 'status' => (string) $order->order_status,
                 'revenue' => (float) $order->revenue,

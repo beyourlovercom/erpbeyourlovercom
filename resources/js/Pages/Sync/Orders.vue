@@ -2,9 +2,11 @@
 import { Head, router } from '@inertiajs/vue3'
 import { reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
+import { useAccountGridPreferences, type GridColumnDefinition } from '../../Composables/useAccountGridPreferences'
 
 type Order = {
-  id: number; internal_order_number: string; recipient_name: string; status: string
+  id: number; erp_order_id?: string | null; external_order_number?: string | null; recipient_name: string; status: string
   synced_at: string | null; synced_by: number | null; tracking_number: string | null
   shipment_status: string | null; carrier: string | null; source_type: string
   tracking_outbound_status: string | null; tracking_outbound_attempts: number | null
@@ -49,6 +51,13 @@ const outboundLabel = (order: Order) => {
   if (order.tracking_outbound_status === 'failed') return '失败'
   return order.tracking_outbound_status
 }
+type ColumnKey = 'order_number' | 'source' | 'recipient' | 'tracking' | 'outbound' | 'status' | 'synced_at'
+const definitions: GridColumnDefinition<ColumnKey>[] = [
+  { key: 'order_number', label: 'ERP订单号' },
+  { key: 'source', label: '来源' }, { key: 'recipient', label: '收件人' }, { key: 'tracking', label: '追踪号' },
+  { key: 'outbound', label: 'Tracking 写回' }, { key: 'status', label: '状态' }, { key: 'synced_at', label: '完成时间' },
+]
+const { columns, visibleColumns, syncState, toggle, startDrag, drop, reset } = useAccountGridPreferences<ColumnKey>({ namespace: 'grid.sync.orders.v1', definitions, requiredKeys: ['order_number'] })
 </script>
 <template>
   <Head title="同步订单 · BYL ERP" />
@@ -109,14 +118,11 @@ const outboundLabel = (order: Order) => {
 
       <div class="mvp-table-wrap">
         <table class="mvp-table">
-          <thead><tr><th>选择</th><th>订单号</th><th>来源</th><th>收件人</th><th>追踪号</th><th>Tracking 写回</th><th>状态</th><th>完成时间</th><th>操作</th></tr></thead>
+          <thead><tr><th>选择</th><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" /></tr></thead>
           <tbody>
             <tr v-for="order in props.orders" :key="order.id">
-              <td><input v-if="selectable(order)" type="checkbox" :aria-label="`选择 ${order.internal_order_number}`" :checked="selected.includes(order.id)" @change="toggleSelected(order.id, ($event.target as HTMLInputElement).checked)"></td>
-              <td>{{ order.internal_order_number }}</td><td>{{ order.source_type }}</td><td>{{ order.recipient_name }}</td>
-              <td>{{ order.tracking_number ?? '—' }}</td>
-              <td><span class="mvp-status">{{ order.source_type === 'woocommerce' ? outboundLabel(order) : '—' }}</span></td>
-              <td><span class="mvp-status">{{ order.status }}</span></td><td>{{ order.synced_at ?? '—' }}</td>
+              <td><input v-if="selectable(order)" type="checkbox" :aria-label="`选择 ${order.erp_order_id ?? '—'}`" :checked="selected.includes(order.id)" @change="toggleSelected(order.id, ($event.target as HTMLInputElement).checked)"></td>
+              <td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><strong>{{ order.erp_order_id ?? '—' }}</strong><small v-if="order.external_order_number">来源订单：{{ order.external_order_number }}</small></template><template v-else-if="column.key === 'source'">{{ order.source_type }}</template><template v-else-if="column.key === 'recipient'">{{ order.recipient_name }}</template><template v-else-if="column.key === 'tracking'">{{ order.tracking_number ?? '—' }}</template><template v-else-if="column.key === 'outbound'"><span class="mvp-status">{{ order.source_type === 'woocommerce' ? outboundLabel(order) : '—' }}</span></template><template v-else-if="column.key === 'status'"><span class="mvp-status">{{ order.status }}</span></template><template v-else>{{ order.synced_at ?? '—' }}</template></td>
               <td class="mvp-actions">
                 <button class="mvp-button" @click="copy(order.id)">复制网站 payload</button>
                 <button v-if="order.source_type === 'woocommerce' && order.shipment_status === 'shipped' && order.tracking_number && order.status !== 'completed'" class="mvp-button mvp-button-primary" @click="pushTracking(order.id)">写回 Tracking</button>
@@ -125,7 +131,7 @@ const outboundLabel = (order: Order) => {
                 <button v-if="order.status !== 'returned'" class="mvp-button" @click="update(order.id, 'return')">退回更正</button>
               </td>
             </tr>
-            <tr v-if="props.orders.length === 0"><td colspan="9" class="mvp-empty">暂无同步记录</td></tr>
+            <tr v-if="props.orders.length === 0"><td :colspan="visibleColumns.length + 3" class="mvp-empty">暂无同步记录</td></tr>
           </tbody>
         </table>
       </div>

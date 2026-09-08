@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3'
+import { reactive } from 'vue'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 import StatusBar from '../../../Components/Logistics/StatusBar.vue'
+import ColumnSettingsHeader from '../../../Components/DataGrid/ColumnSettingsHeader.vue'
+import { useAccountGridPreferences, type GridColumnDefinition } from '../../../Composables/useAccountGridPreferences'
 
 type CurrencyCost = { currency: string; total: number; average: number | null; shipments: number }
 type Summary = {
@@ -18,7 +21,7 @@ type Summary = {
 }
 type Item = { sku: string | null; product_summary: string | null; product_url?: string | null; quantity: number }
 type LedgerRow = {
-  id: number; shipped_at: string | null; external_order_number: string | null; internal_order_number: string | null
+  id: number; shipped_at: string | null; external_order_number: string | null; erp_order_id: string | null; internal_order_number: string | null
   order_kind: string | null; order_url?: string | null; warehouse_name: string | null; destination_country: string | null; carrier: string | null
   service: string | null; tracking_number: string | null; items: Item[]; chargeable_weight_kg: string | number | null
   actual_cost: string | number | null; currency: string | null; shipment_status: string | null; delivery_status: string | null
@@ -26,6 +29,14 @@ type LedgerRow = {
   data_source: string | null; billed_at: string | null; raw_evidence: Record<string, unknown> | unknown[] | null
 }
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; total: number }
+type ColumnKey = 'order_number' | 'shipped_at' | 'order_kind' | 'warehouse' | 'destination' | 'channel' | 'tracking' | 'items' | 'weight' | 'cost' | 'shipment_status' | 'delivery_status' | 'handler' | 'recipient' | 'billing' | 'source' | 'evidence'
+const definitions: GridColumnDefinition<ColumnKey>[] = [
+  { key: 'order_number', label: 'ERP订单号' }, { key: 'shipped_at', label: '发货日期' }, { key: 'order_kind', label: '订单类型' }, { key: 'warehouse', label: '发货仓库' },
+  { key: 'destination', label: '目的地' }, { key: 'channel', label: '物流渠道' }, { key: 'tracking', label: 'Tracking' }, { key: 'items', label: '产品/数量' },
+  { key: 'weight', label: '计费重量' }, { key: 'cost', label: '物流费用' }, { key: 'shipment_status', label: 'Shipment状态' }, { key: 'delivery_status', label: '签收状态' },
+  { key: 'handler', label: '发货人' }, { key: 'recipient', label: '收件人' }, { key: 'billing', label: '账单/单据' }, { key: 'source', label: '数据来源' }, { key: 'evidence', label: '原始凭证' },
+]
+const grid = reactive(useAccountGridPreferences<ColumnKey>({ namespace: 'grid.logistics.carriers.show.v1', definitions, requiredKeys: ['order_number'] }))
 
 const props = defineProps<{ carrier: string; carrierDisplayName: string; summary: Summary; shipments: Paginated<LedgerRow>; statusBar?: {key:string;label:string;url:string;count:number}[] }>()
 const dateTime = (value: string | null) => value ? new Date(value).toLocaleString() : '—'
@@ -64,19 +75,12 @@ const goToPage = (page: number) => router.get(`/logistics/carriers/${encodeURICo
 
       <div class="mvp-table-wrap ledger-wrap">
         <table class="mvp-table ledger-table">
-          <thead><tr><th>发货日期</th><th>ERP订单号</th><th>订单类型</th><th>发货仓库</th><th>目的地</th><th>物流渠道</th><th>Tracking</th><th>产品/数量</th><th>计费重量</th><th>物流费用</th><th>Shipment状态</th><th>签收状态</th><th>发货人</th><th>收件人</th><th>账单/单据</th><th>数据来源</th><th>原始凭证</th></tr></thead>
+          <thead><tr><th v-for="column in grid.visibleColumns" :key="column.key">{{ column.label }}</th><ColumnSettingsHeader :columns="grid.columns" :required-keys="['order_number']" :sync-state="grid.syncState" @toggle="grid.toggle" @start-drag="grid.startDrag" @drop="grid.drop" @reset="grid.reset" /></tr></thead>
           <tbody>
             <tr v-for="row in shipments.data" :key="row.id">
-              <td>{{ dateTime(row.shipped_at) }}</td>
-              <td><Link v-if="row.order_url" :href="row.order_url" class="mvp-link"><strong>{{ row.external_order_number ?? '—' }}</strong></Link><span v-else>—</span><small>{{ row.internal_order_number ?? '' }}</small></td>
-              <td>{{ orderKind(row.order_kind) }}</td><td>{{ row.warehouse_name ?? '—' }}</td><td>{{ row.destination_country ?? '—' }}</td>
-              <td>{{ row.service ?? '—' }}</td><td>{{ row.tracking_number ?? '—' }}</td><td class="items-cell"><template v-for="item in row.items" :key="item.product_url ?? item.sku"><Link v-if="item.product_url" :href="item.product_url" class="mvp-link">{{ item.sku || item.product_summary || '未命名' }}</Link><span v-else>{{ item.sku || item.product_summary || '未命名' }}</span> × {{ item.quantity }}；</template></td>
-              <td>{{ row.chargeable_weight_kg === null ? '—' : `${Number(row.chargeable_weight_kg).toFixed(3)} kg` }}</td><td>{{ rowMoney(row) }}</td>
-              <td>{{ row.shipment_status ?? '—' }}</td><td>{{ row.delivery_status ?? '—' }}</td><td>{{ row.handler_name ?? '—' }}</td><td>{{ row.recipient_name ?? '—' }}</td>
-              <td>{{ row.billing_document_number ?? row.provider_reference ?? '—' }}</td><td>{{ row.data_source ?? '—' }}</td>
-              <td><details v-if="row.raw_evidence"><summary>查看</summary><pre>{{ JSON.stringify(row.raw_evidence, null, 2) }}</pre></details><span v-else>—</span></td>
+              <td v-for="column in grid.visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link v-if="row.order_url" :href="row.order_url" class="mvp-link"><strong>{{ row.erp_order_id ?? '—' }}</strong></Link><span v-else><strong>{{ row.erp_order_id ?? '—' }}</strong></span><small v-if="row.external_order_number">来源订单：{{ row.external_order_number }}</small></template><template v-else-if="column.key === 'shipped_at'">{{ dateTime(row.shipped_at) }}</template><template v-else-if="column.key === 'order_kind'">{{ orderKind(row.order_kind) }}</template><template v-else-if="column.key === 'warehouse'">{{ row.warehouse_name ?? '—' }}</template><template v-else-if="column.key === 'destination'">{{ row.destination_country ?? '—' }}</template><template v-else-if="column.key === 'channel'">{{ row.service ?? '—' }}</template><template v-else-if="column.key === 'tracking'">{{ row.tracking_number ?? '—' }}</template><template v-else-if="column.key === 'items'" class="items-cell"><template v-for="item in row.items" :key="item.product_url ?? item.sku"><Link v-if="item.product_url" :href="item.product_url" class="mvp-link">{{ item.sku || item.product_summary || '未命名' }}</Link><span v-else>{{ item.sku || item.product_summary || '未命名' }}</span> × {{ item.quantity }}；</template></template><template v-else-if="column.key === 'weight'">{{ row.chargeable_weight_kg === null ? '—' : `${Number(row.chargeable_weight_kg).toFixed(3)} kg` }}</template><template v-else-if="column.key === 'cost'">{{ rowMoney(row) }}</template><template v-else-if="column.key === 'shipment_status'">{{ row.shipment_status ?? '—' }}</template><template v-else-if="column.key === 'delivery_status'">{{ row.delivery_status ?? '—' }}</template><template v-else-if="column.key === 'handler'">{{ row.handler_name ?? '—' }}</template><template v-else-if="column.key === 'recipient'">{{ row.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'billing'">{{ row.billing_document_number ?? row.provider_reference ?? '—' }}</template><template v-else-if="column.key === 'source'">{{ row.data_source ?? '—' }}</template><template v-else><details v-if="row.raw_evidence"><summary>查看</summary><pre>{{ JSON.stringify(row.raw_evidence, null, 2) }}</pre></details><span v-else>—</span></template></td>
             </tr>
-            <tr v-if="shipments.data.length === 0"><td colspan="17" class="mvp-empty">暂无该承运商物流记录。</td></tr>
+            <tr v-if="shipments.data.length === 0"><td :colspan="grid.visibleColumns.length" class="mvp-empty">暂无该承运商物流记录。</td></tr>
           </tbody>
         </table>
       </div>

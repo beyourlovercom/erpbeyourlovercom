@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3'
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import StatusBar from '../../Components/Logistics/StatusBar.vue'
+import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
+import { useAccountGridPreferences, type GridColumnDefinition, type GridPreferenceValue } from '../../Composables/useAccountGridPreferences'
 
 type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; inventory_state: string; can_auto_allocate: boolean; quantity_on_hand: number | null; quantity_reserved: number | null; quantity_available: number | null }
 type Item = { id: number; product_id: number | null; sku: string | null; product_summary: string | null; quantity: number; availability: Availability[] }
@@ -10,19 +12,41 @@ type Shipment = { warehouse_id: number | null; warehouse_name: string | null; wa
 type RecommendationWarehouse = { id: number; slug: string; code: string; name: string }
 type Recommendation = { status: 'recommended' | 'blocked'; reason_code: string; reason_label: string; country_code: string | null; required_sku_count: number | null; candidate_count: number; warehouse: RecommendationWarehouse | null }
 type AutomaticAllocation = { state: string; status: 'ready' | 'blocked' | 'allocated'; reason_code: string; reason_label: string; country_code: string | null; warehouse: RecommendationWarehouse | null; can_apply: boolean }
-type Order = { id: number; external_order_number: string; order_kind_label: string; order_url?: string | null; recipient_name: string | null; phone: string | null; country: string | null; owner_label: string | null; item_count: number; items: Item[]; warehouse_recommendation: Recommendation; automatic_allocation: AutomaticAllocation; shipment: Shipment | null }
+type Order = { id: number; erp_order_id: string | null; external_order_number: string | null; order_kind_label: string; order_url?: string | null; recipient_name: string | null; phone: string | null; country: string | null; owner_label: string | null; item_count: number; items: Item[]; warehouse_recommendation: Recommendation; automatic_allocation: AutomaticAllocation; shipment: Shipment | null }
 type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null; priority: number; inventory_state: string; can_auto_allocate: boolean; service_regions: { country_code: string; priority: number }[] }
 type CarrierOption = { value: string; label: string }
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; per_page: number; total: number }
 type Draft = { warehouse_id: number | ''; carrier: string; service: string; tracking_number: string; shipped_at: string; logistics_note: string }
+type ColumnKey = 'order_number' | 'type' | 'recipient' | 'country' | 'item_count' | 'warehouse'
 
-const props = defineProps<{ orders: Paginated<Order>; warehouses: Warehouse[]; carrierOptions: CarrierOption[]; statusBar?: { key: string; label: string; url: string; count: number }[] }>()
+const props = defineProps<{ orders: Paginated<Order>; warehouses: Warehouse[]; carrierOptions: CarrierOption[]; statusBar?: { key: string; label: string; url: string; count: number }[]; gridPreferenceNamespace?: string; gridPreference?: GridPreferenceValue<ColumnKey> | null }>()
 const drafts = reactive<Record<number, Draft>>({})
 const openOrderId = ref<number | null>(null)
 const copyState = ref<Record<number, 'success' | 'error'>>({})
 const shipValidation = ref<Record<number, string>>({})
 const localWarehouseNames = reactive<Record<number, string>>({})
 const adoptError = ref<Record<number, string>>({})
+const defaultColumns: GridColumnDefinition<ColumnKey>[] = [
+  { key: 'order_number', label: '订单号' },
+  { key: 'type', label: '类型' },
+  { key: 'recipient', label: '收件人' },
+  { key: 'country', label: '国家' },
+  { key: 'item_count', label: '商品数' },
+  { key: 'warehouse', label: '仓库' },
+]
+const {
+  columns: columnPreferences,
+  syncState: columnPreferenceSyncState,
+  toggle: toggleColumn,
+  startDrag: startColumnDrag,
+  drop: dropColumn,
+  reset: resetColumns,
+} = useAccountGridPreferences<ColumnKey>({
+  namespace: props.gridPreferenceNamespace ?? 'grid.logistics.pending.v1',
+  definitions: defaultColumns,
+  serverValue: props.gridPreference ?? null,
+})
+const visibleColumns = computed(() => columnPreferences.value.filter(column => column.key === 'order_number' || column.visible))
 
 const localDateTime = (value: string | null) => value ? value.slice(0, 16) : new Date().toISOString().slice(0, 16)
 const makeDraft = (order: Order): Draft => ({
@@ -126,10 +150,20 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
     <section class="mvp-page">
       <StatusBar :statuses="props.statusBar ?? []" />
       <div class="mvp-page-heading"><div><p class="mvp-kicker">Assisted Fulfillment</p><h2>待发货</h2><p>系统按服务区域与确认库存推荐仓库，由人工采用并完成履约。</p></div></div>
-      <div class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th>订单号</th><th>类型</th><th>收件人</th><th>国家</th><th>商品数</th><th>仓库</th><th>操作</th></tr></thead><tbody>
+      <div class="mvp-table-wrap"><table class="mvp-table logistics-pending-grid"><thead><tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>操作</th><ColumnSettingsHeader :columns="columnPreferences" :required-keys="['order_number']" :sync-state="columnPreferenceSyncState" @toggle="toggleColumn" @start-drag="startColumnDrag" @drop="dropColumn" @reset="resetColumns" /></tr></thead><tbody>
         <template v-for="order in orders.data" :key="order.id">
-          <tr><td><Link v-if="order.order_url" :href="order.order_url" class="mvp-link">{{ order.external_order_number }}</Link><span v-else>{{ order.external_order_number }}</span></td><td>{{ order.order_kind_label }}</td><td>{{ order.recipient_name ?? '—' }}<small>{{ order.phone ?? '—' }}</small></td><td>{{ order.country ?? '—' }}</td><td>{{ order.item_count }}</td><td>{{ localWarehouseNames[order.id] ?? order.shipment?.warehouse_name ?? '未选择' }}</td><td class="mvp-actions"><button class="mvp-button mvp-button-primary" type="button" @click="toggle(order.id)">{{ openOrderId === order.id ? '收起' : '履约处理' }}</button></td></tr>
-          <tr v-if="openOrderId === order.id"><td colspan="7" class="fulfillment-cell">
+          <tr>
+            <td v-for="column in visibleColumns" :key="column.key">
+              <template v-if="column.key === 'order_number'"><Link v-if="order.order_url" :href="order.order_url" class="mvp-link">{{ order.erp_order_id ?? '—' }}</Link><span v-else>{{ order.erp_order_id ?? '—' }}</span><small v-if="order.external_order_number">来源订单：{{ order.external_order_number }}</small></template>
+              <template v-else-if="column.key === 'type'">{{ order.order_kind_label }}</template>
+              <template v-else-if="column.key === 'recipient'">{{ order.recipient_name ?? '—' }}<small>{{ order.phone ?? '—' }}</small></template>
+              <template v-else-if="column.key === 'country'">{{ order.country ?? '—' }}</template>
+              <template v-else-if="column.key === 'item_count'">{{ order.item_count }}</template>
+              <template v-else-if="column.key === 'warehouse'">{{ localWarehouseNames[order.id] ?? order.shipment?.warehouse_name ?? '未选择' }}</template>
+            </td>
+            <td class="mvp-actions"><button class="mvp-button mvp-button-primary" type="button" @click="toggle(order.id)">{{ openOrderId === order.id ? '收起' : '履约处理' }}</button></td>
+          </tr>
+          <tr v-if="openOrderId === order.id"><td :colspan="visibleColumns.length + 1" class="fulfillment-cell">
             <div class="fulfillment-workspace">
               <div class="recommendation-card" :class="{ blocked: order.warehouse_recommendation.status !== 'recommended' }">
                 <div><small>自动分配 · {{ order.automatic_allocation.status === 'allocated' ? '已完成' : order.automatic_allocation.status === 'ready' ? '可执行' : '暂阻塞' }}</small><strong>{{ order.automatic_allocation.warehouse?.name ?? order.warehouse_recommendation.warehouse?.name ?? '暂不推荐' }}</strong><p>{{ order.automatic_allocation.reason_label }}</p><p v-if="order.automatic_allocation.status === 'ready'" class="auto-preview-hint">当前为 Preview，不修改库存；自动模式启用后将创建 Reservation + Shipment Draft。</p><p v-else-if="order.automatic_allocation.status === 'allocated'" class="reservation-hint">已自动选择仓库并预留库存；确认发货时才扣减 QOH。</p><p v-else class="manual-warehouse-hint">自动分配未执行时，仍可人工选择任一启用仓库发货。</p><p class="recommendation-detail">系统仓库建议：{{ order.warehouse_recommendation.reason_label }}</p></div>
@@ -149,7 +183,7 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
             </div>
           </td></tr>
         </template>
-        <tr v-if="orders.data.length === 0"><td colspan="7" class="mvp-empty">暂无待发货订单</td></tr>
+        <tr v-if="orders.data.length === 0"><td :colspan="visibleColumns.length + 1" class="mvp-empty">暂无待发货订单</td></tr>
       </tbody></table></div>
       <div v-if="orders.last_page > 1" class="mvp-pagination"><button class="mvp-button" :disabled="orders.current_page <= 1" @click="goToPage(orders.current_page - 1)">上一页</button><span>第 {{ orders.current_page }} / {{ orders.last_page }} 页 · 共 {{ orders.total }} 条</span><button class="mvp-button" :disabled="orders.current_page >= orders.last_page" @click="goToPage(orders.current_page + 1)">下一页</button></div>
     </section>
@@ -157,6 +191,22 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
 </template>
 
 <style scoped>
+
+.logistics-grid-toolbar { display: flex; justify-content: flex-end; margin: -4px 0 8px; }
+.column-settings-anchor { position: relative; }
+.column-settings-trigger { width: 42px; height: 32px; border: 1px solid #DCE5E8; border-radius: 8px; background: #fff; color: #344B53; font-size: 22px; line-height: 1; cursor: pointer; }
+.column-settings-trigger:hover { background: #F4F7F8; }
+.column-settings-panel { position: absolute; top: 40px; right: 0; width: 300px; max-height: 520px; overflow-y: auto; padding: 12px; background: #fff; border: 1px solid #DCE5E8; border-radius: 10px; box-shadow: 0 12px 32px rgba(20, 33, 38, 0.14); text-align: left; z-index: 40; }
+.column-settings-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.column-settings-help { margin: 8px 0; font-size: 11px; line-height: 1.45; color: #7A8C94; }
+.column-reset-btn { border: 0; background: transparent; color: #2D8C84; font-size: 12px; cursor: pointer; }
+.column-setting-row { display: grid; grid-template-columns: 22px 22px 1fr auto; align-items: center; gap: 6px; min-height: 34px; padding: 4px 5px; border-radius: 6px; font-size: 13px; cursor: grab; }
+.column-setting-row:hover { background: #F4F7F8; }
+.column-setting-row:active { cursor: grabbing; }
+.column-setting-row small { color: #7A8C94; font-size: 10px; }
+.column-drag-handle { color: #7A8C94; letter-spacing: -2px; user-select: none; }
+.column-sync-state { margin: 6px 0; font-size: 11px; color: #2D8C84; }
+.column-sync-state[data-state='error'] { color: #B42318; }
 .recommendation-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border: 1px solid #b8ddca; border-radius: 8px; background: #eff9f3; }
 .recommendation-card.blocked { border-color: #e4d7b5; background: #fff9eb; }
 .recommendation-card div { display: grid; gap: 3px; }

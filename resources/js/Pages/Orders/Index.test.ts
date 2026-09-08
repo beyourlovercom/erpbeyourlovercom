@@ -55,4 +55,15 @@ describe('Orders Saved Views', () => {
       is_pinned: true,
     }), expect.objectContaining({ preserveScroll: true }))
   })
+
+  it('renders the ERP order identity with the external order as secondary text', () => {
+    const wrapper = mount(Index, { props: {
+      ...props,
+      orders: { ...props.orders, data: [{ id: 9, erp_order_id: '007-0009', external_order_number: 'WEB-9', internal_order_number: 'INT-9', source_label: 'WooCommerce', order_date: '2026-09-08', order_status_label: '待发货', address: { recipient_name: 'Tester', country: 'US' }, owner_label: null }] },
+    } })
+    expect(wrapper.text()).toContain('007-0009')
+    expect(wrapper.text()).toContain('来源订单：WEB-9')
+    expect(wrapper.text()).not.toContain('INT-9')
+    expect(wrapper.find('thead th:last-child .column-settings-trigger').exists()).toBe(true)
+  })
 })

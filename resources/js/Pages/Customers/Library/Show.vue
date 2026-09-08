@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3'
-import { computed } from 'vue'
+import { computed, reactive } from 'vue'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
+import ColumnSettingsHeader from '../../../Components/DataGrid/ColumnSettingsHeader.vue'
+import { useAccountGridPreferences, type GridColumnDefinition } from '../../../Composables/useAccountGridPreferences'
 
 type Customer = {
     id: number
@@ -44,7 +46,9 @@ type Metrics = {
 type SupportTicket = { id: number; ticket_number: string; subject: string; status: string; priority: string; source_type: string; assignee: { name: string } | null; last_activity_at: string | null; created_at: string | null }
 type Order = {
     id: number
-    number: string
+    erp_order_id: string | null
+    external_order_number: string | null
+    number: string | null
     order_date: string | null
     status: string
     revenue: number
@@ -53,6 +57,8 @@ type Order = {
 }
 type Shipment = {
     id: number
+    erp_order_id: string | null
+    external_order_number: string | null
     order_number: string | null
     order_id: number
     carrier: string | null
@@ -60,6 +66,18 @@ type Shipment = {
     shipped_at: string | null
     status: string | null
 }
+type OrderColumn = 'order_number' | 'date' | 'amount' | 'order_status' | 'shipment_status'
+type ShipmentColumn = 'order_number' | 'carrier' | 'tracking' | 'shipped_at' | 'status'
+const orderDefinitions: GridColumnDefinition<OrderColumn>[] = [
+    { key: 'order_number', label: 'ERP订单号' }, { key: 'date', label: '日期' }, { key: 'amount', label: '金额' },
+    { key: 'order_status', label: '订单状态' }, { key: 'shipment_status', label: '物流状态' },
+]
+const shipmentDefinitions: GridColumnDefinition<ShipmentColumn>[] = [
+    { key: 'order_number', label: 'ERP订单号' }, { key: 'carrier', label: '承运商' }, { key: 'tracking', label: '追踪号' },
+    { key: 'shipped_at', label: '发货日期' }, { key: 'status', label: '状态' },
+]
+const orderGrid = reactive(useAccountGridPreferences<OrderColumn>({ namespace: 'grid.customers.library.show.orders.v1', definitions: orderDefinitions, requiredKeys: ['order_number'] }))
+const shipmentGrid = reactive(useAccountGridPreferences<ShipmentColumn>({ namespace: 'grid.customers.library.show.shipments.v1', definitions: shipmentDefinitions, requiredKeys: ['order_number'] }))
 type SubscriptionFact = { id: number; channel: string | null; provider: string | null; source_site: string | null; status: string | null; consent_source: string | null; subscribed_at: string | null; unsubscribed_at: string | null; status_updated_at: string | null; last_synced_at: string | null }
 type Group = { id: number; name: string; description: string | null }
 
@@ -258,20 +276,14 @@ function addressLines(addr: Address): string[] {
                     <div class="mvp-table-wrap">
                         <table class="mvp-table">
                             <thead>
-                                <tr><th>订单号</th><th>日期</th><th>金额</th><th>订单状态</th><th>物流状态</th></tr>
+                                <tr><th v-for="column in orderGrid.visibleColumns" :key="column.key">{{ column.label }}</th><th>操作</th><ColumnSettingsHeader :columns="orderGrid.columns" :required-keys="['order_number']" :sync-state="orderGrid.syncState" @toggle="orderGrid.toggle" @start-drag="orderGrid.startDrag" @drop="orderGrid.drop" @reset="orderGrid.reset" /></tr>
                             </thead>
                             <tbody>
                                 <tr v-for="order in recentOrders" :key="order.id">
-                                    <td>
-                                        <Link :href="`/customers/orders/${order.id}`" class="mvp-link">{{ order.number }}</Link>
-                                    </td>
-                                    <td>{{ order.order_date ?? '—' }}</td>
-                                    <td>{{ money(order.revenue, order.currency) }}</td>
-                                    <td>{{ order.status }}</td>
-                                    <td>{{ order.shipment_status ?? '—' }}</td>
+                                    <td v-for="column in orderGrid.visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link :href="`/customers/orders/${order.id}`" class="mvp-link">{{ order.erp_order_id ?? '—' }}</Link><small v-if="order.external_order_number">来源订单：{{ order.external_order_number }}</small></template><template v-else-if="column.key === 'date'">{{ order.order_date ?? '—' }}</template><template v-else-if="column.key === 'amount'">{{ money(order.revenue, order.currency) }}</template><template v-else-if="column.key === 'order_status'">{{ order.status }}</template><template v-else>{{ order.shipment_status ?? '—' }}</template></td>
                                 </tr>
                                 <tr v-if="recentOrders.length === 0">
-                                    <td colspan="5" class="mvp-empty">暂无已明确关联的订单</td>
+                                    <td :colspan="orderGrid.visibleColumns.length + 1" class="mvp-empty">暂无已明确关联的订单</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -284,21 +296,14 @@ function addressLines(addr: Address): string[] {
                     <div class="mvp-table-wrap">
                         <table class="mvp-table">
                             <thead>
-                                <tr><th>关联订单</th><th>承运商</th><th>追踪号</th><th>发货日期</th><th>状态</th></tr>
+                                <tr><th v-for="column in shipmentGrid.visibleColumns" :key="column.key">{{ column.label }}</th><th>操作</th><ColumnSettingsHeader :columns="shipmentGrid.columns" :required-keys="['order_number']" :sync-state="shipmentGrid.syncState" @toggle="shipmentGrid.toggle" @start-drag="shipmentGrid.startDrag" @drop="shipmentGrid.drop" @reset="shipmentGrid.reset" /></tr>
                             </thead>
                             <tbody>
                                 <tr v-for="s in shipments" :key="s.id">
-                                    <td>
-                                        <Link v-if="s.order_number" :href="`/customers/orders/${s.order_id}`" class="mvp-link">{{ s.order_number }}</Link>
-                                        <span v-else>—</span>
-                                    </td>
-                                    <td>{{ s.carrier ?? '—' }}</td>
-                                    <td>{{ s.tracking_number ?? '—' }}</td>
-                                    <td>{{ s.shipped_at ?? '—' }}</td>
-                                    <td>{{ s.status ?? '—' }}</td>
+                                    <td v-for="column in shipmentGrid.visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link v-if="s.erp_order_id" :href="`/customers/orders/${s.order_id}`" class="mvp-link">{{ s.erp_order_id }}</Link><small v-if="s.external_order_number">来源订单：{{ s.external_order_number }}</small><span v-if="!s.erp_order_id">—</span></template><template v-else-if="column.key === 'carrier'">{{ s.carrier ?? '—' }}</template><template v-else-if="column.key === 'tracking'">{{ s.tracking_number ?? '—' }}</template><template v-else-if="column.key === 'shipped_at'">{{ s.shipped_at ?? '—' }}</template><template v-else>{{ s.status ?? '—' }}</template></td>
                                 </tr>
                                 <tr v-if="shipments.length === 0">
-                                    <td colspan="5" class="mvp-empty">暂无发货记录</td>
+                                    <td :colspan="shipmentGrid.visibleColumns.length + 1" class="mvp-empty">暂无发货记录</td>
                                 </tr>
                             </tbody>
                         </table>
