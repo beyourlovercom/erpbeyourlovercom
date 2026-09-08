@@ -27,17 +27,21 @@ final class WooCommerceTrackingOutboundTest extends TestCase
         ]);
     }
 
-    public function test_verified_tracking_completes_outbox_and_manual_sync_idempotently(): void
+    public function test_verified_tracking_completes_once_and_completed_state_cannot_reenter_outbound(): void
     {
         $gateway = new FakeWooCommerceTrackingGateway();
         $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
         [$user, $order] = $this->scenario();
 
         $first = app(WooCommerceTrackingOutboundService::class)->pushOne($order, $user);
-        $second = app(WooCommerceTrackingOutboundService::class)->pushOne($order->fresh(), $user);
 
         $this->assertSame('completed', $first['status']);
-        $this->assertSame('completed', $second['status']);
+        try {
+            app(WooCommerceTrackingOutboundService::class)->pushOne($order->fresh(), $user);
+            $this->fail('Completed manual sync must not re-enter outbound.');
+        } catch (\DomainException $exception) {
+            $this->assertStringContainsString('审核通过', $exception->getMessage());
+        }
         $this->assertSame(1, $gateway->calls);
         $this->assertDatabaseCount('sync_outbox', 1);
         $this->assertDatabaseHas('sync_outbox', [
@@ -108,6 +112,24 @@ final class WooCommerceTrackingOutboundTest extends TestCase
 
         try {
             app(WooCommerceTrackingOutboundService::class)->pushOne($order, null);
+        } finally {
+            $this->assertSame(0, $gateway->calls);
+            $this->assertDatabaseCount('sync_outbox', 0);
+        }
+    }
+
+    public function test_review_gate_blocks_tracking_outbound_before_approval(): void
+    {
+        $gateway = new FakeWooCommerceTrackingGateway();
+        $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
+        [, $order] = $this->scenario();
+        $order->manualSync()->update(['website_sync_status' => 'needs_confirmation']);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('审核通过');
+
+        try {
+            app(WooCommerceTrackingOutboundService::class)->pushOne($order->fresh(), null);
         } finally {
             $this->assertSame(0, $gateway->calls);
             $this->assertDatabaseCount('sync_outbox', 0);

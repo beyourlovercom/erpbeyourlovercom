@@ -103,6 +103,14 @@ final class ManualSyncController
         return back()->with('success', '人工同步已完成');
     }
 
+    public function approve(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    {
+        $data = $request->validate(['sync_note' => ['nullable', 'string', 'max:5000']]);
+        $this->sync->approve($order, $request->user(), $data['sync_note'] ?? null);
+
+        return back()->with('success', '订单已审核通过，待同步正式站');
+    }
+
     public function reopen(Request $request, Order $order): \Illuminate\Http\RedirectResponse
     {
         $data = $request->validate(['sync_note' => ['nullable', 'string', 'max:5000']]);

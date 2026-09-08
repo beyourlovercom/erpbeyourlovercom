@@ -97,7 +97,11 @@ final class ShipmentService
                 $lockedOrder->forceFill(['order_status' => 'shipped'])->save();
             }
             if ($trackingNumber) {
-                $this->manualSync->ensurePending($lockedOrder, $actor);
+                if ($this->isCustomerOrder($lockedOrder)) {
+                    $this->manualSync->ensureNeedsConfirmation($lockedOrder, $actor);
+                } else {
+                    $this->manualSync->ensurePending($lockedOrder, $actor);
+                }
             }
             if ($changed) {
                 $this->record($actor, 'shipment.marked_shipped', $shipment, $before, $this->snapshot($shipment), 'manual_fulfillment');
@@ -119,7 +123,11 @@ final class ShipmentService
             $shipment->fill(['tracking_number' => $trackingNumber]);
             $changed = $shipment->isDirty();
             $shipment->save();
-            $this->manualSync->ensurePending($lockedOrder, $actor);
+            if ($this->isCustomerOrder($lockedOrder)) {
+                $this->manualSync->ensureNeedsConfirmation($lockedOrder, $actor);
+            } else {
+                $this->manualSync->ensurePending($lockedOrder, $actor);
+            }
             if ($changed) {
                 $this->record($actor, 'shipment.tracking_updated', $shipment, $before, $this->snapshot($shipment), 'tracking_update');
             }
@@ -383,6 +391,13 @@ final class ShipmentService
         $order->forceFill(['order_status' => OrderStatus::PendingShipment])->save();
         $this->manualSync->reopen($order, $actor, $note);
         return $attempt;
+    }
+
+    private function isCustomerOrder(Model $order): bool
+    {
+        $kind = $order->order_kind instanceof \BackedEnum ? $order->order_kind->value : $order->order_kind;
+
+        return $kind === 'customer';
     }
 
     private function record(?Authenticatable $actor, string $action, Model $shipment, array $before, array $after, string $reason): void

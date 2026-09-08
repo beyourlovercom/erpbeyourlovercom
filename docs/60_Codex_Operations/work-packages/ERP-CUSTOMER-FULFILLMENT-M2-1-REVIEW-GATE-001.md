@@ -4,7 +4,7 @@
 Freeze and implement the first customer fulfillment handoff gate: Liang records real shipment truth, then Vita must review it before any WooCommerce tracking outbound is eligible.
 
 ## Baseline / dependency
-- BASELINE: `main@efd0924ae2a2c0b6c01d838f4b8c151214d90104`
+- BASELINE: `main@016687a42e3b2dfe2d8a569dd8869fb95d782e2c`
 - DEPENDENCIES: existing Logistics Shipment truth, Manual Sync state machine, WooCommerce Tracking Outbound, PR #260 canonical 007 order/grid behavior.
 - DEPENDENCY_TYPE: MERGED_PR / merged main foundations only.
 - DEPENDENCY_STATUS: SATISFIED.
@@ -55,12 +55,12 @@ CURRENT_TRACK_PHASE_MAP: M1 Role Boundary Freeze [COMPLETE] → M2.1 Customer Sh
 COMPLETED_PHASES: M1 Role Boundary Freeze; Logistics real-order identity/grid closure PR #260
 CURRENT_PHASE: M2 Customer Fulfillment Loop
 CURRENT_WORK_PACKAGE: ERP-CUSTOMER-FULFILLMENT-M2-1-REVIEW-GATE-001
-PACKAGE_STATUS: IMPLEMENTATION AUTHORIZED
+PACKAGE_STATUS: READY FOR OWNER UAT
 WAITING_PHASES: M2.2; M2.3; M3; M4; M5; M6
-BASELINE: main@efd0924ae2a2c0b6c01d838f4b8c151214d90104
+BASELINE: main@016687a42e3b2dfe2d8a569dd8869fb95d782e2c
 GITHUB_STATE: dedicated branch / Draft PR required
 SOURCE_CONFLICTS: NONE WITH EVIDENCE; current main already contains NeedsConfirmation and Tracking Outbound foundations
-GLOBAL_GATE: PASS FOR BOUNDED LOCAL IMPLEMENTATION
+GLOBAL_GATE: PASS FOR OWNER UAT; Production remains blocked
 PRODUCTION_DEPLOYMENT_STATUS: NO
 NEXT_DEPENDENCY: Owner UAT PASS on M2.1
 EVIDENCE_AS_OF: 2026-09-08
@@ -81,6 +81,15 @@ ESTIMATE_CONFIDENCE: HIGH for M2.1
 ESTIMATE_AS_OF: 2026-09-08
 ESTIMATE_METHOD: existing state-machine/outbound reuse; no schema/menu changes
 
+IMPLEMENTATION EVIDENCE
+IMPLEMENTED_FILES: app/Modules/Logistics/Application/ShipmentService.php; app/Modules/Sync/Application/ManualSyncService.php; app/Modules/Sync/Application/WooCommerceTrackingOutboundService.php; app/Modules/Sync/Experience/Controllers/ManualSyncController.php; app/Modules/Sync/Experience/Routes/web.php; resources/js/Pages/Sync/Orders.vue; resources/js/Pages/Sync/Orders.test.ts; dedicated CustomerFulfillmentReviewGateTest; Woo outbound test; architecture route/hash baseline
+IMPLEMENTED_BEHAVIOR: customer tracking enters needs_confirmation; approval audits needs_confirmation->pending; returned correction re-enters needs_confirmation; outbound prepare requires pending; Sync/Orders labels/actions/selection enforce the review gate; KOL path retains ensurePending
+VERIFICATION_PASS: post-rebase focused PHPUnit 20/20 (208 assertions); dedicated review-gate + Woo outbound 9/9 (40 assertions); Sync/Orders Vitest 8/8; npm typecheck PASS; Vite production build PASS; PHP lint PASS; git diff --check PASS; no NotificationCenter diff
+BASELINE_GOVERNANCE_DEBT: ModuleArchitectureTest is 5/8 on this branch and independently 5/8 on exact origin/main@016687a with the same 3 stale frozen-baseline failures (module directory set, layer file set, migration file set); this package does not mutate those baseline sets. LogisticsOsV1Closure first dispatch test is also independently baseline-failing on main and is outside M2.1 scope.
+VERIFICATION_BLOCKED: NONE for M2.1 acceptance; known mainline governance baseline debt recorded separately
+OWNER_UAT: NEXT GATE; isolated Local/UAT only, no real Woo external write and no Production deployment
+DELIVERY_STATUS: READY_FOR_OWNER_UAT; commit/push required before opening exact-head UAT; not merged; not deployed
+
 ESTIMATED CODEX HOURS
 PREFLIGHT_AND_SCOPE: 0.15h
 CORE_EXECUTION: 0.65h
@@ -89,6 +98,9 @@ REMEDIATION_BUFFER: 0.15h
 ESTIMATED_EFFECTIVE_HOURS: 1.25h
 ESTIMATE_RANGE: 0.8–1.8h
 ESTIMATE_BASIS: bounded cross-module state transition + focused UI/test updates using existing foundations
+ACTUAL_EFFECTIVE_HOURS: approximately 1.05h
+ACTUAL_BREAKDOWN: preflight/scope 0.15h; implementation 0.40h; focused test authoring/static validation 0.25h; bypass remediation + dependency-safe verification + mainline rebase/evidence 0.25h; external dependency waiting excluded
+ACTUAL_VARIANCE: approximately -0.20h versus 1.25h estimate (-16%); implementation and M2.1 acceptance verification complete, Owner UAT excluded from this effective-time total
 OWNER_REVIEW: INCLUDED
 MERGE: EXCLUDED
 MIGRATION: EXCLUDED

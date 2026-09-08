@@ -34,7 +34,7 @@ const copy = async (id: number) => {
   const response = await fetch(`/sync/orders/${id}/payload`, { headers: { Accept: 'application/json' } })
   await navigator.clipboard.writeText(JSON.stringify(await response.json(), null, 2))
 }
-const selectable = (order: Order) => order.source_type === 'woocommerce' && order.shipment_status === 'shipped' && !!order.tracking_number
+const selectable = (order: Order) => order.status === 'pending' && order.source_type === 'woocommerce' && order.shipment_status === 'shipped' && !!order.tracking_number
 const toggleSelected = (id: number, checked: boolean) => {
   selected.value = checked ? [...new Set([...selected.value, id])] : selected.value.filter((value) => value !== id)
 }
@@ -51,6 +51,9 @@ const outboundLabel = (order: Order) => {
   if (order.tracking_outbound_status === 'failed') return '失败'
   return order.tracking_outbound_status
 }
+const syncStatusLabel = (status: string) => ({
+  needs_confirmation: '待运营审核', pending: '待同步正式站', completed: '已完成', returned: '已退回', failed: '失败',
+}[status] ?? status)
 type ColumnKey = 'order_number' | 'source' | 'recipient' | 'tracking' | 'outbound' | 'status' | 'synced_at'
 const definitions: GridColumnDefinition<ColumnKey>[] = [
   { key: 'order_number', label: 'ERP订单号' },
@@ -110,8 +113,8 @@ const { columns, visibleColumns, syncState, toggle, startDrag, drop, reset } = u
       <form class="mvp-toolbar" @submit.prevent="submit">
         <input v-model="filters.search" placeholder="搜索订单号或收件人" aria-label="搜索同步">
         <select v-model="filters.status" aria-label="同步状态">
-          <option value="">全部状态</option><option value="pending">待同步</option><option value="completed">已完成</option>
-          <option value="needs_confirmation">待确认</option><option value="returned">已退回</option><option value="failed">失败</option>
+          <option value="">全部状态</option><option value="pending">待同步正式站</option><option value="completed">已完成</option>
+          <option value="needs_confirmation">待运营审核</option><option value="returned">已退回</option><option value="failed">失败</option>
         </select>
         <button class="mvp-button mvp-button-primary">筛选</button>
       </form>
@@ -122,13 +125,15 @@ const { columns, visibleColumns, syncState, toggle, startDrag, drop, reset } = u
           <tbody>
             <tr v-for="order in props.orders" :key="order.id">
               <td><input v-if="selectable(order)" type="checkbox" :aria-label="`选择 ${order.erp_order_id ?? '—'}`" :checked="selected.includes(order.id)" @change="toggleSelected(order.id, ($event.target as HTMLInputElement).checked)"></td>
-              <td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><strong>{{ order.erp_order_id ?? '—' }}</strong></template><template v-else-if="column.key === 'source'">{{ order.source_type }}</template><template v-else-if="column.key === 'recipient'">{{ order.recipient_name }}</template><template v-else-if="column.key === 'tracking'">{{ order.tracking_number ?? '—' }}</template><template v-else-if="column.key === 'outbound'"><span class="mvp-status">{{ order.source_type === 'woocommerce' ? outboundLabel(order) : '—' }}</span></template><template v-else-if="column.key === 'status'"><span class="mvp-status">{{ order.status }}</span></template><template v-else>{{ order.synced_at ?? '—' }}</template></td>
+              <td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><strong>{{ order.erp_order_id ?? '—' }}</strong></template><template v-else-if="column.key === 'source'">{{ order.source_type }}</template><template v-else-if="column.key === 'recipient'">{{ order.recipient_name }}</template><template v-else-if="column.key === 'tracking'">{{ order.tracking_number ?? '—' }}</template><template v-else-if="column.key === 'outbound'"><span class="mvp-status">{{ order.source_type === 'woocommerce' ? outboundLabel(order) : '—' }}</span></template><template v-else-if="column.key === 'status'"><span class="mvp-status">{{ syncStatusLabel(order.status) }}</span></template><template v-else>{{ order.synced_at ?? '—' }}</template></td>
               <td class="mvp-actions">
                 <button class="mvp-button" @click="copy(order.id)">复制网站 payload</button>
-                <button v-if="order.source_type === 'woocommerce' && order.shipment_status === 'shipped' && order.tracking_number && order.status !== 'completed'" class="mvp-button mvp-button-primary" @click="pushTracking(order.id)">写回 Tracking</button>
-                <button v-if="order.status !== 'completed'" class="mvp-button" @click="update(order.id, 'complete')">标记完成</button>
+                <button v-if="order.status === 'needs_confirmation'" class="mvp-button mvp-button-primary" @click="update(order.id, 'approve')">审核通过</button>
+                <button v-if="order.status === 'needs_confirmation'" class="mvp-button" @click="update(order.id, 'return')">退回修改</button>
+                <button v-if="order.status === 'pending' && order.source_type === 'woocommerce' && order.shipment_status === 'shipped' && order.tracking_number" class="mvp-button mvp-button-primary" @click="pushTracking(order.id)">写回 Tracking</button>
+                <button v-if="order.status === 'pending'" class="mvp-button" @click="update(order.id, 'complete')">标记完成</button>
                 <button v-if="order.status === 'completed'" class="mvp-button" @click="update(order.id, 'reopen')">重开</button>
-                <button v-if="order.status !== 'returned'" class="mvp-button" @click="update(order.id, 'return')">退回更正</button>
+                <button v-if="order.status === 'pending' || order.status === 'completed'" class="mvp-button" @click="update(order.id, 'return')">退回更正</button>
               </td>
             </tr>
             <tr v-if="props.orders.length === 0"><td :colspan="visibleColumns.length + 3" class="mvp-empty">暂无同步记录</td></tr>

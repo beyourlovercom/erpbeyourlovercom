@@ -54,6 +54,22 @@ describe('Sync tracking outbound UI', () => {
     expect(wrapper.findAll('button').filter((item) => item.text() === '写回 Tracking')).toHaveLength(0)
   })
 
+  it('shows review actions and hides outbound/selection until approval', () => {
+    const review = { ...woo, id: 6, status: 'needs_confirmation' }
+    const wrapper = mount(Orders, { props: { orders: [review], filters: {} } })
+    expect(wrapper.text()).toContain('待运营审核')
+    expect(wrapper.text()).toContain('审核通过')
+    expect(wrapper.text()).toContain('退回修改')
+    expect(wrapper.findAll('button').filter((item) => item.text() === '退回更正')).toHaveLength(0)
+    expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false)
+    expect(wrapper.findAll('button').filter((item) => item.text() === '写回 Tracking')).toHaveLength(0)
+  })
+
+  it('labels approved pending rows as outbound-eligible', () => {
+    const wrapper = mount(Orders, { props: { orders: [woo], filters: {} } })
+    expect(wrapper.text()).toContain('待同步正式站')
+  })
+
   it('renders retry and completed outbox states explicitly', () => {
     const retry = { ...woo, id: 4, tracking_outbound_status: 'pending', tracking_outbound_attempts: 1 }
     const done = { ...woo, id: 5, status: 'completed', tracking_outbound_status: 'completed', tracking_outbound_attempts: 1 }

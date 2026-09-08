@@ -20,6 +20,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/sync/kol', [SyncWorkspaceController::class, 'kol'])->middleware('can:sync.view')->name('sync.kol');
     Route::get('/sync/exports', [SyncWorkspaceController::class, 'exports'])->middleware('can:sync.view')->name('sync.exports');
     Route::get('/sync/orders/{order}/payload', [ManualSyncController::class, 'payload'])->middleware('can:sync.view')->name('sync.payload');
+    Route::post('/sync/orders/{order}/approve', [ManualSyncController::class, 'approve'])->middleware('can:sync.operate')->name('sync.approve');
     Route::post('/sync/orders/{order}/complete', [ManualSyncController::class, 'complete'])->middleware('can:sync.operate')->name('sync.complete');
     Route::post('/sync/orders/{order}/reopen', [ManualSyncController::class, 'reopen'])->middleware('can:sync.operate')->name('sync.reopen');
     Route::post('/sync/orders/{order}/return', [ManualSyncController::class, 'return'])->middleware('can:sync.operate')->name('sync.return');

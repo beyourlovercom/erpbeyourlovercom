@@ -13,6 +13,43 @@ final class ManualSyncService
 {
     public function __construct(private readonly AuditRecorder $audit) {}
 
+    public function ensureNeedsConfirmation(Model $order, ?Authenticatable $actor): Model
+    {
+        $sync = $order->manualSync()->lockForUpdate()->firstOrCreate(
+            ['order_id' => $order->getKey()],
+            ['website_sync_status' => ManualSyncStatus::NeedsConfirmation->value],
+        );
+
+        if ($sync->website_sync_status !== ManualSyncStatus::NeedsConfirmation) {
+            $sync->forceFill([
+                'website_sync_status' => ManualSyncStatus::NeedsConfirmation,
+                'synced_at' => null,
+                'synced_by' => null,
+            ])->save();
+        }
+
+        return $sync;
+    }
+
+    public function approve(Model $order, ?Authenticatable $actor, ?string $note = null): Model
+    {
+        return DB::transaction(function () use ($order, $actor, $note): Model {
+            $sync = $order->manualSync()->lockForUpdate()->first();
+            abort_unless($sync?->website_sync_status === ManualSyncStatus::NeedsConfirmation, 409, '只有待运营审核订单可以审核通过。');
+
+            $before = $sync->only(['website_sync_status', 'synced_at', 'synced_by', 'sync_note']);
+            $sync->fill([
+                'website_sync_status' => ManualSyncStatus::Pending,
+                'synced_at' => null,
+                'synced_by' => null,
+                'sync_note' => $note,
+            ])->save();
+            $this->record($actor, 'manual_sync.approved', $sync, $before, 'operator_review_approved');
+
+            return $sync->fresh(['order', 'operator']);
+        });
+    }
+
     public function ensurePending(Model $order, ?Authenticatable $actor): Model
     {
         $sync = $order->manualSync()->lockForUpdate()->firstOrCreate(
@@ -59,6 +96,11 @@ final class ManualSyncService
             if ($sync->website_sync_status === ManualSyncStatus::Completed) {
                 return $sync->fresh(['order', 'operator']);
             }
+            abort_unless(
+                $sync->website_sync_status === ManualSyncStatus::Pending,
+                409,
+                '订单必须先完成运营审核并进入待同步正式站，才能标记同步完成。',
+            );
             $before = $sync->only(['website_sync_status', 'synced_at', 'synced_by', 'sync_note']);
             $sync->fill([
                 'website_sync_status' => ManualSyncStatus::Completed,
@@ -78,6 +120,11 @@ final class ManualSyncService
             $sync = $order->manualSync()->lockForUpdate()->firstOrCreate(
                 ['order_id' => $order->getKey()],
                 ['website_sync_status' => ManualSyncStatus::Pending],
+            );
+            abort_unless(
+                in_array($sync->website_sync_status, [ManualSyncStatus::Pending, ManualSyncStatus::Completed], true),
+                409,
+                '待运营审核或已退回订单不能通过重开绕过审核。',
             );
             if ($sync->website_sync_status === ManualSyncStatus::Pending && $sync->synced_at === null && $sync->synced_by === null && $sync->sync_note === $note) {
                 return $sync->fresh(['order', 'operator']);

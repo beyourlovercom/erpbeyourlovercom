@@ -127,6 +127,10 @@ final class WooCommerceTrackingOutboundService
             throw new DomainException('只有 WooCommerce 来源订单可以自动写回 Tracking。');
         }
 
+        if ($order->manualSync?->website_sync_status !== ManualSyncStatus::Pending) {
+            throw new DomainException('订单必须审核通过并处于待同步正式站状态后才能写回 Tracking。');
+        }
+
         $shipment = $order->shipment;
         if (! $shipment || $shipment->shipment_status !== 'shipped') {
             throw new DomainException('订单尚未完成发货，不能写回 Tracking。');
