@@ -347,4 +347,30 @@ final class ShippingWeightStandardCandidateTest extends TestCase
         $result = $this->reader->forProductIds([$p2->id]);
         $this->assertArrayNotHasKey($p2->id, $result);
     }
+
+    public function test_mysql_schema_identifiers_are_explicit_and_within_limit(): void
+    {
+        $migration = file_get_contents(database_path('migrations/2026_09_09_100000_create_product_shipping_weight_standard_candidates_table.php'));
+        $this->assertIsString($migration);
+        $this->assertStringNotContainsString('->constrained(', $migration);
+
+        $identifiers = [
+            'pswsc_fingerprint_uq',
+            'pswsc_product_workflow_idx',
+            'pswsc_confidence_idx',
+            'pswsc_product_fk',
+            'pswsc_created_by_fk',
+            'pswsc_reviewed_by_fk',
+            'pswsce_candidate_evidence_uq',
+            'pswsce_candidate_fk',
+            'pswsce_weight_evidence_fk',
+            'products_sw_candidate_fk',
+        ];
+
+        foreach ($identifiers as $identifier) {
+            $this->assertLessThanOrEqual(64, strlen($identifier), $identifier);
+            $this->assertStringContainsString("'{$identifier}'", $migration);
+        }
+    }
+
 }
