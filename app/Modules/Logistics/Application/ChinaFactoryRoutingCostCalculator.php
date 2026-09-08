@@ -5,7 +5,7 @@ namespace App\Modules\Logistics\Application;
 final class ChinaFactoryRoutingCostCalculator
 {
     /** @param array<string,mixed> $destinationContext @param array<int,array<string,mixed>> $items */
-    public function calculate(string $country, float $actualWeightKg, float $volumeCm3, array $items, array $destinationContext = []): array
+    public function calculate(string $country, float $actualWeightKg, array $items, array $destinationContext = []): array
     {
         $country = strtoupper(trim($country));
         $rates = require resource_path('data/logistics/china-factory-rates-v1.php');
@@ -16,8 +16,8 @@ final class ChinaFactoryRoutingCostCalculator
         $countryRate = $rates['countries'][$country] ?? null;
         if (! is_array($countryRate)) return $this->missing('factory_rate_unavailable', 'No frozen China rate row for destination country');
 
-        $chargeable = max($actualWeightKg, $volumeCm3 / 8000);
-        $chargeable = ceil(max(0.0, $chargeable) * 1000) / 1000;
+        // Owner-confirmed operational rule: 4PX / 速达 SD经济挂号-带电 is billed by actual weight only.
+        $chargeable = ceil(max(0.0, $actualWeightKg) * 1000) / 1000;
         $chargeable = max($chargeable, (float) ($countryRate['minimum_billing_kg'] ?? 0));
         $band = null;
         foreach ($countryRate['bands'] ?? [] as $row) {
@@ -26,15 +26,31 @@ final class ChinaFactoryRoutingCostCalculator
         if (! is_array($band)) return $this->missing('factory_rate_unavailable', 'Weight exceeds frozen China rate rows');
 
         $components = [[
-            'key' => 'china_transport', 'label' => 'China factory transport', 'amount' => round($chargeable * (float) $band['per_kg_rmb'] + (float) $band['base_rmb'], 4),
-            'currency' => 'CNY', 'source' => $rates['source'], 'chargeable_weight_kg' => $chargeable,
+            'key' => 'china_transport',
+            'label' => 'China factory transport',
+            'amount' => round($chargeable * (float) $band['per_kg_rmb'] + (float) $band['base_rmb'], 4),
+            'currency' => 'CNY',
+            'source' => $rates['source'],
+            'chargeable_weight_kg' => $chargeable,
+            'billing_basis' => 'actual_weight_only',
         ]];
         $lineCount = count(array_unique(array_map(fn (array $item): string => (string) ($item['product_id'] ?? ''), $items)));
         if (in_array($country, $rates['eu27_countries'], true)) {
-            $components[] = ['key' => 'eu_declared_item_surcharge', 'label' => 'EU declared Item surcharge', 'amount' => round($lineCount * (float) $rates['eu27_item_surcharge_eur'], 4), 'currency' => 'EUR', 'source' => $rates['source']];
+            $components[] = [
+                'key' => 'eu_declared_item_surcharge',
+                'label' => 'EU declared Item surcharge',
+                'amount' => round($lineCount * (float) $rates['eu27_item_surcharge_eur'], 4),
+                'currency' => 'EUR',
+                'source' => $rates['source'],
+            ];
         }
 
-        return ['status' => 'ready', 'components' => $components, 'provenance' => 'estimated-consolidated-packaging', 'possible_surcharges' => []];
+        return [
+            'status' => 'ready',
+            'components' => $components,
+            'provenance' => 'actual-weight-only',
+            'possible_surcharges' => [],
+        ];
     }
 
     private function isUnservedUsDestination(array $context, array $prefixes): bool

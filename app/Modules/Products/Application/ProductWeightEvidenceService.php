@@ -21,6 +21,7 @@ final class ProductWeightEvidenceService
         'supplier_document',
         'warehouse_measurement',
         'historical_logistics',
+        'logistics_scan',
         'other_documented',
     ];
 

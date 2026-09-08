@@ -13,18 +13,19 @@ final class FulfillmentRoutingCostCalculatorTest extends TestCase
 {
     public function test_china_de_uses_frozen_row_and_eu_item_surcharge(): void
     {
-        $result = app(ChinaFactoryRoutingCostCalculator::class)->calculate('DE', 0.250, 0, [['product_id' => 10, 'quantity' => 1]]);
+        $result = app(ChinaFactoryRoutingCostCalculator::class)->calculate('DE', 0.250, [['product_id' => 10, 'quantity' => 1]]);
 
         $this->assertSame('ready', $result['status']);
         $this->assertSame(54.75, $result['components'][0]['amount']);
         $this->assertSame('CNY', $result['components'][0]['currency']);
+        $this->assertSame('actual_weight_only', $result['components'][0]['billing_basis']);
         $this->assertSame(3.0, $result['components'][1]['amount']);
         $this->assertSame('EUR', $result['components'][1]['currency']);
     }
 
     public function test_china_fr_uses_frozen_row(): void
     {
-        $result = app(ChinaFactoryRoutingCostCalculator::class)->calculate('FR', 0.500, 0, [['product_id' => 10, 'quantity' => 1]]);
+        $result = app(ChinaFactoryRoutingCostCalculator::class)->calculate('FR', 0.500, [['product_id' => 10, 'quantity' => 1]]);
 
         $this->assertSame(86.50, $result['components'][0]['amount']);
         $this->assertSame(3.0, $result['components'][1]['amount']);
@@ -34,7 +35,7 @@ final class FulfillmentRoutingCostCalculatorTest extends TestCase
     {
         $calculator = app(ChinaFactoryRoutingCostCalculator::class);
         foreach ([['province_state' => 'AK'], ['province_state' => 'HI'], ['city' => 'APO', 'province_state' => 'AE'], ['postal_code' => '96701']] as $destination) {
-            $result = $calculator->calculate('US', 0.25, 0, [['product_id' => 10, 'quantity' => 1]], $destination);
+            $result = $calculator->calculate('US', 0.25, [['product_id' => 10, 'quantity' => 1]], $destination);
             $this->assertSame('missing_evidence', $result['status']);
             $this->assertSame('factory_channel_unserved_destination', $result['reason_code']);
         }
@@ -67,7 +68,7 @@ final class FulfillmentRoutingCostCalculatorTest extends TestCase
 
     public function test_unsupported_country_and_weight_fail_closed(): void
     {
-        $china = app(ChinaFactoryRoutingCostCalculator::class)->calculate('AU', 0.5, 0, [['product_id' => 10, 'quantity' => 1]]);
+        $china = app(ChinaFactoryRoutingCostCalculator::class)->calculate('AU', 0.5, [['product_id' => 10, 'quantity' => 1]]);
         $dhl = app(GermanyDhlRoutingCostCalculator::class)->calculate('DE', 32.0);
 
         $this->assertSame('missing_evidence', $china['status']);
