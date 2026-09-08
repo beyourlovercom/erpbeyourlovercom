@@ -3,11 +3,13 @@
 namespace Tests\Feature\Finance;
 
 use App\Modules\Finance\Application\CostMaterializationService;
+use App\Modules\Finance\Application\Contracts\FxManualRateRepository;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Application\ConfirmedProductCostSourceImportService;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductCostSource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 final class ConfirmedProductCostSourceTest extends TestCase
@@ -97,20 +99,83 @@ final class ConfirmedProductCostSourceTest extends TestCase
         self::assertCount(1, array_filter($second['noop'], fn (array $row): bool => ($row['cost_type'] ?? null) === 'product_cost'));
     }
 
-    public function test_cny_confirmed_source_on_usd_order_is_blocked_until_fx_bridge_exists(): void
+    public function test_cny_confirmed_source_materializes_to_usd_with_frozen_posting_fx(): void
     {
-        $product = $this->product('USD-BLOCK');
-        $this->source($product, 'LONG-1', '117.600000000000', 'CNY');
+        Http::fake(['ecb.europa.eu/*' => Http::response($this->ecbXml(), 200)]);
+        $product = $this->product('USD-FX');
+        $this->source($product, 'LONG-1', '71.000000000000', 'CNY');
         $order = $this->order('USD', '2026-07-15');
         $order->items()->create(['product_id' => $product->id, 'product_summary' => 'x', 'sku' => $product->sku, 'quantity' => 1, 'unit_price' => '50.00', 'line_revenue' => '50.00']);
 
-        $candidate = $this->candidate($this->app->make(CostMaterializationService::class)->preview($order), 'product_cost');
-        self::assertSame('blocked', $candidate['materialization_status']);
-        self::assertSame('confirmed_product_cost_fx_conversion_required', $candidate['blocker']);
+        $service = $this->app->make(CostMaterializationService::class);
+        $candidate = $this->candidate($service->preview($order), 'product_cost');
+        self::assertSame('apply', $candidate['materialization_status']);
+        self::assertSame('10.00', $candidate['amount']);
+        self::assertSame('USD', $candidate['currency']);
         self::assertSame('CNY', $candidate['source_currency']);
-        self::assertSame('USD', $candidate['order_currency']);
-        self::assertSame('117.60', $candidate['source_amount']);
-        self::assertFalse($order->costEntries()->where('cost_type', 'product_cost')->exists());
+        self::assertSame('71.00', $candidate['source_amount']);
+        self::assertSame('0.14084507', $candidate['posting_fx']['source_to_usd_rate']);
+
+        $service->apply($order);
+        $entry = $order->costEntries()->where('cost_type', 'product_cost')->firstOrFail();
+        self::assertSame('10.00', $entry->amount);
+        self::assertSame('0.14084507', $entry->exchange_rate);
+        self::assertSame('10.00', $entry->base_amount);
+        self::assertSame('USD', $entry->base_currency);
+        self::assertStringContainsString('settings_fx_posting:CNY(fixed)->USD(ecb)', $entry->exchange_rate_source);
+        self::assertSame('2026-09-07', $entry->exchange_rate_date->toDateString());
+    }
+
+    public function test_cny_source_to_eur_freezes_transaction_fx_once_and_preserves_existing_snapshot(): void
+    {
+        Http::fake(['ecb.europa.eu/*' => Http::response($this->ecbXml(), 200)]);
+        $product = $this->product('EUR-FX');
+        $this->source($product, 'LONG-1', '78.100000000000', 'CNY');
+        $order = $this->order('EUR', '2026-07-15');
+        $order->financials()->create(['currency' => 'EUR', 'revenue_provenance' => 'provider_import', 'completeness_status' => 'INCOMPLETE']);
+        $order->items()->create(['product_id' => $product->id, 'product_summary' => 'x', 'sku' => $product->sku, 'quantity' => 1, 'unit_price' => '50.00', 'line_revenue' => '50.00']);
+
+        $service = $this->app->make(CostMaterializationService::class);
+        $service->apply($order);
+        $entry = $order->costEntries()->where('cost_type', 'product_cost')->firstOrFail();
+        $financials = $order->financials()->firstOrFail()->fresh();
+        self::assertSame('10.00', $entry->amount);
+        self::assertSame('EUR', $entry->currency);
+        self::assertSame('11.00', $entry->base_amount);
+        self::assertSame('1.10000000', $financials->fx_rate);
+        self::assertSame('2026-09-07', $financials->fx_rate_date->toDateString());
+        self::assertStringContainsString('settings_fx_posting:EUR(ecb)->USD(ecb)', $financials->fx_rate_source);
+
+        $second = $service->apply($order->fresh());
+        self::assertCount(1, array_filter($second['noop'], fn (array $row): bool => ($row['cost_type'] ?? null) === 'product_cost'));
+        self::assertSame('1.10000000', $order->financials()->firstOrFail()->fresh()->fx_rate);
+
+        $existing = $this->order('EUR', '2026-07-15');
+        $existing->financials()->create([
+            'currency' => 'EUR', 'revenue_provenance' => 'provider_import', 'completeness_status' => 'INCOMPLETE',
+            'fx_rate' => '1.25000000', 'fx_rate_date' => '2026-07-01', 'fx_rate_source' => 'transaction_original',
+        ]);
+        $existing->items()->create(['product_id' => $product->id, 'product_summary' => 'x', 'sku' => $product->sku, 'quantity' => 1, 'unit_price' => '50.00', 'line_revenue' => '50.00']);
+        $service->apply($existing);
+        self::assertSame('8.80', $existing->costEntries()->where('cost_type', 'product_cost')->firstOrFail()->amount);
+        self::assertSame('1.25000000', $existing->financials()->firstOrFail()->fresh()->fx_rate);
+        self::assertSame('transaction_original', $existing->financials()->firstOrFail()->fresh()->fx_rate_source);
+    }
+
+    public function test_bridge_uses_manual_settings_rate_without_ecb_availability(): void
+    {
+        Http::fake(['ecb.europa.eu/*' => Http::response('unavailable', 503)]);
+        $this->app->make(FxManualRateRepository::class)->replace(['USD' => 7.10], ['USD' => false], null);
+        $product = $this->product('USD-MANUAL-FX');
+        $this->source($product, 'LONG-1', '71.000000000000', 'CNY');
+        $order = $this->order('USD', '2026-07-15');
+        $order->items()->create(['product_id' => $product->id, 'product_summary' => 'x', 'sku' => $product->sku, 'quantity' => 1, 'unit_price' => '50.00', 'line_revenue' => '50.00']);
+
+        $this->app->make(CostMaterializationService::class)->apply($order);
+        $entry = $order->costEntries()->where('cost_type', 'product_cost')->firstOrFail();
+        self::assertSame('10.00', $entry->amount);
+        self::assertSame('0.14084507', $entry->exchange_rate);
+        self::assertStringContainsString('USD(manual)', $entry->exchange_rate_source);
     }
 
     public function test_latest_effective_confirmed_cost_version_wins_for_later_orders(): void
@@ -177,6 +242,17 @@ final class ConfirmedProductCostSourceTest extends TestCase
             'internal_order_number' => 'PCS-'.strtoupper(uniqid()), 'source_type' => 'manual', 'order_kind' => 'customer',
             'order_date' => $date, 'order_status' => 'pending_shipment', 'currency' => $currency,
         ]);
+    }
+
+
+    private function ecbXml(): string
+    {
+        return <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01" xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref">
+  <Cube><Cube time="2026-09-07"><Cube currency="USD" rate="1.10"/><Cube currency="EUR" rate="1.00"/><Cube currency="CNY" rate="7.81"/></Cube></Cube>
+</gesmes:Envelope>
+XML;
     }
 
     private function candidate(array $payload, string $type): array

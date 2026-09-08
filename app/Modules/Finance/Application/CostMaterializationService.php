@@ -24,6 +24,7 @@ final class CostMaterializationService
         private readonly CarrierBillingEvidenceReader $carrier,
         private readonly FulfillmentOriginEvidenceReader $fulfillmentOrigin,
         private readonly AffiliateCommissionEvidenceReader $affiliate,
+        private readonly AccountingFxSnapshotBridgeService $fxBridge,
         private readonly OrderAnalysisService $analysis,
         private readonly AuditRecorder $audit,
     ) {}
@@ -196,20 +197,32 @@ final class CostMaterializationService
             $sourceCurrency = array_key_first($totalByCurrency);
             sort($sourceIds);
             sort($sourceKeys);
+            $sourceAmount = DecimalMoney::round($totalByCurrency[$sourceCurrency]);
+            $extra = ['source_ids' => array_values(array_unique($sourceIds)), 'source_keys' => array_values(array_unique($sourceKeys))];
+            $amount = $sourceAmount;
             if ($sourceCurrency !== $currency) {
-                return $this->blocked('product_cost', 'confirmed_product_cost_fx_conversion_required', [
+                $fx = $this->fxBridge->preview($order, $sourceCurrency);
+                if (! ($fx['available'] ?? false)) {
+                    return $this->blocked('product_cost', 'confirmed_product_cost_fx_snapshot_unavailable', $extra + [
+                        'source_currency' => $sourceCurrency,
+                        'order_currency' => $currency,
+                        'source_amount' => $sourceAmount,
+                        'fx_reason' => $fx['reason'] ?? 'fx_unavailable',
+                    ]);
+                }
+                $amount = DecimalMoney::round(DecimalMoney::multiply($sourceAmount, (string) $fx['source_to_transaction_rate'], 8));
+                $extra += [
                     'source_currency' => $sourceCurrency,
-                    'order_currency' => $currency,
-                    'source_amount' => DecimalMoney::round($totalByCurrency[$sourceCurrency]),
-                    'source_ids' => array_values(array_unique($sourceIds)),
-                    'source_keys' => array_values(array_unique($sourceKeys)),
-                ]);
+                    'source_amount' => $sourceAmount,
+                    'posting_fx' => $fx + [
+                        'base_amount' => DecimalMoney::round(DecimalMoney::multiply($sourceAmount, (string) $fx['source_to_usd_rate'], 8)),
+                    ],
+                ];
             }
 
             return $this->candidate(
-                'product_cost', DecimalMoney::round($totalByCurrency[$sourceCurrency]), $currency, 'confirmed_manual', 'confirmed',
-                'product-cost-source:v1:order:'.$order->getKey().':'.hash('sha256', implode(',', $sourceIds)), $sourceAt,
-                ['source_ids' => array_values(array_unique($sourceIds)), 'source_keys' => array_values(array_unique($sourceKeys))],
+                'product_cost', $amount, $currency, 'confirmed_manual', 'confirmed',
+                'product-cost-source:v1:order:'.$order->getKey().':'.hash('sha256', implode(',', $sourceIds)), $sourceAt, $extra,
             );
         }
 
@@ -287,18 +300,29 @@ final class CostMaterializationService
         }
 
         if (in_array($slug, self::OVERSEAS_WAREHOUSE_SLUGS, true)) {
+            $amount = '1.00';
+            $extra = $context + ['rule' => 'overseas_warehouse_usd_one_per_order'];
             if ($currency !== 'USD') {
-                return $this->blocked('first_mile_cost', 'first_mile_fx_conversion_required', $context + [
+                $fx = $this->fxBridge->preview($order, 'USD');
+                if (! ($fx['available'] ?? false)) {
+                    return $this->blocked('first_mile_cost', 'first_mile_fx_snapshot_unavailable', $context + [
+                        'source_currency' => 'USD',
+                        'order_currency' => $currency,
+                        'source_amount' => '1.00',
+                        'fx_reason' => $fx['reason'] ?? 'fx_unavailable',
+                    ]);
+                }
+                $amount = DecimalMoney::round(DecimalMoney::multiply('1.00', (string) $fx['source_to_transaction_rate'], 8));
+                $extra += [
                     'source_currency' => 'USD',
-                    'order_currency' => $currency,
                     'source_amount' => '1.00',
-                ]);
+                    'posting_fx' => $fx + ['base_amount' => '1.00'],
+                ];
             }
 
             return $this->candidate(
-                'first_mile_cost', '1.00', 'USD', 'confirmed_manual', 'confirmed',
-                'owner-rule:first-mile:v1:overseas:'.$slug, null,
-                $context + ['rule' => 'overseas_warehouse_usd_one_per_order'],
+                'first_mile_cost', $amount, $currency, 'confirmed_manual', 'confirmed',
+                'owner-rule:first-mile:v1:overseas:'.$slug, null, $extra,
             );
         }
 
@@ -370,6 +394,17 @@ final class CostMaterializationService
             'source_at' => $candidate['source_at'],
             'note' => 'ERP-ACCOUNTING-COST-MATERIALIZATION-V1-1-001',
         ];
+        if (isset($candidate['posting_fx'])) {
+            $fx = $candidate['posting_fx'];
+            $this->fxBridge->freezeTransactionSnapshot($order, $fx);
+            $values += [
+                'exchange_rate' => $fx['source_to_usd_rate'],
+                'exchange_rate_date' => $fx['source_exchange_rate_date'],
+                'exchange_rate_source' => $fx['source_exchange_rate_source'],
+                'base_amount' => $fx['base_amount'],
+                'base_currency' => 'USD',
+            ];
+        }
         if ($entry) {
             $entry->fill($values)->save();
         } else {
@@ -404,8 +439,9 @@ final class CostMaterializationService
             && (string) $entry->amount === (string) $candidate['amount']
             && strtoupper((string) $entry->currency) === strtoupper((string) $candidate['currency'])
             && (string) $entry->provenance === (string) $candidate['provenance']
-            && (string) $entry->status === (string) $candidate['status']) {
-            return 'noop';
+            && (string) $entry->status === (string) $candidate['status']
+            && $this->fxSnapshotMatches($candidate, $entry)) {
+            return ($candidate['posting_fx']['freeze_transaction_fx'] ?? false) ? 'apply' : 'noop';
         }
         if ($candidate['provenance'] === 'estimated_reference' && in_array((string) $entry->provenance, self::STRONG_PROVENANCE, true)) {
             return 'blocked';
@@ -417,6 +453,20 @@ final class CostMaterializationService
             return 'blocked';
         }
         return 'apply';
+    }
+
+
+    private function fxSnapshotMatches(array $candidate, Model $entry): bool
+    {
+        if (! isset($candidate['posting_fx'])) {
+            return true;
+        }
+        $fx = $candidate['posting_fx'];
+        return (string) $entry->exchange_rate === (string) $fx['source_to_usd_rate']
+            && optional($entry->exchange_rate_date)->toDateString() === (string) $fx['source_exchange_rate_date']
+            && (string) $entry->exchange_rate_source === (string) $fx['source_exchange_rate_source']
+            && (string) $entry->base_amount === (string) $fx['base_amount']
+            && strtoupper((string) $entry->base_currency) === 'USD';
     }
 
     private function decorateDisposition(array $candidate, string $disposition, ?Model $entry): array
