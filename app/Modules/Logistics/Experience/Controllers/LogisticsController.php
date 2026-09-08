@@ -38,12 +38,14 @@ final class LogisticsController
 
     public function index(Request $request): Response
     {
-        $orders = Order::query()->with(['address', 'items.product', 'owner', 'shipment.warehouse'])
+        $orders = Order::query()->with(['address', 'items.product', 'owner', 'shipment.warehouse', 'externalReferences:id,order_id,provider'])
             ->where('order_status', 'pending_shipment')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->whereDoesntHave('logisticsReview', fn ($q) => $q->where('status', 'pending'))->latest('order_date')->latest('id')
             ->paginate(self::PER_PAGE)->withQueryString();
 
         $productIds = collect($orders->items())->flatMap(fn (Order $order) => $order->items->pluck('product_id'))->filter()->unique()->values()->all();
         $recommendationContext = $this->recommendations->prepare($productIds);
+        $fulfillmentContext = $this->fulfillmentPlans->prepare($productIds);
+        $context = array_replace($recommendationContext, $fulfillmentContext);
         $activeReservations = InventoryReservation::query()
             ->whereIn('order_id', collect($orders->items())->pluck('id')->all())
             ->where('status', 'reserved')
@@ -52,8 +54,8 @@ final class LogisticsController
             ->all();
 
         return Inertia::render('Logistics/Index', [
-            'orders' => $orders->through(fn (Order $order): array => $this->data($order, $recommendationContext, $activeReservations))->toArray(),
-            'warehouses' => $recommendationContext['warehouses'],
+            'orders' => $orders->through(fn (Order $order): array => $this->data($order, $context, $activeReservations))->toArray(),
+            'warehouses' => $context['warehouses'],
             'carrierOptions' => Carrier::query()->where('is_active', true)->orderBy('id')->get(['name'])->map(fn (Carrier $carrier): array => [
                 'value' => $carrier->name,
                 'label' => $this->carrierRouting->displayName($carrier->name),

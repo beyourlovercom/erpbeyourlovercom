@@ -16,15 +16,24 @@ final class FulfillmentPlanCostEstimator
         private readonly GermanyDhlRoutingCostCalculator $dhl,
     ) {}
 
-    /** @param list<array<string,mixed>> $segments @param array<string,mixed> $destinationContext */
-    public function estimate(string $country, array $segments, array $destinationContext = []): array
+    /** @param array<int,int> $productIds @return array<string,mixed> */
+    public function prepare(array $productIds): array
+    {
+        return [
+            'packaging_standards' => $this->packaging->forProductIds($productIds),
+            'shipping_weight_standards' => $this->shippingWeights->forProductIds($productIds),
+        ];
+    }
+
+    /** @param list<array<string,mixed>> $segments @param array<string,mixed> $destinationContext @param array<string,mixed> $context */
+    public function estimate(string $country, array $segments, array $destinationContext = [], array $context = []): array
     {
         $productIds = collect($segments)
             ->flatMap(fn (array $segment) => collect($segment['items'] ?? [])->pluck('product_id'))
             ->map(fn ($id) => (int) $id)
             ->unique()->values()->all();
-        $packagingStandards = $this->packaging->forProductIds($productIds);
-        $shippingWeightStandards = $this->shippingWeights->forProductIds($productIds);
+        $packagingStandards = $context['packaging_standards'] ?? $this->packaging->forProductIds($productIds);
+        $shippingWeightStandards = $context['shipping_weight_standards'] ?? $this->shippingWeights->forProductIds($productIds);
 
         $allComponents = [];
         $segmentEvidence = [];
