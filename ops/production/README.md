@@ -37,3 +37,19 @@ Activation order is separately gated:
 5. verify loopback origin health;
 6. change Cloudflare Tunnel ingress from 503 to `http://127.0.0.1:18080`;
 7. verify public HTTPS before any WordPress Connector activity.
+
+## Request correlation and incident tracing
+
+The canonical request correlation header is `X-ERP-Request-ID`.
+
+The Production Nginx template validates/reuses a caller-supplied safe ID or generates an Nginx `$request_id`, forwards the same value to Laravel, returns it on every origin response, and records it in the access log with `request_time` and `upstream_time`. Laravel reuses the same ID for structured performance and unhandled-5xx logs.
+
+Given an Error ID from the safe 500 page or response header, trace the request across the local runtime with:
+
+```bash
+ops/production/trace-request.sh <X-ERP-Request-ID>
+```
+
+For a Production incident, preserve the request ID, HTTP path/status, timestamp, active release symlink and matching trace output before changing code or service state.
+
+Any change from the repository Nginx template to the active Production `service-definitions/nginx-origin.conf` is a Production runtime deployment and requires the same explicit Owner deployment gate as other runtime changes. Validate with `nginx -t` before service restart.
