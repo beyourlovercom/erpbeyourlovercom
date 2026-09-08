@@ -11,6 +11,7 @@ use App\Modules\Inventory\Infrastructure\EloquentInventoryBatchSyncRepository;
 use App\Modules\Inventory\Infrastructure\EloquentInventoryRepository;
 use App\Modules\Inventory\Infrastructure\EloquentInventoryReservationRepository;
 use Illuminate\Support\ServiceProvider;
+use App\Modules\Inventory\Experience\Console\PackagingScanPreviewCommand;
 
 final class InventoryServiceProvider extends ServiceProvider
 {
@@ -25,5 +26,6 @@ final class InventoryServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/web.php');
+        if ($this->app->runningInConsole()) $this->commands([PackagingScanPreviewCommand::class]);
     }
 }
