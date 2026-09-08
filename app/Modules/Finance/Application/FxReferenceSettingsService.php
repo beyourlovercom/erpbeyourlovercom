@@ -23,7 +23,7 @@ final class FxReferenceSettingsService
 
     public function snapshot(): array
     {
-        $manual = $this->manualRates->all();
+        $saved = $this->manualRates->all();
         $reference = $this->ecb->convertToCny(array_map(
             fn (string $currency): array => ['currency' => $currency, 'revenue' => 1.0],
             array_keys(self::CURRENCIES),
@@ -38,15 +38,21 @@ final class FxReferenceSettingsService
 
         $rows = [];
         foreach (self::CURRENCIES as $currency => $label) {
-            $manualRate = $manual[$currency] ?? null;
+            $config = $saved[$currency] ?? null;
+            $manualRate = $config['rate'] ?? null;
+            $automatic = $currency === 'CNY' ? false : ($config['automatic'] ?? true);
             $ecbRate = $currency === 'CNY' ? 1.0 : ($ecbRates[$currency] ?? null);
-            $effective = $currency === 'CNY' ? 1.0 : ($manualRate ?? $ecbRate);
-            $source = $currency === 'CNY' ? 'fixed' : ($manualRate !== null ? 'manual' : ($ecbRate !== null ? 'ecb' : 'unavailable'));
+            $effective = $currency === 'CNY' ? 1.0 : ($automatic ? $ecbRate : $manualRate);
+            $source = $currency === 'CNY'
+                ? 'fixed'
+                : ($automatic ? ($ecbRate !== null ? 'ecb' : 'unavailable') : ($manualRate !== null ? 'manual' : 'unavailable'));
+
             $rows[] = [
                 'currency' => $currency,
                 'label' => $label,
                 'ecbRate' => $ecbRate,
                 'manualRate' => $manualRate,
+                'automatic' => $automatic,
                 'effectiveRate' => $effective,
                 'source' => $source,
                 'manualEditable' => $currency !== 'CNY',
@@ -61,23 +67,27 @@ final class FxReferenceSettingsService
                 'referenceDate' => $reference['reference_date'] ?? null,
                 'stale' => (bool) ($reference['stale'] ?? false),
                 'refreshHours' => 12,
-                'policy' => 'manual_first',
+                'policy' => 'explicit_mode',
             ],
         ];
     }
 
-    /** @param array<string, mixed> $rates */
-    public function saveManualRates(array $rates, ?int $actorId): void
+    /**
+     * @param array<string, mixed> $rates
+     * @param array<string, mixed> $automatic
+     */
+    public function save(array $rates, array $automatic, ?int $actorId): void
     {
         $allowed = array_filter(array_keys(self::CURRENCIES), fn (string $currency): bool => $currency !== 'CNY');
-        $normalized = [];
-        foreach ($rates as $currency => $value) {
-            $currency = strtoupper($currency);
-            if (! in_array($currency, $allowed, true)) {
-                continue;
-            }
-            $normalized[$currency] = $value === null || $value === '' ? null : (float) $value;
+        $normalizedRates = [];
+        $normalizedAutomatic = [];
+
+        foreach ($allowed as $currency) {
+            $value = $rates[$currency] ?? null;
+            $normalizedRates[$currency] = $value === null || $value === '' ? null : (float) $value;
+            $normalizedAutomatic[$currency] = (bool) ($automatic[$currency] ?? true);
         }
-        $this->manualRates->replace($normalized, $actorId);
+
+        $this->manualRates->replace($normalizedRates, $normalizedAutomatic, $actorId);
     }
 }

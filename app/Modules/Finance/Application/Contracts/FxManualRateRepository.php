@@ -4,9 +4,12 @@ namespace App\Modules\Finance\Application\Contracts;
 
 interface FxManualRateRepository
 {
-    /** @return array<string, float> */
+    /** @return array<string, array{rate: float, automatic: bool}> */
     public function all(): array;
 
-    /** @param array<string, float|null> $rates */
-    public function replace(array $rates, ?int $updatedBy): void;
+    /**
+     * @param array<string, float|null> $rates
+     * @param array<string, bool> $automatic
+     */
+    public function replace(array $rates, array $automatic, ?int $updatedBy): void;
 }

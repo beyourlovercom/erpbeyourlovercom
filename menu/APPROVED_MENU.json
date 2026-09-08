@@ -1083,7 +1083,7 @@
       "route": "settings.fx",
       "permission": "system.permissions.manage",
       "emoji": null,
-      "function_zh": "维护管理参考汇率；手动汇率优先，ECB 自动参考汇率作为回退，不改写历史财务事实。",
+      "function_zh": "维护管理参考汇率；每个币种可独立切换 ECB 自动汇率或已保存的手动汇率，切换自动不会清空手动值，不改写历史财务事实。",
       "status": "implemented",
       "progress": 100,
       "sort": 50

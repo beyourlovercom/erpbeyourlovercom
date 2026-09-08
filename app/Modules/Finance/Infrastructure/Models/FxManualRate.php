@@ -11,10 +11,13 @@ final class FxManualRate extends Model
     public $incrementing = false;
     protected $keyType = 'string';
 
-    protected $fillable = ['currency', 'manual_rate_to_cny', 'updated_by'];
+    protected $fillable = ['currency', 'manual_rate_to_cny', 'use_auto', 'updated_by'];
 
     protected function casts(): array
     {
-        return ['manual_rate_to_cny' => 'decimal:8'];
+        return [
+            'manual_rate_to_cny' => 'decimal:8',
+            'use_auto' => 'boolean',
+        ];
     }
 }
