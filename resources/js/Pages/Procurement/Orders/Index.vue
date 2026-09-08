@@ -94,7 +94,7 @@ const logistics = (order: ProcurementRow) => {
           </thead>
           <tbody>
             <tr v-for="order in props.orders" :key="order.id">
-              <td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'procurement'"><strong>{{ order.procurement_number }}</strong></template><template v-else-if="column.key === 'order_number'"><Link v-if="order.source_order_erp_id" :href="`/customers/orders/${order.source_order_id}`">{{ order.source_order_erp_id }}</Link><span v-else>—</span><small v-if="order.source_order_external_number || order.source_order_number">来源订单：{{ order.source_order_external_number ?? order.source_order_number }}</small></template><template v-else-if="column.key === 'items'">{{ order.item_summary || '—' }}<span v-if="order.item_count > 2"> 等 {{ order.item_count }} 项</span></template><template v-else-if="column.key === 'quantity'">{{ order.purchase_quantity }}</template><template v-else-if="column.key === 'status'"><span class="mvp-status">{{ order.status_label }}</span></template><template v-else-if="column.key === 'logistics'" class="logistics-cell">{{ logistics(order) }}</template><template v-else>{{ formatDate(order.updated_at) }}</template></td>
+              <td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'procurement'"><strong>{{ order.procurement_number }}</strong></template><template v-else-if="column.key === 'order_number'"><Link v-if="order.source_order_erp_id" :href="`/customers/orders/${order.source_order_id}`">{{ order.source_order_erp_id }}</Link><span v-else>—</span></template><template v-else-if="column.key === 'items'">{{ order.item_summary || '—' }}<span v-if="order.item_count > 2"> 等 {{ order.item_count }} 项</span></template><template v-else-if="column.key === 'quantity'">{{ order.purchase_quantity }}</template><template v-else-if="column.key === 'status'"><span class="mvp-status">{{ order.status_label }}</span></template><template v-else-if="column.key === 'logistics'" class="logistics-cell">{{ logistics(order) }}</template><template v-else>{{ formatDate(order.updated_at) }}</template></td>
               <td><Link :href="`/purchase/orders/${order.id}`">查看</Link></td>
             </tr>
             <tr v-if="props.orders.length === 0"><td :colspan="visibleColumns.length + 1" class="mvp-empty">暂无匹配的采购订单</td></tr>
@@ -109,7 +109,7 @@ const logistics = (order: ProcurementRow) => {
             <span class="mvp-status">{{ order.status_label }}</span>
           </div>
           <dl>
-            <dt>源订单</dt><dd><Link :href="`/customers/orders/${order.source_order_id}`">{{ order.source_order_erp_id ?? '—' }}</Link><small v-if="order.source_order_external_number || order.source_order_number">来源订单：{{ order.source_order_external_number ?? order.source_order_number }}</small></dd>
+            <dt>源订单</dt><dd><Link :href="`/customers/orders/${order.source_order_id}`">{{ order.source_order_erp_id ?? '—' }}</Link></dd>
             <dt>商品</dt><dd>{{ order.item_summary || '—' }}<span v-if="order.item_count > 2"> 等 {{ order.item_count }} 项</span></dd>
             <dt>采购数量</dt><dd>{{ order.purchase_quantity }}</dd>
             <dt>采购物流</dt><dd>{{ logistics(order) }}</dd>

@@ -49,7 +49,7 @@ final class Product360Test extends TestCase
     {
         $product = Product::create(['sku' => 'P360-SALES', 'name' => 'Sales Product', 'product_type' => 'simple']);
         foreach ([['USD', 2, 12.00, now()->subDays(5)], ['EUR', 3, 18.00, now()->subDays(45)], ['USD', 4, 24.00, now()->subDays(120)]] as [$currency, $quantity, $revenue, $date]) {
-            $order = Order::create(['internal_order_number' => 'P360-'.uniqid(), 'source_type' => 'manual', 'order_kind' => 'customer', 'order_date' => $date->toDateString(), 'order_status' => 'pending_shipment', 'currency' => $currency]);
+            $order = Order::create(['internal_order_number' => 'P360-'.uniqid(), 'erp_order_id' => '007-'.uniqid(), 'source_type' => 'manual', 'order_kind' => 'customer', 'order_date' => $date->toDateString(), 'order_status' => 'pending_shipment', 'currency' => $currency]);
             DB::table('order_items')->insert(['order_id' => $order->id, 'product_id' => $product->id, 'product_summary' => $product->name, 'sku' => $product->sku, 'quantity' => $quantity, 'unit_price' => $revenue / $quantity, 'line_revenue' => $revenue, 'created_at' => now(), 'updated_at' => now()]);
         }
         $sales = app(ProductOrderProjection::class)->forProduct($product->id);
@@ -57,6 +57,7 @@ final class Product360Test extends TestCase
         $this->assertSame(5, $sales['summary']['units_90d']);
         $this->assertSame(9, $sales['summary']['lifetime_units']);
         $this->assertSame(['EUR', 'USD'], array_column($sales['revenue_by_currency'], 'currency'));
+        $this->assertTrue(collect($sales['recent_orders'])->every(fn (array $row): bool => str_starts_with((string) $row['erp_order_id'], '007-')));
     }
 
     public function test_product360_uses_external_reference_projection_without_new_storage(): void
@@ -87,13 +88,14 @@ final class Product360Test extends TestCase
     public function test_shipment_projection_reads_canonical_logistics_for_product_orders(): void
     {
         $product = Product::create(['sku' => 'P360-SHIP', 'name' => 'Shipment Product', 'product_type' => 'simple']);
-        $order = Order::create(['internal_order_number' => 'P360-SHIP-ORDER', 'source_type' => 'manual', 'order_kind' => 'customer', 'order_date' => now()->toDateString(), 'order_status' => 'shipped', 'currency' => 'USD']);
+        $order = Order::create(['internal_order_number' => 'P360-SHIP-ORDER', 'erp_order_id' => '007-0908-cship', 'source_type' => 'manual', 'order_kind' => 'customer', 'order_date' => now()->toDateString(), 'order_status' => 'shipped', 'currency' => 'USD']);
         DB::table('order_items')->insert(['order_id' => $order->id, 'product_id' => $product->id, 'product_summary' => $product->name, 'sku' => $product->sku, 'quantity' => 1, 'unit_price' => 10, 'line_revenue' => 10, 'created_at' => now(), 'updated_at' => now()]);
         DB::table('shipments')->insert(['order_id' => $order->id, 'shipment_status' => 'shipped', 'carrier' => 'UPS', 'tracking_number' => 'P360-TRACK', 'shipped_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
 
         $rows = app(ProductShipmentProjection::class)->forProduct($product->id);
         $this->assertCount(1, $rows);
         $this->assertSame($order->id, $rows[0]['order_id']);
+        $this->assertSame('007-0908-cship', $rows[0]['erp_order_id']);
         $this->assertSame('P360-TRACK', $rows[0]['tracking_number']);
     }
 

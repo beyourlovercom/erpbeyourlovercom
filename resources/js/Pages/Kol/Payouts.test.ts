@@ -28,7 +28,7 @@ describe('KOL payout workflow', () => {
     expect(wrapper.text()).toContain('USD 10.000000')
     expect(wrapper.text()).toContain('creator-paypal@example.test')
     expect(wrapper.text()).toContain('007-9001')
-    expect(wrapper.text()).toContain('来源订单：9001')
+    expect(wrapper.text()).not.toContain('来源订单：9001')
     expect(wrapper.text()).not.toContain('internal_order_number')
     expect(wrapper.find('thead th:last-child .column-settings-trigger').exists()).toBe(true)
   })

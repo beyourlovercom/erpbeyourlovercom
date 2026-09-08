@@ -2,7 +2,7 @@
 import { Head } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
-type ProcurementRow = { id:number; procurement_number:string; status:string; source_order_number:string|null; carrier:string|null; tracking_number:string|null; updated_at:string|null }
+type ProcurementRow = { id:number; procurement_number:string; status:string; source_order_erp_id:string|null; carrier:string|null; tracking_number:string|null; updated_at:string|null }
 type ProcurementProgress = { active:number; counts:Record<'pending'|'purchasing'|'ordered'|'completed'|'cancelled', number>; recent:ProcurementRow[] }
 defineProps<{ metrics: Record<'pending_orders'|'pending_shipment'|'shipped_pending_sync'|'completed_today', number>; procurementProgress?: ProcurementProgress|null }>()
 const statusMeta = [
@@ -31,7 +31,7 @@ const statusLabel = (value:string) => statusMeta.find(item => item.value === val
         </div>
         <div class="procurement-recent">
           <a v-for="row in procurementProgress.recent" :key="row.id" class="procurement-row" :href="`/purchase/orders/${row.id}`">
-            <div class="procurement-id"><strong>{{ row.procurement_number }}</strong><span>源订单 {{ row.source_order_number || '—' }}</span></div>
+            <div class="procurement-id"><strong>{{ row.procurement_number }}</strong><span>源订单 {{ row.source_order_erp_id || '—' }}</span></div>
             <span class="procurement-status">{{ statusLabel(row.status) }}</span>
             <span class="procurement-logistics">{{ row.carrier || '暂无物流' }}<template v-if="row.tracking_number"> · {{ row.tracking_number }}</template></span>
           </a>

@@ -55,6 +55,7 @@ class KolReferralCommissionSyncTest extends TestCase
     {
         $order = Order::create([
             'internal_order_number' => 'ERP-'.$reference,
+            'erp_order_id' => '007-0901-c'.$reference,
             'source_type' => 'woocommerce', 'order_kind' => 'customer', 'external_order_number' => $reference,
             'order_date' => '2026-09-01', 'order_status' => 'pending_shipment', 'currency' => 'USD',
         ]);

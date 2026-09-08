@@ -210,7 +210,7 @@ final class CustomerExperienceTest extends TestCase
         $customer = Customer::query()->create(['name' => 'Shipment Test', 'source_type' => 'manual']);
 
         $orderId = DB::table('orders')->insertGetId([
-            'internal_order_number' => 'SHIP-001', 'source_type' => 'manual', 'order_kind' => 'customer',
+            'internal_order_number' => 'SHIP-001', 'erp_order_id' => '007-0908-cship', 'source_type' => 'manual', 'order_kind' => 'customer',
             'external_order_number' => 'SHIP-EXT-1', 'order_date' => now()->toDateString(),
             'order_status' => 'shipped', 'customer_id' => $customer->id,
             'created_at' => now(), 'updated_at' => now(),
@@ -224,6 +224,7 @@ final class CustomerExperienceTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->has('shipments', 1)
+                ->where('shipments.0.erp_order_id', '007-0908-cship')
                 ->where('shipments.0.carrier', 'DHL')
                 ->where('shipments.0.tracking_number', 'DHL-123')
                 ->where('metrics.shipment_count', 1));

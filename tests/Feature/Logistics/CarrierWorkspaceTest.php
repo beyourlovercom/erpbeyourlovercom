@@ -107,6 +107,7 @@ final class CarrierWorkspaceTest extends TestCase
 
         $this->actingAs($user)->get('/logistics/carriers/DHL')->assertInertia(
             fn (Assert $page) => $page
+                ->where('shipments.data.0.erp_order_id', fn ($value): bool => is_string($value) && str_starts_with($value, '007-'))
                 ->where('shipments.data.0.tracking_number', 'DHL-EVIDENCE')
                 ->where('shipments.data.0.billing_document_number', 'BILL-DHL-EVIDENCE')
                 ->where('shipments.data.0.raw_evidence.discount_amount', 3.25)
@@ -126,6 +127,7 @@ final class CarrierWorkspaceTest extends TestCase
         $warehouse = Warehouse::query()->where('is_active', true)->orderBy('priority')->firstOrFail();
         $order = Order::query()->create([
             'internal_order_number' => 'ERP-'.$tracking,
+            'erp_order_id' => '007-0908-c'.substr(md5($tracking), 0, 8),
             'source_type' => 'manual',
             'order_kind' => 'customer',
             'external_order_number' => 'ORDER-'.$tracking,

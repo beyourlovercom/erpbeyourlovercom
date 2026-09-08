@@ -56,7 +56,7 @@ final class DashboardMetrics
             ->select([
                 'procurement_orders.id', 'procurement_orders.procurement_number', 'procurement_orders.status',
                 'procurement_orders.carrier', 'procurement_orders.tracking_number', 'procurement_orders.updated_at',
-                'orders.external_order_number as source_order_number',
+                'orders.erp_order_id as source_order_erp_id',
             ])
             ->orderByDesc('procurement_orders.updated_at')
             ->orderByDesc('procurement_orders.id')

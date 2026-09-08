@@ -154,7 +154,7 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
         <template v-for="order in orders.data" :key="order.id">
           <tr>
             <td v-for="column in visibleColumns" :key="column.key">
-              <template v-if="column.key === 'order_number'"><Link v-if="order.order_url" :href="order.order_url" class="mvp-link">{{ order.erp_order_id ?? '—' }}</Link><span v-else>{{ order.erp_order_id ?? '—' }}</span><small v-if="order.external_order_number">来源订单：{{ order.external_order_number }}</small></template>
+              <template v-if="column.key === 'order_number'"><Link v-if="order.order_url" :href="order.order_url" class="mvp-link">{{ order.erp_order_id ?? '—' }}</Link><span v-else>{{ order.erp_order_id ?? '—' }}</span></template>
               <template v-else-if="column.key === 'type'">{{ order.order_kind_label }}</template>
               <template v-else-if="column.key === 'recipient'">{{ order.recipient_name ?? '—' }}<small>{{ order.phone ?? '—' }}</small></template>
               <template v-else-if="column.key === 'country'">{{ order.country ?? '—' }}</template>

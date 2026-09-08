@@ -334,7 +334,7 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
                         <template v-for="row in orders" :key="row.id">
                             <tr>
                                 <td v-for="column in visibleColumns" :key="column.key">
-                                    <template v-if="column.key === 'order_number'"><Link class="record-link" :href="orderPath(row)">{{ orderNumber(row) }}</Link><small v-if="row.external_order_number">来源订单：{{ row.external_order_number }}</small></template>
+                                    <template v-if="column.key === 'order_number'"><Link class="record-link" :href="orderPath(row)">{{ orderNumber(row) }}</Link></template>
                                     <template v-if="column.key === 'products'">
                                         <div v-if="row.products.length" class="product-links">
                                             <template v-for="product in row.products" :key="`${product.product_id}-${product.sku}-${product.name}`">

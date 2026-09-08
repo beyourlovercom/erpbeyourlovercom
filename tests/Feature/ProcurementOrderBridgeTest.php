@@ -101,7 +101,7 @@ final class ProcurementOrderBridgeTest extends TestCase
             ->component('Procurement/Orders/Index')
             ->where('orders.0.id', $procurement->id)
             ->where('orders.0.procurement_number', $procurement->procurement_number)
-            ->where('orders.0.source_order_number', $order->external_order_number));
+            ->where('orders.0.source_order_erp_id', $order->erp_order_id));
         $this->actingAs($user)->get('/purchase/orders')->assertOk();
         $this->actingAs($user)->get('/procurement')->assertRedirect('/purchase');
         $this->actingAs($user)->get('/procurement-orders')->assertRedirect('/purchase/orders');
@@ -180,7 +180,7 @@ final class ProcurementOrderBridgeTest extends TestCase
         }
         $second = ProcurementOrder::query()->orderBy('id')->skip(1)->firstOrFail();
         $this->actingAs($user)->patch('/purchase/orders/'.$second->id, ['status' => 'ordered']);
-        $this->actingAs($user)->get('/purchase?search=SPECIAL-SKU')->assertInertia(fn (Assert $page) => $page->has('orders', 1)->where('orders.0.source_order_number', 'MATCH-ORDER'));
+        $this->actingAs($user)->get('/purchase?search=SPECIAL-SKU')->assertInertia(fn (Assert $page) => $page->has('orders', 1)->where('orders.0.source_order_erp_id', fn ($value): bool => is_string($value) && str_starts_with($value, '007-')));
         $this->actingAs($user)->get('/purchase?status=ordered')->assertInertia(fn (Assert $page) => $page->has('orders', 1)->where('orders.0.id', $second->id));
     }
 
@@ -263,7 +263,7 @@ final class ProcurementOrderBridgeTest extends TestCase
 
     private function order(User $owner, int $count = 1): Order
     {
-        $order = Order::create(['internal_order_number' => 'INT-'.uniqid(), 'source_type' => OrderSourceType::Manual, 'order_kind' => OrderKind::Customer, 'external_order_number' => 'ORDER-'.uniqid(), 'order_date' => now()->toDateString(), 'owner_id' => $owner->id, 'order_status' => OrderStatus::PendingShipment]);
+        $order = Order::create(['internal_order_number' => 'INT-'.uniqid(), 'erp_order_id' => sprintf('007-0908-c%04d', Order::query()->count() + 1), 'source_type' => OrderSourceType::Manual, 'order_kind' => OrderKind::Customer, 'external_order_number' => 'ORDER-'.uniqid(), 'order_date' => now()->toDateString(), 'owner_id' => $owner->id, 'order_status' => OrderStatus::PendingShipment]);
         for ($i = 1; $i <= $count; $i++) {
             $quantity = $i;
             $unitPrice = '10.00';

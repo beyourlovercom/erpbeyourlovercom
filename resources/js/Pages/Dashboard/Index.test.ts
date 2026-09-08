@@ -16,7 +16,7 @@ describe('dashboard shell', () => {
       procurementProgress: {
         active: 2,
         counts: { pending: 1, purchasing: 0, ordered: 1, completed: 3, cancelled: 1 },
-        recent: [{ id: 7, procurement_number: 'PO-20260905-0007', status: 'ordered', source_order_number: 'CUS-7', carrier: '顺丰速运', tracking_number: 'SF-7', updated_at: null }],
+        recent: [{ id: 7, procurement_number: 'PO-20260905-0007', status: 'ordered', source_order_erp_id: '007-0908-c7', carrier: '顺丰速运', tracking_number: 'SF-7', updated_at: null }],
       },
     } })
     expect(wrapper.text()).toContain('采购进度')

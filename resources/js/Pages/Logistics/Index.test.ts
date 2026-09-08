@@ -26,7 +26,7 @@ describe('Logistics pending grid contract', () => {
     const publicOrder = { ...order, external_order_number: '40301-VA617A-gift', erp_order_id: '007-0908-c6091', internal_order_number: 'ERP-TECH-6091' }
     const wrapper = mount(Index, { props: { ...props, orders: { ...props.orders, data: [publicOrder] } } })
     expect(wrapper.text()).toContain('007-0908-c6091')
-    expect(wrapper.text()).toContain('来源订单：40301-VA617A-gift')
+    expect(wrapper.text()).not.toContain('来源订单：40301-VA617A-gift')
     expect(wrapper.text()).not.toContain('ERP-TECH-6091')
   })
 
