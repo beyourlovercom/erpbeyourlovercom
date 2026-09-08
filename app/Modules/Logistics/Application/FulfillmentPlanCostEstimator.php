@@ -2,14 +2,14 @@
 
 namespace App\Modules\Logistics\Application;
 
-use App\Modules\Finance\Application\EcbFxService;
+use App\Modules\Finance\Application\FxReferenceSettingsService;
 use App\Modules\Inventory\Application\ProductPackagingStandardReader;
 
 final class FulfillmentPlanCostEstimator
 {
     public function __construct(
         private readonly ProductPackagingStandardReader $packaging,
-        private readonly EcbFxService $fx,
+        private readonly FxReferenceSettingsService $fx,
         private readonly ChinaFactoryRoutingCostCalculator $china,
         private readonly GermanyDhlRoutingCostCalculator $dhl,
     ) {}
@@ -42,7 +42,7 @@ final class FulfillmentPlanCostEstimator
         }
 
         $fxResult = $this->fx->convertToCny(array_map(fn (array $component): array => ['currency' => $component['currency'], 'revenue' => $component['amount']], $allComponents));
-        if (! ($fxResult['available'] ?? false)) return ['status' => 'missing_evidence', 'amount' => null, 'currency' => null, 'source' => null, 'reason_code' => $fxResult['reason'] ?? 'fx_unavailable', 'reason' => 'ECB reference conversion unavailable', 'components' => $allComponents, 'segments' => $segmentEvidence];
+        if (! ($fxResult['available'] ?? false)) return ['status' => 'missing_evidence', 'amount' => null, 'currency' => null, 'source' => null, 'reason_code' => $fxResult['reason'] ?? 'fx_unavailable', 'reason' => 'ERP Settings FX conversion unavailable', 'components' => $allComponents, 'segments' => $segmentEvidence];
 
         return [
             'status' => 'ready', 'amount' => round((float) $fxResult['amount_cny'], 4), 'currency' => 'CNY', 'source' => 'automatic-rate-engine',

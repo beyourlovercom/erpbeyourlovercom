@@ -262,8 +262,9 @@ const salesKpiTooltip = computed((): string => {
     const breakdown = props.stats.revenue_this_month
         .map(r => money(r.revenue, r.currency))
         .join(' + ')
-    const dateStr = est.reference_date ? `ECB ${est.reference_date}` : 'ECB'
-    const staleNote = est.stale ? '（汇率数据已过期）' : ''
+    const sourceLabel = est.source === 'SETTINGS_FX' ? 'ERP 汇率设置' : est.source
+    const dateStr = est.reference_date ? `${sourceLabel} · ECB ${est.reference_date}` : sourceLabel
+    const staleNote = est.stale ? '（自动汇率数据已过期）' : ''
     return `原始: ${breakdown || '暂无'} | 来源: ${dateStr}${staleNote}`
 })
 

@@ -33,10 +33,10 @@ const baseStats = {
   rmb_estimate: {
     available: true as const,
     amount_cny: 710,
-    source: 'ECB',
+    source: 'SETTINGS_FX',
     reference_date: '2026-08-28',
     stale: false,
-    conversions: [{ original_currency: 'USD', original_amount: 100, rate_to_cny: 7.1, cny_amount: 710 }],
+    conversions: [{ original_currency: 'USD', original_amount: 100, rate_to_cny: 7.1, cny_amount: 710, source: 'ecb' }],
   },
   subscriber_count_available: true,
   subscriber_identity_links: 3,
@@ -99,6 +99,13 @@ describe('Customer Library KPI Strip — compact', () => {
     // Should show a CNY formatted number, not USD breakdown
     expect(salesCard.text()).not.toContain('USD')
     expect(salesCard.text()).not.toContain('$')
+  })
+
+  it('monthly sales tooltip identifies ERP Settings FX as the current source', () => {
+    const wrapper = mount(Index, { props: baseProps })
+    const salesCard = wrapper.findAll('[data-testid="kpi-strip"] article')[3]
+    expect(salesCard.attributes('title')).toContain('ERP 汇率设置')
+    expect(salesCard.attributes('title')).toContain('ECB 2026-08-28')
   })
 
   it('monthly sales card shows em-dash when rmb_estimate is unavailable', () => {

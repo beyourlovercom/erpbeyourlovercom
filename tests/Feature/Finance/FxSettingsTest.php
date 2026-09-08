@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Finance;
 
+use App\Modules\Finance\Application\FxReferenceSettingsService;
 use App\Modules\Identity\Infrastructure\Models\Permission;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
@@ -76,6 +77,75 @@ class FxSettingsTest extends TestCase
             ->where('rows.0.automatic', true)
             ->where('rows.0.effectiveRate', 7.1)
             ->where('rows.0.source', 'ecb'));
+    }
+
+    public function test_global_current_conversion_uses_manual_auto_and_fixed_rates_together(): void
+    {
+        Http::fake(['ecb.europa.eu/*' => Http::response($this->ecbXml(), 200)]);
+        $admin = $this->userWith(['system.permissions.manage']);
+
+        $this->actingAs($admin)->put('/settings/fx', $this->payload(
+            rates: ['USD' => 6.78],
+            automatic: ['USD' => false],
+        ))->assertRedirect();
+
+        $result = app(FxReferenceSettingsService::class)->convertToCny([
+            ['currency' => 'USD', 'revenue' => 100],
+            ['currency' => 'EUR', 'revenue' => 10],
+            ['currency' => 'CNY', 'revenue' => 5],
+        ]);
+
+        $this->assertTrue($result['available']);
+        $this->assertSame('SETTINGS_FX', $result['source']);
+        $this->assertEqualsWithDelta(761.1, $result['amount_cny'], 0.00001);
+        $this->assertSame('manual', $result['conversions'][0]['source']);
+        $this->assertEquals(6.78, $result['conversions'][0]['rate_to_cny']);
+        $this->assertSame('ecb', $result['conversions'][1]['source']);
+        $this->assertEquals(7.81, $result['conversions'][1]['rate_to_cny']);
+        $this->assertSame('fixed', $result['conversions'][2]['source']);
+        $this->assertSame('2026-09-07', $result['reference_date']);
+    }
+
+    public function test_global_current_conversion_keeps_saved_manual_rate_but_uses_ecb_in_auto_mode(): void
+    {
+        Http::fake(['ecb.europa.eu/*' => Http::response($this->ecbXml(), 200)]);
+        $admin = $this->userWith(['system.permissions.manage']);
+
+        $this->actingAs($admin)->put('/settings/fx', $this->payload(
+            rates: ['USD' => 6.78],
+            automatic: ['USD' => true],
+        ))->assertRedirect();
+
+        $result = app(FxReferenceSettingsService::class)->convertToCny([
+            ['currency' => 'USD', 'revenue' => 100],
+        ]);
+
+        $this->assertTrue($result['available']);
+        $this->assertEqualsWithDelta(710.0, $result['amount_cny'], 0.00001);
+        $this->assertSame('ecb', $result['conversions'][0]['source']);
+        $this->assertDatabaseHas('finance_fx_manual_rates', [
+            'currency' => 'USD', 'manual_rate_to_cny' => 6.78, 'use_auto' => 1,
+        ]);
+    }
+
+    public function test_manual_current_conversion_does_not_require_ecb_availability(): void
+    {
+        Http::fake(['ecb.europa.eu/*' => Http::response('unavailable', 503)]);
+        $admin = $this->userWith(['system.permissions.manage']);
+        $this->actingAs($admin)->put('/settings/fx', $this->payload(
+            rates: ['USD' => 6.78],
+            automatic: ['USD' => false],
+        ))->assertRedirect();
+
+        $result = app(FxReferenceSettingsService::class)->convertToCny([
+            ['currency' => 'USD', 'revenue' => 100],
+        ]);
+
+        $this->assertTrue($result['available']);
+        $this->assertEqualsWithDelta(678.0, $result['amount_cny'], 0.00001);
+        $this->assertNull($result['reference_date']);
+        $this->assertFalse($result['stale']);
+        $this->assertSame('manual', $result['conversions'][0]['source']);
     }
 
     public function test_manual_mode_requires_a_manual_rate(): void
