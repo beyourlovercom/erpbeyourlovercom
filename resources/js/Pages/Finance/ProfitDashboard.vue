@@ -46,7 +46,7 @@ const singleTrend = computed(() => props.trend.length === 1 ? props.trend[0] : n
         <section class="mvp-page accounting-dashboard">
             <div class="mvp-page-heading">
                 <div><p class="mvp-kicker">FINANCE / PROFIT DASHBOARD</p><h2>会计总览</h2><p>仅确认或已对账订单进入确认金额；历史物流订单、估算与 FX 未冻结订单均不进入 USD 汇总。</p></div>
-                <div class="page-header-actions"><Link class="mvp-button" href="/accounting/order-costs">订单利润</Link></div>
+                <div class="page-header-actions"><Link class="mvp-button" href="/accounting/order-costs?profit_status=loss">亏损订单</Link><Link class="mvp-button" href="/accounting/order-costs">订单利润</Link></div>
             </div>
 
             <form class="mvp-card dashboard-filters" @submit.prevent="apply">

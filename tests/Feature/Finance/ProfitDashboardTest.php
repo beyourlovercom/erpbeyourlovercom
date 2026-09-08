@@ -87,6 +87,21 @@ final class ProfitDashboardTest extends TestCase
             ->where('filters.fx_status', 'aggregate_ready'));
     }
 
+    public function test_confirmed_loss_orders_are_exposed_from_finance_order_profit_only(): void
+    {
+        $user = $this->userWith(['accounting.view', 'analysis.view', 'orders.create']);
+        $loss = $this->createOrder($user, '2026-09-01', 'DASH-LOSS', [['sku' => 'LOSS-1', 'price' => '5.00']]);
+        $this->confirm($user, $loss, '5.00', '1.00', 'USD');
+        $profit = $this->createOrder($user, '2026-09-02', 'DASH-PROFIT', [['sku' => 'PROFIT-1', 'price' => '100.00']]);
+        $this->confirm($user, $profit, '100.00', '1.00', 'USD');
+
+        $this->actingAs($user)->get('/accounting/order-costs?profit_status=loss')->assertInertia(fn (Assert $page) => $page
+            ->component('Finance/OrderAnalysis')
+            ->has('orders', 1)
+            ->where('orders.0.external_order_number', 'DASH-LOSS')
+            ->where('filters.profit_status', 'loss'));
+    }
+
     public function test_confirmed_loss_kpi_delegates_to_confirmed_loss_reader_contract(): void
     {
         $user = $this->userWith(['accounting.view', 'analysis.view', 'orders.create']);

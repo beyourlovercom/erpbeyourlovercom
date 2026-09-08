@@ -361,8 +361,11 @@ final class LogisticsOsV1ClosureTest extends TestCase
         $this->actingAs($user)->get('/logistics/in-transit')->assertInertia(fn (Assert $page) => $page
             ->where('shipments.data.0.order_url', "/customers/orders/{$order->id}")
             ->where('shipments.data.0.items.0.product_url', '/products/'.$order->items()->firstOrFail()->product_id)
+            ->has('statusBar', 7)
             ->where('statusBar.0.label', '待发货')
-            ->where('statusBar.7.label', '亏本单'));
+            ->where('statusBar.6.label', '已取消'));
+
+        $this->actingAs($user)->get('/logistics/loss')->assertNotFound();
     }
 
     public function test_mark_completed_moves_shipment_to_completed_projection(): void

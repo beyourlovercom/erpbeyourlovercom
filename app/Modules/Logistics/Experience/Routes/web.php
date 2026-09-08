@@ -14,7 +14,6 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics/review', [LogisticsController::class, 'review'])->middleware('can:logistics.view')->name('logistics.review');
     Route::get('/logistics/completed', [LogisticsController::class, 'completed'])->middleware('can:logistics.view')->name('logistics.completed');
     Route::get('/logistics/cancelled', [LogisticsController::class, 'cancelled'])->middleware('can:logistics.view')->name('logistics.cancelled');
-    Route::get('/logistics/loss', [LogisticsController::class, 'loss'])->middleware('can:logistics.view')->name('logistics.loss');
     Route::get('/logistics/carriers', [CarrierController::class, 'index'])->middleware('can:logistics.view')->name('logistics.carriers');
     Route::post('/logistics/carriers', [CarrierController::class, 'store'])->middleware('can:logistics.operate')->name('logistics.carriers.store');
     Route::get('/logistics/carriers/{carrier}', [CarrierController::class, 'show'])->middleware('can:logistics.view')->name('logistics.carriers.show');
