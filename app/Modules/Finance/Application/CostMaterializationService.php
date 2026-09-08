@@ -71,6 +71,67 @@ final class CostMaterializationService
     }
 
     /** @return array<string, mixed> */
+    public function previewProductCostGate(Model $order): array
+    {
+        $scopeBlocker = $this->operationalBlocker($order);
+        $product = $this->productCandidate($order);
+        if (($product['status'] ?? null) !== 'blocked'
+            && (($product['provenance'] ?? null) !== 'confirmed_manual'
+                || ! str_starts_with((string) ($product['source_reference'] ?? ''), 'product-cost-source:v1:'))) {
+            $product = $this->blocked('product_cost', 'confirmed_product_cost_required_for_p2_gate');
+        }
+        $candidates = [$product, $this->firstMileCandidate($order)];
+        if ($scopeBlocker !== null) {
+            $candidates = array_map(fn (array $candidate): array => $this->forceBlocked($candidate, $scopeBlocker), $candidates);
+        }
+
+        return [
+            'order_id' => (int) $order->getKey(),
+            'scope_status' => $scopeBlocker === null ? 'operational' : 'blocked',
+            'scope_blocker' => $scopeBlocker,
+            'candidates' => array_values(array_map(fn (array $candidate): array => $this->annotateDisposition($order, $candidate), $candidates)),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function applyProductCostGate(Model $order): array
+    {
+        return DB::transaction(function () use ($order): array {
+            $locked = $order->newQuery()->lockForUpdate()->findOrFail($order->getKey());
+            $preview = $this->previewProductCostGate($locked);
+            $result = $preview + ['applied' => [], 'noop' => [], 'blocked' => []];
+
+            foreach ($preview['candidates'] as $candidate) {
+                $disposition = $candidate['materialization_status'];
+                if ($disposition === 'blocked') {
+                    $result['blocked'][] = $candidate;
+                    continue;
+                }
+                if ($disposition === 'noop') {
+                    $result['noop'][] = $candidate;
+                    continue;
+                }
+                $outcome = $this->writeCandidate($locked, $candidate);
+                $result[$outcome['status']][] = $outcome['entry'];
+            }
+
+            if ($result['applied'] !== []) {
+                $this->analysis->refreshCompleteness($locked, preserveReconciled: false);
+                $this->audit->record(
+                    AuditActor::system(AuditSource::InternalSystem),
+                    'finance.product_cost_materialization.applied',
+                    $locked::class,
+                    $locked->getKey(),
+                    after: ['applied' => $result['applied'], 'blocked' => $result['blocked']],
+                    reason: 'product_cost_materialization',
+                );
+            }
+
+            return $result;
+        });
+    }
+
+    /** @return array<string, mixed> */
     public function applyFixedRules(Model $order): array
     {
         return DB::transaction(function () use ($order): array {

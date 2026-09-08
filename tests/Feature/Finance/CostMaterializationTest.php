@@ -9,6 +9,7 @@ use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Models\ShipmentCarrierBilling;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Products\Infrastructure\Models\ProductCostSource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -189,6 +190,88 @@ final class CostMaterializationTest extends TestCase
         }
     }
 
+    public function test_product_cost_gate_writes_only_confirmed_product_and_fx_released_first_mile(): void
+    {
+        Http::fake(['ecb.europa.eu/*' => Http::response($this->ecbXml(), 200)]);
+        $order = $this->order('EUR');
+        $order->financials()->create([
+            'amount_paid' => '100.00', 'refund_amount' => '0.00', 'currency' => 'EUR',
+            'revenue_provenance' => 'provider_import', 'completeness_status' => 'INCOMPLETE',
+        ]);
+        $product = $this->attachProduct($order, []);
+        $this->confirmedProductCost($product, 'LONG-P2', '70.00', 'CNY');
+        $this->attachWarehouseShipment($order, 'de');
+
+        $preview = $this->service()->previewProductCostGate($order);
+        self::assertSame('apply', $this->candidate($preview, 'product_cost')['materialization_status']);
+        self::assertSame('apply', $this->candidate($preview, 'first_mile_cost')['materialization_status']);
+        self::assertCount(2, $preview['candidates']);
+
+        $first = $this->service()->applyProductCostGate($order);
+        self::assertCount(2, $first['applied']);
+        self::assertTrue($order->costEntries()->where('cost_type', 'product_cost')->exists());
+        self::assertTrue($order->costEntries()->where('cost_type', 'first_mile_cost')->exists());
+        self::assertFalse($order->costEntries()->where('cost_type', 'customs_tax')->exists());
+        self::assertFalse($order->costEntries()->where('cost_type', 'last_mile_cost')->exists());
+        self::assertFalse($order->costEntries()->where('cost_type', 'kol_commission')->exists());
+        $financials = $order->financials()->firstOrFail()->fresh();
+        self::assertNotNull($financials->fx_rate);
+        self::assertNotNull($financials->fx_rate_date);
+        self::assertNotNull($financials->fx_rate_source);
+
+        $second = $this->service()->applyProductCostGate($order->fresh());
+        self::assertCount(2, $second['noop']);
+    }
+
+    public function test_product_cost_gate_blocks_estimated_reference_product_cost(): void
+    {
+        $order = $this->order('USD');
+        $this->attachProduct($order, ['standard_purchase_cost' => '4.0000', 'cost_currency' => 'USD']);
+        $this->attachWarehouseShipment($order, 'us-la');
+
+        $preview = $this->service()->previewProductCostGate($order);
+        $product = $this->candidate($preview, 'product_cost');
+        self::assertSame('blocked', $product['materialization_status']);
+        self::assertSame('confirmed_product_cost_required_for_p2_gate', $product['blocker']);
+
+        $this->service()->applyProductCostGate($order);
+        self::assertFalse($order->costEntries()->where('cost_type', 'product_cost')->exists());
+        self::assertSame('1.00', $order->costEntries()->where('cost_type', 'first_mile_cost')->firstOrFail()->amount);
+        self::assertFalse($order->costEntries()->where('cost_type', 'customs_tax')->exists());
+    }
+
+    public function test_product_cost_production_command_requires_env_and_exact_preflight_counts(): void
+    {
+        Http::fake(['ecb.europa.eu/*' => Http::response($this->ecbXml(), 200)]);
+        $order = $this->order('USD');
+        $product = $this->attachProduct($order, []);
+        $this->confirmedProductCost($product, 'LONG-CMD', '70.00', 'CNY');
+        $previousEnv = $this->app['env'];
+        $this->app['env'] = 'production';
+        putenv('ERP_ACCOUNTING_PRODUCT_COST_PRODUCTION_APPLY_ENABLED');
+
+        try {
+            $base = ['--order' => $order->id, '--apply' => true,
+                '--expect-seen' => '1', '--expect-product-apply' => '1',
+                '--expect-first-mile-apply' => '0', '--expect-fx-freeze' => '0'];
+            $this->artisan('finance:materialize-product-costs', $base)->assertFailed();
+            self::assertSame(0, $order->costEntries()->count());
+
+            putenv('ERP_ACCOUNTING_PRODUCT_COST_PRODUCTION_APPLY_ENABLED=true');
+            $wrong = $base;
+            $wrong['--expect-product-apply'] = '2';
+            $this->artisan('finance:materialize-product-costs', $wrong)->assertFailed();
+            self::assertSame(0, $order->costEntries()->count());
+
+            $this->artisan('finance:materialize-product-costs', $base)->assertSuccessful();
+            self::assertSame(1, $order->costEntries()->where('cost_type', 'product_cost')->count());
+            self::assertFalse($order->costEntries()->where('cost_type', 'customs_tax')->exists());
+        } finally {
+            putenv('ERP_ACCOUNTING_PRODUCT_COST_PRODUCTION_APPLY_ENABLED');
+            $this->app['env'] = $previousEnv;
+        }
+    }
+
     public function test_operational_scope_is_fail_closed_and_payment_fee_is_never_guessed(): void
     {
         $historical = $this->order('USD');
@@ -330,6 +413,24 @@ XML;
             'line_revenue' => number_format(10 * $quantity, 2, '.', ''),
         ]);
         return $product;
+    }
+
+    private function confirmedProductCost(Product $product, string $sourceKey, string $unitCost, string $currency): ProductCostSource
+    {
+        return ProductCostSource::query()->create([
+            'product_id' => $product->id,
+            'source_key' => $sourceKey,
+            'unit_cost' => $unitCost,
+            'currency' => $currency,
+            'provenance' => 'confirmed_source_file',
+            'status' => 'confirmed',
+            'source_type' => 'inventory_cost_book',
+            'source_reference' => 'p2-gate-source.xlsx',
+            'effective_from' => '2026-07-01',
+            'source_at' => '2026-07-31 00:00:00',
+            'confirmed_at' => '2026-09-08 00:00:00',
+            'source_fingerprint' => hash('sha256', $product->id.'|'.$sourceKey.'|2026-07-01'),
+        ]);
     }
 
     private function attachWarehouseShipment(Order $order, string $slug): Shipment
