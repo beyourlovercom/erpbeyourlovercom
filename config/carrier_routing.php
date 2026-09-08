@@ -14,7 +14,6 @@ $countries = [
         'compare_price' => false,
         'compare_transit_time' => false,
     ],
-
     'US' => [
         'automatic' => true,
         'strategy' => 'fixed_by_warehouse',
@@ -46,17 +45,38 @@ foreach ($deFulfillmentCountries as $country) {
 
 return [
     // Carrier routing business policy single source of truth.
-    // Do not hard-code carrier selection policy in Shipment services.
-    'version' => '2026-09-07-v5',
+    // Canonical values stay stable in Shipment/Carrier Master; UI labels may be bilingual.
+    'version' => '2026-09-08-v6',
+    'labels' => [
+        '4PX' => '4PX / 速达',
+        'POSTNL international' => 'POSTNL international / 佰事达',
+        'Weship' => 'Weship / 纬狮',
+        'KingTrans' => 'KingTrans / 唐歌',
+        'DHL' => 'DHL',
+        'USPS' => 'USPS / 美国邮政',
+        'FedEx' => 'FedEx / 联邦',
+        'HX EXPRESS' => 'HX EXPRESS / 浩辛',
+        'Royal Mail' => 'Royal Mail / 英国皇家',
+    ],
     'factory_fallback' => [
         'warehouse_code' => 'FACTORY',
-        'carrier' => 'SD经济挂号-带电',
-        'service' => null,
+        'carrier' => '4PX',
+        'service' => 'SD经济挂号-带电',
         'automatic_execution' => false,
         'rate_source' => [
             'file' => '仓库-物流-国内小包费用.xlsx',
             'sheet' => 'SD经济挂号-带电',
         ],
+    ],
+    'factory_country_overrides' => [
+        'MX' => ['carrier' => 'Weship', 'service' => null, 'rate_source' => null, 'reason' => 'Owner-frozen: 墨西哥由纬狮发货'],
+        'CL' => ['carrier' => 'Weship', 'service' => null, 'rate_source' => null, 'reason' => 'Owner-frozen: 智利由纬狮发货'],
+        'AR' => ['carrier' => 'POSTNL international', 'service' => null, 'rate_source' => null, 'reason' => 'Owner-frozen: 阿根廷由佰事达发货'],
+        'UA' => ['carrier' => 'POSTNL international', 'service' => null, 'rate_source' => null, 'reason' => 'Owner-frozen: 乌克兰由佰事达发货'],
+        'RU' => ['carrier' => 'POSTNL international', 'service' => null, 'rate_source' => null, 'reason' => 'Owner-frozen: 俄罗斯由佰事达发货'],
+        'TH' => ['carrier' => 'KingTrans', 'service' => null, 'rate_source' => null, 'reason' => 'Owner-frozen: 泰国由唐歌发货'],
+        'ID' => ['carrier' => 'KingTrans', 'service' => null, 'rate_source' => null, 'reason' => 'Owner-frozen: 印尼/印度尼西亚由唐歌发货'],
+        'VN' => ['carrier' => 'KingTrans', 'service' => null, 'rate_source' => null, 'reason' => 'Owner-frozen: 越南由唐歌发货'],
     ],
     'countries' => $countries,
 ];

@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
+use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\WarehouseRoutingPolicy;
 use Tests\TestCase;
@@ -95,13 +96,28 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
         $plan = $preview['plans'][0];
         $this->assertSame('factory', $plan['plan_type']);
         $this->assertSame('FACTORY', $plan['segments'][0]['source_code']);
-        $this->assertSame('SD经济挂号-带电', $plan['segments'][0]['carrier']);
+        $this->assertSame('4PX', $plan['segments'][0]['carrier']);
+        $this->assertSame('SD经济挂号-带电', $plan['segments'][0]['service']);
         $this->assertSame('manual_review_only', $plan['execution_status']);
+    }
+
+    public function test_factory_plan_uses_owner_frozen_country_carrier_override(): void
+    {
+        $preview = $this->service([], [10 => []])->preview('MX', [['product_id' => 10, 'quantity' => 1]]);
+
+        $this->assertSame('preview', $preview['status']);
+        $plan = collect($preview['plans'])->firstWhere('plan_type', 'factory');
+        $this->assertSame('Weship', $plan['segments'][0]['carrier']);
+        $this->assertNull($plan['segments'][0]['service']);
+
+        $preview = $this->service([], [10 => []])->preview('ID', [['product_id' => 10, 'quantity' => 1]]);
+        $plan = collect($preview['plans'])->firstWhere('plan_type', 'factory');
+        $this->assertSame('KingTrans', $plan['segments'][0]['carrier']);
     }
 
     private function service(array $warehouses, array $availability): FulfillmentPlanPreviewService
     {
-        return new FulfillmentPlanPreviewService($this->reader($warehouses, $availability), app(WarehouseRoutingPolicy::class));
+        return new FulfillmentPlanPreviewService($this->reader($warehouses, $availability), app(WarehouseRoutingPolicy::class), app(CarrierRoutingPolicy::class));
     }
 
     private function warehouse(int $id, string $code): array

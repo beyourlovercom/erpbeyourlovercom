@@ -26,9 +26,16 @@ final class FulfillmentPlanCostEstimator
             if ($packaging['status'] !== 'ready') return $packaging;
             $sourceType = (string) ($segment['source_type'] ?? '');
             $sourceCode = strtoupper((string) ($segment['source_code'] ?? ''));
-            $routing = $sourceType === 'factory'
-                ? $this->china->calculate($country, $packaging['actual_weight_kg'], $packaging['volume_cm3'], $segment['items'] ?? [], $destinationContext)
-                : ($sourceCode === 'DE' ? $this->dhl->calculate($country, $packaging['actual_weight_kg']) : ['status' => 'missing_evidence', 'amount' => null, 'currency' => null, 'source' => null, 'reason_code' => 'routing_rate_unavailable', 'reason' => 'No frozen automatic routing rate for source']);
+            if ($sourceType === 'factory') {
+                $carrier = trim((string) ($segment['carrier'] ?? ''));
+                $routing = $carrier === '4PX'
+                    ? $this->china->calculate($country, $packaging['actual_weight_kg'], $packaging['volume_cm3'], $segment['items'] ?? [], $destinationContext)
+                    : ['status' => 'missing_evidence', 'amount' => null, 'currency' => null, 'source' => null, 'reason_code' => 'factory_carrier_rate_unavailable', 'reason' => "No frozen automatic routing rate for factory carrier {$carrier}"];
+            } else {
+                $routing = $sourceCode === 'DE'
+                    ? $this->dhl->calculate($country, $packaging['actual_weight_kg'])
+                    : ['status' => 'missing_evidence', 'amount' => null, 'currency' => null, 'source' => null, 'reason_code' => 'routing_rate_unavailable', 'reason' => 'No frozen automatic routing rate for source'];
+            }
             if (($routing['status'] ?? null) !== 'ready') return [...$routing, 'packaging' => $packaging];
             $allComponents = [...$allComponents, ...$routing['components']];
             $segmentEvidence[] = ['source_code' => $sourceCode, 'packaging' => $packaging, 'routing' => $routing];

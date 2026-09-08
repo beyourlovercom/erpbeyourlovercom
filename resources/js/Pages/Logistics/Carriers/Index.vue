@@ -5,7 +5,7 @@ import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 import StatusBar from '../../../Components/Logistics/StatusBar.vue'
 
 type CurrencyCost = { currency: string; total: number; average: number | null; shipments: number }
-type Carrier = { id: number; name: string; is_active: boolean; shipment_count: number; chargeable_weight_kg: number | null; chargeable_weight_coverage: number; costs_by_currency: CurrencyCost[]; this_month_count: number; last_shipped_at: string | null }
+type Carrier = { id: number; name: string; display_name: string; is_active: boolean; shipment_count: number; chargeable_weight_kg: number | null; chargeable_weight_coverage: number; costs_by_currency: CurrencyCost[]; this_month_count: number; last_shipped_at: string | null }
 const props = defineProps<{ carriers: Carrier[]; canOperate: boolean; statusBar?: {key:string;label:string;url:string;count:number}[] }>()
 const createOpen = ref(false)
 const form = useForm({ name: '' })
@@ -35,7 +35,7 @@ const dateTime = (value: string | null) => value ? new Date(value).toLocaleStrin
           <thead><tr><th>承运商</th><th>总发货票数</th><th>总计费重量</th><th>总物流费用</th><th>本月发货</th><th>最后发货</th></tr></thead>
           <tbody>
             <tr v-for="carrier in props.carriers" :key="carrier.id">
-              <td><Link class="carrier-link" :href="`/logistics/carriers/${encodeURIComponent(carrier.name)}`">{{ carrier.name }}</Link></td>
+              <td><Link class="carrier-link" :href="`/logistics/carriers/${encodeURIComponent(carrier.name)}`">{{ carrier.display_name }}</Link></td>
               <td>{{ carrier.shipment_count }}</td><td>{{ carrier.chargeable_weight_kg === null ? '—' : `${carrier.chargeable_weight_kg.toFixed(3)} kg` }}</td><td>{{ money(carrier.costs_by_currency) }}</td><td>{{ carrier.this_month_count }}</td><td>{{ dateTime(carrier.last_shipped_at) }}</td>
             </tr>
             <tr v-if="props.carriers.length === 0"><td colspan="6" class="mvp-empty">暂无承运商主数据。</td></tr>

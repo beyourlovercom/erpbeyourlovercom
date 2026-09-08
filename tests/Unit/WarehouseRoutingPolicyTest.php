@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\WarehouseRoutingPolicy;
 use Tests\TestCase;
 
@@ -97,12 +98,29 @@ final class WarehouseRoutingPolicyTest extends TestCase
         $this->assertTrue($policy->splitShipmentAllowed());
         $this->assertFalse($policy->automaticSplitShipmentEnabled());
         $this->assertSame('human_review_only', $policy->splitExecutionMode());
-        $this->assertSame('SD经济挂号-带电', $policy->factoryFallback()['carrier']);
-        $this->assertSame('SD经济挂号-带电', config('carrier_routing.factory_fallback.carrier'));
+        $carrierPolicy = app(CarrierRoutingPolicy::class);
+        $this->assertSame('4PX', $carrierPolicy->factoryRoute('DE')['carrier']);
+        $this->assertSame('SD经济挂号-带电', $carrierPolicy->factoryRoute('DE')['service']);
         $this->assertTrue($policy->isUsMilitaryDestination(['city' => 'FPO', 'province_state' => 'AP']));
         $this->assertFalse($policy->factoryAllowed(['city' => 'FPO', 'province_state' => 'AP']));
         $this->assertTrue($policy->isUsAkHiDestination(['province_state' => 'AK']));
         $this->assertFalse($policy->isUsAkHiDestination(['province_state' => 'AE', 'city' => 'APO']));
+    }
+
+    public function test_factory_carrier_country_overrides_and_bilingual_labels_are_frozen(): void
+    {
+        $policy = app(CarrierRoutingPolicy::class);
+
+        foreach (['MX', 'CL'] as $country) $this->assertSame('Weship', $policy->factoryRoute($country)['carrier']);
+        foreach (['AR', 'UA', 'RU'] as $country) $this->assertSame('POSTNL international', $policy->factoryRoute($country)['carrier']);
+        foreach (['TH', 'ID', 'VN'] as $country) $this->assertSame('KingTrans', $policy->factoryRoute($country)['carrier']);
+
+        $this->assertSame('4PX / 速达', $policy->displayName('4PX'));
+        $this->assertSame('Weship / 纬狮', $policy->displayName('Weship'));
+        $this->assertSame('POSTNL international / 佰事达', $policy->displayName('POSTNL international'));
+        $this->assertSame('KingTrans / 唐歌', $policy->displayName('KingTrans'));
+        $this->assertSame('USPS / 美国邮政', $policy->displayName('USPS'));
+        $this->assertSame('FedEx / 联邦', $policy->displayName('FedEx'));
     }
 
     public function test_runtime_config_contains_no_business_routing_rules(): void
