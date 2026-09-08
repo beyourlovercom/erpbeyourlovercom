@@ -66,7 +66,7 @@ const goToPage = (page: number) => router.get('/logistics/in-transit', { page },
       </tr></thead><tbody>
         <template v-for="row in shipments.data" :key="row.shipment_id">
           <tr>
-            <td><Link v-if="row.order_url" :href="row.order_url" class="mvp-link">{{ row.external_order_number ?? row.erp_order_id ?? '—' }}</Link><span v-else>—</span></td>
+            <td><Link v-if="row.order_url" :href="row.order_url" class="mvp-link">{{ row.external_order_number ?? '—' }}</Link><span v-else>{{ row.external_order_number ?? '—' }}</span></td>
             <td>{{ row.recipient_name ?? '—' }}</td>
             <td>{{ row.country ?? '—' }}</td>
             <td>{{ row.warehouse_name ?? '—' }}</td>

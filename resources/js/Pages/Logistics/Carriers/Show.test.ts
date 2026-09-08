@@ -18,6 +18,7 @@ describe('Carrier shipment ledger', () => {
     const wrapper = mount(Show, { props: { carrier: 'DHL', carrierDisplayName: 'DHL', summary, shipments: { data: [row], current_page: 1, last_page: 1, total: 1 } } })
     expect(wrapper.text()).toContain('Carrier Shipment Ledger')
     expect(wrapper.text()).toContain('CUS-1')
+    expect(wrapper.text()).not.toContain('ERP-1')
     expect(wrapper.text()).toContain('TRACK-1')
     expect(wrapper.text()).toContain('2.500 kg')
     expect(wrapper.text()).toContain('USD 18.50')

@@ -21,6 +21,27 @@ const order = {
 const carrierOptions = [{ value: 'DHL', label: 'DHL' }, { value: 'UPS', label: 'UPS' }, { value: 'FedEx', label: 'FedEx' }]
 const props = { orders: { data: [order], current_page: 1, last_page: 1, per_page: 50, total: 1 }, warehouses: [warehouse], carrierOptions }
 
+describe('Logistics pending grid contract', () => {
+  it('renders only the public order number in the order-number column', () => {
+    const publicOrder = { ...order, external_order_number: '40301-VA617A-gift', erp_order_id: '007-0908-c6091', internal_order_number: 'ERP-TECH-6091' }
+    const wrapper = mount(Index, { props: { ...props, orders: { ...props.orders, data: [publicOrder] } } })
+    expect(wrapper.text()).toContain('40301-VA617A-gift')
+    expect(wrapper.text()).not.toContain('007-0908-c6091')
+    expect(wrapper.text()).not.toContain('ERP-TECH-6091')
+  })
+
+  it('provides account-synced column visibility and ordering from the top-right ellipsis', async () => {
+    const wrapper = mount(Index, { props: { ...props, gridPreferenceNamespace: 'grid.logistics.pending.v1', gridPreference: null } })
+    expect(wrapper.find('.column-settings-panel').exists()).toBe(false)
+    await wrapper.get('.column-settings-trigger').trigger('click')
+    const panel = wrapper.get('.column-settings-panel')
+    expect(panel.text()).toContain('列设置')
+    expect(panel.text()).toContain('设置绑定当前账号并跨设备同步')
+    expect(panel.text()).toContain('固定显示')
+    expect(wrapper.get('input[aria-label="订单号固定显示"]').attributes('disabled')).toBeDefined()
+  })
+})
+
 describe('Logistics warehouse recommendation', () => {
   it('syncs warehouse_id into existing draft when props refresh with adopted recommended shipment', async () => {
     const wrapper = mount(Index, { props })

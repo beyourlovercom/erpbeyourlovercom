@@ -46,7 +46,7 @@ const goToPage = (page: number) => router.get('/logistics/exceptions', { page },
         <th>订单号</th><th>收件人</th><th>国家</th><th>仓库</th><th>物流商 / 渠道</th><th>追踪号</th><th>发货时间</th><th>异常原因</th><th>操作</th>
       </tr></thead><tbody>
         <tr v-for="row in shipments.data" :key="row.shipment_id">
-          <td><Link v-if="row.order_url" :href="row.order_url" class="mvp-link">{{ row.external_order_number ?? row.erp_order_id ?? '—' }}</Link><span v-else>—</span></td>
+          <td><Link v-if="row.order_url" :href="row.order_url" class="mvp-link">{{ row.external_order_number ?? '—' }}</Link><span v-else>{{ row.external_order_number ?? '—' }}</span></td>
           <td>{{ row.recipient_name ?? '—' }}</td>
           <td>{{ row.country ?? '—' }}</td>
           <td>{{ row.warehouse_name ?? '—' }}</td>

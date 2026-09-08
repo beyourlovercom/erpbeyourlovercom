@@ -14,6 +14,7 @@ use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
+use App\Modules\Shell\Application\UserUiPreferenceService;
 use Illuminate\Http\Request;
 use Illuminate\Database\QueryException;
 use PDOException;
@@ -25,6 +26,7 @@ use Inertia\Response;
 final class LogisticsController
 {
     private const PER_PAGE = 50;
+    private const PENDING_GRID_NAMESPACE = 'grid.logistics.pending.v1';
 
     public function __construct(
         private readonly ShipmentService $shipments,
@@ -34,6 +36,7 @@ final class LogisticsController
         private readonly FulfillmentPlanPreviewService $fulfillmentPlans,
         private readonly CarrierRoutingPolicy $carrierRouting,
         private readonly OrderPackagingReferenceProjection $packagingReferences,
+        private readonly UserUiPreferenceService $uiPreferences,
     ) {}
 
     public function index(Request $request): Response
@@ -61,6 +64,8 @@ final class LogisticsController
                 'label' => $this->carrierRouting->displayName($carrier->name),
             ])->values()->all(),
             'statusBar' => $this->statusBar(),
+            'gridPreferenceNamespace' => self::PENDING_GRID_NAMESPACE,
+            'gridPreference' => $request->user() ? $this->uiPreferences->get($request->user(), self::PENDING_GRID_NAMESPACE) : null,
         ]);
     }
 

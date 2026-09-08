@@ -68,7 +68,7 @@ const goToPage = (page: number) => router.get(`/logistics/carriers/${encodeURICo
           <tbody>
             <tr v-for="row in shipments.data" :key="row.id">
               <td>{{ dateTime(row.shipped_at) }}</td>
-              <td><Link v-if="row.order_url" :href="row.order_url" class="mvp-link"><strong>{{ row.external_order_number ?? '—' }}</strong></Link><span v-else>—</span><small>{{ row.internal_order_number ?? '' }}</small></td>
+              <td><Link v-if="row.order_url" :href="row.order_url" class="mvp-link"><strong>{{ row.external_order_number ?? '—' }}</strong></Link><span v-else><strong>{{ row.external_order_number ?? '—' }}</strong></span></td>
               <td>{{ orderKind(row.order_kind) }}</td><td>{{ row.warehouse_name ?? '—' }}</td><td>{{ row.destination_country ?? '—' }}</td>
               <td>{{ row.service ?? '—' }}</td><td>{{ row.tracking_number ?? '—' }}</td><td class="items-cell"><template v-for="item in row.items" :key="item.product_url ?? item.sku"><Link v-if="item.product_url" :href="item.product_url" class="mvp-link">{{ item.sku || item.product_summary || '未命名' }}</Link><span v-else>{{ item.sku || item.product_summary || '未命名' }}</span> × {{ item.quantity }}；</template></td>
               <td>{{ row.chargeable_weight_kg === null ? '—' : `${Number(row.chargeable_weight_kg).toFixed(3)} kg` }}</td><td>{{ rowMoney(row) }}</td>
