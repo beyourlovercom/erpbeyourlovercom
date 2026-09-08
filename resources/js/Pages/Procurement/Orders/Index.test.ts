@@ -32,7 +32,7 @@ describe('Procurement/Orders/Index', () => {
     const wrapper = mount(Index, { props: { orders, filters: {}, statusOptions, canOperate: true } })
     expect(wrapper.text()).toContain('PO-20260904-0001')
     expect(wrapper.text()).toContain('007-0904-c0007')
-    expect(wrapper.text()).toContain('来源订单：ORD-007')
+    expect(wrapper.text()).not.toContain('来源订单：ORD-007')
     expect(wrapper.text()).toContain('已下单')
     expect(wrapper.text()).toContain('顺丰 · SF123456')
     expect(wrapper.find('a[href="/customers/orders/7"]').exists()).toBe(true)

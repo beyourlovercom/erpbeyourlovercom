@@ -29,6 +29,7 @@ vi.mock('../../Components/Products/SkuCombobox.vue', () => ({
 
 const baseOrder = {
   id: 1,
+  erp_order_id: '007-0908-c1',
   internal_order_number: 'INT-001',
   external_order_number: 'BIZ-001',
   source_type: 'manual',
@@ -72,7 +73,9 @@ describe('Orders/Show V2', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit } })
     const strip = wrapper.find('.ord-identity-strip')
     expect(strip.exists()).toBe(true)
-    expect(strip.text()).toContain('BIZ-001')
+    expect(strip.text()).toContain('007-0908-c1')
+    expect(wrapper.text()).not.toContain('BIZ-001')
+    expect(wrapper.text()).not.toContain('INT-001')
   })
 
   it('shows order kind label in identity strip', () => {
@@ -95,10 +98,12 @@ describe('Orders/Show V2', () => {
     expect(wrapper.find('.ord-identity-strip').text()).toContain('Test Owner')
   })
 
-  it('hides internal_order_number in disclosure by default', () => {
+  it('does not expose source or technical order numbers in view mode', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit } })
-    expect(wrapper.find('.ord-details-disclosure').exists()).toBe(true)
-    expect(wrapper.find('.ord-details-value').text()).toBe('INT-001')
+    expect(wrapper.find('.ord-details-disclosure').exists()).toBe(false)
+    expect(wrapper.text()).toContain('007-0908-c1')
+    expect(wrapper.text()).not.toContain('BIZ-001')
+    expect(wrapper.text()).not.toContain('INT-001')
   })
 
   it('renders five business cards: fulfillment, order info, address, items, note', () => {
@@ -247,7 +252,7 @@ describe('Orders/Show V2', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit } })
     const disabledInputs = wrapper.findAll('input[disabled]')
     const values = disabledInputs.map(i => (i.element as HTMLInputElement).value)
-    expect(values).toContain('BIZ-001')
+    expect(values).toContain('007-0908-c1')
     expect(values).toContain('客户订单')
     expect(values).toContain('手动创建')
     expect(values).toContain('Test Owner')
@@ -259,7 +264,7 @@ describe('Orders/Show V2', () => {
     await editBtn!.trigger('click')
     const disabledInputs = wrapper.findAll('input[disabled]')
     const values = disabledInputs.map(i => (i.element as HTMLInputElement).value)
-    expect(values).toContain('BIZ-001')
+    expect(values).toContain('007-0908-c1')
     expect(values).toContain('客户订单')
     expect(values).toContain('手动创建')
     expect(values).toContain('Test Owner')

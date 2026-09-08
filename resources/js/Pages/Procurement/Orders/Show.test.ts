@@ -18,7 +18,7 @@ const procurementOrder = {
   carrier: '顺丰',
   tracking_number: 'SF123456',
   source_order_id: 7,
-  source_order_number: 'ORD-007',
+  source_order_erp_id: '007-0908-c7',
   created_by_name: 'Andy',
   updated_by_name: 'Zhang',
   created_at: '2026-09-04T08:00:00Z',

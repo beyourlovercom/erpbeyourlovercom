@@ -6,7 +6,7 @@ import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 type ReferralRow = {
   id:number; referral_id:number; affiliate_id:number; order_reference:string
   kol:{id:number;display_name:string}|null
-  order:{id:number;internal_order_number:string|null;external_order_number:string|null}|null
+  order:{id:number;erp_order_id:string|null}|null
   commission_amount:string; currency:string; provider_status:string; context:string
   referral_date:string|null; payout_id:number|null
   affiliate_resolution_status:string; order_resolution_status:string; reconciliation_status:string
@@ -19,7 +19,7 @@ const breadcrumbs = [{ label:'BYL ERP', href:'/dashboard' }, '网红', '佣金�
 const statusRows = computed(() => Object.entries(props.summary.by_status).sort((a,b) => b[1].count-a[1].count))
 function syncNow():void { if(props.canSync && !form.processing) form.post('/kol/commissions/sync',{preserveScroll:true}) }
 function time(v:string|null):string { if(!v) return '—'; const d=new Date(v); return Number.isNaN(d.getTime())?v:d.toLocaleString() }
-function orderLabel(row:ReferralRow):string { return row.order?.internal_order_number || row.order?.external_order_number || `Woo #${row.order_reference}` }
+function orderLabel(row:ReferralRow):string { return row.order?.erp_order_id || '—' }
 </script>
 
 <template>
@@ -46,7 +46,7 @@ function orderLabel(row:ReferralRow):string { return row.order?.internal_order_n
           <tbody><tr v-for="row in referrals" :key="row.id">
             <td><strong>#{{ row.referral_id }}</strong><small>{{ row.context }} · ref {{ row.order_reference }}</small></td>
             <td><strong v-if="row.kol">{{ row.kol.display_name }} · #{{ row.kol.id }}</strong><span v-else class="muted">未解析 KOL</span><small>Affiliate #{{ row.affiliate_id }}</small></td>
-            <td><strong v-if="row.order">{{ orderLabel(row) }}</strong><span v-else class="muted">历史订单未解析</span><small>{{ row.order ? `ERP Order #${row.order.id}` : `Woo ref ${row.order_reference}` }}</small></td>
+            <td><strong v-if="row.order">{{ orderLabel(row) }}</strong><span v-else class="muted">历史订单未解析</span><small v-if="!row.order">Woo ref {{ row.order_reference }}</small></td>
             <td><strong>{{ row.currency }} {{ row.commission_amount }}</strong></td>
             <td><strong>{{ row.provider_status }}</strong></td>
             <td>{{ time(row.referral_date) }}</td>

@@ -280,7 +280,7 @@ function addressLines(addr: Address): string[] {
                             </thead>
                             <tbody>
                                 <tr v-for="order in recentOrders" :key="order.id">
-                                    <td v-for="column in orderGrid.visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link :href="`/customers/orders/${order.id}`" class="mvp-link">{{ order.erp_order_id ?? '—' }}</Link><small v-if="order.external_order_number">来源订单：{{ order.external_order_number }}</small></template><template v-else-if="column.key === 'date'">{{ order.order_date ?? '—' }}</template><template v-else-if="column.key === 'amount'">{{ money(order.revenue, order.currency) }}</template><template v-else-if="column.key === 'order_status'">{{ order.status }}</template><template v-else>{{ order.shipment_status ?? '—' }}</template></td>
+                                    <td v-for="column in orderGrid.visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link :href="`/customers/orders/${order.id}`" class="mvp-link">{{ order.erp_order_id ?? '—' }}</Link></template><template v-else-if="column.key === 'date'">{{ order.order_date ?? '—' }}</template><template v-else-if="column.key === 'amount'">{{ money(order.revenue, order.currency) }}</template><template v-else-if="column.key === 'order_status'">{{ order.status }}</template><template v-else>{{ order.shipment_status ?? '—' }}</template></td>
                                 </tr>
                                 <tr v-if="recentOrders.length === 0">
                                     <td :colspan="orderGrid.visibleColumns.length + 1" class="mvp-empty">暂无已明确关联的订单</td>
@@ -300,7 +300,7 @@ function addressLines(addr: Address): string[] {
                             </thead>
                             <tbody>
                                 <tr v-for="s in shipments" :key="s.id">
-                                    <td v-for="column in shipmentGrid.visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link v-if="s.erp_order_id" :href="`/customers/orders/${s.order_id}`" class="mvp-link">{{ s.erp_order_id }}</Link><small v-if="s.external_order_number">来源订单：{{ s.external_order_number }}</small><span v-if="!s.erp_order_id">—</span></template><template v-else-if="column.key === 'carrier'">{{ s.carrier ?? '—' }}</template><template v-else-if="column.key === 'tracking'">{{ s.tracking_number ?? '—' }}</template><template v-else-if="column.key === 'shipped_at'">{{ s.shipped_at ?? '—' }}</template><template v-else>{{ s.status ?? '—' }}</template></td>
+                                    <td v-for="column in shipmentGrid.visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link v-if="s.erp_order_id" :href="`/customers/orders/${s.order_id}`" class="mvp-link">{{ s.erp_order_id }}</Link><span v-if="!s.erp_order_id">—</span></template><template v-else-if="column.key === 'carrier'">{{ s.carrier ?? '—' }}</template><template v-else-if="column.key === 'tracking'">{{ s.tracking_number ?? '—' }}</template><template v-else-if="column.key === 'shipped_at'">{{ s.shipped_at ?? '—' }}</template><template v-else>{{ s.status ?? '—' }}</template></td>
                                 </tr>
                                 <tr v-if="shipments.length === 0">
                                     <td :colspan="shipmentGrid.visibleColumns.length + 1" class="mvp-empty">暂无发货记录</td>

@@ -15,6 +15,7 @@ vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({
 
 const woo = {
   id: 1,
+  erp_order_id: '007-0908-c1',
   internal_order_number: 'WOO-1',
   recipient_name: 'Test',
   status: 'pending',
@@ -29,6 +30,12 @@ const woo = {
 }
 describe('Sync tracking outbound UI', () => {
   beforeEach(() => post.mockClear())
+
+  it('shows the canonical 007 ERP order id instead of the internal number', () => {
+    const wrapper = mount(Orders, { props: { orders: [woo], filters: {} } })
+    expect(wrapper.text()).toContain('007-0908-c1')
+    expect(wrapper.text()).not.toContain('WOO-1')
+  })
 
   it('shows one-click outbound only for eligible Woo shipped orders', async () => {
     const wrapper = mount(Orders, { props: { orders: [woo], filters: {} } })

@@ -224,7 +224,7 @@ describe('Products/Show Product360', () => {
     await wrapper.findAll('[role="tab"]').find(tab => tab.text() === '业务关联')!.trigger('click')
     const panel = wrapper.find('#product360-7')
     expect(panel.text()).toContain('007-0825-c0008')
-    expect(panel.text()).toContain('来源订单：M15-S4-30D')
+    expect(panel.text()).not.toContain('来源订单：M15-S4-30D')
     expect(panel.text()).toContain('M15-S9-TRACK-001')
     expect(panel.text()).toContain('UPS')
     expect(panel.text()).toContain('M1.5 UAT Creator')

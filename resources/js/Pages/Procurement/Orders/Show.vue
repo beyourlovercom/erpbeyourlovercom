@@ -21,7 +21,7 @@ type ProcurementOrder = {
   carrier: string | null
   tracking_number: string | null
   source_order_id: number
-  source_order_number: string
+  source_order_erp_id: string
   created_by_name: string | null
   updated_by_name: string | null
   created_at: string | null
@@ -98,7 +98,7 @@ const completionReasonLabel = (value: string | null) => value === 'source_order_
           <div>
             <p class="ord-kicker">采购订单</p>
             <h1 class="erp-form-title">{{ procurementOrder.procurement_number }}</h1>
-            <p class="erp-form-subtitle">{{ procurementOrder.status_label }} · 源订单 {{ procurementOrder.source_order_number }}</p>
+            <p class="erp-form-subtitle">{{ procurementOrder.status_label }} · 源订单 {{ procurementOrder.source_order_erp_id }}</p>
           </div>
           <div class="erp-form-header-actions page-header-actions">
             <Link href="/purchase/orders" class="erp-btn erp-btn-secondary">返回采购订单</Link>

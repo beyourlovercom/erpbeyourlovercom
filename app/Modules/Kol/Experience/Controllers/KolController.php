@@ -660,6 +660,7 @@ final class KolController
                 'fulfillment_order' => $item->order ? [
                     'id' => $item->order->id,
                     'internal_order_number' => $item->order->internal_order_number,
+                    'erp_order_id' => $item->order->erp_order_id,
                     'external_order_number' => $item->order->external_order_number,
                     'order_status' => $item->order->order_status instanceof \BackedEnum ? $item->order->order_status->value : (string) $item->order->order_status,
                     'shipment' => $item->order->shipment ? [

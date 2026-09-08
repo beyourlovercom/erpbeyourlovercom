@@ -45,8 +45,6 @@ type PackagingReference = {
 type Order = {
   id: number
   erp_order_id?: string | null
-  internal_order_number: string
-  external_order_number: string
   source_type: string
   source_label: string
   order_kind: string | null
@@ -91,8 +89,8 @@ const isKol = computed(() => props.order.order_kind === 'kol_fulfillment')
 const basePath = computed(() => isKol.value ? '/kol/orders' : '/customers/orders')
 
 const breadcrumbs = computed(() => isKol.value
-  ? [{ label: 'BYL ERP', href: '/dashboard' }, { label: '网红', href: '/kol' }, { label: '订单', href: '/kol/orders' }, props.order.external_order_number]
-  : [{ label: 'BYL ERP', href: '/dashboard' }, { label: '客户', href: '/customers' }, { label: '订单', href: '/customers/orders' }, props.order.external_order_number]
+  ? [{ label: 'BYL ERP', href: '/dashboard' }, { label: '网红', href: '/kol' }, { label: '订单', href: '/kol/orders' }, props.order.erp_order_id ?? '—']
+  : [{ label: 'BYL ERP', href: '/dashboard' }, { label: '客户', href: '/customers' }, { label: '订单', href: '/customers/orders' }, props.order.erp_order_id ?? '—']
 )
 
 type EditItem = {
@@ -169,15 +167,15 @@ const shipmentStatusLabel = computed(() => {
 </script>
 
 <template>
-  <Head :title="`${order.external_order_number} · BYL ERP`" />
-  <AuthenticatedLayout :title="`订单 ${order.external_order_number}`" :breadcrumbs="breadcrumbs">
+  <Head :title="`${order.erp_order_id ?? '—'} · BYL ERP`" />
+  <AuthenticatedLayout :title="`订单 ${order.erp_order_id ?? '—'}`" :breadcrumbs="breadcrumbs">
     <div class="erp-form-page">
       <div class="erp-form-content">
 
         <div class="erp-form-header-row">
           <div>
             <p class="ord-kicker">{{ order.order_kind_label }}</p>
-            <h1 class="erp-form-title">{{ order.external_order_number }}</h1>
+            <h1 class="erp-form-title">{{ order.erp_order_id ?? '—' }}</h1>
             <p class="erp-form-subtitle">查看订单事实；进入编辑模式后可维护允许修改的订单字段。</p>
           </div>
           <div class="erp-form-header-actions page-header-actions">
@@ -193,19 +191,13 @@ const shipmentStatusLabel = computed(() => {
         <!-- Identity strip -->
         <div class="ord-identity-strip">
           <div class="ord-identity-main">
-            <span class="ord-identity-number">{{ order.erp_order_id ?? order.external_order_number }}</span>
+            <span class="ord-identity-number">{{ order.erp_order_id ?? '—' }}</span>
             <span class="ord-identity-badge">{{ order.order_kind_label }}</span>
             <span class="ord-identity-badge ord-badge-muted">{{ order.source_label }}</span>
             <span class="ord-identity-badge ord-badge-status">{{ order.order_status_label }}</span>
             <span class="ord-identity-owner">负责人：{{ order.owner?.name ?? '—' }}</span>
           </div>
-          <div class="ord-identity-actions">
-            <details class="ord-details-disclosure">
-              <summary class="ord-details-summary">ERP技术编号</summary>
-              <span class="ord-details-value">{{ order.internal_order_number }}</span>
-            </details>
-            <small>来源订单号：{{ order.external_order_number }}</small>
-          </div>
+
         </div>
 
         <!-- Card 1: 履约状态 (always read-only) -->
@@ -302,8 +294,8 @@ const shipmentStatusLabel = computed(() => {
           <h2 class="erp-form-card-title">订单信息</h2>
           <div class="erp-form-grid">
             <div class="erp-form-field">
-              <label class="erp-form-label">业务订单号</label>
-              <input :value="order.external_order_number" class="erp-input" disabled>
+              <label class="erp-form-label">订单号</label>
+              <input :value="order.erp_order_id ?? '—'" class="erp-input" disabled>
             </div>
             <div class="erp-form-field">
               <label class="erp-form-label">订单类型</label>

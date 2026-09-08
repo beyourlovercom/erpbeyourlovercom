@@ -119,7 +119,7 @@ final class ReferralCommissionSyncService
         $referralClass = self::REFERRAL;
         $query = $referralClass::query()
             ->where('connection_key', $connectionKey)
-            ->with(['kol:id,display_name,owner_id', 'order:id,internal_order_number,external_order_number']);
+            ->with(['kol:id,display_name,owner_id', 'order:id,erp_order_id,internal_order_number,external_order_number']);
 
         if (! KolScope::isAllScope($actor)) {
             $ownerId = (int) $actor->getAuthIdentifier();
@@ -149,6 +149,7 @@ final class ReferralCommissionSyncService
             'kol' => $row->kol ? ['id' => $row->kol->id, 'display_name' => $row->kol->display_name] : null,
             'order' => $row->order ? [
                 'id' => $row->order->id,
+                'erp_order_id' => $row->order->erp_order_id,
                 'internal_order_number' => $row->order->internal_order_number,
                 'external_order_number' => $row->order->external_order_number,
             ] : null,
