@@ -13,6 +13,7 @@ use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductPackagingProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -77,6 +78,69 @@ final class ManualFulfillmentIntegrationTest extends TestCase
             'order_id' => $order->id,
             'website_sync_status' => 'pending',
         ]);
+    }
+
+    public function test_pending_batches_external_references_and_packaging_cost_reads_across_rows(): void
+    {
+        [$user, $order, $product, $warehouse] = $this->scenario();
+        $warehouse->serviceRegions()->create(['country_code' => 'US', 'priority' => 1]);
+        InventorySyncBatch::query()->create([
+            'warehouse_id' => $warehouse->id, 'source_type' => 'xlsx', 'sync_mode' => 'full',
+            'status' => 'confirmed', 'confirmed_at' => now(),
+        ]);
+        WarehouseInventory::query()->updateOrCreate(
+            ['warehouse_id' => $warehouse->id, 'product_id' => $product->id],
+            ['quantity_on_hand' => 100, 'quantity_reserved' => 0],
+        );
+        $measurement = PackagingMeasurementRecord::query()->create([
+            'product_id' => $product->id, 'warehouse_id' => $warehouse->id, 'status' => 'approved',
+            'packaging_method_key' => 'bubble_wrap_cut', 'packaging_length_cm' => '32.00',
+            'packaging_width_cm' => '18.00', 'packaging_height_cm' => '12.00', 'packaged_weight_kg' => '0.850',
+            'measured_at' => now(), 'created_by' => $user->id, 'reviewed_by' => $user->id, 'reviewed_at' => now(),
+        ]);
+        ProductPackagingProfile::query()->create([
+            'product_id' => $product->id, 'preset_key' => 'bubble_wrap_cut',
+            'current_measurement_record_id' => $measurement->id, 'is_active' => true,
+        ]);
+
+        for ($i = 0; $i < 4; $i++) {
+            $this->actingAs($user)->post('/customers/orders', [
+                'external_order_number' => 'P1-PERF-'.$i.'-'.uniqid(),
+                'order_date' => '2026-09-08',
+                'recipient_name' => 'P1 Perf',
+                'country' => 'US',
+                'items' => [[
+                    'product_id' => $product->id,
+                    'product_summary' => $product->name,
+                    'quantity' => 1,
+                    'unit_price' => '19.99',
+                ]],
+            ])->assertRedirect();
+        }
+
+        $queries = [];
+        DB::listen(function ($query) use (&$queries): void {
+            $queries[] = strtolower($query->sql);
+        });
+
+        $this->actingAs($user)->get('/logistics/pending')->assertOk();
+
+        $externalReferenceLoads = collect($queries)->filter(fn (string $sql): bool =>
+            str_contains($sql, 'from "order_external_references" where "order_external_references"."order_id" in')
+            || str_contains($sql, 'from `order_external_references` where `order_external_references`.`order_id` in')
+        )->count();
+        $packagingStandardLoads = collect($queries)->filter(fn (string $sql): bool =>
+            str_contains($sql, 'product_packaging_profiles')
+            && str_contains($sql, 'packaging_measurement_records')
+        )->count();
+        $shippingWeightStandardLoads = collect($queries)->filter(fn (string $sql): bool =>
+            str_contains($sql, 'product_weight_evidences')
+            && str_contains($sql, 'shipping_weight_evidence_id')
+        )->count();
+
+        $this->assertSame(1, $externalReferenceLoads, 'Pending page must eager-load external references once for the page.');
+        $this->assertSame(1, $packagingStandardLoads, 'Pending page must load packaging standards once for the page.');
+        $this->assertSame(1, $shippingWeightStandardLoads, 'Pending page must load shipping-weight standards once for the page.');
     }
 
     public function test_order_detail_exposes_inventory_and_selected_warehouse(): void
