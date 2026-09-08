@@ -11,6 +11,9 @@ class User extends Authenticatable
 {
     use HasFactory, Notifiable;
 
+    /** @var array{super_admin:bool,permissions:array<string,true>}|null */
+    private ?array $permissionStateCache = null;
+
     protected $fillable = ['name', 'email', 'contact_name', 'mobile', 'phone', 'qq', 'password', 'is_active', 'permission_mode'];
 
     protected $hidden = ['password', 'remember_token'];
@@ -32,15 +35,34 @@ class User extends Authenticatable
 
     public function hasPermission(string $permission): bool
     {
-        if ($this->roles()->where('key', 'super_admin')->exists()) {
-            return true;
+        $state = $this->permissionState();
+
+        return $state['super_admin'] || isset($state['permissions'][$permission]);
+    }
+
+    /** @return array{super_admin:bool,permissions:array<string,true>} */
+    private function permissionState(): array
+    {
+        if ($this->permissionStateCache !== null) {
+            return $this->permissionStateCache;
         }
 
         if ($this->permission_mode === 'custom') {
-            return $this->customPermissions()->where('key', $permission)->exists();
+            $roles = $this->roles()->get();
+            $superAdmin = $roles->contains('key', 'super_admin');
+            $keys = $superAdmin ? [] : $this->customPermissions()->pluck('key')->all();
+        } else {
+            $roles = $this->roles()->with('permissions:id,key')->get();
+            $superAdmin = $roles->contains('key', 'super_admin');
+            $keys = $superAdmin
+                ? []
+                : $roles->flatMap(fn (Role $role) => $role->permissions->pluck('key'))->unique()->values()->all();
         }
 
-        return $this->roles()->whereHas('permissions', fn ($query) => $query->where('key', $permission))->exists();
+        return $this->permissionStateCache = [
+            'super_admin' => $superAdmin,
+            'permissions' => array_fill_keys($keys, true),
+        ];
     }
 
     protected function casts(): array
