@@ -83,16 +83,16 @@ PROJECT POSITION
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Existing Operations → Inquiry → Remote milestone → Woo inbound → Tracking outbound → Sync orchestration → Product/Media → Content/SEO → Full Order Workspace → Logistics OS → KOL OS → Inventory/Procurement → Accounting/ROI → Production Hardening/Expansion
 CURRENT_TRACK_PHASE_MAP: Settings utility / read-only changelog simplification
 COMPLETED_PHASES: existing DB-backed changelog exists on baseline
-CURRENT_PHASE: bounded replacement implementation
+CURRENT_PHASE: Owner UAT passed / merge gate
 CURRENT_WORK_PACKAGE: ERP-CHANGELOG-READONLY-V1-001
-PACKAGE_STATUS: IMPLEMENTATION_COMPLETE / OWNER_UAT_READY
+PACKAGE_STATUS: OWNER_UAT_PASS / MERGE_GATE_READY
 WAITING_PHASES: Owner UAT → Owner merge authorization → optional later production release
 BASELINE: origin/main@39a76a461b4e343c2a9152be1ade866cf19e6442
-GITHUB_STATE: Draft PR #250 OPEN on feature/erp-changelog-readonly-v1-001; base origin/main@39a76a461b4e343c2a9152be1ade866cf19e6442
+GITHUB_STATE: PR #250 OPEN / Owner UAT passed / ready for Owner merge authorization; head d8c6786b2212812ff01df37c0b0757292e0080e7
 SOURCE_CONFLICTS: AI/CURRENT_CONTEXT.md is dated 2026-08-29 and stale for current feature sequencing; bounded scope relies on Owner instruction plus exact origin/main and does not rebaseline program status
 GLOBAL_GATE: one WP / one branch / one worktree / one PR; no merge or deploy authorization
 PRODUCTION_DEPLOYMENT_STATUS: NO; this package is local/GitHub only
-NEXT_DEPENDENCY: Owner UAT; merge and Production deployment remain separately gated
+NEXT_DEPENDENCY: Owner merge authorization for PR #250; Production deployment remains separately gated
 EVIDENCE_AS_OF: 2026-09-07
 
 ROADMAP HOURS
