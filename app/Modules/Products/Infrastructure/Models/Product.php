@@ -23,6 +23,7 @@ class Product extends Model
         'regular_price',
         'shipping_weight_kg',
         'shipping_weight_evidence_id',
+        'shipping_weight_standard_candidate_id',
         'length_cm',
         'width_cm',
         'height_cm',
@@ -76,12 +77,18 @@ class Product extends Model
         return $this->belongsTo(ProductWeightEvidence::class, 'shipping_weight_evidence_id');
     }
 
+    public function shippingWeightStandardCandidate(): BelongsTo
+    {
+        return $this->belongsTo(ProductShippingWeightStandardCandidate::class, 'shipping_weight_standard_candidate_id');
+    }
+
     protected $casts = [
         'woocommerce_product_id' => 'integer',
         'is_active' => 'boolean',
         'weight_kg' => 'decimal:4',
         'weight_evidence_id' => 'integer',
         'shipping_weight_evidence_id' => 'integer',
+        'shipping_weight_standard_candidate_id' => 'integer',
         'sale_price' => 'decimal:2',
         'regular_price' => 'decimal:2',
         'shipping_weight_kg' => 'decimal:4',
