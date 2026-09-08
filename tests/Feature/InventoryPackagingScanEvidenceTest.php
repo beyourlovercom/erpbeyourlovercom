@@ -102,6 +102,39 @@ final class InventoryPackagingScanEvidenceTest extends TestCase
         $this->assertDatabaseCount('product_weight_evidences', 0);
     }
 
+    public function test_preview_aggregates_shipping_weight_candidates_and_flags_gross_outliers(): void
+    {
+        $stable = $this->product('SKU-STABLE');
+        $review = $this->product('SKU-REVIEW');
+        $rows = [];
+        foreach ([0.750, 0.752, 0.748, 0.754, 0.756, 0.744, 0.562] as $index => $weight) {
+            $order = $this->order('STABLE-'.$index);
+            $order->items()->create(['product_id'=>$stable->id,'product_summary'=>'Stable','sku'=>$stable->sku,'quantity'=>1,'unit_price'=>10,'line_revenue'=>10]);
+            $rows[] = $this->row(20 + $index, 'STABLE-'.$index, $weight, 1, 1, 1);
+        }
+        foreach ([0.290, 0.292, 0.300] as $index => $weight) {
+            $order = $this->order('REVIEW-'.$index);
+            $order->items()->create(['product_id'=>$review->id,'product_summary'=>'Review','sku'=>$review->sku,'quantity'=>1,'unit_price'=>10,'line_revenue'=>10]);
+            $rows[] = $this->row(40 + $index, 'REVIEW-'.$index, $weight, null, null, null);
+        }
+
+        $result = app(PackagingScanEvidencePreviewService::class)->preview($rows);
+        $stableCandidate = collect($result['weight_candidates'])->firstWhere('sku', 'SKU-STABLE');
+        $reviewCandidate = collect($result['weight_candidates'])->firstWhere('sku', 'SKU-REVIEW');
+
+        $this->assertSame('high_confidence', $stableCandidate['status']);
+        $this->assertSame(0.751, $stableCandidate['suggested_shipping_weight_kg']);
+        $this->assertSame(7, $stableCandidate['raw_sample_count']);
+        $this->assertSame(6, $stableCandidate['eligible_sample_count']);
+        $this->assertSame(1, $stableCandidate['gross_outlier_count']);
+        $this->assertTrue(collect($stableCandidate['samples'])->contains(fn (array $sample): bool => $sample['observed_weight_kg'] === 0.562 && $sample['gross_outlier']));
+
+        $this->assertSame('review_required', $reviewCandidate['status']);
+        $this->assertSame(0.292, $reviewCandidate['suggested_shipping_weight_kg']);
+        $this->assertSame(3, $reviewCandidate['eligible_sample_count']);
+        $this->assertDatabaseCount('product_weight_evidences', 0);
+    }
+
     private function product(string $sku): Product
     {
         return Product::create(['source_type'=>'manual','sku'=>$sku,'name'=>'Fixture '.$sku,'is_active'=>true]);

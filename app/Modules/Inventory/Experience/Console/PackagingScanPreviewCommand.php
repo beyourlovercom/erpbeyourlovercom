@@ -24,6 +24,20 @@ final class PackagingScanPreviewCommand extends Command
             $dims = implode('×', array_map(fn ($v) => $v === null ? '—' : (string)$v, [$row['length_cm'],$row['width_cm'],$row['height_cm']]));
             return [$row['source_row_number'],$row['order_reference'] ?? '—',$row['product']['sku'] ?? '—',$row['product']['quantity'] ?? '—',$row['inbound_weight_kg'] ?? '—',$dims,$row['classification'],$row['weight_evidence_status'],$row['dimension_evidence_status']];
         }, $result['rows']));
+
+        if (($result['weight_candidates'] ?? []) !== []) {
+            $this->newLine();
+            $this->info('Shipping Weight Standard Candidates (preview only)');
+            $this->table(['SKU','Suggested kg','Eligible/Raw','Outliers','Range kg','Spread','Status'], array_map(fn (array $row): array => [
+                $row['sku'],
+                $row['suggested_shipping_weight_kg'],
+                $row['eligible_sample_count'].'/'.$row['raw_sample_count'],
+                $row['gross_outlier_count'],
+                $row['eligible_min_kg'].'–'.$row['eligible_max_kg'],
+                number_format((float) $row['eligible_spread_ratio'] * 100, 1).'%',
+                $row['status'],
+            ], $result['weight_candidates']));
+        }
         return self::SUCCESS;
     }
 }

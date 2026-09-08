@@ -36,6 +36,7 @@ final class PackagingScanEvidencePreviewService
                 'ambiguous_orders' => $collection->where('order_match_status', 'ambiguous')->count(),
             ],
             'rows' => $resultRows,
+            'weight_candidates' => $this->weightCandidates($collection),
         ];
     }
 
@@ -173,6 +174,80 @@ final class PackagingScanEvidencePreviewService
             'order'=>$this->order($order),
             'product'=>$product,
         ];
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function weightCandidates(Collection $rows): array
+    {
+        return $rows
+            ->filter(fn (array $row): bool => ($row['can_be_weight_evidence'] ?? false) && is_array($row['weight_evidence_candidate'] ?? null))
+            ->groupBy(fn (array $row): string => (string) $row['weight_evidence_candidate']['product_id'])
+            ->map(function (Collection $group): array {
+                $samples = $group->unique(function (array $row): string {
+                    $candidate = $row['weight_evidence_candidate'];
+                    return implode('|', [
+                        (string) ($candidate['source_reference'] ?? ''),
+                        (string) ($candidate['source_order_reference'] ?? ''),
+                        (string) ($candidate['observed_at'] ?? ''),
+                        (string) ($candidate['observed_weight_kg'] ?? ''),
+                    ]);
+                })->values();
+
+                $weights = $samples->pluck('weight_evidence_candidate.observed_weight_kg')->map(fn ($value): float => (float) $value)->sort()->values()->all();
+                $medianAll = $this->median($weights);
+                $threshold = $medianAll * 0.15;
+                $eligible = array_values(array_filter($weights, fn (float $weight): bool => abs($weight - $medianAll) <= $threshold + 0.0000001));
+                $suggested = $this->median($eligible);
+                $min = min($eligible);
+                $max = max($eligible);
+                $spreadRatio = $suggested > 0 ? ($max - $min) / $suggested : 1.0;
+                $highConfidence = count($eligible) >= 5 && $spreadRatio <= 0.10;
+                $first = $samples->first();
+
+                return [
+                    'product_id' => (int) $first['product']['id'],
+                    'sku' => (string) $first['product']['sku'],
+                    'name' => (string) $first['product']['name'],
+                    'status' => $highConfidence ? 'high_confidence' : 'review_required',
+                    'suggested_shipping_weight_kg' => round($suggested, 3),
+                    'raw_sample_count' => count($weights),
+                    'eligible_sample_count' => count($eligible),
+                    'gross_outlier_count' => count($weights) - count($eligible),
+                    'median_all_kg' => round($medianAll, 3),
+                    'eligible_min_kg' => round($min, 3),
+                    'eligible_max_kg' => round($max, 3),
+                    'eligible_spread_ratio' => round($spreadRatio, 4),
+                    'policy' => [
+                        'minimum_high_confidence_samples' => 5,
+                        'gross_outlier_relative_deviation' => 0.15,
+                        'maximum_high_confidence_spread_ratio' => 0.10,
+                    ],
+                    'samples' => $samples->map(function (array $row) use ($medianAll, $threshold): array {
+                        $candidate = $row['weight_evidence_candidate'];
+                        $weight = (float) $candidate['observed_weight_kg'];
+                        return [
+                            'order_reference' => $candidate['source_order_reference'] ?? null,
+                            'source_reference' => $candidate['source_reference'] ?? null,
+                            'observed_weight_kg' => $weight,
+                            'observed_at' => $candidate['observed_at'] ?? null,
+                            'gross_outlier' => abs($weight - $medianAll) > $threshold + 0.0000001,
+                        ];
+                    })->values()->all(),
+                ];
+            })
+            ->sortByDesc(fn (array $candidate): int => $candidate['eligible_sample_count'])
+            ->values()
+            ->all();
+    }
+
+    /** @param list<float> $values */
+    private function median(array $values): float
+    {
+        if ($values === []) return 0.0;
+        sort($values, SORT_NUMERIC);
+        $count = count($values);
+        $middle = intdiv($count, 2);
+        return $count % 2 === 1 ? (float) $values[$middle] : ((float) $values[$middle - 1] + (float) $values[$middle]) / 2;
     }
 
     private function unresolved(array $base, string $matchStatus, string $status): array
