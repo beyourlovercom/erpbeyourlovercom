@@ -1,8 +1,70 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3'
+import { Head } from '@inertiajs/vue3'
+import { computed, ref } from 'vue'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
-type ReleaseNote={id:number;version:string;title:string;summary:string|null;status:string;released_on:string|null;published_at:string|null}
-defineProps<{releaseNotes:ReleaseNote[];canManage:boolean}>()
+
+type ChangelogEntry = { date: string; html: string }
+const props = defineProps<{ entries: ChangelogEntry[]; initialDate: string | null }>()
+
+const selectedDate = ref(props.initialDate ?? props.entries[0]?.date ?? '')
+const selectedEntry = computed(() => props.entries.find((entry) => entry.date === selectedDate.value) ?? props.entries[0] ?? null)
+
+const selectDate = (date: string) => {
+  selectedDate.value = date
+  const url = new URL(window.location.href)
+  url.searchParams.set('date', date)
+  window.history.replaceState({}, '', url)
+}
 </script>
-<template><Head title="版本更新 · BYL ERP"/><AuthenticatedLayout title="版本更新" :breadcrumbs="['BYL ERP','指南','版本更新']"><section class="mvp-page"><div class="mvp-page-heading"><div><p class="mvp-kicker">RELEASE CHANGELOG</p><h2>版本更新</h2><p>由内容负责人整理并发布的 ERP 版本说明，不直接展示 Git commit。</p></div><Link v-if="canManage" class="mvp-button mvp-button-primary" href="/settings/changelog/create">新建版本记录</Link></div><div class="release-list"><article v-for="note in releaseNotes" :key="note.id" class="mvp-card"><div class="release-meta"><strong>{{note.version}}</strong><span>{{note.released_on||'未设置日期'}}</span><span v-if="canManage" class="mvp-status">{{note.status==='published'?'已发布':'草稿'}}</span></div><h3><Link :href="`/settings/changelog/${note.id}`">{{note.title}}</Link></h3><p>{{note.summary||'暂无摘要'}}</p><Link v-if="canManage" :href="`/settings/changelog/${note.id}/edit`">编辑</Link></article><div v-if="!releaseNotes.length" class="mvp-empty">暂无{{canManage?'版本记录':'已发布版本记录'}}。</div></div></section></AuthenticatedLayout></template>
-<style scoped>.release-list{display:grid;gap:12px}.release-meta{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.release-list h3{margin:10px 0 6px}.release-list p{color:#64748b}</style>
+
+<template>
+  <Head title="版本记录 · BYL ERP" />
+  <AuthenticatedLayout title="版本记录" :breadcrumbs="['BYL ERP', '设置', '版本记录']">
+    <section class="mvp-page changelog-page">
+      <div class="mvp-page-heading">
+        <div>
+          <p class="mvp-kicker">ERP CHANGELOG</p>
+          <h2>版本记录</h2>
+          <p>按日期查看 ERP 已完成的开发记录。</p>
+        </div>
+      </div>
+
+      <div v-if="entries.length" class="changelog-shell">
+        <aside class="changelog-sidebar" aria-label="版本日期">
+          <button
+            v-for="entry in entries"
+            :key="entry.date"
+            type="button"
+            class="changelog-date"
+            :class="{ active: entry.date === selectedEntry?.date }"
+            :data-date="entry.date"
+            @click="selectDate(entry.date)"
+          >
+            {{ entry.date }}
+          </button>
+        </aside>
+
+        <article v-if="selectedEntry" class="changelog-content">
+          <header class="changelog-content-header">
+            <h1>{{ selectedEntry.date }}</h1>
+            <p>BYL ERP 开发日志</p>
+          </header>
+          <div class="markdown-body" v-html="selectedEntry.html" />
+        </article>
+      </div>
+
+      <div v-else class="mvp-card mvp-empty">暂无版本记录。</div>
+    </section>
+  </AuthenticatedLayout>
+</template>
+
+<style scoped>
+.changelog-shell{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:620px;border:1px solid var(--border,#dbe2e8);border-radius:12px;overflow:hidden;background:#fff}
+.changelog-sidebar{padding:14px 10px;background:#f8fafc;border-right:1px solid var(--border,#dbe2e8);max-height:calc(100vh - 190px);overflow-y:auto}
+.changelog-date{display:block;width:100%;border:0;background:transparent;border-radius:8px;padding:11px 14px;text-align:left;font:inherit;color:#334155;cursor:pointer}
+.changelog-date:hover{background:#eef2f6}.changelog-date.active{background:#e2e8f0;color:#0f172a;font-weight:700}
+.changelog-content{padding:34px 42px;min-width:0}.changelog-content-header{padding-bottom:22px;margin-bottom:24px;border-bottom:1px solid #e2e8f0}
+.changelog-content-header h1{margin:0;font-size:32px;line-height:1.2;color:#0f172a}.changelog-content-header p{margin:8px 0 0;color:#64748b}
+.markdown-body{font-size:15px;line-height:1.75;color:#334155}.markdown-body :deep(h3){margin:28px 0 10px;font-size:20px;color:#0f172a}.markdown-body :deep(p){margin:0 0 14px}.markdown-body :deep(ul){margin:8px 0 20px;padding-left:22px}.markdown-body :deep(li){margin:7px 0}.markdown-body :deep(strong){color:#0f172a}
+@media(max-width:760px){.changelog-shell{grid-template-columns:1fr}.changelog-sidebar{display:flex;gap:8px;max-height:none;overflow-x:auto;border-right:0;border-bottom:1px solid var(--border,#dbe2e8)}.changelog-date{width:auto;white-space:nowrap}.changelog-content{padding:24px 20px}.changelog-content-header h1{font-size:26px}}
+</style>
