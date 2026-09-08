@@ -4,22 +4,18 @@ namespace App\Modules\Sync\Experience\Controllers;
 
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\ManualSyncService;
-use App\Modules\Sync\Application\SyncOrchestrationService;
-use App\Modules\Sync\Infrastructure\Models\SyncOutbox;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 final class ManualSyncController
 {
-    public function __construct(
-        private readonly ManualSyncService $sync,
-        private readonly SyncOrchestrationService $orchestration,
-    ) {}
+    public function __construct(private readonly ManualSyncService $sync) {}
 
     public function index(Request $request): Response
     {
         $orders = Order::query()->with(['address', 'manualSync.operator', 'shipment'])
+            ->where('order_kind', 'customer')
             ->whereHas('manualSync', function ($query) use ($request): void {
                 $query->when($request->input('status'), fn ($statusQuery, string $status) => $statusQuery->where('website_sync_status', $status));
             })
@@ -31,31 +27,7 @@ final class ManualSyncController
                 });
             })->latest('updated_at')->get();
 
-        $shipmentIds = $orders->pluck('shipment.id')->filter()->map(fn ($id) => (string) $id)->values();
-        $trackingOutbox = SyncOutbox::query()
-            ->where('operation', 'woocommerce.tracking_outbound')
-            ->whereIn('aggregate_id', $shipmentIds)
-            ->latest('id')
-            ->get()
-            ->unique('aggregate_id')
-            ->keyBy('aggregate_id');
-
-        $recentRuns = $this->orchestration->recentRuns(10);
-
         return Inertia::render('Sync/Orders', [
-            'queueSummary' => $this->orchestration->queueSummary(),
-            'syncRuns' => $recentRuns->map(fn ($run): array => [
-                'id' => $run->id,
-                'run_type' => $run->run_type,
-                'status' => $run->status->value,
-                'requested_items' => $run->requested_items,
-                'succeeded_items' => $run->succeeded_items,
-                'retrying_items' => $run->retrying_items,
-                'failed_items' => $run->failed_items,
-                'conflict_items' => $run->conflict_items,
-                'skipped_items' => $run->skipped_items,
-                'started_at' => $run->started_at?->toIso8601String(),
-            ])->values()->all(),
             'orders' => $orders->map(fn (Order $order): array => [
                 'id' => $order->id, 'erp_order_id' => $order->erp_order_id, 'external_order_number' => $order->external_order_number,
                 'recipient_name' => $order->address?->recipient_name,
@@ -66,12 +38,6 @@ final class ManualSyncController
                 'shipment_status' => $order->shipment?->shipment_status,
                 'carrier' => $order->shipment?->carrier,
                 'source_type' => $order->source_type->value,
-                'tracking_outbound_status' => $order->shipment
-                    ? $trackingOutbox->get((string) $order->shipment->id)?->status?->value
-                    : null,
-                'tracking_outbound_attempts' => $order->shipment
-                    ? $trackingOutbox->get((string) $order->shipment->id)?->attempts
-                    : null,
             ])->values()->all(),
             'filters' => $request->only(['status', 'search']),
         ]);

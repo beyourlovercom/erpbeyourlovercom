@@ -2,118 +2,77 @@ import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Orders from './Orders.vue'
 
-const { post } = vi.hoisted(() => ({ post: vi.fn() }))
+const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
-  router: { get: vi.fn(), post },
+  router: { get, post },
 }))
 
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({
   default: { props: ['title', 'breadcrumbs'], template: '<div><slot /></div>' },
 }))
 
-const woo = {
+const base = {
   id: 1,
   erp_order_id: '007-0908-c1',
-  internal_order_number: 'WOO-1',
-  recipient_name: 'Test',
-  status: 'pending',
+  recipient_name: 'Test Customer',
+  status: 'needs_confirmation',
   synced_at: null,
-  synced_by: null,
   tracking_number: 'TRACK-1',
   shipment_status: 'shipped',
   carrier: 'DHL',
   source_type: 'woocommerce',
-  tracking_outbound_status: null,
-  tracking_outbound_attempts: null,
 }
-describe('Sync tracking outbound UI', () => {
-  beforeEach(() => post.mockClear())
 
-  it('shows the canonical 007 ERP order id instead of the internal number', () => {
-    const wrapper = mount(Orders, { props: { orders: [woo], filters: {} } })
-    expect(wrapper.text()).toContain('007-0908-c1')
-    expect(wrapper.text()).not.toContain('WOO-1')
+describe('Customer fulfillment review UI', () => {
+  beforeEach(() => { get.mockClear(); post.mockClear() })
+
+  it('renders only the simple fulfillment review surface', () => {
+    const wrapper = mount(Orders, { props: { orders: [base], filters: {} } })
+    expect(wrapper.text()).toContain('发货审核')
+    expect(wrapper.text()).toContain('物流商')
+    expect(wrapper.text()).toContain('物流单号')
+    expect(wrapper.text()).not.toContain('批量写回所选')
+    expect(wrapper.text()).not.toContain('重试到期任务')
+    expect(wrapper.text()).not.toContain('Run')
+    expect(wrapper.text()).not.toContain('冲突')
   })
 
-  it('shows one-click outbound only for eligible Woo shipped orders', async () => {
-    const wrapper = mount(Orders, { props: { orders: [woo], filters: {} } })
-    expect(wrapper.text()).toContain('Tracking 写回')
-    expect(wrapper.text()).toContain('未执行')
-    const button = wrapper.findAll('button').find((item) => item.text() === '写回 Tracking')
-    expect(button?.exists()).toBe(true)
-    await button!.trigger('click')
+  it('shows canonical ERP order number and shipment facts', () => {
+    const wrapper = mount(Orders, { props: { orders: [base], filters: {} } })
+    expect(wrapper.text()).toContain('007-0908-c1')
+    expect(wrapper.text()).toContain('Test Customer')
+    expect(wrapper.text()).toContain('DHL')
+    expect(wrapper.text()).toContain('TRACK-1')
+  })
+
+  it('offers only approval while waiting for operations review', async () => {
+    const wrapper = mount(Orders, { props: { orders: [base], filters: {} } })
+    expect(wrapper.text()).toContain('待审核')
+    const approve = wrapper.findAll('button').find((button) => button.text() === '审核通过')
+    expect(approve?.exists()).toBe(true)
+    expect(wrapper.findAll('button').some((button) => button.text() === '同步到网站')).toBe(false)
+    await approve!.trigger('click')
+    expect(post).toHaveBeenCalledWith('/sync/orders/1/approve', {})
+  })
+
+  it('offers website sync only after approval', async () => {
+    const approved = { ...base, status: 'pending' }
+    const wrapper = mount(Orders, { props: { orders: [approved], filters: {} } })
+    expect(wrapper.text()).toContain('已审核 · 待同步')
+    expect(wrapper.findAll('button').some((button) => button.text() === '审核通过')).toBe(false)
+    const sync = wrapper.findAll('button').find((button) => button.text() === '同步到网站')
+    expect(sync?.exists()).toBe(true)
+    await sync!.trigger('click')
     expect(post).toHaveBeenCalledWith('/sync/orders/1/tracking-outbound')
   })
 
-  it('hides outbound action for non-Woo or unshipped orders', () => {
-    const manual = { ...woo, id: 2, source_type: 'manual' }
-    const unshipped = { ...woo, id: 3, shipment_status: 'pending' }
-    const wrapper = mount(Orders, { props: { orders: [manual, unshipped], filters: {} } })
-    expect(wrapper.findAll('button').filter((item) => item.text() === '写回 Tracking')).toHaveLength(0)
-  })
-
-  it('shows review actions and hides outbound/selection until approval', () => {
-    const review = { ...woo, id: 6, status: 'needs_confirmation' }
-    const wrapper = mount(Orders, { props: { orders: [review], filters: {} } })
-    expect(wrapper.text()).toContain('待运营审核')
-    expect(wrapper.text()).toContain('审核通过')
-    expect(wrapper.text()).toContain('退回修改')
-    expect(wrapper.findAll('button').filter((item) => item.text() === '退回更正')).toHaveLength(0)
-    expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false)
-    expect(wrapper.findAll('button').filter((item) => item.text() === '写回 Tracking')).toHaveLength(0)
-  })
-
-  it('labels approved pending rows as outbound-eligible', () => {
-    const wrapper = mount(Orders, { props: { orders: [woo], filters: {} } })
-    expect(wrapper.text()).toContain('待同步正式站')
-  })
-
-  it('renders retry and completed outbox states explicitly', () => {
-    const retry = { ...woo, id: 4, tracking_outbound_status: 'pending', tracking_outbound_attempts: 1 }
-    const done = { ...woo, id: 5, status: 'completed', tracking_outbound_status: 'completed', tracking_outbound_attempts: 1 }
-    const wrapper = mount(Orders, { props: { orders: [retry, done], filters: {} } })
-    expect(wrapper.text()).toContain('待重试')
+  it('shows completed orders without another business action', () => {
+    const completed = { ...base, status: 'completed', synced_at: '2026-09-08T09:00:00Z' }
+    const wrapper = mount(Orders, { props: { orders: [completed], filters: {} } })
+    expect(wrapper.text()).toContain('已同步')
     expect(wrapper.text()).toContain('已完成')
-  })
-  it('posts selected and orchestration actions to canonical routes', async () => {
-    const wrapper = mount(Orders, { props: { orders: [woo], filters: {} } })
-    await wrapper.find('input[type="checkbox"]').setValue(true)
-
-    const click = async (label: string) => {
-      const button = wrapper.findAll('button').find((item) => item.text() === label)
-      expect(button?.exists()).toBe(true)
-      await button!.trigger('click')
-    }
-
-    await click('批量写回所选')
-    expect(post).toHaveBeenCalledWith('/sync/orchestration/tracking/selected', { order_ids: [1] })
-    await click('写回全部待同步')
-    expect(post).toHaveBeenCalledWith('/sync/orchestration/tracking/all-pending', { limit: 100 })
-    await click('重试到期任务')
-    expect(post).toHaveBeenCalledWith('/sync/orchestration/retry', { limit: 100 })
-    await click('恢复超时任务')
-    expect(post).toHaveBeenCalledWith('/sync/orchestration/recover-stale', { age_seconds: 300, limit: 100 })
-    await click('核对所选 Tracking')
-    expect(post).toHaveBeenCalledWith('/sync/orchestration/reconcile', { order_ids: [1] })
-  })
-
-  it('renders queue summary and recent sync runs', () => {
-    const wrapper = mount(Orders, { props: {
-      orders: [], filters: {},
-      queueSummary: { retry_due: 2, retry_waiting: 3, processing: 4, failed: 5, conflicts: 6 },
-      syncRuns: [{
-        id: 9, run_type: 'tracking_all_pending', status: 'partial', requested_items: 7,
-        succeeded_items: 4, retrying_items: 1, failed_items: 1, conflict_items: 1,
-        skipped_items: 0, started_at: '2026-08-28T04:00:00Z',
-      }],
-    } })
-
-    expect(wrapper.text()).toContain('到期重试')
-    expect(wrapper.text()).toContain('等待重试')
-    expect(wrapper.text()).toContain('tracking_all_pending')
-    expect(wrapper.text()).toContain('partial')
-    expect(wrapper.find('a[href="/sync/runs/9"]').exists()).toBe(true)
+    expect(wrapper.findAll('button').some((button) => ['审核通过', '同步到网站'].includes(button.text()))).toBe(false)
   })
 })

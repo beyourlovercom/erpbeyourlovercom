@@ -24,8 +24,8 @@ This package does **not** execute the remote Woo write on approval. M2.2 will co
 4. Add an explicit ManualSync service transition `needs_confirmation → pending` for Vita approval with audit evidence.
 5. Existing return action remains `returned`; correcting tracking on a customer order moves it back to `needs_confirmation`.
 6. Woo outbound single/batch actions must not execute an order while Manual Sync is `needs_confirmation` or `returned`. Only `pending` is outbound-eligible.
-7. Sync Orders UI uses Chinese business labels: `待运营审核`, `待同步正式站`, `已完成`, `已退回`, `失败`.
-8. A `needs_confirmation` row exposes `审核通过` and `退回修改`; it must not expose Tracking write actions before approval.
+7. Vita 的日常前端只保留业务动作：查看发货事实、`审核通过`、审核后 `同步到网站`；不展示批量写回、Run、重试、冲突、恢复超时、远端核对等技术调度控件。
+8. 前端状态简化为 `待审核`、`已审核 · 待同步`、`已同步`；底层重试/冲突能力继续保留在技术层，不作为 Vita 日常工作流。
 9. No role/permission/menu mutation: M1 Role Boundary Freeze is treated as already complete.
 10. Preserve canonical `erp_order_id` (`007-...`) display and PR #260 grid controls.
 
@@ -44,7 +44,7 @@ This package does **not** execute the remote Woo write on approval. M2.2 will co
 - Vita return changes to `returned`; Liang tracking correction returns to `needs_confirmation`.
 - Direct single Tracking outbound is blocked before approval.
 - Selected/all-pending orchestration cannot bypass review; only `pending` records are eligible.
-- Sync Orders UI clearly differentiates review versus outbound states and actions.
+- Vita 发货审核页只显示 ERP订单号、收件人、物流商、物流单号、状态，以及 `审核通过` / `同步到网站` 两个顺序业务动作。
 - Existing KOL/manual-sync regressions remain green.
 - Focused PHPUnit/Vitest, typecheck, build and `git diff --check` PASS.
 - Owner UAT stops before any Production deployment.
@@ -83,7 +83,7 @@ ESTIMATE_METHOD: existing state-machine/outbound reuse; no schema/menu changes
 
 IMPLEMENTATION EVIDENCE
 IMPLEMENTED_FILES: app/Modules/Logistics/Application/ShipmentService.php; app/Modules/Sync/Application/ManualSyncService.php; app/Modules/Sync/Application/WooCommerceTrackingOutboundService.php; app/Modules/Sync/Experience/Controllers/ManualSyncController.php; app/Modules/Sync/Experience/Routes/web.php; resources/js/Pages/Sync/Orders.vue; resources/js/Pages/Sync/Orders.test.ts; dedicated CustomerFulfillmentReviewGateTest; Woo outbound test; architecture route/hash baseline
-IMPLEMENTED_BEHAVIOR: customer tracking enters needs_confirmation; approval audits needs_confirmation->pending; returned correction re-enters needs_confirmation; outbound prepare requires pending; Sync/Orders labels/actions/selection enforce the review gate; KOL path retains ensurePending
+IMPLEMENTED_BEHAVIOR: customer tracking enters needs_confirmation; approval audits needs_confirmation->pending; outbound requires pending; Vita UI is reduced to shipment facts + approve + sync-to-website, while orchestration/retry/run controls remain hidden from daily operations; KOL path retains ensurePending
 VERIFICATION_PASS: post-rebase focused PHPUnit 20/20 (208 assertions); dedicated review-gate + Woo outbound 9/9 (40 assertions); Sync/Orders Vitest 8/8; npm typecheck PASS; Vite production build PASS; PHP lint PASS; git diff --check PASS; no NotificationCenter diff
 BASELINE_GOVERNANCE_DEBT: ModuleArchitectureTest is 5/8 on this branch and independently 5/8 on exact origin/main@016687a with the same 3 stale frozen-baseline failures (module directory set, layer file set, migration file set); this package does not mutate those baseline sets. LogisticsOsV1Closure first dispatch test is also independently baseline-failing on main and is outside M2.1 scope.
 VERIFICATION_BLOCKED: NONE for M2.1 acceptance; known mainline governance baseline debt recorded separately
