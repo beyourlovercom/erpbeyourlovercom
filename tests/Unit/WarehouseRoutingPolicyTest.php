@@ -117,7 +117,11 @@ final class WarehouseRoutingPolicyTest extends TestCase
 
         $this->assertSame('4PX / 速达', $policy->displayName('4PX'));
         $this->assertSame('Weship / 纬狮', $policy->displayName('Weship'));
-        $this->assertSame('POSTNL international / 佰事达', $policy->displayName('POSTNL international'));
+        $this->assertSame('POSTNL / 佰事达', $policy->displayName('POSTNL international'));
+        $this->assertSame('Canada Post / 加拿大邮政', $policy->displayName('Canada Post'));
+        $this->assertSame('SF Express / 顺丰速运', $policy->displayName('SF Express'));
+        $this->assertSame('Singapore Post / 新加坡邮政', $policy->displayName('Singapore Post'));
+        $this->assertSame('JD / 京东快递', $policy->displayName('JD'));
         $this->assertSame('KingTrans / 唐歌', $policy->displayName('KingTrans'));
         $this->assertSame('USPS / 美国邮政', $policy->displayName('USPS'));
         $this->assertSame('FedEx / 联邦', $policy->displayName('FedEx'));
