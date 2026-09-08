@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Products;
 
+use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Products\Application\ProductShippingWeightStandardReader;
 use App\Modules\Products\Application\ShippingWeightStandardCandidateService;
 use App\Modules\Products\Infrastructure\Models\Product;
@@ -17,12 +18,14 @@ final class ShippingWeightStandardCandidateTest extends TestCase
 
     private ShippingWeightStandardCandidateService $service;
     private ProductShippingWeightStandardReader $reader;
+    private int $reviewerId;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->service = new ShippingWeightStandardCandidateService();
         $this->reader = new ProductShippingWeightStandardReader();
+        $this->reviewerId = User::factory()->create()->id;
     }
 
     private function product(): Product
@@ -58,7 +61,7 @@ final class ShippingWeightStandardCandidateTest extends TestCase
     public function test_median_calculation_odd_count(): void
     {
         $p = $this->product();
-        $c = $this->create($p, [1.0, 2.0, 3.0]);
+        $c = $this->create($p, [1.8, 2.0, 2.2]);
         $this->assertEquals('2.0000', $c->suggested_weight_kg);
         $this->assertEquals(3, $c->raw_sample_count);
         $this->assertEquals(3, $c->eligible_sample_count);
@@ -68,8 +71,8 @@ final class ShippingWeightStandardCandidateTest extends TestCase
     public function test_median_calculation_even_count(): void
     {
         $p = $this->product();
-        $c = $this->create($p, [1.0, 2.0, 3.0, 4.0]);
-        $this->assertEquals('2.5000', $c->suggested_weight_kg);
+        $c = $this->create($p, [2.0, 2.1, 2.2, 2.3]);
+        $this->assertEquals('2.1500', $c->suggested_weight_kg);
     }
 
     public function test_gross_outlier_excluded_from_eligible(): void
@@ -87,9 +90,10 @@ final class ShippingWeightStandardCandidateTest extends TestCase
     public function test_spread_ratio_uses_suggested_weight_as_denominator(): void
     {
         $p = $this->product();
-        // eligible: [1.0, 2.0, 3.0], suggested = 2.0, spread = (3.0-1.0)/2.0 = 1.0
-        $c = $this->create($p, [1.0, 2.0, 3.0]);
-        $this->assertEquals('1.000000', $c->eligible_spread_ratio);
+        // All eligible: suggested = 1.0, spread = (1.1-0.9)/1.0 = 0.2.
+        // Using eligible_min as the denominator would incorrectly produce ~0.2222.
+        $c = $this->create($p, [0.9, 1.0, 1.1]);
+        $this->assertEquals('0.200000', $c->eligible_spread_ratio);
     }
 
     // ── Confidence ────────────────────────────────────────────────────────────
@@ -112,8 +116,8 @@ final class ShippingWeightStandardCandidateTest extends TestCase
     public function test_review_required_when_spread_exceeds_threshold(): void
     {
         $p = $this->product();
-        // 5 eligible, spread = (2.0-1.0)/1.5 ≈ 0.667 > 10%
-        $c = $this->create($p, [1.0, 1.5, 2.0, 1.2, 1.8]);
+        // All 5 are within the 15% outlier gate; spread = (1.10-0.90)/1.00 = 20% > 10%.
+        $c = $this->create($p, [0.90, 0.95, 1.00, 1.05, 1.10]);
         $this->assertEquals('review_required', $c->confidence_status);
     }
 
@@ -123,7 +127,7 @@ final class ShippingWeightStandardCandidateTest extends TestCase
     {
         $p = $this->product();
         $e1 = $this->shippingEvidence($p, 1.0);
-        $e2 = $this->shippingEvidence($p, 2.0);
+        $e2 = $this->shippingEvidence($p, 1.1);
         $c = $this->service->createFromEvidenceIds($p->id, [$e1->id, $e2->id, $e1->id, $e2->id]);
         $this->assertEquals(2, $c->raw_sample_count);
         $this->assertEquals(2, $c->evidenceLinks()->count());
@@ -135,7 +139,7 @@ final class ShippingWeightStandardCandidateTest extends TestCase
     {
         $p = $this->product();
         $e1 = $this->shippingEvidence($p, 1.0);
-        $e2 = $this->shippingEvidence($p, 2.0);
+        $e2 = $this->shippingEvidence($p, 1.1);
         $c1 = $this->service->createFromEvidenceIds($p->id, [$e1->id, $e2->id]);
         $c2 = $this->service->createFromEvidenceIds($p->id, [$e2->id, $e1->id]); // different order
         $this->assertEquals($c1->id, $c2->id);
@@ -194,16 +198,16 @@ final class ShippingWeightStandardCandidateTest extends TestCase
     public function test_adoption_returns_null_on_success(): void
     {
         $p = $this->product();
-        $c = $this->create($p, [1.0, 2.0, 3.0]);
-        $result = $this->service->adopt($c->id, 1, confirmed: true);
+        $c = $this->create($p, [1.9, 2.0, 2.1]);
+        $result = $this->service->adopt($c->id, $this->reviewerId, confirmed: true);
         $this->assertNull($result);
     }
 
     public function test_adoption_sets_product_shipping_weight_and_clears_evidence_id(): void
     {
         $p = $this->product();
-        $c = $this->create($p, [1.0, 2.0, 3.0]);
-        $this->service->adopt($c->id, 1, confirmed: true);
+        $c = $this->create($p, [1.9, 2.0, 2.1]);
+        $this->service->adopt($c->id, $this->reviewerId, confirmed: true);
         $p->refresh();
         $this->assertEquals($c->id, $p->shipping_weight_standard_candidate_id);
         $this->assertNull($p->shipping_weight_evidence_id);
@@ -214,8 +218,8 @@ final class ShippingWeightStandardCandidateTest extends TestCase
     {
         $p = $this->product();
         $p->update(['shipping_weight_kg' => 1.5]);
-        $c = $this->create($p, [1.0, 2.0, 3.0]);
-        $result = $this->service->adopt($c->id, 1, confirmed: false);
+        $c = $this->create($p, [1.9, 2.0, 2.1]);
+        $result = $this->service->adopt($c->id, $this->reviewerId, confirmed: false);
         $this->assertSame('confirm_required', $result);
     }
 
@@ -224,12 +228,12 @@ final class ShippingWeightStandardCandidateTest extends TestCase
         $p = $this->product();
         $e1 = $this->shippingEvidence($p, 1.0);
         $c1 = $this->service->createFromEvidenceIds($p->id, [$e1->id]);
-        $this->service->adopt($c1->id, 1, confirmed: true);
+        $this->service->adopt($c1->id, $this->reviewerId, confirmed: true);
 
-        $e2 = $this->shippingEvidence($p, 2.0);
-        $e3 = $this->shippingEvidence($p, 3.0);
+        $e2 = $this->shippingEvidence($p, 1.1);
+        $e3 = $this->shippingEvidence($p, 1.2);
         $c2 = $this->service->createFromEvidenceIds($p->id, [$e2->id, $e3->id]);
-        $this->service->adopt($c2->id, 1, confirmed: true);
+        $this->service->adopt($c2->id, $this->reviewerId, confirmed: true);
 
         $c1->refresh();
         $this->assertEquals('superseded', $c1->workflow_status);
@@ -247,15 +251,15 @@ final class ShippingWeightStandardCandidateTest extends TestCase
 
         // Manually create a second candidate that is adopted but NOT pointed to by the product
         $c_orphan = $this->service->createFromEvidenceIds($p->id, [$e1->id]);
-        $this->service->adopt($c_orphan->id, 1, confirmed: true);
+        $this->service->adopt($c_orphan->id, $this->reviewerId, confirmed: true);
 
         // Now adopt a second one — first adopt pointed by product
         $c_pointed = $this->service->createFromEvidenceIds($p->id, [$e2->id]);
-        $this->service->adopt($c_pointed->id, 1, confirmed: true);
+        $this->service->adopt($c_pointed->id, $this->reviewerId, confirmed: true);
 
         // Now adopt a third — only c_pointed (the one currently pointed) should be superseded
         $c_new = $this->service->createFromEvidenceIds($p->id, [$e3->id]);
-        $this->service->adopt($c_new->id, 1, confirmed: true);
+        $this->service->adopt($c_new->id, $this->reviewerId, confirmed: true);
 
         $c_orphan->refresh();
         $c_pointed->refresh();
@@ -272,7 +276,7 @@ final class ShippingWeightStandardCandidateTest extends TestCase
         $p = $this->product();
         $e = $this->shippingEvidence($p, 1.0, 'adopted');
         $c = $this->service->createFromEvidenceIds($p->id, [$e->id]);
-        $this->service->adopt($c->id, 1, confirmed: true);
+        $this->service->adopt($c->id, $this->reviewerId, confirmed: true);
         $e->refresh();
         $this->assertEquals('adopted', $e->status);
     }
@@ -281,7 +285,7 @@ final class ShippingWeightStandardCandidateTest extends TestCase
     {
         $p = $this->product();
         $c = $this->create($p, [1.0]);
-        $result = $this->service->reject($c->id, 1, 'Bad data');
+        $result = $this->service->reject($c->id, $this->reviewerId, 'Bad data');
         $this->assertEquals('rejected', $result->workflow_status);
         $this->assertEquals('Bad data', $result->rejection_note);
         $this->assertNotNull($result->reviewed_at);
@@ -291,7 +295,7 @@ final class ShippingWeightStandardCandidateTest extends TestCase
     {
         $p = $this->product();
         $c = $this->create($p, [1.0]);
-        $result = $this->service->reject($c->id, 1, null);
+        $result = $this->service->reject($c->id, $this->reviewerId, null);
         $this->assertEquals('rejected', $result->workflow_status);
         $this->assertNull($result->rejection_note);
     }
@@ -301,8 +305,8 @@ final class ShippingWeightStandardCandidateTest extends TestCase
     public function test_reader_returns_aggregated_source_when_adopted_candidate(): void
     {
         $p = $this->product();
-        $c = $this->create($p, [1.0, 2.0, 3.0]);
-        $this->service->adopt($c->id, 1, confirmed: true);
+        $c = $this->create($p, [1.9, 2.0, 2.1]);
+        $this->service->adopt($c->id, $this->reviewerId, confirmed: true);
 
         $result = $this->reader->forProductIds([$p->id]);
         $this->assertArrayHasKey($p->id, $result);
@@ -334,7 +338,7 @@ final class ShippingWeightStandardCandidateTest extends TestCase
         $p1 = $this->product();
         $p2 = $this->product();
         $c = $this->create($p1, [1.0]);
-        $this->service->adopt($c->id, 1, confirmed: true);
+        $this->service->adopt($c->id, $this->reviewerId, confirmed: true);
 
         // Manually point p2 to p1's adopted candidate (simulates corrupt/invalid state)
         $p2->update(['shipping_weight_kg' => 1.0, 'shipping_weight_standard_candidate_id' => $c->id]);
