@@ -154,11 +154,6 @@ return [
         'warehouse_code' => 'FACTORY',
         'label' => '中国工厂',
         'inventory_authority_required' => false,
-        'carrier' => 'SD经济挂号-带电',
-        'rate_source' => [
-            'file' => '仓库-物流-国内小包费用.xlsx',
-            'sheet' => 'SD经济挂号-带电',
-        ],
         'use_when' => 'overseas_options_unavailable_or_costlier',
         'automatic_execution' => false,
     ],

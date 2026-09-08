@@ -27,7 +27,7 @@ type LedgerRow = {
 }
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; total: number }
 
-const props = defineProps<{ carrier: string; summary: Summary; shipments: Paginated<LedgerRow>; statusBar?: {key:string;label:string;url:string;count:number}[] }>()
+const props = defineProps<{ carrier: string; carrierDisplayName: string; summary: Summary; shipments: Paginated<LedgerRow>; statusBar?: {key:string;label:string;url:string;count:number}[] }>()
 const dateTime = (value: string | null) => value ? new Date(value).toLocaleString() : '—'
 const money = (costs: CurrencyCost[], field: 'total' | 'average') => costs.length === 0 ? '—' : costs.map((row) => {
   const value = row[field]
@@ -41,12 +41,12 @@ const goToPage = (page: number) => router.get(`/logistics/carriers/${encodeURICo
 </script>
 
 <template>
-  <Head :title="`${carrier} · 承运商 · BYL ERP`" />
-  <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP', '物流', '承运商', carrier]">
+  <Head :title="`${carrierDisplayName} · 承运商 · BYL ERP`" />
+  <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP', '物流', '承运商', carrierDisplayName]">
     <section class="mvp-page carrier-detail-page">
       <StatusBar :statuses="props.statusBar ?? []" />
       <div class="mvp-page-heading carrier-heading">
-        <div><p class="mvp-kicker">Carrier Shipment Ledger</p><h2>{{ carrier }}</h2><p>真实 Shipment 历史、计费重量、实际物流费用与 Provider raw evidence。</p></div>
+        <div><p class="mvp-kicker">Carrier Shipment Ledger</p><h2>{{ carrierDisplayName }}</h2><p>真实 Shipment 历史、计费重量、实际物流费用与 Provider raw evidence。</p></div>
         <Link class="mvp-button" href="/logistics/carriers">返回承运商</Link>
       </div>
 

@@ -23,16 +23,23 @@ final class CarrierWorkspaceTest extends TestCase
         $this->shipment($user, 'DHL', 'DHL-1', 2.500, 18.50, 'USD', 'delivered');
         $this->shipment($user, 'UAT Carrier', 'UAT-1', 1.000, 5.00, 'USD', null);
 
-        $this->assertSame(8, Carrier::query()->count());
+        $this->assertSame(11, Carrier::query()->count());
 
         $this->actingAs($user)->get('/logistics/carriers')->assertInertia(
             fn (Assert $page) => $page
                 ->component('Logistics/Carriers/Index')
-                ->has('carriers', 8)
+                ->has('carriers', 11)
                 ->where('carriers.0.name', '4PX')
+                ->where('carriers.0.display_name', '4PX / 速达')
                 ->where('carriers.0.shipment_count', 0)
                 ->where('carriers.1.name', 'DHL')
                 ->where('carriers.1.shipment_count', 1)
+                ->where('carriers.8.name', 'POSTNL international')
+                ->where('carriers.8.display_name', 'POSTNL international / 佰事达')
+                ->where('carriers.9.name', 'Weship')
+                ->where('carriers.9.display_name', 'Weship / 纬狮')
+                ->where('carriers.10.name', 'KingTrans')
+                ->where('carriers.10.display_name', 'KingTrans / 唐歌')
                 ->where('canOperate', false)
         );
 
@@ -79,8 +86,8 @@ final class CarrierWorkspaceTest extends TestCase
 
         $this->actingAs($user)->get('/logistics')->assertInertia(
             fn (Assert $page) => $page
-                ->where('carrierOptions.8.value', 'UniUni')
-                ->where('carrierOptions.8.label', 'UniUni')
+                ->where('carrierOptions.11.value', 'UniUni')
+                ->where('carrierOptions.11.label', 'UniUni')
         );
     }
 

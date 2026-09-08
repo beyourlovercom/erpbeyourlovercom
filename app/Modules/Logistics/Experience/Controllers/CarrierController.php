@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Finance\Application\Contracts\ConfirmedLossReader;
+use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
@@ -17,7 +18,10 @@ final class CarrierController
 {
     private const PER_PAGE = 50;
 
-    public function __construct(private readonly ConfirmedLossReader $confirmedLosses) {}
+    public function __construct(
+        private readonly ConfirmedLossReader $confirmedLosses,
+        private readonly CarrierRoutingPolicy $carrierRouting,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -32,6 +36,7 @@ final class CarrierController
         $carriers = $masters->map(fn (Carrier $carrier): array => [
             'id' => $carrier->id,
             'name' => $carrier->name,
+            'display_name' => $this->carrierRouting->displayName($carrier->name),
             'is_active' => $carrier->is_active,
             ...$this->summary($shipments->get($carrier->name, collect())),
         ])->values();
@@ -82,6 +87,7 @@ final class CarrierController
 
         return Inertia::render('Logistics/Carriers/Show', [
             'carrier' => $carrier,
+            'carrierDisplayName' => $this->carrierRouting->displayName($carrier),
             'summary' => $this->summary($summaryRows),
             'shipments' => $shipments->through(fn (Shipment $shipment): array => $this->ledgerRow($shipment))->toArray(),
             'statusBar' => $this->statusBar(),

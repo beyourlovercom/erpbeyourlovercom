@@ -16,6 +16,7 @@ final class FulfillmentPlanPreviewService
     public function __construct(
         private readonly InventoryAvailabilityReader $inventory,
         private readonly WarehouseRoutingPolicy $routing,
+        private readonly CarrierRoutingPolicy $carrierRouting,
         private readonly ?FulfillmentPlanCostEstimator $costEstimator = null,
     ) {}
 
@@ -148,14 +149,15 @@ final class FulfillmentPlanPreviewService
 
     private function factoryPlan(string $countryCode, Collection $requirements, array $costEvidence, array $destinationContext): array
     {
-        $factory = $this->routing->factoryFallback();
+        $factory = array_replace($this->routing->factoryFallback(), $this->carrierRouting->factoryRoute($countryCode));
         $segments = [[
             'source_type' => 'factory',
             'source_code' => (string) ($factory['warehouse_code'] ?? 'FACTORY'),
             'warehouse_id' => null,
             'warehouse_name' => (string) ($factory['label'] ?? '中国工厂'),
             'source_class' => 'china_factory',
-            'carrier' => (string) ($factory['carrier'] ?? 'SD经济挂号-带电'),
+            'carrier' => (string) ($factory['carrier'] ?? '4PX'),
+            'service' => $factory['service'] ?? null,
             'rate_source' => $factory['rate_source'] ?? null,
             'items' => $this->items($requirements),
         ]];
@@ -190,14 +192,15 @@ final class FulfillmentPlanPreviewService
                 }
             }
             if ($factoryAllowed) {
-                $factory = $this->routing->factoryFallback();
+                $factory = array_replace($this->routing->factoryFallback(), $this->carrierRouting->factoryRoute($countryCode));
                 $sources[] = [
                     'source_type' => 'factory',
                     'source_code' => (string) ($factory['warehouse_code'] ?? 'FACTORY'),
                     'warehouse_id' => null,
                     'warehouse_name' => (string) ($factory['label'] ?? '中国工厂'),
                     'source_class' => 'china_factory',
-                    'carrier' => (string) ($factory['carrier'] ?? 'SD经济挂号-带电'),
+                    'carrier' => (string) ($factory['carrier'] ?? '4PX'),
+                    'service' => $factory['service'] ?? null,
                     'rate_source' => $factory['rate_source'] ?? null,
                 ];
             }

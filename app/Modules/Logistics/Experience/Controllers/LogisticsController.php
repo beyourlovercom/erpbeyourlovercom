@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Logistics\Application\AutomaticAllocationEligibilityService;
+use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\AssistedFulfillmentService;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\ShipmentService;
@@ -30,6 +31,7 @@ final class LogisticsController
         private readonly InventoryAvailabilityReader $availability,
         private readonly WarehouseRecommendationService $recommendations,
         private readonly FulfillmentPlanPreviewService $fulfillmentPlans,
+        private readonly CarrierRoutingPolicy $carrierRouting,
         private readonly OrderPackagingReferenceProjection $packagingReferences,
         private readonly ConfirmedLossReader $confirmedLosses,
     ) {}
@@ -48,7 +50,7 @@ final class LogisticsController
             'warehouses' => $this->availability->activeWarehouses(),
             'carrierOptions' => Carrier::query()->where('is_active', true)->orderBy('id')->get(['name'])->map(fn (Carrier $carrier): array => [
                 'value' => $carrier->name,
-                'label' => $carrier->name,
+                'label' => $this->carrierRouting->displayName($carrier->name),
             ])->values()->all(),
             'statusBar' => $this->statusBar(),
         ]);

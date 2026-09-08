@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Providers;
 
 use App\Modules\Logistics\Application\Contracts\CarrierBillingEvidenceReader;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
+use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\FulfillmentPlanCostEstimator;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\WarehouseRoutingPolicy;
@@ -23,6 +24,7 @@ final class LogisticsServiceProvider extends ServiceProvider
         $this->app->bind(FulfillmentPlanPreviewService::class, fn ($app): FulfillmentPlanPreviewService => new FulfillmentPlanPreviewService(
             $app->make(InventoryAvailabilityReader::class),
             $app->make(WarehouseRoutingPolicy::class),
+            $app->make(CarrierRoutingPolicy::class),
             $app->make(FulfillmentPlanCostEstimator::class),
         ));
     }
