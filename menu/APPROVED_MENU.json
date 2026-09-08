@@ -1074,6 +1074,21 @@
       "sort": 40
     },
     {
+      "code": "settings-fx",
+      "parent_code": "settings",
+      "level": 2,
+      "label_zh": "汇率计算",
+      "slug": "fx",
+      "url": "/settings/fx",
+      "route": "settings.fx",
+      "permission": "system.permissions.manage",
+      "emoji": null,
+      "function_zh": "维护管理参考汇率；每个币种可独立切换 ECB 自动汇率或已保存的手动汇率，切换自动不会清空手动值，不改写历史财务事实。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 50
+    },
+    {
       "code": "settings-audit-logs",
       "parent_code": "settings",
       "level": 2,
@@ -1086,7 +1101,7 @@
       "function_zh": "查看操作日志。",
       "status": "planned",
       "progress": 0,
-      "sort": 50
+      "sort": 60
     },
     {
       "code": "settings-changelog",
@@ -1101,7 +1116,7 @@
       "function_zh": "查看当前ERP版本、近期发布摘要与完整版本历史。",
       "status": "implemented",
       "progress": 100,
-      "sort": 60
+      "sort": 70
     },
     {
       "code": "settings-backup",
@@ -1116,7 +1131,7 @@
       "function_zh": "查看备份与迁移工作区；备份引擎接入前仅展示策略和不可用状态。",
       "status": "in_progress",
       "progress": 20,
-      "sort": 70
+      "sort": 80
     }
   ]
 }

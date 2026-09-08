@@ -13,6 +13,7 @@ describe('Settings changelog summary', () => {
     expect(wrapper.text()).toContain('2026-09-07')
     expect(wrapper.find('a[href="/settings/changelog"]').exists()).toBe(true)
     expect(wrapper.find('a[href="/settings/changelog?date=2026-09-07"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/settings/fx"]').exists()).toBe(true)
     expect(wrapper.find('a[href="/settings/changelog/create"]').exists()).toBe(false)
   })
 })
