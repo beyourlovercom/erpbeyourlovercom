@@ -41,6 +41,11 @@ class Product extends Model
         return $this->hasMany(ProductSkuAlias::class);
     }
 
+    public function costSources(): HasMany
+    {
+        return $this->hasMany(ProductCostSource::class);
+    }
+
     public function externalReferences(): HasMany
     {
         return $this->hasMany(ProductExternalReference::class);

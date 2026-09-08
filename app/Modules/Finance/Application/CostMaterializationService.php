@@ -88,6 +88,66 @@ final class CostMaterializationService
             return $this->blocked('product_cost', 'order_items_missing');
         }
 
+        $confirmedPresence = array_filter($rows, fn (array $row): bool => ($row['confirmed_cost_sources'] ?? []) !== []);
+        if ($confirmedPresence !== []) {
+            if (count($confirmedPresence) !== count($rows)) {
+                return $this->blocked('product_cost', 'confirmed_product_cost_source_incomplete');
+            }
+
+            $totalByCurrency = [];
+            $sourceIds = [];
+            $sourceKeys = [];
+            $sourceAt = null;
+            foreach ($rows as $row) {
+                $quantity = (string) ($row['quantity'] ?? '');
+                if (preg_match('/^[1-9][0-9]*$/D', $quantity) !== 1 || ($row['product_id'] ?? null) === null) {
+                    return $this->blocked('product_cost', 'confirmed_product_cost_item_identity_invalid', ['item_id' => $row['item_id'] ?? null]);
+                }
+                $sources = $row['confirmed_cost_sources'] ?? [];
+                $distinct = [];
+                foreach ($sources as $source) {
+                    $key = strtoupper((string) ($source['currency'] ?? '')).'|'.(string) ($source['unit_cost'] ?? '');
+                    $distinct[$key] = $source;
+                }
+                if (count($distinct) !== 1) {
+                    return $this->blocked('product_cost', 'confirmed_product_cost_source_ambiguous', ['item_id' => $row['item_id'] ?? null]);
+                }
+                $source = array_values($distinct)[0];
+                $sourceCurrency = strtoupper((string) $source['currency']);
+                $line = DecimalMoney::multiply((string) $source['unit_cost'], $quantity, 8);
+                $totalByCurrency[$sourceCurrency] = DecimalMoney::add($totalByCurrency[$sourceCurrency] ?? '0', $line, 8);
+                foreach ($sources as $evidence) {
+                    $sourceIds[] = (int) $evidence['id'];
+                    $sourceKeys[] = (string) $evidence['source_key'];
+                    $candidateSourceAt = $evidence['source_at'] ?? $evidence['confirmed_at'] ?? null;
+                    if ($candidateSourceAt !== null && ($sourceAt === null || $candidateSourceAt > $sourceAt)) {
+                        $sourceAt = $candidateSourceAt;
+                    }
+                }
+            }
+            if (count($totalByCurrency) !== 1) {
+                return $this->blocked('product_cost', 'confirmed_product_cost_mixed_source_currency', ['source_currencies' => array_keys($totalByCurrency)]);
+            }
+            $sourceCurrency = array_key_first($totalByCurrency);
+            sort($sourceIds);
+            sort($sourceKeys);
+            if ($sourceCurrency !== $currency) {
+                return $this->blocked('product_cost', 'confirmed_product_cost_fx_conversion_required', [
+                    'source_currency' => $sourceCurrency,
+                    'order_currency' => $currency,
+                    'source_amount' => DecimalMoney::round($totalByCurrency[$sourceCurrency]),
+                    'source_ids' => array_values(array_unique($sourceIds)),
+                    'source_keys' => array_values(array_unique($sourceKeys)),
+                ]);
+            }
+
+            return $this->candidate(
+                'product_cost', DecimalMoney::round($totalByCurrency[$sourceCurrency]), $currency, 'confirmed_manual', 'confirmed',
+                'product-cost-source:v1:order:'.$order->getKey().':'.hash('sha256', implode(',', $sourceIds)), $sourceAt,
+                ['source_ids' => array_values(array_unique($sourceIds)), 'source_keys' => array_values(array_unique($sourceKeys))],
+            );
+        }
+
         $total = '0';
         $productIds = [];
         $sourceAt = null;
@@ -225,6 +285,13 @@ final class CostMaterializationService
         if ($entry === null) {
             return 'apply';
         }
+        if ((string) $entry->source_reference === (string) $candidate['source_reference']
+            && (string) $entry->amount === (string) $candidate['amount']
+            && strtoupper((string) $entry->currency) === strtoupper((string) $candidate['currency'])
+            && (string) $entry->provenance === (string) $candidate['provenance']
+            && (string) $entry->status === (string) $candidate['status']) {
+            return 'noop';
+        }
         if ($candidate['provenance'] === 'estimated_reference' && in_array((string) $entry->provenance, self::STRONG_PROVENANCE, true)) {
             return 'blocked';
         }
@@ -234,14 +301,6 @@ final class CostMaterializationService
         if ((string) $entry->provenance === (string) $candidate['provenance'] && (string) $entry->source_reference !== (string) $candidate['source_reference']) {
             return 'blocked';
         }
-        if ((string) $entry->source_reference === (string) $candidate['source_reference']
-            && (string) $entry->amount === (string) $candidate['amount']
-            && strtoupper((string) $entry->currency) === strtoupper((string) $candidate['currency'])
-            && (string) $entry->provenance === (string) $candidate['provenance']
-            && (string) $entry->status === (string) $candidate['status']) {
-            return 'noop';
-        }
-
         return 'apply';
     }
 
@@ -281,7 +340,8 @@ final class CostMaterializationService
         $source = (string) $entry->source_reference;
         return str_starts_with($source, 'product-reference:v1:')
             || str_starts_with($source, 'carrier-billing:v1:')
-            || str_starts_with($source, 'affiliatewp-referrals:v1:');
+            || str_starts_with($source, 'affiliatewp-referrals:v1:')
+            || str_starts_with($source, 'product-cost-source:v1:');
     }
 
     private function orderCurrency(Model $order): string
