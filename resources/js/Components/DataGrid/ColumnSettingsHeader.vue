@@ -24,7 +24,6 @@ const settingsOpen = ref(false)
     <button class="column-settings-trigger" type="button" aria-label="列设置" title="设置显示列和列顺序" @click="settingsOpen = !settingsOpen">…</button>
     <div v-if="settingsOpen" class="column-settings-panel" @click.stop>
       <div class="column-settings-heading"><strong>列设置</strong><button type="button" class="column-reset-btn" @click="emit('reset')">恢复默认</button></div>
-      <p class="column-settings-help">勾选显示列；按住拖动调整列顺序。固定显示列不可隐藏。设置绑定当前账号并跨设备同步。</p>
       <p v-if="syncState !== 'idle'" class="column-sync-state" :data-state="syncState">{{ syncState === 'saving' ? '正在同步…' : syncState === 'error' ? '同步失败，已保留本地缓存' : '已同步到账号' }}</p>
       <label v-for="column in columns" :key="column.key" class="column-setting-row" draggable="true" @dragstart="emit('startDrag', column.key)" @dragover.prevent @drop="emit('drop', column.key)">
         <span class="column-drag-handle" aria-hidden="true">⋮⋮</span>
@@ -41,7 +40,7 @@ const settingsOpen = ref(false)
 .column-settings-panel { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; width: 260px; padding: 12px; border: 1px solid var(--byl-color-border,#d9e1e5); border-radius: 9px; background: var(--byl-color-surface,#fff); color: var(--byl-color-ink,#142126); box-shadow: 0 8px 24px rgb(20 33 38 / 14%); text-align: left; }
 .column-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .column-reset-btn { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 12px; }
-.column-settings-help, .column-sync-state { margin: 8px 0; font-size: 12px; line-height: 1.45; opacity: .72; }
+.column-sync-state { margin: 8px 0; font-size: 12px; line-height: 1.45; opacity: .72; }
 .column-setting-row { display: flex; align-items: center; gap: 7px; min-height: 36px; cursor: grab; font-size: 13px; }
 .column-setting-row input:disabled { cursor: not-allowed; }
 .column-drag-handle { opacity: .5; letter-spacing: -2px; }

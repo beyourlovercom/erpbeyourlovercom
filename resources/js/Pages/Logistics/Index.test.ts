@@ -36,7 +36,6 @@ describe('Logistics pending grid contract', () => {
     await wrapper.get('.column-settings-trigger').trigger('click')
     const panel = wrapper.get('.column-settings-panel')
     expect(panel.text()).toContain('列设置')
-    expect(panel.text()).toContain('设置绑定当前账号并跨设备同步')
     expect(panel.text()).toContain('固定显示')
     expect(wrapper.get('input[aria-label="订单号固定显示"]').attributes('disabled')).toBeDefined()
   })
