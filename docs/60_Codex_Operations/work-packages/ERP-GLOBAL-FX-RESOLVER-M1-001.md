@@ -1,6 +1,6 @@
 # ERP-GLOBAL-FX-RESOLVER-M1-001
 
-Status: IMPLEMENTATION / LOCAL VERIFICATION
+Status: OWNER UAT PASS / MERGE READY
 Owner authorization: APPROVED (2026-09-08)
 
 ## Baseline
@@ -56,5 +56,7 @@ Architecture frozen-baseline drift and GitHub Actions billing/spending-limit fai
 
 ## Gates
 - No new material visual design; only truthful FX-source copy in an existing tooltip.
-- Owner UAT required before merge.
+- Owner UAT: PASS (2026-09-08).
+- Owner verified Settings FX manual USD 6.78 → Customer Library current RMB estimate ¥678 end-to-end.
+- Local UAT fixture order and temporary USD rate were removed after PASS.
 - Production deploy remains a separate Owner Gate.
