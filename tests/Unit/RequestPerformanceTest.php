@@ -19,6 +19,12 @@ final class RequestPerformanceTest extends TestCase
         $metrics = $performance->finish();
 
         $this->assertSame(1, $metrics['query_count']);
+        $this->assertSame([
+            'query_count' => 2,
+            'query_time_ms' => 10.0,
+            'duration_ms' => 100.0,
+        ], $performance->budgets());
+        $this->assertSame(['query_time_ms'], $performance->breaches($metrics));
         $this->assertTrue($performance->exceeds($metrics));
     }
 }

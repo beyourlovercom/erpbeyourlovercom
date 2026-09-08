@@ -8,8 +8,11 @@ use Illuminate\Support\Facades\DB;
 final class RequestPerformance
 {
     private bool $active = false;
+
     private int $queryCount = 0;
+
     private float $queryTimeMs = 0.0;
+
     private float $startedAt = 0.0;
 
     public function __construct()
@@ -51,10 +54,37 @@ final class RequestPerformance
         return $metrics;
     }
 
+    /** @return array{query_count:int,query_time_ms:float,duration_ms:float} */
+    public function budgets(): array
+    {
+        return [
+            'query_count' => (int) config('observability.query_budget'),
+            'query_time_ms' => (float) config('observability.query_time_budget_ms'),
+            'duration_ms' => (float) config('observability.duration_budget_ms'),
+        ];
+    }
+
+    /** @return list<string> */
+    public function breaches(array $metrics): array
+    {
+        $budgets = $this->budgets();
+        $breaches = [];
+
+        if ($metrics['query_count'] > $budgets['query_count']) {
+            $breaches[] = 'query_count';
+        }
+        if ($metrics['query_time_ms'] > $budgets['query_time_ms']) {
+            $breaches[] = 'query_time_ms';
+        }
+        if ($metrics['duration_ms'] > $budgets['duration_ms']) {
+            $breaches[] = 'duration_ms';
+        }
+
+        return $breaches;
+    }
+
     public function exceeds(array $metrics): bool
     {
-        return $metrics['query_count'] > (int) config('observability.query_budget')
-            || $metrics['query_time_ms'] > (float) config('observability.query_time_budget_ms')
-            || $metrics['duration_ms'] > (float) config('observability.duration_budget_ms');
+        return $this->breaches($metrics) !== [];
     }
 }

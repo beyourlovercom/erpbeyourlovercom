@@ -35,7 +35,11 @@ final class ObserveErpRequest
 
         $metrics = $this->performance->finish();
         if ($this->performance->exceeds($metrics)) {
-            Log::warning('erp.request.performance_budget_exceeded', $this->context($request, $metrics));
+            Log::warning('erp.request.performance_budget_exceeded', [
+                ...$this->context($request, $metrics),
+                'breaches' => $this->performance->breaches($metrics),
+                'budgets' => $this->performance->budgets(),
+            ]);
         }
 
         $response->headers->set((string) config('observability.request_id_header'), $requestId);
@@ -70,6 +74,18 @@ final class ObserveErpRequest
         ]);
     }
 
+    private function revision(): ?string
+    {
+        $configured = config('observability.revision');
+        if (is_string($configured) && trim($configured) !== '') {
+            return trim($configured);
+        }
+
+        $resolved = realpath(base_path());
+
+        return is_string($resolved) && $resolved !== '' ? basename($resolved) : null;
+    }
+
     /** @param array<string,mixed> $metrics @return array<string,mixed> */
     private function context(Request $request, array $metrics): array
     {
@@ -79,7 +95,7 @@ final class ObserveErpRequest
             'path' => $request->path(),
             'method' => $request->method(),
             'user_id' => $request->user()?->getAuthIdentifier(),
-            'revision' => config('observability.revision'),
+            'revision' => $this->revision(),
             ...$metrics,
         ];
     }
