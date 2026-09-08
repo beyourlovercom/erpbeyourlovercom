@@ -7,6 +7,7 @@ use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Kol\Application\Contracts\AffiliateCommissionEvidenceReader;
 use App\Modules\Logistics\Application\Contracts\CarrierBillingEvidenceReader;
+use App\Modules\Logistics\Application\Contracts\FulfillmentOriginEvidenceReader;
 use App\Modules\Products\Application\Contracts\ProductCostEvidenceReader;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
@@ -15,10 +16,13 @@ use Illuminate\Support\Facades\DB;
 final class CostMaterializationService
 {
     private const STRONG_PROVENANCE = ['actual', 'confirmed_manual', 'provider_import', 'allocated_actual'];
+    private const OVERSEAS_WAREHOUSE_SLUGS = ['us-la', 'us-ny', 'de', 'ca', 'us-sj'];
+    private const CHINA_DIRECT_WAREHOUSE_SLUGS = ['factory', '007'];
 
     public function __construct(
         private readonly ProductCostEvidenceReader $products,
         private readonly CarrierBillingEvidenceReader $carrier,
+        private readonly FulfillmentOriginEvidenceReader $fulfillmentOrigin,
         private readonly AffiliateCommissionEvidenceReader $affiliate,
         private readonly OrderAnalysisService $analysis,
         private readonly AuditRecorder $audit,
@@ -28,7 +32,13 @@ final class CostMaterializationService
     public function preview(Model $order): array
     {
         $scopeBlocker = $this->operationalBlocker($order);
-        $candidates = [$this->productCandidate($order), $this->carrierCandidate($order), $this->affiliateCandidate($order)];
+        $candidates = [
+            $this->productCandidate($order),
+            $this->carrierCandidate($order),
+            $this->affiliateCandidate($order),
+            $this->firstMileCandidate($order),
+            $this->customsCandidate($order),
+        ];
         if ($scopeBlocker !== null) {
             $candidates = array_map(fn (array $candidate): array => $this->forceBlocked($candidate, $scopeBlocker), $candidates);
         }
@@ -38,7 +48,7 @@ final class CostMaterializationService
             'scope_status' => $scopeBlocker === null ? 'operational' : 'blocked',
             'scope_blocker' => $scopeBlocker,
             'candidates' => array_values(array_map(fn (array $candidate): array => $this->annotateDisposition($order, $candidate), $candidates)),
-            'unsupported' => ['payment_fee', 'warehouse_cost', 'first_mile_cost', 'overseas_handling_cost', 'customs_tax', 'refund_replacement_loss', 'other_variable_cost'],
+            'unsupported' => ['payment_fee', 'warehouse_cost', 'overseas_handling_cost', 'refund_replacement_loss', 'other_variable_cost'],
         ];
     }
 
@@ -195,6 +205,56 @@ final class CostMaterializationService
             'last_mile_cost', DecimalMoney::round((string) $evidence['actual_cost']), $currency, 'provider_import', 'confirmed',
             'carrier-billing:v1:shipment:'.$evidence['shipment_id'].':billing:'.$evidence['billing_id'],
             $evidence['billed_at'] ?? $evidence['updated_at'] ?? null,
+        );
+    }
+
+    private function firstMileCandidate(Model $order): array
+    {
+        $evidence = $this->fulfillmentOrigin->read($order->getKey());
+        if ($evidence === null || isset($evidence['blocked'])) {
+            return $this->blocked('first_mile_cost', (string) ($evidence['blocked'] ?? 'fulfillment_origin_missing'));
+        }
+
+        $slug = strtolower(trim((string) ($evidence['warehouse_slug'] ?? '')));
+        $currency = $this->orderCurrency($order);
+        $context = [
+            'warehouse_id' => $evidence['warehouse_id'] ?? null,
+            'warehouse_slug' => $slug,
+            'shipment_id' => $evidence['shipment_id'] ?? null,
+        ];
+
+        if (in_array($slug, self::CHINA_DIRECT_WAREHOUSE_SLUGS, true)) {
+            return $this->candidate(
+                'first_mile_cost', '0.00', $currency, 'confirmed_manual', 'confirmed',
+                'owner-rule:first-mile:v1:china-direct:'.$slug, null,
+                $context + ['rule' => 'china_direct_zero'],
+            );
+        }
+
+        if (in_array($slug, self::OVERSEAS_WAREHOUSE_SLUGS, true)) {
+            if ($currency !== 'USD') {
+                return $this->blocked('first_mile_cost', 'first_mile_fx_conversion_required', $context + [
+                    'source_currency' => 'USD',
+                    'order_currency' => $currency,
+                    'source_amount' => '1.00',
+                ]);
+            }
+
+            return $this->candidate(
+                'first_mile_cost', '1.00', 'USD', 'confirmed_manual', 'confirmed',
+                'owner-rule:first-mile:v1:overseas:'.$slug, null,
+                $context + ['rule' => 'overseas_warehouse_usd_one_per_order'],
+            );
+        }
+
+        return $this->blocked('first_mile_cost', 'first_mile_warehouse_classification_unknown', $context);
+    }
+
+    private function customsCandidate(Model $order): array
+    {
+        return $this->candidate(
+            'customs_tax', '0.00', $this->orderCurrency($order), 'confirmed_manual', 'confirmed',
+            'owner-rule:customs-tax:v1:none', null, ['rule' => 'no_customs_tax'],
         );
     }
 

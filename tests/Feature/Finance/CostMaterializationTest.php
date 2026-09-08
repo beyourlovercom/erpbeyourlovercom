@@ -3,6 +3,7 @@
 namespace Tests\Feature\Finance;
 
 use App\Modules\Finance\Application\CostMaterializationService;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateReferral;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Models\ShipmentCarrierBilling;
@@ -167,6 +168,54 @@ final class CostMaterializationTest extends TestCase
         self::assertFalse($normal->costEntries()->where('cost_type', 'payment_fee')->exists());
     }
 
+    public function test_owner_fixed_cost_rules_are_exact_and_fail_closed(): void
+    {
+        $overseasUsd = $this->order('USD');
+        $this->attachWarehouseShipment($overseasUsd, 'us-la');
+        $preview = $this->service()->preview($overseasUsd);
+        $firstMile = $this->candidate($preview, 'first_mile_cost');
+        self::assertSame('1.00', $firstMile['amount']);
+        self::assertSame('USD', $firstMile['currency']);
+        self::assertSame('apply', $firstMile['materialization_status']);
+        $customs = $this->candidate($preview, 'customs_tax');
+        self::assertSame('0.00', $customs['amount']);
+        self::assertSame('USD', $customs['currency']);
+        self::assertSame('apply', $customs['materialization_status']);
+
+        $overseasEur = $this->order('EUR');
+        $this->attachWarehouseShipment($overseasEur, 'de');
+        $preview = $this->service()->preview($overseasEur);
+        $firstMile = $this->candidate($preview, 'first_mile_cost');
+        self::assertSame('blocked', $firstMile['materialization_status']);
+        self::assertSame('first_mile_fx_conversion_required', $firstMile['blocker']);
+        self::assertSame('1.00', $firstMile['source_amount']);
+        self::assertSame('USD', $firstMile['source_currency']);
+        self::assertSame('EUR', $firstMile['order_currency']);
+        self::assertSame('0.00', $this->candidate($preview, 'customs_tax')['amount']);
+
+        $chinaDirect = $this->order('EUR');
+        $this->attachWarehouseShipment($chinaDirect, 'factory');
+        $firstMile = $this->candidate($this->service()->preview($chinaDirect), 'first_mile_cost');
+        self::assertSame('0.00', $firstMile['amount']);
+        self::assertSame('EUR', $firstMile['currency']);
+        self::assertSame('apply', $firstMile['materialization_status']);
+
+        $unknown = $this->order('USD');
+        $this->attachWarehouseShipment($unknown, 'mystery');
+        $candidate = $this->candidate($this->service()->preview($unknown), 'first_mile_cost');
+        self::assertSame('blocked', $candidate['materialization_status']);
+        self::assertSame('first_mile_warehouse_classification_unknown', $candidate['blocker']);
+
+        $missingShipment = $this->order('USD');
+        $candidate = $this->candidate($this->service()->preview($missingShipment), 'first_mile_cost');
+        self::assertSame('blocked', $candidate['materialization_status']);
+        self::assertSame('canonical_shipment_missing', $candidate['blocker']);
+
+        self::assertNotContains('first_mile_cost', $preview['unsupported']);
+        self::assertNotContains('customs_tax', $preview['unsupported']);
+        self::assertContains('payment_fee', $preview['unsupported']);
+    }
+
     public function test_materialization_invalidates_reconciled_status_when_cost_truth_changes(): void
     {
         $order = $this->order('USD');
@@ -224,6 +273,20 @@ final class CostMaterializationTest extends TestCase
             'line_revenue' => number_format(10 * $quantity, 2, '.', ''),
         ]);
         return $product;
+    }
+
+    private function attachWarehouseShipment(Order $order, string $slug): Shipment
+    {
+        $warehouse = Warehouse::query()->firstOrCreate(
+            ['slug' => $slug],
+            ['code' => strtoupper($slug), 'name' => 'Test '.$slug,
+                'type' => 'warehouse', 'ownership_type' => 'owned', 'is_active' => true, 'priority' => 100],
+        );
+        $shipment = new Shipment([
+            'shipment_status' => 'pending', 'warehouse_id' => $warehouse->id, 'warehouse_selection_source' => 'uat_fixture',
+        ]);
+        $order->shipment()->save($shipment);
+        return $shipment;
     }
 
     private function attachBilling(Order $order, string $amount, string $currency, string $document): ShipmentCarrierBilling
