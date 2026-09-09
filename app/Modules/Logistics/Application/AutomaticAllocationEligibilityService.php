@@ -10,6 +10,7 @@ final class AutomaticAllocationEligibilityService
     public function __construct(
         private readonly WarehouseRecommendationService $recommendations,
         private readonly WarehouseRoutingPolicy $routingPolicy,
+        private readonly FulfillmentPlanPreviewService $fulfillmentPlans,
     ) {}
 
     /** @return array<string,mixed> */
@@ -74,14 +75,25 @@ final class AutomaticAllocationEligibilityService
             );
         }
 
-        $recommendation ??= $this->recommendations->recommend(
-            $countryCode,
-            $order->items->map(fn ($item): array => [
+        if ($recommendation === null) {
+            $items = $order->items->map(fn ($item): array => [
                 'product_id' => $item->product_id,
                 'quantity' => (int) $item->quantity,
-            ])->values()->all(),
-            $order->address?->postal_code,
-        );
+            ])->values()->all();
+            $productIds = collect($items)->pluck('product_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+            $context = array_replace(
+                $this->recommendations->prepare($productIds),
+                $this->fulfillmentPlans->prepare($productIds),
+            );
+            $recommendation = $this->recommendations->recommend(
+                $countryCode,
+                $items,
+                $order->address?->postal_code,
+                [],
+                [],
+                $context,
+            );
+        }
 
         if (($recommendation['status'] ?? null) !== 'recommended') {
             return $this->fromRecommendationBlock($recommendation);
@@ -128,11 +140,13 @@ final class AutomaticAllocationEligibilityService
             'service_regions_unconfigured', 'no_service_region_match' => 'NO_SERVICE_REGION',
             'no_inventory_authority' => 'NO_FULL_SNAPSHOT_AUTHORITY',
             'insufficient_stock' => 'INSUFFICIENT_STOCK',
+            'missing_product_weight_inventory_only' => 'MISSING_PRODUCT_WEIGHT',
             default => 'BLOCKED_OTHER',
         };
 
         return $this->blocked($state, $reasonCode, (string) ($recommendation['reason_label'] ?? '当前无法自动分配。'));
     }
+
     /** @return array<string,mixed> */
     private function blocked(string $state, string $reasonCode, string $reasonLabel): array
     {

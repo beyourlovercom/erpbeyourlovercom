@@ -12,6 +12,7 @@ final class AssistedFulfillmentService
 {
     public function __construct(
         private readonly WarehouseRecommendationService $recommendations,
+        private readonly FulfillmentPlanPreviewService $fulfillmentPlans,
         private readonly InventoryReservationService $reservations,
         private readonly ShipmentService $shipments,
     ) {}
@@ -20,9 +21,15 @@ final class AssistedFulfillmentService
     {
         return DB::transaction(function () use ($order, $actor): Model {
             $lockedOrder = $order::query()->with(['address', 'items', 'shipment'])->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $items = $lockedOrder->items->map(fn ($item): array => ['product_id' => $item->product_id, 'quantity' => (int) $item->quantity])->values()->all();
+            $productIds = collect($items)->pluck('product_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+            $context = array_replace(
+                $this->recommendations->prepare($productIds),
+                $this->fulfillmentPlans->prepare($productIds),
+            );
             $recommendation = $this->recommendations->recommend(
                 $lockedOrder->address?->country,
-                $lockedOrder->items->map(fn ($item): array => ['product_id' => $item->product_id, 'quantity' => (int) $item->quantity])->values()->all(),
+                $items,
                 $lockedOrder->address?->postal_code,
                 [],
                 [
@@ -31,6 +38,7 @@ final class AssistedFulfillmentService
                     'address_line_1' => $lockedOrder->address?->address_line_1,
                     'address_line_2' => $lockedOrder->address?->address_line_2,
                 ],
+                $context,
             );
             if (($recommendation['status'] ?? null) !== 'recommended' || empty($recommendation['warehouse']['id'])) {
                 abort(409, (string) ($recommendation['reason_label'] ?? '当前无法采用系统推荐仓库。'));

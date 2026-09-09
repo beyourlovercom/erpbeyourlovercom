@@ -10,6 +10,7 @@ use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Logistics\Application\AutomaticAllocationService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Products\Infrastructure\Models\ProductWeightEvidence;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -218,6 +219,22 @@ final class AutomaticAllocationV1Test extends TestCase
             ['sku' => 'AUTO-ALLOC-1'],
             ['name' => 'Automatic Allocation Product', 'product_type' => 'simple', 'woocommerce_product_id' => 991101],
         );
+        if ($product->shipping_weight_evidence_id === null) {
+            $weightEvidence = ProductWeightEvidence::create([
+                'product_id' => $product->id,
+                'weight_kind' => 'shipping_reference_weight',
+                'observed_weight_kg' => 0.5000,
+                'raw_sku' => $product->sku,
+                'source_type' => 'manual_entry',
+                'source_reference' => 'automatic-allocation-test-fixture',
+                'status' => 'adopted',
+                'reviewed_at' => now(),
+            ]);
+            $product->forceFill([
+                'shipping_weight_kg' => 0.5000,
+                'shipping_weight_evidence_id' => $weightEvidence->id,
+            ])->save();
+        }
         $warehouse = Warehouse::query()->where('code', $warehouseCode)->firstOrFail();
 
         $this->actingAs($user)->post('/customers/orders', [
@@ -235,6 +252,7 @@ final class AutomaticAllocationV1Test extends TestCase
 
         return [$user, Order::query()->latest('id')->firstOrFail(), $product, $warehouse];
     }
+
     private function authoritative(Warehouse $warehouse, Product $product, string $country, int $qoh): void
     {
         $warehouse->serviceRegions()->create(['country_code' => $country, 'priority' => 1]);

@@ -19,9 +19,57 @@ final class FulfillmentPlanCostEstimator
     /** @param array<int,int> $productIds @return array<string,mixed> */
     public function prepare(array $productIds): array
     {
+        $packagingStandards = $this->packaging->forProductIds($productIds);
+        $shippingWeightStandards = $this->shippingWeights->forProductIds($productIds);
+        $context = [
+            'packaging_standards' => $packagingStandards,
+            'shipping_weight_standards' => $shippingWeightStandards,
+        ];
+
         return [
-            'packaging_standards' => $this->packaging->forProductIds($productIds),
-            'shipping_weight_standards' => $this->shippingWeights->forProductIds($productIds),
+            ...$context,
+            'measurement_availability' => $this->measurementAvailability($productIds, $context),
+        ];
+    }
+
+    /** @param array<int,int> $productIds @param array<string,mixed> $context @return array<string,mixed> */
+    public function measurementAvailability(array $productIds, array $context = []): array
+    {
+        $ids = collect($productIds)->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $packagingStandards = $context['packaging_standards'] ?? $this->packaging->forProductIds($ids);
+        $shippingWeightStandards = $context['shipping_weight_standards'] ?? $this->shippingWeights->forProductIds($ids);
+
+        $products = [];
+        $missingWeightProductIds = [];
+        foreach ($ids as $productId) {
+            $packaging = $packagingStandards[$productId] ?? null;
+            $shipping = $shippingWeightStandards[$productId] ?? null;
+            $hasPackagingWeight = is_array($packaging)
+                && is_numeric($packaging['packaged_weight_kg'] ?? null)
+                && (float) $packaging['packaged_weight_kg'] > 0;
+            $hasShippingWeight = is_array($shipping)
+                && is_numeric($shipping['shipping_weight_kg'] ?? null)
+                && (float) $shipping['shipping_weight_kg'] > 0;
+
+            $mode = $hasPackagingWeight
+                ? 'strict_packaging'
+                : ($hasShippingWeight ? 'shipping_weight_only' : 'missing_weight');
+            if ($mode === 'missing_weight') {
+                $missingWeightProductIds[] = $productId;
+            }
+            $products[$productId] = [
+                'product_id' => $productId,
+                'mode' => $mode,
+                'has_packaging_weight' => $hasPackagingWeight,
+                'has_shipping_weight' => $hasShippingWeight,
+            ];
+        }
+
+        return [
+            'status' => $missingWeightProductIds === [] ? 'ready' : 'missing_weight',
+            'cost_ranking_enabled' => $missingWeightProductIds === [],
+            'missing_weight_product_ids' => $missingWeightProductIds,
+            'products' => $products,
         ];
     }
 
@@ -44,7 +92,9 @@ final class FulfillmentPlanCostEstimator
 
             if ($sourceType === 'factory' && $carrier === '4PX') {
                 $measurement = $this->shippingWeightForSegment($segment, $shippingWeightStandards);
-                if ($measurement['status'] !== 'ready') return $measurement;
+                if ($measurement['status'] !== 'ready') {
+                    return $measurement;
+                }
                 $routing = $this->china->calculate(
                     $country,
                     $measurement['actual_weight_kg'],
@@ -53,7 +103,9 @@ final class FulfillmentPlanCostEstimator
                 );
             } else {
                 $measurement = $this->packagingForSegment($segment, $packagingStandards);
-                if ($measurement['status'] !== 'ready') return $measurement;
+                if ($measurement['status'] !== 'ready') {
+                    return $measurement;
+                }
 
                 if ($sourceType === 'factory') {
                     $routing = [
@@ -72,7 +124,9 @@ final class FulfillmentPlanCostEstimator
                 }
             }
 
-            if (($routing['status'] ?? null) !== 'ready') return [...$routing, 'packaging' => $measurement];
+            if (($routing['status'] ?? null) !== 'ready') {
+                return [...$routing, 'packaging' => $measurement];
+            }
             $allComponents = [...$allComponents, ...$routing['components']];
             $segmentEvidence[] = ['source_code' => $sourceCode, 'packaging' => $measurement, 'routing' => $routing];
         }
@@ -131,7 +185,9 @@ final class FulfillmentPlanCostEstimator
                 ];
             }
             $actual += (float) $standard['shipping_weight_kg'] * $quantity;
-            if (isset($standard['evidence_id'])) $evidenceIds[] = (int) $standard['evidence_id'];
+            if (isset($standard['evidence_id'])) {
+                $evidenceIds[] = (int) $standard['evidence_id'];
+            }
         }
 
         return [
@@ -173,8 +229,11 @@ final class FulfillmentPlanCostEstimator
     private function hasPackaging(array $standard): bool
     {
         foreach (['packaged_weight_kg', 'packaging_length_cm', 'packaging_width_cm', 'packaging_height_cm'] as $key) {
-            if (! is_numeric($standard[$key] ?? null) || (float) $standard[$key] <= 0) return false;
+            if (! is_numeric($standard[$key] ?? null) || (float) $standard[$key] <= 0) {
+                return false;
+            }
         }
+
         return true;
     }
 }
