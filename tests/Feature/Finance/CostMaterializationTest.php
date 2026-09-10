@@ -11,6 +11,7 @@ use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductCostSource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -355,6 +356,16 @@ final class CostMaterializationTest extends TestCase
         self::assertSame('1.10000000', $order->financials()->firstOrFail()->fresh()->fx_rate);
         self::assertFalse($order->costEntries()->where('cost_type', 'first_mile_cost')->exists());
         self::assertFalse($order->costEntries()->where('cost_type', 'customs_tax')->exists());
+
+        // Simulate a later reference-rate change. The already-frozen transaction
+        // snapshot must remain the source snapshot because the fee is denominated
+        // in the same currency as the transaction.
+        Cache::forget('ecb_fx_snapshot');
+        Http::fake(['ecb.europa.eu/*' => Http::response(str_replace('rate="1.10"', 'rate="1.20"', $this->ecbXml()), 200)]);
+        $candidate = $this->candidate($this->service()->previewPaymentFeeGate($order->fresh()), 'payment_fee');
+        self::assertSame('noop', $candidate['materialization_status']);
+        self::assertSame('1.00000000', $candidate['posting_fx']['source_to_transaction_rate']);
+        self::assertSame('1.10000000', $candidate['posting_fx']['source_to_usd_rate']);
 
         $this->artisan('finance:materialize-payment-fees', ['--order' => $order->id, '--apply' => true])->assertSuccessful();
         self::assertSame(1, $order->costEntries()->where('cost_type', 'payment_fee')->count());
