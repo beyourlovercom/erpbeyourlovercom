@@ -82,6 +82,15 @@ final class AccountingFxSnapshotBridgeService
             $freezeTransaction = true;
         }
 
+        // A cost already denominated in the transaction currency must use the
+        // immutable transaction snapshot. Current reference-rate drift must not
+        // revalue the same-currency source on later previews.
+        if ($sourceCurrency === $transactionCurrency) {
+            $sourceToUsd = $transactionToUsd;
+            $sourceDate = $transactionDate;
+            $sourceRateSource = $transactionSource;
+        }
+
         return [
             'available' => true,
             'source_currency' => $sourceCurrency,
