@@ -44,7 +44,9 @@ final class ShipmentService
                     : $shipment->warehouse_selection_source,
                 'carrier' => array_key_exists('carrier', $attributes) ? $attributes['carrier'] : $shipment->carrier,
                 'service' => array_key_exists('service', $attributes) ? $attributes['service'] : $shipment->service,
-                'carrier_selection_source' => $carrierProvided ? 'manual' : $shipment->carrier_selection_source,
+                'carrier_selection_source' => $carrierProvided
+                    ? ($attributes['carrier_selection_source'] ?? 'manual')
+                    : $shipment->carrier_selection_source,
                 'tracking_number' => array_key_exists('tracking_number', $attributes) ? $attributes['tracking_number'] : $shipment->tracking_number,
                 'logistics_note' => array_key_exists('logistics_note', $attributes) ? $attributes['logistics_note'] : $shipment->logistics_note,
                 'handled_by' => $actor?->getAuthIdentifier(),
