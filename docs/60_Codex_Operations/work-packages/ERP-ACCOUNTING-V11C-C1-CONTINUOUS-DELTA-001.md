@@ -122,6 +122,7 @@ Required US merge-candidate verification:
 - Runtime wiring: command registered; default-disabled schedule contains Woo only at `0 * * * *`; enabling C1 adds exactly `finance:materialize-continuous-delta --apply --limit=10000 --no-interaction` at `10 * * * *`. Focused scheduler test also proves overlap=50 and one-server.
 - PHP lint PASS for every touched PHP file; `git diff --check` PASS; forbidden-scope check found no migration/frontend/menu/env/dependency-manifest changes.
 - Final baseline movement check: `origin/main` remained exactly `fb8ba2ef8a288f3e07e4500a67d1329688ee9486` throughout merge-candidate verification.
+- GitHub Actions run `34463527309` reported `mysql8-runtime` and `sqlite-regression` failure before runner allocation: both jobs have `runner_id=0`, empty `runner_name`, and `steps=[]`, completing in about 1–2 seconds. No CI test command started. This is the same known infrastructure signature previously evidenced on Accounting PRs #283/#285; it is not a C1 test failure.
 - Production was not accessed for C1 execution, no C1 environment flag was changed, no scheduler was activated, and no Accounting data write was performed by this package.
 
 ## Delivery / Hard Stops
@@ -142,14 +143,14 @@ CURRENT_TRACK_PHASE_MAP: V1.1B Revenue Evidence [COMPLETE] → V1.1C P1 Product 
 COMPLETED_PHASES: V1.1B; V1.1C P1; P4; P5; historical/baseline P2-P3 Production materialization
 CURRENT_PHASE: Accounting V1.1C continuous delta closure infrastructure
 CURRENT_WORK_PACKAGE: ERP-ACCOUNTING-V11C-C1-CONTINUOUS-DELTA-001
-PACKAGE_STATUS: IMPLEMENTATION COMPLETE / US VERIFICATION PASS / PR #286 MERGE CANDIDATE / PRODUCTION ACTIVATION NOT AUTHORIZED
+PACKAGE_STATUS: IMPLEMENTATION COMPLETE / US VERIFICATION PASS / PR #286 MERGE CANDIDATE / CI INFRASTRUCTURE EXCEPTION EVIDENCED / PRODUCTION ACTIVATION NOT AUTHORIZED
 WAITING_PHASES: GitHub CI/review/merge; explicit Production deploy; pre-activation Production reconciliation; scheduler activation; Production post-activation reconciliation; V1.1C closure
 BASELINE: origin/main@fb8ba2ef8a288f3e07e4500a67d1329688ee9486
-GITHUB_STATE: PR #286 exists on the dedicated C1 branch; implementation and final evidence are merge-candidate ready against unchanged origin/main@fb8ba2ef8a288f3e07e4500a67d1329688ee9486
+GITHUB_STATE: PR #286 on the dedicated C1 branch; code head 9d1cb0165ce8b7b0b6dca459c60faea8b2ca7f7a passed US verification; Actions run 34463527309 failed only with runner_id=0 / steps=[] infrastructure signature; origin/main remains fb8ba2ef8a288f3e07e4500a67d1329688ee9486
 SOURCE_CONFLICTS: AI/CURRENT_CONTEXT.md is historically stale for current product-track position; latest GitHub main + Owner-confirmed Accounting roadmap + current Production reconciliation govern this package. No open PR file overlap found for expected Finance/scheduler paths.
-GLOBAL_GATE: C1 architecture regression delta 0; focused/full regression PASS; Production deploy/activation remains separate Owner gate
+GLOBAL_GATE: C1 architecture regression delta 0; focused/full regression PASS; GitHub CI infrastructure exception evidenced (no runner/test steps); Production deploy/activation remains separate Owner gate
 PRODUCTION_DEPLOYMENT_STATUS: NO — C1 code not deployed or activated
-NEXT_DEPENDENCY: push final merge-candidate to PR #286, complete CI/review and continuously merge if eligible; then stop for explicit Production deploy/activation Owner gate
+NEXT_DEPENDENCY: mark PR #286 Ready and complete continuously authorized merge under the evidenced CI infrastructure exception if GitHub remains mergeable; then stop for explicit Production deploy/activation Owner gate
 EVIDENCE_AS_OF: 2026-09-10
 
 ROADMAP HOURS
