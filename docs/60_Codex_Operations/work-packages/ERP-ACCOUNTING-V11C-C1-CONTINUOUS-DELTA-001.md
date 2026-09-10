@@ -1,8 +1,8 @@
 # ERP-ACCOUNTING-V11C-C1-CONTINUOUS-DELTA-001
 
 ## Status / Authority
-- STATUS: CONTRACT FROZEN / IMPLEMENTATION AUTHORIZED / BACKEND ONLY / PRODUCTION ACTIVATION NOT AUTHORIZED
-- EXECUTION_PROVIDER: US_CODEX_CLI
+- STATUS: IMPLEMENTATION COMPLETE / US VERIFICATION PASS / PR #286 MERGE CANDIDATE / PRODUCTION ACTIVATION NOT AUTHORIZED
+- EXECUTION_PROVIDER: GPT_WEB
 - VERIFICATION_TIER: HIGH_RISK
 - OWNER_SCOPE: continue Accounting V1.1C and close the recurring Woo-created P2/P3/P5 delta gap without consuming Roadmap P6.
 - UI_UAT: NOT REQUIRED — no Owner-visible UI is changed.
@@ -110,12 +110,31 @@ Required US merge-candidate verification:
 - Architecture regression shows no new violation versus baseline;
 - `php artisan schedule:list` / command registration prove expected runtime wiring.
 
+## Implementation / Verification Evidence
+- GPT Web + US Remote Desktop Commander implemented one bounded Finance orchestrator, candidate-store contract/implementation, console command, provider binding, config gate, scheduler declaration, and focused tests. No migration, UI/menu, permission, dependency manifest, Woo transport, or Production environment file changed.
+- Candidate discovery is limited to customer orders excluding `historical_logistics`, using the frozen Order / Woo external-reference / Order Financial / Shipment `updated_at` window contract. First run is 180 minutes; later runs use persisted `checkpoint_at - 5 minutes`; `window_end` is frozen at run start.
+- Hard-cap overflow is detected with `limit + 1` before SyncRun creation or cost materialization. Production apply remains disabled unless `ERP_ACCOUNTING_CONTINUOUS_DELTA_ENABLED=true`.
+- Per-order apply order is exactly P2 Product Cost -> P3 Fixed Costs -> P5 Payment Fee -> final completeness refresh. P6-P9 cost types are untouched and strong existing facts remain protected by existing materializer disposition rules.
+- A merge-candidate review found one self-trigger risk: unconditional final completeness saves could refresh `order_financials.updated_at` even when projection values were unchanged, causing a prior C1 order to re-enter every hourly window. `OrderAnalysisService::refreshCompleteness()` now saves only when `completeness_status` or `missing_facts` is dirty; the service is still called exactly once at the end. A focused regression proves an overlap recovery may re-run once but does not self-touch forever.
+- Focused C1 PHPUnit: 11 tests / 60 assertions PASS.
+- Full Finance + Finance unit + Woo automatic order sync regression: 79 tests / 630 assertions PASS.
+- Architecture/Menu exact-baseline comparison: `origin/main@fb8ba2ef...` = 6 inherited failures / 13 tests / 1336 assertions; C1 branch = the same 6 failures; NEW_FAILURES = 0 / REMOVED_FAILURES = 0. C1 architecture regression delta = 0.
+- Runtime wiring: command registered; default-disabled schedule contains Woo only at `0 * * * *`; enabling C1 adds exactly `finance:materialize-continuous-delta --apply --limit=10000 --no-interaction` at `10 * * * *`. Focused scheduler test also proves overlap=50 and one-server.
+- PHP lint PASS for every touched PHP file; `git diff --check` PASS; forbidden-scope check found no migration/frontend/menu/env/dependency-manifest changes.
+- Final baseline movement check: `origin/main` remained exactly `fb8ba2ef8a288f3e07e4500a67d1329688ee9486` throughout merge-candidate verification.
+- Production was not accessed for C1 execution, no C1 environment flag was changed, no scheduler was activated, and no Accounting data write was performed by this package.
+
 ## Delivery / Hard Stops
 Routine implementation, test, commit, push, Draft PR, checks, remediation and green merge are authorized by `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1`.
+- PROVIDER_HANDOFF: US Codex CLI was attempted on the dedicated US worktree but exited before editing because its account usage limit was exhausted. `git status` was clean after the failed invocation. The package is serialized to GPT Web + US Remote Desktop Commander; no parallel implementation provider remains active.
 STOP before any Production deploy, Production env/config mutation, scheduler activation, or Production Accounting write. No Production write is authorized by this Work Package.
 
 ## Work Log
-- Contract issue: GPT Web scope/architecture freeze. Implementation actuals to be appended before merge from the executor's bounded Work Log; waiting/CI time excluded.
+- 0.35h — exact-main/parallel preflight, repository governance read, frozen C1 contract, Draft PR container, failed-before-edit Codex provider attempt and serialized handoff to GPT Web.
+- 0.75h — candidate-store/orchestrator/command/config/scheduler implementation plus bounded no-op completeness-save remediation.
+- 0.55h — focused tests, Finance/Woo regression, Vite test-harness recovery, exact-baseline Architecture/Menu comparison, command/scheduler/lint/diff/file-scope verification.
+- 0.15h — final evidence, delivery preparation and merge-candidate review.
+- ACTUAL_EFFECTIVE_HOURS: 1.80h. Waiting/idle time and Codex usage-limit unavailability are excluded; provider handoff/diagnosis effort is included in preflight.
 
 PROJECT POSITION
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate [COMPLETE] → MVP1 Existing Operations / Tencent Docs Replacement → ERP-INQUIRY-M1 B2B Inquiry Foundation → ERP-INQUIRY-M1 Local Milestone UAT → Milestone-gated Remote Release → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Production Hardening / Expansion
@@ -123,14 +142,14 @@ CURRENT_TRACK_PHASE_MAP: V1.1B Revenue Evidence [COMPLETE] → V1.1C P1 Product 
 COMPLETED_PHASES: V1.1B; V1.1C P1; P4; P5; historical/baseline P2-P3 Production materialization
 CURRENT_PHASE: Accounting V1.1C continuous delta closure infrastructure
 CURRENT_WORK_PACKAGE: ERP-ACCOUNTING-V11C-C1-CONTINUOUS-DELTA-001
-PACKAGE_STATUS: CONTRACT FROZEN / IMPLEMENTATION AUTHORIZED / PRODUCTION ACTIVATION NOT AUTHORIZED
-WAITING_PHASES: implementation; US verification; Git delivery/CI/merge; explicit Production deploy/activation; Production post-activation reconciliation; V1.1C closure
+PACKAGE_STATUS: IMPLEMENTATION COMPLETE / US VERIFICATION PASS / PR #286 MERGE CANDIDATE / PRODUCTION ACTIVATION NOT AUTHORIZED
+WAITING_PHASES: GitHub CI/review/merge; explicit Production deploy; pre-activation Production reconciliation; scheduler activation; Production post-activation reconciliation; V1.1C closure
 BASELINE: origin/main@fb8ba2ef8a288f3e07e4500a67d1329688ee9486
-GITHUB_STATE: dedicated branch/worktree created from exact latest main; delivery PR not yet opened at contract issue
+GITHUB_STATE: PR #286 exists on the dedicated C1 branch; implementation and final evidence are merge-candidate ready against unchanged origin/main@fb8ba2ef8a288f3e07e4500a67d1329688ee9486
 SOURCE_CONFLICTS: AI/CURRENT_CONTEXT.md is historically stale for current product-track position; latest GitHub main + Owner-confirmed Accounting roadmap + current Production reconciliation govern this package. No open PR file overlap found for expected Finance/scheduler paths.
-GLOBAL_GATE: no-new-architecture-violation required; Production activation remains separate Owner gate
+GLOBAL_GATE: C1 architecture regression delta 0; focused/full regression PASS; Production deploy/activation remains separate Owner gate
 PRODUCTION_DEPLOYMENT_STATUS: NO — C1 code not deployed or activated
-NEXT_DEPENDENCY: issue Draft delivery PR, then deterministic implementation on frozen contract
+NEXT_DEPENDENCY: push final merge-candidate to PR #286, complete CI/review and continuously merge if eligible; then stop for explicit Production deploy/activation Owner gate
 EVIDENCE_AS_OF: 2026-09-10
 
 ROADMAP HOURS
@@ -164,3 +183,7 @@ MIGRATION_FILE_AUTHORING: EXCLUDED
 MIGRATION_EXECUTION: EXCLUDED
 UAT: EXCLUDED
 DEPLOYMENT: EXCLUDED
+ACTUAL_EFFECTIVE_HOURS: 1.80h
+ACTUAL_HOURS_BREAKDOWN: preflight/scope/provider-handoff 0.35h; core implementation/remediation 0.75h; test/validation 0.55h; final evidence/delivery prep 0.15h
+VARIANCE: -0.70h / -28.0% versus 2.50h planning value
+VARIANCE_REASON: Existing P2/P3/P5 materializers, SyncRun infrastructure and Woo scheduler contracts were reusable without migration/UI/dependency work; one self-touch idempotency risk was found and remediated within the planned buffer.

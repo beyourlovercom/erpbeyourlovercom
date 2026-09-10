@@ -140,7 +140,10 @@ final class OrderAnalysisService
         $financials->forceFill([
             'completeness_status' => $projection['finance_status'],
             'missing_facts' => $projection['missing_facts'],
-        ])->save();
+        ]);
+        if ($financials->isDirty(['completeness_status', 'missing_facts'])) {
+            $financials->save();
+        }
 
         return $order->fresh(['financials', 'costEntries']);
     }
