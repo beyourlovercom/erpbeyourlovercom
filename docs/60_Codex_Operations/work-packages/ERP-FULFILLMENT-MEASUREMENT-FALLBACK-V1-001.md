@@ -1,6 +1,6 @@
 # ERP-FULFILLMENT-MEASUREMENT-FALLBACK-V1-001
 
-STATUS: VERIFIED / DELIVERY
+STATUS: CLOSED / PRODUCTION ACCEPTED
 EXECUTION_PROVIDER: GPT_WEB
 VERIFICATION_TIER: DAILY
 BASELINE: origin/main@f33f21d0d9f66eafd65f03d8f7a5dd6987370c9d
@@ -41,23 +41,23 @@ PARALLEL_SAFE: YES; dedicated worktree and branch only.
 
 ## PROJECT POSITION
 PROGRAM_ROADMAP: Architecture Migration → MVP1 Existing Operations → Inquiry → Woo/Tracking/Sync → Product/Media → Logistics OS → Inventory/Procurement → Accounting/ROI → Production Hardening
-CURRENT_TRACK_PHASE_MAP: Inventory/Fulfillment Intelligence V1 closed → Shipping Weight Evidence V1.1/V1.2/V1.3 merged → Measurement Fallback V1 current → Production release pending Owner gate
+CURRENT_TRACK_PHASE_MAP: Inventory/Fulfillment Intelligence V1 closed → Shipping Weight Evidence V1.1/V1.2/V1.3 merged → Measurement Fallback V1 CLOSED / PRODUCTION ACCEPTED
 COMPLETED_PHASES: Inventory Reservation; Warehouse Recommendation; Shipment Draft boundary; Shipping Weight Evidence V1.1-V1.3
 CURRENT_PHASE: Fulfillment fallback closure
 CURRENT_WORK_PACKAGE: ERP-FULFILLMENT-MEASUREMENT-FALLBACK-V1-001
-PACKAGE_STATUS: VERIFIED / DELIVERY
-WAITING_PHASES: Owner-gated Production deployment
+PACKAGE_STATUS: CLOSED / PRODUCTION ACCEPTED
+WAITING_PHASES: NONE for this package
 BASELINE: origin/main@f33f21d0d9f66eafd65f03d8f7a5dd6987370c9d
-GITHUB_STATE: dedicated branch feature/erp-fulfillment-fallback-v1-001
+GITHUB_STATE: PR #281 MERGED; delivery head 7ebf6e9375726ad15280e9f6ce51c3ca052b15f1; merge SHA 558e699935ff8ab543f6b121054e43faa5fb1dd4
 SOURCE_CONFLICTS: AI/CURRENT_CONTEXT.md program-position text is historically stale versus current merged main; GitHub/main and Owner instruction govern this package.
-GLOBAL_GATE: Owner-approved bounded behavior; no Production authorization.
-PRODUCTION_DEPLOYMENT_STATUS: NO; this package is development-only.
-NEXT_DEPENDENCY: Git delivery PR / required checks / merge; Production remains separate Owner gate
-EVIDENCE_AS_OF: 2026-09-09T04:09:34-0700
+GLOBAL_GATE: COMPLETE; Owner explicitly accepted Production behavior and authorized formal closure.
+PRODUCTION_DEPLOYMENT_STATUS: YES; bounded Production release fulfillment-fallback-pr281-20260909-192939-558e6999
+NEXT_DEPENDENCY: NONE; package closed
+EVIDENCE_AS_OF: 2026-09-10T10:25:00+0800
 
 ## ROADMAP HOURS
 CURRENT_PACKAGE_ESTIMATE: 0.7 effective hours; range 0.4-1.2
-KNOWN_CURRENT_TRACK_REMAINING: Production release/UAT remains Owner-gated after merge
+KNOWN_CURRENT_TRACK_REMAINING: 0 within this package; Production deploy and Owner acceptance complete
 ARCHITECTURE_GATE_REMAINING: 0 within this bounded package
 MVP1_TOTAL_ESTIMATE: UNKNOWN WITH EVIDENCE; not recalculated by this package
 MVP1_PLANNING_BASELINE: UNKNOWN WITH EVIDENCE; not recalculated by this package
@@ -98,4 +98,17 @@ DEPLOYMENT: EXCLUDED
 - Frontend assets were built locally only to provide the Inertia/Vite test manifest; generated build artifacts and `node_modules` are ignored and are not part of this package delivery.
 - Final pre-commit quality gate: PHP syntax PASS on all 9 changed PHP files; Pint PASS on all 9 changed PHP files after applying canonical formatting; `git diff --check` PASS.
 - Post-format bounded regression rerun: PASS — 115 tests / 900 assertions / 0 failures; recurring `.env` warnings only.
-- Production deployment remains NOT AUTHORIZED / NOT PERFORMED.
+- Production deployment completed only after explicit Owner gate; final bounded release and Owner acceptance are recorded below.
+
+## Final Production Closure Evidence
+
+- PR #281 `Fulfillment measurement fallback V1` merged to `main`; delivery head `7ebf6e9375726ad15280e9f6ce51c3ca052b15f1`, merge SHA `558e699935ff8ab543f6b121054e43faa5fb1dd4`.
+- GitHub Actions remained affected by the previously identified runner-start CI infrastructure failure; Owner explicitly authorized the merge as a CI infrastructure exception before merge.
+- Owner explicitly authorized `Production Deploy PR #281`. Because Production is a composed bounded-release runtime, deployment preserved the prior Production composition and overlaid only the five PR #281 Logistics application files.
+- Production release: `/Users/a/AI/production/erp.beyourlover.com/releases/fulfillment-fallback-pr281-20260909-192939-558e6999`.
+- Production file-integrity verification: PASS for all 5/5 PR #281 application files against merge SHA `558e699935ff8ab543f6b121054e43faa5fb1dd4`.
+- Schema/dependency/runtime scope: no migrations in this deploy; Production migration status `pending=0`; no dependency change; no frontend build change; no runtime-config change.
+- Runtime post-verify: PHP-FPM, queue, scheduler, and Nginx running; `/up`, `/`, and `/login` returned HTTP 200; unauthenticated `/logistics/pending` returned the expected HTTP 302 auth redirect; no recent fatal/uncaught error was observed.
+- Owner reviewed the Production result and explicitly instructed that no additional fulfillment-evidence UI visibility work is required for this package at this time. That optional visibility enhancement is therefore outside this closure and is not a blocker.
+- Owner explicitly accepted final closure on 2026-09-10: `ERP-FULFILLMENT-MEASUREMENT-FALLBACK-V1-001 = CLOSED / PRODUCTION ACCEPTED`.
+- Accounting state/configuration was not changed by this deploy or closure.
