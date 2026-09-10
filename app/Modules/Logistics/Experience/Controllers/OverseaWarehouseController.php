@@ -65,8 +65,18 @@ final class OverseaWarehouseController
 
     public function approve(Request $request, Order $order): RedirectResponse
     {
-        $this->reviews->approve($order, $request->user());
+        $data = $request->validate(['note' => ['sometimes', 'nullable', 'string', 'max:1000']]);
+        $this->reviews->approve($order, $request->user(), isset($data['note']) ? trim((string) $data['note']) : null);
         return back()->with('success', '订单已通过审核，进入待发货');
+    }
+
+    public function reopenReview(Request $request, Order $order): RedirectResponse
+    {
+        $reopened = $this->reviews->reopenReview($order, $request->user());
+        $code = $reopened->shipment?->warehouse?->code;
+        $key = array_search($code, OverseaWarehouseReviewService::WAREHOUSE_CODE_BY_KEY, true);
+        abort_unless(is_string($key), 422, '该订单不是海外仓订单');
+        return redirect("/logistics/oversea/{$key}?view=review")->with('success', '订单已重新进入审核，可重新分配仓库');
     }
 
     public function reject(Request $request, Order $order): RedirectResponse

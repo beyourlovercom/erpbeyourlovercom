@@ -63,6 +63,25 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         );
     }
 
+    public function test_approved_order_can_be_reopened_for_review_and_reassignment(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-LA'], '007-OVERSEA-REOPEN');
+
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve", ['note' => '审核通过'])->assertRedirect();
+        $response = $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/reopen-review");
+        $response->assertRedirect('/logistics/oversea/us-moreplus?view=review');
+
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id' => $order->id, 'status' => 'pending', 'progress' => 'pending_review',
+            'reviewed_warehouse_id' => null, 'reviewed_by' => null, 'reviewed_at' => null,
+        ]);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'warehouse_id' => $warehouses['US-LA']->id, 'carrier' => 'USPS',
+        ]);
+    }
+
     public function test_dede_can_change_warehouse_and_carrier_follows_the_new_warehouse(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);

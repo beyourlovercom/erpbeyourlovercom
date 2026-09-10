@@ -67,9 +67,9 @@ final class OverseaWarehouseReviewService
         });
     }
 
-    public function approve(Order $order, Authenticatable $actor): void
+    public function approve(Order $order, Authenticatable $actor, ?string $note = null): void
     {
-        DB::transaction(function () use ($order, $actor): void {
+        DB::transaction(function () use ($order, $actor, $note): void {
             $locked = Order::query()->with('shipment.warehouse')->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以审核');
             abort_unless($locked->shipment?->warehouse_id, 409, '订单尚未分配海外仓');
@@ -83,9 +83,28 @@ final class OverseaWarehouseReviewService
                 'status' => 'approved',
                 'progress' => $review->progress === 'pending_review' ? 'sending_pending' : $review->progress,
                 'reviewed_warehouse_id' => $locked->shipment->warehouse_id,
+                'note' => $note !== null && $note !== '' ? $note : $review->note,
                 'reviewed_by' => $actor->getAuthIdentifier(),
                 'reviewed_at' => now(),
             ])->save();
+        });
+    }
+
+    public function reopenReview(Order $order, Authenticatable $actor): Order
+    {
+        return DB::transaction(function () use ($order, $actor): Order {
+            $locked = Order::query()->with('shipment.warehouse')->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            abort_unless($locked->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以重新审核');
+            abort_unless($locked->shipment?->warehouse_id, 409, '订单尚未分配海外仓');
+            $review = $this->reviewForMutation($locked);
+            $review->forceFill([
+                'status' => 'pending',
+                'progress' => 'pending_review',
+                'reviewed_warehouse_id' => null,
+                'reviewed_by' => null,
+                'reviewed_at' => null,
+            ])->save();
+            return $locked->fresh(['shipment.warehouse']);
         });
     }
 

@@ -12,6 +12,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics/oversea/{warehouse?}', [OverseaWarehouseController::class, 'index'])->middleware('can:logistics.view')->where('warehouse', 'us-ny|us-moreplus|us-sm|de-tianyun|ca')->name('logistics.oversea');
     Route::patch('/logistics/oversea/orders/{order}/draft', [OverseaWarehouseController::class, 'updateDraft'])->middleware('can:logistics.operate')->name('logistics.oversea.draft');
     Route::post('/logistics/oversea/orders/{order}/approve', [OverseaWarehouseController::class, 'approve'])->middleware('can:logistics.operate')->name('logistics.oversea.approve');
+    Route::post('/logistics/oversea/orders/{order}/reopen-review', [OverseaWarehouseController::class, 'reopenReview'])->middleware('can:logistics.operate')->name('logistics.oversea.reopen-review');
     Route::post('/logistics/oversea/orders/{order}/reject', [OverseaWarehouseController::class, 'reject'])->middleware('can:logistics.operate')->name('logistics.oversea.reject');
     Route::get('/logistics/awaiting-tracking', [LogisticsController::class, 'awaitingTracking'])->middleware('can:logistics.view')->name('logistics.awaiting-tracking');
     Route::get('/logistics/in-transit', [LogisticsController::class, 'inTransit'])->middleware('can:logistics.view')->name('logistics.in-transit');
