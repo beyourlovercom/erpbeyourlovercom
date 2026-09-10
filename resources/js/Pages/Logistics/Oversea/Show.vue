@@ -7,18 +7,18 @@ type WarehouseOption = { key:string; id:number; code:string; label:string; carri
 type Item = { sku:string|null; quantity:number }
 type Row = {
   line:number; order_id:number; erp_order_id:string|null; order_url:string|null; recipient_name:string|null; country:string|null
-  warehouse_id:number; warehouse_name:string|null; carrier:string|null; tracking_number:string|null
+  warehouse_id:number; warehouse_name:string|null; carrier:string|null; carrier_selection_source:string|null; tracking_number:string|null
   progress:string; note:string|null; review_status:'approved'|'pending'; shipment_status:string; items:Item[]
 }
 type PageRows = { data:Row[]; current_page:number; last_page:number; total:number; links?:{url:string|null;label:string;active:boolean}[] }
 const props = defineProps<{
   warehouseKey:string; warehouse:WarehouseOption|null; warehouseOptions:WarehouseOption[]; view:string
-  rows:PageRows; viewCounts:Record<string,number>; canOperate:boolean
+  rows:PageRows; viewCounts:Record<string,number>; canOperate:boolean; carrierOptions:string[]
 }>()
 
-const drafts = reactive<Record<number,{ progress:string; note:string }>>({})
+const drafts = reactive<Record<number,{ progress:string; note:string; carrier:string; tracking_number:string }>>({})
 const rowErrors = reactive<Record<number,string>>({})
-const draft = (row:Row) => drafts[row.order_id] ??= { progress:row.progress, note:row.note ?? '' }
+const draft = (row:Row) => drafts[row.order_id] ??= { progress:row.progress, note:row.note ?? '', carrier:row.carrier ?? '', tracking_number:row.tracking_number ?? '' }
 const viewTabs = [
   ['review','待审核'], ['pending','待发货'], ['shipped','已发货'], ['exceptions','异常订单'], ['all','全部订单'],
 ] as const
@@ -28,13 +28,15 @@ const progressOptions = [
 
 const pageTitle = computed(() => props.warehouse ? `海外仓发货 · ${props.warehouse.label}` : '海外仓发货 · 全部海外仓')
 const basePath = computed(() => props.warehouse ? props.warehouse.url : '/logistics/oversea')
-const switchView = (view:string) => router.visit(`${basePath.value}?view=${view}`, { preserveScroll:true, preserveState:true, only:['rows','view','viewCounts','warehouse','warehouseKey','warehouseOptions','canOperate'] })
+const switchView = (view:string) => router.visit(`${basePath.value}?view=${view}`, { preserveScroll:true, preserveState:true, only:['rows','view','viewCounts','warehouse','warehouseKey','warehouseOptions','canOperate','carrierOptions'] })
 const switchWarehouse = (url:string) => router.visit(`${url}?view=${props.view}`, { preserveScroll:true, preserveState:true })
 const saveDraft = (row:Row, payload:Record<string,string|number|null>) => router.patch(`/logistics/oversea/orders/${row.order_id}/draft`, payload, { preserveScroll:true, preserveState:true })
 const changeWarehouse = (row:Row, warehouseId:number) => saveDraft(row, { warehouse_id:Number(warehouseId) })
 const changeWarehouseFromEvent = (row:Row, event:Event) => changeWarehouse(row, Number((event.target as HTMLSelectElement).value))
 const changeProgress = (row:Row) => saveDraft(row, { progress:draft(row).progress })
 const saveNote = (row:Row) => saveDraft(row, { note:draft(row).note.trim() || null })
+const saveCarrier = (row:Row) => saveDraft(row, { carrier:draft(row).carrier })
+const saveTracking = (row:Row) => saveDraft(row, { tracking_number:draft(row).tracking_number.trim() || null })
 const approve = (row:Row) => {
   rowErrors[row.order_id] = ''
   router.post(`/logistics/oversea/orders/${row.order_id}/approve`, { note:draft(row).note.trim() || null }, { preserveScroll:true, preserveState:true })
@@ -94,8 +96,8 @@ const goPage = (page:number) => router.visit(`${basePath.value}?view=${props.vie
               <td class="line-col">{{ row.line }}</td>
               <td><select v-model="draft(row).progress" :disabled="!canOperate" class="cell-select progress" @change="changeProgress(row)"><option v-for="([value,label]) in progressOptions" :key="value" :value="value">{{ label }}</option></select></td>
               <td><select :value="row.warehouse_id" :disabled="!canOperate || view !== 'review'" class="cell-select warehouse" @change="changeWarehouseFromEvent(row, $event)"><option v-for="option in warehouseOptions" :key="option.id" :value="option.id">{{ option.label }}</option></select></td>
-              <td><span class="carrier-pill">{{ row.carrier ?? '—' }}</span></td>
-              <td class="tracking-cell">{{ row.tracking_number ?? '—' }}</td>
+              <td><div class="carrier-cell"><select v-model="draft(row).carrier" :disabled="!canOperate || row.shipment_status === 'shipped'" class="cell-select carrier" @change="saveCarrier(row)"><option v-for="carrier in carrierOptions" :key="carrier" :value="carrier">{{ carrier }}</option></select><small>{{ row.carrier_selection_source === 'manual' ? '手动' : '默认' }}</small></div></td>
+              <td class="tracking-cell"><input v-model="draft(row).tracking_number" :disabled="!canOperate || row.shipment_status === 'shipped'" class="tracking-input" placeholder="填写发货单号" @blur="saveTracking(row)" /></td>
               <td><div class="note-cell"><input v-model="draft(row).note" :disabled="!canOperate" class="note-input" :class="{ error: !!rowErrors[row.order_id] }" placeholder="等海运 / 等空运 / 缺货 / 太贵 / 送不到…" @input="rowErrors[row.order_id] = ''" @blur="view === 'review' ? undefined : saveNote(row)" /><small v-if="rowErrors[row.order_id]" class="note-error">{{ rowErrors[row.order_id] }}</small></div></td>
               <td><a class="order-link" :href="row.order_url ?? `/customers/orders/${row.order_id}`">{{ row.erp_order_id ?? '—' }}</a></td>
               <td>{{ row.recipient_name ?? '—' }}</td>
@@ -124,7 +126,7 @@ const goPage = (page:number) => router.visit(`${basePath.value}?view=${props.vie
 .oversea-file-actions{display:flex;gap:10px}.file-button{height:40px;padding:0 16px;border:1px solid #0f8f82;border-radius:8px;background:white;color:#0d796f;font-weight:700}.file-button.primary{background:#0f8f82;color:white}.file-button:disabled{opacity:.45;cursor:not-allowed}
 .oversea-tabs{display:flex;gap:6px;align-items:center;margin:0 0 12px;border-bottom:1px solid #e2e8f0;overflow-x:auto}.oversea-tab{border:0;background:transparent;padding:9px 14px 8px;color:#536174;font-weight:700;white-space:nowrap;border-bottom:2px solid transparent}.oversea-tab span{margin-left:4px;color:#94a3b8;font-weight:600}.oversea-tab.active{color:#0f766e;border-bottom-color:#0f766e}.oversea-tab.active span{color:#0f766e}
 .oversea-table-wrap{overflow:auto;border:1px solid #dfe6ea;border-radius:10px;background:white}.oversea-table{width:max-content;min-width:1760px;border-collapse:collapse;font-size:13px}.oversea-table th{padding:9px 10px;background:#f8fafc;color:#425466;font-weight:700;text-align:left;border-right:1px solid #e5eaee;border-bottom:1px solid #dfe6ea;white-space:nowrap}.oversea-table td{padding:8px 10px;border-right:1px solid #edf1f4;border-bottom:1px solid #e7ecef;vertical-align:middle;white-space:nowrap}.oversea-table tr:last-child td{border-bottom:0}.decision-col{width:118px}.line-col{width:44px;text-align:center!important;color:#64748b}.decision-cell{white-space:nowrap}.decision{border:1px solid transparent;border-radius:6px;padding:5px 9px;font-weight:700;margin-right:4px}.decision.approve{background:#0ca678;color:white}.decision.reject{background:white;color:#d33;border-color:#efb6b6}.decision-state{font-weight:700;color:#a16207}.decision-state.approved{color:#087f5b}.decision-approved{display:flex;flex-direction:column;align-items:flex-start;gap:5px}.reopen-review{border:1px solid #99cfc7;background:#fff;color:#0f766e;border-radius:6px;padding:4px 8px;font-size:12px;font-weight:700}
-.cell-select,.note-input{width:100%;min-height:34px;border:1px solid #d7e0e5;border-radius:6px;background:white;color:#334155;padding:5px 8px}.cell-select:disabled,.note-input:disabled{background:#f8fafc;color:#64748b}.cell-select.progress{min-width:145px}.cell-select.warehouse{min-width:135px}.carrier-pill{display:inline-block;padding:5px 10px;border-radius:6px;background:#eef2f7;color:#334155;font-weight:700}.tracking-cell{min-width:220px}.note-cell{display:flex;flex-direction:column;gap:4px}.note-input{min-width:260px}.note-input.error{border-color:#dc2626}.note-error{color:#dc2626;font-size:11px}.order-link{display:inline-block;min-width:180px;color:#0f766e;font-weight:700;text-decoration:none;white-space:nowrap}.order-link:hover{text-decoration:underline}.items-cell{min-width:180px;color:#475569}.empty-cell{text-align:center!important;color:#94a3b8;padding:30px!important}
+.cell-select,.note-input{width:100%;min-height:34px;border:1px solid #d7e0e5;border-radius:6px;background:white;color:#334155;padding:5px 8px}.cell-select:disabled,.note-input:disabled{background:#f8fafc;color:#64748b}.cell-select.progress{min-width:145px}.cell-select.warehouse{min-width:135px}.carrier-cell{display:flex;flex-direction:column;gap:3px;min-width:150px}.carrier-cell small{color:#94a3b8;font-size:11px}.cell-select.carrier{min-width:145px}.tracking-cell{min-width:240px}.tracking-input{width:100%;min-width:220px;min-height:34px;border:1px solid #d7e0e5;border-radius:6px;background:#fff;color:#334155;padding:5px 8px}.tracking-input:disabled{background:#f8fafc;color:#64748b}.note-cell{display:flex;flex-direction:column;gap:4px}.note-input{min-width:260px}.note-input.error{border-color:#dc2626}.note-error{color:#dc2626;font-size:11px}.order-link{display:inline-block;min-width:180px;color:#0f766e;font-weight:700;text-decoration:none;white-space:nowrap}.order-link:hover{text-decoration:underline}.items-cell{min-width:180px;color:#475569}.empty-cell{text-align:center!important;color:#94a3b8;padding:30px!important}
 .oversea-footer{display:flex;justify-content:space-between;align-items:center;padding:14px 2px;color:#64748b}.pagination{display:flex;gap:5px}.pagination button{border:1px solid #d7e0e5;background:white;border-radius:6px;min-width:32px;height:32px;color:#475569}.pagination button.active{background:#0f766e;border-color:#0f766e;color:white}
 @media (max-width:900px){.oversea-workbench{grid-template-columns:1fr}.warehouse-rail{position:static;display:flex;gap:6px;overflow-x:auto}.warehouse-rail-title{display:none}.warehouse-link{width:auto;flex:0 0 auto}.oversea-heading{flex-direction:column}.oversea-file-actions{align-self:stretch}.file-button{flex:1}.oversea-page{padding:14px}}
 </style>

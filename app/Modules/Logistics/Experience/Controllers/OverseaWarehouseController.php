@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
+use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\RedirectResponse;
@@ -49,6 +50,7 @@ final class OverseaWarehouseController
             'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => $this->row($shipment, $start + $index + 1))->toArray(),
             'viewCounts' => $this->viewCounts($warehouseMap, $selectedWarehouse),
             'canOperate' => $warehouseKey !== 'all' && (bool) $request->user()?->can('logistics.operate'),
+            'carrierOptions' => Carrier::query()->where('is_active', true)->orderBy('name')->pluck('name')->values()->all(),
         ]);
     }
 
@@ -58,6 +60,8 @@ final class OverseaWarehouseController
             'warehouse_id' => ['sometimes', 'required', 'integer', Rule::exists('warehouses', 'id')->where('is_active', true)],
             'progress' => ['sometimes', 'required', 'string', Rule::in(self::PROGRESS)],
             'note' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'carrier' => ['sometimes', 'required', 'string', 'max:191', Rule::exists('logistics_carriers', 'name')->where('is_active', true)],
+            'tracking_number' => ['sometimes', 'nullable', 'string', 'max:128'],
         ]);
         $this->reviews->updateDraft($order, $data, $request->user());
         return back()->with('success', '海外仓审核信息已保存');
@@ -167,7 +171,8 @@ final class OverseaWarehouseController
             'country' => $order?->address?->country,
             'warehouse_id' => $shipment->warehouse_id,
             'warehouse_name' => $shipment->warehouse?->name,
-            'carrier' => OverseaWarehouseReviewService::CARRIER_BY_CODE[$shipment->warehouse?->code] ?? $shipment->carrier,
+            'carrier' => $shipment->carrier ?: (OverseaWarehouseReviewService::CARRIER_BY_CODE[$shipment->warehouse?->code] ?? null),
+            'carrier_selection_source' => $shipment->carrier_selection_source,
             'tracking_number' => $shipment->tracking_number,
             'progress' => $review?->progress ?? 'pending_review',
             'note' => $review?->note,

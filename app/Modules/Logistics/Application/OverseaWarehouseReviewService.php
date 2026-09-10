@@ -52,8 +52,23 @@ final class OverseaWarehouseReviewService
                     'warehouse_id' => $warehouse->id,
                     'carrier' => $carrier,
                     'service' => null,
+                    'carrier_selection_source' => 'automatic',
                 ], $actor);
                 $review->forceFill(['status' => 'pending', 'reviewed_warehouse_id' => null, 'reviewed_by' => null, 'reviewed_at' => null])->save();
+            }
+
+            if (array_key_exists('carrier', $data) || array_key_exists('tracking_number', $data)) {
+                $shipmentDraft = [];
+                if (array_key_exists('carrier', $data)) {
+                    $shipmentDraft['carrier'] = trim((string) $data['carrier']);
+                    $shipmentDraft['service'] = null;
+                    $shipmentDraft['carrier_selection_source'] = 'manual';
+                }
+                if (array_key_exists('tracking_number', $data)) {
+                    $tracking = trim((string) ($data['tracking_number'] ?? ''));
+                    $shipmentDraft['tracking_number'] = $tracking === '' ? null : $tracking;
+                }
+                $locked = $this->shipments->saveDraft($locked, $shipmentDraft, $actor);
             }
 
             if (array_key_exists('progress', $data) || array_key_exists('note', $data)) {
@@ -76,8 +91,14 @@ final class OverseaWarehouseReviewService
             abort_unless(in_array($locked->shipment->warehouse?->code, array_values(self::WAREHOUSE_CODE_BY_KEY), true), 422, '该订单不是海外仓订单');
             $review = $this->reviewForMutation($locked);
             $carrier = self::CARRIER_BY_CODE[$locked->shipment->warehouse->code] ?? null;
-            if ($locked->shipment->carrier !== $carrier) {
-                $this->shipments->saveDraft($locked, ['carrier' => $carrier, 'service' => null], $actor);
+            $manualCarrier = $locked->shipment->carrier_selection_source === 'manual'
+                && filled($locked->shipment->carrier);
+            if (! $manualCarrier && $locked->shipment->carrier !== $carrier) {
+                $this->shipments->saveDraft($locked, [
+                    'carrier' => $carrier,
+                    'service' => null,
+                    'carrier_selection_source' => 'automatic',
+                ], $actor);
             }
             $review->forceFill([
                 'status' => 'approved',

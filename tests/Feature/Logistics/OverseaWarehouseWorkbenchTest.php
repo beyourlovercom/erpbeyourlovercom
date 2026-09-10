@@ -106,6 +106,39 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         ]);
     }
 
+    public function test_manual_carrier_override_survives_approval(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-LA'], '007-OVERSEA-MANUAL-CARRIER');
+
+        $this->actingAs($user)->patch("/logistics/oversea/orders/{$order->id}/draft", [
+            'carrier' => 'FedEx',
+        ])->assertRedirect();
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'carrier' => 'FedEx', 'carrier_selection_source' => 'manual',
+        ]);
+
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'carrier' => 'FedEx', 'carrier_selection_source' => 'manual',
+        ]);
+    }
+
+    public function test_tracking_number_can_be_entered_before_shipping(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-NY'], '007-OVERSEA-TRACKING');
+
+        $this->actingAs($user)->patch("/logistics/oversea/orders/{$order->id}/draft", [
+            'tracking_number' => '9400111899223856928499',
+        ])->assertRedirect();
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'tracking_number' => '9400111899223856928499', 'shipment_status' => 'pending',
+        ]);
+    }
+
     public function test_rejection_requires_reason_clears_assignment_and_notifies_all_operations_users(): void
     {
         $dede = $this->userWith(['logistics.view', 'logistics.operate']);
