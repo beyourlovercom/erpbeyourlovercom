@@ -51,6 +51,14 @@ if ((bool) config('services.woocommerce.order_sync_enabled', false)) {
         ->onOneServer();
 }
 
+if ((bool) config('erp_accounting.continuous_delta.enabled', false)) {
+    Schedule::command('finance:materialize-continuous-delta --apply --limit=10000 --no-interaction')
+        ->hourlyAt(10)
+        ->name('finance.accounting.continuous-delta.hourly')
+        ->withoutOverlapping(50)
+        ->onOneServer();
+}
+
 if ((bool) config('inventory_auto_allocation.scheduler_enabled', false)) {
     Schedule::command('inventory:auto-allocate --limit='.(int) config('inventory_auto_allocation.catch_up_limit', 100).' --apply')
         ->hourly()
