@@ -64,6 +64,43 @@ final class OrderIdentityService
         });
     }
 
+    public function generateWooCustomer(string $externalOrderNumber, string $providerReference, string $businessDate): string
+    {
+        $identity = $this->previewWooCustomer($externalOrderNumber, $providerReference, $businessDate);
+        if (Order::query()->where('erp_order_id', $identity)->exists()) {
+            throw new RuntimeException('WooCommerce ERP order identity already exists.');
+        }
+
+        return $identity;
+    }
+
+    public function previewWooCustomer(string $externalOrderNumber, string $providerReference, string $businessDate): string
+    {
+        $number = $this->wooOrderNumber($externalOrderNumber, $providerReference);
+        $prefix = (string) (OrderIdentitySetting::query()->whereKey(1)->value('prefix_token') ?: self::DEFAULT_PREFIX);
+        $date = date_create_immutable($businessDate);
+        if (! $date) {
+            throw new RuntimeException('ERP order identity date is invalid.');
+        }
+
+        return sprintf('%s-%s-%s', $prefix, $date->format('md'), $number);
+    }
+
+    private function wooOrderNumber(string $externalOrderNumber, string $providerReference): string
+    {
+        $externalOrderNumber = trim($externalOrderNumber);
+        if (preg_match('/^#?(\d+)/', $externalOrderNumber, $matches) === 1) {
+            return $matches[1];
+        }
+
+        $providerReference = trim($providerReference);
+        if ($providerReference !== '' && ctype_digit($providerReference)) {
+            return $providerReference;
+        }
+
+        throw new RuntimeException('WooCommerce order number must provide a numeric business order number.');
+    }
+
     public function normalizePrefix(string $prefix): string
     {
         $prefix = strtolower(trim($prefix));
