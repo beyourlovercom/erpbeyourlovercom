@@ -12,12 +12,12 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class OverseaWarehouseController
 {
     private const PER_PAGE = 25;
     private const VIEWS = ['review', 'pending', 'shipped', 'exceptions', 'all'];
-    private const PROGRESS = ['pending_review', 'sending_pending', 'shipping', 'shipped'];
 
     public function __construct(private readonly OverseaWarehouseReviewService $reviews) {}
 
@@ -54,11 +54,46 @@ final class OverseaWarehouseController
         ]);
     }
 
+    public function export(Request $request, string $warehouse): StreamedResponse
+    {
+        $warehouseMap = $this->warehouseMap();
+        $selectedWarehouse = $warehouseMap[$warehouse] ?? null;
+        abort_unless($selectedWarehouse, 404, '仓库尚未建立');
+
+        $shipments = Shipment::query()
+            ->with(['order.address', 'order.items.product', 'warehouse', 'overseaReview'])
+            ->where('warehouse_id', $selectedWarehouse['id'])
+            ->whereHas('order', fn ($q) => $q
+                ->where('order_status', '!=', 'cancelled')
+                ->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
+        $this->applyView($shipments, 'pending');
+        $rows = $shipments->latest('id')->get();
+        $filename = sprintf('007-%s-orders-%s.csv', $warehouse, now()->format('ymd'));
+
+        return response()->streamDownload(function () use ($rows): void {
+            $out = fopen('php://output', 'wb');
+            fwrite($out, "\xEF\xBB\xBF");
+            fputcsv($out, ['订单号', '收件人', '电话', '地址', '地址2', '城市', '州/省', '邮编', '国家', 'SKU/数量', '仓库', 'Carrier', 'Tracking No.', '备注']);
+            foreach ($rows as $shipment) {
+                $order = $shipment->order;
+                $address = $order?->address;
+                $items = $order?->items?->map(fn ($item) => ($item->sku ?: '无SKU').' x '.(int) $item->quantity)->implode(' / ') ?? '';
+                fputcsv($out, [
+                    $order?->erp_order_id, $address?->recipient_name, $address?->phone,
+                    $address?->address_line_1, $address?->address_line_2, $address?->city,
+                    $address?->province_state, $address?->postal_code, $address?->country,
+                    $items, $shipment->warehouse?->name, $shipment->carrier,
+                    $shipment->tracking_number, $shipment->overseaReview?->note,
+                ]);
+            }
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
     public function updateDraft(Request $request, Order $order): RedirectResponse
     {
         $data = $request->validate([
             'warehouse_id' => ['sometimes', 'required', 'integer', Rule::exists('warehouses', 'id')->where('is_active', true)],
-            'progress' => ['sometimes', 'required', 'string', Rule::in(self::PROGRESS)],
             'note' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'carrier' => ['sometimes', 'required', 'string', 'max:191', Rule::exists('logistics_carriers', 'name')->where('is_active', true)],
             'tracking_number' => ['sometimes', 'nullable', 'string', 'max:128'],

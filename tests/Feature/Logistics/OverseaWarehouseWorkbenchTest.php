@@ -172,6 +172,22 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         }
     }
 
+    public function test_pending_warehouse_orders_can_be_downloaded_as_standard_csv(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-LA'], '007-OVERSEA-EXPORT');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+
+        $response = $this->actingAs($user)->get('/logistics/oversea/us-moreplus/export');
+        $response->assertOk();
+        $this->assertStringContainsString('attachment; filename=007-us-moreplus-orders-', (string) $response->headers->get('content-disposition'));
+        $content = $response->streamedContent();
+        $this->assertStringContainsString('订单号', $content);
+        $this->assertStringContainsString('007-OVERSEA-EXPORT', $content);
+        $this->assertStringContainsString('USPS', $content);
+    }
+
     public function test_view_only_user_sees_page_but_not_operate_flag(): void
     {
         $user = $this->userWith(['logistics.view']);
