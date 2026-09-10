@@ -12,6 +12,7 @@ use App\Modules\Logistics\Infrastructure\Models\ShipmentItemPackagingSnapshot;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductPackagingProfile;
+use App\Modules\Products\Infrastructure\Models\ProductWeightEvidence;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -125,16 +126,13 @@ final class ManualFulfillmentIntegrationTest extends TestCase
 
         $this->actingAs($user)->get('/logistics/pending')->assertOk();
 
-        $externalReferenceLoads = collect($queries)->filter(fn (string $sql): bool =>
-            str_contains($sql, 'from "order_external_references" where "order_external_references"."order_id" in')
+        $externalReferenceLoads = collect($queries)->filter(fn (string $sql): bool => str_contains($sql, 'from "order_external_references" where "order_external_references"."order_id" in')
             || str_contains($sql, 'from `order_external_references` where `order_external_references`.`order_id` in')
         )->count();
-        $packagingStandardLoads = collect($queries)->filter(fn (string $sql): bool =>
-            str_contains($sql, 'product_packaging_profiles')
+        $packagingStandardLoads = collect($queries)->filter(fn (string $sql): bool => str_contains($sql, 'product_packaging_profiles')
             && str_contains($sql, 'packaging_measurement_records')
         )->count();
-        $shippingWeightStandardLoads = collect($queries)->filter(fn (string $sql): bool =>
-            str_contains($sql, 'product_weight_evidences')
+        $shippingWeightStandardLoads = collect($queries)->filter(fn (string $sql): bool => str_contains($sql, 'product_weight_evidences')
             && str_contains($sql, 'shipping_weight_evidence_id')
         )->count();
 
@@ -184,18 +182,17 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         $this->assertDatabaseMissing('shipments', ['order_id' => $order->id]);
     }
 
-
     public function test_order_uses_current_product_packaging_standard_and_fulfillment_freezes_snapshot(): void
     {
         [$user, $order, $product, $warehouse] = $this->scenario();
         $this->makeReservable($warehouse, $product, 10);
         $measurement = PackagingMeasurementRecord::query()->create([
-            'product_id'=>$product->id,'warehouse_id'=>$warehouse->id,'status'=>'approved','packaging_method_key'=>'bubble_wrap_cut',
-            'packaging_length_cm'=>'32.00','packaging_width_cm'=>'18.00','packaging_height_cm'=>'12.00','packaged_weight_kg'=>'0.850',
-            'measured_at'=>'2026-09-04 10:00:00','created_by'=>$user->id,'reviewed_by'=>$user->id,'reviewed_at'=>now(),
+            'product_id' => $product->id, 'warehouse_id' => $warehouse->id, 'status' => 'approved', 'packaging_method_key' => 'bubble_wrap_cut',
+            'packaging_length_cm' => '32.00', 'packaging_width_cm' => '18.00', 'packaging_height_cm' => '12.00', 'packaged_weight_kg' => '0.850',
+            'measured_at' => '2026-09-04 10:00:00', 'created_by' => $user->id, 'reviewed_by' => $user->id, 'reviewed_at' => now(),
         ]);
         $profile = ProductPackagingProfile::query()->create([
-            'product_id'=>$product->id,'preset_key'=>'bubble_wrap_cut','current_measurement_record_id'=>$measurement->id,'is_active'=>true,
+            'product_id' => $product->id, 'preset_key' => 'bubble_wrap_cut', 'current_measurement_record_id' => $measurement->id, 'is_active' => true,
         ]);
         $item = $order->items()->firstOrFail();
 
@@ -206,18 +203,18 @@ final class ManualFulfillmentIntegrationTest extends TestCase
                 ->where("packagingReferences.{$item->id}.packaging_length_cm", '32.00')
         );
 
-        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/draft', ['warehouse_id'=>$warehouse->id])->assertRedirect();
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/draft', ['warehouse_id' => $warehouse->id])->assertRedirect();
         $shipment = $order->fresh()->shipment()->firstOrFail();
-        $snapshot = ShipmentItemPackagingSnapshot::query()->where('shipment_id',$shipment->id)->where('order_item_id',$item->id)->firstOrFail();
+        $snapshot = ShipmentItemPackagingSnapshot::query()->where('shipment_id', $shipment->id)->where('order_item_id', $item->id)->firstOrFail();
         $this->assertSame('0.850', $snapshot->packaged_weight_kg);
         $this->assertSame($measurement->id, $snapshot->packaging_measurement_record_id);
 
         $newMeasurement = PackagingMeasurementRecord::query()->create([
-            'product_id'=>$product->id,'warehouse_id'=>$warehouse->id,'status'=>'approved','packaging_method_key'=>'carton',
-            'packaging_length_cm'=>'30.00','packaging_width_cm'=>'17.00','packaging_height_cm'=>'11.00','packaged_weight_kg'=>'0.720',
-            'measured_at'=>'2026-10-01 10:00:00','created_by'=>$user->id,'reviewed_by'=>$user->id,'reviewed_at'=>now(),
+            'product_id' => $product->id, 'warehouse_id' => $warehouse->id, 'status' => 'approved', 'packaging_method_key' => 'carton',
+            'packaging_length_cm' => '30.00', 'packaging_width_cm' => '17.00', 'packaging_height_cm' => '11.00', 'packaged_weight_kg' => '0.720',
+            'measured_at' => '2026-10-01 10:00:00', 'created_by' => $user->id, 'reviewed_by' => $user->id, 'reviewed_at' => now(),
         ]);
-        $profile->update(['current_measurement_record_id'=>$newMeasurement->id,'preset_key'=>'carton']);
+        $profile->update(['current_measurement_record_id' => $newMeasurement->id, 'preset_key' => 'carton']);
 
         $this->actingAs($user)->get('/customers/orders/'.$order->id)->assertInertia(
             fn (Assert $page) => $page
@@ -449,6 +446,22 @@ final class ManualFulfillmentIntegrationTest extends TestCase
             ['sku' => 'MVP1-LINK-1'],
             ['name' => 'MVP1 Linked Product', 'product_type' => 'simple', 'woocommerce_product_id' => 991001],
         );
+        if ($product->shipping_weight_evidence_id === null) {
+            $weightEvidence = ProductWeightEvidence::create([
+                'product_id' => $product->id,
+                'weight_kind' => 'shipping_reference_weight',
+                'observed_weight_kg' => 0.5000,
+                'raw_sku' => $product->sku,
+                'source_type' => 'manual_entry',
+                'source_reference' => 'manual-fulfillment-test-fixture',
+                'status' => 'adopted',
+                'reviewed_at' => now(),
+            ]);
+            $product->forceFill([
+                'shipping_weight_kg' => 0.5000,
+                'shipping_weight_evidence_id' => $weightEvidence->id,
+            ])->save();
+        }
         $warehouse = Warehouse::query()->where('is_active', true)->orderBy('priority')->firstOrFail();
 
         $this->actingAs($user)->post('/customers/orders', [

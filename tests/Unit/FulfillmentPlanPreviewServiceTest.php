@@ -31,8 +31,7 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
         $this->assertTrue($preview['constraints']['must_use_us_warehouse']);
         $this->assertFalse($preview['constraints']['factory_allowed']);
         $this->assertNotEmpty($preview['plans']);
-        $this->assertTrue(collect($preview['plans'])->every(fn (array $plan): bool =>
-            collect($plan['segments'])->every(fn (array $segment): bool => $segment['source_type'] === 'warehouse')
+        $this->assertTrue(collect($preview['plans'])->every(fn (array $plan): bool => collect($plan['segments'])->every(fn (array $segment): bool => $segment['source_type'] === 'warehouse')
         ));
         $this->assertTrue(collect($preview['plans'])->contains(fn (array $plan): bool => $plan['is_split'] === true));
     }
@@ -85,6 +84,81 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
         $this->assertSame('preview_only_multi_shipment_schema_required', $splitPlan['execution_status']);
     }
 
+    public function test_missing_weight_lists_only_whole_order_stocked_warehouses_without_cost_ranking(): void
+    {
+        $warehouses = [
+            $this->warehouse(1, 'US-LA'),
+            $this->warehouse(2, 'US-NY'),
+            $this->warehouse(7, 'US-SJ'),
+        ];
+        $availability = [10 => [
+            $this->stock(1, 5),
+            $this->stock(2, 0),
+            $this->stock(7, 5),
+        ]];
+        $context = [
+            'warehouses' => $warehouses,
+            'availability' => $availability,
+            'measurement_availability' => [
+                'status' => 'missing_weight',
+                'missing_weight_product_ids' => [10],
+            ],
+        ];
+
+        $preview = $this->service($warehouses, $availability)->preview(
+            'US',
+            [['product_id' => 10, 'quantity' => 1]],
+            ['province_state' => 'CA'],
+            [],
+            $context,
+        );
+
+        $this->assertSame('preview', $preview['status']);
+        $this->assertSame('inventory_only_manual_warehouse_selection', $preview['reason_code']);
+        $this->assertSame('inventory_only_missing_weight', $preview['fallback_policy']['mode']);
+        $this->assertFalse($preview['fallback_policy']['cost_ranking_enabled']);
+        $this->assertFalse($preview['fallback_policy']['warehouse_auto_recommendation_enabled']);
+        $this->assertSame('manual_warehouse_selection', $preview['fallback_policy']['next_action']);
+        $this->assertSame('not_evaluated_missing_weight', $preview['comparison']['status']);
+        $this->assertNull($preview['comparison']['lowest_cost_plan_key']);
+        $this->assertCount(2, $preview['plans']);
+        $this->assertTrue(collect($preview['plans'])->every(fn (array $plan): bool => $plan['plan_type'] === 'single'
+            && $plan['cost']['status'] === 'not_evaluated'
+            && $plan['segments'][0]['source_type'] === 'warehouse'
+        ));
+        $this->assertSame(
+            ['US-LA', 'US-SJ'],
+            collect($preview['plans'])->pluck('segments.0.source_code')->sort()->values()->all(),
+        );
+    }
+
+    public function test_missing_weight_without_whole_order_stock_blocks_to_procurement_instead_of_factory(): void
+    {
+        $warehouses = [$this->warehouse(1, 'US-LA')];
+        $availability = [10 => [$this->stock(1, 0)]];
+        $context = [
+            'warehouses' => $warehouses,
+            'availability' => $availability,
+            'measurement_availability' => [
+                'status' => 'missing_weight',
+                'missing_weight_product_ids' => [10],
+            ],
+        ];
+
+        $preview = $this->service($warehouses, $availability)->preview(
+            'US',
+            [['product_id' => 10, 'quantity' => 1]],
+            ['province_state' => 'CA'],
+            [],
+            $context,
+        );
+
+        $this->assertSame('blocked', $preview['status']);
+        $this->assertSame('insufficient_stock', $preview['reason_code']);
+        $this->assertSame([], $preview['plans']);
+        $this->assertSame('procurement', $preview['fallback_policy']['next_action']);
+    }
+
     public function test_factory_is_final_fallback_when_no_overseas_warehouse_can_cover_items(): void
     {
         $preview = $this->service(
@@ -122,10 +196,24 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
         $reader = new class($warehouses, $availability) implements InventoryAvailabilityReader
         {
             public int $warehouseReads = 0;
+
             public int $availabilityReads = 0;
+
             public function __construct(private array $warehouses, private array $availability) {}
-            public function activeWarehouses(): array { $this->warehouseReads++; return $this->warehouses; }
-            public function forProductIds(array $productIds): array { $this->availabilityReads++; return collect($this->availability)->only($productIds)->all(); }
+
+            public function activeWarehouses(): array
+            {
+                $this->warehouseReads++;
+
+                return $this->warehouses;
+            }
+
+            public function forProductIds(array $productIds): array
+            {
+                $this->availabilityReads++;
+
+                return collect($this->availability)->only($productIds)->all();
+            }
         };
         $service = new FulfillmentPlanPreviewService($reader, app(WarehouseRoutingPolicy::class), app(CarrierRoutingPolicy::class));
         $context = ['warehouses' => $warehouses, 'availability' => $availability];
@@ -166,8 +254,16 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
         return new class($warehouses, $availability) implements InventoryAvailabilityReader
         {
             public function __construct(private array $warehouses, private array $availability) {}
-            public function activeWarehouses(): array { return $this->warehouses; }
-            public function forProductIds(array $productIds): array { return collect($this->availability)->only($productIds)->all(); }
+
+            public function activeWarehouses(): array
+            {
+                return $this->warehouses;
+            }
+
+            public function forProductIds(array $productIds): array
+            {
+                return collect($this->availability)->only($productIds)->all();
+            }
         };
     }
 }

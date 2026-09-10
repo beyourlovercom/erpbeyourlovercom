@@ -29,8 +29,7 @@ final class WarehouseRecommendationService
         array $costEvidence = [],
         array $destinationContext = [],
         ?array $context = null,
-    ): array
-    {
+    ): array {
         $countryCode = strtoupper(trim((string) $country));
         if ($countryCode === '') {
             return $this->blocked('missing_country', '订单缺少国家代码，无法自动推荐仓库。');
@@ -54,8 +53,22 @@ final class WarehouseRecommendationService
             return $this->blocked('no_inventory_authority', '当前没有具备 Full Snapshot 权威库存的仓库。');
         }
 
+        $strategy = $this->routing->strategy($countryCode);
+        if ($strategy === 'blocked') {
+            return $this->blocked(
+                'country_policy_blocked',
+                $this->routing->blockedReason($countryCode) ?? "{$countryCode} 当前 Policy 不使用德国仓。",
+                $countryCode,
+            );
+        }
+
+        if (($context['measurement_availability']['status'] ?? null) === 'missing_weight') {
+            return $this->inventoryOnlyFallback($countryCode, $requirements, $warehouses, $context);
+        }
+
         if ($countryCode === 'US' && $this->routing->isUsAkHiDestination($destinationContext)) {
             $state = strtoupper(trim((string) ($destinationContext['province_state'] ?? $destinationContext['state'] ?? '')));
+
             return $this->blocked(
                 'us_ak_hi_cost_review_required',
                 "{$state} 订单必须比较美国 USPS 与中国工厂 SD经济挂号-带电成本后由人工选择，不提供一键美国仓推荐。",
@@ -69,14 +82,6 @@ final class WarehouseRecommendationService
             );
         }
 
-        $strategy = $this->routing->strategy($countryCode);
-        if ($strategy === 'blocked') {
-            return $this->blocked(
-                'country_policy_blocked',
-                $this->routing->blockedReason($countryCode) ?? "{$countryCode} 当前 Policy 不使用德国仓。",
-                $countryCode,
-            );
-        }
         if ($strategy === 'fixed') {
             return $this->recommendFixedWarehouse($countryCode, $requirements, $warehouses, $context);
         }
@@ -98,6 +103,83 @@ final class WarehouseRecommendationService
         return $this->recommendServiceRegion($countryCode, $requirements, $warehouses, $context);
     }
 
+    private function inventoryOnlyFallback(
+        string $countryCode,
+        Collection $requirements,
+        Collection $warehouses,
+        array $context,
+    ): array {
+        $allowedCodes = $this->routing->warehouseCodes($countryCode);
+        $policyWarehouses = $allowedCodes === []
+            ? $warehouses
+            : $warehouses->filter(function (array $warehouse) use ($allowedCodes): bool {
+                $canonical = $this->routing->canonicalWarehouseCode((string) ($warehouse['code'] ?? ''));
+
+                return $canonical !== null && in_array($canonical, $allowedCodes, true);
+            })->values();
+
+        if ($this->routing->strategy($countryCode) === null && $allowedCodes === []) {
+            $policyWarehouses = $warehouses->filter(function (array $warehouse) use ($countryCode): bool {
+                return collect($warehouse['service_regions'] ?? [])->contains(
+                    fn (array $region): bool => strtoupper((string) ($region['country_code'] ?? '')) === $countryCode
+                );
+            })->values();
+        }
+
+        if ($policyWarehouses->isEmpty()) {
+            return $this->blocked('no_service_region_match', "没有可用仓库覆盖 {$countryCode}。", $countryCode);
+        }
+
+        $eligible = $policyWarehouses->filter(
+            fn (array $warehouse): bool => $this->covers($warehouse, $requirements, $context['availability'])
+        )->values();
+        $candidates = $eligible->map(fn (array $warehouse): array => [
+            'id' => (int) $warehouse['id'],
+            'slug' => (string) $warehouse['slug'],
+            'code' => $this->routing->canonicalWarehouseCode((string) ($warehouse['code'] ?? '')) ?? (string) $warehouse['code'],
+            'name' => (string) $warehouse['name'],
+        ])->values()->all();
+        $missing = array_values(array_map('intval', (array) ($context['measurement_availability']['missing_weight_product_ids'] ?? [])));
+
+        if ($eligible->isEmpty()) {
+            return [
+                'status' => 'blocked',
+                'reason_code' => 'insufficient_stock',
+                'reason_label' => '产品缺少重量且当前没有单一可用仓库能整单满足库存；进入缺货/采购流程。',
+                'country_code' => $countryCode,
+                'required_sku_count' => $requirements->count(),
+                'candidate_count' => 0,
+                'warehouse' => null,
+                'routing_context' => [
+                    'strategy' => 'inventory_only_missing_weight',
+                    'cost_ranking_enabled' => false,
+                    'manual_selection_required' => true,
+                    'missing_weight_product_ids' => $missing,
+                    'candidate_warehouses' => [],
+                    'next_action' => 'procurement',
+                ],
+            ];
+        }
+
+        return [
+            'status' => 'blocked',
+            'reason_code' => 'missing_product_weight_inventory_only',
+            'reason_label' => '产品缺少重量，已跳过成本比较和最优仓推荐；仅按库存列出可整单发货仓库，请人工选择。',
+            'country_code' => $countryCode,
+            'required_sku_count' => $requirements->count(),
+            'candidate_count' => count($candidates),
+            'warehouse' => null,
+            'routing_context' => [
+                'strategy' => 'inventory_only_missing_weight',
+                'cost_ranking_enabled' => false,
+                'manual_selection_required' => true,
+                'missing_weight_product_ids' => $missing,
+                'candidate_warehouses' => $candidates,
+                'next_action' => 'manual_warehouse_selection',
+            ],
+        ];
+    }
+
     private function recommendFixedWarehouse(
         string $countryCode,
         Collection $requirements,
@@ -109,8 +191,7 @@ final class WarehouseRecommendationService
             return $this->blocked('fixed_warehouse_unconfigured', '固定仓策略未配置唯一仓库。', $countryCode);
         }
 
-        $warehouse = $warehouses->first(fn (array $candidate): bool =>
-            $this->routing->canonicalWarehouseCode((string) ($candidate['code'] ?? '')) === $fixedCode
+        $warehouse = $warehouses->first(fn (array $candidate): bool => $this->routing->canonicalWarehouseCode((string) ($candidate['code'] ?? '')) === $fixedCode
         );
         if ($warehouse === null) {
             return $this->blocked('no_inventory_authority', "固定仓 {$fixedCode} 当前没有 Full Snapshot 权威库存。", $countryCode);
@@ -144,7 +225,9 @@ final class WarehouseRecommendationService
         array $context,
     ): array {
         $warehouse = $this->deWarehouse($countryCode, $requirements, $warehouses, $context);
-        if (isset($warehouse['blocked'])) return $warehouse['blocked'];
+        if (isset($warehouse['blocked'])) {
+            return $warehouse['blocked'];
+        }
 
         return $this->recommended(
             $warehouse,
@@ -165,7 +248,9 @@ final class WarehouseRecommendationService
         array $context,
     ): array {
         $warehouse = $this->deWarehouse($countryCode, $requirements, $warehouses, $context);
-        if (isset($warehouse['blocked'])) return $warehouse['blocked'];
+        if (isset($warehouse['blocked'])) {
+            return $warehouse['blocked'];
+        }
 
         $gate = $this->routing->deCostGate($countryCode) ?? [];
         $required = (array) ($gate['required_evidence'] ?? []);
@@ -229,8 +314,7 @@ final class WarehouseRecommendationService
     private function deWarehouse(string $countryCode, Collection $requirements, Collection $warehouses, array $context): array
     {
         $allowed = $this->routing->warehouseCodes($countryCode);
-        $warehouse = $warehouses->first(fn (array $candidate): bool =>
-            in_array($this->routing->canonicalWarehouseCode((string) ($candidate['code'] ?? '')), $allowed, true)
+        $warehouse = $warehouses->first(fn (array $candidate): bool => in_array($this->routing->canonicalWarehouseCode((string) ($candidate['code'] ?? '')), $allowed, true)
         );
         if ($warehouse === null) {
             return ['blocked' => $this->blocked(
@@ -265,6 +349,7 @@ final class WarehouseRecommendationService
             $result['reason_code'] = 'recommended_military_us_local';
             $result['reason_label'] = '军事地址必须由美国仓当地发货；当前推荐美国仓可整单履约。';
             $result['routing_context'] = $context;
+
             return $result;
         }
 
@@ -278,8 +363,11 @@ final class WarehouseRecommendationService
 
     private function numericCost(mixed $value): ?float
     {
-        if (! is_numeric($value)) return null;
+        if (! is_numeric($value)) {
+            return null;
+        }
         $number = (float) $value;
+
         return $number >= 0 ? round($number, 4) : null;
     }
 
@@ -293,6 +381,7 @@ final class WarehouseRecommendationService
         $allowedCodes = $this->routing->warehouseCodes($countryCode);
         $policyWarehouses = $warehouses->filter(function (array $warehouse) use ($allowedCodes): bool {
             $canonical = $this->routing->canonicalWarehouseCode((string) ($warehouse['code'] ?? ''));
+
             return $canonical !== null && in_array($canonical, $allowedCodes, true);
         })->values();
 
@@ -313,8 +402,7 @@ final class WarehouseRecommendationService
         $dataFile = (string) ($eastRule['data_file'] ?? '');
         $zone = $this->zones->resolve($postalCode, $dataFile);
 
-        $east = $eligible->first(fn (array $warehouse): bool =>
-            $this->routing->canonicalWarehouseCode((string) ($warehouse['code'] ?? '')) === $eastCode
+        $east = $eligible->first(fn (array $warehouse): bool => $this->routing->canonicalWarehouseCode((string) ($warehouse['code'] ?? '')) === $eastCode
         );
 
         if ($east !== null && ($zone['status'] ?? null) === 'matched' && (int) $zone['zone'] <= $maxZone) {
@@ -330,13 +418,13 @@ final class WarehouseRecommendationService
         }
 
         foreach ($this->routing->fallbackPriority($countryCode) as $code) {
-            $winner = $eligible->first(fn (array $warehouse): bool =>
-                $this->routing->canonicalWarehouseCode((string) ($warehouse['code'] ?? '')) === $code
+            $winner = $eligible->first(fn (array $warehouse): bool => $this->routing->canonicalWarehouseCode((string) ($warehouse['code'] ?? '')) === $code
             );
             if ($winner !== null) {
                 $label = ($zone['status'] ?? null) === 'matched'
                     ? "美东 USPS Zone {$zone['zone']} 未触发 Zone ≤ {$maxZone} 美东优先，按 US-SJ → US-LA → US-NY 顺序选择可整单履约仓。"
                     : 'ZIP 无法从当前美东 USPS 分区表唯一确认 Zone，按 US-SJ → US-LA → US-NY 安全 fallback。';
+
                 return $this->recommended(
                     $winner,
                     $countryCode,
@@ -350,6 +438,7 @@ final class WarehouseRecommendationService
         }
 
         $winner = $eligible->sortBy([['priority', 'asc'], ['id', 'asc']])->first();
+
         return $this->recommended(
             $winner,
             $countryCode,
@@ -371,6 +460,7 @@ final class WarehouseRecommendationService
             $region = collect($warehouse['service_regions'] ?? [])->first(
                 fn (array $item): bool => strtoupper((string) ($item['country_code'] ?? '')) === $countryCode
             );
+
             return $region === null ? null : [...$warehouse, 'service_region_priority' => (int) ($region['priority'] ?? 9999)];
         })->filter()->values();
 
@@ -407,11 +497,16 @@ final class WarehouseRecommendationService
         $requirements = collect();
         foreach ($items as $item) {
             $productId = $item['product_id'] ?? null;
-            if ($productId === null) return null;
+            if ($productId === null) {
+                return null;
+            }
             $quantity = max(0, (int) ($item['quantity'] ?? 0));
-            if ($quantity === 0) continue;
+            if ($quantity === 0) {
+                continue;
+            }
             $requirements[(int) $productId] = (int) ($requirements[(int) $productId] ?? 0) + $quantity;
         }
+
         return $requirements;
     }
 
@@ -421,8 +516,11 @@ final class WarehouseRecommendationService
             $row = collect($availability[(int) $productId] ?? [])->first(
                 fn (array $item): bool => (int) ($item['warehouse_id'] ?? 0) === (int) $warehouse['id']
             );
-            if ((int) ($row['quantity_available'] ?? 0) < (int) $requiredQuantity) return false;
+            if ((int) ($row['quantity_available'] ?? 0) < (int) $requiredQuantity) {
+                return false;
+            }
         }
+
         return true;
     }
 
@@ -436,6 +534,7 @@ final class WarehouseRecommendationService
         ?array $routingContext = null,
     ): array {
         $canonical = $this->routing->canonicalWarehouseCode((string) ($warehouse['code'] ?? ''));
+
         return [
             'status' => 'recommended',
             'reason_code' => $reasonCode,

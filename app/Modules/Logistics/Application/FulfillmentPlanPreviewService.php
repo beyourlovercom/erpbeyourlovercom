@@ -20,7 +20,6 @@ final class FulfillmentPlanPreviewService
         private readonly ?FulfillmentPlanCostEstimator $costEstimator = null,
     ) {}
 
-
     /** @param array<int,int> $productIds @return array<string,mixed> */
     public function prepare(array $productIds): array
     {
@@ -28,9 +27,9 @@ final class FulfillmentPlanPreviewService
     }
 
     /**
-     * @param array<int,array{product_id:int|null,quantity:int,sku?:?string}> $items
-     * @param array<string,mixed> $destinationContext
-     * @param array<string,mixed> $costEvidence plan_costs[plan_key] => amount/currency/source
+     * @param  array<int,array{product_id:int|null,quantity:int,sku?:?string}>  $items
+     * @param  array<string,mixed>  $destinationContext
+     * @param  array<string,mixed>  $costEvidence  plan_costs[plan_key] => amount/currency/source
      * @return array<string,mixed>
      */
     public function preview(
@@ -59,32 +58,44 @@ final class FulfillmentPlanPreviewService
             ->filter(fn (array $warehouse): bool => (bool) ($warehouse['can_auto_allocate'] ?? false))
             ->filter(function (array $warehouse) use ($warehouseCodes): bool {
                 $canonical = $this->routing->canonicalWarehouseCode((string) ($warehouse['code'] ?? ''));
+
                 return $canonical !== null && in_array($canonical, $warehouseCodes, true);
             })->values();
         $availability = $context['availability'] ?? $this->inventory->forProductIds($requirements->keys()->all());
+        $planContext = $context ?? [];
+        $measurementAvailability = $planContext['measurement_availability']
+            ?? $this->costEstimator?->measurementAvailability($requirements->keys()->all(), $planContext);
+        $inventoryOnly = is_array($measurementAvailability)
+            && ($measurementAvailability['status'] ?? null) === 'missing_weight';
+        if ($inventoryOnly) {
+            $planContext['inventory_only_missing_weight'] = true;
+        }
 
         $plans = [];
         foreach ($warehouses as $warehouse) {
             if ($this->covers($warehouse, $requirements, $availability)) {
-                $plans[] = $this->singleWarehousePlan($countryCode, $warehouse, $requirements, $costEvidence, $destinationContext, $context ?? []);
+                $plans[] = $this->singleWarehousePlan($countryCode, $warehouse, $requirements, $costEvidence, $destinationContext, $planContext);
             }
         }
-        if ($factoryAllowed) {
-            $plans[] = $this->factoryPlan($countryCode, $requirements, $costEvidence, $destinationContext, $context ?? []);
+        if (! $inventoryOnly && $factoryAllowed) {
+            $plans[] = $this->factoryPlan($countryCode, $requirements, $costEvidence, $destinationContext, $planContext);
         }
 
-        if ($this->routing->splitShipmentAllowed()) {
-            foreach ($this->splitPlans($countryCode, $requirements, $warehouses, $availability, $factoryAllowed, $costEvidence, $destinationContext, $context ?? []) as $plan) {
+        if (! $inventoryOnly && $this->routing->splitShipmentAllowed()) {
+            foreach ($this->splitPlans($countryCode, $requirements, $warehouses, $availability, $factoryAllowed, $costEvidence, $destinationContext, $planContext) as $plan) {
                 $plans[] = $plan;
             }
         }
 
         $plans = collect($plans)->unique('plan_key')->values()->all();
-        $comparison = $this->comparison($plans);
+        $comparison = $inventoryOnly ? $this->inventoryOnlyComparison() : $this->comparison($plans);
+        $reasonCode = $inventoryOnly
+            ? ($plans === [] ? 'insufficient_stock' : 'inventory_only_manual_warehouse_selection')
+            : ($plans === [] ? 'no_fulfillment_plan' : 'fulfillment_plans_ready');
 
         return [
             'status' => $plans === [] ? 'blocked' : 'preview',
-            'reason_code' => $plans === [] ? 'no_fulfillment_plan' : 'fulfillment_plans_ready',
+            'reason_code' => $reasonCode,
             'country_code' => $countryCode,
             'constraints' => [
                 'military_address' => $military,
@@ -94,10 +105,19 @@ final class FulfillmentPlanPreviewService
                 'split_allowed' => $this->routing->splitShipmentAllowed(),
                 'automatic_split' => $this->routing->automaticSplitShipmentEnabled(),
                 'split_execution_mode' => $this->routing->splitExecutionMode(),
-                'human_review_required' => $akHi || $military || collect($plans)->contains(fn (array $plan): bool => (bool) ($plan['is_split'] ?? false)),
+                'human_review_required' => $inventoryOnly || $akHi || $military || collect($plans)->contains(fn (array $plan): bool => (bool) ($plan['is_split'] ?? false)),
             ],
             'plans' => $plans,
             'comparison' => $comparison,
+            'fallback_policy' => [
+                'mode' => $inventoryOnly ? 'inventory_only_missing_weight' : 'strict_measurement',
+                'cost_ranking_enabled' => ! $inventoryOnly,
+                'warehouse_auto_recommendation_enabled' => ! $inventoryOnly,
+                'missing_weight_product_ids' => $measurementAvailability['missing_weight_product_ids'] ?? [],
+                'next_action' => $inventoryOnly
+                    ? ($plans === [] ? 'procurement' : 'manual_warehouse_selection')
+                    : 'strict_routing',
+            ],
             'cost_evidence_contract' => [
                 'shape' => 'plan_costs[plan_key] = {amount,currency,source}',
                 'ranking_requires_same_currency' => true,
@@ -119,17 +139,23 @@ final class FulfillmentPlanPreviewService
         foreach ($items as $item) {
             $productId = $item['product_id'] ?? null;
             $quantity = (int) ($item['quantity'] ?? 0);
-            if ($productId === null || $quantity <= 0) return null;
+            if ($productId === null || $quantity <= 0) {
+                return null;
+            }
             $requirements[(int) $productId] = (int) ($requirements[(int) $productId] ?? 0) + $quantity;
         }
+
         return $requirements->sortKeys();
     }
 
     private function covers(array $warehouse, Collection $requirements, array $availability): bool
     {
         foreach ($requirements as $productId => $quantity) {
-            if ($this->available($warehouse, (int) $productId, $availability) < (int) $quantity) return false;
+            if ($this->available($warehouse, (int) $productId, $availability) < (int) $quantity) {
+                return false;
+            }
         }
+
         return true;
     }
 
@@ -138,6 +164,7 @@ final class FulfillmentPlanPreviewService
         $row = collect($availability[$productId] ?? [])->first(
             fn (array $item): bool => (int) ($item['warehouse_id'] ?? 0) === (int) ($warehouse['id'] ?? 0)
         );
+
         return max(0, (int) ($row['quantity_available'] ?? 0));
     }
 
@@ -152,6 +179,7 @@ final class FulfillmentPlanPreviewService
             'source_class' => $this->sourceClass($countryCode, $code),
             'items' => $this->items($requirements),
         ]];
+
         return $this->plan('single', $segments, $costEvidence, true, $countryCode, $destinationContext, $context);
     }
 
@@ -169,6 +197,7 @@ final class FulfillmentPlanPreviewService
             'rate_source' => $factory['rate_source'] ?? null,
             'items' => $this->items($requirements),
         ]];
+
         return $this->plan('factory', $segments, $costEvidence, false, $countryCode, $destinationContext, $context);
     }
 
@@ -183,7 +212,9 @@ final class FulfillmentPlanPreviewService
         array $destinationContext,
         array $context,
     ): array {
-        if ($requirements->count() < 2) return [];
+        if ($requirements->count() < 2) {
+            return [];
+        }
 
         $choices = [];
         foreach ($requirements as $productId => $quantity) {
@@ -213,7 +244,9 @@ final class FulfillmentPlanPreviewService
                     'rate_source' => $factory['rate_source'] ?? null,
                 ];
             }
-            if ($sources === []) return [];
+            if ($sources === []) {
+                return [];
+            }
             $choices[] = ['product_id' => (int) $productId, 'quantity' => (int) $quantity, 'sources' => $sources];
         }
 
@@ -223,7 +256,9 @@ final class FulfillmentPlanPreviewService
             foreach ($assignments as $assignment) {
                 foreach ($choice['sources'] as $source) {
                     $next[] = [...$assignment, ['product_id' => $choice['product_id'], 'quantity' => $choice['quantity'], 'source' => $source]];
-                    if (count($next) >= self::MAX_SPLIT_PLANS * 4) break 2;
+                    if (count($next) >= self::MAX_SPLIT_PLANS * 4) {
+                        break 2;
+                    }
                 }
             }
             $assignments = $next;
@@ -238,9 +273,13 @@ final class FulfillmentPlanPreviewService
                 $groups[$key] ??= [...$source, 'items' => []];
                 $groups[$key]['items'][] = ['product_id' => $row['product_id'], 'quantity' => $row['quantity']];
             }
-            if (count($groups) <= 1) continue;
+            if (count($groups) <= 1) {
+                continue;
+            }
             $plans[] = $this->plan('split', array_values($groups), $costEvidence, false, $countryCode, $destinationContext, $context);
-            if (count($plans) >= self::MAX_SPLIT_PLANS) break;
+            if (count($plans) >= self::MAX_SPLIT_PLANS) {
+                break;
+            }
         }
 
         return collect($plans)->unique('plan_key')->values()->all();
@@ -257,6 +296,7 @@ final class FulfillmentPlanPreviewService
 
         $signature = implode('|', array_map(function (array $segment): string {
             $items = implode(',', array_map(fn (array $item): string => $item['product_id'].'x'.$item['quantity'], $segment['items']));
+
             return $segment['source_code'].'['.$items.']';
         }, $segments));
         $planKey = $type.':'.substr(hash('sha256', $signature), 0, 16);
@@ -279,11 +319,26 @@ final class FulfillmentPlanPreviewService
     /** @return array<string,mixed> */
     private function cost(string $planKey, array $costEvidence, string $countryCode, array $segments, array $destinationContext, array $context): array
     {
+        if ((bool) ($context['inventory_only_missing_weight'] ?? false)) {
+            return [
+                'status' => 'not_evaluated',
+                'amount' => null,
+                'currency' => null,
+                'source' => null,
+                'reason_code' => 'missing_product_weight',
+                'reason' => 'Product weight is missing; Owner policy skips fulfillment cost ranking.',
+            ];
+        }
+
         $evidence = $costEvidence['plan_costs'][$planKey] ?? null;
         if (! is_array($evidence) || ! is_numeric($evidence['amount'] ?? null) || (float) $evidence['amount'] < 0 || blank($evidence['currency'] ?? null)) {
-            if ($this->costEstimator !== null) return $this->costEstimator->estimate($countryCode, $segments, $destinationContext, $context);
+            if ($this->costEstimator !== null) {
+                return $this->costEstimator->estimate($countryCode, $segments, $destinationContext, $context);
+            }
+
             return ['status' => 'missing_evidence', 'amount' => null, 'currency' => null, 'source' => null];
         }
+
         return [
             'status' => 'ready',
             'amount' => round((float) $evidence['amount'], 4),
@@ -296,7 +351,9 @@ final class FulfillmentPlanPreviewService
     private function comparison(array $plans): array
     {
         $costed = collect($plans)->filter(fn (array $plan): bool => ($plan['cost']['status'] ?? null) === 'ready')->values();
-        if ($costed->isEmpty()) return $this->emptyComparison();
+        if ($costed->isEmpty()) {
+            return $this->emptyComparison();
+        }
         $currencies = $costed->pluck('cost.currency')->unique()->values();
         if ($currencies->count() !== 1) {
             return [
@@ -325,6 +382,19 @@ final class FulfillmentPlanPreviewService
     }
 
     /** @return array<string,mixed> */
+    private function inventoryOnlyComparison(): array
+    {
+        return [
+            'status' => 'not_evaluated_missing_weight',
+            'currency' => null,
+            'lowest_cost_plan_key' => null,
+            'best_single_plan_key' => null,
+            'best_split_plan_key' => null,
+            'split_saving' => null,
+        ];
+    }
+
+    /** @return array<string,mixed> */
     private function emptyComparison(): array
     {
         return [
@@ -345,9 +415,16 @@ final class FulfillmentPlanPreviewService
 
     private function sourceClass(string $countryCode, string $warehouseCode): string
     {
-        if ($countryCode === 'US' && str_starts_with($warehouseCode, 'US-')) return 'local_country_warehouse';
-        if ($countryCode === 'CA' && $warehouseCode === 'CA') return 'local_country_warehouse';
-        if ($countryCode === 'DE' && $warehouseCode === 'DE') return 'local_country_warehouse';
+        if ($countryCode === 'US' && str_starts_with($warehouseCode, 'US-')) {
+            return 'local_country_warehouse';
+        }
+        if ($countryCode === 'CA' && $warehouseCode === 'CA') {
+            return 'local_country_warehouse';
+        }
+        if ($countryCode === 'DE' && $warehouseCode === 'DE') {
+            return 'local_country_warehouse';
+        }
+
         return 'approved_nearby_warehouse';
     }
 }

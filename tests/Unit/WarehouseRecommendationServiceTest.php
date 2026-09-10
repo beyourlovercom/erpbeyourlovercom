@@ -106,7 +106,6 @@ final class WarehouseRecommendationServiceTest extends TestCase
         $this->assertSame(1, $result['candidate_count']);
     }
 
-
     public function test_us_military_address_keeps_local_us_recommendation_and_forbids_factory(): void
     {
         $warehouses = [$this->warehouse(2, 'US-NY', true, [])];
@@ -172,7 +171,6 @@ final class WarehouseRecommendationServiceTest extends TestCase
         $this->assertSame('insufficient_stock', $result['reason_code']);
         $this->assertNull($result['warehouse']);
     }
-
 
     public function test_de_group_a_prefers_de_when_whole_order_stock_is_available(): void
     {
@@ -249,6 +247,83 @@ final class WarehouseRecommendationServiceTest extends TestCase
         $this->assertNull($result['warehouse']);
     }
 
+    public function test_missing_weight_returns_inventory_candidates_without_selecting_a_winner(): void
+    {
+        $warehouses = [
+            $this->warehouse(1, 'US-LA', true, []),
+            $this->warehouse(2, 'US-NY', true, []),
+            $this->warehouse(7, 'US-SJ', true, []),
+        ];
+        $availability = [10 => [
+            $this->stock(1, 5),
+            $this->stock(2, 0),
+            $this->stock(7, 5),
+        ]];
+        $context = [
+            'warehouses' => $warehouses,
+            'availability' => $availability,
+            'measurement_availability' => [
+                'status' => 'missing_weight',
+                'missing_weight_product_ids' => [10],
+            ],
+        ];
+
+        $result = $this->service($warehouses, $availability)->recommend(
+            'US',
+            [['product_id' => 10, 'quantity' => 1]],
+            '90001',
+            [],
+            [],
+            $context,
+        );
+
+        $this->assertSame('blocked', $result['status']);
+        $this->assertSame('missing_product_weight_inventory_only', $result['reason_code']);
+        $this->assertNull($result['warehouse']);
+        $this->assertSame(2, $result['candidate_count']);
+        $this->assertFalse($result['routing_context']['cost_ranking_enabled']);
+        $this->assertSame('manual_warehouse_selection', $result['routing_context']['next_action']);
+        $this->assertSame(
+            ['US-LA', 'US-SJ'],
+            collect($result['routing_context']['candidate_warehouses'])->pluck('code')->sort()->values()->all(),
+        );
+    }
+
+    public function test_missing_weight_with_no_whole_order_stock_goes_to_procurement(): void
+    {
+        $warehouses = [
+            $this->warehouse(1, 'US-LA', true, []),
+            $this->warehouse(2, 'US-NY', true, []),
+        ];
+        $availability = [10 => [
+            $this->stock(1, 0),
+            $this->stock(2, 0),
+        ]];
+        $context = [
+            'warehouses' => $warehouses,
+            'availability' => $availability,
+            'measurement_availability' => [
+                'status' => 'missing_weight',
+                'missing_weight_product_ids' => [10],
+            ],
+        ];
+
+        $result = $this->service($warehouses, $availability)->recommend(
+            'US',
+            [['product_id' => 10, 'quantity' => 1]],
+            '90001',
+            [],
+            [],
+            $context,
+        );
+
+        $this->assertSame('blocked', $result['status']);
+        $this->assertSame('insufficient_stock', $result['reason_code']);
+        $this->assertSame(0, $result['candidate_count']);
+        $this->assertSame('procurement', $result['routing_context']['next_action']);
+        $this->assertSame([], $result['routing_context']['candidate_warehouses']);
+    }
+
     public function test_unconfirmed_warehouse_is_never_considered(): void
     {
         $result = $this->service([$this->warehouse(2, 'US-NY', false, [])], [10 => [$this->stock(2, 100)]])
@@ -261,7 +336,9 @@ final class WarehouseRecommendationServiceTest extends TestCase
         $reader = new class implements InventoryAvailabilityReader
         {
             public int $warehouseReads = 0;
+
             public int $availabilityReads = 0;
+
             public function activeWarehouses(): array
             {
                 $this->warehouseReads++;
@@ -272,6 +349,7 @@ final class WarehouseRecommendationServiceTest extends TestCase
                     'service_regions' => [['country_code' => 'GB', 'priority' => 1]],
                 ]];
             }
+
             public function forProductIds(array $productIds): array
             {
                 $this->availabilityReads++;
@@ -322,7 +400,12 @@ final class WarehouseRecommendationServiceTest extends TestCase
         return new class($warehouses, $availability) implements InventoryAvailabilityReader
         {
             public function __construct(private array $warehouses, private array $availability) {}
-            public function activeWarehouses(): array { return $this->warehouses; }
+
+            public function activeWarehouses(): array
+            {
+                return $this->warehouses;
+            }
+
             public function forProductIds(array $productIds): array
             {
                 return collect($this->availability)->only($productIds)->all();
