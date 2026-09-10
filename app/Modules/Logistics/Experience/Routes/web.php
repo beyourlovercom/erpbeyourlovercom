@@ -3,11 +3,16 @@
 use App\Modules\Logistics\Experience\Controllers\CarrierController;
 use App\Modules\Logistics\Experience\Controllers\HistoricalImportController;
 use App\Modules\Logistics\Experience\Controllers\LogisticsController;
+use App\Modules\Logistics\Experience\Controllers\OverseaWarehouseController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics', [LogisticsController::class, 'index'])->middleware('can:logistics.view')->name('shell.logistics');
     Route::get('/logistics/pending', [LogisticsController::class, 'index'])->middleware('any.permission:logistics.view,prototype.view')->name('logistics.pending');
+    Route::get('/logistics/oversea/{warehouse?}', [OverseaWarehouseController::class, 'index'])->middleware('can:logistics.view')->where('warehouse', 'us-ny|us-moreplus|us-sm|de-tianyun|ca')->name('logistics.oversea');
+    Route::patch('/logistics/oversea/orders/{order}/draft', [OverseaWarehouseController::class, 'updateDraft'])->middleware('can:logistics.operate')->name('logistics.oversea.draft');
+    Route::post('/logistics/oversea/orders/{order}/approve', [OverseaWarehouseController::class, 'approve'])->middleware('can:logistics.operate')->name('logistics.oversea.approve');
+    Route::post('/logistics/oversea/orders/{order}/reject', [OverseaWarehouseController::class, 'reject'])->middleware('can:logistics.operate')->name('logistics.oversea.reject');
     Route::get('/logistics/awaiting-tracking', [LogisticsController::class, 'awaitingTracking'])->middleware('can:logistics.view')->name('logistics.awaiting-tracking');
     Route::get('/logistics/in-transit', [LogisticsController::class, 'inTransit'])->middleware('can:logistics.view')->name('logistics.in-transit');
     Route::get('/logistics/exceptions', [LogisticsController::class, 'exceptions'])->middleware('can:logistics.view')->name('logistics.exceptions');
