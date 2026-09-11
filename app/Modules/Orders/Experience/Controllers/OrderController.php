@@ -257,7 +257,7 @@ final class OrderController
 
     private function kindLabel(OrderKind $kind): string
     {
-        return match ($kind) { OrderKind::Customer => '客户订单', OrderKind::KolFulfillment => '网红履约订单' };
+        return match ($kind) { OrderKind::Customer => '客户订单', OrderKind::KolFulfillment => '网红履约订单', OrderKind::FulfillmentDerived => '履约衍生订单' };
     }
 
     private function statusLabel(string $status): string

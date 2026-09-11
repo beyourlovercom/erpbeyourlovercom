@@ -273,10 +273,16 @@ final class FulfillmentPlanPreviewService
                 $groups[$key] ??= [...$source, 'items' => []];
                 $groups[$key]['items'][] = ['product_id' => $row['product_id'], 'quantity' => $row['quantity']];
             }
-            if (count($groups) <= 1) {
+            if (count($groups) !== 2) {
                 continue;
             }
-            $plans[] = $this->plan('split', array_values($groups), $costEvidence, false, $countryCode, $destinationContext, $context);
+            $groupRows = array_values($groups);
+            $factoryCount = collect($groupRows)->where('source_type', 'factory')->count();
+            $warehouseCount = collect($groupRows)->where('source_type', 'warehouse')->count();
+            if ($factoryCount !== 1 || $warehouseCount !== 1) {
+                continue;
+            }
+            $plans[] = $this->plan('split', $groupRows, $costEvidence, false, $countryCode, $destinationContext, $context);
             if (count($plans) >= self::MAX_SPLIT_PLANS) {
                 break;
             }

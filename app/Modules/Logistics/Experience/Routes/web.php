@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics', [LogisticsController::class, 'index'])->middleware('can:logistics.view')->name('shell.logistics');
     Route::get('/logistics/pending', [LogisticsController::class, 'index'])->middleware('any.permission:logistics.view,prototype.view')->name('logistics.pending');
+    Route::get('/logistics/wait-stock', [LogisticsController::class, 'waitStock'])->middleware('can:logistics.view')->name('logistics.wait-stock');
     Route::get('/logistics/oversea/{warehouse?}', [OverseaWarehouseController::class, 'index'])->middleware('can:logistics.view')->where('warehouse', 'us-ny|us-moreplus|us-sm|de-tianyun|ca')->name('logistics.oversea');
     Route::get('/logistics/oversea/{warehouse}/export', [OverseaWarehouseController::class, 'export'])->middleware('can:logistics.view')->where('warehouse', 'us-ny|us-moreplus|us-sm|de-tianyun|ca')->name('logistics.oversea.export');
     Route::patch('/logistics/oversea/orders/{order}/draft', [OverseaWarehouseController::class, 'updateDraft'])->middleware('can:logistics.operate')->name('logistics.oversea.draft');
@@ -32,6 +33,8 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/historical-import/{batch}/rescue-attempts/{projection}/apply', [HistoricalImportController::class, 'applyRescueAttempts'])->middleware('can:logistics.operate')->whereNumber('projection')->name('logistics.historical-import.rescue-attempts.apply');
     Route::post('/logistics/orders/{order}/draft', [LogisticsController::class, 'saveDraft'])->middleware('can:logistics.operate')->name('logistics.draft');
     Route::post('/logistics/orders/{order}/adopt-recommendation', [LogisticsController::class, 'adoptRecommendation'])->middleware('can:logistics.operate')->name('logistics.adopt-recommendation');
+    Route::post('/logistics/orders/{order}/fulfillment-allocation/recommended', [LogisticsController::class, 'submitRecommendedAllocation'])->middleware('can:logistics.operate')->name('logistics.fulfillment-allocation.recommended');
+    Route::post('/logistics/orders/{order}/fulfillment-allocation/manual', [LogisticsController::class, 'submitManualAllocation'])->middleware('can:logistics.operate')->name('logistics.fulfillment-allocation.manual');
     Route::get('/logistics/orders/{order}/payload', [LogisticsController::class, 'payload'])->middleware('can:logistics.view')->name('logistics.payload');
     Route::post('/logistics/orders/{order}/ship', [LogisticsController::class, 'markShipped'])->middleware('can:logistics.operate')->name('logistics.ship');
     Route::post('/logistics/orders/{order}/reopen', [LogisticsController::class, 'reopen'])->middleware('can:logistics.operate')->name('logistics.reopen');

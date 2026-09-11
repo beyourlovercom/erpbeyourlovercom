@@ -2,6 +2,7 @@
 
 return [
     'logistics' => ['icon' => '🚚', 'label' => '物流', 'children' => [
+        'wait-stock' => ['label' => '待分仓', 'path' => '/logistics/wait-stock'],
         'pending' => ['label' => '待发货', 'path' => '/logistics/pending'],
         'awaiting-tracking' => ['label' => '已发待单号', 'path' => '/logistics/awaiting-tracking'],
         'in-transit' => ['label' => '运输中', 'path' => '/logistics/in-transit'],

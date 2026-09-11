@@ -125,6 +125,8 @@ return [
         'automatic_split_shipment' => false,
         'split_execution_mode' => 'human_review_only',
         'compare_split_vs_unsplit_cost' => true,
+        // null = fail closed to Vita manual review; set only after Owner freezes real split overhead.
+        'split_penalty_cny' => env('ERP_FULFILLMENT_SPLIT_PENALTY_CNY'),
         'selection_order' => ['local_country_warehouse', 'approved_nearby_warehouse', 'china_factory'],
         'allow_cross_region_fallback' => false,
     ],

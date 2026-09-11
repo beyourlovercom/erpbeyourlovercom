@@ -5,6 +5,7 @@ namespace App\Modules\Logistics\Application;
 use App\Modules\Finance\Application\FxReferenceSettingsService;
 use App\Modules\Inventory\Application\ProductPackagingStandardReader;
 use App\Modules\Products\Application\ProductShippingWeightStandardReader;
+use App\Modules\Products\Infrastructure\Models\Product;
 
 final class FulfillmentPlanCostEstimator
 {
@@ -21,9 +22,14 @@ final class FulfillmentPlanCostEstimator
     {
         $packagingStandards = $this->packaging->forProductIds($productIds);
         $shippingWeightStandards = $this->shippingWeights->forProductIds($productIds);
+        $packagingCosts = Product::query()->whereIn('id', $productIds)->get(['id', 'standard_packaging_cost', 'cost_currency'])->mapWithKeys(fn (Product $product): array => [(int) $product->id => [
+            'amount' => $product->standard_packaging_cost,
+            'currency' => $product->cost_currency,
+        ]])->all();
         $context = [
             'packaging_standards' => $packagingStandards,
             'shipping_weight_standards' => $shippingWeightStandards,
+            'packaging_costs' => $packagingCosts,
         ];
 
         return [
@@ -83,9 +89,16 @@ final class FulfillmentPlanCostEstimator
         $packagingStandards = $context['packaging_standards'] ?? $this->packaging->forProductIds($productIds);
         $shippingWeightStandards = $context['shipping_weight_standards'] ?? $this->shippingWeights->forProductIds($productIds);
 
+        $packagingCosts = $context['packaging_costs'] ?? Product::query()->whereIn('id', $productIds)->get(['id', 'standard_packaging_cost', 'cost_currency'])->mapWithKeys(fn (Product $product): array => [(int) $product->id => ['amount' => $product->standard_packaging_cost, 'currency' => $product->cost_currency]])->all();
+
         $allComponents = [];
         $segmentEvidence = [];
         foreach ($segments as $segment) {
+            $packagingCost = $this->packagingCostForSegment($segment, $packagingCosts);
+            if (($packagingCost['status'] ?? null) !== 'ready') {
+                return $packagingCost;
+            }
+            $allComponents = [...$allComponents, ...$packagingCost['components']];
             $sourceType = (string) ($segment['source_type'] ?? '');
             $sourceCode = strtoupper((string) ($segment['source_code'] ?? ''));
             $carrier = trim((string) ($segment['carrier'] ?? ''));
@@ -128,7 +141,7 @@ final class FulfillmentPlanCostEstimator
                 return [...$routing, 'packaging' => $measurement];
             }
             $allComponents = [...$allComponents, ...$routing['components']];
-            $segmentEvidence[] = ['source_code' => $sourceCode, 'packaging' => $measurement, 'routing' => $routing];
+            $segmentEvidence[] = ['source_code' => $sourceCode, 'packaging' => $measurement, 'packaging_cost' => $packagingCost, 'routing' => $routing];
         }
 
         $fxResult = $this->fx->convertToCny(array_map(
@@ -166,6 +179,37 @@ final class FulfillmentPlanCostEstimator
             'provenance' => $provenance,
             'possible_surcharges' => collect($segmentEvidence)->flatMap(fn (array $row) => $row['routing']['possible_surcharges'] ?? [])->unique()->values()->all(),
         ];
+    }
+
+    /** @param array<string,mixed> $segment @param array<int,array<string,mixed>> $standards */
+    private function packagingCostForSegment(array $segment, array $standards): array
+    {
+        $components = [];
+        foreach ($segment['items'] ?? [] as $item) {
+            $productId = (int) ($item['product_id'] ?? 0);
+            $quantity = (int) ($item['quantity'] ?? 0);
+            $standard = $standards[$productId] ?? null;
+            if ($quantity <= 0 || ! is_array($standard) || ! is_numeric($standard['amount'] ?? null) || (float) $standard['amount'] < 0 || blank($standard['currency'] ?? null)) {
+                return [
+                    'status' => 'missing_evidence', 'amount' => null, 'currency' => null, 'source' => null,
+                    'reason_code' => 'missing_packaging_cost',
+                    'reason' => 'Standard packaging cost and currency are required for fulfillment ranking',
+                    'product_id' => $productId,
+                    'components' => [],
+                ];
+            }
+            $components[] = [
+                'key' => 'packaging_cost_'.$productId,
+                'label' => 'Standard packaging cost',
+                'amount' => round((float) $standard['amount'] * $quantity, 4),
+                'currency' => strtoupper(trim((string) $standard['currency'])),
+                'source' => 'product-standard-packaging-cost',
+                'product_id' => $productId,
+                'quantity' => $quantity,
+            ];
+        }
+
+        return ['status' => 'ready', 'components' => $components];
     }
 
     private function shippingWeightForSegment(array $segment, array $standards): array

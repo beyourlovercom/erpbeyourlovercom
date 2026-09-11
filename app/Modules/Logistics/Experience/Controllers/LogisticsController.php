@@ -6,6 +6,8 @@ use App\Modules\Logistics\Application\AutomaticAllocationEligibilityService;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\AssistedFulfillmentService;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
+use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
+use App\Modules\Logistics\Application\FulfillmentAllocationSubmissionService;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Logistics\Application\WarehouseRecommendationService;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
@@ -34,6 +36,8 @@ final class LogisticsController
         private readonly AssistedFulfillmentService $assistedFulfillment,
         private readonly WarehouseRecommendationService $recommendations,
         private readonly FulfillmentPlanPreviewService $fulfillmentPlans,
+        private readonly FulfillmentAllocationDecisionService $allocationDecisions,
+        private readonly FulfillmentAllocationSubmissionService $allocationSubmissions,
         private readonly CarrierRoutingPolicy $carrierRouting,
         private readonly OrderPackagingReferenceProjection $packagingReferences,
         private readonly UserUiPreferenceService $uiPreferences,
@@ -42,7 +46,7 @@ final class LogisticsController
     public function index(Request $request): Response
     {
         $orders = Order::query()->with(['address', 'items.product', 'owner', 'shipment.warehouse', 'externalReferences:id,order_id,provider'])
-            ->where('order_status', 'pending_shipment')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->whereDoesntHave('logisticsReview', fn ($q) => $q->where('status', 'pending'))->latest('order_date')->latest('id')
+            ->where('order_status', 'pending_shipment')->whereDoesntHave('fulfillmentChildren')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->whereDoesntHave('logisticsReview', fn ($q) => $q->where('status', 'pending'))->latest('order_date')->latest('id')
             ->paginate(self::PER_PAGE)->withQueryString();
 
         $productIds = collect($orders->items())->flatMap(fn (Order $order) => $order->items->pluck('product_id'))->filter()->unique()->values()->all();
@@ -67,6 +71,66 @@ final class LogisticsController
             'gridPreferenceNamespace' => self::PENDING_GRID_NAMESPACE,
             'gridPreference' => $request->user() ? $this->uiPreferences->get($request->user(), self::PENDING_GRID_NAMESPACE) : null,
         ]);
+    }
+
+    public function waitStock(Request $request): Response
+    {
+        $orders = Order::query()
+            ->with(['address', 'items.product', 'owner', 'shipment.warehouse', 'fulfillmentAllocation', 'externalReferences:id,order_id,provider'])
+            ->where('order_status', 'pending_shipment')
+            ->whereNull('fulfillment_parent_id')
+            ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))
+            ->where(function ($q): void {
+                $q->whereHas('fulfillmentAllocation', fn ($allocation) => $allocation->where('status', 'submitted'))
+                    ->orWhere(function ($pending): void {
+                        $pending->whereDoesntHave('shipment')
+                            ->orWhereHas('shipment', fn ($shipment) => $shipment->whereNull('warehouse_id'));
+                    });
+            })
+            ->latest('order_date')->latest('id')
+            ->paginate(self::PER_PAGE)->withQueryString();
+
+        $productIds = collect($orders->items())->flatMap(fn (Order $order) => $order->items->pluck('product_id'))->filter()->unique()->values()->all();
+        $context = array_replace($this->recommendations->prepare($productIds), $this->fulfillmentPlans->prepare($productIds));
+        $allowedCodes = ['FACTORY', 'US-NY', 'US-LA', 'US-SJ', 'DE', 'CA'];
+        $warehouses = collect($context['warehouses'] ?? [])
+            ->filter(fn (array $warehouse): bool => in_array(strtoupper((string) ($warehouse['code'] ?? '')), $allowedCodes, true))
+            ->values()->all();
+
+        return Inertia::render('Logistics/FulfillmentAllocation', [
+            'orders' => $orders->through(fn (Order $order): array => $this->data($order, $context))->toArray(),
+            'warehouses' => $warehouses,
+            'pendingTotal' => $orders->total(),
+            'canOperate' => (bool) $request->user()?->can('logistics.operate'),
+        ]);
+    }
+
+    public function submitRecommendedAllocation(Request $request, Order $order): \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
+    {
+        $data = $request->validate([
+            'plan_key' => ['required', 'string', 'max:128'],
+            'decision_note' => ['nullable', 'string', 'max:1000'],
+        ]);
+        $allocation = $this->allocationSubmissions->submitRecommended($order, $data['plan_key'], $data['decision_note'] ?? null, $request->user());
+        if ($request->expectsJson()) {
+            return response()->json(['status' => $allocation->status, 'decision_source' => $allocation->decision_source, 'submitted_at' => $allocation->submitted_at?->toIso8601String()]);
+        }
+        return back()->with('success', '已采用系统推荐并提交分仓');
+    }
+
+    public function submitManualAllocation(Request $request, Order $order): \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
+    {
+        $data = $request->validate([
+            'assignments' => ['required', 'array', 'min:1'],
+            'assignments.*.order_item_id' => ['required', 'integer'],
+            'assignments.*.source_code' => ['required', 'string', 'max:32'],
+            'decision_note' => ['nullable', 'string', 'max:1000'],
+        ]);
+        $allocation = $this->allocationSubmissions->submitManual($order, $data['assignments'], $data['decision_note'] ?? null, $request->user());
+        if ($request->expectsJson()) {
+            return response()->json(['status' => $allocation->status, 'decision_source' => $allocation->decision_source, 'submitted_at' => $allocation->submitted_at?->toIso8601String()]);
+        }
+        return back()->with('success', '人工分仓方案已提交');
     }
 
     public function saveDraft(Request $request, Order $order): \Illuminate\Http\RedirectResponse
@@ -272,7 +336,7 @@ final class LogisticsController
     private function projection(Request $request, string $kind, string $component, \Closure $filter): Response { $shipments = Shipment::query()->with(['order.address', 'order.items.product', 'order.logisticsReview', 'warehouse'])->where($filter)->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
             ->latest('shipped_at')->latest('id')->paginate(self::PER_PAGE)->withQueryString(); return Inertia::render($component, ['shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(), 'statusBar' => $this->statusBar()]); }
     private function orderProjection(Order $order): array { return ['id' => $order->id, 'order_id' => $order->id, 'order_number' => $order->erp_order_id, 'erp_order_id' => $order->erp_order_id, 'external_order_number' => $order->external_order_number, 'order_url' => $this->orderUrl($order), 'items' => $order->items->map(fn ($item) => ['sku' => $item->sku, 'product_summary' => $item->product_summary, 'product_id' => $item->product_id, 'product_url' => $item->product ? "/products/{$item->product_id}" : null])->all()]; }
-    private function orderUrl(?Order $order): ?string { if (! $order) return null; return $order->order_kind?->value === 'kol_fulfillment' ? "/kol/orders/{$order->id}" : "/customers/orders/{$order->id}"; }
+    private function orderUrl(?Order $order): ?string { if (! $order || $order->order_kind?->value === 'fulfillment_derived') return null; return $order->order_kind?->value === 'kol_fulfillment' ? "/kol/orders/{$order->id}" : "/customers/orders/{$order->id}"; }
     private function statusBar(): array
     {
         $review = LogisticsReview::query()
@@ -284,7 +348,7 @@ final class LogisticsController
             ->whereHas('order', fn ($o) => $o->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
 
         return [
-            ['key' => 'pending', 'label' => '待发货', 'url' => '/logistics/pending', 'count' => Order::query()->where('order_status', 'pending_shipment')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->whereDoesntHave('logisticsReview', fn ($q) => $q->where('status', 'pending'))->count()],
+            ['key' => 'pending', 'label' => '待发货', 'url' => '/logistics/pending', 'count' => Order::query()->where('order_status', 'pending_shipment')->whereDoesntHave('fulfillmentChildren')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->whereDoesntHave('logisticsReview', fn ($q) => $q->where('status', 'pending'))->count()],
             ['key' => 'awaiting', 'label' => '已发货', 'url' => '/logistics/awaiting-tracking', 'count' => Shipment::query()->where('shipment_status', 'shipped')->whereNotNull('shipped_at')->where(fn ($q) => $q->whereNull('tracking_number')->orWhere('tracking_number', ''))->where($active)->count()],
             ['key' => 'transit', 'label' => '运输中', 'url' => '/logistics/in-transit', 'count' => Shipment::query()->where('shipment_status', 'shipped')->whereNotNull('tracking_number')->where('tracking_number', '!=', '')->where($active)->count()],
             ['key' => 'exception', 'label' => '异常单', 'url' => '/logistics/exceptions', 'count' => Shipment::query()->where('shipment_status', 'exception')->where($active)->count()],
@@ -328,6 +392,9 @@ final class LogisticsController
             $context,
         );
 
+        $allocationDecision = $this->allocationDecisions->present($order, $fulfillmentPlanPreview);
+        $allocation = $order->relationLoaded('fulfillmentAllocation') ? $order->fulfillmentAllocation : null;
+
         return [
             'id' => $order->id,
             'external_order_number' => $order->external_order_number,
@@ -338,6 +405,7 @@ final class LogisticsController
             'order_kind_label' => match ($order->order_kind) {
                 \App\Modules\Orders\Application\OrderKind::Customer => '客户订单',
                 \App\Modules\Orders\Application\OrderKind::KolFulfillment => '网红履约订单',
+                \App\Modules\Orders\Application\OrderKind::FulfillmentDerived => '履约衍生订单',
                 null => '未分类',
             },
             'recipient_name' => $order->address?->recipient_name,
@@ -356,6 +424,15 @@ final class LogisticsController
             ])->values()->all(),
             'warehouse_recommendation' => $recommendation,
             'fulfillment_plan_preview' => $fulfillmentPlanPreview,
+            'allocation_decision' => $allocationDecision,
+            'fulfillment_allocation' => $allocation ? [
+                'status' => $allocation->status,
+                'decision_source' => $allocation->decision_source,
+                'selected_plan_key' => $allocation->selected_plan_key,
+                'decision_note' => $allocation->decision_note,
+                'plan_snapshot' => $allocation->plan_snapshot,
+                'submitted_at' => $allocation->submitted_at?->toIso8601String(),
+            ] : null,
             'automatic_allocation' => $this->automaticAllocationEligibility->evaluate($order, $recommendation, $activeReservationsByOrderId),
             'shipment' => $order->shipment ? [
                 ...$order->shipment->only(['warehouse_id', 'warehouse_selection_source', 'carrier', 'service', 'carrier_selection_source', 'tracking_number', 'shipped_at', 'logistics_note']),
