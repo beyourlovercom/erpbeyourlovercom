@@ -112,7 +112,7 @@ final class OrderService
             } else {
                 $order = $orderClass::create([
                     'internal_order_number' => $this->nextOrderNumber(OrderKind::Customer->value),
-                    'erp_order_id' => $this->orderIdentities->allocateCustomer($data->orderDate),
+                    'erp_order_id' => $this->orderIdentities->generateWooCustomer($data->externalOrderNumber, $data->reference, $data->orderDate),
                     'source_type' => OrderSourceType::WooCommerce->value,
                     'order_kind' => OrderKind::Customer->value,
                     'external_order_number' => $data->externalOrderNumber,

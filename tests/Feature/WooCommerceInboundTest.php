@@ -46,7 +46,7 @@ final class WooCommerceInboundTest extends TestCase
         $this->assertSame('woocommerce', $order->source_type->value);
         $this->assertSame('customer', $order->order_kind->value);
         $this->assertSame('WC-101', $order->external_order_number);
-        $this->assertSame('007erp-0827-c1', $order->erp_order_id);
+        $this->assertSame('007erp-0827-101', $order->erp_order_id);
         $firstErpOrderId = $order->erp_order_id;
         $this->assertSame('EUR', $order->currency);
         $this->assertSame('DE', $order->address->country);
@@ -103,7 +103,9 @@ final class WooCommerceInboundTest extends TestCase
     public function test_same_provider_reference_can_exist_on_two_connection_keys(): void
     {
         $user = $this->userWith(['sync.operate']);
-        Http::fake(['https://shop.test/wp-json/wc/v3/orders/303' => Http::response($this->wooOrder(303, 'WC-303'), 200)]);
+        Http::fakeSequence('https://shop.test/wp-json/wc/v3/orders/303')
+            ->push($this->wooOrder(303, '303'), 200)
+            ->push($this->wooOrder(303, '1303'), 200);
         $this->actingAs($user)->post('/sync/woocommerce/single', ['woo_order_id' => 303])->assertSessionHasNoErrors();
 
         config(['services.woocommerce.connection_key' => 'shop-b']);
@@ -112,7 +114,7 @@ final class WooCommerceInboundTest extends TestCase
         $this->assertSame(2, Order::count());
         $this->assertSame(2, OrderExternalReference::where('reference', '303')->count());
         $erpIds = Order::query()->orderBy('id')->pluck('erp_order_id')->all();
-        $this->assertSame(['007erp-0827-c1', '007erp-0827-c2'], $erpIds);
+        $this->assertSame(['007erp-0827-303', '007erp-0827-1303'], $erpIds);
         $this->assertCount(2, array_unique($erpIds));
         $this->assertDatabaseHas('order_external_references', ['provider' => 'woocommerce', 'connection_key' => 'shop-a', 'reference' => '303']);
         $this->assertDatabaseHas('order_external_references', ['provider' => 'woocommerce', 'connection_key' => 'shop-b', 'reference' => '303']);

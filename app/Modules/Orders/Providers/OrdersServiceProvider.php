@@ -21,7 +21,10 @@ final class OrdersServiceProvider extends ServiceProvider
         $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/web.php');
 
         if ($this->app->runningInConsole()) {
-            $this->commands([\App\Modules\Orders\Experience\Console\SyncWooCommerceOrdersCommand::class]);
+            $this->commands([
+                \App\Modules\Orders\Experience\Console\SyncWooCommerceOrdersCommand::class,
+                \App\Modules\Orders\Experience\Console\RepairWooOrderIdentitiesCommand::class,
+            ]);
         }
     }
 }
