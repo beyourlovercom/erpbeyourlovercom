@@ -18,7 +18,7 @@ final class RepairWooOrderIdentitiesCommand extends Command
         {--expect-change= : Required exact candidate count when applying}
         {--json : Emit safe JSON evidence}';
 
-    protected $description = 'Preview or repair Woo ERP IDs to prefix-MMDD-WooOrderNumber';
+    protected $description = 'Preview or repair Woo ERP IDs to prefix-MMDD-cWooOrderNumber';
 
     public function handle(OrderIdentityService $identities, AuditRecorder $audit): int
     {
@@ -78,7 +78,7 @@ final class RepairWooOrderIdentitiesCommand extends Command
             }
 
             $targets[$expected] = $order->id;
-            $rows[] = $this->row($order, $expected, 'change', 'owner_rule_007_mmdd_woo_number');
+            $rows[] = $this->row($order, $expected, 'change', 'owner_rule_007_mmdd_c_woo_number');
             $change++;
         }
 
@@ -127,7 +127,7 @@ final class RepairWooOrderIdentitiesCommand extends Command
                     $order->id,
                     before: ['erp_order_id' => $before],
                     after: ['erp_order_id' => $target],
-                    reason: 'owner_rule_007_mmdd_woo_number',
+                    reason: 'owner_rule_007_mmdd_c_woo_number',
                 );
             }
         });

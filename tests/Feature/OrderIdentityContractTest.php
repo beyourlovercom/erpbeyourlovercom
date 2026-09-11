@@ -25,14 +25,14 @@ final class OrderIdentityContractTest extends TestCase
     }
 
 
-    public function test_woo_customer_identity_uses_woo_order_number_without_customer_sequence_marker(): void
+    public function test_woo_customer_identity_uses_customer_marker_plus_woo_order_number(): void
     {
         $service = app(OrderIdentityService::class);
         $service->updatePrefix('007', null);
 
-        $this->assertSame('007-0910-40414', $service->previewWooCustomer('40414', '50123', '2026-09-10'));
-        $this->assertSame('007-0910-40414', $service->previewWooCustomer('40414-VA617A-gift', '50123', '2026-09-10'));
-        $this->assertSame('007-0910-50123', $service->previewWooCustomer('WC-40414', '50123', '2026-09-10'));
+        $this->assertSame('007-0910-c40414', $service->previewWooCustomer('40414', '50123', '2026-09-10'));
+        $this->assertSame('007-0910-c40414', $service->previewWooCustomer('40414-VA617A-gift', '50123', '2026-09-10'));
+        $this->assertSame('007-0910-c50123', $service->previewWooCustomer('WC-40414', '50123', '2026-09-10'));
     }
 
     public function test_customer_sequence_is_global_and_prefix_changes_do_not_reset_it(): void

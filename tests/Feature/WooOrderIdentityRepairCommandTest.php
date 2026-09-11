@@ -16,7 +16,7 @@ final class WooOrderIdentityRepairCommandTest extends TestCase
         app(OrderIdentityService::class)->updatePrefix('007', null);
         $order = Order::create([
             'internal_order_number' => 'WEB-TEST-40414',
-            'erp_order_id' => '007-0910-c6107',
+            'erp_order_id' => '007-0910-40414',
             'source_type' => 'woocommerce',
             'order_kind' => 'customer',
             'external_order_number' => '40414',
@@ -32,16 +32,16 @@ final class WooOrderIdentityRepairCommandTest extends TestCase
 
         $this->artisan('orders:repair-woo-identities --date=2026-09-10 --json')
             ->assertSuccessful();
-        $this->assertSame('007-0910-c6107', $order->fresh()->erp_order_id);
+        $this->assertSame('007-0910-40414', $order->fresh()->erp_order_id);
 
         $this->artisan('orders:repair-woo-identities --date=2026-09-10 --apply --expect-change=1 --json')
             ->assertSuccessful();
 
-        $this->assertSame('007-0910-40414', $order->fresh()->erp_order_id);
+        $this->assertSame('007-0910-c40414', $order->fresh()->erp_order_id);
         $this->assertDatabaseHas('audit_records', [
             'action' => 'order.erp_identity_repaired',
             'entity_id' => (string) $order->id,
-            'reason' => 'owner_rule_007_mmdd_woo_number',
+            'reason' => 'owner_rule_007_mmdd_c_woo_number',
         ]);
     }
 

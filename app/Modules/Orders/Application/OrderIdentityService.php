@@ -83,7 +83,7 @@ final class OrderIdentityService
             throw new RuntimeException('ERP order identity date is invalid.');
         }
 
-        return sprintf('%s-%s-%s', $prefix, $date->format('md'), $number);
+        return sprintf('%s-%s-c%s', $prefix, $date->format('md'), $number);
     }
 
     private function wooOrderNumber(string $externalOrderNumber, string $providerReference): string
