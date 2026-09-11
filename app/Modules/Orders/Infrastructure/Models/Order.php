@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Order extends Model
 {
     protected $fillable = [
+        'customer_id', 'fulfillment_parent_id', 'fulfillment_suffix',
         'internal_order_number', 'erp_order_id', 'source_type', 'order_kind', 'external_order_number', 'order_date',
         'order_note', 'owner_id', 'order_status', 'currency',
     ];
@@ -25,6 +26,17 @@ class Order extends Model
             'order_kind' => OrderKind::class,
             'order_status' => OrderStatus::class,
         ];
+    }
+
+
+    public function fulfillmentParent(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'fulfillment_parent_id');
+    }
+
+    public function fulfillmentChildren(): HasMany
+    {
+        return $this->hasMany(self::class, 'fulfillment_parent_id');
     }
 
     public function owner(): BelongsTo
@@ -50,6 +62,11 @@ class Order extends Model
     public function shipment(): HasOne
     {
         return $this->hasOne('App\\Modules\\Logistics\\Infrastructure\\Models\\Shipment');
+    }
+
+    public function fulfillmentAllocation(): HasOne
+    {
+        return $this->hasOne('App\\Modules\\Logistics\\Infrastructure\\Models\\FulfillmentAllocation');
     }
 
     public function manualSync(): HasOne

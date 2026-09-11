@@ -20,7 +20,7 @@ $implementedPaths = [
     '/dashboard', '/logistics', '/sync', '/kol', '/products', '/accounting', '/accounting/order-costs', '/settings/users', '/settings/roles-permissions',
     '/inventory', '/inventory/warehouses', '/guides', '/guides/videos', '/guides/manuals', '/settings', '/settings/changelog',
     '/customers', '/purchase',
-    '/logistics/awaiting-tracking', '/logistics/in-transit', '/logistics/exceptions',
+    '/logistics/wait-stock', '/logistics/awaiting-tracking', '/logistics/in-transit', '/logistics/exceptions',
 ];
 
 foreach (collect(config('erp_shell_navigation'))->reject(fn (array $module): bool => in_array($module['path'], $implementedPaths, true)) as $module) {
