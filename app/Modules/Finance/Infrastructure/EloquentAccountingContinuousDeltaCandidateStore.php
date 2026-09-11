@@ -8,11 +8,16 @@ use App\Modules\Orders\Infrastructure\Models\Order;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 final class EloquentAccountingContinuousDeltaCandidateStore implements AccountingContinuousDeltaCandidateStore
 {
     public function candidates(CarbonImmutable $windowStart, CarbonImmutable $windowEnd, int $limit): Collection
     {
+        if (DB::connection()->getDriverName() === 'mysql') {
+            DB::statement("SET time_zone = '+00:00'");
+        }
+
         return Order::query()
             ->where('order_kind', OrderKind::Customer->value)
             ->whereDoesntHave('externalReferences', fn (Builder $refs) => $refs

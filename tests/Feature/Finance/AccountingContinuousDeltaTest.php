@@ -203,6 +203,21 @@ final class AccountingContinuousDeltaTest extends TestCase
         }
     }
 
+    public function test_mysql_candidate_query_normalizes_session_timezone_to_utc(): void
+    {
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            self::markTestSkipped('MySQL-only session timezone contract.');
+        }
+
+        DB::statement("SET time_zone = 'SYSTEM'");
+        $this->readyOrder();
+
+        $this->service()->preview(100, CarbonImmutable::parse('2026-09-10T12:00:00Z'));
+
+        $session = DB::selectOne('select @@session.time_zone as timezone');
+        self::assertSame('+00:00', $session->timezone);
+    }
+
     public function test_scheduler_is_disabled_by_default_and_enabled_at_ten_past_without_changing_woo_hourly_cadence(): void
     {
         $before = collect(app(Schedule::class)->events())
