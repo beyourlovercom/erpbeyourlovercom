@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Providers;
 
 use App\Modules\Logistics\Application\Contracts\CarrierBillingEvidenceReader;
 use App\Modules\Logistics\Application\Contracts\FulfillmentOriginEvidenceReader;
+use App\Modules\Logistics\Application\Contracts\LastMileEstimateEvidenceReader;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\FulfillmentPlanCostEstimator;
@@ -11,6 +12,7 @@ use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\WarehouseRoutingPolicy;
 use App\Modules\Logistics\Infrastructure\EloquentCarrierBillingEvidenceReader;
 use App\Modules\Logistics\Infrastructure\EloquentFulfillmentOriginEvidenceReader;
+use App\Modules\Logistics\Infrastructure\EloquentLastMileEstimateEvidenceReader;
 use Illuminate\Support\ServiceProvider;
 
 final class LogisticsServiceProvider extends ServiceProvider
@@ -24,6 +26,7 @@ final class LogisticsServiceProvider extends ServiceProvider
     {
         $this->app->bind(CarrierBillingEvidenceReader::class, EloquentCarrierBillingEvidenceReader::class);
         $this->app->bind(FulfillmentOriginEvidenceReader::class, EloquentFulfillmentOriginEvidenceReader::class);
+        $this->app->bind(LastMileEstimateEvidenceReader::class, EloquentLastMileEstimateEvidenceReader::class);
         $this->app->bind(FulfillmentPlanPreviewService::class, fn ($app): FulfillmentPlanPreviewService => new FulfillmentPlanPreviewService(
             $app->make(InventoryAvailabilityReader::class),
             $app->make(WarehouseRoutingPolicy::class),

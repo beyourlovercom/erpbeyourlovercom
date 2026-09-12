@@ -8,6 +8,7 @@ use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Kol\Application\Contracts\AffiliateCommissionEvidenceReader;
 use App\Modules\Logistics\Application\Contracts\CarrierBillingEvidenceReader;
 use App\Modules\Logistics\Application\Contracts\FulfillmentOriginEvidenceReader;
+use App\Modules\Logistics\Application\Contracts\LastMileEstimateEvidenceReader;
 use App\Modules\Products\Application\Contracts\ProductCostEvidenceReader;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
@@ -23,6 +24,7 @@ final class CostMaterializationService
     public function __construct(
         private readonly ProductCostEvidenceReader $products,
         private readonly CarrierBillingEvidenceReader $carrier,
+        private readonly LastMileEstimateEvidenceReader $lastMileEstimates,
         private readonly FulfillmentOriginEvidenceReader $fulfillmentOrigin,
         private readonly AffiliateCommissionEvidenceReader $affiliate,
         private readonly AccountingFxSnapshotBridgeService $fxBridge,
@@ -102,6 +104,51 @@ final class CostMaterializationService
                 );
             }
 
+            return $result;
+        });
+    }
+
+    /** @return array<string, mixed> */
+    public function previewLastMileEstimateGate(Model $order): array
+    {
+        $scopeBlocker = $this->operationalBlocker($order);
+        $candidate = $this->lastMileEstimateCandidate($order);
+        if ($scopeBlocker !== null) $candidate = $this->forceBlocked($candidate, $scopeBlocker);
+
+        return [
+            'order_id' => (int) $order->getKey(),
+            'scope_status' => $scopeBlocker === null ? 'operational' : 'blocked',
+            'scope_blocker' => $scopeBlocker,
+            'candidates' => [$this->annotateDisposition($order, $candidate)],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function applyLastMileEstimateGate(Model $order): array
+    {
+        return DB::transaction(function () use ($order): array {
+            $locked = $order->newQuery()->lockForUpdate()->findOrFail($order->getKey());
+            $preview = $this->previewLastMileEstimateGate($locked);
+            $result = $preview + ['applied' => [], 'noop' => [], 'blocked' => []];
+            $candidate = $preview['candidates'][0];
+            $disposition = $candidate['materialization_status'];
+            if ($disposition === 'blocked') $result['blocked'][] = $candidate;
+            elseif ($disposition === 'noop') $result['noop'][] = $candidate;
+            else {
+                $outcome = $this->writeCandidate($locked, $candidate);
+                $result[$outcome['status']][] = $outcome['entry'];
+            }
+
+            if ($result['applied'] !== []) {
+                $this->analysis->refreshCompleteness($locked, preserveReconciled: false);
+                $this->audit->record(
+                    AuditActor::system(AuditSource::InternalSystem),
+                    'finance.last_mile_estimate_materialization.applied',
+                    $locked::class, $locked->getKey(),
+                    after: ['applied' => $result['applied'], 'blocked' => $result['blocked']],
+                    reason: 'last_mile_estimate_materialization',
+                );
+            }
             return $result;
         });
     }
@@ -367,6 +414,48 @@ final class CostMaterializationService
         return $this->candidate(
             'product_cost', DecimalMoney::round($total), $currency, 'estimated_reference', 'estimated',
             'product-reference:v1:order:'.$order->getKey(), $sourceAt, ['product_ids' => $productIds],
+        );
+    }
+
+    private function lastMileEstimateCandidate(Model $order): array
+    {
+        $actual = $this->carrier->read($order->getKey());
+        if (is_array($actual) && ! isset($actual['blocked'])) {
+            $identity = $actual['billing_document_number'] ?? $actual['provider_reference'] ?? $actual['data_source'] ?? null;
+            if ($actual['actual_cost'] !== null && $actual['currency'] !== null && is_string($identity) && trim($identity) !== '') {
+                return $this->blocked('last_mile_cost', 'actual_carrier_billing_available');
+            }
+        }
+
+        $evidence = $this->lastMileEstimates->read($order->getKey());
+        if ($evidence === null || isset($evidence['blocked'])) {
+            return $this->blocked('last_mile_cost', (string) ($evidence['blocked'] ?? 'last_mile_estimate_missing'));
+        }
+        $sourceAmount = DecimalMoney::round((string) $evidence['amount']);
+        $sourceCurrency = strtoupper((string) ($evidence['currency'] ?? ''));
+        if ($sourceCurrency === '') return $this->blocked('last_mile_cost', 'last_mile_estimate_currency_missing');
+
+        $currency = $this->orderCurrency($order);
+        $amount = $sourceAmount;
+        $extra = [
+            'source_currency' => $sourceCurrency,
+            'source_amount' => $sourceAmount,
+            'selected_source' => $evidence['selected_source'] ?? null,
+        ];
+        if ($sourceCurrency !== $currency) {
+            $fx = $this->fxBridge->preview($order, $sourceCurrency);
+            if (! ($fx['available'] ?? false)) {
+                return $this->blocked('last_mile_cost', 'last_mile_estimate_fx_snapshot_unavailable', $extra + ['fx_reason' => $fx['reason'] ?? 'fx_unavailable']);
+            }
+            $amount = DecimalMoney::round(DecimalMoney::multiply($sourceAmount, (string) $fx['source_to_transaction_rate'], 8));
+            $extra['posting_fx'] = $fx + [
+                'base_amount' => DecimalMoney::round(DecimalMoney::multiply($sourceAmount, (string) $fx['source_to_usd_rate'], 8)),
+            ];
+        }
+
+        return $this->candidate(
+            'last_mile_cost', $amount, $currency, 'estimated_reference', 'estimated',
+            'last-mile-estimate:v1:order:'.$order->getKey(), $evidence['source_at'] ?? null, $extra,
         );
     }
 
@@ -668,6 +757,7 @@ final class CostMaterializationService
         $source = (string) $entry->source_reference;
         return str_starts_with($source, 'product-reference:v1:')
             || str_starts_with($source, 'carrier-billing:v1:')
+            || str_starts_with($source, 'last-mile-estimate:v1:')
             || str_starts_with($source, 'affiliatewp-referrals:v1:')
             || str_starts_with($source, 'product-cost-source:v1:')
             || str_starts_with($source, 'owner-rule:payment-fee:v1:');
