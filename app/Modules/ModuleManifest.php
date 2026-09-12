@@ -4,6 +4,7 @@ namespace App\Modules;
 
 use App\Modules\Audit\Providers\AuditServiceProvider;
 use App\Modules\Backup\Providers\BackupServiceProvider;
+use App\Modules\BusinessProjects\Providers\BusinessProjectsServiceProvider;
 use App\Modules\Customers\Providers\CustomersServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
@@ -22,6 +23,7 @@ use App\Modules\Sync\Providers\SyncServiceProvider;
 use App\Modules\Products\Providers\ProductsServiceProvider;
 use App\Modules\Procurement\Providers\ProcurementServiceProvider;
 use App\Modules\Sync\Providers\ManualSyncServiceProvider;
+use App\Modules\Traffic\Providers\TrafficServiceProvider;
 use Illuminate\Support\ServiceProvider;
 use LogicException;
 
@@ -53,6 +55,8 @@ final class ModuleManifest
             NotificationCenterServiceProvider::class,
             SupportServiceProvider::class,
             BackupServiceProvider::class,
+            BusinessProjectsServiceProvider::class,
+            TrafficServiceProvider::class,
         ];
     }
 
