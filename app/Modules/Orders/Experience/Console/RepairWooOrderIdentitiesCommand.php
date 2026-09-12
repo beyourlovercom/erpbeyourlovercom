@@ -13,7 +13,9 @@ use Illuminate\Support\Facades\DB;
 final class RepairWooOrderIdentitiesCommand extends Command
 {
     protected $signature = 'orders:repair-woo-identities
-        {--date= : Woo order business date in YYYY-MM-DD}
+        {--date= : Exact Woo order business date in YYYY-MM-DD}
+        {--from-date= : Inclusive Woo order business-date range start in YYYY-MM-DD}
+        {--to-date= : Inclusive Woo order business-date range end in YYYY-MM-DD}
         {--apply : Apply the reviewed corrections}
         {--expect-change= : Required exact candidate count when applying}
         {--json : Emit safe JSON evidence}';
@@ -23,15 +25,35 @@ final class RepairWooOrderIdentitiesCommand extends Command
     public function handle(OrderIdentityService $identities, AuditRecorder $audit): int
     {
         $date = trim((string) $this->option('date'));
-        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
-            $this->error('--date=YYYY-MM-DD is required.');
-            return self::FAILURE;
+        $fromDate = trim((string) $this->option('from-date'));
+        $toDate = trim((string) $this->option('to-date'));
+
+        if ($date !== '') {
+            if ($fromDate !== '' || $toDate !== '' || ! $this->validDate($date)) {
+                $this->error('--date must be a valid YYYY-MM-DD and cannot be combined with --from-date/--to-date.');
+
+                return self::FAILURE;
+            }
+            $fromDate = $date;
+            $toDate = $date;
+        } else {
+            if (! $this->validDate($fromDate) || ! $this->validDate($toDate)) {
+                $this->error('Provide either --date=YYYY-MM-DD or both --from-date=YYYY-MM-DD and --to-date=YYYY-MM-DD.');
+
+                return self::FAILURE;
+            }
+            if ($fromDate > $toDate) {
+                $this->error('--from-date must be on or before --to-date.');
+
+                return self::FAILURE;
+            }
         }
 
         $orders = Order::query()
             ->with(['externalReferences' => fn ($query) => $query->where('provider', 'woocommerce')])
             ->where('source_type', 'woocommerce')
-            ->whereDate('order_date', $date)
+            ->whereDate('order_date', '>=', $fromDate)
+            ->whereDate('order_date', '<=', $toDate)
             ->orderBy('id')
             ->get();
 
@@ -46,6 +68,7 @@ final class RepairWooOrderIdentitiesCommand extends Command
             if (! $reference) {
                 $rows[] = $this->row($order, null, 'blocked', 'woocommerce_reference_missing');
                 $blocked++;
+
                 continue;
             }
 
@@ -58,12 +81,14 @@ final class RepairWooOrderIdentitiesCommand extends Command
             } catch (\Throwable) {
                 $rows[] = $this->row($order, null, 'blocked', 'woo_order_number_invalid');
                 $blocked++;
+
                 continue;
             }
 
             if ((string) $order->erp_order_id === $expected) {
                 $rows[] = $this->row($order, $expected, 'noop', 'already_canonical');
                 $noop++;
+
                 continue;
             }
 
@@ -74,6 +99,7 @@ final class RepairWooOrderIdentitiesCommand extends Command
             if ($collision || isset($targets[$expected])) {
                 $rows[] = $this->row($order, $expected, 'blocked', 'target_identity_collision');
                 $blocked++;
+
                 continue;
             }
 
@@ -84,7 +110,9 @@ final class RepairWooOrderIdentitiesCommand extends Command
 
         $summary = [
             'mode' => $this->option('apply') ? 'apply' : 'dry_run',
-            'date' => $date,
+            'date' => $fromDate === $toDate ? $fromDate : null,
+            'from_date' => $fromDate,
+            'to_date' => $toDate,
             'seen' => $orders->count(),
             'change' => $change,
             'noop' => $noop,
@@ -97,12 +125,14 @@ final class RepairWooOrderIdentitiesCommand extends Command
 
         if ($blocked > 0) {
             $summary['gate'] = 'blocked_rows_present';
+
             return $this->emit($summary, $rows, self::FAILURE);
         }
 
         $expectedChange = $this->option('expect-change');
         if ($expectedChange === null || ! ctype_digit((string) $expectedChange) || (int) $expectedChange !== $change) {
             $summary['gate'] = 'expect_change_mismatch';
+
             return $this->emit($summary, $rows, self::FAILURE);
         }
 
@@ -134,7 +164,22 @@ final class RepairWooOrderIdentitiesCommand extends Command
 
         $summary['applied'] = $change;
         $summary['gate'] = 'applied';
+
         return $this->emit($summary, $rows, self::SUCCESS);
+    }
+
+    private function validDate(string $value): bool
+    {
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+            return false;
+        }
+
+        $date = \DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+        $errors = \DateTimeImmutable::getLastErrors();
+
+        return $date !== false
+            && ($errors === false || ($errors['warning_count'] === 0 && $errors['error_count'] === 0))
+            && $date->format('Y-m-d') === $value;
     }
 
     /** @return array<string,mixed> */
@@ -157,8 +202,8 @@ final class RepairWooOrderIdentitiesCommand extends Command
             $this->line((string) json_encode(['summary' => $summary, 'rows' => $rows], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
         } else {
             $this->line(sprintf(
-                'Woo ERP identity %s: date=%s seen=%d change=%d noop=%d blocked=%d',
-                $summary['mode'], $summary['date'], $summary['seen'], $summary['change'], $summary['noop'], $summary['blocked'],
+                'Woo ERP identity %s: scope=%s..%s seen=%d change=%d noop=%d blocked=%d',
+                $summary['mode'], $summary['from_date'], $summary['to_date'], $summary['seen'], $summary['change'], $summary['noop'], $summary['blocked'],
             ));
             foreach ($rows as $row) {
                 $this->line(sprintf('%s -> %s [%s]', $row['current_erp_order_id'] ?? 'NULL', $row['expected_erp_order_id'] ?? 'BLOCKED', $row['decision']));
