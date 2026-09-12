@@ -118,13 +118,13 @@ CURRENT_PHASE: V1.1C-P6 Last-mile Cost / P6A Estimated Last-mile
 CURRENT_WORK_PACKAGE: ERP-ACCOUNTING-V11C-P6A-LAST-MILE-ESTIMATE-001
 PACKAGE_STATUS: IMPLEMENTED / VERIFIED / MERGE CANDIDATE / BACKEND ONLY
 WAITING_PHASES: P6B, P6C, P7, P8, P9, V1.1C Final Reconciliation / Closure Gate, V1.1 Final Profit Readiness
-BASELINE: origin/main@e333c9a4e58b661b813206d3cb85bcd8932788d6
-GITHUB_STATE: Draft PR #291 open; contract committed; implementation/verification prepared on the same branch; latest-main sync pending final delivery commit
+BASELINE: issued baseline origin/main@e333c9a4e58b661b813206d3cb85bcd8932788d6; merge-candidate rebased onto origin/main@07dcb5fe28b39bbbb0c7c9aae5d0cf76147b65f7
+GITHUB_STATE: Draft PR #291 open; implementation and verification complete on merge-candidate 424bf0354eb05b31a460d73954121d6188a25fe3; rebased cleanly onto origin/main@07dcb5fe28b39bbbb0c7c9aae5d0cf76147b65f7; final evidence commit/push pending
 SOURCE_CONFLICTS: AI/CURRENT_CONTEXT.md is stale relative to GitHub/main and Production; GitHub/main governs mutable execution facts
 GLOBAL_GATE: BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1 active; Production deploy/data write remain hard Owner gates
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: P6A implementation + US high-risk verification
-EVIDENCE_AS_OF: 2026-09-11
+NEXT_DEPENDENCY: Final evidence push → PR #291 checks → continuously authorized merge → Production code-only deploy hard gate
+EVIDENCE_AS_OF: 2026-09-12
 ROADMAP HOURS
 CURRENT_PACKAGE_ESTIMATE: 4.75 effective hours planning value; range 3.5–7.0h
 KNOWN_CURRENT_TRACK_REMAINING: P6B/P6C/P7/P8/P9 are known roadmap packages; exact non-overlapping remaining hours UNKNOWN WITH EVIDENCE pending each package preflight
