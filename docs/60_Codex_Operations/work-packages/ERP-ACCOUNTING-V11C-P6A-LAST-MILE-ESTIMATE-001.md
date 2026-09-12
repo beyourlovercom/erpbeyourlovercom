@@ -1,6 +1,6 @@
 # ERP-ACCOUNTING-V11C-P6A-LAST-MILE-ESTIMATE-001
 
-**Status:** CONTRACT FROZEN / IMPLEMENTATION AUTHORIZED / BACKEND ONLY  
+**Status:** IMPLEMENTED / VERIFIED / MERGE CANDIDATE / BACKEND ONLY
 **Date:** 2026-09-11  
 **Owner scope:** Accounting V1.1C-P6 — Last-mile Cost, phase P6A Estimated Last-mile  
 **EXECUTION_PROVIDER:** GPT_WEB  
@@ -93,8 +93,22 @@ Production read-only audit before implementation: 6,159 customer Orders; 16 Ship
 ## Source Conflicts
 `AI/CURRENT_CONTEXT.md` is stale at 2026-08-29 and does not describe the current Accounting production track. Mutable Git/PR facts and current code from GitHub `main` are authoritative. No product-scope conflict was found between current P6A and merged PR #289.
 
+## Verification Evidence
+- P6A focused: 6 tests / 33 assertions PASS.
+- Finance + relevant fulfillment/routing/allocation: 111 PASS / 866 assertions; 1 MySQL-only skip.
+- `FulfillmentActualWeightEvidenceTest`: exact baseline and P6A both have the same 2 inherited failures / 4 assertions; regression delta = 0.
+- `FulfillmentPlanPreviewServiceTest`: exact baseline and P6A both have the same 2 inherited failures / 6 pass / 85 assertions; regression delta = 0.
+- Architecture/Menu/AppShell exact baseline: 7 failures / 45 pass / 1838 assertions; P6A identical failure set and counts; regression delta = 0.
+- PHP lint PASS for every touched PHP file; `git diff --check` PASS.
+- `finance:materialize-last-mile-estimates` is registered. No scheduler, migration, frontend, menu, permission, route or dependency-manifest change.
+- Complete carrier-billing evidence blocks estimated materialization before any Finance write.
+
 ## Work Log
-Planning contract issued before tracked implementation. Actual effective hours and variance will be recorded before merge; elapsed wall-clock and external waits are not counted.
+- Preflight / contract / dependency reconciliation: 0.45h.
+- Core routing-only evidence + Finance gate + command implementation: 0.85h.
+- Focused/full regression, isolated baseline harness and inherited-failure reconciliation: 0.90h.
+- Static review, delivery evidence and merge-candidate preparation: 0.25h.
+- ACTUAL_EFFECTIVE_HOURS: 2.45h. External waiting and overnight idle time excluded.
 
 PROJECT POSITION
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate [COMPLETE] → MVP1 Existing Operations / Tencent Docs Replacement → ERP-INQUIRY-M1 → Milestone Remote Release → MVP1.1 WooCommerce Inbound → MVP1.2 Tracking Outbound → MVP1.3 Sync Orchestration → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion [CURRENT] → Shopify and Additional Integrations → Production Hardening / Expansion
@@ -102,10 +116,10 @@ CURRENT_TRACK_PHASE_MAP: V1.1B Revenue Evidence Woo [COMPLETE] → V1.1C-P1 Prod
 COMPLETED_PHASES: V1.1B, P1, P2, P3, P4, P5, C1
 CURRENT_PHASE: V1.1C-P6 Last-mile Cost / P6A Estimated Last-mile
 CURRENT_WORK_PACKAGE: ERP-ACCOUNTING-V11C-P6A-LAST-MILE-ESTIMATE-001
-PACKAGE_STATUS: CONTRACT FROZEN / IMPLEMENTATION AUTHORIZED / BACKEND ONLY
+PACKAGE_STATUS: IMPLEMENTED / VERIFIED / MERGE CANDIDATE / BACKEND ONLY
 WAITING_PHASES: P6B, P6C, P7, P8, P9, V1.1C Final Reconciliation / Closure Gate, V1.1 Final Profit Readiness
 BASELINE: origin/main@e333c9a4e58b661b813206d3cb85bcd8932788d6
-GITHUB_STATE: Dedicated branch/worktree created from exact baseline; delivery PR pending contract commit
+GITHUB_STATE: Draft PR #291 open; contract committed; implementation/verification prepared on the same branch; latest-main sync pending final delivery commit
 SOURCE_CONFLICTS: AI/CURRENT_CONTEXT.md is stale relative to GitHub/main and Production; GitHub/main governs mutable execution facts
 GLOBAL_GATE: BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1 active; Production deploy/data write remain hard Owner gates
 PRODUCTION_DEPLOYMENT_STATUS: NO
@@ -142,3 +156,7 @@ MIGRATION_FILE_AUTHORING: EXCLUDED
 MIGRATION_EXECUTION: EXCLUDED
 UAT: EXCLUDED
 DEPLOYMENT: EXCLUDED
+ACTUAL_EFFECTIVE_HOURS: 2.45h
+ACTUAL_HOURS_BREAKDOWN: preflight 0.45h; core execution 0.85h; test/validation/remediation 0.90h; final evidence 0.25h
+VARIANCE: -2.30h / -48.4%
+VARIANCE_REASON: existing fulfillment/routing/FX primitives allowed a smaller implementation surface than the planning envelope; inherited regression failures were resolved by exact-baseline comparison instead of product-code remediation

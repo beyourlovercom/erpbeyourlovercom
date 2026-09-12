@@ -181,6 +181,82 @@ final class FulfillmentPlanCostEstimator
         ];
     }
 
+    /** @param list<array<string,mixed>> $segments @param array<string,mixed> $destinationContext @param array<string,mixed> $context */
+    public function estimateRoutingOnly(string $country, array $segments, array $destinationContext = [], array $context = []): array
+    {
+        $productIds = collect($segments)
+            ->flatMap(fn (array $segment) => collect($segment['items'] ?? [])->pluck('product_id'))
+            ->map(fn ($id) => (int) $id)
+            ->unique()->values()->all();
+        $packagingStandards = $context['packaging_standards'] ?? $this->packaging->forProductIds($productIds);
+        $shippingWeightStandards = $context['shipping_weight_standards'] ?? $this->shippingWeights->forProductIds($productIds);
+
+        $allComponents = [];
+        $segmentEvidence = [];
+        foreach ($segments as $segment) {
+            $sourceType = (string) ($segment['source_type'] ?? '');
+            $sourceCode = strtoupper((string) ($segment['source_code'] ?? ''));
+            $carrier = trim((string) ($segment['carrier'] ?? ''));
+
+            if ($sourceType === 'factory' && $carrier === '4PX') {
+                $measurement = $this->shippingWeightForSegment($segment, $shippingWeightStandards);
+                if ($measurement['status'] !== 'ready') return $measurement;
+                $routing = $this->china->calculate($country, $measurement['actual_weight_kg'], $segment['items'] ?? [], $destinationContext);
+            } else {
+                $measurement = $this->packagingForSegment($segment, $packagingStandards);
+                if ($measurement['status'] !== 'ready') return $measurement;
+                if ($sourceType === 'factory') {
+                    $routing = [
+                        'status' => 'missing_evidence', 'amount' => null, 'currency' => null, 'source' => null,
+                        'reason_code' => 'factory_carrier_rate_unavailable',
+                        'reason' => "No frozen automatic routing rate for factory carrier {$carrier}",
+                    ];
+                } else {
+                    $routing = $sourceCode === 'DE'
+                        ? $this->dhl->calculate($country, $measurement['actual_weight_kg'])
+                        : [
+                            'status' => 'missing_evidence', 'amount' => null, 'currency' => null, 'source' => null,
+                            'reason_code' => 'routing_rate_unavailable',
+                            'reason' => 'No frozen automatic routing rate for source',
+                        ];
+                }
+            }
+
+            if (($routing['status'] ?? null) !== 'ready') return [...$routing, 'measurement' => $measurement];
+            $allComponents = [...$allComponents, ...$routing['components']];
+            $segmentEvidence[] = ['source_code' => $sourceCode, 'measurement' => $measurement, 'routing' => $routing];
+        }
+
+        $fxResult = $this->fx->convertToCny(array_map(
+            fn (array $component): array => ['currency' => $component['currency'], 'revenue' => $component['amount']],
+            $allComponents,
+        ));
+        if (! ($fxResult['available'] ?? false)) {
+            return [
+                'status' => 'missing_evidence', 'amount' => null, 'currency' => null, 'source' => null,
+                'reason_code' => $fxResult['reason'] ?? 'fx_unavailable',
+                'reason' => 'ERP Settings FX conversion unavailable',
+                'components' => $allComponents, 'segments' => $segmentEvidence,
+            ];
+        }
+
+        return [
+            'status' => 'ready',
+            'amount' => round((float) $fxResult['amount_cny'], 4),
+            'currency' => 'CNY',
+            'source' => 'automatic-rate-engine-routing-only',
+            'components' => $allComponents,
+            'segments' => $segmentEvidence,
+            'fx' => [
+                'source' => $fxResult['source'] ?? null,
+                'reference_date' => $fxResult['reference_date'] ?? null,
+                'stale' => (bool) ($fxResult['stale'] ?? false),
+                'conversions' => $fxResult['conversions'] ?? [],
+            ],
+            'possible_surcharges' => collect($segmentEvidence)->flatMap(fn (array $row) => $row['routing']['possible_surcharges'] ?? [])->unique()->values()->all(),
+        ];
+    }
+
     /** @param array<string,mixed> $segment @param array<int,array<string,mixed>> $standards */
     private function packagingCostForSegment(array $segment, array $standards): array
     {
