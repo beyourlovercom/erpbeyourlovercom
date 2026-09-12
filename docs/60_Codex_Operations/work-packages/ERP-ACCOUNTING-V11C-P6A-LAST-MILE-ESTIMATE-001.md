@@ -1,6 +1,6 @@
 # ERP-ACCOUNTING-V11C-P6A-LAST-MILE-ESTIMATE-001
 
-**Status:** IMPLEMENTED / VERIFIED / MERGE CANDIDATE / BACKEND ONLY
+**Status:** IMPLEMENTED / VERIFIED / MERGE READY / BACKEND ONLY
 **Date:** 2026-09-11  
 **Owner scope:** Accounting V1.1C-P6 — Last-mile Cost, phase P6A Estimated Last-mile  
 **EXECUTION_PROVIDER:** GPT_WEB  
@@ -102,6 +102,7 @@ Production read-only audit before implementation: 6,159 customer Orders; 16 Ship
 - PHP lint PASS for every touched PHP file; `git diff --check` PASS.
 - `finance:materialize-last-mile-estimates` is registered. No scheduler, migration, frontend, menu, permission, route or dependency-manifest change.
 - Complete carrier-billing evidence blocks estimated materialization before any Finance write.
+- GitHub Actions run `34672057509` on head `5f9ac39f52776b38f09b763a81940e17d0c7427a`: both `sqlite-regression` and `mysql8-runtime` failed before runner assignment with `runner_id=0`, blank `runner_name`, and `steps=[]`; no test command started. Classified as the established GitHub Actions infrastructure exception, not a P6A regression.
 
 ## Work Log
 - Preflight / contract / dependency reconciliation: 0.45h.
@@ -116,10 +117,10 @@ CURRENT_TRACK_PHASE_MAP: V1.1B Revenue Evidence Woo [COMPLETE] → V1.1C-P1 Prod
 COMPLETED_PHASES: V1.1B, P1, P2, P3, P4, P5, C1
 CURRENT_PHASE: V1.1C-P6 Last-mile Cost / P6A Estimated Last-mile
 CURRENT_WORK_PACKAGE: ERP-ACCOUNTING-V11C-P6A-LAST-MILE-ESTIMATE-001
-PACKAGE_STATUS: IMPLEMENTED / VERIFIED / MERGE CANDIDATE / BACKEND ONLY
+PACKAGE_STATUS: IMPLEMENTED / VERIFIED / MERGE READY / BACKEND ONLY
 WAITING_PHASES: P6B, P6C, P7, P8, P9, V1.1C Final Reconciliation / Closure Gate, V1.1 Final Profit Readiness
 BASELINE: issued baseline origin/main@e333c9a4e58b661b813206d3cb85bcd8932788d6; merge-candidate rebased onto origin/main@07dcb5fe28b39bbbb0c7c9aae5d0cf76147b65f7
-GITHUB_STATE: Draft PR #291 open; implementation and verification complete on merge-candidate 424bf0354eb05b31a460d73954121d6188a25fe3; rebased cleanly onto origin/main@07dcb5fe28b39bbbb0c7c9aae5d0cf76147b65f7; final evidence commit/push pending
+GITHUB_STATE: PR #291 Ready; implementation/local verification complete; first CI run 34672057509 is exact runner_id=0 / steps=[] infrastructure exception; final docs-only evidence commit will be the merge candidate
 SOURCE_CONFLICTS: AI/CURRENT_CONTEXT.md is stale relative to GitHub/main and Production; GitHub/main governs mutable execution facts
 GLOBAL_GATE: BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1 active; Production deploy/data write remain hard Owner gates
 PRODUCTION_DEPLOYMENT_STATUS: NO
