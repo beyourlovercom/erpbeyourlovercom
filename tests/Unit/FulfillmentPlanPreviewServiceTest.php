@@ -5,12 +5,13 @@ namespace Tests\Unit;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
+use App\Modules\Logistics\Application\UsFulfillmentZoneResolver;
 use App\Modules\Logistics\Application\WarehouseRoutingPolicy;
 use Tests\TestCase;
 
 final class FulfillmentPlanPreviewServiceTest extends TestCase
 {
-    public function test_military_address_excludes_china_factory_and_can_offer_us_split_preview(): void
+    public function test_military_address_blocks_when_no_single_us_warehouse_can_fulfill_without_factory(): void
     {
         $warehouses = [
             $this->warehouse(1, 'US-LA'),
@@ -26,14 +27,12 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
             ['product_id' => 20, 'quantity' => 1],
         ], ['city' => 'APO', 'province_state' => 'AE']);
 
-        $this->assertSame('preview', $preview['status']);
+        $this->assertSame('blocked', $preview['status']);
+        $this->assertSame('no_fulfillment_plan', $preview['reason_code']);
         $this->assertTrue($preview['constraints']['military_address']);
         $this->assertTrue($preview['constraints']['must_use_us_warehouse']);
         $this->assertFalse($preview['constraints']['factory_allowed']);
-        $this->assertNotEmpty($preview['plans']);
-        $this->assertTrue(collect($preview['plans'])->every(fn (array $plan): bool => collect($plan['segments'])->every(fn (array $segment): bool => $segment['source_type'] === 'warehouse')
-        ));
-        $this->assertTrue(collect($preview['plans'])->contains(fn (array $plan): bool => $plan['is_split'] === true));
+        $this->assertSame([], $preview['plans']);
     }
 
     public function test_ak_hi_includes_us_and_factory_options_and_requires_human_review(): void
@@ -59,16 +58,16 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
             $this->warehouse(7, 'US-SJ'),
         ], [
             10 => [$this->stock(1, 0), $this->stock(2, 5), $this->stock(7, 5)],
-            20 => [$this->stock(1, 5), $this->stock(2, 5), $this->stock(7, 0)],
+            20 => [$this->stock(1, 0), $this->stock(2, 5), $this->stock(7, 5)],
         ]);
         $items = [['product_id' => 10, 'quantity' => 1], ['product_id' => 20, 'quantity' => 1]];
-        $first = $service->preview('US', $items, ['province_state' => 'CA']);
-        $single = collect($first['plans'])->first(fn (array $plan): bool => ! $plan['is_split'] && $plan['segments'][0]['source_code'] === 'US-NY');
-        $split = collect($first['plans'])->first(fn (array $plan): bool => $plan['is_split'] && collect($plan['segments'])->pluck('source_code')->sort()->values()->all() === ['US-LA', 'US-SJ']);
+        $first = $service->preview('US', $items, ['province_state' => 'CA', 'postal_code' => '90001']);
+        $single = collect($first['plans'])->first(fn (array $plan): bool => ! $plan['is_split'] && $plan['segments'][0]['source_code'] === 'US-SJ');
+        $split = collect($first['plans'])->first(fn (array $plan): bool => $plan['is_split'] && collect($plan['segments'])->pluck('source_code')->sort()->values()->all() === ['FACTORY', 'US-SJ']);
         $this->assertNotNull($single);
         $this->assertNotNull($split);
 
-        $second = $service->preview('US', $items, ['province_state' => 'CA'], [
+        $second = $service->preview('US', $items, ['province_state' => 'CA', 'postal_code' => '90001'], [
             'plan_costs' => [
                 $single['plan_key'] => ['amount' => 17.40, 'currency' => 'USD', 'source' => 'usps-quote'],
                 $split['plan_key'] => ['amount' => 11.80, 'currency' => 'USD', 'source' => 'split-usps-quotes'],
@@ -108,7 +107,7 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
         $preview = $this->service($warehouses, $availability)->preview(
             'US',
             [['product_id' => 10, 'quantity' => 1]],
-            ['province_state' => 'CA'],
+            ['province_state' => 'CA', 'postal_code' => '90001'],
             [],
             $context,
         );
@@ -148,7 +147,7 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
         $preview = $this->service($warehouses, $availability)->preview(
             'US',
             [['product_id' => 10, 'quantity' => 1]],
-            ['province_state' => 'CA'],
+            ['province_state' => 'CA', 'postal_code' => '90001'],
             [],
             $context,
         );
@@ -215,11 +214,11 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
                 return collect($this->availability)->only($productIds)->all();
             }
         };
-        $service = new FulfillmentPlanPreviewService($reader, app(WarehouseRoutingPolicy::class), app(CarrierRoutingPolicy::class));
+        $service = new FulfillmentPlanPreviewService($reader, app(WarehouseRoutingPolicy::class), app(CarrierRoutingPolicy::class), app(UsFulfillmentZoneResolver::class));
         $context = ['warehouses' => $warehouses, 'availability' => $availability];
 
         for ($i = 0; $i < 50; $i++) {
-            $preview = $service->preview('US', [['product_id' => 10, 'quantity' => 1]], ['province_state' => 'NY'], [], $context);
+            $preview = $service->preview('US', [['product_id' => 10, 'quantity' => 1]], ['province_state' => 'NY', 'postal_code' => '10001'], [], $context);
             $this->assertSame('preview', $preview['status']);
         }
 
@@ -229,7 +228,7 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
 
     private function service(array $warehouses, array $availability): FulfillmentPlanPreviewService
     {
-        return new FulfillmentPlanPreviewService($this->reader($warehouses, $availability), app(WarehouseRoutingPolicy::class), app(CarrierRoutingPolicy::class));
+        return new FulfillmentPlanPreviewService($this->reader($warehouses, $availability), app(WarehouseRoutingPolicy::class), app(CarrierRoutingPolicy::class), app(UsFulfillmentZoneResolver::class));
     }
 
     private function warehouse(int $id, string $code): array

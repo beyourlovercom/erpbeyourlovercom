@@ -163,7 +163,8 @@ final class CarrierController
             'service' => $shipment->service,
             'tracking_number' => $shipment->tracking_number,
             'items' => $order?->items->map(fn ($item): array => [
-                'sku' => $item->sku,
+                'sku' => $item->resolved_fulfillment_sku ?: $item->sku,
+                'source_sku' => $item->source_sku ?: $item->sku,
                 'product_summary' => $item->product_summary,
                 'product_id' => $item->product_id,
                 'product_url' => $item->product ? "/products/{$item->product_id}" : null,

@@ -66,6 +66,13 @@ final class WarehouseRoutingPolicy
         return is_array($rule) ? $rule : null;
     }
 
+    /** @return array<string,mixed>|null */
+    public function physicalZoneRule(string $country): ?array
+    {
+        $rule = $this->country($country)['rules']['physical_zone'] ?? null;
+        return is_array($rule) ? $rule : null;
+    }
+
     /** @return list<string> */
     public function fallbackPriority(string $country): array
     {

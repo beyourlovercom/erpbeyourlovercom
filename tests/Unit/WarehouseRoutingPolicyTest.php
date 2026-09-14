@@ -24,9 +24,11 @@ final class WarehouseRoutingPolicyTest extends TestCase
         $this->assertSame('CA', $policy->fixedWarehouseCode('CA'));
 
         $this->assertFalse($policy->automaticEnabled('US'));
-        $this->assertSame('east_zone_then_priority', $policy->strategy('us'));
+        $this->assertSame('physical_zone_then_priority', $policy->strategy('us'));
         $this->assertSame(['US-NY', 'US-SJ', 'US-LA'], $policy->warehouseCodes('US'));
-        $this->assertSame(['US-SJ', 'US-LA', 'US-NY'], $policy->fallbackPriority('US'));
+        $this->assertSame([], $policy->fallbackPriority('US'));
+        $this->assertSame(['US-SJ', 'US-LA'], config('warehouse_routing.countries.US.rules.physical_zone.west.warehouse_priority'));
+        $this->assertSame(['US-NY'], config('warehouse_routing.countries.US.rules.physical_zone.east.warehouse_priority'));
         $this->assertNull($policy->fixedWarehouseCode('US'));
     }
 

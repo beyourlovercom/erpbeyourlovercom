@@ -11,6 +11,7 @@ final class WarehouseRecommendationService
         private readonly InventoryAvailabilityReader $inventory,
         private readonly WarehouseRoutingPolicy $routing,
         private readonly UspsZoneResolver $zones,
+        private readonly UsFulfillmentZoneResolver $physicalZones,
     ) {}
 
     /** @param array<int,int> $productIds */
@@ -63,7 +64,7 @@ final class WarehouseRecommendationService
         }
 
         if (($context['measurement_availability']['status'] ?? null) === 'missing_weight') {
-            return $this->inventoryOnlyFallback($countryCode, $requirements, $warehouses, $context);
+            return $this->inventoryOnlyFallback($countryCode, $postalCode, $destinationContext, $requirements, $warehouses, $context);
         }
 
         if ($countryCode === 'US' && $this->routing->isUsAkHiDestination($destinationContext)) {
@@ -91,6 +92,13 @@ final class WarehouseRecommendationService
         if ($strategy === 'de_cost_gate') {
             return $this->recommendDeCostGate($countryCode, $requirements, $warehouses, $costEvidence, $context);
         }
+        if ($strategy === 'physical_zone_then_priority') {
+            if ($countryCode === 'US' && $this->routing->isUsMilitaryDestination($destinationContext)) {
+                return $this->recommendMilitaryUsLocal($countryCode, $requirements, $warehouses, $context);
+            }
+
+            return $this->recommendPhysicalZoneThenPriority($countryCode, $postalCode, $destinationContext, $requirements, $warehouses, $context);
+        }
         if ($strategy === 'east_zone_then_priority') {
             $result = $this->recommendEastZoneThenPriority($countryCode, $postalCode, $requirements, $warehouses, $context);
             if ($countryCode === 'US' && $this->routing->isUsMilitaryDestination($destinationContext)) {
@@ -105,6 +113,8 @@ final class WarehouseRecommendationService
 
     private function inventoryOnlyFallback(
         string $countryCode,
+        ?string $postalCode,
+        array $destinationContext,
         Collection $requirements,
         Collection $warehouses,
         array $context,
@@ -126,8 +136,28 @@ final class WarehouseRecommendationService
             })->values();
         }
 
+        $physicalZone = null;
+        if ($countryCode === 'US' && $this->routing->strategy($countryCode) === 'physical_zone_then_priority'
+            && ! $this->routing->isUsMilitaryDestination($destinationContext)
+            && ! $this->routing->isUsAkHiDestination($destinationContext)) {
+            $physicalZone = $this->physicalZones->resolve($postalCode, $destinationContext);
+            if (($physicalZone['status'] ?? null) !== 'matched') {
+                return $this->blocked(
+                    'us_physical_zone_unresolved',
+                    '美国收货地址的 ZIP Code / 州无法可靠确定美东或美西区域，请 Vita 人工判断。',
+                    $countryCode,
+                    $this->physicalRoutingContext($physicalZone),
+                );
+            }
+            $zoneCodes = $this->physicalZones->priorityFor($physicalZone);
+            $policyWarehouses = $policyWarehouses->filter(function (array $warehouse) use ($zoneCodes): bool {
+                $canonical = $this->routing->canonicalWarehouseCode((string) ($warehouse['code'] ?? ''));
+                return $canonical !== null && in_array($canonical, $zoneCodes, true);
+            })->values();
+        }
+
         if ($policyWarehouses->isEmpty()) {
-            return $this->blocked('no_service_region_match', "没有可用仓库覆盖 {$countryCode}。", $countryCode);
+            return $this->blocked('no_service_region_match', "没有可用仓库覆盖 {$countryCode}。", $countryCode, $physicalZone ? $this->physicalRoutingContext($physicalZone) : null);
         }
 
         $eligible = $policyWarehouses->filter(
@@ -152,6 +182,7 @@ final class WarehouseRecommendationService
                 'warehouse' => null,
                 'routing_context' => [
                     'strategy' => 'inventory_only_missing_weight',
+                    'physical_zone' => $physicalZone,
                     'cost_ranking_enabled' => false,
                     'manual_selection_required' => true,
                     'missing_weight_product_ids' => $missing,
@@ -171,6 +202,7 @@ final class WarehouseRecommendationService
             'warehouse' => null,
             'routing_context' => [
                 'strategy' => 'inventory_only_missing_weight',
+                'physical_zone' => $physicalZone,
                 'cost_ranking_enabled' => false,
                 'manual_selection_required' => true,
                 'missing_weight_product_ids' => $missing,
@@ -369,6 +401,109 @@ final class WarehouseRecommendationService
         $number = (float) $value;
 
         return $number >= 0 ? round($number, 4) : null;
+    }
+
+    private function recommendMilitaryUsLocal(
+        string $countryCode,
+        Collection $requirements,
+        Collection $warehouses,
+        array $context,
+    ): array {
+        $allowedCodes = $this->routing->warehouseCodes($countryCode);
+        $eligible = $warehouses->filter(function (array $warehouse) use ($allowedCodes, $requirements, $context): bool {
+            $code = $this->routing->canonicalWarehouseCode((string) ($warehouse['code'] ?? ''));
+            return $code !== null
+                && in_array($code, $allowedCodes, true)
+                && $this->covers($warehouse, $requirements, $context['availability']);
+        })->sortBy([['priority', 'asc'], ['id', 'asc']])->values();
+
+        if ($eligible->isEmpty()) {
+            return $this->militaryResult($this->blocked(
+                'insufficient_stock',
+                '军事地址必须由美国仓当地发货，但当前美国仓无法整单满足库存。',
+                $countryCode,
+            ));
+        }
+
+        return $this->militaryResult($this->recommended(
+            $eligible->first(),
+            $countryCode,
+            $requirements->count(),
+            $eligible->count(),
+            'recommended_military_us_local',
+            '军事地址必须由美国仓当地发货；当前推荐美国仓可整单履约。',
+        ));
+    }
+
+    private function recommendPhysicalZoneThenPriority(
+        string $countryCode,
+        ?string $postalCode,
+        array $destinationContext,
+        Collection $requirements,
+        Collection $warehouses,
+        array $context,
+    ): array {
+        $resolution = $this->physicalZones->resolve($postalCode, $destinationContext);
+        if (($resolution['status'] ?? null) !== 'matched') {
+            return $this->blocked(
+                'us_physical_zone_unresolved',
+                '美国收货地址的 ZIP Code / 州无法可靠确定美东或美西区域，请 Vita 人工判断。',
+                $countryCode,
+                $this->physicalRoutingContext($resolution),
+            );
+        }
+
+        $priority = $this->physicalZones->priorityFor($resolution);
+        $eligibleByCode = collect();
+        foreach ($warehouses as $warehouse) {
+            $code = $this->routing->canonicalWarehouseCode((string) ($warehouse['code'] ?? ''));
+            if ($code !== null && in_array($code, $priority, true)
+                && $this->covers($warehouse, $requirements, $context['availability'])) {
+                $eligibleByCode[$code] = $warehouse;
+            }
+        }
+
+        foreach ($priority as $code) {
+            if (! $eligibleByCode->has($code)) continue;
+            $winner = $eligibleByCode->get($code);
+            $zoneLabel = (string) ($resolution['zone_label'] ?? $resolution['zone'] ?? '美国区域');
+            $reason = $code === 'US-SJ'
+                ? "{$zoneLabel}：美西世迈仓库存可整单满足，按冻结规则优先世迈仓。"
+                : ($code === 'US-LA'
+                    ? "{$zoneLabel}：美西世迈仓无法整单满足，MorePlus 有货，按冻结规则回退 MorePlus。"
+                    : "{$zoneLabel}：收货地址属于美东区域且纽约仓库存可整单满足，推荐美东纽约仓。");
+
+            return $this->recommended(
+                $winner,
+                $countryCode,
+                $requirements->count(),
+                $eligibleByCode->count(),
+                'recommended_physical_zone',
+                $reason,
+                $this->physicalRoutingContext($resolution),
+            );
+        }
+
+        $zoneLabel = (string) ($resolution['zone_label'] ?? $resolution['zone'] ?? '美国区域');
+        return $this->blocked(
+            'insufficient_stock_in_physical_zone',
+            "{$zoneLabel}对应美国仓无法整单满足库存；不跨美东/美西区域兜底，请比较中国工厂或拆单方案。",
+            $countryCode,
+            $this->physicalRoutingContext($resolution),
+        );
+    }
+
+    /** @return array<string,mixed> */
+    private function physicalRoutingContext(array $resolution): array
+    {
+        return [
+            'strategy' => 'physical_zone_then_priority',
+            'physical_zone' => $resolution,
+            'postal_code' => $resolution['postal_code'] ?? null,
+            'state' => $resolution['state'] ?? null,
+            'warehouse_priority' => $this->physicalZones->priorityFor($resolution),
+            'cross_region_fallback' => false,
+        ];
     }
 
     private function recommendEastZoneThenPriority(

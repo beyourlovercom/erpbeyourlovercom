@@ -35,22 +35,32 @@ $countries = [
     'US' => [
         // Keep assisted-only until Owner explicitly opens the US automatic gate.
         'automatic' => false,
-        'strategy' => 'east_zone_then_priority',
-        'allow_cross_region_fallback' => true,
+        'strategy' => 'physical_zone_then_priority',
+        'allow_cross_region_fallback' => false,
         'warehouses' => [
             ['code' => 'US-NY', 'role' => 'east'],
             ['code' => 'US-SJ', 'role' => 'west_primary'],
             ['code' => 'US-LA', 'role' => 'west_secondary'],
         ],
         'rules' => [
-            'east_zone' => [
-                'warehouse' => 'US-NY',
-                'max_zone' => 4,
-                'data_file' => 'resources/data/usps/us-ny-zone-ranges-2026-05-01.php',
-                'source_effective_date' => '2026-05-01',
-                'unknown_behavior' => 'fallback_priority',
+            'physical_zone' => [
+                // Owner freeze 2026-09-14: ZIP/state must agree on the physical east/west region.
+                // West: 世迈优先，MorePlus 兜底. East: 仅纽约仓，不跨区兜底。
+                'resolver' => 'zip3_state_boundary',
+                'unknown_behavior' => 'human_review',
+                'west' => [
+                    'label' => '美西区',
+                    'warehouse_priority' => ['US-SJ', 'US-LA'],
+                    'state_codes' => ['WA','OR','CA','ID','NV','MT','WY','UT','AZ','CO','NM','ND','SD','NE','KS','OK','TX'],
+                    'zip3_ranges' => [[570,599],[660,699],[730,999]],
+                ],
+                'east' => [
+                    'label' => '美东区',
+                    'warehouse_priority' => ['US-NY'],
+                    'state_codes' => ['ME','NH','VT','MA','RI','CT','NY','NJ','PA','DE','MD','DC','VA','WV','NC','SC','GA','FL','OH','MI','IN','IL','WI','MN','IA','MO','AR','LA','MS','AL','TN','KY'],
+                    'zip3_ranges' => [[0,569],[600,659],[700,729]],
+                ],
             ],
-            'fallback_priority' => ['US-SJ', 'US-LA', 'US-NY'],
             'destination_constraints' => [
                 'military' => [
                     'city_codes' => ['APO', 'FPO', 'DPO'],
@@ -115,7 +125,7 @@ foreach ($deBlockedCountries as $country) {
 }
 
 return [
-    'version' => '2026-09-07-v5',
+    'version' => '2026-09-14-v6',
 
     'global' => [
         'require_active_warehouse' => true,

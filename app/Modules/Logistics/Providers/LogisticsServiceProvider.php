@@ -10,6 +10,7 @@ use App\Modules\Logistics\Application\Contracts\FulfillmentOriginEvidenceReader;
 use App\Modules\Logistics\Application\Contracts\LastMileEstimateEvidenceReader;
 use App\Modules\Logistics\Application\FulfillmentPlanCostEstimator;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
+use App\Modules\Logistics\Application\UsFulfillmentZoneResolver;
 use App\Modules\Logistics\Application\WarehouseRoutingPolicy;
 use App\Modules\Logistics\Experience\Console\Commands\ImportCarrierBillCommand;
 use App\Modules\Logistics\Experience\Console\Commands\RepairProductionUatFulfillmentCommand;
@@ -44,6 +45,7 @@ final class LogisticsServiceProvider extends ServiceProvider
             $app->make(InventoryAvailabilityReader::class),
             $app->make(WarehouseRoutingPolicy::class),
             $app->make(CarrierRoutingPolicy::class),
+            $app->make(UsFulfillmentZoneResolver::class),
             $app->make(FulfillmentPlanCostEstimator::class),
         ));
     }

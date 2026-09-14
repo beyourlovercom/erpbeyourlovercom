@@ -8,6 +8,8 @@ use App\Modules\Logistics\Application\AssistedFulfillmentService;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
 use App\Modules\Logistics\Application\FulfillmentAllocationSubmissionService;
+use App\Modules\Logistics\Application\GiftSkuResolutionService;
+use App\Modules\Logistics\Application\UsFulfillmentZoneResolver;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Logistics\Application\WarehouseRecommendationService;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
@@ -38,6 +40,8 @@ final class LogisticsController
         private readonly FulfillmentPlanPreviewService $fulfillmentPlans,
         private readonly FulfillmentAllocationDecisionService $allocationDecisions,
         private readonly FulfillmentAllocationSubmissionService $allocationSubmissions,
+        private readonly GiftSkuResolutionService $giftSkuResolutions,
+        private readonly UsFulfillmentZoneResolver $usZones,
         private readonly CarrierRoutingPolicy $carrierRouting,
         private readonly OrderPackagingReferenceProjection $packagingReferences,
         private readonly UserUiPreferenceService $uiPreferences,
@@ -92,6 +96,7 @@ final class LogisticsController
 
         $productIds = collect($orders->items())->flatMap(fn (Order $order) => $order->items->pluck('product_id'))->filter()->unique()->values()->all();
         $context = array_replace($this->recommendations->prepare($productIds), $this->fulfillmentPlans->prepare($productIds));
+        $context['gift_resolution'] = $this->giftSkuResolutions->prepare();
         $allowedCodes = ['FACTORY', 'US-NY', 'US-LA', 'US-SJ', 'DE', 'CA'];
         $warehouses = collect($context['warehouses'] ?? [])
             ->filter(fn (array $warehouse): bool => in_array(strtoupper((string) ($warehouse['code'] ?? '')), $allowedCodes, true))
@@ -100,6 +105,10 @@ final class LogisticsController
         return Inertia::render('Logistics/FulfillmentAllocation', [
             'orders' => $orders->through(fn (Order $order): array => $this->data($order, $context))->toArray(),
             'warehouses' => $warehouses,
+            'carrierOptions' => Carrier::query()->where('is_active', true)->orderBy('id')->get(['name'])->map(fn (Carrier $carrier): array => [
+                'value' => $carrier->name,
+                'label' => $this->carrierRouting->displayName($carrier->name),
+            ])->values()->all(),
             'pendingTotal' => $orders->total(),
             'canOperate' => (bool) $request->user()?->can('logistics.operate'),
         ]);
@@ -124,6 +133,9 @@ final class LogisticsController
             'assignments' => ['required', 'array', 'min:1'],
             'assignments.*.order_item_id' => ['required', 'integer'],
             'assignments.*.source_code' => ['required', 'string', 'max:32'],
+            'assignments.*.gift_mapping_id' => ['nullable', 'integer'],
+            'assignments.*.carrier' => ['nullable', 'string', 'max:128', Rule::exists('logistics_carriers', 'name')->where('is_active', true)],
+            'assignments.*.service' => ['nullable', 'string', 'max:191'],
             'decision_note' => ['nullable', 'string', 'max:1000'],
         ]);
         $allocation = $this->allocationSubmissions->submitManual($order, $data['assignments'], $data['decision_note'] ?? null, $request->user());
@@ -327,7 +339,7 @@ final class LogisticsController
             'logistics_note' => $shipment->logistics_note,
             'shipment_status' => $shipment->shipment_status,
             'order_url' => $this->orderUrl($order),
-            'items' => $order?->items->map(fn ($item): array => ['sku' => $item->sku, 'product_summary' => $item->product_summary, 'product_id' => $item->product_id, 'product_url' => $item->product ? "/products/{$item->product_id}" : null, 'quantity' => $item->quantity])->values()->all() ?? [],
+            'items' => $order?->items->map(fn ($item): array => ['sku' => $item->resolved_fulfillment_sku ?: $item->sku, 'source_sku' => $item->source_sku ?: $item->sku, 'product_summary' => $item->product_summary, 'product_id' => $item->product_id, 'product_url' => $item->product ? "/products/{$item->product_id}" : null, 'quantity' => $item->quantity])->values()->all() ?? [],
             'review_pending' => $order?->logisticsReview?->status === 'pending',
             'paused' => $order?->operationalMarkers?->contains('marker', 'logistics_paused') ?? false,
         ];
@@ -335,7 +347,7 @@ final class LogisticsController
 
     private function projection(Request $request, string $kind, string $component, \Closure $filter): Response { $shipments = Shipment::query()->with(['order.address', 'order.items.product', 'order.logisticsReview', 'warehouse'])->where($filter)->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
             ->latest('shipped_at')->latest('id')->paginate(self::PER_PAGE)->withQueryString(); return Inertia::render($component, ['shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(), 'statusBar' => $this->statusBar()]); }
-    private function orderProjection(Order $order): array { return ['id' => $order->id, 'order_id' => $order->id, 'order_number' => $order->erp_order_id, 'erp_order_id' => $order->erp_order_id, 'external_order_number' => $order->external_order_number, 'order_url' => $this->orderUrl($order), 'items' => $order->items->map(fn ($item) => ['sku' => $item->sku, 'product_summary' => $item->product_summary, 'product_id' => $item->product_id, 'product_url' => $item->product ? "/products/{$item->product_id}" : null])->all()]; }
+    private function orderProjection(Order $order): array { return ['id' => $order->id, 'order_id' => $order->id, 'order_number' => $order->erp_order_id, 'erp_order_id' => $order->erp_order_id, 'external_order_number' => $order->external_order_number, 'order_url' => $this->orderUrl($order), 'items' => $order->items->map(fn ($item) => ['sku' => $item->resolved_fulfillment_sku ?: $item->sku, 'source_sku' => $item->source_sku ?: $item->sku, 'product_summary' => $item->product_summary, 'product_id' => $item->product_id, 'product_url' => $item->product ? "/products/{$item->product_id}" : null])->all()]; }
     private function orderUrl(?Order $order): ?string { if (! $order || $order->order_kind?->value === 'fulfillment_derived') return null; return $order->order_kind?->value === 'kol_fulfillment' ? "/kol/orders/{$order->id}" : "/customers/orders/{$order->id}"; }
     private function statusBar(): array
     {
@@ -377,6 +389,7 @@ final class LogisticsController
             'city' => $order->address?->city,
             'address_line_1' => $order->address?->address_line_1,
             'address_line_2' => $order->address?->address_line_2,
+            'postal_code' => $order->address?->postal_code,
         ];
         $planItems = $order->items->map(fn ($item): array => [
             'product_id' => $item->product_id,
@@ -394,6 +407,19 @@ final class LogisticsController
 
         $allocationDecision = $this->allocationDecisions->present($order, $fulfillmentPlanPreview);
         $allocation = $order->relationLoaded('fulfillmentAllocation') ? $order->fulfillmentAllocation : null;
+        $usZone = strtoupper((string) $order->address?->country) === 'US'
+            ? $this->usZones->resolve($order->address?->postal_code, $destinationContext)
+            : null;
+        $carrierRoutes = collect(['FACTORY', 'US-NY', 'US-LA', 'US-SJ', 'DE', 'CA'])->mapWithKeys(function (string $code) use ($order): array {
+            $route = $this->carrierRouting->warehouseRoute($order->address?->country, $code);
+            $carrier = trim((string) ($route['carrier'] ?? ''));
+            return [$code => [
+                'carrier' => $carrier !== '' ? $carrier : null,
+                'carrier_label' => $carrier !== '' ? $this->carrierRouting->displayName($carrier) : null,
+                'service' => isset($route['service']) && trim((string) $route['service']) !== '' ? trim((string) $route['service']) : null,
+                'automatic' => $carrier !== '',
+            ]];
+        })->all();
 
         return [
             'id' => $order->id,
@@ -411,6 +437,13 @@ final class LogisticsController
             'recipient_name' => $order->address?->recipient_name,
             'phone' => $order->address?->phone,
             'country' => $order->address?->country,
+            'province_state' => $order->address?->province_state,
+            'city' => $order->address?->city,
+            'address_line_1' => $order->address?->address_line_1,
+            'address_line_2' => $order->address?->address_line_2,
+            'postal_code' => $order->address?->postal_code,
+            'us_fulfillment_zone' => $usZone,
+            'carrier_routes' => $carrierRoutes,
             'owner_label' => $order->owner ? 'Owner('.$order->owner->name.')' : null,
             'item_count' => $order->items->sum('quantity'),
             'items' => $order->items->map(fn ($item): array => [
@@ -418,9 +451,15 @@ final class LogisticsController
                 'product_id' => $item->product_id,
                 'product_url' => $item->product ? "/products/{$item->product_id}" : null,
                 'sku' => $item->sku,
+                'source_sku' => $item->source_sku ?: $item->sku,
+                'resolved_fulfillment_sku' => $item->resolved_fulfillment_sku,
                 'product_summary' => $item->product_summary,
                 'quantity' => $item->quantity,
                 'availability' => $context['availability'][$item->product_id] ?? [],
+                'is_gift' => $this->giftSkuResolutions->isGiftSku($item->sku),
+                'gift_options_by_warehouse' => array_key_exists('gift_resolution', $context)
+                    ? $this->giftSkuResolutions->options((string) $item->sku, (int) $item->quantity, $context['gift_resolution'])
+                    : [],
             ])->values()->all(),
             'warehouse_recommendation' => $recommendation,
             'fulfillment_plan_preview' => $fulfillmentPlanPreview,

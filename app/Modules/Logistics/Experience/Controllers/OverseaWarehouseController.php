@@ -214,7 +214,8 @@ final class OverseaWarehouseController
             'review_status' => $effectiveApproved ? 'approved' : 'pending',
             'shipment_status' => $shipment->shipment_status,
             'items' => $order?->items->map(fn ($item): array => [
-                'sku' => $item->sku,
+                'sku' => $item->resolved_fulfillment_sku ?: $item->sku,
+                'source_sku' => $item->source_sku ?: $item->sku,
                 'quantity' => (int) $item->quantity,
             ])->values()->all() ?? [],
         ];

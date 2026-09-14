@@ -17,6 +17,7 @@ final class FulfillmentPlanPreviewService
         private readonly InventoryAvailabilityReader $inventory,
         private readonly WarehouseRoutingPolicy $routing,
         private readonly CarrierRoutingPolicy $carrierRouting,
+        private readonly UsFulfillmentZoneResolver $physicalZones,
         private readonly ?FulfillmentPlanCostEstimator $costEstimator = null,
     ) {}
 
@@ -54,6 +55,17 @@ final class FulfillmentPlanPreviewService
         $akHi = $countryCode === 'US' && $this->routing->isUsAkHiDestination($destinationContext);
         $factoryAllowed = $this->routing->factoryAllowed($destinationContext);
         $warehouseCodes = $this->routing->warehouseCodes($countryCode);
+        $physicalZone = null;
+        if ($countryCode === 'US' && $this->routing->strategy($countryCode) === 'physical_zone_then_priority'
+            && ! $military && ! $akHi) {
+            $physicalZone = $this->physicalZones->resolve(
+                $destinationContext['postal_code'] ?? $destinationContext['zip'] ?? null,
+                $destinationContext,
+            );
+            $warehouseCodes = ($physicalZone['status'] ?? null) === 'matched'
+                ? $this->physicalZones->priorityFor($physicalZone)
+                : [];
+        }
         $warehouses = collect($context['warehouses'] ?? $this->inventory->activeWarehouses())
             ->filter(fn (array $warehouse): bool => (bool) ($warehouse['can_auto_allocate'] ?? false))
             ->filter(function (array $warehouse) use ($warehouseCodes): bool {
@@ -105,7 +117,10 @@ final class FulfillmentPlanPreviewService
                 'split_allowed' => $this->routing->splitShipmentAllowed(),
                 'automatic_split' => $this->routing->automaticSplitShipmentEnabled(),
                 'split_execution_mode' => $this->routing->splitExecutionMode(),
-                'human_review_required' => $inventoryOnly || $akHi || $military || collect($plans)->contains(fn (array $plan): bool => (bool) ($plan['is_split'] ?? false)),
+                'human_review_required' => $inventoryOnly || $akHi || $military
+                    || ($physicalZone !== null && ($physicalZone['status'] ?? null) !== 'matched')
+                    || collect($plans)->contains(fn (array $plan): bool => (bool) ($plan['is_split'] ?? false)),
+                'us_physical_zone' => $physicalZone,
             ],
             'plans' => $plans,
             'comparison' => $comparison,
@@ -171,12 +186,16 @@ final class FulfillmentPlanPreviewService
     private function singleWarehousePlan(string $countryCode, array $warehouse, Collection $requirements, array $costEvidence, array $destinationContext, array $context): array
     {
         $code = $this->routing->canonicalWarehouseCode((string) ($warehouse['code'] ?? '')) ?? (string) ($warehouse['code'] ?? '');
+        $route = $this->carrierRouting->warehouseRoute($countryCode, $code);
         $segments = [[
             'source_type' => 'warehouse',
             'source_code' => $code,
             'warehouse_id' => (int) $warehouse['id'],
             'warehouse_name' => (string) $warehouse['name'],
             'source_class' => $this->sourceClass($countryCode, $code),
+            'carrier' => $route['carrier'] ?? null,
+            'service' => $route['service'] ?? null,
+            'carrier_selection_source' => filled($route['carrier'] ?? null) ? 'automatic' : null,
             'items' => $this->items($requirements),
         ]];
 
@@ -195,6 +214,7 @@ final class FulfillmentPlanPreviewService
             'carrier' => (string) ($factory['carrier'] ?? '4PX'),
             'service' => $factory['service'] ?? null,
             'rate_source' => $factory['rate_source'] ?? null,
+            'carrier_selection_source' => 'automatic',
             'items' => $this->items($requirements),
         ]];
 
@@ -222,12 +242,16 @@ final class FulfillmentPlanPreviewService
             foreach ($warehouses as $warehouse) {
                 if ($this->available($warehouse, (int) $productId, $availability) >= (int) $quantity) {
                     $code = $this->routing->canonicalWarehouseCode((string) ($warehouse['code'] ?? '')) ?? (string) $warehouse['code'];
+                    $route = $this->carrierRouting->warehouseRoute($countryCode, $code);
                     $sources[] = [
                         'source_type' => 'warehouse',
                         'source_code' => $code,
                         'warehouse_id' => (int) $warehouse['id'],
                         'warehouse_name' => (string) $warehouse['name'],
                         'source_class' => $this->sourceClass($countryCode, $code),
+                        'carrier' => $route['carrier'] ?? null,
+                        'service' => $route['service'] ?? null,
+                        'carrier_selection_source' => filled($route['carrier'] ?? null) ? 'automatic' : null,
                     ];
                 }
             }
@@ -242,6 +266,7 @@ final class FulfillmentPlanPreviewService
                     'carrier' => (string) ($factory['carrier'] ?? '4PX'),
                     'service' => $factory['service'] ?? null,
                     'rate_source' => $factory['rate_source'] ?? null,
+                    'carrier_selection_source' => 'automatic',
                 ];
             }
             if ($sources === []) {

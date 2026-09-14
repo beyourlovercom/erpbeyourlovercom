@@ -15,7 +15,12 @@ final class FulfillmentAllocationDecisionService
         $currencies = $plans->pluck('cost.currency')->filter()->unique()->values();
         $splitPresent = $plans->contains(fn (array $plan): bool => (bool) ($plan['is_split'] ?? false));
         $splitPenalty = config('warehouse_routing.global.split_penalty_cny');
-        $canRank = ($comparison['status'] ?? null) === 'ready'
+        $giftNeedsResolution = $order->items->contains(fn ($item): bool => strcasecmp(trim((string) $item->sku), 'gift') === 0);
+        $physicalZone = $preview['constraints']['us_physical_zone'] ?? null;
+        $physicalZoneReady = ! is_array($physicalZone) || ($physicalZone['status'] ?? null) === 'matched';
+        $canRank = ! $giftNeedsResolution
+            && $physicalZoneReady
+            && ($comparison['status'] ?? null) === 'ready'
             && $allCosted
             && $currencies->count() === 1
             && (! $splitPresent || is_numeric($splitPenalty));
@@ -31,6 +36,14 @@ final class FulfillmentAllocationDecisionService
         $plans = $rankedPlans;
 
         $manualReasons = $recommended ? [] : $this->manualReasons($preview, $plans->all());
+        if ($giftNeedsResolution) {
+            array_unshift($manualReasons, '订单包含 gift 礼品占位 SKU，需要 Vita 确认实际履约 SKU');
+            $manualReasons = array_values(array_unique($manualReasons));
+        }
+        if (! $physicalZoneReady) {
+            array_unshift($manualReasons, '美国收货地址 ZIP Code / 州无法可靠确定美东或美西区域');
+            $manualReasons = array_values(array_unique($manualReasons));
+        }
         $baseline = $recommended ? $this->baselinePlan($plans->all(), $recommended) : null;
         $saving = null;
         if ($recommended && $baseline
