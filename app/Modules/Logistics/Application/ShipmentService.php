@@ -22,6 +22,7 @@ final class ShipmentService
         private readonly AuditRecorder $audit,
         private readonly ManualSyncService $manualSync,
         private readonly ProductPackagingStandardReader $packagingStandards,
+        private readonly ShipmentCompletionSemantics $completionSemantics,
     ) {}
 
     public function saveDraft(Model $order, array $attributes, ?Authenticatable $actor): Model
@@ -233,7 +234,7 @@ final class ShipmentService
             }
             if ($destination === 'completed') {
                 abort_unless(in_array($shipment->shipment_status, ['shipped', 'exception'], true), 422, '完结必须来自已发货或异常');
-                $this->assertDeliveredEvidence($shipment, 422);
+                $this->completionSemantics->assertShipmentHasFulfillmentEvidence($shipment, 422);
             }
             $before = $this->snapshot($shipment);
             if ($destination === 'pending') {
@@ -302,8 +303,8 @@ final class ShipmentService
             $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
-            abort_unless($shipment->shipment_status === 'shipped' && filled($shipment->tracking_number), 409, '只有有追踪号的运输中订单可以完结');
-            $this->assertDeliveredEvidence($shipment, 409);
+            abort_unless($shipment->shipment_status === 'shipped', 409, '只有已实际发货的运输中订单可以完结');
+            $this->completionSemantics->assertShipmentHasFulfillmentEvidence($shipment, 409);
             $before = $this->snapshot($shipment);
             $shipment->forceFill(['shipment_status' => 'completed', 'handled_by' => $actor?->getAuthIdentifier()])->save();
             $this->record($actor, 'shipment.completed', $shipment, $before, $this->snapshot($shipment), 'logistics_completed');
@@ -443,18 +444,6 @@ final class ShipmentService
             before: $before,
             after: $after,
             reason: $reason,
-        );
-    }
-
-    private function assertDeliveredEvidence(Model $shipment, int $statusCode): void
-    {
-        $billing = $shipment->billingEvidence()->lockForUpdate()->first();
-        $deliveryStatus = strtolower(trim((string) ($billing?->delivery_status ?? '')));
-
-        abort_unless(
-            $deliveryStatus === 'delivered',
-            $statusCode,
-            '只有存在承运商已签收证据的物流单可以完结',
         );
     }
 
