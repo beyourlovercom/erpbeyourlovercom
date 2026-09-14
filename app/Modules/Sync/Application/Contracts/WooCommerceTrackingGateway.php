@@ -7,7 +7,7 @@ interface WooCommerceTrackingGateway
     /** @return array{configured:bool,url:string,connection_key:string} */
     public function descriptor(): array;
 
-    /** @return array{tracking_number:string,provider:string,has_tracking:bool} */
+    /** @return array{tracking_number:string,provider:string,ship_date?:?string,has_tracking:bool} */
     public function inspectTracking(int $providerOrderId): array;
 
     /**

@@ -33,6 +33,7 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         return [
             'tracking_number' => $state['number'],
             'provider' => $state['provider'],
+            'ship_date' => $state['ship_date'],
             'has_tracking' => $this->hasTracking($state),
         ];
     }
@@ -82,7 +83,7 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         return $payload;
     }
 
-    /** @return array{items:array<int,mixed>,number:string,provider:string} */
+    /** @return array{items:array<int,mixed>,number:string,provider:string,ship_date:?string} */
     private function trackingState(array $order): array
     {
         $values = [];
@@ -93,11 +94,30 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
             $values[(string) $meta['key']] = $meta['value'] ?? null;
         }
 
-        $items = $values['_aftership_tracking_items'] ?? [];
+        $items = is_array($values['_aftership_tracking_items'] ?? null)
+            ? array_values($values['_aftership_tracking_items'])
+            : [];
+        $number = trim((string) ($values['_aftership_tracking_number'] ?? ''));
+        $provider = trim((string) ($values['_aftership_tracking_provider_name'] ?? ''));
+        $shipDate = null;
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            if (trim((string) ($item['tracking_number'] ?? '')) !== $number
+                || trim((string) ($item['slug'] ?? '')) !== $provider) {
+                continue;
+            }
+            $candidate = trim((string) (($item['additional_fields']['ship_date'] ?? '')));
+            $shipDate = $candidate !== '' ? $candidate : null;
+            break;
+        }
+
         return [
-            'items' => is_array($items) ? array_values($items) : [],
-            'number' => trim((string) ($values['_aftership_tracking_number'] ?? '')),
-            'provider' => trim((string) ($values['_aftership_tracking_provider_name'] ?? '')),
+            'items' => $items,
+            'number' => $number,
+            'provider' => $provider,
+            'ship_date' => $shipDate,
         ];
     }
 
@@ -129,6 +149,7 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
     private function trackingItem(string $providerSlug, string $trackingNumber, string $shipDate): array
     {
         $now = CarbonImmutable::now('UTC')->format('Y-m-d\TH:i:s\Z');
+
         return [
             'slug' => $providerSlug,
             'tracking_number' => $trackingNumber,
