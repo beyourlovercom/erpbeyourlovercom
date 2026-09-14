@@ -83,7 +83,21 @@ final class FulfillmentDerivedOrderService
         foreach ($sourceItems as $sourceItemId => $segmentItem) {
             $source = $parentItems->get((int) $sourceItemId);
             abort_unless($source, 422, '拆分方案包含不属于原订单的 SKU');
-            $child->items()->create($source->only(['product_id', 'product_summary', 'sku', 'quantity', 'unit_price', 'line_revenue']));
+            $resolvedSku = trim((string) ($segmentItem['resolved_fulfillment_sku'] ?? ''));
+            $resolvedProductId = isset($segmentItem['resolved_product_id']) && $segmentItem['resolved_product_id'] !== null
+                ? (int) $segmentItem['resolved_product_id']
+                : $source->product_id;
+            $resolvedSummary = trim((string) ($segmentItem['resolved_product_summary'] ?? ''));
+            $child->items()->create([
+                'product_id' => $resolvedProductId,
+                'product_summary' => $resolvedSummary !== '' ? $resolvedSummary : $source->product_summary,
+                'sku' => $resolvedSku !== '' ? $resolvedSku : $source->sku,
+                'source_sku' => $source->source_sku ?: $source->sku,
+                'resolved_fulfillment_sku' => $resolvedSku !== '' ? $resolvedSku : ($source->resolved_fulfillment_sku ?: $source->sku),
+                'quantity' => $source->quantity,
+                'unit_price' => $source->unit_price,
+                'line_revenue' => $source->line_revenue,
+            ]);
         }
 
         $this->assignShipment($child->fresh(['items', 'shipment']), $segment, $actor);
@@ -94,10 +108,16 @@ final class FulfillmentDerivedOrderService
     {
         $warehouseId = (int) ($segment['warehouse_id'] ?? 0);
         abort_if($warehouseId <= 0, 422, '履约方案缺少有效仓库');
-        $this->shipments->saveDraft($order, [
+        $attributes = [
             'warehouse_id' => $warehouseId,
             'warehouse_selection_source' => 'allocation',
-        ], $actor);
+        ];
+        if (filled($segment['carrier'] ?? null)) {
+            $attributes['carrier'] = trim((string) $segment['carrier']);
+            $attributes['service'] = filled($segment['service'] ?? null) ? trim((string) $segment['service']) : null;
+            $attributes['carrier_selection_source'] = (string) ($segment['carrier_selection_source'] ?? 'automatic');
+        }
+        $this->shipments->saveDraft($order, $attributes, $actor);
     }
 
     private function assertParentShipmentMayBeReplaced(Order $parent): void
@@ -136,8 +156,13 @@ final class FulfillmentDerivedOrderService
             'warehouse_id' => $order->shipment?->warehouse_id,
             'warehouse_code' => $order->shipment?->warehouse?->code ?? ($segment['source_code'] ?? null),
             'warehouse_name' => $order->shipment?->warehouse?->name ?? ($segment['warehouse_name'] ?? null),
+            'carrier' => $order->shipment?->carrier ?? ($segment['carrier'] ?? null),
+            'service' => $order->shipment?->service ?? ($segment['service'] ?? null),
+            'carrier_selection_source' => $order->shipment?->carrier_selection_source ?? ($segment['carrier_selection_source'] ?? null),
             'items' => $order->items->map(fn ($item): array => [
-                'sku' => $item->sku,
+                'sku' => $item->resolved_fulfillment_sku ?: $item->sku,
+                'source_sku' => $item->source_sku ?: $item->sku,
+                'resolved_fulfillment_sku' => $item->resolved_fulfillment_sku ?: $item->sku,
                 'product_summary' => $item->product_summary,
                 'quantity' => (int) $item->quantity,
             ])->values()->all(),

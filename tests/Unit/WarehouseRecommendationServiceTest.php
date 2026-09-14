@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Logistics\Application\UspsZoneResolver;
+use App\Modules\Logistics\Application\UsFulfillmentZoneResolver;
 use App\Modules\Logistics\Application\WarehouseRecommendationService;
 use App\Modules\Logistics\Application\WarehouseRoutingPolicy;
 use Tests\TestCase;
@@ -40,8 +41,9 @@ final class WarehouseRecommendationServiceTest extends TestCase
             ->recommend('US', [['product_id' => 10, 'quantity' => 1]], '10001');
 
         $this->assertSame('US-NY', $result['warehouse']['code']);
-        $this->assertSame('recommended_east_zone', $result['reason_code']);
-        $this->assertSame(1, $result['routing_context']['east_zone']);
+        $this->assertSame('recommended_physical_zone', $result['reason_code']);
+        $this->assertSame('east', $result['routing_context']['physical_zone']['zone']);
+        $this->assertSame('美东区', $result['routing_context']['physical_zone']['zone_label']);
     }
 
     public function test_us_zone_over_four_prefers_us_sj_then_us_la_then_us_ny(): void
@@ -56,7 +58,9 @@ final class WarehouseRecommendationServiceTest extends TestCase
             ->recommend('US', [['product_id' => 10, 'quantity' => 1]], '90001');
 
         $this->assertSame('US-SJ', $result['warehouse']['code']);
-        $this->assertSame(8, $result['routing_context']['east_zone']);
+        $this->assertSame('recommended_physical_zone', $result['reason_code']);
+        $this->assertSame('west', $result['routing_context']['physical_zone']['zone']);
+        $this->assertSame(['US-SJ', 'US-LA'], $result['routing_context']['warehouse_priority']);
     }
 
     public function test_us_falls_to_us_la_when_us_sj_cannot_cover_whole_order(): void
@@ -70,9 +74,10 @@ final class WarehouseRecommendationServiceTest extends TestCase
         $result = $this->service($warehouses, $availability)
             ->recommend('US', [['product_id' => 10, 'quantity' => 1]], '90001');
         $this->assertSame('US-LA', $result['warehouse']['code']);
+        $this->assertSame('west', $result['routing_context']['physical_zone']['zone']);
     }
 
-    public function test_us_unknown_or_conflicting_zone_uses_safe_fallback_not_east_priority(): void
+    public function test_us_zip_is_primary_signal_when_state_is_missing(): void
     {
         $warehouses = [
             $this->warehouse(2, 'US-NY', true, []),
@@ -82,12 +87,29 @@ final class WarehouseRecommendationServiceTest extends TestCase
         $result = $this->service($warehouses, $availability)
             ->recommend('US', [['product_id' => 10, 'quantity' => 1]], '37601');
 
-        $this->assertSame('US-SJ', $result['warehouse']['code']);
-        $this->assertSame('ambiguous_source_ranges', $result['routing_context']['east_zone_status']);
-        $this->assertNull($result['routing_context']['east_zone']);
+        $this->assertSame('US-NY', $result['warehouse']['code']);
+        $this->assertSame('east', $result['routing_context']['physical_zone']['zone']);
+        $this->assertNull($result['routing_context']['physical_zone']['state']);
     }
 
-    public function test_us_only_considers_whole_order_stock(): void
+    public function test_us_zip_and_state_conflict_requires_human_review(): void
+    {
+        $warehouses = [
+            $this->warehouse(2, 'US-NY', true, []),
+            $this->warehouse(7, 'US-SJ', true, []),
+        ];
+        $availability = [10 => [$this->stock(2, 10), $this->stock(7, 10)]];
+        $result = $this->service($warehouses, $availability)->recommend(
+            'US', [['product_id' => 10, 'quantity' => 1]], '90001', [], ['province_state' => 'NY']
+        );
+
+        $this->assertSame('blocked', $result['status']);
+        $this->assertSame('us_physical_zone_unresolved', $result['reason_code']);
+        $this->assertSame('state_zip_zone_conflict', $result['routing_context']['physical_zone']['status']);
+        $this->assertNull($result['warehouse']);
+    }
+
+    public function test_us_does_not_cross_physical_zone_when_local_zone_stock_cannot_cover_whole_order(): void
     {
         $warehouses = [
             $this->warehouse(1, 'US-LA', true, []),
@@ -102,8 +124,10 @@ final class WarehouseRecommendationServiceTest extends TestCase
             ['product_id' => 10, 'quantity' => 1],
             ['product_id' => 20, 'quantity' => 1],
         ], '10001');
-        $this->assertSame('US-SJ', $result['warehouse']['code']);
-        $this->assertSame(1, $result['candidate_count']);
+        $this->assertSame('blocked', $result['status']);
+        $this->assertSame('insufficient_stock_in_physical_zone', $result['reason_code']);
+        $this->assertNull($result['warehouse']);
+        $this->assertSame('east', $result['routing_context']['physical_zone']['zone']);
     }
 
     public function test_us_military_address_keeps_local_us_recommendation_and_forbids_factory(): void
@@ -357,7 +381,7 @@ final class WarehouseRecommendationServiceTest extends TestCase
                 return [10 => [['warehouse_id' => 2, 'quantity_available' => 100]]];
             }
         };
-        $service = new WarehouseRecommendationService($reader, app(WarehouseRoutingPolicy::class), app(UspsZoneResolver::class));
+        $service = new WarehouseRecommendationService($reader, app(WarehouseRoutingPolicy::class), app(UspsZoneResolver::class), app(UsFulfillmentZoneResolver::class));
         $context = $service->prepare([10]);
 
         for ($i = 0; $i < 50; $i++) {
@@ -374,6 +398,7 @@ final class WarehouseRecommendationServiceTest extends TestCase
             $this->reader($warehouses, $availability),
             app(WarehouseRoutingPolicy::class),
             app(UspsZoneResolver::class),
+            app(UsFulfillmentZoneResolver::class),
         );
     }
 

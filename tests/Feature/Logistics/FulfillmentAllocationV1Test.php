@@ -66,6 +66,8 @@ final class FulfillmentAllocationV1Test extends TestCase
         self::assertSame(['A', 'B'], $children->pluck('fulfillment_suffix')->all());
         self::assertSame(['fulfillment_derived', 'fulfillment_derived'], $children->map(fn ($child) => $child->order_kind?->value)->all());
         self::assertSame(['US-LA', 'FACTORY'], $children->map(fn ($child) => $child->shipment?->warehouse?->code)->all());
+        self::assertSame(['USPS', '4PX'], $children->map(fn ($child) => $child->shipment?->carrier)->all());
+        self::assertSame(['automatic', 'automatic'], $children->map(fn ($child) => $child->shipment?->carrier_selection_source)->all());
         self::assertSame([$items[0]->sku, $items[1]->sku], $children->map(fn ($child) => $child->items->first()?->sku)->all());
         self::assertSame([$order->erp_order_id.'A', $order->erp_order_id.'B'], collect($allocation->fresh()->plan_snapshot['derived_orders'])->pluck('erp_order_id')->all());
 
