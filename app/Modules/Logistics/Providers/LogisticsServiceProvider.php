@@ -11,6 +11,7 @@ use App\Modules\Logistics\Application\Contracts\LastMileEstimateEvidenceReader;
 use App\Modules\Logistics\Application\FulfillmentPlanCostEstimator;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\WarehouseRoutingPolicy;
+use App\Modules\Logistics\Experience\Console\Commands\ImportCarrierBillCommand;
 use App\Modules\Logistics\Experience\Console\Commands\RepairProductionUatFulfillmentCommand;
 use App\Modules\Logistics\Experience\Console\Commands\SyncDeliveryEvidenceCommand;
 use App\Modules\Logistics\Infrastructure\AfterShipDeliveryEvidenceGateway;
@@ -25,7 +26,11 @@ final class LogisticsServiceProvider extends ServiceProvider
     {
         $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/web.php');
         if ($this->app->runningInConsole()) {
-            $this->commands([RepairProductionUatFulfillmentCommand::class, SyncDeliveryEvidenceCommand::class]);
+            $this->commands([
+                ImportCarrierBillCommand::class,
+                RepairProductionUatFulfillmentCommand::class,
+                SyncDeliveryEvidenceCommand::class,
+            ]);
         }
     }
 
