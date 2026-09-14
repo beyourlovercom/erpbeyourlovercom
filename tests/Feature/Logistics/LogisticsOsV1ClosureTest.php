@@ -439,6 +439,11 @@ final class LogisticsOsV1ClosureTest extends TestCase
     {
         [$user, $order, $carrier] = $this->scenario();
         $this->dispatch($user, $order, $carrier, 'TN-COMPLETE');
+        $order->fresh('shipment')->shipment->billingEvidence()->create([
+            'delivery_status' => 'delivered',
+            'data_source' => 'carrier_import',
+            'provider_reference' => 'DELIVERED-EVIDENCE',
+        ]);
         $this->actingAs($user)->post("/logistics/orders/{$order->id}/mark-completed")->assertRedirect();
         $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'shipment_status' => 'completed']);
         $this->actingAs($user)->get('/logistics/completed')->assertInertia(fn (Assert $page) => $page->where('shipments.data.0.order_id', $order->id));
