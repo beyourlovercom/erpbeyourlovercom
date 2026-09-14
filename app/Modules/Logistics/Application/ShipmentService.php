@@ -222,7 +222,7 @@ final class ShipmentService
             abort_unless($review->status === 'pending', 409, '复核已处理');
             abort_unless(in_array($destination, ['pending', 'awaiting_tracking', 'in_transit', 'exception', 'completed', 'cancelled'], true), 422, '无效复核去向');
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
-            if (in_array($destination, ['awaiting_tracking', 'in_transit', 'completed'], true)) {
+            if (in_array($destination, ['awaiting_tracking', 'in_transit'], true)) {
                 abort_unless($shipment->shipped_at !== null, 422, '该去向需要发货时间');
             }
             if ($destination === 'awaiting_tracking') {
@@ -233,6 +233,7 @@ final class ShipmentService
             }
             if ($destination === 'completed') {
                 abort_unless(in_array($shipment->shipment_status, ['shipped', 'exception'], true), 422, '完结必须来自已发货或异常');
+                $this->assertDeliveredEvidence($shipment, 422);
             }
             $before = $this->snapshot($shipment);
             if ($destination === 'pending') {
@@ -302,6 +303,7 @@ final class ShipmentService
             $this->assertNoPendingReview($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
             abort_unless($shipment->shipment_status === 'shipped' && filled($shipment->tracking_number), 409, '只有有追踪号的运输中订单可以完结');
+            $this->assertDeliveredEvidence($shipment, 409);
             $before = $this->snapshot($shipment);
             $shipment->forceFill(['shipment_status' => 'completed', 'handled_by' => $actor?->getAuthIdentifier()])->save();
             $this->record($actor, 'shipment.completed', $shipment, $before, $this->snapshot($shipment), 'logistics_completed');
@@ -441,6 +443,18 @@ final class ShipmentService
             before: $before,
             after: $after,
             reason: $reason,
+        );
+    }
+
+    private function assertDeliveredEvidence(Model $shipment, int $statusCode): void
+    {
+        $billing = $shipment->billingEvidence()->lockForUpdate()->first();
+        $deliveryStatus = strtolower(trim((string) ($billing?->delivery_status ?? '')));
+
+        abort_unless(
+            $deliveryStatus === 'delivered',
+            $statusCode,
+            '只有存在承运商已签收证据的物流单可以完结',
         );
     }
 

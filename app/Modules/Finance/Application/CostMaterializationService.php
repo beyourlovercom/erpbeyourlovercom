@@ -109,6 +109,51 @@ final class CostMaterializationService
     }
 
     /** @return array<string, mixed> */
+    public function previewCarrierBillingGate(Model $order): array
+    {
+        $scopeBlocker = $this->operationalBlocker($order);
+        $candidate = $this->carrierCandidate($order);
+        if ($scopeBlocker !== null) $candidate = $this->forceBlocked($candidate, $scopeBlocker);
+
+        return [
+            'order_id' => (int) $order->getKey(),
+            'scope_status' => $scopeBlocker === null ? 'operational' : 'blocked',
+            'scope_blocker' => $scopeBlocker,
+            'candidates' => [$this->annotateDisposition($order, $candidate)],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function applyCarrierBillingGate(Model $order): array
+    {
+        return DB::transaction(function () use ($order): array {
+            $locked = $order->newQuery()->lockForUpdate()->findOrFail($order->getKey());
+            $preview = $this->previewCarrierBillingGate($locked);
+            $result = $preview + ['applied' => [], 'noop' => [], 'blocked' => []];
+            $candidate = $preview['candidates'][0];
+            $disposition = $candidate['materialization_status'];
+            if ($disposition === 'blocked') $result['blocked'][] = $candidate;
+            elseif ($disposition === 'noop') $result['noop'][] = $candidate;
+            else {
+                $outcome = $this->writeCandidate($locked, $candidate);
+                $result[$outcome['status']][] = $outcome['entry'];
+            }
+
+            if ($result['applied'] !== []) {
+                $this->analysis->refreshCompleteness($locked, preserveReconciled: false);
+                $this->audit->record(
+                    AuditActor::system(AuditSource::InternalSystem),
+                    'finance.actual_last_mile_materialization.applied',
+                    $locked::class, $locked->getKey(),
+                    after: ['applied' => $result['applied'], 'blocked' => $result['blocked']],
+                    reason: 'actual_last_mile_materialization',
+                );
+            }
+            return $result;
+        });
+    }
+
+    /** @return array<string, mixed> */
     public function previewLastMileEstimateGate(Model $order): array
     {
         $scopeBlocker = $this->operationalBlocker($order);
@@ -467,15 +512,38 @@ final class CostMaterializationService
         }
 
         $currency = $this->orderCurrency($order);
+        $sourceCurrency = strtoupper(trim((string) ($evidence['currency'] ?? '')));
         $identity = $evidence['billing_document_number'] ?? $evidence['provider_reference'] ?? $evidence['data_source'] ?? null;
-        if ($evidence['actual_cost'] === null || $evidence['currency'] === null || ! is_string($identity) || trim($identity) === '' || strtoupper((string) $evidence['currency']) !== $currency) {
-            return $this->blocked('last_mile_cost', 'complete_same_currency_billing_evidence_required');
+        if ($evidence['actual_cost'] === null || $sourceCurrency === '' || ! is_string($identity) || trim($identity) === '') {
+            return $this->blocked('last_mile_cost', 'complete_carrier_billing_evidence_required');
+        }
+
+        $sourceAmount = DecimalMoney::round((string) $evidence['actual_cost']);
+        $amount = $sourceAmount;
+        $extra = [
+            'source_currency' => $sourceCurrency,
+            'source_amount' => $sourceAmount,
+            'shipment_id' => $evidence['shipment_id'],
+            'billing_id' => $evidence['billing_id'],
+            'billing_document_number' => $evidence['billing_document_number'] ?? null,
+            'provider_reference' => $evidence['provider_reference'] ?? null,
+            'data_source' => $evidence['data_source'] ?? null,
+        ];
+        if ($sourceCurrency !== $currency) {
+            $fx = $this->fxBridge->preview($order, $sourceCurrency);
+            if (! ($fx['available'] ?? false)) {
+                return $this->blocked('last_mile_cost', 'carrier_billing_fx_snapshot_unavailable', $extra + ['fx_reason' => $fx['reason'] ?? 'fx_unavailable']);
+            }
+            $amount = DecimalMoney::round(DecimalMoney::multiply($sourceAmount, (string) $fx['source_to_transaction_rate'], 8));
+            $extra['posting_fx'] = $fx + [
+                'base_amount' => DecimalMoney::round(DecimalMoney::multiply($sourceAmount, (string) $fx['source_to_usd_rate'], 8)),
+            ];
         }
 
         return $this->candidate(
-            'last_mile_cost', DecimalMoney::round((string) $evidence['actual_cost']), $currency, 'provider_import', 'confirmed',
+            'last_mile_cost', $amount, $currency, 'provider_import', 'confirmed',
             'carrier-billing:v1:shipment:'.$evidence['shipment_id'].':billing:'.$evidence['billing_id'],
-            $evidence['billed_at'] ?? $evidence['updated_at'] ?? null,
+            $evidence['billed_at'] ?? $evidence['updated_at'] ?? null, $extra,
         );
     }
 

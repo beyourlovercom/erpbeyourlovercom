@@ -11,6 +11,7 @@ use App\Modules\Finance\Infrastructure\EloquentAccountingContinuousDeltaCandidat
 use App\Modules\Finance\Infrastructure\EloquentFxManualRateRepository;
 use App\Modules\Finance\Infrastructure\EloquentWooFinancialBootstrapOrderStore;
 use App\Modules\Finance\Experience\Console\Commands\BootstrapWooFinancialEvidenceCommand;
+use App\Modules\Finance\Experience\Console\Commands\MaterializeActualLastMileCommand;
 use App\Modules\Finance\Experience\Console\Commands\MaterializeContinuousDeltaCommand;
 use App\Modules\Finance\Experience\Console\Commands\MaterializeFixedCostsCommand;
 use App\Modules\Finance\Experience\Console\Commands\MaterializeLastMileEstimatesCommand;
@@ -34,7 +35,7 @@ final class FinanceServiceProvider extends ServiceProvider
     {
         $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/web.php');
         if ($this->app->runningInConsole()) {
-            $this->commands([MaterializeOrderCostsCommand::class, MaterializeContinuousDeltaCommand::class, MaterializeFixedCostsCommand::class, MaterializeLastMileEstimatesCommand::class, MaterializeProductCostsCommand::class, MaterializePaymentFeesCommand::class, RepairPaymentFeeLegacyFxCommand::class, BootstrapWooFinancialEvidenceCommand::class]);
+            $this->commands([MaterializeOrderCostsCommand::class, MaterializeActualLastMileCommand::class, MaterializeContinuousDeltaCommand::class, MaterializeFixedCostsCommand::class, MaterializeLastMileEstimatesCommand::class, MaterializeProductCostsCommand::class, MaterializePaymentFeesCommand::class, RepairPaymentFeeLegacyFxCommand::class, BootstrapWooFinancialEvidenceCommand::class]);
         }
     }
 }

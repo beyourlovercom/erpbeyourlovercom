@@ -39,7 +39,6 @@ return [
         'media_max_bytes' => max(1, (int) env('WOO_MEDIA_MAX_BYTES', 10485760)),
     ],
 
-
     'google_ads' => [
         'client_id' => env('GOOGLE_ADS_CLIENT_ID', ''),
         'client_secret' => env('GOOGLE_ADS_CLIENT_SECRET', ''),
@@ -50,6 +49,13 @@ return [
         'base_url' => env('GOOGLE_ADS_BASE_URL', 'https://googleads.googleapis.com'),
         'oauth_url' => env('GOOGLE_ADS_OAUTH_URL', 'https://oauth2.googleapis.com/token'),
         'timeout' => (int) env('GOOGLE_ADS_TIMEOUT_SECONDS', 20),
+    ],
+
+    'aftership_tracking' => [
+        'api_key' => env('AFTERSHIP_TRACKING_API_KEY', ''),
+        'version' => env('AFTERSHIP_TRACKING_API_VERSION', '2026-07'),
+        'base_url' => env('AFTERSHIP_TRACKING_BASE_URL', 'https://api.aftership.com/tracking'),
+        'timeout' => (int) env('AFTERSHIP_TRACKING_TIMEOUT_SECONDS', 15),
     ],
 
     'postmark' => [
