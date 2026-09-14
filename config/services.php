@@ -49,6 +49,10 @@ return [
         'base_url' => env('GOOGLE_ADS_BASE_URL', 'https://googleads.googleapis.com'),
         'oauth_url' => env('GOOGLE_ADS_OAUTH_URL', 'https://oauth2.googleapis.com/token'),
         'timeout' => (int) env('GOOGLE_ADS_TIMEOUT_SECONDS', 20),
+        'inquiry_actions' => [
+            'google_ads_form_lead' => env('GOOGLE_ADS_INQUIRY_FORM_ACTION_NAME', 'YBY | WP | 表单Lead提交-V2607'),
+            'google_ads_whatsapp_lead' => env('GOOGLE_ADS_INQUIRY_WHATSAPP_ACTION_NAME', 'YBY | WP | WA聊天留言-V2607'),
+        ],
     ],
 
     'aftership_tracking' => [
