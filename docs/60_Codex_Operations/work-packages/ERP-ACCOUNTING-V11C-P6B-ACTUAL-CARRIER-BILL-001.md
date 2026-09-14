@@ -1,6 +1,6 @@
 # ERP-ACCOUNTING-V11C-P6B-ACTUAL-CARRIER-BILL-001
 
-**Status:** CONTRACT FROZEN / IMPLEMENTATION AUTHORIZED / BACKEND ONLY
+**Status:** IMPLEMENTATION COMPLETE / MERGE CANDIDATE / PRODUCTION NOT AUTHORIZED
 **Date:** 2026-09-14
 **Owner scope:** Accounting V1.1C-P6 — Last-mile Cost, phase P6B Actual Carrier Bill Import / Replacement
 **EXECUTION_PROVIDER:** GPT_WEB
@@ -168,9 +168,27 @@ Missing capability is bounded actual-bill ingestion plus cross-currency actual c
 - Provider reassigned serially to `GPT_WEB` because architecture/business behavior are frozen and the bounded implementation can be completed directly on the US Mac. Claude is not invoked merely as a quota substitute.
 - ONE_ACTIVE_IMPLEMENTATION_PROVIDER_PER_WORKTREE remains satisfied.
 
-## Initial Work Log
-- GPT preflight / source classification / existing-model audit / contract definition: 0.65h effective planning evidence at activation.
-- Implementation and validation actuals will be recorded before merge; this initial value is not the final package actual.
+## Final Work Log
+- Preflight / source classification / existing-model audit / contract definition: 0.65h effective.
+- Core implementation — durable import evidence, CSV/XLSX reader, importer, guarded CLI, actual-last-mile FX/replacement: 1.45h effective.
+- Remediation / focused validation — idempotent replay, Application/Infrastructure boundary correction, fail-closed source cases: 0.70h effective.
+- High-risk verification / latest-main rebase / final evidence: 0.55h effective.
+- **Actual effective engineering time:** 3.35h.
+- Planning value: 6.25h; variance: **-2.90h / -46.4%**.
+- Variance reason: existing ShipmentCarrierBilling, Accounting FX bridge, CostMaterialization and audit primitives reduced new surface; remediation remained bounded and no provider-specific adapter was guessed or built.
+
+## Merge-candidate Verification Evidence
+- Merge candidate rebased without conflict onto `origin/main@392747ef2dcd53440b3385a4429798994f9e612a`; intervening main drift touched only `ShipmentService.php` and two delivery-evidence tests, with zero P6B file overlap.
+- Final Finance + relevant Logistics regression including PR #298 delivery-evidence coverage: **128 tests / 1,066 assertions PASS; 1 MySQL-only test skipped**.
+- Logistics carrier-billing focused: **5 tests / 38 assertions PASS** including CSV/XLSX equivalence, replay idempotency, exact Production guards, invalid currency/money/date/tracking fail-closed behavior and legacy `.xls` rejection.
+- Finance actual-last-mile focused: **4 tests / 34 assertions PASS** including same-currency actualization, cross-currency FX freeze, P6A estimate replacement and stronger-fact protection.
+- P6A last-mile regression remains PASS and all three commands are registered: `logistics:import-carrier-bill`, `finance:materialize-actual-last-mile`, `finance:materialize-last-mile-estimates`.
+- P6B migration on US local MySQL: isolated **apply → schema verify → rollback PASS**. Broader `migrate:fresh` remains independently blocked before P6B by the pre-existing Traffic migration index-name SQLSTATE 1059 issue; P6B introduces no new MySQL migration failure.
+- Latest-main Architecture exact comparison: baseline and P6B both **8 tests / 131 assertions / identical 3 failures**; regression delta = 0.
+- Latest-main Menu/AppShell exact comparison: baseline and P6B both **44 tests / 1,711 assertions / identical 4 failures**; regression delta = 0.
+- New Application-layer architecture was manually corrected so carrier-bill persistence/orchestration lives under Logistics Infrastructure; Application retains parser/normalization only.
+- PHP lint for touched PHP files PASS; `git diff --check` PASS; no scheduler, UI, menu, permission, route or persistent Production feature-flag change.
+- Production carrier-bill import and Finance actual-last-mile apply remain **NOT AUTHORIZED / NOT EXECUTED**.
 
 PROJECT POSITION
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate [COMPLETE] → MVP1 Existing Operations / Tencent Docs Replacement → ERP-INQUIRY-M1 → Milestone Remote Release → MVP1.1 WooCommerce Inbound → MVP1.2 Tracking Outbound → MVP1.3 Sync Orchestration → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion [CURRENT] → Shopify and Additional Integrations → Production Hardening / Expansion
@@ -178,18 +196,18 @@ CURRENT_TRACK_PHASE_MAP: V1.1B Revenue Evidence Woo [COMPLETE] → V1.1C-P1 Prod
 COMPLETED_PHASES: V1.1B, P1, P2, P3, P4, P5, C1, P6A
 CURRENT_PHASE: V1.1C-P6 Last-mile Cost / P6B Actual Carrier Bill Import / Replacement
 CURRENT_WORK_PACKAGE: ERP-ACCOUNTING-V11C-P6B-ACTUAL-CARRIER-BILL-001
-PACKAGE_STATUS: CONTRACT FROZEN / IMPLEMENTATION AUTHORIZED / BACKEND ONLY
+PACKAGE_STATUS: IMPLEMENTATION COMPLETE / MERGE CANDIDATE / PRODUCTION NOT AUTHORIZED
 WAITING_PHASES: P6C, P7, P8, P9, V1.1C Final Reconciliation / Closure Gate, V1.1 Final Profit Readiness
-BASELINE: origin/main@d9d3964d0a11d991e4837a96ebf44e33f857c96c at activation preflight; must refresh before branch creation and record any safe drift
-GITHUB_STATE: P6B branch/worktree/PR not yet created at contract issue time
+BASELINE: issued from origin/main@d9d3964d0a11d991e4837a96ebf44e33f857c96c; merge candidate rebased cleanly onto origin/main@392747ef2dcd53440b3385a4429798994f9e612a with zero P6B file overlap in intervening PR #298 drift
+GITHUB_STATE: branch feature/erp-accounting-v11c-p6b-actual-carrier-bill-001; Draft PR #297; local merge-candidate head a9bc2cdbeceb8d9957cc5eaf26d5f239d99b5ca0 before final evidence commit
 SOURCE_CONFLICTS: AI/CURRENT_CONTEXT.md stale versus current Accounting track; Library candidate billing workbook columns unavailable to parser inspection, therefore provider-specific adapters are intentionally deferred
 GLOBAL_GATE: BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1 active; irreversible Production data write and Production deploy remain hard Owner gates
 PRODUCTION_DEPLOYMENT_STATUS: NO — P6B code not deployed and no P6B Production data write authorized
-NEXT_DEPENDENCY: create dedicated branch/worktree and Draft delivery PR from refreshed origin/main, then deterministic US Codex implementation
+NEXT_DEPENDENCY: push final merge-candidate evidence to PR #297, run GitHub checks, merge under continuous Owner authorization if no code regression; Production code deploy remains a separate hard Owner gate
 EVIDENCE_AS_OF: 2026-09-14
 
 ROADMAP HOURS
-CURRENT_PACKAGE_ESTIMATE: 6.25 effective hours planning value; range 4.5–9.0h
+CURRENT_PACKAGE_ESTIMATE: planning value 6.25h / range 4.5–9.0h; final actual effective engineering time 3.35h
 KNOWN_CURRENT_TRACK_REMAINING: P6C/P7/P8/P9 remain known packages; exact non-overlapping remaining hours UNKNOWN WITH EVIDENCE pending each package preflight
 ARCHITECTURE_GATE_REMAINING: UNKNOWN WITH EVIDENCE — no separate current architecture package estimate accepted for this Accounting track
 MVP1_TOTAL_ESTIMATE: Historical program estimate not safely applicable to current Accounting expansion; UNKNOWN WITH EVIDENCE
