@@ -39,6 +39,19 @@ return [
         'media_max_bytes' => max(1, (int) env('WOO_MEDIA_MAX_BYTES', 10485760)),
     ],
 
+
+    'google_ads' => [
+        'client_id' => env('GOOGLE_ADS_CLIENT_ID', ''),
+        'client_secret' => env('GOOGLE_ADS_CLIENT_SECRET', ''),
+        'refresh_token' => env('GOOGLE_ADS_REFRESH_TOKEN', ''),
+        'developer_token' => env('GOOGLE_ADS_DEVELOPER_TOKEN', ''),
+        'login_customer_id' => env('GOOGLE_ADS_LOGIN_CUSTOMER_ID', ''),
+        'api_version' => env('GOOGLE_ADS_API_VERSION', 'v25'),
+        'base_url' => env('GOOGLE_ADS_BASE_URL', 'https://googleads.googleapis.com'),
+        'oauth_url' => env('GOOGLE_ADS_OAUTH_URL', 'https://oauth2.googleapis.com/token'),
+        'timeout' => (int) env('GOOGLE_ADS_TIMEOUT_SECONDS', 20),
+    ],
+
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
     ],

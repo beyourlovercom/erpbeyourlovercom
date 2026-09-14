@@ -6,6 +6,8 @@ use Illuminate\Support\Collection;
 
 interface TrafficRepository
 {
+    public function findSourceAccount(string $provider, string $externalAccountId): ?object;
+
     public function upsertSourceAccount(
         int $businessProjectId,
         string $provider,
