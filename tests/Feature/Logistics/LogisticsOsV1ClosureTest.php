@@ -4,17 +4,17 @@ namespace Tests\Feature\Logistics;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Modules\Inventory\Infrastructure\Models\PackagingMeasurementRecord;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Models\ShipmentAttempt;
 use App\Modules\Logistics\Infrastructure\Models\ShipmentCarrierBilling;
 use App\Modules\Logistics\Infrastructure\Models\ShipmentItemPackagingSnapshot;
-use App\Modules\Inventory\Infrastructure\Models\PackagingMeasurementRecord;
-use App\Modules\Products\Infrastructure\Models\ProductPackagingProfile;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Products\Infrastructure\Models\ProductPackagingProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -113,6 +113,73 @@ final class LogisticsOsV1ClosureTest extends TestCase
         ]);
         $this->assertDatabaseHas('manual_syncs', ['order_id' => $order->id, 'website_sync_status' => 'pending']);
         $this->assertDatabaseHas('audit_records', ['action' => 'shipment.tracking_updated']);
+    }
+
+    public function test_tracking_update_trims_outer_whitespace_before_persisting(): void
+    {
+        [$user, $order, $carrier] = $this->scenario();
+        $this->dispatch($user, $order, $carrier, null);
+
+        $this->actingAs($user)->post("/logistics/orders/{$order->id}/update-tracking", [
+            'tracking_number' => '  SF0210597711527  ',
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id,
+            'tracking_number' => 'SF0210597711527',
+        ]);
+    }
+
+    public function test_tracking_update_rejects_tracking_mixed_with_note_text(): void
+    {
+        [$user, $order, $carrier] = $this->scenario();
+        $this->dispatch($user, $order, $carrier, null);
+
+        $this->actingAs($user)->post("/logistics/orders/{$order->id}/update-tracking", [
+            'tracking_number' => 'SF0210597711527 Receiver note',
+        ])->assertStatus(422);
+
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id,
+            'tracking_number' => null,
+        ]);
+        $this->assertDatabaseMissing('manual_syncs', ['order_id' => $order->id]);
+    }
+
+    public function test_tracking_update_rejects_non_ascii_note_appended_without_spaces(): void
+    {
+        [$user, $order, $carrier] = $this->scenario();
+        $this->dispatch($user, $order, $carrier, null);
+
+        $this->actingAs($user)->post("/logistics/orders/{$order->id}/update-tracking", [
+            'tracking_number' => 'SF0210597711527\u{5907}\u{6ce8}',
+        ])->assertStatus(422);
+
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id,
+            'tracking_number' => null,
+        ]);
+    }
+
+    public function test_dispatch_rejects_tracking_mixed_with_note_text_without_shipping_order(): void
+    {
+        [$user, $order, $carrier] = $this->scenario();
+        $warehouse = Warehouse::query()->where('is_active', true)->orderBy('priority')->firstOrFail();
+
+        $this->actingAs($user)->post("/logistics/orders/{$order->id}/ship", [
+            'warehouse_id' => $warehouse->id,
+            'carrier' => $carrier->name,
+            'service' => 'Ground',
+            'shipped_at' => '2026-09-01T08:00:00Z',
+            'tracking_number' => 'SF0210597711527 Receiver note',
+            'logistics_note' => 'Receiver note',
+        ])->assertStatus(422);
+
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'order_status' => 'pending_shipment']);
+        $this->assertDatabaseMissing('shipments', [
+            'order_id' => $order->id,
+            'tracking_number' => 'SF0210597711527 Receiver note',
+        ]);
     }
 
     public function test_after_tracking_update_shipment_appears_only_in_in_transit(): void

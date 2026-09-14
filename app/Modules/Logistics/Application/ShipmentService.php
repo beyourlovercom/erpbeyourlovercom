@@ -6,10 +6,10 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Inventory\Application\ProductPackagingStandardReader;
-use App\Modules\Logistics\Infrastructure\Models\ShipmentItemPackagingSnapshot;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReviewHistory;
 use App\Modules\Logistics\Infrastructure\Models\ShipmentAttempt;
+use App\Modules\Logistics\Infrastructure\Models\ShipmentItemPackagingSnapshot;
 use App\Modules\Orders\Application\OrderStatus;
 use App\Modules\Sync\Application\ManualSyncService;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -36,6 +36,9 @@ final class ShipmentService
             $before = $this->snapshot($shipment);
             $warehouseProvided = array_key_exists('warehouse_id', $attributes);
             $carrierProvided = array_key_exists('carrier', $attributes) || array_key_exists('service', $attributes);
+            $trackingNumber = array_key_exists('tracking_number', $attributes)
+                ? $this->canonicalTrackingNumber($attributes['tracking_number'])
+                : $shipment->tracking_number;
             $shipment->fill([
                 'shipment_status' => 'pending',
                 'warehouse_id' => $warehouseProvided ? $attributes['warehouse_id'] : $shipment->warehouse_id,
@@ -47,7 +50,7 @@ final class ShipmentService
                 'carrier_selection_source' => $carrierProvided
                     ? ($attributes['carrier_selection_source'] ?? 'manual')
                     : $shipment->carrier_selection_source,
-                'tracking_number' => array_key_exists('tracking_number', $attributes) ? $attributes['tracking_number'] : $shipment->tracking_number,
+                'tracking_number' => $trackingNumber,
                 'logistics_note' => array_key_exists('logistics_note', $attributes) ? $attributes['logistics_note'] : $shipment->logistics_note,
                 'handled_by' => $actor?->getAuthIdentifier(),
             ]);
@@ -72,7 +75,7 @@ final class ShipmentService
             $shipment = $lockedOrder->shipment()->firstOrCreate(['order_id' => $lockedOrder->getKey()]);
             $alreadyShipped = $lockedOrder->order_status?->value === 'shipped' && $shipment->shipment_status === 'shipped';
             $before = $this->snapshot($shipment);
-            $trackingNumber = $attributes['tracking_number'] ?? null;
+            $trackingNumber = $this->canonicalTrackingNumber($attributes['tracking_number'] ?? null);
             $selectedWarehouseId = $attributes['warehouse_id'] ?? $shipment->warehouse_id;
             $preserveRecommendedSource = $shipment->warehouse_selection_source === 'recommended'
                 && (int) $shipment->warehouse_id === (int) $selectedWarehouseId;
@@ -111,6 +114,9 @@ final class ShipmentService
 
     public function updateTracking(Model $order, string $trackingNumber, ?Authenticatable $actor): Model
     {
+        $trackingNumber = $this->canonicalTrackingNumber($trackingNumber);
+        abort_unless($trackingNumber !== null, 422, '追踪号只能填写单号本体，备注请填写到物流备注');
+
         return DB::transaction(function () use ($order, $trackingNumber, $actor): Model {
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
@@ -181,6 +187,7 @@ final class ShipmentService
             $shipment->forceFill(['logistics_note' => $note])->save();
             $lockedOrder->operationalMarkers()->updateOrCreate(['marker' => 'logistics_paused'], ['marked_by' => $actor?->getAuthIdentifier(), 'marked_at' => now()]);
             $this->record($actor, 'shipment.exception_paused', $shipment, $before, $this->snapshot($shipment), 'logistics_exception_pause');
+
             return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync']);
         });
     }
@@ -192,7 +199,9 @@ final class ShipmentService
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
             abort_unless($shipment->shipment_status === 'exception', 409, '只有异常订单可以提交复核');
             $review = LogisticsReview::query()->where('order_id', $lockedOrder->getKey())->lockForUpdate()->first();
-            if ($review?->status === 'pending') return $lockedOrder->fresh(['shipment.warehouse', 'logisticsReview']);
+            if ($review?->status === 'pending') {
+                return $lockedOrder->fresh(['shipment.warehouse', 'logisticsReview']);
+            }
             $review = LogisticsReview::query()->updateOrCreate(['order_id' => $lockedOrder->getKey()], [
                 'status' => 'pending', 'requested_by' => $actor?->getAuthIdentifier(), 'reviewed_by' => null,
                 'requested_at' => now(), 'reviewed_at' => null, 'reason' => $reason, 'trigger' => $trigger,
@@ -200,6 +209,7 @@ final class ShipmentService
             ]);
             $this->reviewHistory($review, $lockedOrder, 'requested', $actor, null, $reason, $this->snapshot($shipment));
             $this->record($actor, 'logistics.review_requested', $shipment, $this->snapshot($shipment), $this->snapshot($shipment), $trigger);
+
             return $lockedOrder->fresh(['shipment.warehouse', 'logisticsReview']);
         });
     }
@@ -215,9 +225,15 @@ final class ShipmentService
             if (in_array($destination, ['awaiting_tracking', 'in_transit', 'completed'], true)) {
                 abort_unless($shipment->shipped_at !== null, 422, '该去向需要发货时间');
             }
-            if ($destination === 'awaiting_tracking') abort_unless(blank($shipment->tracking_number), 422, '已发货去单号必须没有追踪号');
-            if ($destination === 'in_transit') abort_unless(filled($shipment->tracking_number), 422, '运输中必须有追踪号');
-            if ($destination === 'completed') abort_unless(in_array($shipment->shipment_status, ['shipped', 'exception'], true), 422, '完结必须来自已发货或异常');
+            if ($destination === 'awaiting_tracking') {
+                abort_unless(blank($shipment->tracking_number), 422, '已发货去单号必须没有追踪号');
+            }
+            if ($destination === 'in_transit') {
+                abort_unless(filled($shipment->tracking_number), 422, '运输中必须有追踪号');
+            }
+            if ($destination === 'completed') {
+                abort_unless(in_array($shipment->shipment_status, ['shipped', 'exception'], true), 422, '完结必须来自已发货或异常');
+            }
             $before = $this->snapshot($shipment);
             if ($destination === 'pending') {
                 $this->snapshotAndReset($lockedOrder, $shipment, $actor, $note);
@@ -229,6 +245,7 @@ final class ShipmentService
             $review->forceFill(['status' => 'decided', 'reviewed_by' => $actor?->getAuthIdentifier(), 'reviewed_at' => now(), 'destination' => $destination, 'decision_note' => $note])->save();
             $this->reviewHistory($review, $lockedOrder, 'decided', $actor, $destination, $note, $this->snapshot($shipment));
             $this->record($actor, 'logistics.review_decided', $shipment, $before, $this->snapshot($shipment), 'logistics_review');
+
             return $lockedOrder->fresh(['items', 'shipment.warehouse', 'logisticsReview']);
         });
     }
@@ -244,6 +261,7 @@ final class ShipmentService
             $before = $this->snapshot($shipment);
             $this->snapshotAndReset($lockedOrder, $shipment, $actor, $attributes['logistics_note'] ?? '重新发货', $attempt);
             $this->record($actor, 'shipment.reshipped', $shipment, $before, $this->snapshot($shipment), 'logistics_reship');
+
             return $lockedOrder->fresh(['items', 'shipment.warehouse', 'shipmentAttempts']);
         });
     }
@@ -256,6 +274,7 @@ final class ShipmentService
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
             abort_unless($shipment->shipment_status === 'exception', 409, '只有异常订单可以联系用户');
             $this->record($actor, 'shipment.user_contact_recorded', $shipment, $this->snapshot($shipment), ['note' => $note, ...$this->snapshot($shipment)], 'logistics_contact_user');
+
             return $lockedOrder->fresh(['shipment.warehouse']);
         });
     }
@@ -271,6 +290,7 @@ final class ShipmentService
             $shipment->forceFill(['logistics_note' => $note])->save();
             $lockedOrder->forceFill(['order_status' => OrderStatus::Cancelled])->save();
             $this->record($actor, 'order.cancelled_from_exception', $shipment, $before, ['order_status' => 'cancelled', ...$this->snapshot($shipment)], 'logistics_refund_cancel');
+
             return $lockedOrder->fresh(['shipment.warehouse']);
         });
     }
@@ -285,6 +305,7 @@ final class ShipmentService
             $before = $this->snapshot($shipment);
             $shipment->forceFill(['shipment_status' => 'completed', 'handled_by' => $actor?->getAuthIdentifier()])->save();
             $this->record($actor, 'shipment.completed', $shipment, $before, $this->snapshot($shipment), 'logistics_completed');
+
             return $lockedOrder->fresh(['shipment.warehouse']);
         });
     }
@@ -338,10 +359,14 @@ final class ShipmentService
                 ->where('shipment_id', $shipment->getKey())
                 ->where('order_item_id', $item->id)
                 ->first();
-            if ($existing) continue;
+            if ($existing) {
+                continue;
+            }
 
             $standard = $item->product_id ? ($standards[(int) $item->product_id] ?? null) : null;
-            if (! $standard) continue;
+            if (! $standard) {
+                continue;
+            }
 
             ShipmentItemPackagingSnapshot::query()->create([
                 'shipment_id' => $shipment->getKey(),
@@ -364,6 +389,24 @@ final class ShipmentService
         $validOrderItemIds === [] ? $stale->delete() : $stale->whereNotIn('order_item_id', $validOrderItemIds)->delete();
     }
 
+    private function canonicalTrackingNumber(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $trackingNumber = trim((string) $value);
+        if ($trackingNumber === '') {
+            return null;
+        }
+
+        $isCanonical = strlen($trackingNumber) <= 128
+            && preg_match('/\A[A-Za-z0-9][A-Za-z0-9._:\/+\-]*\z/', $trackingNumber) === 1;
+        abort_unless($isCanonical, 422, '追踪号只能填写单号本体，不能包含空格、中文或备注文字；备注请填写到物流备注');
+
+        return $trackingNumber;
+    }
+
     private function snapshot(Model $shipment): array
     {
         return $shipment->only([
@@ -384,6 +427,7 @@ final class ShipmentService
         $shipment->forceFill(['shipment_status' => 'pending', 'warehouse_id' => null, 'warehouse_selection_source' => null, 'carrier' => null, 'service' => null, 'carrier_selection_source' => null, 'tracking_number' => null, 'shipped_at' => null, 'logistics_note' => null, 'handled_by' => null])->save();
         $order->forceFill(['order_status' => OrderStatus::PendingShipment])->save();
         $this->manualSync->reopen($order, $actor, $note);
+
         return $attempt;
     }
 
