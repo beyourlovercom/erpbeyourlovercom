@@ -12,6 +12,7 @@ use App\Modules\Logistics\Application\FulfillmentPlanCostEstimator;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\UsFulfillmentZoneResolver;
 use App\Modules\Logistics\Application\WarehouseRoutingPolicy;
+use App\Modules\Logistics\Experience\Console\Commands\BackfillCustomerHistoricalShipmentsCommand;
 use App\Modules\Logistics\Experience\Console\Commands\ImportCarrierBillCommand;
 use App\Modules\Logistics\Experience\Console\Commands\RepairProductionUatFulfillmentCommand;
 use App\Modules\Logistics\Experience\Console\Commands\SyncDeliveryEvidenceCommand;
@@ -28,6 +29,7 @@ final class LogisticsServiceProvider extends ServiceProvider
         $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/web.php');
         if ($this->app->runningInConsole()) {
             $this->commands([
+                BackfillCustomerHistoricalShipmentsCommand::class,
                 ImportCarrierBillCommand::class,
                 RepairProductionUatFulfillmentCommand::class,
                 SyncDeliveryEvidenceCommand::class,
