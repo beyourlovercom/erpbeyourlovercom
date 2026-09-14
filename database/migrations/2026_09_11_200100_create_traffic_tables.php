@@ -21,7 +21,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->unique(['provider', 'external_account_id']);
-            $table->index(['business_project_id', 'provider', 'status']);
+            $table->index(['business_project_id', 'provider', 'status'], 'tsa_project_provider_status_idx');
         });
 
         Schema::create('traffic_campaigns', function (Blueprint $table): void {
@@ -35,7 +35,7 @@ return new class extends Migration
             $table->timestamp('last_seen_at')->nullable();
             $table->timestamps();
 
-            $table->unique(['traffic_source_account_id', 'external_campaign_id']);
+            $table->unique(['traffic_source_account_id', 'external_campaign_id'], 'tcmp_account_campaign_uniq');
             $table->index(['traffic_source_account_id', 'status']);
         });
 
@@ -62,7 +62,7 @@ return new class extends Migration
             $table->unsignedInteger('qualified_inquiries')->default(0);
             $table->timestamps();
 
-            $table->unique(['business_project_id', 'metric_date', 'source_type']);
+            $table->unique(['business_project_id', 'metric_date', 'source_type'], 'tiq_project_date_source_uniq');
             $table->index(['metric_date', 'source_type']);
         });
 

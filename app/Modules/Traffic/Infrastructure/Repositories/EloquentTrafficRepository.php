@@ -12,6 +12,13 @@ use Illuminate\Support\Collection;
 
 final class EloquentTrafficRepository implements TrafficRepository
 {
+    public function findSourceAccount(string $provider, string $externalAccountId): ?object
+    {
+        return TrafficSourceAccount::where('provider', $provider)
+            ->where('external_account_id', $externalAccountId)
+            ->first();
+    }
+
     public function upsertSourceAccount(
         int $businessProjectId,
         string $provider,
