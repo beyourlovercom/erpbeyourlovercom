@@ -1,11 +1,11 @@
 # ERP-ACCOUNTING-V11C-P6B-ACTUAL-CARRIER-BILL-001
 
-**Status:** CONTRACT FROZEN / IMPLEMENTATION AUTHORIZED / BACKEND ONLY  
-**Date:** 2026-09-14  
-**Owner scope:** Accounting V1.1C-P6 — Last-mile Cost, phase P6B Actual Carrier Bill Import / Replacement  
-**EXECUTION_PROVIDER:** US_CODEX_CLI  
-**VERIFICATION_TIER:** HIGH_RISK  
-**UI_UAT:** NOT REQUIRED — backend-only  
+**Status:** CONTRACT FROZEN / IMPLEMENTATION AUTHORIZED / BACKEND ONLY
+**Date:** 2026-09-14
+**Owner scope:** Accounting V1.1C-P6 — Last-mile Cost, phase P6B Actual Carrier Bill Import / Replacement
+**EXECUTION_PROVIDER:** GPT_WEB
+**VERIFICATION_TIER:** HIGH_RISK
+**UI_UAT:** NOT REQUIRED — backend-only
 **PRODUCTION_ACTIVATION:** NOT AUTHORIZED
 
 ## Objective
@@ -161,6 +161,12 @@ Missing capability is bounded actual-bill ingestion plus cross-currency actual c
 
 ## Source Conflicts
 `AI/CURRENT_CONTEXT.md` remains stale relative to the current Accounting track; GitHub `origin/main`, current code and Production read-only evidence govern mutable facts. Library metadata proves candidate billing workbooks exist, but current parsed file access does not expose their columns; provider-specific mapping remains intentionally unimplemented rather than guessed.
+
+## Provider Handoff Evidence
+- Initial US Codex CLI implementation attempt exited before mutation because the local Codex account reported a usage-limit hard stop.
+- Exact post-exit worktree check: `HEAD=a8f04a554f5e52e43f68bfbaa8b62fc885f41496`, `git status --short` empty, `git diff --stat` empty.
+- Provider reassigned serially to `GPT_WEB` because architecture/business behavior are frozen and the bounded implementation can be completed directly on the US Mac. Claude is not invoked merely as a quota substitute.
+- ONE_ACTIVE_IMPLEMENTATION_PROVIDER_PER_WORKTREE remains satisfied.
 
 ## Initial Work Log
 - GPT preflight / source classification / existing-model audit / contract definition: 0.65h effective planning evidence at activation.
