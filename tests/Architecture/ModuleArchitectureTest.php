@@ -4,6 +4,7 @@ namespace Tests\Architecture;
 
 use App\Modules\Audit\Providers\AuditServiceProvider;
 use App\Modules\Backup\Providers\BackupServiceProvider;
+use App\Modules\BusinessProjects\Providers\BusinessProjectsServiceProvider;
 use App\Modules\Customers\Providers\CustomersServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Finance\Providers\FinanceServiceProvider;
@@ -18,6 +19,7 @@ use App\Modules\ModulesServiceProvider;
 use App\Modules\Orders\Providers\OrdersServiceProvider;
 use App\Modules\Products\Providers\ProductsServiceProvider;
 use App\Modules\Support\Providers\SupportServiceProvider;
+use App\Modules\Traffic\Providers\TrafficServiceProvider;
 use App\Modules\Runtime\Providers\RuntimeServiceProvider;
 use App\Modules\Shell\Providers\ShellServiceProvider;
 use App\Modules\Sync\Providers\ManualSyncServiceProvider;
@@ -126,6 +128,12 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Backup/Infrastructure/ZstdTarRestorePackageExtractor.php',
         'app/Modules/Backup/Infrastructure/ZstdTarStorageRestorer.php',
         'app/Modules/Backup/Providers/BackupServiceProvider.php',
+        'app/Modules/BusinessProjects/Application/BusinessProjectService.php',
+        'app/Modules/BusinessProjects/Application/Contracts/BusinessProjectRepository.php',
+        'app/Modules/BusinessProjects/Infrastructure/Models/BusinessProject.php',
+        'app/Modules/BusinessProjects/Infrastructure/Models/BusinessProjectSite.php',
+        'app/Modules/BusinessProjects/Infrastructure/Repositories/EloquentBusinessProjectRepository.php',
+        'app/Modules/BusinessProjects/Providers/BusinessProjectsServiceProvider.php',
         'app/Modules/Customers/Application/CompanyService.php',
         'app/Modules/Customers/Application/CustomerGroupService.php',
         'app/Modules/Customers/Application/CustomerImportService.php',
@@ -397,6 +405,15 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Support/Experience/Routes/web.php',
         'app/Modules/Support/Infrastructure/Models/SupportTicket.php',
         'app/Modules/Support/Providers/SupportServiceProvider.php',
+        'app/Modules/Traffic/Application/Contracts/TrafficRepository.php',
+        'app/Modules/Traffic/Application/TrafficService.php',
+        'app/Modules/Traffic/Infrastructure/Models/LandingPage.php',
+        'app/Modules/Traffic/Infrastructure/Models/TrafficCampaign.php',
+        'app/Modules/Traffic/Infrastructure/Models/TrafficDailyMetric.php',
+        'app/Modules/Traffic/Infrastructure/Models/TrafficInquiryDailyMetric.php',
+        'app/Modules/Traffic/Infrastructure/Models/TrafficSourceAccount.php',
+        'app/Modules/Traffic/Infrastructure/Repositories/EloquentTrafficRepository.php',
+        'app/Modules/Traffic/Providers/TrafficServiceProvider.php',
         'app/Modules/Sync/Application/Contracts/SyncOrchestrationRepository.php',
         'app/Modules/Sync/Application/Contracts/SyncOutboxRepository.php',
         'app/Modules/Sync/Application/Contracts/SyncRunRepository.php',
@@ -453,6 +470,13 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Backup/Infrastructure',
         'app/Modules/Backup/Infrastructure/Models',
         'app/Modules/Backup/Providers',
+        'app/Modules/BusinessProjects',
+        'app/Modules/BusinessProjects/Application',
+        'app/Modules/BusinessProjects/Application/Contracts',
+        'app/Modules/BusinessProjects/Infrastructure',
+        'app/Modules/BusinessProjects/Infrastructure/Models',
+        'app/Modules/BusinessProjects/Infrastructure/Repositories',
+        'app/Modules/BusinessProjects/Providers',
         'app/Modules/Customers',
         'app/Modules/Customers/Application',
         'app/Modules/Customers/Domain',
@@ -604,6 +628,13 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Support/Infrastructure',
         'app/Modules/Support/Infrastructure/Models',
         'app/Modules/Support/Providers',
+        'app/Modules/Traffic',
+        'app/Modules/Traffic/Application',
+        'app/Modules/Traffic/Application/Contracts',
+        'app/Modules/Traffic/Infrastructure',
+        'app/Modules/Traffic/Infrastructure/Models',
+        'app/Modules/Traffic/Infrastructure/Repositories',
+        'app/Modules/Traffic/Providers',
     ];
 
     private const ROUTE_NAMES = [
@@ -1030,6 +1061,8 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_09_05_170500_expand_order_address_line_2_for_woo_history.php' => 'eb110853a19c8e6084cc7425001d4092b6101efe85e874e25a6bd69390ffc967',
         'database/migrations/2026_09_05_171000_add_replenishment_policy_to_warehouses.php' => 'fb051a4d03a01f52b1e734b0a1d2a2efd1e09576d66f82b592b647e151c54ee7',
         'database/migrations/2026_09_06_180000_add_order_profit_evidence_contract.php' => 'a80d69865ef2351332e93840a9f2d227cf2a5c34e3830bd81300ff3c2d385ccc',
+        'database/migrations/2026_09_11_200000_create_business_projects_tables.php' => '308d7148cdfb92d2a680264e062f1c4b3cce9bb4577bc330019913d7cb2aaf1f',
+        'database/migrations/2026_09_11_200100_create_traffic_tables.php' => '1d906571872f99f3958e97469e0d34e26aeaae35d0db886b21251b8743233f46',
     ];
 
     private const FRONTEND_FILES = [
@@ -1268,6 +1301,8 @@ final class ModuleArchitectureTest extends TestCase
             'app/Modules/Backup/Application/RestoreStateMachine.php',
             'app/Modules/Backup/Application/StorageArchiveAdapter.php',
             'app/Modules/Backup/Application/StreamingAesGcmEncryptor.php',
+            'app/Modules/BusinessProjects/Application/BusinessProjectService.php',
+            'app/Modules/BusinessProjects/Application/Contracts/BusinessProjectRepository.php',
             'app/Modules/Customers/Application/CompanyService.php',
             'app/Modules/Customers/Application/CustomerGroupService.php',
             'app/Modules/Customers/Application/CustomerImportService.php',
@@ -1386,6 +1421,8 @@ final class ModuleArchitectureTest extends TestCase
             'app/Modules/Sync/Application/SyncRunStatus.php',
             'app/Modules/Sync/Application/WooCommerceTrackingConflictException.php',
             'app/Modules/Sync/Application/WooCommerceTrackingOutboundService.php',
+            'app/Modules/Traffic/Application/Contracts/TrafficRepository.php',
+            'app/Modules/Traffic/Application/TrafficService.php',
         ]), $applicationFiles);
         self::assertSame($this->sorted([...$domainFiles, ...$applicationFiles]), $this->sorted($infrastructureDependencyFiles));
         self::assertNotContains('app/Modules/Future/Providers/Provider.php', $domainFiles);
@@ -1551,6 +1588,8 @@ PHP;
             MarketingServiceProvider::class,
             SupportServiceProvider::class,
             BackupServiceProvider::class,
+            BusinessProjectsServiceProvider::class,
+            TrafficServiceProvider::class,
         ], ModuleManifest::providers());
         self::assertSame([AppServiceProvider::class, ModulesServiceProvider::class], require $this->path('bootstrap/providers.php'));
     }

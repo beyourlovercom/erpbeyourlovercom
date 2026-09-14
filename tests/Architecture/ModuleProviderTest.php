@@ -4,6 +4,7 @@ namespace Tests\Architecture;
 
 use App\Modules\Audit\Providers\AuditServiceProvider;
 use App\Modules\Backup\Providers\BackupServiceProvider;
+use App\Modules\BusinessProjects\Providers\BusinessProjectsServiceProvider;
 use App\Modules\Customers\Providers\CustomersServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Finance\Providers\FinanceServiceProvider;
@@ -24,6 +25,7 @@ use App\Modules\Sync\Providers\ManualSyncServiceProvider;
 use App\Modules\Products\Providers\ProductsServiceProvider;
 use App\Modules\Procurement\Providers\ProcurementServiceProvider;
 use App\Modules\Support\Providers\SupportServiceProvider;
+use App\Modules\Traffic\Providers\TrafficServiceProvider;
 use App\Providers\AppServiceProvider;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
@@ -69,6 +71,8 @@ final class ModuleProviderTest extends TestCase
             NotificationCenterServiceProvider::class,
             SupportServiceProvider::class,
             BackupServiceProvider::class,
+            BusinessProjectsServiceProvider::class,
+            TrafficServiceProvider::class,
         ];
         self::assertSame($providers, ModuleManifest::providers());
         $application = $this->createMock(Application::class);
