@@ -214,6 +214,40 @@ describe('Vita Fulfillment Allocation V1.1', () => {
   })
 
 
+  it('shows the exact empty state when selected warehouse has no clearance gift pool', async () => {
+    const noPoolGiftItem = { ...giftItem, gift_options_by_warehouse: {} }
+    const noPoolOrder = { ...giftOrder, id: 13, items: [itemA, noPoolGiftItem] }
+    const wrapper = mountPage({ ...props, orders: { ...props.orders, data: [noPoolOrder], total: 1 }, pendingTotal: 1 })
+
+    await wrapper.findAll('button').find(button => button.text() === '查看方案')!.trigger('click')
+    await flushPromises()
+    const giftRow = Array.from(document.body.querySelectorAll('.primary-allocation tbody tr')).find(row => row.textContent?.includes('gift')) as HTMLTableRowElement
+    const warehouseSelect = giftRow.querySelectorAll('select')[0] as HTMLSelectElement
+    warehouseSelect.value = 'US-SJ'
+    warehouseSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('该仓当前没有可用清仓礼品')
+    const giftSelect = giftRow.querySelectorAll('select')[2] as HTMLSelectElement
+    expect(giftSelect.options.length).toBe(1)
+  })
+
+  it('shows the exact out-of-stock state and does not offer zero-stock clearance SKUs', async () => {
+    const wrapper = mountPage({ ...props, orders: { ...props.orders, data: [giftOrder], total: 1 }, pendingTotal: 1 })
+    await wrapper.findAll('button').find(button => button.text() === '查看方案')!.trigger('click')
+    await flushPromises()
+    const giftRow = Array.from(document.body.querySelectorAll('.primary-allocation tbody tr')).find(row => row.textContent?.includes('gift')) as HTMLTableRowElement
+    const warehouseSelect = giftRow.querySelectorAll('select')[0] as HTMLSelectElement
+    warehouseSelect.value = 'US-LA'
+    warehouseSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('礼品库存在，但当前全部缺货')
+    const giftSelect = giftRow.querySelectorAll('select')[2] as HTMLSelectElement
+    expect(Array.from(giftSelect.options).map(option => option.textContent).join(' ')).not.toContain('GIFT-MP-02')
+  })
+
+
   it('replays submitted split as A/B derived logistics orders with fixed warehouses', async () => {
     const processedProps = {
       ...props,
