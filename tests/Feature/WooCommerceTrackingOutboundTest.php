@@ -29,7 +29,7 @@ final class WooCommerceTrackingOutboundTest extends TestCase
 
     public function test_verified_tracking_completes_outbox_and_manual_sync_idempotently(): void
     {
-        $gateway = new FakeWooCommerceTrackingGateway();
+        $gateway = new FakeWooCommerceTrackingGateway;
         $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
         [$user, $order] = $this->scenario();
 
@@ -39,7 +39,8 @@ final class WooCommerceTrackingOutboundTest extends TestCase
         $this->assertSame('completed', $first['status']);
         $this->assertSame('completed', $second['status']);
         $this->assertSame(1, $gateway->calls);
-        $this->assertDatabaseCount('sync_outbox', 1);
+        $this->assertDatabaseCount('sync_outbox', 2);
+        $this->assertSame(1, $gateway->statusCalls);
         $this->assertDatabaseHas('sync_outbox', [
             'operation' => 'woocommerce.tracking_outbound',
             'status' => 'completed',
@@ -57,7 +58,7 @@ final class WooCommerceTrackingOutboundTest extends TestCase
 
     public function test_remote_conflict_is_terminal_and_never_completes_manual_sync(): void
     {
-        $gateway = new FakeWooCommerceTrackingGateway();
+        $gateway = new FakeWooCommerceTrackingGateway;
         $gateway->conflict = true;
         $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
         [, $order] = $this->scenario();
@@ -78,7 +79,7 @@ final class WooCommerceTrackingOutboundTest extends TestCase
 
     public function test_transient_failure_schedules_retry_and_does_not_call_gateway_again_before_backoff(): void
     {
-        $gateway = new FakeWooCommerceTrackingGateway();
+        $gateway = new FakeWooCommerceTrackingGateway;
         $gateway->fail = true;
         $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
         [, $order] = $this->scenario();
@@ -99,7 +100,7 @@ final class WooCommerceTrackingOutboundTest extends TestCase
 
     public function test_unknown_carrier_is_blocked_before_remote_write(): void
     {
-        $gateway = new FakeWooCommerceTrackingGateway();
+        $gateway = new FakeWooCommerceTrackingGateway;
         $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
         [, $order] = $this->scenario(carrier: 'Mystery Logistics');
 
@@ -116,7 +117,7 @@ final class WooCommerceTrackingOutboundTest extends TestCase
 
     public function test_controller_action_surfaces_global_success_flash(): void
     {
-        $gateway = new FakeWooCommerceTrackingGateway();
+        $gateway = new FakeWooCommerceTrackingGateway;
         $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
         [$user, $order] = $this->scenario();
 
@@ -126,6 +127,57 @@ final class WooCommerceTrackingOutboundTest extends TestCase
             ->assertSessionHas('success', 'WooCommerce Tracking 已写回并验证');
 
         $this->assertSame(1, $gateway->calls);
+    }
+
+    public function test_derived_child_resolves_root_woo_order_and_keeps_exact_child_line_items(): void
+    {
+        $parent = Order::create([
+            'internal_order_number' => 'WOO-ROOT-8001',
+            'source_type' => 'woocommerce',
+            'order_kind' => 'customer',
+            'external_order_number' => 'WC-8001',
+            'order_date' => '2026-09-15',
+            'order_status' => 'pending_shipment',
+            'currency' => 'USD',
+        ]);
+        $parent->externalReferences()->create([
+            'provider' => 'woocommerce',
+            'connection_key' => 'shop-a',
+            'reference' => '8001',
+        ]);
+        $child = Order::create([
+            'fulfillment_parent_id' => $parent->id,
+            'fulfillment_suffix' => 'A',
+            'internal_order_number' => 'FULF-8001-A',
+            'source_type' => 'manual_other',
+            'order_kind' => 'fulfillment_derived',
+            'order_date' => '2026-09-15',
+            'order_status' => 'shipped',
+            'currency' => 'USD',
+        ]);
+        $child->items()->create([
+            'woocommerce_line_item_id' => 88001,
+            'product_summary' => 'Package A item',
+            'sku' => 'PKG-A',
+            'quantity' => 2,
+            'unit_price' => '10.00',
+            'line_revenue' => '20.00',
+        ]);
+        $child->shipment()->create([
+            'shipment_status' => 'shipped',
+            'carrier' => 'USPS',
+            'tracking_number' => 'TRACK-8001-A',
+            'shipped_at' => '2026-09-15T01:00:00Z',
+        ]);
+
+        $gateway = new FakeWooCommerceTrackingGateway;
+        $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
+        $prepared = app(WooCommerceTrackingOutboundService::class)
+            ->describeOrder($child->fresh(['shipment', 'items', 'fulfillmentParent.externalReferences']));
+
+        $this->assertSame(8001, $prepared['provider_order_id']);
+        $this->assertSame([['id' => 88001, 'quantity' => 2]], $prepared['line_items']);
+        $this->assertSame($parent->id, $prepared['root_order']->id);
     }
 
     private function scenario(string $carrier = 'DHL'): array
@@ -145,6 +197,14 @@ final class WooCommerceTrackingOutboundTest extends TestCase
             'connection_key' => 'shop-a',
             'reference' => '7001',
         ]);
+        $order->items()->create([
+            'woocommerce_line_item_id' => 1001,
+            'product_summary' => 'Camera',
+            'sku' => 'CAMERA',
+            'quantity' => 1,
+            'unit_price' => '10.00',
+            'line_revenue' => '10.00',
+        ]);
         $order->shipment()->create([
             'shipment_status' => 'shipped',
             'carrier' => $carrier,
@@ -154,7 +214,7 @@ final class WooCommerceTrackingOutboundTest extends TestCase
         ]);
         $order->manualSync()->create(['website_sync_status' => 'pending']);
 
-        return [$user, $order->fresh(['shipment', 'externalReferences', 'manualSync'])];
+        return [$user, $order->fresh(['shipment', 'items', 'externalReferences', 'manualSync'])];
     }
 
     private function userWith(array $permissions): User
@@ -173,7 +233,11 @@ final class WooCommerceTrackingOutboundTest extends TestCase
 final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingGateway
 {
     public int $calls = 0;
+
+    public int $statusCalls = 0;
+
     public bool $conflict = false;
+
     public bool $fail = false;
 
     public function descriptor(): array
@@ -195,6 +259,7 @@ final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         string $providerSlug,
         string $trackingNumber,
         string $shipDate,
+        array $lineItems = [],
     ): array {
         $this->calls++;
 
@@ -206,5 +271,12 @@ final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         }
 
         return ['written' => true, 'verified' => true];
+    }
+
+    public function syncOrderStatus(int $providerOrderId, string $status): array
+    {
+        $this->statusCalls++;
+
+        return ['written' => true, 'verified' => true, 'status' => $status];
     }
 }

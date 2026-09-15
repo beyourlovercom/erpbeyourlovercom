@@ -57,7 +57,7 @@ final class OrderSavedViewController
             'filters_json' => ['sometimes', 'array'],
             'filters_json.search' => ['nullable', 'string', 'max:255'],
             'filters_json.source_type' => ['nullable', 'string', 'max:32'],
-            'filters_json.order_status' => ['nullable', 'string', 'in:pending_shipment,shipped,cancelled'],
+            'filters_json.order_status' => ['nullable', 'string', 'in:pending_shipment,shipped,completed,completed_delivered,cancelled'],
             'filters_json.view' => ['nullable', 'string', 'in:all,pending,exception,in_transit,shipped,return,loss,overweight,stockout'],
             'is_pinned' => ['sometimes', 'boolean'],
             'sort_order' => ['sometimes', 'integer', 'min:0'],
