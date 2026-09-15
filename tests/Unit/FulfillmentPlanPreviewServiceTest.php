@@ -55,15 +55,15 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
         $service = $this->service([
             $this->warehouse(1, 'US-LA'),
             $this->warehouse(2, 'US-NY'),
-            $this->warehouse(7, 'US-SJ'),
+            $this->warehouse(7, 'US-SM'),
         ], [
             10 => [$this->stock(1, 0), $this->stock(2, 5), $this->stock(7, 5)],
             20 => [$this->stock(1, 0), $this->stock(2, 5), $this->stock(7, 5)],
         ]);
         $items = [['product_id' => 10, 'quantity' => 1], ['product_id' => 20, 'quantity' => 1]];
         $first = $service->preview('US', $items, ['province_state' => 'CA', 'postal_code' => '90001']);
-        $single = collect($first['plans'])->first(fn (array $plan): bool => ! $plan['is_split'] && $plan['segments'][0]['source_code'] === 'US-SJ');
-        $split = collect($first['plans'])->first(fn (array $plan): bool => $plan['is_split'] && collect($plan['segments'])->pluck('source_code')->sort()->values()->all() === ['FACTORY', 'US-SJ']);
+        $single = collect($first['plans'])->first(fn (array $plan): bool => ! $plan['is_split'] && $plan['segments'][0]['source_code'] === 'US-SM');
+        $split = collect($first['plans'])->first(fn (array $plan): bool => $plan['is_split'] && collect($plan['segments'])->pluck('source_code')->sort()->values()->all() === ['FACTORY', 'US-SM']);
         $this->assertNotNull($single);
         $this->assertNotNull($split);
 
@@ -88,7 +88,7 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
         $warehouses = [
             $this->warehouse(1, 'US-LA'),
             $this->warehouse(2, 'US-NY'),
-            $this->warehouse(7, 'US-SJ'),
+            $this->warehouse(7, 'US-SM'),
         ];
         $availability = [10 => [
             $this->stock(1, 5),
@@ -126,7 +126,7 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
             && $plan['segments'][0]['source_type'] === 'warehouse'
         ));
         $this->assertSame(
-            ['US-LA', 'US-SJ'],
+            ['US-LA', 'US-SM'],
             collect($preview['plans'])->pluck('segments.0.source_code')->sort()->values()->all(),
         );
     }

@@ -21,7 +21,7 @@ type Summary = {
 }
 type Item = { sku: string | null; product_summary: string | null; product_url?: string | null; quantity: number }
 type LedgerRow = {
-  id: number; shipped_at: string | null; external_order_number: string | null; erp_order_id: string | null; internal_order_number: string | null
+  id: number; shipped_at: string | null; erp_order_id: string | null
   order_kind: string | null; order_url?: string | null; warehouse_name: string | null; destination_country: string | null; carrier: string | null
   service: string | null; tracking_number: string | null; items: Item[]; chargeable_weight_kg: string | number | null
   actual_cost: string | number | null; currency: string | null; shipment_status: string | null; delivery_status: string | null
@@ -72,6 +72,7 @@ const goToPage = (page: number) => router.get(`/logistics/carriers/${encodeURICo
         <div><span>异常</span><strong>{{ deliveryCount(summary.exception_count) }}</strong></div>
         <div><span>最后一票发货</span><strong>{{ dateTime(summary.last_shipped_at) }}</strong></div>
       </div>
+      <p v-if="summary.delivery_status_coverage === 0" class="carrier-evidence-note">暂无真实签收状态证据；运输中 / 已签收 / 异常不做推断。</p>
 
       <div class="mvp-table-wrap ledger-wrap">
         <table class="mvp-table ledger-table">
@@ -95,6 +96,7 @@ const goToPage = (page: number) => router.get(`/logistics/carriers/${encodeURICo
 .carrier-kpis > div { border: 1px solid var(--byl-color-border, #d8e0e3); border-radius: 9px; padding: 12px; background: var(--byl-color-surface, #fff); }
 .carrier-kpis span { display: block; font-size: 12px; color: var(--byl-color-muted, #6b7f87); margin-bottom: 6px; }
 .carrier-kpis strong { font-size: 15px; }
+.carrier-evidence-note { margin: -6px 0 16px; color: var(--byl-color-muted, #6b7f87); font-size: 13px; }
 .ledger-wrap { overflow-x: auto; }
 .ledger-table { min-width: 1900px; }
 .ledger-table small { display: block; opacity: .65; }

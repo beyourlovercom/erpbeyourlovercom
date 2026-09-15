@@ -9,6 +9,7 @@ use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
 use App\Modules\Logistics\Application\FulfillmentAllocationSubmissionService;
 use App\Modules\Logistics\Application\GiftSkuResolutionService;
+use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\UsFulfillmentZoneResolver;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Logistics\Application\WarehouseRecommendationService;
@@ -41,6 +42,7 @@ final class LogisticsController
         private readonly FulfillmentAllocationDecisionService $allocationDecisions,
         private readonly FulfillmentAllocationSubmissionService $allocationSubmissions,
         private readonly GiftSkuResolutionService $giftSkuResolutions,
+        private readonly LogisticsExecutionAccess $executionAccess,
         private readonly UsFulfillmentZoneResolver $usZones,
         private readonly CarrierRoutingPolicy $carrierRouting,
         private readonly OrderPackagingReferenceProjection $packagingReferences,
@@ -74,6 +76,7 @@ final class LogisticsController
             'statusBar' => $this->statusBar(),
             'gridPreferenceNamespace' => self::PENDING_GRID_NAMESPACE,
             'gridPreference' => $request->user() ? $this->uiPreferences->get($request->user(), self::PENDING_GRID_NAMESPACE) : null,
+            'canOperate' => $this->executionAccess->allows($request->user()),
         ]);
     }
 
@@ -97,7 +100,7 @@ final class LogisticsController
         $productIds = collect($orders->items())->flatMap(fn (Order $order) => $order->items->pluck('product_id'))->filter()->unique()->values()->all();
         $context = array_replace($this->recommendations->prepare($productIds), $this->fulfillmentPlans->prepare($productIds));
         $context['gift_resolution'] = $this->giftSkuResolutions->prepare();
-        $allowedCodes = ['FACTORY', 'US-NY', 'US-LA', 'US-SJ', 'DE', 'CA'];
+        $allowedCodes = array_map('strtoupper', (array) config('warehouse_master.fulfillment_codes', []));
         $warehouses = collect($context['warehouses'] ?? [])
             ->filter(fn (array $warehouse): bool => in_array(strtoupper((string) ($warehouse['code'] ?? '')), $allowedCodes, true))
             ->values()->all();
@@ -110,7 +113,7 @@ final class LogisticsController
                 'label' => $this->carrierRouting->displayName($carrier->name),
             ])->values()->all(),
             'pendingTotal' => $orders->total(),
-            'canOperate' => (bool) $request->user()?->can('logistics.operate'),
+            'canOperate' => $this->executionAccess->allows($request->user()),
         ]);
     }
 
@@ -183,6 +186,7 @@ final class LogisticsController
         return Inertia::render('Logistics/AwaitingTracking', [
             'shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(),
             'statusBar' => $this->statusBar(),
+            'canOperate' => $this->executionAccess->allows($request->user()),
         ]);
     }
 
@@ -201,6 +205,7 @@ final class LogisticsController
         return Inertia::render('Logistics/InTransit', [
             'shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(),
             'statusBar' => $this->statusBar(),
+            'canOperate' => $this->executionAccess->allows($request->user()),
         ]);
     }
 
@@ -217,6 +222,7 @@ final class LogisticsController
         return Inertia::render('Logistics/Exceptions', [
             'shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(),
             'statusBar' => $this->statusBar(),
+            'canOperate' => $this->executionAccess->allows($request->user()),
         ]);
     }
 
@@ -225,7 +231,7 @@ final class LogisticsController
         $reviews = LogisticsReview::query()->with(['order.address', 'order.items.product', 'order.shipment.warehouse'])
             ->where('status', 'pending')->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
             ->latest('requested_at')->paginate(self::PER_PAGE)->withQueryString();
-        return Inertia::render('Logistics/Review', ['reviews' => $reviews->through(fn (LogisticsReview $review): array => [...$this->queueRow($review->order->shipment), 'review_id' => $review->id, 'reason' => $review->reason, 'trigger' => $review->trigger, 'requested_at' => $review->requested_at?->toIso8601String()])->toArray(), 'statusBar' => $this->statusBar()]);
+        return Inertia::render('Logistics/Review', ['reviews' => $reviews->through(fn (LogisticsReview $review): array => [...$this->queueRow($review->order->shipment), 'review_id' => $review->id, 'reason' => $review->reason, 'trigger' => $review->trigger, 'requested_at' => $review->requested_at?->toIso8601String()])->toArray(), 'statusBar' => $this->statusBar(), 'canOperate' => $this->executionAccess->allows($request->user())]);
     }
 
     public function completed(Request $request): Response { return $this->projection($request, 'completed', 'Logistics/Completed', fn ($q) => $q->where('shipment_status', 'completed')); }
@@ -431,7 +437,7 @@ final class LogisticsController
         $usZone = strtoupper((string) $order->address?->country) === 'US'
             ? $this->usZones->resolve($order->address?->postal_code, $destinationContext)
             : null;
-        $carrierRoutes = collect(['FACTORY', 'US-NY', 'US-LA', 'US-SJ', 'DE', 'CA'])->mapWithKeys(function (string $code) use ($order): array {
+        $carrierRoutes = collect((array) config('warehouse_master.fulfillment_codes', []))->mapWithKeys(function (string $code) use ($order): array {
             $route = $this->carrierRouting->warehouseRoute($order->address?->country, $code);
             $carrier = trim((string) ($route['carrier'] ?? ''));
             return [$code => [

@@ -21,7 +21,7 @@ final class SyncOrchestrationServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->gateway = new OrchestrationFakeGateway();
+        $this->gateway = new OrchestrationFakeGateway;
         $this->app->instance(WooCommerceTrackingGateway::class, $this->gateway);
     }
 
@@ -41,7 +41,9 @@ final class SyncOrchestrationServiceTest extends TestCase
         $this->assertSame(2, $run->succeeded_items);
         $this->assertSame(1, $run->skipped_items);
         $this->assertSame(2, $this->gateway->writeCalls);
-        $this->assertDatabaseCount('sync_outbox', 2);
+        $this->assertDatabaseCount('sync_outbox', 4);
+        $this->assertSame(2, \DB::table('sync_outbox')->where('operation', 'woocommerce.tracking_outbound')->count());
+        $this->assertSame(2, \DB::table('sync_outbox')->where('operation', 'woocommerce.order_status_outbound')->count());
         $this->assertDatabaseCount('sync_run_items', 3);
     }
 
@@ -59,7 +61,9 @@ final class SyncOrchestrationServiceTest extends TestCase
         $this->assertSame(2, $run->requested_items);
         $this->assertSame(2, $run->succeeded_items);
         $this->assertSame(2, $this->gateway->writeCalls);
-        $this->assertDatabaseCount('sync_outbox', 2);
+        $this->assertDatabaseCount('sync_outbox', 4);
+        $this->assertSame(2, \DB::table('sync_outbox')->where('operation', 'woocommerce.tracking_outbound')->count());
+        $this->assertSame(2, \DB::table('sync_outbox')->where('operation', 'woocommerce.order_status_outbound')->count());
         $this->assertDatabaseHas('manual_syncs', [
             'order_id' => $completed->id,
             'website_sync_status' => 'completed',
@@ -145,6 +149,14 @@ final class SyncOrchestrationServiceTest extends TestCase
             'connection_key' => 'shop-a',
             'reference' => (string) $providerOrderId,
         ]);
+        $order->items()->create([
+            'woocommerce_line_item_id' => $providerOrderId + 100000,
+            'product_summary' => 'Synthetic item',
+            'sku' => 'SKU-'.$providerOrderId,
+            'quantity' => 1,
+            'unit_price' => '10.00',
+            'line_revenue' => '10.00',
+        ]);
         $order->shipment()->create([
             'shipment_status' => 'shipped',
             'carrier' => 'DHL',
@@ -154,15 +166,18 @@ final class SyncOrchestrationServiceTest extends TestCase
         ]);
         $order->manualSync()->create(['website_sync_status' => 'pending']);
 
-        return $order->fresh(['shipment', 'externalReferences', 'manualSync']);
+        return $order->fresh(['shipment', 'items', 'externalReferences', 'manualSync']);
     }
 }
 
 final class OrchestrationFakeGateway implements WooCommerceTrackingGateway
 {
     public int $writeCalls = 0;
+
     public int $inspectCalls = 0;
+
     public bool $failWrites = false;
+
     /** @var array<int,array{tracking_number:string,provider:string,has_tracking:bool}> */
     public array $remote = [];
 
@@ -191,6 +206,7 @@ final class OrchestrationFakeGateway implements WooCommerceTrackingGateway
         string $providerSlug,
         string $trackingNumber,
         string $shipDate,
+        array $lineItems = [],
     ): array {
         $this->writeCalls++;
         if ($this->failWrites) {
@@ -198,5 +214,10 @@ final class OrchestrationFakeGateway implements WooCommerceTrackingGateway
         }
 
         return ['written' => true, 'verified' => true];
+    }
+
+    public function syncOrderStatus(int $providerOrderId, string $status): array
+    {
+        return ['written' => true, 'verified' => true, 'status' => $status];
     }
 }

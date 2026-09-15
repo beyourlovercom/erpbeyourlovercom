@@ -45,6 +45,8 @@ final class AccountingContinuousDeltaTest extends TestCase
         self::assertSame('2026-09-10T09:00:00+00:00', $summary['window_start']);
         self::assertSame('2026-09-10T12:00:00+00:00', $summary['window_end']);
         self::assertSame(1, $summary['candidate_count']);
+        self::assertArrayHasKey('last_mile_estimate', $summary['stages']);
+        self::assertArrayHasKey('last_mile_actual', $summary['stages']);
         self::assertSame(0, SyncRun::query()->count());
         self::assertSame(0, $order->costEntries()->count());
     }
@@ -134,6 +136,50 @@ final class AccountingContinuousDeltaTest extends TestCase
         $summary = $this->service()->preview(100, CarbonImmutable::parse('2026-09-10T13:00:00Z'));
 
         self::assertSame(1, $summary['candidate_count']);
+    }
+
+    public function test_carrier_billing_change_reenters_scope_and_materializes_actual_last_mile(): void
+    {
+        $this->service()->apply(100, CarbonImmutable::parse('2026-09-10T12:00:00Z'));
+        $order = $this->readyOrder();
+        $this->stampOrderAndRelations($order, '2026-09-10 10:00:00');
+        DB::table('orders')->where('id', $order->id)->update([
+            'order_status' => 'shipped',
+            'updated_at' => '2026-09-10 10:00:00',
+        ]);
+        DB::table('shipments')->where('order_id', $order->id)->update([
+            'shipment_status' => 'shipped',
+            'tracking_number' => 'P6C-BILL-'.$order->id,
+            'updated_at' => '2026-09-10 10:00:00',
+        ]);
+        $shipment = $order->shipment()->firstOrFail();
+        $order->costEntries()->create([
+            'cost_type' => 'last_mile_cost', 'amount' => '9.99', 'currency' => 'USD',
+            'provenance' => 'estimated_reference', 'status' => 'estimated',
+            'source_reference' => 'last-mile-estimate:v1:order:'.$order->id,
+        ]);
+        $billing = $shipment->billingEvidence()->create([
+            'actual_cost' => '12.3400', 'currency' => 'USD',
+            'billing_document_number' => 'P6C-BILL-'.$order->id,
+            'data_source' => 'carrier_bill_import:p6c-test',
+            'billed_at' => '2026-09-10 12:30:00',
+        ]);
+        DB::table('shipment_carrier_billing')->where('id', $billing->id)->update([
+            'created_at' => '2026-09-10 12:30:00',
+            'updated_at' => '2026-09-10 12:30:00',
+        ]);
+
+        $preview = $this->service()->preview(100, CarbonImmutable::parse('2026-09-10T13:00:00Z'));
+        self::assertSame(1, $preview['candidate_count']);
+        self::assertSame(1, $preview['stages']['last_mile_actual']['applied']);
+        self::assertSame(1, $preview['stages']['last_mile_estimate']['blocked']);
+
+        $applied = $this->service()->apply(100, CarbonImmutable::parse('2026-09-10T13:00:00Z'));
+        self::assertSame(1, $applied['stages']['last_mile_actual']['applied']);
+        $entry = $order->costEntries()->where('cost_type', 'last_mile_cost')->firstOrFail()->fresh();
+        self::assertSame('12.34', $entry->amount);
+        self::assertSame('provider_import', $entry->provenance);
+        self::assertSame('confirmed', $entry->status);
     }
 
     public function test_strong_facts_are_protected_and_p6_through_p9_cost_types_are_untouched(): void

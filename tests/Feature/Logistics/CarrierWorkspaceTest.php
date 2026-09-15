@@ -50,6 +50,10 @@ final class CarrierWorkspaceTest extends TestCase
                 ->where('summary.shipment_count', 1)
                 ->where('summary.delivered_count', 1)
                 ->where('shipments.total', 1)
+                ->where('shipments.data.0.erp_order_id', '007-UAT-DHL-1')
+                ->where('shipments.data.0.order_url', fn ($value) => is_string($value) && str_starts_with($value, '/customers/orders/'))
+                ->missing('shipments.data.0.external_order_number')
+                ->missing('shipments.data.0.internal_order_number')
         );
 
         $this->actingAs($user)->get('/logistics/carriers/4PX')->assertInertia(
@@ -131,6 +135,7 @@ final class CarrierWorkspaceTest extends TestCase
             'source_type' => 'manual',
             'order_kind' => 'customer',
             'external_order_number' => 'ORDER-'.$tracking,
+            'erp_order_id' => '007-UAT-'.$tracking,
             'order_date' => '2026-08-28',
             'owner_id' => $user->id,
             'order_status' => 'shipped',

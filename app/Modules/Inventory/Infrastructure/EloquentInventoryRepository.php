@@ -24,6 +24,9 @@ final class EloquentInventoryRepository implements InventoryRepository
 
         return [
             'warehouse_count' => collect($warehouses)->where('is_active', true)->count(),
+            'warehouse_total_count' => count($warehouses),
+            'fulfillment_warehouse_count' => collect($warehouses)->where('is_fulfillment_warehouse', true)->count(),
+            'inventory_only_warehouse_count' => collect($warehouses)->where('is_inventory_only_warehouse', true)->count(),
             'warehouse_data_gap_count' => collect($warehouses)->where('inventory_state', 'never_imported')->count(),
             'warehouse_confirmed_count' => collect($warehouses)->where('inventory_state', 'confirmed')->count(),
             'sku_rows' => $rows->count(),
@@ -47,6 +50,11 @@ final class EloquentInventoryRepository implements InventoryRepository
             ->get()
             ->groupBy('warehouse_id');
 
+        $master = (array) config('warehouse_master.warehouses', []);
+        $canonicalOrder = array_flip((array) config('warehouse_master.order', []));
+        $fulfillmentCodes = array_map('strtoupper', (array) config('warehouse_master.fulfillment_codes', []));
+        $inventoryOnlyCodes = array_map('strtoupper', (array) config('warehouse_master.inventory_only_codes', []));
+
         return Warehouse::query()
             ->withCount('inventories')
             ->withSum('inventories as quantity_on_hand_total', 'quantity_on_hand')
@@ -54,7 +62,7 @@ final class EloquentInventoryRepository implements InventoryRepository
             ->orderBy('priority')
             ->orderBy('name')
             ->get()
-            ->map(function ($w) use ($confirmedBatches): array {
+            ->map(function ($w) use ($confirmedBatches, $master, $fulfillmentCodes, $inventoryOnlyCodes): array {
                 $batches = $confirmedBatches->get($w->id, collect());
                 $latest = $batches->first();
                 $hasFullBaseline = $batches->contains(fn ($batch): bool => $batch->sync_mode === 'full');
@@ -82,8 +90,15 @@ final class EloquentInventoryRepository implements InventoryRepository
                     default => 'not_ready',
                 };
 
+                $code = strtoupper((string) $w->code);
+                $canonical = (array) ($master[$code] ?? []);
+
                 return [
-                    'id'=>$w->id,'slug'=>$w->slug,'code'=>$w->code,'name'=>$w->name,'country_code'=>$w->country_code,
+                    'id'=>$w->id,'slug'=>$w->slug,'public_slug'=>$canonical['public_slug'] ?? $w->slug,
+                    'code'=>$w->code,'name'=>$w->name,'name_en'=>$canonical['name_en'] ?? null,
+                    'country_code'=>$w->country_code,'role_label'=>$canonical['role_label'] ?? '仓库',
+                    'is_fulfillment_warehouse'=>in_array($code, $fulfillmentCodes, true),
+                    'is_inventory_only_warehouse'=>in_array($code, $inventoryOnlyCodes, true),
                     'address'=>$this->address($w),'ownership_type'=>$w->ownership_type,'is_active'=>$w->is_active,'priority'=>$w->priority,
                     'fulfillment_available_on'=>$w->fulfillment_available_on?->toDateString(),
                     'fulfillment_state'=>$fulfillmentState,
@@ -108,10 +123,28 @@ final class EloquentInventoryRepository implements InventoryRepository
                     'latest_batch_id'=>$latest?->id,
                     'last_inventory_at'=>$lastInventoryAt?->toIso8601String(),
                 ];
-            })->all();
+            })
+            ->sortBy(fn (array $row): int => $canonicalOrder[strtoupper((string) $row['code'])] ?? 9999)
+            ->values()->all();
     }
 
-    public function findWarehouseBySlug(string $slug): ?Model { return Warehouse::query()->where('slug',$slug)->first(); }
+    public function findWarehouseBySlug(string $slug): ?Model
+    {
+        $direct = Warehouse::query()->where('slug', $slug)->first();
+        if ($direct !== null) return $direct;
+
+        foreach ((array) config('warehouse_master.warehouses', []) as $code => $canonical) {
+            $aliases = array_values(array_unique([
+                (string) ($canonical['public_slug'] ?? ''),
+                ...array_map('strval', (array) ($canonical['legacy_slugs'] ?? [])),
+            ]));
+            if (in_array($slug, $aliases, true)) {
+                return Warehouse::query()->where('code', $code)->first();
+            }
+        }
+
+        return null;
+    }
     public function createWarehouse(array $attributes): Model { return Warehouse::query()->create($attributes); }
     public function updateWarehouse(Model $warehouse, array $attributes): Model { $warehouse->fill($attributes)->save(); return $warehouse->fresh(); }
     public function warehouseDetail(Model $warehouse): Model

@@ -120,7 +120,7 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
       <form class="mvp-toolbar" @submit.prevent="submit">
         <input v-model="filters.search" aria-label="搜索订单" placeholder="搜索订单号、外部单号或收件人">
         <select v-model="filters.source_type" aria-label="来源"><option value="">全部来源</option><option v-for="source in sourceTypes" :key="source.value" :value="source.value">{{ source.label }}</option></select>
-        <select v-model="filters.order_status" aria-label="状态"><option value="">全部状态</option><option value="pending_shipment">待发货</option><option value="shipped">已发货</option><option value="cancelled">已取消</option></select>
+        <select v-model="filters.order_status" aria-label="状态"><option value="">全部状态</option><option value="pending_shipment">待发货</option><option value="shipped">已发货</option><option value="completed">已完结</option><option value="completed_delivered">完结&送达</option><option value="cancelled">已取消</option></select>
         <button class="mvp-button" type="submit">筛选</button>
       </form>
 

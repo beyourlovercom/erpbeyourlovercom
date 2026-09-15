@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
 final class CostMaterializationService
 {
     private const STRONG_PROVENANCE = ['actual', 'confirmed_manual', 'provider_import', 'allocated_actual'];
-    private const OVERSEAS_WAREHOUSE_SLUGS = ['us-la', 'us-ny', 'de', 'ca', 'us-sj'];
+    private const OVERSEAS_WAREHOUSE_SLUGS = ['us-la', 'us-ny', 'de', 'ca', 'us-3sm'];
     private const CHINA_DIRECT_WAREHOUSE_SLUGS = ['factory', '007'];
     private const PAYMENT_FEE_RATE = '0.03500000';
 

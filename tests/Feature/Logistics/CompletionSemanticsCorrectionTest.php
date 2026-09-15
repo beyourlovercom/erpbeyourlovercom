@@ -67,7 +67,7 @@ final class CompletionSemanticsCorrectionTest extends TestCase
         $this->assertNull($shipment->fresh()->shipped_at);
         $this->assertSame('decided', $review->fresh()->status);
         $this->assertSame('completed', $review->fresh()->destination);
-        $this->assertSame('shipped', $order->fresh()->order_status->value);
+        $this->assertSame('completed', $order->fresh()->order_status->value);
     }
 
     /** @return array{0:Order,1:Shipment} */

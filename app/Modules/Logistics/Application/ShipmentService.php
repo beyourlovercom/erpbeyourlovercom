@@ -23,6 +23,7 @@ final class ShipmentService
         private readonly ManualSyncService $manualSync,
         private readonly ProductPackagingStandardReader $packagingStandards,
         private readonly ShipmentCompletionSemantics $completionSemantics,
+        private readonly ShipmentAggregateStatusService $aggregateStatus,
     ) {}
 
     public function saveDraft(Model $order, array $attributes, ?Authenticatable $actor): Model
@@ -108,6 +109,7 @@ final class ShipmentService
             if ($changed) {
                 $this->record($actor, 'shipment.marked_shipped', $shipment, $before, $this->snapshot($shipment), 'manual_fulfillment');
             }
+            $this->aggregateStatus->reconcile($lockedOrder, $actor);
 
             return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync', 'financials', 'costEntries']);
         });
@@ -132,6 +134,7 @@ final class ShipmentService
             if ($changed) {
                 $this->record($actor, 'shipment.tracking_updated', $shipment, $before, $this->snapshot($shipment), 'tracking_update');
             }
+            $this->aggregateStatus->reconcile($lockedOrder, $actor);
 
             return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync']);
         });
@@ -152,6 +155,7 @@ final class ShipmentService
             $shipment->fill(['shipment_status' => 'exception', 'logistics_note' => $note]);
             $shipment->save();
             $this->record($actor, 'shipment.exception_marked', $shipment, $before, $this->snapshot($shipment), 'logistics_exception');
+            $this->aggregateStatus->reconcile($lockedOrder, $actor);
 
             return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync']);
         });
@@ -172,6 +176,7 @@ final class ShipmentService
             $shipment->fill(['shipment_status' => 'shipped']);
             $shipment->save();
             $this->record($actor, 'shipment.exception_resolved', $shipment, $before, $this->snapshot($shipment), 'logistics_exception_resolved');
+            $this->aggregateStatus->reconcile($lockedOrder, $actor);
 
             return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync']);
         });
@@ -247,6 +252,7 @@ final class ShipmentService
             $review->forceFill(['status' => 'decided', 'reviewed_by' => $actor?->getAuthIdentifier(), 'reviewed_at' => now(), 'destination' => $destination, 'decision_note' => $note])->save();
             $this->reviewHistory($review, $lockedOrder, 'decided', $actor, $destination, $note, $this->snapshot($shipment));
             $this->record($actor, 'logistics.review_decided', $shipment, $before, $this->snapshot($shipment), 'logistics_review');
+            $this->aggregateStatus->reconcile($lockedOrder, $actor);
 
             return $lockedOrder->fresh(['items', 'shipment.warehouse', 'logisticsReview']);
         });
@@ -308,6 +314,7 @@ final class ShipmentService
             $before = $this->snapshot($shipment);
             $shipment->forceFill(['shipment_status' => 'completed', 'handled_by' => $actor?->getAuthIdentifier()])->save();
             $this->record($actor, 'shipment.completed', $shipment, $before, $this->snapshot($shipment), 'logistics_completed');
+            $this->aggregateStatus->reconcile($lockedOrder, $actor);
 
             return $lockedOrder->fresh(['shipment.warehouse']);
         });
@@ -345,6 +352,7 @@ final class ShipmentService
             if ($changed) {
                 $this->record($actor, 'shipment.reopened', $shipment, $before, $this->snapshot($shipment), 'shipment_correction');
             }
+            $this->aggregateStatus->reconcile($lockedOrder, $actor);
 
             return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync', 'financials', 'costEntries']);
         });

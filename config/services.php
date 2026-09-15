@@ -33,6 +33,7 @@ return [
         'consumer_secret' => env('WOO_CONSUMER_SECRET', ''),
         'connection_key' => env('WOO_CONNECTION_KEY', 'beyourlover.com'),
         'timeout' => (int) env('WOO_TIMEOUT_SECONDS', 15),
+        'completed_delivered_status' => env('WOO_COMPLETED_DELIVERED_STATUS', 'completed-delivered'),
         'product_sync_enabled' => (bool) env('WOO_PRODUCT_SYNC_ENABLED', false),
         'order_sync_enabled' => (bool) env('WOO_ORDER_SYNC_ENABLED', false),
         'media_allowed_hosts' => env('WOO_MEDIA_ALLOWED_HOSTS', ''),
@@ -60,6 +61,12 @@ return [
         'version' => env('AFTERSHIP_TRACKING_API_VERSION', '2026-07'),
         'base_url' => env('AFTERSHIP_TRACKING_BASE_URL', 'https://api.aftership.com/tracking'),
         'timeout' => (int) env('AFTERSHIP_TRACKING_TIMEOUT_SECONDS', 15),
+    ],
+
+    'aftership_branded_page' => [
+        'base_url' => env('AFTERSHIP_BRANDED_PAGE_BASE_URL', 'https://beyourlover.aftership.com'),
+        'parser_version' => env('AFTERSHIP_BRANDED_PAGE_PARSER_VERSION', 'semantic-html-v1'),
+        'timeout' => (int) env('AFTERSHIP_BRANDED_PAGE_TIMEOUT_SECONDS', 15),
     ],
 
     'postmark' => [

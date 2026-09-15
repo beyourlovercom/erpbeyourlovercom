@@ -133,6 +133,11 @@ final class WarehouseController
     }
     private function payload($w): array
     {
+        $code = strtoupper((string) $w->code);
+        $canonical = (array) config("warehouse_master.warehouses.{$code}", []);
+        $fulfillmentCodes = array_map('strtoupper', (array) config('warehouse_master.fulfillment_codes', []));
+        $inventoryOnlyCodes = array_map('strtoupper', (array) config('warehouse_master.inventory_only_codes', []));
+
         $lastConfirmedSync = InventorySyncBatch::query()
             ->where('warehouse_id', $w->id)
             ->where('status', 'confirmed')
@@ -140,7 +145,11 @@ final class WarehouseController
             ->first();
 
         return [
-            'id'=>$w->id,'slug'=>$w->slug,'code'=>$w->code,'name'=>$w->name,'country_code'=>$w->country_code,
+            'id'=>$w->id,'slug'=>$w->slug,'public_slug'=>$canonical['public_slug'] ?? $w->slug,
+            'code'=>$w->code,'name'=>$w->name,'name_en'=>$canonical['name_en'] ?? null,'country_code'=>$w->country_code,
+            'role_label'=>$canonical['role_label'] ?? '仓库',
+            'is_fulfillment_warehouse'=>in_array($code, $fulfillmentCodes, true),
+            'is_inventory_only_warehouse'=>in_array($code, $inventoryOnlyCodes, true),
             'address_line1'=>$w->address_line1,'address_line2'=>$w->address_line2,'city'=>$w->city,'state_region'=>$w->state_region,'postal_code'=>$w->postal_code,
             'timezone'=>$w->timezone,'type'=>$w->type,'ownership_type'=>$w->ownership_type,'is_domestic'=>$w->is_domestic,'is_active'=>$w->is_active,'priority'=>$w->priority,
             'fulfillment_available_on'=>$w->fulfillment_available_on?->format('Y-m-d'),

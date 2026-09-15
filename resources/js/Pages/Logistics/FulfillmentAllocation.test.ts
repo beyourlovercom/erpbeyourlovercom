@@ -14,7 +14,7 @@ const warehouses = [
   { id: 5, slug: 'factory', code: 'FACTORY', name: '中国工厂', country_code: 'CN', can_auto_allocate: false },
   { id: 1, slug: 'us-la', code: 'US-LA', name: '美西MorePlus', country_code: 'US', can_auto_allocate: true },
   { id: 2, slug: 'us-ny', code: 'US-NY', name: '美东纽约', country_code: 'US', can_auto_allocate: true },
-  { id: 7, slug: 'us-sj', code: 'US-SJ', name: '美西世迈', country_code: 'US', can_auto_allocate: true },
+  { id: 7, slug: 'us-3sm', code: 'US-SM', name: '美国3世迈仓', country_code: 'US', can_auto_allocate: true },
   { id: 3, slug: 'de', code: 'DE', name: '德国天运', country_code: 'DE', can_auto_allocate: true },
   { id: 4, slug: 'ca', code: 'CA', name: '加拿大仓', country_code: 'CA', can_auto_allocate: true },
 ]
@@ -29,7 +29,7 @@ const carrierRoutes = {
   FACTORY: { carrier: '4PX', carrier_label: '4PX / 速达', service: 'SD经济挂号-带电', automatic: true },
   'US-LA': { carrier: 'USPS', carrier_label: 'USPS / 美国邮政', service: null, automatic: true },
   'US-NY': { carrier: 'USPS', carrier_label: 'USPS / 美国邮政', service: null, automatic: true },
-  'US-SJ': { carrier: 'USPS', carrier_label: 'USPS / 美国邮政', service: null, automatic: true },
+  'US-SM': { carrier: 'USPS', carrier_label: 'USPS / 美国邮政', service: null, automatic: true },
   DE: { carrier: null, carrier_label: null, service: null, automatic: false },
   CA: { carrier: null, carrier_label: null, service: null, automatic: false },
 }
@@ -47,7 +47,7 @@ const giftItem = {
   id: 103, product_id: 13, product_url: '/products/13', sku: 'gift', source_sku: 'gift', resolved_fulfillment_sku: null, product_summary: 'Website Gift', quantity: 1, is_gift: true,
   availability: [],
   gift_options_by_warehouse: {
-    'US-SJ': [{ mapping_id: 501, warehouse_id: 7, warehouse_code: 'US-SJ', warehouse_name: '美西世迈', fulfillment_product_id: 31, fulfillment_sku: 'GIFT-SM-01', fulfillment_name: '世迈礼品', quantity_available: 8, can_fulfill: true, priority: 1 }],
+    'US-SM': [{ mapping_id: 501, warehouse_id: 7, warehouse_code: 'US-SM', warehouse_name: '美国3世迈仓', fulfillment_product_id: 31, fulfillment_sku: 'GIFT-SM-01', fulfillment_name: '世迈礼品', quantity_available: 8, can_fulfill: true, priority: 1 }],
     'US-LA': [{ mapping_id: 502, warehouse_id: 1, warehouse_code: 'US-LA', warehouse_name: '美西MorePlus', fulfillment_product_id: 32, fulfillment_sku: 'GIFT-MP-02', fulfillment_name: 'MorePlus 礼品', quantity_available: 0, can_fulfill: false, priority: 1 }],
   },
 }
@@ -68,7 +68,7 @@ const factoryPlan = {
 
 const systemOrder = {
   id: 10, erp_order_id: '007-0911-40414', order_url: '/customers/orders/10', recipient_name: 'John Smith', phone: '+1 555 1000', country: 'US', province_state: 'CA', city: 'Los Angeles', address_line_1: '123 West Test Ave', address_line_2: 'Apt 2', postal_code: '90001',
-  us_fulfillment_zone: { status: 'matched', zone: 'west' as const, zone_label: '美西区', postal_code: '90001', zip3: 900, state: 'CA', warehouse_priority: ['US-SJ', 'US-LA'] },
+  us_fulfillment_zone: { status: 'matched', zone: 'west' as const, zone_label: '美西区', postal_code: '90001', zip3: 900, state: 'CA', warehouse_priority: ['US-SM', 'US-LA'] },
   carrier_routes: carrierRoutes,
   item_count: 2, items: [itemA, itemB],
   allocation_decision: {
@@ -137,7 +137,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     expect(wrapper.text()).toContain('V1.1')
     expect(wrapper.text()).toContain('123 West Test Ave, Apt 2, Los Angeles, CA, 90001, US')
     expect(wrapper.text()).toContain('美西区')
-    expect(wrapper.text()).toContain('美西世迈 → 美西MorePlus')
+    expect(wrapper.text()).toContain('美国3世迈仓 → 美西MorePlus')
     expect(wrapper.text()).toContain('007-0911-40414')
     expect(wrapper.text()).toContain('拆分发货')
 
@@ -198,14 +198,14 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     await wrapper.findAll('button').find(button => button.text() === '查看方案')!.trigger('click')
     await flushPromises()
     expect(document.body.textContent).toContain('实际履约 SKU')
-    expect(document.body.textContent).toContain('美西世迈：有货 8')
+    expect(document.body.textContent).toContain('美国3世迈仓：有货 8')
 
     const giftRow = Array.from(document.body.querySelectorAll('.primary-allocation tbody tr')).find(row => row.textContent?.includes('gift')) as HTMLTableRowElement
     expect(giftRow).toBeTruthy()
     const selects = giftRow.querySelectorAll('select')
     expect(selects.length).toBe(3)
     const warehouseSelect = selects[0] as HTMLSelectElement
-    warehouseSelect.value = 'US-SJ'
+    warehouseSelect.value = 'US-SM'
     warehouseSelect.dispatchEvent(new Event('change', { bubbles: true }))
     await flushPromises()
     const giftSelect = giftRow.querySelectorAll('select')[2] as HTMLSelectElement
@@ -223,7 +223,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     await flushPromises()
     const giftRow = Array.from(document.body.querySelectorAll('.primary-allocation tbody tr')).find(row => row.textContent?.includes('gift')) as HTMLTableRowElement
     const warehouseSelect = giftRow.querySelectorAll('select')[0] as HTMLSelectElement
-    warehouseSelect.value = 'US-SJ'
+    warehouseSelect.value = 'US-SM'
     warehouseSelect.dispatchEvent(new Event('change', { bubbles: true }))
     await flushPromises()
 
