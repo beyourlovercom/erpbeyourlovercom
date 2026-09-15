@@ -221,6 +221,7 @@ final class WooCommerceOrderNormalizer
                 continue;
             }
             $quantity = max(1, (int) ($line['quantity'] ?? 1));
+            $lineItemId = (int) ($line['id'] ?? 0);
             $variationId = (int) ($line['variation_id'] ?? 0);
             $productId = (int) ($line['product_id'] ?? 0);
             $remoteProductId = $variationId > 0 ? $variationId : $productId;
@@ -230,6 +231,7 @@ final class WooCommerceOrderNormalizer
                 $price = number_format(((float) ($line['total'] ?? 0)) / $quantity, 2, '.', '');
             }
             $result[] = [
+                'woocommerce_line_item_id' => $lineItemId > 0 ? $lineItemId : null,
                 'woocommerce_product_id' => $remoteProductId > 0 ? $remoteProductId : null,
                 'woocommerce_reference_type' => $referenceType,
                 'sku' => trim((string) ($line['sku'] ?? '')),

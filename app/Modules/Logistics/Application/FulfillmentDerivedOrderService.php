@@ -90,6 +90,7 @@ final class FulfillmentDerivedOrderService
             $resolvedSummary = trim((string) ($segmentItem['resolved_product_summary'] ?? ''));
             $child->items()->create([
                 'product_id' => $resolvedProductId,
+                'woocommerce_line_item_id' => $source->woocommerce_line_item_id,
                 'product_summary' => $resolvedSummary !== '' ? $resolvedSummary : $source->product_summary,
                 'sku' => $resolvedSku !== '' ? $resolvedSku : $source->sku,
                 'source_sku' => $source->source_sku ?: $source->sku,
