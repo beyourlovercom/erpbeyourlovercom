@@ -30,6 +30,8 @@ final class EloquentAccountingContinuousDeltaCandidateStore implements Accountin
                     ->orWhereHas('financials', fn (Builder $financials) => $financials
                         ->whereBetween('updated_at', [$windowStart, $windowEnd]))
                     ->orWhereHas('shipment', fn (Builder $shipment) => $shipment
+                        ->whereBetween('updated_at', [$windowStart, $windowEnd]))
+                    ->orWhereHas('shipment.billingEvidence', fn (Builder $billing) => $billing
                         ->whereBetween('updated_at', [$windowStart, $windowEnd]));
             })
             ->orderBy('id')
