@@ -363,6 +363,11 @@ final class LogisticsOsV1ClosureTest extends TestCase
         $order->forceFill(['order_status' => 'cancelled'])->save();
         $this->actingAs($user)->get('/logistics/cancelled')->assertInertia(fn (Assert $page) => $page
             ->where('orders.data.0.order_id', $order->id)
+            ->where('orders.data.0.erp_order_id', $order->erp_order_id)
+            ->where('orders.data.0.order_date', $order->order_date?->toDateString())
+            ->where('orders.data.0.recipient_name', $order->address?->recipient_name)
+            ->where('orders.data.0.country', $order->address?->country)
+            ->where('orders.data.0.items.0.quantity', (int) $order->items()->firstOrFail()->quantity)
             ->where('orders.data.0.order_url', "/customers/orders/{$order->id}"));
     }
 
