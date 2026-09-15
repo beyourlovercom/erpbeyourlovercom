@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Application\OverseaTrackingReturnService;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
@@ -19,7 +20,10 @@ final class OverseaWarehouseController
     private const PER_PAGE = 25;
     private const VIEWS = ['review', 'pending', 'shipped', 'exceptions', 'all'];
 
-    public function __construct(private readonly OverseaWarehouseReviewService $reviews) {}
+    public function __construct(
+        private readonly OverseaWarehouseReviewService $reviews,
+        private readonly OverseaTrackingReturnService $trackingReturns,
+    ) {}
 
     public function index(Request $request, ?string $warehouse = null): Response
     {
@@ -52,6 +56,7 @@ final class OverseaWarehouseController
             'viewCounts' => $this->viewCounts($warehouseMap, $selectedWarehouse),
             'canOperate' => $warehouseKey !== 'all' && (bool) $request->user()?->can('logistics.operate'),
             'carrierOptions' => Carrier::query()->where('is_active', true)->orderBy('name')->pluck('name')->values()->all(),
+            'trackingImportPreview' => $warehouseKey === 'all' ? null : (collect((array) $request->session()->get($this->trackingSessionKey($warehouseKey), []))->except('normalized_rows')->all() ?: null),
         ]);
     }
 
@@ -75,7 +80,7 @@ final class OverseaWarehouseController
         return response()->streamDownload(function () use ($rows): void {
             $out = fopen('php://output', 'wb');
             fwrite($out, "\xEF\xBB\xBF");
-            fputcsv($out, ['订单号', '收件人', '电话', '地址', '地址2', '城市', '州/省', '邮编', '国家', 'SKU/数量', '仓库', 'Carrier', 'Tracking No.', '备注']);
+            fputcsv($out, ['订单号', '收件人', '电话', '地址', '地址2', '城市', '州/省', '邮编', '国家', 'SKU/数量', '仓库', 'Carrier', 'Tracking No.', '发货时间(ISO8601含时区)', '备注']);
             foreach ($rows as $shipment) {
                 $order = $shipment->order;
                 $address = $order?->address;
@@ -85,11 +90,40 @@ final class OverseaWarehouseController
                     $address?->address_line_1, $address?->address_line_2, $address?->city,
                     $address?->province_state, $address?->postal_code, $address?->country,
                     $items, $shipment->warehouse?->name, $shipment->carrier,
-                    $shipment->tracking_number, $shipment->overseaReview?->note,
+                    $shipment->tracking_number, $shipment->shipped_at?->toIso8601String(), $shipment->overseaReview?->note,
                 ]);
             }
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    public function previewTrackingReturn(Request $request, string $warehouse): RedirectResponse
+    {
+        $warehouse = in_array($warehouse, ['us-sm', 'us-sj', 'usa-sj'], true) ? 'us-3sm' : $warehouse;
+        abort_unless(array_key_exists($warehouse, OverseaWarehouseReviewService::WAREHOUSE_CODE_BY_KEY), 404);
+        $request->validate(['file' => ['required', 'file', 'mimes:csv,txt', 'max:10240']]);
+        $preview = $this->trackingReturns->preview($warehouse, $request->file('file'));
+        $request->session()->put($this->trackingSessionKey($warehouse), $preview);
+
+        return redirect("/logistics/oversea/{$warehouse}?view=pending")
+            ->with('success', sprintf('单号表预览完成：可应用 %d，重复/已应用 %d，阻断 %d。', $preview['apply_count'], $preview['noop_count'], $preview['blocked_count']));
+    }
+
+    public function applyTrackingReturn(Request $request, string $warehouse): RedirectResponse
+    {
+        $warehouse = in_array($warehouse, ['us-sm', 'us-sj', 'usa-sj'], true) ? 'us-3sm' : $warehouse;
+        abort_unless(array_key_exists($warehouse, OverseaWarehouseReviewService::WAREHOUSE_CODE_BY_KEY), 404);
+        $data = $request->validate(['token' => ['required', 'string', 'size:64']]);
+        $key = $this->trackingSessionKey($warehouse);
+        $stored = $request->session()->get($key);
+        abort_unless(is_array($stored), 409, '没有有效的单号表预览，请重新上传。');
+        $result = $this->trackingReturns->apply($warehouse, $stored, $data['token'], $request->user());
+        $request->session()->forget($key);
+        $syncCompleted = collect($result['sync'])->where('status', 'completed')->count();
+        $syncAttention = collect($result['sync'])->whereNotIn('status', ['completed'])->count();
+
+        return redirect("/logistics/oversea/{$warehouse}?view=shipped")
+            ->with('success', sprintf('回传已应用：发货 %d，重复跳过 %d，Woo 已验证 %d，需关注 %d。', $result['applied_count'], $result['noop_count'], $syncCompleted, $syncAttention));
     }
 
     public function updateDraft(Request $request, Order $order): RedirectResponse
@@ -125,6 +159,11 @@ final class OverseaWarehouseController
         $data = $request->validate(['note' => ['required', 'string', 'max:1000']]);
         $this->reviews->reject($order, trim($data['note']), $request->user());
         return back()->with('success', '订单已驳回并退回运营重新分仓');
+    }
+
+    private function trackingSessionKey(string $warehouseKey): string
+    {
+        return 'logistics.oversea_tracking_return.'.$warehouseKey;
     }
 
     private function warehouseMap(): array
