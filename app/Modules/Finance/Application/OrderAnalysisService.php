@@ -169,6 +169,48 @@ final class OrderAnalysisService
         return $values;
     }
 
+    public function visibility(Model $order): array
+    {
+        $financials = $order->relationLoaded('financials') ? $order->financials : $order->financials()->first();
+        $entries = $order->relationLoaded('costEntries') ? $order->costEntries : $order->costEntries()->get();
+        $byType = $entries->keyBy('cost_type');
+
+        return [
+            'summary' => $this->summary($order),
+            'values' => $this->values($order),
+            'revenue' => [
+                'currency' => strtoupper((string) ($financials?->currency ?? $order->currency ?? 'USD')),
+                'provenance' => $financials?->revenue_provenance,
+                'reconciliation_status' => $financials?->reconciliation_status,
+                'provider_order_status' => $financials?->provider_order_status,
+            ],
+            'cost_lines' => collect(self::COST_FIELDS)->map(function (string $field) use ($byType): array {
+                $entry = $byType->get($field);
+                if (! $entry) {
+                    return ['cost_type' => $field, 'state' => 'missing', 'amount' => null, 'currency' => null, 'provenance' => null, 'status' => null, 'source_reference' => null, 'source_at' => null, 'effective_at' => null];
+                }
+
+                $provenance = (string) ($entry->provenance ?? 'confirmed_manual');
+                $status = (string) ($entry->status ?? 'confirmed');
+                $state = ($provenance === 'estimated_reference' || $status === 'estimated')
+                    ? 'estimated'
+                    : ((in_array($status, ['confirmed', 'adjusted'], true) && in_array($provenance, self::CONFIRMED_COST_PROVENANCE, true)) ? 'confirmed' : 'review');
+
+                return [
+                    'cost_type' => $field,
+                    'state' => $state,
+                    'amount' => (string) $entry->amount,
+                    'currency' => strtoupper((string) $entry->currency),
+                    'provenance' => $provenance,
+                    'status' => $status,
+                    'source_reference' => $entry->source_reference,
+                    'source_at' => $entry->source_at?->toIso8601String(),
+                    'effective_at' => $entry->effective_at?->toIso8601String(),
+                ];
+            })->values()->all(),
+        ];
+    }
+
     private function projection(Model $order, bool $preserveReconciled): array
     {
         $financials = $order->relationLoaded('financials') ? $order->financials : $order->financials()->first();
@@ -201,6 +243,21 @@ final class OrderAnalysisService
             : null;
 
         $currency = strtoupper((string) ($financials?->currency ?? $order->currency ?? 'USD'));
+        $postedCostEntries = collect(self::COST_FIELDS)->filter(fn (string $field): bool => $byType->has($field))->map(fn (string $field) => $byType->get($field));
+        $postedCostCount = $postedCostEntries->count();
+        $estimatedCostCount = $postedCostEntries->filter(fn ($entry): bool => ($entry->provenance ?? null) === 'estimated_reference' || ($entry->status ?? null) === 'estimated')->count();
+        $confirmedCostCount = $postedCostEntries->filter(function ($entry): bool {
+            return in_array((string) ($entry->status ?? 'confirmed'), ['confirmed', 'adjusted'], true)
+                && in_array((string) ($entry->provenance ?? 'confirmed_manual'), self::CONFIRMED_COST_PROVENANCE, true);
+        })->count();
+        $knownCostCurrencyCompatible = $postedCostEntries->every(fn ($entry): bool => strtoupper((string) $entry->currency) === $currency);
+        $knownCostCents = $knownCostCurrencyCompatible
+            ? $postedCostEntries->sum(fn ($entry): int => $this->cents($entry->amount))
+            : null;
+        $currentStageProfitCents = $netRevenueCents !== null && $knownCostCents !== null ? $netRevenueCents - $knownCostCents : null;
+        $currentStageMargin = $currentStageProfitCents !== null && $netRevenueCents !== 0
+            ? bcdiv((string) $currentStageProfitCents, (string) $netRevenueCents, 4)
+            : null;
         $fxFrozen = $currency === 'USD' || ($financials?->fx_rate !== null && $financials?->fx_rate_date !== null && $financials?->fx_rate_source !== null);
         $aggregationMissing = $fxFrozen ? [] : ['transaction_fx_snapshot'];
 
@@ -224,6 +281,13 @@ final class OrderAnalysisService
             'base_currency_aggregate_eligible' => $fxFrozen,
             'commercial_revenue_before_refund' => $commercialBeforeRefund === null ? null : $this->money($commercialBeforeRefund),
             'net_revenue' => $netRevenueCents === null ? null : $this->money($netRevenueCents),
+            'known_cost' => $knownCostCents === null ? null : $this->money($knownCostCents),
+            'current_stage_profit' => $currentStageProfitCents === null ? null : $this->money($currentStageProfitCents),
+            'current_stage_margin' => $currentStageMargin,
+            'posted_cost_count' => $postedCostCount,
+            'confirmed_cost_count' => $confirmedCostCount,
+            'estimated_cost_count' => $estimatedCostCount,
+            'required_cost_count' => count(self::COST_FIELDS),
             'total_cost' => $totalCostCents === null ? null : $this->money($totalCostCents),
             'contribution_profit' => $profitCents === null ? null : $this->money($profitCents),
             'margin' => $margin,

@@ -27,6 +27,13 @@ type Summary = {
     base_currency_aggregate_eligible: boolean
     commercial_revenue_before_refund: string | null
     net_revenue: string | null
+    known_cost: string | null
+    current_stage_profit: string | null
+    current_stage_margin: string | null
+    posted_cost_count: number
+    confirmed_cost_count: number
+    estimated_cost_count: number
+    required_cost_count: number
     total_cost: string | null
     contribution_profit: string | null
     margin: string | null
@@ -79,6 +86,7 @@ type ColumnKey =
     | 'other_cost'
     | 'total_cost'
     | 'profit'
+    | 'final_profit'
     | 'margin'
     | 'completeness'
     | 'missing'
@@ -116,9 +124,10 @@ const definitions: GridColumnDefinition<ColumnKey>[] = [
     { key: 'product_cost', label: '产品成本' },
     { key: 'shipping_cost', label: '物流成本' },
     { key: 'other_cost', label: '其他成本' },
-    { key: 'total_cost', label: '总成本' },
-    { key: 'profit', label: '利润' },
-    { key: 'margin', label: 'Margin' },
+    { key: 'total_cost', label: '已知成本' },
+    { key: 'profit', label: '当前阶段利润' },
+    { key: 'final_profit', label: '最终确认利润' },
+    { key: 'margin', label: '阶段 Margin' },
     { key: 'completeness', label: '完整性' },
     { key: 'missing', label: '缺失项' },
 ]
@@ -237,12 +246,11 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
     product_cost: money(row.summary.cost_breakdown.product_cost, row),
     shipping_cost: money(row.summary.cost_breakdown.logistics_cost, row),
     other_cost: money(row.summary.cost_breakdown.other_cost, row),
-    total_cost: money(row.summary.total_cost, row),
-    profit: row.summary.profit_status === 'estimated'
-        ? `≈ ${money(row.summary.contribution_profit, row)}`
-        : money(row.summary.contribution_profit, row),
-    margin: margin(row.summary.margin),
-    completeness: statusLabel(row.summary.finance_status),
+    total_cost: money(row.summary.known_cost, row),
+    profit: money(row.summary.current_stage_profit, row),
+    final_profit: row.summary.profit_status === 'confirmed' ? money(row.summary.contribution_profit, row) : '待确认',
+    margin: margin(row.summary.current_stage_margin),
+    completeness: `${statusLabel(row.summary.finance_status)} · ${row.summary.posted_cost_count}/${row.summary.required_cost_count}`,
     missing: missingText(row),
 }[key])
 </script>
@@ -268,6 +276,12 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
                 <div class="kpi-card"><span>未确认 / 不完整</span><strong>{{ kpis.incomplete_orders }}</strong></div>
                 <div class="kpi-card"><span>利润完整率</span><strong>{{ kpis.completeness_percent }}%</strong></div>
                 <div class="kpi-card"><span>USD 汇总待 FX</span><strong>{{ kpis.fx_pending_orders }}</strong></div>
+            </div>
+
+            <div class="profit-formula-strip">
+                <div><strong>当前阶段利润</strong><span>= 净收入 − 当前已入账成本</span></div>
+                <div><strong>最终确认利润</strong><span>= 净收入 − 产品成本 − 仓库成本 − 头程成本 − 海外仓操作费 − 尾程物流 − 支付手续费 − KOL佣金 − 关税 − 退款/补发损失 − 其他变动成本</span></div>
+                <p>成本缺失不会自动补 0；列表会先展示当前阶段利润，只有全部必要成本事实齐全时才显示最终确认利润。</p>
             </div>
 
             <form class="mvp-toolbar filter-grid" @submit.prevent="submit">
@@ -438,6 +452,10 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
 
 <style scoped>
 .kpi-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.profit-formula-strip { margin: 0 0 16px; padding: 13px 15px; border: 1px solid #dfe7ea; border-radius: 8px; background: #f7faff; display: grid; gap: 7px; }
+.profit-formula-strip div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 10px; align-items: start; font-size: 12px; color: #40555c; }
+.profit-formula-strip strong { color: #18282d; }
+.profit-formula-strip p { margin: 2px 0 0; color: #71848b; font-size: 11px; }
 .kpi-card { border: 1px solid #e1e8e8; background: #f7f9f9; border-radius: 8px; padding: 14px; display: grid; gap: 4px; }
 .kpi-card span { color: #64757a; font-size: 12px; }
 .kpi-card strong { font-size: 22px; color: #18282d; }

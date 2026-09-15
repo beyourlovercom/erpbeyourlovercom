@@ -3,6 +3,7 @@
 namespace App\Modules\Orders\Experience\Controllers;
 
 use App\Modules\Audit\Infrastructure\Models\AuditRecord;
+use App\Modules\Finance\Application\OrderAnalysisService;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Kol\Application\SavedViewService;
 use App\Modules\Orders\Application\OrderKind;
@@ -25,6 +26,7 @@ final class OrderController
         private readonly InventoryAvailabilityReader $availability,
         private readonly SavedViewService $views,
         private readonly OrderPackagingReferenceProjection $packagingReferences,
+        private readonly OrderAnalysisService $orderAnalysis,
     ) {}
 
     public function index(Request $request): Response
@@ -101,7 +103,7 @@ final class OrderController
     public function show(Request $request, Order $order): Response
     {
         $this->authorizeKind($request, $order);
-        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync', 'operationalMarkers', 'procurementOrder']);
+        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync', 'operationalMarkers', 'procurementOrder', 'financials', 'costEntries']);
         $inventoryAvailability = $this->availability->forProductIds($order->items->pluck('product_id')->filter()->unique()->values()->all());
 
         return Inertia::render('Orders/Show', [
@@ -109,6 +111,7 @@ final class OrderController
             'inventoryAvailability' => $inventoryAvailability,
             'packagingReferences' => $this->packagingReferences->forOrder($order),
             'warehouses' => $this->availability->activeWarehouses(),
+            'profitVisibility' => $order->order_kind === OrderKind::Customer ? $this->orderAnalysis->visibility($order) : null,
             'canMarkOperational' => $request->user()?->can('orders.edit') ?? false,
             'canCreateProcurement' => ($request->user()?->can('procurement.create') ?? false) && $order->operationalMarkers->contains('marker', 'stockout'),
             'canManageProductPackaging' => $request->user()?->can('products.operate') ?? false,
