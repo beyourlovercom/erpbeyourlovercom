@@ -94,6 +94,40 @@ final class Mvp1WorkflowTest extends TestCase
         $this->actingAs($user)->get('/accounting/order-costs/export')->assertOk()->assertHeader('content-type', 'text/csv; charset=UTF-8');
     }
 
+    public function test_order_profit_visibility_exposes_current_stage_profit_without_promoting_it_to_final_profit(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create', 'analysis.view']);
+        $this->actingAs($user)->post('/customers/orders', $this->orderPayload())->assertRedirect();
+        $order = Order::query()->firstOrFail();
+
+        $this->actingAs($user)->put('/accounting/order-costs/'.$order->id, [
+            'amount_paid' => '100.00',
+            'refund_amount' => '0.00',
+            'product_cost' => '20.00',
+            'last_mile_cost' => '10.00',
+            'payment_fee' => '3.00',
+        ])->assertRedirect();
+
+        $this->actingAs($user)->get('/customers/orders/'.$order->id)->assertInertia(fn (Assert $page) => $page
+            ->where('profitVisibility.summary.net_revenue', '100.00')
+            ->where('profitVisibility.summary.known_cost', '33.00')
+            ->where('profitVisibility.summary.current_stage_profit', '67.00')
+            ->where('profitVisibility.summary.current_stage_margin', '0.6700')
+            ->where('profitVisibility.summary.posted_cost_count', 3)
+            ->where('profitVisibility.summary.required_cost_count', 10)
+            ->where('profitVisibility.summary.profit_status', 'not_confirmed')
+            ->where('profitVisibility.summary.contribution_profit', null)
+            ->where('profitVisibility.cost_lines.0.cost_type', 'product_cost')
+            ->where('profitVisibility.cost_lines.0.state', 'confirmed')
+        );
+
+        $this->actingAs($user)->get('/accounting/order-costs')->assertInertia(fn (Assert $page) => $page
+            ->where('orders.0.summary.known_cost', '33.00')
+            ->where('orders.0.summary.current_stage_profit', '67.00')
+            ->where('orders.0.summary.contribution_profit', null)
+        );
+    }
+
     public function test_restricted_role_cannot_mutate_orders_fulfillment_or_sync(): void
     {
         $owner = $this->userWith(['orders.view', 'orders.create', 'orders.edit', 'logistics.view', 'logistics.operate', 'sync.view', 'sync.operate', 'analysis.view']);

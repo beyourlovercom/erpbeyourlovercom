@@ -19,6 +19,43 @@ import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; inventory_state: string; can_auto_allocate: boolean; quantity_on_hand: number | null; quantity_reserved: number | null; quantity_available: number | null }
 type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null }
 
+type ProfitCostLine = {
+  cost_type: string
+  state: 'confirmed' | 'estimated' | 'review' | 'missing'
+  amount: string | null
+  currency: string | null
+  provenance: string | null
+  status: string | null
+  source_reference: string | null
+  source_at: string | null
+  effective_at: string | null
+}
+
+type ProfitSummary = {
+  finance_status: string
+  profit_status: string
+  missing_facts: string[]
+  aggregation_missing_facts: string[]
+  net_revenue: string | null
+  known_cost: string | null
+  current_stage_profit: string | null
+  current_stage_margin: string | null
+  posted_cost_count: number
+  confirmed_cost_count: number
+  estimated_cost_count: number
+  required_cost_count: number
+  total_cost: string | null
+  contribution_profit: string | null
+  margin: string | null
+}
+
+type ProfitVisibility = {
+  summary: ProfitSummary
+  values: Record<string, string | null>
+  revenue: { currency: string; provenance: string | null; reconciliation_status: string | null; provider_order_status: string | null }
+  cost_lines: ProfitCostLine[]
+}
+
 type OrderItem = {
   id: number
   product_id: number | null
@@ -83,7 +120,8 @@ const props = withDefaults(defineProps<{
   canManageProductPackaging?: boolean
   canViewPackagingEvidence?: boolean
   canCreateProcurement?: boolean
-}>(), { canMarkOperational: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false })
+  profitVisibility?: ProfitVisibility | null
+}>(), { canMarkOperational: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, profitVisibility: null })
 
 const isKol = computed(() => props.order.order_kind === 'kol_fulfillment')
 const basePath = computed(() => isKol.value ? '/kol/orders' : '/customers/orders')
@@ -165,6 +203,33 @@ const shipmentStatusLabel = computed(() => {
   if (s === 'returned') return '已退回'
   return '待发货'
 })
+
+const profitSummary = computed(() => props.profitVisibility?.summary ?? null)
+const profitCurrency = computed(() => props.profitVisibility?.revenue.currency ?? props.order.currency)
+const costLabels: Record<string, string> = {
+  product_cost: '产品成本', warehouse_cost: '仓库成本', first_mile_cost: '头程成本', overseas_handling_cost: '海外仓操作费',
+  last_mile_cost: '尾程物流', kol_commission: 'KOL 佣金', payment_fee: '支付手续费', customs_tax: '关税',
+  refund_replacement_loss: '退款 / 补发损失', other_variable_cost: '其他变动成本',
+}
+const missingProfitLabels: Record<string, string> = {
+  settlement_components: '收入结算事实', merchandise_list_amount: '商品收入', discount_amount: '折扣', shipping_revenue: '运费收入', refund_amount: '退款',
+  provider_order_total: 'Woo 订单总额', tax_collected: '已收税额', payment_settlement: '付款结算证据', provider_reconciliation: 'Woo 收入对账', revenue_provenance: '收入来源',
+  product_cost: '产品成本', warehouse_cost: '仓库成本', first_mile_cost: '头程成本', overseas_handling_cost: '海外仓操作费', last_mile_cost: '尾程物流',
+  kol_commission: 'KOL 佣金', payment_fee: '支付手续费', customs_tax: '关税', refund_replacement_loss: '退款 / 补发损失', other_variable_cost: '其他变动成本',
+  transaction_fx_snapshot: 'FX 快照',
+}
+const profitMoney = (value: string | null, currency = profitCurrency.value) => value === null ? '—' : `${currency} ${value}`
+const profitMargin = (value: string | null) => value === null ? '—' : `${(Number(value) * 100).toFixed(2)}%`
+const profitStateLabel = (state: ProfitCostLine['state']) => ({ confirmed: '已确认', estimated: '估算', review: '待复核', missing: '待补充' }[state])
+const provenanceLabel = (value: string | null) => ({ provider_import: '账单导入', estimated_reference: '参考估算', confirmed_manual: '手工确认', allocated_actual: '实际分摊', actual: '实际' }[value ?? ''] ?? value ?? '—')
+const profitMissingText = computed(() => {
+  const rows = [...(profitSummary.value?.missing_facts ?? []), ...(profitSummary.value?.aggregation_missing_facts ?? [])]
+  return rows.length ? rows.map(item => missingProfitLabels[item] ?? missingProfitLabels[item.replace(/_(not_confirmed|provenance_unapproved)$/, '')] ?? item.replace(/_/g, ' ')).join('、') : '无'
+})
+const costCompletionPercent = computed(() => {
+  const summary = profitSummary.value
+  return summary && summary.required_cost_count > 0 ? Math.round(summary.posted_cost_count / summary.required_cost_count * 100) : 0
+})
 </script>
 
 <template>
@@ -238,6 +303,67 @@ const shipmentStatusLabel = computed(() => {
             >
               重开发货
             </button>
+          </div>
+        </div>
+
+        <!-- P6D: transparent Order Profit projection -->
+        <div v-if="profitVisibility && profitSummary" class="erp-form-card ord-profit-card">
+          <div class="ord-profit-heading">
+            <div>
+              <h2 class="erp-form-card-title">订单利润</h2>
+              <p class="ord-inventory-help">当前阶段利润按已入账成本实时计算；最终利润仅在全部必要成本事实齐全后确认。</p>
+            </div>
+            <div class="ord-profit-statuses">
+              <span class="ord-profit-pill current">当前阶段利润</span>
+              <span class="ord-profit-pill" :class="{ confirmed: profitSummary.profit_status === 'confirmed' }">
+                {{ profitSummary.profit_status === 'confirmed' ? '最终利润已确认' : '最终利润待确认' }}
+              </span>
+            </div>
+          </div>
+
+          <div class="ord-profit-metrics">
+            <div class="ord-profit-metric"><small>净收入</small><strong>{{ profitMoney(profitSummary.net_revenue) }}</strong><span>收入来源：{{ provenanceLabel(profitVisibility.revenue.provenance) }}</span></div>
+            <div class="ord-profit-metric"><small>已知成本</small><strong>{{ profitMoney(profitSummary.known_cost) }}</strong><span>{{ profitSummary.posted_cost_count }} / {{ profitSummary.required_cost_count }} 项已入账</span></div>
+            <div class="ord-profit-metric emphasis"><small>当前阶段利润</small><strong>{{ profitMoney(profitSummary.current_stage_profit) }}</strong><span>阶段 Margin {{ profitMargin(profitSummary.current_stage_margin) }}</span></div>
+            <div class="ord-profit-metric"><small>最终确认利润</small><strong>{{ profitMoney(profitSummary.contribution_profit) }}</strong><span>{{ profitSummary.profit_status === 'confirmed' ? `最终 Margin ${profitMargin(profitSummary.margin)}` : '待全部必要成本确认' }}</span></div>
+          </div>
+
+          <div class="ord-profit-layout">
+            <div class="ord-profit-costs">
+              <div class="ord-profit-subheading"><strong>成本明细</strong><span>成本覆盖 {{ costCompletionPercent }}%</span></div>
+              <div class="ord-profit-table-wrap">
+                <table class="ord-profit-table">
+                  <thead><tr><th>成本项</th><th>金额</th><th>状态</th><th>来源 / 说明</th></tr></thead>
+                  <tbody>
+                    <tr v-for="line in profitVisibility.cost_lines" :key="line.cost_type">
+                      <td>{{ costLabels[line.cost_type] ?? line.cost_type }}</td>
+                      <td>{{ line.amount === null ? '—' : profitMoney(line.amount, line.currency ?? profitCurrency) }}</td>
+                      <td><span class="ord-profit-cost-state" :class="`state-${line.state}`">{{ profitStateLabel(line.state) }}</span></td>
+                      <td>
+                        <span>{{ provenanceLabel(line.provenance) }}</span>
+                        <small v-if="line.source_reference" :title="line.source_reference">{{ line.source_reference }}</small>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <aside class="ord-profit-side">
+              <div class="ord-profit-completeness">
+                <div class="ord-profit-ring"><strong>{{ costCompletionPercent }}%</strong></div>
+                <div><strong>{{ profitSummary.posted_cost_count }} / {{ profitSummary.required_cost_count }} 项成本已入账</strong><p>已确认 {{ profitSummary.confirmed_cost_count }} 项 · 估算 {{ profitSummary.estimated_cost_count }} 项</p></div>
+              </div>
+              <div class="ord-profit-missing"><strong>尚缺事实</strong><p>{{ profitMissingText }}</p></div>
+              <div class="ord-profit-formula">
+                <strong>利润公式</strong>
+                <p><b>净收入</b> = 商品收入 − 折扣 + 运费收入 − 退款</p>
+                <p><b>当前阶段利润</b> = 净收入 − 当前已入账成本</p>
+                <p><b>最终利润</b> = 净收入 − 产品成本 − 仓库成本 − 头程成本 − 海外仓操作费 − 尾程物流 − 支付手续费 − KOL佣金 − 关税 − 退款/补发损失 − 其他变动成本</p>
+                <small>缺失成本不会自动补 0；最终利润只有在 Finance completeness 允许时才确认。</small>
+              </div>
+              <a class="ord-profit-link" :href="`/accounting/order-costs?search=${encodeURIComponent(order.erp_order_id ?? '')}`">在订单利润列表查看 →</a>
+            </aside>
           </div>
         </div>
 
@@ -690,6 +816,44 @@ const shipmentStatusLabel = computed(() => {
   color: #7a8c94;
 }
 
+.ord-profit-card { overflow: hidden; }
+.ord-profit-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:16px; }
+.ord-profit-statuses { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.ord-profit-pill { display:inline-flex; align-items:center; min-height:28px; padding:4px 10px; border:1px solid #d7e0e3; border-radius:999px; background:#f7f9fa; color:#66787f; font-size:12px; font-weight:700; }
+.ord-profit-pill.current { border-color:#f4ca78; background:#fff7e7; color:#a65c00; }
+.ord-profit-pill.confirmed { border-color:#b9dfcb; background:#edf9f2; color:#16705f; }
+.ord-profit-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+.ord-profit-metric { display:flex; flex-direction:column; gap:5px; padding:14px; border:1px solid #e3e9eb; border-radius:12px; background:#fafcfc; }
+.ord-profit-metric small,.ord-profit-metric span { color:#71848b; font-size:12px; }
+.ord-profit-metric strong { color:#16272d; font-size:22px; }
+.ord-profit-metric.emphasis strong { color:#15865f; }
+.ord-profit-layout { display:grid; grid-template-columns:minmax(0,1.75fr) minmax(280px,.85fr); gap:14px; align-items:start; }
+.ord-profit-costs,.ord-profit-side > div { border:1px solid #e0e7e9; border-radius:12px; background:#fff; }
+.ord-profit-subheading { display:flex; justify-content:space-between; gap:12px; padding:12px 14px; border-bottom:1px solid #e5ebed; }
+.ord-profit-subheading span { color:#6e8188; font-size:12px; }
+.ord-profit-table-wrap { overflow-x:auto; }
+.ord-profit-table { width:100%; border-collapse:collapse; min-width:660px; font-size:12px; }
+.ord-profit-table th,.ord-profit-table td { padding:9px 11px; border-bottom:1px solid #edf1f2; text-align:left; vertical-align:top; }
+.ord-profit-table th { background:#f6f9f9; color:#61747b; font-weight:700; }
+.ord-profit-table td:nth-child(2) { white-space:nowrap; font-weight:700; }
+.ord-profit-table td:last-child { max-width:320px; color:#4e6269; }
+.ord-profit-table td:last-child small { display:block; margin-top:3px; color:#8a999e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ord-profit-cost-state { display:inline-flex; padding:3px 8px; border-radius:999px; background:#eef2f3; color:#62757c; font-weight:700; white-space:nowrap; }
+.ord-profit-cost-state.state-confirmed { background:#e9f7ef; color:#16705f; }
+.ord-profit-cost-state.state-estimated { background:#fff5db; color:#9b6200; }
+.ord-profit-cost-state.state-review { background:#fff0ec; color:#aa4a32; }
+.ord-profit-side { display:grid; gap:12px; }
+.ord-profit-completeness { display:flex; align-items:center; gap:12px; padding:14px; }
+.ord-profit-completeness p,.ord-profit-missing p { margin:4px 0 0; color:#71848b; font-size:12px; }
+.ord-profit-ring { width:66px; height:66px; flex:0 0 66px; display:grid; place-items:center; border:7px solid #dfe9ed; border-top-color:#2b78e4; border-radius:50%; }
+.ord-profit-ring strong { font-size:16px; }
+.ord-profit-missing { padding:12px 14px; }
+.ord-profit-formula { padding:14px; background:#f7faff !important; }
+.ord-profit-formula p { margin:8px 0; color:#40555c; font-size:12px; line-height:1.6; }
+.ord-profit-formula small { color:#7a8c94; line-height:1.5; }
+.ord-profit-link { display:inline-flex; justify-content:flex-end; color:#1769d2; font-size:12px; font-weight:700; text-decoration:none; }
+.ord-profit-link:hover { text-decoration:underline; }
+
 @media (max-width: 767px) {
   .erp-form-header-actions {
     width: 100%;
@@ -704,6 +868,10 @@ const shipmentStatusLabel = computed(() => {
   .ord-fulfillment-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+  .ord-profit-metrics { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .ord-profit-layout { grid-template-columns: 1fr; }
+  .ord-profit-heading { flex-direction: column; }
+  .ord-profit-statuses { justify-content: flex-start; }
   .ord-item-row,
   .ord-item-row-view,
   .ord-packaging-row {
