@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\OverseaTrackingReturnService;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
@@ -23,6 +24,7 @@ final class OverseaWarehouseController
     public function __construct(
         private readonly OverseaWarehouseReviewService $reviews,
         private readonly OverseaTrackingReturnService $trackingReturns,
+        private readonly LogisticsExecutionAccess $executionAccess,
     ) {}
 
     public function index(Request $request, ?string $warehouse = null): Response
@@ -54,7 +56,7 @@ final class OverseaWarehouseController
             'view' => $view,
             'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => $this->row($shipment, $start + $index + 1))->toArray(),
             'viewCounts' => $this->viewCounts($warehouseMap, $selectedWarehouse),
-            'canOperate' => $warehouseKey !== 'all' && (bool) $request->user()?->can('logistics.operate'),
+            'canOperate' => $warehouseKey !== 'all' && $this->executionAccess->allows($request->user()),
             'carrierOptions' => Carrier::query()->where('is_active', true)->orderBy('name')->pluck('name')->values()->all(),
             'trackingImportPreview' => $warehouseKey === 'all' ? null : (collect((array) $request->session()->get($this->trackingSessionKey($warehouseKey), []))->except('normalized_rows')->all() ?: null),
         ]);

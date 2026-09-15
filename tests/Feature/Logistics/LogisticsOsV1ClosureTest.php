@@ -337,6 +337,46 @@ final class LogisticsOsV1ClosureTest extends TestCase
         );
     }
 
+    public function test_administrator_role_is_read_only_across_frontline_logistics_surfaces(): void
+    {
+        $admin = $this->userWithExactRole(['logistics.view', 'logistics.operate'], 'role_preset_administrator');
+        $surfaces = [
+            '/logistics/pending' => 'Logistics/Index',
+            '/logistics/awaiting-tracking' => 'Logistics/AwaitingTracking',
+            '/logistics/in-transit' => 'Logistics/InTransit',
+            '/logistics/exceptions' => 'Logistics/Exceptions',
+            '/logistics/review' => 'Logistics/Review',
+        ];
+
+        foreach ($surfaces as $path => $component) {
+            $this->actingAs($admin)->get($path)->assertInertia(
+                fn (Assert $page) => $page->component($component)->where('canOperate', false)
+            );
+        }
+    }
+
+    public function test_administrator_cannot_execute_frontline_logistics_even_with_operate_permission(): void
+    {
+        [, $order] = $this->scenario();
+        $admin = $this->userWithExactRole(['logistics.view', 'logistics.operate'], 'role_preset_administrator');
+
+        $this->actingAs($admin)->post("/logistics/orders/{$order->id}/draft", [])->assertForbidden();
+        $this->actingAs($admin)->post("/logistics/orders/{$order->id}/ship", [])->assertForbidden();
+        $this->actingAs($admin)->post('/logistics/oversea/us-ny/tracking-import/preview', [])->assertForbidden();
+        $this->actingAs($admin)->post('/logistics/oversea/us-ny/tracking-import/apply', [])->assertForbidden();
+    }
+
+    public function test_super_admin_is_also_read_only_for_frontline_logistics_execution(): void
+    {
+        [, $order] = $this->scenario();
+        $superAdmin = $this->userWithExactRole([], 'super_admin');
+
+        $this->actingAs($superAdmin)->get('/logistics/pending')->assertInertia(
+            fn (Assert $page) => $page->component('Logistics/Index')->where('canOperate', false)
+        );
+        $this->actingAs($superAdmin)->post("/logistics/orders/{$order->id}/ship", [])->assertForbidden();
+    }
+
     public function test_prototype_only_permission_cannot_bypass_pending_logistics_view(): void
     {
         $prototypeOnly = $this->userWith(['prototype.view']);
@@ -520,6 +560,18 @@ final class LogisticsOsV1ClosureTest extends TestCase
             $payload['tracking_number'] = $tracking;
         }
         $this->actingAs($user)->post("/logistics/orders/{$order->id}/ship", $payload)->assertRedirect();
+    }
+
+    private function userWithExactRole(array $permissions, string $roleKey): User
+    {
+        $role = Role::create(['key' => $roleKey, 'label' => 'Logistics Exact Role Test']);
+        foreach ($permissions as $permission) {
+            $role->permissions()->firstOrCreate(['key' => $permission], ['label' => $permission]);
+        }
+        $user = User::factory()->create(['is_active' => true]);
+        $user->roles()->attach($role);
+
+        return $user;
     }
 
     private function userWith(array $permissions, string $roleKey = 'logistics-os-v1-'.PHP_INT_MAX): User
