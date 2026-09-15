@@ -48,6 +48,9 @@ Route::middleware(['web','auth','can:inventory.warehouses.manage'])->group(funct
 Route::middleware(['web','auth','can:inventory.operate'])->group(function (): void {
     Route::post('/inventory/{warehouse}/stock',[WarehouseController::class,'saveInventory'])->name('inventory.stock.store');
     Route::patch('/inventory/{warehouse}/stock/{inventory}',[WarehouseController::class,'updateInventory'])->name('inventory.stock.update');
+    Route::post('/inventory/{warehouse}/clearance',[WarehouseController::class,'addClearance'])->name('inventory.clearance.store');
+    Route::patch('/inventory/{warehouse}/clearance/{clearance}',[WarehouseController::class,'updateClearance'])->whereNumber('clearance')->name('inventory.clearance.update');
+    Route::delete('/inventory/{warehouse}/clearance/{clearance}',[WarehouseController::class,'removeClearance'])->whereNumber('clearance')->name('inventory.clearance.destroy');
     Route::get('/inventory/sync',[InventorySyncController::class,'index'])->name('inventory.sync');
     Route::post('/inventory/sync/preview',[InventorySyncController::class,'preview'])->name('inventory.sync.preview');
     Route::post('/inventory/sync/{batch}/confirm',[InventorySyncController::class,'confirm'])->whereNumber('batch')->name('inventory.sync.confirm');

@@ -4,6 +4,7 @@ namespace App\Modules\Inventory\Experience\Controllers;
 
 use App\Modules\Inventory\Application\InventoryService;
 use App\Modules\Inventory\Application\InventoryStockStatus;
+use App\Modules\Inventory\Application\WarehouseClearanceService;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Identity\Application\AuthorizationKeys;
 use Illuminate\Http\RedirectResponse;
@@ -13,7 +14,10 @@ use Inertia\Response;
 
 final class WarehouseController
 {
-    public function __construct(private readonly InventoryService $inventory) {}
+    public function __construct(
+        private readonly InventoryService $inventory,
+        private readonly WarehouseClearanceService $clearance,
+    ) {}
     public function create(): Response { return Inertia::render('Inventory/WarehouseCreate'); }
     public function store(Request $request): RedirectResponse
     {
@@ -26,6 +30,8 @@ final class WarehouseController
         $w=$this->inventory->warehouse($warehouse);
         return Inertia::render('Inventory/WarehouseShow',[
             'warehouse'=>$this->payload($w),
+            'clearanceProducts'=>$this->clearance->listForWarehouse($w),
+            'clearanceCandidates'=>$this->clearance->candidatesForWarehouse($w),
             'canOperate'=>auth()->user()?->can(AuthorizationKeys::InventoryOperate->value) ?? false,
             'canManage'=>auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false,
         ]);
@@ -64,6 +70,26 @@ final class WarehouseController
         $data=$request->validate($this->inventoryRules(false));
         $this->inventory->updateInventory($w,$inventory,$data,$request->user());
         return back()->with('success','库存已更新');
+    }
+    public function addClearance(Request $request,string $warehouse): RedirectResponse
+    {
+        $w=$this->inventory->warehouse($warehouse);
+        $data=$request->validate(['product_ids'=>['required','array','min:1'],'product_ids.*'=>['integer','distinct','exists:products,id']]);
+        $this->clearance->add($w,$data['product_ids'],$request->user());
+        return back()->with('success','已加入清仓 / Gift 库');
+    }
+    public function updateClearance(Request $request,string $warehouse,int $clearance): RedirectResponse
+    {
+        $w=$this->inventory->warehouse($warehouse);
+        $data=$request->validate(['priority'=>['required','integer','min:1','max:9999']]);
+        $this->clearance->updatePriority($w,$clearance,(int)$data['priority'],$request->user());
+        return back()->with('success','Gift 优先级已更新');
+    }
+    public function removeClearance(Request $request,string $warehouse,int $clearance): RedirectResponse
+    {
+        $w=$this->inventory->warehouse($warehouse);
+        $this->clearance->remove($w,$clearance,$request->user());
+        return back()->with('success','已移出清仓 / Gift 库');
     }
     private function warehouseRules(?int $ignoreId=null): array
     {

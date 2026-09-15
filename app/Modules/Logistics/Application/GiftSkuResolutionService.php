@@ -3,7 +3,7 @@
 namespace App\Modules\Logistics\Application;
 
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
-use App\Modules\Logistics\Infrastructure\Models\WarehouseGiftSkuMapping;
+use App\Modules\Inventory\Infrastructure\Models\WarehouseClearanceProduct;
 use App\Modules\Orders\Infrastructure\Models\OrderItem;
 
 final class GiftSkuResolutionService
@@ -18,8 +18,9 @@ final class GiftSkuResolutionService
     /** @return array<string,mixed> */
     public function prepare(): array
     {
-        $mappings = WarehouseGiftSkuMapping::query()
+        $mappings = WarehouseClearanceProduct::query()
             ->with(['warehouse:id,code,name,is_active', 'product:id,sku,name,is_active'])
+            ->where('source_sku', 'gift')
             ->where('is_active', true)
             ->orderBy('priority')->orderBy('id')->get();
         $productIds = $mappings->pluck('fulfillment_product_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
@@ -63,7 +64,7 @@ final class GiftSkuResolutionService
     {
         if (! $this->isGiftSku($item->sku)) return null;
         abort_unless($mappingId && $mappingId > 0, 422, 'gift 必须选择实际履约礼品 SKU');
-        $mapping = WarehouseGiftSkuMapping::query()->with(['warehouse', 'product'])->whereKey($mappingId)->where('is_active', true)->first();
+        $mapping = WarehouseClearanceProduct::query()->with(['warehouse', 'product'])->whereKey($mappingId)->where('is_active', true)->first();
         abort_unless($mapping && $mapping->warehouse?->is_active && $mapping->product?->is_active, 422, '所选礼品 SKU 映射无效或已停用');
         abort_unless(strcasecmp((string) $mapping->source_sku, (string) $item->sku) === 0, 422, '所选礼品 SKU 与订单 gift 行不匹配');
         abort_unless(strcasecmp((string) $mapping->warehouse->code, trim($warehouseCode)) === 0, 422, '所选礼品 SKU 不属于当前发货仓');
