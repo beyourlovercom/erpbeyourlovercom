@@ -44,6 +44,12 @@ final class TrafficService
     }
 
     /** @return Collection<int, object> */
+    public function listProjectSourceAccounts(int $businessProjectId): Collection
+    {
+        return $this->repository->listProjectSourceAccounts($businessProjectId);
+    }
+
+    /** @return Collection<int, object> */
     public function listProjectDailyTrafficMetrics(int $businessProjectId, string $dateFrom, string $dateTo): Collection
     {
         return $this->repository->listProjectDailyTrafficMetrics($businessProjectId, $dateFrom, $dateTo);

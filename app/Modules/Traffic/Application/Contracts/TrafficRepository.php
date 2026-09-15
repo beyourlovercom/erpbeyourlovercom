@@ -35,6 +35,9 @@ interface TrafficRepository
     ): object;
 
     /** @return Collection<int, object> */
+    public function listProjectSourceAccounts(int $businessProjectId): Collection;
+
+    /** @return Collection<int, object> */
     public function listProjectDailyTrafficMetrics(int $businessProjectId, string $dateFrom, string $dateTo): Collection;
 
     /** @return Collection<int, object> */
