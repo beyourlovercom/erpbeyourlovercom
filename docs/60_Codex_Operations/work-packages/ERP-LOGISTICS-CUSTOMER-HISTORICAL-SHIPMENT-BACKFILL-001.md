@@ -151,3 +151,13 @@ Created Shipment facts:
 
 ## Merge readiness
 Implementation is merge-ready when rebased/current against latest `main`, subject only to repository CI infrastructure status. Production code deployment and Production data write remain separate Owner gates.
+
+## Latest-main reconciliation before merge
+- `main` advanced from issued baseline `68b6433b...` to `6d6fc73454273894cb364e4a17e06ad84fca1ead` via PR #306 Warehouse Clearance Gift Pool V1.
+- PR #306 has zero file overlap with this WP's backfill implementation surface.
+- Branch rebased cleanly onto `main@6d6fc73454273894cb364e4a17e06ad84fca1ead`.
+- Post-rebase focused + fulfillment/clearance verification: 21 tests / 188 assertions PASS.
+- Latest-main relevant Logistics comparison: branch 47 tests / 375 assertions / 8 inherited failures; main 42 tests / 341 assertions / the exact same 8 failures. Regression delta: 0.
+- Latest-main architecture/provider/navigation comparison: branch 27 tests / 320 assertions / 3 inherited failures; main 27 tests / 320 assertions / the exact same 3 failures. Regression delta: 0.
+- Canonical non-Git 27-row source SHA256 remains `83bd0637788828715f5ad2e3a942a4e4975134a73a16f74535d5e2f8707d667c`.
+- Production backfill apply remains disabled and unexecuted.
