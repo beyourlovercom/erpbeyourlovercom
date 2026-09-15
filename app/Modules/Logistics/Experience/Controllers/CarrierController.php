@@ -152,11 +152,9 @@ final class CarrierController
         return [
             'id' => $shipment->id,
             'shipped_at' => $shipment->shipped_at?->toIso8601String(),
-            'external_order_number' => $order?->external_order_number,
             'erp_order_id' => $order?->erp_order_id,
-            'internal_order_number' => $order?->internal_order_number,
             'order_kind' => $order?->order_kind?->value,
-            'order_url' => $order?->order_kind?->value === 'kol_fulfillment' ? "/kol/orders/{$order->id}" : ($order ? "/customers/orders/{$order->id}" : null),
+            'order_url' => $this->orderUrl($order),
             'warehouse_name' => $shipment->warehouse?->name,
             'destination_country' => $order?->address?->country,
             'carrier' => $shipment->carrier,
@@ -183,6 +181,17 @@ final class CarrierController
             'billed_at' => $billing?->billed_at?->toIso8601String(),
             'raw_evidence' => $billing?->raw_evidence,
         ];
+    }
+
+    private function orderUrl(?Order $order): ?string
+    {
+        if (! $order || $order->order_kind?->value === 'fulfillment_derived') {
+            return null;
+        }
+
+        return $order->order_kind?->value === 'kol_fulfillment'
+            ? "/kol/orders/{$order->id}"
+            : "/customers/orders/{$order->id}";
     }
 
     private function statusBar(): array
