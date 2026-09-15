@@ -48,11 +48,13 @@ final class CustomerHistoricalShipmentBackfillTest extends TestCase
 
     public function test_historical_scope_identity_and_time_fail_closed_without_writes(): void
     {
-        $order = $this->order('007-0128-c33215');
+        $historicalOrder = $this->order('007-0128-c33215');
+        $identityOrder = $this->order('007-0127-c33180');
+        $timeOrder = $this->order('007-0126-c33096');
         $rows = [
-            $this->row($order, 'KOL-TRACK', 'KOL26012804-007', 2),
-            array_replace($this->row($order, 'BAD-ID', 'C33215', 4), ['erp_order_id' => '007-0128-c99999']),
-            array_replace($this->row($order, 'BAD-TIME', 'C33215', 5), ['shipped_at' => '2026-01-29 19:57:22']),
+            $this->row($historicalOrder, 'KOL-TRACK', 'KOL26012804-007', 2),
+            array_replace($this->row($identityOrder, 'BAD-ID', 'C33180', 4), ['erp_order_id' => '007-0128-c99999']),
+            array_replace($this->row($timeOrder, 'BAD-TIME', 'C33096', 5), ['shipped_at' => '2026-01-29 19:57:22']),
         ];
 
         $preview = app(CustomerHistoricalShipmentBackfillService::class)->preview($this->csv($rows));
@@ -68,7 +70,8 @@ final class CustomerHistoricalShipmentBackfillTest extends TestCase
         $existingOrder = $this->order('007-0128-c33213');
         $attemptOrder = $this->order('007-0128-c33215');
         $trackingOwner = $this->order('007-0127-c33180');
-        $duplicateOrder = $this->order('007-0126-c33096');
+        $trackingConflictOrder = $this->order('007-0126-c33096');
+        $duplicateOrder = $this->order('007-0125-c33070');
         $de = Warehouse::query()->where('code', 'DE')->firstOrFail();
 
         $existingOrder->shipment()->create([
@@ -85,15 +88,17 @@ final class CustomerHistoricalShipmentBackfillTest extends TestCase
         $rows = [
             $this->row($existingOrder, 'NEW-EXISTING', 'C33213', 3),
             $this->row($attemptOrder, 'NEW-ATTEMPT', 'C33215', 4),
-            $this->row($duplicateOrder, 'TAKEN', 'C33096', 5),
-            $this->row($duplicateOrder, 'DUP-A', 'C33096', 6),
+            $this->row($trackingConflictOrder, 'TAKEN', 'C33096', 5),
+            $this->row($duplicateOrder, 'DUP-A', 'C33070', 6),
+            $this->row($duplicateOrder, 'DUP-B', 'C33070', 7),
         ];
         $preview = app(CustomerHistoricalShipmentBackfillService::class)->preview($this->csv($rows));
         $this->assertSame(0, $preview['ready_count']);
-        $this->assertSame(4, $preview['review_count']);
+        $this->assertSame(5, $preview['review_count']);
         $reasons = collect($preview['rows'])->pluck('reason_code')->all();
         $this->assertContains('existing_shipment_conflict', $reasons);
         $this->assertContains('shipment_attempt_exists', $reasons);
+        $this->assertContains('tracking_conflict', $reasons);
         $this->assertSame(2, collect($reasons)->filter(fn ($r) => $r === 'duplicate_source_order')->count());
     }
 

@@ -1,10 +1,10 @@
 # ERP-LOGISTICS-CUSTOMER-HISTORICAL-SHIPMENT-BACKFILL-001
 
-**Status:** CONTRACT FROZEN / IMPLEMENTATION AUTHORIZED / BACKEND ONLY  
-**Date:** 2026-09-14  
-**Owner scope:** 27 Tianyun customer Orders only; 16 historical/KOL excluded  
-**Execution:** GPT_WEB + US DC / GitHub connector fallback  
-**Verification tier:** HIGH_RISK  
+**Status:** CONTRACT FROZEN / IMPLEMENTATION AUTHORIZED / BACKEND ONLY
+**Date:** 2026-09-14
+**Owner scope:** 27 Tianyun customer Orders only; 16 historical/KOL excluded
+**Execution:** GPT_WEB + US DC / GitHub connector fallback
+**Verification tier:** HIGH_RISK
 **Production apply:** NOT AUTHORIZED
 
 ## Objective
@@ -121,3 +121,33 @@ Created Shipment facts:
 5. separate Production code deploy gate if current runtime does not contain the command
 6. separate Production data-write gate
 7. after backfill apply, rerun P6B Tianyun carrier-bill dry-run; only then consider actual carrier-billing import
+
+## Final verification evidence
+- Focused `CustomerHistoricalShipmentBackfillTest`: 5 tests / 34 assertions PASS.
+- Command discovery PASS: `logistics:backfill-customer-historical-shipments`.
+- Touched PHP syntax lint PASS.
+- `git diff --check` PASS.
+- Relevant Logistics branch suite: 41 tests / 329 assertions with 8 inherited `ManualFulfillmentIntegrationTest` failures.
+- Exact `main@68b6433b3d0f52e377a25dc96bd9e899d80369d4` comparison: 36 existing tests / 295 assertions with the exact same 8 failures.
+- Relevant Logistics regression delta: 0.
+- Architecture/provider/navigation branch: 27 tests / 320 assertions / 3 frozen-baseline failures.
+- Exact main architecture/provider/navigation: 27 tests / 320 assertions / the same 3 failures.
+- Architecture regression delta: 0.
+
+## Real source preparation
+- Original Tianyun XLSX SHA256: `2576b1ed2f1ee6c78c13e64c4f363b08567220316ccda33235c4df252a1c843d`.
+- Non-Git canonical 27-row backfill source: `/tmp/tianyun-customer-historical-shipment-backfill-202601.csv`.
+- Canonical source SHA256: `83bd0637788828715f5ad2e3a942a4e4975134a73a16f74535d5e2f8707d667c`.
+- Source rows: 27; unique Orders: 27; unique tracking numbers: 27.
+- No canonical source row is committed to Git.
+- Production backfill apply remains NOT AUTHORIZED and has not been executed.
+
+## Work Log
+- Contract/source reconciliation: 0.45 effective hours.
+- Implementation + safeguards: 0.80 effective hours.
+- Focused/regression/baseline verification: 0.65 effective hours.
+- Final source preparation/evidence: 0.25 effective hours.
+- Total actual effective time: 2.15 hours.
+
+## Merge readiness
+Implementation is merge-ready when rebased/current against latest `main`, subject only to repository CI infrastructure status. Production code deployment and Production data write remain separate Owner gates.
