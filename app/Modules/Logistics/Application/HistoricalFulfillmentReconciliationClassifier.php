@@ -88,6 +88,9 @@ final class HistoricalFulfillmentReconciliationClassifier
         if (($conflicts['tracking_collision'] ?? false) === true) {
             $reasons[] = 'tracking_collision';
         }
+        if (($conflicts['source_evidence_conflict'] ?? false) === true) {
+            $reasons[] = 'source_evidence_conflict';
+        }
         if (($attempts['contradictory'] ?? false) === true) {
             $reasons[] = 'contradictory_shipment_attempt';
         }
