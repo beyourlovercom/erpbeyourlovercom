@@ -3,11 +3,12 @@
 namespace App\Modules\Traffic\Infrastructure\GoogleAds;
 
 use App\Modules\Traffic\Application\Contracts\GoogleAdsReadClient;
+use App\Modules\Traffic\Application\Contracts\InquiryMetricSignalReader;
 use App\Modules\Traffic\Application\Exceptions\GoogleAdsReadException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 
-final class HttpGoogleAdsReadClient implements GoogleAdsReadClient
+final class HttpGoogleAdsReadClient implements GoogleAdsReadClient, InquiryMetricSignalReader
 {
     private ?string $accessToken = null;
 
@@ -79,6 +80,76 @@ GAQL, $dateFrom, $dateTo);
                 'provider_conversions' => $this->nonNegativeNumericMetric($metrics['conversions'] ?? 0),
             ];
         }
+    }
+
+    public function fetchDailySignals(string $externalAccountId, string $dateFrom, string $dateTo): iterable
+    {
+        $customerId = $this->normalizeCustomerId($externalAccountId);
+        $configured = $this->inquiryActions();
+        $actionRows = $this->searchStream($customerId, <<<'GAQL'
+SELECT
+  conversion_action.resource_name,
+  conversion_action.name,
+  conversion_action.status
+FROM conversion_action
+ORDER BY conversion_action.id
+GAQL);
+
+        $resourceByName = [];
+        foreach ($actionRows as $row) {
+            $action = is_array($row['conversionAction'] ?? null) ? $row['conversionAction'] : [];
+            $name = trim((string) ($action['name'] ?? ''));
+            $resource = trim((string) ($action['resourceName'] ?? ''));
+            if ($name !== '' && $resource !== '' && ($action['status'] ?? null) !== 'REMOVED') {
+                $resourceByName[$name] = $resource;
+            }
+        }
+
+        $sourceByResource = [];
+        foreach ($configured as $sourceType => $actionName) {
+            $resource = $resourceByName[$actionName] ?? null;
+            if ($resource === null) {
+                throw new GoogleAdsReadException('inquiry_action_not_found', 'Configured Google Ads inquiry conversion action was not returned.');
+            }
+            $sourceByResource[$resource] = $sourceType;
+        }
+
+        $signals = [];
+        $cursor = new \DateTimeImmutable($dateFrom);
+        $end = new \DateTimeImmutable($dateTo);
+        while ($cursor <= $end) {
+            $date = $cursor->format('Y-m-d');
+            foreach ($configured as $sourceType => $_) {
+                $signals[$date.'|'.$sourceType] = ['metric_date' => $date, 'source_type' => $sourceType, 'inquiries' => 0];
+            }
+            $cursor = $cursor->modify('+1 day');
+        }
+
+        $query = sprintf(<<<'GAQL'
+SELECT
+  segments.date,
+  segments.conversion_action,
+  metrics.conversions
+FROM customer
+WHERE segments.date BETWEEN '%s' AND '%s'
+ORDER BY segments.date, segments.conversion_action
+GAQL, $dateFrom, $dateTo);
+
+        foreach ($this->searchStream($customerId, $query) as $row) {
+            $segments = is_array($row['segments'] ?? null) ? $row['segments'] : [];
+            $metrics = is_array($row['metrics'] ?? null) ? $row['metrics'] : [];
+            $sourceType = $sourceByResource[trim((string) ($segments['conversionAction'] ?? ''))] ?? null;
+            if ($sourceType === null) continue;
+            $date = (string) ($segments['date'] ?? '');
+            $key = $date.'|'.$sourceType;
+            if (! isset($signals[$key])) {
+                throw new GoogleAdsReadException('provider_invalid_response', 'Google Ads returned an inquiry signal outside the requested date range.');
+            }
+            $signals[$key]['inquiries'] += $this->nonNegativeWholeMetric($metrics['conversions'] ?? 0);
+        }
+
+        ksort($signals);
+        return array_values($signals);
     }
 
     /** @return array<int, array<string, mixed>> */
@@ -165,6 +236,37 @@ GAQL, $dateFrom, $dateTo);
         }
 
         return $this->accessToken = $token;
+    }
+
+    /** @return array<string, string> */
+    private function inquiryActions(): array
+    {
+        $actions = config('services.google_ads.inquiry_actions', []);
+        if (! is_array($actions) || $actions === []) {
+            throw new GoogleAdsReadException('inquiry_action_config_invalid', 'Google Ads inquiry conversion actions are not configured.');
+        }
+        $normalized = [];
+        foreach ($actions as $sourceType => $actionName) {
+            $sourceType = trim((string) $sourceType);
+            $actionName = trim((string) $actionName);
+            if (preg_match('/^[a-z0-9_]{1,32}$/D', $sourceType) !== 1 || $actionName === '' || in_array($actionName, $normalized, true)) {
+                throw new GoogleAdsReadException('inquiry_action_config_invalid', 'Google Ads inquiry conversion action configuration is invalid.');
+            }
+            $normalized[$sourceType] = $actionName;
+        }
+        ksort($normalized);
+        return $normalized;
+    }
+
+    private function nonNegativeWholeMetric(mixed $value): int
+    {
+        if (is_int($value) && $value >= 0) return $value;
+        if (is_string($value) && preg_match('/^\d+(?:\.0+)?$/D', $value) === 1) {
+            $numeric = (float) $value;
+            if ($numeric <= PHP_INT_MAX) return (int) $numeric;
+        }
+        if (is_float($value) && $value >= 0 && floor($value) === $value && $value <= PHP_INT_MAX) return (int) $value;
+        throw new GoogleAdsReadException('fractional_inquiry_signal', 'Google Ads inquiry conversion count must be a whole non-negative number.');
     }
 
     /** @return array{client_id:string,client_secret:string,refresh_token:string,developer_token:string,login_customer_id:string,timeout:int} */
