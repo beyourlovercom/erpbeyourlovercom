@@ -13,6 +13,7 @@ use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\UsFulfillmentZoneResolver;
 use App\Modules\Logistics\Application\WarehouseRoutingPolicy;
 use App\Modules\Logistics\Experience\Console\Commands\BackfillCustomerHistoricalShipmentsCommand;
+use App\Modules\Logistics\Experience\Console\Commands\BackfillHistoricalFulfillmentShipmentsCommand;
 use App\Modules\Logistics\Experience\Console\Commands\ImportCarrierBillCommand;
 use App\Modules\Logistics\Experience\Console\Commands\RepairProductionUatFulfillmentCommand;
 use App\Modules\Logistics\Experience\Console\Commands\SyncDeliveryEvidenceCommand;
@@ -30,6 +31,7 @@ final class LogisticsServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 BackfillCustomerHistoricalShipmentsCommand::class,
+                BackfillHistoricalFulfillmentShipmentsCommand::class,
                 ImportCarrierBillCommand::class,
                 RepairProductionUatFulfillmentCommand::class,
                 SyncDeliveryEvidenceCommand::class,
