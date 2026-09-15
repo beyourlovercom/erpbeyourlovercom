@@ -31,6 +31,7 @@ return [
         ['key' => 'customers-import', 'label' => '客户导入', 'path' => '/customers/import', 'route' => 'customers.import', 'permission' => 'customers.import', 'permissions_all' => ['system.permissions.manage'], 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
     ]],
     ['key' => 'marketing', 'label' => '营销', 'emoji' => '📣', 'path' => '/marketing', 'route' => 'shell.marketing', 'permission' => 'marketing.view', 'status' => 'in_progress', 'progress' => 20, 'placeholder' => false, 'children' => [
+        ['key' => 'marketing-traffic', 'label' => '流量总览', 'path' => '/marketing/traffic', 'route' => 'traffic.boss-dashboard', 'permission' => 'marketing.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'marketing-subscribers', 'label' => '邮件订阅', 'path' => '/marketing/subscribers', 'route' => 'marketing.subscribers', 'permission' => 'marketing.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'marketing-newsletters', 'label' => '群发邮件', 'path' => '/marketing/newsletters', 'route' => 'marketing.newsletters', 'permission' => 'marketing.view', 'status' => 'planned', 'progress' => 0, 'placeholder' => false],
         ['key' => 'marketing-campaigns', 'label' => '营销活动', 'path' => '/marketing/campaigns', 'route' => 'marketing.campaigns', 'permission' => 'marketing.view', 'status' => 'planned', 'progress' => 0, 'placeholder' => false],

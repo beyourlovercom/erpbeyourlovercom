@@ -22,6 +22,8 @@ final class TrafficServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/web.php');
+
         if ($this->app->runningInConsole()) {
             $this->commands([GoogleAdsTrafficSyncCommand::class, InquiryMetricsSyncCommand::class]);
         }

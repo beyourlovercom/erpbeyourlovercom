@@ -84,12 +84,22 @@ final class EloquentTrafficRepository implements TrafficRepository
     }
 
     /** @return Collection<int, object> */
+    public function listProjectSourceAccounts(int $businessProjectId): Collection
+    {
+        return TrafficSourceAccount::where('business_project_id', $businessProjectId)
+            ->orderBy('provider')
+            ->orderBy('external_account_id')
+            ->get();
+    }
+
+    /** @return Collection<int, object> */
     public function listProjectDailyTrafficMetrics(int $businessProjectId, string $dateFrom, string $dateTo): Collection
     {
         $accountIds = TrafficSourceAccount::where('business_project_id', $businessProjectId)->pluck('id');
         $campaignIds = TrafficCampaign::whereIn('traffic_source_account_id', $accountIds)->pluck('id');
 
-        return TrafficDailyMetric::whereIn('traffic_campaign_id', $campaignIds)
+        return TrafficDailyMetric::with(['campaign.sourceAccount'])
+            ->whereIn('traffic_campaign_id', $campaignIds)
             ->whereBetween('metric_date', [$dateFrom, $dateTo])
             ->orderBy('metric_date')
             ->get();
