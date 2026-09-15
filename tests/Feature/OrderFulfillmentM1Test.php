@@ -54,6 +54,44 @@ final class OrderFulfillmentM1Test extends TestCase
         $this->assertDatabaseCount('orders', 1);
     }
 
+    public function test_generic_order_detail_url_redirects_to_canonical_customer_and_kol_surfaces(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+        $this->actingAs($user)->post('/customers/orders', $this->payload('CUS-GENERIC'))->assertRedirect();
+        $this->actingAs($user)->post('/kol/orders', $this->payload('KOL-GENERIC', 'kol_fulfillment'))->assertRedirect();
+
+        $customerOrder = Order::query()->where('order_kind', 'customer')->firstOrFail();
+        $kolOrder = Order::query()->where('order_kind', 'kol_fulfillment')->firstOrFail();
+
+        $this->actingAs($user)->get('/orders/'.$customerOrder->id)
+            ->assertRedirect('/customers/orders/'.$customerOrder->id);
+        $this->actingAs($user)->get('/orders/'.$kolOrder->id)
+            ->assertRedirect('/kol/orders/'.$kolOrder->id);
+    }
+
+    public function test_generic_order_detail_url_for_fulfillment_child_redirects_to_root_order(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+        $this->actingAs($user)->post('/customers/orders', $this->payload('CUS-SPLIT'))->assertRedirect();
+        $root = Order::query()->firstOrFail();
+        $child = Order::query()->create([
+            'fulfillment_parent_id' => $root->id,
+            'fulfillment_suffix' => 'A',
+            'internal_order_number' => 'FULF-'.$root->id.'-A',
+            'erp_order_id' => $root->erp_order_id.'A',
+            'source_type' => 'manual_other',
+            'order_kind' => 'fulfillment_derived',
+            'external_order_number' => null,
+            'order_date' => $root->order_date,
+            'owner_id' => $root->owner_id,
+            'order_status' => 'pending_shipment',
+            'currency' => $root->currency,
+        ]);
+
+        $this->actingAs($user)->get('/orders/'.$child->id)
+            ->assertRedirect('/customers/orders/'.$root->id);
+    }
+
     public function test_customer_and_kol_lists_are_scoped_server_side_with_no_cross_leak(): void
     {
         $user = $this->userWith(['orders.view', 'orders.create']);

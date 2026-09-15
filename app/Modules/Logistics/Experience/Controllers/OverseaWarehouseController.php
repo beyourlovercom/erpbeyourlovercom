@@ -196,7 +196,7 @@ final class OverseaWarehouseController
             'line' => $line,
             'order_id' => $order?->id,
             'erp_order_id' => $order?->erp_order_id,
-            'order_url' => $order && $order->order_kind?->value !== 'fulfillment_derived' ? ($order->order_kind?->value === 'kol_fulfillment' ? "/kol/orders/{$order->id}" : "/customers/orders/{$order->id}") : null,
+            'order_url' => $order ? "/orders/{$order->id}" : null,
             'recipient_name' => $order?->address?->recipient_name,
             'country' => $order?->address?->country,
             'warehouse_id' => $shipment->warehouse_id,

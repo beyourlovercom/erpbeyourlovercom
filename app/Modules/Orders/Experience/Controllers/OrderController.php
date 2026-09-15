@@ -84,6 +84,20 @@ final class OrderController
         return redirect()->route($routeName, $order)->with('success', '订单已创建');
     }
 
+    public function showAny(Order $order): RedirectResponse
+    {
+        $target = $order;
+        if ($order->order_kind === OrderKind::FulfillmentDerived) {
+            $target = $order->fulfillmentParent()->firstOrFail();
+        }
+
+        return match ($target->order_kind) {
+            OrderKind::Customer => redirect()->route('customers.orders.show', $target),
+            OrderKind::KolFulfillment => redirect()->route('kol.orders.show', $target),
+            default => abort(404),
+        };
+    }
+
     public function show(Request $request, Order $order): Response
     {
         $this->authorizeKind($request, $order);
