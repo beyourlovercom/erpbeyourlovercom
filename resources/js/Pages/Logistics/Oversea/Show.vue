@@ -91,7 +91,7 @@ const goPage = (page:number) => router.visit(`${basePath.value}?view=${props.vie
                 <span v-else class="decision-state">待审核</span>
               </td>
               <td class="line-col">{{ row.line }}</td>
-              <td><a class="order-link" :href="row.order_url ?? `/customers/orders/${row.order_id}`">{{ row.erp_order_id ?? '—' }}</a></td>
+              <td><a class="order-link" :href="row.order_url ?? `/orders/${row.order_id}`">{{ row.erp_order_id ?? '—' }}</a></td>
               <td><select :value="row.warehouse_id" :disabled="!canOperate || view !== 'review'" class="cell-select warehouse" @change="changeWarehouseFromEvent(row, $event)"><option v-for="option in warehouseOptions" :key="option.id" :value="option.id">{{ option.label }}</option></select></td>
               <td><select v-model="draft(row).carrier" :disabled="!canOperate || row.shipment_status === 'shipped'" class="cell-select carrier" @change="saveCarrier(row)"><option v-for="carrier in carrierOptions" :key="carrier" :value="carrier">{{ carrier }}</option></select></td>
               <td class="tracking-cell"><input v-model="draft(row).tracking_number" :disabled="!canOperate || row.shipment_status === 'shipped'" class="tracking-input" placeholder="填写发货单号" @blur="saveTracking(row)" /></td>
