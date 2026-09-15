@@ -133,6 +133,12 @@ final class WarehouseController
     }
     private function payload($w): array
     {
+        $lastConfirmedSync = InventorySyncBatch::query()
+            ->where('warehouse_id', $w->id)
+            ->where('status', 'confirmed')
+            ->orderByDesc('confirmed_at')
+            ->first();
+
         return [
             'id'=>$w->id,'slug'=>$w->slug,'code'=>$w->code,'name'=>$w->name,'country_code'=>$w->country_code,
             'address_line1'=>$w->address_line1,'address_line2'=>$w->address_line2,'city'=>$w->city,'state_region'=>$w->state_region,'postal_code'=>$w->postal_code,
@@ -142,6 +148,7 @@ final class WarehouseController
             'fulfillment_state_label'=>$this->fulfillmentStateLabel($w),
             'replenishment_lead_time_days'=>$w->replenishment_lead_time_days,'replenishment_safety_stock_days'=>$w->replenishment_safety_stock_days,'replenishment_target_cover_days'=>$w->replenishment_target_cover_days,'billing_markdown'=>$w->billing_markdown,
             'service_regions'=>$w->serviceRegions->pluck('country_code')->all(),
+            'last_inventory_sync_at'=>($lastConfirmedSync?->stock_count_at ?? $lastConfirmedSync?->confirmed_at)?->toIso8601String(),
             'inventories'=>$w->inventories->map(fn($i)=>[
                 'id'=>$i->id,'product'=>['id'=>$i->product->id,'sku'=>$i->product->sku,'name'=>$i->product->name],
                 'quantity_on_hand'=>$i->quantity_on_hand,'quantity_reserved'=>$i->quantity_reserved,'quantity_available'=>$i->quantity_available,
