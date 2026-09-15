@@ -25,9 +25,9 @@ final class WarehouseRoutingPolicyTest extends TestCase
 
         $this->assertFalse($policy->automaticEnabled('US'));
         $this->assertSame('physical_zone_then_priority', $policy->strategy('us'));
-        $this->assertSame(['US-NY', 'US-SJ', 'US-LA'], $policy->warehouseCodes('US'));
+        $this->assertSame(['US-NY', 'US-SM', 'US-LA'], $policy->warehouseCodes('US'));
         $this->assertSame([], $policy->fallbackPriority('US'));
-        $this->assertSame(['US-SJ', 'US-LA'], config('warehouse_routing.countries.US.rules.physical_zone.west.warehouse_priority'));
+        $this->assertSame(['US-SM', 'US-LA'], config('warehouse_routing.countries.US.rules.physical_zone.west.warehouse_priority'));
         $this->assertSame(['US-NY'], config('warehouse_routing.countries.US.rules.physical_zone.east.warehouse_priority'));
         $this->assertNull($policy->fixedWarehouseCode('US'));
     }
@@ -38,9 +38,10 @@ final class WarehouseRoutingPolicyTest extends TestCase
         $this->assertSame('US-NY', $policy->canonicalWarehouseCode('US-NJ'));
         $this->assertSame('US-NY', $policy->canonicalWarehouseCode('美东仓'));
         $this->assertSame('US-LA', $policy->canonicalWarehouseCode('MorePlus'));
-        $this->assertSame('US-SJ', $policy->canonicalWarehouseCode('SMGJ'));
-        $this->assertSame('US-SJ', $policy->canonicalWarehouseCode('世纪仓'));
-        $this->assertSame('US-SJ', $policy->canonicalWarehouseCode('世迈国际仓'));
+        $this->assertSame('US-SM', $policy->canonicalWarehouseCode('US-SJ'));
+        $this->assertSame('US-SM', $policy->canonicalWarehouseCode('SMGJ'));
+        $this->assertSame('US-SM', $policy->canonicalWarehouseCode('世纪仓'));
+        $this->assertSame('US-SM', $policy->canonicalWarehouseCode('世迈国际仓'));
         $this->assertSame('CA', $policy->canonicalWarehouseCode('CA02'));
         $this->assertSame('CA', $policy->canonicalWarehouseCode('加拿大仓'));
     }

@@ -27,12 +27,28 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
 
         $this->actingAs($user)->get('/logistics/oversea/us-ny?view=review')->assertInertia(fn (Assert $page) => $page
             ->component('Logistics/Oversea/Show')
-            ->where('warehouse.label', '美东纽约')
+            ->where('warehouse.label', '美东纽约仓')
             ->where('rows.total', 1)
             ->where('rows.data.0.order_id', $ny->id)
             ->where('rows.data.0.line', 1)
             ->where('rows.data.0.carrier', 'USPS')
             ->where('rows.data.0.review_status', 'pending'));
+    }
+
+
+    public function test_three_sm_uses_canonical_us_3sm_url_and_legacy_keys_still_resolve(): void
+    {
+        $user = $this->userWith(['logistics.view']);
+        $warehouses = $this->warehouses();
+        $this->orderAt($warehouses['US-SM'], '007-OVERSEA-SJ');
+
+        $this->actingAs($user)->get('/logistics/oversea/us-3sm')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('warehouseKey', 'us-3sm')
+            ->where('warehouse.code', 'US-SM')
+            ->where('warehouse.label', '美国3世迈仓'));
+        $this->actingAs($user)->get('/logistics/oversea/us-sm')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('warehouseKey', 'us-3sm')
+            ->where('warehouse.code', 'US-SM'));
     }
 
     public function test_approval_moves_order_from_review_to_pending_and_persists_default_carrier(): void
@@ -201,10 +217,10 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
     {
         $rows = [
             'US-NY' => ['us-ny', '美东纽约仓'],
-            'US-LA' => ['us-la', '美西洛杉矶仓'],
-            'US-SJ' => ['us-sj', '美西世迈仓'],
-            'DE' => ['de', '德国仓'],
-            'CA' => ['ca', '加拿大仓库'],
+            'US-LA' => ['us-la', '美西 MorePlus 仓'],
+            'US-SM' => ['us-3sm', '美国3世迈仓'],
+            'DE' => ['de', '德国天运仓'],
+            'CA' => ['ca', '加拿大仓'],
         ];
         $result = [];
         foreach ($rows as $code => [$slug, $name]) {
@@ -216,7 +232,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
                 'priority' => 10,
             ]);
         }
-        Warehouse::query()->updateOrCreate(['code' => '007'], ['slug' => '007', 'name' => '007本地仓库', 'type' => 'warehouse', 'is_active' => true, 'priority' => 99]);
+        Warehouse::query()->updateOrCreate(['code' => '007'], ['slug' => '007', 'name' => '007 本地仓库', 'type' => 'warehouse', 'is_active' => true, 'priority' => 99]);
         Warehouse::query()->updateOrCreate(['code' => 'FACTORY'], ['slug' => 'factory', 'name' => '中国工厂', 'type' => 'warehouse', 'is_active' => true, 'priority' => 98]);
         $product = Product::query()->firstOrCreate(['sku' => 'REVIEW-SKU'], ['name' => 'Review Product', 'product_type' => 'simple', 'is_active' => true]);
         foreach ($result as $warehouse) {

@@ -34,7 +34,7 @@ final class WarehouseRecommendationServiceTest extends TestCase
         $warehouses = [
             $this->warehouse(1, 'US-LA', true, []),
             $this->warehouse(2, 'US-NY', true, []),
-            $this->warehouse(7, 'US-SJ', true, []),
+            $this->warehouse(7, 'US-SM', true, []),
         ];
         $availability = [10 => [$this->stock(1, 10), $this->stock(2, 10), $this->stock(7, 10)]];
         $result = $this->service($warehouses, $availability)
@@ -51,16 +51,16 @@ final class WarehouseRecommendationServiceTest extends TestCase
         $warehouses = [
             $this->warehouse(1, 'US-LA', true, []),
             $this->warehouse(2, 'US-NY', true, []),
-            $this->warehouse(7, 'US-SJ', true, []),
+            $this->warehouse(7, 'US-SM', true, []),
         ];
         $availability = [10 => [$this->stock(1, 10), $this->stock(2, 10), $this->stock(7, 10)]];
         $result = $this->service($warehouses, $availability)
             ->recommend('US', [['product_id' => 10, 'quantity' => 1]], '90001');
 
-        $this->assertSame('US-SJ', $result['warehouse']['code']);
+        $this->assertSame('US-SM', $result['warehouse']['code']);
         $this->assertSame('recommended_physical_zone', $result['reason_code']);
         $this->assertSame('west', $result['routing_context']['physical_zone']['zone']);
-        $this->assertSame(['US-SJ', 'US-LA'], $result['routing_context']['warehouse_priority']);
+        $this->assertSame(['US-SM', 'US-LA'], $result['routing_context']['warehouse_priority']);
     }
 
     public function test_us_falls_to_us_la_when_us_sj_cannot_cover_whole_order(): void
@@ -68,7 +68,7 @@ final class WarehouseRecommendationServiceTest extends TestCase
         $warehouses = [
             $this->warehouse(1, 'US-LA', true, []),
             $this->warehouse(2, 'US-NY', true, []),
-            $this->warehouse(7, 'US-SJ', true, []),
+            $this->warehouse(7, 'US-SM', true, []),
         ];
         $availability = [10 => [$this->stock(1, 10), $this->stock(2, 10), $this->stock(7, 0)]];
         $result = $this->service($warehouses, $availability)
@@ -81,7 +81,7 @@ final class WarehouseRecommendationServiceTest extends TestCase
     {
         $warehouses = [
             $this->warehouse(2, 'US-NY', true, []),
-            $this->warehouse(7, 'US-SJ', true, []),
+            $this->warehouse(7, 'US-SM', true, []),
         ];
         $availability = [10 => [$this->stock(2, 10), $this->stock(7, 10)]];
         $result = $this->service($warehouses, $availability)
@@ -96,7 +96,7 @@ final class WarehouseRecommendationServiceTest extends TestCase
     {
         $warehouses = [
             $this->warehouse(2, 'US-NY', true, []),
-            $this->warehouse(7, 'US-SJ', true, []),
+            $this->warehouse(7, 'US-SM', true, []),
         ];
         $availability = [10 => [$this->stock(2, 10), $this->stock(7, 10)]];
         $result = $this->service($warehouses, $availability)->recommend(
@@ -114,7 +114,7 @@ final class WarehouseRecommendationServiceTest extends TestCase
         $warehouses = [
             $this->warehouse(1, 'US-LA', true, []),
             $this->warehouse(2, 'US-NY', true, []),
-            $this->warehouse(7, 'US-SJ', true, []),
+            $this->warehouse(7, 'US-SM', true, []),
         ];
         $availability = [
             10 => [$this->stock(1, 5), $this->stock(2, 0), $this->stock(7, 5)],
@@ -276,7 +276,7 @@ final class WarehouseRecommendationServiceTest extends TestCase
         $warehouses = [
             $this->warehouse(1, 'US-LA', true, []),
             $this->warehouse(2, 'US-NY', true, []),
-            $this->warehouse(7, 'US-SJ', true, []),
+            $this->warehouse(7, 'US-SM', true, []),
         ];
         $availability = [10 => [
             $this->stock(1, 5),
@@ -308,7 +308,7 @@ final class WarehouseRecommendationServiceTest extends TestCase
         $this->assertFalse($result['routing_context']['cost_ranking_enabled']);
         $this->assertSame('manual_warehouse_selection', $result['routing_context']['next_action']);
         $this->assertSame(
-            ['US-LA', 'US-SJ'],
+            ['US-LA', 'US-SM'],
             collect($result['routing_context']['candidate_warehouses'])->pluck('code')->sort()->values()->all(),
         );
     }

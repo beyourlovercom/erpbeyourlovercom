@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 
 final class FulfillmentAllocationSubmissionService
 {
-    private const ALLOWED_SOURCE_CODES = ['FACTORY', 'US-NY', 'US-LA', 'US-SJ', 'DE', 'CA'];
+    private const ALLOWED_SOURCE_CODES = ['FACTORY', 'US-NY', 'US-LA', 'US-SM', 'DE', 'CA'];
 
     public function __construct(
         private readonly WarehouseRecommendationService $recommendations,
@@ -20,6 +20,7 @@ final class FulfillmentAllocationSubmissionService
         private readonly FulfillmentDerivedOrderService $derivedOrders,
         private readonly GiftSkuResolutionService $giftSkuResolutions,
         private readonly UsFulfillmentZoneResolver $usZones,
+        private readonly WarehouseRoutingPolicy $warehouseRouting,
         private readonly CarrierRoutingPolicy $carrierRouting,
     ) {}
 
@@ -53,7 +54,7 @@ final class FulfillmentAllocationSubmissionService
 
             $normalized = collect($assignments)->map(fn (array $row): array => [
                 'order_item_id' => (int) ($row['order_item_id'] ?? 0),
-                'source_code' => strtoupper(trim((string) ($row['source_code'] ?? ''))),
+                'source_code' => $this->warehouseRouting->canonicalWarehouseCode((string) ($row['source_code'] ?? '')) ?? '',
                 'gift_mapping_id' => isset($row['gift_mapping_id']) && $row['gift_mapping_id'] !== '' ? (int) $row['gift_mapping_id'] : null,
                 'carrier' => trim((string) ($row['carrier'] ?? '')),
                 'service' => isset($row['service']) && trim((string) $row['service']) !== '' ? trim((string) $row['service']) : null,

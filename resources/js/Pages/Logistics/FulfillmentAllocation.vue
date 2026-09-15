@@ -50,8 +50,9 @@ const filteredOrders = computed(() => props.orders.data.filter(order => {
   if (activeTab.value === 'gift') return hasGift(order)
   return true
 }))
-const warehouseOptions = computed(() => props.warehouses.filter(w => ['FACTORY','US-NY','US-LA','US-SJ','DE','CA'].includes(w.code)))
-const sourceLabel = (code:string) => props.warehouses.find(w => w.code === code)?.name ?? code
+const warehouseOptions = computed(() => props.warehouses.filter(w => ['FACTORY','US-NY','US-LA','US-SM','DE','CA'].includes(w.code)))
+const canonicalWarehouseCode = (code:string) => code === 'US-SJ' ? 'US-SM' : code
+const sourceLabel = (code:string) => { const canonical=canonicalWarehouseCode(code); return props.warehouses.find(w => w.code === canonical)?.name ?? canonical }
 const carrierLabel = (carrier:string|null|undefined) => props.carrierOptions.find(row => row.value === carrier)?.label ?? carrier ?? '—'
 const zonePriorityLabel = (zone:Zone|null) => !zone?.warehouse_priority?.length ? '—' : zone.warehouse_priority.map(sourceLabel).join(' → ')
 const zoneShort = (order:Order) => order.us_fulfillment_zone?.status === 'matched' ? order.us_fulfillment_zone.zone_label ?? '已识别' : (order.country === 'US' ? '需人工确认' : '—')
@@ -60,11 +61,11 @@ function csrfHeaders():Record<string,string>{ const m=document.querySelector<HTM
 function money(v:number|null|undefined,c:string|null|undefined){ if(v==null||!c)return '—'; return `${c==='CNY'?'¥':c+' '}${Number(v).toFixed(2)}` }
 function addressLine(order:Order){ return [order.address_line_1,order.address_line_2,order.city,order.province_state,order.postal_code,order.country].filter(Boolean).join(', ') }
 function recommendedSegment(order:Order,item:Item){ return order.allocation_decision.recommended_plan?.segments.find(segment => segment.items.some(planItem => (item.product_id != null && planItem.product_id === item.product_id) || (!!item.sku && planItem.sku === item.sku))) }
-function defaultCarrier(order:Order,source:string){ return order.carrier_routes?.[source]?.carrier ?? '' }
+function defaultCarrier(order:Order,source:string){ const canonical=canonicalWarehouseCode(source); return order.carrier_routes?.[canonical]?.carrier ?? order.carrier_routes?.[source]?.carrier ?? '' }
 function ensureManual(order:Order){
   manualAssignments[order.id] ||= {}; manualGiftMappings[order.id] ||= {}; manualCarriers[order.id] ||= {}
   for(const item of order.items){
-    if(!(item.id in manualAssignments[order.id])) manualAssignments[order.id][item.id]=recommendedSegment(order,item)?.source_code ?? ''
+    if(!(item.id in manualAssignments[order.id])) manualAssignments[order.id][item.id]=canonicalWarehouseCode(recommendedSegment(order,item)?.source_code ?? '')
     if(!(item.id in manualGiftMappings[order.id])) manualGiftMappings[order.id][item.id]=''
     const source=manualAssignments[order.id][item.id]
     if(source && !(source in manualCarriers[order.id])) manualCarriers[order.id][source]=recommendedSegment(order,item)?.carrier ?? defaultCarrier(order,source)
@@ -130,7 +131,7 @@ function matchesRecommendation(order:Order){
     const source=manualAssignments[order.id]?.[item.id]??''
     const carrier=carrierForItem(order,item)
     const recommendedCarrier=segment.carrier ?? defaultCarrier(order,segment.source_code)
-    return source===segment.source_code && carrier===(recommendedCarrier??'')
+    return canonicalWarehouseCode(source)===canonicalWarehouseCode(segment.source_code) && carrier===(recommendedCarrier??'')
   })
 }
 async function submitRecommended(){ const order=selectedOrder.value,decision=order?.allocation_decision; if(!order||!decision?.recommended_plan_key||!decision.can_use_recommendation||!props.canOperate)return; submitting.value=true; submitError.value=''; try{ const r=await fetch(`/logistics/orders/${order.id}/fulfillment-allocation/recommended`,{method:'POST',credentials:'same-origin',headers:{Accept:'application/json','Content-Type':'application/json',...csrfHeaders()},body:JSON.stringify({plan_key:decision.recommended_plan_key,decision_note:decisionNote.value})}); const b=await r.json().catch(()=>({})) as {message?:string;submitted_at?:string}; if(!r.ok)throw new Error(b.message??`提交失败（${r.status}）`); localSubmitted[order.id]={source:'system_recommendation',submittedAt:b.submitted_at??new Date().toISOString()}; closePlan() }catch(e){ submitError.value=e instanceof Error?e.message:'提交失败，请重试' }finally{submitting.value=false} }
@@ -166,7 +167,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
         </tr>
         <tr v-if="!filteredOrders.length"><td colspan="8" class="empty">当前分类暂无订单</td></tr>
       </tbody></table></div>
-      <footer class="page-foot">共 {{ props.orders.total }} 条候选订单 · 美国分仓：美西世迈优先 → MorePlus 兜底；美东纽约仓；区域无法可靠识别时必须人工判断。</footer>
+      <footer class="page-foot">共 {{ props.orders.total }} 条候选订单 · 美国分仓：美国3世迈仓优先 → MorePlus 兜底；美东纽约仓；区域无法可靠识别时必须人工判断。</footer>
     </section>
 
     <Teleport to="body"><div v-if="selectedOrder" class="modal-backdrop" @click.self="closePlan"><section class="plan-modal" role="dialog" aria-modal="true">
@@ -186,10 +187,10 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
           </tr>
         </tbody></table></div>
         <div v-if="fulfillmentGroups(selectedOrder).length" class="group-preview"><div class="group-heading"><strong>当前将生成 {{ fulfillmentGroups(selectedOrder).length }} 个履约订单</strong><span>系统按发货仓自动归组，不需要 Vita 手工创建 A/B。</span></div><div class="group-grid"><article v-for="group in fulfillmentGroups(selectedOrder)" :key="group.source" class="group-card"><header><div><small>{{ group.suffix?`履约组 ${group.suffix}`:'单仓履约' }}</small><strong>{{ group.erpOrderId }}</strong></div><div class="group-route"><b>{{ group.warehouse }}</b><span>{{ carrierLabel(group.carrier) }}</span></div></header><div class="group-items"><span v-for="item in group.items" :key="item.id">{{ resolvedSkuLabel(selectedOrder,item) }} × {{ item.quantity }}</span></div></article></div></div>
-        <p class="constraint">美国规则：美西世迈优先、MorePlus 兜底；美东纽约仓；不跨区域自动兜底。若出现两个履约来源，V1.1 只允许「一个海外仓 + 中国工厂」。</p>
+        <p class="constraint">美国规则：美国3世迈仓优先、MorePlus 兜底；美东纽约仓；不跨区域自动兜底。若出现两个履约来源，V1.1 只允许「一个海外仓 + 中国工厂」。</p>
       </section>
 
-      <section v-else class="processed-primary"><div class="record-banner"><div><strong>分仓已完成</strong><span>后续物流只处理已确定仓库、承运商与实际履约 SKU 的执行订单。</span></div><span class="status-chip done">{{ selectedOrder.fulfillment_allocation?.decision_source==='manual'?'人工确认':'采用系统推荐' }}</span></div><div class="segment-grid"><article v-for="child in selectedOrder.fulfillment_allocation?.plan_snapshot?.derived_orders??[]" :key="child.order_id" class="segment-card"><header><div><small>{{ child.derived?`衍生订单 ${child.suffix??''}`:'原订单直接履约' }}</small><h3>{{ child.erp_order_id }}</h3></div><div class="record-route"><span>{{ child.warehouse_name??child.warehouse_code }}</span><strong>{{ carrierLabel(child.carrier) }}</strong></div></header><table><thead><tr><th>实际履约 SKU</th><th>来源</th><th>数量</th></tr></thead><tbody><tr v-for="item in child.items" :key="`${child.order_id}-${item.sku}`"><td><strong>{{ item.resolved_fulfillment_sku??item.sku }}</strong></td><td>{{ item.source_sku??item.sku }}</td><td>{{ item.quantity }}</td></tr></tbody></table></article></div></section>
+      <section v-else class="processed-primary"><div class="record-banner"><div><strong>分仓已完成</strong><span>后续物流只处理已确定仓库、承运商与实际履约 SKU 的执行订单。</span></div><span class="status-chip done">{{ selectedOrder.fulfillment_allocation?.decision_source==='manual'?'人工确认':'采用系统推荐' }}</span></div><div class="segment-grid"><article v-for="child in selectedOrder.fulfillment_allocation?.plan_snapshot?.derived_orders??[]" :key="child.order_id" class="segment-card"><header><div><small>{{ child.derived?`衍生订单 ${child.suffix??''}`:'原订单直接履约' }}</small><h3>{{ child.erp_order_id }}</h3></div><div class="record-route"><span>{{ child.warehouse_code?sourceLabel(child.warehouse_code):(child.warehouse_name??'—') }}</span><strong>{{ carrierLabel(child.carrier) }}</strong></div></header><table><thead><tr><th>实际履约 SKU</th><th>来源</th><th>数量</th></tr></thead><tbody><tr v-for="item in child.items" :key="`${child.order_id}-${item.sku}`"><td><strong>{{ item.resolved_fulfillment_sku??item.sku }}</strong></td><td>{{ item.source_sku??item.sku }}</td><td>{{ item.quantity }}</td></tr></tbody></table></article></div></section>
 
       <div class="top-grid">
         <section class="info-card"><header><strong>订单信息</strong><span :class="selectedOrder.allocation_decision.status==='manual_review'?'mini-warn':'mini-good'">{{ selectedOrder.allocation_decision.status_label }}</span></header><dl><dt>订单号</dt><dd>{{ selectedOrder.erp_order_id }}</dd><dt>收件人</dt><dd>{{ selectedOrder.recipient_name ?? '—' }}</dd><dt>联系电话</dt><dd>{{ selectedOrder.phone ?? '—' }}</dd><dt>订单商品</dt><dd><span class="order-item-chip" v-for="item in selectedOrder.items" :key="item.id">{{ item.sku??item.product_summary }} × {{ item.quantity }}</span></dd><dt>收货地址</dt><dd>{{ addressLine(selectedOrder) || '—' }}</dd></dl></section>
