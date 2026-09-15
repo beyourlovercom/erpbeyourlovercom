@@ -16,7 +16,7 @@ final class OverseaWarehouseReviewService
     public const WAREHOUSE_CODE_BY_KEY = [
         'us-ny' => 'US-NY',
         'us-moreplus' => 'US-LA',
-        'us-sm' => 'US-SJ',
+        'us-3sm' => 'US-SM',
         'de-tianyun' => 'DE',
         'ca' => 'CA',
     ];
@@ -24,7 +24,7 @@ final class OverseaWarehouseReviewService
     public const CARRIER_BY_CODE = [
         'US-NY' => 'USPS',
         'US-LA' => 'USPS',
-        'US-SJ' => 'USPS',
+        'US-SM' => 'USPS',
         'DE' => 'DHL',
         'CA' => 'Canada Post',
     ];

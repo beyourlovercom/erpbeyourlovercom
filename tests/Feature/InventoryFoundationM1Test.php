@@ -25,14 +25,15 @@ final class InventoryFoundationM1Test extends TestCase
         $this->actingAs($user)->get('/inventory')->assertForbidden();
     }
 
-    public function test_six_owner_defined_warehouses_are_seeded_without_fake_addresses(): void
+    public function test_seven_canonical_warehouses_are_seeded_without_fake_addresses(): void
     {
         $this->assertSame([
-            '007'=>'007本地仓库','ca'=>'加拿大仓库','de'=>'德国仓','factory'=>'中国工厂','us-la'=>'美西洛杉矶仓','us-ny'=>'美东纽约仓',
+            '007'=>'007 本地仓库','ca'=>'加拿大仓','de'=>'德国天运仓','factory'=>'中国工厂','us-3sm'=>'美国3世迈仓','us-la'=>'美西 MorePlus 仓','us-ny'=>'美东纽约仓',
         ], Warehouse::query()->orderBy('slug')->pluck('name','slug')->all());
         $this->assertSame(0, Warehouse::query()->whereNotNull('address_line1')->count());
         $this->assertSame(6, Warehouse::query()->where('ownership_type', 'owned')->count());
-        $this->assertSame(0, Warehouse::query()->where('ownership_type', 'external')->count());
+        $this->assertSame(1, Warehouse::query()->where('ownership_type', 'external')->count());
+        $this->assertSame(7, Warehouse::query()->where('is_active', true)->count());
     }
 
     public function test_inventory_dashboard_list_products_and_detail_routes_are_real(): void
@@ -42,7 +43,23 @@ final class InventoryFoundationM1Test extends TestCase
         $this->actingAs($user)->get('/inventory/list')->assertOk()->assertInertia(fn($p)=>$p->component('Inventory/WarehouseList'));
         $this->actingAs($user)->get('/inventory/products')->assertOk()->assertInertia(fn($p)=>$p->component('Inventory/Products'));
         $this->actingAs($user)->get('/inventory/us-la')->assertOk()->assertInertia(fn($p)=>$p->component('Inventory/WarehouseShow')->where('warehouse.slug','us-la'));
+        $this->actingAs($user)->get('/inventory/us-3sm')->assertOk()->assertInertia(fn($p)=>$p
+            ->component('Inventory/WarehouseShow')
+            ->where('warehouse.code','US-SM')
+            ->where('warehouse.name','美国3世迈仓')
+            ->where('warehouse.public_slug','us-3sm'));
         $this->actingAs($user)->get('/inventory/warehouses')->assertRedirect('/inventory/list');
+    }
+
+
+    public function test_dashboard_exposes_seven_master_warehouses_and_six_fulfillment_warehouses(): void
+    {
+        $user=$this->userWith(['inventory.view']);
+        $this->actingAs($user)->get('/inventory')->assertOk()->assertInertia(fn($p)=>$p
+            ->where('summary.warehouse_total_count',7)
+            ->where('summary.fulfillment_warehouse_count',6)
+            ->where('summary.inventory_only_warehouse_count',1)
+            ->has('summary.warehouses',7));
     }
 
     public function test_view_only_user_cannot_mutate_inventory_or_warehouse(): void

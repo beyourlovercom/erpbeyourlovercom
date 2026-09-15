@@ -17,8 +17,8 @@ describe('Inventory foundation UI', () => {
   it('dashboard shows canonical inventory totals and warehouse links', () => {
     const wrapper = mount(Dashboard, { props: {
       canManage: true,
-      summary: { warehouse_count: 6, warehouse_data_gap_count: 4, warehouse_confirmed_count: 2, sku_rows: 12, quantity_on_hand: 100, quantity_reserved: 15, quantity_available: 85, out_of_stock_rows: 2, low_stock_rows: 3, in_stock_rows: 7, stock_alert_rows: 5, warehouses: [
-        { slug: 'de', name: '德国仓', country_code: 'DE', address: '', product_count: 3, quantity_on_hand: 20, is_active: true, inventory_state: 'confirmed', inventory_state_label: '已确认', last_inventory_at: '2026-09-01T08:00:00Z' },
+      summary: { warehouse_count: 7, warehouse_total_count: 7, fulfillment_warehouse_count: 6, inventory_only_warehouse_count: 1, warehouse_data_gap_count: 4, warehouse_confirmed_count: 2, sku_rows: 12, quantity_on_hand: 100, quantity_reserved: 15, quantity_available: 85, out_of_stock_rows: 2, low_stock_rows: 3, in_stock_rows: 7, stock_alert_rows: 5, warehouses: [
+        { slug: 'de', public_slug: 'de', code: 'DE', name: '德国天运仓', name_en: 'Germany · Tianyun', country_code: 'DE', address: '', role_label: '海外履约仓', is_fulfillment_warehouse: true, is_inventory_only_warehouse: false, product_count: 3, quantity_on_hand: 20, is_active: true, inventory_state: 'confirmed', inventory_state_label: '已确认', fulfillment_state: 'ready', fulfillment_state_label: '可履约', last_inventory_at: '2026-09-01T08:00:00Z' },
       ] },
     } })
     expect(wrapper.text()).toContain('库存概览')
@@ -33,7 +33,7 @@ describe('Inventory foundation UI', () => {
   it('dashboard hides warehouse create action from view-only users', () => {
     const wrapper = mount(Dashboard, { props: {
       canManage: false,
-      summary: { warehouse_count: 0, warehouse_data_gap_count: 0, warehouse_confirmed_count: 0, sku_rows: 0, quantity_on_hand: 0, quantity_reserved: 0, quantity_available: 0, out_of_stock_rows: 0, low_stock_rows: 0, in_stock_rows: 0, stock_alert_rows: 0, warehouses: [] },
+      summary: { warehouse_count: 0, warehouse_total_count: 0, fulfillment_warehouse_count: 0, inventory_only_warehouse_count: 0, warehouse_data_gap_count: 0, warehouse_confirmed_count: 0, sku_rows: 0, quantity_on_hand: 0, quantity_reserved: 0, quantity_available: 0, out_of_stock_rows: 0, low_stock_rows: 0, in_stock_rows: 0, stock_alert_rows: 0, warehouses: [] },
     } })
     expect(wrapper.find('a[href="/inventory/add"]').exists()).toBe(false)
   })

@@ -32,15 +32,30 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
                 ->where('orders.data.0.address_line_1', '123 West Test Ave')
                 ->where('orders.data.0.us_fulfillment_zone.zone', 'west')
                 ->where('orders.data.0.us_fulfillment_zone.zone_label', '美西区')
-                ->where('orders.data.0.us_fulfillment_zone.warehouse_priority.0', 'US-SJ')
+                ->where('orders.data.0.us_fulfillment_zone.warehouse_priority.0', 'US-SM')
                 ->where('orders.data.0.us_fulfillment_zone.warehouse_priority.1', 'US-LA')
-                ->where('orders.data.0.carrier_routes.US-SJ.carrier', 'USPS')
-                ->where('orders.data.0.carrier_routes.US-SJ.automatic', true)
+                ->has('warehouses', 6)
+                ->where('warehouses.2.code', 'US-SM')
+                ->where('warehouses.2.name', '美国3世迈仓')
+                ->where('orders.data.0.carrier_routes.US-SM.carrier', 'USPS')
+                ->where('orders.data.0.carrier_routes.US-SM.automatic', true)
                 ->where('orders.data.0.items.0.id', $giftItem->id)
                 ->where('orders.data.0.items.0.is_gift', true)
-                ->where("orders.data.0.items.0.gift_options_by_warehouse.US-SJ.0.mapping_id", $mapping->id)
-                ->where("orders.data.0.items.0.gift_options_by_warehouse.US-SJ.0.can_fulfill", true)
+                ->where("orders.data.0.items.0.gift_options_by_warehouse.US-SM.0.mapping_id", $mapping->id)
+                ->where("orders.data.0.items.0.gift_options_by_warehouse.US-SM.0.can_fulfill", true)
         );
+    }
+
+    public function test_legacy_us_sj_submission_is_normalized_to_us_sm(): void
+    {
+        [$user, $order, $giftItem, , $mapping] = $this->giftScenario(8);
+
+        $allocation = app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+            ['order_item_id' => $giftItem->id, 'source_code' => 'US-SJ', 'gift_mapping_id' => $mapping->id],
+        ], 'legacy stale browser payload', $user);
+
+        self::assertSame('US-SM', $allocation->manual_assignments[0]['source_code']);
+        self::assertSame('US-SM', $order->fresh()->shipment?->warehouse?->code);
     }
 
     public function test_gift_requires_actual_fulfillment_sku_selection(): void
@@ -49,7 +64,7 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
 
         $this->expectGiftError('gift 必须选择实际履约礼品 SKU', function () use ($user, $order, $giftItem): void {
             app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
-                ['order_item_id' => $giftItem->id, 'source_code' => 'US-SJ'],
+                ['order_item_id' => $giftItem->id, 'source_code' => 'US-SM'],
             ], null, $user);
         });
     }
@@ -69,7 +84,7 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
 
         $this->expectGiftError('所选礼品 SKU 不属于当前发货仓', function () use ($user, $order, $giftItem, $wrong): void {
             app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
-                ['order_item_id' => $giftItem->id, 'source_code' => 'US-SJ', 'gift_mapping_id' => $wrong->id],
+                ['order_item_id' => $giftItem->id, 'source_code' => 'US-SM', 'gift_mapping_id' => $wrong->id],
             ], null, $user);
         });
     }
@@ -80,7 +95,7 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
 
         $this->expectGiftError('所选实际礼品 SKU 在该仓库存不足或库存未知', function () use ($user, $order, $giftItem, $mapping): void {
             app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
-                ['order_item_id' => $giftItem->id, 'source_code' => 'US-SJ', 'gift_mapping_id' => $mapping->id],
+                ['order_item_id' => $giftItem->id, 'source_code' => 'US-SM', 'gift_mapping_id' => $mapping->id],
             ], null, $user);
         });
     }
@@ -91,7 +106,7 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
         $regular = $order->items()->where('sku', 'MF414A')->firstOrFail();
 
         app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
-            ['order_item_id' => $giftItem->id, 'source_code' => 'US-SJ', 'gift_mapping_id' => $mapping->id],
+            ['order_item_id' => $giftItem->id, 'source_code' => 'US-SM', 'gift_mapping_id' => $mapping->id],
             ['order_item_id' => $regular->id, 'source_code' => 'FACTORY'],
         ], 'gift resolved by Vita', $user);
 
@@ -102,7 +117,7 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
 
         $children = $order->fresh()->fulfillmentChildren()->with(['items', 'shipment.warehouse'])->get();
         self::assertCount(2, $children);
-        $giftChild = $children->first(fn (Order $child): bool => $child->shipment?->warehouse?->code === 'US-SJ');
+        $giftChild = $children->first(fn (Order $child): bool => $child->shipment?->warehouse?->code === 'US-SM');
         self::assertNotNull($giftChild);
         $childGift = $giftChild->items->firstOrFail();
         self::assertSame($actualGift->id, $childGift->product_id);
@@ -122,7 +137,7 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
         $factory = $this->warehouse('FACTORY', '中国工厂');
-        $sm = $this->warehouse('US-SJ', '美西世迈仓');
+        $sm = $this->warehouse('US-SM', '美国3世迈仓');
         $this->warehouse('US-NY', '美东纽约仓');
 
         $order = Order::query()->create([

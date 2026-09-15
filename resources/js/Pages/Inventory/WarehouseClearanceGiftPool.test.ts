@@ -25,12 +25,12 @@ vi.mock('./components/InventorySkuCombobox.vue', () => ({
 }))
 
 const warehouse = {
-  id: 1, slug: 'us-la', code: 'US-LA', name: '美西 MorePlus', country_code: 'US',
+  id: 1, slug: 'us-la', public_slug: 'us-la', code: 'US-LA', name: '美西 MorePlus 仓', name_en: 'US West · MorePlus', role_label: '海外履约仓', is_fulfillment_warehouse: true, is_inventory_only_warehouse: false, country_code: 'US',
   address_line1: null, address_line2: null, city: null, state_region: null, postal_code: null, timezone: null,
   type: 'warehouse', ownership_type: 'owned' as const, is_domestic: false, is_active: true, priority: 10,
   fulfillment_available_on: null, fulfillment_state: 'ready' as const, fulfillment_state_label: '可履约',
   replenishment_lead_time_days: null, replenishment_safety_stock_days: null, replenishment_target_cover_days: null,
-  billing_markdown: null, service_regions: ['US'],
+  billing_markdown: null, service_regions: ['US'], last_inventory_sync_at: null,
   inventories: [{
     id: 9, product: { id: 31, sku: 'CLR-A', name: 'Clearance A' }, quantity_on_hand: 10, quantity_reserved: 3,
     quantity_available: 7, stock_status: 'in_stock' as const, stock_status_label: '有货', inbound_at: null, stay_days: null,
@@ -51,7 +51,7 @@ const clearanceCandidates = [
 describe('Warehouse Clearance / Gift Pool V1', () => {
   it('renders the warehouse clearance tab with live stock, priority and local candidates', async () => {
     const wrapper = mount(WarehouseShow, { props: { warehouse, clearanceProducts, clearanceCandidates, canOperate: true, canManage: false } })
-    expect(wrapper.text()).toContain('库存商品')
+    expect(wrapper.text()).toContain('库存视图')
     const clearanceTab = wrapper.findAll('button').find(button => button.text().includes('清仓 / Gift 库'))!
     await clearanceTab.trigger('click')
 

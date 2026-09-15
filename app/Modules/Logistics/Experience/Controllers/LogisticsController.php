@@ -97,7 +97,7 @@ final class LogisticsController
         $productIds = collect($orders->items())->flatMap(fn (Order $order) => $order->items->pluck('product_id'))->filter()->unique()->values()->all();
         $context = array_replace($this->recommendations->prepare($productIds), $this->fulfillmentPlans->prepare($productIds));
         $context['gift_resolution'] = $this->giftSkuResolutions->prepare();
-        $allowedCodes = ['FACTORY', 'US-NY', 'US-LA', 'US-SJ', 'DE', 'CA'];
+        $allowedCodes = array_map('strtoupper', (array) config('warehouse_master.fulfillment_codes', []));
         $warehouses = collect($context['warehouses'] ?? [])
             ->filter(fn (array $warehouse): bool => in_array(strtoupper((string) ($warehouse['code'] ?? '')), $allowedCodes, true))
             ->values()->all();
@@ -431,7 +431,7 @@ final class LogisticsController
         $usZone = strtoupper((string) $order->address?->country) === 'US'
             ? $this->usZones->resolve($order->address?->postal_code, $destinationContext)
             : null;
-        $carrierRoutes = collect(['FACTORY', 'US-NY', 'US-LA', 'US-SJ', 'DE', 'CA'])->mapWithKeys(function (string $code) use ($order): array {
+        $carrierRoutes = collect((array) config('warehouse_master.fulfillment_codes', []))->mapWithKeys(function (string $code) use ($order): array {
             $route = $this->carrierRouting->warehouseRoute($order->address?->country, $code);
             $carrier = trim((string) ($route['carrier'] ?? ''));
             return [$code => [

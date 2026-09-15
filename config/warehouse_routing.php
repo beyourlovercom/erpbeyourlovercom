@@ -39,7 +39,7 @@ $countries = [
         'allow_cross_region_fallback' => false,
         'warehouses' => [
             ['code' => 'US-NY', 'role' => 'east'],
-            ['code' => 'US-SJ', 'role' => 'west_primary'],
+            ['code' => 'US-SM', 'role' => 'west_primary'],
             ['code' => 'US-LA', 'role' => 'west_secondary'],
         ],
         'rules' => [
@@ -50,7 +50,7 @@ $countries = [
                 'unknown_behavior' => 'human_review',
                 'west' => [
                     'label' => '美西区',
-                    'warehouse_priority' => ['US-SJ', 'US-LA'],
+                    'warehouse_priority' => ['US-SM', 'US-LA'],
                     'state_codes' => ['WA','OR','CA','ID','NV','MT','WY','UT','AZ','CO','NM','ND','SD','NE','KS','OK','TX'],
                     'zip3_ranges' => [[570,599],[660,699],[730,999]],
                 ],
@@ -144,7 +144,7 @@ return [
     'aliases' => [
         'US-NY' => ['US-NY', 'US-NJ', '美东纽约仓', '美东仓'],
         'US-LA' => ['US-LA', 'MorePlus', '美西洛杉矶仓', 'USA 美西仓'],
-        'US-SJ' => ['US-SJ', 'SMGJ', '美西加州3仓', '世纪仓', '世迈仓', '世迈国际仓', 'SMGJ 世迈国际仓'],
+        'US-SM' => ['US-SM', 'US-SJ', 'SMGJ', '美国3世迈仓', '美西加州3仓', '世纪仓', '世迈仓', '世迈国际仓', 'SMGJ 世迈国际仓'],
         'CA' => ['CA', 'CA02', '加拿大仓库', '加拿大仓'],
         'DE' => ['DE', '德国仓', '天运德国', '天运仓', '德国仓/天运仓'],
     ],

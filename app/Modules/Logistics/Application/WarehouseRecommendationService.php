@@ -467,10 +467,10 @@ final class WarehouseRecommendationService
             if (! $eligibleByCode->has($code)) continue;
             $winner = $eligibleByCode->get($code);
             $zoneLabel = (string) ($resolution['zone_label'] ?? $resolution['zone'] ?? '美国区域');
-            $reason = $code === 'US-SJ'
-                ? "{$zoneLabel}：美西世迈仓库存可整单满足，按冻结规则优先世迈仓。"
+            $reason = $code === 'US-SM'
+                ? "{$zoneLabel}：美国3世迈仓库存可整单满足，按冻结规则优先世迈仓。"
                 : ($code === 'US-LA'
-                    ? "{$zoneLabel}：美西世迈仓无法整单满足，MorePlus 有货，按冻结规则回退 MorePlus。"
+                    ? "{$zoneLabel}：美国3世迈仓无法整单满足，MorePlus 有货，按冻结规则回退 MorePlus。"
                     : "{$zoneLabel}：收货地址属于美东区域且纽约仓库存可整单满足，推荐美东纽约仓。");
 
             return $this->recommended(
@@ -557,8 +557,8 @@ final class WarehouseRecommendationService
             );
             if ($winner !== null) {
                 $label = ($zone['status'] ?? null) === 'matched'
-                    ? "美东 USPS Zone {$zone['zone']} 未触发 Zone ≤ {$maxZone} 美东优先，按 US-SJ → US-LA → US-NY 顺序选择可整单履约仓。"
-                    : 'ZIP 无法从当前美东 USPS 分区表唯一确认 Zone，按 US-SJ → US-LA → US-NY 安全 fallback。';
+                    ? "美东 USPS Zone {$zone['zone']} 未触发 Zone ≤ {$maxZone} 美东优先，按 US-SM → US-LA → US-NY 顺序选择可整单履约仓。"
+                    : 'ZIP 无法从当前美东 USPS 分区表唯一确认 Zone，按 US-SM → US-LA → US-NY 安全 fallback。';
 
                 return $this->recommended(
                     $winner,

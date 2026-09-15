@@ -23,6 +23,7 @@ final class OverseaWarehouseController
 
     public function index(Request $request, ?string $warehouse = null): Response
     {
+        $warehouse = in_array($warehouse, ['us-sm', 'us-sj', 'usa-sj'], true) ? 'us-3sm' : $warehouse;
         $warehouseKey = $warehouse ?: 'all';
         abort_unless($warehouseKey === 'all' || array_key_exists($warehouseKey, OverseaWarehouseReviewService::WAREHOUSE_CODE_BY_KEY), 404);
         $view = in_array((string) $request->query('view'), self::VIEWS, true) ? (string) $request->query('view') : 'review';
@@ -56,6 +57,7 @@ final class OverseaWarehouseController
 
     public function export(Request $request, string $warehouse): StreamedResponse
     {
+        $warehouse = in_array($warehouse, ['us-sm', 'us-sj', 'usa-sj'], true) ? 'us-3sm' : $warehouse;
         $warehouseMap = $this->warehouseMap();
         $selectedWarehouse = $warehouseMap[$warehouse] ?? null;
         abort_unless($selectedWarehouse, 404, '仓库尚未建立');
@@ -127,27 +129,20 @@ final class OverseaWarehouseController
 
     private function warehouseMap(): array
     {
-        $labels = [
-            'us-ny' => '美东纽约',
-            'us-moreplus' => '美西MorePlus',
-            'us-sm' => '美西世迈',
-            'de-tianyun' => '德国天运',
-            'ca' => '加拿大仓',
-        ];
         $byCode = Warehouse::query()
             ->where('is_active', true)
             ->whereIn('code', array_values(OverseaWarehouseReviewService::WAREHOUSE_CODE_BY_KEY))
             ->get()->keyBy('code');
 
         return collect(OverseaWarehouseReviewService::WAREHOUSE_CODE_BY_KEY)
-            ->mapWithKeys(function (string $code, string $key) use ($byCode, $labels): array {
+            ->mapWithKeys(function (string $code, string $key) use ($byCode): array {
                 $warehouse = $byCode->get($code);
                 if (! $warehouse) return [];
                 return [$key => [
                     'key' => $key,
                     'id' => $warehouse->id,
                     'code' => $code,
-                    'label' => $labels[$key],
+                    'label' => $warehouse->name,
                     'carrier' => OverseaWarehouseReviewService::CARRIER_BY_CODE[$code] ?? null,
                     'url' => "/logistics/oversea/{$key}",
                 ]];

@@ -20,7 +20,7 @@ $countries = [
         'warehouses' => [
             'US-LA' => ['carrier' => 'USPS', 'service' => null],
             'US-NY' => ['carrier' => 'USPS', 'service' => null],
-            'US-SJ' => ['carrier' => 'USPS', 'service' => null],
+            'US-SM' => ['carrier' => 'USPS', 'service' => null],
         ],
         'manual_overrides' => ['DHL'],
         'auto_rank_carriers' => false,
