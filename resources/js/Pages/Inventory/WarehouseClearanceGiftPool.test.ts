@@ -49,12 +49,12 @@ const clearanceCandidates = [
 ]
 
 describe('Warehouse Clearance / Gift Pool V1', () => {
-  it('renders the warehouse clearance tab with live stock, priority and local candidates', async () => {
+  it('renders current inventory and the inline clearance pool with live stock, priority and local candidates', () => {
     const wrapper = mount(WarehouseShow, { props: { warehouse, clearanceProducts, clearanceCandidates, canOperate: true, canManage: false } })
-    expect(wrapper.text()).toContain('库存视图')
-    const clearanceTab = wrapper.findAll('button').find(button => button.text().includes('清仓 / Gift 库'))!
-    await clearanceTab.trigger('click')
-
+    expect(wrapper.text()).toContain('目前仓库产品库存统计')
+    expect(wrapper.text()).toContain('清仓 / Gift 库')
+    expect(wrapper.findAll('button').some(button => button.text().includes('清仓 / Gift 库'))).toBe(false)
+    expect(wrapper.text()).toContain('已在清仓')
     expect(wrapper.text()).toContain('加入清仓后自动成为本仓 Gift 候选')
     expect(wrapper.text()).toContain('CLR-A')
     expect(wrapper.text()).toContain('Clearance B')
@@ -66,11 +66,12 @@ describe('Warehouse Clearance / Gift Pool V1', () => {
     expect(wrapper.findAll('input[type="number"]').some(input => input.attributes('value') === '1')).toBe(true)
   })
 
-  it('keeps clearance management read-only for inventory viewers without operate permission', async () => {
+  it('keeps the inline clearance pool read-only for inventory viewers without operate permission', () => {
     const wrapper = mount(WarehouseShow, { props: { warehouse, clearanceProducts, clearanceCandidates, canOperate: false, canManage: false } })
-    await wrapper.findAll('button').find(button => button.text().includes('清仓 / Gift 库'))!.trigger('click')
+    expect(wrapper.text()).toContain('目前仓库产品库存统计')
+    expect(wrapper.text()).toContain('清仓 / Gift 库')
     expect(wrapper.find('input[placeholder="搜索本仓库存 SKU / 商品"]').exists()).toBe(false)
-    expect(wrapper.findAll('button').some(button => button.text() === '移出清仓')).toBe(false)
+    expect(wrapper.findAll('button').some(button => button.text() === '移出')).toBe(false)
     expect(wrapper.text()).toContain('CLR-A')
     expect(wrapper.text()).toContain('缺货')
   })
