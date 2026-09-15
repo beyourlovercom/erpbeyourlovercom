@@ -138,6 +138,7 @@ final class OrderService
                 $resolved = $this->resolveInboundProductFields($item, $wooReference, $data->connectionKey);
                 $order->items()->create([
                     'product_id' => $resolved['product_id'],
+                    'woocommerce_line_item_id' => $item['woocommerce_line_item_id'] ?? null,
                     'sku' => $resolved['sku'],
                     'product_summary' => $resolved['product_summary'],
                     'quantity' => (int) $item['quantity'],

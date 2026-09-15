@@ -81,6 +81,26 @@ final class FulfillmentAllocationV1Test extends TestCase
         );
     }
 
+    public function test_split_children_inherit_woo_line_item_identity_from_parent_items(): void
+    {
+        [$user, $order] = $this->scenario(2);
+        $items = $order->items()->orderBy('id')->get();
+        $items[0]->forceFill(['woocommerce_line_item_id' => 91001])->save();
+        $items[1]->forceFill(['woocommerce_line_item_id' => 91002])->save();
+
+        $this->actingAs($user)->postJson('/logistics/orders/'.$order->id.'/fulfillment-allocation/manual', [
+            'assignments' => [
+                ['order_item_id' => $items[0]->id, 'source_code' => 'US-LA'],
+                ['order_item_id' => $items[1]->id, 'source_code' => 'FACTORY'],
+            ],
+            'decision_note' => '验证 Woo line item identity 继承',
+        ])->assertOk();
+
+        $children = $order->fresh()->fulfillmentChildren()->with('items')->orderBy('fulfillment_suffix')->get();
+        self::assertCount(2, $children);
+        self::assertSame([91001, 91002], $children->map(fn ($child) => $child->items->first()?->woocommerce_line_item_id)->all());
+    }
+
     public function test_manual_v1_rejects_two_overseas_sources_without_factory(): void
     {
         [$user, $order] = $this->scenario(2);

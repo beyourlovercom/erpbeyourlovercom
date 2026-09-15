@@ -51,6 +51,7 @@ final class WooCommerceInboundTest extends TestCase
         $this->assertSame('EUR', $order->currency);
         $this->assertSame('DE', $order->address->country);
         $this->assertSame($product->id, $order->items->first()->product_id);
+        $this->assertSame(100101, $order->items->first()->woocommerce_line_item_id);
         $this->assertSame('19.95', $order->items->first()->unit_price);
         $this->assertDatabaseHas('order_external_references', [
             'order_id' => $order->id, 'provider' => 'woocommerce', 'connection_key' => 'shop-a', 'reference' => '101', 'provider_modified_at' => '2026-08-27 01:05:03',
@@ -63,6 +64,7 @@ final class WooCommerceInboundTest extends TestCase
         $order->refresh()->load('items');
         $this->assertSame('Updated', $order->order_note);
         $this->assertSame($firstErpOrderId, $order->erp_order_id);
+        $this->assertSame(100101, $order->items->first()->woocommerce_line_item_id);
         $this->assertSame('21.50', $order->items->first()->unit_price);
         $this->assertDatabaseHas('audit_records', ['action' => 'order.inbound_updated']);
     }
@@ -311,6 +313,7 @@ final class WooCommerceInboundTest extends TestCase
             ],
             'billing' => ['phone' => '+49123456'],
             'line_items' => [[
+                'id' => 100000 + $id,
                 'name' => 'Imported Product', 'product_id' => $productId, 'variation_id' => 0,
                 'sku' => $sku, 'quantity' => 1, 'price' => $price, 'total' => $price,
             ]],
