@@ -19,7 +19,7 @@ const order = {
   shipment: null,
 }
 const carrierOptions = [{ value: 'DHL', label: 'DHL' }, { value: 'UPS', label: 'UPS' }, { value: 'FedEx', label: 'FedEx' }]
-const props = { orders: { data: [order], current_page: 1, last_page: 1, per_page: 50, total: 1 }, warehouses: [warehouse], carrierOptions }
+const props = { orders: { data: [order], current_page: 1, last_page: 1, per_page: 50, total: 1 }, warehouses: [warehouse], carrierOptions, canOperate: true }
 
 describe('Logistics pending grid contract', () => {
   it('renders ERP order id first and source as secondary text', () => {
@@ -38,6 +38,24 @@ describe('Logistics pending grid contract', () => {
     expect(panel.text()).toContain('列设置')
     expect(panel.text()).toContain('固定显示')
     expect(wrapper.get('input[aria-label="订单号固定显示"]').attributes('disabled')).toBeDefined()
+  })
+})
+
+describe('Logistics role real UX', () => {
+  it('keeps view-only users read-only while preserving copy/detail access', async () => {
+    const wrapper = mount(Index, { props: { ...props, canOperate: false } })
+    expect(wrapper.text()).toContain('当前角色为只读模式')
+    const detail = wrapper.findAll('button').find(button => button.text() === '查看详情')
+    expect(detail).toBeDefined()
+    await detail!.trigger('click')
+
+    expect(wrapper.text()).not.toContain('采用推荐并预留库存')
+    expect(wrapper.text()).not.toContain('保存草稿')
+    expect(wrapper.text()).not.toContain('确认发货')
+    expect(wrapper.text()).toContain('复制收件人')
+    for (const control of [...wrapper.findAll('select'), ...wrapper.findAll('input'), ...wrapper.findAll('textarea')]) {
+      expect(control.attributes('disabled')).toBeDefined()
+    }
   })
 })
 

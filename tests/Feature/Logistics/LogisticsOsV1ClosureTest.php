@@ -310,6 +310,40 @@ final class LogisticsOsV1ClosureTest extends TestCase
         $this->actingAs($viewOnly)->post("/logistics/orders/{$order->id}/update-tracking", ['tracking_number' => 'X'])->assertForbidden();
     }
 
+    public function test_view_only_role_receives_read_only_ux_props_across_operational_surfaces(): void
+    {
+        $viewer = $this->userWith(['logistics.view']);
+        $surfaces = [
+            '/logistics/pending' => 'Logistics/Index',
+            '/logistics/awaiting-tracking' => 'Logistics/AwaitingTracking',
+            '/logistics/in-transit' => 'Logistics/InTransit',
+            '/logistics/exceptions' => 'Logistics/Exceptions',
+            '/logistics/review' => 'Logistics/Review',
+        ];
+
+        foreach ($surfaces as $path => $component) {
+            $this->actingAs($viewer)->get($path)->assertInertia(
+                fn (Assert $page) => $page->component($component)->where('canOperate', false)
+            );
+        }
+    }
+
+    public function test_logistics_operator_receives_operate_ux_prop(): void
+    {
+        $operator = $this->userWith(['logistics.view', 'logistics.operate']);
+
+        $this->actingAs($operator)->get('/logistics/pending')->assertInertia(
+            fn (Assert $page) => $page->component('Logistics/Index')->where('canOperate', true)
+        );
+    }
+
+    public function test_prototype_only_permission_cannot_bypass_pending_logistics_view(): void
+    {
+        $prototypeOnly = $this->userWith(['prototype.view']);
+
+        $this->actingAs($prototypeOnly)->get('/logistics/pending')->assertForbidden();
+    }
+
     // ── Idempotency ────────────────────────────────────────────────────────────
 
     public function test_mark_exception_is_idempotent(): void
