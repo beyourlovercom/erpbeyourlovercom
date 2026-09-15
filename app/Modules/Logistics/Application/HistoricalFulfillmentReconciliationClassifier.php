@@ -135,7 +135,6 @@ final class HistoricalFulfillmentReconciliationClassifier
             ['warehouse_id', 'warehouse_id', ($evidence['warehouse_approved'] ?? false) === true],
             ['carrier', 'carrier', ($evidence['carrier_service_approved'] ?? false) === true],
             ['service', 'service', ($evidence['carrier_service_approved'] ?? false) === true],
-            ['shipped_at', 'shipped_at', ($evidence['shipped_at_source_backed'] ?? false) === true],
         ];
         foreach ($checks as [$evidenceKey, $existingKey, $authoritative]) {
             if (! $authoritative) {

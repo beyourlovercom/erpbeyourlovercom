@@ -132,6 +132,17 @@ final class HistoricalFulfillmentReconciliationClassifierTest extends TestCase
         $this->assertSame(HistoricalFulfillmentReconciliationClassifier::ALREADY_CANONICAL, $result['classification']);
     }
 
+    public function test_existing_shipment_date_difference_does_not_override_canonical_tracking_agreement(): void
+    {
+        $candidate = $this->candidate();
+        $candidate['existing_shipment'] = $candidate['evidence'];
+        $candidate['existing_shipment']['shipped_at'] = '2026-08-31 18:00:00';
+        $result = $this->classifier->classify($candidate);
+
+        $this->assertSame(HistoricalFulfillmentReconciliationClassifier::ALREADY_CANONICAL, $result['classification']);
+        $this->assertSame('skip', $result['decision']);
+    }
+
     public function test_candidate_key_and_source_are_required(): void
     {
         $this->expectException(InvalidArgumentException::class);
