@@ -10,7 +10,7 @@ final class MaterializeContinuousDeltaCommand extends Command
 {
     protected $signature = 'finance:materialize-continuous-delta
         {--limit=10000 : Maximum changed operational orders to inspect, 1..10000}
-        {--apply : Persist eligible P2/P3/P5 delta materialization; dry-run is default}';
+        {--apply : Persist eligible P2/P3/P5/P6 delta materialization; dry-run is default}';
 
     protected $description = 'Materialize bounded Accounting V1.1C deltas after canonical Woo/order changes.';
 

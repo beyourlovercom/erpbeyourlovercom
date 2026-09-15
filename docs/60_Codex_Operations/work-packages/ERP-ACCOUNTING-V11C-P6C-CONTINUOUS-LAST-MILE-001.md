@@ -60,9 +60,27 @@ Close Accounting V1.1C-P6C by making the existing Accounting continuous-delta pi
 
 P6C code deployment may be separately released after merge. The existing continuous-delta scheduler remains controlled exclusively by `ERP_ACCOUNTING_CONTINUOUS_DELTA_ENABLED`. Production activation is not silently enabled by code deployment. Owner has granted continuous authorization for the active P6 chain until UAT, but unexpected scope/data anomalies still stop execution.
 
+## Final verification evidence
+
+- PHP lint: PASS for all touched PHP files.
+- `git diff --check`: PASS.
+- Command discovery: `finance:materialize-continuous-delta` registered.
+- Focused P6C/P6A/P6B: 23 tests / 136 assertions PASS / 1 MySQL-only skip.
+- Broader Finance regression: 43 tests / 302 assertions PASS / 1 MySQL-only skip.
+- Candidate-store regression proves a carrier-billing-only `updated_at` change re-enters the continuous-delta window and materializes actual last-mile while the estimate stage fails closed on `actual_carrier_billing_available`.
+- No schema, UI, menu, route, scheduler, FX-rule, historical-fulfillment or carrier-import behavior changed.
+- Latest-main drift audit before rebase: `0e82d88b8c75d4d1161e0868e100574fd0a6ea44`; changed paths are Orders/Logistics/HFR docs only and do not overlap P6C touched paths.
+
 ## Work Log
 
-To be completed before merge with actual effective hours and variance.
+- preflight / existing C1 + P6A/P6B contract audit: 0.15h
+- bounded implementation: 0.25h
+- focused + broader Finance verification: 0.25h
+- harness remediation / drift audit / final evidence: 0.10h
+- ACTUAL_EFFECTIVE_HOURS: 0.75h
+- issued planning value: 1.25h
+- VARIANCE: -0.50h / -40.0%
+- VARIANCE_REASON: existing P6A/P6B gates and existing continuous-delta scheduler were reusable; no schema/UI/new orchestration was required. Harness vendor copy added small verification overhead.
 
 PROJECT POSITION
 PROGRAM_ROADMAP: Architecture Migration -> MVP1 Existing Operations -> ERP Inquiry -> Woo Inbound -> Outbound/Sync -> Product/Media -> Content/SEO -> Full Order Workspace -> Logistics OS -> KOL OS -> Inventory/Procurement -> Accounting/ROI Expansion -> Production Hardening
@@ -70,14 +88,14 @@ CURRENT_TRACK_PHASE_MAP: Accounting V1.1C P1-P5 COMPLETE -> P6A COMPLETE -> P6B 
 COMPLETED_PHASES: P1 Product Cost Source; P2 Product Cost Materialization; P3 Fixed Cost Rules; P4 Transaction FX Snapshot; P5 Payment Fee; P6A Estimated Last-mile; P6B Actual Carrier Bill Tianyun production sample
 CURRENT_PHASE: P6C Continuous Delta integration
 CURRENT_WORK_PACKAGE: ERP-ACCOUNTING-V11C-P6C-CONTINUOUS-LAST-MILE-001
-PACKAGE_STATUS: ACTIVE
+PACKAGE_STATUS: MERGE_CANDIDATE
 WAITING_PHASES: P7 Warehouse Cost; P8 KOL Commission; P9 Loss/Other Costs; V1.1 Final Profit Readiness
 BASELINE: main@3eed38479d7f3338e5b0f707c8c9315106c33239
 GITHUB_STATE: branch feature/erp-accounting-v11c-p6c-continuous-last-mile-001 from exact baseline; delivery PR pending
 SOURCE_CONFLICTS: AI/CURRENT_CONTEXT.md may be stale relative to current GitHub/main and Owner-approved Accounting roadmap; GitHub/main + this Owner-confirmed P6 roadmap govern
 GLOBAL_GATE: BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1 active; Production release/data semantics remain governed
 PRODUCTION_DEPLOYMENT_STATUS: NO for P6C code at activation; P6A/P6B predecessor capabilities are already Production-deployed
-NEXT_DEPENDENCY: focused implementation and verification
+NEXT_DEPENDENCY: rebase latest origin/main -> post-rebase focused verification -> PR #315 merge -> Production release/verification
 EVIDENCE_AS_OF: 2026-09-15
 
 ROADMAP HOURS
@@ -91,7 +109,7 @@ MVP1_REMAINING: UNKNOWN WITH EVIDENCE
 POST_MVP_KNOWN_INCREMENT: UNKNOWN WITH EVIDENCE
 LONG_TERM_CUMULATIVE_RANGE: UNKNOWN WITH EVIDENCE
 PROGRAM_REMAINING: UNKNOWN WITH EVIDENCE
-COMPLETED_ACTUAL_EFFECTIVE_HOURS: predecessor P6 package ledger exists in prior WPs; package-local actual pending
+COMPLETED_ACTUAL_EFFECTIVE_HOURS: package-local 0.75h; predecessor P6 package ledgers remain in prior WPs
 ESTIMATE_CONFIDENCE: HIGH for bounded code scope
 ESTIMATE_AS_OF: 2026-09-15
 ESTIMATE_METHOD: touched-path analysis + reuse of existing P6A/P6B gates + focused regression
@@ -111,3 +129,7 @@ MIGRATION_FILE_AUTHORING: EXCLUDED
 MIGRATION_EXECUTION: EXCLUDED
 UAT: INCLUDED
 DEPLOYMENT: EXCLUDED
+ACTUAL_EFFECTIVE_HOURS: 0.75h
+ACTUAL_HOURS_BREAKDOWN: preflight 0.15h; implementation 0.25h; verification 0.25h; harness/drift/final evidence 0.10h
+VARIANCE: -0.50h / -40.0%
+VARIANCE_REASON: existing P6A/P6B gates and C1 scheduler were reusable; no schema/UI/new orchestration was required
