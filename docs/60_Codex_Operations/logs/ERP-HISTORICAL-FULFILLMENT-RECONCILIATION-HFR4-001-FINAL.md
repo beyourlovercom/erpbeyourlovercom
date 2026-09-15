@@ -73,3 +73,33 @@ A read-only simulation marked only exact Speeda-enriched candidates as warehouse
 - SKIP: 26
 
 This simulation is NOT an authorized apply plan and must never be used for Production write without a separate Owner semantic approval and a fresh exact preflight.
+
+## Production apply + Owner UAT closure — 2026-09-15
+Owner approved the Speeda historical warehouse semantic gate for exact Speeda customer order + tracking matches, allowing `FACTORY` (`warehouse_id=5`) as historical warehouse evidence. A fresh Production preflight was run before apply; no prior what-if fingerprint was reused.
+
+Final authorized source / plan:
+- source checksum: `39e27b1d8ec895c11ec45c70880efb01ca17cb3b78b705c2ec5048148b32d528`
+- source scan SHA: `29fc5844011131a9cbb9879a0816ed52cb3705a1c3e0b437e406560a5813849c`
+- plan SHA: `b48450cd695582849c216c3ef1b9cad52534af4146cf75f296e1c8c0d40ba83f`
+- preflight: READY 974 / REVIEW 4,354 / SKIP 26
+
+Production apply result:
+- shipments created: 974
+- shipments total: 45 -> 1,019
+- immutable HFR3 apply audits: 974
+- target ShipmentAttempt rows created: 0
+- target Woo sync outbox rows created: 0
+- target Order business-state hash unchanged: yes
+- verification SHA: `1676c2245106b1d43b4a50cf1b973f68cf58eac07b88814869bbf2a598053007`
+
+Independent post-verify confirmed all 974 rows are unique customer Orders with unique tracking, `FACTORY`, `4PX`, `shipment_status=shipped`, `warehouse_selection_source=historical_exact`, and `carrier_selection_source=historical_exact`. All 974 source Orders remained `customer/shipped`.
+
+Idempotency rerun after apply:
+- READY: 0
+- REVIEW: 4,354
+- SKIP: 1,000
+- already applied: 974
+
+Owner UAT sample: `007-0918-c28518` / Order 1574. Production UI rendered `已发货`, `中国工厂`, `4PX`, `SD经济挂号-带电`, tracking `4PX3002183493089CN`. Owner replied `pass` on 2026-09-15.
+
+HFR-4 is CLOSED / UAT PASS. Remaining review candidates are not silently backfilled. No changelog entry was created, per manual-only changelog policy.
