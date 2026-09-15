@@ -103,7 +103,7 @@ final class OrderController
     public function show(Request $request, Order $order): Response
     {
         $this->authorizeKind($request, $order);
-        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync', 'operationalMarkers', 'procurementOrder', 'financials', 'costEntries']);
+        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync', 'operationalMarkers', 'procurementOrder']);
         $inventoryAvailability = $this->availability->forProductIds($order->items->pluck('product_id')->filter()->unique()->values()->all());
 
         return Inertia::render('Orders/Show', [
@@ -111,7 +111,7 @@ final class OrderController
             'inventoryAvailability' => $inventoryAvailability,
             'packagingReferences' => $this->packagingReferences->forOrder($order),
             'warehouses' => $this->availability->activeWarehouses(),
-            'profitVisibility' => $order->order_kind === OrderKind::Customer ? $this->orderAnalysis->visibility($order) : null,
+            'canViewProfit' => $request->user()?->can('analysis.view') ?? false,
             'canMarkOperational' => $request->user()?->can('orders.edit') ?? false,
             'canCreateProcurement' => ($request->user()?->can('procurement.create') ?? false) && $order->operationalMarkers->contains('marker', 'stockout'),
             'canManageProductPackaging' => $request->user()?->can('products.operate') ?? false,

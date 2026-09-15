@@ -109,21 +109,18 @@ final class Mvp1WorkflowTest extends TestCase
         ])->assertRedirect();
 
         $this->actingAs($user)->get('/customers/orders/'.$order->id)->assertInertia(fn (Assert $page) => $page
-            ->where('profitVisibility.summary.net_revenue', '100.00')
-            ->where('profitVisibility.summary.known_cost', '33.00')
-            ->where('profitVisibility.summary.current_stage_profit', '67.00')
-            ->where('profitVisibility.summary.current_stage_margin', '0.6700')
-            ->where('profitVisibility.summary.posted_cost_count', 3)
-            ->where('profitVisibility.summary.required_cost_count', 10)
-            ->where('profitVisibility.summary.profit_status', 'not_confirmed')
-            ->where('profitVisibility.summary.contribution_profit', null)
-            ->where('profitVisibility.cost_lines.0.cost_type', 'product_cost')
-            ->where('profitVisibility.cost_lines.0.state', 'confirmed')
+            ->where('canViewProfit', true)
+            ->missing('profitVisibility')
         );
 
         $this->actingAs($user)->get('/accounting/order-costs')->assertInertia(fn (Assert $page) => $page
+            ->where('orders.0.summary.net_revenue', '100.00')
             ->where('orders.0.summary.known_cost', '33.00')
             ->where('orders.0.summary.current_stage_profit', '67.00')
+            ->where('orders.0.summary.current_stage_margin', '0.6700')
+            ->where('orders.0.summary.posted_cost_count', 3)
+            ->where('orders.0.summary.required_cost_count', 10)
+            ->where('orders.0.summary.profit_status', 'not_confirmed')
             ->where('orders.0.summary.contribution_profit', null)
         );
     }
@@ -135,6 +132,7 @@ final class Mvp1WorkflowTest extends TestCase
         $order = Order::query()->firstOrFail();
         $restricted = $this->userWith(['orders.view']);
         $this->actingAs($restricted)->get('/customers/orders')->assertOk();
+        $this->actingAs($restricted)->get('/customers/orders/'.$order->id)->assertInertia(fn (Assert $page) => $page->where('canViewProfit', false)->missing('profitVisibility'));
         $this->actingAs($restricted)->post('/customers/orders', $this->orderPayload())->assertForbidden();
         $this->actingAs($restricted)->get('/logistics/pending')->assertForbidden();
         $this->actingAs($restricted)->post('/logistics/orders/'.$order->id.'/reopen')->assertForbidden();
