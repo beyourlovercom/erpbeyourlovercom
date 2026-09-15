@@ -19,7 +19,7 @@ type Paginated<T> = { data: T[]; current_page: number; last_page: number; per_pa
 type Draft = { warehouse_id: number | ''; carrier: string; service: string; tracking_number: string; shipped_at: string; logistics_note: string }
 type ColumnKey = 'order_number' | 'type' | 'recipient' | 'country' | 'item_count' | 'warehouse'
 
-const props = defineProps<{ orders: Paginated<Order>; warehouses: Warehouse[]; carrierOptions: CarrierOption[]; statusBar?: { key: string; label: string; url: string; count: number }[]; gridPreferenceNamespace?: string; gridPreference?: GridPreferenceValue<ColumnKey> | null }>()
+const props = defineProps<{ orders: Paginated<Order>; warehouses: Warehouse[]; carrierOptions: CarrierOption[]; statusBar?: { key: string; label: string; url: string; count: number }[]; gridPreferenceNamespace?: string; gridPreference?: GridPreferenceValue<ColumnKey> | null; canOperate: boolean }>()
 const drafts = reactive<Record<number, Draft>>({})
 const openOrderId = ref<number | null>(null)
 const copyState = ref<Record<number, 'success' | 'error'>>({})
@@ -77,7 +77,7 @@ function csrfHeaders(): Record<string, string> {
 }
 
 const adoptRecommendation = async (order: Order) => {
-  if (order.warehouse_recommendation.status !== 'recommended' || !order.warehouse_recommendation.warehouse) return
+  if (!props.canOperate || order.warehouse_recommendation.status !== 'recommended' || !order.warehouse_recommendation.warehouse) return
   delete adoptError.value[order.id]
   try {
     const resp = await fetch(`/logistics/orders/${order.id}/adopt-recommendation`, {
@@ -102,8 +102,9 @@ const adoptRecommendation = async (order: Order) => {
     adoptError.value[order.id] = '网络错误，请重试'
   }
 }
-const saveDraft = (order: Order) => router.post(`/logistics/orders/${order.id}/draft`, drafts[order.id], { preserveScroll: true })
+const saveDraft = (order: Order) => { if (!props.canOperate) return; router.post(`/logistics/orders/${order.id}/draft`, drafts[order.id], { preserveScroll: true }) }
 const ship = (order: Order) => {
+  if (!props.canOperate) return
   const draft = drafts[order.id]
   delete shipValidation.value[order.id]
   if (!draft.warehouse_id) { shipValidation.value[order.id] = '请先选择发货仓库'; return }
@@ -149,7 +150,7 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
   <AuthenticatedLayout title="物流" :breadcrumbs="['BYL ERP', '物流', '待发货']">
     <section class="mvp-page">
       <StatusBar :statuses="props.statusBar ?? []" />
-      <div class="mvp-page-heading"><div><p class="mvp-kicker">Assisted Fulfillment</p><h2>待发货</h2><p>系统按服务区域与确认库存推荐仓库，由人工采用并完成履约。</p></div></div>
+      <div class="mvp-page-heading"><div><p class="mvp-kicker">Assisted Fulfillment</p><h2>待发货</h2><p>系统按服务区域与确认库存推荐仓库，由人工采用并完成履约。<strong v-if="!props.canOperate"> 当前角色为只读模式。</strong></p></div></div>
       <div class="mvp-table-wrap"><table class="mvp-table logistics-pending-grid"><thead><tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>操作</th><ColumnSettingsHeader :columns="columnPreferences" :required-keys="['order_number']" :sync-state="columnPreferenceSyncState" @toggle="toggleColumn" @start-drag="startColumnDrag" @drop="dropColumn" @reset="resetColumns" /></tr></thead><tbody>
         <template v-for="order in orders.data" :key="order.id">
           <tr>
@@ -161,25 +162,25 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
               <template v-else-if="column.key === 'item_count'">{{ order.item_count }}</template>
               <template v-else-if="column.key === 'warehouse'">{{ localWarehouseNames[order.id] ?? order.shipment?.warehouse_name ?? '未选择' }}</template>
             </td>
-            <td class="mvp-actions"><button class="mvp-button mvp-button-primary" type="button" @click="toggle(order.id)">{{ openOrderId === order.id ? '收起' : '履约处理' }}</button></td>
+            <td class="mvp-actions"><button class="mvp-button mvp-button-primary" type="button" @click="toggle(order.id)">{{ openOrderId === order.id ? '收起' : (props.canOperate ? '履约处理' : '查看详情') }}</button></td>
           </tr>
           <tr v-if="openOrderId === order.id"><td :colspan="visibleColumns.length + 1" class="fulfillment-cell">
             <div class="fulfillment-workspace">
               <div class="recommendation-card" :class="{ blocked: order.warehouse_recommendation.status !== 'recommended' }">
                 <div><small>自动分配 · {{ order.automatic_allocation.status === 'allocated' ? '已完成' : order.automatic_allocation.status === 'ready' ? '可执行' : '暂阻塞' }}</small><strong>{{ order.automatic_allocation.warehouse?.name ?? order.warehouse_recommendation.warehouse?.name ?? '暂不推荐' }}</strong><p>{{ order.automatic_allocation.reason_label }}</p><p v-if="order.automatic_allocation.status === 'ready'" class="auto-preview-hint">当前为 Preview，不修改库存；自动模式启用后将创建 Reservation + Shipment Draft。</p><p v-else-if="order.automatic_allocation.status === 'allocated'" class="reservation-hint">已自动选择仓库并预留库存；确认发货时才扣减 QOH。</p><p v-else class="manual-warehouse-hint">自动分配未执行时，仍可人工选择任一启用仓库发货。</p><p class="recommendation-detail">系统仓库建议：{{ order.warehouse_recommendation.reason_label }}</p></div>
-                <button v-if="order.warehouse_recommendation.status === 'recommended'" class="mvp-button mvp-button-primary" type="button" :disabled="['recommended', 'automatic'].includes(order.shipment?.warehouse_selection_source ?? '')" @click="adoptRecommendation(order)">{{ order.shipment?.warehouse_selection_source === 'automatic' ? '已自动分配并预留' : order.shipment?.warehouse_selection_source === 'recommended' ? '已采用推荐并预留' : '采用推荐并预留库存' }}</button>
+                <button v-if="props.canOperate && order.warehouse_recommendation.status === 'recommended'" class="mvp-button mvp-button-primary" type="button" :disabled="['recommended', 'automatic'].includes(order.shipment?.warehouse_selection_source ?? '')" @click="adoptRecommendation(order)">{{ order.shipment?.warehouse_selection_source === 'automatic' ? '已自动分配并预留' : order.shipment?.warehouse_selection_source === 'recommended' ? '已采用推荐并预留' : '采用推荐并预留库存' }}</button>
                 <span v-if="adoptError[order.id]" class="mvp-error" role="alert">{{ adoptError[order.id] }}</span>
               </div>
               <div><h3>库存可用量</h3><p v-if="['recommended', 'automatic'].includes(order.shipment?.warehouse_selection_source ?? '')" class="reservation-hint">库存已预留；确认发货时会自动提交预留并扣减在库库存。</p><div class="inventory-grid" v-for="item in order.items" :key="item.id"><strong><Link v-if="item.product_id" :href="`/products/${item.product_id}`" class="mvp-link">{{ item.sku ?? item.product_summary ?? '无 SKU' }}</Link><span v-else>{{ item.sku ?? item.product_summary ?? '无 SKU' }}</span> × {{ item.quantity }}</strong><span v-for="row in item.availability" :key="row.warehouse_id" :class="{ shortage: row.quantity_available !== null && row.quantity_available < item.quantity, unknown: row.quantity_available === null }">{{ row.warehouse_name }}：{{ row.quantity_available === null ? '库存未知' : '可用 ' + row.quantity_available }} <small v-if="row.quantity_available !== null">(QOH {{ row.quantity_on_hand }} / Reserved {{ row.quantity_reserved }})</small><small v-else>未建立该 SKU 权威库存</small></span></div></div>
               <div class="fulfillment-form">
-                <label>发货仓库<select v-model="drafts[order.id].warehouse_id"><option value="">请选择</option><option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} ({{ warehouse.code }}){{ warehouse.can_auto_allocate ? '' : ' · 库存未确认' }}</option></select></label>
-                <label>物流商<select v-model="drafts[order.id].carrier" aria-label="物流商"><option value="">请选择承运商</option><option v-for="carrier in carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select></label>
-                <label>物流渠道<input v-model="drafts[order.id].service" placeholder="例如 Ground"></label>
-                <label>Tracking<input v-model="drafts[order.id].tracking_number" placeholder="追踪号"></label>
-                <label>发货时间<input v-model="drafts[order.id].shipped_at" type="datetime-local"></label>
-                <label class="wide">物流备注<textarea v-model="drafts[order.id].logistics_note" rows="2" /></label>
+                <label>发货仓库<select v-model="drafts[order.id].warehouse_id" :disabled="!props.canOperate"><option value="">请选择</option><option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} ({{ warehouse.code }}){{ warehouse.can_auto_allocate ? '' : ' · 库存未确认' }}</option></select></label>
+                <label>物流商<select v-model="drafts[order.id].carrier" :disabled="!props.canOperate" aria-label="物流商"><option value="">请选择承运商</option><option v-for="carrier in carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select></label>
+                <label>物流渠道<input v-model="drafts[order.id].service" :disabled="!props.canOperate" placeholder="例如 Ground"></label>
+                <label>Tracking<input v-model="drafts[order.id].tracking_number" :disabled="!props.canOperate" placeholder="追踪号"></label>
+                <label>发货时间<input v-model="drafts[order.id].shipped_at" :disabled="!props.canOperate" type="datetime-local"></label>
+                <label class="wide">物流备注<textarea v-model="drafts[order.id].logistics_note" :disabled="!props.canOperate" rows="2" /></label>
               </div>
-              <div class="mvp-actions"><button class="mvp-button" @click="copy(order, 'recipient')">复制收件人</button><button class="mvp-button" @click="copy(order, 'full')">复制完整信息</button><button class="mvp-button" @click="copy(order, 'tracking')">复制追踪</button><button class="mvp-button" @click="saveDraft(order)">保存草稿</button><button class="mvp-button mvp-button-primary" @click="ship(order)">确认发货</button><span v-if="shipValidation[order.id]" class="mvp-error" role="alert">{{ shipValidation[order.id] }}</span><span v-if="copyState[order.id] === 'success'" class="mvp-success">已复制</span><span v-else-if="copyState[order.id] === 'error'" class="mvp-error">复制失败</span></div>
+              <div class="mvp-actions"><button class="mvp-button" @click="copy(order, 'recipient')">复制收件人</button><button class="mvp-button" @click="copy(order, 'full')">复制完整信息</button><button class="mvp-button" @click="copy(order, 'tracking')">复制追踪</button><button v-if="props.canOperate" class="mvp-button" @click="saveDraft(order)">保存草稿</button><button v-if="props.canOperate" class="mvp-button mvp-button-primary" @click="ship(order)">确认发货</button><span v-if="shipValidation[order.id]" class="mvp-error" role="alert">{{ shipValidation[order.id] }}</span><span v-if="copyState[order.id] === 'success'" class="mvp-success">已复制</span><span v-else-if="copyState[order.id] === 'error'" class="mvp-error">复制失败</span></div>
             </div>
           </td></tr>
         </template>

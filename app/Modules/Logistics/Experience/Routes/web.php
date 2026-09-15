@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics', [LogisticsController::class, 'index'])->middleware('can:logistics.view')->name('shell.logistics');
-    Route::get('/logistics/pending', [LogisticsController::class, 'index'])->middleware('any.permission:logistics.view,prototype.view')->name('logistics.pending');
+    Route::get('/logistics/pending', [LogisticsController::class, 'index'])->middleware('can:logistics.view')->name('logistics.pending');
     Route::get('/logistics/wait-stock', [LogisticsController::class, 'waitStock'])->middleware('can:logistics.view')->name('logistics.wait-stock');
     Route::get('/logistics/oversea/{warehouse?}', [OverseaWarehouseController::class, 'index'])->middleware('can:logistics.view')->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea');
     Route::get('/logistics/oversea/{warehouse}/export', [OverseaWarehouseController::class, 'export'])->middleware('can:logistics.view')->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea.export');

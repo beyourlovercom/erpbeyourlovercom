@@ -74,6 +74,7 @@ final class LogisticsController
             'statusBar' => $this->statusBar(),
             'gridPreferenceNamespace' => self::PENDING_GRID_NAMESPACE,
             'gridPreference' => $request->user() ? $this->uiPreferences->get($request->user(), self::PENDING_GRID_NAMESPACE) : null,
+            'canOperate' => (bool) $request->user()?->can('logistics.operate'),
         ]);
     }
 
@@ -183,6 +184,7 @@ final class LogisticsController
         return Inertia::render('Logistics/AwaitingTracking', [
             'shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(),
             'statusBar' => $this->statusBar(),
+            'canOperate' => (bool) $request->user()?->can('logistics.operate'),
         ]);
     }
 
@@ -201,6 +203,7 @@ final class LogisticsController
         return Inertia::render('Logistics/InTransit', [
             'shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(),
             'statusBar' => $this->statusBar(),
+            'canOperate' => (bool) $request->user()?->can('logistics.operate'),
         ]);
     }
 
@@ -217,6 +220,7 @@ final class LogisticsController
         return Inertia::render('Logistics/Exceptions', [
             'shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(),
             'statusBar' => $this->statusBar(),
+            'canOperate' => (bool) $request->user()?->can('logistics.operate'),
         ]);
     }
 
@@ -225,7 +229,7 @@ final class LogisticsController
         $reviews = LogisticsReview::query()->with(['order.address', 'order.items.product', 'order.shipment.warehouse'])
             ->where('status', 'pending')->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
             ->latest('requested_at')->paginate(self::PER_PAGE)->withQueryString();
-        return Inertia::render('Logistics/Review', ['reviews' => $reviews->through(fn (LogisticsReview $review): array => [...$this->queueRow($review->order->shipment), 'review_id' => $review->id, 'reason' => $review->reason, 'trigger' => $review->trigger, 'requested_at' => $review->requested_at?->toIso8601String()])->toArray(), 'statusBar' => $this->statusBar()]);
+        return Inertia::render('Logistics/Review', ['reviews' => $reviews->through(fn (LogisticsReview $review): array => [...$this->queueRow($review->order->shipment), 'review_id' => $review->id, 'reason' => $review->reason, 'trigger' => $review->trigger, 'requested_at' => $review->requested_at?->toIso8601String()])->toArray(), 'statusBar' => $this->statusBar(), 'canOperate' => (bool) $request->user()?->can('logistics.operate')]);
     }
 
     public function completed(Request $request): Response { return $this->projection($request, 'completed', 'Logistics/Completed', fn ($q) => $q->where('shipment_status', 'completed')); }
