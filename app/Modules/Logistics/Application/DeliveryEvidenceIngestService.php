@@ -8,6 +8,7 @@ use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Logistics\Application\Contracts\DeliveryEvidenceGateway;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Models\ShipmentCarrierBilling;
+use App\Modules\Sync\Application\WooCommerceOrderStatusOutboundService;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -16,6 +17,8 @@ final class DeliveryEvidenceIngestService
     public function __construct(
         private readonly DeliveryEvidenceGateway $gateway,
         private readonly AuditRecorder $audit,
+        private readonly ShipmentAggregateStatusService $aggregateStatus,
+        private readonly WooCommerceOrderStatusOutboundService $orderStatusOutbound,
     ) {}
 
     /** @return array<string,mixed> */
@@ -95,7 +98,7 @@ final class DeliveryEvidenceIngestService
             throw new RuntimeException('Delivery evidence fingerprint mismatch.');
         }
 
-        return DB::transaction(function () use ($shipmentId, $preview, $expectedFingerprint): array {
+        $result = DB::transaction(function () use ($shipmentId, $preview, $expectedFingerprint): array {
             $shipment = Shipment::query()->whereKey($shipmentId)->lockForUpdate()->firstOrFail();
             if ((string) $shipment->carrier !== (string) $preview['carrier']
                 || trim((string) $shipment->tracking_number) !== (string) $preview['tracking_number']
@@ -115,7 +118,7 @@ final class DeliveryEvidenceIngestService
             $rawEvidence['delivery_evidence'] = $preview['evidence'];
             $billing->fill([
                 'delivery_status' => $preview['target_delivery_status'],
-                'data_source' => filled($billing->data_source) ? $billing->data_source : 'aftership_tracking_api',
+                'data_source' => filled($billing->data_source) ? $billing->data_source : (string) ($preview['source']['source'] ?? 'aftership_branded_page'),
                 'provider_reference' => filled($billing->provider_reference)
                     ? $billing->provider_reference
                     : ($preview['remote']['provider_reference'] ?? null),
@@ -131,7 +134,7 @@ final class DeliveryEvidenceIngestService
                 $billing->getKey(),
                 before: $before,
                 after: $after,
-                reason: 'aftership_tracking_api',
+                reason: (string) ($preview['source']['source'] ?? 'aftership_branded_page'),
             );
 
             return [
@@ -140,16 +143,27 @@ final class DeliveryEvidenceIngestService
                 'shipment_id' => $shipmentId,
                 'billing_id' => (int) $billing->getKey(),
                 'delivery_status' => $billing->delivery_status,
-                'source' => 'aftership_tracking_api',
+                'source' => (string) ($preview['source']['source'] ?? 'aftership_branded_page'),
             ];
         });
+
+        $shipment = Shipment::query()->with('order')->findOrFail($shipmentId);
+        $aggregate = $this->aggregateStatus->reconcile($shipment->order);
+        $statusSync = $this->orderStatusOutbound->pushOne($shipment->order);
+
+        return [
+            ...$result,
+            'aggregate' => $aggregate['aggregate'],
+            'woo_status' => $aggregate['woo_status'],
+            'woo_status_sync' => $statusSync['status'] ?? null,
+        ];
     }
 
     /** @return array<string,mixed> */
     private function evidencePayload(array $descriptor, array $remote, string $deliveryStatus): array
     {
         return array_filter([
-            'source' => $descriptor['source'] ?? 'aftership_tracking_api',
+            'source' => $descriptor['source'] ?? 'aftership_branded_page',
             'version' => $descriptor['version'] ?? null,
             'provider_reference' => $remote['provider_reference'] ?? null,
             'tracking_number' => $remote['tracking_number'] ?? null,

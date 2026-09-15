@@ -20,7 +20,7 @@ final class SyncOrchestrationControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->gateway = new ControllerFakeTrackingGateway();
+        $this->gateway = new ControllerFakeTrackingGateway;
         $this->app->instance(WooCommerceTrackingGateway::class, $this->gateway);
     }
 
@@ -81,6 +81,14 @@ final class SyncOrchestrationControllerTest extends TestCase
             'connection_key' => 'shop-a',
             'reference' => (string) $providerOrderId,
         ]);
+        $order->items()->create([
+            'woocommerce_line_item_id' => $providerOrderId + 100000,
+            'product_summary' => 'Synthetic item',
+            'sku' => 'SKU-'.$providerOrderId,
+            'quantity' => 1,
+            'unit_price' => '10.00',
+            'line_revenue' => '10.00',
+        ]);
         $order->shipment()->create([
             'shipment_status' => 'shipped',
             'carrier' => 'DHL',
@@ -90,7 +98,7 @@ final class SyncOrchestrationControllerTest extends TestCase
         ]);
         $order->manualSync()->create(['website_sync_status' => 'pending']);
 
-        return $order->fresh(['shipment', 'externalReferences', 'manualSync']);
+        return $order->fresh(['shipment', 'items', 'externalReferences', 'manualSync']);
     }
 
     private function userWith(array $permissions): User
@@ -114,6 +122,7 @@ final class ControllerFakeTrackingGateway implements WooCommerceTrackingGateway
     {
         return ['configured' => true, 'url' => 'https://shop.test', 'connection_key' => 'shop-a'];
     }
+
     public function inspectTracking(int $providerOrderId): array
     {
         return ['tracking_number' => '', 'provider' => '', 'has_tracking' => false];
@@ -124,9 +133,15 @@ final class ControllerFakeTrackingGateway implements WooCommerceTrackingGateway
         string $providerSlug,
         string $trackingNumber,
         string $shipDate,
+        array $lineItems = [],
     ): array {
         $this->writeCalls++;
 
         return ['written' => true, 'verified' => true];
+    }
+
+    public function syncOrderStatus(int $providerOrderId, string $status): array
+    {
+        return ['written' => true, 'verified' => true, 'status' => $status];
     }
 }

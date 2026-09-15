@@ -2,19 +2,21 @@
 
 namespace App\Modules\Orders\Experience\Controllers;
 
+use App\Modules\Audit\Infrastructure\Models\AuditRecord;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
+use App\Modules\Kol\Application\SavedViewService;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderSourceType;
-use App\Modules\Kol\Application\SavedViewService;
 use App\Modules\Orders\Infrastructure\Models\Order;
-use App\Modules\Audit\Infrastructure\Models\AuditRecord;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\Response as HttpResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class OrderController
 {
@@ -65,7 +67,7 @@ final class OrderController
         ]);
     }
 
-    public function store(Request $request): \Illuminate\Http\RedirectResponse
+    public function store(Request $request): RedirectResponse
     {
         $data = $request->validate($this->rules());
         $items = $data['items'];
@@ -108,7 +110,7 @@ final class OrderController
         ]);
     }
 
-    public function update(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    public function update(Request $request, Order $order): RedirectResponse
     {
         $this->authorizeKind($request, $order);
         $data = $request->validate($this->updateRules($order));
@@ -119,7 +121,7 @@ final class OrderController
         return back()->with('success', '订单已更新');
     }
 
-    public function setOperationalMarker(Request $request, Order $order, string $marker): \Illuminate\Http\RedirectResponse
+    public function setOperationalMarker(Request $request, Order $order, string $marker): RedirectResponse
     {
         $data = $request->validate(['active' => ['required', 'boolean']]);
         $this->orders->setOperationalMarker($order, $marker, (bool) $data['active'], $request->user());
@@ -127,7 +129,7 @@ final class OrderController
         return back()->with('success', '订单业务标记已更新');
     }
 
-    public function export(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
+    public function export(Request $request): StreamedResponse
     {
         $kind = $this->kindOrNull($request);
         $filters = $request->only(['search', 'source_type', 'order_status', 'view']);
@@ -162,6 +164,7 @@ final class OrderController
     private function kindOrNull(Request $request): ?OrderKind
     {
         $value = (string) $request->route('order_kind');
+
         return $value === '' || $value === 'all' ? null : OrderKind::from($value);
     }
 
@@ -257,11 +260,13 @@ final class OrderController
 
     private function kindLabel(OrderKind $kind): string
     {
-        return match ($kind) { OrderKind::Customer => '客户订单', OrderKind::KolFulfillment => '网红履约订单', OrderKind::FulfillmentDerived => '履约衍生订单' };
+        return match ($kind) {
+            OrderKind::Customer => '客户订单', OrderKind::KolFulfillment => '网红履约订单', OrderKind::FulfillmentDerived => '履约衍生订单'
+        };
     }
 
     private function statusLabel(string $status): string
     {
-        return ['pending_shipment' => '待发货', 'shipped' => '已发货', 'cancelled' => '已取消'][$status] ?? $status;
+        return ['pending_shipment' => '待发货', 'shipped' => '已发货', 'completed' => '已完结', 'completed_delivered' => '完结&送达', 'cancelled' => '已取消'][$status] ?? $status;
     }
 }

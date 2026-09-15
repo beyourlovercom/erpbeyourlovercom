@@ -18,5 +18,9 @@ interface WooCommerceTrackingGateway
         string $providerSlug,
         string $trackingNumber,
         string $shipDate,
+        array $lineItems = [],
     ): array;
+
+    /** @return array{written:bool,verified:bool,status:string} */
+    public function syncOrderStatus(int $providerOrderId, string $status): array;
 }

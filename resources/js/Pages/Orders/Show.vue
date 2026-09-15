@@ -160,6 +160,7 @@ const toggleMarker = (key: string) => router.post(`/orders/${props.order.id}/ope
 const shipmentStatusLabel = computed(() => {
   const s = props.order.shipment?.shipment_status
   if (s === 'shipped') return '已发货'
+  if (s === 'completed') return '已完结'
   if (s === 'exception') return '异常'
   if (s === 'returned') return '已退回'
   return '待发货'
