@@ -70,6 +70,7 @@ P6C code deployment may be separately released after merge. The existing continu
 - Candidate-store regression proves a carrier-billing-only `updated_at` change re-enters the continuous-delta window and materializes actual last-mile while the estimate stage fails closed on `actual_carrier_billing_available`.
 - No schema, UI, menu, route, scheduler, FX-rule, historical-fulfillment or carrier-import behavior changed.
 - Latest-main drift audit before rebase: `0e82d88b8c75d4d1161e0868e100574fd0a6ea44`; changed paths are Orders/Logistics/HFR docs only and do not overlap P6C touched paths.
+- Post-rebase focused verification on exact `main@0e82d88b8c75d4d1161e0868e100574fd0a6ea44`: 23 tests / 136 assertions PASS / 1 MySQL-only skip.
 
 ## Work Log
 
