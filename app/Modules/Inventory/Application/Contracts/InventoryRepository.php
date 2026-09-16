@@ -4,6 +4,7 @@ namespace App\Modules\Inventory\Application\Contracts;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 
 interface InventoryRepository
 {
@@ -18,4 +19,8 @@ interface InventoryRepository
     public function findInventory(Model $warehouse, int $inventoryId): Model;
     public function updateInventory(Model $inventory, array $attributes): Model;
     public function syncServiceRegions(Model $warehouse, array $countryCodes): void;
+    public function warehouseCosts(Model $warehouse, array $months): Collection;
+    public function createWarehouseCost(Model $warehouse, array $attributes): Model;
+    public function findWarehouseCost(Model $warehouse, int $costId): Model;
+    public function deleteWarehouseCost(Model $cost): void;
 }
