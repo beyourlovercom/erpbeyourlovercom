@@ -9,6 +9,7 @@ use App\Modules\Kol\Application\AffiliateWp\PayoutSnapshotSyncService;
 use App\Modules\Kol\Application\AffiliateWp\ReferralCommissionSyncService;
 use App\Modules\Kol\Application\Contracts\AffiliateWpGateway;
 use App\Modules\Kol\Infrastructure\AffiliateWp\ConnectorException;
+use App\Modules\Sync\Application\EmailTemplateSnapshotReader;
 use App\Modules\Sync\Application\SyncOrchestrationService;
 use App\Modules\Sync\Application\SyncRunItemStatus;
 use App\Modules\Sync\Application\SyncRunService;
@@ -71,7 +72,7 @@ final class SyncWorkspaceController
         ]);
     }
 
-    public function wordpressConnector(Request $request, AffiliateWpGateway $gateway): Response
+    public function wordpressConnector(Request $request, AffiliateWpGateway $gateway, EmailTemplateSnapshotReader $emailTemplateReader): Response
     {
         $settings = DB::table('wordpress_connector_settings')->where('id', 1)->first();
         $recent = $this->orchestration->recentRuns(100);
@@ -89,10 +90,37 @@ final class SyncWorkspaceController
             $resourceRuns[$resource] = $run ? $this->runData($run) : null;
         }
         $user = $request->user();
+        $descriptor = $gateway->descriptor();
+        $emailTemplates = [
+            'status' => 'unconfigured',
+            'read_only' => true,
+            'resource_contract_version' => EmailTemplateSnapshotReader::ResourceContractVersion,
+            'count' => 0,
+            'items' => [],
+        ];
+        if (! empty($descriptor['configured'])) {
+            try {
+                $emailTemplates = $emailTemplateReader->read();
+            } catch (ConnectorException $exception) {
+                $emailTemplates = [
+                    ...$emailTemplates,
+                    'status' => 'error',
+                    'error_code' => $exception->errorCode,
+                    'message' => 'Email OS Published Snapshot is temporarily unavailable.',
+                ];
+            } catch (Throwable) {
+                $emailTemplates = [
+                    ...$emailTemplates,
+                    'status' => 'error',
+                    'error_code' => 'CONSUMER_ERROR',
+                    'message' => 'Email OS Published Snapshot is temporarily unavailable.',
+                ];
+            }
+        }
 
         return Inertia::render('Sync/WpApi', [
             'connection' => [
-                ...$gateway->descriptor(),
+                ...$descriptor,
                 'verify_tls' => (bool) config('services.andy_core.verify_tls', true),
                 'secret_set' => trim((string) config('services.andy_core.shared_secret')) !== '',
             ],
@@ -102,6 +130,7 @@ final class SyncWorkspaceController
                 'data' => $health,
             ],
             'runs' => $resourceRuns,
+            'emailTemplates' => $emailTemplates,
             'permissions' => [
                 'can_manage_connection' => (bool) $user?->can('sync.operate'),
                 'can_sync_subscribers' => (bool) ($user?->can('sync.operate') && $user?->can('marketing.operate')),

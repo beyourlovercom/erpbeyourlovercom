@@ -417,6 +417,22 @@ final class HttpAffiliateWpGatewayTest extends TestCase
         );
     }
 
+    public function test_email_template_snapshot_uses_read_only_get_endpoint(): void
+    {
+        Http::fake(['*' => Http::response($this->envelope([
+            'resource_contract_version' => 'email-os-published-v1',
+            'items' => [],
+            'next_cursor' => null,
+        ]), 200)]);
+
+        $this->gateway()->snapshot('email-templates');
+
+        Http::assertSent(fn (Request $r) =>
+            $r->method() === 'GET'
+            && str_contains($r->url(), '/wp-json/andy-core/v1/erp/snapshot/email-templates')
+            && str_contains($r->url(), 'limit=100')
+        );
+    }
     public function test_snapshot_uses_provider_maximum_page_limit_to_stay_below_rate_limit(): void
     {
         Http::fake(fn () => Http::response($this->envelope(['items' => [], 'next_cursor' => null]), 200));

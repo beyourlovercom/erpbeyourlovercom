@@ -61,6 +61,11 @@ final class WordPressConnectorReadOrchestrationTest extends TestCase
             ->where('runs.coupons.status', 'completed')
             ->where('runs.referrals.status', 'completed')
             ->where('runs.payouts.status', 'completed')
+            ->where('emailTemplates.status', 'ready')
+            ->where('emailTemplates.read_only', true)
+            ->where('emailTemplates.resource_contract_version', 'email-os-published-v1')
+            ->where('emailTemplates.count', 1)
+            ->where('emailTemplates.items.0.template_key', 'wordpress:reset_password')
         );
     }
 
@@ -148,10 +153,20 @@ final class WordPressConnectorReadOrchestrationTest extends TestCase
                         'amount' => '12.50', 'currency' => 'USD', 'payout_method' => 'manual',
                         'status' => 'paid', 'date' => '2026-09-01T00:00:00+00:00',
                     ]],
+                    'email-templates' => [[
+                        'template_key' => 'wordpress:reset_password', 'provider' => 'wordpress',
+                        'label' => 'Reset Password', 'status' => 'published', 'runtime_enabled' => true,
+                        'published_version' => 3, 'content_hash_sha256' => str_repeat('a', 64),
+                        'published_at' => '2026-09-15 17:00:00',
+                    ]],
                     default => throw new \LogicException('unexpected resource'),
                 };
 
-                return $this->response(['items' => $items, 'next_cursor' => null]);
+                return $this->response([
+                    ...($resource === 'email-templates' ? ['resource_contract_version' => 'email-os-published-v1'] : []),
+                    'items' => $items,
+                    'next_cursor' => null,
+                ]);
             }
 
             public function provisionAffiliate(array $payload, string $idempotencyKey): ConnectorResponse { throw new \LogicException('not used'); }

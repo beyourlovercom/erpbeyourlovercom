@@ -58,3 +58,5 @@ jobs:
           tests/Feature/Marketing/WordPressSubscriberSyncTest.php
           tests/Feature/Marketing/HttpWordPressSubscriberGatewayTest.php
           tests/Feature/SyncWorkspaceTest.php
+          tests/Feature/Sync/WordPressConnectorReadOrchestrationTest.php
+          tests/Unit/Sync/EmailTemplateSnapshotReaderTest.php

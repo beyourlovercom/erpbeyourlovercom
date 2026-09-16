@@ -29,6 +29,34 @@ final class LocalUatAffiliateWpGateway implements AffiliateWpGateway
             return $this->response(['items' => [], 'next_cursor' => null]);
         }
 
+        if ($resource === 'email-templates') {
+            return $this->response([
+                'resource_contract_version' => 'email-os-published-v1',
+                'items' => [
+                    [
+                        'template_key' => 'wordpress:reset_password',
+                        'provider' => 'wordpress',
+                        'label' => 'Reset Password',
+                        'status' => 'published',
+                        'runtime_enabled' => true,
+                        'published_version' => 3,
+                        'content_hash_sha256' => str_repeat('a', 64),
+                        'published_at' => '2026-09-15 17:00:00',
+                    ],
+                    [
+                        'template_key' => 'andy_core:inquiry_internal_notification',
+                        'provider' => 'andy_core',
+                        'label' => 'Inquiry Internal Notification',
+                        'status' => 'published',
+                        'runtime_enabled' => true,
+                        'published_version' => 2,
+                        'content_hash_sha256' => str_repeat('b', 64),
+                        'published_at' => '2026-09-15 17:05:00',
+                    ],
+                ],
+                'next_cursor' => null,
+            ]);
+        }
         if ($resource === 'affiliates') {
             return $this->response([
                 'items' => [

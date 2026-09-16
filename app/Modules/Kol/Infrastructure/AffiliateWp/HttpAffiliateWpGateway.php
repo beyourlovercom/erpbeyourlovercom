@@ -20,7 +20,7 @@ final class HttpAffiliateWpGateway implements AffiliateWpGateway
     private const string SupportedContractVersion = '1';
 
     /** Resources allowed in snapshot(); fail-closed for any other value. */
-    private const array AllowedSnapshotResources = ['affiliates', 'coupons', 'referrals', 'payouts'];
+    private const array AllowedSnapshotResources = ['affiliates', 'coupons', 'referrals', 'payouts', 'email-templates'];
 
     public function descriptor(): array
     {
