@@ -10,6 +10,7 @@ use App\Modules\Inventory\Application\Contracts\WarehouseCostAllocationEvidenceR
 use App\Modules\Logistics\Application\Contracts\CarrierBillingEvidenceReader;
 use App\Modules\Logistics\Application\Contracts\FulfillmentOriginEvidenceReader;
 use App\Modules\Logistics\Application\Contracts\LastMileEstimateEvidenceReader;
+use App\Modules\Logistics\Application\Contracts\OverseasHandlingEvidenceReader;
 use App\Modules\Products\Application\Contracts\ProductCostEvidenceReader;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
@@ -25,6 +26,7 @@ final class CostMaterializationService
     public function __construct(
         private readonly ProductCostEvidenceReader $products,
         private readonly CarrierBillingEvidenceReader $carrier,
+        private readonly OverseasHandlingEvidenceReader $overseasHandling,
         private readonly LastMileEstimateEvidenceReader $lastMileEstimates,
         private readonly FulfillmentOriginEvidenceReader $fulfillmentOrigin,
         private readonly AffiliateCommissionEvidenceReader $affiliate,
@@ -41,6 +43,7 @@ final class CostMaterializationService
         $candidates = [
             $this->productCandidate($order),
             $this->carrierCandidate($order),
+            $this->overseasHandlingCandidate($order),
             $this->affiliateCandidate($order),
             $this->firstMileCandidate($order),
             $this->customsCandidate($order),
@@ -55,7 +58,7 @@ final class CostMaterializationService
             'scope_status' => $scopeBlocker === null ? 'operational' : 'blocked',
             'scope_blocker' => $scopeBlocker,
             'candidates' => array_values(array_map(fn (array $candidate): array => $this->annotateDisposition($order, $candidate), $candidates)),
-            'unsupported' => ['overseas_handling_cost', 'refund_replacement_loss', 'other_variable_cost'],
+            'unsupported' => ['refund_replacement_loss', 'other_variable_cost'],
         ];
     }
 
@@ -150,6 +153,32 @@ final class CostMaterializationService
                     after: ['applied' => $result['applied'], 'blocked' => $result['blocked']],
                     reason: 'actual_last_mile_materialization',
                 );
+            }
+            return $result;
+        });
+    }
+
+    /** @return array<string, mixed> */
+    public function previewOverseasHandlingGate(Model $order): array
+    {
+        $scopeBlocker = $this->operationalBlocker($order);
+        $candidate = $this->overseasHandlingCandidate($order);
+        if ($scopeBlocker !== null) $candidate = $this->forceBlocked($candidate, $scopeBlocker);
+        return ['order_id'=>(int)$order->getKey(),'scope_status'=>$scopeBlocker===null?'operational':'blocked','scope_blocker'=>$scopeBlocker,'candidates'=>[$this->annotateDisposition($order,$candidate)]];
+    }
+
+    /** @return array<string, mixed> */
+    public function applyOverseasHandlingGate(Model $order): array
+    {
+        return DB::transaction(function () use ($order): array {
+            $locked=$order->newQuery()->lockForUpdate()->findOrFail($order->getKey());
+            $preview=$this->previewOverseasHandlingGate($locked);
+            $result=$preview+['applied'=>[],'noop'=>[],'blocked'=>[]]; $candidate=$preview['candidates'][0];
+            $disposition=$candidate['materialization_status'];
+            if($disposition==='blocked') $result['blocked'][]=$candidate; elseif($disposition==='noop') $result['noop'][]=$candidate; else { $outcome=$this->writeCandidate($locked,$candidate); $result[$outcome['status']][]=$outcome['entry']; }
+            if($result['applied']!==[]){
+                $this->analysis->refreshCompleteness($locked,preserveReconciled:false);
+                $this->audit->record(AuditActor::system(AuditSource::InternalSystem),'finance.overseas_handling_materialization.applied',$locked::class,$locked->getKey(),after:['applied'=>$result['applied'],'blocked'=>$result['blocked']],reason:'overseas_handling_materialization');
             }
             return $result;
         });
@@ -640,6 +669,24 @@ final class CostMaterializationService
         );
     }
 
+    private function overseasHandlingCandidate(Model $order): array
+    {
+        $evidence=$this->overseasHandling->read($order->getKey());
+        if($evidence===null||isset($evidence['blocked'])) return $this->blocked('overseas_handling_cost',(string)($evidence['blocked']??'overseas_handling_evidence_missing'));
+        $currency=$this->orderCurrency($order); $sourceCurrency=strtoupper(trim((string)($evidence['currency']??'')));
+        $identity=$evidence['billing_document_number']??$evidence['provider_reference']??$evidence['data_source']??null;
+        if($evidence['actual_cost']===null||$sourceCurrency===''||!is_string($identity)||trim($identity)==='') return $this->blocked('overseas_handling_cost','complete_overseas_handling_evidence_required');
+        $sourceAmount=DecimalMoney::round((string)$evidence['actual_cost']); $amount=$sourceAmount;
+        $extra=['source_currency'=>$sourceCurrency,'source_amount'=>$sourceAmount,'shipment_id'=>$evidence['shipment_id'],'billing_id'=>$evidence['billing_id'],'billing_document_number'=>$evidence['billing_document_number']??null,'provider_reference'=>$evidence['provider_reference']??null,'data_source'=>$evidence['data_source']??null];
+        if($sourceCurrency!==$currency){
+            $fx=$this->fxBridge->preview($order,$sourceCurrency);
+            if(!($fx['available']??false)) return $this->blocked('overseas_handling_cost','overseas_handling_fx_snapshot_unavailable',$extra+['fx_reason'=>$fx['reason']??'fx_unavailable']);
+            $amount=DecimalMoney::round(DecimalMoney::multiply($sourceAmount,(string)$fx['source_to_transaction_rate'],8));
+            $extra['posting_fx']=$fx+['base_amount'=>DecimalMoney::round(DecimalMoney::multiply($sourceAmount,(string)$fx['source_to_usd_rate'],8))];
+        }
+        return $this->candidate('overseas_handling_cost',$amount,$currency,'provider_import','confirmed','overseas-handling:v1:shipment:'.$evidence['shipment_id'].':billing:'.$evidence['billing_id'],$evidence['billed_at']??$evidence['updated_at']??null,$extra);
+    }
+
     private function firstMileCandidate(Model $order): array
     {
         $evidence = $this->fulfillmentOrigin->read($order->getKey());
@@ -922,6 +969,7 @@ final class CostMaterializationService
         return str_starts_with($source, 'product-reference:v1:')
             || str_starts_with($source, 'carrier-billing:v1:')
             || str_starts_with($source, 'warehouse-storage-allocation:v1:')
+            || str_starts_with($source, 'overseas-handling:v1:')
             || str_starts_with($source, 'last-mile-estimate:v1:')
             || str_starts_with($source, 'affiliatewp-referrals:v1:')
             || str_starts_with($source, 'product-cost-source:v1:')

@@ -36,6 +36,11 @@ class Shipment extends Model
         return $this->hasOne(ShipmentCarrierBilling::class);
     }
 
+    public function overseasHandlingEvidence(): HasOne
+    {
+        return $this->hasOne(ShipmentOverseasHandlingBilling::class);
+    }
+
     public function overseaReview(): HasOne
     {
         return $this->hasOne(OverseaWarehouseReview::class, 'order_id', 'order_id');

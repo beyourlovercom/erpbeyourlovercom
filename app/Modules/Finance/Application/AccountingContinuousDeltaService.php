@@ -43,6 +43,7 @@ final class AccountingContinuousDeltaService
             $this->accumulatePreview($summary, $this->materializer->previewWarehouseCostGate($order), 'warehouse_cost');
             $this->accumulatePreview($summary, $this->materializer->previewLastMileEstimateGate($order), 'last_mile_estimate');
             $this->accumulatePreview($summary, $this->materializer->previewCarrierBillingGate($order), 'last_mile_actual');
+            $this->accumulatePreview($summary, $this->materializer->previewOverseasHandlingGate($order), 'overseas_handling_actual');
         }
 
         return $summary;
@@ -88,6 +89,7 @@ final class AccountingContinuousDeltaService
                 $this->accumulateApply($summary, $this->materializer->applyWarehouseCostGate($order), 'warehouse_cost');
                 $this->accumulateApply($summary, $this->materializer->applyLastMileEstimateGate($order), 'last_mile_estimate');
                 $this->accumulateApply($summary, $this->materializer->applyCarrierBillingGate($order), 'last_mile_actual');
+                $this->accumulateApply($summary, $this->materializer->applyOverseasHandlingGate($order), 'overseas_handling_actual');
                 $this->analysis->refreshCompleteness($order, preserveReconciled: false);
 
                 $resultCode = $this->blockedTotal($summary) > $blockedBefore
@@ -180,6 +182,7 @@ final class AccountingContinuousDeltaService
                 'warehouse_cost' => $this->emptyStage(),
                 'last_mile_estimate' => $this->emptyStage(),
                 'last_mile_actual' => $this->emptyStage(),
+                'overseas_handling_actual' => $this->emptyStage(),
             ],
         ];
     }
