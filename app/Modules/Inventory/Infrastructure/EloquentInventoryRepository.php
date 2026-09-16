@@ -4,6 +4,7 @@ namespace App\Modules\Inventory\Infrastructure;
 
 use App\Modules\Inventory\Application\Contracts\InventoryRepository;
 use App\Modules\Inventory\Application\InventoryStockStatus;
+use App\Modules\Inventory\Application\WarehouseMasterRegistry;
 use App\Modules\Inventory\Infrastructure\Models\InventoryAdjustment;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
@@ -16,6 +17,8 @@ use Illuminate\Support\Facades\DB;
 
 final class EloquentInventoryRepository implements InventoryRepository
 {
+    public function __construct(private readonly WarehouseMasterRegistry $warehouseMaster) {}
+
     public function dashboard(): array
     {
         $rows = WarehouseInventory::query()->get();
@@ -51,7 +54,7 @@ final class EloquentInventoryRepository implements InventoryRepository
             ->get()
             ->groupBy('warehouse_id');
 
-        $master = (array) config('warehouse_master.warehouses', []);
+        $master = $this->warehouseMaster->all();
         $canonicalOrder = array_flip((array) config('warehouse_master.order', []));
         $fulfillmentCodes = array_map('strtoupper', (array) config('warehouse_master.fulfillment_codes', []));
         $inventoryOnlyCodes = array_map('strtoupper', (array) config('warehouse_master.inventory_only_codes', []));
@@ -134,17 +137,8 @@ final class EloquentInventoryRepository implements InventoryRepository
         $direct = Warehouse::query()->where('slug', $slug)->first();
         if ($direct !== null) return $direct;
 
-        foreach ((array) config('warehouse_master.warehouses', []) as $code => $canonical) {
-            $aliases = array_values(array_unique([
-                (string) ($canonical['public_slug'] ?? ''),
-                ...array_map('strval', (array) ($canonical['legacy_slugs'] ?? [])),
-            ]));
-            if (in_array($slug, $aliases, true)) {
-                return Warehouse::query()->where('code', $code)->first();
-            }
-        }
-
-        return null;
+        $code = $this->warehouseMaster->codeForSlug($slug);
+        return $code === null ? null : Warehouse::query()->where('code', $code)->first();
     }
     public function createWarehouse(array $attributes): Model { return Warehouse::query()->create($attributes); }
     public function updateWarehouse(Model $warehouse, array $attributes): Model { $warehouse->fill($attributes)->save(); return $warehouse->fresh(); }
@@ -157,8 +151,10 @@ final class EloquentInventoryRepository implements InventoryRepository
 
     public function productInventory(array $filters = [], int $perPage = 100): LengthAwarePaginator
     {
+        $warehouseFilter = trim((string) ($filters['warehouse'] ?? ''));
+        $warehouse = $warehouseFilter !== '' ? $this->findWarehouseBySlug($warehouseFilter) : null;
         $page = WarehouseInventory::query()->with(['warehouse','product'])
-            ->when($filters['warehouse'] ?? null, fn ($q,$slug) => $q->whereHas('warehouse', fn ($w) => $w->where('slug',$slug)))
+            ->when($warehouseFilter !== '', fn ($q) => $warehouse ? $q->where('warehouse_id', $warehouse->getKey()) : $q->whereRaw('1 = 0'))
             ->when($filters['search'] ?? null, fn ($q,$search) => $q->whereHas('product', fn ($p) => $p->where('sku','like',"%{$search}%")->orWhere('name','like',"%{$search}%")))
             ->orderByDesc('inbound_at')->orderBy('id')->paginate($perPage)->withQueryString();
         $this->attachShippedDemand($page->getCollection());

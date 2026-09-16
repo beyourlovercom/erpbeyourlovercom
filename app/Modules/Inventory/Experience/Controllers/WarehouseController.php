@@ -28,11 +28,13 @@ final class WarehouseController
     {
         $data=$request->validate($this->warehouseRules());
         $w=$this->inventory->createWarehouse($data,$request->user());
-        return redirect()->route('inventory.warehouse.show',$w->slug)->with('success','仓库已创建');
+        return redirect()->route('inventory.warehouse.show',$this->inventory->warehousePublicSlug($w))->with('success','仓库已创建');
     }
-    public function show(string $warehouse): Response
+    public function show(string $warehouse): Response|RedirectResponse
     {
         $w=$this->inventory->warehouse($warehouse);
+        $publicSlug=$this->inventory->warehousePublicSlug($w);
+        if($warehouse!==$publicSlug) return redirect()->route('inventory.warehouse.show',$publicSlug);
         return Inertia::render('Inventory/WarehouseShow',[
             'warehouse'=>$this->payload($w),
             'clearanceProducts'=>$this->clearance->listForWarehouse($w),
@@ -220,7 +222,7 @@ final class WarehouseController
             ->first();
 
         return [
-            'id'=>$w->id,'slug'=>$w->slug,'public_slug'=>$canonical['public_slug'] ?? $w->slug,
+            'id'=>$w->id,'slug'=>$w->slug,'public_slug'=>$this->inventory->warehousePublicSlug($w),
             'code'=>$w->code,'name'=>$w->name,'name_en'=>$canonical['name_en'] ?? null,'country_code'=>$w->country_code,
             'role_label'=>$canonical['role_label'] ?? '仓库','bill_import'=>$this->billImportCapability($w),
             'is_fulfillment_warehouse'=>in_array($code, $fulfillmentCodes, true),
