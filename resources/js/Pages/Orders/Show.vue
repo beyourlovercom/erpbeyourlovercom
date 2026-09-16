@@ -253,19 +253,42 @@ const shipmentStatusLabel = computed(() => {
           </div>
         </div>
 
-        <!-- Inventory visibility -->
-        <div class="erp-form-card">
-          <h2 class="erp-form-card-title">库存可见</h2>
-          <p class="ord-inventory-help">仅展示当前库存事实，由操作人员人工决定发货仓库。</p>
-          <div v-for="item in order.items" :key="`inventory-${item.id}`" class="ord-inventory-row">
-            <div class="ord-inventory-sku"><strong>{{ item.sku || '—' }}</strong><small>需求 {{ item.quantity }}</small></div>
-            <div class="ord-inventory-warehouses">
-              <span v-for="row in inventoryAvailability?.[item.product_id ?? 0] ?? []" :key="row.warehouse_id" class="ord-inventory-pill" :class="{ shortage: row.quantity_available !== null && row.quantity_available < item.quantity }">
-                {{ row.warehouse_name }} · {{ row.quantity_available === null ? '库存未知' : '可用 ' + row.quantity_available }}
-                <small v-if="row.quantity_available !== null">QOH {{ row.quantity_on_hand }} / Reserved {{ row.quantity_reserved }}</small>
-                <small v-else>未建立该 SKU 权威库存</small>
-              </span>
-            </div>
+        <!-- Inventory distribution -->
+        <div v-for="item in order.items" :key="`inventory-${item.id}`" class="erp-form-card ord-inventory-card">
+          <h2 class="erp-form-card-title">{{ item.sku || '未绑定 SKU' }} 库存分布</h2>
+          <div class="ord-inventory-table-wrap">
+            <table class="ord-inventory-table">
+              <thead>
+                <tr>
+                  <th>仓库</th>
+                  <th>SKU</th>
+                  <th>是否有货</th>
+                  <th>可用库存</th>
+                  <th>QOH</th>
+                  <th>Reserved</th>
+                  <th>备注</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in inventoryAvailability?.[item.product_id ?? 0] ?? []" :key="row.warehouse_id">
+                  <td class="ord-inventory-warehouse-name">{{ row.warehouse_name }}</td>
+                  <td class="ord-inventory-sku-value">{{ item.sku || '—' }}</td>
+                  <td>
+                    <span class="ord-stock-status" :class="row.quantity_available === null ? 'unknown' : row.quantity_available > 0 ? 'in-stock' : 'out-of-stock'">
+                      <span class="ord-stock-status-icon">{{ row.quantity_available === null ? '?' : row.quantity_available > 0 ? '✓' : '×' }}</span>
+                      {{ row.quantity_available === null ? '未知' : row.quantity_available > 0 ? '有货' : '无货' }}
+                    </span>
+                  </td>
+                  <td>{{ row.quantity_available ?? '—' }}</td>
+                  <td>{{ row.quantity_on_hand ?? '—' }}</td>
+                  <td>{{ row.quantity_reserved ?? '—' }}</td>
+                  <td class="ord-inventory-note">{{ row.quantity_available === null ? '未建立 SKU 权威库存' : '—' }}</td>
+                </tr>
+                <tr v-if="(inventoryAvailability?.[item.product_id ?? 0] ?? []).length === 0">
+                  <td colspan="7" class="ord-inventory-empty">暂无仓库库存数据</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -601,13 +624,28 @@ const shipmentStatusLabel = computed(() => {
 }
 
 .ord-inventory-help { margin: -4px 0 12px; font-size: 12px; color: #7a8c94; }
-.ord-inventory-row { display: grid; grid-template-columns: 150px 1fr; gap: 12px; padding: 10px 0; border-bottom: 1px solid #e4eaed; }
-.ord-inventory-sku { display: flex; flex-direction: column; gap: 3px; }
-.ord-inventory-sku small { color: #7a8c94; }
-.ord-inventory-warehouses { display: flex; flex-wrap: wrap; gap: 8px; }
-.ord-inventory-pill { background: #eef7f2; border-radius: 7px; padding: 6px 9px; font-size: 12px; }
-.ord-inventory-pill.shortage { background: #fff1f2; }
-.ord-inventory-pill small { display: block; color: #6b7f87; }
+.ord-inventory-card { overflow: hidden; }
+.ord-inventory-table-wrap { width: 100%; margin-top: 10px; overflow-x: auto; }
+.ord-inventory-table { width: 100%; min-width: 820px; border: 1px solid #dde5e8; border-radius: 10px; border-spacing: 0; border-collapse: separate; overflow: hidden; font-size: 13px; }
+.ord-inventory-table th,
+.ord-inventory-table td { padding: 9px 12px; border-right: 1px solid #e4eaed; border-bottom: 1px solid #e4eaed; text-align: left; vertical-align: middle; white-space: nowrap; }
+.ord-inventory-table th:last-child,
+.ord-inventory-table td:last-child { border-right: 0; }
+.ord-inventory-table tbody tr:last-child td { border-bottom: 0; }
+.ord-inventory-table th { background: #f5f7f8; color: #263b43; font-weight: 700; }
+.ord-inventory-table td { color: #31464e; }
+.ord-inventory-warehouse-name { font-weight: 600; color: #1f333a; }
+.ord-inventory-sku-value { font-weight: 600; color: #263b43; }
+.ord-stock-status { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; }
+.ord-stock-status-icon { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 999px; color: #fff; font-size: 12px; line-height: 1; }
+.ord-stock-status.in-stock { color: #16705f; }
+.ord-stock-status.in-stock .ord-stock-status-icon { background: #1f9d7a; }
+.ord-stock-status.out-of-stock { color: #df4453; }
+.ord-stock-status.out-of-stock .ord-stock-status-icon { background: #ef4454; }
+.ord-stock-status.unknown { color: #7b8b93; }
+.ord-stock-status.unknown .ord-stock-status-icon { background: #8c9aa1; }
+.ord-inventory-note { color: #5f727a; }
+.ord-inventory-empty { padding: 18px 12px !important; text-align: center !important; color: #87969c !important; }
 
 .ord-packaging-row { display: grid; grid-template-columns: 1.2fr 1fr 1.35fr .8fr .9fr; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid #e4eaed; }
 .ord-packaging-row:last-child { border-bottom: 0; }
