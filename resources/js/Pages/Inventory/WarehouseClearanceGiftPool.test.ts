@@ -25,7 +25,7 @@ vi.mock('./components/InventorySkuCombobox.vue', () => ({
 }))
 
 const warehouse = {
-  id: 1, slug: 'us-la', public_slug: 'us-la', code: 'US-LA', name: '美西 MorePlus 仓', name_en: 'US West · MorePlus', role_label: '海外履约仓', is_fulfillment_warehouse: true, is_inventory_only_warehouse: false, country_code: 'US',
+  id: 1, slug: 'us-la', public_slug: 'us-la', code: 'US-LA', name: '美西 MorePlus 仓', name_en: 'US West · MorePlus', role_label: '海外履约仓', bill_import: { provider: 'moreplus', label: 'MorePlus', extension: 'xlsx', format_label: 'XLSX', accept: '.xlsx', max_kb: 16384 }, is_fulfillment_warehouse: true, is_inventory_only_warehouse: false, country_code: 'US',
   address_line1: null, address_line2: null, city: null, state_region: null, postal_code: null, timezone: null,
   type: 'warehouse', ownership_type: 'owned' as const, is_domestic: false, is_active: true, priority: 10,
   fulfillment_available_on: null, fulfillment_state: 'ready' as const, fulfillment_state_label: '可履约',

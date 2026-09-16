@@ -86,31 +86,32 @@ final class WarehouseController
     public function previewBillImport(Request $request,string $warehouse): RedirectResponse
     {
         $w=$this->inventory->warehouse($warehouse);
-        $request->validate(['bill'=>['required','file','max:16384']]);
+        $capability=$this->billImportCapability($w); abort_if($capability===null,404);
+        $request->validate(['bill'=>['required','file','max:'.(int)$capability['max_kb']]]);
         $key=$this->billPreviewKey((int)$w->id);
         $old=session($key); if(is_array($old)&&isset($old['stored_path'])) Storage::disk('local')->delete((string)$old['stored_path']);
-        $stored=$request->file('bill')->storeAs('warehouse-bill-previews',Str::uuid().'.xlsx','local');
+        $stored=$request->file('bill')->storeAs('warehouse-bill-previews',Str::uuid().'.'.$capability['extension'],'local');
         try {
-            $preview=$this->billImport->preview(Storage::disk('local')->path($stored),$w,'moreplus');
+            $preview=$this->billImport->preview(Storage::disk('local')->path($stored),$w,$capability['provider']);
         } catch (Throwable $e) {
             Storage::disk('local')->delete($stored);
             return back()->withErrors(['bill'=>$e->getMessage()]);
         }
         session([$key=>['stored_path'=>$stored,'source_checksum'=>$preview['source_checksum'],'plan_checksum'=>$preview['plan_checksum'],'summary'=>$this->billPreviewPayload($preview)]]);
-        return back()->with('success','MorePlus 账单预览已生成');
+        return back()->with('success',$capability['label'].' 账单预览已生成');
     }
     public function applyBillImport(Request $request,string $warehouse): RedirectResponse
     {
-        $w=$this->inventory->warehouse($warehouse);$key=$this->billPreviewKey((int)$w->id);$stored=session($key);
+        $w=$this->inventory->warehouse($warehouse);$capability=$this->billImportCapability($w); abort_if($capability===null,404);$key=$this->billPreviewKey((int)$w->id);$stored=session($key);
         if(!is_array($stored)||empty($stored['stored_path'])||!Storage::disk('local')->exists((string)$stored['stored_path'])) return back()->withErrors(['bill'=>'账单预览已失效，请重新上传。']);
         $path=Storage::disk('local')->path((string)$stored['stored_path']);
         try {
-            $preview=$this->billImport->preview($path,$w,'moreplus');
+            $preview=$this->billImport->preview($path,$w,$capability['provider']);
             if(!hash_equals((string)$stored['source_checksum'],(string)$preview['source_checksum'])||!hash_equals((string)$stored['plan_checksum'],(string)$preview['plan_checksum'])) return back()->withErrors(['bill'=>'账单预览已变化，请重新上传。']);
-            $result=$this->billImport->apply($path,$w,$request->user(),'moreplus');
+            $result=$this->billImport->apply($path,$w,$request->user(),$capability['provider']);
         } catch (Throwable $e) { return back()->withErrors(['bill'=>$e->getMessage()]); }
         Storage::disk('local')->delete((string)$stored['stored_path']);session()->forget($key);
-        return back()->with('success',($result['already_applied']??false)?'该 MorePlus 账单已导入，无需重复处理。':'MorePlus 账单已导入仓库费用中心');
+        return back()->with('success',($result['already_applied']??false)?'该 '.$capability['label'].' 账单已导入，无需重复处理。':$capability['label'].' 账单已导入仓库费用中心');
     }
     public function saveInventory(Request $request,string $warehouse): RedirectResponse
     {
@@ -145,6 +146,19 @@ final class WarehouseController
         $w=$this->inventory->warehouse($warehouse);
         $this->clearance->remove($w,$clearance,$request->user());
         return back()->with('success','已移出清仓 / Gift 库');
+    }
+    /** @return array{provider:string,label:string,extension:string,format_label:string,accept:string,max_kb:int}|null */
+    private function billImportCapability($w): ?array
+    {
+        $code=strtoupper((string)$w->code);$config=config("warehouse_master.warehouses.{$code}.bill_import");
+        if(!is_array($config)||($config['enabled']??false)!==true) return null;
+        $provider=strtolower(trim((string)($config['provider']??'')));$extension=strtolower(trim((string)($config['extension']??'')));
+        if($provider===''||preg_match('/^[a-z0-9][a-z0-9._-]{0,31}$/D',$provider)!==1||preg_match('/^[a-z0-9]{1,12}$/D',$extension)!==1) return null;
+        return [
+            'provider'=>$provider,'label'=>(string)($config['label']??strtoupper($provider)),'extension'=>$extension,
+            'format_label'=>(string)($config['format_label']??strtoupper($extension)),'accept'=>(string)($config['accept']??('.'.$extension)),
+            'max_kb'=>max(1,min(65536,(int)($config['max_kb']??16384))),
+        ];
     }
     private function billPreviewKey(int $warehouseId): string { return 'inventory.warehouse_bill_preview.'.$warehouseId; }
     /** @param array<string,mixed> $preview @return array<string,mixed> */
@@ -208,7 +222,7 @@ final class WarehouseController
         return [
             'id'=>$w->id,'slug'=>$w->slug,'public_slug'=>$canonical['public_slug'] ?? $w->slug,
             'code'=>$w->code,'name'=>$w->name,'name_en'=>$canonical['name_en'] ?? null,'country_code'=>$w->country_code,
-            'role_label'=>$canonical['role_label'] ?? '仓库',
+            'role_label'=>$canonical['role_label'] ?? '仓库','bill_import'=>$this->billImportCapability($w),
             'is_fulfillment_warehouse'=>in_array($code, $fulfillmentCodes, true),
             'is_inventory_only_warehouse'=>in_array($code, $inventoryOnlyCodes, true),
             'address_line1'=>$w->address_line1,'address_line2'=>$w->address_line2,'city'=>$w->city,'state_region'=>$w->state_region,'postal_code'=>$w->postal_code,
