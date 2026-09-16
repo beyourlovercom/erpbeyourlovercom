@@ -59,3 +59,33 @@ Zero-write proof before/after preview:
 
 No HFR-5 Production mutation has occurred.
 A fresh post-merge preflight is required before any new Production Data Write Gate.
+
+## Production apply + Owner UAT closure — 2026-09-16
+After PR #328 merged, a fresh Production preflight was generated. The pre-merge preview fingerprints were not reused for the write gate.
+
+Final authorized source / plan:
+- source checksum: `e9f692507d0aafbb28fe44c5d568d2424e644f387f0a58c0fa360d091a16361b`
+- source scan SHA: `ae5425bca9edc00836f859a1ad27d9a4c59fd2766c6624a142693b570d280b5c`
+- plan SHA: `1e3dc7ada671ec7f6f09c79dd88bc7e1e86d07bf70269839fd76c92b31723c26`
+- preflight: READY 197 / REVIEW 4,157 / SKIP 1,000
+- READY manifest SHA: `59a299fcfc9954507533f9508bc2d2bd3874e9d03e4819e2b0b5cd8ea0fa7d94`
+
+Production apply result:
+- shipments created: 197
+- shipments total: 1,019 -> 1,216
+- immutable HFR3 apply audits: 974 -> 1,171
+- target ShipmentAttempt rows created: 0
+- target Woo sync outbox rows created: 0
+- target Order business-state hash unchanged: yes
+- all 197 applied rows use warehouse `US-LA` / 美西 MorePlus, carrier `USPS`, service `USPS Ground Advantage`
+- verification SHA: `7056fdeca326e207d67906e9a826ddf62744d2f2a03d0023508a80f56347bd74`
+
+Idempotency rerun after apply:
+- READY: 0
+- REVIEW: 4,157
+- SKIP: 1,197
+- already applied: 197
+
+Owner UAT sample: `007-1125-c30920` / Order 2673. Production UI rendered the canonical order, 美西 MorePlus 仓, `USPS`, `USPS Ground Advantage`, and tracking `9434650899561073028159`. Owner replied `pass` on 2026-09-16.
+
+HFR-5 is CLOSED / UAT PASS. Remaining 4,157 review candidates are not silently backfilled. No changelog entry was created, per manual-only changelog policy.
