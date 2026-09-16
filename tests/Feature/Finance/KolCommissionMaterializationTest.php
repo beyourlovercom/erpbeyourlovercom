@@ -4,6 +4,7 @@ namespace Tests\Feature\Finance;
 
 use App\Modules\Finance\Application\CostMaterializationService;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateReferral;
+use App\Modules\Logistics\Application\Contracts\OverseasHandlingEvidenceReader;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -58,6 +59,19 @@ final class KolCommissionMaterializationTest extends TestCase
         self::assertSame('blocked', $candidate['materialization_status']);
         self::assertSame('stronger_or_different_existing_fact', $candidate['blocker']);
         self::assertSame('9.00', $manual->costEntries()->where('cost_type','kol_commission')->value('amount'));
+    }
+
+    public function test_kol_commission_command_runs_when_overseas_handling_capability_is_not_installed(): void
+    {
+        $order = $this->order('USD');
+        $this->referral($order, 19, '4.250000', 'USD', 'paid');
+        $this->app->offsetUnset(OverseasHandlingEvidenceReader::class);
+        self::assertFalse($this->app->bound(OverseasHandlingEvidenceReader::class));
+
+        $this->artisan('finance:materialize-kol-commission', ['--order' => $order->id])
+            ->expectsOutputToContain('"seen":1')
+            ->assertSuccessful();
+        self::assertFalse($order->costEntries()->where('cost_type', 'kol_commission')->exists());
     }
 
     public function test_production_command_requires_flag_and_exact_preflight(): void

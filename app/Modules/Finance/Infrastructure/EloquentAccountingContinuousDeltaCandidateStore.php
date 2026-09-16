@@ -3,6 +3,7 @@
 namespace App\Modules\Finance\Infrastructure;
 
 use App\Modules\Finance\Application\Contracts\AccountingContinuousDeltaCandidateStore;
+use App\Modules\Logistics\Application\Contracts\OverseasHandlingEvidenceReader;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Carbon\CarbonImmutable;
@@ -33,8 +34,9 @@ final class EloquentAccountingContinuousDeltaCandidateStore implements Accountin
                         ->whereBetween('updated_at', [$windowStart, $windowEnd]))
                     ->orWhereHas('shipment.billingEvidence', fn (Builder $billing) => $billing
                         ->whereBetween('updated_at', [$windowStart, $windowEnd]))
-                    ->orWhereHas('shipment.overseasHandlingEvidence', fn (Builder $billing) => $billing
-                        ->whereBetween('updated_at', [$windowStart, $windowEnd]))
+                    ->when($this->overseasHandlingAvailable(), fn (Builder $scope) => $scope
+                        ->orWhereHas('shipment.overseasHandlingEvidence', fn (Builder $billing) => $billing
+                            ->whereBetween('updated_at', [$windowStart, $windowEnd])))
                     ->orWhereExists(fn ($evidence) => $evidence
                         ->selectRaw('1')
                         ->from('warehouse_storage_cost_import_rows as warehouse_cost_rows')
@@ -53,4 +55,10 @@ final class EloquentAccountingContinuousDeltaCandidateStore implements Accountin
             ->limit(max(1, $limit))
             ->get();
     }
+    private function overseasHandlingAvailable(): bool
+    {
+        return interface_exists(OverseasHandlingEvidenceReader::class)
+            && app()->bound(OverseasHandlingEvidenceReader::class);
+    }
+
 }

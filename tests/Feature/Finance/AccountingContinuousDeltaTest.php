@@ -5,6 +5,7 @@ namespace Tests\Feature\Finance;
 use App\Modules\Finance\Application\AccountingContinuousDeltaService;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateReferral;
+use App\Modules\Logistics\Application\Contracts\OverseasHandlingEvidenceReader;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
@@ -272,6 +273,33 @@ final class AccountingContinuousDeltaTest extends TestCase
         self::assertSame('12.34', $entry->amount);
         self::assertSame('provider_import', $entry->provenance);
         self::assertSame('confirmed', $entry->status);
+    }
+
+    public function test_referral_delta_still_works_when_overseas_handling_capability_is_not_installed(): void
+    {
+        config(['erp_accounting.continuous_delta.kol_commission_enabled' => true]);
+        $this->service()->apply(100, CarbonImmutable::parse('2026-09-10T12:00:00Z'));
+        $order = $this->readyOrder();
+        $this->stampOrderAndRelations($order, '2026-09-10 10:00:00');
+        $referral = KolAffiliateReferral::query()->create([
+            'connection_key' => 'beyourlover.com', 'referral_id' => 88002, 'affiliate_id' => 99002,
+            'order_id' => $order->id, 'order_reference' => (string) $order->externalReferences()->where('provider','woocommerce')->value('reference'),
+            'commission_amount' => '8.500000', 'currency' => 'USD', 'provider_status' => 'paid',
+            'context' => 'woocommerce', 'referral_date' => '2026-09-10 10:00:00',
+            'affiliate_resolution_status' => 'bound', 'order_resolution_status' => 'resolved',
+            'reconciliation_status' => 'present', 'sync_status' => 'synced',
+        ]);
+        DB::table('kol_affiliate_referrals')->where('id', $referral->id)->update([
+            'created_at' => '2026-09-10 12:30:00', 'updated_at' => '2026-09-10 12:30:00',
+        ]);
+        $this->app->offsetUnset(OverseasHandlingEvidenceReader::class);
+        self::assertFalse($this->app->bound(OverseasHandlingEvidenceReader::class));
+
+        $preview = $this->service()->preview(100, CarbonImmutable::parse('2026-09-10T13:00:00Z'));
+        self::assertSame(1, $preview['candidate_count']);
+        self::assertSame(1, $preview['stages']['kol_commission']['applied']);
+        self::assertSame(0, $preview['stages']['overseas_handling_actual']['applied']);
+        self::assertSame(0, $preview['stages']['overseas_handling_actual']['blocked']);
     }
 
     public function test_strong_facts_are_protected_and_p6_through_p9_cost_types_are_untouched(): void
