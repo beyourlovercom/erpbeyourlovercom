@@ -230,6 +230,51 @@ final class CostMaterializationService
     }
 
     /** @return array<string, mixed> */
+    /** @return array<string, mixed> */
+    public function previewKolCommissionGate(Model $order): array
+    {
+        $scopeBlocker = $this->operationalBlocker($order);
+        $candidate = $this->affiliateCandidate($order);
+        if ($scopeBlocker !== null) $candidate = $this->forceBlocked($candidate, $scopeBlocker);
+
+        return [
+            'order_id' => (int) $order->getKey(),
+            'scope_status' => $scopeBlocker === null ? 'operational' : 'blocked',
+            'scope_blocker' => $scopeBlocker,
+            'candidates' => [$this->annotateDisposition($order, $candidate)],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function applyKolCommissionGate(Model $order): array
+    {
+        return DB::transaction(function () use ($order): array {
+            $locked = $order->newQuery()->lockForUpdate()->findOrFail($order->getKey());
+            $preview = $this->previewKolCommissionGate($locked);
+            $result = $preview + ['applied' => [], 'noop' => [], 'blocked' => []];
+            $candidate = $preview['candidates'][0];
+            $disposition = $candidate['materialization_status'];
+            if ($disposition === 'blocked') $result['blocked'][] = $candidate;
+            elseif ($disposition === 'noop') $result['noop'][] = $candidate;
+            else {
+                $outcome = $this->writeCandidate($locked, $candidate);
+                $result[$outcome['status']][] = $outcome['entry'];
+            }
+
+            if ($result['applied'] !== []) {
+                $this->analysis->refreshCompleteness($locked, preserveReconciled: false);
+                $this->audit->record(
+                    AuditActor::system(AuditSource::InternalSystem),
+                    'finance.kol_commission_materialization.applied',
+                    $locked::class, $locked->getKey(),
+                    after: ['applied' => $result['applied'], 'blocked' => $result['blocked']],
+                    reason: 'kol_commission_materialization',
+                );
+            }
+            return $result;
+        });
+    }
+
     public function previewLastMileEstimateGate(Model $order): array
     {
         $scopeBlocker = $this->operationalBlocker($order);
@@ -810,11 +855,11 @@ final class CostMaterializationService
         }
 
         $currency = $this->orderCurrency($order);
-        $currencies = array_values(array_unique(array_map(fn (array $row): string => strtoupper((string) ($row['currency'] ?? '')), $eligible)));
-        if (count($currencies) !== 1 || $currencies[0] !== $currency) {
+        $currencies = array_values(array_unique(array_map(fn (array $row): string => strtoupper(trim((string) ($row['currency'] ?? ''))), $eligible)));
+        if (count($currencies) !== 1 || $currencies[0] === '') {
             return $this->blocked('kol_commission', 'foreign_or_mixed_currency_referrals');
         }
-
+        $sourceCurrency = $currencies[0];
         $total = '0';
         $ids = [];
         $sourceAt = null;
@@ -827,10 +872,23 @@ final class CostMaterializationService
             }
         }
         sort($ids);
+        $sourceAmount = DecimalMoney::round($total);
+        $amount = $sourceAmount;
+        $extra = ['referral_ids' => $ids, 'source_currency' => $sourceCurrency, 'source_amount' => $sourceAmount];
+        if ($sourceCurrency !== $currency) {
+            $fx = $this->fxBridge->preview($order, $sourceCurrency);
+            if (! ($fx['available'] ?? false)) {
+                return $this->blocked('kol_commission', 'kol_commission_fx_snapshot_unavailable', $extra + ['fx_reason' => $fx['reason'] ?? 'fx_unavailable']);
+            }
+            $amount = DecimalMoney::round(DecimalMoney::multiply($sourceAmount, (string) $fx['source_to_transaction_rate'], 8));
+            $extra['posting_fx'] = $fx + [
+                'base_amount' => DecimalMoney::round(DecimalMoney::multiply($sourceAmount, (string) $fx['source_to_usd_rate'], 8)),
+            ];
+        }
 
         return $this->candidate(
-            'kol_commission', DecimalMoney::round($total), $currency, 'provider_import', 'confirmed',
-            'affiliatewp-referrals:v1:order:'.$order->getKey(), $sourceAt, ['referral_ids' => $ids],
+            'kol_commission', $amount, $currency, 'provider_import', 'confirmed',
+            'affiliatewp-referrals:v1:order:'.$order->getKey(), $sourceAt, $extra,
         );
     }
 

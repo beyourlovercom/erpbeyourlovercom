@@ -7,6 +7,7 @@ use App\Modules\Kol\Application\Contracts\AffiliateCommissionEvidenceReader;
 use App\Modules\Kol\Experience\Console\Commands\AffiliateAccountPreviewCommand;
 use App\Modules\Kol\Experience\Console\Commands\AffiliateWpHealthCommand;
 use App\Modules\Kol\Experience\Console\Commands\ApplyKolAffiliateBindingProductionCommand;
+use App\Modules\Kol\Experience\Console\Commands\ResolveReferralOrdersCommand;
 use App\Modules\Kol\Infrastructure\AffiliateWp\HttpAffiliateWpGateway;
 use App\Modules\Kol\Infrastructure\AffiliateWp\LocalUatAffiliateWpGateway;
 use App\Modules\Kol\Infrastructure\EloquentAffiliateCommissionEvidenceReader;
@@ -29,7 +30,7 @@ final class KolServiceProvider extends ServiceProvider
         $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/web.php');
 
         if ($this->app->runningInConsole()) {
-            $this->commands([AffiliateWpHealthCommand::class, AffiliateAccountPreviewCommand::class, ApplyKolAffiliateBindingProductionCommand::class]);
+            $this->commands([AffiliateWpHealthCommand::class, AffiliateAccountPreviewCommand::class, ApplyKolAffiliateBindingProductionCommand::class, ResolveReferralOrdersCommand::class]);
         }
     }
 }
