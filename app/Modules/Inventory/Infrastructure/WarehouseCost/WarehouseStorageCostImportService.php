@@ -54,7 +54,7 @@ final class WarehouseStorageCostImportService
     public function apply(string $path,string $provider): array
     {
         $preview=$this->preview($path,$provider);
-        if ($preview['already_applied']) return $preview+['mode'=>'apply'];
+        if ($preview['already_applied']) return array_replace($preview,['mode'=>'apply']);
         return DB::transaction(function() use($preview):array {
             $dupe=WarehouseStorageCostImportBatch::query()->where('provider',$preview['provider'])->where('source_checksum',$preview['source_checksum'])->lockForUpdate()->first();
             if($dupe) throw new RuntimeException('warehouse_storage_import_concurrent_duplicate');
@@ -74,7 +74,7 @@ final class WarehouseStorageCostImportService
             $this->audit->record(AuditActor::system(AuditSource::InternalSystem),'inventory.warehouse_storage_cost_import.applied',WarehouseStorageCostImportBatch::class,$batch->id,
                 after:['provider'=>$preview['provider'],'source_checksum'=>$preview['source_checksum'],'plan_checksum'=>$preview['plan_checksum'],'ready_count'=>$preview['ready_count'],'excluded_count'=>$preview['excluded_count'],'review_count'=>$preview['review_count'],'total_outbound_units'=>$preview['total_outbound_units']],
                 reason:'warehouse_storage_cost_import');
-            return $preview+['mode'=>'apply','batch_id'=>(int)$batch->id];
+            return array_replace($preview,['mode'=>'apply','batch_id'=>(int)$batch->id]);
         });
     }
 

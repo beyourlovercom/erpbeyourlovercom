@@ -15,6 +15,7 @@ use App\Modules\Inventory\Infrastructure\EloquentWarehouseCostAllocationEvidence
 use Illuminate\Support\ServiceProvider;
 use App\Modules\Inventory\Experience\Console\PackagingScanPreviewCommand;
 use App\Modules\Inventory\Experience\Console\ImportWarehouseStorageCostCommand;
+use App\Modules\Inventory\Experience\Console\BridgeMorePlusCostsCommand;
 
 final class InventoryServiceProvider extends ServiceProvider
 {
@@ -30,6 +31,6 @@ final class InventoryServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/web.php');
-        if ($this->app->runningInConsole()) $this->commands([PackagingScanPreviewCommand::class, ImportWarehouseStorageCostCommand::class]);
+        if ($this->app->runningInConsole()) $this->commands([PackagingScanPreviewCommand::class, ImportWarehouseStorageCostCommand::class, BridgeMorePlusCostsCommand::class]);
     }
 }
