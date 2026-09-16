@@ -40,6 +40,9 @@ final class AccountingContinuousDeltaService
             $this->accumulatePreview($summary, $this->materializer->previewProductCostGate($order), 'product_cost');
             $this->accumulatePreview($summary, $this->materializer->previewFixedRules($order), 'fixed_costs');
             $this->accumulatePreview($summary, $this->materializer->previewPaymentFeeGate($order), 'payment_fee');
+            if ($this->kolCommissionEnabled()) {
+                $this->accumulatePreview($summary, $this->materializer->previewKolCommissionGate($order), 'kol_commission');
+            }
             $this->accumulatePreview($summary, $this->materializer->previewWarehouseCostGate($order), 'warehouse_cost');
             $this->accumulatePreview($summary, $this->materializer->previewLastMileEstimateGate($order), 'last_mile_estimate');
             $this->accumulatePreview($summary, $this->materializer->previewCarrierBillingGate($order), 'last_mile_actual');
@@ -86,6 +89,9 @@ final class AccountingContinuousDeltaService
                 $this->accumulateApply($summary, $this->materializer->applyProductCostGate($order), 'product_cost');
                 $this->accumulateApply($summary, $this->materializer->applyFixedRules($order), 'fixed_costs');
                 $this->accumulateApply($summary, $this->materializer->applyPaymentFeeGate($order), 'payment_fee');
+                if ($this->kolCommissionEnabled()) {
+                    $this->accumulateApply($summary, $this->materializer->applyKolCommissionGate($order), 'kol_commission');
+                }
                 $this->accumulateApply($summary, $this->materializer->applyWarehouseCostGate($order), 'warehouse_cost');
                 $this->accumulateApply($summary, $this->materializer->applyLastMileEstimateGate($order), 'last_mile_estimate');
                 $this->accumulateApply($summary, $this->materializer->applyCarrierBillingGate($order), 'last_mile_actual');
@@ -179,12 +185,18 @@ final class AccountingContinuousDeltaService
                 'product_cost' => $this->emptyStage(),
                 'fixed_costs' => $this->emptyStage(),
                 'payment_fee' => $this->emptyStage(),
+                'kol_commission' => $this->emptyStage(),
                 'warehouse_cost' => $this->emptyStage(),
                 'last_mile_estimate' => $this->emptyStage(),
                 'last_mile_actual' => $this->emptyStage(),
                 'overseas_handling_actual' => $this->emptyStage(),
             ],
         ];
+    }
+
+    private function kolCommissionEnabled(): bool
+    {
+        return (bool) config('erp_accounting.continuous_delta.kol_commission_enabled', false);
     }
 
     /** @return array{applied:int,noop:int,blocked:int,blockers:array<string,int>} */

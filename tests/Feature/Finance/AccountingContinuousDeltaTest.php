@@ -4,6 +4,7 @@ namespace Tests\Feature\Finance;
 
 use App\Modules\Finance\Application\AccountingContinuousDeltaService;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Kol\Infrastructure\Models\KolAffiliateReferral;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
@@ -25,7 +26,10 @@ final class AccountingContinuousDeltaTest extends TestCase
     {
         parent::setUp();
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-09-10T12:00:00Z'));
-        config(['erp_accounting.continuous_delta.enabled' => false]);
+        config([
+            'erp_accounting.continuous_delta.enabled' => false,
+            'erp_accounting.continuous_delta.kol_commission_enabled' => false,
+        ]);
     }
 
     protected function tearDown(): void
@@ -215,6 +219,59 @@ final class AccountingContinuousDeltaTest extends TestCase
         $entry = $order->costEntries()->where('cost_type', 'warehouse_cost')->firstOrFail()->fresh();
         self::assertSame('1.00', $entry->amount);
         self::assertSame('allocated_actual', $entry->provenance);
+    }
+
+    public function test_referral_change_does_not_reenter_scope_while_kol_commission_stage_is_disabled(): void
+    {
+        $this->service()->apply(100, CarbonImmutable::parse('2026-09-10T12:00:00Z'));
+        $order = $this->readyOrder();
+        $this->stampOrderAndRelations($order, '2026-09-10 10:00:00');
+        $referral = KolAffiliateReferral::query()->create([
+            'connection_key' => 'beyourlover.com', 'referral_id' => 87999, 'affiliate_id' => 98999,
+            'order_id' => $order->id, 'order_reference' => (string) $order->externalReferences()->where('provider','woocommerce')->value('reference'),
+            'commission_amount' => '12.340000', 'currency' => 'USD', 'provider_status' => 'unpaid',
+            'context' => 'woocommerce', 'referral_date' => '2026-09-10 10:00:00',
+            'affiliate_resolution_status' => 'bound', 'order_resolution_status' => 'resolved',
+            'reconciliation_status' => 'present', 'sync_status' => 'synced',
+        ]);
+        DB::table('kol_affiliate_referrals')->where('id', $referral->id)->update([
+            'created_at' => '2026-09-10 12:30:00', 'updated_at' => '2026-09-10 12:30:00',
+        ]);
+
+        $preview = $this->service()->preview(100, CarbonImmutable::parse('2026-09-10T13:00:00Z'));
+        self::assertSame(0, $preview['candidate_count']);
+        self::assertSame(0, $preview['stages']['kol_commission']['applied']);
+        self::assertFalse($order->costEntries()->where('cost_type', 'kol_commission')->exists());
+    }
+
+    public function test_referral_change_reenters_scope_and_materializes_kol_commission(): void
+    {
+        config(['erp_accounting.continuous_delta.kol_commission_enabled' => true]);
+        $this->service()->apply(100, CarbonImmutable::parse('2026-09-10T12:00:00Z'));
+        $order = $this->readyOrder();
+        $this->stampOrderAndRelations($order, '2026-09-10 10:00:00');
+        $referral = KolAffiliateReferral::query()->create([
+            'connection_key' => 'beyourlover.com', 'referral_id' => 88001, 'affiliate_id' => 99001,
+            'order_id' => $order->id, 'order_reference' => (string) $order->externalReferences()->where('provider','woocommerce')->value('reference'),
+            'commission_amount' => '12.340000', 'currency' => 'USD', 'provider_status' => 'unpaid',
+            'context' => 'woocommerce', 'referral_date' => '2026-09-10 10:00:00',
+            'affiliate_resolution_status' => 'bound', 'order_resolution_status' => 'resolved',
+            'reconciliation_status' => 'present', 'sync_status' => 'synced',
+        ]);
+        DB::table('kol_affiliate_referrals')->where('id', $referral->id)->update([
+            'created_at' => '2026-09-10 12:30:00', 'updated_at' => '2026-09-10 12:30:00',
+        ]);
+
+        $preview = $this->service()->preview(100, CarbonImmutable::parse('2026-09-10T13:00:00Z'));
+        self::assertSame(1, $preview['candidate_count']);
+        self::assertSame(1, $preview['stages']['kol_commission']['applied']);
+
+        $applied = $this->service()->apply(100, CarbonImmutable::parse('2026-09-10T13:00:00Z'));
+        self::assertSame(1, $applied['stages']['kol_commission']['applied']);
+        $entry = $order->costEntries()->where('cost_type', 'kol_commission')->firstOrFail();
+        self::assertSame('12.34', $entry->amount);
+        self::assertSame('provider_import', $entry->provenance);
+        self::assertSame('confirmed', $entry->status);
     }
 
     public function test_strong_facts_are_protected_and_p6_through_p9_cost_types_are_untouched(): void
