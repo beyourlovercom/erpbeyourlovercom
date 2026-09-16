@@ -8,6 +8,7 @@ use App\Modules\Logistics\Application\AssistedFulfillmentService;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
 use App\Modules\Logistics\Application\FulfillmentAllocationSubmissionService;
+use App\Modules\Logistics\Application\FulfillmentAllocationAccess;
 use App\Modules\Logistics\Application\GiftSkuResolutionService;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\UsFulfillmentZoneResolver;
@@ -43,6 +44,7 @@ final class LogisticsController
         private readonly FulfillmentPlanPreviewService $fulfillmentPlans,
         private readonly FulfillmentAllocationDecisionService $allocationDecisions,
         private readonly FulfillmentAllocationSubmissionService $allocationSubmissions,
+        private readonly FulfillmentAllocationAccess $allocationAccess,
         private readonly GiftSkuResolutionService $giftSkuResolutions,
         private readonly LogisticsExecutionAccess $executionAccess,
         private readonly UsFulfillmentZoneResolver $usZones,
@@ -115,7 +117,7 @@ final class LogisticsController
                 'label' => $this->carrierRouting->displayName($carrier->name),
             ])->values()->all(),
             'pendingTotal' => $orders->total(),
-            'canOperate' => $this->executionAccess->allows($request->user()),
+            'canOperate' => $this->allocationAccess->allows($request->user()),
         ]);
     }
 
