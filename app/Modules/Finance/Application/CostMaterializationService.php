@@ -26,7 +26,6 @@ final class CostMaterializationService
     public function __construct(
         private readonly ProductCostEvidenceReader $products,
         private readonly CarrierBillingEvidenceReader $carrier,
-        private readonly OverseasHandlingEvidenceReader $overseasHandling,
         private readonly LastMileEstimateEvidenceReader $lastMileEstimates,
         private readonly FulfillmentOriginEvidenceReader $fulfillmentOrigin,
         private readonly AffiliateCommissionEvidenceReader $affiliate,
@@ -43,12 +42,17 @@ final class CostMaterializationService
         $candidates = [
             $this->productCandidate($order),
             $this->carrierCandidate($order),
-            $this->overseasHandlingCandidate($order),
+        ];
+        if ($this->overseasHandlingAvailable()) {
+            $candidates[] = $this->overseasHandlingCandidate($order);
+        }
+        array_push(
+            $candidates,
             $this->affiliateCandidate($order),
             $this->firstMileCandidate($order),
             $this->customsCandidate($order),
             $this->paymentFeeCandidate($order),
-        ];
+        );
         if ($scopeBlocker !== null) {
             $candidates = array_map(fn (array $candidate): array => $this->forceBlocked($candidate, $scopeBlocker), $candidates);
         }
@@ -161,6 +165,9 @@ final class CostMaterializationService
     /** @return array<string, mixed> */
     public function previewOverseasHandlingGate(Model $order): array
     {
+        if (! $this->overseasHandlingAvailable()) {
+            return ['order_id'=>(int)$order->getKey(),'scope_status'=>'operational','scope_blocker'=>null,'candidates'=>[]];
+        }
         $scopeBlocker = $this->operationalBlocker($order);
         $candidate = $this->overseasHandlingCandidate($order);
         if ($scopeBlocker !== null) $candidate = $this->forceBlocked($candidate, $scopeBlocker);
@@ -173,7 +180,9 @@ final class CostMaterializationService
         return DB::transaction(function () use ($order): array {
             $locked=$order->newQuery()->lockForUpdate()->findOrFail($order->getKey());
             $preview=$this->previewOverseasHandlingGate($locked);
-            $result=$preview+['applied'=>[],'noop'=>[],'blocked'=>[]]; $candidate=$preview['candidates'][0];
+            $result=$preview+['applied'=>[],'noop'=>[],'blocked'=>[]];
+            if (($preview['candidates'] ?? []) === []) return $result;
+            $candidate=$preview['candidates'][0];
             $disposition=$candidate['materialization_status'];
             if($disposition==='blocked') $result['blocked'][]=$candidate; elseif($disposition==='noop') $result['noop'][]=$candidate; else { $outcome=$this->writeCandidate($locked,$candidate); $result[$outcome['status']][]=$outcome['entry']; }
             if($result['applied']!==[]){
@@ -714,9 +723,22 @@ final class CostMaterializationService
         );
     }
 
+    private function overseasHandlingAvailable(): bool
+    {
+        return interface_exists(OverseasHandlingEvidenceReader::class)
+            && app()->bound(OverseasHandlingEvidenceReader::class);
+    }
+
+    private function overseasHandlingReader(): ?object
+    {
+        return $this->overseasHandlingAvailable() ? app(OverseasHandlingEvidenceReader::class) : null;
+    }
+
     private function overseasHandlingCandidate(Model $order): array
     {
-        $evidence=$this->overseasHandling->read($order->getKey());
+        $reader = $this->overseasHandlingReader();
+        if ($reader === null) return $this->blocked('overseas_handling_cost', 'overseas_handling_feature_unavailable');
+        $evidence=$reader->read($order->getKey());
         if($evidence===null||isset($evidence['blocked'])) return $this->blocked('overseas_handling_cost',(string)($evidence['blocked']??'overseas_handling_evidence_missing'));
         $currency=$this->orderCurrency($order); $sourceCurrency=strtoupper(trim((string)($evidence['currency']??'')));
         $identity=$evidence['billing_document_number']??$evidence['provider_reference']??$evidence['data_source']??null;
