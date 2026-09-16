@@ -143,6 +143,75 @@ final class InventoryService
         });
     }
 
+    public function warehouseCostCenter(Model $warehouse): array
+    {
+        $months = collect(range(0, 2))->map(fn (int $offset): string => now()->startOfMonth()->subMonths($offset)->toDateString());
+        $rows = $this->inventory->warehouseCosts($warehouse, $months->all());
+        $labels = ['shipping' => 'Shipping / 运费', 'parcel_outbound' => 'Parcel Outbound / 出库处理', 'storage' => 'Storage / 仓储费', 'other' => 'Other / 其他'];
+
+        return [
+            'months' => $months->map(function (string $month) use ($rows, $labels): array {
+                $monthRows = $rows->filter(fn ($row): bool => $row->cost_month?->toDateString() === $month)->values();
+                $currencies = $monthRows->groupBy('currency')->map(function ($currencyRows, string $currency): array {
+                    $sum = fn (string $category): float => round((float) $currencyRows->where('category', $category)->sum(fn ($row) => (float) $row->amount), 2);
+                    return [
+                        'currency' => $currency,
+                        'total' => round((float) $currencyRows->sum(fn ($row) => (float) $row->amount), 2),
+                        'shipping' => $sum('shipping'),
+                        'parcel_outbound' => $sum('parcel_outbound'),
+                        'storage' => $sum('storage'),
+                        'other' => $sum('other'),
+                    ];
+                })->sortBy('currency')->values()->all();
+
+                return [
+                    'month' => substr($month, 0, 7),
+                    'label' => substr($month, 0, 4).'年'.substr($month, 5, 2).'月',
+                    'currencies' => $currencies,
+                    'entries' => $monthRows->map(fn ($row): array => [
+                        'id' => $row->id,
+                        'category' => $row->category,
+                        'category_label' => $labels[$row->category] ?? $row->category,
+                        'amount' => (float) $row->amount,
+                        'currency' => $row->currency,
+                        'note' => $row->note,
+                        'source_type' => $row->source_type,
+                        'source_reference' => $row->source_reference,
+                        'created_at' => $row->created_at?->toIso8601String(),
+                    ])->all(),
+                ];
+            })->all(),
+        ];
+    }
+
+    public function addWarehouseCost(Model $warehouse, array $attributes, ?Authenticatable $actor): Model
+    {
+        $attributes['cost_month'] = substr((string) $attributes['cost_month'], 0, 7).'-01';
+        $attributes['category'] = strtolower(trim((string) $attributes['category']));
+        $attributes['currency'] = strtoupper(trim((string) $attributes['currency']));
+        $attributes['amount'] = round((float) $attributes['amount'], 2);
+        $attributes['note'] = isset($attributes['note']) && trim((string) $attributes['note']) !== '' ? trim((string) $attributes['note']) : null;
+        $attributes['source_type'] = 'manual';
+        $attributes['created_by_user_id'] = $actor?->getAuthIdentifier();
+
+        return DB::transaction(function () use ($warehouse, $attributes, $actor): Model {
+            $cost = $this->inventory->createWarehouseCost($warehouse, $attributes);
+            $this->record($actor, 'warehouse.cost_recorded', $cost, null, $cost->only(['warehouse_id','cost_month','category','amount','currency','note','source_type']), 'warehouse_cost_manual_entry');
+            return $cost;
+        });
+    }
+
+    public function removeWarehouseCost(Model $warehouse, int $costId, ?Authenticatable $actor): void
+    {
+        DB::transaction(function () use ($warehouse, $costId, $actor): void {
+            $cost = $this->inventory->findWarehouseCost($warehouse, $costId);
+            if ($cost->source_type !== 'manual') throw ValidationException::withMessages(['cost' => '导入账单费用不能通过手工入口删除。']);
+            $before = $cost->only(['warehouse_id','cost_month','category','amount','currency','note','source_type']);
+            $this->record($actor, 'warehouse.cost_deleted', $cost, $before, null, 'warehouse_cost_manual_entry_removed');
+            $this->inventory->deleteWarehouseCost($cost);
+        });
+    }
+
     private function normalizeWarehouse(array $attributes): array
     {
         foreach (['slug','code'] as $key) if (isset($attributes[$key])) $attributes[$key] = strtolower(trim((string) $attributes[$key]));

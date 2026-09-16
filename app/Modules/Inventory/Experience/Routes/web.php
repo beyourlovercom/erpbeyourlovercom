@@ -43,6 +43,8 @@ Route::middleware(['web','auth','can:inventory.warehouses.manage'])->group(funct
     Route::patch('/inventory/{warehouse}',[WarehouseController::class,'update'])->name('inventory.warehouse.update');
     Route::patch('/inventory/{warehouse}/billing',[WarehouseController::class,'billing'])->name('inventory.warehouse.billing');
     Route::patch('/inventory/{warehouse}/regions',[WarehouseController::class,'regions'])->name('inventory.warehouse.regions');
+    Route::post('/inventory/{warehouse}/costs',[WarehouseController::class,'addCost'])->name('inventory.warehouse.costs.store');
+    Route::delete('/inventory/{warehouse}/costs/{cost}',[WarehouseController::class,'removeCost'])->whereNumber('cost')->name('inventory.warehouse.costs.destroy');
 });
 
 Route::middleware(['web','auth','can:inventory.operate'])->group(function (): void {
