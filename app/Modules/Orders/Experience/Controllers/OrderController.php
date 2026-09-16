@@ -7,8 +7,8 @@ use App\Modules\Finance\Application\OrderAnalysisService;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Kol\Application\SavedViewService;
 use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
+use App\Modules\Logistics\Application\FulfillmentAllocationAccess;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
-use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderService;
@@ -32,7 +32,7 @@ final class OrderController
         private readonly OrderAnalysisService $orderAnalysis,
         private readonly FulfillmentPlanPreviewService $fulfillmentPlans,
         private readonly FulfillmentAllocationDecisionService $allocationDecisions,
-        private readonly LogisticsExecutionAccess $logisticsExecutionAccess,
+        private readonly FulfillmentAllocationAccess $fulfillmentAllocationAccess,
     ) {}
 
     public function index(Request $request): Response
@@ -202,7 +202,7 @@ final class OrderController
 
         return [
             'status' => $order->fulfillmentAllocation ? 'submitted' : ($order->order_status?->value === 'pending_shipment' ? 'pending' : 'locked'),
-            'can_operate' => $order->order_status?->value === 'pending_shipment' && ! $order->fulfillmentAllocation && $this->logisticsExecutionAccess->allows($request->user()),
+            'can_operate' => $order->order_status?->value === 'pending_shipment' && ! $order->fulfillmentAllocation && $this->fulfillmentAllocationAccess->allows($request->user()),
             'requires_full_flow' => $order->items->contains(fn ($item): bool => strcasecmp(trim((string) $item->sku), 'gift') === 0),
             'selectable_warehouse_ids' => $selectableWarehouseIds,
             'recommended_warehouse_ids' => $recommendedByItem,

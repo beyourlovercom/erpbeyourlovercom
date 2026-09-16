@@ -5,10 +5,12 @@ use App\Modules\Logistics\Experience\Controllers\HistoricalImportController;
 use App\Modules\Logistics\Experience\Controllers\LogisticsController;
 use App\Modules\Logistics\Experience\Controllers\OverseaWarehouseController;
 use App\Modules\Logistics\Experience\Middleware\RequireLogisticsExecution;
+use App\Modules\Logistics\Experience\Middleware\RequireFulfillmentAllocation;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth'])->group(function (): void {
     $execution = ['can:logistics.operate', RequireLogisticsExecution::class];
+    $allocation = [RequireFulfillmentAllocation::class];
     Route::get('/logistics', [LogisticsController::class, 'index'])->middleware('can:logistics.view')->name('shell.logistics');
     Route::get('/logistics/pending', [LogisticsController::class, 'index'])->middleware('can:logistics.view')->name('logistics.pending');
     Route::get('/logistics/wait-stock', [LogisticsController::class, 'waitStock'])->middleware('can:logistics.view')->name('logistics.wait-stock');
@@ -37,9 +39,9 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/historical-import/{batch}/rescue-attempts/{projection}/apply', [HistoricalImportController::class, 'applyRescueAttempts'])->middleware('can:logistics.operate')->whereNumber('projection')->name('logistics.historical-import.rescue-attempts.apply');
     Route::post('/logistics/orders/{order}/draft', [LogisticsController::class, 'saveDraft'])->middleware($execution)->name('logistics.draft');
     Route::post('/logistics/orders/{order}/adopt-recommendation', [LogisticsController::class, 'adoptRecommendation'])->middleware($execution)->name('logistics.adopt-recommendation');
-    Route::post('/logistics/orders/{order}/fulfillment-allocation/recommended', [LogisticsController::class, 'submitRecommendedAllocation'])->middleware($execution)->name('logistics.fulfillment-allocation.recommended');
-    Route::post('/logistics/orders/{order}/fulfillment-allocation/manual', [LogisticsController::class, 'submitManualAllocation'])->middleware($execution)->name('logistics.fulfillment-allocation.manual');
-    Route::post('/logistics/orders/{order}/fulfillment-allocation/quick', [LogisticsController::class, 'submitQuickAllocation'])->middleware($execution)->name('logistics.fulfillment-allocation.quick');
+    Route::post('/logistics/orders/{order}/fulfillment-allocation/recommended', [LogisticsController::class, 'submitRecommendedAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.recommended');
+    Route::post('/logistics/orders/{order}/fulfillment-allocation/manual', [LogisticsController::class, 'submitManualAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.manual');
+    Route::post('/logistics/orders/{order}/fulfillment-allocation/quick', [LogisticsController::class, 'submitQuickAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.quick');
     Route::get('/logistics/orders/{order}/payload', [LogisticsController::class, 'payload'])->middleware('can:logistics.view')->name('logistics.payload');
     Route::post('/logistics/orders/{order}/ship', [LogisticsController::class, 'markShipped'])->middleware($execution)->name('logistics.ship');
     Route::post('/logistics/orders/{order}/reopen', [LogisticsController::class, 'reopen'])->middleware($execution)->name('logistics.reopen');
