@@ -182,6 +182,41 @@ final class AccountingContinuousDeltaTest extends TestCase
         self::assertSame('confirmed', $entry->status);
     }
 
+    public function test_warehouse_allocation_change_reenters_scope_and_materializes_warehouse_cost(): void
+    {
+        $this->service()->apply(100, CarbonImmutable::parse('2026-09-10T12:00:00Z'));
+        $order = $this->readyOrder();
+        $this->stampOrderAndRelations($order, '2026-09-10 10:00:00');
+        DB::table('orders')->where('id', $order->id)->update(['order_status' => 'shipped']);
+        DB::table('shipments')->where('order_id', $order->id)->update([
+            'shipment_status' => 'shipped',
+            'tracking_number' => 'P7-DELTA-'.$order->id,
+            'updated_at' => '2026-09-10 10:00:00',
+        ]);
+        $shipment = $order->shipment()->firstOrFail();
+        $warehouse = $shipment->warehouse()->firstOrFail();
+        $file = tempnam(sys_get_temp_dir(), 'p7-delta-').'.csv';
+        $handle = fopen($file, 'wb');
+        fputcsv($handle, ['warehouse_slug','billing_period_start','billing_period_end','storage_pool_amount','currency','reference_number','tracking_number','outbound_units']);
+        fputcsv($handle, [$warehouse->slug,'2026-09-01','2026-09-30','1.0000','USD','C-P7',$shipment->tracking_number,1]);
+        fclose($handle);
+        app(\App\Modules\Inventory\Infrastructure\WarehouseCost\WarehouseStorageCostImportService::class)->apply($file, 'p7-test');
+        DB::table('warehouse_storage_cost_import_rows')->where('order_id', $order->id)->update([
+            'created_at' => '2026-09-10 12:30:00',
+            'updated_at' => '2026-09-10 12:30:00',
+        ]);
+
+        $preview = $this->service()->preview(100, CarbonImmutable::parse('2026-09-10T13:00:00Z'));
+        self::assertSame(1, $preview['candidate_count']);
+        self::assertSame(1, $preview['stages']['warehouse_cost']['applied']);
+
+        $applied = $this->service()->apply(100, CarbonImmutable::parse('2026-09-10T13:00:00Z'));
+        self::assertSame(1, $applied['stages']['warehouse_cost']['applied']);
+        $entry = $order->costEntries()->where('cost_type', 'warehouse_cost')->firstOrFail()->fresh();
+        self::assertSame('1.00', $entry->amount);
+        self::assertSame('allocated_actual', $entry->provenance);
+    }
+
     public function test_strong_facts_are_protected_and_p6_through_p9_cost_types_are_untouched(): void
     {
         $order = $this->readyOrder();
