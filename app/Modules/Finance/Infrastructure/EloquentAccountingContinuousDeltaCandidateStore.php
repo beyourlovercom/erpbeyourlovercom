@@ -32,7 +32,13 @@ final class EloquentAccountingContinuousDeltaCandidateStore implements Accountin
                     ->orWhereHas('shipment', fn (Builder $shipment) => $shipment
                         ->whereBetween('updated_at', [$windowStart, $windowEnd]))
                     ->orWhereHas('shipment.billingEvidence', fn (Builder $billing) => $billing
-                        ->whereBetween('updated_at', [$windowStart, $windowEnd]));
+                        ->whereBetween('updated_at', [$windowStart, $windowEnd]))
+                    ->orWhereExists(fn ($evidence) => $evidence
+                        ->selectRaw('1')
+                        ->from('warehouse_storage_cost_import_rows as warehouse_cost_rows')
+                        ->whereColumn('warehouse_cost_rows.order_id', 'orders.id')
+                        ->where('warehouse_cost_rows.decision', 'ready')
+                        ->whereBetween('warehouse_cost_rows.updated_at', [$windowStart, $windowEnd]));
             })
             ->orderBy('id')
             ->limit(max(1, $limit))
