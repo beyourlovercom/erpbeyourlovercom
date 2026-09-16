@@ -147,3 +147,27 @@ No UI required. No Production data write. Schema/code may be prepared and valida
 - Effective-hours evidence: the pre-handoff implementation portion has no accepted elapsed/effective-time ledger in the canonical handoff, so its actual hours are **UNKNOWN WITH EVIDENCE** rather than invented. This continuation's rebase + regression + exact-main delta evidence + WP finalization consumed approximately **0.45 effective engineering hours**.
 - Package total actual effective hours: **UNKNOWN WITH EVIDENCE** because the pre-handoff component cannot be reconstructed reliably from repository state alone.
 - Merge-candidate status: validation complete; proceed commit → push → PR → CI → merge, then stop at the P7 Production code/schema deployment hard gate.
+## Production Closure / backend-only UAT — 2026-09-16
+- Final status: **P7 CLOSED / PRODUCTION ACCEPTED / backend-only UAT PASS**.
+- Runtime implementation merged via PR #329; merge commit `b2808c467593caff9db080d5e968630f445a8a8c`.
+- Production bounded overlay: `accounting-p7-pr329-overlay-20260915-183816-b2808c46`.
+- P7 schema migration `2026_09_15_170000_create_warehouse_storage_cost_import_tables` ran as migration batch `[38]`.
+- Code/schema deploy post-verify: login HTTP 200; both warehouse-storage apply flags remained unset; new evidence tables initially contained zero business rows.
+- Tianyun canonical source SHA: `0a928351e7cf49d80d24a2edcbc90c27b721fe5516270c0f5c7633c35cc83593`.
+- Tianyun deterministic plan SHA: `807311ce1dccb6748286c3d92d69685a7fb089064b4a7272a0988f6fd9d81816`.
+- Source import Production gate applied exactly once: batch `1`, `43` rows, `27 ready / 16 excluded / 0 review`, `48` total units, `32` customer units, `16` excluded units.
+- Source economics verified: Storage Pool `EUR 29.76`, allocation rate `EUR 0.62/unit`, ready-customer source share `EUR 19.84`, excluded KOL/historical share `EUR 9.92`.
+- Source-import replay remained deterministic/idempotent and the process-local import apply flag was not persisted.
+- Finance Production dry-run gate locked `seen=6247 / apply=26 / noop=0 / blocked=6221 / fx-freeze=0`.
+- Blockers were `warehouse_storage_allocation_missing=6220` plus exactly one `stronger_or_different_existing_fact`.
+- Strong-fact case: Order `1200` / `007-0813-c26990` retained existing `warehouse_cost=USD 1.00`, provenance `confirmed_manual`, status `confirmed`; Tianyun `EUR 0.62` allocation did not overwrite it.
+- Finance Production materialization applied exactly `26` new `warehouse_cost` entries; total `order_cost_entries` moved `13876 → 13902`.
+- All 26 P7 entries are `allocated_actual / confirmed` with exact `warehouse-storage-allocation:v1:batch:1:order:<order_id>` source references.
+- Materialized P7 customer amount is `EUR 19.22`; adding the blocked strong-fact source share `EUR 0.62` reconciles exactly to original ready-customer source allocation `EUR 19.84`.
+- All 26 materialized Orders and the Tianyun source are EUR, so no cross-currency freeze was required; FX fields remained null and `fx-freeze=0` is correct.
+- Finance completeness refreshed for all 26 materialized Orders; none remained missing `warehouse_cost`.
+- Post-apply replay dry-run: `seen=6247 / apply=0 / noop=26 / blocked=6221 / fx-freeze=0`.
+- Existing Accounting continuous-delta dry-run after closure: gate PASS, `candidate_count=0`, `processed=0`, `failures=0`; no new scheduler exists and no duplicate warehouse-cost write is pending.
+- Persistent Finance warehouse-cost apply flag remained unset after apply.
+- P7 remains backend-only; per canonical handoff no visual Owner UAT is required because UI scope did not change.
+- ERP Changelog intentionally not updated; changelog remains manual-only until explicit Owner request.
