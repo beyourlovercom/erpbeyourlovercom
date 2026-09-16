@@ -6,6 +6,10 @@ use App\Modules\Inventory\Application\InventoryService;
 use App\Modules\Inventory\Application\InventoryStockStatus;
 use App\Modules\Inventory\Application\WarehouseClearanceService;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
+use App\Modules\Inventory\Infrastructure\WarehouseCost\WarehouseBillImportService;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Throwable;
 use App\Modules\Identity\Application\AuthorizationKeys;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,6 +21,7 @@ final class WarehouseController
     public function __construct(
         private readonly InventoryService $inventory,
         private readonly WarehouseClearanceService $clearance,
+        private readonly WarehouseBillImportService $billImport,
     ) {}
     public function create(): Response { return Inertia::render('Inventory/WarehouseCreate'); }
     public function store(Request $request): RedirectResponse
@@ -33,6 +38,7 @@ final class WarehouseController
             'clearanceProducts'=>$this->clearance->listForWarehouse($w),
             'clearanceCandidates'=>$this->clearance->candidatesForWarehouse($w),
             'costCenter'=>$this->inventory->warehouseCostCenter($w),
+            'billImportPreview'=>data_get(session($this->billPreviewKey((int)$w->id)),'summary'),
             'canOperate'=>auth()->user()?->can(AuthorizationKeys::InventoryOperate->value) ?? false,
             'canManage'=>auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false,
         ]);
@@ -77,6 +83,35 @@ final class WarehouseController
         $this->inventory->removeWarehouseCost($w,$cost,$request->user());
         return back()->with('success','手工仓库费用已删除');
     }
+    public function previewBillImport(Request $request,string $warehouse): RedirectResponse
+    {
+        $w=$this->inventory->warehouse($warehouse);
+        $request->validate(['bill'=>['required','file','max:16384']]);
+        $key=$this->billPreviewKey((int)$w->id);
+        $old=session($key); if(is_array($old)&&isset($old['stored_path'])) Storage::disk('local')->delete((string)$old['stored_path']);
+        $stored=$request->file('bill')->storeAs('warehouse-bill-previews',Str::uuid().'.xlsx','local');
+        try {
+            $preview=$this->billImport->preview(Storage::disk('local')->path($stored),$w,'moreplus');
+        } catch (Throwable $e) {
+            Storage::disk('local')->delete($stored);
+            return back()->withErrors(['bill'=>$e->getMessage()]);
+        }
+        session([$key=>['stored_path'=>$stored,'source_checksum'=>$preview['source_checksum'],'plan_checksum'=>$preview['plan_checksum'],'summary'=>$this->billPreviewPayload($preview)]]);
+        return back()->with('success','MorePlus 账单预览已生成');
+    }
+    public function applyBillImport(Request $request,string $warehouse): RedirectResponse
+    {
+        $w=$this->inventory->warehouse($warehouse);$key=$this->billPreviewKey((int)$w->id);$stored=session($key);
+        if(!is_array($stored)||empty($stored['stored_path'])||!Storage::disk('local')->exists((string)$stored['stored_path'])) return back()->withErrors(['bill'=>'账单预览已失效，请重新上传。']);
+        $path=Storage::disk('local')->path((string)$stored['stored_path']);
+        try {
+            $preview=$this->billImport->preview($path,$w,'moreplus');
+            if(!hash_equals((string)$stored['source_checksum'],(string)$preview['source_checksum'])||!hash_equals((string)$stored['plan_checksum'],(string)$preview['plan_checksum'])) return back()->withErrors(['bill'=>'账单预览已变化，请重新上传。']);
+            $result=$this->billImport->apply($path,$w,$request->user(),'moreplus');
+        } catch (Throwable $e) { return back()->withErrors(['bill'=>$e->getMessage()]); }
+        Storage::disk('local')->delete((string)$stored['stored_path']);session()->forget($key);
+        return back()->with('success',($result['already_applied']??false)?'该 MorePlus 账单已导入，无需重复处理。':'MorePlus 账单已导入仓库费用中心');
+    }
     public function saveInventory(Request $request,string $warehouse): RedirectResponse
     {
         $w=$this->inventory->warehouse($warehouse);
@@ -110,6 +145,12 @@ final class WarehouseController
         $w=$this->inventory->warehouse($warehouse);
         $this->clearance->remove($w,$clearance,$request->user());
         return back()->with('success','已移出清仓 / Gift 库');
+    }
+    private function billPreviewKey(int $warehouseId): string { return 'inventory.warehouse_bill_preview.'.$warehouseId; }
+    /** @param array<string,mixed> $preview @return array<string,mixed> */
+    private function billPreviewPayload(array $preview): array
+    {
+        return array_intersect_key($preview,array_flip(['provider','original_filename','source_checksum','plan_checksum','invoice_number','client_name','invoice_date','currency','invoice_total','shipping_total','parcel_outbound_total','storage_total','periods','counts','monthly','already_applied','batch_id']));
     }
     private function warehouseRules(?int $ignoreId=null): array
     {

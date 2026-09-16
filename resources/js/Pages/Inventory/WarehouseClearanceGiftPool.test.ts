@@ -52,7 +52,7 @@ const clearanceCandidates = [
 
 describe('Warehouse Clearance / Gift Pool V1', () => {
   it('renders current inventory and the inline clearance pool with live stock, priority and local candidates', () => {
-    const wrapper = mount(WarehouseShow, { props: { warehouse, clearanceProducts, clearanceCandidates, costCenter: emptyCostCenter, canOperate: true, canManage: false } })
+    const wrapper = mount(WarehouseShow, { props: { warehouse, clearanceProducts, clearanceCandidates, billImportPreview:null,costCenter: emptyCostCenter, canOperate: true, canManage: false } })
     expect(wrapper.text()).toContain('目前仓库产品库存统计')
     expect(wrapper.text()).toContain('清仓 / Gift 库')
     expect(wrapper.findAll('button').some(button => button.text().includes('清仓 / Gift 库'))).toBe(false)
@@ -69,7 +69,7 @@ describe('Warehouse Clearance / Gift Pool V1', () => {
   })
 
   it('keeps the inline clearance pool read-only for inventory viewers without operate permission', () => {
-    const wrapper = mount(WarehouseShow, { props: { warehouse, clearanceProducts, clearanceCandidates, costCenter: emptyCostCenter, canOperate: false, canManage: false } })
+    const wrapper = mount(WarehouseShow, { props: { warehouse, clearanceProducts, clearanceCandidates, billImportPreview:null,costCenter: emptyCostCenter, canOperate: false, canManage: false } })
     expect(wrapper.text()).toContain('目前仓库产品库存统计')
     expect(wrapper.text()).toContain('清仓 / Gift 库')
     expect(wrapper.find('input[placeholder="搜索本仓库存 SKU / 商品"]').exists()).toBe(false)
