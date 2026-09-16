@@ -18,6 +18,15 @@ return [
             'public_slug' => 'us-la',
             'legacy_slugs' => ['us-la', 'us-moreplus'],
             'role_label' => '海外履约仓',
+            'bill_import' => [
+                'enabled' => true,
+                'provider' => 'moreplus',
+                'label' => 'MorePlus',
+                'extension' => 'xlsx',
+                'format_label' => 'XLSX',
+                'accept' => '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'max_kb' => 16384,
+            ],
         ],
         'US-SM' => [
             'name_zh' => '美国3世迈仓',
