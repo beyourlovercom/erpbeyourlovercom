@@ -144,6 +144,7 @@ final class ManualFulfillmentIntegrationTest extends TestCase
     public function test_order_detail_exposes_inventory_and_selected_warehouse(): void
     {
         [$user, $order, $product, $warehouse] = $this->scenario();
+        $item = $order->items()->firstOrFail();
         $this->makeReservable($warehouse, $product, 8, 2);
         $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/draft', [
             'warehouse_id' => $warehouse->id,
@@ -153,9 +154,38 @@ final class ManualFulfillmentIntegrationTest extends TestCase
             fn (Assert $page) => $page
                 ->where('order.shipment.warehouse_id', $warehouse->id)
                 ->where('order.shipment.warehouse_name', $warehouse->name)
+                ->where("allocationUi.selected_warehouse_ids.{$item->id}", $warehouse->id)
+                ->where('allocationUi.can_operate', true)
                 ->where("inventoryAvailability.{$product->id}", fn ($rows) => collect($rows)->contains(
                     fn ($row) => $row['warehouse_id'] === $warehouse->id && $row['quantity_available'] === 4
                 ))
+        );
+    }
+
+    public function test_order_detail_quick_allocation_uses_the_same_manual_allocation_pipeline(): void
+    {
+        [$user, $order, $product] = $this->scenario();
+        $item = $order->items()->firstOrFail();
+        $warehouse = Warehouse::query()->where('code', 'US-LA')->firstOrFail();
+        $this->makeReservable($warehouse, $product, 8, 0);
+
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/fulfillment-allocation/quick', [
+            'assignments' => [[
+                'order_item_id' => $item->id,
+                'warehouse_id' => $warehouse->id,
+            ]],
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('fulfillment_allocations', [
+            'order_id' => $order->id,
+            'status' => 'submitted',
+            'decision_source' => 'manual',
+        ]);
+        $this->actingAs($user)->get('/customers/orders/'.$order->id)->assertInertia(
+            fn (Assert $page) => $page
+                ->where('allocationUi.status', 'submitted')
+                ->where('allocationUi.can_operate', false)
+                ->where("allocationUi.selected_warehouse_ids.{$item->id}", $warehouse->id)
         );
     }
 

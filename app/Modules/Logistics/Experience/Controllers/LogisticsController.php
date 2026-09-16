@@ -19,12 +19,14 @@ use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Shell\Application\UserUiPreferenceService;
 use Illuminate\Http\Request;
 use Illuminate\Database\QueryException;
 use PDOException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -146,6 +148,47 @@ final class LogisticsController
             return response()->json(['status' => $allocation->status, 'decision_source' => $allocation->decision_source, 'submitted_at' => $allocation->submitted_at?->toIso8601String()]);
         }
         return back()->with('success', '人工分仓方案已提交');
+    }
+
+    public function submitQuickAllocation(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    {
+        $data = $request->validate([
+            'assignments' => ['required', 'array', 'min:1'],
+            'assignments.*.order_item_id' => ['required', 'integer'],
+            'assignments.*.warehouse_id' => ['required', 'integer', Rule::exists('warehouses', 'id')->where('is_active', true)],
+        ]);
+
+        $order->loadMissing(['address', 'items']);
+        if ($order->items->contains(fn ($item): bool => strcasecmp(trim((string) $item->sku), 'gift') === 0)) {
+            throw ValidationException::withMessages(['assignments' => 'gift 订单需要在“待分仓”中选择实际履约礼品 SKU。']);
+        }
+
+        $warehouseIds = collect($data['assignments'])->pluck('warehouse_id')->map(fn ($id): int => (int) $id)->unique()->values();
+        $warehouses = Warehouse::query()->whereIn('id', $warehouseIds)->where('is_active', true)->get()->keyBy('id');
+        $allowedCodes = array_map('strtoupper', (array) config('warehouse_master.fulfillment_codes', []));
+        $normalized = collect($data['assignments'])->map(function (array $assignment) use ($order, $warehouses, $allowedCodes): array {
+            $warehouse = $warehouses->get((int) $assignment['warehouse_id']);
+            if (! $warehouse || ! in_array(strtoupper((string) $warehouse->code), $allowedCodes, true)) {
+                throw ValidationException::withMessages(['assignments' => '所选仓库不属于待分仓履约仓库。']);
+            }
+            $route = $this->carrierRouting->warehouseRoute($order->address?->country, (string) $warehouse->code);
+            $carrier = trim((string) ($route['carrier'] ?? ''));
+            if ($carrier === '') {
+                throw ValidationException::withMessages(['assignments' => "{$warehouse->name} 尚未配置默认承运商，请进入完整待分仓流程。"]);
+            }
+
+            return [
+                'order_item_id' => (int) $assignment['order_item_id'],
+                'source_code' => (string) $warehouse->code,
+                'gift_mapping_id' => null,
+                'carrier' => $carrier,
+                'service' => isset($route['service']) && trim((string) $route['service']) !== '' ? trim((string) $route['service']) : null,
+            ];
+        })->values()->all();
+
+        $this->allocationSubmissions->submitManual($order, $normalized, null, $request->user());
+
+        return back()->with('success', '分仓已提交');
     }
 
     public function saveDraft(Request $request, Order $order): \Illuminate\Http\RedirectResponse

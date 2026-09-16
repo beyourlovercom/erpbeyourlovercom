@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import Show from './Show.vue'
+import { router } from '@inertiajs/vue3'
 
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
@@ -347,4 +348,48 @@ describe('Orders/Show V2', () => {
     // item.product_id = 5 from baseOrder — shown in SKU field (view mode shows SKU text)
     expect(wrapper.text()).toContain('SKU-001')
   })
+
+  it('uses the inventory matrix itself as the pending warehouse selector', async () => {
+    const inventoryAvailability = {
+      5: [
+        { warehouse_id: 1, warehouse_slug: 'us-la', warehouse_name: '美西 MorePlus 仓', inventory_state: 'confirmed', can_auto_allocate: true, quantity_on_hand: 8, quantity_reserved: 1, quantity_available: 7 },
+        { warehouse_id: 2, warehouse_slug: 'us-ny', warehouse_name: '美东纽约仓', inventory_state: 'confirmed', can_auto_allocate: true, quantity_on_hand: 4, quantity_reserved: 0, quantity_available: 4 },
+      ],
+    }
+    const allocationUi = {
+      status: 'pending' as const, can_operate: true, requires_full_flow: false,
+      selectable_warehouse_ids: [1, 2], recommended_warehouse_ids: { 10: 1 }, selected_warehouse_ids: { 10: null },
+      recommended_plan_key: 'plan-us-la', can_use_recommendation: true, full_allocation_url: '/logistics/wait-stock',
+    }
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, inventoryAvailability, allocationUi } })
+    const choices = wrapper.findAll('input[type="radio"][name="allocation-10"]')
+    expect(choices).toHaveLength(2)
+    expect((choices[0].element as HTMLInputElement).checked).toBe(true)
+    expect(wrapper.text()).toContain('推荐')
+    expect(wrapper.text()).toContain('采用推荐并提交分仓')
+
+    await choices[1].trigger('change')
+    expect(wrapper.text()).toContain('确认分仓')
+    const confirm = wrapper.findAll('button[type="button"]').find(button => button.text() === '确认分仓')
+    await confirm!.trigger('click')
+    expect(router.post).toHaveBeenCalledWith('/logistics/orders/1/fulfillment-allocation/quick', {
+      assignments: [{ order_item_id: 10, warehouse_id: 2 }],
+    }, expect.any(Object))
+  })
+
+  it('renders submitted allocation as read-only selected warehouse', () => {
+    const inventoryAvailability = {
+      5: [{ warehouse_id: 2, warehouse_slug: 'us-ny', warehouse_name: '美东纽约仓', inventory_state: 'confirmed', can_auto_allocate: true, quantity_on_hand: 4, quantity_reserved: 0, quantity_available: 4 }],
+    }
+    const allocationUi = {
+      status: 'submitted' as const, can_operate: false, requires_full_flow: false,
+      selectable_warehouse_ids: [2], recommended_warehouse_ids: { 10: null }, selected_warehouse_ids: { 10: 2 },
+      recommended_plan_key: null, can_use_recommendation: false, full_allocation_url: '/logistics/wait-stock',
+    }
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, inventoryAvailability, allocationUi } })
+    expect(wrapper.text()).toContain('✓ 已选仓库')
+    expect(wrapper.find('input[type="radio"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('确认分仓')
+  })
+
 })
