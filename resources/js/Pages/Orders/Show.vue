@@ -17,7 +17,8 @@ import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 
 type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; inventory_state: string; can_auto_allocate: boolean; quantity_on_hand: number | null; quantity_reserved: number | null; quantity_available: number | null }
-type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null }
+type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null; can_auto_allocate?: boolean }
+type AllocationUi = { status: 'pending' | 'submitted' | 'locked'; can_operate: boolean; requires_full_flow: boolean; selectable_warehouse_ids: number[]; recommended_warehouse_ids: Record<number, number | null>; selected_warehouse_ids: Record<number, number | null>; recommended_plan_key: string | null; can_use_recommendation: boolean; full_allocation_url: string }
 
 type OrderItem = {
   id: number
@@ -78,6 +79,8 @@ const props = withDefaults(defineProps<{
   order: Order
   inventoryAvailability?: Record<number, Availability[]>
   packagingReferences?: Record<number, PackagingReference>
+  warehouses?: Warehouse[]
+  allocationUi?: AllocationUi
   audit: { action: string; actor_id: number | null; created_at: string; reason?: string }[]
   canMarkOperational?: boolean
   canManageProductPackaging?: boolean
@@ -166,6 +169,29 @@ const shipmentStatusLabel = computed(() => {
   if (s === 'returned') return '已退回'
   return '待发货'
 })
+
+const allocationSelections = ref<Record<number, number | null>>(Object.fromEntries(props.order.items.map(item => [item.id, props.allocationUi?.selected_warehouse_ids?.[item.id] ?? props.allocationUi?.recommended_warehouse_ids?.[item.id] ?? null])))
+const allocationSubmitting = ref(false)
+const allocationSelectable = (warehouseId: number) => props.allocationUi?.selectable_warehouse_ids?.includes(warehouseId) ?? false
+const allocationSelected = (itemId: number) => allocationSelections.value[itemId] ?? null
+const allocationRecommended = (itemId: number, warehouseId: number) => props.allocationUi?.recommended_warehouse_ids?.[itemId] === warehouseId
+const selectAllocationWarehouse = (itemId: number, warehouseId: number) => { allocationSelections.value = { ...allocationSelections.value, [itemId]: warehouseId } }
+const allocationSelectedCount = computed(() => props.order.items.filter(item => allocationSelected(item.id) !== null).length)
+const allocationReady = computed(() => props.order.items.length > 0 && allocationSelectedCount.value === props.order.items.length)
+const allocationMatchesRecommendation = computed(() => Boolean(props.allocationUi?.can_use_recommendation && props.allocationUi?.recommended_plan_key) && props.order.items.every(item => {
+  const recommended = props.allocationUi?.recommended_warehouse_ids?.[item.id] ?? null
+  return recommended !== null && allocationSelected(item.id) === recommended
+}))
+const submitAllocation = () => {
+  if (!props.allocationUi?.can_operate || props.allocationUi.requires_full_flow || !allocationReady.value || allocationSubmitting.value) return
+  allocationSubmitting.value = true
+  const options = { preserveScroll: true, onFinish: () => { allocationSubmitting.value = false } }
+  if (allocationMatchesRecommendation.value && props.allocationUi.recommended_plan_key) {
+    router.post(`/logistics/orders/${props.order.id}/fulfillment-allocation/recommended`, { plan_key: props.allocationUi.recommended_plan_key, decision_note: null }, options)
+    return
+  }
+  router.post(`/logistics/orders/${props.order.id}/fulfillment-allocation/quick`, { assignments: props.order.items.map(item => ({ order_item_id: item.id, warehouse_id: allocationSelected(item.id) })) }, options)
+}
 
 </script>
 
@@ -267,6 +293,7 @@ const shipmentStatusLabel = computed(() => {
                   <th>QOH</th>
                   <th>Reserved</th>
                   <th>备注</th>
+                  <th v-if="allocationUi">分仓</th>
                 </tr>
               </thead>
               <tbody>
@@ -283,12 +310,34 @@ const shipmentStatusLabel = computed(() => {
                   <td>{{ row.quantity_on_hand ?? '—' }}</td>
                   <td>{{ row.quantity_reserved ?? '—' }}</td>
                   <td class="ord-inventory-note">{{ row.quantity_available === null ? '未建立 SKU 权威库存' : '—' }}</td>
+                  <td v-if="allocationUi" class="ord-allocation-cell">
+                    <label v-if="allocationUi.status === 'pending' && allocationUi.can_operate && !allocationUi.requires_full_flow && allocationSelectable(row.warehouse_id)" class="ord-allocation-choice" :class="{ selected: allocationSelected(item.id) === row.warehouse_id }">
+                      <input type="radio" :name="`allocation-${item.id}`" :checked="allocationSelected(item.id) === row.warehouse_id" @change="selectAllocationWarehouse(item.id, row.warehouse_id)">
+                      <span>{{ allocationSelected(item.id) === row.warehouse_id ? '已选' : '选择' }}</span>
+                      <small v-if="allocationRecommended(item.id, row.warehouse_id)">推荐</small>
+                    </label>
+                    <span v-else-if="allocationUi.status === 'submitted' && allocationUi.selected_warehouse_ids?.[item.id] === row.warehouse_id" class="ord-allocation-fixed">✓ 已选仓库</span>
+                    <span v-else-if="allocationRecommended(item.id, row.warehouse_id)" class="ord-allocation-recommended">推荐</span>
+                    <span v-else>—</span>
+                  </td>
                 </tr>
                 <tr v-if="(inventoryAvailability?.[item.product_id ?? 0] ?? []).length === 0">
-                  <td colspan="7" class="ord-inventory-empty">暂无仓库库存数据</td>
+                  <td :colspan="allocationUi ? 8 : 7" class="ord-inventory-empty">暂无仓库库存数据</td>
                 </tr>
               </tbody>
             </table>
+          </div>
+        </div>
+
+        <div v-if="allocationUi?.status === 'pending'" class="ord-allocation-action-bar">
+          <div>
+            <strong>待分仓 · {{ allocationSelectedCount }}/{{ order.items.length }} SKU 已选择</strong>
+            <span v-if="allocationUi.requires_full_flow">该订单包含 gift，需要选择实际履约 SKU。</span>
+            <span v-else>库存表即仓库选择器；提交后这里变为只读“已选仓库”。</span>
+          </div>
+          <div class="ord-allocation-actions">
+            <a :href="allocationUi.full_allocation_url" class="erp-btn erp-btn-secondary">完整分仓</a>
+            <button v-if="allocationUi.can_operate && !allocationUi.requires_full_flow" type="button" class="erp-btn erp-btn-primary" :disabled="!allocationReady || allocationSubmitting" @click="submitAllocation">{{ allocationSubmitting ? '提交中…' : allocationMatchesRecommendation ? '采用推荐并提交分仓' : '确认分仓' }}</button>
           </div>
         </div>
 
@@ -646,6 +695,16 @@ const shipmentStatusLabel = computed(() => {
 .ord-stock-status.unknown .ord-stock-status-icon { background: #8c9aa1; }
 .ord-inventory-note { color: #5f727a; }
 .ord-inventory-empty { padding: 18px 12px !important; text-align: center !important; color: #87969c !important; }
+.ord-allocation-cell { white-space: nowrap; }
+.ord-allocation-choice { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 700; color: #475569; }
+.ord-allocation-choice input { margin: 0; }
+.ord-allocation-choice.selected { color: #087f5b; }
+.ord-allocation-choice small, .ord-allocation-recommended { display: inline-flex; padding: 2px 6px; border-radius: 999px; background: #e8f8ef; color: #087f5b; font-size: 10px; font-weight: 800; }
+.ord-allocation-fixed { color: #087f5b; font-weight: 800; }
+.ord-allocation-action-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: -2px; padding: 10px 14px; border: 1px solid #dce5df; border-radius: 10px; background: #f8fbf9; }
+.ord-allocation-action-bar > div:first-child { display: grid; gap: 3px; }
+.ord-allocation-action-bar span { color: #64748b; font-size: 12px; }
+.ord-allocation-actions { display: flex; align-items: center; gap: 8px; }
 
 .ord-packaging-row { display: grid; grid-template-columns: 1.2fr 1fr 1.35fr .8fr .9fr; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid #e4eaed; }
 .ord-packaging-row:last-child { border-bottom: 0; }

@@ -6,6 +6,9 @@ use App\Modules\Audit\Infrastructure\Models\AuditRecord;
 use App\Modules\Finance\Application\OrderAnalysisService;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Kol\Application\SavedViewService;
+use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
+use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
+use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderService;
@@ -27,6 +30,9 @@ final class OrderController
         private readonly SavedViewService $views,
         private readonly OrderPackagingReferenceProjection $packagingReferences,
         private readonly OrderAnalysisService $orderAnalysis,
+        private readonly FulfillmentPlanPreviewService $fulfillmentPlans,
+        private readonly FulfillmentAllocationDecisionService $allocationDecisions,
+        private readonly LogisticsExecutionAccess $logisticsExecutionAccess,
     ) {}
 
     public function index(Request $request): Response
@@ -103,14 +109,18 @@ final class OrderController
     public function show(Request $request, Order $order): Response
     {
         $this->authorizeKind($request, $order);
-        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync', 'operationalMarkers', 'procurementOrder']);
-        $inventoryAvailability = $this->availability->forProductIds($order->items->pluck('product_id')->filter()->unique()->values()->all());
+        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync', 'operationalMarkers', 'procurementOrder', 'fulfillmentAllocation']);
+        $productIds = $order->items->pluck('product_id')->filter()->unique()->values()->all();
+        $inventoryAvailability = $this->availability->forProductIds($productIds);
+        $warehouses = $this->availability->activeWarehouses();
+        $allocationUi = $this->allocationUi($request, $order, $productIds, $warehouses, $inventoryAvailability);
 
         return Inertia::render('Orders/Show', [
             'order' => $this->orderData($order),
             'inventoryAvailability' => $inventoryAvailability,
+            'allocationUi' => $allocationUi,
             'packagingReferences' => $this->packagingReferences->forOrder($order),
-            'warehouses' => $this->availability->activeWarehouses(),
+            'warehouses' => $warehouses,
             'canViewProfit' => $request->user()?->can('analysis.view') ?? false,
             'canMarkOperational' => $request->user()?->can('orders.edit') ?? false,
             'canCreateProcurement' => ($request->user()?->can('procurement.create') ?? false) && $order->operationalMarkers->contains('marker', 'stockout'),
@@ -125,6 +135,82 @@ final class OrderController
                     'created_at' => $record->created_at?->toIso8601String(), 'reason' => $record->reason,
                 ])->all(),
         ]);
+    }
+
+    /** @param array<int,int> $productIds @param array<int,array<string,mixed>> $warehouses @param array<int,array<int,array<string,mixed>>> $availability */
+    private function allocationUi(Request $request, Order $order, array $productIds, array $warehouses, array $availability): array
+    {
+        $allowedCodes = array_map('strtoupper', (array) config('warehouse_master.fulfillment_codes', []));
+        $selectableWarehouseIds = collect($warehouses)
+            ->filter(fn (array $warehouse): bool => in_array(strtoupper((string) ($warehouse['code'] ?? '')), $allowedCodes, true))
+            ->pluck('id')->map(fn ($id): int => (int) $id)->values()->all();
+
+        $recommendedByItem = collect($order->items)->mapWithKeys(fn ($item): array => [(int) $item->id => null])->all();
+        $recommendedPlanKey = null;
+        $canUseRecommendation = false;
+
+        if ($order->order_status?->value === 'pending_shipment' && $productIds !== []) {
+            try {
+                $context = array_replace(
+                    ['warehouses' => $warehouses, 'availability' => $availability],
+                    $this->fulfillmentPlans->prepare($productIds),
+                );
+                $destination = [
+                    'province_state' => $order->address?->province_state,
+                    'city' => $order->address?->city,
+                    'address_line_1' => $order->address?->address_line_1,
+                    'address_line_2' => $order->address?->address_line_2,
+                    'postal_code' => $order->address?->postal_code,
+                ];
+                $items = $order->items->map(fn ($item): array => [
+                    'product_id' => $item->product_id,
+                    'quantity' => (int) $item->quantity,
+                    'sku' => $item->sku,
+                ])->values()->all();
+                $preview = $this->fulfillmentPlans->preview($order->address?->country, $items, $destination, [], $context);
+                $decision = $this->allocationDecisions->present($order, $preview);
+                $recommendedPlanKey = $decision['recommended_plan_key'] ?? null;
+                $canUseRecommendation = (bool) ($decision['can_use_recommendation'] ?? false);
+                foreach (($decision['recommended_plan']['segments'] ?? []) as $segment) {
+                    foreach (($segment['items'] ?? []) as $planItem) {
+                        $matched = $order->items->first(function ($item) use ($planItem): bool {
+                            if ($item->product_id !== null && isset($planItem['product_id'])) return (int) $item->product_id === (int) $planItem['product_id'];
+                            return trim((string) $item->sku) !== '' && trim((string) $item->sku) === trim((string) ($planItem['sku'] ?? ''));
+                        });
+                        if ($matched && isset($segment['warehouse_id'])) $recommendedByItem[(int) $matched->id] = (int) $segment['warehouse_id'];
+                    }
+                }
+            } catch (\Throwable) {
+                // Inventory remains visible even when recommendation evidence is incomplete.
+            }
+        }
+
+        $selectedByItem = collect($order->items)->mapWithKeys(fn ($item): array => [(int) $item->id => null])->all();
+        $snapshot = $order->fulfillmentAllocation?->plan_snapshot;
+        foreach ((array) ($snapshot['segments'] ?? []) as $segment) {
+            foreach ((array) ($segment['items'] ?? []) as $planItem) {
+                $matched = $order->items->first(function ($item) use ($planItem): bool {
+                    if ($item->product_id !== null && isset($planItem['product_id'])) return (int) $item->product_id === (int) $planItem['product_id'];
+                    return trim((string) $item->sku) !== '' && trim((string) $item->sku) === trim((string) ($planItem['sku'] ?? ''));
+                });
+                if ($matched && isset($segment['warehouse_id'])) $selectedByItem[(int) $matched->id] = (int) $segment['warehouse_id'];
+            }
+        }
+        if (! $order->fulfillmentAllocation && $order->shipment?->warehouse_id) {
+            foreach ($selectedByItem as $itemId => $_) $selectedByItem[$itemId] = (int) $order->shipment->warehouse_id;
+        }
+
+        return [
+            'status' => $order->fulfillmentAllocation ? 'submitted' : ($order->order_status?->value === 'pending_shipment' ? 'pending' : 'locked'),
+            'can_operate' => $order->order_status?->value === 'pending_shipment' && ! $order->fulfillmentAllocation && $this->logisticsExecutionAccess->allows($request->user()),
+            'requires_full_flow' => $order->items->contains(fn ($item): bool => strcasecmp(trim((string) $item->sku), 'gift') === 0),
+            'selectable_warehouse_ids' => $selectableWarehouseIds,
+            'recommended_warehouse_ids' => $recommendedByItem,
+            'selected_warehouse_ids' => $selectedByItem,
+            'recommended_plan_key' => $recommendedPlanKey,
+            'can_use_recommendation' => $canUseRecommendation,
+            'full_allocation_url' => route('logistics.wait-stock'),
+        ];
     }
 
     public function update(Request $request, Order $order): RedirectResponse
