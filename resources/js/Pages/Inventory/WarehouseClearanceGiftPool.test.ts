@@ -43,6 +43,8 @@ const clearanceProducts = [
   { id: 501, product: { id: 31, sku: 'CLR-A', name: 'Clearance A' }, priority: 1, quantity_on_hand: 10, quantity_reserved: 3, quantity_available: 7, status: 'available' as const, status_label: '可用' },
   { id: 502, product: { id: 32, sku: 'CLR-B', name: 'Clearance B' }, priority: 2, quantity_on_hand: 2, quantity_reserved: 2, quantity_available: 0, status: 'out_of_stock' as const, status_label: '缺货' },
 ]
+const emptyCostCenter = { months: [] }
+
 const clearanceCandidates = [
   { product_id: 31, sku: 'CLR-A', name: 'Clearance A', quantity_available: 7, already_clearance: true },
   { product_id: 33, sku: 'CLR-C', name: 'Clearance C', quantity_available: 5, already_clearance: false },
@@ -50,7 +52,7 @@ const clearanceCandidates = [
 
 describe('Warehouse Clearance / Gift Pool V1', () => {
   it('renders current inventory and the inline clearance pool with live stock, priority and local candidates', () => {
-    const wrapper = mount(WarehouseShow, { props: { warehouse, clearanceProducts, clearanceCandidates, canOperate: true, canManage: false } })
+    const wrapper = mount(WarehouseShow, { props: { warehouse, clearanceProducts, clearanceCandidates, costCenter: emptyCostCenter, canOperate: true, canManage: false } })
     expect(wrapper.text()).toContain('目前仓库产品库存统计')
     expect(wrapper.text()).toContain('清仓 / Gift 库')
     expect(wrapper.findAll('button').some(button => button.text().includes('清仓 / Gift 库'))).toBe(false)
@@ -67,7 +69,7 @@ describe('Warehouse Clearance / Gift Pool V1', () => {
   })
 
   it('keeps the inline clearance pool read-only for inventory viewers without operate permission', () => {
-    const wrapper = mount(WarehouseShow, { props: { warehouse, clearanceProducts, clearanceCandidates, canOperate: false, canManage: false } })
+    const wrapper = mount(WarehouseShow, { props: { warehouse, clearanceProducts, clearanceCandidates, costCenter: emptyCostCenter, canOperate: false, canManage: false } })
     expect(wrapper.text()).toContain('目前仓库产品库存统计')
     expect(wrapper.text()).toContain('清仓 / Gift 库')
     expect(wrapper.find('input[placeholder="搜索本仓库存 SKU / 商品"]').exists()).toBe(false)

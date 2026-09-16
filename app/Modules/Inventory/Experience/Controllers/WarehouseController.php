@@ -32,6 +32,7 @@ final class WarehouseController
             'warehouse'=>$this->payload($w),
             'clearanceProducts'=>$this->clearance->listForWarehouse($w),
             'clearanceCandidates'=>$this->clearance->candidatesForWarehouse($w),
+            'costCenter'=>$this->inventory->warehouseCostCenter($w),
             'canOperate'=>auth()->user()?->can(AuthorizationKeys::InventoryOperate->value) ?? false,
             'canManage'=>auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false,
         ]);
@@ -56,6 +57,25 @@ final class WarehouseController
         $data=$request->validate(['country_codes'=>['array'],'country_codes.*'=>['string','size:2']]);
         $this->inventory->updateRegions($w,$data['country_codes'] ?? [],$request->user());
         return back()->with('success','服务地区已保存');
+    }
+    public function addCost(Request $request,string $warehouse): RedirectResponse
+    {
+        $w=$this->inventory->warehouse($warehouse);
+        $data=$request->validate([
+            'cost_month'=>['required','date_format:Y-m'],
+            'category'=>['required','in:shipping,parcel_outbound,storage,other'],
+            'amount'=>['required','numeric','between:-999999999.99,999999999.99'],
+            'currency'=>['required','string','size:3','alpha'],
+            'note'=>['nullable','string','max:255'],
+        ]);
+        $this->inventory->addWarehouseCost($w,$data,$request->user());
+        return back()->with('success','仓库费用已记录');
+    }
+    public function removeCost(Request $request,string $warehouse,int $cost): RedirectResponse
+    {
+        $w=$this->inventory->warehouse($warehouse);
+        $this->inventory->removeWarehouseCost($w,$cost,$request->user());
+        return back()->with('success','手工仓库费用已删除');
     }
     public function saveInventory(Request $request,string $warehouse): RedirectResponse
     {

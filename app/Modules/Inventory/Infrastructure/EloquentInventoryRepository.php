@@ -8,6 +8,7 @@ use App\Modules\Inventory\Infrastructure\Models\InventoryAdjustment;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
+use App\Modules\Inventory\Infrastructure\Models\WarehouseCostEntry;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -195,6 +196,31 @@ final class EloquentInventoryRepository implements InventoryRepository
     {
         $warehouse->serviceRegions()->delete();
         foreach ($countryCodes as $index=>$code) $warehouse->serviceRegions()->create(['country_code'=>$code,'priority'=>$index+1]);
+    }
+
+    public function warehouseCosts(Model $warehouse, array $months): Collection
+    {
+        $start = min($months);
+        $end = max($months);
+        return WarehouseCostEntry::query()
+            ->where('warehouse_id', $warehouse->getKey())
+            ->whereBetween('cost_month', [$start, $end.' 23:59:59'])
+            ->orderByDesc('cost_month')->orderByDesc('id')->get();
+    }
+
+    public function createWarehouseCost(Model $warehouse, array $attributes): Model
+    {
+        return WarehouseCostEntry::query()->create(['warehouse_id' => $warehouse->getKey(), ...$attributes]);
+    }
+
+    public function findWarehouseCost(Model $warehouse, int $costId): Model
+    {
+        return WarehouseCostEntry::query()->where('warehouse_id', $warehouse->getKey())->findOrFail($costId);
+    }
+
+    public function deleteWarehouseCost(Model $cost): void
+    {
+        $cost->delete();
     }
 
     private function attachShippedDemand(Collection $rows): void
