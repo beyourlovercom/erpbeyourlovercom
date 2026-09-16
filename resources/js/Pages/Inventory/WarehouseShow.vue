@@ -39,7 +39,7 @@ const saveCost=()=>cost.transform(d=>({...d,currency:String(d.currency||'').trim
 <section class="warehouse-page">
 <header class="warehouse-hero">
   <div><p class="eyebrow">Inventory OS · Warehouse</p><div class="title-line"><h2>{{warehouse.name}}</h2><span class="warehouse-code">{{warehouse.code}}</span><span class="state-pill" :class="warehouse.fulfillment_state">{{warehouse.fulfillment_state_label}}</span></div><p class="subtitle">{{warehouse.name_en||warehouse.code}} · {{warehouse.role_label}} · {{warehouseAddress}}</p></div>
-  <div class="hero-actions"><Link class="button ghost" href="/inventory/list">仓库清单</Link><Link class="button primary" href="/inventory/sync">导入库存</Link></div>
+  <div class="hero-actions page-header-actions"><Link class="button ghost" href="/inventory/list">仓库清单</Link><Link class="button primary" href="/inventory/sync">导入库存</Link></div>
 </header>
 <div class="kpi-grid">
   <article><span>库存 SKU</span><strong>{{kpis.skus}}</strong><small>当前仓库商品</small></article>

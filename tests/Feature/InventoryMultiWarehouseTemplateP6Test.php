@@ -43,13 +43,10 @@ final class InventoryMultiWarehouseTemplateP6Test extends TestCase
         $this->assertDatabaseCount('warehouse_bill_import_batches',0);
     }
 
-    public function test_moreplus_legacy_slug_resolves_to_canonical_template_and_capability(): void
+    public function test_moreplus_legacy_slug_redirects_to_canonical_inventory_url(): void
     {
         $user=$this->userWith(['inventory.view']);
-        $this->actingAs($user)->get('/inventory/us-moreplus')->assertOk()->assertInertia(fn(Assert $page)=>$page
-            ->component('Inventory/WarehouseShow')
-            ->where('warehouse.public_slug','us-la')
-            ->where('warehouse.bill_import.provider','moreplus'));
+        $this->actingAs($user)->get('/inventory/us-moreplus')->assertRedirect('/inventory/us-la');
     }
 
     private function userWith(array $permissions): User

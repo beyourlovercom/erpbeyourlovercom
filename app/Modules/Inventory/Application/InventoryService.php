@@ -18,12 +18,19 @@ final class InventoryService
         private readonly InventoryRepository $inventory,
         private readonly ProductRepository $products,
         private readonly AuditRecorder $audit,
+        private readonly WarehouseMasterRegistry $warehouseMaster,
     ) {}
 
     public function dashboard(): array { return $this->inventory->dashboard(); }
     public function warehouses(): array { return $this->inventory->warehouseList(); }
     public function productInventory(array $filters = []): mixed { return $this->inventory->productInventory($filters); }
     public function searchProducts(string $query): array { return $this->products->searchSkus($query, 20); }
+    public function warehousePublicSlug(Model $warehouse): string { return $this->warehouseMaster->publicSlugForCode((string) $warehouse->code, (string) $warehouse->slug); }
+    public function canonicalWarehouseSlug(string $slug): ?string
+    {
+        $warehouse = $this->inventory->findWarehouseBySlug($slug);
+        return $warehouse ? $this->warehousePublicSlug($warehouse) : null;
+    }
 
     public function replenishmentMetrics(Model $inventory): array
     {
