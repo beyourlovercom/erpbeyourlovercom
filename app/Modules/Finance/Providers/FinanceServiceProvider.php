@@ -18,6 +18,7 @@ use App\Modules\Finance\Experience\Console\Commands\MaterializeLastMileEstimates
 use App\Modules\Finance\Experience\Console\Commands\MaterializeOrderCostsCommand;
 use App\Modules\Finance\Experience\Console\Commands\MaterializePaymentFeesCommand;
 use App\Modules\Finance\Experience\Console\Commands\MaterializeProductCostsCommand;
+use App\Modules\Finance\Experience\Console\Commands\MaterializeWarehouseCostsCommand;
 use App\Modules\Finance\Experience\Console\Commands\RepairPaymentFeeLegacyFxCommand;
 use Illuminate\Support\ServiceProvider;
 
@@ -35,7 +36,7 @@ final class FinanceServiceProvider extends ServiceProvider
     {
         $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/web.php');
         if ($this->app->runningInConsole()) {
-            $this->commands([MaterializeOrderCostsCommand::class, MaterializeActualLastMileCommand::class, MaterializeContinuousDeltaCommand::class, MaterializeFixedCostsCommand::class, MaterializeLastMileEstimatesCommand::class, MaterializeProductCostsCommand::class, MaterializePaymentFeesCommand::class, RepairPaymentFeeLegacyFxCommand::class, BootstrapWooFinancialEvidenceCommand::class]);
+            $this->commands([MaterializeOrderCostsCommand::class, MaterializeActualLastMileCommand::class, MaterializeContinuousDeltaCommand::class, MaterializeFixedCostsCommand::class, MaterializeLastMileEstimatesCommand::class, MaterializeProductCostsCommand::class, MaterializeWarehouseCostsCommand::class, MaterializePaymentFeesCommand::class, RepairPaymentFeeLegacyFxCommand::class, BootstrapWooFinancialEvidenceCommand::class]);
         }
     }
 }

@@ -6,6 +6,7 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Kol\Application\Contracts\AffiliateCommissionEvidenceReader;
+use App\Modules\Inventory\Application\Contracts\WarehouseCostAllocationEvidenceReader;
 use App\Modules\Logistics\Application\Contracts\CarrierBillingEvidenceReader;
 use App\Modules\Logistics\Application\Contracts\FulfillmentOriginEvidenceReader;
 use App\Modules\Logistics\Application\Contracts\LastMileEstimateEvidenceReader;
@@ -27,6 +28,7 @@ final class CostMaterializationService
         private readonly LastMileEstimateEvidenceReader $lastMileEstimates,
         private readonly FulfillmentOriginEvidenceReader $fulfillmentOrigin,
         private readonly AffiliateCommissionEvidenceReader $affiliate,
+        private readonly WarehouseCostAllocationEvidenceReader $warehouseCosts,
         private readonly AccountingFxSnapshotBridgeService $fxBridge,
         private readonly OrderAnalysisService $analysis,
         private readonly AuditRecorder $audit,
@@ -53,7 +55,7 @@ final class CostMaterializationService
             'scope_status' => $scopeBlocker === null ? 'operational' : 'blocked',
             'scope_blocker' => $scopeBlocker,
             'candidates' => array_values(array_map(fn (array $candidate): array => $this->annotateDisposition($order, $candidate), $candidates)),
-            'unsupported' => ['warehouse_cost', 'overseas_handling_cost', 'refund_replacement_loss', 'other_variable_cost'],
+            'unsupported' => ['overseas_handling_cost', 'refund_replacement_loss', 'other_variable_cost'],
         ];
     }
 
@@ -147,6 +149,51 @@ final class CostMaterializationService
                     $locked::class, $locked->getKey(),
                     after: ['applied' => $result['applied'], 'blocked' => $result['blocked']],
                     reason: 'actual_last_mile_materialization',
+                );
+            }
+            return $result;
+        });
+    }
+
+    /** @return array<string, mixed> */
+    public function previewWarehouseCostGate(Model $order): array
+    {
+        $scopeBlocker = $this->operationalBlocker($order);
+        $candidate = $this->warehouseCostCandidate($order);
+        if ($scopeBlocker !== null) $candidate = $this->forceBlocked($candidate, $scopeBlocker);
+
+        return [
+            'order_id' => (int) $order->getKey(),
+            'scope_status' => $scopeBlocker === null ? 'operational' : 'blocked',
+            'scope_blocker' => $scopeBlocker,
+            'candidates' => [$this->annotateDisposition($order, $candidate)],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function applyWarehouseCostGate(Model $order): array
+    {
+        return DB::transaction(function () use ($order): array {
+            $locked = $order->newQuery()->lockForUpdate()->findOrFail($order->getKey());
+            $preview = $this->previewWarehouseCostGate($locked);
+            $result = $preview + ['applied' => [], 'noop' => [], 'blocked' => []];
+            $candidate = $preview['candidates'][0];
+            $disposition = $candidate['materialization_status'];
+            if ($disposition === 'blocked') $result['blocked'][] = $candidate;
+            elseif ($disposition === 'noop') $result['noop'][] = $candidate;
+            else {
+                $outcome = $this->writeCandidate($locked, $candidate);
+                $result[$outcome['status']][] = $outcome['entry'];
+            }
+
+            if ($result['applied'] !== []) {
+                $this->analysis->refreshCompleteness($locked, preserveReconciled: false);
+                $this->audit->record(
+                    AuditActor::system(AuditSource::InternalSystem),
+                    'finance.warehouse_cost_materialization.applied',
+                    $locked::class, $locked->getKey(),
+                    after: ['applied' => $result['applied'], 'blocked' => $result['blocked']],
+                    reason: 'warehouse_cost_materialization',
                 );
             }
             return $result;
@@ -504,6 +551,52 @@ final class CostMaterializationService
         );
     }
 
+    private function warehouseCostCandidate(Model $order): array
+    {
+        $evidence = $this->warehouseCosts->read($order->getKey());
+        if ($evidence === null || isset($evidence['blocked'])) {
+            return $this->blocked('warehouse_cost', (string) ($evidence['blocked'] ?? 'warehouse_storage_allocation_missing'));
+        }
+
+        $currency = $this->orderCurrency($order);
+        $sourceCurrency = strtoupper(trim((string) ($evidence['currency'] ?? '')));
+        $batchId = (int) ($evidence['batch_id'] ?? 0);
+        if ($batchId < 1 || $sourceCurrency === '' || ! isset($evidence['source_amount'])) {
+            return $this->blocked('warehouse_cost', 'complete_warehouse_storage_allocation_required');
+        }
+
+        $sourceAmount = DecimalMoney::round((string) $evidence['source_amount']);
+        $amount = $sourceAmount;
+        $extra = [
+            'source_currency' => $sourceCurrency,
+            'source_amount' => $sourceAmount,
+            'batch_id' => $batchId,
+            'warehouse_id' => $evidence['warehouse_id'] ?? null,
+            'billing_period_start' => $evidence['billing_period_start'] ?? null,
+            'billing_period_end' => $evidence['billing_period_end'] ?? null,
+            'outbound_units' => $evidence['outbound_units'] ?? null,
+            'allocation_row_ids' => $evidence['row_ids'] ?? [],
+            'source_checksum' => $evidence['source_checksum'] ?? null,
+            'plan_checksum' => $evidence['plan_checksum'] ?? null,
+        ];
+        if ($sourceCurrency !== $currency) {
+            $fx = $this->fxBridge->preview($order, $sourceCurrency);
+            if (! ($fx['available'] ?? false)) {
+                return $this->blocked('warehouse_cost', 'warehouse_cost_fx_snapshot_unavailable', $extra + ['fx_reason' => $fx['reason'] ?? 'fx_unavailable']);
+            }
+            $amount = DecimalMoney::round(DecimalMoney::multiply($sourceAmount, (string) $fx['source_to_transaction_rate'], 8));
+            $extra['posting_fx'] = $fx + [
+                'base_amount' => DecimalMoney::round(DecimalMoney::multiply($sourceAmount, (string) $fx['source_to_usd_rate'], 8)),
+            ];
+        }
+
+        return $this->candidate(
+            'warehouse_cost', $amount, $currency, 'allocated_actual', 'confirmed',
+            'warehouse-storage-allocation:v1:batch:'.$batchId.':order:'.$order->getKey(),
+            $evidence['source_at'] ?? null, $extra,
+        );
+    }
+
     private function carrierCandidate(Model $order): array
     {
         $evidence = $this->carrier->read($order->getKey());
@@ -766,6 +859,9 @@ final class CostMaterializationService
         if ($candidate['provenance'] === 'estimated_reference' && in_array((string) $entry->provenance, self::STRONG_PROVENANCE, true)) {
             return 'blocked';
         }
+        if ($candidate['provenance'] === 'allocated_actual' && in_array((string) $entry->provenance, self::STRONG_PROVENANCE, true)) {
+            return 'blocked';
+        }
         if ($candidate['provenance'] !== 'estimated_reference' && in_array((string) $entry->provenance, ['actual', 'confirmed_manual', 'allocated_actual'], true)) {
             return 'blocked';
         }
@@ -825,6 +921,7 @@ final class CostMaterializationService
         $source = (string) $entry->source_reference;
         return str_starts_with($source, 'product-reference:v1:')
             || str_starts_with($source, 'carrier-billing:v1:')
+            || str_starts_with($source, 'warehouse-storage-allocation:v1:')
             || str_starts_with($source, 'last-mile-estimate:v1:')
             || str_starts_with($source, 'affiliatewp-referrals:v1:')
             || str_starts_with($source, 'product-cost-source:v1:')
