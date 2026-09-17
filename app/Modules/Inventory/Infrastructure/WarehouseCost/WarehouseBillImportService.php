@@ -38,7 +38,7 @@ final class WarehouseBillImportService
         foreach ($source['rows'] as $row) {
             $normalized = [
                 'category'=>(string)$row['category'],'source_sheet'=>(string)$row['source_sheet'],'source_row_number'=>(int)$row['source_row_number'],
-                'transaction_number'=>$row['transaction_number'] ?? null,'outbound_order_number'=>$row['outbound_order_number'] ?? null,'tracking_number'=>$row['tracking_number'] ?? null,
+                'transaction_number'=>$row['transaction_number'] ?? null,'outbound_order_number'=>$row['outbound_order_number'] ?? null,'source_order_reference'=>$row['source_order_reference'] ?? null,'tracking_number'=>$row['tracking_number'] ?? null,
                 'charged_on'=>(string)$row['charged_on'],'quantity'=>(int)$row['quantity'],'charge_item_name'=>$row['charge_item_name'] ?? null,'charge_amount'=>(string)$row['charge_amount'],
             ];
             $plannedRows[] = $normalized + [
@@ -49,7 +49,7 @@ final class WarehouseBillImportService
         $monthly = $this->monthly($plannedRows);
         $invoice = $source['invoice'];
         $manifest = array_map(fn(array $r): array => array_intersect_key($r, array_flip([
-            'category','source_sheet','source_row_number','transaction_number','outbound_order_number','tracking_number','charged_on','quantity','charge_item_name','charge_amount','row_hash',
+            'category','source_sheet','source_row_number','transaction_number','outbound_order_number','source_order_reference','tracking_number','charged_on','quantity','charge_item_name','charge_amount','row_hash',
         ])), $plannedRows);
         $planChecksum = hash('sha256', json_encode([
             'version'=>MorePlusBillFileReader::PARSER_VERSION,'provider'=>$provider,'source_checksum'=>$checksum,'warehouse_id'=>(int)$warehouse->id,

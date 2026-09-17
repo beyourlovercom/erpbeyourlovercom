@@ -67,6 +67,31 @@ final class InventoryMorePlusCostBridgeP5Test extends TestCase
         $this->assertSame('8.0000',(string)ShipmentOverseasHandlingBilling::query()->firstOrFail()->actual_cost);
     }
 
+    public function test_source_reference_fallback_is_deterministic_and_fail_closed(): void
+    {
+        $warehouse=Warehouse::query()->where('slug','us-la')->firstOrFail();
+        $customer=Order::query()->create(['internal_order_number'=>'SRC-CUSTOMER','erp_order_id'=>'007-0801-c39124','source_type'=>'website','order_kind'=>'customer','order_date'=>'2026-08-01','order_status'=>'shipped','currency'=>'USD']);
+        $suffix=Order::query()->create(['internal_order_number'=>'SRC-SUFFIX','erp_order_id'=>'007-0814-c39555','source_type'=>'website','order_kind'=>'customer','order_date'=>'2026-08-14','order_status'=>'shipped','currency'=>'USD']);
+        $conflict=Order::query()->create(['internal_order_number'=>'SRC-CONFLICT','erp_order_id'=>'007-0810-c39398','source_type'=>'website','order_kind'=>'customer','order_date'=>'2026-08-10','order_status'=>'shipped','currency'=>'USD']);
+        $conflict->shipment()->create(['warehouse_id'=>$warehouse->id,'shipment_status'=>'shipped','tracking_number'=>'4PX-CONFLICT']);
+        $batch=WarehouseBillImportBatch::query()->create(['provider'=>'moreplus','warehouse_id'=>$warehouse->id,'original_filename'=>'source-ref.xlsx','source_checksum'=>str_repeat('c',64),'parser_version'=>'moreplus-bill-v3','plan_checksum'=>str_repeat('d',64),'status'=>'applied','invoice_number'=>'IN-SOURCE-REF','client_name'=>'HC26-3','invoice_date'=>'2026-09-14','currency'=>'USD','invoice_total'=>'7.0000','shipping_total'=>'5.0000','parcel_outbound_total'=>'1.0000','storage_total'=>'1.0000','total_rows'=>7,'shipping_rows'=>5,'parcel_outbound_rows'=>1,'storage_rows'=>1,'applied_at'=>now()]);
+        $this->row($batch,'shipping',1,'2026-08-02','1.0000',1,'TRACK-CUSTOMER','TR-CUSTOMER','OB-1','C39124-007');
+        $this->row($batch,'shipping',2,'2026-08-02','1.0000',1,'TRACK-KOL','TR-KOL','OB-2','KOL26073104-007');
+        $this->row($batch,'shipping',3,'2026-08-02','1.0000',1,'TRACK-LONG','TR-LONG','OB-3','103734044623762104');
+        $this->row($batch,'shipping',4,'2026-08-02','1.0000',1,'TRACK-SUFFIX','TR-SUFFIX','OB-4','C39555-007B');
+        $this->row($batch,'shipping',5,'2026-08-02','1.0000',1,'USPS-CONFLICT','TR-CONFLICT','OB-5','C39398');
+        $this->row($batch,'parcel_outbound',6,'2026-08-02','1.0000',1,'TRACK-KOL','TR-P-KOL','OB-6','KOL26073104-007');
+        $this->row($batch,'storage',7,'2026-08-01','1.0000',0,null,'TR-ST',null);
+        $preview=app(MorePlusCostBridgeService::class)->preview($batch->id);
+        $this->assertSame(0,$preview['shipping']['ready']); $this->assertSame(4,$preview['shipping']['review']); $this->assertSame(1,$preview['shipping']['excluded']);
+        $reasons=collect($preview['groups']['shipping'])->mapWithKeys(fn($g)=>[$g['source_order_references'][0]??''=>$g['reason_code']]);
+        $this->assertSame('shipment_missing',$reasons['C39124-007']); $this->assertSame('source_marked_kol',$reasons['KOL26073104-007']);
+        $this->assertSame('source_order_unmapped',$reasons['103734044623762104']); $this->assertSame('fulfillment_suffix_unresolved',$reasons['C39555-007B']);
+        $this->assertSame('existing_shipment_tracking_conflict',$reasons['C39398']);
+        $this->assertSame(1,$preview['parcel_outbound']['excluded']); $this->assertSame(1,$preview['storage']['excluded_count']); $this->assertSame(0,$preview['storage']['ready_count']);
+        $this->assertDatabaseCount('shipment_carrier_billing',0); $this->assertDatabaseCount('shipment_overseas_handling_billing',0);
+    }
+
     public function test_overseas_handling_evidence_reenters_continuous_delta_scope(): void
     {
         [$batch,$order,$shipment]=$this->fixture(withShipment:true);
@@ -118,8 +143,8 @@ final class InventoryMorePlusCostBridgeP5Test extends TestCase
         return $withShipment?[$batch,$order,$shipment]:[$batch,$order];
     }
 
-    private function row(WarehouseBillImportBatch $batch,string $category,int $sourceRow,string $date,string $amount,int $qty,?string $tracking,?string $transaction,?string $outbound): void
+    private function row(WarehouseBillImportBatch $batch,string $category,int $sourceRow,string $date,string $amount,int $qty,?string $tracking,?string $transaction,?string $outbound,?string $sourceRef=null): void
     {
-        WarehouseBillImportRow::query()->create(['batch_id'=>$batch->id,'category'=>$category,'source_sheet'=>$category,'source_row_number'=>$sourceRow,'transaction_number'=>$transaction,'outbound_order_number'=>$outbound,'tracking_number'=>$tracking,'charged_on'=>$date,'quantity'=>$qty,'charge_item_name'=>$category,'charge_amount'=>$amount,'row_hash'=>hash('sha256',$category.$sourceRow),'raw_data'=>[],'normalized_data'=>[]]);
+        WarehouseBillImportRow::query()->create(['batch_id'=>$batch->id,'category'=>$category,'source_sheet'=>$category,'source_row_number'=>$sourceRow,'transaction_number'=>$transaction,'outbound_order_number'=>$outbound,'tracking_number'=>$tracking,'charged_on'=>$date,'quantity'=>$qty,'charge_item_name'=>$category,'charge_amount'=>$amount,'row_hash'=>hash('sha256',$category.$sourceRow),'raw_data'=>[],'normalized_data'=>['source_order_reference'=>$sourceRef]]);
     }
 }

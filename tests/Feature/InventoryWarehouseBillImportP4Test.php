@@ -32,6 +32,7 @@ final class InventoryWarehouseBillImportP4Test extends TestCase
         $this->assertSame('0.0000',$preview['other_invoice_total']);
         $this->assertSame([],$preview['other_invoice_categories']);
         $this->assertSame(['shipping'=>1,'parcel_outbound'=>1,'storage'=>2,'total'=>4],$preview['counts']);
+        $parcelRow=collect($preview['rows'])->firstWhere('category','parcel_outbound'); $this->assertSame('C2',$parcelRow['source_order_reference']);
         $this->assertSame('2026-07',$preview['monthly'][0]['month']);
         $this->assertSame('17.7777',$preview['monthly'][0]['total']);
         $this->assertSame('2026-08',$preview['monthly'][1]['month']);
@@ -74,13 +75,13 @@ final class InventoryWarehouseBillImportP4Test extends TestCase
         $this->assertDatabaseCount('warehouse_bill_import_batches',0);$this->assertDatabaseCount('warehouse_bill_import_rows',0);$this->assertDatabaseCount('warehouse_cost_entries',0);
     }
 
-    public function test_v2_accepts_non_core_invoice_categories_but_keeps_cost_projection_core_only(): void
+    public function test_v3_accepts_non_core_invoice_categories_but_keeps_cost_projection_core_only(): void
     {
         $warehouse=Warehouse::query()->where('slug','us-la')->firstOrFail();
         $service=app(WarehouseBillImportService::class);
         $preview=$service->preview($this->xlsx(false,true),$warehouse,'moreplus');
 
-        $this->assertSame('moreplus-bill-v2',$preview['parser_version']);
+        $this->assertSame('moreplus-bill-v3',$preview['parser_version']);
         $this->assertSame('25.2777',$preview['invoice_total']);
         $this->assertSame('20.2777',$preview['invoice_core_total']);
         $this->assertSame('5.0000',$preview['other_invoice_total']);
@@ -93,7 +94,7 @@ final class InventoryWarehouseBillImportP4Test extends TestCase
         $this->assertFalse(WarehouseCostEntry::query()->where('source_type','warehouse_bill_import')->where('category','other')->exists());
     }
 
-    public function test_v2_accepts_real_invoice_layout_drift_without_fixed_row_or_column_coordinates(): void
+    public function test_v3_accepts_real_invoice_layout_drift_without_fixed_row_or_column_coordinates(): void
     {
         $warehouse=Warehouse::query()->where('slug','us-la')->firstOrFail();
         $preview=app(WarehouseBillImportService::class)->preview($this->xlsx(false,false,true),$warehouse,'moreplus');
