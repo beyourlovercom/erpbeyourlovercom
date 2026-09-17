@@ -1,6 +1,6 @@
 # ERP-ACCOUNTING-V11C-P8.1-MULTI-SHIPMENT-COST-AGGREGATION-V1-001
 
-**Status:** PLANNED / ACCOUNTING CLOSURE BLOCKER
+**Status:** IMPLEMENTED / LOCAL GATES PASS / PRODUCTION DRY-RUN + OWNER UAT PENDING
 **Parent:** ERP Accounting V1.1C P8 Production Activation
 **Purpose:** make multi-shipment customer-order profit calculation correct, auditable, and visible before final Accounting V1.1C closure.
 
@@ -152,3 +152,31 @@ P8 Production activation evidence may remain accepted, but **Accounting V1.1C ov
 PR #345 must remain unmerged/draft until P8.1 closure is explicitly accepted by Owner.
 
 ERP Changelog remains manual-only.
+
+## 10. Implementation progress — 2026-09-17
+- Added opt-in Parent→N Shipment evidence resolution across fulfillment-derived child Orders while preserving legacy single-Shipment behavior until P8.1 activation.
+- First Mile is now previewed as `USD 1.00 × shipped units` per overseas Shipment and `0` for China-direct; Handling follows the same per-Shipment rule.
+- Actual last-mile evidence converts each Shipment billing fact to transaction currency before Parent aggregation; mixed source currencies are never summed first.
+- Parent aggregate source references are deterministic fingerprints of participating Shipment/evidence facts; identical replay becomes noop.
+- Existing strong/manual/different provider facts fail closed to review and are not silently overwritten.
+- Added dry-run-first `finance:materialize-multi-shipment-costs` with deterministic `plan_sha`, Order/Shipment counts, apply/noop/blocked/review counts and per-cost-type delta summary. Production apply remains separately gated and disabled by default.
+- Existing Accounting continuous delta remains on legacy behavior until `ERP_ACCOUNTING_MULTI_SHIPMENT_ENABLED=true`; no automatic Production rewrite is introduced by code deploy.
+- Added canonical Order Profit explainability service and `/accounting/order-costs/{order}` page. Product lines, Shipment contributions, FX/source facts, parent-level costs and final formula are generated from the same materialization evidence rather than frontend business logic.
+- Finance list exposes a dedicated `成本公式` entry while preserving the existing manual fact editor.
+
+## 11. Local validation — 2026-09-17
+- P8.1 focused matrix: **8 PASS / 68 assertions** covering two overseas Shipments, overseas+China hybrid, three Shipment/N-leg model, mixed-currency per-leg FX, missing carrier bill fail-close, strong-fact review, dry-run plan guard, formula evidence reconciliation and HTTP/Inertia formula route.
+- Finance full regression: **104 PASS / 805 assertions / 1 MySQL-only skip**.
+- Vite production build: **PASS** (`936 modules transformed`).
+- Architecture exact-main delta: branch **3 fail / 5 pass / 131 assertions**; exact `main@d99ab97ac44d999c34caa6cd803042431d30da26` is the identical **3 fail / 5 pass / 131 assertions** with the same three failing rule names. Architecture regression delta = 0.
+- `git diff --check` and PHP lint: PASS.
+- No Production data writes, migrations, or P8.1 activation occurred during implementation.
+
+## 12. Remaining closure gates
+1. Review PR #346 implementation diff and merge only after code review gates pass.
+2. Production code-only deploy with `ERP_ACCOUNTING_MULTI_SHIPMENT_ENABLED=false` and P8.1 apply flag unset.
+3. Run Production dry-run to lock exact source SHA / plan SHA / affected Orders / Shipments / apply / noop / blocked / review / cost deltas.
+4. Perform multi-Shipment Owner UAT on the formula page.
+5. Enter a separate exact Production Data Write Gate if historical Parent aggregates require rewrite.
+6. Post-verify idempotency/no duplicates, then separately activate P8.1 continuous-delta behavior.
+7. Only after P8.1 closes may PR #345 / Accounting final closure proceed.

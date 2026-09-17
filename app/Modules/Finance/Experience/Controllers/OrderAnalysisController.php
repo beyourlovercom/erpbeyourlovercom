@@ -4,6 +4,7 @@ namespace App\Modules\Finance\Experience\Controllers;
 
 use App\Modules\Finance\Application\Contracts\ConfirmedLossReader;
 use App\Modules\Finance\Application\OrderAnalysisService;
+use App\Modules\Finance\Application\OrderProfitExplanationService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Shell\Application\UserUiPreferenceService;
 use Illuminate\Database\Eloquent\Builder;
@@ -24,6 +25,7 @@ final class OrderAnalysisController
 
     public function __construct(
         private readonly OrderAnalysisService $analysis,
+        private readonly OrderProfitExplanationService $explanations,
         private readonly ConfirmedLossReader $confirmedLosses,
         private readonly UserUiPreferenceService $uiPreferences,
     ) {}
@@ -50,6 +52,18 @@ final class OrderAnalysisController
             'kpis' => $this->kpis($request),
             'gridPreferenceNamespace' => self::GRID_NAMESPACE,
             'gridPreference' => $this->uiPreferences->get($request->user(), self::GRID_NAMESPACE),
+        ]);
+    }
+
+    public function show(Request $request, Order $order): Response
+    {
+        $kind = $order->order_kind instanceof \BackedEnum ? $order->order_kind->value : (string) $order->order_kind;
+        abort_unless($kind === 'customer', 404);
+        abort_if($order->externalReferences()->where('provider', 'historical_logistics')->exists(), 404);
+        $order->load(['address', 'financials', 'costEntries', 'items.product', 'fulfillmentChildren.items', 'fulfillmentChildren.shipment.warehouse']);
+
+        return Inertia::render('Finance/OrderProfitShow', [
+            'explanation' => $this->explanations->explain($order),
         ]);
     }
 

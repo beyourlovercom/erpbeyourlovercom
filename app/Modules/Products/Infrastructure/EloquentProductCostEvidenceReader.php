@@ -47,6 +47,8 @@ final class EloquentProductCostEvidenceReader implements ProductCostEvidenceRead
             return [
                 'item_id' => (int) $item->getKey(),
                 'product_id' => $product?->getKey() === null ? null : (int) $product->getKey(),
+                'sku' => $item->sku,
+                'product_name' => $item->product_summary ?: $product?->name,
                 'quantity' => $item->quantity,
                 'confirmed_cost_sources' => $confirmed->map(fn (ProductCostSource $source): array => [
                     'id' => (int) $source->getKey(),
