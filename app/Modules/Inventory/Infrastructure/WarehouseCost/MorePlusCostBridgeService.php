@@ -11,13 +11,14 @@ use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Models\ShipmentCarrierBilling;
 use App\Modules\Logistics\Infrastructure\Models\ShipmentOverseasHandlingBilling;
 use App\Modules\Orders\Application\OrderKind;
+use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use RuntimeException;
 
 final class MorePlusCostBridgeService
 {
-    public const BRIDGE_VERSION='moreplus-cost-bridge-v1';
+    public const BRIDGE_VERSION='moreplus-cost-bridge-v2';
     public function __construct(private readonly WarehouseStorageCostImportService $storage, private readonly AuditRecorder $audit) {}
 
     /** @return array<string,mixed> */
@@ -25,9 +26,9 @@ final class MorePlusCostBridgeService
     {
         $batch=WarehouseBillImportBatch::query()->with(['warehouse','rows'])->findOrFail($batchId);
         $this->assertBatch($batch);
-        $shipments=$this->shipmentMap();
-        $shipping=$this->planDestination($batch,'shipping',$shipments);
-        $parcel=$this->planDestination($batch,'parcel_outbound',$shipments);
+        $shipments=$this->shipmentMap(); $orders=$this->orderIdentityMap();
+        $shipping=$this->planDestination($batch,'shipping',$shipments,$orders);
+        $parcel=$this->planDestination($batch,'parcel_outbound',$shipments,$orders);
         [$storagePreview,$storagePath]=$this->storagePreview($batch);
         if($storagePath!==null) @unlink($storagePath);
         $manifest=['version'=>self::BRIDGE_VERSION,'warehouse_bill_batch_id'=>(int)$batch->id,'source_checksum'=>(string)$batch->source_checksum,
@@ -71,16 +72,27 @@ final class MorePlusCostBridgeService
         return $map;
     }
 
-    /** @param array<string,list<Shipment>> $shipmentMap @return array<string,mixed> */
-    private function planDestination(WarehouseBillImportBatch $batch,string $category,array $shipmentMap):array
+    /** @return array<string,list<Order>> */
+    private function orderIdentityMap(): array
+    {
+        $map=[];
+        foreach(Order::query()->with(['shipment','externalReferences','fulfillmentChildren.shipment'])->whereNull('fulfillment_parent_id')->whereNotNull('erp_order_id')->get() as $order){
+            if(preg_match('/-c(\d+)$/i',(string)$order->erp_order_id,$m)!==1) continue;
+            $map[$m[1]][]=$order;
+        }
+        return $map;
+    }
+
+    /** @param array<string,list<Shipment>> $shipmentMap @param array<string,list<Order>> $orderIdentityMap @return array<string,mixed> */
+    private function planDestination(WarehouseBillImportBatch $batch,string $category,array $shipmentMap,array $orderIdentityMap):array
     {
         $rows=$batch->rows->where('category',$category)->sortBy('id')->values(); $grouped=[];
         foreach($rows as $row){ $tracking=$this->tracking((string)($row->tracking_number??'')); $key=$tracking!==''?$tracking:'__row_'.$row->id; $grouped[$key][]=$row; }
         $groups=[]; $counts=['ready'=>0,'review'=>0,'excluded'=>0,'skip'=>0];
         foreach($grouped as $key=>$sourceRows){
-            $tracking=str_starts_with($key,'__row_')?'':$key; $amount='0.0000'; $rowIds=[]; $rowHashes=[]; $dates=[]; $refs=[];
-            foreach($sourceRows as $row){ $amount=bcadd($amount,(string)$row->charge_amount,4); $rowIds[]=(int)$row->id; $rowHashes[]=(string)$row->row_hash; $dates[]=$row->charged_on?->toDateString(); if($row->transaction_number)$refs[]=(string)$row->transaction_number; }
-            sort($rowIds); sort($rowHashes); $decision='review'; $reason='shipment_not_found'; $shipmentId=null; $orderId=null; $destinationId=null;
+            $tracking=str_starts_with($key,'__row_')?'':$key; $amount='0.0000'; $rowIds=[]; $rowHashes=[]; $dates=[]; $refs=[]; $sourceOrderRefs=[];
+            foreach($sourceRows as $row){ $amount=bcadd($amount,(string)$row->charge_amount,4); $rowIds[]=(int)$row->id; $rowHashes[]=(string)$row->row_hash; $dates[]=$row->charged_on?->toDateString(); if($row->transaction_number)$refs[]=(string)$row->transaction_number; $sourceRef=$this->sourceOrderReference($row); if($sourceRef!=='')$sourceOrderRefs[]=$sourceRef; }
+            sort($rowIds); sort($rowHashes); $sourceOrderRefs=array_values(array_unique($sourceOrderRefs)); $decision='review'; $reason='shipment_not_found'; $shipmentId=null; $orderId=null; $destinationId=null;
             $matches=$tracking!==''?($shipmentMap[$tracking]??[]):[];
             if($tracking===''){ $reason='tracking_missing'; }
             elseif(count($matches)>1){ $reason='shipment_tracking_ambiguous'; }
@@ -99,13 +111,40 @@ final class MorePlusCostBridgeService
                         else { $decision='review'; $reason=$category==='shipping'?'existing_carrier_billing_conflict':'existing_overseas_handling_conflict'; $destinationId=(int)$existing->id; }
                     }
                 }
+            } else {
+                $fallback=$this->sourceFallback($sourceOrderRefs,$orderIdentityMap,$tracking);
+                $decision=$fallback['decision']; $reason=$fallback['reason_code']; $shipmentId=$fallback['shipment_id']; $orderId=$fallback['order_id'];
             }
             $counts[$decision]++;
-            $groups[]=['tracking_number'=>$tracking?:null,'source_row_ids'=>$rowIds,'row_hashes'=>$rowHashes,'shipment_id'=>$shipmentId,'order_id'=>$orderId,'destination_id'=>$destinationId,
+            $groups[]=['tracking_number'=>$tracking?:null,'source_order_references'=>$sourceOrderRefs,'source_row_ids'=>$rowIds,'row_hashes'=>$rowHashes,'shipment_id'=>$shipmentId,'order_id'=>$orderId,'destination_id'=>$destinationId,
                 'amount'=>$amount,'currency'=>(string)$batch->currency,'billed_at'=>max(array_filter($dates))?:null,'provider_references'=>array_values(array_unique($refs)),'decision'=>$decision,'reason_code'=>$reason];
         }
         usort($groups,fn($a,$b)=>strcmp((string)($a['tracking_number']??''),(string)($b['tracking_number']??'')));
         return ['source_rows'=>$rows->count(),'groups'=>$groups,'counts'=>$counts];
+    }
+
+    /** @param list<string> $sourceOrderRefs @param array<string,list<Order>> $orderIdentityMap @return array{decision:string,reason_code:?string,shipment_id:?int,order_id:?int} */
+    private function sourceFallback(array $sourceOrderRefs,array $orderIdentityMap,string $tracking):array
+    {
+        if(count($sourceOrderRefs)!==1) return ['decision'=>'review','reason_code'=>count($sourceOrderRefs)>1?'source_order_reference_ambiguous':'source_order_reference_missing','shipment_id'=>null,'order_id'=>null];
+        $ref=strtoupper(trim($sourceOrderRefs[0]));
+        if(preg_match('/^KOL\d+-007$/D',$ref)===1) return ['decision'=>'excluded','reason_code'=>'source_marked_kol','shipment_id'=>null,'order_id'=>null];
+        if(preg_match('/^\d{12,20}$/D',$ref)===1) return ['decision'=>'review','reason_code'=>'source_order_unmapped','shipment_id'=>null,'order_id'=>null];
+        if(preg_match('/^C(\d+)(?:-007([A-Z])?|([A-Z]))?$/D',$ref,$m)!==1) return ['decision'=>'review','reason_code'=>'source_order_unmapped','shipment_id'=>null,'order_id'=>null];
+        $orders=$orderIdentityMap[$m[1]]??[];
+        if(count($orders)===0) return ['decision'=>'review','reason_code'=>'source_order_not_found','shipment_id'=>null,'order_id'=>null];
+        if(count($orders)>1) return ['decision'=>'review','reason_code'=>'source_order_ambiguous','shipment_id'=>null,'order_id'=>null];
+        $order=$orders[0]; $kind=$order->order_kind instanceof \BackedEnum?$order->order_kind->value:(string)$order->order_kind; $historical=$order->externalReferences->contains(fn($r)=>$r->provider==='historical_logistics');
+        if($kind!==OrderKind::Customer->value||$historical) return ['decision'=>'excluded','reason_code'=>'non_customer_order','shipment_id'=>$order->shipment?(int)$order->shipment->id:null,'order_id'=>(int)$order->id];
+        $suffix=strtolower((string)($m[2]??$m[3]??'')); $target=$order;
+        if($suffix!==''){ $children=$order->fulfillmentChildren->filter(fn($child)=>strtolower((string)$child->fulfillment_suffix)===$suffix)->values(); if($children->count()!==1)return ['decision'=>'review','reason_code'=>'fulfillment_suffix_unresolved','shipment_id'=>null,'order_id'=>(int)$order->id]; $target=$children->first(); }
+        if($target->shipment){ $existing=$this->tracking((string)$target->shipment->tracking_number); return ['decision'=>'review','reason_code'=>$existing!==$tracking?'existing_shipment_tracking_conflict':'shipment_identity_inconsistent','shipment_id'=>(int)$target->shipment->id,'order_id'=>(int)$target->id]; }
+        return ['decision'=>'review','reason_code'=>'shipment_missing','shipment_id'=>null,'order_id'=>(int)$target->id];
+    }
+
+    private function sourceOrderReference($row):string
+    {
+        $normalized=(array)($row->normalized_data??[]); return strtoupper(trim((string)($normalized['source_order_reference']??'')));
     }
 
     private function sameDestination($existing,WarehouseBillImportBatch $batch,array $rowIds,string $amount,string $category):bool
@@ -150,7 +189,7 @@ final class MorePlusCostBridgeService
         $start=$storageRows->first()->charged_on->toDateString(); $end=$storageRows->last()->charged_on->toDateString();
         $base=tempnam(sys_get_temp_dir(),'moreplus-storage-'); if($base===false) throw new RuntimeException('moreplus_storage_temp_failed'); $path=$base.'.csv'; if(!rename($base,$path)) throw new RuntimeException('moreplus_storage_temp_rename_failed');
         $h=fopen($path,'wb'); fputcsv($h,['warehouse_slug','billing_period_start','billing_period_end','storage_pool_amount','currency','reference_number','tracking_number','outbound_units']);
-        foreach($parcelRows as $row) fputcsv($h,[$batch->warehouse->slug,$start,$end,(string)$batch->storage_total,(string)$batch->currency,(string)($row->outbound_order_number??''),(string)($row->tracking_number??''),(int)$row->quantity]);
+        foreach($parcelRows as $row){ $normalized=(array)($row->normalized_data??[]); $reference=(string)($normalized['source_order_reference']??$row->outbound_order_number??''); fputcsv($h,[$batch->warehouse->slug,$start,$end,(string)$batch->storage_total,(string)$batch->currency,$reference,(string)($row->tracking_number??''),(int)$row->quantity]); }
         fclose($h); return [$this->storage->preview($path,'moreplus_p4_storage'),$path];
     }
 

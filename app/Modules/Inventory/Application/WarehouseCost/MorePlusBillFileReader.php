@@ -10,7 +10,7 @@ use ZipArchive;
 
 final class MorePlusBillFileReader
 {
-    public const PARSER_VERSION = 'moreplus-bill-v2';
+    public const PARSER_VERSION = 'moreplus-bill-v3';
     private const MAX_FILE_BYTES = 16 * 1024 * 1024;
     private const MAX_ROWS = 50000;
     private const MAX_ZIP_ENTRIES = 240;
@@ -264,6 +264,7 @@ final class MorePlusBillFileReader
     {
         $headerRequired = ['Outbound Order #', 'Transaction #', 'Transaction Amount', 'Amount Due', 'SKU', 'Qty', 'Charge Item Name', 'Charge Amount', 'Tracking #', 'Transaction Date'];
         [$headerRow, $headers] = $this->headersFromRows($rows, $headerRequired);
+        $sourceOrderColumn = $this->sourceOrderReferenceColumn($rows, $headerRow, $headers);
         $out = [];
         $current = null;
         foreach ($rows as $rowNumber => $row) {
@@ -285,6 +286,7 @@ final class MorePlusBillFileReader
                     'transaction_amount' => $this->moneyNullable((string) ($raw['Transaction Amount'] ?? ''), $sheet.' transaction amount row '.$rowNumber),
                     'amount_due' => $this->moneyNullable((string) ($raw['Amount Due'] ?? ''), $sheet.' amount due row '.$rowNumber),
                     'outbound_order_number' => $this->nullable($raw['Outbound Order #'] ?? null),
+                    'source_order_reference' => $sourceOrderColumn === null ? null : $this->nullable($row[$sourceOrderColumn] ?? null),
                     'tracking_number' => null,
                     'charged_on' => null,
                     'quantity' => 0, 'charge_amount' => '0.0000', 'charge_items' => [], 'raw_lines' => [],
@@ -297,6 +299,11 @@ final class MorePlusBillFileReader
             }
             if ($current === null) {
                 throw new InvalidArgumentException($sheet.' continuation row appears before a transaction at row '.$rowNumber.'.');
+            }
+            $lineSourceReference = $sourceOrderColumn === null ? null : $this->nullable($row[$sourceOrderColumn] ?? null);
+            if ($lineSourceReference !== null) {
+                if ($current['source_order_reference'] === null) $current['source_order_reference'] = $lineSourceReference;
+                elseif (strcasecmp((string) $current['source_order_reference'], $lineSourceReference) !== 0) throw new InvalidArgumentException($sheet.' transaction '.$current['transaction_number'].' has ambiguous source order references.');
             }
             $current['raw_lines'][] = ['row_number' => $rowNumber, 'values' => $raw, 'source_cells' => $row];
             $qty = trim((string) ($raw['Qty'] ?? ''));
@@ -348,7 +355,7 @@ final class MorePlusBillFileReader
 
         return [
             'category' => $category, 'source_sheet' => $sheet, 'source_row_number' => $group['source_row_number'],
-            'transaction_number' => $group['transaction_number'], 'outbound_order_number' => $group['outbound_order_number'], 'tracking_number' => $group['tracking_number'],
+            'transaction_number' => $group['transaction_number'], 'outbound_order_number' => $group['outbound_order_number'], 'source_order_reference' => $group['source_order_reference'] ?? null, 'tracking_number' => $group['tracking_number'],
             'charged_on' => $group['charged_on'], 'quantity' => $group['quantity'], 'charge_item_name' => implode(' + ', array_keys($group['charge_items'])) ?: null,
             'charge_amount' => (string) $billableAmount, 'raw_data' => $group['raw_lines'],
         ];
@@ -405,6 +412,20 @@ final class MorePlusBillFileReader
         $out = [];
         foreach ($dates as $category => $values) { sort($values); $out[$category] = ['start'=>$values[0],'end'=>$values[count($values)-1]]; }
         return $out;
+    }
+
+    /** @param array<int,array<int,string>> $rows @param array<string,int> $headers */
+    private function sourceOrderReferenceColumn(array $rows, int $headerRow, array $headers): ?int
+    {
+        foreach (['Source Order #', 'Customer Order #', 'Order Reference', 'Order #', '订单号', '组别'] as $label) {
+            if (array_key_exists($label, $headers)) return (int) $headers[$label];
+        }
+        for ($rowNumber = $headerRow; $rowNumber <= $headerRow + 2; $rowNumber++) {
+            foreach (($rows[$rowNumber] ?? []) as $column => $value) {
+                if (in_array(trim((string) $value), ['Source Order #', 'Customer Order #', 'Order Reference', 'Order #', '订单号', '组别'], true)) return (int) $column;
+            }
+        }
+        return null;
     }
 
     /** @param array<int,array<int,string>> $rows @param list<string> $required @return array{int,array<string,int>} */
