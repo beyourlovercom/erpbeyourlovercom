@@ -428,9 +428,10 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
                                     </span>
                                 </td>
                                 <td class="action-column">
-                                    <button class="mvp-button" @click="edit(row)">
-                                        {{ editing === row.id ? '查看中' : '订单事实' }}
-                                    </button>
+                                    <div class="row-actions">
+                                        <Link class="mvp-button" :href="`/accounting/order-costs/${row.id}`">成本公式</Link>
+                                        <button class="mvp-button" @click="edit(row)">{{ editing === row.id ? '查看中' : '订单事实' }}</button>
+                                    </div>
                                 </td>
                             </tr>
                         </template>

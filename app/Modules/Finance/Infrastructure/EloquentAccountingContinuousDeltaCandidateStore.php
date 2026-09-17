@@ -34,6 +34,15 @@ final class EloquentAccountingContinuousDeltaCandidateStore implements Accountin
                         ->whereBetween('updated_at', [$windowStart, $windowEnd]))
                     ->orWhereHas('shipment.billingEvidence', fn (Builder $billing) => $billing
                         ->whereBetween('updated_at', [$windowStart, $windowEnd]))
+                    ->when($this->multiShipmentEnabled(), fn (Builder $scope) => $scope
+                        ->orWhereHas('fulfillmentChildren', fn (Builder $children) => $children
+                            ->whereBetween('updated_at', [$windowStart, $windowEnd]))
+                        ->orWhereHas('fulfillmentChildren.items', fn (Builder $items) => $items
+                            ->whereBetween('updated_at', [$windowStart, $windowEnd]))
+                        ->orWhereHas('fulfillmentChildren.shipment', fn (Builder $shipment) => $shipment
+                            ->whereBetween('updated_at', [$windowStart, $windowEnd]))
+                        ->orWhereHas('fulfillmentChildren.shipment.billingEvidence', fn (Builder $billing) => $billing
+                            ->whereBetween('updated_at', [$windowStart, $windowEnd])))
                     ->when($this->overseasHandlingAvailable(), fn (Builder $scope) => $scope
                         ->orWhereHas('shipment.overseasHandlingEvidence', fn (Builder $billing) => $billing
                             ->whereBetween('updated_at', [$windowStart, $windowEnd])))
@@ -55,6 +64,11 @@ final class EloquentAccountingContinuousDeltaCandidateStore implements Accountin
             ->limit(max(1, $limit))
             ->get();
     }
+    private function multiShipmentEnabled(): bool
+    {
+        return (bool) config('erp_accounting.multi_shipment.enabled', false);
+    }
+
     private function overseasHandlingAvailable(): bool
     {
         return interface_exists(OverseasHandlingEvidenceReader::class)

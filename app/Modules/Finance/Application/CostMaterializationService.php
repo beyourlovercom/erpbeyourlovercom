@@ -43,7 +43,7 @@ final class CostMaterializationService
             $this->productCandidate($order),
             $this->carrierCandidate($order),
         ];
-        if ($this->overseasHandlingAvailable()) {
+        if ($this->multiShipmentAggregationEnabled() || $this->overseasHandlingAvailable()) {
             $candidates[] = $this->overseasHandlingCandidate($order);
         }
         array_push(
@@ -64,6 +64,95 @@ final class CostMaterializationService
             'candidates' => array_values(array_map(fn (array $candidate): array => $this->annotateDisposition($order, $candidate), $candidates)),
             'unsupported' => ['refund_replacement_loss', 'other_variable_cost'],
         ];
+    }
+
+    /** @return array<string, mixed> */
+    public function previewExplanation(Model $order): array
+    {
+        return $this->withMultiShipmentAggregation(function () use ($order): array {
+            $scopeBlocker = $this->operationalBlocker($order);
+            $candidates = [
+                $this->productCandidate($order),
+                $this->warehouseCostCandidate($order),
+                $this->firstMileCandidate($order),
+                $this->overseasHandlingCandidate($order),
+                $this->carrierCandidate($order),
+                $this->paymentFeeCandidate($order),
+                $this->affiliateCandidate($order),
+                $this->customsCandidate($order),
+            ];
+            if ($scopeBlocker !== null) {
+                $candidates = array_map(fn (array $candidate): array => $this->forceBlocked($candidate, $scopeBlocker), $candidates);
+            }
+            return [
+                'order_id' => (int) $order->getKey(),
+                'scope_status' => $scopeBlocker === null ? 'operational' : 'blocked',
+                'scope_blocker' => $scopeBlocker,
+                'candidates' => array_values(array_map(fn (array $candidate): array => $this->annotateDisposition($order, $candidate), $candidates)),
+            ];
+        });
+    }
+
+    /** @return array<string, mixed> */
+    public function previewMultiShipmentGate(Model $order): array
+    {
+        return $this->withMultiShipmentAggregation(function () use ($order): array {
+            $scopeBlocker = $this->operationalBlocker($order);
+            $candidates = [
+                $this->firstMileCandidate($order),
+                $this->overseasHandlingCandidate($order),
+                $this->carrierCandidate($order),
+            ];
+            if ($scopeBlocker !== null) {
+                $candidates = array_map(fn (array $candidate): array => $this->forceBlocked($candidate, $scopeBlocker), $candidates);
+            }
+            $annotated = array_values(array_map(
+                fn (array $candidate): array => $this->annotateMultiShipmentDelta($order, $this->annotateDisposition($order, $candidate)),
+                $candidates,
+            ));
+            $shipmentCount = 0;
+            foreach ($annotated as $candidate) $shipmentCount = max($shipmentCount, (int) ($candidate['shipment_count'] ?? 0));
+            return [
+                'order_id' => (int) $order->getKey(),
+                'scope_status' => $scopeBlocker === null ? 'operational' : 'blocked',
+                'scope_blocker' => $scopeBlocker,
+                'shipment_count' => $shipmentCount,
+                'candidates' => $annotated,
+            ];
+        });
+    }
+
+    /** @return array<string, mixed> */
+    public function applyMultiShipmentGate(Model $order): array
+    {
+        return DB::transaction(function () use ($order): array {
+            $locked = $order->newQuery()->lockForUpdate()->findOrFail($order->getKey());
+            $preview = $this->previewMultiShipmentGate($locked);
+            $result = $preview + ['applied' => [], 'noop' => [], 'blocked' => [], 'review' => []];
+            foreach ($preview['candidates'] as $candidate) {
+                $disposition = (string) ($candidate['materialization_status'] ?? 'blocked');
+                if ($disposition === 'noop') { $result['noop'][] = $candidate; continue; }
+                if ($disposition === 'blocked') {
+                    if (($candidate['blocker'] ?? null) === 'stronger_or_different_existing_fact') $result['review'][] = $candidate;
+                    else $result['blocked'][] = $candidate;
+                    continue;
+                }
+                $outcome = $this->writeCandidate($locked, $candidate);
+                $result[$outcome['status']][] = $outcome['entry'];
+            }
+            if ($result['applied'] !== []) {
+                $this->analysis->refreshCompleteness($locked, preserveReconciled: false);
+                $this->audit->record(
+                    AuditActor::system(AuditSource::InternalSystem),
+                    'finance.multi_shipment_cost_aggregation.applied',
+                    $locked::class,
+                    $locked->getKey(),
+                    after: ['applied' => $result['applied'], 'blocked' => $result['blocked'], 'review' => $result['review']],
+                    reason: 'multi_shipment_cost_aggregation',
+                );
+            }
+            return $result;
+        });
     }
 
     /** @return array<string, mixed> */
@@ -165,7 +254,7 @@ final class CostMaterializationService
     /** @return array<string, mixed> */
     public function previewOverseasHandlingGate(Model $order): array
     {
-        if (! $this->overseasHandlingAvailable()) {
+        if (! $this->multiShipmentAggregationEnabled() && ! $this->overseasHandlingAvailable()) {
             return ['order_id'=>(int)$order->getKey(),'scope_status'=>'operational','scope_blocker'=>null,'candidates'=>[]];
         }
         $scopeBlocker = $this->operationalBlocker($order);
@@ -499,6 +588,7 @@ final class CostMaterializationService
             $totalByCurrency = [];
             $sourceIds = [];
             $sourceKeys = [];
+            $lineBreakdown = [];
             $sourceAt = null;
             foreach ($rows as $row) {
                 $quantity = (string) ($row['quantity'] ?? '');
@@ -518,6 +608,15 @@ final class CostMaterializationService
                 $sourceCurrency = strtoupper((string) $source['currency']);
                 $line = DecimalMoney::multiply((string) $source['unit_cost'], $quantity, 8);
                 $totalByCurrency[$sourceCurrency] = DecimalMoney::add($totalByCurrency[$sourceCurrency] ?? '0', $line, 8);
+                $lineBreakdown[] = [
+                    'item_id' => $row['item_id'] ?? null, 'product_id' => $row['product_id'] ?? null,
+                    'sku' => $row['sku'] ?? null, 'product_name' => $row['product_name'] ?? null,
+                    'quantity' => (int) $quantity, 'unit_cost' => DecimalMoney::round((string) $source['unit_cost']),
+                    'currency' => $sourceCurrency, 'subtotal' => DecimalMoney::round($line),
+                    'source_key' => $source['source_key'] ?? null, 'source_reference' => $source['source_reference'] ?? null,
+                    'provenance' => $source['provenance'] ?? null, 'effective_from' => $source['effective_from'] ?? null,
+                    'source_at' => $source['source_at'] ?? null,
+                ];
                 foreach ($sources as $evidence) {
                     $sourceIds[] = (int) $evidence['id'];
                     $sourceKeys[] = (string) $evidence['source_key'];
@@ -534,7 +633,7 @@ final class CostMaterializationService
             sort($sourceIds);
             sort($sourceKeys);
             $sourceAmount = DecimalMoney::round($totalByCurrency[$sourceCurrency]);
-            $extra = ['source_ids' => array_values(array_unique($sourceIds)), 'source_keys' => array_values(array_unique($sourceKeys))];
+            $extra = ['source_ids' => array_values(array_unique($sourceIds)), 'source_keys' => array_values(array_unique($sourceKeys)), 'line_breakdown' => $lineBreakdown];
             $amount = $sourceAmount;
             if ($sourceCurrency !== $currency) {
                 $fx = $this->fxBridge->preview($order, $sourceCurrency);
@@ -564,6 +663,7 @@ final class CostMaterializationService
 
         $total = '0';
         $productIds = [];
+        $lineBreakdown = [];
         $sourceAt = null;
         foreach ($rows as $row) {
             $quantity = (string) ($row['quantity'] ?? '');
@@ -578,7 +678,17 @@ final class CostMaterializationService
             }
 
             $unit = $purchasePath ? (string) $purchase : DecimalMoney::add((string) $production, (string) ($packaging ?? '0'), 8);
-            $total = DecimalMoney::add($total, DecimalMoney::multiply($unit, $quantity, 8), 8);
+            $line = DecimalMoney::multiply($unit, $quantity, 8);
+            $total = DecimalMoney::add($total, $line, 8);
+            $lineBreakdown[] = [
+                'item_id' => $row['item_id'] ?? null, 'product_id' => $row['product_id'] ?? null,
+                'sku' => $row['sku'] ?? null, 'product_name' => $row['product_name'] ?? null,
+                'quantity' => (int) $quantity, 'unit_cost' => DecimalMoney::round($unit),
+                'currency' => $currency, 'subtotal' => DecimalMoney::round($line),
+                'source_key' => null, 'source_reference' => 'product-reference',
+                'provenance' => 'estimated_reference', 'effective_from' => null,
+                'source_at' => $row['updated_at'] ?? null,
+            ];
             $productIds[] = (int) $row['product_id'];
             if (($row['updated_at'] ?? null) !== null && ($sourceAt === null || $row['updated_at'] > $sourceAt)) {
                 $sourceAt = $row['updated_at'];
@@ -588,7 +698,7 @@ final class CostMaterializationService
 
         return $this->candidate(
             'product_cost', DecimalMoney::round($total), $currency, 'estimated_reference', 'estimated',
-            'product-reference:v1:order:'.$order->getKey(), $sourceAt, ['product_ids' => $productIds],
+            'product-reference:v1:order:'.$order->getKey(), $sourceAt, ['product_ids' => $productIds, 'line_breakdown' => $lineBreakdown],
         );
     }
 
@@ -596,9 +706,20 @@ final class CostMaterializationService
     {
         $actual = $this->carrier->read($order->getKey());
         if (is_array($actual) && ! isset($actual['blocked'])) {
-            $identity = $actual['billing_document_number'] ?? $actual['provider_reference'] ?? $actual['data_source'] ?? null;
-            if ($actual['actual_cost'] !== null && $actual['currency'] !== null && is_string($identity) && trim($identity) !== '') {
-                return $this->blocked('last_mile_cost', 'actual_carrier_billing_available');
+            if (isset($actual['shipments'])) {
+                $legs = $actual['shipments'];
+                $complete = $legs !== [];
+                foreach ($legs as $leg) {
+                    $billing = $leg['billing'] ?? null;
+                    $identity = is_array($billing) ? ($billing['billing_document_number'] ?? $billing['provider_reference'] ?? $billing['data_source'] ?? null) : null;
+                    if (! is_array($billing) || ($billing['actual_cost'] ?? null) === null || blank($billing['currency'] ?? null) || ! is_string($identity) || trim($identity) === '') { $complete = false; break; }
+                }
+                if ($complete) return $this->blocked('last_mile_cost', 'actual_carrier_billing_available');
+            } else {
+                $identity = $actual['billing_document_number'] ?? $actual['provider_reference'] ?? $actual['data_source'] ?? null;
+                if (($actual['actual_cost'] ?? null) !== null && ($actual['currency'] ?? null) !== null && is_string($identity) && trim($identity) !== '') {
+                    return $this->blocked('last_mile_cost', 'actual_carrier_billing_available');
+                }
             }
         }
 
@@ -680,8 +801,173 @@ final class CostMaterializationService
         );
     }
 
+    private function multiShipmentAggregationEnabled(): bool
+    {
+        return (bool) config('erp_accounting.multi_shipment.enabled', false);
+    }
+
+    private function withMultiShipmentAggregation(callable $callback): mixed
+    {
+        $key = 'erp_accounting.multi_shipment.enabled';
+        $original = (bool) config($key, false);
+        config([$key => true]);
+        try { return $callback(); }
+        finally { config([$key => $original]); }
+    }
+
+    private function aggregateRuleCandidate(Model $order, string $costType): array
+    {
+        $evidence = $this->fulfillmentOrigin->read($order->getKey());
+        if ($evidence === null || isset($evidence['blocked'])) {
+            return $this->blocked($costType, (string) ($evidence['blocked'] ?? 'fulfillment_origin_missing'));
+        }
+        $currency = $this->orderCurrency($order);
+        $sourceAmount = '0'; $breakdown = []; $fingerprint = []; $sourceAt = null;
+        foreach ($evidence['shipments'] ?? [] as $leg) {
+            $shipmentId = (int) ($leg['shipment_id'] ?? 0);
+            $slug = strtolower(trim((string) ($leg['warehouse_slug'] ?? '')));
+            $units = (int) ($leg['shipped_units'] ?? 0);
+            if ($shipmentId < 1 || $units <= 0) {
+                return $this->blocked($costType, 'shipment_item_quantity_missing', ['shipment_id' => $shipmentId ?: null]);
+            }
+            if (in_array($slug, self::OVERSEAS_WAREHOUSE_SLUGS, true)) {
+                $legSource = DecimalMoney::round(DecimalMoney::multiply((string) $units, '1.00', 8));
+                $rule = $costType === 'first_mile_cost' ? 'overseas_usd_one_per_shipped_unit' : 'overseas_handling_usd_one_per_shipped_unit';
+            } elseif (in_array($slug, self::CHINA_DIRECT_WAREHOUSE_SLUGS, true)) {
+                $legSource = '0.00';
+                $rule = $costType === 'first_mile_cost' ? 'china_direct_first_mile_zero' : 'china_direct_handling_zero';
+            } else {
+                return $this->blocked($costType, 'shipment_warehouse_classification_unknown', [
+                    'shipment_id' => $shipmentId, 'warehouse_slug' => $slug,
+                ]);
+            }
+            $sourceAmount = DecimalMoney::add($sourceAmount, $legSource, 8);
+            $fingerprint[] = implode('|', [$shipmentId, $slug, $units, $rule]);
+            $breakdown[] = [
+                'shipment_id' => $shipmentId,
+                'fulfillment_order_id' => $leg['fulfillment_order_id'] ?? null,
+                'fulfillment_suffix' => $leg['fulfillment_suffix'] ?? null,
+                'warehouse_id' => $leg['warehouse_id'] ?? null,
+                'warehouse_slug' => $slug,
+                'warehouse_code' => $leg['warehouse_code'] ?? null,
+                'warehouse_name' => $leg['warehouse_name'] ?? null,
+                'tracking_number' => $leg['tracking_number'] ?? null,
+                'carrier' => $leg['carrier'] ?? null,
+                'shipped_units' => $units,
+                'unit_rate' => in_array($slug, self::OVERSEAS_WAREHOUSE_SLUGS, true) ? '1.00' : '0.00',
+                'source_amount' => $legSource,
+                'source_currency' => 'USD',
+                'rule' => $rule,
+                'items' => $leg['items'] ?? [],
+            ];
+            $candidateSourceAt = $leg['updated_at'] ?? null;
+            if ($candidateSourceAt !== null && ($sourceAt === null || $candidateSourceAt > $sourceAt)) $sourceAt = $candidateSourceAt;
+        }
+        if ($breakdown === []) return $this->blocked($costType, 'canonical_shipment_missing');
+        sort($fingerprint);
+        $sourceAmount = DecimalMoney::round($sourceAmount); $amount = $sourceAmount;
+        if ($currency === 'USD') {
+            foreach ($breakdown as &$leg) {
+                $leg['posted_amount'] = $leg['source_amount'];
+                $leg['posted_currency'] = 'USD';
+                $leg['fx'] = null;
+            }
+            unset($leg);
+        } else {
+            $fx = $this->fxBridge->preview($order, 'USD');
+            $extraForBlock = [
+                'source_currency' => 'USD', 'source_amount' => $sourceAmount,
+                'shipment_count' => count($breakdown), 'shipment_breakdown' => $breakdown,
+                'aggregation_rule' => 'parent_sum_of_shipment_legs_v1',
+            ];
+            if (! ($fx['available'] ?? false)) return $this->blocked($costType, 'multi_shipment_rule_fx_snapshot_unavailable', $extraForBlock + ['fx_reason' => $fx['reason'] ?? 'fx_unavailable']);
+            $amount = DecimalMoney::round(DecimalMoney::multiply($sourceAmount, (string) $fx['source_to_transaction_rate'], 8));
+            foreach ($breakdown as &$leg) {
+                $leg['posted_amount'] = DecimalMoney::round(DecimalMoney::multiply((string) $leg['source_amount'], (string) $fx['source_to_transaction_rate'], 8));
+                $leg['posted_currency'] = $currency;
+                $leg['fx'] = $fx;
+            }
+            unset($leg);
+        }
+        $extra = [
+            'source_currency' => 'USD', 'source_amount' => $sourceAmount,
+            'shipment_count' => count($breakdown), 'shipment_breakdown' => $breakdown,
+            'aggregation_rule' => 'parent_sum_of_shipment_legs_v1',
+        ];
+        if ($currency !== 'USD') $extra['posting_fx'] = $fx + ['base_amount' => $sourceAmount];
+        $family = $costType === 'first_mile_cost' ? 'first-mile' : 'handling';
+        $source = 'multi-shipment:v1:'.$family.':order:'.$order->getKey().':'.substr(hash('sha256', implode(';', $fingerprint)), 0, 24);
+        return $this->candidate($costType, $amount, $currency, 'confirmed_manual', 'confirmed', $source, $sourceAt, $extra);
+    }
+
+    private function aggregateCarrierCandidate(Model $order): array
+    {
+        $evidence = $this->carrier->read($order->getKey());
+        if ($evidence === null || isset($evidence['blocked'])) return $this->blocked('last_mile_cost', (string) ($evidence['blocked'] ?? 'carrier_evidence_missing'));
+        $currency = $this->orderCurrency($order); $total = '0'; $breakdown = []; $fingerprint = []; $sourceAt = null;
+        $rawBreakdown = array_map(static function (array $leg) use ($currency): array {
+            $billing = is_array($leg['billing'] ?? null) ? $leg['billing'] : null;
+            return [
+                'shipment_id' => (int) ($leg['shipment_id'] ?? 0),
+                'fulfillment_order_id' => $leg['fulfillment_order_id'] ?? null, 'fulfillment_suffix' => $leg['fulfillment_suffix'] ?? null,
+                'warehouse_slug' => $leg['warehouse_slug'] ?? null, 'warehouse_code' => $leg['warehouse_code'] ?? null,
+                'warehouse_name' => $leg['warehouse_name'] ?? null, 'tracking_number' => $leg['tracking_number'] ?? null,
+                'carrier' => $leg['carrier'] ?? null, 'shipped_units' => $leg['shipped_units'] ?? null, 'items' => $leg['items'] ?? [],
+                'billing_id' => $billing['billing_id'] ?? null, 'source_amount' => $billing['actual_cost'] ?? null,
+                'source_currency' => $billing['currency'] ?? null, 'posted_amount' => null, 'posted_currency' => $currency,
+                'billing_document_number' => $billing['billing_document_number'] ?? null,
+                'provider_reference' => $billing['provider_reference'] ?? null, 'data_source' => $billing['data_source'] ?? null,
+                'fx' => null,
+            ];
+        }, $evidence['shipments'] ?? []);
+        foreach ($evidence['shipments'] ?? [] as $leg) {
+            $shipmentId = (int) ($leg['shipment_id'] ?? 0); $billing = $leg['billing'] ?? null;
+            if (! is_array($billing)) return $this->blocked('last_mile_cost', 'carrier_billing_missing_on_shipment', ['shipment_id' => $shipmentId, 'shipment_count' => (int) ($evidence['shipment_count'] ?? 0), 'shipment_breakdown' => $rawBreakdown]);
+            $billingId = (int) ($billing['billing_id'] ?? 0);
+            $sourceCurrency = strtoupper(trim((string) ($billing['currency'] ?? '')));
+            $identity = $billing['billing_document_number'] ?? $billing['provider_reference'] ?? $billing['data_source'] ?? null;
+            if ($billingId < 1 || ($billing['actual_cost'] ?? null) === null || $sourceCurrency === '' || ! is_string($identity) || trim($identity) === '') {
+                return $this->blocked('last_mile_cost', 'complete_carrier_billing_evidence_required', ['shipment_id' => $shipmentId]);
+            }
+            $sourceAmount = DecimalMoney::round((string) $billing['actual_cost']); $postedAmount = $sourceAmount; $legFx = null;
+            if ($sourceCurrency !== $currency) {
+                $fx = $this->fxBridge->preview($order, $sourceCurrency);
+                if (! ($fx['available'] ?? false)) return $this->blocked('last_mile_cost', 'carrier_billing_fx_snapshot_unavailable', ['shipment_id' => $shipmentId, 'source_currency' => $sourceCurrency, 'fx_reason' => $fx['reason'] ?? 'fx_unavailable']);
+                $postedAmount = DecimalMoney::round(DecimalMoney::multiply($sourceAmount, (string) $fx['source_to_transaction_rate'], 8));
+                $legFx = $fx;
+            }
+            $total = DecimalMoney::add($total, $postedAmount, 8);
+            $fingerprint[] = implode('|', [$shipmentId, $billingId, $sourceCurrency, $sourceAmount, trim($identity)]);
+            $breakdown[] = [
+                'shipment_id' => $shipmentId, 'billing_id' => $billingId,
+                'fulfillment_order_id' => $leg['fulfillment_order_id'] ?? null, 'fulfillment_suffix' => $leg['fulfillment_suffix'] ?? null,
+                'warehouse_slug' => $leg['warehouse_slug'] ?? null, 'warehouse_code' => $leg['warehouse_code'] ?? null,
+                'warehouse_name' => $leg['warehouse_name'] ?? null, 'tracking_number' => $leg['tracking_number'] ?? null,
+                'carrier' => $leg['carrier'] ?? null, 'shipped_units' => $leg['shipped_units'] ?? null,
+                'source_amount' => $sourceAmount, 'source_currency' => $sourceCurrency,
+                'posted_amount' => $postedAmount, 'posted_currency' => $currency,
+                'billing_document_number' => $billing['billing_document_number'] ?? null,
+                'provider_reference' => $billing['provider_reference'] ?? null, 'data_source' => $billing['data_source'] ?? null,
+                'fx' => $legFx, 'items' => $leg['items'] ?? [],
+            ];
+            $candidateSourceAt = $billing['billed_at'] ?? $billing['updated_at'] ?? null;
+            if ($candidateSourceAt !== null && ($sourceAt === null || $candidateSourceAt > $sourceAt)) $sourceAt = $candidateSourceAt;
+        }
+        if ($breakdown === []) return $this->blocked('last_mile_cost', 'canonical_shipment_missing');
+        sort($fingerprint); $total = DecimalMoney::round($total);
+        $extra = ['shipment_count' => count($breakdown), 'shipment_breakdown' => $breakdown, 'aggregation_rule' => 'parent_sum_of_shipment_carrier_billing_v1'];
+        if ($currency !== 'USD') {
+            $posting = $this->fxBridge->preview($order, $currency);
+            if (! ($posting['available'] ?? false)) return $this->blocked('last_mile_cost', 'carrier_billing_transaction_fx_snapshot_unavailable', $extra + ['fx_reason' => $posting['reason'] ?? 'fx_unavailable']);
+            $extra['posting_fx'] = $posting + ['base_amount' => DecimalMoney::round(DecimalMoney::multiply($total, (string) $posting['source_to_usd_rate'], 8))];
+        }
+        $source = 'multi-shipment:v1:last-mile:order:'.$order->getKey().':'.substr(hash('sha256', implode(';', $fingerprint)), 0, 24);
+        return $this->candidate('last_mile_cost', $total, $currency, 'provider_import', 'confirmed', $source, $sourceAt, $extra);
+    }
+
     private function carrierCandidate(Model $order): array
     {
+        if ($this->multiShipmentAggregationEnabled()) return $this->aggregateCarrierCandidate($order);
         $evidence = $this->carrier->read($order->getKey());
         if ($evidence === null || isset($evidence['blocked'])) {
             return $this->blocked('last_mile_cost', (string) ($evidence['blocked'] ?? 'carrier_evidence_missing'));
@@ -736,6 +1022,7 @@ final class CostMaterializationService
 
     private function overseasHandlingCandidate(Model $order): array
     {
+        if ($this->multiShipmentAggregationEnabled()) return $this->aggregateRuleCandidate($order, 'overseas_handling_cost');
         $reader = $this->overseasHandlingReader();
         if ($reader === null) return $this->blocked('overseas_handling_cost', 'overseas_handling_feature_unavailable');
         $evidence=$reader->read($order->getKey());
@@ -756,6 +1043,7 @@ final class CostMaterializationService
 
     private function firstMileCandidate(Model $order): array
     {
+        if ($this->multiShipmentAggregationEnabled()) return $this->aggregateRuleCandidate($order, 'first_mile_cost');
         $evidence = $this->fulfillmentOrigin->read($order->getKey());
         if ($evidence === null || isset($evidence['blocked'])) {
             return $this->blocked('first_mile_cost', (string) ($evidence['blocked'] ?? 'fulfillment_origin_missing'));
@@ -970,6 +1258,36 @@ final class CostMaterializationService
         return $this->decorateDisposition($candidate, $disposition, $entry);
     }
 
+    private function annotateMultiShipmentDelta(Model $order, array $candidate): array
+    {
+        $entry = $order->costEntries()->where('cost_type', $candidate['cost_type'])->first();
+        $candidate['previous_amount'] = $entry?->amount;
+        $candidate['previous_currency'] = $entry?->currency;
+        $candidate['delta_amount'] = null;
+        if (($candidate['status'] ?? null) !== 'blocked'
+            && isset($candidate['amount'], $candidate['currency'])
+            && ($entry === null || strtoupper((string) $entry->currency) === strtoupper((string) $candidate['currency']))) {
+            $candidate['delta_amount'] = DecimalMoney::round(bcsub((string) $candidate['amount'], (string) ($entry?->amount ?? '0'), 8));
+        }
+        return $candidate;
+    }
+
+    private function isMultiShipmentCandidate(array $candidate): bool
+    {
+        return str_starts_with((string) ($candidate['source_reference'] ?? ''), 'multi-shipment:v1:');
+    }
+
+    private function multiShipmentMayReplace(array $candidate, Model $entry): bool
+    {
+        $source = (string) $entry->source_reference;
+        if (str_starts_with($source, 'multi-shipment:v1:')) return true;
+        return match ((string) ($candidate['cost_type'] ?? '')) {
+            'first_mile_cost' => str_starts_with($source, 'owner-rule:first-mile:v1:'),
+            'last_mile_cost' => str_starts_with($source, 'carrier-billing:v1:'),
+            default => false,
+        };
+    }
+
     private function disposition(array $candidate, ?Model $entry): string
     {
         if ($entry === null) {
@@ -982,6 +1300,10 @@ final class CostMaterializationService
             && (string) $entry->status === (string) $candidate['status']
             && $this->fxSnapshotMatches($candidate, $entry)) {
             return ($candidate['posting_fx']['freeze_transaction_fx'] ?? false) ? 'apply' : 'noop';
+        }
+        if ($this->isMultiShipmentCandidate($candidate)) {
+            if ($this->multiShipmentMayReplace($candidate, $entry)) return 'apply';
+            if (in_array((string) $entry->provenance, self::STRONG_PROVENANCE, true)) return 'blocked';
         }
         if ($candidate['provenance'] === 'estimated_reference' && in_array((string) $entry->provenance, self::STRONG_PROVENANCE, true)) {
             return 'blocked';
@@ -1053,7 +1375,8 @@ final class CostMaterializationService
             || str_starts_with($source, 'last-mile-estimate:v1:')
             || str_starts_with($source, 'affiliatewp-referrals:v1:')
             || str_starts_with($source, 'product-cost-source:v1:')
-            || str_starts_with($source, 'owner-rule:payment-fee:v1:');
+            || str_starts_with($source, 'owner-rule:payment-fee:v1:')
+            || str_starts_with($source, 'multi-shipment:v1:');
     }
 
     private function orderCurrency(Model $order): string
