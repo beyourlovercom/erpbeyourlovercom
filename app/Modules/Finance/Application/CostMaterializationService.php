@@ -1211,6 +1211,11 @@ final class CostMaterializationService
             return ['status' => $disposition, 'entry' => $this->decorateDisposition($candidate, $disposition, $entry)];
         }
 
+        // Capture the pre-write state so we can emit an estimate→actual audit when applicable.
+        $previousEstimateSnapshot = ($entry !== null && in_array((string) $entry->provenance, ['estimated_reference'], true))
+            ? $entry->toArray()
+            : null;
+
         $values = [
             'cost_type' => $candidate['cost_type'],
             'amount' => $candidate['amount'],
@@ -1237,6 +1242,39 @@ final class CostMaterializationService
             $entry->fill($values)->save();
         } else {
             $entry = $order->costEntries()->create($values);
+        }
+
+        // P8.2 audit: emit explicit restatement context when an actual/confirmed fact replaces an estimate.
+        if ($previousEstimateSnapshot !== null && in_array((string) $candidate['provenance'], self::STRONG_PROVENANCE, true)) {
+            $variance = null;
+            $prevCurrency = strtoupper((string) ($previousEstimateSnapshot['currency'] ?? ''));
+            $newCurrency = strtoupper((string) $candidate['currency']);
+            if ($prevCurrency === $newCurrency) {
+                $variance = DecimalMoney::round(bcsub((string) $candidate['amount'], (string) $previousEstimateSnapshot['amount'], 8));
+            }
+            $this->audit->record(
+                AuditActor::system(AuditSource::InternalSystem),
+                'finance.estimate_to_actual_restatement',
+                $order::class,
+                $order->getKey(),
+                before: [
+                    'cost_type' => $candidate['cost_type'],
+                    'estimated_amount' => $previousEstimateSnapshot['amount'],
+                    'estimated_currency' => $previousEstimateSnapshot['currency'],
+                    'estimated_source_reference' => $previousEstimateSnapshot['source_reference'],
+                    'estimated_provenance' => $previousEstimateSnapshot['provenance'],
+                ],
+                after: [
+                    'cost_type' => $candidate['cost_type'],
+                    'actual_amount' => $candidate['amount'],
+                    'actual_currency' => $candidate['currency'],
+                    'actual_source_reference' => $candidate['source_reference'],
+                    'actual_provenance' => $candidate['provenance'],
+                    'variance' => $variance,
+                    'variance_currency' => $variance !== null ? $newCurrency : null,
+                ],
+                reason: 'finance.p8_2_estimate_to_actual_restatement',
+            );
         }
 
         return ['status' => 'applied', 'entry' => $entry->fresh()->toArray()];

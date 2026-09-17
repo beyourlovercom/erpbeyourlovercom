@@ -91,6 +91,27 @@ const countryLabel = (value: string | null) => ({ US: '美国', CA: '加拿大',
 const warehouseLabel = (value: string | null | undefined) => ({ FACTORY: '中国工厂', 'US-LA': '美西仓（US-LA）', 'US-NY': '美东纽约仓（US-NY）', 'US-MOREPLUS': '美西 MorePlus 仓', 'US-SM': '美西世迈仓', 'DE-TIANYUN': '德国天运仓', CA: '加拿大仓' }[String(value ?? '').toUpperCase()] ?? value ?? '—')
 const totalLogistics = e.formula.filter(line => ['first_mile_cost', 'overseas_handling_cost', 'last_mile_cost'].includes(line.cost_type))
 const formulaSymbol = (index: number) => index === 0 ? '' : '+'
+
+// P8.2 maturity helpers
+const s = e.summary
+const ageDays: number | null = s.age_days ?? null
+const maturityState: string | null = s.maturity_state ?? null
+const reconciliationDue: boolean = s.reconciliation_due ?? false
+const estimateAllowed: boolean = s.estimate_allowed ?? true
+const costCompletionPct: number = s.cost_completion_percent ?? 0
+const unresolvedEstimateCount: number = s.unresolved_estimate_count ?? 0
+const hasEstimatedCosts: boolean = (s.estimated_cost_count ?? 0) > 0
+const show30dBanner: boolean = reconciliationDue && hasEstimatedCosts
+const show45dBanner: boolean = (ageDays ?? 0) > 45 && hasEstimatedCosts
+const isEstimatedProfit: boolean = s.canonical_final_ready !== true && (s.canonical_estimated_ready === true)
+const settlementStatus: string = s.revenue_status ?? 'incomplete'
+const maturityLabel = (state: string | null) => ({ fresh_estimate_allowed: '新订单 · 估算允许', estimate_allowed: '估算允许（30天内）', actual_reconciliation_due: '待真实成本结算（30–45天）', actual_cost_overdue: '成本已逾期（超过45天）' }[state ?? ''] ?? '—')
+const dataStatusLabel = () => {
+    if (s.canonical_final_ready) return '最终确认'
+    if (s.canonical_estimated_ready) return '含估算'
+    return '数据不完整'
+}
+const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomplete: '未完成', not_confirmed: '未确认' }[val] ?? val)
 </script>
 
 <template>
@@ -115,6 +136,38 @@ const formulaSymbol = (index: number) => index === 0 ? '' : '+'
             </header>
 
             <nav class="tabs"><span>概览</span><span>商品（{{ e.order.product_count }}）</span><span>发货单（{{ e.order.shipment_count }}）</span><b>成本与利润</b><span>时间线</span><span>证据</span></nav>
+
+            <!-- P8.2 KPI strip -->
+            <section class="kpi-strip">
+                <div class="kpi-item">
+                    <span class="kpi-label">成本完整度</span>
+                    <strong class="kpi-val">{{ costCompletionPct }}%</strong>
+                    <small>{{ s.confirmed_cost_count ?? 0 }} 已确认 · {{ s.estimated_cost_count ?? 0 }} 估算 · {{ s.missing_required_cost_count ?? 0 }} 缺失</small>
+                </div>
+                <div class="kpi-item">
+                    <span class="kpi-label">数据状态</span>
+                    <strong class="kpi-val" :class="isEstimatedProfit ? 'amber' : ''">{{ dataStatusLabel() }}</strong>
+                    <small>{{ isEstimatedProfit ? '含估算成本，不计入最终利润' : (s.canonical_final_ready ? '所有成本已确认' : '数据待补充') }}</small>
+                </div>
+                <div class="kpi-item">
+                    <span class="kpi-label">结算状态</span>
+                    <strong class="kpi-val">{{ settlementStatusLabel(settlementStatus) }}</strong>
+                    <small>收入来源已{{ settlementStatus === 'confirmed' ? '核实' : '待核实' }}</small>
+                </div>
+                <div class="kpi-item" v-if="ageDays !== null">
+                    <span class="kpi-label">订单账龄</span>
+                    <strong class="kpi-val" :class="reconciliationDue ? 'amber' : ''">{{ ageDays }} 天</strong>
+                    <small>{{ maturityLabel(maturityState) }}</small>
+                </div>
+            </section>
+
+            <!-- P8.2 overdue banners -->
+            <div v-if="show45dBanner" class="overdue-banner overdue-red">
+                ⚠ 超过 45 天 · 成本已严重逾期 · 含 {{ unresolvedEstimateCount }} 项未结算估算成本，请尽快补录真实账单
+            </div>
+            <div v-else-if="show30dBanner" class="overdue-banner overdue-amber">
+                ⏳ 30+ 天订单 · 待真实成本结算 · 含 {{ unresolvedEstimateCount }} 项估算成本（真实月度账单到账后，系统将自动替换为实际金额）
+            </div>
 
             <section class="summary-panel">
                 <h2>订单利润汇总</h2>
@@ -192,12 +245,19 @@ const formulaSymbol = (index: number) => index === 0 ? '' : '+'
                         <article class="total"><strong>{{ money(e.summary.canonical_known_cost, e.order.currency) }}</strong><small>当前已核算成本</small></article>
                     </div>
                 </div>
-                <aside class="profit-box" :class="{ pending: !e.summary.canonical_final_ready }">
-                    <span>利润计算</span>
-                    <strong>{{ money(e.summary.canonical_contribution_profit, e.order.currency) }}</strong>
-                    <p>{{ money(e.summary.net_revenue, e.order.currency) }} − {{ money(e.summary.canonical_known_cost, e.order.currency) }}</p>
-                    <b>利润率 = {{ pct(e.summary.canonical_margin) }}</b>
-                    <small v-if="!e.summary.canonical_final_ready">必要成本证据不完整，最终利润暂不确认。</small>
+                <aside class="profit-box" :class="{ pending: !e.summary.canonical_final_ready, estimated: isEstimatedProfit }">
+                    <span v-if="e.summary.canonical_final_ready">最终利润</span>
+                    <span v-else-if="isEstimatedProfit">预估利润 <em class="est-tag">估算</em></span>
+                    <span v-else>利润计算</span>
+                    <strong v-if="e.summary.canonical_final_ready">{{ money(e.summary.canonical_contribution_profit, e.order.currency) }}</strong>
+                    <strong v-else-if="isEstimatedProfit" class="estimated-profit">{{ money(e.summary.canonical_estimated_profit, e.order.currency) }}</strong>
+                    <strong v-else>—</strong>
+                    <p v-if="e.summary.canonical_final_ready">{{ money(e.summary.net_revenue, e.order.currency) }} − {{ money(e.summary.canonical_known_cost, e.order.currency) }}</p>
+                    <p v-else-if="isEstimatedProfit">净收入 − 当前估算成本（含 {{ s.estimated_cost_count }} 项估算）</p>
+                    <b v-if="e.summary.canonical_final_ready">利润率 = {{ pct(e.summary.canonical_margin) }}</b>
+                    <b v-else-if="isEstimatedProfit">预估利润率 = {{ pct(e.summary.canonical_estimated_margin) }}</b>
+                    <small v-if="isEstimatedProfit">含估算成本，非最终数据。真实账单到账后系统自动更新。</small>
+                    <small v-else-if="!e.summary.canonical_final_ready">必要成本证据不完整，最终利润暂不确认。</small>
                 </aside>
             </section>
         </section>
@@ -218,7 +278,21 @@ const formulaSymbol = (index: number) => index === 0 ? '' : '+'
 .summary-grid article{min-height:78px;background:#fff;border:1px solid #dce6ea;border-radius:7px;padding:12px;display:grid;gap:4px;align-content:center}.summary-grid article span{font-size:11px;color:#6b7b82}.summary-grid article strong{font-size:19px}.summary-grid article.danger strong{color:#d12e2e}.summary-grid em{font-style:normal;font-weight:800;color:#64757a}.formula-card{border-color:#84b6f6!important}.formula-card strong{font-size:13px!important;color:#235fb3}.formula-card small{color:#60758a}
 .cost-section { border:1px solid #dfe6e8; border-radius:8px; padding:12px; background:#fff; }.section-head{display:flex;justify-content:space-between;gap:18px;align-items:center}.section-head h2 small{font-weight:500;color:#596b72}.rule-note{margin:7px 0 10px;color:#c0392b;font-size:12px}.table-wrap{overflow:auto;border:1px solid #e1e7e9;border-radius:6px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;border-right:1px solid #e5eaec;border-bottom:1px solid #e5eaec;text-align:left;vertical-align:middle}th:last-child,td:last-child{border-right:0}thead th,tfoot th{background:#f4f7f8;font-weight:700;white-space:nowrap}tfoot th{border-bottom:0}td small,td span+small{display:block;color:#849198;margin-top:3px}.item-chip{display:block;white-space:nowrap}.empty{text-align:center;color:#87959a;padding:18px}.state{display:inline-flex;padding:3px 7px;border-radius:999px;font-weight:700;font-size:10px}.state-confirmed{background:#e5f6eb;color:#18734e}.state-estimated,.state-incomplete{background:#fff2cf;color:#956100}.state-missing,.state-blocked{background:#feeceb;color:#b83832}.state-review{background:#f3eafa;color:#7a3ea1}code{font-size:10px;color:#52656d;word-break:break-all}
 
-.final-panel{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:14px;border:1px solid #dfe6e8;border-radius:8px;padding:14px;background:#fff}.final-panel>div>p{margin:5px 0 12px;color:#6d7d84;font-size:11px}.formula-line{display:flex;align-items:stretch;gap:7px;overflow:auto}.formula-line article{min-width:108px;border:1px solid #dfe6e8;border-radius:7px;padding:9px;display:grid;gap:3px;background:#fafcfc}.formula-line article strong{font-size:14px}.formula-line article small{font-size:10px;color:#75868d}.formula-line article.incomplete{border-style:dashed;opacity:.65}.formula-line article.total{background:#fff1f1;border-color:#f2c7c7;color:#b42323}.operator{align-self:center;font-weight:800;color:#61747b}.profit-box{border:1px solid #bfe3ce;border-radius:8px;background:#eefaf3;padding:14px;display:grid;gap:7px;align-content:center}.profit-box>span{font-size:12px;color:#567467}.profit-box>strong{font-size:24px;color:#168052}.profit-box p{margin:0;color:#2d6e54}.profit-box b{color:#137248}.profit-box small{color:#8a6500}.profit-box.pending{background:#fff9eb;border-color:#ead7a8}.profit-box.pending>strong{color:#9a6500}
+.final-panel{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:14px;border:1px solid #dfe6e8;border-radius:8px;padding:14px;background:#fff}.final-panel>div>p{margin:5px 0 12px;color:#6d7d84;font-size:11px}.formula-line{display:flex;align-items:stretch;gap:7px;overflow:auto}.formula-line article{min-width:108px;border:1px solid #dfe6e8;border-radius:7px;padding:9px;display:grid;gap:3px;background:#fafcfc}.formula-line article strong{font-size:14px}.formula-line article small{font-size:10px;color:#75868d}.formula-line article.incomplete{border-style:dashed;opacity:.65}.formula-line article.total{background:#fff1f1;border-color:#f2c7c7;color:#b42323}.operator{align-self:center;font-weight:800;color:#61747b}.profit-box{border:1px solid #bfe3ce;border-radius:8px;background:#eefaf3;padding:14px;display:grid;gap:7px;align-content:center}.profit-box>span{font-size:12px;color:#567467}.profit-box>strong{font-size:24px;color:#168052}.profit-box p{margin:0;color:#2d6e54}.profit-box b{color:#137248}.profit-box small{color:#8a6500}.profit-box.pending{background:#fff9eb;border-color:#ead7a8}.profit-box.pending>strong{color:#9a6500}.profit-box.estimated{background:#fff8e6;border-color:#f0c040}.profit-box.estimated>strong,.estimated-profit{color:#9a6000}.est-tag{background:#fff2cc;color:#806000;border:1px solid #e8c300;border-radius:4px;font-size:10px;padding:1px 5px;font-style:normal;vertical-align:middle}
+
+/* P8.2 KPI strip */
+.kpi-strip{display:flex;gap:12px;flex-wrap:wrap;border:1px solid #dfe6e8;border-radius:8px;padding:10px 14px;background:#f8fafc}
+.kpi-item{display:grid;gap:2px;min-width:140px;flex:1}
+.kpi-label{font-size:10px;color:#7a8a90;text-transform:uppercase;letter-spacing:.04em}
+.kpi-val{font-size:18px;font-weight:700;color:#18282d}
+.kpi-val.amber{color:#9a6000}
+.kpi-item small{font-size:10px;color:#8a9aa0}
+
+/* P8.2 overdue banners */
+.overdue-banner{border-radius:8px;padding:10px 14px;font-size:12px;font-weight:600;margin:0}
+.overdue-amber{background:#fff8e6;border:1px solid #f0c040;color:#7d5300}
+.overdue-red{background:#fff0ef;border:1px solid #f5a5a2;color:#9a1f1a}
+
 @media(max-width:1180px){.summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.summary-grid em{display:none}.formula-card{grid-column:span 2}.final-panel{grid-template-columns:1fr}.finance-status{min-width:220px}}
-@media(max-width:760px){.order-header{display:grid}.finance-status{min-width:0}.tabs{overflow:auto;gap:18px}.summary-grid{grid-template-columns:1fr 1fr}.formula-card{grid-column:1/-1}.final-panel{padding:10px}.title-row h1{font-size:24px}}
+@media(max-width:760px){.order-header{display:grid}.finance-status{min-width:0}.tabs{overflow:auto;gap:18px}.summary-grid{grid-template-columns:1fr 1fr}.formula-card{grid-column:1/-1}.final-panel{padding:10px}.title-row h1{font-size:24px}.kpi-strip{gap:8px}.kpi-item{min-width:120px}}
 </style>

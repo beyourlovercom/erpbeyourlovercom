@@ -16,6 +16,8 @@ final class OrderProfitExplanationService
     public function __construct(
         private readonly CostMaterializationService $materializer,
         private readonly OrderAnalysisService $analysis,
+        private readonly OrderMaturityService $maturity,
+        private readonly EstimatedProfitProjectionService $estimatedProfit,
     ) {}
 
     /** @return array<string,mixed> */
@@ -45,15 +47,29 @@ final class OrderProfitExplanationService
         $margin = $profit !== null && bccomp($net, '0', 8) !== 0 ? bcdiv($profit, $net, 4) : null;
 
         $shipments = $this->shipmentSection($candidates);
+        $estimatedProjection = $this->estimatedProfit->project($order);
+        $maturityData = $this->maturity->forOrder($order);
 
         return [
             'order' => $this->orderHeader($order, $preview),
-            'summary' => $summary + [
+            'summary' => array_merge($summary, [
                 'canonical_known_cost' => $known,
                 'canonical_final_ready' => $complete,
                 'canonical_contribution_profit' => $profit,
                 'canonical_margin' => $margin,
-            ],
+                'canonical_estimated_ready' => $estimatedProjection['canonical_estimated_ready'],
+                'canonical_estimated_profit' => $estimatedProjection['canonical_estimated_profit'],
+                'canonical_estimated_margin' => $estimatedProjection['canonical_estimated_margin'],
+                'estimated_cost_count' => $estimatedProjection['estimated_cost_count'],
+                'confirmed_cost_count' => $estimatedProjection['confirmed_cost_count'],
+                'missing_required_cost_count' => $estimatedProjection['missing_required_cost_count'],
+                'cost_completion_percent' => $estimatedProjection['cost_completion_percent'],
+                'unresolved_estimate_count' => $estimatedProjection['unresolved_estimate_count'],
+                'age_days' => $maturityData['age_days'],
+                'maturity_state' => $maturityData['maturity_state'],
+                'reconciliation_due' => $maturityData['reconciliation_due'],
+                'estimate_allowed' => $maturityData['estimate_allowed'],
+            ]),
             'product' => $this->productSection($candidates->get('product_cost')),
             'shipments' => $shipments,
             'logistics' => $this->logisticsSection($shipments),
@@ -221,6 +237,21 @@ final class OrderProfitExplanationService
     private function costLine(string $type, ?array $candidate, ?array $posted): array
     {
         $label = $this->costLabel($type);
+        if ($posted !== null && ($posted['state'] ?? null) === 'confirmed') {
+            return [
+                'cost_type' => $type,
+                'label' => $label,
+                'amount' => $posted['amount'] ?? null,
+                'currency' => $posted['currency'] ?? null,
+                'state' => 'confirmed',
+                'formula' => $this->formulaFor($type, $candidate ?? []),
+                'provenance' => $posted['provenance'] ?? null,
+                'status' => $posted['status'] ?? null,
+                'source_reference' => $posted['source_reference'] ?? null,
+                'source_at' => $posted['source_at'] ?? null,
+                'blocker' => null,
+            ];
+        }
         if ($candidate !== null) {
             return [
                 'cost_type' => $type,
