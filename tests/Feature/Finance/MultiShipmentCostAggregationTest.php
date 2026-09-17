@@ -158,6 +158,8 @@ final class MultiShipmentCostAggregationTest extends TestCase
 
         $explanation = app(OrderProfitExplanationService::class)->explain($parent->fresh());
         $this->assertSame('30.00', $explanation['product']['amount']);
+        $this->assertFalse($explanation['summary']['canonical_final_ready']);
+        $this->assertNull($explanation['summary']['canonical_contribution_profit']);
         $this->assertSame('P81-PARENT', $explanation['product']['lines'][0]['sku']);
         $this->assertSame(2, $explanation['order']['shipment_count']);
         $this->assertCount(2, $explanation['shipments']);

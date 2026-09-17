@@ -38,7 +38,8 @@ final class OrderProfitExplanationService
             }
         }
         $known = DecimalMoney::round($known);
-        $complete = collect($costLines)->every(fn (array $line): bool => $line['amount'] !== null && ! in_array($line['state'], ['missing', 'blocked', 'review'], true));
+        $complete = ($summary['profit_status'] ?? null) === 'confirmed'
+            && collect($costLines)->every(fn (array $line): bool => $line['amount'] !== null && $line['state'] === 'confirmed');
         $net = $summary['net_revenue'];
         $profit = $net !== null && $complete ? DecimalMoney::round(bcsub($net, $known, 8)) : null;
         $margin = $profit !== null && bccomp($net, '0', 8) !== 0 ? bcdiv($profit, $net, 4) : null;

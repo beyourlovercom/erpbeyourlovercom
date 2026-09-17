@@ -161,12 +161,14 @@ ERP Changelog remains manual-only.
 - Existing strong/manual/different provider facts fail closed to review and are not silently overwritten.
 - Added dry-run-first `finance:materialize-multi-shipment-costs` with deterministic `plan_sha`, Order/Shipment counts, apply/noop/blocked/review counts and per-cost-type delta summary. Production apply remains separately gated and disabled by default.
 - Existing Accounting continuous delta remains on legacy behavior until `ERP_ACCOUNTING_MULTI_SHIPMENT_ENABLED=true`; no automatic Production rewrite is introduced by code deploy.
+- Estimated / incomplete canonical facts can never produce final confirmed profit: `canonical_final_ready` requires existing Accounting `profit_status=confirmed` and every canonical cost line to be Confirmed.
 - Added canonical Order Profit explainability service and `/accounting/order-costs/{order}` page. Product lines, Shipment contributions, FX/source facts, parent-level costs and final formula are generated from the same materialization evidence rather than frontend business logic.
 - Finance list exposes a dedicated `成本公式` entry while preserving the existing manual fact editor.
 
 ## 11. Local validation — 2026-09-17
-- P8.1 focused matrix: **8 PASS / 68 assertions** covering two overseas Shipments, overseas+China hybrid, three Shipment/N-leg model, mixed-currency per-leg FX, missing carrier bill fail-close, strong-fact review, dry-run plan guard, formula evidence reconciliation and HTTP/Inertia formula route.
-- Finance full regression: **104 PASS / 805 assertions / 1 MySQL-only skip**.
+- P8.1 focused matrix: **8 PASS / 70 assertions** covering two overseas Shipments, overseas+China hybrid, three Shipment/N-leg model, mixed-currency per-leg FX, missing carrier bill fail-close, strong-fact review, dry-run plan guard, formula evidence reconciliation and HTTP/Inertia formula route.
+- Finance full regression: **105 PASS / 822 assertions / 1 MySQL-only skip**.
+- P8.1 + Fulfillment split regression: **20 PASS / 191 assertions**; existing A/B derived-order, gift-SKU and allocation semantics remain green.
 - Vite production build: **PASS** (`936 modules transformed`).
 - Architecture exact-main delta: branch **3 fail / 5 pass / 131 assertions**; exact `main@d99ab97ac44d999c34caa6cd803042431d30da26` is the identical **3 fail / 5 pass / 131 assertions** with the same three failing rule names. Architecture regression delta = 0.
 - `git diff --check` and PHP lint: PASS.
