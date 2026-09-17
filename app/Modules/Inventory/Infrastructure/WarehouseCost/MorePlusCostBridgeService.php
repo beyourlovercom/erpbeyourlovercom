@@ -136,7 +136,7 @@ final class MorePlusCostBridgeService
         if(count($orders)>1) return ['decision'=>'review','reason_code'=>'source_order_ambiguous','shipment_id'=>null,'order_id'=>null];
         $order=$orders[0]; $kind=$order->order_kind instanceof \BackedEnum?$order->order_kind->value:(string)$order->order_kind; $historical=$order->externalReferences->contains(fn($r)=>$r->provider==='historical_logistics');
         if($kind!==OrderKind::Customer->value||$historical) return ['decision'=>'excluded','reason_code'=>'non_customer_order','shipment_id'=>$order->shipment?(int)$order->shipment->id:null,'order_id'=>(int)$order->id];
-        $suffix=strtolower((string)($m[2]??$m[3]??'')); $target=$order;
+        $suffix=strtolower((string)(((string)($m[2]??''))!==''?$m[2]:($m[3]??''))); $target=$order;
         if($suffix!==''){ $children=$order->fulfillmentChildren->filter(fn($child)=>strtolower((string)$child->fulfillment_suffix)===$suffix)->values(); if($children->count()!==1)return ['decision'=>'review','reason_code'=>'fulfillment_suffix_unresolved','shipment_id'=>null,'order_id'=>(int)$order->id]; $target=$children->first(); }
         if($target->shipment){ $existing=$this->tracking((string)$target->shipment->tracking_number); return ['decision'=>'review','reason_code'=>$existing!==$tracking?'existing_shipment_tracking_conflict':'shipment_identity_inconsistent','shipment_id'=>(int)$target->shipment->id,'order_id'=>(int)$target->id]; }
         return ['decision'=>'review','reason_code'=>'shipment_missing','shipment_id'=>null,'order_id'=>(int)$target->id];
