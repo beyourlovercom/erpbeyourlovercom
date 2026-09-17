@@ -79,51 +79,60 @@ const props = defineProps<{ explanation: Explanation }>()
 const e = props.explanation
 const money = (amount: string | null | undefined, currency: string | null | undefined) => amount === null || amount === undefined ? '—' : `${currency ?? e.order.currency} ${amount}`
 const pct = (value: string | null | undefined) => value === null || value === undefined ? '—' : `${(Number(value) * 100).toFixed(1)}%`
-const stateLabel = (state: string) => ({ confirmed: 'Confirmed', estimated: 'Estimated', incomplete: 'Incomplete', missing: 'Missing', blocked: 'Blocked', review: 'Review' }[state] ?? state)
+const stateLabel = (state: string) => ({ confirmed: '已确认', estimated: '估算中', incomplete: '不完整', missing: '缺失', blocked: '受阻', review: '待复核' }[state] ?? '待确认')
+const financeStatusLabel = (status: string | null | undefined) => ({ confirmed: '已确认', completed: '已完成', incomplete: '资料不完整', estimated: '含估算', unposted: '未核算', review: '待复核' }[String(status ?? 'unposted').toLowerCase()] ?? '待确认')
+const missingComponentLabel = (name: string) => ({ 'First Mile': '头程费', Handling: '操作费', 'Last Mile': '尾程费' }[name] ?? name)
+const costLabel = (type: string) => ({ product_cost: '产品成本', warehouse_cost: '仓储成本', first_mile_cost: '头程费', overseas_handling_cost: '海外仓操作费', last_mile_cost: '尾程物流费', payment_fee: '支付手续费', kol_commission: '网红佣金', refund_replacement_loss: '退款 / 补发损失', customs_tax: '关税', other_variable_cost: '其他变动成本' }[type] ?? '其他成本')
+const costFormula = (type: string) => ({ product_cost: 'Σ（单件货本成本 × 主订单商品数量）', warehouse_cost: 'Σ 适用于主订单的仓储成本分摊', first_mile_cost: 'Σ 海外仓发货数量 × USD 1；中国直发 = 0', overseas_handling_cost: 'Σ 海外仓发货数量 × USD 1；中国直发 = 0', last_mile_cost: 'Σ 每个发货单的实际承运商 / 国际小包账单', payment_fee: '平台订单总额 × 3.5%', kol_commission: 'Σ 符合条件的 AffiliateWP 网红佣金', refund_replacement_loss: '已确认的退款 / 补发损失', customs_tax: '当前规则：关税 = 0（后续可扩展）', other_variable_cost: '已确认的其他变动成本' }[type] ?? '以已确认成本证据为准')
+const blockerLabel = (code: string | null | undefined) => ({ confirmed_product_cost_source_incomplete: '货本成本来源不完整', warehouse_storage_allocation_missing: '缺少仓储成本分摊证据', referral_snapshot_missing: '缺少网红佣金快照', carrier_billing_missing_on_shipment: '发货单缺少实际尾程账单', stronger_or_different_existing_fact: '已有人工或更高优先级成本，需人工复核', no_eligible_referrals: '没有可计入的网红佣金', kol_commission_fx_snapshot_unavailable: '网红佣金汇率快照不可用' }[code ?? ''] ?? (code ? '系统证据条件未满足' : '缺少必要证据'))
+const provenanceLabel = (value: string | null | undefined) => ({ confirmed_manual: '人工确认', provider_import: '平台导入', allocated_actual: '实际分摊', estimated_reference: '估算参考', confirmed: '已确认', estimated: '估算' }[value ?? ''] ?? (value ? '系统来源' : '—'))
+const sourceTypeLabel = (value: string) => ({ woocommerce: 'WooCommerce', tiktok_shop: 'TikTok Shop', manual: '人工录入', historical_import: '历史导入' }[value] ?? value)
+const countryLabel = (value: string | null) => ({ US: '美国', CA: '加拿大', GB: '英国', UK: '英国', DE: '德国', FR: '法国', AU: '澳大利亚', MX: '墨西哥', CL: '智利', AR: '阿根廷', UA: '乌克兰', RU: '俄罗斯', TH: '泰国', ID: '印度尼西亚', VN: '越南', IN: '印度', PH: '菲律宾', SG: '新加坡', JP: '日本', KR: '韩国' }[String(value ?? '').toUpperCase()] ?? value ?? '—')
+const warehouseLabel = (value: string | null | undefined) => ({ FACTORY: '中国工厂', 'US-LA': '美西仓（US-LA）', 'US-NY': '美东纽约仓（US-NY）', 'US-MOREPLUS': '美西 MorePlus 仓', 'US-SM': '美西世迈仓', 'DE-TIANYUN': '德国天运仓', CA: '加拿大仓' }[String(value ?? '').toUpperCase()] ?? value ?? '—')
 const totalLogistics = e.formula.filter(line => ['first_mile_cost', 'overseas_handling_cost', 'last_mile_cost'].includes(line.cost_type))
 const formulaSymbol = (index: number) => index === 0 ? '' : '+'
 </script>
 
 <template>
-    <Head :title="`${e.order.erp_order_id ?? 'Order'} · Cost & Profit`" />
+    <Head :title="`${e.order.erp_order_id ?? '订单'} · 成本与利润`" />
     <AuthenticatedLayout title="订单利润" :breadcrumbs="['BYL ERP', '订单', '财务']">
         <section class="profit-page">
             <header class="order-header">
                 <div>
-                    <p class="crumb"><Link href="/accounting/order-costs">Orders</Link> / Order Details / Finance</p>
+                    <p class="crumb"><Link href="/accounting/order-costs">订单</Link> / 订单详情 / 财务</p>
                     <div class="title-row">
-                        <h1>Order #{{ e.order.erp_order_id ?? e.order.id }}</h1>
-                        <span class="badge">Customer Order</span>
-                        <span class="badge blue">{{ e.order.shipment_count }} Shipment{{ e.order.shipment_count === 1 ? '' : 's' }}</span>
+                        <h1>订单 #{{ e.order.erp_order_id ?? e.order.id }}</h1>
+                        <span class="badge">客户订单</span>
+                        <span class="badge blue">{{ e.order.shipment_count }} 个发货单</span>
                     </div>
-                    <p class="meta">Created: {{ e.order.order_date ?? '—' }} · Marketplace: {{ e.order.source_type }} · Shipping Country: {{ e.order.shipping_country ?? '—' }}</p>
-                    <p class="submeta">{{ e.order.product_count }} products · {{ e.order.shipment_count }} shipments · {{ e.order.multi_shipment ? 'Multi-warehouse fulfillment' : 'Single fulfillment' }}</p>
+                    <p class="meta">创建日期：{{ e.order.order_date ?? '—' }} · 来源平台：{{ sourceTypeLabel(e.order.source_type) }} · 收货国家：{{ countryLabel(e.order.shipping_country) }}</p>
+                    <p class="submeta">{{ e.order.product_count }} 个商品 · {{ e.order.shipment_count }} 个发货单 · {{ e.order.multi_shipment ? '多仓拆单履约' : '单仓履约' }}</p>
                 </div>
                 <div class="finance-status" :class="`state-${String(e.summary.finance_status ?? '').toLowerCase()}`">
-                    <strong>{{ e.summary.finance_status ?? 'UNPOSTED' }}</strong>
-                    <span>{{ e.summary.canonical_final_ready ? 'All required canonical facts available' : 'Required evidence is still incomplete' }}</span>
+                    <strong>{{ financeStatusLabel(e.summary.finance_status) }}</strong>
+                    <span>{{ e.summary.canonical_final_ready ? '所有必要成本证据均已确认' : '必要成本证据仍不完整' }}</span>
                 </div>
             </header>
 
-            <nav class="tabs"><span>Overview</span><span>Items ({{ e.order.product_count }})</span><span>Shipments ({{ e.order.shipment_count }})</span><b>Cost & Profit</b><span>Timeline</span><span>Evidence</span></nav>
+            <nav class="tabs"><span>概览</span><span>商品（{{ e.order.product_count }}）</span><span>发货单（{{ e.order.shipment_count }}）</span><b>成本与利润</b><span>时间线</span><span>证据</span></nav>
 
             <section class="summary-panel">
-                <h2>Order Profit Summary</h2>
+                <h2>订单利润汇总</h2>
                 <div class="summary-grid">
-                    <article><span>Net Revenue</span><strong>{{ money(e.summary.net_revenue, e.order.currency) }}</strong></article>
+                    <article><span>净收入</span><strong>{{ money(e.summary.net_revenue, e.order.currency) }}</strong></article>
                     <em>−</em>
-                    <article class="danger"><span>Total Canonical Cost</span><strong>{{ money(e.summary.canonical_known_cost, e.order.currency) }}</strong></article>
+                    <article class="danger"><span>当前已核算成本</span><strong>{{ money(e.summary.canonical_known_cost, e.order.currency) }}</strong></article>
                     <em>=</em>
-                    <article><span>Contribution Profit</span><strong>{{ money(e.summary.canonical_contribution_profit, e.order.currency) }}</strong></article>
-                    <article><span>Profit Margin</span><strong>{{ pct(e.summary.canonical_margin) }}</strong></article>
-                    <article class="formula-card"><span>Formula</span><strong>Net Revenue − Total Canonical Cost</strong><small>Final profit stays unconfirmed when required evidence is missing.</small></article>
+                    <article><span>贡献利润</span><strong>{{ money(e.summary.canonical_contribution_profit, e.order.currency) }}</strong></article>
+                    <article><span>利润率</span><strong>{{ pct(e.summary.canonical_margin) }}</strong></article>
+                    <article class="formula-card"><span>计算公式</span><strong>净收入 − 当前已核算成本</strong><small>必要证据缺失时，最终利润不会被标记为已确认。</small></article>
                 </div>
             </section>
 
             <section class="cost-section">
-                <div class="section-head"><h2>1. Product Cost <small>(Parent-owned, all items)</small></h2><strong>{{ money(e.product.amount, e.product.currency) }}</strong></div>
-                <p class="rule-note">货本：只在 Parent Order 计算一次，包含所有商品；拆分 Shipment 不会重复计算。</p>
-                <div class="table-wrap"><table><thead><tr><th>#</th><th>Product</th><th>SKU</th><th>Unit Cost</th><th>Qty</th><th>Subtotal</th><th>Cost Source</th><th>Status</th></tr></thead>
+                <div class="section-head"><h2>1. 产品成本 <small>（主订单持有，包含全部商品）</small></h2><strong>{{ money(e.product.amount, e.product.currency) }}</strong></div>
+                <p class="rule-note">货本：只在主订单计算一次，包含所有商品；拆分为多个发货单后不会重复计算。</p>
+                <div class="table-wrap"><table><thead><tr><th>#</th><th>商品</th><th>SKU</th><th>单件成本</th><th>数量</th><th>小计</th><th>成本来源</th><th>状态</th></tr></thead>
                     <tbody>
                         <tr v-for="(line, index) in e.product.lines" :key="line.item_id ?? index">
                             <td>{{ index + 1 }}</td><td>{{ line.product_name ?? '—' }}</td><td>{{ line.sku ?? '—' }}</td>
@@ -131,64 +140,64 @@ const formulaSymbol = (index: number) => index === 0 ? '' : '+'
                             <td><span>{{ line.source_key ?? line.source_reference ?? '—' }}</span><small>{{ line.effective_from ?? '' }}</small></td>
                             <td><span class="state" :class="`state-${e.product.state}`">{{ stateLabel(e.product.state) }}</span></td>
                         </tr>
-                        <tr v-if="!e.product.lines.length"><td colspan="8" class="empty">Product cost evidence unavailable: {{ e.product.blocker ?? 'missing' }}</td></tr>
+                        <tr v-if="!e.product.lines.length"><td colspan="8" class="empty">产品成本证据不可用：{{ blockerLabel(e.product.blocker) }}<small v-if="e.product.blocker">系统代码：{{ e.product.blocker }}</small></td></tr>
                     </tbody>
-                    <tfoot><tr><th colspan="5">Total Product Cost</th><th>{{ money(e.product.amount, e.product.currency) }}</th><th colspan="2">Parent only · no duplicate on fulfillment children</th></tr></tfoot>
+                    <tfoot><tr><th colspan="5">产品成本合计</th><th>{{ money(e.product.amount, e.product.currency) }}</th><th colspan="2">仅计入主订单 · 子发货单不重复计费</th></tr></tfoot>
                 </table></div>
             </section>
 
             <section class="cost-section">
-                <div class="section-head"><h2>2. Logistics Cost <small>(Shipment-owned, aggregated to Parent Order)</small></h2></div>
-                <p class="rule-note">物流成本：每个 Shipment 独立核算，最后汇总到 Parent Order。海外仓头程/操作费按 shipped unit × USD 1；中国直发两项均为 0。</p>
-                <div class="table-wrap"><table><thead><tr><th>Shipment</th><th>Warehouse / Origin</th><th>Items / Qty</th><th>First Mile</th><th>Handling</th><th>Last Mile</th><th>Shipment Total</th><th>Status</th></tr></thead>
+                <div class="section-head"><h2>2. 物流成本 <small>（按发货单核算，汇总到主订单）</small></h2></div>
+                <p class="rule-note">物流成本：每个发货单独立核算，最后汇总到主订单。海外仓头程费 / 操作费按实际发货数量 × USD 1；中国直发两项均为 0。</p>
+                <div class="table-wrap"><table><thead><tr><th>发货单</th><th>仓库 / 发货地</th><th>商品 / 数量</th><th>头程费</th><th>操作费</th><th>尾程费</th><th>本票物流成本</th><th>状态</th></tr></thead>
                     <tbody>
                         <tr v-for="row in e.shipments" :key="row.shipment_id">
-                            <td><b>#{{ row.shipment_id }}</b><small>{{ row.tracking_number ?? 'No tracking' }}</small></td>
-                            <td>{{ row.warehouse_code ?? row.warehouse_name ?? row.warehouse_slug ?? '—' }}</td>
-                            <td><span v-for="(item, idx) in row.items" :key="idx" class="item-chip">{{ item.sku ?? 'SKU' }} × {{ item.quantity ?? 0 }}</span><small>Total units: {{ row.shipped_units ?? '—' }}</small></td>
-                            <td>{{ money(row.first_mile?.amount, row.first_mile?.currency) }}<small v-if="row.first_mile?.source_currency && row.first_mile.source_currency !== row.first_mile.currency">source {{ money(row.first_mile.source_amount, row.first_mile.source_currency) }}</small></td>
-                            <td>{{ money(row.handling?.amount, row.handling?.currency) }}<small v-if="row.handling?.source_currency && row.handling.source_currency !== row.handling.currency">source {{ money(row.handling.source_amount, row.handling.source_currency) }}</small></td>
-                            <td>{{ money(row.last_mile?.amount, row.last_mile?.currency) }}<small>{{ row.carrier ?? 'Carrier evidence' }}</small></td>
+                            <td><b>#{{ row.shipment_id }}</b><small>{{ row.tracking_number ?? '暂无物流单号' }}</small></td>
+                            <td>{{ warehouseLabel(row.warehouse_code ?? row.warehouse_name ?? row.warehouse_slug) }}</td>
+                            <td><span v-for="(item, idx) in row.items" :key="idx" class="item-chip">{{ item.sku ?? 'SKU' }} × {{ item.quantity ?? 0 }}</span><small>发货总件数：{{ row.shipped_units ?? '—' }}</small></td>
+                            <td>{{ money(row.first_mile?.amount, row.first_mile?.currency) }}<small v-if="row.first_mile?.source_currency && row.first_mile.source_currency !== row.first_mile.currency">原币金额 {{ money(row.first_mile.source_amount, row.first_mile.source_currency) }}</small></td>
+                            <td>{{ money(row.handling?.amount, row.handling?.currency) }}<small v-if="row.handling?.source_currency && row.handling.source_currency !== row.handling.currency">原币金额 {{ money(row.handling.source_amount, row.handling.source_currency) }}</small></td>
+                            <td>{{ money(row.last_mile?.amount, row.last_mile?.currency) }}<small>{{ row.carrier ?? '待补承运商账单' }}</small></td>
                             <td><strong>{{ money(row.shipment_total, row.shipment_total_currency) }}</strong></td>
-                            <td><span class="state" :class="`state-${row.state}`">{{ stateLabel(row.state) }}</span><small v-if="row.missing_components?.length">Missing: {{ row.missing_components.join(' / ') }}</small></td>
+                            <td><span class="state" :class="`state-${row.state}`">{{ stateLabel(row.state) }}</span><small v-if="row.missing_components?.length">缺少：{{ row.missing_components.map(missingComponentLabel).join(' / ') }}</small></td>
                         </tr>
-                        <tr v-if="!e.shipments.length"><td colspan="8" class="empty">No canonical Shipment evidence found.</td></tr>
+                        <tr v-if="!e.shipments.length"><td colspan="8" class="empty">未找到可核算的发货单成本证据。</td></tr>
                     </tbody>
-                    <tfoot><tr><th colspan="3">Parent Logistics Aggregation</th><th v-for="line in totalLogistics" :key="line.cost_type">{{ money(line.amount, line.currency) }}</th><th>Σ Shipment cost components</th><th><span class="state" :class="`state-${e.logistics.state}`">{{ stateLabel(e.logistics.state) }}</span><small>{{ e.logistics.confirmed_shipment_count }}/{{ e.logistics.shipment_count }} Shipments complete</small></th></tr></tfoot>
+                    <tfoot><tr><th colspan="3">主订单物流汇总</th><th v-for="line in totalLogistics" :key="line.cost_type">{{ money(line.amount, line.currency) }}</th><th>Σ 各发货单成本组成</th><th><span class="state" :class="`state-${e.logistics.state}`">{{ stateLabel(e.logistics.state) }}</span><small>{{ e.logistics.confirmed_shipment_count }}/{{ e.logistics.shipment_count }} 个发货单已完整</small></th></tr></tfoot>
                 </table></div>
             </section>
 
             <section class="cost-section">
-                <div class="section-head"><h2>3. Other Parent-level Costs</h2></div>
-                <p class="rule-note">订单级成本只在 Parent Order 计算一次；不会复制到 fulfillment-derived child orders。</p>
-                <div class="table-wrap"><table><thead><tr><th>Cost</th><th>Calculation Basis</th><th>Amount</th><th>Status</th><th>Provenance</th><th>Evidence / Source</th></tr></thead>
+                <div class="section-head"><h2>3. 其他订单级成本</h2></div>
+                <p class="rule-note">订单级成本只在主订单计算一次；不会复制到拆分后的子发货单。</p>
+                <div class="table-wrap"><table><thead><tr><th>成本项</th><th>计算依据</th><th>金额</th><th>状态</th><th>数据来源</th><th>证据 / 来源</th></tr></thead>
                     <tbody><tr v-for="line in e.other_costs" :key="line.cost_type">
-                        <td><b>{{ line.label }}</b></td><td>{{ line.formula }}</td><td>{{ money(line.amount, line.currency) }}</td>
-                        <td><span class="state" :class="`state-${line.state}`">{{ stateLabel(line.state) }}</span><small v-if="line.blocker">{{ line.blocker }}</small></td>
-                        <td>{{ line.provenance ?? '—' }}</td><td><code>{{ line.source_reference ?? '—' }}</code><small>{{ line.source_at ?? '' }}</small></td>
+                        <td><b>{{ costLabel(line.cost_type) }}</b></td><td>{{ costFormula(line.cost_type) }}</td><td>{{ money(line.amount, line.currency) }}</td>
+                        <td><span class="state" :class="`state-${line.state}`">{{ stateLabel(line.state) }}</span><small v-if="line.blocker">{{ blockerLabel(line.blocker) }}</small><small v-if="line.blocker" class="tech-note">系统代码：{{ line.blocker }}</small></td>
+                        <td>{{ provenanceLabel(line.provenance) }}<small v-if="line.provenance" class="tech-note">{{ line.provenance }}</small></td><td><code>{{ line.source_reference ?? '—' }}</code><small>{{ line.source_at ?? '' }}</small></td>
                     </tr></tbody>
                 </table></div>
             </section>
 
             <section class="final-panel">
                 <div>
-                    <h2>4. Final Calculation</h2>
-                    <p>最终计算公式直接来自 canonical evidence / materialization preview。</p>
+                    <h2>4. 最终计算</h2>
+                    <p>最终计算公式直接来自系统已确认的成本证据与核算预览；证据不完整时不会确认最终利润。</p>
                     <div class="formula-line">
                         <template v-for="(line, index) in e.formula" :key="line.cost_type">
                             <span class="operator">{{ formulaSymbol(index) }}</span>
-                            <article :class="{ incomplete: line.amount === null }"><strong>{{ money(line.amount, line.currency) }}</strong><small>{{ line.label }}</small></article>
+                            <article :class="{ incomplete: line.amount === null }"><strong>{{ money(line.amount, line.currency) }}</strong><small>{{ costLabel(line.cost_type) }}</small></article>
                         </template>
                         <span class="operator">=</span>
-                        <article class="total"><strong>{{ money(e.summary.canonical_known_cost, e.order.currency) }}</strong><small>Canonical Known Cost</small></article>
+                        <article class="total"><strong>{{ money(e.summary.canonical_known_cost, e.order.currency) }}</strong><small>当前已核算成本</small></article>
                     </div>
                 </div>
                 <aside class="profit-box" :class="{ pending: !e.summary.canonical_final_ready }">
                     <span>利润计算</span>
                     <strong>{{ money(e.summary.canonical_contribution_profit, e.order.currency) }}</strong>
                     <p>{{ money(e.summary.net_revenue, e.order.currency) }} − {{ money(e.summary.canonical_known_cost, e.order.currency) }}</p>
-                    <b>Margin = {{ pct(e.summary.canonical_margin) }}</b>
-                    <small v-if="!e.summary.canonical_final_ready">Required evidence incomplete — final profit remains unconfirmed.</small>
+                    <b>利润率 = {{ pct(e.summary.canonical_margin) }}</b>
+                    <small v-if="!e.summary.canonical_final_ready">必要成本证据不完整，最终利润暂不确认。</small>
                 </aside>
             </section>
         </section>
