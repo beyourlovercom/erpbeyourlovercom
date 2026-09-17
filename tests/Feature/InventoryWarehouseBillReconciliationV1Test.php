@@ -84,6 +84,20 @@ final class InventoryWarehouseBillReconciliationV1Test extends TestCase
         $this->actingAs($viewer)->post('/inventory/us-la/costs/reconciliation/'.$batch->id.'/preview')->assertForbidden();
     }
 
+    public function test_multi_warehouse_rollout_exposes_active_and_awaiting_sample_states(): void
+    {
+        $manager=$this->userWith(['inventory.view','inventory.warehouses.manage']);
+        $this->actingAs($manager)->get('/inventory/us-la')->assertOk()->assertInertia(fn($page)=>$page
+            ->where('warehouse.bill_import_onboarding.status','active')
+            ->where('warehouse.bill_import_onboarding.provider','moreplus'));
+        foreach (['us-ny','us-3sm','de','ca'] as $slug) {
+            $this->actingAs($manager)->get('/inventory/'.$slug)->assertOk()->assertInertia(fn($page)=>$page
+                ->where('warehouse.bill_import',null)
+                ->where('warehouse.bill_import_onboarding.status','awaiting_sample')
+                ->where('warehouse.bill_import_onboarding.provider',null));
+        }
+    }
+
     /** @return array{0:Warehouse,1:WarehouseBillImportBatch} */
     private function fixture(): array
     {

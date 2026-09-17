@@ -196,6 +196,25 @@ final class WarehouseController
             'max_kb'=>max(1,min(65536,(int)($config['max_kb']??16384))),
         ];
     }
+    /** @return array{status:string,label:string,provider:?string,format_label:string,note:string}|null */
+    private function billImportOnboarding($w): ?array
+    {
+        $code=strtoupper((string)$w->code); $config=config("warehouse_master.warehouses.{$code}.bill_import");
+        if(!is_array($config)) return null;
+        $enabled=($config['enabled']??false)===true;
+        $provider=trim((string)($config['provider']??''));
+        $status=$enabled?'active':(string)($config['status']??'awaiting_sample');
+        return [
+            'status'=>$status,
+            'label'=>(string)($config['label']??($w->name??$code)),
+            'provider'=>$provider!==''?$provider:null,
+            'format_label'=>(string)($config['format_label']??'待确认'),
+            'note'=>$status==='active'
+                ? 'Provider Adapter 已启用，可上传真实仓库账单并进入核销链。'
+                : '等待该仓真实原始账单样本；未获得样本前禁止猜测字段或启用财务写入。',
+        ];
+    }
+
     private function billPreviewKey(int $warehouseId): string { return 'inventory.warehouse_bill_preview.'.$warehouseId; }
     private function billReconciliationPreviewKey(int $warehouseId): string { return 'inventory.warehouse_bill_reconciliation_preview.'.$warehouseId; }
     /** @param array<string,mixed> $preview @return array<string,mixed> */
@@ -259,7 +278,7 @@ final class WarehouseController
         return [
             'id'=>$w->id,'slug'=>$w->slug,'public_slug'=>$this->inventory->warehousePublicSlug($w),
             'code'=>$w->code,'name'=>$w->name,'name_en'=>$canonical['name_en'] ?? null,'country_code'=>$w->country_code,
-            'role_label'=>$canonical['role_label'] ?? '仓库','bill_import'=>$this->billImportCapability($w),
+            'role_label'=>$canonical['role_label'] ?? '仓库','bill_import'=>$this->billImportCapability($w),'bill_import_onboarding'=>$this->billImportOnboarding($w),
             'is_fulfillment_warehouse'=>in_array($code, $fulfillmentCodes, true),
             'is_inventory_only_warehouse'=>in_array($code, $inventoryOnlyCodes, true),
             'address_line1'=>$w->address_line1,'address_line2'=>$w->address_line2,'city'=>$w->city,'state_region'=>$w->state_region,'postal_code'=>$w->postal_code,
