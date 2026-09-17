@@ -5,7 +5,6 @@ namespace App\Modules\Inventory\Infrastructure\WarehouseCost;
 use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
-use App\Modules\Inventory\Application\WarehouseCost\MorePlusBillFileReader;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseBillImportBatch;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseBillImportRow;
@@ -18,22 +17,20 @@ use RuntimeException;
 final class WarehouseBillImportService
 {
     public function __construct(
-        private readonly MorePlusBillFileReader $morePlus,
+        private readonly WarehouseBillProviderRegistry $providers,
         private readonly AuditRecorder $audit,
     ) {}
 
     /** @return array<string,mixed> */
     public function preview(string $path, Warehouse $warehouse, string $provider = 'moreplus'): array
     {
-        $provider = $this->provider($provider);
-        $this->assertWarehouse($provider, $warehouse);
+        $adapter = $this->providers->get($provider);
+        $provider = $adapter->key();
+        $adapter->assertWarehouse($warehouse);
         $checksum = hash_file('sha256', $path);
         if (! is_string($checksum)) throw new InvalidArgumentException('Unable to checksum warehouse bill source.');
 
-        $source = match ($provider) {
-            'moreplus' => $this->morePlus->read($path),
-            default => throw new InvalidArgumentException('Unsupported warehouse bill provider.'),
-        };
+        $source = $adapter->read($path);
         $plannedRows = [];
         foreach ($source['rows'] as $row) {
             $normalized = [
@@ -52,14 +49,14 @@ final class WarehouseBillImportService
             'category','source_sheet','source_row_number','transaction_number','outbound_order_number','source_order_reference','tracking_number','charged_on','quantity','charge_item_name','charge_amount','row_hash',
         ])), $plannedRows);
         $planChecksum = hash('sha256', json_encode([
-            'version'=>MorePlusBillFileReader::PARSER_VERSION,'provider'=>$provider,'source_checksum'=>$checksum,'warehouse_id'=>(int)$warehouse->id,
+            'version'=>$adapter->parserVersion(),'provider'=>$provider,'source_checksum'=>$checksum,'warehouse_id'=>(int)$warehouse->id,
             'invoice'=>$invoice,'totals'=>$source['totals'],'periods'=>$source['periods'],'counts'=>$source['counts'],'monthly'=>$monthly,'rows'=>$manifest,
         ], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR));
         $existing = WarehouseBillImportBatch::query()->where('provider',$provider)->where('source_checksum',$checksum)->first();
 
         return [
             'mode'=>'dry_run','provider'=>$provider,'warehouse_id'=>(int)$warehouse->id,'warehouse_slug'=>(string)$warehouse->slug,
-            'original_filename'=>basename($path),'source_checksum'=>$checksum,'parser_version'=>MorePlusBillFileReader::PARSER_VERSION,'plan_checksum'=>$planChecksum,
+            'original_filename'=>basename($path),'source_checksum'=>$checksum,'parser_version'=>$adapter->parserVersion(),'plan_checksum'=>$planChecksum,
             'invoice_number'=>$invoice['invoice_number'],'client_name'=>$invoice['client_name'],'invoice_date'=>$invoice['invoice_date'],'currency'=>$invoice['currency'],
             'invoice_total'=>$source['totals']['total'],'invoice_core_total'=>$source['totals']['core_total'],'other_invoice_total'=>$source['totals']['other_invoice'],'other_invoice_categories'=>$invoice['other_categories'] ?? [],'invoice_summary_categories'=>$invoice['summary_categories'] ?? [],
             'shipping_total'=>$source['totals']['shipping'],'parcel_outbound_total'=>$source['totals']['parcel_outbound'],'storage_total'=>$source['totals']['storage'],
@@ -131,16 +128,6 @@ final class WarehouseBillImportService
         return $out;
     }
 
-    private function provider(string $provider): string
-    {
-        $provider=strtolower(trim($provider)); if(preg_match('/^[a-z0-9][a-z0-9._-]{0,31}$/D',$provider)!==1)throw new InvalidArgumentException('Warehouse bill provider key is invalid.'); return $provider;
-    }
-    private function assertWarehouse(string $provider, Warehouse $warehouse): void
-    {
-        if ($provider === 'moreplus' && strtolower((string)$warehouse->slug) !== 'us-la' && strtoupper((string)$warehouse->code) !== 'US-LA') {
-            throw new InvalidArgumentException('MorePlus bill can only be imported into canonical US-LA warehouse.');
-        }
-    }
     private function categoryLabel(string $category): string { return ['shipping'=>'Shipping','parcel_outbound'=>'Parcel Outbound','storage'=>'Storage','other'=>'Other'][$category] ?? $category; }
     private function round2(string $value): string
     {

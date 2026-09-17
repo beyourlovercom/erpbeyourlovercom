@@ -7,6 +7,8 @@ use App\Modules\Inventory\Application\InventoryStockStatus;
 use App\Modules\Inventory\Application\WarehouseClearanceService;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\WarehouseCost\WarehouseBillImportService;
+use App\Modules\Inventory\Infrastructure\WarehouseCost\WarehouseBillReconciliationService;
+use App\Modules\Inventory\Infrastructure\Models\WarehouseBillImportBatch;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Throwable;
@@ -22,6 +24,7 @@ final class WarehouseController
         private readonly InventoryService $inventory,
         private readonly WarehouseClearanceService $clearance,
         private readonly WarehouseBillImportService $billImport,
+        private readonly WarehouseBillReconciliationService $reconciliation,
     ) {}
     public function create(): Response { return Inertia::render('Inventory/WarehouseCreate'); }
     public function store(Request $request): RedirectResponse
@@ -41,6 +44,8 @@ final class WarehouseController
             'clearanceCandidates'=>$this->clearance->candidatesForWarehouse($w),
             'costCenter'=>$this->inventory->warehouseCostCenter($w),
             'billImportPreview'=>data_get(session($this->billPreviewKey((int)$w->id)),'summary'),
+            'billReconciliationHistory'=>$this->reconciliation->history($w),
+            'billReconciliationPreview'=>session($this->billReconciliationPreviewKey((int)$w->id)),
             'canOperate'=>auth()->user()?->can(AuthorizationKeys::InventoryOperate->value) ?? false,
             'canManage'=>auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false,
         ]);
@@ -115,6 +120,34 @@ final class WarehouseController
         Storage::disk('local')->delete((string)$stored['stored_path']);session()->forget($key);
         return back()->with('success',($result['already_applied']??false)?'该 '.$capability['label'].' 账单已导入，无需重复处理。':$capability['label'].' 账单已导入仓库费用中心');
     }
+    public function previewBillReconciliation(Request $request,string $warehouse,int $batch): RedirectResponse
+    {
+        $w=$this->inventory->warehouse($warehouse);
+        $b=WarehouseBillImportBatch::query()->findOrFail($batch);
+        try { $preview=$this->reconciliation->preview($w,$b); }
+        catch (Throwable $e) { return back()->withErrors(['reconciliation'=>$e->getMessage()]); }
+        session([$this->billReconciliationPreviewKey((int)$w->id)=>[
+            'batch_id'=>(int)$b->id,'source_checksum'=>(string)$preview['source_checksum'],'plan_checksum'=>(string)$preview['plan_checksum'],
+            'shipping'=>array_intersect_key($preview['shipping'],array_flip(['ready','review','excluded','skip'])),
+            'parcel_outbound'=>array_intersect_key($preview['parcel_outbound'],array_flip(['ready','review','excluded','skip'])),
+            'storage'=>array_intersect_key($preview['storage'],array_flip(['ready_count','review_count','excluded_count','already_applied','batch_id'])),
+        ]]);
+        return back()->with('success','真实物流成本核销预览已刷新');
+    }
+    public function applyBillReconciliation(Request $request,string $warehouse,int $batch): RedirectResponse
+    {
+        $w=$this->inventory->warehouse($warehouse);
+        $b=WarehouseBillImportBatch::query()->findOrFail($batch);
+        $data=$request->validate([
+            'expected_source_checksum'=>['required','string','regex:/^[a-f0-9]{64}$/i'],
+            'expected_plan_checksum'=>['required','string','regex:/^[a-f0-9]{64}$/i'],
+        ]);
+        try { $result=$this->reconciliation->applyExact($w,$b,(string)$data['expected_source_checksum'],(string)$data['expected_plan_checksum']); }
+        catch (Throwable $e) { return back()->withErrors(['reconciliation'=>$e->getMessage()]); }
+        session()->forget($this->billReconciliationPreviewKey((int)$w->id));
+        return back()->with('success',sprintf('真实物流成本核销完成：Shipping %d / Handling %d', (int)($result['shipping_created']??0),(int)($result['handling_created']??0)));
+    }
+
     public function saveInventory(Request $request,string $warehouse): RedirectResponse
     {
         $w=$this->inventory->warehouse($warehouse);
@@ -163,6 +196,7 @@ final class WarehouseController
         ];
     }
     private function billPreviewKey(int $warehouseId): string { return 'inventory.warehouse_bill_preview.'.$warehouseId; }
+    private function billReconciliationPreviewKey(int $warehouseId): string { return 'inventory.warehouse_bill_reconciliation_preview.'.$warehouseId; }
     /** @param array<string,mixed> $preview @return array<string,mixed> */
     private function billPreviewPayload(array $preview): array
     {
