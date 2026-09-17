@@ -11,6 +11,12 @@ return [
             'public_slug' => 'us-ny',
             'legacy_slugs' => ['us-ny'],
             'role_label' => '海外履约仓',
+            'bill_import' => [
+                'enabled' => false,
+                'status' => 'awaiting_sample',
+                'label' => '美东纽约仓',
+                'format_label' => '待提供真实账单样本',
+            ],
         ],
         'US-LA' => [
             'name_zh' => '美西 MorePlus 仓',
@@ -26,6 +32,7 @@ return [
                 'format_label' => 'XLSX',
                 'accept' => '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 'max_kb' => 16384,
+                'status' => 'active',
             ],
         ],
         'US-SM' => [
@@ -34,6 +41,12 @@ return [
             'public_slug' => 'us-3sm',
             'legacy_slugs' => ['us-3sm', 'us-sj', 'us-sm', 'usa-sj'],
             'role_label' => '海外履约仓',
+            'bill_import' => [
+                'enabled' => false,
+                'status' => 'awaiting_sample',
+                'label' => '美国3世迈仓',
+                'format_label' => '待提供真实账单样本',
+            ],
         ],
         'DE' => [
             'name_zh' => '德国天运仓',
@@ -41,6 +54,12 @@ return [
             'public_slug' => 'de',
             'legacy_slugs' => ['de', 'de-tianyun'],
             'role_label' => '海外履约仓',
+            'bill_import' => [
+                'enabled' => false,
+                'status' => 'awaiting_sample',
+                'label' => '德国天运仓',
+                'format_label' => '待提供真实账单样本',
+            ],
         ],
         'CA' => [
             'name_zh' => '加拿大仓',
@@ -48,6 +67,12 @@ return [
             'public_slug' => 'ca',
             'legacy_slugs' => ['ca'],
             'role_label' => '海外履约仓',
+            'bill_import' => [
+                'enabled' => false,
+                'status' => 'awaiting_sample',
+                'label' => '加拿大仓',
+                'format_label' => '待提供真实账单样本',
+            ],
         ],
         'FACTORY' => [
             'name_zh' => '中国工厂',
