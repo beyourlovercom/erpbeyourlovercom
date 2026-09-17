@@ -61,7 +61,8 @@ final class WarehouseBillImportService
             'mode'=>'dry_run','provider'=>$provider,'warehouse_id'=>(int)$warehouse->id,'warehouse_slug'=>(string)$warehouse->slug,
             'original_filename'=>basename($path),'source_checksum'=>$checksum,'parser_version'=>MorePlusBillFileReader::PARSER_VERSION,'plan_checksum'=>$planChecksum,
             'invoice_number'=>$invoice['invoice_number'],'client_name'=>$invoice['client_name'],'invoice_date'=>$invoice['invoice_date'],'currency'=>$invoice['currency'],
-            'invoice_total'=>$source['totals']['total'],'shipping_total'=>$source['totals']['shipping'],'parcel_outbound_total'=>$source['totals']['parcel_outbound'],'storage_total'=>$source['totals']['storage'],
+            'invoice_total'=>$source['totals']['total'],'invoice_core_total'=>$source['totals']['core_total'],'other_invoice_total'=>$source['totals']['other_invoice'],'other_invoice_categories'=>$invoice['other_categories'] ?? [],'invoice_summary_categories'=>$invoice['summary_categories'] ?? [],
+            'shipping_total'=>$source['totals']['shipping'],'parcel_outbound_total'=>$source['totals']['parcel_outbound'],'storage_total'=>$source['totals']['storage'],
             'periods'=>$source['periods'],'counts'=>$source['counts'],'monthly'=>$monthly,'rows'=>$plannedRows,
             'already_applied'=>$existing !== null,'batch_id'=>$existing?->id,
         ];
@@ -106,7 +107,7 @@ final class WarehouseBillImportService
             $this->audit->record(
                 $actor ? AuditActor::user($actor, AuditSource::InternalSystem) : AuditActor::system(AuditSource::InternalSystem),
                 'inventory.warehouse_bill_import.applied', WarehouseBillImportBatch::class, $batch->id,
-                after:['provider'=>$preview['provider'],'warehouse_id'=>(int)$warehouse->id,'invoice_number'=>$preview['invoice_number'],'source_checksum'=>$preview['source_checksum'],'plan_checksum'=>$preview['plan_checksum'],'invoice_total'=>$preview['invoice_total'],'counts'=>$preview['counts']],
+                after:['provider'=>$preview['provider'],'warehouse_id'=>(int)$warehouse->id,'invoice_number'=>$preview['invoice_number'],'source_checksum'=>$preview['source_checksum'],'plan_checksum'=>$preview['plan_checksum'],'invoice_total'=>$preview['invoice_total'],'invoice_core_total'=>$preview['invoice_core_total'],'other_invoice_total'=>$preview['other_invoice_total'],'other_invoice_categories'=>$preview['other_invoice_categories'],'counts'=>$preview['counts']],
                 reason:'warehouse_bill_import',
             );
             return [...$preview, 'mode'=>'apply','batch_id'=>(int)$batch->id,'already_applied'=>false];

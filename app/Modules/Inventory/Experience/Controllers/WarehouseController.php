@@ -166,7 +166,7 @@ final class WarehouseController
     /** @param array<string,mixed> $preview @return array<string,mixed> */
     private function billPreviewPayload(array $preview): array
     {
-        return array_intersect_key($preview,array_flip(['provider','original_filename','source_checksum','plan_checksum','invoice_number','client_name','invoice_date','currency','invoice_total','shipping_total','parcel_outbound_total','storage_total','periods','counts','monthly','already_applied','batch_id']));
+        return array_intersect_key($preview,array_flip(['provider','original_filename','source_checksum','plan_checksum','invoice_number','client_name','invoice_date','currency','invoice_total','invoice_core_total','other_invoice_total','other_invoice_categories','invoice_summary_categories','shipping_total','parcel_outbound_total','storage_total','periods','counts','monthly','already_applied','batch_id']));
     }
     private function warehouseRules(?int $ignoreId=null): array
     {

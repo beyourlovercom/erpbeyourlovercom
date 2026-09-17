@@ -10,7 +10,7 @@ use ZipArchive;
 
 final class MorePlusBillFileReader
 {
-    public const PARSER_VERSION = 'moreplus-bill-v1';
+    public const PARSER_VERSION = 'moreplus-bill-v2';
     private const MAX_FILE_BYTES = 16 * 1024 * 1024;
     private const MAX_ROWS = 50000;
     private const MAX_ZIP_ENTRIES = 240;
@@ -21,17 +21,29 @@ final class MorePlusBillFileReader
     public function read(string $path): array
     {
         $real = realpath($path);
-        if ($real === false || ! is_file($real) || ! is_readable($real)) throw new InvalidArgumentException('MorePlus bill is not readable.');
+        if ($real === false || ! is_file($real) || ! is_readable($real)) {
+            throw new InvalidArgumentException('MorePlus bill is not readable.');
+        }
         $size = filesize($real);
-        if ($size === false || $size <= 0 || $size > self::MAX_FILE_BYTES) throw new InvalidArgumentException('MorePlus bill size is invalid or exceeds the limit.');
-        if (strtolower(pathinfo($real, PATHINFO_EXTENSION)) !== 'xlsx') throw new InvalidArgumentException('MorePlus bill must be XLSX.');
+        if ($size === false || $size <= 0 || $size > self::MAX_FILE_BYTES) {
+            throw new InvalidArgumentException('MorePlus bill size is invalid or exceeds the limit.');
+        }
+        if (strtolower(pathinfo($real, PATHINFO_EXTENSION)) !== 'xlsx') {
+            throw new InvalidArgumentException('MorePlus bill must be XLSX.');
+        }
 
-        $zip = new ZipArchive();
-        if ($zip->open($real) !== true) throw new InvalidArgumentException('MorePlus XLSX archive is invalid.');
+        $zip = new ZipArchive;
+        if ($zip->open($real) !== true) {
+            throw new InvalidArgumentException('MorePlus XLSX archive is invalid.');
+        }
         try {
             $this->assertSafeArchive($zip);
             $paths = $this->sheetPaths($zip);
-            foreach (self::REQUIRED_SHEETS as $sheet) if (! isset($paths[$sheet])) throw new InvalidArgumentException('MorePlus bill missing sheet: '.$sheet);
+            foreach (self::REQUIRED_SHEETS as $sheet) {
+                if (! isset($paths[$sheet])) {
+                    throw new InvalidArgumentException('MorePlus bill missing sheet: '.$sheet);
+                }
+            }
             $shared = $this->sharedStrings($zip);
             $invoiceRows = $this->sheetRows($zip, $paths['Invoice'], $shared);
             $parcelRows = $this->sheetRows($zip, $paths['Parcel Outbound'], $shared);
@@ -54,123 +66,328 @@ final class MorePlusBillFileReader
                     throw new InvalidArgumentException('MorePlus '.$category.' detail total does not match Invoice summary.');
                 }
             }
-            $detailTotal = bcadd(bcadd($totals['shipping'], $totals['parcel_outbound'], 4), $totals['storage'], 4);
-            if (bccomp($detailTotal, (string) $invoice['total'], 4) !== 0) throw new InvalidArgumentException('MorePlus Invoice total does not match detail sheets.');
+            $coreTotal = bcadd(bcadd($totals['shipping'], $totals['parcel_outbound'], 4), $totals['storage'], 4);
+            if (bccomp($coreTotal, (string) $invoice['core_total'], 4) !== 0) {
+                throw new InvalidArgumentException('MorePlus core detail total does not match Invoice core summary.');
+            }
 
             return [
                 'invoice' => $invoice,
-                'totals' => $totals + ['total' => $detailTotal],
+                'totals' => $totals + [
+                    'core_total' => $coreTotal,
+                    'other_invoice' => (string) $invoice['other_total'],
+                    'subtotal' => (string) $invoice['subtotal'],
+                    'total' => (string) $invoice['total'],
+                ],
                 'periods' => $this->periods($rows),
                 'counts' => [
                     'shipping' => count($shipping), 'parcel_outbound' => count($parcel), 'storage' => count($storage), 'total' => count($rows),
                 ],
                 'rows' => $rows,
             ];
-        } finally { $zip->close(); }
+        } finally {
+            $zip->close();
+        }
     }
 
     /** @param array<int,array<int,string>> $rows @return array<string,mixed> */
     private function invoice(array $rows): array
     {
-        $number = $this->cell($rows, 4, 7);
-        $client = $this->cell($rows, 5, 2);
-        $dateRaw = $this->cell($rows, 5, 7);
+        $number = $this->labeledValue($rows, 'INVOICE #');
+        $client = $this->valueBelowLabel($rows, 'BILL TO');
+        $dateRaw = $this->labeledValue($rows, 'INVOICE DATE');
         $invoiceDate = $dateRaw === '' ? null : $this->date(substr($dateRaw, 0, 10), 'Invoice date');
+
+        [$headerRow, $typeColumn, $totalColumn] = $this->invoiceSummaryColumns($rows);
         $summary = [];
-        foreach ($rows as $row) {
-            $label = trim((string) ($row[1] ?? ''));
-            if (! in_array($label, ['Shipping','Parcel Outbound','Storage'], true)) continue;
-            $summary[$label] = $this->money((string) ($row[6] ?? ''), 'Invoice '.$label);
+        foreach ($rows as $rowNumber => $row) {
+            if ($rowNumber <= $headerRow) {
+                continue;
+            }
+            if ($this->rowHasLabel($row, 'SUBTOTAL')) {
+                break;
+            }
+            $label = trim((string) ($row[$typeColumn] ?? ''));
+            if ($label === '') {
+                continue;
+            }
+            $summary[$label] = $this->money((string) ($row[$totalColumn] ?? ''), 'Invoice '.$label);
         }
-        foreach (['Shipping','Parcel Outbound','Storage'] as $required) if (! isset($summary[$required])) throw new InvalidArgumentException('MorePlus Invoice summary missing '.$required.'.');
-        $total = $this->money($this->cell($rows, 24, 7), 'Invoice total');
-        $sum = bcadd(bcadd($summary['Shipping'], $summary['Parcel Outbound'], 4), $summary['Storage'], 4);
-        if (bccomp($sum, $total, 4) !== 0) throw new InvalidArgumentException('MorePlus Invoice summary total is inconsistent.');
+        foreach (['Shipping', 'Parcel Outbound', 'Storage'] as $required) {
+            if (! isset($summary[$required])) {
+                throw new InvalidArgumentException('MorePlus Invoice summary missing '.$required.'.');
+            }
+        }
+
+        $summaryTotal = '0.0000';
+        foreach ($summary as $amount) {
+            $summaryTotal = bcadd($summaryTotal, $amount, 4);
+        }
+        $subtotalRaw = $this->labeledValue($rows, 'SUBTOTAL');
+        $subtotal = $subtotalRaw === '' ? $summaryTotal : $this->money($subtotalRaw, 'Invoice subtotal');
+        if (bccomp($summaryTotal, $subtotal, 4) !== 0) {
+            throw new InvalidArgumentException('MorePlus Invoice summary subtotal is inconsistent.');
+        }
+
+        $discountRaw = $this->labeledValue($rows, 'DISCOUNT');
+        $taxRaw = $this->labeledValue($rows, 'TAX');
+        $discount = $discountRaw === '' ? '0.0000' : $this->money($discountRaw, 'Invoice discount');
+        $tax = $taxRaw === '' ? '0.0000' : $this->money($taxRaw, 'Invoice tax');
+        $total = $this->money($this->labeledValue($rows, 'TOTAL'), 'Invoice total');
+        $calculatedTotal = bcadd(bcsub($subtotal, $discount, 4), $tax, 4);
+        if (bccomp($calculatedTotal, $total, 4) !== 0) {
+            throw new InvalidArgumentException('MorePlus Invoice total is inconsistent with subtotal, discount and tax.');
+        }
+
+        $core = [
+            'shipping' => $summary['Shipping'],
+            'parcel_outbound' => $summary['Parcel Outbound'],
+            'storage' => $summary['Storage'],
+        ];
+        $coreTotal = bcadd(bcadd($core['shipping'], $core['parcel_outbound'], 4), $core['storage'], 4);
+        $other = [];
+        $otherTotal = '0.0000';
+        foreach ($summary as $label => $amount) {
+            if (in_array($label, ['Shipping', 'Parcel Outbound', 'Storage'], true)) {
+                continue;
+            }
+            $otherTotal = bcadd($otherTotal, $amount, 4);
+            if (bccomp($amount, '0', 4) !== 0) {
+                $other[$label] = $amount;
+            }
+        }
+
         return [
             'invoice_number' => $number !== '' ? $number : null,
             'client_name' => $client !== '' ? $client : null,
             'invoice_date' => $invoiceDate,
             'currency' => 'USD',
-            'totals' => ['shipping'=>$summary['Shipping'],'parcel_outbound'=>$summary['Parcel Outbound'],'storage'=>$summary['Storage']],
+            'totals' => $core,
+            'summary_categories' => $summary,
+            'other_categories' => $other,
+            'core_total' => $coreTotal,
+            'other_total' => $otherTotal,
+            'subtotal' => $subtotal,
+            'discount' => $discount,
+            'tax' => $tax,
             'total' => $total,
         ];
+    }
+
+    /** @param array<int,array<int,string>> $rows */
+    private function labeledValue(array $rows, string $label): string
+    {
+        foreach ($rows as $row) {
+            ksort($row);
+            foreach ($row as $column => $value) {
+                if (trim((string) $value) !== $label) {
+                    continue;
+                }
+                foreach ($row as $candidateColumn => $candidateValue) {
+                    $candidateValue = trim((string) $candidateValue);
+                    if ((int) $candidateColumn > (int) $column && $candidateValue !== '') {
+                        return $candidateValue;
+                    }
+                }
+
+                return '';
+            }
+        }
+
+        return '';
+    }
+
+    /** @param array<int,array<int,string>> $rows */
+    private function valueBelowLabel(array $rows, string $label): string
+    {
+        foreach ($rows as $rowNumber => $row) {
+            foreach ($row as $column => $value) {
+                if (trim((string) $value) !== $label) {
+                    continue;
+                }
+                foreach ($rows as $candidateRowNumber => $candidateRow) {
+                    if ($candidateRowNumber <= $rowNumber) {
+                        continue;
+                    }
+                    $candidate = trim((string) ($candidateRow[$column] ?? ''));
+                    if ($candidate !== '') {
+                        return $candidate;
+                    }
+                    if ($candidateRowNumber > $rowNumber + 4) {
+                        break;
+                    }
+                }
+
+                return '';
+            }
+        }
+
+        return '';
+    }
+
+    /** @param array<int,array<int,string>> $rows @return array{int,int,int} */
+    private function invoiceSummaryColumns(array $rows): array
+    {
+        foreach ($rows as $rowNumber => $row) {
+            $typeColumn = null;
+            $totalColumn = null;
+            foreach ($row as $column => $value) {
+                $value = trim((string) $value);
+                if ($value === 'TRANSACTION TYPE') {
+                    $typeColumn = (int) $column;
+                }
+                if ($value === 'TOTAL AMOUNT') {
+                    $totalColumn = (int) $column;
+                }
+            }
+            if ($typeColumn !== null && $totalColumn !== null) {
+                return [(int) $rowNumber, $typeColumn, $totalColumn];
+            }
+        }
+        throw new InvalidArgumentException('MorePlus Invoice summary header is missing.');
+    }
+
+    /** @param array<int,string> $row */
+    private function rowHasLabel(array $row, string $label): bool
+    {
+        foreach ($row as $value) {
+            if (trim((string) $value) === $label) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @param array<int,array<int,string>> $rows @return list<array<string,mixed>> */
     private function grouped(array $rows, string $category, string $sheet): array
     {
-        $headers = $this->headers($rows[5] ?? [], ['Outbound Order #','Transaction #','Transaction Amount','SKU','Qty','Charge Item Name','Charge Amount','Tracking #','Transaction Date']);
-        $out = []; $current = null;
+        $headerRequired = ['Outbound Order #', 'Transaction #', 'Transaction Amount', 'Amount Due', 'SKU', 'Qty', 'Charge Item Name', 'Charge Amount', 'Tracking #', 'Transaction Date'];
+        [$headerRow, $headers] = $this->headersFromRows($rows, $headerRequired);
+        $out = [];
+        $current = null;
         foreach ($rows as $rowNumber => $row) {
-            if ($rowNumber < 7) continue;
-            $raw = $this->raw($headers, $row);
-            if ($this->blank($raw)) continue;
-            $transaction = trim((string) ($raw['Transaction #'] ?? ''));
-            if ($transaction !== '') {
-                if ($current !== null) $out[] = $this->finishGroup($current, $category, $sheet);
-                $current = [
-                    'source_row_number'=>$rowNumber,
-                    'transaction_number'=>$transaction,
-                    'transaction_amount'=>$this->moneyNullable((string) ($raw['Transaction Amount'] ?? ''), $sheet.' transaction amount row '.$rowNumber),
-                    'outbound_order_number'=>$this->nullable($raw['Outbound Order #'] ?? null),
-                    'tracking_number'=>$this->tracking($raw['Tracking #'] ?? null),
-                    'charged_on'=>$this->date((string) ($raw['Transaction Date'] ?? ''), $sheet.' date row '.$rowNumber),
-                    'quantity'=>0,'charge_amount'=>'0.0000','charge_items'=>[],'raw_lines'=>[],
-                ];
+            if ($rowNumber < $headerRow + 2) {
+                continue;
             }
-            if ($current === null) throw new InvalidArgumentException($sheet.' continuation row appears before a transaction at row '.$rowNumber.'.');
-            $current['raw_lines'][] = ['row_number'=>$rowNumber,'values'=>$raw];
+            $raw = $this->raw($headers, $row);
+            if ($this->blank($raw)) {
+                continue;
+            }
+            $transaction = trim((string) ($raw['Transaction #'] ?? ''));
+            if ($transaction !== '' && ($current === null || $transaction !== $current['transaction_number'])) {
+                if ($current !== null) {
+                    $out[] = $this->finishGroup($current, $category, $sheet);
+                }
+                $current = [
+                    'source_row_number' => $rowNumber,
+                    'transaction_number' => $transaction,
+                    'transaction_amount' => $this->moneyNullable((string) ($raw['Transaction Amount'] ?? ''), $sheet.' transaction amount row '.$rowNumber),
+                    'amount_due' => $this->moneyNullable((string) ($raw['Amount Due'] ?? ''), $sheet.' amount due row '.$rowNumber),
+                    'outbound_order_number' => $this->nullable($raw['Outbound Order #'] ?? null),
+                    'tracking_number' => null,
+                    'charged_on' => null,
+                    'quantity' => 0, 'charge_amount' => '0.0000', 'charge_items' => [], 'raw_lines' => [],
+                ];
+                [$current['charged_on'], $columnOffset] = $this->dateWithColumnOffset(
+                    (string) ($raw['Transaction Date'] ?? ''), $row, (int) $headers['Transaction Date'], $sheet.' date row '.$rowNumber
+                );
+                $trackingColumn = (int) $headers['Tracking #'] + $columnOffset;
+                $current['tracking_number'] = $this->tracking($row[$trackingColumn] ?? ($raw['Tracking #'] ?? null));
+            }
+            if ($current === null) {
+                throw new InvalidArgumentException($sheet.' continuation row appears before a transaction at row '.$rowNumber.'.');
+            }
+            $current['raw_lines'][] = ['row_number' => $rowNumber, 'values' => $raw, 'source_cells' => $row];
             $qty = trim((string) ($raw['Qty'] ?? ''));
             if ($qty !== '') {
-                if (preg_match('/^\d+$/D', $qty) !== 1) throw new InvalidArgumentException($sheet.' quantity invalid at row '.$rowNumber.'.');
+                if (preg_match('/^\d+$/D', $qty) !== 1) {
+                    throw new InvalidArgumentException($sheet.' quantity invalid at row '.$rowNumber.'.');
+                }
                 $current['quantity'] += (int) $qty;
             }
             $charge = $this->moneyNullable((string) ($raw['Charge Amount'] ?? ''), $sheet.' charge amount row '.$rowNumber);
-            if ($charge !== null) $current['charge_amount'] = bcadd($current['charge_amount'], $charge, 4);
+            if ($charge !== null) {
+                $current['charge_amount'] = bcadd($current['charge_amount'], $charge, 4);
+            }
             $chargeName = trim((string) ($raw['Charge Item Name'] ?? ''));
-            if ($chargeName !== '') $current['charge_items'][$chargeName] = true;
+            if ($chargeName !== '') {
+                $current['charge_items'][$chargeName] = true;
+            }
         }
-        if ($current !== null) $out[] = $this->finishGroup($current, $category, $sheet);
-        if ($out === []) throw new InvalidArgumentException('MorePlus '.$sheet.' sheet has no transactions.');
+        if ($current !== null) {
+            $out[] = $this->finishGroup($current, $category, $sheet);
+        }
+        if ($out === []) {
+            throw new InvalidArgumentException('MorePlus '.$sheet.' sheet has no transactions.');
+        }
+
         return $out;
     }
 
     /** @param array<string,mixed> $group @return array<string,mixed> */
     private function finishGroup(array $group, string $category, string $sheet): array
     {
-        if ($group['transaction_amount'] !== null && bccomp((string) $group['transaction_amount'], (string) $group['charge_amount'], 4) !== 0) {
-            throw new InvalidArgumentException($sheet.' transaction '.$group['transaction_number'].' total does not match charge lines.');
+        $expected = array_values(array_filter([
+            $group['transaction_amount'] ?? null,
+            $group['amount_due'] ?? null,
+        ], fn ($value): bool => $value !== null));
+        if ($expected !== []) {
+            $matches = false;
+            foreach ($expected as $amount) {
+                if (bccomp((string) $amount, (string) $group['charge_amount'], 4) === 0) {
+                    $matches = true;
+                    break;
+                }
+            }
+            if (! $matches) {
+                throw new InvalidArgumentException($sheet.' transaction '.$group['transaction_number'].' total does not match transaction amount or amount due.');
+            }
         }
+        $billableAmount = $group['amount_due'] ?? $group['transaction_amount'] ?? $group['charge_amount'];
+
         return [
-            'category'=>$category,'source_sheet'=>$sheet,'source_row_number'=>$group['source_row_number'],
-            'transaction_number'=>$group['transaction_number'],'outbound_order_number'=>$group['outbound_order_number'],'tracking_number'=>$group['tracking_number'],
-            'charged_on'=>$group['charged_on'],'quantity'=>$group['quantity'],'charge_item_name'=>implode(' + ', array_keys($group['charge_items'])) ?: null,
-            'charge_amount'=>$group['charge_amount'],'raw_data'=>$group['raw_lines'],
+            'category' => $category, 'source_sheet' => $sheet, 'source_row_number' => $group['source_row_number'],
+            'transaction_number' => $group['transaction_number'], 'outbound_order_number' => $group['outbound_order_number'], 'tracking_number' => $group['tracking_number'],
+            'charged_on' => $group['charged_on'], 'quantity' => $group['quantity'], 'charge_item_name' => implode(' + ', array_keys($group['charge_items'])) ?: null,
+            'charge_amount' => (string) $billableAmount, 'raw_data' => $group['raw_lines'],
         ];
     }
 
     /** @param array<int,array<int,string>> $rows @return list<array<string,mixed>> */
     private function storage(array $rows): array
     {
-        $headers = $this->headers($rows[5] ?? [], ['Transaction #','Transaction Amount','Storage Date','Charge Item Name','Charge Amount']);
+        $headerRequired = ['Transaction #', 'Transaction Amount', 'Storage Date', 'Charge Item Name', 'Charge Amount'];
+        [$headerRow, $headers] = $this->headersFromRows($rows, $headerRequired);
         $out = [];
         foreach ($rows as $rowNumber => $row) {
-            if ($rowNumber < 7) continue;
+            if ($rowNumber < $headerRow + 2) {
+                continue;
+            }
             $raw = $this->raw($headers, $row);
-            if ($this->blank($raw)) continue;
+            if ($this->blank($raw)) {
+                continue;
+            }
             $transaction = trim((string) ($raw['Transaction #'] ?? ''));
-            if ($transaction === '') continue;
+            if ($transaction === '') {
+                continue;
+            }
             $transactionAmount = $this->money((string) ($raw['Transaction Amount'] ?? ''), 'Storage transaction amount row '.$rowNumber);
             $charge = $this->money((string) ($raw['Charge Amount'] ?? ''), 'Storage charge amount row '.$rowNumber);
-            if (bccomp($transactionAmount, $charge, 4) !== 0) throw new InvalidArgumentException('Storage transaction total does not match charge at row '.$rowNumber.'.');
+            if (bccomp($transactionAmount, $charge, 4) !== 0) {
+                throw new InvalidArgumentException('Storage transaction total does not match charge at row '.$rowNumber.'.');
+            }
             $out[] = [
-                'category'=>'storage','source_sheet'=>'Storage','source_row_number'=>$rowNumber,'transaction_number'=>$transaction,
-                'outbound_order_number'=>null,'tracking_number'=>null,'charged_on'=>$this->date((string) ($raw['Storage Date'] ?? ''), 'Storage date row '.$rowNumber),
-                'quantity'=>0,'charge_item_name'=>$this->nullable($raw['Charge Item Name'] ?? null),'charge_amount'=>$charge,
-                'raw_data'=>[['row_number'=>$rowNumber,'values'=>$raw]],
+                'category' => 'storage', 'source_sheet' => 'Storage', 'source_row_number' => $rowNumber, 'transaction_number' => $transaction,
+                'outbound_order_number' => null, 'tracking_number' => null, 'charged_on' => $this->date((string) ($raw['Storage Date'] ?? ''), 'Storage date row '.$rowNumber),
+                'quantity' => 0, 'charge_item_name' => $this->nullable($raw['Charge Item Name'] ?? null), 'charge_amount' => $charge,
+                'raw_data' => [['row_number' => $rowNumber, 'values' => $raw, 'source_cells' => $row]],
             ];
         }
-        if ($out === []) throw new InvalidArgumentException('MorePlus Storage sheet has no transactions.');
+        if ($out === []) {
+            throw new InvalidArgumentException('MorePlus Storage sheet has no transactions.');
+        }
+
         return $out;
     }
 
@@ -188,6 +405,34 @@ final class MorePlusBillFileReader
         $out = [];
         foreach ($dates as $category => $values) { sort($values); $out[$category] = ['start'=>$values[0],'end'=>$values[count($values)-1]]; }
         return $out;
+    }
+
+    /** @param array<int,array<int,string>> $rows @param list<string> $required @return array{int,array<string,int>} */
+    private function headersFromRows(array $rows, array $required): array
+    {
+        foreach ($rows as $rowNumber => $row) {
+            if ($rowNumber > 30) {
+                break;
+            }
+            $map = [];
+            foreach ($row as $column => $value) {
+                $value = trim((string) $value);
+                if ($value !== '') {
+                    $map[$value] = (int) $column;
+                }
+            }
+            $complete = true;
+            foreach ($required as $name) {
+                if (! array_key_exists($name, $map)) {
+                    $complete = false;
+                    break;
+                }
+            }
+            if ($complete) {
+                return [(int) $rowNumber, $map];
+            }
+        }
+        throw new InvalidArgumentException('MorePlus sheet header row is missing required columns.');
     }
 
     /** @param array<int,string> $row @param list<string> $required @return array<string,int> */
@@ -210,13 +455,37 @@ final class MorePlusBillFileReader
     private function nullable(mixed $value): ?string { $value = trim((string) ($value ?? '')); return $value === '' ? null : $value; }
     private function tracking(mixed $value): ?string { $value = strtoupper(trim((string) ($value ?? ''))); return $value === '' ? null : $value; }
 
+    /** @param array<int,string> $row @return array{string,int} */
+    private function dateWithColumnOffset(string $value, array $row, int $expectedColumn, string $field): array
+    {
+        try {
+            return [$this->date($value, $field), 0];
+        } catch (InvalidArgumentException) {
+        }
+        $matches = [];
+        foreach ($row as $column => $candidate) {
+            try {
+                $matches[(int) $column] = $this->date((string) $candidate, $field);
+            } catch (InvalidArgumentException) {
+            }
+        }
+        if (count($matches) !== 1) {
+            throw new InvalidArgumentException($field.' is invalid or ambiguous.');
+        }
+        $column = (int) array_key_first($matches);
+
+        return [$matches[$column], $column - $expectedColumn];
+    }
+
     private function date(string $value, string $field): string
     {
         $value = trim($value);
-        if (preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value) !== 1 || ! checkdate((int) substr($value,5,2),(int) substr($value,8,2),(int) substr($value,0,4))) {
+        if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})$/D', $value, $m) !== 1
+            || ! checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
             throw new InvalidArgumentException($field.' is invalid.');
         }
-        return $value;
+
+        return sprintf('%04d-%02d-%02d', (int) $m[1], (int) $m[2], (int) $m[3]);
     }
 
     private function moneyNullable(string $value, string $field): ?string

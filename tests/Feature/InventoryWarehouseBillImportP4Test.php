@@ -28,6 +28,9 @@ final class InventoryWarehouseBillImportP4Test extends TestCase
         $preview=$service->preview($file,$warehouse,'moreplus');
 
         $this->assertSame('20.2777',$preview['invoice_total']);
+        $this->assertSame('20.2777',$preview['invoice_core_total']);
+        $this->assertSame('0.0000',$preview['other_invoice_total']);
+        $this->assertSame([],$preview['other_invoice_categories']);
         $this->assertSame(['shipping'=>1,'parcel_outbound'=>1,'storage'=>2,'total'=>4],$preview['counts']);
         $this->assertSame('2026-07',$preview['monthly'][0]['month']);
         $this->assertSame('17.7777',$preview['monthly'][0]['total']);
@@ -67,8 +70,36 @@ final class InventoryWarehouseBillImportP4Test extends TestCase
     {
         $warehouse=Warehouse::query()->where('slug','us-la')->firstOrFail();
         try { app(WarehouseBillImportService::class)->preview($this->xlsx(true),$warehouse,'moreplus'); $this->fail('Expected inconsistent invoice to fail closed.'); }
-        catch (InvalidArgumentException $e) { $this->assertStringContainsString('Invoice summary total is inconsistent',$e->getMessage()); }
+        catch (InvalidArgumentException $e) { $this->assertStringContainsString('Invoice total is inconsistent',$e->getMessage()); }
         $this->assertDatabaseCount('warehouse_bill_import_batches',0);$this->assertDatabaseCount('warehouse_bill_import_rows',0);$this->assertDatabaseCount('warehouse_cost_entries',0);
+    }
+
+    public function test_v2_accepts_non_core_invoice_categories_but_keeps_cost_projection_core_only(): void
+    {
+        $warehouse=Warehouse::query()->where('slug','us-la')->firstOrFail();
+        $service=app(WarehouseBillImportService::class);
+        $preview=$service->preview($this->xlsx(false,true),$warehouse,'moreplus');
+
+        $this->assertSame('moreplus-bill-v2',$preview['parser_version']);
+        $this->assertSame('25.2777',$preview['invoice_total']);
+        $this->assertSame('20.2777',$preview['invoice_core_total']);
+        $this->assertSame('5.0000',$preview['other_invoice_total']);
+        $this->assertSame(['Inbound'=>'5.0000'],$preview['other_invoice_categories']);
+        $this->assertSame(['shipping'=>1,'parcel_outbound'=>1,'storage'=>2,'total'=>4],$preview['counts']);
+
+        $service->apply($this->xlsx(false,true),$warehouse,null,'moreplus');
+        $this->assertDatabaseHas('warehouse_bill_import_batches',['invoice_total'=>'25.2777','shipping_total'=>'10.0000','parcel_outbound_total'=>'2.5000','storage_total'=>'7.7777']);
+        $this->assertSame(3,WarehouseCostEntry::query()->where('source_type','warehouse_bill_import')->count());
+        $this->assertFalse(WarehouseCostEntry::query()->where('source_type','warehouse_bill_import')->where('category','other')->exists());
+    }
+
+    public function test_v2_accepts_real_invoice_layout_drift_without_fixed_row_or_column_coordinates(): void
+    {
+        $warehouse=Warehouse::query()->where('slug','us-la')->firstOrFail();
+        $preview=app(WarehouseBillImportService::class)->preview($this->xlsx(false,false,true),$warehouse,'moreplus');
+        $this->assertSame('IN-TEST-001',$preview['invoice_number']);
+        $this->assertSame('2026-08-10',$preview['invoice_date']);
+        $this->assertSame('20.2777',$preview['invoice_total']);
     }
 
     public function test_manager_can_preview_and_confirm_moreplus_bill_but_viewer_cannot(): void
@@ -100,10 +131,20 @@ final class InventoryWarehouseBillImportP4Test extends TestCase
         foreach($permissions as $key){$permission=Permission::firstOrCreate(['key'=>$key],['label'=>$key]);$role->permissions()->syncWithoutDetaching([$permission->id]);}$user->roles()->attach($role);return $user;
     }
 
-    private function xlsx(bool $badInvoice=false): string
+    private function xlsx(bool $badInvoice=false, bool $withOther=false, bool $layoutDrift=false): string
     {
-        $invoice=[4=>[1=>'BILL TO',5=>'INVOICE #',6=>'IN-TEST-001'],5=>[1=>'(999)TEST',5=>'INVOICE DATE',6=>'2026-08-10 00:00:00'],
-            11=>[1=>'TRANSACTION TYPE',4=>'QTY',5=>' PAID AMOUNT',6=>'TOTAL AMOUNT'],13=>[1=>'Parcel Outbound',4=>'1',5=>'0',6=>'2.5000'],17=>[1=>'Storage',4=>'2',5=>'0',6=>'7.7777'],18=>[1=>'Shipping',4=>'1',5=>'0',6=>'10.0000'],24=>[5=>'TOTAL',6=>$badInvoice?'21.2777':'20.2777']];
+        $invoiceTotal=$withOther?'25.2777':'20.2777';
+        if($badInvoice)$invoiceTotal=$withOther?'26.2777':'21.2777';
+        if($layoutDrift){
+            $invoice=[8=>[1=>'BILL TO',5=>'INVOICE #',6=>'IN-TEST-001'],9=>[1=>'(999)TEST',5=>'INVOICE DATE',6=>'2026-08-10 00:00:00'],
+                15=>[1=>'TRANSACTION TYPE',4=>'QTY',5=>'PAID AMOUNT',6=>'TOTAL AMOUNT'],17=>[1=>'Parcel Outbound',4=>'1',5=>'0',6=>'2.5000'],
+                21=>[1=>'Storage',4=>'2',5=>'0',6=>'7.7777'],22=>[1=>'Shipping',4=>'1',5=>'0',6=>'10.0000'],25=>[5=>'SUBTOTAL',6=>'20.2777'],28=>[5=>'TOTAL',6=>$invoiceTotal]];
+        }else{
+            $invoice=[4=>[1=>'BILL TO',5=>'INVOICE #',6=>'IN-TEST-001'],5=>[1=>'(999)TEST',5=>'INVOICE DATE',6=>'2026-08-10 00:00:00'],
+                11=>[1=>'TRANSACTION TYPE',4=>'QTY',5=>'PAID AMOUNT',6=>'TOTAL AMOUNT'],13=>[1=>'Parcel Outbound',4=>'1',5=>'0',6=>'2.5000'],
+                17=>[1=>'Storage',4=>'2',5=>'0',6=>'7.7777'],18=>[1=>'Shipping',4=>'1',5=>'0',6=>'10.0000'],24=>[5=>'TOTAL',6=>$invoiceTotal]];
+            if($withOther)$invoice[12]=[1=>'Inbound',4=>'1',5=>'0',6=>'5.0000'];
+        }
         $parcel=[5=>['Outbound Order #','Transaction #','Transaction Amount','Amount Due','SKU','Qty','Charge Item Name','Charge Amount','','Order #','Tracking #','Transaction Date'],
             7=>['OB-2','TR-P-1','$2.5000','$2.5000','SKU-P','1','一件代发操作费 -1','2.5000','','C2','TRACK-P','2026-08-04']];
         $storage=[5=>['Transaction #','Transaction Amount','Amount Due','Storage Date','Charge Item Name','Charge Amount'],
