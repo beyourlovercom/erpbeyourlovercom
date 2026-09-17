@@ -52,7 +52,7 @@ final class OrderProfitExplanationService
 
         return [
             'order' => $this->orderHeader($order, $preview),
-            'summary' => $summary + [
+            'summary' => array_merge($summary, [
                 'canonical_known_cost' => $known,
                 'canonical_final_ready' => $complete,
                 'canonical_contribution_profit' => $profit,
@@ -69,7 +69,7 @@ final class OrderProfitExplanationService
                 'maturity_state' => $maturityData['maturity_state'],
                 'reconciliation_due' => $maturityData['reconciliation_due'],
                 'estimate_allowed' => $maturityData['estimate_allowed'],
-            ],
+            ]),
             'product' => $this->productSection($candidates->get('product_cost')),
             'shipments' => $shipments,
             'logistics' => $this->logisticsSection($shipments),
@@ -237,6 +237,21 @@ final class OrderProfitExplanationService
     private function costLine(string $type, ?array $candidate, ?array $posted): array
     {
         $label = $this->costLabel($type);
+        if ($posted !== null && ($posted['state'] ?? null) === 'confirmed') {
+            return [
+                'cost_type' => $type,
+                'label' => $label,
+                'amount' => $posted['amount'] ?? null,
+                'currency' => $posted['currency'] ?? null,
+                'state' => 'confirmed',
+                'formula' => $this->formulaFor($type, $candidate ?? []),
+                'provenance' => $posted['provenance'] ?? null,
+                'status' => $posted['status'] ?? null,
+                'source_reference' => $posted['source_reference'] ?? null,
+                'source_at' => $posted['source_at'] ?? null,
+                'blocker' => null,
+            ];
+        }
         if ($candidate !== null) {
             return [
                 'cost_type' => $type,

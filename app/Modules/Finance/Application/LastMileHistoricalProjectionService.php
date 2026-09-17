@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\DB;
 final class LastMileHistoricalProjectionService
 {
     private const STRONG_PROVENANCE = ['actual', 'confirmed_manual', 'provider_import', 'allocated_actual'];
-    private const OVERSEAS_WAREHOUSE_SLUGS = ['us-la', 'us-ny', 'de', 'ca', 'us-3sm'];
+    private const OVERSEAS_WAREHOUSE_SLUGS = ['us-la', 'us-ny', 'us-moreplus', 'us-3sm', 'us-sm', 'us-sj', 'usa-sj', 'de', 'de-tianyun', 'ca'];
     private const CHINA_DIRECT_WAREHOUSE_SLUGS = ['factory', '007'];
     private const FALLBACK_USD_PER_UNIT = '10.00';
     private const HISTORICAL_WINDOW_DAYS = 90;
@@ -223,6 +223,19 @@ final class LastMileHistoricalProjectionService
                 'sample_count' => null,
                 'source_detail' => ['warehouse_slug' => $warehouseSlug, 'reason' => 'china_direct_no_fallback'],
                 'blocked' => 'china_direct_no_fallback_allowed',
+            ];
+        }
+
+
+        if (! in_array($warehouseSlug, self::OVERSEAS_WAREHOUSE_SLUGS, true)) {
+            return [
+                'tier' => 'no_projection_warehouse_unresolved',
+                'amount' => null,
+                'currency' => null,
+                'confidence' => 'none',
+                'sample_count' => null,
+                'source_detail' => ['warehouse_slug' => $warehouseSlug ?: null, 'reason' => 'overseas_warehouse_required'],
+                'blocked' => 'overseas_warehouse_required_for_fallback',
             ];
         }
 

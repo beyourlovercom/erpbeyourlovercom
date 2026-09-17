@@ -176,6 +176,25 @@ final class P82EstimatedActualReconciliationTest extends TestCase
         self::assertSame('china_direct_no_fallback_allowed', $proj['blocked']);
     }
 
+    public function test_missing_or_unknown_warehouse_never_uses_usd10_fallback(): void
+    {
+        foreach ([null, 'mystery'] as $slug) {
+            $order = $this->order('USD');
+            $order->items()->create([
+                'product_summary' => 'No Warehouse Item', 'sku' => 'NOWH-'.($slug ?? 'NONE'), 'quantity' => 2,
+                'unit_price' => '10.00', 'line_revenue' => '20.00',
+            ]);
+            if ($slug !== null) {
+                $this->attachWarehouseShipment($order, $slug);
+            }
+
+            $proj = $this->app->make(LastMileHistoricalProjectionService::class)->project($order->fresh());
+            self::assertSame('no_projection_warehouse_unresolved', $proj['tier']);
+            self::assertNull($proj['amount']);
+            self::assertSame('overseas_warehouse_required_for_fallback', $proj['blocked']);
+        }
+    }
+
     // -----------------------------------------------------------------------
     // ACTUAL REPLACES ESTIMATE — AUDIT TRAIL
     // -----------------------------------------------------------------------
@@ -260,6 +279,28 @@ final class P82EstimatedActualReconciliationTest extends TestCase
         self::assertFalse($summary['estimate_allowed']);
     }
 
+    public function test_explain_uses_p82_estimated_cost_counters_for_ui_banners(): void
+    {
+        $order = $this->order('USD', Carbon::now()->subDays(35)->toDateString());
+        $this->seedRevenue($order, '100.00', '0.00');
+        foreach (['first_mile_cost', 'overseas_handling_cost', 'last_mile_cost', 'payment_fee', 'customs_tax'] as $type) {
+            $order->costEntries()->create([
+                'cost_type' => $type, 'amount' => '5.00', 'currency' => 'USD',
+                'provenance' => 'confirmed_manual', 'status' => 'confirmed', 'source_reference' => 'fixture:'.$type,
+            ]);
+        }
+        $order->costEntries()->create([
+            'cost_type' => 'product_cost', 'amount' => '10.00', 'currency' => 'USD',
+            'provenance' => 'estimated_reference', 'status' => 'estimated', 'source_reference' => 'product-reference:v1:order:'.$order->id,
+        ]);
+
+        $summary = $this->app->make(OrderProfitExplanationService::class)->explain($order->fresh())['summary'];
+        self::assertSame(1, $summary['estimated_cost_count']);
+        self::assertSame(1, $summary['unresolved_estimate_count']);
+        self::assertTrue($summary['canonical_estimated_ready']);
+        self::assertTrue($summary['reconciliation_due']);
+    }
+
     // -----------------------------------------------------------------------
     // MATURITY 30+ AND 45+ OVERDUE IN EXPLAIN
     // -----------------------------------------------------------------------
@@ -288,6 +329,25 @@ final class P82EstimatedActualReconciliationTest extends TestCase
     // -----------------------------------------------------------------------
     // FINAL PROFIT STRICT GUARD
     // -----------------------------------------------------------------------
+
+    public function test_final_profit_is_ready_when_all_posted_cost_facts_are_confirmed(): void
+    {
+        $order = $this->order('USD');
+        $this->seedRevenue($order, '100.00', '0.00');
+        foreach (['product_cost', 'warehouse_cost', 'first_mile_cost', 'overseas_handling_cost', 'last_mile_cost', 'payment_fee', 'kol_commission', 'refund_replacement_loss', 'customs_tax', 'other_variable_cost'] as $type) {
+            $order->costEntries()->create([
+                'cost_type' => $type, 'amount' => '5.00', 'currency' => 'USD',
+                'provenance' => 'confirmed_manual', 'status' => 'confirmed', 'source_reference' => 'fixture:'.$type,
+            ]);
+        }
+        $order->financials()->update(['completeness_status' => 'CONFIRMED']);
+
+        $summary = $this->app->make(OrderProfitExplanationService::class)->explain($order->fresh())['summary'];
+        self::assertTrue($summary['canonical_final_ready']);
+        self::assertSame('50.00', $summary['canonical_known_cost']);
+        self::assertSame('50.00', $summary['canonical_contribution_profit']);
+        self::assertSame(0, $summary['estimated_cost_count']);
+    }
 
     public function test_final_profit_never_confirmed_when_any_cost_is_estimated(): void
     {
