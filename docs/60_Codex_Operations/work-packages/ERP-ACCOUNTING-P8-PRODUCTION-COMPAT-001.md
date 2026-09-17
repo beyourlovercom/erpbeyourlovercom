@@ -1,5 +1,7 @@
 # ERP-ACCOUNTING-P8-PRODUCTION-COMPAT-001
 
+**Status:** CLOSED / PRODUCTION ACCEPTED
+
 ## Objective
 Make P8 KOL commission runtime safe when Production has PR338 but has not yet deployed PR337 MorePlus / overseas-handling capability.
 
@@ -32,3 +34,11 @@ Make P8 KOL commission runtime safe when Production has PR338 but has not yet de
 
 ## Production boundary
 This hotfix performs no Production data writes. After merge, Production P8 must be rebuilt over the current PR338 runtime using PR #339 runtime plus this compatibility delta only. Do not activate `ERP_ACCOUNTING_CONTINUOUS_DELTA_KOL_COMMISSION_ENABLED` before the initial Finance KOL Commission Data Write Gate is accepted and post-verified.
+
+## Production Closure — 2026-09-17
+- Compatibility PR #344 merged at `d99ab97ac44d999c34caa6cd803042431d30da26`.
+- Production convergence verified all 9 P8 runtime files against the approved main content; the final compatibility delta required only the two Finance files changed by PR #344.
+- Runtime with `OverseasHandlingEvidenceReader` absent successfully executed KOL Finance dry-run and canary preview; no container/relation failure remained.
+- P8 initial Finance materialization and replay completed successfully after this compatibility fix.
+- Subsequent combined Production releases preserved both compatibility files exactly.
+- This compatibility package is closed; future overseas-handling deployment can install its own capability without being an implicit prerequisite for P8.

@@ -1,5 +1,7 @@
 # ERP-ACCOUNTING-V11C-P8-KOL-COMMISSION-001
 
+**Status:** CLOSED / PRODUCTION ACCEPTED / CONTINUOUS DELTA ACTIVE
+
 ## Objective
 Materialize canonical AffiliateWP Referral commission into customer Order Profit without recreating AffiliateWP provider truth or reopening KOL identity history.
 
@@ -66,3 +68,21 @@ Add `kol_commission` to the existing Accounting continuous-delta stages with ind
 - No Production Referral rows, `order_cost_entries`, Provider facts, or runtime activation flags were written during code/test/PR work.
 - ERP Changelog not updated because this package remains manual-only.
 - Continuation implementation/verification effort in this execution window: approximately 1.5 effective hours; no pre-existing historical effort inferred beyond recorded evidence.
+
+## Production Closure — 2026-09-17
+- PR #339 merged at `4b17c6d8943369f984d5764a6d2bff70708558d5`; compatibility hotfix PR #344 merged at `d99ab97ac44d999c34caa6cd803042431d30da26`.
+- P8A exact Production apply: 3,351 seen / 3,327 resolved / 24 unresolved / 0 ambiguous; replay became 3,351 noop.
+- Initial Finance materialization: 6,249 seen / 2,417 applied / 0 noop / 3,832 blocked / 0 FX freeze.
+- Materialized provider-import KOL commission: 2,417 Orders, 0 duplicate Orders, source commission reconstructed exactly to USD 56,113.30.
+- 645 non-USD Orders retained complete USD base evidence; 1,772 USD Orders + 645 non-USD Orders reconcile to the same source total.
+- Pre-existing Order 1200 manual USD 10.00 strong fact remained untouched.
+- Finance replay after apply: 0 apply / 2,417 noop; KOL materialization Audit records: exactly 2,417.
+- `ERP_ACCOUNTING_CONTINUOUS_DELTA_KOL_COMMISSION_ENABLED=true` is persisted in shared Production env; KOL Production apply flag remains unset.
+- Existing Accounting scheduler remains the only scheduler: `10 * * * * php artisan finance:materialize-continuous-delta --apply --limit=10000 --no-interaction`.
+- First post-activation automatic Accounting delta runs completed successfully with zero failed items; KOL provider-import remains 2,417 / distinct Orders 2,417 / duplicates 0 / Audit 2,417.
+- Activation introduced no historical KOL backfill. The one overnight delta candidate was unrelated Finance activity; no Referral rows changed in that window and its KOL preview was fail-closed `referral_snapshot_missing`.
+- `/login` remained HTTP 200 through activation and post-activation verification.
+- ERP Changelog intentionally remains unchanged because changelog publication is manual-only.
+
+## Closure Decision
+P8 is formally closed. Future AffiliateWP Referral changes are handled through the existing Accounting continuous-delta pipeline; no dedicated P8 scheduler or further initial backfill is required.
