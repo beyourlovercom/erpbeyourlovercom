@@ -8,6 +8,9 @@ return [
     'multi_shipment' => [
         'enabled' => filter_var(env('ERP_ACCOUNTING_MULTI_SHIPMENT_AGGREGATION_ENABLED', false), FILTER_VALIDATE_BOOL),
     ],
+    'warehouse_bill_reconciliation' => [
+        'continuous_delta_enabled' => filter_var(env('ERP_WAREHOUSE_BILL_ACCOUNTING_DELTA_ENABLED', false), FILTER_VALIDATE_BOOL),
+    ],
     'financial_bootstrap' => [
         'production_apply_enabled' => (bool) env('ERP_ACCOUNTING_FINANCIAL_BOOTSTRAP_PRODUCTION_APPLY_ENABLED', false),
     ],

@@ -45,6 +45,7 @@ final class WarehouseController
             'costCenter'=>$this->inventory->warehouseCostCenter($w),
             'billImportPreview'=>data_get(session($this->billPreviewKey((int)$w->id)),'summary'),
             'billReconciliationHistory'=>$this->reconciliation->history($w),
+            'billReconciliationDashboard'=>$this->reconciliation->dashboard($w),
             'billReconciliationPreview'=>session($this->billReconciliationPreviewKey((int)$w->id)),
             'canOperate'=>auth()->user()?->can(AuthorizationKeys::InventoryOperate->value) ?? false,
             'canManage'=>auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false,
