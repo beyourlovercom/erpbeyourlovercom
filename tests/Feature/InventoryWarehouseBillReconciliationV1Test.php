@@ -76,6 +76,10 @@ final class InventoryWarehouseBillReconciliationV1Test extends TestCase
             ->where('billReconciliationHistory.0.id',$batch->id)
             ->where('billReconciliationHistory.0.supported',true)
             ->where('billReconciliationHistory.0.reconciliation.status','ready')
+            ->where('billReconciliationDashboard.totals.batches',1)
+            ->where('billReconciliationDashboard.totals.rows',3)
+            ->where('billReconciliationDashboard.totals.matched_shipments',1)
+            ->where('billReconciliationDashboard.totals.matched_orders',1)
             ->where('billReconciliationPreview.batch_id',$batch->id));
         $this->actingAs($viewer)->post('/inventory/us-la/costs/reconciliation/'.$batch->id.'/preview')->assertForbidden();
     }

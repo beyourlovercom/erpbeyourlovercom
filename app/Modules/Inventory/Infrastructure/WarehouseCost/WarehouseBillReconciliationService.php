@@ -2,13 +2,17 @@
 
 namespace App\Modules\Inventory\Infrastructure\WarehouseCost;
 
+use App\Modules\Finance\Application\AccountingContinuousDeltaService;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseBillImportBatch;
 use RuntimeException;
 
 final class WarehouseBillReconciliationService
 {
-    public function __construct(private readonly MorePlusCostBridgeService $morePlus) {}
+    public function __construct(
+        private readonly MorePlusCostBridgeService $morePlus,
+        private readonly AccountingContinuousDeltaService $accountingDelta,
+    ) {}
 
     public function supports(WarehouseBillImportBatch $batch): bool
     {
@@ -39,7 +43,9 @@ final class WarehouseBillReconciliationService
             || ! hash_equals($plan, strtolower((string) $fresh['plan_checksum']))) {
             throw new RuntimeException('warehouse_bill_reconciliation_preflight_mismatch');
         }
-        return $this->morePlus->apply((int) $batch->id);
+        $result = $this->morePlus->apply((int) $batch->id);
+        $result['accounting_delta'] = $this->syncAccountingDelta();
+        return $result;
     }
 
     /** @return list<array<string,mixed>> */
@@ -67,6 +73,61 @@ final class WarehouseBillReconciliationService
             }
             return $row;
         })->all();
+    }
+
+
+    /** @return array<string,mixed> */
+    public function dashboard(Warehouse $warehouse, int $limit = 12): array
+    {
+        $batches = WarehouseBillImportBatch::query()->where('warehouse_id', $warehouse->id)->latest('id')->limit($limit)->get();
+        $months = []; $totals = ['batches'=>0,'rows'=>0,'ready'=>0,'review'=>0,'excluded'=>0,'matched_shipments'=>0,'matched_orders'=>0];
+        foreach ($batches as $batch) {
+            $month = $batch->invoice_date?->format('Y-m') ?? 'unknown';
+            $months[$month] ??= ['month'=>$month,'batches'=>0,'rows'=>0,'currencies'=>[],'ready'=>0,'review'=>0,'excluded'=>0,'status'=>'review'];
+            $months[$month]['batches']++; $months[$month]['rows'] += (int)$batch->total_rows; $totals['batches']++; $totals['rows'] += (int)$batch->total_rows;
+            $currency=(string)$batch->currency; $months[$month]['currencies'][$currency]=bcadd((string)($months[$month]['currencies'][$currency]??'0'),(string)$batch->invoice_total,4);
+            if (! $this->supports($batch) || (string)$batch->status !== 'applied') continue;
+            $preview=$this->preview($warehouse,$batch);
+            $ready=(int)$preview['shipping']['ready']+(int)$preview['parcel_outbound']['ready']+(int)($preview['storage']['ready_count']??0);
+            $review=(int)$preview['shipping']['review']+(int)$preview['parcel_outbound']['review']+(int)($preview['storage']['review_count']??0);
+            $excluded=(int)$preview['shipping']['excluded']+(int)$preview['parcel_outbound']['excluded']+(int)($preview['storage']['excluded_count']??0);
+            $months[$month]['ready'] += $ready; $months[$month]['review'] += $review; $months[$month]['excluded'] += $excluded;
+            $totals['ready'] += $ready; $totals['review'] += $review; $totals['excluded'] += $excluded;
+            $shipmentIds=[]; $orderIds=[];
+            foreach (['shipping','parcel_outbound'] as $category) foreach (($preview['groups'][$category]??[]) as $group) {
+                if (in_array((string)$group['decision'],['ready','skip'],true)) { if($group['shipment_id'])$shipmentIds[]=(int)$group['shipment_id']; if($group['order_id'])$orderIds[]=(int)$group['order_id']; }
+            }
+            $totals['matched_shipments'] += count(array_unique($shipmentIds)); $totals['matched_orders'] += count(array_unique($orderIds));
+            $months[$month]['status']=$this->status($preview);
+        }
+        krsort($months); return ['totals'=>$totals,'months'=>array_values($months),'review_queue'=>$this->reviewQueue($warehouse,$limit,100),'accounting_delta'=>$this->accountingDeltaPreview()];
+    }
+
+    /** @return list<array<string,mixed>> */
+    public function reviewQueue(Warehouse $warehouse, int $batchLimit = 12, int $rowLimit = 100): array
+    {
+        $out=[]; $batches=WarehouseBillImportBatch::query()->where('warehouse_id',$warehouse->id)->latest('id')->limit($batchLimit)->get();
+        foreach($batches as $batch){ if(!$this->supports($batch)||(string)$batch->status!=='applied')continue; $preview=$this->preview($warehouse,$batch);
+            foreach(['shipping','parcel_outbound'] as $category) foreach(($preview['groups'][$category]??[]) as $group){ if(!in_array((string)$group['decision'],['review','excluded'],true))continue;
+                $out[]=['batch_id'=>(int)$batch->id,'invoice_number'=>$batch->invoice_number,'category'=>$category,'decision'=>$group['decision'],'reason_code'=>$group['reason_code'],'tracking_number'=>$group['tracking_number'],'source_order_references'=>$group['source_order_references'],'shipment_id'=>$group['shipment_id'],'order_id'=>$group['order_id'],'amount'=>$group['amount'],'currency'=>$group['currency']];
+                if(count($out)>=$rowLimit)return $out; }
+        } return $out;
+    }
+
+    /** @return array<string,mixed> */
+    private function accountingDeltaPreview(): array
+    {
+        if (! (bool) config('erp_accounting.multi_shipment.enabled', false)) return ['enabled'=>false,'gate'=>'multi_shipment_disabled'];
+        $p=$this->accountingDelta->preview(1000); return ['enabled'=>(bool)config('erp_accounting.warehouse_bill_reconciliation.continuous_delta_enabled',false),'mode'=>'dry_run','gate'=>$p['gate']??'pass','candidate_count'=>$p['candidate_count']??0,'failures'=>$p['failures']??0,'stages'=>array_intersect_key($p['stages']??[],array_flip(['warehouse_cost','last_mile_actual','overseas_handling_actual']))];
+    }
+
+    /** @return array<string,mixed> */
+    private function syncAccountingDelta(): array
+    {
+        $preview=$this->accountingDeltaPreview();
+        if(!($preview['enabled']??false))return $preview;
+        if(app()->environment('production')&&!filter_var(getenv('ERP_WAREHOUSE_BILL_ACCOUNTING_DELTA_PRODUCTION_APPLY_ENABLED')?:'false',FILTER_VALIDATE_BOOL))return [...$preview,'mode'=>'blocked','gate'=>'production_apply_disabled'];
+        $r=$this->accountingDelta->apply(1000); return ['enabled'=>true,'mode'=>'apply','gate'=>$r['gate']??'pass','candidate_count'=>$r['candidate_count']??0,'processed'=>$r['processed']??0,'failures'=>$r['failures']??0,'run_id'=>$r['run_id']??null,'run_status'=>$r['run_status']??null];
     }
 
     /** @param array<string,mixed> $preview */
