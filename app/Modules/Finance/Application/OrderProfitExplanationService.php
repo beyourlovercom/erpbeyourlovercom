@@ -44,6 +44,8 @@ final class OrderProfitExplanationService
         $profit = $net !== null && $complete ? DecimalMoney::round(bcsub($net, $known, 8)) : null;
         $margin = $profit !== null && bccomp($net, '0', 8) !== 0 ? bcdiv($profit, $net, 4) : null;
 
+        $shipments = $this->shipmentSection($candidates);
+
         return [
             'order' => $this->orderHeader($order, $preview),
             'summary' => $summary + [
@@ -53,7 +55,8 @@ final class OrderProfitExplanationService
                 'canonical_margin' => $margin,
             ],
             'product' => $this->productSection($candidates->get('product_cost')),
-            'shipments' => $this->shipmentSection($candidates),
+            'shipments' => $shipments,
+            'logistics' => $this->logisticsSection($shipments),
             'other_costs' => array_values(array_filter($costLines, fn (array $line): bool => ! in_array($line['cost_type'], ['product_cost', 'first_mile_cost', 'overseas_handling_cost', 'last_mile_cost'], true))),
             'formula' => $costLines,
         ];
@@ -151,11 +154,52 @@ final class OrderProfitExplanationService
                 $row['shipment_total'] = null;
                 $row['shipment_total_currency'] = $currencies[0] ?? null;
             }
-            $row['state'] = collect($parts)->contains(fn (array $part): bool => in_array($part['state'] ?? 'blocked', ['blocked', 'review', 'missing'], true)) ? 'blocked' : 'confirmed';
+            $componentMap = [
+                'First Mile' => $row['first_mile'],
+                'Handling' => $row['handling'],
+                'Last Mile' => $row['last_mile'],
+            ];
+            $row['missing_components'] = array_keys(array_filter(
+                $componentMap,
+                fn ($part): bool => ! is_array($part) || ($part['amount'] ?? null) === null,
+            ));
+            $states = collect($parts)->map(fn (array $part): string => (string) ($part['state'] ?? 'blocked'));
+            if ($states->contains('review')) {
+                $row['state'] = 'review';
+            } elseif ($row['missing_components'] !== [] || ! $allPresent || $states->contains('missing')) {
+                $row['state'] = 'incomplete';
+            } elseif ($states->contains('blocked')) {
+                $row['state'] = 'blocked';
+            } elseif ($states->contains('estimated')) {
+                $row['state'] = 'estimated';
+            } else {
+                $row['state'] = 'confirmed';
+            }
         }
         unset($row);
         ksort($rows);
         return array_values($rows);
+    }
+
+    /** @param list<array<string,mixed>> $shipments @return array<string,mixed> */
+    private function logisticsSection(array $shipments): array
+    {
+        if ($shipments === []) {
+            return ['state' => 'missing', 'shipment_count' => 0, 'confirmed_shipment_count' => 0];
+        }
+        $states = collect($shipments)->pluck('state');
+        $state = match (true) {
+            $states->contains('review') => 'review',
+            $states->contains('blocked') => 'blocked',
+            $states->contains('incomplete'), $states->contains('missing') => 'incomplete',
+            $states->contains('estimated') => 'estimated',
+            default => 'confirmed',
+        };
+        return [
+            'state' => $state,
+            'shipment_count' => count($shipments),
+            'confirmed_shipment_count' => $states->filter(fn (string $value): bool => $value === 'confirmed')->count(),
+        ];
     }
 
     /** @return array<string,mixed> */

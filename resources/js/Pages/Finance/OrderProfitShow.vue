@@ -28,6 +28,7 @@ type ShipmentRow = {
     shipment_total: string | null
     shipment_total_currency: string | null
     state: string
+    missing_components: string[]
 }
 
 type CostLine = {
@@ -69,6 +70,7 @@ type Explanation = {
         lines: Array<Record<string, any>>
     }
     shipments: ShipmentRow[]
+    logistics: { state: string; shipment_count: number; confirmed_shipment_count: number }
     other_costs: CostLine[]
     formula: CostLine[]
 }
@@ -77,7 +79,7 @@ const props = defineProps<{ explanation: Explanation }>()
 const e = props.explanation
 const money = (amount: string | null | undefined, currency: string | null | undefined) => amount === null || amount === undefined ? '—' : `${currency ?? e.order.currency} ${amount}`
 const pct = (value: string | null | undefined) => value === null || value === undefined ? '—' : `${(Number(value) * 100).toFixed(1)}%`
-const stateLabel = (state: string) => ({ confirmed: 'Confirmed', estimated: 'Estimated', missing: 'Missing', blocked: 'Blocked', review: 'Review' }[state] ?? state)
+const stateLabel = (state: string) => ({ confirmed: 'Confirmed', estimated: 'Estimated', incomplete: 'Incomplete', missing: 'Missing', blocked: 'Blocked', review: 'Review' }[state] ?? state)
 const totalLogistics = e.formula.filter(line => ['first_mile_cost', 'overseas_handling_cost', 'last_mile_cost'].includes(line.cost_type))
 const formulaSymbol = (index: number) => index === 0 ? '' : '+'
 </script>
@@ -148,11 +150,11 @@ const formulaSymbol = (index: number) => index === 0 ? '' : '+'
                             <td>{{ money(row.handling?.amount, row.handling?.currency) }}<small v-if="row.handling?.source_currency && row.handling.source_currency !== row.handling.currency">source {{ money(row.handling.source_amount, row.handling.source_currency) }}</small></td>
                             <td>{{ money(row.last_mile?.amount, row.last_mile?.currency) }}<small>{{ row.carrier ?? 'Carrier evidence' }}</small></td>
                             <td><strong>{{ money(row.shipment_total, row.shipment_total_currency) }}</strong></td>
-                            <td><span class="state" :class="`state-${row.state}`">{{ stateLabel(row.state) }}</span></td>
+                            <td><span class="state" :class="`state-${row.state}`">{{ stateLabel(row.state) }}</span><small v-if="row.missing_components?.length">Missing: {{ row.missing_components.join(' / ') }}</small></td>
                         </tr>
                         <tr v-if="!e.shipments.length"><td colspan="8" class="empty">No canonical Shipment evidence found.</td></tr>
                     </tbody>
-                    <tfoot><tr><th colspan="3">Parent Logistics Aggregation</th><th v-for="line in totalLogistics" :key="line.cost_type">{{ money(line.amount, line.currency) }}</th><th colspan="2">Σ Shipment cost components</th></tr></tfoot>
+                    <tfoot><tr><th colspan="3">Parent Logistics Aggregation</th><th v-for="line in totalLogistics" :key="line.cost_type">{{ money(line.amount, line.currency) }}</th><th>Σ Shipment cost components</th><th><span class="state" :class="`state-${e.logistics.state}`">{{ stateLabel(e.logistics.state) }}</span><small>{{ e.logistics.confirmed_shipment_count }}/{{ e.logistics.shipment_count }} Shipments complete</small></th></tr></tfoot>
                 </table></div>
             </section>
 
@@ -205,7 +207,7 @@ const formulaSymbol = (index: number) => index === 0 ? '' : '+'
 .tabs { display:flex; gap:26px; align-items:center; border-bottom:1px solid #dfe6e8; padding:0 12px; color:#607078; font-size:12px; }.tabs>*{padding:11px 2px}.tabs b{color:#1b63d8;border-bottom:2px solid #1b63d8}
 .summary-panel { border:1px solid #cfe3f3; background:#eff7ff; border-radius:8px; padding:13px; }.summary-panel h2,.cost-section h2,.final-panel h2{margin:0;font-size:16px}.summary-grid{display:grid;grid-template-columns:1.1fr auto 1.1fr auto 1.1fr 1fr 1.7fr;gap:10px;align-items:center;margin-top:12px}
 .summary-grid article{min-height:78px;background:#fff;border:1px solid #dce6ea;border-radius:7px;padding:12px;display:grid;gap:4px;align-content:center}.summary-grid article span{font-size:11px;color:#6b7b82}.summary-grid article strong{font-size:19px}.summary-grid article.danger strong{color:#d12e2e}.summary-grid em{font-style:normal;font-weight:800;color:#64757a}.formula-card{border-color:#84b6f6!important}.formula-card strong{font-size:13px!important;color:#235fb3}.formula-card small{color:#60758a}
-.cost-section { border:1px solid #dfe6e8; border-radius:8px; padding:12px; background:#fff; }.section-head{display:flex;justify-content:space-between;gap:18px;align-items:center}.section-head h2 small{font-weight:500;color:#596b72}.rule-note{margin:7px 0 10px;color:#c0392b;font-size:12px}.table-wrap{overflow:auto;border:1px solid #e1e7e9;border-radius:6px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;border-right:1px solid #e5eaec;border-bottom:1px solid #e5eaec;text-align:left;vertical-align:middle}th:last-child,td:last-child{border-right:0}thead th,tfoot th{background:#f4f7f8;font-weight:700;white-space:nowrap}tfoot th{border-bottom:0}td small,td span+small{display:block;color:#849198;margin-top:3px}.item-chip{display:block;white-space:nowrap}.empty{text-align:center;color:#87959a;padding:18px}.state{display:inline-flex;padding:3px 7px;border-radius:999px;font-weight:700;font-size:10px}.state-confirmed{background:#e5f6eb;color:#18734e}.state-estimated{background:#fff2cf;color:#956100}.state-missing,.state-blocked{background:#feeceb;color:#b83832}.state-review{background:#f3eafa;color:#7a3ea1}code{font-size:10px;color:#52656d;word-break:break-all}
+.cost-section { border:1px solid #dfe6e8; border-radius:8px; padding:12px; background:#fff; }.section-head{display:flex;justify-content:space-between;gap:18px;align-items:center}.section-head h2 small{font-weight:500;color:#596b72}.rule-note{margin:7px 0 10px;color:#c0392b;font-size:12px}.table-wrap{overflow:auto;border:1px solid #e1e7e9;border-radius:6px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;border-right:1px solid #e5eaec;border-bottom:1px solid #e5eaec;text-align:left;vertical-align:middle}th:last-child,td:last-child{border-right:0}thead th,tfoot th{background:#f4f7f8;font-weight:700;white-space:nowrap}tfoot th{border-bottom:0}td small,td span+small{display:block;color:#849198;margin-top:3px}.item-chip{display:block;white-space:nowrap}.empty{text-align:center;color:#87959a;padding:18px}.state{display:inline-flex;padding:3px 7px;border-radius:999px;font-weight:700;font-size:10px}.state-confirmed{background:#e5f6eb;color:#18734e}.state-estimated,.state-incomplete{background:#fff2cf;color:#956100}.state-missing,.state-blocked{background:#feeceb;color:#b83832}.state-review{background:#f3eafa;color:#7a3ea1}code{font-size:10px;color:#52656d;word-break:break-all}
 
 .final-panel{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:14px;border:1px solid #dfe6e8;border-radius:8px;padding:14px;background:#fff}.final-panel>div>p{margin:5px 0 12px;color:#6d7d84;font-size:11px}.formula-line{display:flex;align-items:stretch;gap:7px;overflow:auto}.formula-line article{min-width:108px;border:1px solid #dfe6e8;border-radius:7px;padding:9px;display:grid;gap:3px;background:#fafcfc}.formula-line article strong{font-size:14px}.formula-line article small{font-size:10px;color:#75868d}.formula-line article.incomplete{border-style:dashed;opacity:.65}.formula-line article.total{background:#fff1f1;border-color:#f2c7c7;color:#b42323}.operator{align-self:center;font-weight:800;color:#61747b}.profit-box{border:1px solid #bfe3ce;border-radius:8px;background:#eefaf3;padding:14px;display:grid;gap:7px;align-content:center}.profit-box>span{font-size:12px;color:#567467}.profit-box>strong{font-size:24px;color:#168052}.profit-box p{margin:0;color:#2d6e54}.profit-box b{color:#137248}.profit-box small{color:#8a6500}.profit-box.pending{background:#fff9eb;border-color:#ead7a8}.profit-box.pending>strong{color:#9a6500}
 @media(max-width:1180px){.summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.summary-grid em{display:none}.formula-card{grid-column:span 2}.final-panel{grid-template-columns:1fr}.finance-status{min-width:220px}}

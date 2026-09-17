@@ -133,6 +133,24 @@ final class MultiShipmentCostAggregationTest extends TestCase
         $this->assertSame(0, $parent->costEntries()->count());
     }
 
+    public function test_formula_explanation_marks_shipments_and_parent_logistics_incomplete_when_last_mile_is_missing(): void
+    {
+        $parent = $this->parent('USD');
+        $this->leg($parent, 'A', 'factory', 1, 'STATUS-CN');
+        $this->leg($parent, 'B', 'us-la', 2, 'STATUS-US');
+
+        $explanation = app(OrderProfitExplanationService::class)->explain($parent->fresh());
+
+        $this->assertSame('incomplete', $explanation['logistics']['state']);
+        $this->assertSame(0, $explanation['logistics']['confirmed_shipment_count']);
+        $this->assertSame(2, $explanation['logistics']['shipment_count']);
+        foreach ($explanation['shipments'] as $shipment) {
+            $this->assertSame('incomplete', $shipment['state']);
+            $this->assertContains('Last Mile', $shipment['missing_components']);
+            $this->assertNull($shipment['shipment_total']);
+        }
+    }
+
     public function test_formula_explanation_reuses_canonical_product_and_shipment_evidence(): void
     {
         $parent = $this->parent('USD', true);
