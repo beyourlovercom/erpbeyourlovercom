@@ -1427,10 +1427,26 @@ final class CostMaterializationService
         };
     }
 
+    private function sameMultiShipmentEvidenceSnapshot(array $candidate, Model $entry): bool
+    {
+        return $this->isMultiShipmentCandidate($candidate)
+            && (string) $entry->source_reference === (string) ($candidate['source_reference'] ?? '')
+            && strtoupper((string) $entry->currency) === strtoupper((string) ($candidate['currency'] ?? ''))
+            && (string) $entry->provenance === (string) ($candidate['provenance'] ?? '')
+            && (string) $entry->status === (string) ($candidate['status'] ?? '');
+    }
+
     private function disposition(array $candidate, ?Model $entry): string
     {
         if ($entry === null) {
             return 'apply';
+        }
+        // Multi-shipment source_reference is the immutable business-evidence fingerprint.
+        // Once that exact evidence has been posted, later Settings FX/reference-date drift
+        // must never revalue the historical OrderCostEntry snapshot. Evidence changes
+        // (shipment/billing/source amount/etc.) produce a different fingerprint and remain apply-eligible.
+        if ($this->sameMultiShipmentEvidenceSnapshot($candidate, $entry)) {
+            return 'noop';
         }
         if ((string) $entry->source_reference === (string) $candidate['source_reference']
             && (string) $entry->amount === (string) $candidate['amount']
@@ -1482,6 +1498,12 @@ final class CostMaterializationService
         }
         if ($disposition === 'noop' && $entry !== null) {
             $candidate['existing_entry_id'] = (int) $entry->getKey();
+            if ($this->sameMultiShipmentEvidenceSnapshot($candidate, $entry)) {
+                // Keep dry-run plans and explainability anchored to the already-frozen posting amount.
+                $candidate['amount'] = (string) $entry->amount;
+                $candidate['currency'] = (string) $entry->currency;
+                $candidate['posting_snapshot_frozen'] = true;
+            }
         }
         return $candidate;
     }
