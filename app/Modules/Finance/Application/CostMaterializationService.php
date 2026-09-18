@@ -7,6 +7,7 @@ use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Kol\Application\Contracts\AffiliateCommissionEvidenceReader;
 use App\Modules\Inventory\Application\Contracts\WarehouseCostAllocationEvidenceReader;
+use App\Modules\Inventory\Application\Contracts\P9WarehouseStorageCostEvidenceReader;
 use App\Modules\Logistics\Application\Contracts\CarrierBillingEvidenceReader;
 use App\Modules\Logistics\Application\Contracts\FulfillmentOriginEvidenceReader;
 use App\Modules\Logistics\Application\Contracts\LastMileEstimateEvidenceReader;
@@ -32,6 +33,7 @@ final class CostMaterializationService
         private readonly FulfillmentOriginEvidenceReader $fulfillmentOrigin,
         private readonly AffiliateCommissionEvidenceReader $affiliate,
         private readonly WarehouseCostAllocationEvidenceReader $warehouseCosts,
+        private readonly P9WarehouseStorageCostEvidenceReader $p9WarehouseCosts,
         private readonly AccountingFxSnapshotBridgeService $fxBridge,
         private readonly OrderAnalysisService $analysis,
         private readonly AuditRecorder $audit,
@@ -874,7 +876,72 @@ final class CostMaterializationService
 
     private function warehouseCostCandidate(Model $order): array
     {
-        $evidence = $this->warehouseCosts->read($order->getKey());
+        $legacy = $this->warehouseCosts->read($order->getKey());
+
+        if ((bool) config('warehouse_storage_aging.order_cost_enabled', false)) {
+            $canonicalFrom = trim((string) config('warehouse_storage_aging.canonical_from', ''));
+            if ($canonicalFrom === '') {
+                return $this->blocked('warehouse_cost', 'p9_warehouse_storage_canonical_from_missing');
+            }
+
+            $p9 = $this->p9WarehouseCosts->read($order->getKey());
+            $legacyReady = $legacy !== null && ! isset($legacy['blocked']);
+            if ($p9 !== null && $legacyReady) {
+                return $this->blocked('warehouse_cost', 'p7_p9_warehouse_storage_overlap', [
+                    'p9_source_reference' => $p9['source_reference'] ?? null,
+                    'p7_batch_id' => $legacy['batch_id'] ?? null,
+                    'p7_billing_period_end' => $legacy['billing_period_end'] ?? null,
+                ]);
+            }
+
+            if ($p9 !== null) {
+                $currency = $this->orderCurrency($order);
+                $sourceCurrency = strtoupper(trim((string) ($p9['currency'] ?? '')));
+                if ($sourceCurrency !== 'CNY' || ! isset($p9['source_amount']) || blank($p9['source_reference'] ?? null)) {
+                    return $this->blocked('warehouse_cost', 'complete_p9_storage_consumption_evidence_required');
+                }
+
+                $sourceAmount = DecimalMoney::round((string) $p9['source_amount']);
+                $amount = $sourceAmount;
+                $extra = [
+                    'source_currency' => $sourceCurrency,
+                    'source_amount' => $sourceAmount,
+                    'consumed_units' => $p9['consumed_units'] ?? null,
+                    'consumption_ids' => $p9['consumption_ids'] ?? [],
+                    'shipment_ids' => $p9['shipment_ids'] ?? [],
+                    'warehouse_ids' => $p9['warehouse_ids'] ?? [],
+                    'allocation_rule' => 'p9_fifo_lot_consumption_v1',
+                ];
+                if ($sourceCurrency !== $currency) {
+                    $fx = $this->fxBridge->preview($order, $sourceCurrency);
+                    if (! ($fx['available'] ?? false)) {
+                        return $this->blocked('warehouse_cost', 'p9_warehouse_cost_fx_snapshot_unavailable', $extra + ['fx_reason' => $fx['reason'] ?? 'fx_unavailable']);
+                    }
+                    $amount = DecimalMoney::round(DecimalMoney::multiply($sourceAmount, (string) $fx['source_to_transaction_rate'], 8));
+                    $extra['posting_fx'] = $fx + [
+                        'base_amount' => DecimalMoney::round(DecimalMoney::multiply($sourceAmount, (string) $fx['source_to_usd_rate'], 8)),
+                    ];
+                }
+
+                return $this->candidate(
+                    'warehouse_cost', $amount, $currency, 'allocated_actual', 'confirmed',
+                    (string) $p9['source_reference'], $p9['source_at'] ?? null, $extra,
+                );
+            }
+
+            if ($legacyReady) {
+                $periodEnd = trim((string) ($legacy['billing_period_end'] ?? ''));
+                if ($periodEnd !== '' && $periodEnd >= $canonicalFrom) {
+                    return $this->blocked('warehouse_cost', 'p7_storage_superseded_by_p9_missing_fifo_evidence', [
+                        'canonical_from' => $canonicalFrom,
+                        'p7_batch_id' => $legacy['batch_id'] ?? null,
+                        'p7_billing_period_end' => $periodEnd,
+                    ]);
+                }
+            }
+        }
+
+        $evidence = $legacy;
         if ($evidence === null || isset($evidence['blocked'])) {
             return $this->blocked('warehouse_cost', (string) ($evidence['blocked'] ?? 'warehouse_storage_allocation_missing'));
         }
@@ -1548,6 +1615,7 @@ final class CostMaterializationService
         return str_starts_with($source, 'product-reference:v1:')
             || str_starts_with($source, 'carrier-billing:v1:')
             || str_starts_with($source, 'warehouse-storage-allocation:v1:')
+            || str_starts_with($source, 'p9-storage-aging-allocation:v1:')
             || str_starts_with($source, 'overseas-handling:v1:')
             || str_starts_with($source, 'last-mile-estimate:v1:')
             || str_starts_with($source, 'p82-last-mile-estimate:v1:')

@@ -6,6 +6,7 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Inventory\Application\ProductPackagingStandardReader;
+use App\Modules\Inventory\Application\Contracts\WarehouseLotConsumptionCapture;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReviewHistory;
 use App\Modules\Logistics\Infrastructure\Models\ShipmentAttempt;
@@ -22,6 +23,7 @@ final class ShipmentService
         private readonly AuditRecorder $audit,
         private readonly ManualSyncService $manualSync,
         private readonly ProductPackagingStandardReader $packagingStandards,
+        private readonly WarehouseLotConsumptionCapture $lotConsumptions,
         private readonly ShipmentCompletionSemantics $completionSemantics,
         private readonly ShipmentAggregateStatusService $aggregateStatus,
     ) {}
@@ -102,6 +104,9 @@ final class ShipmentService
             }
             if ($lockedOrder->order_status?->value !== 'shipped') {
                 $lockedOrder->forceFill(['order_status' => 'shipped'])->save();
+            }
+            if ((bool) config('warehouse_storage_aging.fifo_consumption_enabled', false)) {
+                $this->lotConsumptions->captureForShipment($shipment);
             }
             if ($trackingNumber) {
                 $this->manualSync->ensurePending($lockedOrder, $actor);
@@ -428,6 +433,9 @@ final class ShipmentService
 
     private function snapshotAndReset(Model $order, Model $shipment, ?Authenticatable $actor, ?string $note = null, ?int $attemptNumber = null): ShipmentAttempt
     {
+        if ((bool) config('warehouse_storage_aging.fifo_consumption_enabled', false)) {
+            $this->lotConsumptions->assertShipmentMayReset($shipment);
+        }
         $attemptNumber ??= (int) $order->shipmentAttempts()->max('attempt_number') + 1;
         $packaging = ShipmentItemPackagingSnapshot::query()->where('shipment_id', $shipment->getKey())->get()->toArray();
         $billingModel = $shipment->billingEvidence()->first();
