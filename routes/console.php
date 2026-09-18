@@ -66,3 +66,11 @@ if ((bool) config('inventory_auto_allocation.scheduler_enabled', false)) {
         ->withoutOverlapping(55)
         ->onOneServer();
 }
+if ((bool) config('warehouse_storage_aging.monthly_enabled', false)) {
+    Schedule::command('inventory:run-storage-aging-monthly')
+        ->monthlyOn(1, (string) config('warehouse_storage_aging.scheduler.time', '02:20'))
+        ->timezone((string) config('warehouse_storage_aging.scheduler.timezone', config('app.timezone', 'UTC')))
+        ->name('inventory.storage-aging.monthly')
+        ->withoutOverlapping(180)
+        ->onOneServer();
+}

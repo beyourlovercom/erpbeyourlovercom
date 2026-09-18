@@ -5,8 +5,11 @@ namespace Tests\Feature\Finance;
 use App\Modules\Finance\Application\CostMaterializationService;
 use App\Modules\Finance\Application\FxReferenceSettingsService;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLotConsumption;
+use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\WarehouseCost\WarehouseStorageCostImportService;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -76,6 +79,70 @@ final class WarehouseCostMaterializationTest extends TestCase
         $this->assertSame('blocked', $candidate['materialization_status']);
         $this->assertSame('stronger_or_different_existing_fact', $candidate['blocker']);
         $this->assertSame('9.99', $order->costEntries()->where('cost_type', 'warehouse_cost')->firstOrFail()->amount);
+    }
+
+    public function test_p9_blocks_future_p7_storage_pool_when_fifo_evidence_is_missing(): void
+    {
+        config([
+            'warehouse_storage_aging.order_cost_enabled' => true,
+            'warehouse_storage_aging.canonical_from' => '2026-01-01',
+        ]);
+        [$order] = $this->readyEvidence('EUR', '1.2400', 2);
+
+        $candidate = app(CostMaterializationService::class)->previewWarehouseCostGate($order)['candidates'][0];
+
+        $this->assertSame('blocked', $candidate['materialization_status']);
+        $this->assertSame('p7_storage_superseded_by_p9_missing_fifo_evidence', $candidate['blocker']);
+    }
+
+    public function test_p9_and_p7_overlap_fails_closed_instead_of_double_charging(): void
+    {
+        config([
+            'warehouse_storage_aging.order_cost_enabled' => true,
+            'warehouse_storage_aging.canonical_from' => '2026-01-01',
+        ]);
+        [$order, $warehouse] = $this->readyEvidence('EUR', '1.2400', 2);
+        $shipment = $order->shipment()->firstOrFail();
+        $item = $order->items()->firstOrFail();
+        $product = Product::query()->create([
+            'sku' => 'P9-OVERLAP-'.$order->id,
+            'name' => 'P9 overlap',
+            'source_type' => 'manual',
+            'product_type' => 'simple',
+            'is_active' => true,
+        ]);
+        $item->forceFill(['product_id' => $product->id])->save();
+        $batch = InventorySyncBatch::query()->create([
+            'warehouse_id' => $warehouse->id,
+            'source_type' => 'api',
+            'sync_mode' => 'full',
+            'checksum' => hash('sha256', 'p9-overlap-'.$order->id),
+            'status' => 'confirmed',
+            'confirmed_at' => '2026-01-15 00:00:00',
+        ]);
+        WarehouseInventoryLotConsumption::query()->create([
+            'shipment_id' => $shipment->id,
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'warehouse_id' => $warehouse->id,
+            'product_id' => $product->id,
+            'stock_status' => 'sellable',
+            'putaway_date' => '2025-10-01',
+            'source_sync_batch_id' => $batch->id,
+            'quantity' => 2,
+            'aging_months_charged' => 2,
+            'unit_storage_cost_cny' => '2.00',
+            'allocated_storage_cost_cny' => '4.00',
+            'consumed_at' => '2026-01-15 00:00:00',
+            'lot_business_key' => hash('sha256', 'p9-overlap-lot'),
+            'source_reference' => 'p9-overlap-'.$order->id,
+            'captured_at' => '2026-01-15 00:00:00',
+        ]);
+
+        $candidate = app(CostMaterializationService::class)->previewWarehouseCostGate($order)['candidates'][0];
+
+        $this->assertSame('blocked', $candidate['materialization_status']);
+        $this->assertSame('p7_p9_warehouse_storage_overlap', $candidate['blocker']);
     }
 
     public function test_command_is_dry_run_first_and_production_apply_requires_flag_and_exact_guards(): void

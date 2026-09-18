@@ -3,7 +3,9 @@
 namespace Tests\Feature\Finance;
 
 use App\Modules\Finance\Application\AccountingContinuousDeltaService;
+use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLotConsumption;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateReferral;
 use App\Modules\Logistics\Application\Contracts\OverseasHandlingEvidenceReader;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
@@ -185,6 +187,65 @@ final class AccountingContinuousDeltaTest extends TestCase
         self::assertSame('12.34', $entry->amount);
         self::assertSame('provider_import', $entry->provenance);
         self::assertSame('confirmed', $entry->status);
+    }
+
+    public function test_p9_consumption_change_reenters_scope_without_touching_order_or_shipment_timestamp(): void
+    {
+        config([
+            'warehouse_storage_aging.order_cost_enabled' => true,
+            'warehouse_storage_aging.canonical_from' => '2026-09-10',
+        ]);
+        $this->service()->apply(100, CarbonImmutable::parse('2026-09-10T12:00:00Z'));
+        $order = $this->readyOrder();
+        $this->stampOrderAndRelations($order, '2026-09-10 10:00:00');
+
+        $warehouse = Warehouse::query()->firstOrCreate(
+            ['slug' => 'us-la'],
+            ['code' => 'US-LA-P9-DELTA', 'name' => 'US LA P9 Delta', 'type' => 'warehouse', 'is_active' => true, 'priority' => 10],
+        );
+        $item = $order->items()->firstOrFail();
+        $batch = InventorySyncBatch::query()->create([
+            'warehouse_id' => $warehouse->id,
+            'source_type' => 'api',
+            'sync_mode' => 'full',
+            'checksum' => hash('sha256', 'p9-delta-'.$order->id),
+            'status' => 'confirmed',
+            'confirmed_at' => '2026-09-10 10:00:00',
+        ]);
+        $consumption = WarehouseInventoryLotConsumption::query()->create([
+            'shipment_id' => $order->shipment()->firstOrFail()->id,
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'warehouse_id' => $warehouse->id,
+            'product_id' => $item->product_id,
+            'stock_status' => 'sellable',
+            'putaway_date' => '2026-06-01',
+            'source_sync_batch_id' => $batch->id,
+            'quantity' => 1,
+            'aging_months_charged' => 1,
+            'unit_storage_cost_cny' => '1.00',
+            'allocated_storage_cost_cny' => '1.00',
+            'consumed_at' => '2026-09-10 12:30:00',
+            'lot_business_key' => hash('sha256', 'p9-delta-lot-'.$order->id),
+            'source_reference' => 'p9-delta-'.$order->id,
+            'captured_at' => '2026-09-10 12:30:00',
+        ]);
+        DB::table('warehouse_inventory_lot_consumptions')->where('id', $consumption->id)->update([
+            'created_at' => '2026-09-10 12:30:00',
+            'updated_at' => '2026-09-10 12:30:00',
+        ]);
+
+        $preview = $this->service()->preview(100, CarbonImmutable::parse('2026-09-10T13:00:00Z'));
+
+        self::assertSame(1, $preview['candidate_count']);
+        self::assertSame(1, $preview['stages']['warehouse_cost']['applied']);
+
+        $applied = $this->service()->apply(100, CarbonImmutable::parse('2026-09-10T13:00:00Z'));
+        self::assertSame(1, $applied['stages']['warehouse_cost']['applied']);
+        $entry = $order->costEntries()->where('cost_type', 'warehouse_cost')->firstOrFail();
+        self::assertSame('allocated_actual', $entry->provenance);
+        self::assertSame('confirmed', $entry->status);
+        self::assertStringStartsWith('p9-storage-aging-allocation:v1:order:', $entry->source_reference);
     }
 
     public function test_warehouse_allocation_change_reenters_scope_and_materializes_warehouse_cost(): void

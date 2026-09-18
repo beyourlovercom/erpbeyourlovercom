@@ -52,6 +52,18 @@ final class EloquentAccountingContinuousDeltaCandidateStore implements Accountin
                         ->whereColumn('warehouse_cost_rows.order_id', 'orders.id')
                         ->where('warehouse_cost_rows.decision', 'ready')
                         ->whereBetween('warehouse_cost_rows.updated_at', [$windowStart, $windowEnd]))
+                    ->when((bool) config('warehouse_storage_aging.order_cost_enabled', false), fn (Builder $scope) => $scope
+                        ->orWhereExists(fn ($p9) => $p9
+                            ->selectRaw('1')
+                            ->from('warehouse_inventory_lot_consumptions as p9_consumptions')
+                            ->whereBetween('p9_consumptions.updated_at', [$windowStart, $windowEnd])
+                            ->where(function ($link): void {
+                                $link->whereColumn('p9_consumptions.order_id', 'orders.id')
+                                    ->orWhereIn('p9_consumptions.order_id', fn ($children) => $children
+                                        ->select('p9_children.id')
+                                        ->from('orders as p9_children')
+                                        ->whereColumn('p9_children.fulfillment_parent_id', 'orders.id'));
+                            })))
                     ->when((bool) config('erp_accounting.continuous_delta.kol_commission_enabled', false), fn (Builder $scope) => $scope
                         ->orWhereExists(fn ($referrals) => $referrals
                             ->selectRaw('1')
