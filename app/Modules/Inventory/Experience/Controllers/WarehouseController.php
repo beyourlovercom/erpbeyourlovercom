@@ -209,9 +209,11 @@ final class WarehouseController
             'label'=>(string)($config['label']??($w->name??$code)),
             'provider'=>$provider!==''?$provider:null,
             'format_label'=>(string)($config['format_label']??'待确认'),
-            'note'=>$status==='active'
-                ? 'Provider Adapter 已启用，可上传真实仓库账单并进入核销链。'
-                : '等待该仓真实原始账单样本；未获得样本前禁止猜测字段或启用财务写入。',
+            'note'=>match($status) {
+                'active' => 'Provider Adapter 已启用，可上传真实仓库账单并进入核销链。',
+                'validating' => '已收到真实原始账单样本，Provider Adapter 正在做金额守恒、Shipment 匹配与 UAT；验证完成前继续禁止财务写入。',
+                default => '等待该仓真实原始账单样本；未获得样本前禁止猜测字段或启用财务写入。',
+            },
         ];
     }
 

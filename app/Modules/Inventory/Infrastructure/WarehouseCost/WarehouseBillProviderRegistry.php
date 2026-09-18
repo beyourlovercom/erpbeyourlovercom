@@ -9,9 +9,9 @@ final class WarehouseBillProviderRegistry
 {
     /** @var array<string,WarehouseBillProviderAdapter> */
     private array $adapters;
-    public function __construct(MorePlusWarehouseBillProviderAdapter $morePlus)
+    public function __construct(MorePlusWarehouseBillProviderAdapter $morePlus, SpeedaUsNyWarehouseBillProviderAdapter $speedaUsNy)
     {
-        $this->adapters = [$morePlus->key() => $morePlus];
+        $this->adapters = [$morePlus->key() => $morePlus, $speedaUsNy->key() => $speedaUsNy];
     }
     public function get(string $provider): WarehouseBillProviderAdapter
     {

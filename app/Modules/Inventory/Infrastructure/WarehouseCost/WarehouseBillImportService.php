@@ -95,7 +95,7 @@ final class WarehouseBillImportService
                     if (bccomp((string)$amount, '0', 4) === 0) continue;
                     WarehouseCostEntry::query()->create([
                         'warehouse_id'=>$warehouse->id,'cost_month'=>$month['month'].'-01','category'=>$category,'amount'=>$this->round2((string)$amount),'currency'=>$preview['currency'],
-                        'note'=>'MorePlus '.($preview['invoice_number'] ?: $preview['original_filename']).' · '.$this->categoryLabel($category),
+                        'note'=>$this->providerLabel($preview['provider']).' '.($preview['invoice_number'] ?: $preview['original_filename']).' · '.$this->categoryLabel($category),
                         'source_type'=>'warehouse_bill_import','source_reference'=>'warehouse-bill:'.$batch->id.':'.$month['month'].':'.$category,
                         'created_by_user_id'=>$actor?->getAuthIdentifier(),
                     ]);
@@ -128,6 +128,7 @@ final class WarehouseBillImportService
         return $out;
     }
 
+    private function providerLabel(string $provider): string { return ['moreplus'=>'MorePlus','speeda-us-ny'=>'速达美东仓'][$provider] ?? $provider; }
     private function categoryLabel(string $category): string { return ['shipping'=>'Shipping','parcel_outbound'=>'Parcel Outbound','storage'=>'Storage','other'=>'Other'][$category] ?? $category; }
     private function round2(string $value): string
     {

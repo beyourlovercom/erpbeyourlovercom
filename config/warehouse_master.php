@@ -13,9 +13,13 @@ return [
             'role_label' => '海外履约仓',
             'bill_import' => [
                 'enabled' => false,
-                'status' => 'awaiting_sample',
-                'label' => '美东纽约仓',
-                'format_label' => '待提供真实账单样本',
+                'status' => 'validating',
+                'provider' => 'speeda-us-ny',
+                'label' => '速达美东仓',
+                'extension' => 'xlsx',
+                'format_label' => 'XLSX · Adapter 验证中',
+                'accept' => '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'max_kb' => 16384,
             ],
         ],
         'US-LA' => [
