@@ -22,6 +22,13 @@ final class WarehouseMasterRegistry
         return $slug !== '' ? $slug : $fallback;
     }
 
+    public function isOverseasFulfillmentSlug(string $slug): bool
+    {
+        $code = $this->codeForSlug($slug);
+        if ($code === null) return false;
+        return (string) ($this->forCode($code)['role_label'] ?? '') === '海外履约仓';
+    }
+
     public function codeForSlug(string $slug): ?string
     {
         $needle = strtolower(trim($slug));
