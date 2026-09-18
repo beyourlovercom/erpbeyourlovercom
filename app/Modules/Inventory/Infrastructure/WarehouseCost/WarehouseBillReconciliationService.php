@@ -59,27 +59,14 @@ final class WarehouseBillReconciliationService
     /** @return list<array<string,mixed>> */
     public function history(Warehouse $warehouse, int $limit = 6): array
     {
-        return WarehouseBillImportBatch::query()->where('warehouse_id', $warehouse->id)->latest('id')->limit($limit)->get()->map(function (WarehouseBillImportBatch $batch) use ($warehouse): array {
-            $row = [
+        return WarehouseBillImportBatch::query()->where('warehouse_id', $warehouse->id)->latest('id')->limit($limit)->get()->map(function (WarehouseBillImportBatch $batch): array {
+            return [
                 'id'=>(int)$batch->id,'provider'=>(string)$batch->provider,'invoice_number'=>$batch->invoice_number,'invoice_date'=>$batch->invoice_date?->toDateString(),
                 'currency'=>(string)$batch->currency,'invoice_total'=>(string)$batch->invoice_total,'shipping_total'=>(string)$batch->shipping_total,
                 'parcel_outbound_total'=>(string)$batch->parcel_outbound_total,'storage_total'=>(string)$batch->storage_total,'total_rows'=>(int)$batch->total_rows,
-                'source_checksum'=>(string)$batch->source_checksum,'applied_at'=>$batch->applied_at?->toIso8601String(),'supported'=>$this->supports($batch),'reconciliation'=>null,
+                'source_checksum'=>(string)$batch->source_checksum,'applied_at'=>$batch->applied_at?->toIso8601String(),'supported'=>$this->supports($batch),
+                'reconciliation'=>null,'reconciliation_mode'=>'on_demand',
             ];
-            if (! $this->supports($batch) || (string)$batch->status !== 'applied') return $row;
-            try {
-                $preview = $this->preview($warehouse, $batch);
-                $row['reconciliation'] = [
-                    'plan_checksum'=>(string)$preview['plan_checksum'],
-                    'shipping'=>array_intersect_key($preview['shipping'],array_flip(['ready','review','excluded','skip'])),
-                    'parcel_outbound'=>array_intersect_key($preview['parcel_outbound'],array_flip(['ready','review','excluded','skip'])),
-                    'storage'=>array_intersect_key($preview['storage'],array_flip(['ready_count','review_count','excluded_count','already_applied','batch_id'])),
-                    'status'=>$this->status($preview),
-                ];
-            } catch (\Throwable $e) {
-                $row['reconciliation']=['status'=>'error','error'=>$e->getMessage()];
-            }
-            return $row;
         })->all();
     }
 
@@ -88,27 +75,22 @@ final class WarehouseBillReconciliationService
     public function dashboard(Warehouse $warehouse, int $limit = 12): array
     {
         $batches = WarehouseBillImportBatch::query()->where('warehouse_id', $warehouse->id)->latest('id')->limit($limit)->get();
-        $months = []; $totals = ['batches'=>0,'rows'=>0,'ready'=>0,'review'=>0,'excluded'=>0,'matched_shipments'=>0,'matched_orders'=>0];
+        $months = []; $totals = ['batches'=>0,'rows'=>0,'ready'=>null,'review'=>null,'excluded'=>null,'matched_shipments'=>null,'matched_orders'=>null];
         foreach ($batches as $batch) {
             $month = $batch->invoice_date?->format('Y-m') ?? 'unknown';
-            $months[$month] ??= ['month'=>$month,'batches'=>0,'rows'=>0,'currencies'=>[],'ready'=>0,'review'=>0,'excluded'=>0,'status'=>'review'];
+            $months[$month] ??= ['month'=>$month,'batches'=>0,'rows'=>0,'currencies'=>[],'ready'=>null,'review'=>null,'excluded'=>null,'status'=>'on_demand'];
             $months[$month]['batches']++; $months[$month]['rows'] += (int)$batch->total_rows; $totals['batches']++; $totals['rows'] += (int)$batch->total_rows;
             $currency=(string)$batch->currency; $months[$month]['currencies'][$currency]=bcadd((string)($months[$month]['currencies'][$currency]??'0'),(string)$batch->invoice_total,4);
-            if (! $this->supports($batch) || (string)$batch->status !== 'applied') continue;
-            $preview=$this->preview($warehouse,$batch);
-            $ready=(int)$preview['shipping']['ready']+(int)$preview['parcel_outbound']['ready']+(int)($preview['storage']['ready_count']??0);
-            $review=(int)$preview['shipping']['review']+(int)$preview['parcel_outbound']['review']+(int)($preview['storage']['review_count']??0);
-            $excluded=(int)$preview['shipping']['excluded']+(int)$preview['parcel_outbound']['excluded']+(int)($preview['storage']['excluded_count']??0);
-            $months[$month]['ready'] += $ready; $months[$month]['review'] += $review; $months[$month]['excluded'] += $excluded;
-            $totals['ready'] += $ready; $totals['review'] += $review; $totals['excluded'] += $excluded;
-            $shipmentIds=[]; $orderIds=[];
-            foreach (['shipping','parcel_outbound'] as $category) foreach (($preview['groups'][$category]??[]) as $group) {
-                if (in_array((string)$group['decision'],['ready','skip'],true)) { if($group['shipment_id'])$shipmentIds[]=(int)$group['shipment_id']; if($group['order_id'])$orderIds[]=(int)$group['order_id']; }
-            }
-            $totals['matched_shipments'] += count(array_unique($shipmentIds)); $totals['matched_orders'] += count(array_unique($orderIds));
-            $months[$month]['status']=$this->status($preview);
         }
-        krsort($months); return ['totals'=>$totals,'months'=>array_values($months),'review_queue'=>$this->reviewQueue($warehouse,$limit,100),'accounting_delta'=>$this->accountingDeltaPreview()];
+        krsort($months);
+        return [
+            'mode'=>'lightweight',
+            'totals'=>$totals,
+            'months'=>array_values($months),
+            'review_queue'=>[],
+            'review_queue_mode'=>'on_demand',
+            'accounting_delta'=>$this->accountingDeltaPreview(),
+        ];
     }
 
     /** @return list<array<string,mixed>> */
