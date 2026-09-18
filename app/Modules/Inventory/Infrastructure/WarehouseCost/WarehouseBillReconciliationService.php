@@ -126,7 +126,8 @@ final class WarehouseBillReconciliationService
     private function accountingDeltaPreview(): array
     {
         if (! (bool) config('erp_accounting.multi_shipment.enabled', false)) return ['enabled'=>false,'gate'=>'multi_shipment_disabled'];
-        $p=$this->accountingDelta->preview(1000); return ['enabled'=>(bool)config('erp_accounting.warehouse_bill_reconciliation.continuous_delta_enabled',false),'mode'=>'dry_run','gate'=>$p['gate']??'pass','candidate_count'=>$p['candidate_count']??0,'failures'=>$p['failures']??0,'stages'=>array_intersect_key($p['stages']??[],array_flip(['warehouse_cost','last_mile_actual','overseas_handling_actual']))];
+        if (! (bool) config('erp_accounting.warehouse_bill_reconciliation.continuous_delta_enabled', false)) return ['enabled'=>false,'mode'=>'disabled','gate'=>'continuous_delta_disabled','candidate_count'=>0,'failures'=>0];
+        $p=$this->accountingDelta->preview(1000); return ['enabled'=>true,'mode'=>'dry_run','gate'=>$p['gate']??'pass','candidate_count'=>$p['candidate_count']??0,'failures'=>$p['failures']??0,'stages'=>array_intersect_key($p['stages']??[],array_flip(['warehouse_cost','last_mile_actual','overseas_handling_actual']))];
     }
 
     /** @return array<string,mixed> */
