@@ -10,14 +10,14 @@ return new class extends Migration
     {
         Schema::create('warehouse_inventory_lot_consumptions', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('shipment_id')->constrained('shipments')->restrictOnDelete();
-            $table->foreignId('order_id')->constrained('orders')->restrictOnDelete();
-            $table->foreignId('order_item_id')->constrained('order_items')->restrictOnDelete();
-            $table->foreignId('warehouse_id')->constrained('warehouses')->restrictOnDelete();
-            $table->foreignId('product_id')->constrained('products')->restrictOnDelete();
+            $table->foreignId('shipment_id');
+            $table->foreignId('order_id');
+            $table->foreignId('order_item_id');
+            $table->foreignId('warehouse_id');
+            $table->foreignId('product_id');
             $table->string('stock_status', 16);
             $table->date('putaway_date');
-            $table->foreignId('source_sync_batch_id')->constrained('inventory_sync_batches')->restrictOnDelete();
+            $table->foreignId('source_sync_batch_id');
             $table->unsignedInteger('quantity');
             $table->unsignedSmallInteger('aging_months_charged')->default(0);
             $table->decimal('unit_storage_cost_cny', 10, 2)->default(0);
@@ -27,6 +27,13 @@ return new class extends Migration
             $table->string('source_reference')->unique();
             $table->timestamp('captured_at')->nullable();
             $table->timestamps();
+
+            $table->foreign('shipment_id', 'wh_lot_cons_shipment_fk')->references('id')->on('shipments')->restrictOnDelete();
+            $table->foreign('order_id', 'wh_lot_cons_order_fk')->references('id')->on('orders')->restrictOnDelete();
+            $table->foreign('order_item_id', 'wh_lot_cons_order_item_fk')->references('id')->on('order_items')->restrictOnDelete();
+            $table->foreign('warehouse_id', 'wh_lot_cons_warehouse_fk')->references('id')->on('warehouses')->restrictOnDelete();
+            $table->foreign('product_id', 'wh_lot_cons_product_fk')->references('id')->on('products')->restrictOnDelete();
+            $table->foreign('source_sync_batch_id', 'wh_lot_cons_sync_batch_fk')->references('id')->on('inventory_sync_batches')->restrictOnDelete();
 
             $table->unique(
                 ['shipment_id', 'order_item_id', 'source_sync_batch_id', 'lot_business_key'],
