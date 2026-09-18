@@ -1,5 +1,7 @@
 # ERP-ACCOUNTING-V11C-P8-KOL-COMMISSION-001
 
+**Status:** CLOSED / PRODUCTION ACCEPTED / CONTINUOUS DELTA ACTIVE
+
 ## Objective
 Materialize canonical AffiliateWP Referral commission into customer Order Profit without recreating AffiliateWP provider truth or reopening KOL identity history.
 
@@ -66,3 +68,15 @@ Add `kol_commission` to the existing Accounting continuous-delta stages with ind
 - No Production Referral rows, `order_cost_entries`, Provider facts, or runtime activation flags were written during code/test/PR work.
 - ERP Changelog not updated because this package remains manual-only.
 - Continuation implementation/verification effort in this execution window: approximately 1.5 effective hours; no pre-existing historical effort inferred beyond recorded evidence.
+
+
+## Production closure — 2026-09-17 / reverified 2026-09-18
+- PR #339 merged at `4b17c6d8943369f984d5764a6d2bff70708558d5`; compatibility hotfix PR #344 merged at `d99ab97ac44d999c34caa6cd803042431d30da26`.
+- P8A exact Production resolution completed at 3,351 seen / 3,327 resolved / 24 unresolved / 0 ambiguous; current 2026-09-18 snapshot remains 3,327 resolved / 24 unresolved.
+- Initial Finance materialization produced 2,417 `provider_import / confirmed` KOL cost rows. Current snapshot remains exactly **2,417 provider rows + 1 pre-existing confirmed_manual row**, across **2,418 distinct Orders**, with **0 duplicate KOL Orders**.
+- Source commission for the 2,417 provider rows reconstructed to USD 56,113.30 at activation; cross-currency rows preserve frozen Accounting FX evidence.
+- `ERP_ACCOUNTING_CONTINUOUS_DELTA_KOL_COMMISSION_ENABLED=true` remains persisted; `ERP_ACCOUNTING_KOL_COMMISSION_PRODUCTION_APPLY_ENABLED` remains unset. The existing Accounting scheduler remains the only scheduler.
+- ERP Changelog intentionally remains unchanged because publication is manual-only.
+
+## Closure decision
+P8 KOL Commission is closed. Future AffiliateWP Referral changes are handled by the existing Accounting continuous-delta pipeline; no dedicated P8 scheduler or initial backfill remains.

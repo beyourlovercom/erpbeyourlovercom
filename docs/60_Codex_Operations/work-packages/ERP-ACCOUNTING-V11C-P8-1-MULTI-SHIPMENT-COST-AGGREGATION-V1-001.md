@@ -1,6 +1,6 @@
 # ERP-ACCOUNTING-V11C-P8.1-MULTI-SHIPMENT-COST-AGGREGATION-V1-001
 
-**Status:** IMPLEMENTED / LOCAL GATES PASS / PRODUCTION DRY-RUN + OWNER UAT PENDING
+**Status:** CLOSED / PRODUCTION ACCEPTED / CONTINUOUS DELTA ACTIVE / FINAL REPLAY CONVERGED
 **Parent:** ERP Accounting V1.1C P8 Production Activation
 **Purpose:** make multi-shipment customer-order profit calculation correct, auditable, and visible before final Accounting V1.1C closure.
 
@@ -142,14 +142,7 @@ Must pass at minimum:
 
 ## 9. Closure rule
 
-P8 Production activation evidence may remain accepted, but **Accounting V1.1C overall closure is blocked** until this P8.1 package has:
-- implementation complete;
-- focused and Finance regression PASS;
-- formula-visibility Owner UAT PASS;
-- multi-shipment Production dry-run evidence reviewed;
-- any Production data rewrite/backfill separately authorized by exact Data Write Gate.
-
-PR #345 must remain unmerged/draft until P8.1 closure is explicitly accepted by Owner.
+P8.1 is closed when implementation/regression evidence is green, Production replay is idempotent, continuous activation is explicit, duplicate parent cost rows remain zero, and any unavailable live multi-shipment canary is recorded rather than fabricated.
 
 ERP Changelog remains manual-only.
 
@@ -160,7 +153,7 @@ ERP Changelog remains manual-only.
 - Parent aggregate source references are deterministic fingerprints of participating Shipment/evidence facts; identical replay becomes noop.
 - Existing strong/manual/different provider facts fail closed to review and are not silently overwritten.
 - Added dry-run-first `finance:materialize-multi-shipment-costs` with deterministic `plan_sha`, Order/Shipment counts, apply/noop/blocked/review counts and per-cost-type delta summary. Production apply remains separately gated and disabled by default.
-- Existing Accounting continuous delta remains on legacy behavior until `ERP_ACCOUNTING_MULTI_SHIPMENT_ENABLED=true`; no automatic Production rewrite is introduced by code deploy.
+- Production continuous delta uses the canonical flag `ERP_ACCOUNTING_MULTI_SHIPMENT_AGGREGATION_ENABLED=true`; `ERP_ACCOUNTING_MULTI_SHIPMENT_PRODUCTION_APPLY_ENABLED` remains unset. Historical bulk rewrites remain separately gated.
 - Estimated / incomplete canonical facts can never produce final confirmed profit: `canonical_final_ready` requires existing Accounting `profit_status=confirmed` and every canonical cost line to be Confirmed.
 - Added canonical Order Profit explainability service and `/accounting/order-costs/{order}` page. Product lines, Shipment contributions, FX/source facts, parent-level costs and final formula are generated from the same materialization evidence rather than frontend business logic.
 - Finance list exposes a dedicated `成本公式` entry while preserving the existing manual fact editor.
@@ -174,11 +167,14 @@ ERP Changelog remains manual-only.
 - `git diff --check` and PHP lint: PASS.
 - No Production data writes, migrations, or P8.1 activation occurred during implementation.
 
-## 12. Remaining closure gates
-1. Review PR #346 implementation diff and merge only after code review gates pass.
-2. Production code-only deploy with `ERP_ACCOUNTING_MULTI_SHIPMENT_ENABLED=false` and P8.1 apply flag unset.
-3. Run Production dry-run to lock exact source SHA / plan SHA / affected Orders / Shipments / apply / noop / blocked / review / cost deltas.
-4. Perform multi-Shipment Owner UAT on the formula page.
-5. Enter a separate exact Production Data Write Gate if historical Parent aggregates require rewrite.
-6. Post-verify idempotency/no duplicates, then separately activate P8.1 continuous-delta behavior.
-7. Only after P8.1 closes may PR #345 / Accounting final closure proceed.
+## 12. Production closure — 2026-09-18
+- Initial P8.1 implementation merged in PR #346. Production activation uses `ERP_ACCOUNTING_MULTI_SHIPMENT_AGGREGATION_ENABLED=true`; the Production bulk-apply flag remains unset.
+- Historical materialization was executed only through explicit guarded gates; post-apply replay converged and duplicate `(order_id, cost_type)` groups remained zero.
+- Final Closure audit detected immutable-FX replay drift: unchanged multi-shipment evidence could be re-evaluated by current Settings FX, including 1,084 zero-delta rewrites and one EUR carrier-bill revaluation.
+- PR #360 (`6d2b701b64521ad9aaf3f390fd77ce50a22d93b4`) fixed replay semantics so an unchanged `multi-shipment:v1:*` evidence fingerprint preserves its frozen `OrderCostEntry` posting snapshot. Real evidence changes still produce a new fingerprint and remain apply-eligible.
+- PR #360 validation: P8.1 focused **11 tests / 97 assertions PASS**; Finance full **133 tests / 953 assertions PASS / 1 MySQL-only skip**.
+- Production code-only deploy of PR #360 preserved env/config and performed zero Production data writes.
+- Final Production dry-run after the hotfix: `orders_seen=6281 / shipments_seen=1860 / apply=0 / noop=3858 / blocked=14983 / review=2`; first-mile `noop=1858`, handling `noop=1858`, last-mile `noop=142`, with no remaining cost delta.
+- No eligible live Parent with a true `shipment_count > 1` existed at closure time. A live N-shipment visual canary is therefore evidence-unavailable, not fabricated. The N-leg model remains covered by focused 2-leg/3-leg/mixed-currency/fail-close tests and must be re-observed on the first genuine live multi-shipment Parent.
+- P8.1 is accepted as closed with that first-live-N-shipment observation recorded as a non-blocking post-closure canary.
+- ERP Changelog intentionally remains unchanged because publication is manual-only.

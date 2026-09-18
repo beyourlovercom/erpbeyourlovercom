@@ -1,9 +1,9 @@
 # ERP-ACCOUNTING-V11C-P8-2-ESTIMATED-ACTUAL-COST-RECONCILIATION-V1-001
 
-**Status:** UAT-Ready  
+**Status:** CLOSED / PRODUCTION ACTIVE / HISTORICAL BACKFILL COMPLETE / OWNER UAT PASS
 **Branch:** `feature/erp-accounting-v11c-p8-2-estimated-actual-reconciliation-v1-001`  
 **P8.1 Frozen:** Multi-shipment cost aggregation remains unchanged.  
-**Production Continuous Delta:** Not touched. P8.2 fallbacks are read-only projection only.
+**Production Continuous Delta:** Active through `ERP_ACCOUNTING_P82_ESTIMATED_FALLBACK_ENABLED=true`; automatic creation is maturity-guarded to orders aged 0–30 days.
 
 ---
 
@@ -52,10 +52,12 @@ Estimate can never replace a confirmed/actual fact (existing `disposition()` log
 
 ## Safety
 
-- **Worktree only.** No Production DB writes, no .env mutations, no changelog updates.
-- **P8.2 fallbacks are read-only projection/explainability** until separate post-UAT activation.
-- **NOT routed into `AccountingContinuousDeltaService`** auto-apply. The delta service remains unchanged.
-- **P8.1 multi-shipment frozen.** All P8.1 tests pass.
+- **Implementation-stage boundary (historical):** initial code/test work performed no Production writes or env mutation.
+- Production activation/backfill later proceeded only through explicit guarded gates.
+- Continuous Delta now uses the existing `last_mile_estimate` stage with the P8.2 feature flag; no second scheduler exists.
+- Automatic P8.2 fallback is limited to `estimate_allowed=true` (age <=30d). Orders aged 31+d are reconciliation/actual-overdue work and cannot receive a new automatic P8.2 estimate.
+- The dedicated guarded P8.2 materialization command remains available for explicit historical governance.
+- **P8.1 multi-shipment remains frozen.**
 
 ---
 
@@ -70,7 +72,7 @@ Estimate can never replace a confirmed/actual fact (existing `disposition()` log
 | P8.2-4 | `CostMaterializationService` — estimate→actual restatement audit trail | ✅ Done |
 | P8.2-5 | `finance:p8-2-estimated-reconciliation` — dry-run command (read-only) | ✅ Done |
 | P8.2-6 | `OrderProfitShow.vue` — KPI strip, overdue banners, 预估利润 card | ✅ Done |
-| P8.2-7 | Post-UAT: route `LastMileHistoricalProjectionService` into ContinuousDelta | ⏳ Post-UAT |
+| P8.2-7 | Continuous Delta integration with maturity guard | ✅ Done |
 
 ---
 
@@ -97,3 +99,18 @@ Estimate can never replace a confirmed/actual fact (existing `disposition()` log
 - Order with factory warehouse → last-mile projection = null (china_direct_no_fallback_allowed)
 - Order with all confirmed costs + revenue → `canonical_final_ready = true`
 - Order with one estimated cost + revenue → `canonical_estimated_ready = true`, `canonical_final_ready = false`
+
+
+## Production closure — 2026-09-18
+- Base P8.2 implementation merged in PR #352; activation bridge merged in PR #356 and was first deployed inert with the persistent P8.2 flag disabled.
+- Production Estimated canary Order `5121` materialized `USD 12.14` as `estimated_reference / estimated`, tier `historical_comparable_median`, confidence `high`, sample count `113`; replay became noop and duplicate groups stayed zero.
+- `ERP_ACCOUNTING_P82_ESTIMATED_FALLBACK_ENABLED=true` was then activated while all Production apply flags remained unset. Continuous Delta dry-run at activation had `candidate_count=0`, so no historical flood occurred.
+- Historical backfill proceeded through exact per-order `plan_sha` gates. Final P8.2 population is **739** materialized estimates with **739** matching `finance.p8_2_last_mile_estimate_materialization.applied` audit records and **0** duplicate `(order_id, cost_type)` groups.
+- Full post-backfill dry-run converged to `apply=0 / noop=739`; existing Actual, China-direct and legacy-estimate blockers remained fail-closed.
+- Visual UAT V2 merged in PR #358. Owner UAT PASS on Production Order `6996` (normal Estimated Profit state) with `5063` used as the 45+ day overdue contrast. Estimated is page-level amber and never labelled Final Profit; overdue semantics remain visually distinct.
+- Final Closure audit identified a maturity gap in automatic P8.2 fallback. PR #362 (`e4cd3feba6e6aeb04298205185ede12a79de1ec1`) added the canonical `OrderMaturityService` guard to the automatic path while preserving the dedicated historical gate.
+- PR #362 validation: P8.2 focused **26 tests / 117 assertions PASS**; Finance full **135 tests / 966 assertions PASS / 1 MySQL-only skip**.
+- Production age-guard verification after deploy: Order `7175` at age 0 passed the maturity gate into normal projection (`estimate_allowed=true`); Order `5754` at age 31 was blocked with `p82_automatic_estimate_age_blocked` and maturity `actual_reconciliation_due`. Boundary verification confirms 10/30d allowed, 31d reconciliation-due/automatic-blocked, and 46d actual-cost-overdue/automatic-blocked.
+- A live Estimate→Actual replacement canary remains unavailable because no persisted P8.2 Estimate currently has a newly arrived matching real carrier bill. No fake Actual evidence was created. The first genuine match must be observed post-closure and must emit `finance.estimate_to_actual_restatement`.
+- Overall 30+d Profit Coverage is still constrained by other required cost chains, especially Product Cost / First Mile / Handling completeness; P8.2 does not claim to close those unrelated gaps.
+- ERP Changelog intentionally remains unchanged because publication is manual-only.
