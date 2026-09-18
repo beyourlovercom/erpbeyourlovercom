@@ -29,6 +29,33 @@ type OrderItem = {
   unit_price: string
 }
 
+type FulfillmentSegment = {
+  order_id: number
+  erp_order_id: string | null
+  suffix: string | null
+  items: { id: number; sku: string | null; product_summary: string | null; quantity: number }[]
+  shipment: {
+    shipment_status: string
+    status_label: string
+    warehouse_id: number | null
+    warehouse_name: string | null
+    carrier: string | null
+    service: string | null
+    tracking_number: string | null
+    shipped_at: string | null
+  }
+}
+
+type FulfillmentProjection = {
+  is_split: boolean
+  aggregate_status: string
+  aggregate_status_label: string
+  segment_count: number
+  fulfilled_count: number
+  has_exception: boolean
+  segments: FulfillmentSegment[]
+}
+
 type PackagingReference = {
   source: 'current_product_standard' | 'shipment_snapshot'
   source_label: string
@@ -71,6 +98,7 @@ type Order = {
     shipped_at: string | null
   } | null
   manual_sync: { status: string; synced_at: string | null } | null
+  fulfillment?: FulfillmentProjection | null
   operational_markers: string[]
   procurement_order: { id: number; procurement_number: string } | null
 }
@@ -171,6 +199,14 @@ const shipmentStatusLabel = computed(() => {
   return '待发货'
 })
 
+const isSplitFulfillment = computed(() => props.order.fulfillment?.is_split ?? false)
+const fulfillmentAggregateLabel = computed(() => props.order.fulfillment?.aggregate_status_label ?? shipmentStatusLabel.value)
+const fulfillmentProgressLabel = computed(() => {
+  const fulfillment = props.order.fulfillment
+  if (!fulfillment?.is_split) return ''
+  return `${fulfillment.segment_count} 个履约单 · ${fulfillment.fulfilled_count}/${fulfillment.segment_count} 已进入物流`
+})
+
 const allocationSelections = ref<Record<number, number | null>>(Object.fromEntries(props.order.items.map(item => [item.id, props.allocationUi?.selected_warehouse_ids?.[item.id] ?? props.allocationUi?.recommended_warehouse_ids?.[item.id] ?? null])))
 const allocationSubmitting = ref(false)
 const allocationSelectable = (warehouseId: number) => props.allocationUi?.selectable_warehouse_ids?.includes(warehouseId) ?? false
@@ -234,42 +270,102 @@ const submitAllocation = () => {
 
         <!-- Card 1: 履约状态 (always read-only) -->
         <div class="erp-form-card">
-          <h2 class="erp-form-card-title">履约状态</h2>
-          <div class="ord-fulfillment-grid">
-            <div class="ord-fulfillment-item">
-              <small class="ord-fulfillment-label">发货状态</small>
-              <strong class="ord-fulfillment-value">{{ shipmentStatusLabel }}</strong>
-            </div>
-            <div class="ord-fulfillment-item">
-              <small class="ord-fulfillment-label">发货仓库</small>
-              <strong class="ord-fulfillment-value">{{ order.shipment?.warehouse_name ?? '未选择' }}</strong>
-            </div>
-            <div class="ord-fulfillment-item">
-              <small class="ord-fulfillment-label">承运商</small>
-              <strong class="ord-fulfillment-value">{{ order.shipment?.carrier ?? '—' }}</strong>
-            </div>
-            <div class="ord-fulfillment-item">
-              <small class="ord-fulfillment-label">物流渠道</small>
-              <strong class="ord-fulfillment-value">{{ order.shipment?.service ?? '—' }}</strong>
-            </div>
-            <div class="ord-fulfillment-item">
-              <small class="ord-fulfillment-label">追踪号</small>
-              <strong class="ord-fulfillment-value">{{ order.shipment?.tracking_number ?? '—' }}</strong>
-            </div>
-            <div class="ord-fulfillment-item">
-              <small class="ord-fulfillment-label">网站同步</small>
-              <strong class="ord-fulfillment-value">{{ order.manual_sync?.status ?? '未进入队列' }}</strong>
-            </div>
+
+          <div class="ord-fulfillment-heading">
+            <h2 class="erp-form-card-title">履约状态</h2>
+            <span v-if="isSplitFulfillment" class="ord-split-badge">已拆分 · {{ order.fulfillment?.segment_count }} 个履约单</span>
+
           </div>
-          <div v-if="canOperateLogistics && order.shipment?.tracking_number" class="ord-fulfillment-action">
-            <button
-              type="button"
-              class="erp-btn erp-btn-secondary"
-              @click="router.post(`/logistics/orders/${order.id}/reopen`)"
-            >
-              重开发货
-            </button>
-          </div>
+
+          <template v-if="isSplitFulfillment">
+            <div class="ord-fulfillment-summary">
+              <div>
+                <strong>{{ fulfillmentAggregateLabel }}</strong>
+                <span>{{ fulfillmentProgressLabel }}</span>
+              </div>
+              <span v-if="order.fulfillment?.has_exception" class="ord-fulfillment-alert">存在异常履约</span>
+              <small>网站同步：{{ order.manual_sync?.status ?? '未进入队列' }}</small>
+            </div>
+            <div class="ord-fulfillment-table-wrap">
+              <table class="ord-fulfillment-table">
+                <thead>
+                  <tr>
+                    <th>履约</th>
+                    <th>商品</th>
+                    <th>仓库</th>
+                    <th>状态</th>
+                    <th>承运商 / 渠道</th>
+                    <th>追踪号</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="segment in order.fulfillment?.segments ?? []" :key="segment.order_id">
+                    <td>
+                      <div class="ord-fulfillment-segment-id">
+                        <strong>{{ segment.suffix ?? '—' }}</strong>
+                        <small>{{ segment.erp_order_id ?? '—' }}</small>
+                      </div>
+                    </td>
+                    <td>
+                      <div class="ord-fulfillment-items">
+                        <div v-for="item in segment.items" :key="item.id">
+                          <strong>{{ item.sku || item.product_summary || '未绑定 SKU' }}</strong>
+                          <span>× {{ item.quantity }}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td>{{ segment.shipment.warehouse_name ?? '未选择' }}</td>
+                    <td><span class="ord-segment-status" :class="`status-${segment.shipment.shipment_status}`">{{ segment.shipment.status_label }}</span></td>
+                    <td>
+                      <div class="ord-carrier-service">
+                        <strong>{{ segment.shipment.carrier ?? '—' }}</strong>
+                        <small>{{ segment.shipment.service ?? '—' }}</small>
+                      </div>
+                    </td>
+                    <td><span class="ord-tracking-number">{{ segment.shipment.tracking_number ?? '—' }}</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </template>
+
+          <template v-else>
+            <div class="ord-fulfillment-grid">
+              <div class="ord-fulfillment-item">
+                <small class="ord-fulfillment-label">发货状态</small>
+                <strong class="ord-fulfillment-value">{{ shipmentStatusLabel }}</strong>
+              </div>
+              <div class="ord-fulfillment-item">
+                <small class="ord-fulfillment-label">发货仓库</small>
+                <strong class="ord-fulfillment-value">{{ order.shipment?.warehouse_name ?? '未选择' }}</strong>
+              </div>
+              <div class="ord-fulfillment-item">
+                <small class="ord-fulfillment-label">承运商</small>
+                <strong class="ord-fulfillment-value">{{ order.shipment?.carrier ?? '—' }}</strong>
+              </div>
+              <div class="ord-fulfillment-item">
+                <small class="ord-fulfillment-label">物流渠道</small>
+                <strong class="ord-fulfillment-value">{{ order.shipment?.service ?? '—' }}</strong>
+              </div>
+              <div class="ord-fulfillment-item">
+                <small class="ord-fulfillment-label">追踪号</small>
+                <strong class="ord-fulfillment-value">{{ order.shipment?.tracking_number ?? '—' }}</strong>
+              </div>
+              <div class="ord-fulfillment-item">
+                <small class="ord-fulfillment-label">网站同步</small>
+                <strong class="ord-fulfillment-value">{{ order.manual_sync?.status ?? '未进入队列' }}</strong>
+              </div>
+            </div>
+            <div v-if="canOperateLogistics && order.shipment?.tracking_number" class="ord-fulfillment-action">
+              <button
+                type="button"
+                class="erp-btn erp-btn-secondary"
+                @click="router.post(`/logistics/orders/${order.id}/reopen`)"
+              >
+                重开发货
+              </button>
+            </div>
+          </template>
         </div>
 
         <!-- Operational markers: explicit human marks, not a second Order status -->
@@ -674,6 +770,41 @@ const submitAllocation = () => {
   border-top: 1px solid #e4eaed;
 }
 
+.ord-fulfillment-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.ord-fulfillment-heading .erp-form-card-title { margin-bottom: 0; }
+.ord-split-badge { display: inline-flex; align-items: center; padding: 4px 9px; border-radius: 999px; background: #eef7f2; color: #16705f; font-size: 11px; font-weight: 700; }
+.ord-fulfillment-summary { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 12px; border: 1px solid #dce7e3; border-radius: 10px; background: #f8fbfa; }
+.ord-fulfillment-summary > div { display: flex; align-items: baseline; gap: 10px; }
+.ord-fulfillment-summary strong { color: #173a36; font-size: 15px; }
+.ord-fulfillment-summary span,.ord-fulfillment-summary small { color: #65777e; font-size: 12px; }
+.ord-fulfillment-summary small { margin-left: auto; }
+.ord-fulfillment-alert { display: inline-flex; padding: 3px 8px; border-radius: 999px; background: #fff0ef; color: #b44949 !important; font-weight: 700; }
+.ord-fulfillment-table-wrap { width: 100%; overflow-x: auto; }
+.ord-fulfillment-table { width: 100%; min-width: 900px; border: 1px solid #dde5e8; border-radius: 10px; border-spacing: 0; border-collapse: separate; overflow: hidden; font-size: 12px; }
+.ord-fulfillment-table th,.ord-fulfillment-table td { padding: 10px 12px; border-right: 1px solid #e4eaed; border-bottom: 1px solid #e4eaed; text-align: left; vertical-align: middle; }
+.ord-fulfillment-table th:last-child,.ord-fulfillment-table td:last-child { border-right: 0; }
+.ord-fulfillment-table tbody tr:last-child td { border-bottom: 0; }
+.ord-fulfillment-table th { background: #f5f7f8; color: #52656d; font-weight: 700; white-space: nowrap; }
+.ord-fulfillment-segment-id,.ord-carrier-service { display: flex; flex-direction: column; gap: 3px; }
+.ord-fulfillment-segment-id strong { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; background: #e8f4f0; color: #14695d; font-size: 13px; }
+.ord-fulfillment-segment-id small,.ord-carrier-service small { color: #87969c; font-size: 10px; }
+.ord-fulfillment-items { display: grid; gap: 4px; min-width: 150px; }
+.ord-fulfillment-items > div { display: flex; align-items: center; gap: 6px; }
+.ord-fulfillment-items strong { color: #273d45; font-size: 12px; }
+.ord-fulfillment-items span { color: #7b8d94; font-size: 11px; }
+.ord-carrier-service strong { color: #273d45; font-size: 12px; }
+.ord-segment-status { display: inline-flex; padding: 3px 8px; border-radius: 999px; background: #eef1f3; color: #62737b; font-weight: 700; white-space: nowrap; }
+.ord-segment-status.status-shipped,.ord-segment-status.status-completed { background: #e8f6ef; color: #176c5d; }
+.ord-segment-status.status-exception { background: #fff0ef; color: #b44949; }
+.ord-tracking-number { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; color: #3f5660; white-space: nowrap; }
+
 .ord-inventory-help { margin: -4px 0 12px; font-size: 12px; color: #7a8c94; }
 .ord-inventory-card { overflow: hidden; }
 .ord-inventory-table-wrap { width: 100%; margin-top: 10px; overflow-x: auto; }
@@ -807,6 +938,11 @@ const submitAllocation = () => {
   .ord-fulfillment-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+  .ord-fulfillment-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .ord-fulfillment-summary small { margin-left: 0; }
   .ord-item-row,
   .ord-item-row-view,
   .ord-packaging-row {

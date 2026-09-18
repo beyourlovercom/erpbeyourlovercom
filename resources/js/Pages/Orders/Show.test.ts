@@ -65,6 +65,35 @@ const baseOrder = {
 
 const kolOrder = { ...baseOrder, order_kind: 'kol_fulfillment', order_kind_label: '网红履约订单' }
 
+const splitOrder = {
+  ...baseOrder,
+  shipment: null,
+  fulfillment: {
+    is_split: true,
+    aggregate_status: 'partially_shipped',
+    aggregate_status_label: '部分发货',
+    segment_count: 2,
+    fulfilled_count: 1,
+    has_exception: false,
+    segments: [
+      {
+        order_id: 11,
+        erp_order_id: '007-0908-c1A',
+        suffix: 'A',
+        items: [{ id: 101, sku: 'GIFT-RED', product_summary: 'Gift Red', quantity: 1 }],
+        shipment: { shipment_status: 'shipped', status_label: '运输中', warehouse_id: 1, warehouse_name: '美西 MorePlus 仓', carrier: 'USPS', service: 'Ground', tracking_number: 'TRACK-A', shipped_at: '2026-09-18T01:00:00Z' },
+      },
+      {
+        order_id: 12,
+        erp_order_id: '007-0908-c1B',
+        suffix: 'B',
+        items: [{ id: 102, sku: 'SKU-B', product_summary: 'Product B', quantity: 2 }],
+        shipment: { shipment_status: 'pending', status_label: '待发货', warehouse_id: 2, warehouse_name: '国内工厂', carrier: '4PX', service: '普通', tracking_number: null, shipped_at: null },
+      },
+    ],
+  },
+}
+
 const audit = [
   { action: 'created', actor_id: 1, created_at: '2026-08-25T10:00:00Z' },
 ]
@@ -114,6 +143,21 @@ describe('Orders/Show V2', () => {
     expect(wrapper.text()).toContain('收件与地址')
     expect(wrapper.text()).toContain('订单商品')
     expect(wrapper.text()).toContain('内部备注')
+  })
+
+  it('renders split fulfillment aggregation from child shipments instead of the empty parent shipment', () => {
+    const wrapper = mount(Show, { props: { order: splitOrder, audit } })
+    expect(wrapper.text()).toContain('已拆分 · 2 个履约单')
+    expect(wrapper.text()).toContain('部分发货')
+    expect(wrapper.text()).toContain('1/2 已进入物流')
+    expect(wrapper.text()).toContain('007-0908-c1A')
+    expect(wrapper.text()).toContain('美西 MorePlus 仓')
+    expect(wrapper.text()).toContain('USPS')
+    expect(wrapper.text()).toContain('TRACK-A')
+    expect(wrapper.text()).toContain('007-0908-c1B')
+    expect(wrapper.text()).toContain('国内工厂')
+    expect(wrapper.text()).toContain('待发货')
+    expect(wrapper.find('.ord-fulfillment-table').exists()).toBe(true)
   })
 
   it('does not introduce a delete action', () => {

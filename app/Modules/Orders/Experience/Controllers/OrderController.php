@@ -10,6 +10,7 @@ use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
 use App\Modules\Logistics\Application\FulfillmentAllocationAccess;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
+use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderService;
@@ -35,6 +36,7 @@ final class OrderController
         private readonly FulfillmentAllocationDecisionService $allocationDecisions,
         private readonly FulfillmentAllocationAccess $fulfillmentAllocationAccess,
         private readonly LogisticsExecutionAccess $logisticsExecutionAccess,
+        private readonly ShipmentCompletionSemantics $shipmentCompletion,
     ) {}
 
     public function index(Request $request): Response
@@ -111,7 +113,7 @@ final class OrderController
     public function show(Request $request, Order $order): Response
     {
         $this->authorizeKind($request, $order);
-        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync', 'operationalMarkers', 'procurementOrder', 'fulfillmentAllocation']);
+        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync', 'operationalMarkers', 'procurementOrder', 'fulfillmentAllocation', 'fulfillmentChildren.items', 'fulfillmentChildren.shipment.warehouse']);
         $productIds = $order->items->pluck('product_id')->filter()->unique()->values()->all();
         $inventoryAvailability = $this->availability->forProductIds($productIds);
         $warehouses = $this->availability->activeWarehouses();
@@ -303,6 +305,7 @@ final class OrderController
                 ...$order->shipment->only(['shipment_status', 'warehouse_id', 'warehouse_selection_source', 'carrier', 'service', 'carrier_selection_source', 'tracking_number', 'shipped_at', 'logistics_note', 'handled_by']),
                 'warehouse_name' => $order->shipment->warehouse?->name,
             ] : null,
+            'fulfillment' => $order->relationLoaded('fulfillmentChildren') ? $this->fulfillmentData($order) : null,
             'operational_markers' => $order->relationLoaded('operationalMarkers') ? $order->operationalMarkers->pluck('marker')->values()->all() : [],
             'procurement_order' => $order->relationLoaded('procurementOrder') && $order->procurementOrder ? ['id' => $order->procurementOrder->id, 'procurement_number' => $order->procurementOrder->procurement_number] : null,
             'manual_sync' => $order->manualSync ? [
@@ -312,6 +315,81 @@ final class OrderController
                 'sync_note' => $order->manualSync->sync_note,
             ] : null,
         ];
+    }
+
+    /** @return array<string,mixed> */
+    private function fulfillmentData(Order $order): array
+    {
+        $isSplit = $order->fulfillmentChildren->isNotEmpty();
+        $segments = $isSplit
+            ? $order->fulfillmentChildren->sortBy('fulfillment_suffix')->values()
+            : collect([$order]);
+        $aggregate = $this->shipmentCompletion->aggregateForOrder($order);
+        $fulfilledCount = $segments->filter(
+            fn (Order $segment): bool => $segment->shipment !== null && $this->shipmentCompletion->isFulfillmentComplete($segment->shipment)
+        )->count();
+        $hasException = $segments->contains(
+            fn (Order $segment): bool => $segment->shipment?->shipment_status === 'exception'
+        );
+
+        return [
+            'is_split' => $isSplit,
+            'aggregate_status' => $aggregate,
+            'aggregate_status_label' => $this->fulfillmentAggregateLabel($aggregate),
+            'segment_count' => $segments->count(),
+            'fulfilled_count' => $fulfilledCount,
+            'has_exception' => $hasException,
+            'segments' => $segments->map(fn (Order $segment): array => [
+                'order_id' => (int) $segment->getKey(),
+                'erp_order_id' => $segment->erp_order_id,
+                'suffix' => $segment->fulfillment_suffix,
+                'items' => $segment->items->map(fn ($item): array => [
+                    'id' => (int) $item->id,
+                    'sku' => $item->resolved_fulfillment_sku ?: $item->sku,
+                    'product_summary' => $item->product_summary,
+                    'quantity' => (int) $item->quantity,
+                ])->values()->all(),
+                'shipment' => $segment->shipment ? [
+                    ...$segment->shipment->only(['shipment_status', 'warehouse_id', 'carrier', 'service', 'tracking_number', 'shipped_at']),
+                    'status_label' => $this->fulfillmentSegmentStatusLabel(
+                        $segment->shipment->shipment_status,
+                        $segment->shipment->tracking_number,
+                    ),
+                    'warehouse_name' => $segment->shipment->warehouse?->name,
+                ] : [
+                    'shipment_status' => 'pending',
+                    'warehouse_id' => null,
+                    'carrier' => null,
+                    'service' => null,
+                    'tracking_number' => null,
+                    'shipped_at' => null,
+                    'status_label' => '待发货',
+                    'warehouse_name' => null,
+                ],
+            ])->all(),
+        ];
+    }
+
+    private function fulfillmentAggregateLabel(string $status): string
+    {
+        return match ($status) {
+            ShipmentCompletionSemantics::PartiallyShipped => '部分发货',
+            ShipmentCompletionSemantics::Completed => '已发货',
+            ShipmentCompletionSemantics::PartiallyDelivered => '部分送达',
+            ShipmentCompletionSemantics::CompletedDelivered => '已完结',
+            default => '待发货',
+        };
+    }
+
+    private function fulfillmentSegmentStatusLabel(?string $status, ?string $trackingNumber): string
+    {
+        return match ($status) {
+            'shipped' => filled($trackingNumber) ? '运输中' : '已发货待单号',
+            'exception' => '异常',
+            'completed' => '已完结',
+            'cancelled' => '已取消',
+            default => '待发货',
+        };
     }
 
     private function rules(): array
