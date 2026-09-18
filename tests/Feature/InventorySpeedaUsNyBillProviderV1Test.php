@@ -4,6 +4,9 @@ namespace Tests\Feature;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\WarehouseCost\WarehouseBillImportService;
+use App\Modules\Inventory\Infrastructure\WarehouseCost\SpeedaUsNyCostBridgeService;
+use App\Modules\Logistics\Infrastructure\Models\Shipment;
+use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use InvalidArgumentException;
 use Tests\TestCase;
@@ -36,6 +39,44 @@ final class InventorySpeedaUsNyBillProviderV1Test extends TestCase
         $this->assertSame('2026-03-01', $storage['charged_on']);
     }
 
+    public function test_cost_bridge_exact_tracking_is_ready_and_missing_or_kol_fail_closed(): void
+    {
+        $warehouse = Warehouse::query()->where('slug', 'us-ny')->firstOrFail();
+        $order = Order::query()->create([
+            'internal_order_number'=>'USNY-BRIDGE-1',
+            'erp_order_id'=>'007-0213-c33822',
+            'source_type'=>'manual',
+            'order_kind'=>'customer',
+            'order_date'=>'2026-02-13',
+            'order_status'=>'shipped',
+            'currency'=>'USD',
+        ]);
+        $shipment = new Shipment([
+            'shipment_status'=>'shipped',
+            'warehouse_id'=>$warehouse->id,
+            'tracking_number'=>'9235990407314800998017',
+            'shipped_at'=>'2026-02-18',
+        ]);
+        $order->shipment()->save($shipment);
+
+        $applied = app(WarehouseBillImportService::class)->apply($this->xlsx(), $warehouse, null, 'speeda-us-ny');
+        $preview = app(SpeedaUsNyCostBridgeService::class)->preview((int)$applied['batch_id']);
+
+        $this->assertSame(1, $preview['shipping']['ready']);
+        $this->assertSame(1, $preview['parcel_outbound']['ready']);
+        $this->assertSame('tracking_exact', $preview['groups']['shipping'][0]['reason_code']);
+        $this->assertSame((int)$shipment->id, $preview['groups']['shipping'][0]['shipment_id']);
+
+        $missing = app(WarehouseBillImportService::class)->apply($this->xlsx('C39999', '9235990999999999999999'), $warehouse, null, 'speeda-us-ny');
+        $missingPreview = app(SpeedaUsNyCostBridgeService::class)->preview((int)$missing['batch_id']);
+        $this->assertSame(1, $missingPreview['shipping']['review']);
+
+        $kol = app(WarehouseBillImportService::class)->apply($this->xlsx('KOL26021801-007', '9235990888888888888888'), $warehouse, null, 'speeda-us-ny');
+        $kolPreview = app(SpeedaUsNyCostBridgeService::class)->preview((int)$kol['batch_id']);
+        $this->assertSame(1, $kolPreview['shipping']['excluded']);
+        $this->assertSame('source_marked_kol', $kolPreview['groups']['shipping'][0]['reason_code']);
+    }
+
     public function test_speeda_provider_rejects_non_us_ny_warehouse(): void
     {
         $wrong = Warehouse::query()->where('slug', 'us-la')->firstOrFail();
@@ -44,7 +85,7 @@ final class InventorySpeedaUsNyBillProviderV1Test extends TestCase
         app(WarehouseBillImportService::class)->preview($this->xlsx(), $wrong, 'speeda-us-ny');
     }
 
-    private function xlsx(): string
+    private function xlsx(string $reference='C33822', string $tracking='9235990407314800998017'): string
     {
         $summary = [
             1 => ['账单编号(Bill No)：','BL#TEST','仓库(Warehouse):','美东-NJ-01 (US01)'],
@@ -59,8 +100,8 @@ final class InventorySpeedaUsNyBillProviderV1Test extends TestCase
         ];
         $outbound = [
             1 => ['费用单据号','操作费','物流费','费用小计','币种','操作费计费项','计费项费用','OMS单据号','出库时间','物流跟踪号','平台单号','参考单号','SKU','数量'],
-            2 => ['TR#20260218001078','3.7','10','13.7','USD','NJ合并订单包材费','0.5','OBS0122602180RV','2026-02-18 07:42:43','9235990407314800998017','44','C33822','BY489A','1'],
-            3 => ['TR#20260218001078','44','44','','USD','NJ出库费','3.2','OBS0122602180RV','2026-02-18 07:42:43','9235990407314800998017','44','C33822','MF414A','1'],
+            2 => ['TR#20260218001078','3.7','10','13.7','USD','NJ合并订单包材费','0.5','OBS0122602180RV','2026-02-18 07:42:43',$tracking,'44',$reference,'BY489A','1'],
+            3 => ['TR#20260218001078','44','44','','USD','NJ出库费','3.2','OBS0122602180RV','2026-02-18 07:42:43',$tracking,'44',$reference,'MF414A','1'],
         ];
         $storage = [
             1 => ['费用单据号','计费时间','费用小计','币种'],
