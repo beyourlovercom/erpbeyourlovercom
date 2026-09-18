@@ -410,6 +410,26 @@ final class P82EstimatedActualReconciliationTest extends TestCase
         self::assertSame('p82-last-mile-estimate:v1:order:'.$order->id, $candidate['source_reference']);
     }
 
+    public function test_p82_automatic_fallback_blocks_orders_older_than_30_days_but_dedicated_gate_remains_available(): void
+    {
+        config(['erp_accounting.continuous_delta.p82_estimated_fallback_enabled' => true]);
+        $order = $this->order('USD', Carbon::now()->subDays(46)->toDateString());
+        $order->items()->create(['product_summary' => 'Fallback', 'sku' => 'P82-AGE-BLOCK', 'quantity' => 2, 'unit_price' => '10.00', 'line_revenue' => '20.00']);
+        $this->attachWarehouseShipment($order, 'us-la');
+
+        $automatic = $this->app->make(CostMaterializationService::class)->previewLastMileEstimateGate($order)['candidates'][0];
+        self::assertSame('blocked', $automatic['materialization_status']);
+        self::assertSame('p82_automatic_estimate_age_blocked', $automatic['blocker']);
+        self::assertSame(46, $automatic['p82_age_days']);
+        self::assertSame(OrderMaturityService::STATE_ACTUAL_COST_OVERDUE, $automatic['p82_maturity_state']);
+        self::assertTrue($automatic['p82_reconciliation_due']);
+
+        $dedicated = $this->app->make(CostMaterializationService::class)->previewP82LastMileEstimateGate($order)['candidates'][0];
+        self::assertSame('apply', $dedicated['materialization_status']);
+        self::assertSame('20.00', $dedicated['amount']);
+        self::assertSame('fallback_usd10_per_unit', $dedicated['p82_tier']);
+    }
+
     public function test_p82_dedicated_gate_is_available_for_guarded_backfill_without_persistent_flag(): void
     {
         config(['erp_accounting.continuous_delta.p82_estimated_fallback_enabled' => false]);
@@ -471,6 +491,21 @@ final class P82EstimatedActualReconciliationTest extends TestCase
 
         self::assertSame(1, $summary['candidate_count']);
         self::assertSame(1, $summary['stages']['last_mile_estimate']['applied']);
+        self::assertFalse($order->costEntries()->where('cost_type', 'last_mile_cost')->exists());
+    }
+
+    public function test_continuous_delta_blocks_new_p82_estimate_for_order_older_than_30_days(): void
+    {
+        config(['erp_accounting.continuous_delta.p82_estimated_fallback_enabled' => true]);
+        $order = $this->order('USD', Carbon::now()->subDays(31)->toDateString());
+        $order->items()->create(['product_summary' => 'Fallback', 'sku' => 'P82-DELTA-OLD', 'quantity' => 1, 'unit_price' => '10.00', 'line_revenue' => '10.00']);
+        $this->attachWarehouseShipment($order, 'us-la');
+
+        $summary = $this->app->make(AccountingContinuousDeltaService::class)->preview(100);
+
+        self::assertSame(1, $summary['candidate_count']);
+        self::assertSame(0, $summary['stages']['last_mile_estimate']['applied']);
+        self::assertGreaterThanOrEqual(1, $summary['stages']['last_mile_estimate']['blocked']);
         self::assertFalse($order->costEntries()->where('cost_type', 'last_mile_cost')->exists());
     }
 

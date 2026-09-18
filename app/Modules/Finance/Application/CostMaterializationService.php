@@ -28,6 +28,7 @@ final class CostMaterializationService
         private readonly CarrierBillingEvidenceReader $carrier,
         private readonly LastMileEstimateEvidenceReader $lastMileEstimates,
         private readonly LastMileHistoricalProjectionService $p82LastMileProjection,
+        private readonly OrderMaturityService $orderMaturity,
         private readonly FulfillmentOriginEvidenceReader $fulfillmentOrigin,
         private readonly AffiliateCommissionEvidenceReader $affiliate,
         private readonly WarehouseCostAllocationEvidenceReader $warehouseCosts,
@@ -727,6 +728,21 @@ final class CostMaterializationService
         $evidence = $this->lastMileEstimates->read($order->getKey());
         if ($evidence === null || isset($evidence['blocked'])) {
             if ($this->p82EstimatedFallbackEnabled()) {
+                $maturity = $this->orderMaturity->forOrder($order);
+                $ageDays = $maturity['age_days'] ?? null;
+                if ($ageDays === null) {
+                    return $this->blocked('last_mile_cost', 'p82_automatic_estimate_order_date_missing', [
+                        'p82_maturity_state' => $maturity['maturity_state'] ?? null,
+                        'p82_reconciliation_due' => (bool) ($maturity['reconciliation_due'] ?? false),
+                    ]);
+                }
+                if (! ($maturity['estimate_allowed'] ?? false)) {
+                    return $this->blocked('last_mile_cost', 'p82_automatic_estimate_age_blocked', [
+                        'p82_age_days' => (int) $ageDays,
+                        'p82_maturity_state' => $maturity['maturity_state'] ?? null,
+                        'p82_reconciliation_due' => (bool) ($maturity['reconciliation_due'] ?? true),
+                    ]);
+                }
                 return $this->p82LastMileEstimateCandidate($order);
             }
             return $this->blocked('last_mile_cost', (string) ($evidence['blocked'] ?? 'last_mile_estimate_missing'));
