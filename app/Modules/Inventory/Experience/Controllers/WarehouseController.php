@@ -110,7 +110,12 @@ final class WarehouseController
     }
     public function applyBillImport(Request $request,string $warehouse): RedirectResponse
     {
-        $w=$this->inventory->warehouse($warehouse);$capability=$this->billImportCapability($w); abort_if($capability===null,404);$key=$this->billPreviewKey((int)$w->id);$stored=session($key);
+        $w=$this->inventory->warehouse($warehouse);$capability=$this->billImportCapability($w); abort_if($capability===null,404);
+        if (app()->environment('production') && $capability['provider']==='speeda-us-ny'
+            && !filter_var(getenv('ERP_US_NY_WAREHOUSE_BILL_IMPORT_PRODUCTION_APPLY_ENABLED') ?: 'false', FILTER_VALIDATE_BOOL)) {
+            return back()->withErrors(['bill'=>'US-NY Production bill import apply is disabled.']);
+        }
+        $key=$this->billPreviewKey((int)$w->id);$stored=session($key);
         if(!is_array($stored)||empty($stored['stored_path'])||!Storage::disk('local')->exists((string)$stored['stored_path'])) return back()->withErrors(['bill'=>'账单预览已失效，请重新上传。']);
         $path=Storage::disk('local')->path((string)$stored['stored_path']);
         try {
@@ -209,9 +214,11 @@ final class WarehouseController
             'label'=>(string)($config['label']??($w->name??$code)),
             'provider'=>$provider!==''?$provider:null,
             'format_label'=>(string)($config['format_label']??'待确认'),
-            'note'=>$status==='active'
-                ? 'Provider Adapter 已启用，可上传真实仓库账单并进入核销链。'
-                : '等待该仓真实原始账单样本；未获得样本前禁止猜测字段或启用财务写入。',
+            'note'=>match($status) {
+                'active' => 'Provider Adapter 已启用，可上传真实仓库账单并进入核销链。',
+                'validating' => '已收到真实原始账单样本，Provider Adapter 正在做金额守恒、Shipment 匹配与 UAT；验证完成前继续禁止财务写入。',
+                default => '等待该仓真实原始账单样本；未获得样本前禁止猜测字段或启用财务写入。',
+            },
         ];
     }
 

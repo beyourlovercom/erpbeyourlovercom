@@ -22,7 +22,7 @@ final class InventoryWarehouseBillReconciliationV1Test extends TestCase
     public function test_registry_exposes_moreplus_and_rejects_unknown_provider(): void
     {
         $registry=app(WarehouseBillProviderRegistry::class);
-        $this->assertSame(['moreplus'],$registry->keys());
+        $this->assertSame(['moreplus','speeda-us-ny'],$registry->keys());
         $this->assertSame('moreplus',$registry->get('MOREPLUS')->key());
         $this->expectException(\InvalidArgumentException::class);
         $registry->get('unknown-provider');
@@ -90,7 +90,11 @@ final class InventoryWarehouseBillReconciliationV1Test extends TestCase
         $this->actingAs($manager)->get('/inventory/us-la')->assertOk()->assertInertia(fn($page)=>$page
             ->where('warehouse.bill_import_onboarding.status','active')
             ->where('warehouse.bill_import_onboarding.provider','moreplus'));
-        foreach (['us-ny','us-3sm','de','ca'] as $slug) {
+        $this->actingAs($manager)->get('/inventory/us-ny')->assertOk()->assertInertia(fn($page)=>$page
+            ->where('warehouse.bill_import.provider','speeda-us-ny')
+            ->where('warehouse.bill_import_onboarding.status','active')
+            ->where('warehouse.bill_import_onboarding.provider','speeda-us-ny'));
+        foreach (['us-3sm','de','ca'] as $slug) {
             $this->actingAs($manager)->get('/inventory/'.$slug)->assertOk()->assertInertia(fn($page)=>$page
                 ->where('warehouse.bill_import',null)
                 ->where('warehouse.bill_import_onboarding.status','awaiting_sample')

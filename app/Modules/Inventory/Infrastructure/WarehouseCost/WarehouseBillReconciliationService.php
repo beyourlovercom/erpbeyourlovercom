@@ -11,12 +11,13 @@ final class WarehouseBillReconciliationService
 {
     public function __construct(
         private readonly MorePlusCostBridgeService $morePlus,
+        private readonly SpeedaUsNyCostBridgeService $speedaUsNy,
         private readonly AccountingContinuousDeltaService $accountingDelta,
     ) {}
 
     public function supports(WarehouseBillImportBatch $batch): bool
     {
-        return strtolower((string) $batch->provider) === 'moreplus';
+        return in_array(strtolower((string) $batch->provider), ['moreplus','speeda-us-ny'], true);
     }
 
     /** @return array<string,mixed> */
@@ -24,7 +25,11 @@ final class WarehouseBillReconciliationService
     {
         $this->assertBatchWarehouse($warehouse, $batch);
         if (! $this->supports($batch)) throw new RuntimeException('warehouse_bill_reconciliation_provider_unsupported');
-        return $this->morePlus->preview((int) $batch->id);
+        return match(strtolower((string)$batch->provider)) {
+            'moreplus' => $this->morePlus->preview((int)$batch->id),
+            'speeda-us-ny' => $this->speedaUsNy->preview((int)$batch->id),
+            default => throw new RuntimeException('warehouse_bill_reconciliation_provider_unsupported'),
+        };
     }
 
     /** @return array<string,mixed> */
@@ -32,6 +37,9 @@ final class WarehouseBillReconciliationService
     {
         $this->assertBatchWarehouse($warehouse, $batch);
         if (! $this->supports($batch)) throw new RuntimeException('warehouse_bill_reconciliation_provider_unsupported');
+        if (strtolower((string)$batch->provider) === 'speeda-us-ny') {
+            throw new RuntimeException('warehouse_bill_reconciliation_provider_apply_not_enabled');
+        }
         if (app()->environment('production') && ! filter_var(getenv('ERP_WAREHOUSE_BILL_RECONCILIATION_WEB_APPLY_ENABLED') ?: 'false', FILTER_VALIDATE_BOOL)) {
             throw new RuntimeException('warehouse_bill_reconciliation_production_apply_disabled');
         }
