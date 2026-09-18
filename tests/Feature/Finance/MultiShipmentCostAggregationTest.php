@@ -13,6 +13,7 @@ use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductCostSource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -42,6 +43,70 @@ final class MultiShipmentCostAggregationTest extends TestCase
         $this->assertSame('14.60', $parent->costEntries()->where('cost_type', 'last_mile_cost')->value('amount'));
         $this->assertCount(3, $service->applyMultiShipmentGate($parent->fresh())['noop']);
         $this->assertSame(3, $parent->costEntries()->whereIn('cost_type', ['first_mile_cost','overseas_handling_cost','last_mile_cost'])->count());
+    }
+
+    public function test_replay_keeps_identity_fx_posting_snapshot_frozen_across_days(): void
+    {
+        Carbon::setTestNow('2026-09-17 12:00:00');
+        try {
+            $this->manualFx();
+            $parent = $this->parent('EUR', true);
+            $leg = $this->leg($parent, 'A', 'us-la', 1, 'IDENTITY-FX');
+            $this->bill($leg, '11.00', 'USD', 'IDENTITY-FX-BILL');
+
+            $service = app(CostMaterializationService::class);
+            $applied = $service->applyMultiShipmentGate($parent);
+            $this->assertCount(3, $applied['applied']);
+
+            Carbon::setTestNow('2026-09-18 12:00:00');
+            $preview = $service->previewMultiShipmentGate($parent->fresh());
+            foreach (['first_mile_cost', 'overseas_handling_cost', 'last_mile_cost'] as $type) {
+                $candidate = $this->candidate($preview, $type);
+                $this->assertSame('noop', $candidate['materialization_status'], $type);
+                $this->assertSame('0.00', $candidate['delta_amount'], $type);
+                $this->assertTrue($candidate['posting_snapshot_frozen'] ?? false, $type);
+            }
+            $this->assertCount(3, $service->applyMultiShipmentGate($parent->fresh())['noop']);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_replay_does_not_revalue_same_cross_currency_carrier_bill_but_changed_bill_reapplies(): void
+    {
+        Carbon::setTestNow('2026-09-17 12:00:00');
+        try {
+            $this->manualFx();
+            $parent = $this->parent('USD', true);
+            $leg = $this->leg($parent, 'A', 'us-la', 1, 'SOURCE-FX');
+            $this->bill($leg, '11.84', 'EUR', 'SOURCE-FX-BILL');
+
+            $service = app(CostMaterializationService::class);
+            $service->applyMultiShipmentGate($parent);
+            $entry = $parent->costEntries()->where('cost_type', 'last_mile_cost')->firstOrFail();
+            $frozenAmount = (string) $entry->amount;
+            $frozenSource = (string) $entry->source_reference;
+
+            app(FxReferenceSettingsService::class)->save(
+                ['USD' => 7.5, 'EUR' => 8.7, 'CNY' => 1.0],
+                ['USD' => false, 'EUR' => false, 'CNY' => false], null,
+            );
+            Carbon::setTestNow('2026-09-18 12:00:00');
+
+            $sameEvidence = $this->candidate($service->previewMultiShipmentGate($parent->fresh()), 'last_mile_cost');
+            $this->assertSame($frozenSource, $sameEvidence['source_reference']);
+            $this->assertSame('noop', $sameEvidence['materialization_status']);
+            $this->assertSame($frozenAmount, $sameEvidence['amount']);
+            $this->assertSame('0.00', $sameEvidence['delta_amount']);
+            $this->assertTrue($sameEvidence['posting_snapshot_frozen'] ?? false);
+
+            $leg->billingEvidence()->update(['actual_cost' => '12.00']);
+            $changedEvidence = $this->candidate($service->previewMultiShipmentGate($parent->fresh()), 'last_mile_cost');
+            $this->assertNotSame($frozenSource, $changedEvidence['source_reference']);
+            $this->assertSame('apply', $changedEvidence['materialization_status']);
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_overseas_plus_china_uses_hybrid_formula_and_missing_bill_fails_closed(): void
