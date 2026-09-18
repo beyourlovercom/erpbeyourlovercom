@@ -110,7 +110,12 @@ final class WarehouseController
     }
     public function applyBillImport(Request $request,string $warehouse): RedirectResponse
     {
-        $w=$this->inventory->warehouse($warehouse);$capability=$this->billImportCapability($w); abort_if($capability===null,404);$key=$this->billPreviewKey((int)$w->id);$stored=session($key);
+        $w=$this->inventory->warehouse($warehouse);$capability=$this->billImportCapability($w); abort_if($capability===null,404);
+        if (app()->environment('production') && $capability['provider']==='speeda-us-ny'
+            && !filter_var(getenv('ERP_US_NY_WAREHOUSE_BILL_IMPORT_PRODUCTION_APPLY_ENABLED') ?: 'false', FILTER_VALIDATE_BOOL)) {
+            return back()->withErrors(['bill'=>'US-NY Production bill import apply is disabled.']);
+        }
+        $key=$this->billPreviewKey((int)$w->id);$stored=session($key);
         if(!is_array($stored)||empty($stored['stored_path'])||!Storage::disk('local')->exists((string)$stored['stored_path'])) return back()->withErrors(['bill'=>'账单预览已失效，请重新上传。']);
         $path=Storage::disk('local')->path((string)$stored['stored_path']);
         try {
