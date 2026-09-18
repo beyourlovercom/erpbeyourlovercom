@@ -27,6 +27,7 @@ final class CostMaterializationService
         private readonly ProductCostEvidenceReader $products,
         private readonly CarrierBillingEvidenceReader $carrier,
         private readonly LastMileEstimateEvidenceReader $lastMileEstimates,
+        private readonly LastMileHistoricalProjectionService $p82LastMileProjection,
         private readonly FulfillmentOriginEvidenceReader $fulfillmentOrigin,
         private readonly AffiliateCommissionEvidenceReader $affiliate,
         private readonly WarehouseCostAllocationEvidenceReader $warehouseCosts,
@@ -725,6 +726,9 @@ final class CostMaterializationService
 
         $evidence = $this->lastMileEstimates->read($order->getKey());
         if ($evidence === null || isset($evidence['blocked'])) {
+            if ($this->p82EstimatedFallbackEnabled()) {
+                return $this->p82LastMileEstimateCandidate($order);
+            }
             return $this->blocked('last_mile_cost', (string) ($evidence['blocked'] ?? 'last_mile_estimate_missing'));
         }
         $sourceAmount = DecimalMoney::round((string) $evidence['amount']);
@@ -753,6 +757,103 @@ final class CostMaterializationService
             'last_mile_cost', $amount, $currency, 'estimated_reference', 'estimated',
             'last-mile-estimate:v1:order:'.$order->getKey(), $evidence['source_at'] ?? null, $extra,
         );
+    }
+
+    private function p82LastMileEstimateCandidate(Model $order): array
+    {
+        $projection = $this->p82LastMileProjection->project($order);
+        $tier = (string) ($projection['tier'] ?? 'unknown');
+        $confidence = (string) ($projection['confidence'] ?? 'none');
+        $extra = [
+            'p82_tier' => $tier,
+            'p82_confidence' => $confidence,
+            'p82_sample_count' => $projection['sample_count'] ?? null,
+            'p82_source_detail' => $projection['source_detail'] ?? [],
+        ];
+
+        if (($projection['blocked'] ?? null) !== null) {
+            return $this->blocked('last_mile_cost', (string) $projection['blocked'], $extra);
+        }
+        if ($tier === 'actual_carrier_billing') {
+            return $this->blocked('last_mile_cost', 'actual_carrier_billing_available', $extra);
+        }
+        if ($tier === 'existing_estimate') {
+            return $this->blocked('last_mile_cost', 'existing_last_mile_estimate_available', $extra);
+        }
+        if (! in_array($tier, ['historical_comparable_median', 'fallback_usd10_per_unit'], true)) {
+            return $this->blocked('last_mile_cost', 'p82_projection_not_estimated_fallback', $extra);
+        }
+        if (($projection['amount'] ?? null) === null || blank($projection['currency'] ?? null)) {
+            return $this->blocked('last_mile_cost', 'p82_projection_amount_or_currency_missing', $extra);
+        }
+
+        $sourceAmount = DecimalMoney::round((string) $projection['amount']);
+        $sourceCurrency = strtoupper((string) $projection['currency']);
+        $currency = $this->orderCurrency($order);
+        $amount = $sourceAmount;
+        $extra += ['source_currency' => $sourceCurrency, 'source_amount' => $sourceAmount];
+
+        if ($sourceCurrency !== $currency) {
+            $fx = $this->fxBridge->preview($order, $sourceCurrency);
+            if (! ($fx['available'] ?? false)) {
+                return $this->blocked('last_mile_cost', 'p82_estimate_fx_snapshot_unavailable', $extra + ['fx_reason' => $fx['reason'] ?? 'fx_unavailable']);
+            }
+            $amount = DecimalMoney::round(DecimalMoney::multiply($sourceAmount, (string) $fx['source_to_transaction_rate'], 8));
+            $extra['posting_fx'] = $fx + [
+                'base_amount' => DecimalMoney::round(DecimalMoney::multiply($sourceAmount, (string) $fx['source_to_usd_rate'], 8)),
+            ];
+        }
+
+        return $this->candidate(
+            'last_mile_cost', $amount, $currency, 'estimated_reference', 'estimated',
+            'p82-last-mile-estimate:v1:order:'.$order->getKey(), $order->updated_at, $extra,
+        );
+    }
+
+    public function previewP82LastMileEstimateGate(Model $order): array
+    {
+        $scopeBlocker = $this->operationalBlocker($order);
+        $candidate = $this->p82LastMileEstimateCandidate($order);
+        if ($scopeBlocker !== null) $candidate = $this->forceBlocked($candidate, $scopeBlocker);
+        return [
+            'order_id' => (int) $order->getKey(),
+            'scope_status' => $scopeBlocker === null ? 'operational' : 'blocked',
+            'scope_blocker' => $scopeBlocker,
+            'candidates' => [$this->annotateDisposition($order, $candidate)],
+        ];
+    }
+
+    public function applyP82LastMileEstimateGate(Model $order): array
+    {
+        return DB::transaction(function () use ($order): array {
+            $locked = $order->newQuery()->lockForUpdate()->findOrFail($order->getKey());
+            $preview = $this->previewP82LastMileEstimateGate($locked);
+            $result = $preview + ['applied' => [], 'noop' => [], 'blocked' => []];
+            $candidate = $preview['candidates'][0];
+            $disposition = (string) ($candidate['materialization_status'] ?? 'blocked');
+            if ($disposition === 'blocked') $result['blocked'][] = $candidate;
+            elseif ($disposition === 'noop') $result['noop'][] = $candidate;
+            else {
+                $outcome = $this->writeCandidate($locked, $candidate);
+                $result[$outcome['status']][] = $outcome['entry'];
+            }
+            if ($result['applied'] !== []) {
+                $this->analysis->refreshCompleteness($locked, preserveReconciled: false);
+                $this->audit->record(
+                    AuditActor::system(AuditSource::InternalSystem),
+                    'finance.p8_2_last_mile_estimate_materialization.applied',
+                    $locked::class, $locked->getKey(),
+                    after: ['applied' => $result['applied'], 'blocked' => $result['blocked']],
+                    reason: 'p8_2_estimated_fallback_materialization',
+                );
+            }
+            return $result;
+        });
+    }
+
+    private function p82EstimatedFallbackEnabled(): bool
+    {
+        return (bool) config('erp_accounting.continuous_delta.p82_estimated_fallback_enabled', false);
     }
 
     private function warehouseCostCandidate(Model $order): array
@@ -1411,6 +1512,7 @@ final class CostMaterializationService
             || str_starts_with($source, 'warehouse-storage-allocation:v1:')
             || str_starts_with($source, 'overseas-handling:v1:')
             || str_starts_with($source, 'last-mile-estimate:v1:')
+            || str_starts_with($source, 'p82-last-mile-estimate:v1:')
             || str_starts_with($source, 'affiliatewp-referrals:v1:')
             || str_starts_with($source, 'product-cost-source:v1:')
             || str_starts_with($source, 'owner-rule:payment-fee:v1:')

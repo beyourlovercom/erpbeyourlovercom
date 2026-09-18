@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Finance;
 
+use App\Modules\Finance\Application\AccountingContinuousDeltaService;
 use App\Modules\Finance\Application\CostMaterializationService;
 use App\Modules\Finance\Application\EstimatedProfitProjectionService;
 use App\Modules\Finance\Application\LastMileHistoricalProjectionService;
@@ -374,6 +375,103 @@ final class P82EstimatedActualReconciliationTest extends TestCase
         self::assertFalse($explain['summary']['canonical_final_ready']);
         // But estimated ready can be true
         self::assertTrue($explain['summary']['canonical_estimated_ready']);
+    }
+
+    // -----------------------------------------------------------------------
+    // P8.2 ACTIVATION BRIDGE
+    // -----------------------------------------------------------------------
+
+    public function test_p82_fallback_is_disabled_in_existing_last_mile_gate_by_default(): void
+    {
+        config(['erp_accounting.continuous_delta.p82_estimated_fallback_enabled' => false]);
+        $order = $this->order('USD');
+        $order->items()->create(['product_summary' => 'Fallback', 'sku' => 'P82-FB-OFF', 'quantity' => 3, 'unit_price' => '10.00', 'line_revenue' => '30.00']);
+        $this->attachWarehouseShipment($order, 'us-la');
+
+        $candidate = $this->app->make(CostMaterializationService::class)->previewLastMileEstimateGate($order)['candidates'][0];
+
+        self::assertSame('blocked', $candidate['materialization_status']);
+        self::assertArrayNotHasKey('p82_tier', $candidate);
+    }
+
+    public function test_p82_fallback_enters_existing_gate_only_when_feature_flag_enabled(): void
+    {
+        config(['erp_accounting.continuous_delta.p82_estimated_fallback_enabled' => true]);
+        $order = $this->order('USD');
+        $order->items()->create(['product_summary' => 'Fallback', 'sku' => 'P82-FB-ON', 'quantity' => 3, 'unit_price' => '10.00', 'line_revenue' => '30.00']);
+        $this->attachWarehouseShipment($order, 'us-la');
+
+        $candidate = $this->app->make(CostMaterializationService::class)->previewLastMileEstimateGate($order)['candidates'][0];
+
+        self::assertSame('apply', $candidate['materialization_status']);
+        self::assertSame('30.00', $candidate['amount']);
+        self::assertSame('fallback_usd10_per_unit', $candidate['p82_tier']);
+        self::assertSame('low', $candidate['p82_confidence']);
+        self::assertSame('p82-last-mile-estimate:v1:order:'.$order->id, $candidate['source_reference']);
+    }
+
+    public function test_p82_dedicated_gate_is_available_for_guarded_backfill_without_persistent_flag(): void
+    {
+        config(['erp_accounting.continuous_delta.p82_estimated_fallback_enabled' => false]);
+        $order = $this->order('USD');
+        $order->items()->create(['product_summary' => 'Fallback', 'sku' => 'P82-BACKFILL', 'quantity' => 2, 'unit_price' => '10.00', 'line_revenue' => '20.00']);
+        $this->attachWarehouseShipment($order, 'us-la');
+
+        $candidate = $this->app->make(CostMaterializationService::class)->previewP82LastMileEstimateGate($order)['candidates'][0];
+
+        self::assertSame('apply', $candidate['materialization_status']);
+        self::assertSame('20.00', $candidate['amount']);
+        self::assertSame('fallback_usd10_per_unit', $candidate['p82_tier']);
+    }
+
+    public function test_p82_dedicated_gate_never_overwrites_strong_last_mile_fact(): void
+    {
+        $order = $this->order('USD');
+        $order->items()->create(['product_summary' => 'Fallback', 'sku' => 'P82-STRONG', 'quantity' => 2, 'unit_price' => '10.00', 'line_revenue' => '20.00']);
+        $this->attachWarehouseShipment($order, 'us-la');
+        $order->costEntries()->create([
+            'cost_type' => 'last_mile_cost', 'amount' => '8.88', 'currency' => 'USD',
+            'provenance' => 'confirmed_manual', 'status' => 'confirmed', 'source_reference' => 'owner:manual:last-mile',
+        ]);
+
+        $candidate = $this->app->make(CostMaterializationService::class)->previewP82LastMileEstimateGate($order)['candidates'][0];
+
+        self::assertSame('blocked', $candidate['materialization_status']);
+        self::assertSame('stronger_or_different_existing_fact', $candidate['blocker']);
+        self::assertSame('8.88', $order->costEntries()->where('cost_type', 'last_mile_cost')->firstOrFail()->amount);
+    }
+
+    public function test_p82_activation_command_is_dry_run_first_and_local_apply_is_idempotent(): void
+    {
+        $order = $this->order('USD');
+        $order->items()->create(['product_summary' => 'Fallback', 'sku' => 'P82-CMD', 'quantity' => 2, 'unit_price' => '10.00', 'line_revenue' => '20.00']);
+        $this->attachWarehouseShipment($order, 'us-la');
+
+        $this->artisan('finance:p8-2-materialize-estimated-last-mile', ['--order' => $order->id])->assertSuccessful();
+        self::assertFalse($order->costEntries()->where('cost_type', 'last_mile_cost')->exists());
+
+        $this->artisan('finance:p8-2-materialize-estimated-last-mile', ['--order' => $order->id, '--apply' => true])->assertSuccessful();
+        $entry = $order->costEntries()->where('cost_type', 'last_mile_cost')->firstOrFail();
+        self::assertSame('20.00', $entry->amount);
+        self::assertSame('estimated_reference', $entry->provenance);
+        self::assertStringStartsWith('p82-last-mile-estimate:v1:order:', (string) $entry->source_reference);
+
+        $result = $this->app->make(CostMaterializationService::class)->previewP82LastMileEstimateGate($order->fresh())['candidates'][0];
+        self::assertSame('noop', $result['materialization_status']);
+    }
+
+    public function test_continuous_delta_surfaces_p82_estimate_only_after_feature_flag_is_enabled(): void
+    {
+        config(['erp_accounting.continuous_delta.p82_estimated_fallback_enabled' => true]);
+        $order = $this->order('USD');
+        $order->items()->create(['product_summary' => 'Fallback', 'sku' => 'P82-DELTA', 'quantity' => 1, 'unit_price' => '10.00', 'line_revenue' => '10.00']);
+        $this->attachWarehouseShipment($order, 'us-la');
+
+        $summary = $this->app->make(AccountingContinuousDeltaService::class)->preview(100);
+
+        self::assertSame(1, $summary['candidate_count']);
+        self::assertSame(1, $summary['stages']['last_mile_estimate']['applied']);
+        self::assertFalse($order->costEntries()->where('cost_type', 'last_mile_cost')->exists());
     }
 
     // -----------------------------------------------------------------------
