@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Throwable;
 use App\Modules\Identity\Application\AuthorizationKeys;
+use App\Modules\Logistics\Application\WarehouseShipmentProjection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -25,6 +26,7 @@ final class WarehouseController
         private readonly WarehouseClearanceService $clearance,
         private readonly WarehouseBillImportService $billImport,
         private readonly WarehouseBillReconciliationService $reconciliation,
+        private readonly WarehouseShipmentProjection $shipments,
     ) {}
     public function create(): Response { return Inertia::render('Inventory/WarehouseCreate'); }
     public function store(Request $request): RedirectResponse
@@ -47,6 +49,7 @@ final class WarehouseController
             'billReconciliationHistory'=>$this->reconciliation->history($w),
             'billReconciliationDashboard'=>$this->reconciliation->dashboard($w),
             'billReconciliationPreview'=>session($this->billReconciliationPreviewKey((int)$w->id)),
+            'shipmentProjection'=>$this->shipments->forWarehouse($w),
             'canOperate'=>auth()->user()?->can(AuthorizationKeys::InventoryOperate->value) ?? false,
             'canManage'=>auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false,
         ]);
