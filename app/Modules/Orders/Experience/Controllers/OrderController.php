@@ -205,9 +205,12 @@ final class OrderController
             foreach ($selectedByItem as $itemId => $_) $selectedByItem[$itemId] = (int) $order->shipment->warehouse_id;
         }
 
+        $hasCommittedDerivedFulfillment = $order->relationLoaded('fulfillmentChildren') && $order->fulfillmentChildren->isNotEmpty();
+        $allocationCommitted = $order->fulfillmentAllocation !== null || $hasCommittedDerivedFulfillment;
+
         return [
-            'status' => $order->fulfillmentAllocation ? 'submitted' : ($order->order_status?->value === 'pending_shipment' ? 'pending' : 'locked'),
-            'can_operate' => $order->order_status?->value === 'pending_shipment' && ! $order->fulfillmentAllocation && $this->fulfillmentAllocationAccess->allows($request->user()),
+            'status' => $allocationCommitted ? 'submitted' : ($order->order_status?->value === 'pending_shipment' ? 'pending' : 'locked'),
+            'can_operate' => $order->order_status?->value === 'pending_shipment' && ! $allocationCommitted && $this->fulfillmentAllocationAccess->allows($request->user()),
             'requires_full_flow' => $order->items->contains(fn ($item): bool => strcasecmp(trim((string) $item->sku), 'gift') === 0),
             'selectable_warehouse_ids' => $selectableWarehouseIds,
             'recommended_warehouse_ids' => $recommendedByItem,

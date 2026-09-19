@@ -158,6 +158,8 @@ describe('Orders/Show V2', () => {
     expect(wrapper.text()).toContain('国内工厂')
     expect(wrapper.text()).toContain('待发货')
     expect(wrapper.find('.ord-fulfillment-table').exists()).toBe(true)
+    expect(wrapper.find('.ord-inventory-card').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('库存分布')
   })
 
   it('does not introduce a delete action', () => {
@@ -433,7 +435,7 @@ describe('Orders/Show V2', () => {
     }, expect.any(Object))
   })
 
-  it('renders submitted allocation as read-only selected warehouse', () => {
+  it('closes inventory allocation UI once warehouse allocation is committed', () => {
     const inventoryAvailability = {
       5: [{ warehouse_id: 2, warehouse_slug: 'us-ny', warehouse_name: '美东纽约仓', inventory_state: 'confirmed', can_auto_allocate: true, quantity_on_hand: 4, quantity_reserved: 0, quantity_available: 4 }],
     }
@@ -443,7 +445,8 @@ describe('Orders/Show V2', () => {
       recommended_plan_key: null, can_use_recommendation: false, full_allocation_url: '/logistics/wait-stock',
     }
     const wrapper = mount(Show, { props: { order: baseOrder, audit, inventoryAvailability, allocationUi } })
-    expect(wrapper.text()).toContain('✓ 已选仓库')
+    expect(wrapper.find('.ord-inventory-card').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('库存分布')
     expect(wrapper.find('input[type="radio"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('确认分仓')
   })

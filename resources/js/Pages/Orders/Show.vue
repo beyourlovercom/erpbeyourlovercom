@@ -207,6 +207,12 @@ const fulfillmentProgressLabel = computed(() => {
   return `${fulfillment.segment_count} 个履约单 · ${fulfillment.fulfilled_count}/${fulfillment.segment_count} 已进入物流`
 })
 
+const showAllocationInventory = computed(() => {
+  if (props.order.fulfillment?.is_split) return false
+  if (!props.allocationUi) return true
+  return props.allocationUi.status === 'pending'
+})
+
 const allocationSelections = ref<Record<number, number | null>>(Object.fromEntries(props.order.items.map(item => [item.id, props.allocationUi?.selected_warehouse_ids?.[item.id] ?? props.allocationUi?.recommended_warehouse_ids?.[item.id] ?? null])))
 const allocationSubmitting = ref(false)
 const allocationSelectable = (warehouseId: number) => props.allocationUi?.selectable_warehouse_ids?.includes(warehouseId) ?? false
@@ -377,7 +383,8 @@ const submitAllocation = () => {
           </div>
         </div>
 
-        <!-- Inventory distribution -->
+        <!-- Inventory distribution: only before warehouse allocation is committed. -->
+        <template v-if="showAllocationInventory">
         <div v-for="item in order.items" :key="`inventory-${item.id}`" class="erp-form-card ord-inventory-card">
           <h2 class="erp-form-card-title">{{ item.sku || '未绑定 SKU' }} 库存分布</h2>
           <div class="ord-inventory-table-wrap">
@@ -438,6 +445,8 @@ const submitAllocation = () => {
             <button v-if="allocationUi.can_operate && !allocationUi.requires_full_flow" type="button" class="erp-btn erp-btn-primary" :disabled="!allocationReady || allocationSubmitting" @click="submitAllocation">{{ allocationSubmitting ? '提交中…' : allocationMatchesRecommendation ? '采用推荐并提交分仓' : '确认分仓' }}</button>
           </div>
         </div>
+
+        </template>
 
         <!-- Product packaging standard / fulfillment snapshot -->
         <div class="erp-form-card">

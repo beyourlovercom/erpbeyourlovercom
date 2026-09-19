@@ -307,6 +307,8 @@ final class OrderFulfillmentM1Test extends TestCase
                 ->where('order.fulfillment.segments.1.suffix', 'B')
                 ->where('order.fulfillment.segments.1.shipment.warehouse_name', '国内工厂')
                 ->where('order.fulfillment.segments.1.shipment.status_label', '待发货')
+                ->where('allocationUi.status', 'submitted')
+                ->where('allocationUi.can_operate', false)
         );
     }
 
