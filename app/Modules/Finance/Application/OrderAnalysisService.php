@@ -19,6 +19,10 @@ final class OrderAnalysisService
         'kol_commission', 'payment_fee', 'customs_tax', 'refund_replacement_loss', 'other_variable_cost',
     ];
 
+    private const P82_REQUIRED_COST_FIELDS = [
+        'product_cost', 'first_mile_cost', 'overseas_handling_cost', 'last_mile_cost', 'payment_fee', 'customs_tax',
+    ];
+
     private const LOGISTICS_COST_FIELDS = [
         'warehouse_cost', 'first_mile_cost', 'overseas_handling_cost', 'last_mile_cost',
     ];
@@ -153,6 +157,11 @@ final class OrderAnalysisService
         return [...self::FINANCIAL_FIELDS, ...self::COST_FIELDS];
     }
 
+    public static function p82RequiredCostFields(): array
+    {
+        return self::P82_REQUIRED_COST_FIELDS;
+    }
+
     public function values(Model $order): array
     {
         $financials = $order->relationLoaded('financials') ? $order->financials : $order->financials()->first();
@@ -260,6 +269,7 @@ final class OrderAnalysisService
             : null;
         $fxFrozen = $currency === 'USD' || ($financials?->fx_rate !== null && $financials?->fx_rate_date !== null && $financials?->fx_rate_source !== null);
         $aggregationMissing = $fxFrozen ? [] : ['transaction_fx_snapshot'];
+        $p82Readiness = $this->p82ReadinessAssessment($revenue, $byType, $currency);
 
         return [
             'completeness' => match ($financeStatus) {
@@ -288,6 +298,10 @@ final class OrderAnalysisService
             'confirmed_cost_count' => $confirmedCostCount,
             'estimated_cost_count' => $estimatedCostCount,
             'required_cost_count' => count(self::COST_FIELDS),
+            'p82_estimated_profit_base_ready' => $p82Readiness['ready'],
+            'p82_required_cost_count' => count(self::P82_REQUIRED_COST_FIELDS),
+            'p82_required_cost_covered_count' => $p82Readiness['covered_count'],
+            'p82_missing_required_costs' => $p82Readiness['missing'],
             'total_cost' => $totalCostCents === null ? null : $this->money($totalCostCents),
             'contribution_profit' => $profitCents === null ? null : $this->money($profitCents),
             'margin' => $margin,
@@ -405,6 +419,41 @@ final class OrderAnalysisService
             'estimated' => $estimated,
             'missing' => $missing,
             'total_cents' => $totalCents,
+        ];
+    }
+
+    private function p82ReadinessAssessment(array $revenue, Collection $byType, string $currency): array
+    {
+        $covered = 0;
+        $missing = [];
+        foreach (self::P82_REQUIRED_COST_FIELDS as $field) {
+            $entry = $byType->get($field);
+            if (! $entry) {
+                $missing[] = $field;
+                continue;
+            }
+            if (strtoupper((string) $entry->currency) !== $currency) {
+                $missing[] = $field.'_currency_mismatch';
+                continue;
+            }
+            $provenance = (string) ($entry->provenance ?? 'confirmed_manual');
+            $status = (string) ($entry->status ?? 'confirmed');
+            if ($provenance === 'estimated_reference' || $status === 'estimated') {
+                $covered++;
+                continue;
+            }
+            if (in_array($status, ['confirmed', 'adjusted'], true)
+                && in_array($provenance, self::CONFIRMED_COST_PROVENANCE, true)) {
+                $covered++;
+                continue;
+            }
+            $missing[] = $field.'_not_ready';
+        }
+
+        return [
+            'ready' => $revenue['ready'] && $missing === [],
+            'covered_count' => $covered,
+            'missing' => $missing,
         ];
     }
 

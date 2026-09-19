@@ -87,7 +87,7 @@ final class OrderAnalysisController
             $handle = fopen('php://output', 'w');
             fputcsv($handle, [
                 'ERP订单号', '来源订单号', '来源', '日期', '国家', '币种', '净商业收入', '总成本',
-                '贡献利润', 'Margin', '利润状态', '完整性', '缺失项', 'USD汇总FX状态',
+                '贡献利润', 'Margin', '利润状态', '最终完整性', 'P8.2预估基础就绪', 'P8.2必需成本覆盖', 'P8.2缺失必需成本', '缺失项', 'USD汇总FX状态',
             ]);
             $query->chunkById(200, function ($orders) use ($handle): void {
                 foreach ($orders as $order) {
@@ -105,6 +105,9 @@ final class OrderAnalysisController
                         $summary['margin'],
                         $summary['profit_status'],
                         $summary['finance_status'],
+                        $summary['p82_estimated_profit_ready'] ? 'ready' : 'incomplete',
+                        $summary['p82_required_cost_covered_count'].'/'.$summary['p82_required_cost_count'],
+                        implode('|', $summary['p82_missing_required_costs']),
                         implode('|', $summary['missing_facts']),
                         $summary['fx_status'],
                     ]);
@@ -256,6 +259,10 @@ final class OrderAnalysisController
         $confirmed = (clone $query)
             ->whereHas('financials', fn (Builder $financials) => $financials->whereIn('completeness_status', ['CONFIRMED', 'RECONCILED']))
             ->count();
+        $revenueReady = $this->applyRevenueReadyScope(clone $query)->count();
+        $p82RequiredReady = $this->applyP82RequiredCostReadyScope(
+            $this->applyRevenueReadyScope(clone $query),
+        )->count();
         $fxPending = (clone $query)
             ->where('currency', '!=', 'USD')
             ->where(function (Builder $orders): void {
@@ -269,10 +276,73 @@ final class OrderAnalysisController
 
         return [
             'eligible_orders' => $eligible,
+            'revenue_ready_orders' => $revenueReady,
+            'p82_required_cost_ready_orders' => $p82RequiredReady,
+            'p82_required_cost_percent' => $revenueReady > 0 ? round($p82RequiredReady / $revenueReady * 100, 1) : 0,
             'confirmed_profit_orders' => $confirmed,
             'incomplete_orders' => max(0, $eligible - $confirmed),
             'completeness_percent' => $eligible > 0 ? round($confirmed / $eligible * 100, 1) : 0,
+            'final_profit_percent_of_revenue_ready' => $revenueReady > 0 ? round($confirmed / $revenueReady * 100, 1) : 0,
             'fx_pending_orders' => $fxPending,
         ];
+    }
+
+    private function applyRevenueReadyScope(Builder $query): Builder
+    {
+        return $query->whereHas('financials', function (Builder $financials): void {
+            $financials->where(function (Builder $ready): void {
+                $ready->where(function (Builder $provider): void {
+                    $provider->where('revenue_provenance', 'provider_import')
+                        ->whereNotNull('merchandise_list_amount')
+                        ->whereNotNull('discount_amount')
+                        ->whereNotNull('shipping_revenue')
+                        ->whereNotNull('refund_amount')
+                        ->whereNotNull('provider_order_total')
+                        ->whereNotNull('tax_collected')
+                        ->whereNotNull('paid_at')
+                        ->whereIn('provider_order_status', ['processing', 'completed', 'refunded'])
+                        ->where('reconciliation_status', 'matched');
+                })->orWhere(function (Builder $manual): void {
+                    $manual->where('revenue_provenance', 'confirmed_manual')
+                        ->where(function (Builder $facts): void {
+                            $facts->where(function (Builder $components): void {
+                                $components->whereNotNull('merchandise_list_amount')
+                                    ->whereNotNull('discount_amount')
+                                    ->whereNotNull('shipping_revenue')
+                                    ->whereNotNull('refund_amount');
+                            })->orWhere(function (Builder $legacy): void {
+                                $legacy->whereNull('merchandise_list_amount')
+                                    ->whereNotNull('amount_paid')
+                                    ->whereNotNull('refund_amount');
+                            });
+                        });
+                })->orWhere(function (Builder $legacy): void {
+                    $legacy->whereNull('revenue_provenance')
+                        ->whereNull('merchandise_list_amount')
+                        ->whereNotNull('amount_paid')
+                        ->whereNotNull('refund_amount');
+                });
+            });
+        });
+    }
+
+    private function applyP82RequiredCostReadyScope(Builder $query): Builder
+    {
+        foreach (OrderAnalysisService::p82RequiredCostFields() as $costType) {
+            $query->whereHas('costEntries', function (Builder $costs) use ($costType): void {
+                $costs->where('cost_type', $costType)
+                    ->whereColumn('order_cost_entries.currency', 'orders.currency')
+                    ->where(function (Builder $accepted): void {
+                        $accepted->where('provenance', 'estimated_reference')
+                            ->orWhere('status', 'estimated')
+                            ->orWhere(function (Builder $confirmed): void {
+                                $confirmed->whereIn('status', ['confirmed', 'adjusted'])
+                                    ->whereIn('provenance', ['actual', 'confirmed_manual', 'provider_import', 'allocated_actual']);
+                            });
+                    });
+            });
+        }
+
+        return $query;
     }
 }
