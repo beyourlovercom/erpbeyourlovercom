@@ -109,8 +109,8 @@ function splitConstraintError(order:Order){
   const values=Object.values(manualAssignments[order.id]??{}).filter(Boolean)
   if(values.length!==order.items.length)return '请为每个 SKU 选择发货仓库'
   const sources=[...new Set(values)]
-  if(sources.length>2)return 'V1.1 最多允许两个履约来源'
-  if(sources.length===2&&!sources.includes('FACTORY'))return 'V1.1 拆单只允许「一个海外仓 + 中国工厂」'
+  const maxSources=order.allocation_decision.policy.max_sources || 26
+  if(sources.length>maxSources)return `最多允许 ${maxSources} 个履约来源`
   for(const source of sources){ if(!(manualCarriers[order.id]?.[source] || defaultCarrier(order,source))) return `发货仓 ${sourceLabel(source)} 需要选择物流承运商` }
   for(const item of order.items){
     if(!item.is_gift)continue
@@ -174,7 +174,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
       <header class="modal-header"><div><p class="eyebrow">FULFILLMENT PLAN</p><h2>履约方案详情</h2></div><button class="icon-button" @click="closePlan">×</button></header>
 
       <section v-if="!processed(selectedOrder)" class="primary-allocation">
-        <div class="section-title"><div><h3>SKU 履约分配</h3><p>先确认发货仓，再确认物流承运商；系统不能判断的项目由 Vita 人工补齐。</p></div><span class="limit-chip">最多两个履约来源</span></div>
+        <div class="section-title"><div><h3>SKU 履约分配</h3><p>先确认发货仓，再确认物流承运商；系统不能判断的项目由 Vita 人工补齐。</p></div><span class="limit-chip">最多 {{ selectedOrder.allocation_decision.policy.max_sources }} 个履约来源</span></div>
         <div class="manual-table-wrap"><table><thead><tr><th>SKU</th><th>数量</th><th>库存参考</th><th>建议发货仓</th><th>选择发货仓</th><th>选择物流承运商</th><th>实际履约 SKU</th></tr></thead><tbody>
           <tr v-for="item in selectedOrder.items" :key="item.id">
             <td><strong>{{ item.sku??item.product_summary }}</strong><span v-if="item.is_gift" class="gift-tag">礼品</span></td>
@@ -187,7 +187,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
           </tr>
         </tbody></table></div>
         <div v-if="fulfillmentGroups(selectedOrder).length" class="group-preview"><div class="group-heading"><strong>当前将生成 {{ fulfillmentGroups(selectedOrder).length }} 个履约订单</strong><span>系统按发货仓自动归组，不需要 Vita 手工创建 A/B。</span></div><div class="group-grid"><article v-for="group in fulfillmentGroups(selectedOrder)" :key="group.source" class="group-card"><header><div><small>{{ group.suffix?`履约组 ${group.suffix}`:'单仓履约' }}</small><strong>{{ group.erpOrderId }}</strong></div><div class="group-route"><b>{{ group.warehouse }}</b><span>{{ carrierLabel(group.carrier) }}</span></div></header><div class="group-items"><span v-for="item in group.items" :key="item.id">{{ resolvedSkuLabel(selectedOrder,item) }} × {{ item.quantity }}</span></div></article></div></div>
-        <p class="constraint">美国规则：美国3世迈仓优先、MorePlus 兜底；美东纽约仓；不跨区域自动兜底。若出现两个履约来源，V1.1 只允许「一个海外仓 + 中国工厂」。</p>
+        <p class="constraint">分仓规则：每个订单商品仍只归属一个履约来源，不拆数量；一个订单可以按实际仓库需要生成 A/B/C… 多个履约单，海外仓与中国工厂可组合。</p>
       </section>
 
       <section v-else class="processed-primary"><div class="record-banner"><div><strong>分仓已完成</strong><span>后续物流只处理已确定仓库、承运商与实际履约 SKU 的执行订单。</span></div><span class="status-chip done">{{ selectedOrder.fulfillment_allocation?.decision_source==='manual'?'人工确认':'采用系统推荐' }}</span></div><div class="segment-grid"><article v-for="child in selectedOrder.fulfillment_allocation?.plan_snapshot?.derived_orders??[]" :key="child.order_id" class="segment-card"><header><div><small>{{ child.derived?`衍生订单 ${child.suffix??''}`:'原订单直接履约' }}</small><h3>{{ child.erp_order_id }}</h3></div><div class="record-route"><span>{{ child.warehouse_code?sourceLabel(child.warehouse_code):(child.warehouse_name??'—') }}</span><strong>{{ carrierLabel(child.carrier) }}</strong></div></header><table><thead><tr><th>实际履约 SKU</th><th>来源</th><th>数量</th></tr></thead><tbody><tr v-for="item in child.items" :key="`${child.order_id}-${item.sku}`"><td><strong>{{ item.resolved_fulfillment_sku??item.sku }}</strong></td><td>{{ item.source_sku??item.sku }}</td><td>{{ item.quantity }}</td></tr></tbody></table></article></div></section>

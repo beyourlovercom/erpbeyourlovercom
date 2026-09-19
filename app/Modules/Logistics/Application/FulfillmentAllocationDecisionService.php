@@ -71,8 +71,8 @@ final class FulfillmentAllocationDecisionService
                 'human_confirmation_required' => true,
                 'missing_data_falls_back_to_manual' => true,
                 'same_order_item_quantity_split_allowed' => false,
-                'max_sources' => 2,
-                'split_pattern' => 'one_overseas_plus_factory',
+                'max_sources' => count((array) config('warehouse_master.fulfillment_codes', [])),
+                'split_pattern' => 'multi_warehouse_or_factory',
             ],
         ];
     }
