@@ -7,6 +7,7 @@ use App\Modules\Kol\Infrastructure\Models\KolAffiliateReferral;
 use App\Modules\Logistics\Application\Contracts\OverseasHandlingEvidenceReader;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -41,6 +42,39 @@ final class KolCommissionMaterializationTest extends TestCase
         self::assertSame('USD', $entry->base_currency);
         self::assertSame('1.10000000', $order->financials()->firstOrFail()->fresh()->fx_rate);
         self::assertSame('noop', $service->previewKolCommissionGate($order->fresh())['candidates'][0]['materialization_status']);
+    }
+
+    public function test_replay_keeps_same_affiliate_evidence_posting_snapshot_frozen_across_days(): void
+    {
+        Carbon::setTestNow('2026-09-17 12:00:00');
+        try {
+            Http::fake(['ecb.europa.eu/*' => Http::response($this->ecbXml(), 200)]);
+            $order = $this->order('EUR');
+            $order->financials()->create(['amount_paid'=>'100.00','refund_amount'=>'0.00','currency'=>'EUR','revenue_provenance'=>'provider_import','completeness_status'=>'INCOMPLETE']);
+            $referral = $this->referral($order, 9, '11.000000', 'USD', 'paid');
+            $service = $this->app->make(CostMaterializationService::class);
+
+            $service->applyKolCommissionGate($order);
+            $entry = $order->costEntries()->where('cost_type','kol_commission')->firstOrFail();
+            $frozenDate = $entry->exchange_rate_date?->toDateString();
+            $frozenBase = (string) $entry->base_amount;
+
+            Carbon::setTestNow('2026-09-18 12:00:00');
+            $sameEvidence = $service->previewKolCommissionGate($order->fresh())['candidates'][0];
+            self::assertSame('noop', $sameEvidence['materialization_status']);
+            self::assertSame('10.00', $sameEvidence['amount']);
+            self::assertTrue($sameEvidence['posting_snapshot_frozen'] ?? false);
+            self::assertCount(1, $service->applyKolCommissionGate($order->fresh())['noop']);
+            self::assertSame($frozenDate, $entry->fresh()->exchange_rate_date?->toDateString());
+            self::assertSame($frozenBase, (string) $entry->fresh()->base_amount);
+
+            $referral->forceFill(['commission_amount' => '12.000000'])->save();
+            $changedEvidence = $service->previewKolCommissionGate($order->fresh())['candidates'][0];
+            self::assertSame('apply', $changedEvidence['materialization_status']);
+            self::assertNotSame('10.00', $changedEvidence['amount']);
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_mixed_source_currency_and_manual_strong_fact_fail_closed(): void
