@@ -110,6 +110,51 @@ final class InventoryWarehouseStorageAgingP9OperationalTest extends TestCase
         self::assertDatabaseCount('warehouse_inventory_lot_consumptions', 2);
     }
 
+    public function test_fifo_consumption_accepts_direct_inbound_lots_without_sync_batch_identity(): void
+    {
+        $warehouse = $this->warehouse('us-sm', 'US-SM', 'US');
+        $product = $this->product('P9-INBOUND-DIRECT');
+
+        $firstLot = WarehouseInventoryLot::query()->create([
+            'warehouse_id' => $warehouse->id,
+            'product_id' => $product->id,
+            'stock_status' => 'sellable',
+            'putaway_date' => '2026-09-19',
+            'quantity' => 1,
+            'sync_batch_id' => null,
+        ]);
+        $secondLot = WarehouseInventoryLot::query()->create([
+            'warehouse_id' => $warehouse->id,
+            'product_id' => $product->id,
+            'stock_status' => 'sellable',
+            'putaway_date' => '2026-09-19',
+            'quantity' => 1,
+            'sync_batch_id' => null,
+        ]);
+
+        $order = $this->order($product, 2, 'USD');
+        $shipment = $order->shipment()->create([
+            'warehouse_id' => $warehouse->id,
+            'shipment_status' => 'shipped',
+            'carrier' => 'USPS',
+            'shipped_at' => '2026-09-19 08:00:00',
+        ]);
+
+        $captured = $this->app->make(WarehouseLotConsumptionService::class)->captureForShipment($shipment);
+
+        self::assertSame('captured', $captured['status']);
+        self::assertSame(2, $captured['total_quantity']);
+        self::assertDatabaseCount('warehouse_inventory_lot_consumptions', 2);
+
+        $rows = WarehouseInventoryLotConsumption::query()->orderBy('source_inventory_lot_id')->get();
+        self::assertSame([$firstLot->id, $secondLot->id], $rows->pluck('source_inventory_lot_id')->all());
+        self::assertSame([null, null], $rows->pluck('source_sync_batch_id')->all());
+        self::assertSame([1, 1], $rows->pluck('quantity')->all());
+        self::assertNotSame($rows[0]->lot_business_key, $rows[1]->lot_business_key);
+        self::assertStringContainsString(':source-lot:', $rows[0]->source_reference);
+        self::assertStringContainsString(':source-lot:', $rows[1]->source_reference);
+    }
+
     public function test_fifo_preview_does_not_double_allocate_same_lot_across_duplicate_product_lines(): void
     {
         $warehouse = $this->warehouse('us-la', 'US-LA', 'US');
@@ -411,6 +456,7 @@ final class InventoryWarehouseStorageAgingP9OperationalTest extends TestCase
             'unit_price' => '10.00',
             'line_revenue' => number_format($quantity * 10, 2, '.', ''),
         ]);
+
         return $order->fresh(['items', 'financials']);
     }
 }
