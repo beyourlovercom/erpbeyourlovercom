@@ -5,17 +5,18 @@ import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
 type ImageRef = { id:number|null; name:string|null; url:string }
 type PackagingProfile = {
-  id:number; preset_key:string|null; method:string; scenario:string|null; version:string|null;
+  id:number; preset_key:string|null; method:string; scenario:string|null; version:string|null; units_per_carton:number|null;
   inherits_global_template:boolean; default_image:ImageRef|null; rendered_image:ImageRef|null; examples:ImageRef[]
 }
 type Preset = { key:string; label:string }
 const props = defineProps<{product:{id:number;sku:string|null;name:string};packagingProfile:PackagingProfile|null;presets:Preset[]}>()
 const initialPresetKey:string|null = props.packagingProfile?.preset_key ?? props.presets[0]?.key ?? null
-const form = useForm<{preset_key:string|null;method:string;scenario:string;version:string}>({
+const form = useForm<{preset_key:string|null;method:string;scenario:string;version:string;units_per_carton:number|null}>({
   preset_key: initialPresetKey,
   method: props.packagingProfile?.method ?? '',
   scenario: props.packagingProfile?.scenario ?? '',
   version: props.packagingProfile?.version ?? '',
+  units_per_carton: props.packagingProfile?.units_per_carton ?? null,
 })
 const selectedPreset = computed(() => props.presets.find(item => item.key === form.preset_key) ?? null)
 const isCustom = computed(() => !form.preset_key)
@@ -51,6 +52,7 @@ function removeImage(image:ImageRef){if(image.id===null)return;if(!confirm(`删�
         <div class="meta-grid">
           <label><span>方案名称</span><input v-model="form.method" :disabled="!isCustom" :placeholder="selectedPreset?.label||'请输入定制方案名称'"/><small v-if="form.errors.method" class="error">{{form.errors.method}}</small></label>
           <label><span>版本</span><input v-model="form.version" placeholder="例如 v2 / 2026-09"/></label>
+          <label><span>几个/箱</span><input v-model.number="form.units_per_carton" type="number" min="1" step="1" placeholder="例如 12"/><small>海运 / 备货使用的标准整箱装箱数</small><small v-if="form.errors.units_per_carton" class="error">{{form.errors.units_per_carton}}</small></label>
           <label class="wide"><span>适用说明</span><textarea v-model="form.scenario" rows="2" placeholder="例如：适用于压缩后长度 30–40cm 的枕头"></textarea></label>
         </div>
       </article>

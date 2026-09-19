@@ -157,6 +157,7 @@ final class PackagingMeasurementEvidenceTest extends TestCase
             'method'=>'气泡袋裁剪',
             'scenario'=>'工厂参考',
             'version'=>'v1',
+            'units_per_carton'=>12,
         ])->assertRedirect();
 
         $this->actingAs($operator)->post("/products/{$product->id}/packaging/media", [
@@ -169,7 +170,7 @@ final class PackagingMeasurementEvidenceTest extends TestCase
         ])->assertRedirect();
 
         $profile = ProductPackagingProfile::query()->where('product_id', $product->id)->firstOrFail();
-        $this->assertDatabaseHas('product_packaging_profiles', ['id'=>$profile->id,'preset_key'=>'bubble_wrap_cut','custom_steps'=>null,'custom_tips'=>null]);
+        $this->assertDatabaseHas('product_packaging_profiles', ['id'=>$profile->id,'preset_key'=>'bubble_wrap_cut','units_per_carton'=>12,'custom_steps'=>null,'custom_tips'=>null]);
         $this->assertDatabaseCount('product_packaging_profile_media', 3);
         $hero = ProductPackagingProfileMedia::query()->where('product_packaging_profile_id',$profile->id)->where('kind','rendered')->firstOrFail();
         Storage::disk('local')->assertExists($hero->path);

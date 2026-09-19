@@ -6,6 +6,7 @@ use App\Modules\Inventory\Application\InventoryService;
 use App\Modules\Inventory\Application\InventoryStockStatus;
 use App\Modules\Inventory\Application\WarehouseClearanceService;
 use App\Modules\Inventory\Application\WarehouseInboundProjection;
+use App\Modules\Inventory\Application\WarehouseInboundLifecycleService;
 use App\Modules\Inventory\Application\WarehouseRestockProjection;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\WarehouseCost\WarehouseBillImportService;
@@ -27,6 +28,7 @@ final class WarehouseController
         private readonly InventoryService $inventory,
         private readonly WarehouseClearanceService $clearance,
         private readonly WarehouseInboundProjection $inbounds,
+        private readonly WarehouseInboundLifecycleService $inboundLifecycle,
         private readonly WarehouseRestockProjection $restock,
         private readonly WarehouseBillImportService $billImport,
         private readonly WarehouseBillReconciliationService $reconciliation,
@@ -182,6 +184,15 @@ final class WarehouseController
         $data=$request->validate($this->inventoryRules(false));
         $this->inventory->updateInventory($w,$inventory,$data,$request->user());
         return back()->with('success','库存已更新');
+    }
+
+    public function advanceInbound(Request $request,string $warehouse,int $batch): RedirectResponse
+    {
+        $w=$this->inventory->warehouse($warehouse);
+        $data=$request->validate(['status'=>['required','string','in:preparing,factory_packing,in_transit,port_arrived,received,ready']]);
+        $updated=$this->inboundLifecycle->advance($w,$batch,(string)$data['status'],$request->user());
+        $labels=['preparing'=>'准备中','factory_packing'=>'工厂打包','in_transit'=>'运输中','port_arrived'=>'港口已到货','received'=>'仓库已入库','ready'=>'正常发货'];
+        return back()->with('success','入库批次已更新：'.$updated->reference.' → '.($labels[$updated->status]??$updated->status));
     }
 
     public function saveRestockSupplement(Request $request,string $warehouse): RedirectResponse

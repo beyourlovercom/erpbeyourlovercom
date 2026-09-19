@@ -41,6 +41,7 @@ final class ProductPackagingProfileController
             'method'=>['nullable','string','max:128'],
             'scenario'=>['nullable','string','max:512'],
             'version'=>['nullable','string','max:64'],
+            'units_per_carton'=>['nullable','integer','min:1','max:100000'],
         ]);
         $presetKey = $data['preset_key'] ?? null;
         $customMethod = $presetKey ? null : trim((string)($data['method'] ?? ''));
@@ -48,9 +49,9 @@ final class ProductPackagingProfileController
 
         $profile = ProductPackagingProfile::query()->updateOrCreate(
             ['product_id'=>$item->id],
-            ['preset_key'=>$presetKey,'custom_method'=>$customMethod,'scenario'=>$data['scenario'] ?? null,'version'=>$data['version'] ?? null,'is_active'=>true],
+            ['preset_key'=>$presetKey,'custom_method'=>$customMethod,'scenario'=>$data['scenario'] ?? null,'version'=>$data['version'] ?? null,'units_per_carton'=>$data['units_per_carton'] ?? null,'is_active'=>true],
         );
-        $this->audit->record(AuditActor::user($request->user(), AuditSource::Web), 'product.packaging_profile.updated', $profile::class, $profile->id, after:['product_id'=>$item->id,'preset_key'=>$presetKey,'custom_method'=>$customMethod], reason:'product_packaging_profile_updated');
+        $this->audit->record(AuditActor::user($request->user(), AuditSource::Web), 'product.packaging_profile.updated', $profile::class, $profile->id, after:['product_id'=>$item->id,'preset_key'=>$presetKey,'custom_method'=>$customMethod,'units_per_carton'=>$profile->units_per_carton], reason:'product_packaging_profile_updated');
         return back()->with('success', '产品包装引用已保存');
     }
 
@@ -118,6 +119,7 @@ final class ProductPackagingProfileController
             'method'=>$preset['label'] ?? $profile->custom_method ?? '',
             'scenario'=>$profile->scenario,
             'version'=>$profile->version,
+            'units_per_carton'=>$profile->units_per_carton,
             'inherits_global_template'=>$profile->preset_key !== null,
             'default_image'=>($m=$one('default')) ? ['id'=>$m->id,'name'=>$m->original_name,'url'=>$url($m)] : null,
             'rendered_image'=>($m=$one('rendered')) ? ['id'=>$m->id,'name'=>$m->original_name,'url'=>$url($m)] : null,

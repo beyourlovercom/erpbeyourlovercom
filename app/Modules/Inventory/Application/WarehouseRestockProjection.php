@@ -5,6 +5,7 @@ namespace App\Modules\Inventory\Application;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Products\Infrastructure\Models\ProductPackagingProfile;
 use Illuminate\Support\Facades\DB;
 
 final class WarehouseRestockProjection
@@ -30,7 +31,13 @@ final class WarehouseRestockProjection
             ->orderBy('sku')
             ->get(['id','sku','name','weight_kg','shipping_weight_kg']);
 
-        $rows = $products->map(function (Product $product) use ($inventory, $shipped120): array {
+        $unitsPerCarton = ProductPackagingProfile::query()
+            ->where('is_active', true)
+            ->whereNotNull('units_per_carton')
+            ->whereIn('product_id', $products->pluck('id'))
+            ->pluck('units_per_carton', 'product_id');
+
+        $rows = $products->map(function (Product $product) use ($inventory, $shipped120, $unitsPerCarton): array {
             $stock = $inventory->get($product->id);
             $available = $stock ? max(0, (int) $stock->quantity_available) : 0;
             $shipped = max(0, (int) ($shipped120[$product->id] ?? 0));
@@ -51,6 +58,7 @@ final class WarehouseRestockProjection
                 'quantity_available' => $available,
                 'quantity_on_hand' => $stock ? (int) $stock->quantity_on_hand : 0,
                 'quantity_reserved' => $stock ? (int) $stock->quantity_reserved : 0,
+                'units_per_carton' => isset($unitsPerCarton[$product->id]) ? (int) $unitsPerCarton[$product->id] : null,
                 'logistics_weight_kg' => $weight !== null ? (string) $weight : null,
                 'weight_source' => $weightSource,
                 'has_inventory_record' => $stock !== null,
