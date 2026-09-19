@@ -142,9 +142,9 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
    - KOL immutable-FX replay false positives are fixed and Production dry-run converged from apply=645 to apply=0 / noop=2,417.
    - Three last-mile estimate apply candidates are refreshes of existing estimates, not missing-cost backfills; no cosmetic Production write was performed.
    - Historical Shipment evidence: HFR-5 and HFR-6 are CLOSED/UAT PASS. HFR-6 ended READY=0 / REVIEW=3,627 / SKIP=1,727. The dominant remaining frozen discovery blocker is missing approved historical warehouse evidence (~2,966 candidates). HFR-7 searched US Mac + Library and did not recover the original Tencent row-level warehouse source, so further backfill is evidence-blocked and must remain fail-closed.
-   - Accounting Completeness Semantics V1 implemented and locally validated: canonical Final Profit remains strict while the already-frozen P8.2 Estimated Profit contract exposes a separate six-required-cost base-readiness layer. Production read-only measurement: 6,307 operational customer Orders -> 5,573 revenue-ready -> 33 P8.2 base-ready (0.6%) -> 0 strict Final confirmed. Production UI deploy/UAT remains the final gate.
+   - Accounting Completeness Semantics V1 is CLOSED / PRODUCTION ACTIVE / OWNER UAT PASS via PR #383. Canonical Final Profit remains strict while the already-frozen P8.2 Estimated Profit contract exposes a separate six-required-cost base-readiness layer. Live UAT: 6,309 operational customer Orders -> 5,575 revenue-ready -> 33 P8.2 base-ready (0.6%) -> 0 strict Final confirmed; no global horizontal overflow on the CN Mac desktop viewport.
    - Product-cost ambiguity and other missing facts remain explicit until evidence exists; do not fabricate fallback facts.
-   - Evidence: `ERP-ACCOUNTING-EVIDENCE-COMPLETENESS-KOL-FX-REPLAY-2026-09-19.md` and `ERP-HISTORICAL-FULFILLMENT-RECONCILIATION-HFR7-EVIDENCE-BOUNDARY-2026-09-19.md`.
+   - Evidence: `ERP-ACCOUNTING-EVIDENCE-COMPLETENESS-KOL-FX-REPLAY-2026-09-19.md`, `ERP-HISTORICAL-FULFILLMENT-RECONCILIATION-HFR7-EVIDENCE-BOUNDARY-2026-09-19.md`, and `ERP-ACCOUNTING-COMPLETENESS-SEMANTICS-V1-2026-09-19.md`.
 
 9. **Product / Packaging UI**
    - PR #232 is an old one-file packaging comparison Draft.

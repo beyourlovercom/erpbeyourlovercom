@@ -2,7 +2,7 @@
 
 ## Status
 
-IMPLEMENTED / LOCAL VALIDATION PASS / PRODUCTION DEPLOY PENDING
+CLOSED / PRODUCTION ACTIVE / OWNER UAT PASS
 
 ## Problem
 
@@ -98,3 +98,15 @@ Existing PHPUnit warnings are environment/test-suite warnings; no test failure o
 ## Parallel-main deployment note
 
 At delivery time GitHub main had advanced through PR #380 while Production runtime had not. This package may merge onto current main, but a Production UI deploy must not silently ship PR #380 compiled frontend without its matching runtime. Production deployment therefore requires a bounded overlay against the actual current Production baseline, unless PR #380 has separately reached Production first.
+
+## Production closure
+
+- PR #383 merged as `6c5aff18b82ff856779c414ec89087cdaab8d842`.
+- Production release: `/Users/a/AI/production/erp.beyourlover.com/releases/accounting-completeness-pr383-20260919-2100-6c5aff18`.
+- Deployment used the actual pre-#380 Production runtime as the baseline and overlaid only the two Finance PHP files, `OrderAnalysis.vue`, and a separately compiled `public/build`.
+- To prevent an accidental frontend-only #380 rollout, the deploy build restored current-Production versions of `OrderProfitShow.vue`, `FulfillmentAllocation.vue`, and `Orders/Show.vue`; BASE/NEW hashes matched for all three.
+- PHP-FPM graceful USR2 reload completed. Public `/` and `/login` returned HTTP 200; anonymous `/accounting/order-costs` returned expected HTTP 302 auth redirect.
+- Authenticated Owner UAT on the existing CN Mac Chrome session: PASS. Page title `订单利润 · BYL ERP`; both `预估利润基础就绪` and `最终利润已确认` rendered; table rows showed the dual Final/P8.2 readiness cell.
+- Live UAT data had naturally advanced to 6,309 operational Orders / 5,575 revenue-ready / 33 P8.2 base-ready (0.6%) / 0 strict Final confirmed. This differs from the earlier 6,307 / 5,573 read-only audit only because two new Orders arrived before UAT.
+- Desktop viewport check: inner/client/document/body width all 1340px; global horizontal overflow=false.
+- No migration, Production Finance data write, completeness rewrite, P7/P8/P9 rule change, or ERP Changelog write.
