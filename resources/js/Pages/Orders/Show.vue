@@ -18,7 +18,8 @@ import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 
 type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; inventory_state: string; can_auto_allocate: boolean; quantity_on_hand: number | null; quantity_reserved: number | null; quantity_available: number | null }
 type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null; can_auto_allocate?: boolean }
-type AllocationUi = { status: 'pending' | 'submitted' | 'locked'; can_operate: boolean; requires_full_flow: boolean; selectable_warehouse_ids: number[]; recommended_warehouse_ids: Record<number, number | null>; selected_warehouse_ids: Record<number, number | null>; recommended_plan_key: string | null; can_use_recommendation: boolean; full_allocation_url: string }
+type CarrierOption = { value: string; label: string }
+type AllocationUi = { status: 'pending' | 'submitted' | 'locked'; can_operate: boolean; can_reallocate?: boolean; logistics_started?: boolean; requires_full_flow: boolean; selectable_warehouse_ids: number[]; recommended_warehouse_ids: Record<number, number | null>; selected_warehouse_ids: Record<number, number | null>; recommended_plan_key: string | null; can_use_recommendation: boolean; full_allocation_url: string }
 
 type OrderItem = {
   id: number
@@ -33,6 +34,12 @@ type FulfillmentSegment = {
   order_id: number
   erp_order_id: string | null
   suffix: string | null
+  role: 'original' | 'replacement'
+  role_label: string
+  reason: string | null
+  reason_label: string | null
+  origin_fulfillment_id: number | null
+  origin_erp_order_id: string | null
   items: { id: number; sku: string | null; product_summary: string | null; quantity: number }[]
   shipment: {
     shipment_status: string
@@ -43,6 +50,7 @@ type FulfillmentSegment = {
     service: string | null
     tracking_number: string | null
     shipped_at: string | null
+    logistics_note?: string | null
   }
 }
 
@@ -51,8 +59,11 @@ type FulfillmentProjection = {
   aggregate_status: string
   aggregate_status_label: string
   segment_count: number
+  original_segment_count: number
+  replacement_count: number
   fulfilled_count: number
   has_exception: boolean
+  original_logistics_started: boolean
   segments: FulfillmentSegment[]
 }
 
@@ -96,6 +107,7 @@ type Order = {
     carrier_selection_source?: string | null
     tracking_number: string | null
     shipped_at: string | null
+    logistics_note?: string | null
   } | null
   manual_sync: { status: string; synced_at: string | null } | null
   fulfillment?: FulfillmentProjection | null
@@ -108,15 +120,19 @@ const props = withDefaults(defineProps<{
   inventoryAvailability?: Record<number, Availability[]>
   packagingReferences?: Record<number, PackagingReference>
   warehouses?: Warehouse[]
+  carrierOptions?: CarrierOption[]
   allocationUi?: AllocationUi
   audit: { action: string; actor_id: number | null; created_at: string; reason?: string }[]
   canMarkOperational?: boolean
   canManageProductPackaging?: boolean
   canViewPackagingEvidence?: boolean
   canCreateProcurement?: boolean
-  canViewProfit?: boolean
+  canCreateReplacement?: boolean
   canOperateLogistics?: boolean
-}>(), { canMarkOperational: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canViewProfit: false, canOperateLogistics: false })
+  canViewProfit?: boolean
+
+}>(), { canMarkOperational: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canViewProfit: false })
+
 
 const isKol = computed(() => props.order.order_kind === 'kol_fulfillment')
 const basePath = computed(() => isKol.value ? '/kol/orders' : '/customers/orders')
@@ -200,17 +216,30 @@ const shipmentStatusLabel = computed(() => {
 })
 
 const isSplitFulfillment = computed(() => props.order.fulfillment?.is_split ?? false)
+const hasFulfillmentTable = computed(() => Boolean(isSplitFulfillment.value || (props.order.fulfillment?.replacement_count ?? 0) > 0))
 const fulfillmentAggregateLabel = computed(() => props.order.fulfillment?.aggregate_status_label ?? shipmentStatusLabel.value)
+const fulfillmentBadgeLabel = computed(() => {
+  const fulfillment = props.order.fulfillment
+  if (!fulfillment) return ''
+  if (fulfillment.replacement_count > 0 && !fulfillment.is_split) return `含售后补发 · ${fulfillment.segment_count} 个履约单`
+  if (fulfillment.replacement_count > 0) return `已拆分 · ${fulfillment.original_segment_count} 原始 + ${fulfillment.replacement_count} 补发`
+  return `已拆分 · ${fulfillment.segment_count} 个履约单`
+})
 const fulfillmentProgressLabel = computed(() => {
   const fulfillment = props.order.fulfillment
-  if (!fulfillment?.is_split) return ''
-  return `${fulfillment.segment_count} 个履约单 · ${fulfillment.fulfilled_count}/${fulfillment.segment_count} 已进入物流`
+  if (!fulfillment) return ''
+  const original = `${fulfillment.original_segment_count} 个原始履约 · ${fulfillment.fulfilled_count}/${fulfillment.original_segment_count} 已进入物流`
+  return fulfillment.replacement_count > 0 ? `${original} · 售后补发 ${fulfillment.replacement_count}` : original
 })
 
+const reallocationOpen = ref(false)
+const allocationEditing = computed(() => Boolean(
+  props.allocationUi?.status === 'pending'
+  || (props.allocationUi?.status === 'submitted' && props.allocationUi?.can_reallocate && reallocationOpen.value),
+))
 const showAllocationInventory = computed(() => {
-  if (props.order.fulfillment?.is_split) return false
-  if (!props.allocationUi) return true
-  return props.allocationUi.status === 'pending'
+  if (!props.allocationUi) return !isSplitFulfillment.value
+  return allocationEditing.value
 })
 
 const allocationSelections = ref<Record<number, number | null>>(Object.fromEntries(props.order.items.map(item => [item.id, props.allocationUi?.selected_warehouse_ids?.[item.id] ?? props.allocationUi?.recommended_warehouse_ids?.[item.id] ?? null])))
@@ -226,14 +255,132 @@ const allocationMatchesRecommendation = computed(() => Boolean(props.allocationU
   return recommended !== null && allocationSelected(item.id) === recommended
 }))
 const submitAllocation = () => {
-  if (!props.allocationUi?.can_operate || props.allocationUi.requires_full_flow || !allocationReady.value || allocationSubmitting.value) return
+  const canSubmit = Boolean(props.allocationUi?.can_operate || (props.allocationUi?.can_reallocate && reallocationOpen.value))
+  if (!canSubmit || props.allocationUi?.requires_full_flow || !allocationReady.value || allocationSubmitting.value) return
+  const allocationUi = props.allocationUi
+  if (!allocationUi) return
   allocationSubmitting.value = true
   const options = { preserveScroll: true, onFinish: () => { allocationSubmitting.value = false } }
-  if (allocationMatchesRecommendation.value && props.allocationUi.recommended_plan_key) {
-    router.post(`/logistics/orders/${props.order.id}/fulfillment-allocation/recommended`, { plan_key: props.allocationUi.recommended_plan_key, decision_note: null }, options)
+  if (allocationMatchesRecommendation.value && allocationUi.recommended_plan_key) {
+    router.post(`/logistics/orders/${props.order.id}/fulfillment-allocation/recommended`, { plan_key: allocationUi.recommended_plan_key, decision_note: null }, options)
     return
   }
   router.post(`/logistics/orders/${props.order.id}/fulfillment-allocation/quick`, { assignments: props.order.items.map(item => ({ order_item_id: item.id, warehouse_id: allocationSelected(item.id) })) }, options)
+}
+
+
+type ShipmentEditorDraft = {
+  warehouse_id: number | null
+  carrier: string
+  service: string
+  tracking_number: string
+  shipped_at: string
+  logistics_note: string
+}
+const shipmentEditorOpen = ref(false)
+const shipmentEditorOrderId = ref<number | null>(null)
+const shipmentEditorLabel = ref('')
+const shipmentEditorSaving = ref(false)
+const shipmentEditorError = ref('')
+const localDateTimeNow = () => {
+  const now = new Date()
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+  return local.toISOString().slice(0, 16)
+}
+const shipmentEditor = ref<ShipmentEditorDraft>({ warehouse_id: null, carrier: '', service: '', tracking_number: '', shipped_at: localDateTimeNow(), logistics_note: '' })
+const openShipmentEditor = (target: {
+  order_id: number
+  suffix?: string | null
+  erp_order_id?: string | null
+  shipment?: { warehouse_id?: number | null; carrier?: string | null; service?: string | null; tracking_number?: string | null; shipped_at?: string | null; logistics_note?: string | null }
+}) => {
+  shipmentEditorOrderId.value = target.order_id
+  shipmentEditorLabel.value = target.suffix ? `${target.suffix} · ${target.erp_order_id ?? ''}` : (target.erp_order_id ?? props.order.erp_order_id ?? '履约')
+  const shippedAt = target.shipment?.shipped_at ? String(target.shipment.shipped_at).slice(0, 16) : localDateTimeNow()
+  shipmentEditor.value = {
+    warehouse_id: target.shipment?.warehouse_id ?? null,
+    carrier: target.shipment?.carrier ?? '',
+    service: target.shipment?.service ?? '',
+    tracking_number: target.shipment?.tracking_number ?? '',
+    shipped_at: shippedAt,
+    logistics_note: target.shipment?.logistics_note ?? '',
+  }
+  shipmentEditorError.value = ''
+  shipmentEditorOpen.value = true
+}
+const closeShipmentEditor = () => { if (!shipmentEditorSaving.value) shipmentEditorOpen.value = false }
+const saveShipmentDraft = () => {
+  if (!props.canOperateLogistics || !shipmentEditorOrderId.value || shipmentEditorSaving.value) return
+  shipmentEditorSaving.value = true
+  shipmentEditorError.value = ''
+  router.post(`/logistics/orders/${shipmentEditorOrderId.value}/draft`, shipmentEditor.value, {
+    preserveScroll: true,
+    onError: () => { shipmentEditorError.value = '保存草稿失败，请检查物流信息。' },
+    onFinish: () => { shipmentEditorSaving.value = false },
+  })
+}
+const confirmShipment = () => {
+  if (!props.canOperateLogistics || !shipmentEditorOrderId.value || shipmentEditorSaving.value) return
+  const draft = shipmentEditor.value
+  if (!draft.warehouse_id) { shipmentEditorError.value = '请选择发货仓库'; return }
+  if (!draft.carrier.trim()) { shipmentEditorError.value = '请选择物流商'; return }
+  if (!draft.service.trim()) { shipmentEditorError.value = '请填写物流渠道'; return }
+  if (!draft.shipped_at) { shipmentEditorError.value = '请选择发货时间'; return }
+  shipmentEditorSaving.value = true
+  shipmentEditorError.value = ''
+  router.post(`/logistics/orders/${shipmentEditorOrderId.value}/ship`, draft, {
+    preserveScroll: true,
+    onSuccess: () => { shipmentEditorOpen.value = false },
+    onError: () => { shipmentEditorError.value = '确认发货失败，请检查物流信息。' },
+    onFinish: () => { shipmentEditorSaving.value = false },
+  })
+}
+
+const replacementOpen = ref(false)
+const replacementSubmitting = ref(false)
+const replacementReason = ref('lost')
+const replacementOriginId = ref<number | null>(null)
+const replacementWarehouseId = ref<number | null>(null)
+const replacementNote = ref('')
+const replacementAddressOverride = ref(false)
+const replacementAddress = ref({
+  recipient_name: props.order.address?.recipient_name ?? '',
+  phone: props.order.address?.phone ?? '',
+  country: props.order.address?.country ?? '',
+  province_state: props.order.address?.province_state ?? '',
+  city: props.order.address?.city ?? '',
+  address_line_1: props.order.address?.address_line_1 ?? '',
+  address_line_2: props.order.address?.address_line_2 ?? '',
+  postal_code: props.order.address?.postal_code ?? '',
+})
+const replacementQuantities = ref<Record<number, number>>(Object.fromEntries(props.order.items.map(item => [item.id, 0])))
+const replacementOriginalSegments = computed(() => (props.order.fulfillment?.segments ?? []).filter(segment => segment.role === 'original' && segment.suffix))
+const replacementSelectedItems = computed(() => props.order.items
+  .map(item => ({ order_item_id: item.id, quantity: Number(replacementQuantities.value[item.id] ?? 0) }))
+  .filter(item => item.quantity > 0))
+const replacementReady = computed(() => replacementSelectedItems.value.length > 0 && Boolean(replacementWarehouseId.value) && Boolean(replacementReason.value))
+const closeReplacement = () => { replacementOpen.value = false }
+const submitReplacement = () => {
+  if (!props.canCreateReplacement || !replacementReady.value || replacementSubmitting.value) return
+  replacementSubmitting.value = true
+  router.post(`/logistics/orders/${props.order.id}/replacement-fulfillments`, {
+    reason: replacementReason.value,
+    origin_fulfillment_id: replacementOriginId.value,
+    warehouse_id: replacementWarehouseId.value,
+    note: replacementNote.value || null,
+    items: replacementSelectedItems.value,
+    address: replacementAddressOverride.value ? replacementAddress.value : null,
+  }, {
+    preserveScroll: true,
+    onSuccess: () => {
+      replacementOpen.value = false
+      replacementNote.value = ''
+      replacementOriginId.value = null
+      replacementWarehouseId.value = null
+      replacementQuantities.value = Object.fromEntries(props.order.items.map(item => [item.id, 0]))
+    },
+    onFinish: () => { replacementSubmitting.value = false },
+  })
 }
 
 </script>
@@ -278,12 +425,16 @@ const submitAllocation = () => {
         <div class="erp-form-card">
 
           <div class="ord-fulfillment-heading">
-            <h2 class="erp-form-card-title">履约状态</h2>
-            <span v-if="isSplitFulfillment" class="ord-split-badge">已拆分 · {{ order.fulfillment?.segment_count }} 个履约单</span>
+
+            <div class="ord-fulfillment-title-row">
+              <h2 class="erp-form-card-title">履约状态</h2>
+              <span v-if="hasFulfillmentTable" class="ord-split-badge">{{ fulfillmentBadgeLabel }}</span>
+            </div>
+            <button v-if="canCreateReplacement" type="button" class="erp-btn erp-btn-secondary" @click="replacementOpen = true">+ 新增补发</button>
 
           </div>
 
-          <template v-if="isSplitFulfillment">
+          <template v-if="hasFulfillmentTable">
             <div class="ord-fulfillment-summary">
               <div>
                 <strong>{{ fulfillmentAggregateLabel }}</strong>
@@ -302,14 +453,17 @@ const submitAllocation = () => {
                     <th>状态</th>
                     <th>承运商 / 渠道</th>
                     <th>追踪号</th>
+                    <th>操作</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="segment in order.fulfillment?.segments ?? []" :key="segment.order_id">
                     <td>
-                      <div class="ord-fulfillment-segment-id">
+                      <div class="ord-fulfillment-segment-id" :class="{ replacement: segment.role === 'replacement' }">
                         <strong>{{ segment.suffix ?? '—' }}</strong>
                         <small>{{ segment.erp_order_id ?? '—' }}</small>
+                        <span class="ord-segment-role" :class="segment.role">{{ segment.role_label }}<template v-if="segment.reason_label"> · {{ segment.reason_label }}</template></span>
+                        <small v-if="segment.origin_erp_order_id">关联 {{ segment.origin_erp_order_id }}</small>
                       </div>
                     </td>
                     <td>
@@ -329,6 +483,11 @@ const submitAllocation = () => {
                       </div>
                     </td>
                     <td><span class="ord-tracking-number">{{ segment.shipment.tracking_number ?? '—' }}</span></td>
+                    <td>
+                      <button v-if="segment.shipment.shipment_status === 'pending'" type="button" class="erp-btn erp-btn-secondary ord-ship-action" @click="openShipmentEditor(segment)">{{ canOperateLogistics ? '填写物流 / 发货' : '查看履约' }}</button>
+                      <button v-else-if="canOperateLogistics" type="button" class="erp-btn erp-btn-secondary ord-ship-action" @click="router.post(`/logistics/orders/${segment.order_id}/reopen`, { logistics_note: '订单详情重开发货' }, { preserveScroll: true })">重开发货</button>
+                      <span v-else>—</span>
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -362,28 +521,33 @@ const submitAllocation = () => {
                 <strong class="ord-fulfillment-value">{{ order.manual_sync?.status ?? '未进入队列' }}</strong>
               </div>
             </div>
-            <div v-if="canOperateLogistics && order.shipment?.tracking_number" class="ord-fulfillment-action">
-              <button
-                type="button"
-                class="erp-btn erp-btn-secondary"
-                @click="router.post(`/logistics/orders/${order.id}/reopen`)"
-              >
-                重开发货
-              </button>
+
+            <div class="ord-fulfillment-action">
+              <button v-if="order.shipment?.shipment_status !== 'shipped' && order.shipment?.shipment_status !== 'completed'" type="button" class="erp-btn erp-btn-primary" @click="openShipmentEditor({ order_id: order.id, erp_order_id: order.erp_order_id, shipment: order.shipment ?? undefined })">{{ canOperateLogistics ? '填写物流 / 确认发货' : '查看履约' }}</button>
+              <button v-else-if="canOperateLogistics" type="button" class="erp-btn erp-btn-secondary" @click="router.post(`/logistics/orders/${order.id}/reopen`, { logistics_note: '订单详情重开发货' }, { preserveScroll: true })">重开发货</button>
+
             </div>
           </template>
         </div>
 
         <!-- Operational markers: explicit human marks, not a second Order status -->
         <div class="erp-form-card">
-          <h2 class="erp-form-card-title">业务标记</h2>
-          <p class="ord-inventory-help">用于异常、运输中、退货、缺货等业务视图。标记不会改写订单主状态；缺货视图还会再次核对所选仓库真实可用库存。</p>
+          <h2 class="erp-form-card-title">辅助标记</h2>
+          <p class="ord-inventory-help">用于异常、运输中、退货、缺货等辅助业务视图，不是发货入口。实际发货请在上方“履约状态”中填写仓库、物流商、渠道、Tracking 与发货时间。</p>
           <div class="ord-marker-row">
             <button v-for="marker in operationalMarkerOptions" :key="marker.key" type="button" class="erp-btn erp-btn-secondary ord-marker" :class="{ active: markerActive(marker.key) }" :disabled="!canMarkOperational" @click="toggleMarker(marker.key)">{{ markerActive(marker.key) ? '✓ ' : '' }}{{ marker.label }}</button>
           </div>
         </div>
 
-        <!-- Inventory distribution: only before warehouse allocation is committed. -->
+        <div v-if="allocationUi?.status === 'submitted' && allocationUi.can_reallocate && !reallocationOpen" class="ord-allocation-reopen-bar">
+          <div>
+            <strong>分仓已提交 · 尚未进入实际物流</strong>
+            <span>当前方案仍可调整；重新分仓会重建尚未发货的履约单，不会新增商业订单。</span>
+          </div>
+          <button type="button" class="erp-btn erp-btn-secondary" @click="reallocationOpen = true">重新分仓</button>
+        </div>
+
+        <!-- Inventory distribution: planning or explicitly reopened re-allocation only. -->
         <template v-if="showAllocationInventory">
         <div v-for="item in order.items" :key="`inventory-${item.id}`" class="erp-form-card ord-inventory-card">
           <h2 class="erp-form-card-title">{{ item.sku || '未绑定 SKU' }} 库存分布</h2>
@@ -416,7 +580,7 @@ const submitAllocation = () => {
                   <td>{{ row.quantity_reserved ?? '—' }}</td>
                   <td class="ord-inventory-note">{{ row.quantity_available === null ? '未建立 SKU 权威库存' : '—' }}</td>
                   <td v-if="allocationUi" class="ord-allocation-cell">
-                    <label v-if="allocationUi.status === 'pending' && allocationUi.can_operate && !allocationUi.requires_full_flow && allocationSelectable(row.warehouse_id)" class="ord-allocation-choice" :class="{ selected: allocationSelected(item.id) === row.warehouse_id }">
+                    <label v-if="allocationEditing && !allocationUi.requires_full_flow && allocationSelectable(row.warehouse_id)" class="ord-allocation-choice" :class="{ selected: allocationSelected(item.id) === row.warehouse_id }">
                       <input type="radio" :name="`allocation-${item.id}`" :checked="allocationSelected(item.id) === row.warehouse_id" @change="selectAllocationWarehouse(item.id, row.warehouse_id)">
                       <span>{{ allocationSelected(item.id) === row.warehouse_id ? '已选' : '选择' }}</span>
                       <small v-if="allocationRecommended(item.id, row.warehouse_id)">推荐</small>
@@ -434,15 +598,16 @@ const submitAllocation = () => {
           </div>
         </div>
 
-        <div v-if="allocationUi?.status === 'pending'" class="ord-allocation-action-bar">
+        <div v-if="allocationUi?.status === 'pending' || (allocationUi?.can_reallocate && reallocationOpen)" class="ord-allocation-action-bar">
           <div>
-            <strong>待分仓 · {{ allocationSelectedCount }}/{{ order.items.length }} SKU 已选择</strong>
+            <strong>{{ allocationUi?.status === 'submitted' ? '重新分仓' : '待分仓' }} · {{ allocationSelectedCount }}/{{ order.items.length }} SKU 已选择</strong>
             <span v-if="allocationUi.requires_full_flow">该订单包含 gift，需要选择实际履约 SKU。</span>
             <span v-else>库存表即仓库选择器；提交后这里变为只读“已选仓库”。</span>
           </div>
           <div class="ord-allocation-actions">
-            <a :href="allocationUi.full_allocation_url" class="erp-btn erp-btn-secondary">完整分仓</a>
-            <button v-if="allocationUi.can_operate && !allocationUi.requires_full_flow" type="button" class="erp-btn erp-btn-primary" :disabled="!allocationReady || allocationSubmitting" @click="submitAllocation">{{ allocationSubmitting ? '提交中…' : allocationMatchesRecommendation ? '采用推荐并提交分仓' : '确认分仓' }}</button>
+            <button v-if="allocationUi?.status === 'submitted'" type="button" class="erp-btn erp-btn-secondary" @click="reallocationOpen = false">取消调整</button>
+            <a v-else :href="allocationUi.full_allocation_url" class="erp-btn erp-btn-secondary">完整分仓</a>
+            <button v-if="!allocationUi.requires_full_flow" type="button" class="erp-btn erp-btn-primary" :disabled="!allocationReady || allocationSubmitting" @click="submitAllocation">{{ allocationSubmitting ? '提交中…' : allocationUi?.status === 'submitted' ? '确认重新分仓' : allocationMatchesRecommendation ? '采用推荐并提交分仓' : '确认分仓' }}</button>
           </div>
         </div>
 
@@ -662,6 +827,87 @@ const submitAllocation = () => {
 
       </div>
     </div>
+
+    <div v-if="shipmentEditorOpen" class="ord-replacement-backdrop" @click.self="closeShipmentEditor">
+      <section class="ord-replacement-modal ord-shipment-modal" role="dialog" aria-modal="true" aria-label="填写物流并发货">
+        <header class="ord-replacement-header">
+          <div><small>FULFILLMENT EXECUTION</small><h2>填写物流并发货</h2><p>{{ shipmentEditorLabel }} · 当前订单详情页直接完成真实履约。</p></div>
+          <button type="button" class="ord-replacement-close" @click="closeShipmentEditor">×</button>
+        </header>
+        <div class="ord-shipment-form">
+          <label>发货仓库
+            <select v-model="shipmentEditor.warehouse_id" class="erp-select" :disabled="!canOperateLogistics"><option :value="null">请选择仓库</option><option v-for="warehouse in warehouses ?? []" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} · {{ warehouse.code }}</option></select>
+          </label>
+          <label>物流商
+            <select v-model="shipmentEditor.carrier" class="erp-select" :disabled="!canOperateLogistics"><option value="">请选择承运商</option><option v-for="carrier in carrierOptions ?? []" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select>
+          </label>
+          <label>物流渠道<input v-model="shipmentEditor.service" class="erp-input" :disabled="!canOperateLogistics" placeholder="例如 Ground / 普通 / 加急"></label>
+          <label>Tracking<input v-model="shipmentEditor.tracking_number" class="erp-input" :disabled="!canOperateLogistics" placeholder="追踪号，可稍后补录"></label>
+          <label>发货时间<input v-model="shipmentEditor.shipped_at" class="erp-input" :disabled="!canOperateLogistics" type="datetime-local"></label>
+          <label class="ord-shipment-note">物流备注<textarea v-model="shipmentEditor.logistics_note" rows="3" class="erp-textarea" :disabled="!canOperateLogistics" placeholder="可填写包裹、异常或操作备注"></textarea></label>
+        </div>
+        <p v-if="shipmentEditorError" class="ord-shipment-error">{{ shipmentEditorError }}</p>
+        <p v-if="!canOperateLogistics" class="ord-shipment-readonly">当前账号为物流执行只读模式；物流员可以在这里直接填写物流并确认发货。</p>
+        <footer class="ord-replacement-actions">
+          <button v-if="canOperateLogistics" type="button" class="erp-btn erp-btn-secondary" :disabled="shipmentEditorSaving" @click="saveShipmentDraft">保存草稿</button>
+          <button v-if="canOperateLogistics" type="button" class="erp-btn erp-btn-primary" :disabled="shipmentEditorSaving" @click="confirmShipment">{{ shipmentEditorSaving ? '处理中…' : '确认发货' }}</button>
+          <button v-else type="button" class="erp-btn erp-btn-secondary" @click="closeShipmentEditor">关闭</button>
+        </footer>
+      </section>
+    </div>
+
+    <div v-if="replacementOpen" class="ord-replacement-backdrop" @click.self="closeReplacement">
+      <section class="ord-replacement-modal" role="dialog" aria-modal="true" aria-label="新增售后补发">
+        <header class="ord-replacement-header">
+          <div><small>REPLACEMENT FULFILLMENT</small><h2>新增售后补发</h2><p>保留原物流事实，创建新的 R1 / R2 补发履约。</p></div>
+          <button type="button" class="ord-replacement-close" @click="closeReplacement">×</button>
+        </header>
+        <div class="ord-replacement-grid">
+          <label>补发原因
+            <select v-model="replacementReason" class="erp-select">
+              <option value="lost">物流丢件</option><option value="damaged">产品损坏</option><option value="after_sales">售后换新</option><option value="maintenance">维护补件</option><option value="missing_item">少发漏发</option><option value="other">其他</option>
+            </select>
+          </label>
+          <label>关联原履约
+            <select v-model="replacementOriginId" class="erp-select">
+              <option :value="null">不指定 / 原订单</option>
+              <option v-for="segment in replacementOriginalSegments" :key="segment.order_id" :value="segment.order_id">{{ segment.suffix }} · {{ segment.erp_order_id }} · {{ segment.shipment.warehouse_name ?? '未选仓' }}</option>
+            </select>
+          </label>
+          <label>补发仓库
+            <select v-model="replacementWarehouseId" class="erp-select">
+              <option :value="null">请选择仓库</option>
+              <option v-for="warehouse in warehouses ?? []" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} · {{ warehouse.code }}</option>
+            </select>
+          </label>
+        </div>
+        <div class="ord-replacement-items">
+          <strong>补发商品</strong>
+          <div v-for="item in order.items" :key="`replacement-${item.id}`" class="ord-replacement-item">
+            <div><b>{{ item.sku || item.product_summary }}</b><small>原订单数量 {{ item.quantity }}</small></div>
+            <input v-model.number="replacementQuantities[item.id]" type="number" min="0" :max="item.quantity" step="1" aria-label="补发数量">
+          </div>
+        </div>
+        <label class="ord-replacement-note">备注
+          <textarea v-model="replacementNote" rows="3" class="erp-textarea" placeholder="例如：客户反馈到货损坏，补发 1 件"></textarea>
+        </label>
+        <label class="ord-address-toggle"><input v-model="replacementAddressOverride" type="checkbox"> 修改本次补发收件地址</label>
+        <div v-if="replacementAddressOverride" class="ord-replacement-address">
+          <input v-model="replacementAddress.recipient_name" class="erp-input" placeholder="收件人">
+          <input v-model="replacementAddress.phone" class="erp-input" placeholder="电话">
+          <input v-model="replacementAddress.country" class="erp-input" placeholder="国家">
+          <input v-model="replacementAddress.province_state" class="erp-input" placeholder="州 / 省">
+          <input v-model="replacementAddress.city" class="erp-input" placeholder="城市">
+          <input v-model="replacementAddress.postal_code" class="erp-input" placeholder="邮编">
+          <input v-model="replacementAddress.address_line_1" class="erp-input ord-address-wide" placeholder="地址 1">
+          <input v-model="replacementAddress.address_line_2" class="erp-input ord-address-wide" placeholder="地址 2">
+        </div>
+        <footer class="ord-replacement-actions">
+          <button type="button" class="erp-btn erp-btn-secondary" @click="closeReplacement">取消</button>
+          <button type="button" class="erp-btn erp-btn-primary" :disabled="!replacementReady || replacementSubmitting" @click="submitReplacement">{{ replacementSubmitting ? '创建中…' : '创建补发履约' }}</button>
+        </footer>
+      </section>
+    </div>
   </AuthenticatedLayout>
 </template>
 
@@ -787,6 +1033,7 @@ const submitAllocation = () => {
   margin-bottom: 14px;
 }
 
+.ord-fulfillment-title-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .ord-fulfillment-heading .erp-form-card-title { margin-bottom: 0; }
 .ord-split-badge { display: inline-flex; align-items: center; padding: 4px 9px; border-radius: 999px; background: #eef7f2; color: #16705f; font-size: 11px; font-weight: 700; }
 .ord-fulfillment-summary { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 12px; border: 1px solid #dce7e3; border-radius: 10px; background: #f8fbfa; }
@@ -803,7 +1050,10 @@ const submitAllocation = () => {
 .ord-fulfillment-table th { background: #f5f7f8; color: #52656d; font-weight: 700; white-space: nowrap; }
 .ord-fulfillment-segment-id,.ord-carrier-service { display: flex; flex-direction: column; gap: 3px; }
 .ord-fulfillment-segment-id strong { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; background: #e8f4f0; color: #14695d; font-size: 13px; }
+.ord-fulfillment-segment-id.replacement strong { background: #fff3df; color: #9a5b00; }
 .ord-fulfillment-segment-id small,.ord-carrier-service small { color: #87969c; font-size: 10px; }
+.ord-segment-role { width: max-content; display: inline-flex; padding: 2px 6px; border-radius: 999px; font-size: 9px; font-weight: 800; background: #eef4f2; color: #47635d; }
+.ord-segment-role.replacement { background: #fff3df; color: #9a5b00; }
 .ord-fulfillment-items { display: grid; gap: 4px; min-width: 150px; }
 .ord-fulfillment-items > div { display: flex; align-items: center; gap: 6px; }
 .ord-fulfillment-items strong { color: #273d45; font-size: 12px; }
@@ -843,6 +1093,10 @@ const submitAllocation = () => {
 .ord-allocation-choice.selected { color: #087f5b; }
 .ord-allocation-choice small, .ord-allocation-recommended { display: inline-flex; padding: 2px 6px; border-radius: 999px; background: #e8f8ef; color: #087f5b; font-size: 10px; font-weight: 800; }
 .ord-allocation-fixed { color: #087f5b; font-weight: 800; }
+.ord-allocation-reopen-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border: 1px solid #dce5df; border-radius: 10px; background: #f8fbf9; }
+.ord-allocation-reopen-bar > div { display: grid; gap: 3px; }
+.ord-allocation-reopen-bar strong { color: #173a36; font-size: 13px; }
+.ord-allocation-reopen-bar span { color: #64748b; font-size: 12px; }
 .ord-allocation-action-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: -2px; padding: 10px 14px; border: 1px solid #dce5df; border-radius: 10px; background: #f8fbf9; }
 .ord-allocation-action-bar > div:first-child { display: grid; gap: 3px; }
 .ord-allocation-action-bar span { color: #64748b; font-size: 12px; }
@@ -933,6 +1187,35 @@ const submitAllocation = () => {
 }
 
 
+.ord-replacement-backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px; background: rgba(12, 24, 24, .44); backdrop-filter: blur(4px); }
+.ord-replacement-modal { width: min(760px, 100%); max-height: calc(100vh - 48px); overflow-y: auto; padding: 20px; border-radius: 18px; background: #fff; box-shadow: 0 24px 70px rgba(18, 48, 44, .24); }
+.ord-replacement-header { display: flex; justify-content: space-between; gap: 16px; padding-bottom: 14px; border-bottom: 1px solid #e4eaed; }
+.ord-replacement-header small { color: #6f837d; font-size: 10px; font-weight: 800; letter-spacing: .08em; }
+.ord-replacement-header h2 { margin: 3px 0 4px; color: #173a36; font-size: 20px; }
+.ord-replacement-header p { margin: 0; color: #708087; font-size: 12px; }
+.ord-replacement-close { width: 34px; height: 34px; border: 0; border-radius: 10px; background: #f1f4f3; color: #52645f; font-size: 22px; cursor: pointer; }
+.ord-replacement-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-top: 16px; }
+.ord-replacement-grid label,.ord-replacement-note { display: grid; gap: 6px; color: #52656d; font-size: 11px; font-weight: 700; }
+.ord-replacement-items { display: grid; gap: 8px; margin-top: 16px; padding: 12px; border: 1px solid #e1e8e5; border-radius: 12px; background: #fafcfb; }
+.ord-replacement-items > strong { color: #173a36; font-size: 12px; }
+.ord-replacement-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid #edf1ef; }
+.ord-replacement-item:first-of-type { border-top: 0; }
+.ord-replacement-item > div { display: grid; gap: 2px; }
+.ord-replacement-item b { color: #2b4440; font-size: 12px; }
+.ord-replacement-item small { color: #84938f; font-size: 10px; }
+.ord-replacement-item input { width: 88px; padding: 8px 10px; border: 1px solid #d5dfdb; border-radius: 9px; }
+.ord-replacement-note { margin-top: 14px; }
+.ord-address-toggle { display: inline-flex; align-items: center; gap: 7px; margin-top: 14px; color: #536862; font-size: 12px; font-weight: 700; }
+.ord-replacement-address { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-top: 10px; }
+.ord-address-wide { grid-column: 1 / -1; }
+.ord-replacement-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid #e4eaed; }
+.ord-shipment-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin-top: 16px; }
+.ord-shipment-form label { display: grid; gap: 6px; color: #52656d; font-size: 11px; font-weight: 700; }
+.ord-shipment-note { grid-column: 1 / -1; }
+.ord-shipment-error { margin: 12px 0 0; color: #b44949; font-size: 12px; font-weight: 700; }
+.ord-shipment-readonly { margin: 12px 0 0; padding: 9px 11px; border-radius: 9px; background: #f5f7f8; color: #66777e; font-size: 12px; }
+.ord-ship-action { white-space: nowrap; }
+
 @media (max-width: 767px) {
   .erp-form-header-actions {
     width: 100%;
@@ -952,6 +1235,14 @@ const submitAllocation = () => {
     flex-direction: column;
   }
   .ord-fulfillment-summary small { margin-left: 0; }
+  .ord-fulfillment-heading { align-items: flex-start; flex-direction: column; }
+  .ord-fulfillment-title-row { flex-wrap: wrap; }
+  .ord-replacement-backdrop { padding: 10px; }
+  .ord-replacement-modal { max-height: calc(100vh - 20px); padding: 16px; border-radius: 14px; }
+  .ord-replacement-grid,.ord-replacement-address { grid-template-columns: 1fr; }
+  .ord-shipment-form { grid-template-columns: 1fr; }
+  .ord-shipment-note { grid-column: auto; }
+  .ord-address-wide { grid-column: auto; }
   .ord-item-row,
   .ord-item-row-view,
   .ord-packaging-row {

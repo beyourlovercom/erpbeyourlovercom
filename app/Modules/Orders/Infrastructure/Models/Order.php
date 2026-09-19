@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Order extends Model
 {
     protected $fillable = [
-        'customer_id', 'fulfillment_parent_id', 'fulfillment_suffix',
+        'customer_id', 'fulfillment_parent_id', 'fulfillment_suffix', 'fulfillment_role', 'fulfillment_origin_id', 'fulfillment_reason', 'fulfillment_note',
         'internal_order_number', 'erp_order_id', 'source_type', 'order_kind', 'external_order_number', 'order_date',
         'order_note', 'owner_id', 'order_status', 'currency',
     ];
@@ -37,6 +37,22 @@ class Order extends Model
     public function fulfillmentChildren(): HasMany
     {
         return $this->hasMany(self::class, 'fulfillment_parent_id');
+    }
+
+    public function originalFulfillmentChildren(): HasMany
+    {
+        return $this->hasMany(self::class, 'fulfillment_parent_id')
+            ->where(fn ($query) => $query->whereNull('fulfillment_role')->orWhere('fulfillment_role', 'original'));
+    }
+
+    public function replacementFulfillments(): HasMany
+    {
+        return $this->hasMany(self::class, 'fulfillment_parent_id')->where('fulfillment_role', 'replacement');
+    }
+
+    public function fulfillmentOrigin(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'fulfillment_origin_id');
     }
 
     public function owner(): BelongsTo

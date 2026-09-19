@@ -39,7 +39,7 @@ final class FulfillmentDerivedOrderService
         }
 
         $keepSuffixes = $children->pluck('fulfillment_suffix')->all();
-        $parent->fulfillmentChildren()->whereNotIn('fulfillment_suffix', $keepSuffixes)->get()->each(fn (Order $child) => $this->deletePendingChild($child));
+        $parent->originalFulfillmentChildren()->whereNotIn('fulfillment_suffix', $keepSuffixes)->get()->each(fn (Order $child) => $this->deletePendingChild($child));
 
         return $children->map(function (Order $child) use ($segments): array {
             $index = ord((string) $child->fulfillment_suffix) - ord('A');
@@ -52,6 +52,7 @@ final class FulfillmentDerivedOrderService
         $child = Order::query()->firstOrNew([
             'fulfillment_parent_id' => $parent->getKey(),
             'fulfillment_suffix' => $suffix,
+            'fulfillment_role' => 'original',
         ]);
         if ($child->exists) $this->assertChildMayBeRebuilt($child);
 
@@ -137,7 +138,7 @@ final class FulfillmentDerivedOrderService
 
     private function clearPendingChildren(Order $parent): void
     {
-        $parent->fulfillmentChildren()->get()->each(fn (Order $child) => $this->deletePendingChild($child));
+        $parent->originalFulfillmentChildren()->get()->each(fn (Order $child) => $this->deletePendingChild($child));
     }
 
     private function deletePendingChild(Order $child): void

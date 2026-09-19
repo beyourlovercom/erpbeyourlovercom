@@ -73,13 +73,22 @@ const splitOrder = {
     aggregate_status: 'partially_shipped',
     aggregate_status_label: '部分发货',
     segment_count: 2,
+    original_segment_count: 2,
+    replacement_count: 0,
     fulfilled_count: 1,
     has_exception: false,
+    original_logistics_started: true,
     segments: [
       {
         order_id: 11,
         erp_order_id: '007-0908-c1A',
         suffix: 'A',
+        role: 'original' as const,
+        role_label: '原始履约',
+        reason: null,
+        reason_label: null,
+        origin_fulfillment_id: null,
+        origin_erp_order_id: null,
         items: [{ id: 101, sku: 'GIFT-RED', product_summary: 'Gift Red', quantity: 1 }],
         shipment: { shipment_status: 'shipped', status_label: '运输中', warehouse_id: 1, warehouse_name: '美西 MorePlus 仓', carrier: 'USPS', service: 'Ground', tracking_number: 'TRACK-A', shipped_at: '2026-09-18T01:00:00Z' },
       },
@@ -87,6 +96,12 @@ const splitOrder = {
         order_id: 12,
         erp_order_id: '007-0908-c1B',
         suffix: 'B',
+        role: 'original' as const,
+        role_label: '原始履约',
+        reason: null,
+        reason_label: null,
+        origin_fulfillment_id: null,
+        origin_erp_order_id: null,
         items: [{ id: 102, sku: 'SKU-B', product_summary: 'Product B', quantity: 2 }],
         shipment: { shipment_status: 'pending', status_label: '待发货', warehouse_id: 2, warehouse_name: '国内工厂', carrier: '4PX', service: '普通', tracking_number: null, shipped_at: null },
       },
@@ -143,6 +158,43 @@ describe('Orders/Show V2', () => {
     expect(wrapper.text()).toContain('收件与地址')
     expect(wrapper.text()).toContain('订单商品')
     expect(wrapper.text()).toContain('内部备注')
+  })
+
+  it('offers direct fulfillment execution on a pending single order', async () => {
+    const wrapper = mount(Show, { props: {
+      order: baseOrder,
+      audit,
+      canOperateLogistics: true,
+      warehouses: [{ id: 1, slug: 'us-la', name: '美西 MorePlus 仓', code: 'US-LA', country_code: 'US' }],
+      carrierOptions: [{ value: 'USPS', label: 'USPS' }],
+    } })
+    const button = wrapper.findAll('button').find(btn => btn.text().includes('填写物流 / 确认发货'))
+    expect(button).toBeTruthy()
+    await button!.trigger('click')
+    expect(wrapper.text()).toContain('填写物流并发货')
+    expect(wrapper.find('.ord-shipment-form').exists()).toBe(true)
+    expect(wrapper.text()).toContain('实际发货请在上方“履约状态”中填写仓库')
+  })
+
+  it('offers fulfillment execution per pending split segment without changing shipped siblings', async () => {
+    const wrapper = mount(Show, { props: {
+      order: splitOrder,
+      audit,
+      canOperateLogistics: true,
+      warehouses: [
+        { id: 1, slug: 'us-la', name: '美西 MorePlus 仓', code: 'US-LA', country_code: 'US' },
+        { id: 2, slug: 'factory', name: '国内工厂', code: 'FACTORY', country_code: 'CN' },
+      ],
+      carrierOptions: [{ value: '4PX', label: '4PX' }, { value: 'USPS', label: 'USPS' }],
+    } })
+    const shipButtons = wrapper.findAll('button').filter(btn => btn.text().includes('填写物流 / 发货'))
+    expect(shipButtons).toHaveLength(1)
+    expect(wrapper.findAll('button').some(btn => btn.text().includes('重开发货'))).toBe(true)
+    await shipButtons[0].trigger('click')
+    expect(wrapper.text()).toContain('B · 007-0908-c1B')
+    const carrier = wrapper.find('.ord-shipment-form select:nth-of-type(2)')
+    expect(wrapper.find('.ord-shipment-form').exists()).toBe(true)
+    expect(wrapper.html()).toContain('4PX')
   })
 
   it('renders split fulfillment aggregation from child shipments instead of the empty parent shipment', () => {
@@ -301,7 +353,7 @@ describe('Orders/Show V2', () => {
   it('renders explicit operational markers without replacing order status', async () => {
     const marked = { ...baseOrder, operational_markers: ['exception'] }
     const wrapper = mount(Show, { props: { order: marked, audit, canMarkOperational: true } })
-    expect(wrapper.text()).toContain('业务标记')
+    expect(wrapper.text()).toContain('辅助标记')
     expect(wrapper.text()).toContain('✓ 异常')
     expect(wrapper.text()).toContain('待发货')
   })

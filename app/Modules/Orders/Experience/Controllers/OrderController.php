@@ -11,6 +11,7 @@ use App\Modules\Logistics\Application\FulfillmentAllocationAccess;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
+use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderService;
@@ -113,7 +114,7 @@ final class OrderController
     public function show(Request $request, Order $order): Response
     {
         $this->authorizeKind($request, $order);
-        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync', 'operationalMarkers', 'procurementOrder', 'fulfillmentAllocation', 'fulfillmentChildren.items', 'fulfillmentChildren.shipment.warehouse']);
+        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync', 'operationalMarkers', 'procurementOrder', 'fulfillmentAllocation', 'fulfillmentChildren.items', 'fulfillmentChildren.shipment.warehouse', 'fulfillmentChildren.fulfillmentOrigin']);
         $productIds = $order->items->pluck('product_id')->filter()->unique()->values()->all();
         $inventoryAvailability = $this->availability->forProductIds($productIds);
         $warehouses = $this->availability->activeWarehouses();
@@ -125,8 +126,14 @@ final class OrderController
             'allocationUi' => $allocationUi,
             'packagingReferences' => $this->packagingReferences->forOrder($order),
             'warehouses' => $warehouses,
+            'carrierOptions' => Carrier::query()->where('is_active', true)->orderBy('id')->get(['name'])->map(fn (Carrier $carrier): array => [
+                'value' => $carrier->name,
+                'label' => $carrier->name,
+            ])->values()->all(),
+            'canOperateLogistics' => $this->logisticsExecutionAccess->allows($request->user()),
             'canViewProfit' => $request->user()?->can('analysis.view') ?? false,
             'canMarkOperational' => $request->user()?->can('orders.edit') ?? false,
+            'canCreateReplacement' => $this->logisticsExecutionAccess->allows($request->user()) && $this->originalLogisticsStarted($order),
             'canCreateProcurement' => ($request->user()?->can('procurement.create') ?? false) && $order->operationalMarkers->contains('marker', 'stockout'),
             'canManageProductPackaging' => $request->user()?->can('products.operate') ?? false,
             'canOperateLogistics' => $this->logisticsExecutionAccess->allows($request->user()),
@@ -205,13 +212,31 @@ final class OrderController
             foreach ($selectedByItem as $itemId => $_) $selectedByItem[$itemId] = (int) $order->shipment->warehouse_id;
         }
 
-        $hasCommittedDerivedFulfillment = $order->relationLoaded('fulfillmentChildren') && $order->fulfillmentChildren->isNotEmpty();
+        $originalChildren = $order->relationLoaded('fulfillmentChildren')
+            ? $order->fulfillmentChildren->filter(fn (Order $child): bool => (string) ($child->fulfillment_role ?? '') !== 'replacement')->values()
+            : collect();
+        $hasCommittedDerivedFulfillment = $originalChildren->isNotEmpty();
         $allocationCommitted = $order->fulfillmentAllocation !== null || $hasCommittedDerivedFulfillment;
+        $fulfillmentSegments = $originalChildren->isNotEmpty() ? $originalChildren : collect([$order]);
+        $logisticsStarted = $fulfillmentSegments->contains(function (Order $segment): bool {
+            $shipment = $segment->shipment;
+            if (! $shipment) return false;
+            return $shipment->shipment_status !== 'pending' || filled($shipment->tracking_number) || $shipment->shipped_at !== null;
+        });
+        $requiresFullFlow = $order->items->contains(fn ($item): bool => strcasecmp(trim((string) $item->sku), 'gift') === 0);
+        $allocationAllowed = $this->fulfillmentAllocationAccess->allows($request->user());
+        $canReallocate = $order->order_status?->value === 'pending_shipment'
+            && $allocationCommitted
+            && ! $logisticsStarted
+            && $allocationAllowed
+            && ! $requiresFullFlow;
 
         return [
             'status' => $allocationCommitted ? 'submitted' : ($order->order_status?->value === 'pending_shipment' ? 'pending' : 'locked'),
-            'can_operate' => $order->order_status?->value === 'pending_shipment' && ! $allocationCommitted && $this->fulfillmentAllocationAccess->allows($request->user()),
-            'requires_full_flow' => $order->items->contains(fn ($item): bool => strcasecmp(trim((string) $item->sku), 'gift') === 0),
+            'can_operate' => $order->order_status?->value === 'pending_shipment' && ! $allocationCommitted && $allocationAllowed,
+            'can_reallocate' => $canReallocate,
+            'logistics_started' => $logisticsStarted,
+            'requires_full_flow' => $requiresFullFlow,
             'selectable_warehouse_ids' => $selectableWarehouseIds,
             'recommended_warehouse_ids' => $recommendedByItem,
             'selected_warehouse_ids' => $selectedByItem,
@@ -323,15 +348,21 @@ final class OrderController
     /** @return array<string,mixed> */
     private function fulfillmentData(Order $order): array
     {
-        $isSplit = $order->fulfillmentChildren->isNotEmpty();
-        $segments = $isSplit
-            ? $order->fulfillmentChildren->sortBy('fulfillment_suffix')->values()
-            : collect([$order]);
+        $originalChildren = $order->fulfillmentChildren
+            ->filter(fn (Order $child): bool => (string) ($child->fulfillment_role ?? '') !== 'replacement')
+            ->sortBy('fulfillment_suffix')->values();
+        $replacements = $order->fulfillmentChildren
+            ->filter(fn (Order $child): bool => (string) ($child->fulfillment_role ?? '') === 'replacement')
+            ->sortBy(fn (Order $child): int => preg_match('/^R(\d+)$/', (string) $child->fulfillment_suffix, $m) ? (int) $m[1] : PHP_INT_MAX)
+            ->values();
+        $isSplit = $originalChildren->isNotEmpty();
+        $originalSegments = $isSplit ? $originalChildren : collect([$order]);
+        $allSegments = $originalSegments->concat($replacements)->values();
         $aggregate = $this->shipmentCompletion->aggregateForOrder($order);
-        $fulfilledCount = $segments->filter(
+        $fulfilledCount = $originalSegments->filter(
             fn (Order $segment): bool => $segment->shipment !== null && $this->shipmentCompletion->isFulfillmentComplete($segment->shipment)
         )->count();
-        $hasException = $segments->contains(
+        $hasException = $allSegments->contains(
             fn (Order $segment): bool => $segment->shipment?->shipment_status === 'exception'
         );
 
@@ -339,13 +370,22 @@ final class OrderController
             'is_split' => $isSplit,
             'aggregate_status' => $aggregate,
             'aggregate_status_label' => $this->fulfillmentAggregateLabel($aggregate),
-            'segment_count' => $segments->count(),
+            'segment_count' => $allSegments->count(),
+            'original_segment_count' => $originalSegments->count(),
+            'replacement_count' => $replacements->count(),
             'fulfilled_count' => $fulfilledCount,
             'has_exception' => $hasException,
-            'segments' => $segments->map(fn (Order $segment): array => [
+            'original_logistics_started' => $this->originalLogisticsStarted($order),
+            'segments' => $allSegments->map(fn (Order $segment): array => [
                 'order_id' => (int) $segment->getKey(),
                 'erp_order_id' => $segment->erp_order_id,
                 'suffix' => $segment->fulfillment_suffix,
+                'role' => (string) ($segment->fulfillment_role ?? '') === 'replacement' ? 'replacement' : 'original',
+                'role_label' => (string) ($segment->fulfillment_role ?? '') === 'replacement' ? '售后补发' : '原始履约',
+                'reason' => $segment->fulfillment_reason,
+                'reason_label' => $this->replacementReasonLabel($segment->fulfillment_reason),
+                'origin_fulfillment_id' => $segment->fulfillment_origin_id,
+                'origin_erp_order_id' => $segment->fulfillmentOrigin?->erp_order_id,
                 'items' => $segment->items->map(fn ($item): array => [
                     'id' => (int) $item->id,
                     'sku' => $item->resolved_fulfillment_sku ?: $item->sku,
@@ -353,7 +393,7 @@ final class OrderController
                     'quantity' => (int) $item->quantity,
                 ])->values()->all(),
                 'shipment' => $segment->shipment ? [
-                    ...$segment->shipment->only(['shipment_status', 'warehouse_id', 'carrier', 'service', 'tracking_number', 'shipped_at']),
+                    ...$segment->shipment->only(['shipment_status', 'warehouse_id', 'carrier', 'service', 'tracking_number', 'shipped_at', 'logistics_note']),
                     'status_label' => $this->fulfillmentSegmentStatusLabel(
                         $segment->shipment->shipment_status,
                         $segment->shipment->tracking_number,
@@ -366,11 +406,38 @@ final class OrderController
                     'service' => null,
                     'tracking_number' => null,
                     'shipped_at' => null,
+                    'logistics_note' => null,
                     'status_label' => '待发货',
                     'warehouse_name' => null,
                 ],
             ])->all(),
         ];
+    }
+
+    private function originalLogisticsStarted(Order $order): bool
+    {
+        $originalChildren = $order->fulfillmentChildren
+            ->filter(fn (Order $child): bool => (string) ($child->fulfillment_role ?? '') !== 'replacement')->values();
+        $segments = $originalChildren->isNotEmpty() ? $originalChildren : collect([$order]);
+
+        return $segments->contains(function (Order $segment): bool {
+            $shipment = $segment->shipment;
+            if (! $shipment) return false;
+            return $shipment->shipment_status !== 'pending' || filled($shipment->tracking_number) || $shipment->shipped_at !== null;
+        });
+    }
+
+    private function replacementReasonLabel(?string $reason): ?string
+    {
+        return match ($reason) {
+            'lost' => '物流丢件',
+            'damaged' => '产品损坏',
+            'after_sales' => '售后换新',
+            'maintenance' => '维护补件',
+            'missing_item' => '少发漏发',
+            'other' => '其他',
+            default => null,
+        };
     }
 
     private function fulfillmentAggregateLabel(string $status): string

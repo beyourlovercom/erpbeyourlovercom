@@ -18,7 +18,7 @@ final class ShipmentAggregateStatusService
             $root = $order->fulfillment_parent_id
                 ? Order::query()->whereKey($order->fulfillment_parent_id)->lockForUpdate()->firstOrFail()
                 : Order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
-            $root->loadMissing(['shipment.billingEvidence', 'shipmentAttempts', 'fulfillmentChildren.shipment.billingEvidence', 'fulfillmentChildren.shipmentAttempts']);
+            $root->loadMissing(['shipment.billingEvidence', 'shipmentAttempts', 'originalFulfillmentChildren.shipment.billingEvidence', 'originalFulfillmentChildren.shipmentAttempts']);
             $aggregate = $this->semantics->aggregateForOrder($root);
             $sourceType = $root->source_type instanceof \BackedEnum ? $root->source_type->value : (string) $root->source_type;
             if ($sourceType === 'woocommerce') {
@@ -32,8 +32,8 @@ final class ShipmentAggregateStatusService
                 }
             }
 
-            $segments = $root->fulfillmentChildren->isNotEmpty()
-                ? $root->fulfillmentChildren->values()
+            $segments = $root->originalFulfillmentChildren->isNotEmpty()
+                ? $root->originalFulfillmentChildren->values()
                 : collect([$root]);
             $shipments = $segments->pluck('shipment')->filter();
             $hasException = $shipments->contains(fn ($shipment): bool => $shipment->shipment_status === 'exception');
