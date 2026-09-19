@@ -107,12 +107,13 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
 
 ### P0 — Production data/stability audit
 
-5. **Logistics timestamp catch-up audit**
+5. **Logistics timestamp catch-up audit — PASS / CLOSED 2026-09-19**
    - PR #373 fixed future ShipmentService MySQL writes by normalizing the session to UTC.
-   - Before #373, Logistics writes used MySQL SYSTEM timezone while Continuous Delta queried in UTC.
-   - Run one bounded read-only audit for changes between the C1 UTC normalization rollout and PR #373 (approximately 2026-09-10 through 2026-09-19).
-   - Identify orders whose Logistics/FIFO timestamps may have fallen outside Continuous Delta windows.
-   - Repair only proven missed materializations with exact per-order gates; no blanket replay.
+   - Bounded read-only audit covered 2026-09-10 through PR #373 and resolved fulfillment-derived children to the parent customer Order.
+   - Population: 1,846 Shipment-linked eligible customer Orders.
+   - Logistics-sensitive preview result: warehouse_cost apply=0; last_mile_estimate apply=0; last_mile_actual apply=0; overseas_handling_actual apply=0.
+   - The live P9 canary order 7008 was already exact-gated and converged to noop; no second Order needs catch-up.
+   - No blanket replay required. Evidence: `ERP-ACCOUNTING-CONTINUOUS-DELTA-HISTORICAL-CATCHUP-AUDIT-2026-09-19.md`.
 
 6. **Accounting MySQL test-fixture timezone contract**
    - The focused MySQL contracts pass.
@@ -192,7 +193,7 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
 
 ```text
 P0. GitHub roadmap/open-PR cleanup
-P0. Logistics timestamp catch-up audit
+P0. Logistics timestamp catch-up audit ✅ CLOSED
 P0. Full MySQL Continuous Delta fixture repair
 P1. Warehouse provider coverage: US-SM / DE / CA
 P1. Accounting evidence completeness
