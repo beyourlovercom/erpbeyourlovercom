@@ -90,9 +90,9 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
    - V3 becomes the current authority; Work Package metadata should be reconciled incrementally, not trusted blindly.
 
 2. **Open PR cleanup**
-   - Current open Draft/PR set contains several superseded branches.
-   - Close clearly superseded PRs with an explicit successor reference.
-   - Keep potentially valuable but stale design/UI PRs parked until rebased.
+   - Six superseded Draft PRs were closed during this reconciliation: #276, #247, #226, #145, #81 and #20.
+   - Remaining open parked PRs: #335, #232 and #97.
+   - These three must be explicitly re-evaluated/rebased before any merge.
 
 3. **Remote branch hygiene**
    - Remote repository has 338 heads total: `main` + 337 other branches.
@@ -158,7 +158,7 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
 
 ## 6. Open PR classification
 
-### Close as superseded
+### Closed as superseded during this reconciliation — 2026-09-19
 
 - #276 — customer tracking review gate: superseded by later Logistics review/exception/fulfillment architecture.
 - #247 — P0AB 5xx diagnostics: superseded by merged Production Stability observability/performance work.
@@ -167,15 +167,17 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
 - #81 — old Dashboard pilot: stale implementation experiment.
 - #20 — old Menu temporary-closure docs: current menu/runtime has evolved; statements are no longer current.
 
-### Keep parked / re-evaluate
+### Remaining open / parked after cleanup
+
 
 - #335 — Email OS P8C: keep, rebase, revalidate.
 - #232 — Product packaging comparison UI: keep only as UX intent; re-evaluate against current page.
 - #97 — Entity Architecture V2 / Search Standard: parked design reference only.
 
-## 7. Open issue classification
+## 7. Issue classification
 
-- Issue #91 — User & Access M1 is already implemented and merged by PR #92. Close as completed/superseded by merged implementation.
+- Issue #91 — User & Access M1 was already implemented and merged by PR #92; closed as completed on 2026-09-19.
+- After this reconciliation there are no known open roadmap-governance issues requiring immediate action.
 
 ## 8. Repository hygiene rules going forward
 
