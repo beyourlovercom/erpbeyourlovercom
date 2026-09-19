@@ -10,13 +10,14 @@ final class ProductPackagingProfile extends Model
 {
     protected $fillable = [
         'product_id', 'current_measurement_record_id', 'preset_key', 'custom_method', 'scenario', 'version',
-        'custom_materials', 'custom_steps', 'custom_tips', 'is_active',
+        'units_per_carton', 'custom_materials', 'custom_steps', 'custom_tips', 'is_active',
     ];
 
     protected function casts(): array
     {
         return [
             'current_measurement_record_id' => 'integer',
+            'units_per_carton' => 'integer',
             'custom_materials' => 'array',
             'custom_steps' => 'array',
             'custom_tips' => 'array',

@@ -6,6 +6,7 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Inventory\Application\Contracts\InventoryRepository;
+use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Products\Application\Contracts\ProductRepository;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
@@ -147,6 +148,30 @@ final class InventoryService
             $updated = $this->inventory->updateInventory($item, $this->normalizeInventory($attributes));
             $this->record($actor, 'inventory.stock_adjusted', $updated, $before, $this->inventoryAudit($updated), 'manual_inventory_adjustment');
             return $updated;
+        });
+    }
+
+    public function saveRestockSupplement(Model $warehouse, int $productId, int $quantity, ?Authenticatable $actor): Model
+    {
+        $product = $this->products->findById($productId);
+        abort_if($product === null, 422, '产品不存在');
+
+        return DB::transaction(function () use ($warehouse, $product, $quantity, $actor): Model {
+            $item = WarehouseInventory::query()->firstOrNew([
+                'warehouse_id' => $warehouse->getKey(),
+                'product_id' => $product->getKey(),
+            ]);
+            if (! $item->exists) {
+                $item->quantity_on_hand = 0;
+                $item->quantity_reserved = 0;
+                $item->expected_restock_qty = 0;
+            }
+            $before = $item->exists ? $this->inventoryAudit($item) : null;
+            $item->expected_restock_qty = max(0, $quantity);
+            $item->save();
+            $item->loadMissing(['warehouse','product']);
+            $this->record($actor, 'inventory.restock_supplement_saved', $item, $before, $this->inventoryAudit($item), 'restock_manual_supplement_saved');
+            return $item;
         });
     }
 
