@@ -1,11 +1,19 @@
 ---
 type: work-package-index
 project: BYL ERP
-version: 1.0
-updated: 2026-08-28
+version: 1.1
+updated: 2026-09-19
 ---
 
 # Work Package Index
+
+## Current authority overlay — 2026-09-19
+
+Canonical current program status is `28_ERP_ROADMAP_PRODUCTION_RECONCILIATION_V3.md`.
+
+All `Status:` fields below are historical package evidence unless they are consistent with later merged GitHub facts. In particular, old `CURRENT`, `IN_PROGRESS`, `PR_PENDING`, `READY_FOR_PRODUCTION`, and `MERGE_READY` markers must not be used to reopen work already closed by later PRs.
+
+Current closed foundations include KOL V1, Product OS core, Purchase OS V1, Customer OS core, Logistics OS V1, Accounting P8 and Accounting P9. Current repair priority is source-of-truth cleanup, Production timestamp catch-up audit, MySQL Continuous Delta fixture normalization, Warehouse provider coverage, and accounting evidence completeness.
 
 ## Active
 
