@@ -6,6 +6,7 @@ use App\Modules\Inventory\Application\InventoryService;
 use App\Modules\Inventory\Application\InventoryStockStatus;
 use App\Modules\Inventory\Application\WarehouseClearanceService;
 use App\Modules\Inventory\Application\WarehouseInboundProjection;
+use App\Modules\Inventory\Application\WarehouseRestockProjection;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\WarehouseCost\WarehouseBillImportService;
 use App\Modules\Inventory\Infrastructure\WarehouseCost\WarehouseBillReconciliationService;
@@ -26,6 +27,7 @@ final class WarehouseController
         private readonly InventoryService $inventory,
         private readonly WarehouseClearanceService $clearance,
         private readonly WarehouseInboundProjection $inbounds,
+        private readonly WarehouseRestockProjection $restock,
         private readonly WarehouseBillImportService $billImport,
         private readonly WarehouseBillReconciliationService $reconciliation,
         private readonly WarehouseShipmentProjection $shipments,
@@ -52,6 +54,7 @@ final class WarehouseController
             'billReconciliationDashboard'=>$this->reconciliation->dashboard($w),
             'billReconciliationPreview'=>session($this->billReconciliationPreviewKey((int)$w->id)),
             'inboundProjection'=>$this->inbounds->forWarehouse($w),
+            'restockProjection'=>$this->restock->forWarehouse($w),
             'shipmentProjection'=>$this->shipments->forWarehouse(
                 $w,
                 max(1,(int)$request->query('shipment_page',1)),
@@ -179,6 +182,17 @@ final class WarehouseController
         $data=$request->validate($this->inventoryRules(false));
         $this->inventory->updateInventory($w,$inventory,$data,$request->user());
         return back()->with('success','库存已更新');
+    }
+
+    public function saveRestockSupplement(Request $request,string $warehouse): RedirectResponse
+    {
+        $w=$this->inventory->warehouse($warehouse);
+        $data=$request->validate([
+            'product_id'=>['required','integer','exists:products,id'],
+            'manual_restock_qty'=>['required','integer','min:0','max:1000000'],
+        ]);
+        $this->inventory->saveRestockSupplement($w,(int)$data['product_id'],(int)$data['manual_restock_qty'],$request->user());
+        return back()->with('success','补充备货数量已保存');
     }
     public function addClearance(Request $request,string $warehouse): RedirectResponse
     {
