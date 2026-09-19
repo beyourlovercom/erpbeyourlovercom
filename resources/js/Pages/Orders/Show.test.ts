@@ -132,6 +132,18 @@ describe('Orders/Show V2', () => {
     expect(wrapper.find('a[href="/kol/orders"]').exists()).toBe(true)
   })
 
+  it('shows direct 履约发货 action for an authorized pending order', () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canOperateLogistics: true } })
+    const action = wrapper.find('a[href="/logistics/pending?order_id=1"]')
+    expect(action.exists()).toBe(true)
+    expect(action.text()).toBe('履约发货')
+  })
+
+  it('does not show 履约发货 action without logistics execution authority', () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canOperateLogistics: false } })
+    expect(wrapper.find('a[href="/logistics/pending?order_id=1"]').exists()).toBe(false)
+  })
+
   it('shows procurement creation only for a stockout order without a linked procurement order', () => {
     const wrapper = mount(Show, { props: { order: { ...baseOrder, operational_markers: ['stockout'] }, audit, canCreateProcurement: true } })
     expect(wrapper.find('a[href="/purchase/orders/from-order/1/create"]').text()).toBe('创建采购订单')
@@ -315,12 +327,12 @@ describe('Orders/Show V2', () => {
     expect(wrapper.text()).toContain('待发货')
   })
 
-  it('shows reopen button when tracking number is present', () => {
+  it('shows reopen button when tracking number is present and logistics execution is allowed', () => {
     const orderWithTracking = {
       ...baseOrder,
       shipment: { shipment_status: 'shipped', carrier: 'DHL', tracking_number: 'TRACK123', shipped_at: null },
     }
-    const wrapper = mount(Show, { props: { order: orderWithTracking, audit } })
+    const wrapper = mount(Show, { props: { order: orderWithTracking, audit, canOperateLogistics: true } })
     const reopenBtn = wrapper.findAll('button[type="button"]').find(b => b.text().includes('重开发货'))
     expect(reopenBtn).toBeTruthy()
   })

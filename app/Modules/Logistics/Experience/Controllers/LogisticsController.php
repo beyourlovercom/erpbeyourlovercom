@@ -55,8 +55,18 @@ final class LogisticsController
 
     public function index(Request $request): Response
     {
-        $orders = Order::query()->with(['address', 'items.product', 'owner', 'shipment.warehouse', 'externalReferences:id,order_id,provider'])
-            ->where('order_status', 'pending_shipment')->whereDoesntHave('fulfillmentChildren')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->whereDoesntHave('logisticsReview', fn ($q) => $q->where('status', 'pending'))->latest('order_date')->latest('id')
+        $focusOrderId = $request->integer('order_id');
+        $ordersQuery = Order::query()->with(['address', 'items.product', 'owner', 'shipment.warehouse', 'externalReferences:id,order_id,provider'])
+            ->where('order_status', 'pending_shipment')
+            ->whereDoesntHave('fulfillmentChildren')
+            ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))
+            ->whereDoesntHave('logisticsReview', fn ($q) => $q->where('status', 'pending'));
+
+        if ($focusOrderId > 0) {
+            $ordersQuery->whereKey($focusOrderId);
+        }
+
+        $orders = $ordersQuery->latest('order_date')->latest('id')
             ->paginate(self::PER_PAGE)->withQueryString();
 
         $productIds = collect($orders->items())->flatMap(fn (Order $order) => $order->items->pluck('product_id'))->filter()->unique()->values()->all();
@@ -81,6 +91,7 @@ final class LogisticsController
             'gridPreferenceNamespace' => self::PENDING_GRID_NAMESPACE,
             'gridPreference' => $request->user() ? $this->uiPreferences->get($request->user(), self::PENDING_GRID_NAMESPACE) : null,
             'canOperate' => $this->executionAccess->allows($request->user()),
+            'focusOrderId' => $focusOrderId > 0 ? $focusOrderId : null,
         ]);
     }
 

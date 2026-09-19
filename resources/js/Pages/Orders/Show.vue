@@ -87,7 +87,8 @@ const props = withDefaults(defineProps<{
   canViewPackagingEvidence?: boolean
   canCreateProcurement?: boolean
   canViewProfit?: boolean
-}>(), { canMarkOperational: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canViewProfit: false })
+  canOperateLogistics?: boolean
+}>(), { canMarkOperational: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canViewProfit: false, canOperateLogistics: false })
 
 const isKol = computed(() => props.order.order_kind === 'kol_fulfillment')
 const basePath = computed(() => isKol.value ? '/kol/orders' : '/customers/orders')
@@ -210,6 +211,7 @@ const submitAllocation = () => {
           <div class="erp-form-header-actions page-header-actions">
             <button v-if="editMode" type="button" class="erp-btn erp-btn-secondary" @click="cancelEdit">取消编辑</button>
             <a :href="basePath" class="erp-btn erp-btn-secondary">返回列表</a>
+            <a v-if="canOperateLogistics && order.order_status === 'pending_shipment'" :href="`/logistics/pending?order_id=${order.id}`" class="erp-btn erp-btn-primary">履约发货</a>
             <a v-if="canViewProfit && !isKol" :href="`/accounting/order-costs?search=${encodeURIComponent(order.erp_order_id ?? '')}`" class="erp-btn erp-btn-secondary">查看订单利润</a>
             <a v-if="canCreateProcurement && !order.procurement_order" :href="`/purchase/orders/from-order/${order.id}/create`" class="erp-btn erp-btn-primary">创建采购订单</a>
             <a v-if="order.procurement_order" :href="`/purchase/orders/${order.procurement_order.id}`" class="erp-btn erp-btn-secondary">查看采购订单 · {{ order.procurement_order.procurement_number }}</a>
@@ -259,7 +261,7 @@ const submitAllocation = () => {
               <strong class="ord-fulfillment-value">{{ order.manual_sync?.status ?? '未进入队列' }}</strong>
             </div>
           </div>
-          <div v-if="order.shipment?.tracking_number" class="ord-fulfillment-action">
+          <div v-if="canOperateLogistics && order.shipment?.tracking_number" class="ord-fulfillment-action">
             <button
               type="button"
               class="erp-btn erp-btn-secondary"

@@ -41,6 +41,14 @@ describe('Logistics pending grid contract', () => {
   })
 })
 
+describe('Focused fulfillment entry', () => {
+  it('auto-opens the focused order from the order detail handoff', () => {
+    const wrapper = mount(Index, { props: { ...props, focusOrderId: order.id } })
+    expect(wrapper.findAll('button').some(button => button.text() === '收起')).toBe(true)
+    expect(wrapper.text()).toContain('确认发货')
+  })
+})
+
 describe('Logistics role real UX', () => {
   it('keeps view-only users read-only while preserving copy/detail access', async () => {
     const wrapper = mount(Index, { props: { ...props, canOperate: false } })

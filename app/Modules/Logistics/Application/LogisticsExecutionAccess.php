@@ -10,7 +10,6 @@ final class LogisticsExecutionAccess
     /** @var list<string> */
     private const READ_ONLY_ELEVATED_ROLES = [
         'super_admin',
-        'role_preset_administrator',
     ];
 
     public function allows(?Authenticatable $actor): bool
