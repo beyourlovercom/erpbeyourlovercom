@@ -8,6 +8,7 @@ on:
       - 'database/migrations/**'
       - 'tests/Architecture/MySqlProductionCompatibilityTest.php'
       - 'tests/Feature/ProductionStability/**'
+      - 'tests/Feature/Finance/AccountingContinuousDeltaTest.php'
       - '.github/workflows/erp-production-stability-v1.yml'
 
 permissions:
@@ -58,7 +59,7 @@ jobs:
           coverage: none
       - name: Install PHP dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
-      - name: MySQL 8 migration and critical-query gate
+      - name: MySQL 8 migration, critical-query, and Continuous Delta gate
         env:
           BYL_MYSQL_STABILITY_ENABLED: '1'
           BYL_MYSQL_STABILITY_DATABASE: erp_stability_test
@@ -69,4 +70,4 @@ jobs:
           DB_USERNAME: root
           DB_PASSWORD: root
           ERP_LOCAL_ADMIN_BYPASS: 'false'
-        run: php artisan test tests/Feature/ProductionStability/MySql8ProductionCompatibilityTest.php
+        run: php artisan test tests/Feature/ProductionStability/MySql8ProductionCompatibilityTest.php tests/Feature/Finance/AccountingContinuousDeltaTest.php
