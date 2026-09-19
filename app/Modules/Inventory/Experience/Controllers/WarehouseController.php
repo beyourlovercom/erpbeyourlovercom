@@ -35,7 +35,7 @@ final class WarehouseController
         $w=$this->inventory->createWarehouse($data,$request->user());
         return redirect()->route('inventory.warehouse.show',$this->inventory->warehousePublicSlug($w))->with('success','仓库已创建');
     }
-    public function show(string $warehouse): Response|RedirectResponse
+    public function show(Request $request,string $warehouse): Response|RedirectResponse
     {
         $w=$this->inventory->warehouse($warehouse);
         $publicSlug=$this->inventory->warehousePublicSlug($w);
@@ -49,7 +49,13 @@ final class WarehouseController
             'billReconciliationHistory'=>$this->reconciliation->history($w),
             'billReconciliationDashboard'=>$this->reconciliation->dashboard($w),
             'billReconciliationPreview'=>session($this->billReconciliationPreviewKey((int)$w->id)),
-            'shipmentProjection'=>$this->shipments->forWarehouse($w),
+            'shipmentProjection'=>$this->shipments->forWarehouse(
+                $w,
+                max(1,(int)$request->query('shipment_page',1)),
+                (int)$request->query('shipment_per_page',50),
+                (string)$request->query('shipment_q',''),
+                (string)$request->query('shipment_status','all'),
+            ),
             'canOperate'=>auth()->user()?->can(AuthorizationKeys::InventoryOperate->value) ?? false,
             'canManage'=>auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false,
         ]);
