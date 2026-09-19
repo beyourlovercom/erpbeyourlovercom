@@ -39,6 +39,19 @@ final class InventorySpeedaUsNyBillProviderV1Test extends TestCase
         $this->assertSame('2026-03-01', $storage['charged_on']);
     }
 
+    public function test_outbound_date_falls_back_to_canonical_transaction_number_when_source_time_is_blank(): void
+    {
+        $warehouse = Warehouse::query()->where('slug', 'us-ny')->firstOrFail();
+        $preview = app(WarehouseBillImportService::class)->preview($this->xlsx('C33822', '9235990407314800998017', ''), $warehouse, 'speeda-us-ny');
+
+        $shipping = collect($preview['rows'])->firstWhere('category', 'shipping');
+        $handling = collect($preview['rows'])->firstWhere('category', 'parcel_outbound');
+
+        $this->assertSame('2026-02-18', $shipping['charged_on']);
+        $this->assertSame('2026-02-18', $handling['charged_on']);
+        $this->assertSame('9235990407314800998017', $shipping['tracking_number']);
+    }
+
     public function test_cost_bridge_exact_tracking_is_ready_and_missing_or_kol_fail_closed(): void
     {
         $warehouse = Warehouse::query()->where('slug', 'us-ny')->firstOrFail();
@@ -85,7 +98,7 @@ final class InventorySpeedaUsNyBillProviderV1Test extends TestCase
         app(WarehouseBillImportService::class)->preview($this->xlsx(), $wrong, 'speeda-us-ny');
     }
 
-    private function xlsx(string $reference='C33822', string $tracking='9235990407314800998017'): string
+    private function xlsx(string $reference='C33822', string $tracking='9235990407314800998017', string $outboundDate='2026-02-18 07:42:43'): string
     {
         $summary = [
             1 => ['账单编号(Bill No)：','BL#TEST','仓库(Warehouse):','美东-NJ-01 (US01)'],
@@ -100,8 +113,8 @@ final class InventorySpeedaUsNyBillProviderV1Test extends TestCase
         ];
         $outbound = [
             1 => ['费用单据号','操作费','物流费','费用小计','币种','操作费计费项','计费项费用','OMS单据号','出库时间','物流跟踪号','平台单号','参考单号','SKU','数量'],
-            2 => ['TR#20260218001078','3.7','10','13.7','USD','NJ合并订单包材费','0.5','OBS0122602180RV','2026-02-18 07:42:43',$tracking,'44',$reference,'BY489A','1'],
-            3 => ['TR#20260218001078','44','44','','USD','NJ出库费','3.2','OBS0122602180RV','2026-02-18 07:42:43',$tracking,'44',$reference,'MF414A','1'],
+            2 => ['TR#20260218001078','3.7','10','13.7','USD','NJ合并订单包材费','0.5','OBS0122602180RV',$outboundDate,$tracking,'44',$reference,'BY489A','1'],
+            3 => ['TR#20260218001078','44','44','','USD','NJ出库费','3.2','OBS0122602180RV',$outboundDate,$tracking,'44',$reference,'MF414A','1'],
         ];
         $storage = [
             1 => ['费用单据号','计费时间','费用小计','币种'],

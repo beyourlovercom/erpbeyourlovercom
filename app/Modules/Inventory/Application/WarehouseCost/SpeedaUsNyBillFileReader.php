@@ -141,7 +141,8 @@ final class SpeedaUsNyBillFileReader
 
         $shippingRows=[]; $parcelRows=[];
         foreach ($groups as $g) {
-            if ($g['date'] === null || $g['tracking'] === null) throw new InvalidArgumentException('Speeda US-NY outbound transaction '.$g['fee_no'].' lacks strict date/tracking evidence.');
+            if ($g['date'] === null) $g['date'] = $this->transactionDate((string) $g['fee_no'], 'Outbound transaction '.$g['fee_no']);
+            if ($g['tracking'] === null) throw new InvalidArgumentException('Speeda US-NY outbound transaction '.$g['fee_no'].' lacks strict tracking evidence.');
             if (bccomp($g['shipping'],'0',4) !== 0) $shippingRows[]=$this->normalized($g,'shipping',$g['shipping'],'Last-mile shipping');
             if (bccomp($g['handling'],'0',4) !== 0) $parcelRows[]=$this->normalized($g,'parcel_outbound',$g['handling'],'Outbound operation / packaging');
         }
