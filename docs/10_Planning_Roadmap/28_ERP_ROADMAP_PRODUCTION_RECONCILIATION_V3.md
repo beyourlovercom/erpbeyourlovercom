@@ -115,10 +115,13 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
    - The live P9 canary order 7008 was already exact-gated and converged to noop; no second Order needs catch-up.
    - No blanket replay required. Evidence: `ERP-ACCOUNTING-CONTINUOUS-DELTA-HISTORICAL-CATCHUP-AUDIT-2026-09-19.md`.
 
-6. **Accounting MySQL test-fixture timezone contract**
-   - The focused MySQL contracts pass.
-   - The full `AccountingContinuousDeltaTest` under MySQL exposes 7 pre-existing fixture assumptions where tests manually write UTC-looking TIMESTAMP strings under SYSTEM session.
-   - Normalize those fixtures so the full MySQL suite becomes a trustworthy gate.
+6. **Accounting MySQL test-fixture timezone contract — PASS / CLOSED 2026-09-19**
+   - Reproduced on isolated MySQL 8.4.11 with `SYSTEM=PDT`: 7 fixture-related failures.
+   - MySQL test setup now writes fixtures under `+00:00`; the dedicated runtime-normalization test still resets to `SYSTEM` and verifies CandidateStore switches to UTC.
+   - The DDL-based runtime-failure fixture was replaced with a deterministic throwing evidence reader to avoid MySQL implicit-commit/savepoint breakage.
+   - Full `AccountingContinuousDeltaTest` now passes on MySQL: 18 tests / 95 assertions / 0 failures.
+   - Production Stability CI now includes this MySQL Continuous Delta gate.
+   - Evidence: `ERP-ACCOUNTING-CONTINUOUS-DELTA-MYSQL-FIXTURE-NORMALIZATION-2026-09-19.md`.
 
 ### P1 — business/data coverage
 
@@ -194,7 +197,7 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
 ```text
 P0. GitHub roadmap/open-PR cleanup
 P0. Logistics timestamp catch-up audit ✅ CLOSED
-P0. Full MySQL Continuous Delta fixture repair
+P0. Full MySQL Continuous Delta fixture repair ✅ CLOSED
 P1. Warehouse provider coverage: US-SM / DE / CA
 P1. Accounting evidence completeness
 P1. Rebase Email OS P8C if still desired

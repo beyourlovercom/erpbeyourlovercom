@@ -6,10 +6,12 @@ use App\Modules\Finance\Application\AccountingContinuousDeltaService;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLotConsumption;
+use App\Modules\Inventory\Infrastructure\WarehouseCost\WarehouseStorageCostImportService;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateReferral;
 use App\Modules\Logistics\Application\Contracts\OverseasHandlingEvidenceReader;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Application\Contracts\ProductCostEvidenceReader;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductCostSource;
 use App\Modules\Sync\Application\Contracts\SyncRunTracker;
@@ -18,7 +20,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 final class AccountingContinuousDeltaTest extends TestCase
@@ -33,6 +34,10 @@ final class AccountingContinuousDeltaTest extends TestCase
             'erp_accounting.continuous_delta.enabled' => false,
             'erp_accounting.continuous_delta.kol_commission_enabled' => false,
         ]);
+
+        if (DB::connection()->getDriverName() === 'mysql') {
+            DB::statement("SET time_zone = '+00:00'");
+        }
     }
 
     protected function tearDown(): void
@@ -119,7 +124,13 @@ final class AccountingContinuousDeltaTest extends TestCase
     public function test_runtime_failure_does_not_advance_checkpoint(): void
     {
         $this->readyOrder();
-        Schema::drop('order_cost_entries');
+        $this->app->instance(ProductCostEvidenceReader::class, new class implements ProductCostEvidenceReader
+        {
+            public function read(int|string $orderId): array
+            {
+                throw new \RuntimeException('continuous_delta_runtime_failure_fixture');
+            }
+        });
 
         $summary = $this->service()->apply(100, CarbonImmutable::parse('2026-09-10T12:00:00Z'));
 
@@ -263,10 +274,10 @@ final class AccountingContinuousDeltaTest extends TestCase
         $warehouse = $shipment->warehouse()->firstOrFail();
         $file = tempnam(sys_get_temp_dir(), 'p7-delta-').'.csv';
         $handle = fopen($file, 'wb');
-        fputcsv($handle, ['warehouse_slug','billing_period_start','billing_period_end','storage_pool_amount','currency','reference_number','tracking_number','outbound_units']);
-        fputcsv($handle, [$warehouse->slug,'2026-09-01','2026-09-30','1.0000','USD','C-P7',$shipment->tracking_number,1]);
+        fputcsv($handle, ['warehouse_slug', 'billing_period_start', 'billing_period_end', 'storage_pool_amount', 'currency', 'reference_number', 'tracking_number', 'outbound_units']);
+        fputcsv($handle, [$warehouse->slug, '2026-09-01', '2026-09-30', '1.0000', 'USD', 'C-P7', $shipment->tracking_number, 1]);
         fclose($handle);
-        app(\App\Modules\Inventory\Infrastructure\WarehouseCost\WarehouseStorageCostImportService::class)->apply($file, 'p7-test');
+        app(WarehouseStorageCostImportService::class)->apply($file, 'p7-test');
         DB::table('warehouse_storage_cost_import_rows')->where('order_id', $order->id)->update([
             'created_at' => '2026-09-10 12:30:00',
             'updated_at' => '2026-09-10 12:30:00',
@@ -290,7 +301,7 @@ final class AccountingContinuousDeltaTest extends TestCase
         $this->stampOrderAndRelations($order, '2026-09-10 10:00:00');
         $referral = KolAffiliateReferral::query()->create([
             'connection_key' => 'beyourlover.com', 'referral_id' => 87999, 'affiliate_id' => 98999,
-            'order_id' => $order->id, 'order_reference' => (string) $order->externalReferences()->where('provider','woocommerce')->value('reference'),
+            'order_id' => $order->id, 'order_reference' => (string) $order->externalReferences()->where('provider', 'woocommerce')->value('reference'),
             'commission_amount' => '12.340000', 'currency' => 'USD', 'provider_status' => 'unpaid',
             'context' => 'woocommerce', 'referral_date' => '2026-09-10 10:00:00',
             'affiliate_resolution_status' => 'bound', 'order_resolution_status' => 'resolved',
@@ -314,7 +325,7 @@ final class AccountingContinuousDeltaTest extends TestCase
         $this->stampOrderAndRelations($order, '2026-09-10 10:00:00');
         $referral = KolAffiliateReferral::query()->create([
             'connection_key' => 'beyourlover.com', 'referral_id' => 88001, 'affiliate_id' => 99001,
-            'order_id' => $order->id, 'order_reference' => (string) $order->externalReferences()->where('provider','woocommerce')->value('reference'),
+            'order_id' => $order->id, 'order_reference' => (string) $order->externalReferences()->where('provider', 'woocommerce')->value('reference'),
             'commission_amount' => '12.340000', 'currency' => 'USD', 'provider_status' => 'unpaid',
             'context' => 'woocommerce', 'referral_date' => '2026-09-10 10:00:00',
             'affiliate_resolution_status' => 'bound', 'order_resolution_status' => 'resolved',
@@ -344,7 +355,7 @@ final class AccountingContinuousDeltaTest extends TestCase
         $this->stampOrderAndRelations($order, '2026-09-10 10:00:00');
         $referral = KolAffiliateReferral::query()->create([
             'connection_key' => 'beyourlover.com', 'referral_id' => 88002, 'affiliate_id' => 99002,
-            'order_id' => $order->id, 'order_reference' => (string) $order->externalReferences()->where('provider','woocommerce')->value('reference'),
+            'order_id' => $order->id, 'order_reference' => (string) $order->externalReferences()->where('provider', 'woocommerce')->value('reference'),
             'commission_amount' => '8.500000', 'currency' => 'USD', 'provider_status' => 'paid',
             'context' => 'woocommerce', 'referral_date' => '2026-09-10 10:00:00',
             'affiliate_resolution_status' => 'bound', 'order_resolution_status' => 'resolved',
