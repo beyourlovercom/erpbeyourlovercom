@@ -755,10 +755,13 @@ final class CostMaterializationService
 
         $currency = $this->orderCurrency($order);
         $amount = $sourceAmount;
+        $fingerprint = trim((string) ($evidence['business_evidence_fingerprint'] ?? ''));
         $extra = [
             'source_currency' => $sourceCurrency,
             'source_amount' => $sourceAmount,
             'selected_source' => $evidence['selected_source'] ?? null,
+            'business_evidence_at' => $evidence['business_evidence_at'] ?? null,
+            'business_evidence_fingerprint' => $fingerprint !== '' ? $fingerprint : null,
         ];
         if ($sourceCurrency !== $currency) {
             $fx = $this->fxBridge->preview($order, $sourceCurrency);
@@ -771,9 +774,13 @@ final class CostMaterializationService
             ];
         }
 
+        $sourceReference = $fingerprint !== ''
+            ? 'last-mile-estimate:v2:order:'.$order->getKey().':evidence:'.$fingerprint
+            : 'last-mile-estimate:v1:order:'.$order->getKey();
+
         return $this->candidate(
             'last_mile_cost', $amount, $currency, 'estimated_reference', 'estimated',
-            'last-mile-estimate:v1:order:'.$order->getKey(), $evidence['source_at'] ?? null, $extra,
+            $sourceReference, $evidence['source_at'] ?? null, $extra,
         );
     }
 
@@ -1536,6 +1543,50 @@ final class CostMaterializationService
             && (string) $entry->status === (string) ($candidate['status'] ?? '');
     }
 
+    private function isDirectLastMileEstimateCandidate(array $candidate): bool
+    {
+        return str_starts_with((string) ($candidate['source_reference'] ?? ''), 'last-mile-estimate:v2:');
+    }
+
+    private function sameDirectLastMileEstimateEvidenceSnapshot(array $candidate, Model $entry): bool
+    {
+        if (! $this->isDirectLastMileEstimateCandidate($candidate)
+            || (string) $entry->provenance !== 'estimated_reference'
+            || (string) $entry->status !== 'estimated'
+            || strtoupper((string) $entry->currency) !== strtoupper((string) ($candidate['currency'] ?? ''))) {
+            return false;
+        }
+
+        $existingSource = (string) $entry->source_reference;
+        $candidateSource = (string) ($candidate['source_reference'] ?? '');
+        if (str_starts_with($existingSource, 'last-mile-estimate:v2:')) {
+            return $existingSource === $candidateSource;
+        }
+        if (! str_starts_with($existingSource, 'last-mile-estimate:v1:')) {
+            return false;
+        }
+
+        $evidenceAt = $candidate['business_evidence_at'] ?? null;
+        $postedAt = $entry->effective_at ?? $entry->updated_at ?? $entry->created_at;
+        if ($evidenceAt === null || $postedAt === null) {
+            return false;
+        }
+
+        return strtotime((string) $evidenceAt) <= $postedAt->getTimestamp();
+    }
+
+    private function directLastMileEstimateMayReplace(array $candidate, Model $entry): bool
+    {
+        if (! $this->isDirectLastMileEstimateCandidate($candidate)
+            || (string) $entry->provenance !== 'estimated_reference') {
+            return false;
+        }
+
+        $source = (string) $entry->source_reference;
+        return str_starts_with($source, 'last-mile-estimate:v1:')
+            || str_starts_with($source, 'last-mile-estimate:v2:');
+    }
+
     private function disposition(array $candidate, ?Model $entry): string
     {
         if ($entry === null) {
@@ -1546,7 +1597,8 @@ final class CostMaterializationService
         // must never revalue the historical OrderCostEntry snapshot. Evidence changes
         // (shipment/billing/source amount/etc.) produce a different fingerprint and remain apply-eligible.
         if ($this->sameMultiShipmentEvidenceSnapshot($candidate, $entry)
-            || $this->sameAffiliateEvidenceSnapshot($candidate, $entry)) {
+            || $this->sameAffiliateEvidenceSnapshot($candidate, $entry)
+            || $this->sameDirectLastMileEstimateEvidenceSnapshot($candidate, $entry)) {
             return 'noop';
         }
         if ((string) $entry->source_reference === (string) $candidate['source_reference']
@@ -1566,6 +1618,9 @@ final class CostMaterializationService
         }
         if ($candidate['provenance'] === 'allocated_actual' && in_array((string) $entry->provenance, self::STRONG_PROVENANCE, true)) {
             return 'blocked';
+        }
+        if ($this->directLastMileEstimateMayReplace($candidate, $entry)) {
+            return 'apply';
         }
         if ($candidate['provenance'] !== 'estimated_reference' && in_array((string) $entry->provenance, ['actual', 'confirmed_manual', 'allocated_actual'], true)) {
             return 'blocked';
@@ -1600,7 +1655,8 @@ final class CostMaterializationService
         if ($disposition === 'noop' && $entry !== null) {
             $candidate['existing_entry_id'] = (int) $entry->getKey();
             if ($this->sameMultiShipmentEvidenceSnapshot($candidate, $entry)
-                || $this->sameAffiliateEvidenceSnapshot($candidate, $entry)) {
+                || $this->sameAffiliateEvidenceSnapshot($candidate, $entry)
+                || $this->sameDirectLastMileEstimateEvidenceSnapshot($candidate, $entry)) {
                 // Keep dry-run plans and explainability anchored to the already-frozen posting amount.
                 $candidate['amount'] = (string) $entry->amount;
                 $candidate['currency'] = (string) $entry->currency;

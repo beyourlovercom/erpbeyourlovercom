@@ -43,7 +43,7 @@ final class LastMileEstimateMaterializationTest extends TestCase
         $this->assertSame('11.53', $entry->amount);
         $this->assertSame('estimated_reference', $entry->provenance);
         $this->assertSame('ESTIMATED', $order->financials()->firstOrFail()->fresh()->completeness_status);
-        $this->assertStringStartsWith('last-mile-estimate:v1:order:', (string) $entry->source_reference);
+        $this->assertStringStartsWith('last-mile-estimate:v2:order:', (string) $entry->source_reference);
     }
 
     public function test_de_estimate_uses_approved_packaging_measurement_and_excludes_packaging_cost(): void
@@ -61,6 +61,45 @@ final class LastMileEstimateMaterializationTest extends TestCase
         $this->assertFalse($components->contains(fn (array $row): bool => str_contains((string) ($row['key'] ?? ''), 'packaging')));
     }
 
+    public function test_de_estimate_freezes_same_business_evidence_across_fx_drift_and_legacy_v1_replay(): void
+    {
+        $this->manualFx();
+        $order = $this->order('EUR', 'FR');
+        $order->financials()->create(['currency' => 'EUR']);
+        $product = $this->product($order, null);
+        $this->approvedPackaging($product, '0.454');
+        $this->shipment($order, 'DE');
+        $service = app(CostMaterializationService::class);
+
+        $initial = $service->previewLastMileEstimateGate($order)['candidates'][0];
+        $this->assertSame('apply', $initial['materialization_status'], json_encode($initial));
+        $service->applyLastMileEstimateGate($order);
+        $entry = $order->costEntries()->where('cost_type', 'last_mile_cost')->firstOrFail();
+        $frozenAmount = (string) $entry->amount;
+        $this->assertStringStartsWith('last-mile-estimate:v2:order:', (string) $entry->source_reference);
+
+        app(FxReferenceSettingsService::class)->save(
+            ['USD' => 7.6, 'EUR' => 8.8],
+            ['USD' => false, 'EUR' => false],
+            null,
+        );
+        $sameV2 = $service->previewLastMileEstimateGate($order->fresh())['candidates'][0];
+        $this->assertSame('noop', $sameV2['materialization_status']);
+        $this->assertSame($frozenAmount, $sameV2['amount']);
+        $this->assertTrue($sameV2['posting_snapshot_frozen'] ?? false);
+
+        $entry->forceFill(['source_reference' => 'last-mile-estimate:v1:order:'.$order->id])->save();
+        app(FxReferenceSettingsService::class)->save(
+            ['USD' => 7.7, 'EUR' => 9.1],
+            ['USD' => false, 'EUR' => false],
+            null,
+        );
+        $legacy = $service->previewLastMileEstimateGate($order->fresh())['candidates'][0];
+        $this->assertSame('noop', $legacy['materialization_status']);
+        $this->assertSame($frozenAmount, $legacy['amount']);
+        $this->assertTrue($legacy['posting_snapshot_frozen'] ?? false);
+    }
+
     public function test_estimate_is_idempotent_refreshable_and_never_overwrites_strong_fact(): void
     {
         $this->manualFx();
@@ -71,12 +110,14 @@ final class LastMileEstimateMaterializationTest extends TestCase
         $service = app(CostMaterializationService::class);
 
         $service->applyLastMileEstimateGate($order);
+        $firstSource = (string) $order->costEntries()->where('cost_type', 'last_mile_cost')->value('source_reference');
         $second = $service->applyLastMileEstimateGate($order->fresh());
         $this->assertCount(1, $second['noop']);
 
         $this->shippingWeight($product, '0.6000');
         $changed = $service->previewLastMileEstimateGate($order->fresh());
         $this->assertSame('apply', $changed['candidates'][0]['materialization_status']);
+        $this->assertNotSame($firstSource, (string) $changed['candidates'][0]['source_reference']);
         $service->applyLastMileEstimateGate($order->fresh());
         $this->assertNotSame('11.53', $order->costEntries()->where('cost_type', 'last_mile_cost')->firstOrFail()->amount);
 

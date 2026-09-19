@@ -139,10 +139,10 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
    - P9 is closed; focus has shifted to missing evidence coverage rather than new cost engines.
    - Production read-only evidence audit: 5,569 revenue-ready customer Orders; 3,718 currently lack canonical Shipment; only 33 currently have all six required cost types present.
    - Product Cost is the largest evidence gap: 292/5,569 revenue-ready Orders currently have product_cost. The existing 57 confirmed source rows intentionally begin at 2026-07-01 and must not be back-propagated without historical cost evidence.
-   - A KOL immutable-FX replay defect was discovered: 645 AffiliateWP rows were false-positive apply candidates caused only by current FX reference-date drift while business evidence and amount were unchanged. Bounded fix freezes identical AffiliateWP evidence snapshots; real referral evidence changes remain apply-eligible.
-   - Three last-mile estimate apply candidates are separate real estimate refreshes and are not included in the KOL fix.
+   - A KOL immutable-FX replay defect was discovered: 645 AffiliateWP rows were false-positive apply candidates caused only by current FX reference-date drift while business evidence and amount were unchanged. PR #379 freezes identical AffiliateWP evidence snapshots; candidate-runtime Production dry-run converged to `apply=0 / noop=2417`.
+   - The three direct last-mile estimate apply candidates were subsequently proven to be the same class of FX replay drift, not real business-evidence refreshes: all three retained identical DE/MF414A Shipment, packaging and DHL routing evidence while only Settings FX changed. A bounded P6A v2 business-evidence fingerprint now excludes dynamic FX while preserving refreshability when actual business evidence changes; candidate-runtime Production dry-run converged to `apply=0 / noop=8`.
    - Product-cost ambiguity and other missing facts remain explicit incomplete states until evidence exists; do not fabricate fallback facts.
-   - Evidence: `ERP-ACCOUNTING-EVIDENCE-COMPLETENESS-KOL-FX-REPLAY-2026-09-19.md`.
+   - Evidence: `ERP-ACCOUNTING-EVIDENCE-COMPLETENESS-KOL-FX-REPLAY-2026-09-19.md` and `ERP-ACCOUNTING-LAST-MILE-ESTIMATE-IMMUTABLE-FX-REPLAY-2026-09-19.md`.
 
 9. **Product / Packaging UI**
    - PR #232 is an old one-file packaging comparison Draft.
