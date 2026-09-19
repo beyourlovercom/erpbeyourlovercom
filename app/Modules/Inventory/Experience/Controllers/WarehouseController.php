@@ -5,6 +5,7 @@ namespace App\Modules\Inventory\Experience\Controllers;
 use App\Modules\Inventory\Application\InventoryService;
 use App\Modules\Inventory\Application\InventoryStockStatus;
 use App\Modules\Inventory\Application\WarehouseClearanceService;
+use App\Modules\Inventory\Application\WarehouseInboundProjection;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\WarehouseCost\WarehouseBillImportService;
 use App\Modules\Inventory\Infrastructure\WarehouseCost\WarehouseBillReconciliationService;
@@ -24,6 +25,7 @@ final class WarehouseController
     public function __construct(
         private readonly InventoryService $inventory,
         private readonly WarehouseClearanceService $clearance,
+        private readonly WarehouseInboundProjection $inbounds,
         private readonly WarehouseBillImportService $billImport,
         private readonly WarehouseBillReconciliationService $reconciliation,
         private readonly WarehouseShipmentProjection $shipments,
@@ -49,6 +51,7 @@ final class WarehouseController
             'billReconciliationHistory'=>$this->reconciliation->history($w),
             'billReconciliationDashboard'=>$this->reconciliation->dashboard($w),
             'billReconciliationPreview'=>session($this->billReconciliationPreviewKey((int)$w->id)),
+            'inboundProjection'=>$this->inbounds->forWarehouse($w),
             'shipmentProjection'=>$this->shipments->forWarehouse(
                 $w,
                 max(1,(int)$request->query('shipment_page',1)),
