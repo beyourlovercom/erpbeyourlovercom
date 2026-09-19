@@ -16,6 +16,7 @@ use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductPackagingProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -385,6 +386,21 @@ final class LogisticsOsV1ClosureTest extends TestCase
             fn (Assert $page) => $page->component('Logistics/Index')->where('canOperate', false)
         );
         $this->actingAs($superAdmin)->post("/logistics/orders/{$order->id}/ship", [])->assertForbidden();
+    }
+
+    public function test_shipment_write_normalizes_mysql_session_timezone_to_utc(): void
+    {
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            self::markTestSkipped('MySQL-only Logistics write timezone contract.');
+        }
+
+        DB::statement("SET time_zone = 'SYSTEM'");
+        [$operator, $order] = $this->scenario();
+
+        $this->actingAs($operator)->post("/logistics/orders/{$order->id}/draft", [])->assertRedirect();
+
+        $session = DB::selectOne('select @@session.time_zone as timezone');
+        self::assertSame('+00:00', $session->timezone);
     }
 
     public function test_prototype_only_permission_cannot_bypass_pending_logistics_view(): void

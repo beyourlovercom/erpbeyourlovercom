@@ -30,7 +30,7 @@ final class ShipmentService
 
     public function saveDraft(Model $order, array $attributes, ?Authenticatable $actor): Model
     {
-        return DB::transaction(function () use ($order, $attributes, $actor): Model {
+        return $this->writeTransaction(function () use ($order, $attributes, $actor): Model {
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
@@ -72,7 +72,7 @@ final class ShipmentService
 
     public function markShipped(Model $order, array $attributes, ?Authenticatable $actor): Model
     {
-        return DB::transaction(function () use ($order, $attributes, $actor): Model {
+        return $this->writeTransaction(function () use ($order, $attributes, $actor): Model {
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
@@ -125,7 +125,7 @@ final class ShipmentService
         $trackingNumber = $this->canonicalTrackingNumber($trackingNumber);
         abort_unless($trackingNumber !== null, 422, '追踪号只能填写单号本体，备注请填写到物流备注');
 
-        return DB::transaction(function () use ($order, $trackingNumber, $actor): Model {
+        return $this->writeTransaction(function () use ($order, $trackingNumber, $actor): Model {
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
@@ -147,7 +147,7 @@ final class ShipmentService
 
     public function markException(Model $order, string $note, ?Authenticatable $actor): Model
     {
-        return DB::transaction(function () use ($order, $note, $actor): Model {
+        return $this->writeTransaction(function () use ($order, $note, $actor): Model {
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
@@ -168,7 +168,7 @@ final class ShipmentService
 
     public function resolveException(Model $order, ?Authenticatable $actor): Model
     {
-        return DB::transaction(function () use ($order, $actor): Model {
+        return $this->writeTransaction(function () use ($order, $actor): Model {
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
@@ -189,7 +189,7 @@ final class ShipmentService
 
     public function pauseException(Model $order, string $note, ?Authenticatable $actor): Model
     {
-        return DB::transaction(function () use ($order, $note, $actor): Model {
+        return $this->writeTransaction(function () use ($order, $note, $actor): Model {
             $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
@@ -205,7 +205,7 @@ final class ShipmentService
 
     public function requestReview(Model $order, string $trigger, string $reason, ?Authenticatable $actor): Model
     {
-        return DB::transaction(function () use ($order, $trigger, $reason, $actor): Model {
+        return $this->writeTransaction(function () use ($order, $trigger, $reason, $actor): Model {
             $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
             abort_unless($shipment->shipment_status === 'exception', 409, '只有异常订单可以提交复核');
@@ -227,7 +227,7 @@ final class ShipmentService
 
     public function decideReview(Model $order, string $destination, string $note, ?Authenticatable $actor): Model
     {
-        return DB::transaction(function () use ($order, $destination, $note, $actor): Model {
+        return $this->writeTransaction(function () use ($order, $destination, $note, $actor): Model {
             $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $review = $lockedOrder->logisticsReview()->lockForUpdate()->firstOrFail();
             abort_unless($review->status === 'pending', 409, '复核已处理');
@@ -265,7 +265,7 @@ final class ShipmentService
 
     public function reship(Model $order, array $attributes, ?Authenticatable $actor): Model
     {
-        return DB::transaction(function () use ($order, $attributes, $actor): Model {
+        return $this->writeTransaction(function () use ($order, $attributes, $actor): Model {
             $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
@@ -281,7 +281,7 @@ final class ShipmentService
 
     public function contactUser(Model $order, string $note, ?Authenticatable $actor): Model
     {
-        return DB::transaction(function () use ($order, $note, $actor): Model {
+        return $this->writeTransaction(function () use ($order, $note, $actor): Model {
             $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
@@ -294,7 +294,7 @@ final class ShipmentService
 
     public function cancelException(Model $order, string $note, ?Authenticatable $actor): Model
     {
-        return DB::transaction(function () use ($order, $note, $actor): Model {
+        return $this->writeTransaction(function () use ($order, $note, $actor): Model {
             $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
@@ -310,7 +310,7 @@ final class ShipmentService
 
     public function markCompleted(Model $order, ?Authenticatable $actor): Model
     {
-        return DB::transaction(function () use ($order, $actor): Model {
+        return $this->writeTransaction(function () use ($order, $actor): Model {
             $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
@@ -327,7 +327,7 @@ final class ShipmentService
 
     public function reopen(Model $order, ?Authenticatable $actor, ?string $note = null): Model
     {
-        return DB::transaction(function () use ($order, $actor, $note): Model {
+        return $this->writeTransaction(function () use ($order, $actor, $note): Model {
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
@@ -361,6 +361,15 @@ final class ShipmentService
 
             return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync', 'financials', 'costEntries']);
         });
+    }
+
+    private function writeTransaction(\Closure $callback): mixed
+    {
+        if (DB::connection()->getDriverName() === 'mysql') {
+            DB::statement("SET time_zone = '+00:00'");
+        }
+
+        return DB::transaction($callback);
     }
 
     private function syncPackagingSnapshots(Model $order, Model $shipment): void
