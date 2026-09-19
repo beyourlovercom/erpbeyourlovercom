@@ -137,12 +137,14 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
 
 8. **Accounting completeness — ACTIVE / EVIDENCE AUDIT COMPLETE 2026-09-19**
    - P9 is closed; focus has shifted to missing evidence coverage rather than new cost engines.
-   - Production read-only evidence audit: 5,569 revenue-ready customer Orders; 3,718 currently lack canonical Shipment; only 33 currently have all six required cost types present.
+   - Production read-only evidence audit: 5,569 revenue-ready customer Orders; 3,718 currently lack canonical Shipment; only 33 currently have all six P8.2 required cost types present.
    - Product Cost is the largest evidence gap: 292/5,569 revenue-ready Orders currently have product_cost. The existing 57 confirmed source rows intentionally begin at 2026-07-01 and must not be back-propagated without historical cost evidence.
-   - A KOL immutable-FX replay defect was discovered: 645 AffiliateWP rows were false-positive apply candidates caused only by current FX reference-date drift while business evidence and amount were unchanged. Bounded fix freezes identical AffiliateWP evidence snapshots; real referral evidence changes remain apply-eligible.
-   - Three last-mile estimate apply candidates are separate real estimate refreshes and are not included in the KOL fix.
-   - Product-cost ambiguity and other missing facts remain explicit incomplete states until evidence exists; do not fabricate fallback facts.
-   - Evidence: `ERP-ACCOUNTING-EVIDENCE-COMPLETENESS-KOL-FX-REPLAY-2026-09-19.md`.
+   - KOL immutable-FX replay false positives are fixed and Production dry-run converged from apply=645 to apply=0 / noop=2,417.
+   - Three last-mile estimate apply candidates are refreshes of existing estimates, not missing-cost backfills; no cosmetic Production write was performed.
+   - Historical Shipment evidence: HFR-5 and HFR-6 are CLOSED/UAT PASS. HFR-6 ended READY=0 / REVIEW=3,627 / SKIP=1,727. The dominant remaining frozen discovery blocker is missing approved historical warehouse evidence (~2,966 candidates). HFR-7 searched US Mac + Library and did not recover the original Tencent row-level warehouse source, so further backfill is evidence-blocked and must remain fail-closed.
+   - Completeness semantics need a bounded presentation repair: canonical Final Profit remains strict, while the already-frozen P8.2 Estimated Profit contract uses six required costs and four optional costs. UI/KPI must distinguish these two states rather than presenting one blanket `INCOMPLETE` metric.
+   - Product-cost ambiguity and other missing facts remain explicit until evidence exists; do not fabricate fallback facts.
+   - Evidence: `ERP-ACCOUNTING-EVIDENCE-COMPLETENESS-KOL-FX-REPLAY-2026-09-19.md` and `ERP-HISTORICAL-FULFILLMENT-RECONCILIATION-HFR7-EVIDENCE-BOUNDARY-2026-09-19.md`.
 
 9. **Product / Packaging UI**
    - PR #232 is an old one-file packaging comparison Draft.
