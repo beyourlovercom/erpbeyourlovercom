@@ -135,10 +135,14 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
    - US-SM billing, DE and CA still need real bill samples/provider adapters before cost upload can safely enable.
    - No guessed mapping.
 
-8. **Accounting completeness**
-   - P9 is closed; focus shifts to missing evidence coverage rather than new cost engines.
-   - Product-cost ambiguity and other missing facts should remain explicit incomplete states until evidence exists.
-   - Do not fabricate fallback facts.
+8. **Accounting completeness — ACTIVE / EVIDENCE AUDIT COMPLETE 2026-09-19**
+   - P9 is closed; focus has shifted to missing evidence coverage rather than new cost engines.
+   - Production read-only evidence audit: 5,569 revenue-ready customer Orders; 3,718 currently lack canonical Shipment; only 33 currently have all six required cost types present.
+   - Product Cost is the largest evidence gap: 292/5,569 revenue-ready Orders currently have product_cost. The existing 57 confirmed source rows intentionally begin at 2026-07-01 and must not be back-propagated without historical cost evidence.
+   - A KOL immutable-FX replay defect was discovered: 645 AffiliateWP rows were false-positive apply candidates caused only by current FX reference-date drift while business evidence and amount were unchanged. Bounded fix freezes identical AffiliateWP evidence snapshots; real referral evidence changes remain apply-eligible.
+   - Three last-mile estimate apply candidates are separate real estimate refreshes and are not included in the KOL fix.
+   - Product-cost ambiguity and other missing facts remain explicit incomplete states until evidence exists; do not fabricate fallback facts.
+   - Evidence: `ERP-ACCOUNTING-EVIDENCE-COMPLETENESS-KOL-FX-REPLAY-2026-09-19.md`.
 
 9. **Product / Packaging UI**
    - PR #232 is an old one-file packaging comparison Draft.
