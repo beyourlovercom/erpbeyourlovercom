@@ -47,6 +47,8 @@ final class CostMaterializationService
             $this->productCandidate($order),
             $this->carrierCandidate($order),
         ];
+        $replacementLoss = $this->replacementLossCandidate($order);
+        if ($replacementLoss !== null) $candidates[] = $replacementLoss;
         if ($this->multiShipmentAggregationEnabled() || $this->overseasHandlingAvailable()) {
             $candidates[] = $this->overseasHandlingCandidate($order);
         }
@@ -66,7 +68,7 @@ final class CostMaterializationService
             'scope_status' => $scopeBlocker === null ? 'operational' : 'blocked',
             'scope_blocker' => $scopeBlocker,
             'candidates' => array_values(array_map(fn (array $candidate): array => $this->annotateDisposition($order, $candidate), $candidates)),
-            'unsupported' => ['refund_replacement_loss', 'other_variable_cost'],
+            'unsupported' => $replacementLoss === null ? ['refund_replacement_loss', 'other_variable_cost'] : ['other_variable_cost'],
         ];
     }
 
@@ -85,6 +87,8 @@ final class CostMaterializationService
                 $this->affiliateCandidate($order),
                 $this->customsCandidate($order),
             ];
+            $replacementLoss = $this->replacementLossCandidate($order);
+            if ($replacementLoss !== null) $candidates[] = $replacementLoss;
             if ($scopeBlocker !== null) {
                 $candidates = array_map(fn (array $candidate): array => $this->forceBlocked($candidate, $scopeBlocker), $candidates);
             }
@@ -153,6 +157,63 @@ final class CostMaterializationService
                     $locked->getKey(),
                     after: ['applied' => $result['applied'], 'blocked' => $result['blocked'], 'review' => $result['review']],
                     reason: 'multi_shipment_cost_aggregation',
+                );
+            }
+            return $result;
+        });
+    }
+
+    /** @return array<string,mixed> */
+    public function previewReplacementLossGate(Model $order): array
+    {
+        $scopeBlocker = $this->operationalBlocker($order);
+        $candidate = $this->replacementLossCandidate($order);
+        if ($candidate === null) {
+            return [
+                'order_id' => (int) $order->getKey(),
+                'scope_status' => $scopeBlocker === null ? 'operational' : 'blocked',
+                'scope_blocker' => $scopeBlocker,
+                'replacement_count' => 0,
+                'candidates' => [],
+            ];
+        }
+        if ($scopeBlocker !== null) $candidate = $this->forceBlocked($candidate, $scopeBlocker);
+        return [
+            'order_id' => (int) $order->getKey(),
+            'scope_status' => $scopeBlocker === null ? 'operational' : 'blocked',
+            'scope_blocker' => $scopeBlocker,
+            'replacement_count' => (int) ($candidate['replacement_count'] ?? 0),
+            'candidates' => [$this->annotateDisposition($order, $candidate)],
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    public function applyReplacementLossGate(Model $order): array
+    {
+        return DB::transaction(function () use ($order): array {
+            $locked = $order->newQuery()->lockForUpdate()->findOrFail($order->getKey());
+            $preview = $this->previewReplacementLossGate($locked);
+            $result = $preview + ['applied' => [], 'noop' => [], 'blocked' => [], 'review' => []];
+            if ($preview['candidates'] === []) return $result;
+            $candidate = $preview['candidates'][0];
+            $disposition = (string) ($candidate['materialization_status'] ?? 'blocked');
+            if ($disposition === 'noop') $result['noop'][] = $candidate;
+            elseif ($disposition === 'blocked') {
+                if (($candidate['blocker'] ?? null) === 'stronger_or_different_existing_fact') $result['review'][] = $candidate;
+                else $result['blocked'][] = $candidate;
+            } else {
+                $outcome = $this->writeCandidate($locked, $candidate);
+                $result[$outcome['status']][] = $outcome['entry'];
+            }
+            if ($result['applied'] !== []) {
+                $this->analysis->refreshCompleteness($locked, preserveReconciled: false);
+                $this->audit->record(
+                    AuditActor::system(AuditSource::InternalSystem),
+                    'finance.replacement_loss.applied',
+                    $locked::class,
+                    $locked->getKey(),
+                    after: ['applied' => $result['applied'], 'blocked' => $result['blocked'], 'review' => $result['review']],
+                    reason: 'replacement_fulfillment_incremental_loss',
                 );
             }
             return $result;
@@ -1336,6 +1397,235 @@ final class CostMaterializationService
         );
     }
 
+    private function replacementLossCandidate(Model $order): ?array
+    {
+        if (! method_exists($order, 'replacementFulfillments')) return null;
+        $order->loadMissing([
+            'replacementFulfillments.items.product',
+            'replacementFulfillments.shipment.warehouse',
+            'replacementFulfillments.shipment.billingEvidence',
+        ]);
+        $replacements = $order->replacementFulfillments->sortBy('id')->values();
+        if ($replacements->isEmpty()) return null;
+
+        $currency = $this->orderCurrency($order);
+        $total = '0';
+        $breakdown = [];
+        $fingerprint = [];
+        $sourceAt = null;
+
+        foreach ($replacements as $replacement) {
+            $shipment = $replacement->shipment;
+            if (! $shipment || ($shipment->shipment_status === 'pending' && blank($shipment->tracking_number) && $shipment->shipped_at === null)) {
+                return $this->blocked('refund_replacement_loss', 'replacement_shipment_not_dispatched', [
+                    'replacement_count' => $replacements->count(),
+                    'replacement_order_id' => (int) $replacement->getKey(),
+                    'replacement_suffix' => $replacement->fulfillment_suffix,
+                    'replacement_breakdown' => $breakdown,
+                ]);
+            }
+            $warehouse = $shipment->warehouse;
+            if (! $warehouse) {
+                return $this->blocked('refund_replacement_loss', 'replacement_shipment_warehouse_missing', [
+                    'replacement_count' => $replacements->count(),
+                    'replacement_order_id' => (int) $replacement->getKey(),
+                    'shipment_id' => (int) $shipment->getKey(),
+                    'replacement_breakdown' => $breakdown,
+                ]);
+            }
+
+            $items = $this->products->read($replacement->getKey());
+            if ($items === []) {
+                return $this->blocked('refund_replacement_loss', 'replacement_product_cost_missing', [
+                    'replacement_count' => $replacements->count(),
+                    'replacement_order_id' => (int) $replacement->getKey(),
+                    'replacement_breakdown' => $breakdown,
+                ]);
+            }
+            $productTotal = '0';
+            $productLines = [];
+            foreach ($items as $row) {
+                $quantity = (int) ($row['quantity'] ?? 0);
+                $sources = collect($row['confirmed_cost_sources'] ?? [])->unique(fn (array $source): string => strtoupper((string) ($source['currency'] ?? '')).'|'.(string) ($source['unit_cost'] ?? ''))->values();
+                if ($quantity <= 0 || $sources->count() !== 1) {
+                    return $this->blocked('refund_replacement_loss', 'replacement_confirmed_product_cost_required', [
+                        'replacement_count' => $replacements->count(),
+                        'replacement_order_id' => (int) $replacement->getKey(),
+                        'item_id' => $row['item_id'] ?? null,
+                        'replacement_breakdown' => $breakdown,
+                    ]);
+                }
+                $source = $sources->first();
+                $sourceCurrency = strtoupper(trim((string) ($source['currency'] ?? '')));
+                if ($sourceCurrency === '' || ! isset($source['unit_cost'])) {
+                    return $this->blocked('refund_replacement_loss', 'replacement_confirmed_product_cost_required', [
+                        'replacement_count' => $replacements->count(), 'replacement_order_id' => (int) $replacement->getKey(),
+                    ]);
+                }
+                $sourceSubtotal = DecimalMoney::round(DecimalMoney::multiply((string) $source['unit_cost'], (string) $quantity, 8));
+                $converted = $this->replacementConvert($order, $sourceSubtotal, $sourceCurrency, 'replacement_product_cost_fx_snapshot_unavailable');
+                if (isset($converted['blocked'])) return $this->blocked('refund_replacement_loss', $converted['blocked'], [
+                    'replacement_count' => $replacements->count(), 'replacement_order_id' => (int) $replacement->getKey(),
+                    'source_currency' => $sourceCurrency, 'replacement_breakdown' => $breakdown,
+                ]);
+                $productTotal = DecimalMoney::add($productTotal, $converted['amount'], 8);
+                $productLines[] = [
+                    'item_id' => $row['item_id'] ?? null, 'product_id' => $row['product_id'] ?? null,
+                    'sku' => $row['sku'] ?? null, 'quantity' => $quantity,
+                    'unit_cost' => DecimalMoney::round((string) $source['unit_cost']),
+                    'source_currency' => $sourceCurrency, 'source_subtotal' => $sourceSubtotal,
+                    'posted_amount' => $converted['amount'], 'posted_currency' => $currency,
+                    'source_id' => $source['id'] ?? null, 'source_reference' => $source['source_reference'] ?? null,
+                    'fx' => $converted['fx'],
+                ];
+                $fingerprint[] = 'product|'.$replacement->getKey().'|'.($source['id'] ?? '').'|'.$sourceCurrency.'|'.$sourceSubtotal;
+                $candidateAt = $source['source_at'] ?? $source['confirmed_at'] ?? null;
+                if ($candidateAt !== null && ($sourceAt === null || $candidateAt > $sourceAt)) $sourceAt = $candidateAt;
+            }
+            $productTotal = DecimalMoney::round($productTotal);
+
+            $units = (int) $replacement->items->sum('quantity');
+            $slug = strtolower(trim((string) $warehouse->slug));
+            if ($units <= 0) {
+                return $this->blocked('refund_replacement_loss', 'replacement_item_quantity_missing', [
+                    'replacement_count' => $replacements->count(), 'replacement_order_id' => (int) $replacement->getKey(),
+                ]);
+            }
+            if (in_array($slug, self::OVERSEAS_WAREHOUSE_SLUGS, true)) {
+                $firstSource = DecimalMoney::round(DecimalMoney::multiply((string) $units, '1.00', 8));
+                $handlingSource = $firstSource;
+            } elseif (in_array($slug, self::CHINA_DIRECT_WAREHOUSE_SLUGS, true)) {
+                $firstSource = '0.00';
+                $handlingSource = '0.00';
+            } else {
+                return $this->blocked('refund_replacement_loss', 'replacement_warehouse_classification_unknown', [
+                    'replacement_count' => $replacements->count(), 'replacement_order_id' => (int) $replacement->getKey(), 'warehouse_slug' => $slug,
+                ]);
+            }
+            $first = $this->replacementConvert($order, $firstSource, 'USD', 'replacement_first_mile_fx_snapshot_unavailable');
+            $handling = $this->replacementConvert($order, $handlingSource, 'USD', 'replacement_handling_fx_snapshot_unavailable');
+            if (isset($first['blocked'])) return $this->blocked('refund_replacement_loss', $first['blocked'], ['replacement_order_id' => (int) $replacement->getKey()]);
+            if (isset($handling['blocked'])) return $this->blocked('refund_replacement_loss', $handling['blocked'], ['replacement_order_id' => (int) $replacement->getKey()]);
+
+            if (in_array($slug, self::CHINA_DIRECT_WAREHOUSE_SLUGS, true)) {
+                $warehouseComponent = ['amount' => '0.00', 'currency' => $currency, 'source_amount' => '0.00', 'source_currency' => $currency, 'evidence' => 'owner_rule_china_direct_zero', 'fx' => null];
+            } else {
+                $warehouseEvidence = $this->warehouseCosts->read($replacement->getKey());
+                if ($warehouseEvidence === null || isset($warehouseEvidence['blocked'])) {
+                    return $this->blocked('refund_replacement_loss', (string) ($warehouseEvidence['blocked'] ?? 'replacement_warehouse_cost_allocation_missing'), [
+                        'replacement_count' => $replacements->count(), 'replacement_order_id' => (int) $replacement->getKey(), 'replacement_breakdown' => $breakdown,
+                    ]);
+                }
+                $warehouseCurrency = strtoupper(trim((string) ($warehouseEvidence['currency'] ?? '')));
+                $warehouseSource = isset($warehouseEvidence['source_amount']) ? DecimalMoney::round((string) $warehouseEvidence['source_amount']) : null;
+                if ($warehouseCurrency === '' || $warehouseSource === null) {
+                    return $this->blocked('refund_replacement_loss', 'replacement_warehouse_cost_allocation_incomplete', ['replacement_order_id' => (int) $replacement->getKey()]);
+                }
+                $convertedWarehouse = $this->replacementConvert($order, $warehouseSource, $warehouseCurrency, 'replacement_warehouse_cost_fx_snapshot_unavailable');
+                if (isset($convertedWarehouse['blocked'])) return $this->blocked('refund_replacement_loss', $convertedWarehouse['blocked'], ['replacement_order_id' => (int) $replacement->getKey()]);
+                $warehouseComponent = [
+                    'amount' => $convertedWarehouse['amount'], 'currency' => $currency,
+                    'source_amount' => $warehouseSource, 'source_currency' => $warehouseCurrency,
+                    'batch_id' => $warehouseEvidence['batch_id'] ?? null, 'row_ids' => $warehouseEvidence['row_ids'] ?? [],
+                    'fx' => $convertedWarehouse['fx'],
+                ];
+                $fingerprint[] = 'warehouse|'.$replacement->getKey().'|'.($warehouseEvidence['batch_id'] ?? '').'|'.implode(',', $warehouseEvidence['row_ids'] ?? []).'|'.$warehouseCurrency.'|'.$warehouseSource;
+                $candidateAt = $warehouseEvidence['source_at'] ?? null;
+                if ($candidateAt !== null && ($sourceAt === null || $candidateAt > $sourceAt)) $sourceAt = $candidateAt;
+            }
+
+            $billing = $shipment->billingEvidence;
+            if (! $billing || $billing->actual_cost === null || blank($billing->currency)) {
+                return $this->blocked('refund_replacement_loss', 'replacement_last_mile_billing_missing', [
+                    'replacement_count' => $replacements->count(), 'replacement_order_id' => (int) $replacement->getKey(),
+                    'shipment_id' => (int) $shipment->getKey(), 'replacement_breakdown' => $breakdown,
+                ]);
+            }
+            $billingIdentity = $billing->billing_document_number ?: ($billing->provider_reference ?: $billing->data_source);
+            if (blank($billingIdentity)) {
+                return $this->blocked('refund_replacement_loss', 'replacement_last_mile_billing_identity_missing', [
+                    'replacement_order_id' => (int) $replacement->getKey(), 'shipment_id' => (int) $shipment->getKey(),
+                ]);
+            }
+            $lastSourceCurrency = strtoupper((string) $billing->currency);
+            $lastSourceAmount = DecimalMoney::round((string) $billing->actual_cost);
+            $last = $this->replacementConvert($order, $lastSourceAmount, $lastSourceCurrency, 'replacement_last_mile_fx_snapshot_unavailable');
+            if (isset($last['blocked'])) return $this->blocked('refund_replacement_loss', $last['blocked'], ['replacement_order_id' => (int) $replacement->getKey()]);
+            $fingerprint[] = 'last-mile|'.$replacement->getKey().'|'.$shipment->getKey().'|'.$billing->getKey().'|'.$lastSourceCurrency.'|'.$lastSourceAmount.'|'.trim((string) $billingIdentity);
+            $candidateAt = $billing->billed_at ?? $billing->updated_at ?? null;
+            if ($candidateAt !== null && ($sourceAt === null || $candidateAt > $sourceAt)) $sourceAt = $candidateAt;
+
+            $components = [
+                'product_cost' => $productTotal,
+                'first_mile_cost' => $first['amount'],
+                'overseas_handling_cost' => $handling['amount'],
+                'warehouse_cost' => $warehouseComponent['amount'],
+                'last_mile_cost' => $last['amount'],
+            ];
+            $replacementTotal = '0';
+            foreach ($components as $amount) $replacementTotal = DecimalMoney::add($replacementTotal, (string) $amount, 8);
+            $replacementTotal = DecimalMoney::round($replacementTotal);
+            $total = DecimalMoney::add($total, $replacementTotal, 8);
+            $fingerprint[] = 'replacement|'.$replacement->getKey().'|'.$replacement->fulfillment_suffix.'|'.$replacement->fulfillment_reason.'|'.$warehouse->code.'|'.$units;
+            $breakdown[] = [
+                'replacement_order_id' => (int) $replacement->getKey(),
+                'erp_order_id' => $replacement->erp_order_id,
+                'suffix' => $replacement->fulfillment_suffix,
+                'reason' => $replacement->fulfillment_reason,
+                'origin_fulfillment_id' => $replacement->fulfillment_origin_id,
+                'shipment_id' => (int) $shipment->getKey(),
+                'warehouse_id' => (int) $warehouse->getKey(),
+                'warehouse_code' => $warehouse->code,
+                'warehouse_name' => $warehouse->name,
+                'tracking_number' => $shipment->tracking_number,
+                'shipped_units' => $units,
+                'components' => [
+                    'product_cost' => ['amount' => $productTotal, 'currency' => $currency, 'lines' => $productLines],
+                    'first_mile_cost' => ['amount' => $first['amount'], 'currency' => $currency, 'source_amount' => $firstSource, 'source_currency' => 'USD', 'fx' => $first['fx']],
+                    'overseas_handling_cost' => ['amount' => $handling['amount'], 'currency' => $currency, 'source_amount' => $handlingSource, 'source_currency' => 'USD', 'fx' => $handling['fx']],
+                    'warehouse_cost' => $warehouseComponent,
+                    'last_mile_cost' => ['amount' => $last['amount'], 'currency' => $currency, 'source_amount' => $lastSourceAmount, 'source_currency' => $lastSourceCurrency, 'billing_id' => (int) $billing->getKey(), 'billing_document_number' => $billing->billing_document_number, 'provider_reference' => $billing->provider_reference, 'fx' => $last['fx']],
+                ],
+                'replacement_total' => $replacementTotal,
+                'currency' => $currency,
+            ];
+        }
+
+        sort($fingerprint);
+        $total = DecimalMoney::round($total);
+        $extra = [
+            'replacement_count' => $replacements->count(),
+            'replacement_breakdown' => $breakdown,
+            'aggregation_rule' => 'parent_incremental_replacement_fulfillment_loss_v1',
+            'double_count_guard' => 'replacement_shipments_excluded_from_original_product_and_logistics_costs',
+        ];
+        if ($currency !== 'USD') {
+            $posting = $this->fxBridge->preview($order, $currency);
+            if (! ($posting['available'] ?? false)) return $this->blocked('refund_replacement_loss', 'replacement_transaction_fx_snapshot_unavailable', $extra + ['fx_reason' => $posting['reason'] ?? 'fx_unavailable']);
+            $extra['posting_fx'] = $posting + ['base_amount' => DecimalMoney::round(DecimalMoney::multiply($total, (string) $posting['source_to_usd_rate'], 8))];
+        }
+        return $this->candidate(
+            'refund_replacement_loss', $total, $currency, 'allocated_actual', 'confirmed',
+            'replacement-loss:v1:order:'.$order->getKey().':'.substr(hash('sha256', implode(';', $fingerprint)), 0, 24),
+            $sourceAt, $extra,
+        );
+    }
+
+    /** @return array{amount:string,fx:?array,blocked?:string} */
+    private function replacementConvert(Model $order, string $sourceAmount, string $sourceCurrency, string $fxBlocker): array
+    {
+        $currency = $this->orderCurrency($order);
+        $sourceCurrency = strtoupper(trim($sourceCurrency));
+        $sourceAmount = DecimalMoney::round($sourceAmount);
+        if ($sourceCurrency === $currency) return ['amount' => $sourceAmount, 'fx' => null];
+        $fx = $this->fxBridge->preview($order, $sourceCurrency);
+        if (! ($fx['available'] ?? false)) return ['amount' => '0.00', 'fx' => null, 'blocked' => $fxBlocker];
+        return [
+            'amount' => DecimalMoney::round(DecimalMoney::multiply($sourceAmount, (string) $fx['source_to_transaction_rate'], 8)),
+            'fx' => $fx,
+        ];
+    }
+
     private function affiliateCandidate(Model $order): array
     {
         $rows = $this->affiliate->read($order->getKey());
@@ -1499,6 +1789,20 @@ final class CostMaterializationService
         return str_starts_with((string) ($candidate['source_reference'] ?? ''), 'multi-shipment:v1:');
     }
 
+    private function isReplacementLossCandidate(array $candidate): bool
+    {
+        return str_starts_with((string) ($candidate['source_reference'] ?? ''), 'replacement-loss:v1:');
+    }
+
+    private function sameReplacementLossEvidenceSnapshot(array $candidate, Model $entry): bool
+    {
+        return $this->isReplacementLossCandidate($candidate)
+            && (string) $entry->source_reference === (string) ($candidate['source_reference'] ?? '')
+            && strtoupper((string) $entry->currency) === strtoupper((string) ($candidate['currency'] ?? ''))
+            && (string) $entry->provenance === (string) ($candidate['provenance'] ?? '')
+            && (string) $entry->status === (string) ($candidate['status'] ?? '');
+    }
+
     private function multiShipmentMayReplace(array $candidate, Model $entry): bool
     {
         $source = (string) $entry->source_reference;
@@ -1546,7 +1850,8 @@ final class CostMaterializationService
         // must never revalue the historical OrderCostEntry snapshot. Evidence changes
         // (shipment/billing/source amount/etc.) produce a different fingerprint and remain apply-eligible.
         if ($this->sameMultiShipmentEvidenceSnapshot($candidate, $entry)
-            || $this->sameAffiliateEvidenceSnapshot($candidate, $entry)) {
+            || $this->sameAffiliateEvidenceSnapshot($candidate, $entry)
+            || $this->sameReplacementLossEvidenceSnapshot($candidate, $entry)) {
             return 'noop';
         }
         if ((string) $entry->source_reference === (string) $candidate['source_reference']
@@ -1559,6 +1864,10 @@ final class CostMaterializationService
         }
         if ($this->isMultiShipmentCandidate($candidate)) {
             if ($this->multiShipmentMayReplace($candidate, $entry)) return 'apply';
+            if (in_array((string) $entry->provenance, self::STRONG_PROVENANCE, true)) return 'blocked';
+        }
+        if ($this->isReplacementLossCandidate($candidate)) {
+            if (str_starts_with((string) $entry->source_reference, 'replacement-loss:v1:')) return 'apply';
             if (in_array((string) $entry->provenance, self::STRONG_PROVENANCE, true)) return 'blocked';
         }
         if ($candidate['provenance'] === 'estimated_reference' && in_array((string) $entry->provenance, self::STRONG_PROVENANCE, true)) {
@@ -1600,7 +1909,8 @@ final class CostMaterializationService
         if ($disposition === 'noop' && $entry !== null) {
             $candidate['existing_entry_id'] = (int) $entry->getKey();
             if ($this->sameMultiShipmentEvidenceSnapshot($candidate, $entry)
-                || $this->sameAffiliateEvidenceSnapshot($candidate, $entry)) {
+                || $this->sameAffiliateEvidenceSnapshot($candidate, $entry)
+                || $this->sameReplacementLossEvidenceSnapshot($candidate, $entry)) {
                 // Keep dry-run plans and explainability anchored to the already-frozen posting amount.
                 $candidate['amount'] = (string) $entry->amount;
                 $candidate['currency'] = (string) $entry->currency;
@@ -1641,7 +1951,8 @@ final class CostMaterializationService
             || str_starts_with($source, 'affiliatewp-referrals:v1:')
             || str_starts_with($source, 'product-cost-source:v1:')
             || str_starts_with($source, 'owner-rule:payment-fee:v1:')
-            || str_starts_with($source, 'multi-shipment:v1:');
+            || str_starts_with($source, 'multi-shipment:v1:')
+            || str_starts_with($source, 'replacement-loss:v1:');
     }
 
     private function orderCurrency(Model $order): string

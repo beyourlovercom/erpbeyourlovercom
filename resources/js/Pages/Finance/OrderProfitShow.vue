@@ -56,6 +56,8 @@ type Explanation = {
         shipping_country: string | null
         product_count: number
         shipment_count: number
+        original_shipment_count: number
+        replacement_shipment_count: number
         multi_shipment: boolean
         updated_at: string | null
     }
@@ -71,6 +73,27 @@ type Explanation = {
     }
     shipments: ShipmentRow[]
     logistics: { state: string; shipment_count: number; confirmed_shipment_count: number }
+    replacement_loss: {
+        state: string
+        amount: string | null
+        currency: string | null
+        replacement_count: number
+        breakdown: Array<{
+            replacement_order_id: number
+            erp_order_id: string | null
+            suffix: string | null
+            reason: string | null
+            warehouse_code: string | null
+            warehouse_name: string | null
+            tracking_number: string | null
+            shipped_units: number
+            replacement_total: string
+            currency: string
+            components: Record<string, any>
+        }>
+        blocker: string | null
+        double_count_guard: string | null
+    }
     other_costs: CostLine[]
     formula: CostLine[]
 }
@@ -83,8 +106,8 @@ const stateLabel = (state: string) => ({ confirmed: '已确认', estimated: '估
 const financeStatusLabel = (status: string | null | undefined) => ({ confirmed: '已确认', completed: '已完成', incomplete: '资料不完整', estimated: '含估算', unposted: '未核算', review: '待复核' }[String(status ?? 'unposted').toLowerCase()] ?? '待确认')
 const missingComponentLabel = (name: string) => ({ 'First Mile': '头程费', Handling: '操作费', 'Last Mile': '尾程费' }[name] ?? name)
 const costLabel = (type: string) => ({ product_cost: '产品成本', warehouse_cost: '仓储成本', first_mile_cost: '头程费', overseas_handling_cost: '海外仓操作费', last_mile_cost: '尾程物流费', payment_fee: '支付手续费', kol_commission: '网红佣金', refund_replacement_loss: '退款 / 补发损失', customs_tax: '关税', other_variable_cost: '其他变动成本' }[type] ?? '其他成本')
-const costFormula = (type: string) => ({ product_cost: 'Σ（单件货本成本 × 主订单商品数量）', warehouse_cost: 'Σ 适用于主订单的仓储成本分摊', first_mile_cost: 'Σ 海外仓发货数量 × USD 1；中国直发 = 0', overseas_handling_cost: 'Σ 海外仓发货数量 × USD 1；中国直发 = 0', last_mile_cost: 'Σ 每个发货单的实际承运商 / 国际小包账单', payment_fee: '平台订单总额 × 3.5%', kol_commission: 'Σ 符合条件的 AffiliateWP 网红佣金', refund_replacement_loss: '已确认的退款 / 补发损失', customs_tax: '当前规则：关税 = 0（后续可扩展）', other_variable_cost: '已确认的其他变动成本' }[type] ?? '以已确认成本证据为准')
-const blockerLabel = (code: string | null | undefined) => ({ confirmed_product_cost_source_incomplete: '货本成本来源不完整', warehouse_storage_allocation_missing: '缺少仓储成本分摊证据', referral_snapshot_missing: '缺少网红佣金快照', carrier_billing_missing_on_shipment: '发货单缺少实际尾程账单', stronger_or_different_existing_fact: '已有人工或更高优先级成本，需人工复核', no_eligible_referrals: '没有可计入的网红佣金', kol_commission_fx_snapshot_unavailable: '网红佣金汇率快照不可用' }[code ?? ''] ?? (code ? '系统证据条件未满足' : '缺少必要证据'))
+const costFormula = (type: string) => ({ product_cost: 'Σ（单件货本成本 × 主订单商品数量）', warehouse_cost: 'Σ 适用于主订单的仓储成本分摊', first_mile_cost: 'Σ 海外仓发货数量 × USD 1；中国直发 = 0', overseas_handling_cost: 'Σ 海外仓发货数量 × USD 1；中国直发 = 0', last_mile_cost: 'Σ 每个发货单的实际承运商 / 国际小包账单', payment_fee: '平台订单总额 × 3.5%', kol_commission: 'Σ 符合条件的 AffiliateWP 网红佣金', refund_replacement_loss: 'Σ 售后补发新增货本 + 仓库费 + 头程/操作费 + 尾程费；不重复计入原始履约', customs_tax: '当前规则：关税 = 0（后续可扩展）', other_variable_cost: '已确认的其他变动成本' }[type] ?? '以已确认成本证据为准')
+const blockerLabel = (code: string | null | undefined) => ({ confirmed_product_cost_source_incomplete: '货本成本来源不完整', warehouse_storage_allocation_missing: '缺少仓储成本分摊证据', referral_snapshot_missing: '缺少网红佣金快照', carrier_billing_missing_on_shipment: '发货单缺少实际尾程账单', replacement_shipment_not_dispatched: '补发履约尚未实际发出', replacement_confirmed_product_cost_required: '补发商品缺少已确认货本', replacement_warehouse_cost_allocation_missing: '补发履约缺少仓库账单分摊', replacement_last_mile_billing_missing: '补发履约缺少实际尾程账单', stronger_or_different_existing_fact: '已有人工或更高优先级成本，需人工复核', no_eligible_referrals: '没有可计入的网红佣金', kol_commission_fx_snapshot_unavailable: '网红佣金汇率快照不可用' }[code ?? ''] ?? (code ? '系统证据条件未满足' : '缺少必要证据'))
 const provenanceLabel = (value: string | null | undefined) => ({ confirmed_manual: '人工确认', provider_import: '平台导入', allocated_actual: '实际分摊', estimated_reference: '估算参考', confirmed: '已确认', estimated: '估算' }[value ?? ''] ?? (value ? '系统来源' : '—'))
 const sourceTypeLabel = (value: string) => ({ woocommerce: 'WooCommerce', tiktok_shop: 'TikTok Shop', manual: '人工录入', historical_import: '历史导入' }[value] ?? value)
 const countryLabel = (value: string | null) => ({ US: '美国', CA: '加拿大', GB: '英国', UK: '英国', DE: '德国', FR: '法国', AU: '澳大利亚', MX: '墨西哥', CL: '智利', AR: '阿根廷', UA: '乌克兰', RU: '俄罗斯', TH: '泰国', ID: '印度尼西亚', VN: '越南', IN: '印度', PH: '菲律宾', SG: '新加坡', JP: '日本', KR: '韩国' }[String(value ?? '').toUpperCase()] ?? value ?? '—')
@@ -137,7 +160,7 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
                         <span class="badge blue">{{ e.order.shipment_count }} 个发货单</span>
                     </div>
                     <p class="meta">创建日期：{{ e.order.order_date ?? '—' }} · 来源平台：{{ sourceTypeLabel(e.order.source_type) }} · 收货国家：{{ countryLabel(e.order.shipping_country) }}</p>
-                    <p class="submeta">{{ e.order.product_count }} 个商品 · {{ e.order.shipment_count }} 个发货单 · {{ e.order.multi_shipment ? '多仓拆单履约' : '单仓履约' }}</p>
+                    <p class="submeta">{{ e.order.product_count }} 个商品 · {{ e.order.original_shipment_count }} 个原始履约<span v-if="e.order.replacement_shipment_count"> · {{ e.order.replacement_shipment_count }} 个售后补发</span> · {{ e.order.multi_shipment ? '多履约' : '单仓履约' }}</p>
                 </div>
                 <div class="finance-status" :class="[`state-${String(e.summary.finance_status ?? '').toLowerCase()}`, { 'finance-status-estimated': isEstimatedProfit }]">
                     <strong>{{ isEstimatedProfit ? '预估利润 · 非最终' : financeStatusLabel(e.summary.finance_status) }}</strong>
@@ -230,8 +253,27 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
                 </table></div>
             </section>
 
+            <section class="cost-section replacement-loss-section">
+                <div class="section-head"><h2>3. 售后补发损失 <small>（R1 / R2… 独立增量成本，归回父订单）</small></h2><strong>{{ money(e.replacement_loss.amount, e.replacement_loss.currency) }}</strong></div>
+                <p class="rule-note">补发不会增加销售收入；只汇总本次补发新增的商品货本、仓库成本、头程/操作费和尾程费。原始 A/B/C 物流成本不会再次计入。</p>
+                <div v-if="e.replacement_loss.breakdown.length" class="table-wrap"><table><thead><tr><th>补发履约</th><th>原因 / 仓库</th><th>商品成本</th><th>头程费</th><th>操作费</th><th>仓库费</th><th>尾程费</th><th>补发合计</th></tr></thead>
+                    <tbody><tr v-for="row in e.replacement_loss.breakdown" :key="row.replacement_order_id">
+                        <td><b>{{ row.suffix ?? 'R' }} · {{ row.erp_order_id ?? row.replacement_order_id }}</b><small>{{ row.tracking_number ?? '暂无 Tracking' }}</small></td>
+                        <td>{{ row.reason ?? '售后补发' }}<small>{{ warehouseLabel(row.warehouse_code ?? row.warehouse_name) }} · {{ row.shipped_units }} 件</small></td>
+                        <td>{{ money(row.components.product_cost?.amount, row.components.product_cost?.currency) }}</td>
+                        <td>{{ money(row.components.first_mile_cost?.amount, row.components.first_mile_cost?.currency) }}</td>
+                        <td>{{ money(row.components.overseas_handling_cost?.amount, row.components.overseas_handling_cost?.currency) }}</td>
+                        <td>{{ money(row.components.warehouse_cost?.amount, row.components.warehouse_cost?.currency) }}</td>
+                        <td>{{ money(row.components.last_mile_cost?.amount, row.components.last_mile_cost?.currency) }}</td>
+                        <td><strong>{{ money(row.replacement_total, row.currency) }}</strong></td>
+                    </tr></tbody>
+                    <tfoot><tr><th colspan="7">补发损失合计</th><th>{{ money(e.replacement_loss.amount, e.replacement_loss.currency) }}</th></tr></tfoot>
+                </table></div>
+                <div v-else class="replacement-empty" :class="`state-${e.replacement_loss.state}`">{{ e.replacement_loss.replacement_count ? blockerLabel(e.replacement_loss.blocker) : '当前订单没有售后补发履约。' }}</div>
+            </section>
+
             <section class="cost-section">
-                <div class="section-head"><h2>3. 其他订单级成本</h2></div>
+                <div class="section-head"><h2>4. 其他订单级成本</h2></div>
                 <p class="rule-note">订单级成本只在主订单计算一次；不会复制到拆分后的子发货单。</p>
                 <div class="table-wrap"><table><thead><tr><th>成本项</th><th>计算依据</th><th>金额</th><th>状态</th><th>数据来源</th><th>证据 / 来源</th></tr></thead>
                     <tbody><tr v-for="line in e.other_costs" :key="line.cost_type">
@@ -244,7 +286,7 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
 
             <section class="final-panel">
                 <div>
-                    <h2>4. 最终计算</h2>
+                    <h2>5. 最终计算</h2>
                     <p>最终计算公式直接来自系统已确认的成本证据与核算预览；证据不完整时不会确认最终利润。</p>
                     <div class="formula-line">
                         <template v-for="(line, index) in e.formula" :key="line.cost_type">
@@ -286,7 +328,7 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
 .tabs { display:flex; gap:26px; align-items:center; border-bottom:1px solid #dfe6e8; padding:0 12px; color:#607078; font-size:12px; }.tabs>*{padding:11px 2px}.tabs b{color:#1b63d8;border-bottom:2px solid #1b63d8}
 .summary-panel { border:1px solid #cfe3f3; background:#eff7ff; border-radius:8px; padding:13px; }.summary-panel h2,.cost-section h2,.final-panel h2{margin:0;font-size:16px}.summary-grid{display:grid;grid-template-columns:1.1fr auto 1.1fr auto 1.1fr 1fr 1.7fr;gap:10px;align-items:center;margin-top:12px}
 .summary-grid article{min-height:78px;background:#fff;border:1px solid #dce6ea;border-radius:7px;padding:12px;display:grid;gap:4px;align-content:center}.summary-grid article span{font-size:11px;color:#6b7b82}.summary-grid article strong{font-size:19px}.summary-grid article.danger strong{color:#d12e2e}.summary-grid em{font-style:normal;font-weight:800;color:#64757a}.formula-card{border-color:#84b6f6!important}.formula-card strong{font-size:13px!important;color:#235fb3}.formula-card small{color:#60758a}
-.cost-section { border:1px solid #dfe6e8; border-radius:8px; padding:12px; background:#fff; }.section-head{display:flex;justify-content:space-between;gap:18px;align-items:center}.section-head h2 small{font-weight:500;color:#596b72}.rule-note{margin:7px 0 10px;color:#c0392b;font-size:12px}.table-wrap{overflow:auto;border:1px solid #e1e7e9;border-radius:6px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;border-right:1px solid #e5eaec;border-bottom:1px solid #e5eaec;text-align:left;vertical-align:middle}th:last-child,td:last-child{border-right:0}thead th,tfoot th{background:#f4f7f8;font-weight:700;white-space:nowrap}tfoot th{border-bottom:0}td small,td span+small{display:block;color:#849198;margin-top:3px}.item-chip{display:block;white-space:nowrap}.empty{text-align:center;color:#87959a;padding:18px}.state{display:inline-flex;padding:3px 7px;border-radius:999px;font-weight:700;font-size:10px}.state-confirmed{background:#e5f6eb;color:#18734e}.state-estimated,.state-incomplete{background:#fff2cf;color:#956100}.state-missing,.state-blocked{background:#feeceb;color:#b83832}.state-review{background:#f3eafa;color:#7a3ea1}code{font-size:10px;color:#52656d;word-break:break-all}
+.cost-section { border:1px solid #dfe6e8; border-radius:8px; padding:12px; background:#fff; }.replacement-loss-section{border-color:#efd9b8;background:#fffdfa}.replacement-empty{padding:14px;border:1px dashed #d8e0e3;border-radius:6px;color:#718087;background:#fafcfc}.replacement-empty.state-blocked{border-color:#edc7c3;background:#fff5f4;color:#9b3b34}.section-head{display:flex;justify-content:space-between;gap:18px;align-items:center}.section-head h2 small{font-weight:500;color:#596b72}.rule-note{margin:7px 0 10px;color:#c0392b;font-size:12px}.table-wrap{overflow:auto;border:1px solid #e1e7e9;border-radius:6px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;border-right:1px solid #e5eaec;border-bottom:1px solid #e5eaec;text-align:left;vertical-align:middle}th:last-child,td:last-child{border-right:0}thead th,tfoot th{background:#f4f7f8;font-weight:700;white-space:nowrap}tfoot th{border-bottom:0}td small,td span+small{display:block;color:#849198;margin-top:3px}.item-chip{display:block;white-space:nowrap}.empty{text-align:center;color:#87959a;padding:18px}.state{display:inline-flex;padding:3px 7px;border-radius:999px;font-weight:700;font-size:10px}.state-confirmed{background:#e5f6eb;color:#18734e}.state-estimated,.state-incomplete{background:#fff2cf;color:#956100}.state-missing,.state-blocked{background:#feeceb;color:#b83832}.state-review{background:#f3eafa;color:#7a3ea1}code{font-size:10px;color:#52656d;word-break:break-all}
 
 .final-panel{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:14px;border:1px solid #dfe6e8;border-radius:8px;padding:14px;background:#fff}.final-panel>div>p{margin:5px 0 12px;color:#6d7d84;font-size:11px}.formula-line{display:flex;align-items:stretch;gap:7px;overflow:auto}.formula-line article{min-width:108px;border:1px solid #dfe6e8;border-radius:7px;padding:9px;display:grid;gap:3px;background:#fafcfc}.formula-line article strong{font-size:14px}.formula-line article small{font-size:10px;color:#75868d}.formula-line article.incomplete{border-style:dashed;opacity:.65}.formula-line article.total{background:#fff1f1;border-color:#f2c7c7;color:#b42323}.operator{align-self:center;font-weight:800;color:#61747b}.profit-box{border:1px solid #bfe3ce;border-radius:8px;background:#eefaf3;padding:14px;display:grid;gap:7px;align-content:center}.profit-box>span{font-size:12px;color:#567467}.profit-box>strong{font-size:24px;color:#168052}.profit-box p{margin:0;color:#2d6e54}.profit-box b{color:#137248}.profit-box small{color:#8a6500}.profit-box.pending{background:#fff9eb;border-color:#ead7a8}.profit-box.pending>strong{color:#9a6500}.profit-box.estimated{background:#fff8e6;border-color:#f0c040}.profit-box.estimated>strong,.estimated-profit{color:#9a6000}.est-tag{background:#fff2cc;color:#806000;border:1px solid #e8c300;border-radius:4px;font-size:10px;padding:1px 5px;font-style:normal;vertical-align:middle}
 
