@@ -34,6 +34,10 @@ type Summary = {
     confirmed_cost_count: number
     estimated_cost_count: number
     required_cost_count: number
+    p82_estimated_profit_base_ready: boolean
+    p82_required_cost_count: number
+    p82_required_cost_covered_count: number
+    p82_missing_required_costs: string[]
     total_cost: string | null
     contribution_profit: string | null
     margin: string | null
@@ -95,9 +99,13 @@ type Preference = GridPreferenceValue<ColumnKey>
 
 type Kpis = {
     eligible_orders: number
+    revenue_ready_orders: number
+    p82_required_cost_ready_orders: number
+    p82_required_cost_percent: number
     confirmed_profit_orders: number
     incomplete_orders: number
     completeness_percent: number
+    final_profit_percent_of_revenue_ready: number
     fx_pending_orders: number
 }
 
@@ -306,7 +314,7 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
     profit: money(row.summary.current_stage_profit, row),
     final_profit: row.summary.profit_status === 'confirmed' ? money(row.summary.contribution_profit, row) : '待确认',
     margin: margin(row.summary.current_stage_margin),
-    completeness: `${statusLabel(row.summary.finance_status)} · ${row.summary.posted_cost_count}/${row.summary.required_cost_count}`,
+    completeness: `最终 ${statusLabel(row.summary.finance_status)} · ${row.summary.posted_cost_count}/${row.summary.required_cost_count}；预估 ${row.summary.p82_estimated_profit_base_ready ? '可算' : '待补'} · ${row.summary.p82_required_cost_covered_count}/${row.summary.p82_required_cost_count}`,
     missing: missingText(row),
 }[key])
 </script>
@@ -319,7 +327,7 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
                 <div>
                     <p class="mvp-kicker">FINANCE / ORDER PROFIT</p>
                     <h2>订单利润</h2>
-                    <p>只显示有来源的事实；成本缺失不会自动补 0，也不会生成 confirmed profit。</p>
+                    <p>最终利润继续按 10 项成本严格确认；预估利润按 P8.2 的 6 项必需成本单独显示准备度，4 项可选成本缺失不会伪造成 0 写入。</p>
                 </div>
                 <div class="mvp-form-actions page-header-actions">
                     <button class="mvp-button" @click="exportCsv">导出 CSV</button>
@@ -328,9 +336,10 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
 
             <div class="kpi-grid">
                 <div class="kpi-card"><span>运营订单</span><strong>{{ kpis.eligible_orders }}</strong></div>
-                <div class="kpi-card"><span>确认利润</span><strong>{{ kpis.confirmed_profit_orders }}</strong></div>
-                <div class="kpi-card"><span>未确认 / 不完整</span><strong>{{ kpis.incomplete_orders }}</strong></div>
-                <div class="kpi-card"><span>利润完整率</span><strong>{{ kpis.completeness_percent }}%</strong></div>
+                <div class="kpi-card"><span>收入就绪</span><strong>{{ kpis.revenue_ready_orders }}</strong></div>
+                <div class="kpi-card"><span>预估利润基础就绪</span><strong>{{ kpis.p82_required_cost_ready_orders }}</strong><small>{{ kpis.p82_required_cost_percent }}% · 6 项必需成本</small></div>
+                <div class="kpi-card"><span>最终利润已确认</span><strong>{{ kpis.confirmed_profit_orders }}</strong><small>{{ kpis.final_profit_percent_of_revenue_ready }}% · 收入就绪订单</small></div>
+                <div class="kpi-card"><span>最终未确认</span><strong>{{ kpis.incomplete_orders }}</strong></div>
                 <div class="kpi-card"><span>USD 汇总待 FX</span><strong>{{ kpis.fx_pending_orders }}</strong></div>
             </div>
 

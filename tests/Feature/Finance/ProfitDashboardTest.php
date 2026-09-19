@@ -87,6 +87,44 @@ final class ProfitDashboardTest extends TestCase
             ->where('filters.fx_status', 'aggregate_ready'));
     }
 
+    public function test_order_profit_list_separates_strict_final_completeness_from_p82_required_cost_readiness(): void
+    {
+        $user = $this->userWith(['accounting.view', 'analysis.view', 'orders.create']);
+        $order = $this->createOrder($user, '2026-09-19', 'SEMANTICS-P82', [['sku' => 'SEM-P82', 'price' => '100.00']]);
+        $required = array_fill_keys([
+            'product_cost', 'first_mile_cost', 'overseas_handling_cost', 'last_mile_cost', 'payment_fee', 'customs_tax',
+        ], '5.00');
+
+        $this->actingAs($user)->put('/accounting/order-costs/'.$order->id, [
+            'amount_paid' => '100.00',
+            'refund_amount' => '0.00',
+            'currency' => 'USD',
+            ...$required,
+        ])->assertRedirect();
+
+        self::assertSame('INCOMPLETE', $order->financials()->firstOrFail()->fresh()->completeness_status);
+        self::assertFalse($order->costEntries()->where('cost_type', 'warehouse_cost')->exists());
+        self::assertFalse($order->costEntries()->where('cost_type', 'kol_commission')->exists());
+        self::assertFalse($order->costEntries()->where('cost_type', 'refund_replacement_loss')->exists());
+        self::assertFalse($order->costEntries()->where('cost_type', 'other_variable_cost')->exists());
+
+        $this->actingAs($user)->get('/accounting/order-costs?date_from=2026-09-19&date_to=2026-09-19')->assertInertia(fn (Assert $page) => $page
+            ->component('Finance/OrderAnalysis')
+            ->has('orders', 1)
+            ->where('orders.0.external_order_number', 'SEMANTICS-P82')
+            ->where('orders.0.summary.finance_status', 'INCOMPLETE')
+            ->where('orders.0.summary.p82_estimated_profit_base_ready', true)
+            ->where('orders.0.summary.p82_required_cost_count', 6)
+            ->where('orders.0.summary.p82_required_cost_covered_count', 6)
+            ->where('orders.0.summary.p82_missing_required_costs', [])
+            ->where('kpis.eligible_orders', 1)
+            ->where('kpis.revenue_ready_orders', 1)
+            ->where('kpis.p82_required_cost_ready_orders', 1)
+            ->where('kpis.p82_required_cost_percent', 100)
+            ->where('kpis.confirmed_profit_orders', 0)
+            ->where('kpis.final_profit_percent_of_revenue_ready', 0));
+    }
+
     public function test_confirmed_loss_orders_are_exposed_from_finance_order_profit_only(): void
     {
         $user = $this->userWith(['accounting.view', 'analysis.view', 'orders.create']);
