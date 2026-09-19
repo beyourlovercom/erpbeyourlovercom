@@ -89,21 +89,24 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
    - Many Work Packages still report stale `IN_PROGRESS` / `PR_PENDING` states despite later merged closures.
    - V3 becomes the current authority; Work Package metadata should be reconciled incrementally, not trusted blindly.
 
-2. **Open PR cleanup**
+2. **Open PR cleanup — PASS / ACTIVE SET RECONCILED 2026-09-19**
    - Six superseded Draft PRs were closed during this reconciliation: #276, #247, #226, #145, #81 and #20.
-   - Remaining open parked PRs: #335, #232 and #97.
-   - These three must be explicitly re-evaluated/rebased before any merge.
+   - Parked PRs remain #335, #232 and #97; all require explicit re-evaluation/rebase before merge.
+   - #375 US-SM Warehouse Inbound V1 is a current active Warehouse workstream and is not classified as parked/stale.
 
-3. **Remote branch hygiene**
-   - Remote repository has 338 heads total: `main` + 337 other branches.
-   - Ancestry audit: 247 non-main branches are already fully contained in `main` and are safe cleanup candidates after a name/protection sanity check.
-   - 90 non-main branches are not ancestors of `main` and require review before deletion.
-   - Do not bulk-delete divergent branches blindly.
+3. **Remote branch hygiene — FIRST SAFE PASS COMPLETE 2026-09-19**
+   - Pre-cleanup repository had 338 remote heads.
+   - Latest ancestry audit identified 249 branches fully contained in `main`.
+   - 174 merged branches were deliberately retained because they are still attached to local US-Mac worktrees.
+   - 75 merged branches with no open PR, no protected status, and no local worktree were deleted from the remote.
+   - Post-cleanup: 266 remote heads total = `main` + 265 non-main; 174 merged/worktree branches retained; 91 divergent branches retained for review.
+   - No divergent branch, open-PR branch, protected branch, or active worktree branch was deleted.
 
-4. **CI infrastructure**
-   - Recent Production Stability runs can fail before steps execute (`steps=null`).
-   - Treat these as infrastructure failures, not green and not code-test failures.
-   - Restore a reliable GitHub Actions billing/runner path before relying on CI status as a merge gate.
+4. **CI infrastructure — ACCOUNT-SIDE EXTERNAL BLOCKER CONFIRMED 2026-09-19**
+   - PR #377 Production Stability run 35421269204 ended in about one second with both jobs `steps=[]`, `runner_id=0`, and no runner name/log artifact.
+   - The same account condition was already surfaced by GitHub on PR #335: "The job was not started because recent account payments have failed or your spending limit needs to be increased."
+   - This is not repairable through repository code. The account owner must restore a valid GitHub billing/payment path and/or an Actions budget that allows usage.
+   - Until restored, exact-head local SQLite/MySQL evidence plus an explicit infrastructure exception may be used; CI must never be described as green.
 
 ### P0 — Production data/stability audit
 
@@ -125,10 +128,11 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
 
 ### P1 — business/data coverage
 
-7. **Warehouse provider coverage**
+7. **Warehouse provider coverage — ACTIVE**
    - MorePlus / US-LA is active.
-   - US-NY provider adapter is now implemented.
-   - US-SM, DE and CA still need real bill samples/provider adapters before upload can safely enable.
+   - US-NY provider adapter is implemented.
+   - US-SM inbound/transit modeling is actively implemented in PR #375; this is inbound inventory evidence, not yet a warehouse-bill adapter.
+   - US-SM billing, DE and CA still need real bill samples/provider adapters before cost upload can safely enable.
    - No guessed mapping.
 
 8. **Accounting completeness**
@@ -171,12 +175,12 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
 - #81 — old Dashboard pilot: stale implementation experiment.
 - #20 — old Menu temporary-closure docs: current menu/runtime has evolved; statements are no longer current.
 
-### Remaining open / parked after cleanup
+### Current open PR classification
 
-
-- #335 — Email OS P8C: keep, rebase, revalidate.
-- #232 — Product packaging comparison UI: keep only as UX intent; re-evaluate against current page.
-- #97 — Entity Architecture V2 / Search Standard: parked design reference only.
+- #375 — US-SM Warehouse Inbound V1: ACTIVE Warehouse workstream; do not duplicate.
+- #335 — Email OS P8C: PARKED; rebase and revalidate before activation.
+- #232 — Product packaging comparison UI: PARKED UX intent; re-evaluate against current page.
+- #97 — Entity Architecture V2 / Search Standard: PARKED design reference only.
 
 ## 7. Issue classification
 
@@ -195,10 +199,12 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
 ## 9. Current execution priority
 
 ```text
-P0. GitHub roadmap/open-PR cleanup
+P0. GitHub roadmap/open-PR cleanup ✅ CLOSED
 P0. Logistics timestamp catch-up audit ✅ CLOSED
 P0. Full MySQL Continuous Delta fixture repair ✅ CLOSED
-P1. Warehouse provider coverage: US-SM / DE / CA
+P0. GitHub Actions billing/runner restoration ⚠ ACCOUNT-SIDE OWNER ACTION
+P0. Remote branch hygiene first safe pass ✅ 75 DELETED / 174 WORKTREE-BOUND RETAINED
+P1. Warehouse provider coverage: US-SM active via #375 / DE / CA
 P1. Accounting evidence completeness
 P1. Rebase Email OS P8C if still desired
 P1. Product/Packaging UI cleanup
