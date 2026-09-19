@@ -19,9 +19,9 @@ type Paginated<T> = { data: T[]; current_page: number; last_page: number; per_pa
 type Draft = { warehouse_id: number | ''; carrier: string; service: string; tracking_number: string; shipped_at: string; logistics_note: string }
 type ColumnKey = 'order_number' | 'type' | 'recipient' | 'country' | 'item_count' | 'warehouse'
 
-const props = defineProps<{ orders: Paginated<Order>; warehouses: Warehouse[]; carrierOptions: CarrierOption[]; statusBar?: { key: string; label: string; url: string; count: number }[]; gridPreferenceNamespace?: string; gridPreference?: GridPreferenceValue<ColumnKey> | null; canOperate: boolean }>()
+const props = defineProps<{ orders: Paginated<Order>; warehouses: Warehouse[]; carrierOptions: CarrierOption[]; statusBar?: { key: string; label: string; url: string; count: number }[]; gridPreferenceNamespace?: string; gridPreference?: GridPreferenceValue<ColumnKey> | null; canOperate: boolean; focusOrderId?: number | null }>()
 const drafts = reactive<Record<number, Draft>>({})
-const openOrderId = ref<number | null>(null)
+const openOrderId = ref<number | null>(props.focusOrderId ?? null)
 const copyState = ref<Record<number, 'success' | 'error'>>({})
 const shipValidation = ref<Record<number, string>>({})
 const localWarehouseNames = reactive<Record<number, string>>({})

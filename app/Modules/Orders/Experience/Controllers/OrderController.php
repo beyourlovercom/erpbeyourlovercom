@@ -9,6 +9,7 @@ use App\Modules\Kol\Application\SavedViewService;
 use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
 use App\Modules\Logistics\Application\FulfillmentAllocationAccess;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
+use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderService;
@@ -33,6 +34,7 @@ final class OrderController
         private readonly FulfillmentPlanPreviewService $fulfillmentPlans,
         private readonly FulfillmentAllocationDecisionService $allocationDecisions,
         private readonly FulfillmentAllocationAccess $fulfillmentAllocationAccess,
+        private readonly LogisticsExecutionAccess $logisticsExecutionAccess,
     ) {}
 
     public function index(Request $request): Response
@@ -125,6 +127,7 @@ final class OrderController
             'canMarkOperational' => $request->user()?->can('orders.edit') ?? false,
             'canCreateProcurement' => ($request->user()?->can('procurement.create') ?? false) && $order->operationalMarkers->contains('marker', 'stockout'),
             'canManageProductPackaging' => $request->user()?->can('products.operate') ?? false,
+            'canOperateLogistics' => $this->logisticsExecutionAccess->allows($request->user()),
             'canViewPackagingEvidence' => ($request->user()?->can('inventory.view') ?? false) || ($request->user()?->can('inventory.packaging.review') ?? false),
             'audit' => AuditRecord::query()
                 ->where('entity_type', Order::class)

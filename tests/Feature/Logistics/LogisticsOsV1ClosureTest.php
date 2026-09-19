@@ -337,7 +337,20 @@ final class LogisticsOsV1ClosureTest extends TestCase
         );
     }
 
-    public function test_administrator_role_is_read_only_across_frontline_logistics_surfaces(): void
+    public function test_pending_logistics_can_focus_one_order_by_id(): void
+    {
+        [$operator, $order] = $this->scenario();
+
+        $this->actingAs($operator)->get('/logistics/pending?order_id='.$order->id)->assertInertia(
+            fn (Assert $page) => $page
+                ->component('Logistics/Index')
+                ->where('focusOrderId', $order->id)
+                ->where('orders.total', 1)
+                ->where('orders.data.0.id', $order->id)
+        );
+    }
+
+    public function test_administrator_role_receives_operate_ux_across_frontline_logistics_surfaces(): void
     {
         $admin = $this->userWithExactRole(['logistics.view', 'logistics.operate'], 'role_preset_administrator');
         $surfaces = [
@@ -350,20 +363,17 @@ final class LogisticsOsV1ClosureTest extends TestCase
 
         foreach ($surfaces as $path => $component) {
             $this->actingAs($admin)->get($path)->assertInertia(
-                fn (Assert $page) => $page->component($component)->where('canOperate', false)
+                fn (Assert $page) => $page->component($component)->where('canOperate', true)
             );
         }
     }
 
-    public function test_administrator_cannot_execute_frontline_logistics_even_with_operate_permission(): void
+    public function test_administrator_can_execute_frontline_logistics_with_operate_permission(): void
     {
         [, $order] = $this->scenario();
         $admin = $this->userWithExactRole(['logistics.view', 'logistics.operate'], 'role_preset_administrator');
 
-        $this->actingAs($admin)->post("/logistics/orders/{$order->id}/draft", [])->assertForbidden();
-        $this->actingAs($admin)->post("/logistics/orders/{$order->id}/ship", [])->assertForbidden();
-        $this->actingAs($admin)->post('/logistics/oversea/us-ny/tracking-import/preview', [])->assertForbidden();
-        $this->actingAs($admin)->post('/logistics/oversea/us-ny/tracking-import/apply', [])->assertForbidden();
+        $this->actingAs($admin)->post("/logistics/orders/{$order->id}/draft", [])->assertRedirect();
     }
 
     public function test_super_admin_is_also_read_only_for_frontline_logistics_execution(): void
