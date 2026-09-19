@@ -185,7 +185,25 @@ final class ManualFulfillmentIntegrationTest extends TestCase
             fn (Assert $page) => $page
                 ->where('allocationUi.status', 'submitted')
                 ->where('allocationUi.can_operate', false)
+                ->where('allocationUi.can_reallocate', true)
+                ->where('allocationUi.logistics_started', false)
+                ->where('canOperateLogistics', true)
                 ->where("allocationUi.selected_warehouse_ids.{$item->id}", $warehouse->id)
+        );
+
+        $order->shipment()->update([
+            'shipment_status' => 'shipped',
+            'carrier' => 'USPS',
+            'service' => 'Ground',
+            'tracking_number' => 'REALLOCATION-LOCKED',
+            'shipped_at' => now(),
+        ]);
+
+        $this->actingAs($user)->get('/customers/orders/'.$order->id)->assertInertia(
+            fn (Assert $page) => $page
+                ->where('allocationUi.status', 'submitted')
+                ->where('allocationUi.can_reallocate', false)
+                ->where('allocationUi.logistics_started', true)
         );
     }
 

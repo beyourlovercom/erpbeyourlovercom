@@ -73,6 +73,7 @@ final class OrderProfitExplanationService
             'product' => $this->productSection($candidates->get('product_cost')),
             'shipments' => $shipments,
             'logistics' => $this->logisticsSection($shipments),
+            'replacement_loss' => $this->replacementLossSection($candidates->get('refund_replacement_loss')),
             'other_costs' => array_values(array_filter($costLines, fn (array $line): bool => ! in_array($line['cost_type'], ['product_cost', 'first_mile_cost', 'overseas_handling_cost', 'last_mile_cost'], true))),
             'formula' => $costLines,
         ];
@@ -81,8 +82,12 @@ final class OrderProfitExplanationService
     /** @return array<string,mixed> */
     private function orderHeader(Model $order, array $preview): array
     {
-        $order->loadMissing(['items', 'address', 'financials', 'fulfillmentChildren.shipment']);
-        $shipmentCount = max((int) ($preview['shipment_count'] ?? 0), $order->shipment ? 1 : 0, $order->fulfillmentChildren->filter(fn ($child) => $child->shipment !== null)->count());
+        $order->loadMissing(['items', 'address', 'financials', 'originalFulfillmentChildren.shipment', 'replacementFulfillments.shipment']);
+        $originalShipmentCount = $order->originalFulfillmentChildren->isNotEmpty()
+            ? $order->originalFulfillmentChildren->filter(fn ($child) => $child->shipment !== null)->count()
+            : ($order->shipment ? 1 : 0);
+        $replacementShipmentCount = $order->replacementFulfillments->filter(fn ($child) => $child->shipment !== null)->count();
+        $shipmentCount = max((int) ($preview['shipment_count'] ?? 0), $originalShipmentCount) + $replacementShipmentCount;
         return [
             'id' => (int) $order->getKey(),
             'erp_order_id' => $order->erp_order_id,
@@ -93,6 +98,8 @@ final class OrderProfitExplanationService
             'shipping_country' => $order->address?->country,
             'product_count' => $order->items->count(),
             'shipment_count' => $shipmentCount,
+            'original_shipment_count' => $originalShipmentCount,
+            'replacement_shipment_count' => $replacementShipmentCount,
             'multi_shipment' => $shipmentCount > 1,
             'updated_at' => $order->updated_at?->toIso8601String(),
         ];
@@ -195,6 +202,24 @@ final class OrderProfitExplanationService
         unset($row);
         ksort($rows);
         return array_values($rows);
+    }
+
+    /** @return array<string,mixed> */
+    private function replacementLossSection(?array $candidate): array
+    {
+        if ($candidate === null) {
+            return ['state' => 'none', 'amount' => '0.00', 'currency' => null, 'replacement_count' => 0, 'breakdown' => []];
+        }
+        return [
+            'state' => $this->candidateState($candidate),
+            'amount' => $candidate['amount'] ?? null,
+            'currency' => $candidate['currency'] ?? null,
+            'replacement_count' => (int) ($candidate['replacement_count'] ?? count($candidate['replacement_breakdown'] ?? [])),
+            'breakdown' => $candidate['replacement_breakdown'] ?? [],
+            'aggregation_rule' => $candidate['aggregation_rule'] ?? null,
+            'double_count_guard' => $candidate['double_count_guard'] ?? null,
+            'blocker' => $candidate['blocker'] ?? null,
+        ];
     }
 
     /** @param list<array<string,mixed>> $shipments @return array<string,mixed> */
@@ -316,7 +341,7 @@ final class OrderProfitExplanationService
             'last_mile_cost' => 'Σ actual carrier / international parcel billing per Shipment',
             'payment_fee' => 'Provider Order Total × 3.5%',
             'kol_commission' => 'Σ eligible AffiliateWP Referral commission evidence',
-            'refund_replacement_loss' => 'Confirmed refund / replacement loss evidence',
+            'refund_replacement_loss' => 'Σ incremental replacement fulfillment product + warehouse + first/handling + last-mile cost; original logistics excluded',
             'customs_tax' => (($candidate['rule'] ?? null) === 'no_customs_tax') ? 'Owner rule: Customs / Duty = 0' : 'Confirmed customs / duty evidence',
             default => 'Confirmed other variable cost evidence',
         };

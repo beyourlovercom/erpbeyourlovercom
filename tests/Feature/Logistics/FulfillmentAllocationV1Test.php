@@ -101,23 +101,32 @@ final class FulfillmentAllocationV1Test extends TestCase
         self::assertSame([91001, 91002], $children->map(fn ($child) => $child->items->first()?->woocommerce_line_item_id)->all());
     }
 
-    public function test_manual_v1_rejects_two_overseas_sources_without_factory(): void
+    public function test_manual_multi_source_materializes_a_b_c_from_three_overseas_sources(): void
     {
-        [$user, $order] = $this->scenario(2);
+        [$user, $order] = $this->scenario(3);
         $items = $order->items()->orderBy('id')->get();
 
-        try {
-            app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
-                ['order_item_id' => $items[0]->id, 'source_code' => 'US-LA'],
-                ['order_item_id' => $items[1]->id, 'source_code' => 'US-NY'],
-            ], null, $user);
-            self::fail('Expected V1 overseas-to-overseas split to be rejected.');
-        } catch (HttpException $exception) {
-            self::assertSame(422, $exception->getStatusCode());
-            self::assertSame('V1 拆单只允许一个海外仓 + 中国工厂', $exception->getMessage());
-        }
+        $allocation = app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
+            ['order_item_id' => $items[0]->id, 'source_code' => 'US-LA'],
+            ['order_item_id' => $items[1]->id, 'source_code' => 'US-NY'],
+            ['order_item_id' => $items[2]->id, 'source_code' => 'US-SM'],
+        ], 'ABC multi-warehouse fulfillment', $user);
 
-        $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $order->id]);
+        self::assertSame(3, $allocation->plan_snapshot['shipment_count']);
+        self::assertTrue((bool) $allocation->plan_snapshot['is_split']);
+        self::assertSame(['US-LA', 'US-NY', 'US-SM'], collect($allocation->plan_snapshot['segments'])->pluck('source_code')->all());
+
+        $children = $order->fresh()->originalFulfillmentChildren()->with(['items', 'shipment.warehouse'])->orderBy('fulfillment_suffix')->get();
+        self::assertCount(3, $children);
+        self::assertSame(['A', 'B', 'C'], $children->pluck('fulfillment_suffix')->all());
+        self::assertSame([
+            $order->erp_order_id.'A',
+            $order->erp_order_id.'B',
+            $order->erp_order_id.'C',
+        ], $children->pluck('erp_order_id')->all());
+        self::assertSame(['US-LA', 'US-NY', 'US-SM'], $children->map(fn ($child) => $child->shipment?->warehouse?->code)->all());
+        self::assertSame(['USPS', 'USPS', 'USPS'], $children->map(fn ($child) => $child->shipment?->carrier)->all());
+        self::assertSame(['A', 'B', 'C'], collect($allocation->fresh()->plan_snapshot['derived_orders'])->pluck('suffix')->all());
     }
 
     public function test_manual_v1_requires_every_order_item_and_forbids_duplicate_item_split(): void

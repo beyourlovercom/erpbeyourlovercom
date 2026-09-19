@@ -15,17 +15,17 @@ final class EloquentFulfillmentOriginEvidenceReader implements FulfillmentOrigin
 
         $order = Order::query()->with([
             'items', 'shipment.warehouse',
-            'fulfillmentChildren.items', 'fulfillmentChildren.shipment.warehouse',
+            'originalFulfillmentChildren.items', 'originalFulfillmentChildren.shipment.warehouse',
         ])->find($orderId);
         if ($order === null) return null;
 
         $parent = $order->fulfillment_parent_id ? $order->fulfillmentParent()->with([
             'items', 'shipment.warehouse',
-            'fulfillmentChildren.items', 'fulfillmentChildren.shipment.warehouse',
+            'originalFulfillmentChildren.items', 'originalFulfillmentChildren.shipment.warehouse',
         ])->first() : $order;
         if ($parent === null) return null;
 
-        $owners = $parent->fulfillmentChildren->isNotEmpty() ? $parent->fulfillmentChildren : collect([$parent]);
+        $owners = $parent->originalFulfillmentChildren->isNotEmpty() ? $parent->originalFulfillmentChildren : collect([$parent]);
         $legs = [];
         foreach ($owners->sortBy('id') as $owner) {
             $shipment = $owner->shipment;

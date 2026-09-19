@@ -53,10 +53,10 @@ final class ShipmentCompletionSemantics
         $root = $order->fulfillment_parent_id
             ? $order->fulfillmentParent()->firstOrFail()
             : $order;
-        $root->loadMissing(['shipment.billingEvidence', 'fulfillmentChildren.shipment.billingEvidence']);
+        $root->loadMissing(['shipment.billingEvidence', 'originalFulfillmentChildren.shipment.billingEvidence']);
 
-        if ($root->fulfillmentChildren->isNotEmpty()) {
-            return $this->aggregate($root->fulfillmentChildren->map(fn (Order $child) => $child->shipment));
+        if ($root->originalFulfillmentChildren->isNotEmpty()) {
+            return $this->aggregate($root->originalFulfillmentChildren->map(fn (Order $child) => $child->shipment));
         }
 
         return $this->aggregate([$root->shipment]);

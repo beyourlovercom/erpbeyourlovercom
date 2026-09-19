@@ -74,7 +74,7 @@ const systemOrder = {
   allocation_decision: {
     status: 'system_recommendation' as const, status_label: '系统推荐', reason_code: 'lowest_complete_cost_plan', manual_reasons: [], recommended_plan_key: splitPlan.plan_key,
     recommended_plan: splitPlan, baseline_plan: factoryPlan, estimated_cost: 83, currency: 'CNY', estimated_saving: 23, plans: [splitPlan, factoryPlan], can_use_recommendation: true,
-    policy: { system_is_advisory: true, human_confirmation_required: true, missing_data_falls_back_to_manual: true, same_order_item_quantity_split_allowed: false, max_sources: 2, split_pattern: 'one_overseas_plus_factory' },
+    policy: { system_is_advisory: true, human_confirmation_required: true, missing_data_falls_back_to_manual: true, same_order_item_quantity_split_allowed: false, max_sources: 6, split_pattern: 'multi_warehouse_or_factory' },
   },
   fulfillment_allocation: null,
 }
@@ -170,6 +170,43 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     expect(optionTexts).toContain('中国工厂')
     expect(optionTexts).toContain('美西MorePlus')
     expect(optionTexts.join(' ')).not.toContain('007')
+  })
+
+  it('previews A/B/C grouping for three independent warehouse sources', async () => {
+    const itemC = {
+      ...itemB,
+      id: 104,
+      product_id: 14,
+      sku: 'ABC-C',
+      source_sku: 'ABC-C',
+      product_summary: 'Product C',
+    }
+    const abcOrder = {
+      ...manualOrder,
+      id: 14,
+      erp_order_id: '007-0911-ABC01',
+      item_count: 3,
+      items: [itemA, itemB, itemC],
+    }
+    const wrapper = mountPage({ ...props, orders: { ...props.orders, data: [abcOrder], total: 1 }, pendingTotal: 1 })
+    await wrapper.findAll('button').find(button => button.text() === '查看方案')!.trigger('click')
+    await flushPromises()
+
+    const rows = Array.from(document.body.querySelectorAll('.primary-allocation tbody tr')) as HTMLTableRowElement[]
+    expect(rows).toHaveLength(3)
+    for (const [index, source] of ['US-LA', 'US-NY', 'US-SM'].entries()) {
+      const select = rows[index].querySelectorAll('select')[0] as HTMLSelectElement
+      select.value = source
+      select.dispatchEvent(new Event('change', { bubbles: true }))
+      await flushPromises()
+    }
+
+    expect(document.body.textContent).toContain('当前将生成 3 个履约订单')
+    expect(document.body.textContent).toContain('007-0911-ABC01A')
+    expect(document.body.textContent).toContain('007-0911-ABC01B')
+    expect(document.body.textContent).toContain('007-0911-ABC01C')
+    expect(document.body.textContent).toContain('最多 6 个履约来源')
+    expect(document.body.textContent).not.toContain('一个海外仓 + 中国工厂')
   })
 
   it('opens data-insufficient order directly in human judgment mode with explicit reasons', async () => {

@@ -11,13 +11,15 @@ use Illuminate\Support\Collection;
 
 final class FulfillmentDerivedOrderService
 {
+    private const MAX_SEGMENTS = 26;
+
     public function __construct(private readonly ShipmentService $shipments) {}
 
     /** @param array<string,mixed> $plan @return list<array<string,mixed>> */
     public function materialize(Order $parent, array $plan, Authenticatable $actor): array
     {
         $segments = collect($plan['segments'] ?? [])->values();
-        abort_if($segments->isEmpty() || $segments->count() > 2, 422, '履约方案必须包含 1–2 个发货段');
+        abort_if($segments->isEmpty() || $segments->count() > self::MAX_SEGMENTS, 422, '履约方案必须包含 1–26 个发货段');
 
         if ($segments->count() === 1) {
             $segment = $segments->first();
@@ -34,17 +36,30 @@ final class FulfillmentDerivedOrderService
 
         $children = collect();
         foreach ($segments as $index => $segment) {
-            $suffix = chr(ord('A') + $index);
+            $suffix = $this->suffixForIndex($index);
             $children->push($this->upsertChild($parent, $suffix, $segment, $actor));
         }
 
         $keepSuffixes = $children->pluck('fulfillment_suffix')->all();
-        $parent->fulfillmentChildren()->whereNotIn('fulfillment_suffix', $keepSuffixes)->get()->each(fn (Order $child) => $this->deletePendingChild($child));
+        $parent->originalFulfillmentChildren()->whereNotIn('fulfillment_suffix', $keepSuffixes)->get()->each(fn (Order $child) => $this->deletePendingChild($child));
 
         return $children->map(function (Order $child) use ($segments): array {
-            $index = ord((string) $child->fulfillment_suffix) - ord('A');
+            $index = $this->indexForSuffix((string) $child->fulfillment_suffix);
             return $this->summary($child->fresh(['items', 'shipment.warehouse']), $segments->get($index) ?? [], true);
         })->values()->all();
+    }
+
+    private function suffixForIndex(int $index): string
+    {
+        abort_if($index < 0 || $index >= self::MAX_SEGMENTS, 422, '履约段序号超出范围');
+        return chr(ord('A') + $index);
+    }
+
+    private function indexForSuffix(string $suffix): int
+    {
+        $suffix = strtoupper(trim($suffix));
+        abort_unless(strlen($suffix) === 1 && $suffix >= 'A' && $suffix <= 'Z', 422, '履约后缀无效');
+        return ord($suffix) - ord('A');
     }
 
     private function upsertChild(Order $parent, string $suffix, array $segment, Authenticatable $actor): Order
@@ -52,6 +67,7 @@ final class FulfillmentDerivedOrderService
         $child = Order::query()->firstOrNew([
             'fulfillment_parent_id' => $parent->getKey(),
             'fulfillment_suffix' => $suffix,
+            'fulfillment_role' => 'original',
         ]);
         if ($child->exists) $this->assertChildMayBeRebuilt($child);
 
@@ -137,7 +153,7 @@ final class FulfillmentDerivedOrderService
 
     private function clearPendingChildren(Order $parent): void
     {
-        $parent->fulfillmentChildren()->get()->each(fn (Order $child) => $this->deletePendingChild($child));
+        $parent->originalFulfillmentChildren()->get()->each(fn (Order $child) => $this->deletePendingChild($child));
     }
 
     private function deletePendingChild(Order $child): void

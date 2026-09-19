@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Orders\Application\OrderKindBackfill;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -239,6 +240,76 @@ final class OrderFulfillmentM1Test extends TestCase
         $this->assertSame('kol_fulfillment', DB::table('orders')->where('id', $kolId)->value('order_kind'));
         $this->assertNull(DB::table('orders')->where('id', $manualId)->value('order_kind'), 'ambiguous manual_other legacy rows must not be guessed');
         $this->assertContains($manualId, $result['unclassified']);
+    }
+
+    public function test_customer_order_detail_projects_split_fulfillments_and_parent_aggregate_status(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+        $this->actingAs($user)->post('/customers/orders', $this->payload('SPLIT-PROJECTION-001'))->assertRedirect();
+        $root = Order::query()->with(['items', 'address'])->firstOrFail();
+        $sourceItem = $root->items->firstOrFail();
+
+        $west = Warehouse::query()->create(['slug' => 'uat-west', 'code' => 'UAT-WEST', 'name' => '美西 MorePlus 仓', 'country_code' => 'US']);
+        $factory = Warehouse::query()->create(['slug' => 'uat-factory', 'code' => 'UAT-FACTORY', 'name' => '国内工厂', 'country_code' => 'CN']);
+
+        $makeChild = function (string $suffix, Warehouse $warehouse, string $shipmentStatus, ?string $tracking, string $carrier) use ($root, $sourceItem): Order {
+            $child = Order::query()->create([
+                'customer_id' => $root->customer_id,
+                'fulfillment_parent_id' => $root->id,
+                'fulfillment_suffix' => $suffix,
+                'internal_order_number' => 'FULF-'.$root->id.'-'.$suffix,
+                'erp_order_id' => $root->erp_order_id.$suffix,
+                'source_type' => 'manual_other',
+                'order_kind' => 'fulfillment_derived',
+                'external_order_number' => null,
+                'order_date' => $root->order_date,
+                'order_note' => $root->order_note,
+                'owner_id' => $root->owner_id,
+                'order_status' => 'pending_shipment',
+                'currency' => $root->currency,
+            ]);
+            $child->items()->create([
+                'product_id' => $sourceItem->product_id,
+                'product_summary' => $sourceItem->product_summary,
+                'sku' => $sourceItem->sku.'-'.$suffix,
+                'source_sku' => $sourceItem->sku,
+                'resolved_fulfillment_sku' => $sourceItem->sku.'-'.$suffix,
+                'quantity' => 1,
+                'unit_price' => $sourceItem->unit_price,
+                'line_revenue' => $sourceItem->line_revenue,
+            ]);
+            $child->shipment()->create([
+                'warehouse_id' => $warehouse->id,
+                'shipment_status' => $shipmentStatus,
+                'carrier' => $carrier,
+                'service' => 'standard',
+                'tracking_number' => $tracking,
+                'shipped_at' => $tracking ? now() : null,
+            ]);
+
+            return $child;
+        };
+
+        $makeChild('A', $west, 'shipped', 'TRACK-A', 'USPS');
+        $makeChild('B', $factory, 'pending', null, '4PX');
+
+        $this->actingAs($user)->get('/customers/orders/'.$root->id)->assertInertia(
+            fn ($page) => $page
+                ->component('Orders/Show')
+                ->where('order.fulfillment.is_split', true)
+                ->where('order.fulfillment.aggregate_status', 'partially_shipped')
+                ->where('order.fulfillment.aggregate_status_label', '部分发货')
+                ->where('order.fulfillment.segment_count', 2)
+                ->where('order.fulfillment.fulfilled_count', 1)
+                ->where('order.fulfillment.segments.0.suffix', 'A')
+                ->where('order.fulfillment.segments.0.shipment.warehouse_name', '美西 MorePlus 仓')
+                ->where('order.fulfillment.segments.0.shipment.tracking_number', 'TRACK-A')
+                ->where('order.fulfillment.segments.1.suffix', 'B')
+                ->where('order.fulfillment.segments.1.shipment.warehouse_name', '国内工厂')
+                ->where('order.fulfillment.segments.1.shipment.status_label', '待发货')
+                ->where('allocationUi.status', 'submitted')
+                ->where('allocationUi.can_operate', false)
+        );
     }
 
     private function payload(string $externalOrderNumber, string $orderKind = 'customer'): array

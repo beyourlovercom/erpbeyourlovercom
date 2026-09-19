@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 final class FulfillmentAllocationSubmissionService
 {
     private const ALLOWED_SOURCE_CODES = ['FACTORY', 'US-NY', 'US-LA', 'US-SM', 'DE', 'CA'];
+    private const MAX_SEGMENTS = 26;
 
     public function __construct(
         private readonly WarehouseRecommendationService $recommendations,
@@ -102,14 +103,11 @@ final class FulfillmentAllocationSubmissionService
             })->values();
 
             $sources = $resolvedAssignments->pluck('source_code')->unique()->values();
-            abort_if($sources->count() > 2, 422, 'V1 最多允许两个履约来源');
+            abort_if($sources->count() > self::MAX_SEGMENTS, 422, '单订单最多允许 26 个履约来源');
             $carrierConflict = $resolvedAssignments->groupBy('source_code')->contains(
                 fn ($rows): bool => $rows->map(fn (array $row): string => $row['carrier'].'|'.($row['service'] ?? ''))->unique()->count() > 1
             );
             abort_if($carrierConflict, 422, '同一发货仓在同一履约组内必须使用同一承运商');
-            if ($sources->count() === 2) {
-                abort_unless($sources->contains('FACTORY'), 422, 'V1 拆单只允许一个海外仓 + 中国工厂');
-            }
 
             $warehouseByCode = Warehouse::query()->where('is_active', true)->whereIn('code', self::ALLOWED_SOURCE_CODES)->get()->keyBy('code');
             foreach ($sources as $sourceCode) {

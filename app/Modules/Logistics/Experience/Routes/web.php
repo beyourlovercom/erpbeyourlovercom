@@ -42,6 +42,8 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/orders/{order}/fulfillment-allocation/recommended', [LogisticsController::class, 'submitRecommendedAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.recommended');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/manual', [LogisticsController::class, 'submitManualAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.manual');
     Route::post('/logistics/orders/{order}/fulfillment-allocation/quick', [LogisticsController::class, 'submitQuickAllocation'])->middleware($allocation)->name('logistics.fulfillment-allocation.quick');
+    Route::post('/logistics/orders/{order}/reallocate-pending-fulfillment', [LogisticsController::class, 'reallocatePendingFulfillment'])->middleware($allocation)->name('logistics.fulfillment.reallocate-pending');
+    Route::post('/logistics/orders/{order}/replacement-fulfillments', [LogisticsController::class, 'createReplacementFulfillment'])->middleware($execution)->name('logistics.replacement-fulfillments.store');
     Route::get('/logistics/orders/{order}/payload', [LogisticsController::class, 'payload'])->middleware('can:logistics.view')->name('logistics.payload');
     Route::post('/logistics/orders/{order}/ship', [LogisticsController::class, 'markShipped'])->middleware($execution)->name('logistics.ship');
     Route::post('/logistics/orders/{order}/reopen', [LogisticsController::class, 'reopen'])->middleware($execution)->name('logistics.reopen');

@@ -65,6 +65,52 @@ const baseOrder = {
 
 const kolOrder = { ...baseOrder, order_kind: 'kol_fulfillment', order_kind_label: '网红履约订单' }
 
+const splitOrder = {
+  ...baseOrder,
+  shipment: null,
+  fulfillment: {
+    is_split: true,
+    aggregate_status: 'partially_shipped',
+    aggregate_status_label: '部分发货',
+    segment_count: 2,
+    original_segment_count: 2,
+    replacement_count: 0,
+    fulfilled_count: 1,
+    has_exception: false,
+    original_logistics_started: true,
+    segments: [
+      {
+        order_id: 11,
+        erp_order_id: '007-0908-c1A',
+        suffix: 'A',
+        role: 'original' as const,
+        role_label: '原始履约',
+        reason: null,
+        reason_label: null,
+        origin_fulfillment_id: null,
+        origin_erp_order_id: null,
+        can_reallocate: false,
+        items: [{ id: 101, sku: 'GIFT-RED', product_summary: 'Gift Red', quantity: 1 }],
+        shipment: { shipment_status: 'shipped', status_label: '运输中', warehouse_id: 1, warehouse_name: '美西 MorePlus 仓', carrier: 'USPS', service: 'Ground', tracking_number: 'TRACK-A', shipped_at: '2026-09-18T01:00:00Z' },
+      },
+      {
+        order_id: 12,
+        erp_order_id: '007-0908-c1B',
+        suffix: 'B',
+        role: 'original' as const,
+        role_label: '原始履约',
+        reason: null,
+        reason_label: null,
+        origin_fulfillment_id: null,
+        origin_erp_order_id: null,
+        can_reallocate: true,
+        items: [{ id: 102, sku: 'SKU-B', product_summary: 'Product B', quantity: 2 }],
+        shipment: { shipment_status: 'pending', status_label: '待发货', warehouse_id: 2, warehouse_name: '国内工厂', carrier: '4PX', service: '普通', tracking_number: null, shipped_at: null },
+      },
+    ],
+  },
+}
+
 const audit = [
   { action: 'created', actor_id: 1, created_at: '2026-08-25T10:00:00Z' },
 ]
@@ -114,6 +160,94 @@ describe('Orders/Show V2', () => {
     expect(wrapper.text()).toContain('收件与地址')
     expect(wrapper.text()).toContain('订单商品')
     expect(wrapper.text()).toContain('内部备注')
+  })
+
+  it('offers direct fulfillment execution on a pending single order', async () => {
+    const wrapper = mount(Show, { props: {
+      order: baseOrder,
+      audit,
+      canOperateLogistics: true,
+      warehouses: [{ id: 1, slug: 'us-la', name: '美西 MorePlus 仓', code: 'US-LA', country_code: 'US' }],
+      carrierOptions: [{ value: 'USPS', label: 'USPS' }],
+    } })
+    const button = wrapper.findAll('button').find(btn => btn.text().includes('填写物流 / 确认发货'))
+    expect(button).toBeTruthy()
+    await button!.trigger('click')
+    expect(wrapper.text()).toContain('填写物流并发货')
+    expect(wrapper.find('.ord-shipment-form').exists()).toBe(true)
+    expect(wrapper.text()).toContain('实际发货请在上方“履约状态”中填写仓库')
+  })
+
+  it('offers fulfillment execution per pending split segment without changing shipped siblings', async () => {
+    const wrapper = mount(Show, { props: {
+      order: splitOrder,
+      audit,
+      canOperateLogistics: true,
+      warehouses: [
+        { id: 1, slug: 'us-la', name: '美西 MorePlus 仓', code: 'US-LA', country_code: 'US' },
+        { id: 2, slug: 'factory', name: '国内工厂', code: 'FACTORY', country_code: 'CN' },
+      ],
+      carrierOptions: [{ value: '4PX', label: '4PX' }, { value: 'USPS', label: 'USPS' }],
+    } })
+    const shipButtons = wrapper.findAll('button').filter(btn => btn.text().includes('填写物流 / 发货'))
+    expect(shipButtons).toHaveLength(1)
+    expect(wrapper.findAll('button').some(btn => btn.text().includes('重开发货'))).toBe(true)
+    await shipButtons[0].trigger('click')
+    expect(wrapper.text()).toContain('B · 007-0908-c1B')
+    const carrier = wrapper.find('.ord-shipment-form select:nth-of-type(2)')
+    expect(wrapper.find('.ord-shipment-form').exists()).toBe(true)
+    expect(wrapper.html()).toContain('4PX')
+  })
+
+  it('allows only the pending sibling to adjust warehouse after another segment has shipped', async () => {
+    const allocationUi = {
+      status: 'submitted' as const,
+      can_operate: false,
+      can_reallocate: false,
+      can_partial_reallocate: true,
+      logistics_started: true,
+      requires_full_flow: false,
+      selectable_warehouse_ids: [1, 2, 3],
+      recommended_warehouse_ids: {},
+      selected_warehouse_ids: {},
+      recommended_plan_key: null,
+      can_use_recommendation: false,
+      full_allocation_url: '/logistics/wait-stock',
+    }
+    const wrapper = mount(Show, { props: {
+      order: splitOrder,
+      audit,
+      allocationUi,
+      warehouses: [
+        { id: 1, slug: 'us-la', name: '美西 MorePlus 仓', code: 'US-LA', country_code: 'US' },
+        { id: 2, slug: 'factory', name: '国内工厂', code: 'FACTORY', country_code: 'CN' },
+        { id: 3, slug: 'us-ny', name: '美东纽约仓', code: 'US-NY', country_code: 'US' },
+      ],
+    } })
+    const adjustButtons = wrapper.findAll('button').filter(btn => btn.text().includes('调整分仓'))
+    expect(adjustButtons).toHaveLength(1)
+    await adjustButtons[0].trigger('click')
+    expect(wrapper.text()).toContain('调整 B 分仓')
+    expect(wrapper.text()).toContain('已经发货的 A/B/C 不会被改动')
+    expect(wrapper.text()).toContain('美东纽约仓')
+    expect(wrapper.find('[role="dialog"][aria-label="调整未发货履约分仓"]').exists()).toBe(true)
+  })
+
+  it('renders split fulfillment aggregation from child shipments instead of the empty parent shipment', () => {
+    const wrapper = mount(Show, { props: { order: splitOrder, audit } })
+    expect(wrapper.text()).toContain('已拆分 · 2 个履约单')
+    expect(wrapper.text()).toContain('部分发货')
+    expect(wrapper.text()).toContain('1/2 已进入物流')
+    expect(wrapper.text()).toContain('007-0908-c1A')
+    expect(wrapper.text()).toContain('美西 MorePlus 仓')
+    expect(wrapper.text()).toContain('USPS')
+    expect(wrapper.text()).toContain('TRACK-A')
+    expect(wrapper.text()).toContain('007-0908-c1B')
+    expect(wrapper.text()).toContain('国内工厂')
+    expect(wrapper.text()).toContain('待发货')
+    expect(wrapper.find('.ord-fulfillment-table').exists()).toBe(true)
+    expect(wrapper.find('.ord-inventory-card').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('库存分布')
   })
 
   it('does not introduce a delete action', () => {
@@ -255,7 +389,7 @@ describe('Orders/Show V2', () => {
   it('renders explicit operational markers without replacing order status', async () => {
     const marked = { ...baseOrder, operational_markers: ['exception'] }
     const wrapper = mount(Show, { props: { order: marked, audit, canMarkOperational: true } })
-    expect(wrapper.text()).toContain('业务标记')
+    expect(wrapper.text()).toContain('辅助标记')
     expect(wrapper.text()).toContain('✓ 异常')
     expect(wrapper.text()).toContain('待发货')
   })
@@ -389,7 +523,7 @@ describe('Orders/Show V2', () => {
     }, expect.any(Object))
   })
 
-  it('renders submitted allocation as read-only selected warehouse', () => {
+  it('closes inventory allocation UI once warehouse allocation is committed', () => {
     const inventoryAvailability = {
       5: [{ warehouse_id: 2, warehouse_slug: 'us-ny', warehouse_name: '美东纽约仓', inventory_state: 'confirmed', can_auto_allocate: true, quantity_on_hand: 4, quantity_reserved: 0, quantity_available: 4 }],
     }
@@ -399,7 +533,8 @@ describe('Orders/Show V2', () => {
       recommended_plan_key: null, can_use_recommendation: false, full_allocation_url: '/logistics/wait-stock',
     }
     const wrapper = mount(Show, { props: { order: baseOrder, audit, inventoryAvailability, allocationUi } })
-    expect(wrapper.text()).toContain('✓ 已选仓库')
+    expect(wrapper.find('.ord-inventory-card').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('库存分布')
     expect(wrapper.find('input[type="radio"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('确认分仓')
   })
