@@ -1,15 +1,19 @@
 ---
 type: program-roadmap-hours
 project: BYL ERP
-version: 1.0
-updated: 2026-08-28
+version: 1.1
+updated: 2026-09-19
 ---
 
 # Program Roadmap and Hours
 
-## V2 current-status overlay — 2026-09-05
+## V3 current-status overlay — 2026-09-19
 
-This overlay supersedes older mutable `CURRENT_*` markers below while preserving them as historical planning records. Canonical current status is `27_ERP_ROADMAP_PRODUCTION_RECONCILIATION_V2.md`. Strategic line: **Production Consolidation → Fulfillment Intelligence**. KOL V1 and Purchase OS V1 are closed; Purchase is now live in the current bounded Production release; Product final cross-phase closure/promotion, Inventory/Packaging production closure, Logistics V1 and MVP2 Reservation are the next active-ready lanes.
+This overlay supersedes older mutable `CURRENT_*` markers and the 2026-09-05 V2 overlay below while preserving them as historical planning records. Canonical current status is `28_ERP_ROADMAP_PRODUCTION_RECONCILIATION_V3.md`.
+
+Current strategic line: **GitHub / Production Truth Reconciliation → Production Stability + Historical Catch-up Audit → Warehouse real-bill coverage → Inventory/Fulfillment automation hardening → Accounting completeness**.
+
+KOL V1, Product OS core, Purchase OS V1, Customer OS core, Logistics OS V1, Accounting P8 and Accounting P9 are closed at their frozen scopes. Current work must not reopen those foundations without a bounded regression.
 
 
 This document is the repository source of truth for the complete Program Roadmap, estimate classifications, known and unknown remaining hours, actual-hours evidence and no-double-counting rules.
