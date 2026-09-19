@@ -89,6 +89,7 @@ const splitOrder = {
         reason_label: null,
         origin_fulfillment_id: null,
         origin_erp_order_id: null,
+        can_reallocate: false,
         items: [{ id: 101, sku: 'GIFT-RED', product_summary: 'Gift Red', quantity: 1 }],
         shipment: { shipment_status: 'shipped', status_label: '运输中', warehouse_id: 1, warehouse_name: '美西 MorePlus 仓', carrier: 'USPS', service: 'Ground', tracking_number: 'TRACK-A', shipped_at: '2026-09-18T01:00:00Z' },
       },
@@ -102,6 +103,7 @@ const splitOrder = {
         reason_label: null,
         origin_fulfillment_id: null,
         origin_erp_order_id: null,
+        can_reallocate: true,
         items: [{ id: 102, sku: 'SKU-B', product_summary: 'Product B', quantity: 2 }],
         shipment: { shipment_status: 'pending', status_label: '待发货', warehouse_id: 2, warehouse_name: '国内工厂', carrier: '4PX', service: '普通', tracking_number: null, shipped_at: null },
       },
@@ -195,6 +197,40 @@ describe('Orders/Show V2', () => {
     const carrier = wrapper.find('.ord-shipment-form select:nth-of-type(2)')
     expect(wrapper.find('.ord-shipment-form').exists()).toBe(true)
     expect(wrapper.html()).toContain('4PX')
+  })
+
+  it('allows only the pending sibling to adjust warehouse after another segment has shipped', async () => {
+    const allocationUi = {
+      status: 'submitted' as const,
+      can_operate: false,
+      can_reallocate: false,
+      can_partial_reallocate: true,
+      logistics_started: true,
+      requires_full_flow: false,
+      selectable_warehouse_ids: [1, 2, 3],
+      recommended_warehouse_ids: {},
+      selected_warehouse_ids: {},
+      recommended_plan_key: null,
+      can_use_recommendation: false,
+      full_allocation_url: '/logistics/wait-stock',
+    }
+    const wrapper = mount(Show, { props: {
+      order: splitOrder,
+      audit,
+      allocationUi,
+      warehouses: [
+        { id: 1, slug: 'us-la', name: '美西 MorePlus 仓', code: 'US-LA', country_code: 'US' },
+        { id: 2, slug: 'factory', name: '国内工厂', code: 'FACTORY', country_code: 'CN' },
+        { id: 3, slug: 'us-ny', name: '美东纽约仓', code: 'US-NY', country_code: 'US' },
+      ],
+    } })
+    const adjustButtons = wrapper.findAll('button').filter(btn => btn.text().includes('调整分仓'))
+    expect(adjustButtons).toHaveLength(1)
+    await adjustButtons[0].trigger('click')
+    expect(wrapper.text()).toContain('调整 B 分仓')
+    expect(wrapper.text()).toContain('已经发货的 A/B/C 不会被改动')
+    expect(wrapper.text()).toContain('美东纽约仓')
+    expect(wrapper.find('[role="dialog"][aria-label="调整未发货履约分仓"]').exists()).toBe(true)
   })
 
   it('renders split fulfillment aggregation from child shipments instead of the empty parent shipment', () => {

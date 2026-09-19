@@ -19,7 +19,7 @@ import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; inventory_state: string; can_auto_allocate: boolean; quantity_on_hand: number | null; quantity_reserved: number | null; quantity_available: number | null }
 type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null; can_auto_allocate?: boolean }
 type CarrierOption = { value: string; label: string }
-type AllocationUi = { status: 'pending' | 'submitted' | 'locked'; can_operate: boolean; can_reallocate?: boolean; logistics_started?: boolean; requires_full_flow: boolean; selectable_warehouse_ids: number[]; recommended_warehouse_ids: Record<number, number | null>; selected_warehouse_ids: Record<number, number | null>; recommended_plan_key: string | null; can_use_recommendation: boolean; full_allocation_url: string }
+type AllocationUi = { status: 'pending' | 'submitted' | 'locked'; can_operate: boolean; can_reallocate?: boolean; can_partial_reallocate?: boolean; logistics_started?: boolean; requires_full_flow: boolean; selectable_warehouse_ids: number[]; recommended_warehouse_ids: Record<number, number | null>; selected_warehouse_ids: Record<number, number | null>; recommended_plan_key: string | null; can_use_recommendation: boolean; full_allocation_url: string }
 
 type OrderItem = {
   id: number
@@ -40,6 +40,7 @@ type FulfillmentSegment = {
   reason_label: string | null
   origin_fulfillment_id: number | null
   origin_erp_order_id: string | null
+  can_reallocate?: boolean
   items: { id: number; sku: string | null; product_summary: string | null; quantity: number }[]
   shipment: {
     shipment_status: string
@@ -269,6 +270,38 @@ const submitAllocation = () => {
 }
 
 
+const partialReallocationOpen = ref(false)
+const partialReallocationSegment = ref<FulfillmentSegment | null>(null)
+const partialReallocationWarehouseId = ref<number | null>(null)
+const partialReallocationNote = ref('')
+const partialReallocationSaving = ref(false)
+const partialReallocationWarehouses = computed(() => (props.warehouses ?? []).filter(warehouse => props.allocationUi?.selectable_warehouse_ids?.includes(warehouse.id)))
+const openPartialReallocation = (segment: FulfillmentSegment) => {
+  partialReallocationSegment.value = segment
+  partialReallocationWarehouseId.value = segment.shipment.warehouse_id
+  partialReallocationNote.value = ''
+  partialReallocationOpen.value = true
+}
+const closePartialReallocation = () => {
+  if (partialReallocationSaving.value) return
+  partialReallocationOpen.value = false
+  partialReallocationSegment.value = null
+}
+const submitPartialReallocation = () => {
+  const segment = partialReallocationSegment.value
+  const warehouseId = partialReallocationWarehouseId.value
+  if (!segment || !warehouseId || warehouseId === segment.shipment.warehouse_id || partialReallocationSaving.value) return
+  partialReallocationSaving.value = true
+  router.post(`/logistics/orders/${segment.order_id}/reallocate-pending-fulfillment`, {
+    warehouse_id: warehouseId,
+    note: partialReallocationNote.value || null,
+  }, {
+    preserveScroll: true,
+    onSuccess: () => { partialReallocationOpen.value = false; partialReallocationSegment.value = null },
+    onFinish: () => { partialReallocationSaving.value = false },
+  })
+}
+
 type ShipmentEditorDraft = {
   warehouse_id: number | null
   carrier: string
@@ -484,9 +517,12 @@ const submitReplacement = () => {
                     </td>
                     <td><span class="ord-tracking-number">{{ segment.shipment.tracking_number ?? '—' }}</span></td>
                     <td>
-                      <button v-if="segment.shipment.shipment_status === 'pending'" type="button" class="erp-btn erp-btn-secondary ord-ship-action" @click="openShipmentEditor(segment)">{{ canOperateLogistics ? '填写物流 / 发货' : '查看履约' }}</button>
-                      <button v-else-if="canOperateLogistics" type="button" class="erp-btn erp-btn-secondary ord-ship-action" @click="router.post(`/logistics/orders/${segment.order_id}/reopen`, { logistics_note: '订单详情重开发货' }, { preserveScroll: true })">重开发货</button>
-                      <span v-else>—</span>
+                      <div class="ord-fulfillment-row-actions">
+                        <button v-if="allocationUi?.can_partial_reallocate && segment.can_reallocate" type="button" class="erp-btn erp-btn-secondary ord-ship-action" @click="openPartialReallocation(segment)">调整分仓</button>
+                        <button v-if="segment.shipment.shipment_status === 'pending'" type="button" class="erp-btn erp-btn-secondary ord-ship-action" @click="openShipmentEditor(segment)">{{ canOperateLogistics ? '填写物流 / 发货' : '查看履约' }}</button>
+                        <button v-else-if="canOperateLogistics" type="button" class="erp-btn erp-btn-secondary ord-ship-action" @click="router.post(`/logistics/orders/${segment.order_id}/reopen`, { logistics_note: '订单详情重开发货' }, { preserveScroll: true })">重开发货</button>
+                        <span v-else>—</span>
+                      </div>
                     </td>
                   </tr>
                 </tbody>
@@ -826,6 +862,33 @@ const submitReplacement = () => {
         </div>
 
       </div>
+    </div>
+
+    <div v-if="partialReallocationOpen" class="ord-replacement-backdrop" @click.self="closePartialReallocation">
+      <section class="ord-replacement-modal ord-partial-reallocation-modal" role="dialog" aria-modal="true" aria-label="调整未发货履约分仓">
+        <header class="ord-replacement-header">
+          <div><small>PARTIAL REALLOCATION</small><h2>调整 {{ partialReallocationSegment?.suffix }} 分仓</h2><p>只调整尚未进入物流的履约；已经发货的 A/B/C 不会被改动。</p></div>
+          <button type="button" class="ord-replacement-close" @click="closePartialReallocation">×</button>
+        </header>
+        <div class="ord-partial-reallocation-current">
+          <span>当前履约</span><strong>{{ partialReallocationSegment?.erp_order_id }}</strong>
+          <span>当前仓库</span><strong>{{ partialReallocationSegment?.shipment.warehouse_name ?? '未选择' }}</strong>
+        </div>
+        <label class="ord-partial-reallocation-field">新仓库
+          <select v-model="partialReallocationWarehouseId" class="erp-select">
+            <option :value="null">请选择新仓库</option>
+            <option v-for="warehouse in partialReallocationWarehouses" :key="warehouse.id" :value="warehouse.id" :disabled="warehouse.id === partialReallocationSegment?.shipment.warehouse_id">{{ warehouse.name }} · {{ warehouse.code }}{{ warehouse.id === partialReallocationSegment?.shipment.warehouse_id ? '（当前）' : '' }}</option>
+          </select>
+        </label>
+        <label class="ord-partial-reallocation-field">调整原因
+          <textarea v-model="partialReallocationNote" rows="3" class="erp-textarea" placeholder="例如：B 尚未发货，改由美东纽约仓履约"></textarea>
+        </label>
+        <div class="ord-partial-reallocation-warning">已进入真实物流的兄弟履约会继续保持锁定；本次只更新 {{ partialReallocationSegment?.suffix }} 的仓库与自动路由。</div>
+        <footer class="ord-replacement-actions">
+          <button type="button" class="erp-btn erp-btn-secondary" :disabled="partialReallocationSaving" @click="closePartialReallocation">取消</button>
+          <button type="button" class="erp-btn erp-btn-primary" :disabled="partialReallocationSaving || !partialReallocationWarehouseId || partialReallocationWarehouseId === partialReallocationSegment?.shipment.warehouse_id" @click="submitPartialReallocation">{{ partialReallocationSaving ? '调整中…' : '确认调整分仓' }}</button>
+        </footer>
+      </section>
     </div>
 
     <div v-if="shipmentEditorOpen" class="ord-replacement-backdrop" @click.self="closeShipmentEditor">
@@ -1215,6 +1278,12 @@ const submitReplacement = () => {
 .ord-shipment-error { margin: 12px 0 0; color: #b44949; font-size: 12px; font-weight: 700; }
 .ord-shipment-readonly { margin: 12px 0 0; padding: 9px 11px; border-radius: 9px; background: #f5f7f8; color: #66777e; font-size: 12px; }
 .ord-ship-action { white-space: nowrap; }
+.ord-fulfillment-row-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ord-partial-reallocation-current { display: grid; grid-template-columns: 90px 1fr; gap: 6px 12px; margin-top: 16px; padding: 12px; border-radius: 10px; background: #f7faf9; }
+.ord-partial-reallocation-current span { color: #7a8c86; font-size: 11px; }
+.ord-partial-reallocation-current strong { color: #273f3a; font-size: 12px; }
+.ord-partial-reallocation-field { display: grid; gap: 6px; margin-top: 14px; color: #52656d; font-size: 11px; font-weight: 700; }
+.ord-partial-reallocation-warning { margin-top: 14px; padding: 10px 12px; border-radius: 10px; background: #fff7e8; color: #8a6200; font-size: 11px; }
 
 @media (max-width: 767px) {
   .erp-form-header-actions {

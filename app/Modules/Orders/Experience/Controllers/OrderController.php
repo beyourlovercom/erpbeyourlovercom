@@ -230,11 +230,16 @@ final class OrderController
             && ! $logisticsStarted
             && $allocationAllowed
             && ! $requiresFullFlow;
+        $canPartialReallocate = $allocationCommitted
+            && $originalChildren->count() > 1
+            && $logisticsStarted
+            && $allocationAllowed;
 
         return [
             'status' => $allocationCommitted ? 'submitted' : ($order->order_status?->value === 'pending_shipment' ? 'pending' : 'locked'),
             'can_operate' => $order->order_status?->value === 'pending_shipment' && ! $allocationCommitted && $allocationAllowed,
             'can_reallocate' => $canReallocate,
+            'can_partial_reallocate' => $canPartialReallocate,
             'logistics_started' => $logisticsStarted,
             'requires_full_flow' => $requiresFullFlow,
             'selectable_warehouse_ids' => $selectableWarehouseIds,
@@ -358,6 +363,7 @@ final class OrderController
         $isSplit = $originalChildren->isNotEmpty();
         $originalSegments = $isSplit ? $originalChildren : collect([$order]);
         $allSegments = $originalSegments->concat($replacements)->values();
+        $startedOriginalIds = $originalSegments->filter(fn (Order $segment): bool => $this->segmentLogisticsStarted($segment))->pluck('id')->all();
         $aggregate = $this->shipmentCompletion->aggregateForOrder($order);
         $fulfilledCount = $originalSegments->filter(
             fn (Order $segment): bool => $segment->shipment !== null && $this->shipmentCompletion->isFulfillmentComplete($segment->shipment)
@@ -386,6 +392,10 @@ final class OrderController
                 'reason_label' => $this->replacementReasonLabel($segment->fulfillment_reason),
                 'origin_fulfillment_id' => $segment->fulfillment_origin_id,
                 'origin_erp_order_id' => $segment->fulfillmentOrigin?->erp_order_id,
+                'can_reallocate' => $isSplit
+                    && (string) ($segment->fulfillment_role ?? '') !== 'replacement'
+                    && ! $this->segmentLogisticsStarted($segment)
+                    && collect($startedOriginalIds)->contains(fn ($id): bool => (int) $id !== (int) $segment->getKey()),
                 'items' => $segment->items->map(fn ($item): array => [
                     'id' => (int) $item->id,
                     'sku' => $item->resolved_fulfillment_sku ?: $item->sku,
@@ -420,11 +430,14 @@ final class OrderController
             ->filter(fn (Order $child): bool => (string) ($child->fulfillment_role ?? '') !== 'replacement')->values();
         $segments = $originalChildren->isNotEmpty() ? $originalChildren : collect([$order]);
 
-        return $segments->contains(function (Order $segment): bool {
-            $shipment = $segment->shipment;
-            if (! $shipment) return false;
-            return $shipment->shipment_status !== 'pending' || filled($shipment->tracking_number) || $shipment->shipped_at !== null;
-        });
+        return $segments->contains(fn (Order $segment): bool => $this->segmentLogisticsStarted($segment));
+    }
+
+    private function segmentLogisticsStarted(Order $segment): bool
+    {
+        $shipment = $segment->shipment;
+        if (! $shipment) return false;
+        return $shipment->shipment_status !== 'pending' || filled($shipment->tracking_number) || $shipment->shipped_at !== null;
     }
 
     private function replacementReasonLabel(?string $reason): ?string

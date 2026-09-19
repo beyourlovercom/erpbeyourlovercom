@@ -14,6 +14,7 @@ use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\UsFulfillmentZoneResolver;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Logistics\Application\ReplacementFulfillmentService;
+use App\Modules\Logistics\Application\PendingFulfillmentReallocationService;
 use App\Modules\Logistics\Application\WarehouseRecommendationService;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
@@ -40,6 +41,7 @@ final class LogisticsController
     public function __construct(
         private readonly ShipmentService $shipments,
         private readonly ReplacementFulfillmentService $replacementFulfillments,
+        private readonly PendingFulfillmentReallocationService $pendingReallocation,
         private readonly AutomaticAllocationEligibilityService $automaticAllocationEligibility,
         private readonly AssistedFulfillmentService $assistedFulfillment,
         private readonly WarehouseRecommendationService $recommendations,
@@ -352,6 +354,32 @@ final class LogisticsController
         $this->shipments->reopen($order, $request->user(), $data['logistics_note'] ?? null);
 
         return back()->with('success', '发货已重开，可修正后重新发货');
+    }
+
+    public function reallocatePendingFulfillment(Request $request, Order $order): \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
+    {
+        $data = $request->validate([
+            'warehouse_id' => ['required', 'integer', Rule::exists('warehouses', 'id')->where('is_active', true)],
+            'note' => ['nullable', 'string', 'max:1000'],
+        ]);
+        $updated = $this->pendingReallocation->reallocate(
+            $order,
+            (int) $data['warehouse_id'],
+            $request->user(),
+            $data['note'] ?? null,
+        );
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'status' => 'reallocated',
+                'order_id' => (int) $updated->getKey(),
+                'suffix' => $updated->fulfillment_suffix,
+                'warehouse_id' => $updated->shipment?->warehouse_id,
+                'warehouse_name' => $updated->shipment?->warehouse?->name,
+            ]);
+        }
+
+        return back()->with('success', '履约 '.$updated->fulfillment_suffix.' 已调整分仓');
     }
 
     public function createReplacementFulfillment(Request $request, Order $order): \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
