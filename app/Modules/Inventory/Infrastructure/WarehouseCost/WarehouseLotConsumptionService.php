@@ -84,7 +84,9 @@ final class WarehouseLotConsumptionService implements WarehouseLotConsumptionCap
 
         foreach ($order->items as $item) {
             $quantity = (int) $item->quantity;
-            if ($quantity <= 0) continue;
+            if ($quantity <= 0) {
+                continue;
+            }
 
             $productId = $this->effectiveProductId($item);
             if ($productId === null) {
@@ -93,6 +95,7 @@ final class WarehouseLotConsumptionService implements WarehouseLotConsumptionCap
                     'order_item_id' => (int) $item->id,
                     'resolved_fulfillment_sku' => $item->resolved_fulfillment_sku,
                 ];
+
                 continue;
             }
 
@@ -113,37 +116,46 @@ final class WarehouseLotConsumptionService implements WarehouseLotConsumptionCap
                     'product_id' => $productId,
                     'required_quantity' => $quantity,
                 ];
+
                 continue;
             }
 
             $remaining = $quantity;
             foreach ($lots as $lot) {
-                if ($remaining <= 0) break;
-                if ($lot->sync_batch_id === null) {
-                    $blockers[] = [
-                        'reason' => 'fifo_lot_sync_batch_missing',
-                        'order_item_id' => (int) $item->id,
-                        'lot_id' => (int) $lot->id,
-                    ];
-                    continue;
+                if ($remaining <= 0) {
+                    break;
                 }
 
+                $sourceSyncBatchId = $lot->sync_batch_id !== null ? (int) $lot->sync_batch_id : null;
+                $sourceInventoryLotId = (int) $lot->id;
                 $lotKey = $this->lotBusinessKey(
                     (int) $lot->warehouse_id,
                     (int) $lot->product_id,
                     (string) $lot->stock_status,
                     $lot->putaway_date->toDateString(),
+                    $sourceSyncBatchId === null ? $sourceInventoryLotId : null,
                 );
 
-                $alreadyConsumed = (int) WarehouseInventoryLotConsumption::query()
-                    ->where('source_sync_batch_id', $lot->sync_batch_id)
-                    ->where('lot_business_key', $lotKey)
-                    ->sum('quantity');
-                $reservationKey = ((int) $lot->sync_batch_id).'|'.$lotKey;
+                $consumed = WarehouseInventoryLotConsumption::query()
+                    ->where('lot_business_key', $lotKey);
+                if ($sourceSyncBatchId !== null) {
+                    // Preserve the existing sync-lot identity so historical P9 rows
+                    // remain part of the available-quantity calculation.
+                    $consumed->where('source_sync_batch_id', $sourceSyncBatchId);
+                    $reservationKey = 'sync:'.$sourceSyncBatchId.'|'.$lotKey;
+                } else {
+                    $consumed
+                        ->whereNull('source_sync_batch_id')
+                        ->where('source_inventory_lot_id', $sourceInventoryLotId);
+                    $reservationKey = 'lot:'.$sourceInventoryLotId.'|'.$lotKey;
+                }
+                $alreadyConsumed = (int) $consumed->sum('quantity');
                 $planned = (int) ($reservedInPlan[$reservationKey] ?? 0);
 
                 $available = max((int) $lot->quantity - $alreadyConsumed - $planned, 0);
-                if ($available === 0) continue;
+                if ($available === 0) {
+                    continue;
+                }
 
                 $take = min($remaining, $available);
                 $dueMonths = $this->agingPolicy->billableMonths($lot->putaway_date, $consumedAt);
@@ -169,17 +181,27 @@ final class WarehouseLotConsumptionService implements WarehouseLotConsumptionCap
                             'due_months' => $dueMonths,
                             'present_indexes' => $indexes,
                         ];
+
                         continue;
                     }
                     $unitCost = $this->sumDecimal($accruals->pluck('unit_rate_cny')->all());
                 }
 
                 $amount = bcmul((string) $take, $unitCost, 2);
-                $sourceReference = implode(':', [
+                $sourceReferenceParts = [
                     'p9-fifo-consumption', 'v1', 'shipment', (int) $shipment->getKey(),
-                    'item', (int) $item->id, 'batch', (int) $lot->sync_batch_id,
-                    'lot', substr($lotKey, 0, 20),
-                ]);
+                    'item', (int) $item->id,
+                ];
+                if ($sourceSyncBatchId !== null) {
+                    $sourceReferenceParts[] = 'batch';
+                    $sourceReferenceParts[] = $sourceSyncBatchId;
+                } else {
+                    $sourceReferenceParts[] = 'source-lot';
+                    $sourceReferenceParts[] = $sourceInventoryLotId;
+                }
+                $sourceReferenceParts[] = 'lot';
+                $sourceReferenceParts[] = substr($lotKey, 0, 20);
+                $sourceReference = implode(':', $sourceReferenceParts);
 
                 $candidates[] = [
                     'shipment_id' => (int) $shipment->getKey(),
@@ -189,7 +211,8 @@ final class WarehouseLotConsumptionService implements WarehouseLotConsumptionCap
                     'product_id' => $productId,
                     'stock_status' => (string) $lot->stock_status,
                     'putaway_date' => $lot->putaway_date->toDateString(),
-                    'source_sync_batch_id' => (int) $lot->sync_batch_id,
+                    'source_sync_batch_id' => $sourceSyncBatchId,
+                    'source_inventory_lot_id' => $sourceInventoryLotId,
                     'quantity' => $take,
                     'aging_months_charged' => $dueMonths,
                     'unit_storage_cost_cny' => $unitCost,
@@ -271,7 +294,9 @@ final class WarehouseLotConsumptionService implements WarehouseLotConsumptionCap
 
             $preview = $this->previewForShipment($locked);
 
-            if (in_array($preview['status'], ['not_applicable', 'noop'], true)) return $preview;
+            if (in_array($preview['status'], ['not_applicable', 'noop'], true)) {
+                return $preview;
+            }
             if ($preview['status'] !== 'ready') {
                 throw new RuntimeException('warehouse_fifo_consumption_blocked:'.json_encode($preview['blocked'], JSON_UNESCAPED_SLASHES));
             }
@@ -313,23 +338,40 @@ final class WarehouseLotConsumptionService implements WarehouseLotConsumptionCap
         $resolvedSku = trim((string) ($item->resolved_fulfillment_sku ?? ''));
         if ($resolvedSku !== '') {
             $resolved = Product::query()->where('sku', $resolvedSku)->first(['id']);
-            if ($resolved !== null) return (int) $resolved->id;
+            if ($resolved !== null) {
+                return (int) $resolved->id;
+            }
+
             return null;
         }
 
         return $item->product_id !== null ? (int) $item->product_id : null;
     }
 
-    private function lotBusinessKey(int $warehouseId, int $productId, string $stockStatus, string $putawayDate): string
-    {
-        return hash('sha256', implode('|', [$warehouseId, $productId, strtolower($stockStatus), $putawayDate]));
+    private function lotBusinessKey(
+        int $warehouseId,
+        int $productId,
+        string $stockStatus,
+        string $putawayDate,
+        ?int $directSourceLotId = null,
+    ): string {
+        $parts = [$warehouseId, $productId, strtolower($stockStatus), $putawayDate];
+        if ($directSourceLotId !== null) {
+            $parts[] = 'direct-lot';
+            $parts[] = $directSourceLotId;
+        }
+
+        return hash('sha256', implode('|', $parts));
     }
 
     /** @param iterable<mixed> $values */
     private function sumDecimal(iterable $values): string
     {
         $total = '0.00';
-        foreach ($values as $value) $total = bcadd($total, (string) $value, 2);
+        foreach ($values as $value) {
+            $total = bcadd($total, (string) $value, 2);
+        }
+
         return $total;
     }
 
