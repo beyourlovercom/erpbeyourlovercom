@@ -95,9 +95,10 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
    - Keep potentially valuable but stale design/UI PRs parked until rebased.
 
 3. **Remote branch hygiene**
-   - Remote repository has 337 branches including main.
-   - Do not bulk-delete blindly.
-   - Produce an ancestry-based cleanup list: branches already fully contained in main are deletion candidates; divergent branches require review.
+   - Remote repository has 338 heads total: `main` + 337 other branches.
+   - Ancestry audit: 247 non-main branches are already fully contained in `main` and are safe cleanup candidates after a name/protection sanity check.
+   - 90 non-main branches are not ancestors of `main` and require review before deletion.
+   - Do not bulk-delete divergent branches blindly.
 
 4. **CI infrastructure**
    - Recent Production Stability runs can fail before steps execute (`steps=null`).
