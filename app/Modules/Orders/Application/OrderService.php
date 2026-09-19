@@ -276,6 +276,21 @@ final class OrderService
             ->when($filters['order_kind'] ?? null, fn ($query, string $kind) => $query->where('order_kind', $kind))
             ->when($filters['warehouse_ownership'] ?? null, fn ($query, string $ownership) => $query->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('ownership_type', $ownership)))
             ->when($filters['search'] ?? null, function ($query, string $search): void {
+                $search = trim($search);
+
+                if (preg_match('/^dbid:(\d+)$/i', $search, $match) === 1) {
+                    $query->whereKey((int) $match[1]);
+                    return;
+                }
+
+                if (ctype_digit($search)) {
+                    $query->where(function ($nested) use ($search): void {
+                        $nested->where('external_order_number', $search)
+                            ->orWhereHas('externalReferences', fn ($references) => $references->where('reference', $search));
+                    });
+                    return;
+                }
+
                 $query->where(function ($nested) use ($search): void {
                     $nested->where('internal_order_number', 'like', "%{$search}%")
                         ->orWhereHas('address', fn ($address) => $address->where('recipient_name', 'like', "%{$search}%"))
