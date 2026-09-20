@@ -152,6 +152,7 @@ final class EloquentInventoryRepository implements InventoryRepository
     public function productInventory(array $filters = [], int $perPage = 100): LengthAwarePaginator
     {
         $warehouseFilter = trim((string) ($filters['warehouse'] ?? ''));
+        $stockStatus = trim((string) ($filters['stock_status'] ?? ''));
         $warehouse = $warehouseFilter !== '' ? $this->findWarehouseBySlug($warehouseFilter) : null;
         $page = WarehouseInventory::query()->with(['warehouse','product'])
             ->when($warehouseFilter !== '', fn ($q) => $warehouse ? $q->where('warehouse_id', $warehouse->getKey()) : $q->whereRaw('1 = 0'))
@@ -161,6 +162,10 @@ final class EloquentInventoryRepository implements InventoryRepository
                 ->orWhere('gtin','like',"%{$search}%")
                 ->orWhereHas('skuAliases', fn ($aliases) => $aliases->where('alias_sku','like',"%{$search}%"))
             ))
+            ->when($stockStatus === 'alert', fn ($q) => $q->whereRaw('(quantity_on_hand - quantity_reserved) <= 9'))
+            ->when($stockStatus === InventoryStockStatus::OUT_OF_STOCK, fn ($q) => $q->whereRaw('(quantity_on_hand - quantity_reserved) <= 1'))
+            ->when($stockStatus === InventoryStockStatus::LOW_STOCK, fn ($q) => $q->whereRaw('(quantity_on_hand - quantity_reserved) BETWEEN 2 AND 9'))
+            ->when($stockStatus === InventoryStockStatus::IN_STOCK, fn ($q) => $q->whereRaw('(quantity_on_hand - quantity_reserved) >= 10'))
             ->orderByDesc('inbound_at')->orderBy('id')->paginate($perPage)->withQueryString();
         $this->attachShippedDemand($page->getCollection());
         return $page;
