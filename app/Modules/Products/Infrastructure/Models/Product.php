@@ -13,6 +13,8 @@ class Product extends Model
         'source_type',
         'product_type',
         'sku',
+        'label_sku',
+        'label_description',
         'gtin',
         'name',
         'unit',

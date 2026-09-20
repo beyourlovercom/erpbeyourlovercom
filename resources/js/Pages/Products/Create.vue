@@ -12,6 +12,8 @@ const breadcrumbs = [
 
 const form = ref({
   sku: '',
+  label_sku: '',
+  label_description: '',
   name: '',
   product_type: 'simple',
   gtin: '',
@@ -86,6 +88,33 @@ const submit = () => {
                   required
                 >
                 <p v-if="errors.sku" class="erp-field-error">{{ errors.sku }}</p>
+              </div>
+
+              <div class="erp-form-field">
+                <label class="erp-form-label" for="create-label-sku">蓝标 SKU</label>
+                <input
+                  id="create-label-sku"
+                  v-model="form.label_sku"
+                  type="text"
+                  class="erp-input"
+                  :class="{ 'has-error': errors.label_sku }"
+                  placeholder="留空则使用 SKU"
+                >
+                <p class="erp-field-help">仅在蓝标编号与产品 SKU 不一致时填写，例如 VC549A → C549A。</p>
+                <p v-if="errors.label_sku" class="erp-field-error">{{ errors.label_sku }}</p>
+              </div>
+
+              <div class="erp-form-field">
+                <label class="erp-form-label" for="create-label-description">蓝标描述</label>
+                <input
+                  id="create-label-description"
+                  v-model="form.label_description"
+                  type="text"
+                  class="erp-input"
+                  :class="{ 'has-error': errors.label_description }"
+                  placeholder="留空则使用产品名称"
+                >
+                <p v-if="errors.label_description" class="erp-field-error">{{ errors.label_description }}</p>
               </div>
 
               <div class="erp-form-field">
