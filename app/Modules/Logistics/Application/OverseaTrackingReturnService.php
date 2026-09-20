@@ -163,6 +163,7 @@ final class OverseaTrackingReturnService
 
             $providerShippedAt = $this->providerShippedAt($row['shipped_at'] ?? null);
             $effectiveShippedAt = $providerShippedAt ?? now()->utc()->toIso8601String();
+            $shippedTimeSource = $providerShippedAt !== null ? 'provider' : 'apply';
 
             if ($shipment && $shipment->shipment_status === 'pending' && filled($shipment->tracking_number) && $shipment->tracking_number !== $tracking) {
                 $messages[] = 'ERP 已有不同 Tracking，禁止覆盖';
@@ -193,6 +194,7 @@ final class OverseaTrackingReturnService
                 'tracking_number' => $tracking,
                 'carrier' => $carrier,
                 'shipped_at' => $effectiveShippedAt,
+                'shipped_time_source' => $shippedTimeSource,
                 'provider_order_reference' => $row['provider_order_reference'] ?? null,
                 'provider_service' => $row['provider_service'] ?? null,
                 'provider_status' => $row['provider_status'] ?? null,
