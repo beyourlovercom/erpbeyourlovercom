@@ -276,7 +276,7 @@ const livePreview = computed(() => {
         posted++
     }
     const stageProfit = netRevenue !== null && !invalidCost ? netRevenue - knownCost : null
-    const stageMargin = stageProfit !== null && netRevenue !== 0 ? stageProfit / netRevenue : null
+    const stageMargin = stageProfit !== null && netRevenue !== null && netRevenue !== 0 ? stageProfit / netRevenue : null
     const finalReady = netRevenue !== null && !invalidCost && posted === costFields.length
     return {
         currency: row.currency, netRevenue, knownCost, stageProfit, stageMargin, posted, required: costFields.length,
