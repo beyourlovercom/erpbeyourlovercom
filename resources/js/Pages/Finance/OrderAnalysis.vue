@@ -40,6 +40,11 @@ type Summary = {
     p82_missing_required_costs: string[]
     canonical_estimated_ready: boolean
     canonical_estimated_total_cost: string | null
+    canonical_estimated_cost_breakdown: {
+        product_cost: string
+        logistics_cost: string
+        other_cost: string
+    }
     canonical_estimated_profit: string | null
     canonical_estimated_margin: string | null
     posted_estimated_cost_count: number
@@ -316,13 +321,13 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
     revenue: money(row.summary.commercial_revenue_before_refund, row),
     refund: money(row.values.refund_amount ?? null, row),
     net_revenue: money(row.summary.net_revenue, row),
-    product_cost: money(row.summary.cost_breakdown.product_cost, row),
-    shipping_cost: money(row.summary.cost_breakdown.logistics_cost, row),
-    other_cost: money(row.summary.cost_breakdown.other_cost, row),
-    total_cost: money(row.summary.known_cost, row),
-    profit: money(row.summary.current_stage_profit, row),
+    product_cost: money(row.summary.canonical_estimated_cost_breakdown.product_cost, row),
+    shipping_cost: money(row.summary.canonical_estimated_cost_breakdown.logistics_cost, row),
+    other_cost: money(row.summary.canonical_estimated_cost_breakdown.other_cost, row),
+    total_cost: money(row.summary.canonical_estimated_total_cost, row),
+    profit: money(row.summary.canonical_estimated_profit, row),
     final_profit: row.summary.profit_status === 'confirmed' ? money(row.summary.contribution_profit, row) : '待确认',
-    margin: margin(row.summary.current_stage_margin),
+    margin: margin(row.summary.canonical_estimated_margin),
     completeness: `预估 ${row.summary.canonical_estimated_ready ? '已计算' : '待收入'} · fallback ${row.summary.fallback_estimated_cost_count}/10；最终 ${statusLabel(row.summary.finance_status)} · ${row.summary.confirmed_cost_count}/${row.summary.required_cost_count}`,
     missing: missingText(row),
 }[key])
