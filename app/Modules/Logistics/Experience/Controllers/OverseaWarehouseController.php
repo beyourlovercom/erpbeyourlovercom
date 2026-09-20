@@ -96,7 +96,7 @@ final class OverseaWarehouseController
     {
         $warehouse = in_array($warehouse, ['us-sm', 'us-sj', 'usa-sj'], true) ? 'us-3sm' : $warehouse;
         abort_unless(array_key_exists($warehouse, OverseaWarehouseReviewService::WAREHOUSE_CODE_BY_KEY), 404);
-        $request->validate(['file' => ['required', 'file', 'mimes:csv,txt', 'max:10240']]);
+        $request->validate(['file' => ['required', 'file', 'extensions:xlsx,csv,txt', 'max:10240']]);
         $preview = $this->trackingReturns->preview($warehouse, $request->file('file'));
         $request->session()->put($this->trackingSessionKey($warehouse), $preview);
 
