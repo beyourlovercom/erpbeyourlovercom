@@ -192,6 +192,16 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         }
     }
 
+    public function test_export_fails_closed_with_422_for_noncanonical_order_reference(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-LA'], 'LEGACY-NONCANONICAL-ID');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+
+        $this->actingAs($user)->get('/logistics/oversea/us-moreplus/export')->assertStatus(422);
+    }
+
     public function test_pending_moreplus_orders_download_real_xlsx_block_rows(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);

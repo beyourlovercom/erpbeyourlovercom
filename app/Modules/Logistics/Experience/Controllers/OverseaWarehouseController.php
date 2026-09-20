@@ -10,11 +10,13 @@ use App\Modules\Logistics\Application\OverseaTrackingReturnService;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use InvalidArgumentException;
 use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
 final class OverseaWarehouseController
@@ -84,7 +86,11 @@ final class OverseaWarehouseController
                 ->where('order_status', '!=', 'cancelled')
                 ->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
         $this->applyView($shipments, 'pending');
-        $file = $this->outboundFiles->export($warehouse, $shipments->latest('id')->get());
+        try {
+            $file = $this->outboundFiles->export($warehouse, $shipments->latest('id')->get());
+        } catch (DomainException|InvalidArgumentException $e) {
+            abort(422, $e->getMessage());
+        }
 
         return response($file['bytes'], 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
