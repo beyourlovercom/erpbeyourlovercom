@@ -175,7 +175,7 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
                 <div class="kpi-item">
                     <span class="kpi-label">成本完整度</span>
                     <strong class="kpi-val">{{ costCompletionPct }}%</strong>
-                    <small>{{ s.confirmed_cost_count ?? 0 }} 已确认 · {{ s.estimated_cost_count ?? 0 }} 估算 · {{ s.missing_required_cost_count ?? 0 }} 缺失</small>
+                    <small>{{ s.confirmed_cost_count ?? 0 }} 已确认 · {{ s.estimated_cost_count ?? 0 }} 估算 · {{ s.fallback_estimated_cost_count ?? 0 }} fallback · {{ s.missing_required_cost_count ?? 0 }} 项待真实证据</small>
                 </div>
                 <div class="kpi-item" :class="{ 'kpi-estimated': isEstimatedProfit }">
                     <span class="kpi-label">数据状态</span>
@@ -207,11 +207,11 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
                 <div class="summary-grid">
                     <article><span>净收入</span><strong>{{ money(e.summary.net_revenue, e.order.currency) }}</strong></article>
                     <em>−</em>
-                    <article class="danger"><span>当前已核算成本</span><strong>{{ money(e.summary.canonical_known_cost, e.order.currency) }}</strong></article>
+                    <article class="danger"><span>{{ isEstimatedProfit ? '预估总成本' : '最终确认成本' }}</span><strong>{{ money(isEstimatedProfit ? e.summary.canonical_estimated_total_cost : e.summary.canonical_known_cost, e.order.currency) }}</strong></article>
                     <em>=</em>
                     <article :class="{ 'estimated-summary-card': isEstimatedProfit }"><span>{{ isEstimatedProfit ? '预估贡献利润' : '贡献利润' }}</span><strong>{{ money(isEstimatedProfit ? e.summary.canonical_estimated_profit : e.summary.canonical_contribution_profit, e.order.currency) }}</strong><small v-if="isEstimatedProfit">含估算成本 · 非最终</small></article>
                     <article :class="{ 'estimated-summary-card': isEstimatedProfit }"><span>{{ isEstimatedProfit ? '预估利润率' : '利润率' }}</span><strong>{{ pct(isEstimatedProfit ? e.summary.canonical_estimated_margin : e.summary.canonical_margin) }}</strong><small v-if="isEstimatedProfit">仅供经营判断</small></article>
-                    <article class="formula-card"><span>计算公式</span><strong>净收入 − 当前已核算成本</strong><small>必要证据缺失时，最终利润不会被标记为已确认。</small></article>
+                    <article class="formula-card"><span>计算公式</span><strong>{{ isEstimatedProfit ? '净收入 − 预估总成本' : '净收入 − 最终确认成本' }}</strong><small>{{ isEstimatedProfit ? '缺失项使用 projection-only fallback；不会写入账本。' : '10/10 成本均已真实确认。' }}</small></article>
                 </div>
             </section>
 
@@ -294,7 +294,7 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
                             <article :class="{ incomplete: line.amount === null, 'estimated-cost-card': line.state === 'estimated' }"><strong>{{ money(line.amount, line.currency) }}</strong><small>{{ costLabel(line.cost_type) }}</small><em v-if="line.state === 'estimated'" class="formula-estimated-tag">估算</em></article>
                         </template>
                         <span class="operator">=</span>
-                        <article class="total"><strong>{{ money(e.summary.canonical_known_cost, e.order.currency) }}</strong><small>当前已核算成本</small></article>
+                        <article class="total"><strong>{{ money(isEstimatedProfit ? e.summary.canonical_estimated_total_cost : e.summary.canonical_known_cost, e.order.currency) }}</strong><small>{{ isEstimatedProfit ? '预估总成本' : '最终确认成本' }}</small></article>
                     </div>
                 </div>
                 <aside class="profit-box" :class="{ pending: !e.summary.canonical_final_ready, estimated: isEstimatedProfit }">
@@ -305,10 +305,10 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
                     <strong v-else-if="isEstimatedProfit" class="estimated-profit">{{ money(e.summary.canonical_estimated_profit, e.order.currency) }}</strong>
                     <strong v-else>—</strong>
                     <p v-if="e.summary.canonical_final_ready">{{ money(e.summary.net_revenue, e.order.currency) }} − {{ money(e.summary.canonical_known_cost, e.order.currency) }}</p>
-                    <p v-else-if="isEstimatedProfit">净收入 − 当前估算成本（含 {{ s.estimated_cost_count }} 项估算）</p>
+                    <p v-else-if="isEstimatedProfit">净收入 − 预估总成本（{{ s.confirmed_cost_count ?? 0 }} 项已确认 + {{ s.estimated_cost_count ?? 0 }} 项估算）</p>
                     <b v-if="e.summary.canonical_final_ready">利润率 = {{ pct(e.summary.canonical_margin) }}</b>
                     <b v-else-if="isEstimatedProfit">预估利润率 = {{ pct(e.summary.canonical_estimated_margin) }}</b>
-                    <small v-if="isEstimatedProfit">含估算成本，非最终数据。真实账单到账后系统自动更新。</small>
+                    <small v-if="isEstimatedProfit">预估置信度：{{ s.projection_confidence ?? 'low' }}。真实成本到账后逐项替换，10/10 确认后自动升级为最终利润。</small>
                     <small v-else-if="!e.summary.canonical_final_ready">必要成本证据不完整，最终利润暂不确认。</small>
                 </aside>
             </section>
