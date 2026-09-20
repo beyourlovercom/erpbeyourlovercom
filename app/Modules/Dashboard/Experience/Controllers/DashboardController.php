@@ -52,6 +52,11 @@ final class DashboardController
             $from = $this->dateQuery($request, 'date_from');
             $to = $this->dateQuery($request, 'date_to');
             if ($from !== null && $to !== null && $from <= $to) {
+                $toDate = CarbonImmutable::parse($to);
+                $fromDate = CarbonImmutable::parse($from);
+                if ($fromDate->diffInDays($toDate) > 365) {
+                    $from = $toDate->subDays(365)->toDateString();
+                }
                 return [$period, $from, $to];
             }
             $period = '7d';
