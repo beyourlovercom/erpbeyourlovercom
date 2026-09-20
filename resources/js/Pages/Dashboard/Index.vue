@@ -109,10 +109,10 @@ const chart = computed(() => {
           <Link class="mvp-button" href="/inventory">进入库存系统</Link>
         </div>
         <div class="dashboard-kpi-grid">
-          <Link class="dashboard-live-card emphasis" href="/inventory"><span>库存预警</span><strong>{{ integer(inventoryRisk.stock_alert_rows) }}</strong><small>没货 + 库存紧张</small></Link>
-          <Link class="dashboard-live-card" href="/inventory"><span>没货</span><strong>{{ integer(inventoryRisk.out_of_stock_rows) }}</strong><small>可用库存 ≤ 1</small></Link>
-          <Link class="dashboard-live-card" href="/inventory"><span>库存紧张</span><strong>{{ integer(inventoryRisk.low_stock_rows) }}</strong><small>可用库存 2–9</small></Link>
-          <Link class="dashboard-live-card" href="/inventory"><span>仓库数据缺口</span><strong>{{ inventoryRisk.warehouse_data_gap_count }}/{{ inventoryRisk.warehouse_total_count }}</strong><small>尚无完整库存基线</small></Link>
+          <Link class="dashboard-live-card emphasis" href="/inventory/products?stock_status=alert"><span>库存预警</span><strong>{{ integer(inventoryRisk.stock_alert_rows) }}</strong><small>没货 + 库存紧张</small></Link>
+          <Link class="dashboard-live-card" href="/inventory/products?stock_status=out_of_stock"><span>没货</span><strong>{{ integer(inventoryRisk.out_of_stock_rows) }}</strong><small>可用库存 ≤ 1</small></Link>
+          <Link class="dashboard-live-card" href="/inventory/products?stock_status=low_stock"><span>库存紧张</span><strong>{{ integer(inventoryRisk.low_stock_rows) }}</strong><small>可用库存 2–9</small></Link>
+          <Link class="dashboard-live-card" href="/inventory/list"><span>仓库数据缺口</span><strong>{{ inventoryRisk.warehouse_data_gap_count }}/{{ inventoryRisk.warehouse_total_count }}</strong><small>尚无完整库存基线</small></Link>
         </div>
         <div class="summary-foot">当前可用库存 <strong>{{ integer(inventoryRisk.quantity_available) }}</strong> 件</div>
       </section>
