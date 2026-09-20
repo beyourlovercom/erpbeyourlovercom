@@ -2,7 +2,7 @@
 
 ## Status
 
-IMPLEMENTATION COMPLETE / PRE-MERGE VALIDATION PASS
+MERGED / PRODUCTION ACTIVE / TECHNICAL UAT PASS / OWNER UAT PENDING
 
 ## Scope
 
@@ -142,13 +142,31 @@ Frontend baseline:
 - no change to canonical entity ownership
 - no ERP Changelog update
 
+## Production activation
+
+PR #395 merged as 7460d816cdd550dacab300a2e4bffc4e5284b1db.
+
+Production release:
+- global-search-v1-pr395-20260920-7460d816
+
+Production-derived staging and post-switch read-only probes:
+- VA617A Product + Inventory groups: PASS
+- ERP Order 007-0909-c40405: PASS
+- Tracking lookup: PASS
+- gift Product lookup: PASS
+- observed query latency: approximately 28–105ms
+
+Authenticated Production desktop technical UAT on the existing CN Mac ERP tab:
+- Header Global Search control rendered
+- Product + Inventory grouping rendered
+- Order result rendered with canonical ERP order identity and tracking
+- overlay closes back to the original Inventory page
+- no horizontal overflow at 1680px viewport
+
+Actions jobs remained account-side infrastructure failures with steps=null; CI-green was not claimed.
+
+No migration or Production business-data write occurred.
+
 ## Next gate
 
-1. commit/push exact implementation head;
-2. open PR;
-3. inspect Actions without claiming green if jobs do not start;
-4. build a Production-derived staging release without switching current;
-5. run real Production read-only search probes for known Product / Order / Tracking / Inventory identities;
-6. merge if exact-head validation remains clean;
-7. deploy code-only only after staging evidence is clean;
-8. Owner UI UAT on desktop and mobile.
+Owner visual UAT only. If accepted, mark Global Search V1 CLOSED / PRODUCTION ACTIVE / OWNER UAT PASS.
