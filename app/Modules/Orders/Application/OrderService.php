@@ -286,7 +286,8 @@ final class OrderService
                 if (ctype_digit($search)) {
                     $query->where(function ($nested) use ($search): void {
                         $nested->where('external_order_number', $search)
-                            ->orWhereHas('externalReferences', fn ($references) => $references->where('reference', $search));
+                            ->orWhereHas('externalReferences', fn ($references) => $references->where('reference', $search))
+                            ->orWhereHas('shipment', fn ($shipment) => $shipment->where('tracking_number', $search));
                     });
                     return;
                 }
@@ -295,7 +296,9 @@ final class OrderService
                     $nested->where('internal_order_number', 'like', "%{$search}%")
                         ->orWhereHas('address', fn ($address) => $address->where('recipient_name', 'like', "%{$search}%"))
                         ->orWhere('external_order_number', 'like', "%{$search}%")
-                        ->orWhere('erp_order_id', 'like', "%{$search}%");
+                        ->orWhere('erp_order_id', 'like', "%{$search}%")
+                        ->orWhereHas('externalReferences', fn ($references) => $references->where('reference', 'like', "%{$search}%"))
+                        ->orWhereHas('shipment', fn ($shipment) => $shipment->where('tracking_number', 'like', "%{$search}%"));
                 });
             })
             ->when($filters['source_type'] ?? null, fn ($query, string $source) => $query->where('source_type', $source))

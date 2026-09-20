@@ -99,3 +99,12 @@ describe('TopBar notification center', () => {
     expect(wrapper.find('.notification-badge').text()).toBe('3')
   })
 })
+
+
+describe('TopBar global search', () => {
+  it('renders global search in the trailing controls', () => {
+    const wrapper = mount(TopBar, { props: { title: '首页', breadcrumbs: ['BYL ERP'], mobileExpanded: false } })
+    expect(wrapper.find('[aria-label="全局搜索"]').exists()).toBe(true)
+    expect(wrapper.find('.shell-topbar-trailing [aria-label="全局搜索"]').exists()).toBe(true)
+  })
+})
