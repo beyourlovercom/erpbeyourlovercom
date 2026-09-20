@@ -3,6 +3,7 @@
 namespace App\Modules\Finance\Experience\Controllers;
 
 use App\Modules\Finance\Application\Contracts\ConfirmedLossReader;
+use App\Modules\Finance\Application\EstimatedProfitProjectionService;
 use App\Modules\Finance\Application\OrderAnalysisService;
 use App\Modules\Finance\Application\OrderProfitExplanationService;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -25,6 +26,7 @@ final class OrderAnalysisController
 
     public function __construct(
         private readonly OrderAnalysisService $analysis,
+        private readonly EstimatedProfitProjectionService $estimatedProfit,
         private readonly OrderProfitExplanationService $explanations,
         private readonly ConfirmedLossReader $confirmedLosses,
         private readonly UserUiPreferenceService $uiPreferences,
@@ -87,11 +89,12 @@ final class OrderAnalysisController
             $handle = fopen('php://output', 'w');
             fputcsv($handle, [
                 'ERP订单号', '来源订单号', '来源', '日期', '国家', '币种', '净商业收入', '总成本',
-                '贡献利润', 'Margin', '利润状态', '最终完整性', 'P8.2预估基础就绪', 'P8.2必需成本覆盖', 'P8.2缺失必需成本', '缺失项', 'USD汇总FX状态',
+                '预估总成本', '预估利润', '预估Margin', '最终贡献利润', '最终Margin', '利润状态', '最终完整性', '预估利润可用', 'P8.2必需成本覆盖', 'P8.2缺失必需成本', '缺失项', 'USD汇总FX状态',
             ]);
             $query->chunkById(200, function ($orders) use ($handle): void {
                 foreach ($orders as $order) {
                     $summary = $this->analysis->summary($order);
+                    $estimated = $this->estimatedProfit->project($order, useCurrentCandidates: false);
                     fputcsv($handle, [
                         $order->erp_order_id,
                         $order->external_order_number,
@@ -100,12 +103,14 @@ final class OrderAnalysisController
                         $order->address?->country,
                         $order->currency,
                         $summary['net_revenue'],
-                        $summary['total_cost'],
+                        $estimated['canonical_estimated_total_cost'],
+                        $estimated['canonical_estimated_profit'],
+                        $estimated['canonical_estimated_margin'],
                         $summary['contribution_profit'],
                         $summary['margin'],
                         $summary['profit_status'],
                         $summary['finance_status'],
-                        $summary['p82_estimated_profit_ready'] ? 'ready' : 'incomplete',
+                        $estimated['canonical_estimated_ready'] ? 'ready' : 'incomplete',
                         $summary['p82_required_cost_covered_count'].'/'.$summary['p82_required_cost_count'],
                         implode('|', $summary['p82_missing_required_costs']),
                         implode('|', $summary['missing_facts']),
@@ -233,6 +238,9 @@ final class OrderAnalysisController
             ->values()
             ->all();
 
+        $summary = $this->analysis->summary($order);
+        $estimated = $this->estimatedProfit->project($order, useCurrentCandidates: false);
+
         return [
             'id' => $order->id,
             'erp_order_id' => $order->erp_order_id,
@@ -247,7 +255,18 @@ final class OrderAnalysisController
             'provider_order_status' => $order->financials?->provider_order_status,
             'provider_reconciliation_status' => $order->financials?->reconciliation_status,
             'paid_at' => $order->financials?->paid_at?->toIso8601String(),
-            'summary' => $this->analysis->summary($order),
+            'summary' => array_merge($summary, [
+                'canonical_estimated_ready' => $estimated['canonical_estimated_ready'],
+                'canonical_estimated_total_cost' => $estimated['canonical_estimated_total_cost'],
+                'canonical_estimated_profit' => $estimated['canonical_estimated_profit'],
+                'canonical_estimated_margin' => $estimated['canonical_estimated_margin'],
+                'estimated_cost_count' => $estimated['estimated_cost_count'],
+                'posted_estimated_cost_count' => $estimated['posted_estimated_cost_count'],
+                'fallback_estimated_cost_count' => $estimated['fallback_estimated_cost_count'],
+                'confirmed_cost_count' => $estimated['confirmed_cost_count'],
+                'missing_required_cost_count' => $estimated['missing_required_cost_count'],
+                'projection_confidence' => $estimated['projection_confidence'],
+            ]),
             'values' => $this->analysis->values($order),
         ];
     }
@@ -277,6 +296,8 @@ final class OrderAnalysisController
         return [
             'eligible_orders' => $eligible,
             'revenue_ready_orders' => $revenueReady,
+            'estimated_profit_orders' => $revenueReady,
+            'estimated_profit_percent' => $revenueReady > 0 ? 100.0 : 0,
             'p82_required_cost_ready_orders' => $p82RequiredReady,
             'p82_required_cost_percent' => $revenueReady > 0 ? round($p82RequiredReady / $revenueReady * 100, 1) : 0,
             'confirmed_profit_orders' => $confirmed,

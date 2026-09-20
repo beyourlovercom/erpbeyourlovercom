@@ -27,27 +27,48 @@ final class OrderProfitExplanationService
         $visibility = $this->analysis->visibility($order);
         $candidates = collect($preview['candidates'])->keyBy('cost_type');
         $posted = collect($visibility['cost_lines'])->keyBy('cost_type');
-        $costLines = collect(self::COST_TYPES)->map(
+        $finalCostLines = collect(self::COST_TYPES)->map(
             fn (string $type): array => $this->costLine($type, $candidates->get($type), $posted->get($type))
         )->values()->all();
+        $estimatedProjection = $this->estimatedProfit->project($order);
+        $projectionLines = collect($estimatedProjection['projection_cost_lines'])->keyBy('cost_type');
+        $costLines = collect($finalCostLines)->map(function (array $line) use ($projectionLines): array {
+            if (($line['state'] ?? null) === 'confirmed' && ($line['amount'] ?? null) !== null) {
+                return $line;
+            }
+            $projected = $projectionLines->get($line['cost_type']);
+            if (! is_array($projected)) {
+                return $line;
+            }
+            return array_merge($line, [
+                'amount' => $projected['amount'] ?? $line['amount'],
+                'currency' => $projected['currency'] ?? $line['currency'],
+                'state' => 'estimated',
+                'provenance' => 'estimated_reference',
+                'status' => 'estimated',
+                'source_reference' => $projected['source_reference'] ?? $line['source_reference'],
+                'blocker' => null,
+                'projection_confidence' => $projected['confidence'] ?? null,
+                'projection_source_kind' => $projected['source_kind'] ?? null,
+            ]);
+        })->values()->all();
 
         $summary = $visibility['summary'];
         $currency = strtoupper((string) ($order->financials?->currency ?? $order->currency ?? 'USD'));
         $known = '0';
-        foreach ($costLines as $line) {
+        foreach ($finalCostLines as $line) {
             if ($line['amount'] !== null && $line['currency'] === $currency) {
                 $known = DecimalMoney::add($known, $line['amount'], 8);
             }
         }
         $known = DecimalMoney::round($known);
         $complete = ($summary['profit_status'] ?? null) === 'confirmed'
-            && collect($costLines)->every(fn (array $line): bool => $line['amount'] !== null && $line['state'] === 'confirmed');
+            && collect($finalCostLines)->every(fn (array $line): bool => $line['amount'] !== null && $line['state'] === 'confirmed');
         $net = $summary['net_revenue'];
         $profit = $net !== null && $complete ? DecimalMoney::round(bcsub($net, $known, 8)) : null;
         $margin = $profit !== null && bccomp($net, '0', 8) !== 0 ? bcdiv($profit, $net, 4) : null;
 
         $shipments = $this->shipmentSection($candidates);
-        $estimatedProjection = $this->estimatedProfit->project($order);
         $maturityData = $this->maturity->forOrder($order);
 
         return [
@@ -58,9 +79,13 @@ final class OrderProfitExplanationService
                 'canonical_contribution_profit' => $profit,
                 'canonical_margin' => $margin,
                 'canonical_estimated_ready' => $estimatedProjection['canonical_estimated_ready'],
+                'canonical_estimated_total_cost' => $estimatedProjection['canonical_estimated_total_cost'],
                 'canonical_estimated_profit' => $estimatedProjection['canonical_estimated_profit'],
                 'canonical_estimated_margin' => $estimatedProjection['canonical_estimated_margin'],
                 'estimated_cost_count' => $estimatedProjection['estimated_cost_count'],
+                'posted_estimated_cost_count' => $estimatedProjection['posted_estimated_cost_count'],
+                'fallback_estimated_cost_count' => $estimatedProjection['fallback_estimated_cost_count'],
+                'projection_confidence' => $estimatedProjection['projection_confidence'],
                 'confirmed_cost_count' => $estimatedProjection['confirmed_cost_count'],
                 'missing_required_cost_count' => $estimatedProjection['missing_required_cost_count'],
                 'cost_completion_percent' => $estimatedProjection['cost_completion_percent'],
@@ -70,7 +95,7 @@ final class OrderProfitExplanationService
                 'reconciliation_due' => $maturityData['reconciliation_due'],
                 'estimate_allowed' => $maturityData['estimate_allowed'],
             ]),
-            'product' => $this->productSection($candidates->get('product_cost')),
+            'product' => $this->productSection($candidates->get('product_cost'), collect($costLines)->firstWhere('cost_type', 'product_cost')),
             'shipments' => $shipments,
             'logistics' => $this->logisticsSection($shipments),
             'replacement_loss' => $this->replacementLossSection($candidates->get('refund_replacement_loss')),
@@ -106,9 +131,20 @@ final class OrderProfitExplanationService
     }
 
     /** @return array<string,mixed> */
-    private function productSection(?array $candidate): array
+    private function productSection(?array $candidate, ?array $projectedLine = null): array
     {
-        if ($candidate === null) return ['state' => 'missing', 'amount' => null, 'currency' => null, 'lines' => []];
+        if ($candidate === null || (($candidate['amount'] ?? null) === null && $projectedLine !== null)) {
+            return [
+                'state' => $projectedLine['state'] ?? 'missing',
+                'amount' => $projectedLine['amount'] ?? null,
+                'currency' => $projectedLine['currency'] ?? null,
+                'provenance' => $projectedLine['provenance'] ?? null,
+                'source_reference' => $projectedLine['source_reference'] ?? null,
+                'source_at' => null,
+                'blocker' => null,
+                'lines' => [],
+            ];
+        }
         return [
             'state' => $this->candidateState($candidate),
             'amount' => $candidate['amount'] ?? null,

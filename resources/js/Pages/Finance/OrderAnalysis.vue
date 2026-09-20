@@ -38,6 +38,13 @@ type Summary = {
     p82_required_cost_count: number
     p82_required_cost_covered_count: number
     p82_missing_required_costs: string[]
+    canonical_estimated_ready: boolean
+    canonical_estimated_total_cost: string | null
+    canonical_estimated_profit: string | null
+    canonical_estimated_margin: string | null
+    posted_estimated_cost_count: number
+    fallback_estimated_cost_count: number
+    projection_confidence: string
     total_cost: string | null
     contribution_profit: string | null
     margin: string | null
@@ -100,6 +107,8 @@ type Preference = GridPreferenceValue<ColumnKey>
 type Kpis = {
     eligible_orders: number
     revenue_ready_orders: number
+    estimated_profit_orders: number
+    estimated_profit_percent: number
     p82_required_cost_ready_orders: number
     p82_required_cost_percent: number
     confirmed_profit_orders: number
@@ -132,10 +141,10 @@ const definitions: GridColumnDefinition<ColumnKey>[] = [
     { key: 'product_cost', label: '产品成本' },
     { key: 'shipping_cost', label: '物流成本' },
     { key: 'other_cost', label: '其他成本' },
-    { key: 'total_cost', label: '已知成本' },
-    { key: 'profit', label: '当前阶段利润' },
+    { key: 'total_cost', label: '预估总成本' },
+    { key: 'profit', label: '预估利润' },
     { key: 'final_profit', label: '最终确认利润' },
-    { key: 'margin', label: '阶段 Margin' },
+    { key: 'margin', label: '预估 Margin' },
     { key: 'completeness', label: '完整性' },
     { key: 'missing', label: '缺失项' },
 ]
@@ -314,7 +323,7 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
     profit: money(row.summary.current_stage_profit, row),
     final_profit: row.summary.profit_status === 'confirmed' ? money(row.summary.contribution_profit, row) : '待确认',
     margin: margin(row.summary.current_stage_margin),
-    completeness: `最终 ${statusLabel(row.summary.finance_status)} · ${row.summary.posted_cost_count}/${row.summary.required_cost_count}；预估 ${row.summary.p82_estimated_profit_base_ready ? '可算' : '待补'} · ${row.summary.p82_required_cost_covered_count}/${row.summary.p82_required_cost_count}`,
+    completeness: `预估 ${row.summary.canonical_estimated_ready ? '已计算' : '待收入'} · fallback ${row.summary.fallback_estimated_cost_count}/10；最终 ${statusLabel(row.summary.finance_status)} · ${row.summary.confirmed_cost_count}/${row.summary.required_cost_count}`,
     missing: missingText(row),
 }[key])
 </script>
@@ -327,7 +336,7 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
                 <div>
                     <p class="mvp-kicker">FINANCE / ORDER PROFIT</p>
                     <h2>订单利润</h2>
-                    <p>最终利润继续按 10 项成本严格确认；预估利润按 P8.2 的 6 项必需成本单独显示准备度，4 项可选成本缺失不会伪造成 0 写入。</p>
+                    <p>收入一旦就绪就先计算预估利润：真实成本优先，缺失项使用只读 fallback 估算且不写入账本；真实证据逐项替换估算，10/10 成本全部确认后自动升级为最终利润。</p>
                 </div>
                 <div class="mvp-form-actions page-header-actions">
                     <button class="mvp-button" @click="exportCsv">导出 CSV</button>
@@ -337,16 +346,16 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
             <div class="kpi-grid">
                 <div class="kpi-card"><span>运营订单</span><strong>{{ kpis.eligible_orders }}</strong></div>
                 <div class="kpi-card"><span>收入就绪</span><strong>{{ kpis.revenue_ready_orders }}</strong></div>
-                <div class="kpi-card"><span>预估利润基础就绪</span><strong>{{ kpis.p82_required_cost_ready_orders }}</strong><small>{{ kpis.p82_required_cost_percent }}% · 6 项必需成本</small></div>
-                <div class="kpi-card"><span>最终利润已确认</span><strong>{{ kpis.confirmed_profit_orders }}</strong><small>{{ kpis.final_profit_percent_of_revenue_ready }}% · 收入就绪订单</small></div>
-                <div class="kpi-card"><span>最终未确认</span><strong>{{ kpis.incomplete_orders }}</strong></div>
+                <div class="kpi-card"><span>已有预估利润</span><strong>{{ kpis.estimated_profit_orders }}</strong><small>{{ kpis.estimated_profit_percent }}% · 收入就绪即计算</small></div>
+                <div class="kpi-card"><span>6 项成本已有直接证据</span><strong>{{ kpis.p82_required_cost_ready_orders }}</strong><small>{{ kpis.p82_required_cost_percent }}% · 其余使用 fallback</small></div>
+                <div class="kpi-card"><span>最终利润已确认</span><strong>{{ kpis.confirmed_profit_orders }}</strong><small>{{ kpis.final_profit_percent_of_revenue_ready }}% · 10/10 实际确认</small></div>
                 <div class="kpi-card"><span>USD 汇总待 FX</span><strong>{{ kpis.fx_pending_orders }}</strong></div>
             </div>
 
             <div class="profit-formula-strip">
                 <div><strong>当前阶段利润</strong><span>= 净收入 − 当前已入账成本</span></div>
                 <div><strong>最终确认利润</strong><span>= 净收入 − 产品成本 − 仓库成本 − 头程成本 − 海外仓操作费 − 尾程物流 − 支付手续费 − KOL佣金 − 关税 − 退款/补发损失 − 其他变动成本</span></div>
-                <p>成本缺失不会自动补 0；列表会先展示当前阶段利润，只有全部必要成本事实齐全时才显示最终确认利润。</p>
+                <p>成本缺失不会阻断利润计算：系统先给 projection-only 预估值；真实成本逐项到账后自动替换，全部确认后显示最终利润。</p>
             </div>
 
             <form class="mvp-toolbar filter-grid" @submit.prevent="submit">

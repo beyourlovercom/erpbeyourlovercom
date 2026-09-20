@@ -101,7 +101,7 @@ final class P82EstimatedActualReconciliationTest extends TestCase
         self::assertSame(0, $projection['missing_required_cost_count']);
     }
 
-    public function test_estimated_profit_is_not_ready_when_required_cost_missing(): void
+    public function test_estimated_profit_remains_available_when_required_cost_evidence_is_missing(): void
     {
         $order = $this->order('USD');
         $this->seedRevenue($order, '100.00', '0.00');
@@ -109,9 +109,90 @@ final class P82EstimatedActualReconciliationTest extends TestCase
 
         $projection = $this->app->make(EstimatedProfitProjectionService::class)->project($order->fresh());
 
-        self::assertFalse($projection['canonical_estimated_ready']);
-        self::assertNull($projection['canonical_estimated_profit']);
+        self::assertTrue($projection['canonical_estimated_ready']);
+        self::assertNotNull($projection['canonical_estimated_profit']);
+        self::assertNotNull($projection['canonical_estimated_total_cost']);
         self::assertGreaterThan(0, $projection['missing_required_cost_count']);
+        self::assertGreaterThan(0, $projection['fallback_estimated_cost_count']);
+        self::assertSame(0, $order->costEntries()->count(), 'projection fallback must never persist cost entries');
+    }
+
+    public function test_missing_product_cost_uses_historical_confirmed_cost_ratio_without_persisting(): void
+    {
+        $history = $this->order('USD');
+        $this->seedRevenue($history, '100.00', '0.00');
+        $history->costEntries()->create([
+            'cost_type' => 'product_cost', 'amount' => '25.00', 'currency' => 'USD',
+            'provenance' => 'confirmed_manual', 'status' => 'confirmed', 'source_reference' => 'fixture:historical-product',
+            'effective_at' => now(),
+        ]);
+
+        $target = $this->order('USD');
+        $this->seedRevenue($target, '80.00', '0.00');
+
+        $projection = $this->app->make(EstimatedProfitProjectionService::class)->project($target->fresh());
+        $product = collect($projection['projection_cost_lines'])->firstWhere('cost_type', 'product_cost');
+
+        self::assertTrue($projection['canonical_estimated_ready']);
+        self::assertSame('fallback_estimated', $product['state']);
+        self::assertSame('20.00', $product['amount']);
+        self::assertSame('projection-historical-cost-ratio:v1:product_cost', $product['source_reference']);
+        self::assertSame(0, $target->costEntries()->count());
+    }
+
+    public function test_mixed_zero_and_positive_first_mile_history_uses_expected_mean_not_zero_median(): void
+    {
+        foreach (['0.00', '10.00'] as $amount) {
+            $history = $this->order('USD');
+            $this->seedRevenue($history, '100.00', '0.00');
+            $history->costEntries()->create([
+                'cost_type' => 'first_mile_cost', 'amount' => $amount, 'currency' => 'USD',
+                'provenance' => 'confirmed_manual', 'status' => 'confirmed', 'source_reference' => 'fixture:first-mile:'.$amount,
+                'effective_at' => now(),
+            ]);
+        }
+
+        $target = $this->order('USD');
+        $this->seedRevenue($target, '80.00', '0.00');
+
+        $projection = $this->app->make(EstimatedProfitProjectionService::class)->project($target->fresh());
+        $firstMile = collect($projection['projection_cost_lines'])->firstWhere('cost_type', 'first_mile_cost');
+
+        self::assertSame('fallback_estimated', $firstMile['state']);
+        self::assertSame('4.00', $firstMile['amount']);
+        self::assertSame('mean', $firstMile['source_detail']['ratio_method']);
+        self::assertSame(0, $target->costEntries()->count());
+    }
+
+    public function test_provider_order_without_payment_does_not_fabricate_estimated_profit(): void
+    {
+        $order = $this->order('USD');
+        $order->financials()->create([
+            'merchandise_list_amount' => '100.00',
+            'discount_amount' => '0.00',
+            'shipping_revenue' => '0.00',
+            'refund_amount' => '0.00',
+            'provider_order_total' => '100.00',
+            'tax_collected' => '0.00',
+            'currency' => 'USD',
+            'revenue_provenance' => 'provider_import',
+            'provider_order_status' => 'failed',
+            'reconciliation_status' => 'matched',
+            'completeness_status' => 'INCOMPLETE',
+        ]);
+
+        $svc = $this->app->make(EstimatedProfitProjectionService::class);
+        $failed = $svc->project($order->fresh());
+        self::assertFalse($failed['canonical_estimated_ready']);
+        self::assertNull($failed['canonical_estimated_profit']);
+
+        $order->financials()->update([
+            'provider_order_status' => 'completed',
+            'paid_at' => now(),
+        ]);
+        $paid = $svc->project($order->fresh());
+        self::assertTrue($paid['canonical_estimated_ready']);
+        self::assertNotNull($paid['canonical_estimated_profit']);
     }
 
     public function test_optional_absent_costs_treated_as_provisional_zero_not_persisted(): void
@@ -296,8 +377,10 @@ final class P82EstimatedActualReconciliationTest extends TestCase
         ]);
 
         $summary = $this->app->make(OrderProfitExplanationService::class)->explain($order->fresh())['summary'];
-        self::assertSame(1, $summary['estimated_cost_count']);
-        self::assertSame(1, $summary['unresolved_estimate_count']);
+        self::assertSame(5, $summary['estimated_cost_count']);
+        self::assertSame(1, $summary['posted_estimated_cost_count']);
+        self::assertSame(4, $summary['fallback_estimated_cost_count']);
+        self::assertSame(5, $summary['unresolved_estimate_count']);
         self::assertTrue($summary['canonical_estimated_ready']);
         self::assertTrue($summary['reconciliation_due']);
     }
