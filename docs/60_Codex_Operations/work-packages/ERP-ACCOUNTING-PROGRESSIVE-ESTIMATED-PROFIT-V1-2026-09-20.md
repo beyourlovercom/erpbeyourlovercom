@@ -2,7 +2,7 @@
 
 ## Status
 
-IMPLEMENTED / REGRESSION PASS / PRODUCTION READ-ONLY PROBE PASS / DEPLOY PENDING
+CLOSED / PRODUCTION ACTIVE / OWNER UAT PASS
 
 ## Owner correction
 
@@ -93,6 +93,14 @@ Control ERP `007-0919-c40802`: Woo status `failed`, `paid_at = null`, estimated 
 - no `completeness_status` promotion;
 - no ERP Changelog write.
 
-## Deployment gate
+## Production closure
 
-Production deployment must overlay the actual current runtime and must not accidentally ship unrelated GitHub-main frontend/runtime changes. After deploy, authenticated Owner UAT must confirm list + detail behavior. Do not record Owner UAT PASS until explicit Owner `pass`.
+- PR #386 merged as `e59531a0d4a4e1a97638bd3b181d51e57078662b`; Progressive Estimated Profit runtime deployed.
+- PR #387 merged as `55bc062db042c138faad9fc8b7bb410cfe75a866`; list mapping hotfix deployed on top of the then-current PR #380 Production runtime.
+- Current Production release: `/Users/a/AI/production/erp.beyourlover.com/releases/accounting-profit-list-pr387-20260920-55bc062d`.
+- Authenticated CN Mac UAT confirmed ERP `007-0919-c40801`: Product USD 15.75 + Logistics USD 11.83 + Other USD 2.77 = Estimated Total USD 30.35 -> Estimated Profit USD 48.65 -> Margin 61.58%; Final Profit remained pending at 2/10 confirmed and 8/10 fallback.
+- Order detail formula matched the list and summed the ten projected/confirmed cost lines to USD 30.35.
+- Unpaid failed control `007-0919-c40802` continued to show no revenue/profit.
+- Desktop global horizontal overflow check: PASS.
+- Owner confirmed the Production result as correct on 2026-09-20. Owner UAT: PASS.
+- No migration, Production Finance write, P7/P8/P9 ledger mutation, or ERP Changelog write.
