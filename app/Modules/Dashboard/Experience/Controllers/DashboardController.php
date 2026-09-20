@@ -39,7 +39,9 @@ final class DashboardController
             'operations' => $visibility['operations'] ? $this->metrics->operations() : null,
             'inventoryRisk' => $visibility['inventory'] ? $this->metrics->inventoryRisk() : null,
             'syncHealth' => $visibility['sync'] ? $this->metrics->syncHealth() : null,
-            'financeSnapshot' => $visibility['finance'] ? $this->metrics->financeSnapshot($dateFrom, $dateTo) : null,
+            'financeSnapshot' => $visibility['finance']
+                ? Inertia::defer(fn (): array => $this->metrics->financeSnapshot($dateFrom, $dateTo), 'dashboard-finance')
+                : null,
             'procurementProgress' => $visibility['procurement'] ? $this->metrics->procurementProgress() : null,
         ]);
     }
