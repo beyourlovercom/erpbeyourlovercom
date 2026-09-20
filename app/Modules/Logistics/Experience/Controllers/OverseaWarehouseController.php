@@ -3,11 +3,11 @@
 namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
-use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
+use App\Modules\Logistics\Application\LogisticsExecutionAccess;
+use App\Modules\Logistics\Application\OverseaFiles\OverseaOutboundFileService;
 use App\Modules\Logistics\Application\OverseaTrackingReturnService;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
-use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\RedirectResponse;
@@ -15,11 +15,12 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
 final class OverseaWarehouseController
 {
     private const PER_PAGE = 25;
+
     private const VIEWS = ['review', 'pending', 'shipped', 'exceptions', 'all'];
 
     public function __construct(
@@ -27,6 +28,7 @@ final class OverseaWarehouseController
         private readonly OverseaTrackingReturnService $trackingReturns,
         private readonly LogisticsExecutionAccess $executionAccess,
         private readonly CarrierServiceCatalog $carrierServices,
+        private readonly OverseaOutboundFileService $outboundFiles,
     ) {}
 
     public function index(Request $request, ?string $warehouse = null): Response
@@ -37,7 +39,9 @@ final class OverseaWarehouseController
         $view = in_array((string) $request->query('view'), self::VIEWS, true) ? (string) $request->query('view') : 'review';
         $warehouseMap = $this->warehouseMap();
         $selectedWarehouse = $warehouseKey === 'all' ? null : ($warehouseMap[$warehouseKey] ?? null);
-        if ($warehouseKey !== 'all') abort_unless($selectedWarehouse, 404, '仓库尚未建立');
+        if ($warehouseKey !== 'all') {
+            abort_unless($selectedWarehouse, 404, '仓库尚未建立');
+        }
 
         $base = Shipment::query()
             ->with(['order.address', 'order.items.product', 'warehouse', 'overseaReview'])
@@ -45,7 +49,9 @@ final class OverseaWarehouseController
             ->whereHas('order', fn ($q) => $q
                 ->where('order_status', '!=', 'cancelled')
                 ->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
-        if ($selectedWarehouse) $base->where('warehouse_id', $selectedWarehouse['id']);
+        if ($selectedWarehouse) {
+            $base->where('warehouse_id', $selectedWarehouse['id']);
+        }
         $this->applyView($base, $view);
 
         $shipments = $base->latest('id')->paginate(self::PER_PAGE)->withQueryString();
@@ -64,7 +70,7 @@ final class OverseaWarehouseController
         ]);
     }
 
-    public function export(Request $request, string $warehouse): StreamedResponse
+    public function export(Request $request, string $warehouse): HttpResponse
     {
         $warehouse = in_array($warehouse, ['us-sm', 'us-sj', 'usa-sj'], true) ? 'us-3sm' : $warehouse;
         $warehouseMap = $this->warehouseMap();
@@ -78,27 +84,12 @@ final class OverseaWarehouseController
                 ->where('order_status', '!=', 'cancelled')
                 ->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
         $this->applyView($shipments, 'pending');
-        $rows = $shipments->latest('id')->get();
-        $filename = sprintf('007-%s-orders-%s.csv', $warehouse, now()->format('ymd'));
+        $file = $this->outboundFiles->export($warehouse, $shipments->latest('id')->get());
 
-        return response()->streamDownload(function () use ($rows): void {
-            $out = fopen('php://output', 'wb');
-            fwrite($out, "\xEF\xBB\xBF");
-            fputcsv($out, ['订单号', '收件人', '电话', '地址', '地址2', '城市', '州/省', '邮编', '国家', 'SKU/数量', '仓库', 'Carrier', 'Tracking No.', '发货时间(ISO8601含时区)', '备注']);
-            foreach ($rows as $shipment) {
-                $order = $shipment->order;
-                $address = $order?->address;
-                $items = $order?->items?->map(fn ($item) => ($item->sku ?: '无SKU').' x '.(int) $item->quantity)->implode(' / ') ?? '';
-                fputcsv($out, [
-                    $order?->erp_order_id, $address?->recipient_name, $address?->phone,
-                    $address?->address_line_1, $address?->address_line_2, $address?->city,
-                    $address?->province_state, $address?->postal_code, $address?->country,
-                    $items, $shipment->warehouse?->name, $shipment->carrier,
-                    $shipment->tracking_number, $shipment->shipped_at?->toIso8601String(), $shipment->overseaReview?->note,
-                ]);
-            }
-            fclose($out);
-        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+        return response($file['bytes'], 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="'.$file['filename'].'"',
+        ]);
     }
 
     public function previewTrackingReturn(Request $request, string $warehouse): RedirectResponse
@@ -140,6 +131,7 @@ final class OverseaWarehouseController
             'tracking_number' => ['sometimes', 'nullable', 'string', 'max:128'],
         ]);
         $this->reviews->updateDraft($order, $data, $request->user());
+
         return back()->with('success', '海外仓审核信息已保存');
     }
 
@@ -147,6 +139,7 @@ final class OverseaWarehouseController
     {
         $data = $request->validate(['note' => ['sometimes', 'nullable', 'string', 'max:1000']]);
         $this->reviews->approve($order, $request->user(), isset($data['note']) ? trim((string) $data['note']) : null);
+
         return back()->with('success', '订单已通过审核，进入待发货');
     }
 
@@ -156,6 +149,7 @@ final class OverseaWarehouseController
         $code = $reopened->shipment?->warehouse?->code;
         $key = array_search($code, OverseaWarehouseReviewService::WAREHOUSE_CODE_BY_KEY, true);
         abort_unless(is_string($key), 422, '该订单不是海外仓订单');
+
         return redirect("/logistics/oversea/{$key}?view=review")->with('success', '订单已重新进入审核，可重新分配仓库');
     }
 
@@ -163,6 +157,7 @@ final class OverseaWarehouseController
     {
         $data = $request->validate(['note' => ['required', 'string', 'max:1000']]);
         $this->reviews->reject($order, trim($data['note']), $request->user());
+
         return back()->with('success', '订单已驳回并退回运营重新分仓');
     }
 
@@ -181,7 +176,10 @@ final class OverseaWarehouseController
         return collect(OverseaWarehouseReviewService::WAREHOUSE_CODE_BY_KEY)
             ->mapWithKeys(function (string $code, string $key) use ($byCode): array {
                 $warehouse = $byCode->get($code);
-                if (! $warehouse) return [];
+                if (! $warehouse) {
+                    return [];
+                }
+
                 return [$key => [
                     'key' => $key,
                     'id' => $warehouse->id,
@@ -222,10 +220,13 @@ final class OverseaWarehouseController
             $query = Shipment::query()->whereIn('warehouse_id', collect($warehouseMap)->pluck('id')->all())
                 ->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled')
                     ->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
-            if ($selectedWarehouse) $query->where('warehouse_id', $selectedWarehouse['id']);
+            if ($selectedWarehouse) {
+                $query->where('warehouse_id', $selectedWarehouse['id']);
+            }
             $this->applyView($query, $view);
             $counts[$view] = $query->count();
         }
+
         return $counts;
     }
 
