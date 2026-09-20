@@ -25,6 +25,14 @@ final class EstimatedProfitProjectionService
         'refund_replacement_loss', 'other_variable_cost',
     ];
 
+    private const LOGISTICS_COST_TYPES = [
+        'warehouse_cost', 'first_mile_cost', 'overseas_handling_cost', 'last_mile_cost',
+    ];
+
+    private const OTHER_COST_TYPES = [
+        'kol_commission', 'payment_fee', 'customs_tax', 'refund_replacement_loss', 'other_variable_cost',
+    ];
+
     private const STRONG_PROVENANCE = ['actual', 'confirmed_manual', 'provider_import', 'allocated_actual'];
 
     public function __construct(
@@ -124,10 +132,17 @@ final class EstimatedProfitProjectionService
         }
 
         $confidence = $this->projectionConfidence($costLines, $fallbackEstimatedCostCount);
+        $projectedByType = collect($costLines)->keyBy('cost_type');
+        $estimatedBreakdown = [
+            'product_cost' => $this->sumProjectedGroup(['product_cost'], $projectedByType),
+            'logistics_cost' => $this->sumProjectedGroup(self::LOGISTICS_COST_TYPES, $projectedByType),
+            'other_cost' => $this->sumProjectedGroup(self::OTHER_COST_TYPES, $projectedByType),
+        ];
 
         return [
             'canonical_estimated_ready' => $estimatedReady,
             'canonical_estimated_total_cost' => number_format($totalCostCents / 100, 2, '.', ''),
+            'canonical_estimated_cost_breakdown' => $estimatedBreakdown,
             'canonical_estimated_profit' => $estimatedProfit,
             'canonical_estimated_margin' => $estimatedMargin,
             'estimated_cost_count' => $estimatedCostCount + $fallbackEstimatedCostCount,
@@ -212,6 +227,20 @@ final class EstimatedProfitProjectionService
             'source_kind' => 'projection_fallback',
             'source_detail' => $fallback['source_detail'],
         ]];
+    }
+
+    /** @param list<string> $types */
+    private function sumProjectedGroup(array $types, Collection $projectedByType): string
+    {
+        $cents = 0;
+        foreach ($types as $type) {
+            $line = $projectedByType->get($type);
+            if (is_array($line)) {
+                $cents += $this->cents($line['amount'] ?? '0.00');
+            }
+        }
+
+        return number_format($cents / 100, 2, '.', '');
     }
 
     /** @param list<array<string,mixed>> $costLines */

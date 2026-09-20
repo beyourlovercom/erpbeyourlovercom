@@ -103,6 +103,7 @@ final class OrderAnalysisController
                         $order->address?->country,
                         $order->currency,
                         $summary['net_revenue'],
+                        $summary['known_cost'],
                         $estimated['canonical_estimated_total_cost'],
                         $estimated['canonical_estimated_profit'],
                         $estimated['canonical_estimated_margin'],
@@ -258,6 +259,7 @@ final class OrderAnalysisController
             'summary' => array_merge($summary, [
                 'canonical_estimated_ready' => $estimated['canonical_estimated_ready'],
                 'canonical_estimated_total_cost' => $estimated['canonical_estimated_total_cost'],
+                'canonical_estimated_cost_breakdown' => $estimated['canonical_estimated_cost_breakdown'],
                 'canonical_estimated_profit' => $estimated['canonical_estimated_profit'],
                 'canonical_estimated_margin' => $estimated['canonical_estimated_margin'],
                 'estimated_cost_count' => $estimated['estimated_cost_count'],
