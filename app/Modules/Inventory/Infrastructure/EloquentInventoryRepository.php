@@ -162,6 +162,7 @@ final class EloquentInventoryRepository implements InventoryRepository
                 ->orWhere('gtin','like',"%{$search}%")
                 ->orWhereHas('skuAliases', fn ($aliases) => $aliases->where('alias_sku','like',"%{$search}%"))
             ))
+            ->when($stockStatus === 'alert', fn ($q) => $q->whereRaw('(quantity_on_hand - quantity_reserved) <= 9'))
             ->when($stockStatus === InventoryStockStatus::OUT_OF_STOCK, fn ($q) => $q->whereRaw('(quantity_on_hand - quantity_reserved) <= 1'))
             ->when($stockStatus === InventoryStockStatus::LOW_STOCK, fn ($q) => $q->whereRaw('(quantity_on_hand - quantity_reserved) BETWEEN 2 AND 9'))
             ->when($stockStatus === InventoryStockStatus::IN_STOCK, fn ($q) => $q->whereRaw('(quantity_on_hand - quantity_reserved) >= 10'))
