@@ -15,6 +15,7 @@ final class UsdAggregateConverterTest extends TestCase
     public function usd_amounts_are_converted_directly_to_cents(): void
     {
         $order = new Order(['currency' => 'USD']);
+        $order->setRelation('financials', null);
         $converter = new UsdAggregateConverter();
 
         self::assertSame(12345, $converter->toUsdCents('123.45', $order));
