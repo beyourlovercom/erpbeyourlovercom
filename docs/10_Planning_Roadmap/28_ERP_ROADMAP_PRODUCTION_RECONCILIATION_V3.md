@@ -162,8 +162,8 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
 
 ### P2 — active / parked
 
-11. **Global Search V1 — ACTIVE 2026-09-20**
-    - Fresh implementation branch: feature/global-search-v1, based on current main.
+11. **Global Search V1 — PRODUCTION ACTIVE / TECHNICAL UAT PASS / OWNER UAT PENDING 2026-09-20**
+    - PR #395 merged as 7460d816cdd550dacab300a2e4bffc4e5284b1db and deployed code-only.
     - V1 is bounded to Product + Order + Inventory Context through one Search Provider contract and one Header overlay.
     - Search is read-only navigation infrastructure; source modules remain authoritative.
     - Product identifiers: SKU, name, GTIN, Woo Product ID and SKU aliases.
@@ -228,7 +228,7 @@ P1. Warehouse provider coverage: US-LA + US-NY active; US-SM / DE / CA real-bill
 P1. Accounting evidence completeness: Progressive Estimated Profit active; confirmed Product Cost expansion ⚠ EXTERNAL COSTBOOK BLOCKED
 P1. Email OS P8C ✅ MERGED / PRODUCTION ACTIVE
 P1. Product/Packaging comparison UI ⏸ PARKED
-P2. Global Search V1 🔄 ACTIVE → Production read-only staging probe / PR
+P2. Global Search V1 ✅ PRODUCTION ACTIVE / TECHNICAL UAT PASS → OWNER UAT PENDING
 P2. Marketing expansion / Dashboard redesign / KOL intelligence
 ```
 
