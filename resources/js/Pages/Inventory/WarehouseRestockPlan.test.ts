@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
+import { router } from '@inertiajs/vue3'
 import WarehouseShow from './WarehouseShow.vue'
 
 vi.mock('@inertiajs/vue3', () => ({
@@ -84,5 +85,57 @@ describe('Warehouse Restock Plan Snapshot', () => {
     expect(wrapper.text()).toContain('独立蓝标 SKU')
     expect(wrapper.text()).toContain('RP-USSM-20260920-000001')
     expect(wrapper.text()).toContain('装箱数据完整')
+    expect(wrapper.text()).toContain('一键生成蓝标')
+
+    const blueLabelButton = wrapper.findAll('button').find((button) => button.text().includes('一键生成蓝标'))
+    expect(blueLabelButton).toBeTruthy()
+    await blueLabelButton!.trigger('click')
+    expect(router.post).toHaveBeenCalledWith(
+      '/inventory/us-3sm/restock-plans/1/blue-label-jobs',
+      {},
+      expect.objectContaining({ preserveScroll: true }),
+    )
+  })
+
+  it('shows the existing queued job instead of another generation button', async () => {
+    const wrapper = mount(WarehouseShow, {
+      props: {
+        warehouse,
+        clearanceProducts: [],
+        clearanceCandidates: [],
+        costCenter: { months: [] },
+        billImportPreview: null,
+        restockProjection,
+        latestRestockPlan,
+        latestRestockLabelJob: {
+          id: 9,
+          reference: 'BLJ-USSM-20260920-ABC1234567',
+          document_kind: 'blue_labels',
+          status: 'queued',
+          status_label: '已排队',
+          status_detail: '等待公司 Windows 执行节点领取',
+          attempt_count: 0,
+          requested_at: '2026-09-20T15:00:00+08:00',
+          started_at: null,
+          completed_at: null,
+          failed_at: null,
+          last_error_message: null,
+          is_terminal: false,
+          artifact_count: 0,
+        },
+        canOperate: true,
+        canManage: false,
+      },
+    })
+
+    const inventoryTab = wrapper.findAll('button').find((button) => button.text().trim().startsWith('库存'))
+    await inventoryTab!.trigger('click')
+    const restockTab = wrapper.findAll('button').find((button) => button.text().trim().startsWith('备货'))
+    await restockTab!.trigger('click')
+
+    expect(wrapper.text()).toContain('蓝标生成 · 已排队')
+    expect(wrapper.text()).toContain('BLJ-USSM-20260920-ABC1234567')
+    expect(wrapper.text()).toContain('等待公司 Windows 执行节点领取')
+    expect(wrapper.findAll('button').some((button) => button.text().includes('一键生成蓝标'))).toBe(false)
   })
 })
