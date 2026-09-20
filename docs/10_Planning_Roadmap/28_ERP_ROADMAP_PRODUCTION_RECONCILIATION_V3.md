@@ -128,12 +128,13 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
 
 ### P1 — business/data coverage
 
-7. **Warehouse provider coverage — ACTIVE**
-   - MorePlus / US-LA is active.
-   - US-NY provider adapter is implemented.
-   - US-SM inbound/transit modeling is actively implemented in PR #375; this is inbound inventory evidence, not yet a warehouse-bill adapter.
-   - US-SM billing, DE and CA still need real bill samples/provider adapters before cost upload can safely enable.
-   - No guessed mapping.
+7. **Warehouse provider coverage — PARTIAL / EXTERNAL BILL EVIDENCE BLOCKED**
+   - MorePlus / US-LA is active with one applied Production bill batch.
+   - US-NY Speeda provider adapter is active with five applied Production bill batches.
+   - US-SM inbound/transit/restock V1 is merged via PR #375; this is inbound inventory evidence, not a warehouse-bill adapter.
+   - US-SM, DE and CA currently have zero Production warehouse-bill batches and no real bill samples were recovered from US/CN Macs or connected Google Drive.
+   - Existing US-SM PI/labels and DE/CA inventory snapshots are not billing evidence and must not be used as substitutes.
+   - No guessed provider mapping.
 
 8. **Accounting completeness — ACTIVE / EVIDENCE AUDIT COMPLETE 2026-09-19**
    - P9 is closed; focus has shifted to missing evidence coverage rather than new cost engines.
@@ -151,9 +152,13 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
    - PR #232 is an old one-file packaging comparison Draft.
    - Re-evaluate against current Product/Packaging UI before merge; do not merge as-is from the old baseline.
 
-10. **Email OS ERP read-only consumer**
-    - PR #335 is still conceptually useful.
-    - Rebase/revalidate on current main; remove unrelated stale baseline drift from its PR scope before merge.
+10. **Email OS ERP read-only consumer — MERGED / PRODUCTION ACTIVE 2026-09-20**
+    - PR #335 was rebuilt cleanly on current main and merged as a88dd96592e1f5c7a4984440b29dce202b17be52.
+    - The stale unrelated Finance OrderAnalysis.vue change was removed; final scope is exactly 9 Email OS / WordPress Connector files.
+    - Production release: email-os-p8c-pr335-20260920-a88dd965.
+    - Production Connector contract is email-os-published-v1, read_only=true; current Published Native count is 0.
+    - ERP shows metadata only and exposes no Email OS edit/publish/rollback/send action. WordPress Email OS remains source of truth.
+    - Prior isolated Owner UAT remains valid; Production technical UAT PASS on the current empty Published set.
 
 ### P2 — parked/future
 
@@ -184,10 +189,12 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
 
 ### Current open PR classification
 
-- #375 — US-SM Warehouse Inbound V1: ACTIVE Warehouse workstream; do not duplicate.
-- #335 — Email OS P8C: PARKED; rebase and revalidate before activation.
-- #232 — Product packaging comparison UI: PARKED UX intent; re-evaluate against current page.
+- #232 — Product packaging comparison UI: PARKED UX intent; current Product Packaging page already carries the important operational capabilities; do not merge the old one-file UI patch without reprioritization.
 - #97 — Entity Architecture V2 / Search Standard: PARKED design reference only.
+
+Recently closed from the prior open set:
+- #375 — US-SM Warehouse Inbound V1: MERGED / OWNER UAT PASS.
+- #335 — Email OS P8C: MERGED / PRODUCTION ACTIVE.
 
 ## 7. Issue classification
 
@@ -211,10 +218,10 @@ P0. Logistics timestamp catch-up audit ✅ CLOSED
 P0. Full MySQL Continuous Delta fixture repair ✅ CLOSED
 P0. GitHub Actions billing/runner restoration ⚠ ACCOUNT-SIDE OWNER ACTION
 P0. Remote branch hygiene first safe pass ✅ 75 DELETED / 174 WORKTREE-BOUND RETAINED
-P1. Warehouse provider coverage: US-SM active via #375 / DE / CA
-P1. Accounting evidence completeness
-P1. Rebase Email OS P8C if still desired
-P1. Product/Packaging UI cleanup
+P1. Warehouse provider coverage: US-LA + US-NY active; US-SM / DE / CA real-bill adapters ⚠ EXTERNAL SAMPLE BLOCKED
+P1. Accounting evidence completeness: Progressive Estimated Profit active; confirmed Product Cost expansion ⚠ EXTERNAL COSTBOOK BLOCKED
+P1. Email OS P8C ✅ MERGED / PRODUCTION ACTIVE
+P1. Product/Packaging comparison UI ⏸ PARKED
 P2. Marketing expansion / Global Search / Dashboard redesign / KOL intelligence
 ```
 
