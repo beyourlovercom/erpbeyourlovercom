@@ -137,3 +137,62 @@ and the frozen restock quantity.
 
 Production ERP dispatch, job queue state, R2 upload, ZIP packaging, and retry/heartbeat
 belong to the later M5–M8 integration stages and are intentionally not implemented here.
+
+## M6 ERP worker dispatch
+
+The ERP exposes a machine-only protocol under:
+
+    /api/internal/blue-label-worker
+
+Authentication requires both a Bearer token and a stable X-BYL-Worker-ID.
+
+The browser never receives this token. The Worker token is configured only through server/worker
+secret storage and is deliberately absent from tracked configuration.
+
+State transitions:
+
+    queued -> claimed -> running -> succeeded
+                           \-> failed
+
+The ERP enforces worker ownership and an expiring lease. A Worker cannot start, heartbeat,
+complete, or fail a job claimed by a different Worker. Completion also revalidates the output
+manifest against the frozen Restock Plan job payload, including Label SKU, Product SKU,
+restock quantity, Code128B, exact 50x30 mm size, and per-file SHA-256 evidence.
+
+### Windows entry point
+
+The preferred M6 entry point is Node:
+
+    windows/dispatch-once.cjs
+
+It reads BYL_BLUE_LABEL_WORKER_TOKEN from the Worker process environment and performs one bounded
+iteration:
+
+    claim -> start -> heartbeat -> fixed generator -> heartbeat -> complete/fail
+
+If there is no queued job, it exits successfully with BLUE_LABEL_DISPATCH_IDLE.
+
+The Node batch generator is:
+
+    windows/generate-blue-labels.cjs
+
+This Node path exists because the validated company Windows currently blocks direct .ps1 execution
+by PowerShell policy. M6 does not weaken or modify that security policy.
+
+### M6 isolated full-chain UAT
+
+A temporary SQLite ERP instance and the company Windows were used; no Production data was touched.
+
+Evidence:
+
+    job: BLJ-M6UAT-20260920-WFYT60Q7NH
+    items: 2
+    worker: company-win-label-01
+    attempt_count: 1
+    result: succeeded
+    outputs: 2 BTW + 2 exact-50x30 PDF + manifest
+    second dispatch: BLUE_LABEL_DISPATCH_IDLE
+
+The Windows run used the real installed BarTender runtime and returned the completion manifest
+through the M6 Worker API. The temporary test token, SQLite database, HTTP services, and output
+directory are UAT-only and are not part of Production configuration.

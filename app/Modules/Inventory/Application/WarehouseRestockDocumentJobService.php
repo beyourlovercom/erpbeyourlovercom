@@ -166,6 +166,314 @@ final class WarehouseRestockDocumentJobService
         });
     }
 
+    public function claimNext(string $workerId): ?WarehouseRestockDocumentJob
+    {
+        return DB::transaction(function () use ($workerId): ?WarehouseRestockDocumentJob {
+            $job = WarehouseRestockDocumentJob::query()
+                ->where('document_kind', self::DOCUMENT_BLUE_LABELS)
+                ->where('status', self::STATUS_QUEUED)
+                ->orderBy('requested_at')
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->first();
+
+            if ($job === null) return null;
+
+            $now = now();
+            $job->forceFill([
+                'status' => self::STATUS_CLAIMED,
+                'worker_id' => $workerId,
+                'attempt_count' => (int) $job->attempt_count + 1,
+                'claimed_at' => $now,
+                'lease_expires_at' => $now->copy()->addSeconds($this->leaseSeconds()),
+                'last_heartbeat_at' => $now,
+                'last_error_code' => null,
+                'last_error_message' => null,
+            ])->save();
+
+            $this->recordWorkerEvent($job, 'inventory.restock_document_job.claimed', [
+                'worker_id' => $workerId,
+                'attempt_count' => (int) $job->attempt_count,
+                'lease_expires_at' => $job->lease_expires_at?->toIso8601String(),
+            ]);
+
+            return $job->fresh();
+        });
+    }
+
+    public function start(string $reference, string $workerId): WarehouseRestockDocumentJob
+    {
+        return $this->mutateOwnedActiveJob(
+            $reference,
+            $workerId,
+            [self::STATUS_CLAIMED],
+            function (WarehouseRestockDocumentJob $job): void {
+                $now = now();
+                $job->forceFill([
+                    'status' => self::STATUS_RUNNING,
+                    'started_at' => $job->started_at ?? $now,
+                    'last_heartbeat_at' => $now,
+                    'lease_expires_at' => $now->copy()->addSeconds($this->leaseSeconds()),
+                ])->save();
+
+                $this->recordWorkerEvent($job, 'inventory.restock_document_job.started', [
+                    'worker_id' => $job->worker_id,
+                ]);
+            },
+        );
+    }
+
+    public function heartbeat(string $reference, string $workerId): WarehouseRestockDocumentJob
+    {
+        return $this->mutateOwnedActiveJob(
+            $reference,
+            $workerId,
+            [self::STATUS_CLAIMED, self::STATUS_RUNNING],
+            function (WarehouseRestockDocumentJob $job): void {
+                $now = now();
+                $job->forceFill([
+                    'last_heartbeat_at' => $now,
+                    'lease_expires_at' => $now->copy()->addSeconds($this->leaseSeconds()),
+                ])->save();
+            },
+        );
+    }
+
+    public function complete(
+        string $reference,
+        string $workerId,
+        array $manifest,
+        string $outputRoot,
+    ): WarehouseRestockDocumentJob {
+        return $this->mutateOwnedActiveJob(
+            $reference,
+            $workerId,
+            [self::STATUS_RUNNING],
+            function (WarehouseRestockDocumentJob $job) use ($manifest, $outputRoot): void {
+                $this->validateResultManifest($job, $manifest);
+
+                $now = now();
+                $job->forceFill([
+                    'status' => self::STATUS_SUCCEEDED,
+                    'completed_at' => $now,
+                    'failed_at' => null,
+                    'last_heartbeat_at' => $now,
+                    'lease_expires_at' => null,
+                    'result_manifest' => $manifest,
+                    'result_manifest_checksum' => $this->checksum($manifest),
+                    'output_root' => $outputRoot,
+                    'last_error_code' => null,
+                    'last_error_message' => null,
+                ])->save();
+
+                $this->recordWorkerEvent($job, 'inventory.restock_document_job.succeeded', [
+                    'worker_id' => $job->worker_id,
+                    'output_root' => $outputRoot,
+                    'artifacts' => count((array) ($manifest['artifacts'] ?? [])),
+                    'result_manifest_checksum' => $job->result_manifest_checksum,
+                ]);
+            },
+        );
+    }
+
+    public function fail(
+        string $reference,
+        string $workerId,
+        string $errorCode,
+        string $errorMessage,
+    ): WarehouseRestockDocumentJob {
+        return $this->mutateOwnedActiveJob(
+            $reference,
+            $workerId,
+            [self::STATUS_CLAIMED, self::STATUS_RUNNING],
+            function (WarehouseRestockDocumentJob $job) use ($errorCode, $errorMessage): void {
+                $now = now();
+                $job->forceFill([
+                    'status' => self::STATUS_FAILED,
+                    'failed_at' => $now,
+                    'last_heartbeat_at' => $now,
+                    'lease_expires_at' => null,
+                    'last_error_code' => $errorCode,
+                    'last_error_message' => $errorMessage,
+                ])->save();
+
+                $this->recordWorkerEvent($job, 'inventory.restock_document_job.failed', [
+                    'worker_id' => $job->worker_id,
+                    'error_code' => $errorCode,
+                    'error_message' => $errorMessage,
+                ]);
+            },
+        );
+    }
+
+    public function workerPayload(WarehouseRestockDocumentJob $job): array
+    {
+        return [
+            'reference' => $job->reference,
+            'status' => $job->status,
+            'attempt_count' => (int) $job->attempt_count,
+            'worker_id' => $job->worker_id,
+            'lease_expires_at' => $job->lease_expires_at?->toIso8601String(),
+            'schema_version' => $job->schema_version,
+            'template_version' => $job->template_version,
+            'generator_version' => $job->generator_version,
+            'dispatch_mode' => $job->dispatch_mode,
+            'payload_checksum' => $job->payload_checksum,
+            'payload' => $job->payload,
+            'output_root' => $job->output_root,
+            'last_error_code' => $job->last_error_code,
+            'last_error_message' => $job->last_error_message,
+        ];
+    }
+
+    private function mutateOwnedActiveJob(
+        string $reference,
+        string $workerId,
+        array $allowedStatuses,
+        callable $mutation,
+    ): WarehouseRestockDocumentJob {
+        return DB::transaction(function () use ($reference, $workerId, $allowedStatuses, $mutation): WarehouseRestockDocumentJob {
+            $job = WarehouseRestockDocumentJob::query()
+                ->where('reference', $reference)
+                ->lockForUpdate()
+                ->first();
+
+            if ($job === null) {
+                throw ValidationException::withMessages([
+                    'worker_job' => '蓝标任务不存在。',
+                ]);
+            }
+
+            if (! in_array($job->status, $allowedStatuses, true)) {
+                throw ValidationException::withMessages([
+                    'worker_job' => '蓝标任务当前状态不允许此 Worker 操作：'.$job->status,
+                ]);
+            }
+
+            if (! is_string($job->worker_id) || ! hash_equals($job->worker_id, $workerId)) {
+                throw ValidationException::withMessages([
+                    'worker_job' => '蓝标任务不属于当前 Worker。',
+                ]);
+            }
+
+            if ($job->lease_expires_at === null || $job->lease_expires_at->isPast()) {
+                throw ValidationException::withMessages([
+                    'worker_job' => '蓝标任务 Worker lease 已过期。',
+                ]);
+            }
+
+            $mutation($job);
+
+            return $job->fresh();
+        });
+    }
+
+    private function validateResultManifest(
+        WarehouseRestockDocumentJob $job,
+        array $manifest,
+    ): void {
+        $plan = $job->plan()->firstOrFail();
+
+        $required = [
+            'schema_version' => 'byl.blue-label.output.v1',
+            'generator_version' => self::GENERATOR_VERSION,
+            'job_id' => $job->reference,
+            'plan_reference' => (string) $plan->reference,
+            'plan_snapshot_checksum' => (string) $job->plan_snapshot_checksum,
+            'template_version' => self::TEMPLATE_VERSION,
+        ];
+
+        foreach ($required as $key => $expected) {
+            $actual = (string) ($manifest[$key] ?? '');
+            if ($actual === '' || ! hash_equals((string) $expected, $actual)) {
+                throw ValidationException::withMessages([
+                    'worker_job' => '蓝标结果 manifest 字段不匹配：'.$key,
+                ]);
+            }
+        }
+
+        $artifacts = $manifest['artifacts'] ?? null;
+        if (! is_array($artifacts)) {
+            throw ValidationException::withMessages([
+                'worker_job' => '蓝标结果 manifest 缺少 artifacts。',
+            ]);
+        }
+
+        $expectedItems = collect((array) ($job->payload['items'] ?? []))
+            ->keyBy(fn (array $item): string => (string) $item['label_sku']);
+
+        if (count($artifacts) !== $expectedItems->count()) {
+            throw ValidationException::withMessages([
+                'worker_job' => '蓝标结果文件数量与冻结任务不一致。',
+            ]);
+        }
+
+        $seen = [];
+        foreach ($artifacts as $artifact) {
+            if (! is_array($artifact)) {
+                throw ValidationException::withMessages(['worker_job' => '蓝标 artifact 格式无效。']);
+            }
+
+            $labelSku = trim((string) ($artifact['label_sku'] ?? ''));
+            if ($labelSku === '' || isset($seen[$labelSku]) || ! $expectedItems->has($labelSku)) {
+                throw ValidationException::withMessages([
+                    'worker_job' => '蓝标结果包含未知或重复 Label SKU：'.$labelSku,
+                ]);
+            }
+            $seen[$labelSku] = true;
+
+            $expected = $expectedItems->get($labelSku);
+            if (
+                ! hash_equals((string) $expected['product_sku'], (string) ($artifact['product_sku'] ?? ''))
+                || (int) $expected['restock_qty'] !== (int) ($artifact['restock_qty'] ?? 0)
+                || (string) ($artifact['barcode'] ?? '') !== 'Code128B'
+            ) {
+                throw ValidationException::withMessages([
+                    'worker_job' => '蓝标结果内容与冻结任务不一致：'.$labelSku,
+                ]);
+            }
+
+            $size = $artifact['label_size_mm'] ?? null;
+            if (! is_array($size) || count($size) < 2 || abs((float) $size[0] - 50.0) > 0.0001 || abs((float) $size[1] - 30.0) > 0.0001) {
+                throw ValidationException::withMessages([
+                    'worker_job' => '蓝标 PDF 尺寸不是精确 50×30 mm：'.$labelSku,
+                ]);
+            }
+
+            foreach (['btw_sha256', 'pdf_sha256'] as $hashKey) {
+                if (preg_match('/^[a-f0-9]{64}$/D', (string) ($artifact[$hashKey] ?? '')) !== 1) {
+                    throw ValidationException::withMessages([
+                        'worker_job' => '蓝标结果缺少有效文件 SHA-256：'.$labelSku,
+                    ]);
+                }
+            }
+        }
+    }
+
+    private function leaseSeconds(): int
+    {
+        return max(30, min(900, (int) config('services.blue_label_worker.lease_seconds', 180)));
+    }
+
+    private function recordWorkerEvent(
+        WarehouseRestockDocumentJob $job,
+        string $event,
+        array $after,
+    ): void {
+        $this->audit->record(
+            AuditActor::system(AuditSource::InternalSystem),
+            $event,
+            $job::class,
+            $job->id,
+            after: [
+                'reference' => $job->reference,
+                'status' => $job->status,
+                ...$after,
+            ],
+            reason: 'blue_label_worker_protocol',
+        );
+    }
+
     public function forPlanId(?int $planId): ?array
     {
         if (! $planId) return null;
