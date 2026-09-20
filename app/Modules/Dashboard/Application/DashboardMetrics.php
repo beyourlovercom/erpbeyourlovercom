@@ -12,6 +12,7 @@ use App\Modules\Sync\Application\SyncOrchestrationService;
 use App\Modules\Sync\Infrastructure\Models\ManualSync;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -76,6 +77,13 @@ final class DashboardMetrics
     }
 
     public function financeSnapshot(string $dateFrom, string $dateTo): array
+    {
+        $key = "dashboard:finance:v1:{$dateFrom}:{$dateTo}";
+
+        return Cache::remember($key, now()->addMinutes(5), fn (): array => $this->buildFinanceSnapshot($dateFrom, $dateTo));
+    }
+
+    private function buildFinanceSnapshot(string $dateFrom, string $dateTo): array
     {
         $orders = $this->financeOrders($dateFrom, $dateTo)->get();
         $eligible = $orders->count();
