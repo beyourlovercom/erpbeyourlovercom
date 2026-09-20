@@ -155,7 +155,12 @@ final class EloquentInventoryRepository implements InventoryRepository
         $warehouse = $warehouseFilter !== '' ? $this->findWarehouseBySlug($warehouseFilter) : null;
         $page = WarehouseInventory::query()->with(['warehouse','product'])
             ->when($warehouseFilter !== '', fn ($q) => $warehouse ? $q->where('warehouse_id', $warehouse->getKey()) : $q->whereRaw('1 = 0'))
-            ->when($filters['search'] ?? null, fn ($q,$search) => $q->whereHas('product', fn ($p) => $p->where('sku','like',"%{$search}%")->orWhere('name','like',"%{$search}%")))
+            ->when($filters['search'] ?? null, fn ($q,$search) => $q->whereHas('product', fn ($p) => $p
+                ->where('sku','like',"%{$search}%")
+                ->orWhere('name','like',"%{$search}%")
+                ->orWhere('gtin','like',"%{$search}%")
+                ->orWhereHas('skuAliases', fn ($aliases) => $aliases->where('alias_sku','like',"%{$search}%"))
+            ))
             ->orderByDesc('inbound_at')->orderBy('id')->paginate($perPage)->withQueryString();
         $this->attachShippedDemand($page->getCollection());
         return $page;
