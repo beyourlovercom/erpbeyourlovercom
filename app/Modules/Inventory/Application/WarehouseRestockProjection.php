@@ -29,15 +29,15 @@ final class WarehouseRestockProjection
         $products = Product::query()
             ->where('is_active', true)
             ->orderBy('sku')
-            ->get(['id','sku','name','weight_kg','shipping_weight_kg']);
+            ->get(['id','sku','label_sku','label_description','name','weight_kg','shipping_weight_kg']);
 
-        $unitsPerCarton = ProductPackagingProfile::query()
+        $packagingProfiles = ProductPackagingProfile::query()
             ->where('is_active', true)
-            ->whereNotNull('units_per_carton')
             ->whereIn('product_id', $products->pluck('id'))
-            ->pluck('units_per_carton', 'product_id');
+            ->get(['id','product_id','units_per_carton'])
+            ->keyBy('product_id');
 
-        $rows = $products->map(function (Product $product) use ($inventory, $shipped120, $unitsPerCarton): array {
+        $rows = $products->map(function (Product $product) use ($inventory, $shipped120, $packagingProfiles): array {
             $stock = $inventory->get($product->id);
             $available = $stock ? max(0, (int) $stock->quantity_available) : 0;
             $shipped = max(0, (int) ($shipped120[$product->id] ?? 0));
@@ -45,11 +45,19 @@ final class WarehouseRestockProjection
             $manual = max(0, (int) ($stock?->expected_restock_qty ?? 0));
             $weight = $product->shipping_weight_kg ?? $product->weight_kg;
             $weightSource = $product->shipping_weight_kg !== null ? '物流重量' : ($product->weight_kg !== null ? '产品毛重' : '待补充');
+            $packagingProfile = $packagingProfiles->get($product->id);
+            $productSku = trim((string) ($product->sku ?? ''));
+            $configuredLabelSku = trim((string) ($product->label_sku ?? ''));
+            $labelSku = $configuredLabelSku !== '' ? $configuredLabelSku : $productSku;
+            $configuredDescription = trim((string) ($product->label_description ?? ''));
 
             return [
                 'product_id' => $product->id,
                 'inventory_id' => $stock?->id,
                 'sku' => $product->sku,
+                'label_sku' => $labelSku,
+                'label_sku_is_override' => $configuredLabelSku !== '' && $configuredLabelSku !== $productSku,
+                'label_description' => $configuredDescription !== '' ? $configuredDescription : $product->name,
                 'name' => $product->name,
                 'final_restock_qty' => $formula + $manual,
                 'formula_restock_qty' => $formula,
@@ -58,7 +66,8 @@ final class WarehouseRestockProjection
                 'quantity_available' => $available,
                 'quantity_on_hand' => $stock ? (int) $stock->quantity_on_hand : 0,
                 'quantity_reserved' => $stock ? (int) $stock->quantity_reserved : 0,
-                'units_per_carton' => isset($unitsPerCarton[$product->id]) ? (int) $unitsPerCarton[$product->id] : null,
+                'packaging_profile_id' => $packagingProfile?->id !== null ? (int) $packagingProfile->id : null,
+                'units_per_carton' => $packagingProfile?->units_per_carton !== null ? (int) $packagingProfile->units_per_carton : null,
                 'logistics_weight_kg' => $weight !== null ? (string) $weight : null,
                 'weight_source' => $weightSource,
                 'has_inventory_record' => $stock !== null,
