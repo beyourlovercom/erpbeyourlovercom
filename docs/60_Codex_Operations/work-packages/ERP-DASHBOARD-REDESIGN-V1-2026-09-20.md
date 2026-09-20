@@ -300,11 +300,119 @@ Validation:
 - Dashboard Vue focused tests: **5 / 5 PASS**.
 - `npm run typecheck`: **PASS**.
 - PHP syntax: DashboardController + DashboardMetrics **PASS**.
-- Existing PHP regression suite is currently blocked before Dashboard assertions by unrelated SQLite fixture/schema drift:
-  - `orders.erp_order_id` missing in the in-memory test schema;
-  - `orders.order_kind` missing in the in-memory test schema.
-- Full PHPUnit suite discovery also currently encounters an unrelated Traffic test interface baseline issue (`InquiryMetricSignalReader` not found).
-- These baseline failures are not reclassified as Dashboard regressions.
+- Validation-environment correction: the first worktree run reused a `vendor` symlink whose Composer autoload pointed at another ERP worktree. The resulting SQLite/schema/interface errors were invalid evidence, not repository blockers.
+- After replacing the symlink with an isolated vendor copy and regenerating Composer autoload, the branch loads its own `App\\` classes and the relevant PHP regressions pass normally.
+- Procurement/Purchase regression after the correction: **16 tests / 170 assertions PASS**.
 
 Next:
 **D3 Core KPI + Operations Funnel** — replace D2 placeholders with permission-scoped canonical live snapshots and the bounded operating-finance trend.
+
+
+## 9. D3 Core KPI + Operations Funnel — COMPLETE
+
+Implemented:
+- extracted `LogisticsStatusSummary` so Dashboard and Logistics OS use one canonical status contract;
+- shared `pendingAllocationQuery()` between the Dashboard “待分仓” context and `/logistics/wait-stock`;
+- Dashboard now renders live canonical Operations / Inventory / Sync / Finance / Procurement snapshots;
+- “待分仓” is explicitly a context/subset and is never added to “待发货”;
+- extracted `UsdAggregateConverter` and moved Accounting + Dashboard USD aggregation onto the same frozen-FX conversion rule;
+- Operating Finance uses `EstimatedProfitProjectionService` in read-only mode and labels all estimated money as `预估 / 非最终`;
+- users without a module read permission do not trigger that module's Dashboard query.
+
+Production exact-branch read-only evidence (2026-09-20):
+- 待分仓 650;
+- 待发货 664;
+- 已发货待物流号 0;
+- 运输中 1,847;
+- 异常 0;
+- 复核 0;
+- 已完结 0;
+- 已取消 549;
+- Inventory alert 38 = out-of-stock 21 + low-stock 17;
+- Inventory available 5,059; data-gap warehouses 2 / 7;
+- Sync pending 1; retry_due 1; failed/conflicts 0.
+
+Operating Finance exact-branch read-only evidence:
+- 7d: eligible 110 / revenue-ready 99 / estimated 99 / final 0 / aggregate 99;
+  - estimated revenue USD 9,670.95;
+  - estimated cost USD 3,766.62;
+  - estimated profit USD 5,904.33;
+  - 99 projections currently low-confidence.
+- 30d: eligible 521 / revenue-ready 460 / estimated 460 / final 0 / aggregate 460;
+  - estimated revenue USD 45,943.65;
+  - estimated cost USD 19,155.83;
+  - estimated profit USD 26,787.82;
+  - low 459 / very-low 1.
+- 90d: eligible 1,372 / revenue-ready 1,222 / estimated 1,222 / final 0 / aggregate 1,222;
+  - estimated revenue USD 117,336.32;
+  - estimated cost USD 52,918.75;
+  - estimated profit USD 64,417.57;
+  - low 1,220 / very-low 2.
+
+The low projection confidence is surfaced as data health; it is not hidden and does not upgrade estimates into final profit.
+
+## 10. D4 Drill-down — COMPLETE
+
+Implemented:
+- Logistics cards deep-link to their canonical operational queues.
+- Sync pending deep-links to `/sync/orders?status=pending`; orchestration health links to `/sync`.
+- Finance deep-links preserve selected `date_from/date_to`.
+- Inventory gained a bounded `stock_status` filter:
+  - `alert` => available <= 9;
+  - `out_of_stock` => available <= 1;
+  - `low_stock` => available 2..9;
+  - `in_stock` => available >= 10.
+- Dashboard Inventory cards link directly to those filtered product-inventory views.
+
+Production exact-branch drill-down proof:
+- `alert=38`;
+- `out_of_stock=21`;
+- `low_stock=17`;
+- `in_stock=67`.
+
+These totals exactly reconcile to the Inventory Dashboard source contract.
+
+## 11. D5 Mobile / Performance — COMPLETE
+
+Implemented:
+- same semantic Dashboard data contract on desktop and mobile;
+- KPI grids collapse from 4/5 columns to 2 and then 1 at narrow widths;
+- period controls remain horizontally usable on mobile;
+- finance trend gets a bounded mobile chart height;
+- custom date windows are bounded to at most one year;
+- finance snapshots use a 5-minute cache;
+- finance is delivered as an Inertia deferred prop so Operations / Inventory / Sync render without waiting for the expensive finance range query;
+- a finance loading state is explicit and does not block the rest of the Dashboard.
+
+Production exact-branch cold-read timings:
+- Operations: ~91 ms;
+- Inventory: ~34 ms;
+- Sync: ~8 ms;
+- Finance 7d: ~548 ms;
+- Finance 30d: ~2.18 s;
+- Finance 90d: ~5.99 s.
+
+The 90d first calculation therefore does not sit on the initial page response; it loads independently and subsequent identical windows use the short cache.
+
+## 12. D6 Local / Exact-Branch UAT — AUTOMATED PASS
+
+Validation at exact branch code:
+- PHP syntax for all changed Dashboard / Logistics / Finance / Inventory PHP files: PASS.
+- `UsdAggregateConverterTest`: **3 tests / 5 assertions PASS**.
+- Procurement bridge + Purchase OS closure: **16 tests / 170 assertions PASS**.
+- `ProfitDashboardTest`: **6 tests / 180 assertions PASS**.
+- `LogisticsOsV1ClosureTest`: **37 tests / 374 assertions**, one existing MySQL-session-timezone test skipped by its environment guard; all executed assertions PASS.
+- Dashboard Vue focused suite: **7 / 7 PASS**.
+- `npm run typecheck`: PASS.
+- Production Vite build: **939 modules PASS**.
+- `git diff --check`: PASS.
+- worktree: clean.
+- US Mac isolated exact-branch runtime successfully loaded the branch classes against Production environment and executed read-only metric/drill-down smoke without data writes.
+
+D6 Owner visual UAT is intentionally not marked PASS here. Owner acceptance happens only after the PR reaches the intended UAT/Production surface and the Owner explicitly passes it.
+
+## 13. Next execution point
+
+D0 ✅ → D1 ✅ → D2 ✅ → D3 ✅ → D4 ✅ → D5 ✅ → D6 automated/local UAT ✅
+→ **PR / merge / Production deploy**
+→ Owner UAT 👀
