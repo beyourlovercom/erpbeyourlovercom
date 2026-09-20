@@ -57,12 +57,15 @@ final class OverseaWarehouseReviewService
                 $review->forceFill(['status' => 'pending', 'reviewed_warehouse_id' => null, 'reviewed_by' => null, 'reviewed_at' => null])->save();
             }
 
-            if (array_key_exists('carrier', $data) || array_key_exists('tracking_number', $data)) {
+            if (array_key_exists('carrier', $data) || array_key_exists('service', $data) || array_key_exists('tracking_number', $data)) {
                 $shipmentDraft = [];
                 if (array_key_exists('carrier', $data)) {
                     $shipmentDraft['carrier'] = trim((string) $data['carrier']);
-                    $shipmentDraft['service'] = null;
+                    $shipmentDraft['service'] = $data['service'] ?? null;
                     $shipmentDraft['carrier_selection_source'] = 'manual';
+                }
+                if (array_key_exists('service', $data) && ! array_key_exists('carrier', $data)) {
+                    $shipmentDraft['service'] = $data['service'];
                 }
                 if (array_key_exists('tracking_number', $data)) {
                     $tracking = trim((string) ($data['tracking_number'] ?? ''));

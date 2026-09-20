@@ -168,7 +168,7 @@ describe('Orders/Show V2', () => {
       audit,
       canOperateLogistics: true,
       warehouses: [{ id: 1, slug: 'us-la', name: '美西 MorePlus 仓', code: 'US-LA', country_code: 'US' }],
-      carrierOptions: [{ value: 'USPS', label: 'USPS' }],
+      carrierOptions: [{ value: 'USPS', label: 'USPS / 美国邮政', default_service_id: 101, default_service_value: 'USPS Priority Mail', services: [{ id: 101, key: 'priority_mail', value: 'USPS Priority Mail', label: 'Priority Mail / 优先件', name_en: 'Priority Mail', name_zh: '优先件' }] }],
     } })
     const button = wrapper.findAll('button').find(btn => btn.text().includes('填写物流 / 确认发货'))
     expect(button).toBeTruthy()
@@ -187,7 +187,7 @@ describe('Orders/Show V2', () => {
         { id: 1, slug: 'us-la', name: '美西 MorePlus 仓', code: 'US-LA', country_code: 'US' },
         { id: 2, slug: 'factory', name: '国内工厂', code: 'FACTORY', country_code: 'CN' },
       ],
-      carrierOptions: [{ value: '4PX', label: '4PX' }, { value: 'USPS', label: 'USPS' }],
+      carrierOptions: [{ value: '4PX', label: '4PX / 速达', default_service_id: 201, default_service_value: 'SD经济挂号-带电', services: [{ id: 201, key: 'sd_economy_registered_battery', value: 'SD经济挂号-带电', label: 'Economy Registered - Battery / SD经济挂号-带电', name_en: 'Economy Registered - Battery', name_zh: 'SD经济挂号-带电' }] }, { value: 'USPS', label: 'USPS / 美国邮政', default_service_id: 101, default_service_value: 'USPS Priority Mail', services: [{ id: 101, key: 'priority_mail', value: 'USPS Priority Mail', label: 'Priority Mail / 优先件', name_en: 'Priority Mail', name_zh: '优先件' }] }],
     } })
     const shipButtons = wrapper.findAll('button').filter(btn => btn.text().includes('填写物流 / 发货'))
     expect(shipButtons).toHaveLength(1)

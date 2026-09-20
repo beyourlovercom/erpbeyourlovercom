@@ -5,9 +5,11 @@ import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 
 type WarehouseOption = { key:string; id:number; code:string; label:string; carrier:string|null; url:string }
 type Item = { sku:string|null; quantity:number }
+type CarrierServiceOption = { id:number; key:string; value:string; label:string; name_en:string|null; name_zh:string|null }
+type CarrierOption = { value:string; label:string; default_service_id:number|null; default_service_value:string|null; services:CarrierServiceOption[] }
 type Row = {
   line:number; order_id:number; erp_order_id:string|null; order_url:string|null; recipient_name:string|null; country:string|null
-  warehouse_id:number; warehouse_name:string|null; carrier:string|null; carrier_selection_source:string|null; tracking_number:string|null
+  warehouse_id:number; warehouse_name:string|null; carrier:string|null; service:string|null; carrier_selection_source:string|null; tracking_number:string|null
   progress:string; note:string|null; review_status:'approved'|'pending'; shipment_status:string; items:Item[]
 }
 type PageRows = { data:Row[]; current_page:number; last_page:number; total:number; links?:{url:string|null;label:string;active:boolean}[] }
@@ -15,14 +17,16 @@ type TrackingImportRow = { row:number; order_id:number|null; order_number:string
 type TrackingImportPreview = { token:string; rows:TrackingImportRow[]; apply_count:number; noop_count:number; blocked_count:number }
 const props = defineProps<{
   warehouseKey:string; warehouse:WarehouseOption|null; warehouseOptions:WarehouseOption[]; view:string
-  rows:PageRows; viewCounts:Record<string,number>; canOperate:boolean; carrierOptions:string[]; trackingImportPreview:TrackingImportPreview|null
+  rows:PageRows; viewCounts:Record<string,number>; canOperate:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null
 }>()
 
-const drafts = reactive<Record<number,{ note:string; carrier:string; tracking_number:string }>>({})
+const drafts = reactive<Record<number,{ note:string; carrier:string; service:string; tracking_number:string }>>({})
 const trackingFileInput = ref<HTMLInputElement|null>(null)
 const trackingPreviewRows = computed(() => props.trackingImportPreview?.rows.slice(0, 20) ?? [])
 const rowErrors = reactive<Record<number,string>>({})
-const draft = (row:Row) => drafts[row.order_id] ??= { note:row.note ?? '', carrier:row.carrier ?? '', tracking_number:row.tracking_number ?? '' }
+const carrierOption = (name:string) => props.carrierOptions.find(row => row.value === name)
+const serviceOptionsFor = (name:string) => carrierOption(name)?.services ?? []
+const draft = (row:Row) => drafts[row.order_id] ??= { note:row.note ?? '', carrier:row.carrier ?? '', service:row.service ?? carrierOption(row.carrier ?? '')?.default_service_value ?? '', tracking_number:row.tracking_number ?? '' }
 const viewTabs = [
   ['review','待审核'], ['pending','待发货'], ['shipped','已发货'], ['exceptions','异常订单'], ['all','全部订单'],
 ] as const
@@ -36,7 +40,8 @@ const saveDraft = (row:Row, payload:Record<string,string|number|null>) => router
 const changeWarehouse = (row:Row, warehouseId:number) => saveDraft(row, { warehouse_id:Number(warehouseId) })
 const changeWarehouseFromEvent = (row:Row, event:Event) => changeWarehouse(row, Number((event.target as HTMLSelectElement).value))
 const saveNote = (row:Row) => saveDraft(row, { note:draft(row).note.trim() || null })
-const saveCarrier = (row:Row) => saveDraft(row, { carrier:draft(row).carrier })
+const saveCarrier = (row:Row) => { const d=draft(row); d.service=carrierOption(d.carrier)?.default_service_value ?? ''; saveDraft(row, { carrier:d.carrier, service:d.service || null }) }
+const saveService = (row:Row) => saveDraft(row, { carrier:draft(row).carrier, service:draft(row).service || null })
 const saveTracking = (row:Row) => saveDraft(row, { tracking_number:draft(row).tracking_number.trim() || null })
 const chooseTrackingFile = () => trackingFileInput.value?.click()
 const previewTrackingFile = (event:Event) => {
@@ -115,7 +120,7 @@ const goPage = (page:number) => router.visit(`${basePath.value}?view=${props.vie
         <table class="oversea-table">
           <thead><tr>
             <th class="decision-col">审核</th><th class="line-col">#</th><th>订单号</th><th>Stock 仓库</th><th>Carrier 承运商</th>
-            <th>追踪单号 Tracking No.</th><th>备注</th><th>收件人</th><th>国家</th><th>SKU / 数量</th>
+            <th>运输 / 服务类型</th><th>追踪单号 Tracking No.</th><th>备注</th><th>收件人</th><th>国家</th><th>SKU / 数量</th>
           </tr></thead>
           <tbody>
             <tr v-for="row in rows.data" :key="row.order_id">
@@ -130,14 +135,14 @@ const goPage = (page:number) => router.visit(`${basePath.value}?view=${props.vie
               <td class="line-col">{{ row.line }}</td>
               <td><a class="order-link" :href="row.order_url ?? `/orders/${row.order_id}`">{{ row.erp_order_id ?? '—' }}</a></td>
               <td><select :value="row.warehouse_id" :disabled="!canOperate || view !== 'review'" class="cell-select warehouse" @change="changeWarehouseFromEvent(row, $event)"><option v-for="option in warehouseOptions" :key="option.id" :value="option.id">{{ option.label }}</option></select></td>
-              <td><select v-model="draft(row).carrier" :disabled="!canOperate || row.shipment_status === 'shipped'" class="cell-select carrier" @change="saveCarrier(row)"><option v-for="carrier in carrierOptions" :key="carrier" :value="carrier">{{ carrier }}</option></select></td>
+              <td><select v-model="draft(row).carrier" :disabled="!canOperate || row.shipment_status === 'shipped'" class="cell-select carrier" @change="saveCarrier(row)"><option v-for="carrier in carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select></td><td><select v-model="draft(row).service" :disabled="!canOperate || row.shipment_status === 'shipped' || !draft(row).carrier" class="cell-select service" @change="saveService(row)"><option value="">请选择服务类型</option><option v-for="service in serviceOptionsFor(draft(row).carrier)" :key="service.id" :value="service.value">{{ service.label }}</option></select></td>
               <td class="tracking-cell"><input v-model="draft(row).tracking_number" :disabled="!canOperate || row.shipment_status === 'shipped'" class="tracking-input" placeholder="填写发货单号" @blur="saveTracking(row)" /></td>
               <td><div class="note-cell"><input v-model="draft(row).note" :disabled="!canOperate" class="note-input" :class="{ error: !!rowErrors[row.order_id] }" placeholder="等海运 / 等空运 / 缺货 / 太贵 / 送不到…" @input="rowErrors[row.order_id] = ''" @blur="view === 'review' ? undefined : saveNote(row)" /><small v-if="rowErrors[row.order_id]" class="note-error">{{ rowErrors[row.order_id] }}</small></div></td>
               <td>{{ row.recipient_name ?? '—' }}</td>
               <td>{{ row.country ?? '—' }}</td>
               <td class="items-cell">{{ itemText(row) }}</td>
             </tr>
-            <tr v-if="!rows.data.length"><td colspan="10" class="empty-cell">当前视图暂无订单</td></tr>
+            <tr v-if="!rows.data.length"><td colspan="11" class="empty-cell">当前视图暂无订单</td></tr>
           </tbody>
         </table>
       </div>

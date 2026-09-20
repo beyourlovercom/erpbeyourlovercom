@@ -14,7 +14,8 @@ type Recommendation = { status: 'recommended' | 'blocked'; reason_code: string; 
 type AutomaticAllocation = { state: string; status: 'ready' | 'blocked' | 'allocated'; reason_code: string; reason_label: string; country_code: string | null; warehouse: RecommendationWarehouse | null; can_apply: boolean }
 type Order = { id: number; erp_order_id: string | null; external_order_number: string | null; order_kind_label: string; order_url?: string | null; recipient_name: string | null; phone: string | null; country: string | null; owner_label: string | null; item_count: number; items: Item[]; warehouse_recommendation: Recommendation; automatic_allocation: AutomaticAllocation; shipment: Shipment | null }
 type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null; priority: number; inventory_state: string; can_auto_allocate: boolean; service_regions: { country_code: string; priority: number }[] }
-type CarrierOption = { value: string; label: string }
+type CarrierServiceOption = { id:number; key:string; value:string; label:string; name_en:string|null; name_zh:string|null }
+type CarrierOption = { value:string; label:string; default_service_id:number|null; default_service_value:string|null; services:CarrierServiceOption[] }
 type Paginated<T> = { data: T[]; current_page: number; last_page: number; per_page: number; total: number }
 type Draft = { warehouse_id: number | ''; carrier: string; service: string; tracking_number: string; shipped_at: string; logistics_note: string }
 type ColumnKey = 'order_number' | 'type' | 'recipient' | 'country' | 'item_count' | 'warehouse'
@@ -49,10 +50,14 @@ const {
 const visibleColumns = computed(() => columnPreferences.value.filter(column => column.key === 'order_number' || column.visible))
 
 const localDateTime = (value: string | null) => value ? value.slice(0, 16) : new Date().toISOString().slice(0, 16)
+const carrierOption = (name:string) => props.carrierOptions.find(row => row.value === name)
+const serviceOptionsFor = (name:string) => carrierOption(name)?.services ?? []
+const defaultServiceFor = (name:string) => carrierOption(name)?.default_service_value ?? ''
+const onCarrierChanged = (orderId:number) => { drafts[orderId].service = defaultServiceFor(drafts[orderId].carrier) }
 const makeDraft = (order: Order): Draft => ({
   warehouse_id: order.shipment?.warehouse_id ?? '',
   carrier: order.shipment?.carrier ?? '',
-  service: order.shipment?.service ?? '',
+  service: order.shipment?.service ?? defaultServiceFor(order.shipment?.carrier ?? ''),
   tracking_number: order.shipment?.tracking_number ?? '',
   shipped_at: localDateTime(order.shipment?.shipped_at ?? null),
   logistics_note: order.shipment?.logistics_note ?? '',
@@ -109,7 +114,7 @@ const ship = (order: Order) => {
   delete shipValidation.value[order.id]
   if (!draft.warehouse_id) { shipValidation.value[order.id] = '请先选择发货仓库'; return }
   if (!draft.carrier.trim()) { shipValidation.value[order.id] = '请先选择物流商'; return }
-  if (!draft.service.trim()) { shipValidation.value[order.id] = '请填写物流渠道'; return }
+  if (!draft.service.trim()) { shipValidation.value[order.id] = '请选择运输 / 服务类型'; return }
   if (!draft.shipped_at) { shipValidation.value[order.id] = '请选择发货时间'; return }
   router.post(`/logistics/orders/${order.id}/ship`, draft, { preserveScroll: true })
 }
@@ -174,8 +179,8 @@ const goToPage = (page: number) => router.get('/logistics/pending', { page }, { 
               <div><h3>库存可用量</h3><p v-if="['recommended', 'automatic'].includes(order.shipment?.warehouse_selection_source ?? '')" class="reservation-hint">库存已预留；确认发货时会自动提交预留并扣减在库库存。</p><div class="inventory-grid" v-for="item in order.items" :key="item.id"><strong><Link v-if="item.product_id" :href="`/products/${item.product_id}`" class="mvp-link">{{ item.sku ?? item.product_summary ?? '无 SKU' }}</Link><span v-else>{{ item.sku ?? item.product_summary ?? '无 SKU' }}</span> × {{ item.quantity }}</strong><span v-for="row in item.availability" :key="row.warehouse_id" :class="{ shortage: row.quantity_available !== null && row.quantity_available < item.quantity, unknown: row.quantity_available === null }">{{ row.warehouse_name }}：{{ row.quantity_available === null ? '库存未知' : '可用 ' + row.quantity_available }} <small v-if="row.quantity_available !== null">(QOH {{ row.quantity_on_hand }} / Reserved {{ row.quantity_reserved }})</small><small v-else>未建立该 SKU 权威库存</small></span></div></div>
               <div class="fulfillment-form">
                 <label>发货仓库<select v-model="drafts[order.id].warehouse_id" :disabled="!props.canOperate"><option value="">请选择</option><option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} ({{ warehouse.code }}){{ warehouse.can_auto_allocate ? '' : ' · 库存未确认' }}</option></select></label>
-                <label>物流商<select v-model="drafts[order.id].carrier" :disabled="!props.canOperate" aria-label="物流商"><option value="">请选择承运商</option><option v-for="carrier in carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select></label>
-                <label>物流渠道<input v-model="drafts[order.id].service" :disabled="!props.canOperate" placeholder="例如 Ground"></label>
+                <label>物流商<select v-model="drafts[order.id].carrier" :disabled="!props.canOperate" aria-label="物流商" @change="onCarrierChanged(order.id)"><option value="">请选择承运商</option><option v-for="carrier in carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select></label>
+                <label>运输 / 服务类型<select v-model="drafts[order.id].service" :disabled="!props.canOperate || !drafts[order.id].carrier" aria-label="运输 / 服务类型"><option value="">请选择服务类型</option><option v-for="service in serviceOptionsFor(drafts[order.id].carrier)" :key="service.id" :value="service.value">{{ service.label }}</option></select></label>
                 <label>Tracking<input v-model="drafts[order.id].tracking_number" :disabled="!props.canOperate" placeholder="追踪号"></label>
                 <label>发货时间<input v-model="drafts[order.id].shipped_at" :disabled="!props.canOperate" type="datetime-local"></label>
                 <label class="wide">物流备注<textarea v-model="drafts[order.id].logistics_note" :disabled="!props.canOperate" rows="2" /></label>

@@ -26,6 +26,7 @@ final class ShipmentService
         private readonly WarehouseLotConsumptionCapture $lotConsumptions,
         private readonly ShipmentCompletionSemantics $completionSemantics,
         private readonly ShipmentAggregateStatusService $aggregateStatus,
+        private readonly CarrierServiceCatalog $carrierServices,
     ) {}
 
     public function saveDraft(Model $order, array $attributes, ?Authenticatable $actor): Model
@@ -43,14 +44,23 @@ final class ShipmentService
             $trackingNumber = array_key_exists('tracking_number', $attributes)
                 ? $this->canonicalTrackingNumber($attributes['tracking_number'])
                 : $shipment->tracking_number;
+            $selectedCarrier = array_key_exists('carrier', $attributes) ? trim((string) $attributes['carrier']) : trim((string) $shipment->carrier);
+            $carrierChanged = array_key_exists('carrier', $attributes) && $selectedCarrier !== trim((string) $shipment->carrier);
+            $selectedService = array_key_exists('service', $attributes)
+                ? $attributes['service']
+                : ($carrierChanged ? null : $shipment->service);
+            $normalizedService = $carrierProvided
+                ? $this->normalizeCarrierService($lockedOrder, $selectedCarrier, $selectedService, $shipment->carrier_service_id)
+                : ['service' => $shipment->service, 'carrier_service_id' => $shipment->carrier_service_id];
             $shipment->fill([
                 'shipment_status' => 'pending',
                 'warehouse_id' => $warehouseProvided ? $attributes['warehouse_id'] : $shipment->warehouse_id,
                 'warehouse_selection_source' => $warehouseProvided
                     ? ($attributes['warehouse_selection_source'] ?? 'manual')
                     : $shipment->warehouse_selection_source,
-                'carrier' => array_key_exists('carrier', $attributes) ? $attributes['carrier'] : $shipment->carrier,
-                'service' => array_key_exists('service', $attributes) ? $attributes['service'] : $shipment->service,
+                'carrier' => $selectedCarrier !== '' ? $selectedCarrier : null,
+                'service' => $normalizedService['service'],
+                'carrier_service_id' => $normalizedService['carrier_service_id'],
                 'carrier_selection_source' => $carrierProvided
                     ? ($attributes['carrier_selection_source'] ?? 'manual')
                     : $shipment->carrier_selection_source,
@@ -81,6 +91,8 @@ final class ShipmentService
             $before = $this->snapshot($shipment);
             $trackingNumber = $this->canonicalTrackingNumber($attributes['tracking_number'] ?? null);
             $selectedWarehouseId = $attributes['warehouse_id'] ?? $shipment->warehouse_id;
+            $selectedCarrier = trim((string) ($attributes['carrier'] ?? $shipment->carrier));
+            $normalizedService = $this->normalizeCarrierService($lockedOrder, $selectedCarrier, $attributes['service'] ?? null, $shipment->carrier_service_id);
             $preserveRecommendedSource = $shipment->warehouse_selection_source === 'recommended'
                 && (int) $shipment->warehouse_id === (int) $selectedWarehouseId;
             $shipment->fill([
@@ -89,8 +101,9 @@ final class ShipmentService
                 'warehouse_selection_source' => array_key_exists('warehouse_id', $attributes) && $attributes['warehouse_id'] !== null
                     ? ($preserveRecommendedSource ? 'recommended' : 'manual')
                     : $shipment->warehouse_selection_source,
-                'carrier' => $attributes['carrier'],
-                'service' => $attributes['service'] ?? $shipment->service,
+                'carrier' => $selectedCarrier,
+                'service' => $normalizedService['service'],
+                'carrier_service_id' => $normalizedService['carrier_service_id'],
                 'carrier_selection_source' => array_key_exists('service', $attributes) || array_key_exists('carrier', $attributes) ? 'manual' : $shipment->carrier_selection_source,
                 'tracking_number' => $trackingNumber ?: null,
                 'shipped_at' => $attributes['shipped_at'],
@@ -412,6 +425,25 @@ final class ShipmentService
 
         $stale = ShipmentItemPackagingSnapshot::query()->where('shipment_id', $shipment->getKey());
         $validOrderItemIds === [] ? $stale->delete() : $stale->whereNotIn('order_item_id', $validOrderItemIds)->delete();
+    }
+
+    /** @return array{service:?string,carrier_service_id:?int} */
+    private function normalizeCarrierService(Model $order, string $carrier, mixed $service, mixed $existingServiceId = null): array
+    {
+        $carrier = trim($carrier);
+        if ($carrier === '') return ['service' => null, 'carrier_service_id' => null];
+        $serviceText = trim((string) $service);
+        $destination = $order->address?->country;
+        $catalog = $this->carrierServices->activeServices($carrier);
+        if ($catalog->isEmpty()) {
+            return ['service' => $serviceText !== '' ? $serviceText : null, 'carrier_service_id' => $existingServiceId ? (int) $existingServiceId : null];
+        }
+        $resolved = $this->carrierServices->resolve($carrier, $serviceText !== '' ? $serviceText : null, $destination);
+        abort_unless($resolved, 422, '请选择该物流商已启用的运输 / 服务类型');
+        return [
+            'service' => $serviceText !== '' ? $serviceText : $resolved->service_value,
+            'carrier_service_id' => (int) $resolved->id,
+        ];
     }
 
     private function canonicalTrackingNumber(mixed $value): ?string

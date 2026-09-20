@@ -18,7 +18,11 @@ const order = {
   automatic_allocation: { state: 'COUNTRY_NOT_AUTO_ENABLED', status: 'blocked' as const, reason_code: 'country_not_auto_enabled', reason_label: 'US 尚未开放自动分配，继续使用人工履约。', country_code: 'US', warehouse: null, can_apply: false },
   shipment: null,
 }
-const carrierOptions = [{ value: 'DHL', label: 'DHL' }, { value: 'UPS', label: 'UPS' }, { value: 'FedEx', label: 'FedEx' }]
+const carrierOptions = [
+  { value: 'DHL', label: 'DHL / 敦豪', default_service_id: 1, default_service_value: 'DHL PAKET International', services: [{ id: 1, key: 'paket_international', value: 'DHL PAKET International', label: 'DHL Paket International / 国际包裹', name_en: 'DHL Paket International', name_zh: '国际包裹' }] },
+  { value: 'UPS', label: 'UPS / 联合包裹', default_service_id: 2, default_service_value: 'UPS Ground', services: [{ id: 2, key: 'ground', value: 'UPS Ground', label: 'UPS Ground / 标准', name_en: 'UPS Ground', name_zh: '标准' }] },
+  { value: 'FedEx', label: 'FedEx / 联邦快递', default_service_id: 3, default_service_value: 'FedEx Ground / Home Delivery', services: [{ id: 3, key: 'ground_home_delivery', value: 'FedEx Ground / Home Delivery', label: 'FedEx Ground / Home Delivery / 标准', name_en: 'FedEx Ground / Home Delivery', name_zh: '标准' }] },
+]
 const props = { orders: { data: [order], current_page: 1, last_page: 1, per_page: 50, total: 1 }, warehouses: [warehouse], carrierOptions, canOperate: true }
 
 describe('Logistics pending grid contract', () => {
@@ -115,7 +119,7 @@ describe('Logistics warehouse recommendation', () => {
     const draftOrder = {
       ...order,
       warehouse_recommendation: { ...order.warehouse_recommendation, status: 'recommended' as const },
-      shipment: { warehouse_id: null, warehouse_name: null, warehouse_selection_source: null, carrier: 'UPS', service: 'Ground', tracking_number: 'TRK-001', shipped_at: '2026-09-01T10:00:00', logistics_note: 'keep-note' },
+      shipment: { warehouse_id: null, warehouse_name: null, warehouse_selection_source: null, carrier: 'UPS', service: 'UPS Ground', tracking_number: 'TRK-001', shipped_at: '2026-09-01T10:00:00', logistics_note: 'keep-note' },
     }
     const wrapper = mount(Index, { props: { ...props, orders: { ...props.orders, data: [draftOrder] } } })
     const { router } = await import('@inertiajs/vue3')
@@ -136,7 +140,7 @@ describe('Logistics warehouse recommendation', () => {
     expect(wrapper.findAll('td')[5].text()).toBe('美东纽约仓')
     expect((warehouseSelect.element as HTMLSelectElement).value).toBe('2')
     expect((carrierSelect.element as HTMLSelectElement).value).toBe('UPS')
-    expect((wrapper.get('input[placeholder="例如 Ground"]').element as HTMLInputElement).value).toBe('Ground')
+    expect((wrapper.get('select[aria-label="运输 / 服务类型"]').element as HTMLSelectElement).value).toBe('UPS Ground')
     expect((wrapper.get('input[placeholder="追踪号"]').element as HTMLInputElement).value).toBe('TRK-001')
     expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('keep-note')
     expect(wrapper.findAll('button').some(button => button.text() === '收起')).toBe(true)
@@ -146,6 +150,15 @@ describe('Logistics warehouse recommendation', () => {
     vi.unstubAllGlobals()
   })
 
+
+  it('auto-selects the carrier default transport/service type', async () => {
+    const wrapper = mount(Index, { props })
+    await wrapper.findAll('button').find(button => button.text() === '履约处理')!.trigger('click')
+    const carrierSelect = wrapper.get('select[aria-label="物流商"]')
+    await carrierSelect.setValue('UPS')
+    expect((wrapper.get('select[aria-label="运输 / 服务类型"]').element as HTMLSelectElement).value).toBe('UPS Ground')
+    expect(wrapper.text()).toContain('运输 / 服务类型')
+  })
 
   it('uses the canonical carrier dropdown instead of free text', async () => {
     const wrapper = mount(Index, { props })

@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Logistics\Application\AutomaticAllocationEligibilityService;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
+use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\AssistedFulfillmentService;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
@@ -53,6 +54,7 @@ final class LogisticsController
         private readonly LogisticsExecutionAccess $executionAccess,
         private readonly UsFulfillmentZoneResolver $usZones,
         private readonly CarrierRoutingPolicy $carrierRouting,
+        private readonly CarrierServiceCatalog $carrierServices,
         private readonly OrderPackagingReferenceProjection $packagingReferences,
         private readonly UserUiPreferenceService $uiPreferences,
     ) {}
@@ -87,10 +89,7 @@ final class LogisticsController
         return Inertia::render('Logistics/Index', [
             'orders' => $orders->through(fn (Order $order): array => $this->data($order, $context, $activeReservations))->toArray(),
             'warehouses' => $context['warehouses'],
-            'carrierOptions' => Carrier::query()->where('is_active', true)->orderBy('id')->get(['name'])->map(fn (Carrier $carrier): array => [
-                'value' => $carrier->name,
-                'label' => $this->carrierRouting->displayName($carrier->name),
-            ])->values()->all(),
+            'carrierOptions' => $this->carrierServices->options(),
             'statusBar' => $this->statusBar(),
             'gridPreferenceNamespace' => self::PENDING_GRID_NAMESPACE,
             'gridPreference' => $request->user() ? $this->uiPreferences->get($request->user(), self::PENDING_GRID_NAMESPACE) : null,
@@ -127,10 +126,7 @@ final class LogisticsController
         return Inertia::render('Logistics/FulfillmentAllocation', [
             'orders' => $orders->through(fn (Order $order): array => $this->data($order, $context))->toArray(),
             'warehouses' => $warehouses,
-            'carrierOptions' => Carrier::query()->where('is_active', true)->orderBy('id')->get(['name'])->map(fn (Carrier $carrier): array => [
-                'value' => $carrier->name,
-                'label' => $this->carrierRouting->displayName($carrier->name),
-            ])->values()->all(),
+            'carrierOptions' => $this->carrierServices->options(),
             'pendingTotal' => $orders->total(),
             'canOperate' => $this->allocationAccess->allows($request->user()),
         ]);

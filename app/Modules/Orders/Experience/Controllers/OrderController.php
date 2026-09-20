@@ -10,6 +10,7 @@ use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
 use App\Modules\Logistics\Application\FulfillmentAllocationAccess;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
+use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Orders\Application\OrderKind;
@@ -38,6 +39,7 @@ final class OrderController
         private readonly FulfillmentAllocationAccess $fulfillmentAllocationAccess,
         private readonly LogisticsExecutionAccess $logisticsExecutionAccess,
         private readonly ShipmentCompletionSemantics $shipmentCompletion,
+        private readonly CarrierServiceCatalog $carrierServices,
     ) {}
 
     public function index(Request $request): Response
@@ -126,10 +128,7 @@ final class OrderController
             'allocationUi' => $allocationUi,
             'packagingReferences' => $this->packagingReferences->forOrder($order),
             'warehouses' => $warehouses,
-            'carrierOptions' => Carrier::query()->where('is_active', true)->orderBy('id')->get(['name'])->map(fn (Carrier $carrier): array => [
-                'value' => $carrier->name,
-                'label' => $carrier->name,
-            ])->values()->all(),
+            'carrierOptions' => $this->carrierServices->options(),
             'canOperateLogistics' => $this->logisticsExecutionAccess->allows($request->user()),
             'canViewProfit' => $request->user()?->can('analysis.view') ?? false,
             'canMarkOperational' => $request->user()?->can('orders.edit') ?? false,
