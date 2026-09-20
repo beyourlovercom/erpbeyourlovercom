@@ -1,8 +1,8 @@
 # ERP Dashboard Redesign V1 — Work Package
 
-Date: 2026-09-20  
-Repository: `beyourlovercom/erpbeyourlovercom`  
-Branch: `feature/dashboard-redesign-v1`  
+Date: 2026-09-20
+Repository: `beyourlovercom/erpbeyourlovercom`
+Branch: `feature/dashboard-redesign-v1`
 Base main: `cdd0468e4c1a73517326075c3381ff06b70e8420`
 
 ## 0. Execution boundary
@@ -62,15 +62,15 @@ The redesigned BYL boss/operations dashboard should answer, at a glance:
 
 ## 4. Roadmap
 
-D0 Current Dashboard Audit ✅  
-→ D1 Metrics Contract  
-→ D2 Shell / Navigation  
-→ D3 Core KPI + Operations Funnel  
-→ D4 Drill-down  
-→ D5 Mobile / Performance  
-→ D6 Local UAT  
-→ PR  
-→ Production  
+D0 Current Dashboard Audit ✅
+→ D1 Metrics Contract
+→ D2 Shell / Navigation
+→ D3 Core KPI + Operations Funnel
+→ D4 Drill-down
+→ D5 Mobile / Performance
+→ D6 Local UAT
+→ PR
+→ Production
 → Owner UAT
 
 ## 5. D1 guardrails
@@ -275,11 +275,36 @@ D1 is accepted only if implementation can prove:
 
 ## 7. Next execution point
 
-D0 Current Dashboard Audit ✅  
-→ D1 Metrics Contract ✅  
-→ **D2 Shell / Navigation**  
-→ D3 Core KPI + Operations Funnel  
-→ D4 Drill-down  
-→ D5 Mobile / Performance  
-→ D6 Local UAT  
+D0 Current Dashboard Audit ✅
+→ D1 Metrics Contract ✅
+→ **D2 Shell / Navigation**
+→ D3 Core KPI + Operations Funnel
+→ D4 Drill-down
+→ D5 Mobile / Performance
+→ D6 Local UAT
 → PR → Production → Owner UAT
+
+
+## 8. D2 Shell / Navigation — COMPLETE
+
+Implemented:
+- removed the legacy Dashboard `current()` metric contract and its duplicated `pending_orders / pending_shipment` query;
+- Dashboard entry now returns permission-scoped section visibility rather than querying unauthorized module data;
+- added the new Owner/Operations page hierarchy: Current Operations → Inventory Risk → Sync Health → Operating Finance → Purchase OS;
+- added section-anchor navigation and canonical module entry links;
+- added 7d / 30d / 90d / custom period shell for the finance trend stage;
+- Purchase OS collapses to a quiet state when `active = 0`, and retains detailed progress only when active;
+- mobile layout is native to the same semantic shell; there is no alternate mobile data contract.
+
+Validation:
+- Dashboard Vue focused tests: **5 / 5 PASS**.
+- `npm run typecheck`: **PASS**.
+- PHP syntax: DashboardController + DashboardMetrics **PASS**.
+- Existing PHP regression suite is currently blocked before Dashboard assertions by unrelated SQLite fixture/schema drift:
+  - `orders.erp_order_id` missing in the in-memory test schema;
+  - `orders.order_kind` missing in the in-memory test schema.
+- Full PHPUnit suite discovery also currently encounters an unrelated Traffic test interface baseline issue (`InquiryMetricSignalReader` not found).
+- These baseline failures are not reclassified as Dashboard regressions.
+
+Next:
+**D3 Core KPI + Operations Funnel** — replace D2 placeholders with permission-scoped canonical live snapshots and the bounded operating-finance trend.
