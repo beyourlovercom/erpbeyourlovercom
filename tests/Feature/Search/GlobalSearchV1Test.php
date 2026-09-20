@@ -4,7 +4,7 @@ namespace Tests\Feature\Search;
 
 use App\Models\Permission;
 use App\Models\Role;
-use App\Models\User;
+use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Inventory\Application\InventoryService;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;

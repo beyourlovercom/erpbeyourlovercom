@@ -2,7 +2,7 @@
 
 namespace App\Modules\Search\Application;
 
-use App\Models\User;
+use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Search\Application\Contracts\SearchProvider;
 
 final class GlobalSearchService
