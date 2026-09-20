@@ -95,6 +95,15 @@ describe('dashboard redesign', () => {
     expect(custom.find('svg[aria-label="经营趋势图"]').exists()).toBe(true)
   })
 
+  it('keeps the shell usable while deferred finance is loading', () => {
+    const wrapper = mount(Dashboard, { props: { ...baseProps, financeSnapshot:null } })
+    expect(wrapper.find('#operations').exists()).toBe(true)
+    expect(wrapper.find('#finance').exists()).toBe(true)
+    expect(wrapper.find('#finance').attributes('aria-busy')).toBeUndefined()
+    expect(wrapper.find('.finance-loading').attributes('aria-busy')).toBe('true')
+    expect(wrapper.text()).toContain('正在加载经营趋势')
+  })
+
   it('keeps zero-activity procurement compact and expands it only when active', () => {
     const quiet = mount(Dashboard, { props: baseProps })
     expect(quiet.text()).toContain('当前无活跃采购')
