@@ -18,7 +18,7 @@ final class InventoryController
     public function warehouses(): Response { return Inertia::render('Inventory/WarehouseList', ['warehouses'=>$this->inventory->warehouses(),'canManage'=>auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false]); }
     public function products(Request $request): Response|RedirectResponse
     {
-        $page=$this->inventory->productInventory($request->only(['search','warehouse']));
+        $page=$this->inventory->productInventory($request->only(['search','warehouse','stock_status']));
         $warehouseFilter=trim((string)$request->input('warehouse',''));
         $canonicalWarehouse=$warehouseFilter===''?'':($this->inventory->canonicalWarehouseSlug($warehouseFilter) ?? $warehouseFilter);
         if($warehouseFilter!=='' && $canonicalWarehouse!==$warehouseFilter){
@@ -35,7 +35,7 @@ final class InventoryController
                 'standard_qoh'=>$i->standard_qoh,'expected_restock_qty'=>$i->expected_restock_qty,
                 'replenishment'=>$this->inventory->replenishmentMetrics($i),
             ])->toArray(),
-            'warehouses'=>$this->inventory->warehouses(),'filters'=>['search'=>$request->input('search'),'warehouse'=>$canonicalWarehouse],
+            'warehouses'=>$this->inventory->warehouses(),'filters'=>['search'=>$request->input('search'),'warehouse'=>$canonicalWarehouse,'stock_status'=>$request->input('stock_status')],
         ]);
     }
     public function productSearch(Request $request): JsonResponse
