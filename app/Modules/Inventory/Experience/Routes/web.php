@@ -4,6 +4,8 @@ use App\Modules\Inventory\Experience\Controllers\InventoryController;
 use App\Modules\Inventory\Experience\Controllers\InventorySyncController;
 use App\Modules\Inventory\Experience\Controllers\WarehouseController;
 use App\Modules\Inventory\Experience\Controllers\PackagingMeasurementController;
+use App\Modules\Inventory\Experience\Controllers\BlueLabelWorkerController;
+use App\Modules\Inventory\Experience\Middleware\RequireBlueLabelWorkerToken;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web','auth'])->group(function (): void {
@@ -67,3 +69,18 @@ Route::middleware(['web','auth','can:inventory.operate'])->group(function (): vo
     Route::get('/inventory/sync/history',[InventorySyncController::class,'history'])->name('inventory.sync.history');
     Route::get('/inventory/sync/{batch}',[InventorySyncController::class,'show'])->whereNumber('batch')->name('inventory.sync.show');
 });
+
+Route::prefix('/api/internal/blue-label-worker')
+    ->middleware(RequireBlueLabelWorkerToken::class)
+    ->group(function (): void {
+        Route::post('/claim', [BlueLabelWorkerController::class, 'claim'])
+            ->name('inventory.blue-label-worker.claim');
+        Route::post('/jobs/{job}/start', [BlueLabelWorkerController::class, 'start'])
+            ->name('inventory.blue-label-worker.start');
+        Route::post('/jobs/{job}/heartbeat', [BlueLabelWorkerController::class, 'heartbeat'])
+            ->name('inventory.blue-label-worker.heartbeat');
+        Route::post('/jobs/{job}/complete', [BlueLabelWorkerController::class, 'complete'])
+            ->name('inventory.blue-label-worker.complete');
+        Route::post('/jobs/{job}/fail', [BlueLabelWorkerController::class, 'fail'])
+            ->name('inventory.blue-label-worker.fail');
+    });
