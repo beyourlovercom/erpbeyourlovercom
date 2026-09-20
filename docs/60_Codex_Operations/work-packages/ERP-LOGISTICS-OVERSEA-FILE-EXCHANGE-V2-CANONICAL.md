@@ -1,0 +1,210 @@
+# ERP Logistics Overseas File Exchange V2 — Canonical
+
+Status: DESIGN FROZEN / IMPLEMENTATION NOT STARTED
+Date: 2026-09-20
+Base: `main@cdd0468e4c1a73517326075c3381ff06b70e8420`
+Branch: `feature/erp-logistics-oversea-file-exchange-v2`
+
+## 1. Business workflow
+
+Canonical owner flow:
+
+`Vita 分仓 -> Dede 审核 -> 下载对应仓库真实 XLSX -> 上传仓库系统 -> 仓库生成 Tracking -> Dede 上传原始回传 XLSX -> Preview -> Apply -> Shipment=shipped -> Woo/AfterShip downstream`
+
+Owner rule: Dede 上传带 Tracking 的回传文件并确认 Apply 后，ERP 即认定已经发货。仓库后台仍处于“仓库处理中”或 Tracking Status=Pending 不要求第二次上传。
+
+## 2. File naming
+
+Outbound filename body is frozen:
+
+`007-{warehouse}-orders-{YYMMDD}.xlsx`
+
+Examples:
+- `007-us-ny-orders-260920.xlsx`
+- `007-us-moreplus-orders-260920.xlsx`
+- `007-us-3sm-orders-260920.xlsx`
+- `007-de-tianyun-orders-260920.xlsx`
+- `007-ca-orders-260920.xlsx`
+
+## 3. Canonical order identity
+
+ERP sends the customer/business order reference into each provider's reference field. Do not invent a second ERP-facing order-number system.
+
+Provider mapping:
+- US-NY: `Reference Number/参考单号`
+- US-SM: `Reference Number/参考单号`
+- DE: `Reference Number/参考单号`
+- US-LA MorePlus: `Order NO`
+- CA: `客户参考号`
+
+Return matching is exact/fail-closed using the corresponding provider reference/order field. No fuzzy name/address/SKU matching.
+
+## 4. Export format families
+
+### 4.1 WMS-64 family — US-NY / US-SM / DE
+
+One order = one row. Header A:BL is identical across the three real templates. Supports horizontal `SKU1..SKU20` + `Quantity1..Quantity20`.
+
+Required provider profile values:
+
+| ERP warehouse | Provider warehouse code | Provider shipping service | Provider carrier field |
+|---|---|---|---|
+| US-NY | `US01` | `USPS-NJ` | blank unless required |
+| US-SM | `Yangfan` | `Service with the lowest price` | `USPS` |
+| DE -> DE | `Hannover` | `DHL PAKET DOMESTIC` | blank unless required |
+| DE -> non-DE supported Europe | `Hannover` | `DHL PAKET International N` | blank unless required |
+
+US-SM owner rule: ERP canonical carrier is USPS; warehouse chooses the concrete final service. Export expresses USPS carrier and uses provider auto-selection service.
+
+### 4.2 MorePlus-23 family — US-LA
+
+Template has 23 columns. Multi-SKU orders are block rows:
+- first row: `Order NO` + first SKU/Qty + complete recipient/order data;
+- continuation rows: `Order NO` blank, only SKU/Qty populated.
+
+Default `Request Shipping Service = Selected by Warehouse`.
+`Warehouse Customized Service` remains supported by the provider template but is not required for V1.
+
+### 4.3 Canada-69 family — CA
+
+Template `OutboundConsignment` has 69 columns. One order = one row, up to `SKU1..SKU5`.
+
+Provider profile:
+- warehouse = `CA02_多伦多仓`
+- default logistics product = `CAPOST[加拿大邮政多伦多]`
+- customer reference = ERP customer/business order reference
+- inventory quality for normal sellable stock = `G  良好`
+
+Do not use stale hidden UK warehouse lists as authority; the active CA mapping is present in the provider validation data.
+
+## 5. Return parser families
+
+### 5.1 WMS return — US-NY / DE
+
+Parse by header names, never fixed column indexes. Core fields:
+- `Reference order No./参考单号`
+- `Tracking No./物流跟踪号`
+- `Carrier/承运商`
+- `Shipping service/物流渠道`
+- `Outbound Order No./出库单号`
+- `OutboundTime/出库时间` when present
+
+The US-NY and DE exports are the same WMS return family with different extra columns; one normalized parser must handle both.
+
+### 5.2 MorePlus return — US-LA
+
+Core fields:
+- `Order#` = ERP business reference
+- `Outbound Order#` = provider order reference
+- `Master Tracking#`
+- `Tracking#`
+- `Requested via`
+- `Ship Via`
+- `Carrier`
+- `Shipped Time` optional
+
+Rows with blank `Order#` are continuation/item rows and must not become independent shipments.
+
+Tracking resolution:
+- only one of Master/Tracking present -> use it;
+- both present and equal -> use it;
+- both present and different -> BLOCK for review; never guess.
+
+`Shipped Time` is optional. If absent, Apply time becomes canonical `shipped_at` per Owner business rule.
+
+### 5.3 Canada return — CA
+
+Core fields:
+- first column `订单号` corresponds to the customer order identity per Owner confirmation;
+- `包裹序号` retained for evidence/conflict checks;
+- third column `com_lab_3015` is the provider Tracking field.
+
+The parser normalizes the provider-specific tracking header to canonical `tracking_number`.
+
+### 5.4 US-SM return
+
+No real tracking-return template exists. Do not invent one. Keep manual tracking entry as the V1 fallback until a real sample is provided.
+
+## 6. Normalized return contract
+
+All parsers must normalize into one internal row contract:
+
+```text
+warehouse_key
+order_reference
+provider_order_reference?
+tracking_number
+carrier?
+provider_service?
+provider_status?
+shipped_at?
+source_row
+```
+
+Then reuse one Preview / Apply engine.
+
+## 7. Apply semantics
+
+Preview is read-only and classifies each row as:
+- `apply`
+- `noop`
+- `blocked`
+
+Block at minimum on:
+- no exact order/shipment match;
+- wrong warehouse;
+- Dede review not approved;
+- invalid tracking;
+- duplicate order row with conflicting tracking;
+- existing shipped truth conflicts;
+- MorePlus Master/Tracking conflict;
+- ambiguous multi-package identity that cannot be mapped exactly.
+
+Apply:
+- uses existing `ShipmentService::markShipped()`;
+- supplied provider shipped time is used when valid;
+- otherwise current Apply time is used;
+- local shipment truth commits first;
+- existing Woo/AfterShip downstream remains canonical;
+- no requirement for a second warehouse upload.
+
+## 8. Canonical carrier vs provider service
+
+Do not overwrite Carrier Master service identity with warehouse-internal service codes.
+
+Examples:
+- canonical `USPS` vs provider `USPS-NJ`
+- canonical `USPS` vs MorePlus `USPS Ground Advantage`
+- canonical `DHL` vs provider `DHL PAKET International N`
+- canonical `Canada Post` vs provider `CAPOST[加拿大邮政多伦多]`
+
+V1 may display provider service in Preview/evidence without mutating canonical Shipment service unless an explicit mapping exists.
+
+## 9. Implementation minimization
+
+Do not create five independent engines.
+
+Target components:
+- `Wms64OutboundExporter` — US-NY / US-SM / DE
+- `MorePlusOutboundExporter` — US-LA
+- `CanadaOutboundExporter` — CA
+- `WmsTrackingReturnReader` — US-NY / DE
+- `MorePlusTrackingReturnReader` — US-LA
+- `CanadaTrackingReturnReader` — CA
+- existing `OverseaTrackingReturnService` refactored to consume normalized rows
+
+No new Export Batch schema in V1 unless implementation proves existing review/audit state cannot safely represent the workflow.
+
+## 10. UAT target
+
+Dede must be able to perform:
+1. approve warehouse-assigned orders;
+2. open one warehouse page;
+3. download that warehouse's real XLSX format with frozen filename;
+4. upload the untouched provider return XLSX;
+5. inspect `apply / noop / blocked` preview;
+6. confirm Apply once;
+7. see Tracking + shipped state in ERP;
+8. verify no second upload is requested.
+
+No Production business-data writes are authorized by this document.
