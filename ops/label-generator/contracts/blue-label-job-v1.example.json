@@ -1,0 +1,21 @@
+{
+  "schema_version": "byl.blue-label.job.v1",
+  "job_id": "BL-UAT-001",
+  "plan_reference": "RP-USSM-20260920-000001",
+  "plan_snapshot_checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "template_version": "blue-label-picture-master-v1",
+  "items": [
+    {
+      "product_sku": "VC549A",
+      "label_sku": "C549A",
+      "label_description": "磁吸穿戴裸机玫红色成品 APP款",
+      "restock_qty": 10
+    },
+    {
+      "product_sku": "CA755B",
+      "label_sku": "CA755B",
+      "label_description": "DOMINUS",
+      "restock_qty": 3
+    }
+  ]
+}
