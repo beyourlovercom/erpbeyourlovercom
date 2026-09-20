@@ -3,10 +3,12 @@
 namespace Tests\Feature\Logistics;
 
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
+use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -71,6 +73,54 @@ final class CarrierMasterV2Test extends TestCase
         $order->refresh();
         self::assertSame('DHL PAKET DOMESTIC', $order->shipment?->service);
         self::assertSame('paket_domestic', $order->shipment?->carrierService?->service_key);
+    }
+
+    public function test_warehouse_routing_is_fully_automatic_once_fulfillment_warehouse_is_known(): void
+    {
+        $routing = app(CarrierRoutingPolicy::class);
+
+        foreach (['US-LA', 'US-NY', 'US-SM'] as $code) {
+            $route = $routing->warehouseRoute('JP', $code);
+            self::assertSame('USPS', $route['carrier']);
+            self::assertSame('USPS Priority Mail', $route['service']);
+        }
+
+        self::assertSame('DHL PAKET DOMESTIC', $routing->warehouseRoute('DE', 'DE')['service']);
+        self::assertSame('DHL PAKET International', $routing->warehouseRoute('FR', 'DE')['service']);
+        self::assertSame('Canada Post', $routing->warehouseRoute('US', 'CA')['carrier']);
+        self::assertSame('Canada Post Expedited Parcel', $routing->warehouseRoute('US', 'CA')['service']);
+        self::assertSame('Weship', $routing->warehouseRoute('MX', 'FACTORY')['carrier']);
+        self::assertSame('Standard', $routing->warehouseRoute('MX', 'FACTORY')['service']);
+        self::assertSame('POSTNL international', $routing->warehouseRoute('AR', 'FACTORY')['carrier']);
+        self::assertSame('POSTNL International Tracked', $routing->warehouseRoute('AR', 'FACTORY')['service']);
+        self::assertSame('KingTrans', $routing->warehouseRoute('TH', 'FACTORY')['carrier']);
+        self::assertSame('Standard', $routing->warehouseRoute('TH', 'FACTORY')['service']);
+        self::assertSame('4PX', $routing->warehouseRoute('AU', 'FACTORY')['carrier']);
+        self::assertSame('SD经济挂号-带电', $routing->warehouseRoute('AU', 'FACTORY')['service']);
+    }
+
+    public function test_warehouse_only_draft_auto_assigns_carrier_and_service_server_side(): void
+    {
+        $user = $this->operator();
+        $warehouse = Warehouse::query()->where('code', 'US-LA')->firstOrFail();
+        $order = Order::query()->create([
+            'internal_order_number' => 'AUTO-ROUTE-'.uniqid(),
+            'erp_order_id' => '007-AUTO-ROUTE-'.random_int(100, 999),
+            'source_type' => 'manual', 'order_kind' => 'customer', 'order_date' => '2026-09-20',
+            'order_status' => 'pending_shipment', 'currency' => 'USD',
+        ]);
+        $order->address()->create(['recipient_name' => 'Auto Route', 'country' => 'US']);
+
+        app(ShipmentService::class)->saveDraft($order, [
+            'warehouse_id' => $warehouse->id,
+            'warehouse_selection_source' => 'recommended',
+        ], $user);
+
+        $shipment = $order->fresh()->shipment;
+        self::assertSame('USPS', $shipment?->carrier);
+        self::assertSame('USPS Priority Mail', $shipment?->service);
+        self::assertSame('automatic', $shipment?->carrier_selection_source);
+        self::assertNotNull($shipment?->carrier_service_id);
     }
 
     public function test_operator_can_edit_bilingual_carrier_master_services_and_default(): void

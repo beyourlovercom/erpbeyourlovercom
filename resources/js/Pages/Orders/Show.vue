@@ -122,6 +122,7 @@ const props = withDefaults(defineProps<{
   inventoryAvailability?: Record<number, Availability[]>
   packagingReferences?: Record<number, PackagingReference>
   warehouses?: Warehouse[]
+  warehouseRouting?: Record<number,{ carrier:string|null; service:string|null; carrier_service_id:number|null; automatic:boolean }>
   carrierOptions?: CarrierOption[]
   allocationUi?: AllocationUi
   audit: { action: string; actor_id: number | null; created_at: string; reason?: string }[]
@@ -146,6 +147,12 @@ const contextualDefaultService = (name:string, country?:string|null) => {
   return carrier.default_service_value ?? ''
 }
 const shipmentServiceOptions = computed(() => carrierOption(shipmentEditor.value.carrier)?.services ?? [])
+const routeForWarehouse = (warehouseId:number|null) => warehouseId ? props.warehouseRouting?.[warehouseId] : undefined
+const applyShipmentWarehouseDefault = () => {
+  const route = routeForWarehouse(shipmentEditor.value.warehouse_id)
+  shipmentEditor.value.carrier = route?.carrier ?? ''
+  shipmentEditor.value.service = route?.service ?? contextualDefaultService(shipmentEditor.value.carrier, props.order.address?.country)
+}
 const applyShipmentCarrierDefault = () => {
   shipmentEditor.value.service = contextualDefaultService(shipmentEditor.value.carrier, props.order.address?.country)
 }
@@ -345,12 +352,13 @@ const openShipmentEditor = (target: {
   shipmentEditorOrderId.value = target.order_id
   shipmentEditorLabel.value = target.suffix ? `${target.suffix} · ${target.erp_order_id ?? ''}` : (target.erp_order_id ?? props.order.erp_order_id ?? '履约')
   const shippedAt = target.shipment?.shipped_at ? String(target.shipment.shipped_at).slice(0, 16) : localDateTimeNow()
-  const initialCarrier = target.shipment?.carrier ?? ''
-  const configuredCarrier = carrierOption(initialCarrier)
+  const initialWarehouseId = target.shipment?.warehouse_id ?? null
+  const automaticRoute = routeForWarehouse(initialWarehouseId)
+  const initialCarrier = target.shipment?.carrier ?? automaticRoute?.carrier ?? ''
   shipmentEditor.value = {
-    warehouse_id: target.shipment?.warehouse_id ?? null,
+    warehouse_id: initialWarehouseId,
     carrier: initialCarrier,
-    service: target.shipment?.service ?? contextualDefaultService(initialCarrier, props.order.address?.country),
+    service: target.shipment?.service ?? automaticRoute?.service ?? contextualDefaultService(initialCarrier, props.order.address?.country),
     tracking_number: target.shipment?.tracking_number ?? '',
     shipped_at: shippedAt,
     logistics_note: target.shipment?.logistics_note ?? '',
@@ -916,7 +924,7 @@ const submitReplacement = () => {
         </header>
         <div class="ord-shipment-form">
           <label>发货仓库
-            <select v-model="shipmentEditor.warehouse_id" class="erp-select" :disabled="!canOperateLogistics"><option :value="null">请选择仓库</option><option v-for="warehouse in warehouses ?? []" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} · {{ warehouse.code }}</option></select>
+            <select v-model="shipmentEditor.warehouse_id" class="erp-select" :disabled="!canOperateLogistics" @change="applyShipmentWarehouseDefault"><option :value="null">请选择仓库</option><option v-for="warehouse in warehouses ?? []" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} · {{ warehouse.code }}</option></select>
           </label>
           <label>物流商
             <select v-model="shipmentEditor.carrier" class="erp-select" :disabled="!canOperateLogistics" @change="applyShipmentCarrierDefault"><option value="">请选择承运商</option><option v-for="carrier in carrierOptions ?? []" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select>

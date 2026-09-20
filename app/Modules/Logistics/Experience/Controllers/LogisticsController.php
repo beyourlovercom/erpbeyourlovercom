@@ -221,6 +221,8 @@ final class LogisticsController
             return response()->json([
                 'warehouse_id' => $shipment?->warehouse_id,
                 'warehouse_name' => $shipment?->warehouse?->name,
+                'carrier' => $shipment?->carrier,
+                'service' => $shipment?->service,
             ]);
         }
 

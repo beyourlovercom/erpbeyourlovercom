@@ -16,9 +16,11 @@ const order = {
   items: [{ id: 1, product_id: 99, sku: 'SKU-99', product_summary: 'Product', quantity: 1, availability: [{ warehouse_id: 2, warehouse_slug: 'us-ny', warehouse_name: '美东纽约仓', inventory_state: 'confirmed', can_auto_allocate: true, quantity_on_hand: 5, quantity_reserved: 0, quantity_available: 5 }] }],
   warehouse_recommendation: { status: 'recommended' as const, reason_code: 'recommended', reason_label: '可采用系统推荐。', country_code: 'US', required_sku_count: 1, candidate_count: 1, warehouse: { id: 2, slug: 'us-ny', code: 'US-NY', name: '美东纽约仓' } },
   automatic_allocation: { state: 'COUNTRY_NOT_AUTO_ENABLED', status: 'blocked' as const, reason_code: 'country_not_auto_enabled', reason_label: 'US 尚未开放自动分配，继续使用人工履约。', country_code: 'US', warehouse: null, can_apply: false },
+  carrier_routes: { 'US-NY': { carrier: 'USPS', carrier_label: 'USPS / 美国邮政', service: 'USPS Priority Mail', automatic: true } },
   shipment: null,
 }
 const carrierOptions = [
+  { value: 'USPS', label: 'USPS / 美国邮政', default_service_id: 4, default_service_value: 'USPS Priority Mail', services: [{ id: 4, key: 'priority_mail', value: 'USPS Priority Mail', label: 'Priority Mail / 优先件', name_en: 'Priority Mail', name_zh: '优先件' }] },
   { value: 'DHL', label: 'DHL / 敦豪', default_service_id: 1, default_service_value: 'DHL PAKET International', services: [{ id: 1, key: 'paket_international', value: 'DHL PAKET International', label: 'DHL Paket International / 国际包裹', name_en: 'DHL Paket International', name_zh: '国际包裹' }] },
   { value: 'UPS', label: 'UPS / 联合包裹', default_service_id: 2, default_service_value: 'UPS Ground', services: [{ id: 2, key: 'ground', value: 'UPS Ground', label: 'UPS Ground / 标准', name_en: 'UPS Ground', name_zh: '标准' }] },
   { value: 'FedEx', label: 'FedEx / 联邦快递', default_service_id: 3, default_service_value: 'FedEx Ground / Home Delivery', services: [{ id: 3, key: 'ground_home_delivery', value: 'FedEx Ground / Home Delivery', label: 'FedEx Ground / Home Delivery / 标准', name_en: 'FedEx Ground / Home Delivery', name_zh: '标准' }] },
@@ -139,8 +141,8 @@ describe('Logistics warehouse recommendation', () => {
 
     expect(wrapper.findAll('td')[5].text()).toBe('美东纽约仓')
     expect((warehouseSelect.element as HTMLSelectElement).value).toBe('2')
-    expect((carrierSelect.element as HTMLSelectElement).value).toBe('UPS')
-    expect((wrapper.get('select[aria-label="运输 / 服务类型"]').element as HTMLSelectElement).value).toBe('UPS Ground')
+    expect((carrierSelect.element as HTMLSelectElement).value).toBe('USPS')
+    expect((wrapper.get('select[aria-label="运输 / 服务类型"]').element as HTMLSelectElement).value).toBe('USPS Priority Mail')
     expect((wrapper.get('input[placeholder="追踪号"]').element as HTMLInputElement).value).toBe('TRK-001')
     expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('keep-note')
     expect(wrapper.findAll('button').some(button => button.text() === '收起')).toBe(true)
@@ -150,6 +152,15 @@ describe('Logistics warehouse recommendation', () => {
     vi.unstubAllGlobals()
   })
 
+
+  it('auto-selects carrier and service when a warehouse is selected', async () => {
+    const wrapper = mount(Index, { props })
+    await wrapper.findAll('button').find(button => button.text() === '履约处理')!.trigger('click')
+    const warehouseSelect = wrapper.findAll('select')[0]
+    await warehouseSelect.setValue(2)
+    expect((wrapper.get('select[aria-label="物流商"]').element as HTMLSelectElement).value).toBe('USPS')
+    expect((wrapper.get('select[aria-label="运输 / 服务类型"]').element as HTMLSelectElement).value).toBe('USPS Priority Mail')
+  })
 
   it('auto-selects the carrier default transport/service type', async () => {
     const wrapper = mount(Index, { props })

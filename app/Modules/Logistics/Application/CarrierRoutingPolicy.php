@@ -32,6 +32,9 @@ final class CarrierRoutingPolicy
         }
 
         $route = $country !== '' ? config("carrier_routing.countries.{$country}.warehouses.{$warehouseCode}") : null;
+        if (! is_array($route)) {
+            $route = config("carrier_routing.warehouse_defaults.{$warehouseCode}");
+        }
         return is_array($route) ? $this->normalizeRoute($route, $country) : [];
     }
 

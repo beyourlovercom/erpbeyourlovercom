@@ -7,6 +7,7 @@ use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Inventory\Application\ProductPackagingStandardReader;
 use App\Modules\Inventory\Application\Contracts\WarehouseLotConsumptionCapture;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReviewHistory;
 use App\Modules\Logistics\Infrastructure\Models\ShipmentAttempt;
@@ -27,6 +28,7 @@ final class ShipmentService
         private readonly ShipmentCompletionSemantics $completionSemantics,
         private readonly ShipmentAggregateStatusService $aggregateStatus,
         private readonly CarrierServiceCatalog $carrierServices,
+        private readonly CarrierRoutingPolicy $carrierRouting,
     ) {}
 
     public function saveDraft(Model $order, array $attributes, ?Authenticatable $actor): Model
@@ -44,25 +46,32 @@ final class ShipmentService
             $trackingNumber = array_key_exists('tracking_number', $attributes)
                 ? $this->canonicalTrackingNumber($attributes['tracking_number'])
                 : $shipment->tracking_number;
-            $selectedCarrier = array_key_exists('carrier', $attributes) ? trim((string) $attributes['carrier']) : trim((string) $shipment->carrier);
-            $carrierChanged = array_key_exists('carrier', $attributes) && $selectedCarrier !== trim((string) $shipment->carrier);
-            $selectedService = array_key_exists('service', $attributes)
+            $selectedWarehouseId = $warehouseProvided ? $attributes['warehouse_id'] : $shipment->warehouse_id;
+            $automaticRoute = $this->automaticRoute($lockedOrder, $selectedWarehouseId);
+            $explicitCarrier = array_key_exists('carrier', $attributes) && trim((string) $attributes['carrier']) !== '';
+            $selectedCarrier = $explicitCarrier
+                ? trim((string) $attributes['carrier'])
+                : (trim((string) $shipment->carrier) !== '' && ! $warehouseProvided ? trim((string) $shipment->carrier) : trim((string) ($automaticRoute['carrier'] ?? '')));
+            $carrierChanged = $selectedCarrier !== trim((string) $shipment->carrier);
+            $selectedService = array_key_exists('service', $attributes) && trim((string) $attributes['service']) !== ''
                 ? $attributes['service']
-                : ($carrierChanged ? null : $shipment->service);
-            $normalizedService = $carrierProvided
+                : ($explicitCarrier ? null : ($carrierChanged || $warehouseProvided ? ($automaticRoute['service'] ?? null) : $shipment->service));
+            $effectiveCarrierProvided = $carrierProvided || $selectedCarrier !== '';
+            $normalizedService = $effectiveCarrierProvided
                 ? $this->normalizeCarrierService($lockedOrder, $selectedCarrier, $selectedService, $shipment->carrier_service_id)
                 : ['service' => $shipment->service, 'carrier_service_id' => $shipment->carrier_service_id];
+            $automaticSelection = $this->matchesAutomaticRoute($selectedCarrier, $normalizedService['service'], $automaticRoute);
             $shipment->fill([
                 'shipment_status' => 'pending',
-                'warehouse_id' => $warehouseProvided ? $attributes['warehouse_id'] : $shipment->warehouse_id,
+                'warehouse_id' => $selectedWarehouseId,
                 'warehouse_selection_source' => $warehouseProvided
                     ? ($attributes['warehouse_selection_source'] ?? 'manual')
                     : $shipment->warehouse_selection_source,
                 'carrier' => $selectedCarrier !== '' ? $selectedCarrier : null,
                 'service' => $normalizedService['service'],
                 'carrier_service_id' => $normalizedService['carrier_service_id'],
-                'carrier_selection_source' => $carrierProvided
-                    ? ($attributes['carrier_selection_source'] ?? 'manual')
+                'carrier_selection_source' => $selectedCarrier !== ''
+                    ? ($automaticSelection ? 'automatic' : ($attributes['carrier_selection_source'] ?? 'manual'))
                     : $shipment->carrier_selection_source,
                 'tracking_number' => $trackingNumber,
                 'logistics_note' => array_key_exists('logistics_note', $attributes) ? $attributes['logistics_note'] : $shipment->logistics_note,
@@ -91,8 +100,16 @@ final class ShipmentService
             $before = $this->snapshot($shipment);
             $trackingNumber = $this->canonicalTrackingNumber($attributes['tracking_number'] ?? null);
             $selectedWarehouseId = $attributes['warehouse_id'] ?? $shipment->warehouse_id;
-            $selectedCarrier = trim((string) ($attributes['carrier'] ?? $shipment->carrier));
-            $normalizedService = $this->normalizeCarrierService($lockedOrder, $selectedCarrier, $attributes['service'] ?? null, $shipment->carrier_service_id);
+            $automaticRoute = $this->automaticRoute($lockedOrder, $selectedWarehouseId);
+            $explicitCarrier = array_key_exists('carrier', $attributes) && trim((string) $attributes['carrier']) !== '';
+            $selectedCarrier = $explicitCarrier
+                ? trim((string) $attributes['carrier'])
+                : (trim((string) $shipment->carrier) !== '' ? trim((string) $shipment->carrier) : trim((string) ($automaticRoute['carrier'] ?? '')));
+            $selectedService = array_key_exists('service', $attributes) && trim((string) $attributes['service']) !== ''
+                ? $attributes['service']
+                : (($shipment->service && ! $explicitCarrier) ? $shipment->service : ($automaticRoute['service'] ?? null));
+            $normalizedService = $this->normalizeCarrierService($lockedOrder, $selectedCarrier, $selectedService, $shipment->carrier_service_id);
+            $automaticSelection = $this->matchesAutomaticRoute($selectedCarrier, $normalizedService['service'], $automaticRoute);
             $preserveRecommendedSource = $shipment->warehouse_selection_source === 'recommended'
                 && (int) $shipment->warehouse_id === (int) $selectedWarehouseId;
             $shipment->fill([
@@ -104,7 +121,7 @@ final class ShipmentService
                 'carrier' => $selectedCarrier,
                 'service' => $normalizedService['service'],
                 'carrier_service_id' => $normalizedService['carrier_service_id'],
-                'carrier_selection_source' => array_key_exists('service', $attributes) || array_key_exists('carrier', $attributes) ? 'manual' : $shipment->carrier_selection_source,
+                'carrier_selection_source' => $automaticSelection ? 'automatic' : 'manual',
                 'tracking_number' => $trackingNumber ?: null,
                 'shipped_at' => $attributes['shipped_at'],
                 'logistics_note' => $attributes['logistics_note'] ?? null,
@@ -425,6 +442,26 @@ final class ShipmentService
 
         $stale = ShipmentItemPackagingSnapshot::query()->where('shipment_id', $shipment->getKey());
         $validOrderItemIds === [] ? $stale->delete() : $stale->whereNotIn('order_item_id', $validOrderItemIds)->delete();
+    }
+
+    /** @return array<string,mixed> */
+    private function automaticRoute(Model $order, mixed $warehouseId): array
+    {
+        $warehouseId = (int) $warehouseId;
+        if ($warehouseId <= 0) return [];
+        $warehouse = Warehouse::query()->find($warehouseId);
+        if (! $warehouse) return [];
+        return $this->carrierRouting->warehouseRoute($order->address?->country, (string) $warehouse->code);
+    }
+
+    /** @param array<string,mixed> $route */
+    private function matchesAutomaticRoute(string $carrier, ?string $service, array $route): bool
+    {
+        $routeCarrier = trim((string) ($route['carrier'] ?? ''));
+        $routeService = trim((string) ($route['service'] ?? ''));
+        if ($routeCarrier === '' || strcasecmp(trim($carrier), $routeCarrier) !== 0) return false;
+        if ($routeService === '') return true;
+        return strcasecmp(trim((string) $service), $routeService) === 0;
     }
 
     /** @return array{service:?string,carrier_service_id:?int} */
