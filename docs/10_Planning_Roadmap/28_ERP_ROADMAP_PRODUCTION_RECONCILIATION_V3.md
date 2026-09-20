@@ -172,13 +172,13 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
     - No migration or external search engine in V1; performance indexes remain a later evidence-driven hardening step.
     - PR #97 remains a broader entity-architecture design reference and is not implementation authority for this branch.
 
-12. **Dashboard Redesign V1 — ACTIVE / D2 SHELL NAVIGATION COMPLETE 2026-09-20**
+12. **Dashboard Redesign V1 — ACTIVE / D6 AUTOMATED UAT COMPLETE / OWNER UAT PENDING 2026-09-20**
     - Fresh branch: `feature/dashboard-redesign-v1`; base: `cdd0468e4c1a73517326075c3381ff06b70e8420`.
     - PR #81 remains stale and must not be revived or merged as implementation authority.
     - D0 Production truth: `pending_orders=1549`, `pending_shipment=1549`, `shipped_pending_sync=1`, `completed_today=0`; procurement totals are currently all zero.
     - D0 defect/contract finding: `pending_orders` and `pending_shipment` are currently the same `orders.order_status=pending_shipment` query and therefore duplicate the same business fact.
     - Current surface is only four logistics/sync cards plus optional Purchase OS progress; it is not yet a bounded boss/operations overview.
-    - Roadmap: D0 Current Dashboard Audit ✅ → D1 Metrics Contract ✅ → D2 Shell / Navigation ✅ → D3 Core KPI + Operations Funnel → D4 Drill-down → D5 Mobile / Performance → D6 Local UAT → PR → Production → Owner UAT.
+    - Roadmap: D0 Current Dashboard Audit ✅ → D1 Metrics Contract ✅ → D2 Shell / Navigation ✅ → D3 Core KPI + Operations Funnel ✅ → D4 Drill-down ✅ → D5 Mobile / Performance ✅ → D6 Local/Exact-Branch UAT ✅ → PR / merge / Production deploy 👈 → Owner UAT.
     - Parallel PI / Blue Label remains isolated: #393 → #396 → #399; do not duplicate or absorb that work here.
 
 13. **Marketing expansion**
