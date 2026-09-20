@@ -2,7 +2,7 @@
 
 ## Status
 
-MERGED / PRODUCTION ACTIVE / TECHNICAL UAT PASS / OWNER UAT PENDING
+CLOSED / PRODUCTION ACTIVE / OWNER UAT PASS
 
 ## Scope
 
@@ -167,6 +167,13 @@ Actions jobs remained account-side infrastructure failures with steps=null; CI-g
 
 No migration or Production business-data write occurred.
 
-## Next gate
+## Closure
 
-Owner visual UAT only. If accepted, mark Global Search V1 CLOSED / PRODUCTION ACTIVE / OWNER UAT PASS.
+Owner visual UAT: PASS on 2026-09-20.
+
+Final status:
+- CLOSED
+- PRODUCTION ACTIVE
+- OWNER UAT PASS
+
+No further Production mutation is required for V1. Any future Shipment/Customer/KOL/Purchase/Supplier/Project providers or search-index hardening must start as separate bounded Work Packages.
