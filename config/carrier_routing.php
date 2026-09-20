@@ -46,7 +46,7 @@ foreach ($deFulfillmentCountries as $country) {
 return [
     // Carrier routing business policy single source of truth.
     // Canonical values stay stable in Shipment/Carrier Master; UI labels may be bilingual.
-    'version' => '2026-09-08-v6',
+    'version' => '2026-09-20-v7',
     'labels' => [
         '4PX' => '4PX / 速达',
         'POSTNL international' => 'POSTNL / 佰事达',
@@ -61,6 +61,13 @@ return [
         'FedEx' => 'FedEx / 联邦',
         'HX EXPRESS' => 'HX EXPRESS / 浩辛',
         'Royal Mail' => 'Royal Mail / 英国皇家',
+    ],
+    'warehouse_defaults' => [
+        'US-LA' => ['carrier' => 'USPS', 'service' => null],
+        'US-NY' => ['carrier' => 'USPS', 'service' => null],
+        'US-SM' => ['carrier' => 'USPS', 'service' => null],
+        'DE' => ['carrier' => 'DHL', 'service' => null],
+        'CA' => ['carrier' => 'Canada Post', 'service' => null],
     ],
     'factory_fallback' => [
         'warehouse_code' => 'FACTORY',

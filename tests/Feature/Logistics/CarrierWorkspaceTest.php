@@ -47,6 +47,11 @@ final class CarrierWorkspaceTest extends TestCase
             fn (Assert $page) => $page
                 ->component('Logistics/Carriers/Show')
                 ->where('carrier', 'DHL')
+                ->where('carrierDisplayName', 'DHL / 敦豪')
+                ->where('carrierMaster.name_en', 'DHL')
+                ->where('carrierMaster.name_zh', '敦豪')
+                ->has('carrierMaster.services', 3)
+                ->where('canEditCarrier', false)
                 ->where('summary.shipment_count', 1)
                 ->where('summary.delivered_count', 1)
                 ->where('shipments.total', 1)

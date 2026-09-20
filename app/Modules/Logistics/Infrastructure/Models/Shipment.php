@@ -10,7 +10,7 @@ class Shipment extends Model
 {
     protected $fillable = [
         'warehouse_id', 'warehouse_selection_source', 'shipment_status',
-        'carrier', 'service', 'carrier_selection_source', 'tracking_number',
+        'carrier', 'service', 'carrier_service_id', 'carrier_selection_source', 'tracking_number',
         'shipped_at', 'logistics_note', 'handled_by',
     ];
 
@@ -29,6 +29,11 @@ class Shipment extends Model
     public function handler(): BelongsTo
     {
         return $this->belongsTo('App\\Modules\\Identity\\Infrastructure\\Models\\User', 'handled_by');
+    }
+
+    public function carrierService(): BelongsTo
+    {
+        return $this->belongsTo(CarrierService::class, 'carrier_service_id');
     }
 
     public function billingEvidence(): HasOne

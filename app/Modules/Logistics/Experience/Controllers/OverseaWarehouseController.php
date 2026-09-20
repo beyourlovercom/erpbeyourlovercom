@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
+use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\OverseaTrackingReturnService;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
@@ -25,6 +26,7 @@ final class OverseaWarehouseController
         private readonly OverseaWarehouseReviewService $reviews,
         private readonly OverseaTrackingReturnService $trackingReturns,
         private readonly LogisticsExecutionAccess $executionAccess,
+        private readonly CarrierServiceCatalog $carrierServices,
     ) {}
 
     public function index(Request $request, ?string $warehouse = null): Response
@@ -57,7 +59,7 @@ final class OverseaWarehouseController
             'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => $this->row($shipment, $start + $index + 1))->toArray(),
             'viewCounts' => $this->viewCounts($warehouseMap, $selectedWarehouse),
             'canOperate' => $warehouseKey !== 'all' && $this->executionAccess->allows($request->user()),
-            'carrierOptions' => Carrier::query()->where('is_active', true)->orderBy('name')->pluck('name')->values()->all(),
+            'carrierOptions' => $this->carrierServices->options(),
             'trackingImportPreview' => $warehouseKey === 'all' ? null : (collect((array) $request->session()->get($this->trackingSessionKey($warehouseKey), []))->except('normalized_rows')->all() ?: null),
         ]);
     }
@@ -134,6 +136,7 @@ final class OverseaWarehouseController
             'warehouse_id' => ['sometimes', 'required', 'integer', Rule::exists('warehouses', 'id')->where('is_active', true)],
             'note' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'carrier' => ['sometimes', 'required', 'string', 'max:191', Rule::exists('logistics_carriers', 'name')->where('is_active', true)],
+            'service' => ['sometimes', 'nullable', 'string', 'max:191'],
             'tracking_number' => ['sometimes', 'nullable', 'string', 'max:128'],
         ]);
         $this->reviews->updateDraft($order, $data, $request->user());
@@ -243,6 +246,7 @@ final class OverseaWarehouseController
             'warehouse_id' => $shipment->warehouse_id,
             'warehouse_name' => $shipment->warehouse?->name,
             'carrier' => $shipment->carrier ?: (OverseaWarehouseReviewService::CARRIER_BY_CODE[$shipment->warehouse?->code] ?? null),
+            'service' => $shipment->service,
             'carrier_selection_source' => $shipment->carrier_selection_source,
             'tracking_number' => $shipment->tracking_number,
             'progress' => $review?->progress ?? 'pending_review',

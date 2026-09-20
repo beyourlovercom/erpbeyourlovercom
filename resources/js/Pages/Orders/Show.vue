@@ -18,7 +18,8 @@ import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 
 type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; inventory_state: string; can_auto_allocate: boolean; quantity_on_hand: number | null; quantity_reserved: number | null; quantity_available: number | null }
 type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null; can_auto_allocate?: boolean }
-type CarrierOption = { value: string; label: string }
+type CarrierServiceOption = { id:number; key:string; value:string; label:string; name_en:string|null; name_zh:string|null }
+type CarrierOption = { value:string; label:string; default_service_id:number|null; default_service_value:string|null; services:CarrierServiceOption[] }
 type AllocationUi = { status: 'pending' | 'submitted' | 'locked'; can_operate: boolean; can_reallocate?: boolean; can_partial_reallocate?: boolean; logistics_started?: boolean; requires_full_flow: boolean; selectable_warehouse_ids: number[]; recommended_warehouse_ids: Record<number, number | null>; selected_warehouse_ids: Record<number, number | null>; recommended_plan_key: string | null; can_use_recommendation: boolean; full_allocation_url: string }
 
 type OrderItem = {
@@ -121,6 +122,7 @@ const props = withDefaults(defineProps<{
   inventoryAvailability?: Record<number, Availability[]>
   packagingReferences?: Record<number, PackagingReference>
   warehouses?: Warehouse[]
+  warehouseRouting?: Record<number,{ carrier:string|null; service:string|null; carrier_service_id:number|null; automatic:boolean }>
   carrierOptions?: CarrierOption[]
   allocationUi?: AllocationUi
   audit: { action: string; actor_id: number | null; created_at: string; reason?: string }[]
@@ -134,6 +136,26 @@ const props = withDefaults(defineProps<{
 
 }>(), { canMarkOperational: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canViewProfit: false })
 
+
+const carrierOption = (name:string) => (props.carrierOptions ?? []).find(row => row.value === name)
+const contextualDefaultService = (name:string, country?:string|null) => {
+  const carrier = carrierOption(name)
+  if (!carrier) return ''
+  if (name === 'DHL' && String(country ?? '').toUpperCase() === 'DE') {
+    return carrier.services.find(service => service.key === 'paket_domestic')?.value ?? carrier.default_service_value ?? ''
+  }
+  return carrier.default_service_value ?? ''
+}
+const shipmentServiceOptions = computed(() => carrierOption(shipmentEditor.value.carrier)?.services ?? [])
+const routeForWarehouse = (warehouseId:number|null) => warehouseId ? props.warehouseRouting?.[warehouseId] : undefined
+const applyShipmentWarehouseDefault = () => {
+  const route = routeForWarehouse(shipmentEditor.value.warehouse_id)
+  shipmentEditor.value.carrier = route?.carrier ?? ''
+  shipmentEditor.value.service = route?.service ?? contextualDefaultService(shipmentEditor.value.carrier, props.order.address?.country)
+}
+const applyShipmentCarrierDefault = () => {
+  shipmentEditor.value.service = contextualDefaultService(shipmentEditor.value.carrier, props.order.address?.country)
+}
 
 const isKol = computed(() => props.order.order_kind === 'kol_fulfillment')
 const basePath = computed(() => isKol.value ? '/kol/orders' : '/customers/orders')
@@ -330,10 +352,13 @@ const openShipmentEditor = (target: {
   shipmentEditorOrderId.value = target.order_id
   shipmentEditorLabel.value = target.suffix ? `${target.suffix} · ${target.erp_order_id ?? ''}` : (target.erp_order_id ?? props.order.erp_order_id ?? '履约')
   const shippedAt = target.shipment?.shipped_at ? String(target.shipment.shipped_at).slice(0, 16) : localDateTimeNow()
+  const initialWarehouseId = target.shipment?.warehouse_id ?? null
+  const automaticRoute = routeForWarehouse(initialWarehouseId)
+  const initialCarrier = target.shipment?.carrier ?? automaticRoute?.carrier ?? ''
   shipmentEditor.value = {
-    warehouse_id: target.shipment?.warehouse_id ?? null,
-    carrier: target.shipment?.carrier ?? '',
-    service: target.shipment?.service ?? '',
+    warehouse_id: initialWarehouseId,
+    carrier: initialCarrier,
+    service: target.shipment?.service ?? automaticRoute?.service ?? contextualDefaultService(initialCarrier, props.order.address?.country),
     tracking_number: target.shipment?.tracking_number ?? '',
     shipped_at: shippedAt,
     logistics_note: target.shipment?.logistics_note ?? '',
@@ -357,7 +382,7 @@ const confirmShipment = () => {
   const draft = shipmentEditor.value
   if (!draft.warehouse_id) { shipmentEditorError.value = '请选择发货仓库'; return }
   if (!draft.carrier.trim()) { shipmentEditorError.value = '请选择物流商'; return }
-  if (!draft.service.trim()) { shipmentEditorError.value = '请填写物流渠道'; return }
+  if (!draft.service.trim()) { shipmentEditorError.value = '请选择运输 / 服务类型'; return }
   if (!draft.shipped_at) { shipmentEditorError.value = '请选择发货时间'; return }
   shipmentEditorSaving.value = true
   shipmentEditorError.value = ''
@@ -545,7 +570,7 @@ const submitReplacement = () => {
                 <strong class="ord-fulfillment-value">{{ order.shipment?.carrier ?? '—' }}</strong>
               </div>
               <div class="ord-fulfillment-item">
-                <small class="ord-fulfillment-label">物流渠道</small>
+                <small class="ord-fulfillment-label">运输 / 服务类型</small>
                 <strong class="ord-fulfillment-value">{{ order.shipment?.service ?? '—' }}</strong>
               </div>
               <div class="ord-fulfillment-item">
@@ -899,12 +924,12 @@ const submitReplacement = () => {
         </header>
         <div class="ord-shipment-form">
           <label>发货仓库
-            <select v-model="shipmentEditor.warehouse_id" class="erp-select" :disabled="!canOperateLogistics"><option :value="null">请选择仓库</option><option v-for="warehouse in warehouses ?? []" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} · {{ warehouse.code }}</option></select>
+            <select v-model="shipmentEditor.warehouse_id" class="erp-select" :disabled="!canOperateLogistics" @change="applyShipmentWarehouseDefault"><option :value="null">请选择仓库</option><option v-for="warehouse in warehouses ?? []" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} · {{ warehouse.code }}</option></select>
           </label>
           <label>物流商
-            <select v-model="shipmentEditor.carrier" class="erp-select" :disabled="!canOperateLogistics"><option value="">请选择承运商</option><option v-for="carrier in carrierOptions ?? []" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select>
+            <select v-model="shipmentEditor.carrier" class="erp-select" :disabled="!canOperateLogistics" @change="applyShipmentCarrierDefault"><option value="">请选择承运商</option><option v-for="carrier in carrierOptions ?? []" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select>
           </label>
-          <label>物流渠道<input v-model="shipmentEditor.service" class="erp-input" :disabled="!canOperateLogistics" placeholder="例如 Ground / 普通 / 加急"></label>
+          <label>运输 / 服务类型<select v-model="shipmentEditor.service" class="erp-select" :disabled="!canOperateLogistics || !shipmentEditor.carrier"><option value="">请选择服务类型</option><option v-for="service in shipmentServiceOptions" :key="service.id" :value="service.value">{{ service.label }}</option></select></label>
           <label>Tracking<input v-model="shipmentEditor.tracking_number" class="erp-input" :disabled="!canOperateLogistics" placeholder="追踪号，可稍后补录"></label>
           <label>发货时间<input v-model="shipmentEditor.shipped_at" class="erp-input" :disabled="!canOperateLogistics" type="datetime-local"></label>
           <label class="ord-shipment-note">物流备注<textarea v-model="shipmentEditor.logistics_note" rows="3" class="erp-textarea" :disabled="!canOperateLogistics" placeholder="可填写包裹、异常或操作备注"></textarea></label>

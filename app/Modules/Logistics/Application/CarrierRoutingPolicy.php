@@ -4,10 +4,11 @@ namespace App\Modules\Logistics\Application;
 
 final class CarrierRoutingPolicy
 {
+    public function __construct(private readonly CarrierServiceCatalog $services) {}
+
     public function displayName(string $carrier): string
     {
-        $carrier = trim($carrier);
-        return (string) config("carrier_routing.labels.{$carrier}", $carrier);
+        return $this->services->carrierDisplayName(trim($carrier));
     }
 
     /** @return array<string,mixed> */
@@ -17,7 +18,8 @@ final class CarrierRoutingPolicy
         $default = config('carrier_routing.factory_fallback', []);
         $override = $country !== '' ? config("carrier_routing.factory_country_overrides.{$country}") : null;
         if (! is_array($default)) $default = [];
-        return is_array($override) ? array_replace($default, $override) : $default;
+        $route = is_array($override) ? array_replace($default, $override) : $default;
+        return $this->normalizeRoute($route, $country);
     }
 
     /** @return array<string,mixed> */
@@ -30,7 +32,23 @@ final class CarrierRoutingPolicy
         }
 
         $route = $country !== '' ? config("carrier_routing.countries.{$country}.warehouses.{$warehouseCode}") : null;
-        return is_array($route) ? $route : [];
+        if (! is_array($route)) {
+            $route = config("carrier_routing.warehouse_defaults.{$warehouseCode}");
+        }
+        return is_array($route) ? $this->normalizeRoute($route, $country) : [];
+    }
+
+    /** @param array<string,mixed> $route @return array<string,mixed> */
+    private function normalizeRoute(array $route, ?string $country): array
+    {
+        $carrier = trim((string) ($route['carrier'] ?? ''));
+        if ($carrier === '') return $route;
+        $service = $this->services->resolve($carrier, $route['service'] ?? null, $country);
+        if ($service) {
+            $route['service'] = $service->service_value;
+            $route['carrier_service_id'] = (int) $service->id;
+        }
+        return $route;
     }
 
     public function defaultCarrier(?string $country, string $warehouseCode): ?string
