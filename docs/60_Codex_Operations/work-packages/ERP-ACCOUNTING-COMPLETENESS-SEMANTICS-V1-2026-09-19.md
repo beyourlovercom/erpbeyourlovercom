@@ -2,7 +2,11 @@
 
 ## Status
 
-PRODUCTION ACTIVE / AUTHENTICATED UAT PASS / OWNER UAT READY
+SUPERSEDED / CLOSED BY PROGRESSIVE ESTIMATED PROFIT V1
+
+## Supersession note
+
+This intermediate semantics package was superseded before Owner PASS by `ERP-ACCOUNTING-PROGRESSIVE-ESTIMATED-PROFIT-V1-2026-09-20.md`. The six-required-cost readiness gate is retained only as an evidence-coverage diagnostic; it no longer gates whether a revenue-ready Order receives a numeric Estimated Profit.
 
 ## Problem
 
