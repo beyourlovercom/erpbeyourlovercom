@@ -63,6 +63,7 @@ const breadcrumbs = [{label:'BYL ERP',href:'/dashboard'},{label:'库存',href:'/
         </select>
         <select v-model="stockStatus" aria-label="库存状态" @change="apply">
           <option value="">全部库存状态</option>
+          <option value="alert">库存预警（没货 + 紧张）</option>
           <option value="out_of_stock">没货</option>
           <option value="low_stock">库存紧张</option>
           <option value="in_stock">有货</option>
