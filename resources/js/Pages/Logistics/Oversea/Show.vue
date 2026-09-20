@@ -26,7 +26,15 @@ const trackingPreviewRows = computed(() => props.trackingImportPreview?.rows.sli
 const rowErrors = reactive<Record<number,string>>({})
 const carrierOption = (name:string) => props.carrierOptions.find(row => row.value === name)
 const serviceOptionsFor = (name:string) => carrierOption(name)?.services ?? []
-const draft = (row:Row) => drafts[row.order_id] ??= { note:row.note ?? '', carrier:row.carrier ?? '', service:row.service ?? carrierOption(row.carrier ?? '')?.default_service_value ?? '', tracking_number:row.tracking_number ?? '' }
+const defaultServiceFor = (name:string, country?:string|null) => {
+  const carrier = carrierOption(name)
+  if (!carrier) return ''
+  if (name === 'DHL' && String(country ?? '').toUpperCase() === 'DE') {
+    return carrier.services.find(service => service.key === 'paket_domestic')?.value ?? carrier.default_service_value ?? ''
+  }
+  return carrier.default_service_value ?? ''
+}
+const draft = (row:Row) => drafts[row.order_id] ??= { note:row.note ?? '', carrier:row.carrier ?? '', service:row.service ?? defaultServiceFor(row.carrier ?? '', row.country), tracking_number:row.tracking_number ?? '' }
 const viewTabs = [
   ['review','待审核'], ['pending','待发货'], ['shipped','已发货'], ['exceptions','异常订单'], ['all','全部订单'],
 ] as const
@@ -40,7 +48,7 @@ const saveDraft = (row:Row, payload:Record<string,string|number|null>) => router
 const changeWarehouse = (row:Row, warehouseId:number) => saveDraft(row, { warehouse_id:Number(warehouseId) })
 const changeWarehouseFromEvent = (row:Row, event:Event) => changeWarehouse(row, Number((event.target as HTMLSelectElement).value))
 const saveNote = (row:Row) => saveDraft(row, { note:draft(row).note.trim() || null })
-const saveCarrier = (row:Row) => { const d=draft(row); d.service=carrierOption(d.carrier)?.default_service_value ?? ''; saveDraft(row, { carrier:d.carrier, service:d.service || null }) }
+const saveCarrier = (row:Row) => { const d=draft(row); d.service=defaultServiceFor(d.carrier, row.country); saveDraft(row, { carrier:d.carrier, service:d.service || null }) }
 const saveService = (row:Row) => saveDraft(row, { carrier:draft(row).carrier, service:draft(row).service || null })
 const saveTracking = (row:Row) => saveDraft(row, { tracking_number:draft(row).tracking_number.trim() || null })
 const chooseTrackingFile = () => trackingFileInput.value?.click()

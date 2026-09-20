@@ -52,12 +52,22 @@ const visibleColumns = computed(() => columnPreferences.value.filter(column => c
 const localDateTime = (value: string | null) => value ? value.slice(0, 16) : new Date().toISOString().slice(0, 16)
 const carrierOption = (name:string) => props.carrierOptions.find(row => row.value === name)
 const serviceOptionsFor = (name:string) => carrierOption(name)?.services ?? []
-const defaultServiceFor = (name:string) => carrierOption(name)?.default_service_value ?? ''
-const onCarrierChanged = (orderId:number) => { drafts[orderId].service = defaultServiceFor(drafts[orderId].carrier) }
+const defaultServiceFor = (name:string, country?:string|null) => {
+  const carrier = carrierOption(name)
+  if (!carrier) return ''
+  if (name === 'DHL' && String(country ?? '').toUpperCase() === 'DE') {
+    return carrier.services.find(service => service.key === 'paket_domestic')?.value ?? carrier.default_service_value ?? ''
+  }
+  return carrier.default_service_value ?? ''
+}
+const onCarrierChanged = (orderId:number) => {
+  const order = props.orders.data.find(row => row.id === orderId)
+  drafts[orderId].service = defaultServiceFor(drafts[orderId].carrier, order?.country)
+}
 const makeDraft = (order: Order): Draft => ({
   warehouse_id: order.shipment?.warehouse_id ?? '',
   carrier: order.shipment?.carrier ?? '',
-  service: order.shipment?.service ?? defaultServiceFor(order.shipment?.carrier ?? ''),
+  service: order.shipment?.service ?? defaultServiceFor(order.shipment?.carrier ?? '', order.country),
   tracking_number: order.shipment?.tracking_number ?? '',
   shipped_at: localDateTime(order.shipment?.shipped_at ?? null),
   logistics_note: order.shipment?.logistics_note ?? '',

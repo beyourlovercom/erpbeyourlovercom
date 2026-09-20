@@ -137,10 +137,17 @@ const props = withDefaults(defineProps<{
 
 
 const carrierOption = (name:string) => (props.carrierOptions ?? []).find(row => row.value === name)
+const contextualDefaultService = (name:string, country?:string|null) => {
+  const carrier = carrierOption(name)
+  if (!carrier) return ''
+  if (name === 'DHL' && String(country ?? '').toUpperCase() === 'DE') {
+    return carrier.services.find(service => service.key === 'paket_domestic')?.value ?? carrier.default_service_value ?? ''
+  }
+  return carrier.default_service_value ?? ''
+}
 const shipmentServiceOptions = computed(() => carrierOption(shipmentEditor.value.carrier)?.services ?? [])
 const applyShipmentCarrierDefault = () => {
-  const carrier = carrierOption(shipmentEditor.value.carrier)
-  shipmentEditor.value.service = carrier?.default_service_value ?? ''
+  shipmentEditor.value.service = contextualDefaultService(shipmentEditor.value.carrier, props.order.address?.country)
 }
 
 const isKol = computed(() => props.order.order_kind === 'kol_fulfillment')
@@ -343,7 +350,7 @@ const openShipmentEditor = (target: {
   shipmentEditor.value = {
     warehouse_id: target.shipment?.warehouse_id ?? null,
     carrier: initialCarrier,
-    service: target.shipment?.service ?? configuredCarrier?.default_service_value ?? '',
+    service: target.shipment?.service ?? contextualDefaultService(initialCarrier, props.order.address?.country),
     tracking_number: target.shipment?.tracking_number ?? '',
     shipped_at: shippedAt,
     logistics_note: target.shipment?.logistics_note ?? '',
