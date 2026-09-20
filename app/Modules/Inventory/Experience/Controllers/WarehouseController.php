@@ -9,6 +9,7 @@ use App\Modules\Inventory\Application\WarehouseInboundProjection;
 use App\Modules\Inventory\Application\WarehouseInboundLifecycleService;
 use App\Modules\Inventory\Application\WarehouseRestockProjection;
 use App\Modules\Inventory\Application\WarehouseRestockPlanService;
+use App\Modules\Inventory\Application\WarehouseRestockDocumentJobService;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\WarehouseCost\WarehouseBillImportService;
 use App\Modules\Inventory\Infrastructure\WarehouseCost\WarehouseBillReconciliationService;
@@ -32,6 +33,7 @@ final class WarehouseController
         private readonly WarehouseInboundLifecycleService $inboundLifecycle,
         private readonly WarehouseRestockProjection $restock,
         private readonly WarehouseRestockPlanService $restockPlans,
+        private readonly WarehouseRestockDocumentJobService $restockDocumentJobs,
         private readonly WarehouseBillImportService $billImport,
         private readonly WarehouseBillReconciliationService $reconciliation,
         private readonly WarehouseShipmentProjection $shipments,
@@ -48,6 +50,7 @@ final class WarehouseController
         $w=$this->inventory->warehouse($warehouse);
         $publicSlug=$this->inventory->warehousePublicSlug($w);
         if($warehouse!==$publicSlug) return redirect()->route('inventory.warehouse.show',$publicSlug);
+        $latestRestockPlan=$this->restockPlans->latestForWarehouse($w);
         return Inertia::render('Inventory/WarehouseShow',[
             'warehouse'=>$this->payload($w),
             'clearanceProducts'=>$this->clearance->listForWarehouse($w),
@@ -59,7 +62,8 @@ final class WarehouseController
             'billReconciliationPreview'=>session($this->billReconciliationPreviewKey((int)$w->id)),
             'inboundProjection'=>$this->inbounds->forWarehouse($w),
             'restockProjection'=>$this->restock->forWarehouse($w),
-            'latestRestockPlan'=>$this->restockPlans->latestForWarehouse($w),
+            'latestRestockPlan'=>$latestRestockPlan,
+            'latestRestockLabelJob'=>$this->restockDocumentJobs->forPlanId($latestRestockPlan['id']??null),
             'shipmentProjection'=>$this->shipments->forWarehouse(
                 $w,
                 max(1,(int)$request->query('shipment_page',1)),
@@ -204,6 +208,14 @@ final class WarehouseController
         $w=$this->inventory->warehouse($warehouse);
         $plan=$this->restockPlans->confirm($w,$request->user());
         return back()->with('success','备货计划已确认：'.$plan->reference);
+    }
+
+    public function requestRestockBlueLabels(Request $request,string $warehouse,int $plan): RedirectResponse
+    {
+        $w=$this->inventory->warehouse($warehouse);
+        $result=$this->restockDocumentJobs->requestBlueLabels($w,$plan,$request->user());
+        $message=$result['created']?'蓝标任务已排队：':'蓝标任务已存在：';
+        return back()->with('success',$message.$result['job']->reference);
     }
 
     public function saveRestockSupplement(Request $request,string $warehouse): RedirectResponse
