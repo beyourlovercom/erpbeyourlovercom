@@ -160,15 +160,26 @@ Do not reopen completed KOL V1, Logistics V1, Accounting P8, or Accounting P9 fo
     - ERP shows metadata only and exposes no Email OS edit/publish/rollback/send action. WordPress Email OS remains source of truth.
     - Prior isolated Owner UAT remains valid; Production technical UAT PASS on the current empty Published set.
 
-### P2 — parked/future
+### P2 — active / parked
 
-11. **Entity Architecture / Global Search**
-    - PR #97 remains a design reference, not current implementation authority.
-    - Refresh only when Global Search becomes an active bounded Work Package.
+11. **Global Search V1 — CLOSED / PRODUCTION ACTIVE / OWNER UAT PASS 2026-09-20**
+    - PR #395 merged as 7460d816cdd550dacab300a2e4bffc4e5284b1db and deployed code-only.
+    - V1 is bounded to Product + Order + Inventory Context through one Search Provider contract and one Header overlay.
+    - Search is read-only navigation infrastructure; source modules remain authoritative.
+    - Product identifiers: SKU, name, GTIN, Woo Product ID and SKU aliases.
+    - Order identifiers: dbid technical lookup, ERP/internal/external IDs, provider references and tracking number.
+    - Inventory results are Product + Warehouse context and deep-link to the existing filtered Inventory view.
+    - No migration or external search engine in V1; performance indexes remain a later evidence-driven hardening step.
+    - PR #97 remains a broader entity-architecture design reference and is not implementation authority for this branch.
 
-12. **Dashboard redesign**
-    - PR #81 is a stale experiment and should not be revived as-is.
-    - Start a fresh dashboard package if/when dashboard becomes a priority.
+12. **Dashboard Redesign V1 — ACTIVE / D6 AUTOMATED UAT COMPLETE / OWNER UAT PENDING 2026-09-20**
+    - Fresh branch: `feature/dashboard-redesign-v1`; base: `cdd0468e4c1a73517326075c3381ff06b70e8420`.
+    - PR #81 remains stale and must not be revived or merged as implementation authority.
+    - D0 Production truth: `pending_orders=1549`, `pending_shipment=1549`, `shipped_pending_sync=1`, `completed_today=0`; procurement totals are currently all zero.
+    - D0 defect/contract finding: `pending_orders` and `pending_shipment` are currently the same `orders.order_status=pending_shipment` query and therefore duplicate the same business fact.
+    - Current surface is only four logistics/sync cards plus optional Purchase OS progress; it is not yet a bounded boss/operations overview.
+    - Roadmap: D0 Current Dashboard Audit ✅ → D1 Metrics Contract ✅ → D2 Shell / Navigation ✅ → D3 Core KPI + Operations Funnel ✅ → D4 Drill-down ✅ → D5 Mobile / Performance ✅ → D6 Local/Exact-Branch UAT ✅ → PR / merge / Production deploy 👈 → Owner UAT.
+    - Parallel PI / Blue Label remains isolated: #393 → #396 → #399; do not duplicate or absorb that work here.
 
 13. **Marketing expansion**
     - subscriber foundation is real; campaigns/newsletters/automations remain future scope.
@@ -222,7 +233,8 @@ P1. Warehouse provider coverage: US-LA + US-NY active; US-SM / DE / CA real-bill
 P1. Accounting evidence completeness: Progressive Estimated Profit active; confirmed Product Cost expansion ⚠ EXTERNAL COSTBOOK BLOCKED
 P1. Email OS P8C ✅ MERGED / PRODUCTION ACTIVE
 P1. Product/Packaging comparison UI ⏸ PARKED
-P2. Marketing expansion / Global Search / Dashboard redesign / KOL intelligence
+P2. Global Search V1 ✅ CLOSED / PRODUCTION ACTIVE / OWNER UAT PASS
+P2. Marketing expansion / Dashboard redesign / KOL intelligence
 ```
 
 This sequence intentionally prioritizes truth, stability, and real-data coverage over starting another broad feature program.
