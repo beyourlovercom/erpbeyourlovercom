@@ -41,6 +41,7 @@ const financeSnapshot = {
 }
 const baseProps = {
   quickActions:[],
+  roleSnapshot:null,
   workspace:{role:'administrator',label:'管理员',mode:'boss' as const,eyebrow:'老板 / 管理员总览',title:'经营与运营总览',description:'先看经营结果、异常和瓶颈，再进入对应业务系统处理。'},
   visibility: allVisible,
   period: '7d' as const,
@@ -63,6 +64,40 @@ describe('dashboard redesign', () => {
     expect(wrapper.text()).not.toContain('老板 / 管理员总览')
     expect(wrapper.text()).toContain('今日快捷入口')
     expect(wrapper.find('#operations').exists()).toBe(true)
+  })
+
+  it('renders a real KOL role workspace even when legacy business modules are not visible', () => {
+    const kolWorkspace = { role:'kol_specialist',label:'网红专员',mode:'work' as const,eyebrow:'网红工作台',title:'今日网红运营',description:'聚合网红履约、审批、订单与待处理事项。' }
+    const roleSnapshot = {
+      kind:'kol',
+      title:'今日网红待办',
+      description:'仅统计分配给我的网红与合作，直接进入对应队列处理。',
+      cards:[
+        {label:'我的网红',value:24,href:'/kol/library',helper:'当前未归档'},
+        {label:'进行中合作',value:6,href:'/kol/collaborations',helper:'已确认 + 进行中'},
+        {label:'待发货网红订单',value:3,href:'/kol/collaborations',helper:'关联订单待发货'},
+        {label:'待发布内容',value:4,href:'/kol/content',helper:'尚未标记已发布'},
+      ],
+      highlights:['本周新增网红 2','本周合作 5','本周发布 3'],
+    }
+    const wrapper = mount(Dashboard, { props: {
+      ...baseProps,
+      workspace:kolWorkspace,
+      roleSnapshot,
+      visibility:noneVisible,
+      operations:null,
+      inventoryRisk:null,
+      syncHealth:null,
+      financeSnapshot:null,
+      procurementProgress:null,
+    } })
+    expect(wrapper.text()).toContain('今日网红待办')
+    expect(wrapper.text()).toContain('我的网红')
+    expect(wrapper.text()).toContain('24')
+    expect(wrapper.find('#role-workspace').exists()).toBe(true)
+    expect(wrapper.find('.dashboard-empty').exists()).toBe(false)
+    expect(wrapper.find('.dashboard-period').exists()).toBe(false)
+    expect(wrapper.find('a[href="/kol/content"]').exists()).toBe(true)
   })
 
   it('renders canonical D3 live metrics and removes the legacy duplicate KPI contract', () => {
