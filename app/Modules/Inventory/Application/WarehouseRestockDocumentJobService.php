@@ -9,7 +9,9 @@ use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseRestockDocumentJob;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseRestockPlan;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -26,8 +28,12 @@ final class WarehouseRestockDocumentJobService
     private const TEMPLATE_VERSION = 'blue-label-picture-master-v1';
     private const GENERATOR_VERSION = 'blue-label-runtime-v1';
     private const DISPATCH_MODE = 'codex_dc_windows_bartender_v1';
+    private const MAX_PI_ITEMS = 18;
 
-    public function __construct(private readonly AuditRecorder $audit) {}
+    public function __construct(
+        private readonly AuditRecorder $audit,
+        private readonly WarehouseRestockPackageService $packages,
+    ) {}
 
     /** @return array{job:WarehouseRestockDocumentJob,created:bool} */
     public function requestBlueLabels(
@@ -63,6 +69,11 @@ final class WarehouseRestockDocumentJobService
                     'blue_label_job' => '备货计划没有可生成蓝标的冻结明细。',
                 ]);
             }
+            if ($items->count() > self::MAX_PI_ITEMS) {
+                throw ValidationException::withMessages([
+                    'blue_label_job' => 'PI V1 最多支持 '.self::MAX_PI_ITEMS.' 个 SKU，请拆分备货计划后再生成。',
+                ]);
+            }
 
             $payloadItems = [];
             $seenLabelSkus = [];
@@ -71,9 +82,10 @@ final class WarehouseRestockDocumentJobService
                 $productSku = trim((string) $item->product_sku);
                 $labelSku = trim((string) $item->label_sku);
                 $description = trim((string) $item->label_description);
+                $productName = trim((string) $item->product_name);
                 $quantity = (int) $item->final_restock_qty;
 
-                if ($productSku === '' || $labelSku === '' || $description === '' || $quantity <= 0) {
+                if ($productSku === '' || $labelSku === '' || $description === '' || $productName === '' || $quantity <= 0) {
                     throw ValidationException::withMessages([
                         'blue_label_job' => '备货计划存在不完整的蓝标冻结字段，不能进入执行队列。',
                     ]);
@@ -96,7 +108,15 @@ final class WarehouseRestockDocumentJobService
                     'product_sku' => $productSku,
                     'label_sku' => $labelSku,
                     'label_description' => $description,
+                    'product_name' => $productName,
                     'restock_qty' => $quantity,
+                    'units_per_carton' => $item->units_per_carton !== null ? (int) $item->units_per_carton : null,
+                    'carton_count' => $item->carton_count !== null ? (int) $item->carton_count : null,
+                    'packaging_length_cm' => $item->packaging_length_cm,
+                    'packaging_width_cm' => $item->packaging_width_cm,
+                    'packaging_height_cm' => $item->packaging_height_cm,
+                    'packaged_weight_kg' => $item->packaged_weight_kg,
+                    'quantity_available' => (int) $item->quantity_available,
                 ];
             }
 
@@ -120,6 +140,10 @@ final class WarehouseRestockDocumentJobService
                 'plan_reference' => (string) $plan->reference,
                 'plan_snapshot_checksum' => (string) $plan->snapshot_checksum,
                 'template_version' => self::TEMPLATE_VERSION,
+                'pi_template_version' => '007-pi-sea-canonical-v1',
+                'warehouse_code' => (string) $warehouse->code,
+                'warehouse_name' => (string) $warehouse->name,
+                'confirmed_date' => $plan->confirmed_at?->format('Y/m/d'),
                 'items' => $payloadItems,
             ];
             $payloadChecksum = $this->checksum($payload);
@@ -239,6 +263,34 @@ final class WarehouseRestockDocumentJobService
         );
     }
 
+    public function storeArtifact(
+        string $reference,
+        string $workerId,
+        string $kind,
+        string $labelSku,
+        UploadedFile $file,
+        string $sha256,
+    ): array {
+        $result = [];
+
+        $this->mutateOwnedActiveJob(
+            $reference,
+            $workerId,
+            [self::STATUS_RUNNING],
+            function (WarehouseRestockDocumentJob $job) use ($kind, $labelSku, $file, $sha256, &$result): void {
+                $result = $this->packages->storeWorkerArtifact(
+                    $job,
+                    $kind,
+                    $labelSku,
+                    $file,
+                    strtolower(trim($sha256)),
+                );
+            },
+        );
+
+        return $result;
+    }
+
     public function complete(
         string $reference,
         string $workerId,
@@ -251,6 +303,8 @@ final class WarehouseRestockDocumentJobService
             [self::STATUS_RUNNING],
             function (WarehouseRestockDocumentJob $job) use ($manifest, $outputRoot): void {
                 $this->validateResultManifest($job, $manifest);
+                $package = $this->packages->finalize($job, $manifest, $outputRoot);
+                $finalManifest = $package['manifest'];
 
                 $now = now();
                 $job->forceFill([
@@ -259,17 +313,19 @@ final class WarehouseRestockDocumentJobService
                     'failed_at' => null,
                     'last_heartbeat_at' => $now,
                     'lease_expires_at' => null,
-                    'result_manifest' => $manifest,
-                    'result_manifest_checksum' => $this->checksum($manifest),
-                    'output_root' => $outputRoot,
+                    'result_manifest' => $finalManifest,
+                    'result_manifest_checksum' => $this->checksum($finalManifest),
+                    'output_root' => $package['root'],
                     'last_error_code' => null,
                     'last_error_message' => null,
                 ])->save();
 
                 $this->recordWorkerEvent($job, 'inventory.restock_document_job.succeeded', [
                     'worker_id' => $job->worker_id,
-                    'output_root' => $outputRoot,
+                    'output_root' => $package['root'],
                     'artifacts' => count((array) ($manifest['artifacts'] ?? [])),
+                    'pi_path' => $package['pi_path'],
+                    'package_path' => $package['package_path'],
                     'result_manifest_checksum' => $job->result_manifest_checksum,
                 ]);
             },
@@ -509,6 +565,10 @@ final class WarehouseRestockDocumentJobService
             'artifact_count' => is_array($job->result_manifest)
                 ? count((array) ($job->result_manifest['artifacts'] ?? []))
                 : 0,
+            'has_pi' => $job->status === self::STATUS_SUCCEEDED
+                && Storage::disk('local')->exists($this->packages->piPath($job)),
+            'has_package' => $job->status === self::STATUS_SUCCEEDED
+                && Storage::disk('local')->exists($this->packages->packagePath($job)),
         ];
     }
 

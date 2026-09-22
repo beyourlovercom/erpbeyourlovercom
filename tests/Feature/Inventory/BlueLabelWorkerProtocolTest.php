@@ -6,6 +6,8 @@ use App\Modules\Inventory\Application\WarehouseRestockDocumentJobService;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseRestockPlan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 final class BlueLabelWorkerProtocolTest extends TestCase
@@ -21,6 +23,7 @@ final class BlueLabelWorkerProtocolTest extends TestCase
 
         config()->set('services.blue_label_worker.token', self::TOKEN);
         config()->set('services.blue_label_worker.lease_seconds', 180);
+        Storage::fake('local');
     }
 
     public function test_worker_protocol_claims_runs_and_completes_a_frozen_job(): void
@@ -57,6 +60,27 @@ final class BlueLabelWorkerProtocolTest extends TestCase
         ]);
 
         $manifest = $this->manifest($reference, $plan);
+        $btw = 'BTW-C549A-'.str_repeat('x', 1200);
+        $pdf = '%PDF-1.4 C549A '.str_repeat('p', 1200);
+        $manifest['artifacts'][0]['btw_sha256'] = hash('sha256', $btw);
+        $manifest['artifacts'][0]['pdf_sha256'] = hash('sha256', $pdf);
+        app(WarehouseRestockDocumentJobService::class)->storeArtifact(
+            $reference,
+            self::WORKER,
+            'btw',
+            'C549A',
+            UploadedFile::fake()->createWithContent('C549A.btw', $btw),
+            $manifest['artifacts'][0]['btw_sha256'],
+        );
+        app(WarehouseRestockDocumentJobService::class)->storeArtifact(
+            $reference,
+            self::WORKER,
+            'pdf',
+            'C549A',
+            UploadedFile::fake()->createWithContent('C549A.pdf', $pdf),
+            $manifest['artifacts'][0]['pdf_sha256'],
+        );
+
         $complete = $this->workerPost(
             "/api/internal/blue-label-worker/jobs/{$reference}/complete",
             ['manifest' => $manifest, 'output_root' => 'C:\\BYL\\labels\\'.$reference],
@@ -64,7 +88,7 @@ final class BlueLabelWorkerProtocolTest extends TestCase
 
         $complete->assertOk()
             ->assertJsonPath('job.status', 'succeeded')
-            ->assertJsonPath('job.output_root', 'C:\\BYL\\labels\\'.$reference);
+            ->assertJsonPath('job.output_root', 'inventory/restock-documents/'.$reference);
 
         $this->assertDatabaseHas('warehouse_restock_document_jobs', [
             'reference' => $reference,
