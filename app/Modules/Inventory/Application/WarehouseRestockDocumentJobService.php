@@ -662,17 +662,42 @@ final class WarehouseRestockDocumentJobService
 
     public function payload(WarehouseRestockDocumentJob $job): array
     {
+        $artifactProgress = $this->packages->artifactProgress($job);
+        $progressPercent = match ($job->status) {
+            self::STATUS_QUEUED => 10,
+            self::STATUS_CLAIMED => 25,
+            self::STATUS_RUNNING => $artifactProgress['expected'] > 0
+                ? 40 + (int) floor(45 * ($artifactProgress['received'] / $artifactProgress['expected']))
+                : 40,
+            self::STATUS_SUCCEEDED => 100,
+            self::STATUS_FAILED => 100,
+            default => 0,
+        };
+
+        $statusDetail = match ($job->status) {
+            self::STATUS_RUNNING => $artifactProgress['received'] <= 0
+                ? '正在生成 BTW / PDF'
+                : ($artifactProgress['received'] < $artifactProgress['expected']
+                    ? '正在回传生成文件 '.$artifactProgress['received'].' / '.$artifactProgress['expected']
+                    : '文件已回传，正在生成 PI / ZIP'),
+            default => $job->status === self::STATUS_QUEUED
+                && (int) $job->attempt_count > 0
+                && $job->next_attempt_at !== null
+                    ? '上一次执行未完成，系统将自动重试'
+                    : $this->statusDetail($job->status),
+        };
+
         return [
             'id' => (int) $job->id,
             'reference' => $job->reference,
             'document_kind' => $job->document_kind,
             'status' => $job->status,
             'status_label' => $this->statusLabel($job->status),
-            'status_detail' => $job->status === self::STATUS_QUEUED
-                && (int) $job->attempt_count > 0
-                && $job->next_attempt_at !== null
-                    ? '上一次执行未完成，系统将自动重试'
-                    : $this->statusDetail($job->status),
+            'status_detail' => $statusDetail,
+            'progress_percent' => $progressPercent,
+            'received_artifact_files' => $artifactProgress['received'],
+            'expected_artifact_files' => $artifactProgress['expected'],
+            'last_heartbeat_at' => $job->last_heartbeat_at?->toIso8601String(),
             'attempt_count' => (int) $job->attempt_count,
             'next_attempt_at' => $job->next_attempt_at?->toIso8601String(),
             'is_retry_scheduled' => $job->status === self::STATUS_QUEUED
