@@ -4,6 +4,8 @@ use App\Modules\Inventory\Experience\Controllers\InventoryController;
 use App\Modules\Inventory\Experience\Controllers\InventorySyncController;
 use App\Modules\Inventory\Experience\Controllers\WarehouseController;
 use App\Modules\Inventory\Experience\Controllers\PackagingMeasurementController;
+use App\Modules\Inventory\Experience\Controllers\BlueLabelWorkerController;
+use App\Modules\Inventory\Experience\Middleware\RequireBlueLabelWorkerToken;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web','auth'])->group(function (): void {
@@ -56,6 +58,11 @@ Route::middleware(['web','auth','can:inventory.operate'])->group(function (): vo
     Route::patch('/inventory/{warehouse}/stock/{inventory}',[WarehouseController::class,'updateInventory'])->name('inventory.stock.update');
     Route::patch('/inventory/{warehouse}/inbound/{batch}/advance',[WarehouseController::class,'advanceInbound'])->whereNumber('batch')->name('inventory.inbound.advance');
     Route::patch('/inventory/{warehouse}/restock-supplement',[WarehouseController::class,'saveRestockSupplement'])->name('inventory.restock.supplement');
+    Route::post('/inventory/{warehouse}/restock-plans/confirm',[WarehouseController::class,'confirmRestockPlan'])->name('inventory.restock.plan.confirm');
+    Route::post('/inventory/{warehouse}/restock-plans/{plan}/blue-label-jobs',[WarehouseController::class,'requestRestockBlueLabels'])->whereNumber('plan')->name('inventory.restock.blue-label-job.store');
+    Route::get('/inventory/{warehouse}/restock-plans/{plan}/blue-label-jobs/{job}/download/{artifact}',[WarehouseController::class,'downloadRestockDocument'])
+        ->whereNumber('plan')->whereNumber('job')->whereIn('artifact',['pi','package'])
+        ->name('inventory.restock.blue-label-job.download');
     Route::post('/inventory/{warehouse}/clearance',[WarehouseController::class,'addClearance'])->name('inventory.clearance.store');
     Route::patch('/inventory/{warehouse}/clearance/{clearance}',[WarehouseController::class,'updateClearance'])->whereNumber('clearance')->name('inventory.clearance.update');
     Route::delete('/inventory/{warehouse}/clearance/{clearance}',[WarehouseController::class,'removeClearance'])->whereNumber('clearance')->name('inventory.clearance.destroy');
@@ -65,3 +72,22 @@ Route::middleware(['web','auth','can:inventory.operate'])->group(function (): vo
     Route::get('/inventory/sync/history',[InventorySyncController::class,'history'])->name('inventory.sync.history');
     Route::get('/inventory/sync/{batch}',[InventorySyncController::class,'show'])->whereNumber('batch')->name('inventory.sync.show');
 });
+
+Route::prefix('/api/internal/blue-label-worker')
+    ->middleware(RequireBlueLabelWorkerToken::class)
+    ->group(function (): void {
+        Route::post('/claim', [BlueLabelWorkerController::class, 'claim'])
+            ->name('inventory.blue-label-worker.claim');
+        Route::post('/jobs/{job}/start', [BlueLabelWorkerController::class, 'start'])
+            ->name('inventory.blue-label-worker.start');
+        Route::post('/jobs/{job}/heartbeat', [BlueLabelWorkerController::class, 'heartbeat'])
+            ->name('inventory.blue-label-worker.heartbeat');
+        Route::post('/jobs/{job}/artifacts/{kind}/{labelSku}', [BlueLabelWorkerController::class, 'artifact'])
+            ->whereIn('kind', ['btw', 'pdf'])
+            ->where('labelSku', '[A-Za-z0-9._-]+')
+            ->name('inventory.blue-label-worker.artifact');
+        Route::post('/jobs/{job}/complete', [BlueLabelWorkerController::class, 'complete'])
+            ->name('inventory.blue-label-worker.complete');
+        Route::post('/jobs/{job}/fail', [BlueLabelWorkerController::class, 'fail'])
+            ->name('inventory.blue-label-worker.fail');
+    });

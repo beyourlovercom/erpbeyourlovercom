@@ -16,6 +16,8 @@ type Product = {
   source_type: string
   product_type: string
   sku: string | null
+  label_sku?: string | null
+  label_description?: string | null
   gtin: string | null
   name: string
   unit: string | null
@@ -53,6 +55,8 @@ const breadcrumbs = [
 
 const form = ref({
   sku: props.product.sku ?? '',
+  label_sku: props.product.label_sku ?? '',
+  label_description: props.product.label_description ?? '',
   name: props.product.name,
   product_type: props.product.product_type,
   gtin: props.product.gtin ?? '',
@@ -180,6 +184,33 @@ const doDelete = () => {
                   placeholder="SKU（可留空）"
                 >
                 <p v-if="errors.sku" class="erp-field-error">{{ errors.sku }}</p>
+              </div>
+
+              <div class="erp-form-field">
+                <label class="erp-form-label" for="edit-label-sku">蓝标 SKU</label>
+                <input
+                  id="edit-label-sku"
+                  v-model="form.label_sku"
+                  type="text"
+                  class="erp-input"
+                  :class="{ 'has-error': errors.label_sku }"
+                  placeholder="留空则使用 SKU"
+                >
+                <p class="erp-field-help">蓝标/条码使用的编号。与产品 SKU 相同时留空即可。</p>
+                <p v-if="errors.label_sku" class="erp-field-error">{{ errors.label_sku }}</p>
+              </div>
+
+              <div class="erp-form-field">
+                <label class="erp-form-label" for="edit-label-description">蓝标描述</label>
+                <input
+                  id="edit-label-description"
+                  v-model="form.label_description"
+                  type="text"
+                  class="erp-input"
+                  :class="{ 'has-error': errors.label_description }"
+                  placeholder="留空则使用产品名称"
+                >
+                <p v-if="errors.label_description" class="erp-field-error">{{ errors.label_description }}</p>
               </div>
 
               <div class="erp-form-field">
