@@ -160,6 +160,38 @@ final class WarehouseRestockPackageService
         ];
     }
 
+    public function discardIncomplete(WarehouseRestockDocumentJob $job): void
+    {
+        if ($job->status === WarehouseRestockDocumentJobService::STATUS_SUCCEEDED) {
+            return;
+        }
+
+        Storage::disk('local')->deleteDirectory($this->root($job));
+    }
+
+    public function artifactProgress(WarehouseRestockDocumentJob $job): array
+    {
+        $items = array_values((array) ($job->payload['items'] ?? []));
+        $expected = count($items) * 2;
+        $received = 0;
+
+        foreach ($items as $item) {
+            $labelSku = trim((string) ($item['label_sku'] ?? ''));
+            if ($labelSku === '') continue;
+
+            foreach (['btw', 'pdf'] as $kind) {
+                if (Storage::disk('local')->exists($this->artifactPath($job, $kind, $labelSku))) {
+                    $received++;
+                }
+            }
+        }
+
+        return [
+            'received' => $received,
+            'expected' => $expected,
+        ];
+    }
+
     public function piPath(WarehouseRestockDocumentJob $job): string
     {
         return $this->root($job).'/PI.xlsx';

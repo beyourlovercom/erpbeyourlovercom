@@ -193,9 +193,16 @@ final class WarehouseRestockDocumentJobService
     public function claimNext(string $workerId): ?WarehouseRestockDocumentJob
     {
         return DB::transaction(function () use ($workerId): ?WarehouseRestockDocumentJob {
+            $this->recoverExpiredJobs();
+
             $job = WarehouseRestockDocumentJob::query()
                 ->where('document_kind', self::DOCUMENT_BLUE_LABELS)
                 ->where('status', self::STATUS_QUEUED)
+                ->where(function ($query): void {
+                    $query->whereNull('next_attempt_at')
+                        ->orWhere('next_attempt_at', '<=', now());
+                })
+                ->orderBy('next_attempt_at')
                 ->orderBy('requested_at')
                 ->orderBy('id')
                 ->lockForUpdate()
@@ -208,11 +215,10 @@ final class WarehouseRestockDocumentJobService
                 'status' => self::STATUS_CLAIMED,
                 'worker_id' => $workerId,
                 'attempt_count' => (int) $job->attempt_count + 1,
+                'next_attempt_at' => null,
                 'claimed_at' => $now,
                 'lease_expires_at' => $now->copy()->addSeconds($this->leaseSeconds()),
                 'last_heartbeat_at' => $now,
-                'last_error_code' => null,
-                'last_error_message' => null,
             ])->save();
 
             $this->recordWorkerEvent($job, 'inventory.restock_document_job.claimed', [
@@ -344,17 +350,50 @@ final class WarehouseRestockDocumentJobService
             [self::STATUS_CLAIMED, self::STATUS_RUNNING],
             function (WarehouseRestockDocumentJob $job) use ($errorCode, $errorMessage): void {
                 $now = now();
+                $retryable = $this->isRetryableError($errorCode)
+                    && (int) $job->attempt_count < $this->maxAttempts();
+
+                if ($retryable) {
+                    $this->packages->discardIncomplete($job);
+                    $retryAt = $now->copy()->addSeconds($this->retryDelaySeconds((int) $job->attempt_count));
+                    $previousWorker = $job->worker_id;
+
+                    $job->forceFill([
+                        'status' => self::STATUS_QUEUED,
+                        'worker_id' => null,
+                        'next_attempt_at' => $retryAt,
+                        'claimed_at' => null,
+                        'lease_expires_at' => null,
+                        'started_at' => null,
+                        'last_heartbeat_at' => $now,
+                        'failed_at' => null,
+                        'last_error_code' => $errorCode,
+                        'last_error_message' => $errorMessage,
+                    ])->save();
+
+                    $this->recordWorkerEvent($job, 'inventory.restock_document_job.retry_scheduled', [
+                        'worker_id' => $previousWorker,
+                        'attempt_count' => (int) $job->attempt_count,
+                        'next_attempt_at' => $retryAt->toIso8601String(),
+                        'error_code' => $errorCode,
+                    ]);
+
+                    return;
+                }
+
                 $job->forceFill([
                     'status' => self::STATUS_FAILED,
                     'failed_at' => $now,
                     'last_heartbeat_at' => $now,
                     'lease_expires_at' => null,
+                    'next_attempt_at' => null,
                     'last_error_code' => $errorCode,
                     'last_error_message' => $errorMessage,
                 ])->save();
 
                 $this->recordWorkerEvent($job, 'inventory.restock_document_job.failed', [
                     'worker_id' => $job->worker_id,
+                    'attempt_count' => (int) $job->attempt_count,
                     'error_code' => $errorCode,
                     'error_message' => $errorMessage,
                 ]);
@@ -506,6 +545,85 @@ final class WarehouseRestockDocumentJobService
         }
     }
 
+    private function recoverExpiredJobs(): void
+    {
+        $expired = WarehouseRestockDocumentJob::query()
+            ->where('document_kind', self::DOCUMENT_BLUE_LABELS)
+            ->whereIn('status', [self::STATUS_CLAIMED, self::STATUS_RUNNING])
+            ->whereNotNull('lease_expires_at')
+            ->where('lease_expires_at', '<', now())
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($expired as $job) {
+            $now = now();
+            $previousWorker = $job->worker_id;
+
+            if ((int) $job->attempt_count < $this->maxAttempts()) {
+                $this->packages->discardIncomplete($job);
+                $retryAt = $now->copy()->addSeconds($this->retryDelaySeconds((int) $job->attempt_count));
+
+                $job->forceFill([
+                    'status' => self::STATUS_QUEUED,
+                    'worker_id' => null,
+                    'next_attempt_at' => $retryAt,
+                    'claimed_at' => null,
+                    'lease_expires_at' => null,
+                    'started_at' => null,
+                    'failed_at' => null,
+                    'last_error_code' => 'worker_lease_expired',
+                    'last_error_message' => 'Worker heartbeat lease expired; retry scheduled.',
+                ])->save();
+
+                $this->recordWorkerEvent($job, 'inventory.restock_document_job.lease_recovered', [
+                    'worker_id' => $previousWorker,
+                    'attempt_count' => (int) $job->attempt_count,
+                    'next_attempt_at' => $retryAt->toIso8601String(),
+                ]);
+
+                continue;
+            }
+
+            $job->forceFill([
+                'status' => self::STATUS_FAILED,
+                'lease_expires_at' => null,
+                'next_attempt_at' => null,
+                'failed_at' => $now,
+                'last_error_code' => 'worker_lease_exhausted',
+                'last_error_message' => 'Worker heartbeat lease expired and max attempts were exhausted.',
+            ])->save();
+
+            $this->recordWorkerEvent($job, 'inventory.restock_document_job.failed', [
+                'worker_id' => $previousWorker,
+                'attempt_count' => (int) $job->attempt_count,
+                'error_code' => 'worker_lease_exhausted',
+            ]);
+        }
+    }
+
+    private function maxAttempts(): int
+    {
+        return max(1, min(10, (int) config('services.blue_label_worker.max_attempts', 3)));
+    }
+
+    private function retryDelaySeconds(int $attemptCount): int
+    {
+        $base = max(5, min(3600, (int) config('services.blue_label_worker.retry_base_seconds', 30)));
+        $multiplier = 2 ** max(0, min(6, $attemptCount - 1));
+
+        return min(3600, $base * $multiplier);
+    }
+
+    private function isRetryableError(string $errorCode): bool
+    {
+        return in_array($errorCode, [
+            'dispatch_failure',
+            'worker_crash',
+            'heartbeat_failure',
+        ], true);
+    }
+
     private function leaseSeconds(): int
     {
         return max(30, min(900, (int) config('services.blue_label_worker.lease_seconds', 180)));
@@ -544,14 +662,47 @@ final class WarehouseRestockDocumentJobService
 
     public function payload(WarehouseRestockDocumentJob $job): array
     {
+        $artifactProgress = $this->packages->artifactProgress($job);
+        $progressPercent = match ($job->status) {
+            self::STATUS_QUEUED => 10,
+            self::STATUS_CLAIMED => 25,
+            self::STATUS_RUNNING => $artifactProgress['expected'] > 0
+                ? 40 + (int) floor(45 * ($artifactProgress['received'] / $artifactProgress['expected']))
+                : 40,
+            self::STATUS_SUCCEEDED => 100,
+            self::STATUS_FAILED => 100,
+            default => 0,
+        };
+
+        $statusDetail = match ($job->status) {
+            self::STATUS_RUNNING => $artifactProgress['received'] <= 0
+                ? '正在生成 BTW / PDF'
+                : ($artifactProgress['received'] < $artifactProgress['expected']
+                    ? '正在回传生成文件 '.$artifactProgress['received'].' / '.$artifactProgress['expected']
+                    : '文件已回传，正在生成 PI / ZIP'),
+            default => $job->status === self::STATUS_QUEUED
+                && (int) $job->attempt_count > 0
+                && $job->next_attempt_at !== null
+                    ? '上一次执行未完成，系统将自动重试'
+                    : $this->statusDetail($job->status),
+        };
+
         return [
             'id' => (int) $job->id,
             'reference' => $job->reference,
             'document_kind' => $job->document_kind,
             'status' => $job->status,
             'status_label' => $this->statusLabel($job->status),
-            'status_detail' => $this->statusDetail($job->status),
+            'status_detail' => $statusDetail,
+            'progress_percent' => $progressPercent,
+            'received_artifact_files' => $artifactProgress['received'],
+            'expected_artifact_files' => $artifactProgress['expected'],
+            'last_heartbeat_at' => $job->last_heartbeat_at?->toIso8601String(),
             'attempt_count' => (int) $job->attempt_count,
+            'next_attempt_at' => $job->next_attempt_at?->toIso8601String(),
+            'is_retry_scheduled' => $job->status === self::STATUS_QUEUED
+                && (int) $job->attempt_count > 0
+                && $job->next_attempt_at !== null,
             'requested_at' => $job->requested_at?->toIso8601String(),
             'started_at' => $job->started_at?->toIso8601String(),
             'completed_at' => $job->completed_at?->toIso8601String(),
