@@ -31,7 +31,7 @@ type RestockRow={product_id:number;inventory_id:number|null;sku:string;label_sku
 type RestockProjection={rule:{history_days:number;formula:string;final_formula:string};summary:{products:number;formula_units:number;manual_units:number;final_units:number;products_to_restock:number};rows:RestockRow[]}
 type RestockColumnKey='final'|'formula'|'manual'|'sku'|'label_sku'|'name'|'units_per_carton'|'shipped120'|'available'|'on_hand'|'reserved'|'weight'|'weight_source'
 type LatestRestockPlan={id:number;reference:string;status:string;snapshot_checksum:string;summary:{final_units:number;products_to_restock:number;snapshot_products:number;cartons_known:number;products_missing_units_per_carton:number;label_sku_overrides:number};confirmed_at:string|null}
-type RestockLabelJob={id:number;reference:string;document_kind:string;status:string;status_label:string;status_detail:string;attempt_count:number;requested_at:string|null;started_at:string|null;completed_at:string|null;failed_at:string|null;last_error_message:string|null;is_terminal:boolean;artifact_count:number}
+type RestockLabelJob={id:number;reference:string;document_kind:string;status:string;status_label:string;status_detail:string;attempt_count:number;requested_at:string|null;started_at:string|null;completed_at:string|null;failed_at:string|null;last_error_message:string|null;is_terminal:boolean;artifact_count:number;has_pi:boolean;has_package:boolean}
 const props=withDefaults(defineProps<{warehouse:W;clearanceProducts:ClearanceProduct[];clearanceCandidates:ClearanceCandidate[];costCenter?:WarehouseCostCenter;billImportPreview?:BillImportPreview|null;billReconciliationHistory?:BillHistory[];billReconciliationDashboard?:ReconciliationDashboard|null;billReconciliationPreview?:ReconciliationPreview|null;inboundProjection?:InboundProjection|null;restockProjection?:RestockProjection|null;latestRestockPlan?:LatestRestockPlan|null;latestRestockLabelJob?:RestockLabelJob|null;shipmentProjection?:ShipmentProjection|null;canOperate:boolean;canManage:boolean}>(),{costCenter:()=>({months:[]}),billImportPreview:null,billReconciliationHistory:()=>[],billReconciliationDashboard:null,billReconciliationPreview:null,inboundProjection:null,restockProjection:null,latestRestockPlan:null,latestRestockLabelJob:null,shipmentProjection:null})
 const warehousePath=`/inventory/${props.warehouse.public_slug||props.warehouse.slug}`
 const breadcrumbs=[{label:'BYL ERP',href:'/dashboard'},{label:'库存',href:'/inventory'},{label:'仓库清单',href:'/inventory/list'},props.warehouse.name]
@@ -167,7 +167,7 @@ const saveCost=()=>cost.transform(d=>({...d,currency:String(d.currency||'').trim
       <template v-if="latestRestockLabelJob">
         <div class="restock-label-job-title"><strong>蓝标生成 · {{latestRestockLabelJob.status_label}}</strong><b :class="`job-${latestRestockLabelJob.status}`">{{latestRestockLabelJob.status_label}}</b></div>
         <p>{{latestRestockLabelJob.reference}} · {{latestRestockLabelJob.status_detail}}</p>
-        <small v-if="latestRestockLabelJob.status==='succeeded'">{{latestRestockLabelJob.artifact_count}} 个生成文件已登记</small>
+        <small v-if="latestRestockLabelJob.status==='succeeded'">{{latestRestockLabelJob.artifact_count}} 个 SKU 的 BTW / PDF + PI 已归档</small>
         <small v-else-if="latestRestockLabelJob.status==='failed'">{{latestRestockLabelJob.last_error_message||'等待检查失败原因'}}</small>
       </template>
       <template v-else>
@@ -175,7 +175,11 @@ const saveCost=()=>cost.transform(d=>({...d,currency:String(d.currency||'').trim
         <p>从已确认备货快照生成固定任务；不会重新计算库存，也不会让执行器猜 SKU 或数量。</p>
       </template>
     </div>
-    <button v-if="canOperate&&!latestRestockLabelJob" type="button" class="button primary" :disabled="blueLabelJobSubmitting" @click="requestBlueLabelJob">{{blueLabelJobSubmitting?'排队中…':'一键生成蓝标'}}</button>
+    <div class="section-actions">
+      <button v-if="canOperate&&!latestRestockLabelJob" type="button" class="button primary" :disabled="blueLabelJobSubmitting" @click="requestBlueLabelJob">{{blueLabelJobSubmitting?'排队中…':'一键生成蓝标'}}</button>
+      <a v-if="latestRestockLabelJob?.has_pi&&latestRestockPlan" class="button ghost" :href="warehousePath+'/restock-plans/'+latestRestockPlan.id+'/blue-label-jobs/'+latestRestockLabelJob.id+'/download/pi'">下载 PI</a>
+      <a v-if="latestRestockLabelJob?.has_package&&latestRestockPlan" class="button primary" :href="warehousePath+'/restock-plans/'+latestRestockPlan.id+'/blue-label-jobs/'+latestRestockLabelJob.id+'/download/package'">下载完整包</a>
+    </div>
   </div>
   <template v-if="restockProjection">
     <div class="shipment-kpis restock-kpis"><article><span>最终备货</span><strong>{{restockProjection.summary.final_units}}</strong><small>公式 + 人工补充</small></article><article><span>公式应备</span><strong>{{restockProjection.summary.formula_units}}</strong><small>120 天真实 Shipment</small></article><article><span>人工补充</span><strong>{{restockProjection.summary.manual_units}}</strong><small>新品 / 缺货修正</small></article><article><span>需备货 SKU</span><strong>{{restockProjection.summary.products_to_restock}}</strong><small>最终数量 &gt; 0</small></article></div>

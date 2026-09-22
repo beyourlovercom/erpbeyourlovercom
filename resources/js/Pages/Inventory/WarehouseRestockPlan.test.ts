@@ -121,7 +121,7 @@ describe('Warehouse Restock Plan Snapshot', () => {
           failed_at: null,
           last_error_message: null,
           is_terminal: false,
-          artifact_count: 0,
+          artifact_count: 0, has_pi: false, has_package: false,
         },
         canOperate: true,
         canManage: false,

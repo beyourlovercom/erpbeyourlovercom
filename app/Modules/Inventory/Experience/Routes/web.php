@@ -60,6 +60,9 @@ Route::middleware(['web','auth','can:inventory.operate'])->group(function (): vo
     Route::patch('/inventory/{warehouse}/restock-supplement',[WarehouseController::class,'saveRestockSupplement'])->name('inventory.restock.supplement');
     Route::post('/inventory/{warehouse}/restock-plans/confirm',[WarehouseController::class,'confirmRestockPlan'])->name('inventory.restock.plan.confirm');
     Route::post('/inventory/{warehouse}/restock-plans/{plan}/blue-label-jobs',[WarehouseController::class,'requestRestockBlueLabels'])->whereNumber('plan')->name('inventory.restock.blue-label-job.store');
+    Route::get('/inventory/{warehouse}/restock-plans/{plan}/blue-label-jobs/{job}/download/{artifact}',[WarehouseController::class,'downloadRestockDocument'])
+        ->whereNumber('plan')->whereNumber('job')->whereIn('artifact',['pi','package'])
+        ->name('inventory.restock.blue-label-job.download');
     Route::post('/inventory/{warehouse}/clearance',[WarehouseController::class,'addClearance'])->name('inventory.clearance.store');
     Route::patch('/inventory/{warehouse}/clearance/{clearance}',[WarehouseController::class,'updateClearance'])->whereNumber('clearance')->name('inventory.clearance.update');
     Route::delete('/inventory/{warehouse}/clearance/{clearance}',[WarehouseController::class,'removeClearance'])->whereNumber('clearance')->name('inventory.clearance.destroy');
@@ -79,6 +82,10 @@ Route::prefix('/api/internal/blue-label-worker')
             ->name('inventory.blue-label-worker.start');
         Route::post('/jobs/{job}/heartbeat', [BlueLabelWorkerController::class, 'heartbeat'])
             ->name('inventory.blue-label-worker.heartbeat');
+        Route::post('/jobs/{job}/artifacts/{kind}/{labelSku}', [BlueLabelWorkerController::class, 'artifact'])
+            ->whereIn('kind', ['btw', 'pdf'])
+            ->where('labelSku', '[A-Za-z0-9._-]+')
+            ->name('inventory.blue-label-worker.artifact');
         Route::post('/jobs/{job}/complete', [BlueLabelWorkerController::class, 'complete'])
             ->name('inventory.blue-label-worker.complete');
         Route::post('/jobs/{job}/fail', [BlueLabelWorkerController::class, 'fail'])
