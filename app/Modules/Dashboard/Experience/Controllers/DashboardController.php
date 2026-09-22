@@ -80,7 +80,7 @@ final class DashboardController
             'kol_specialist' => [['label'=>'网红总览','href'=>'/kol','permission'=>'kol.view'],['label'=>'我的网红','href'=>'/kol/library','permission'=>'kol.view'],['label'=>'合作记录','href'=>'/kol/collaborations','permission'=>'kol.view'],['label'=>'内容记录','href'=>'/kol/content','permission'=>'kol.view']],
             'kol_manager' => [['label'=>'网红总览','href'=>'/kol','permission'=>'kol.view'],['label'=>'审批中心','href'=>'/kol/approvals','permission'=>'kol.approvals.manage'],['label'=>'合作记录','href'=>'/kol/collaborations','permission'=>'kol.view'],['label'=>'佣金','href'=>'/kol/commissions','permission'=>'kol.view']],
             'sales_representative' => [['label'=>'客户中心','href'=>'/customers','permission'=>'customers.view'],['label'=>'客户库','href'=>'/customers/library','permission'=>'customers.view'],['label'=>'订单','href'=>'/orders','permission'=>'orders.view']],
-            'writer' => [['label'=>'内容文档','href'=>'/docs','permission'=>'guides.view']],
+            'writer' => [['label'=>'内容文档','href'=>'/guides','permission'=>'guides.view']],
             default => [],
         };
 
