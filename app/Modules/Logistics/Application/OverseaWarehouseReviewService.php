@@ -29,6 +29,22 @@ final class OverseaWarehouseReviewService
         'CA' => 'Canada Post',
     ];
 
+    public static function canonicalWarehouseCode(?string $code): ?string
+    {
+        $normalized = strtoupper(trim((string) $code));
+
+        return in_array($normalized, array_values(self::WAREHOUSE_CODE_BY_KEY), true)
+            ? $normalized
+            : null;
+    }
+
+    public static function carrierForWarehouseCode(?string $code): ?string
+    {
+        $canonical = self::canonicalWarehouseCode($code);
+
+        return $canonical !== null ? (self::CARRIER_BY_CODE[$canonical] ?? null) : null;
+    }
+
     public function __construct(
         private readonly AssistedFulfillmentService $fulfillment,
         private readonly ShipmentService $shipments,
@@ -46,8 +62,10 @@ final class OverseaWarehouseReviewService
 
             if (array_key_exists('warehouse_id', $data) && (int) $data['warehouse_id'] !== (int) $shipment->warehouse_id) {
                 $warehouse = Warehouse::query()->whereKey((int) $data['warehouse_id'])
-                    ->whereIn('code', array_values(self::WAREHOUSE_CODE_BY_KEY))->where('is_active', true)->firstOrFail();
-                $carrier = self::CARRIER_BY_CODE[$warehouse->code] ?? null;
+                    ->where('is_active', true)->firstOrFail();
+                $warehouseCode = self::canonicalWarehouseCode($warehouse->code);
+                abort_unless($warehouseCode !== null, 422, '该订单不是海外仓订单');
+                $carrier = self::CARRIER_BY_CODE[$warehouseCode] ?? null;
                 $locked = $this->fulfillment->saveDraft($locked, [
                     'warehouse_id' => $warehouse->id,
                     'carrier' => $carrier,
@@ -91,9 +109,10 @@ final class OverseaWarehouseReviewService
             $locked = Order::query()->with('shipment.warehouse')->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以审核');
             abort_unless($locked->shipment?->warehouse_id, 409, '订单尚未分配海外仓');
-            abort_unless(in_array($locked->shipment->warehouse?->code, array_values(self::WAREHOUSE_CODE_BY_KEY), true), 422, '该订单不是海外仓订单');
+            $warehouseCode = self::canonicalWarehouseCode($locked->shipment->warehouse?->code);
+            abort_unless($warehouseCode !== null, 422, '该订单不是海外仓订单');
             $review = $this->reviewForMutation($locked);
-            $carrier = self::CARRIER_BY_CODE[$locked->shipment->warehouse->code] ?? null;
+            $carrier = self::CARRIER_BY_CODE[$warehouseCode] ?? null;
             $manualCarrier = $locked->shipment->carrier_selection_source === 'manual'
                 && filled($locked->shipment->carrier);
             if (! $manualCarrier && $locked->shipment->carrier !== $carrier) {
@@ -116,7 +135,7 @@ final class OverseaWarehouseReviewService
 
     public function reopenReview(Order $order, Authenticatable $actor): Order
     {
-        return DB::transaction(function () use ($order, $actor): Order {
+        return DB::transaction(function () use ($order): Order {
             $locked = Order::query()->with('shipment.warehouse')->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以重新审核');
             abort_unless($locked->shipment?->warehouse_id, 409, '订单尚未分配海外仓');
@@ -128,6 +147,7 @@ final class OverseaWarehouseReviewService
                 'reviewed_by' => null,
                 'reviewed_at' => null,
             ])->save();
+
             return $locked->fresh(['shipment.warehouse']);
         });
     }
@@ -175,7 +195,9 @@ final class OverseaWarehouseReviewService
     private function reviewForMutation(Order $order): OverseaWarehouseReview
     {
         $review = OverseaWarehouseReview::query()->where('order_id', $order->getKey())->lockForUpdate()->first();
-        if ($review) return $review;
+        if ($review) {
+            return $review;
+        }
 
         return OverseaWarehouseReview::query()->create([
             'order_id' => $order->getKey(),

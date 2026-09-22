@@ -55,6 +55,36 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->where('warehouse.code', 'US-SM'));
     }
 
+    public function test_legacy_lowercase_us_la_code_is_normalized_across_page_approval_and_reopen(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $warehouses['US-LA']->forceFill(['code' => 'us-la'])->save();
+        $order = $this->orderAt($warehouses['US-LA']->fresh(), '007-OVERSEA-USLA-LEGACY');
+
+        $this->actingAs($user)->get('/logistics/oversea/us-moreplus?view=review')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('warehouse.code', 'US-LA')
+            ->where('rows.total', 1)
+            ->where('rows.data.0.order_id', $order->id)
+            ->where('rows.data.0.carrier', 'USPS'));
+
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id,
+            'warehouse_id' => $warehouses['US-LA']->id,
+            'carrier' => 'USPS',
+            'shipment_status' => 'pending',
+        ]);
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id' => $order->id,
+            'status' => 'approved',
+            'reviewed_warehouse_id' => $warehouses['US-LA']->id,
+        ]);
+
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/reopen-review")
+            ->assertRedirect('/logistics/oversea/us-moreplus?view=review');
+    }
+
     public function test_approval_moves_order_from_review_to_pending_and_persists_default_carrier(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
