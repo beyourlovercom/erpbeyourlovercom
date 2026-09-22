@@ -16,6 +16,7 @@ final class ProfitDashboardService
     public function __construct(
         private readonly OrderAnalysisService $analysis,
         private readonly ConfirmedLossReader $confirmedLosses,
+        private readonly UsdAggregateConverter $usd,
     ) {}
 
     public function filters(Request $request): array
@@ -57,7 +58,7 @@ final class ProfitDashboardService
         $aggregateRows = $rows->filter(fn (array $row): bool => $row['aggregate_eligible']);
         $eligible = $rows->count();
         $confirmedCount = $confirmedRows->count();
-        $fxPending = $rows->filter(fn (array $row): bool => ! $row['fx_eligible'] && $this->transactionCurrency($row['order']) !== 'USD')->count();
+        $fxPending = $rows->filter(fn (array $row): bool => ! $row['fx_eligible'] && $this->usd->transactionCurrency($row['order']) !== 'USD')->count();
         $totals = $this->sumRows($aggregateRows);
 
         return [
@@ -248,29 +249,12 @@ final class ProfitDashboardService
 
     private function usdAmounts(array $summary, Model $order): array
     {
-        $revenue = $this->toUsdCents((string) $summary['net_revenue'], $order);
-        $cost = $this->toUsdCents((string) $summary['total_cost'], $order);
+        $revenue = $this->usd->toUsdCents((string) $summary['net_revenue'], $order);
+        $cost = $this->usd->toUsdCents((string) $summary['total_cost'], $order);
 
         return ['revenue' => $revenue, 'cost' => $cost, 'profit' => $revenue - $cost];
     }
 
-    private function toUsdCents(string $amount, Model $order): int
-    {
-        if ($this->transactionCurrency($order) === 'USD') {
-            return $this->decimalToCents($amount);
-        }
-        $rate = trim((string) $order->financials?->fx_rate);
-        if ($rate === '' || bccomp($rate, '0', 8) <= 0) {
-            throw new \UnexpectedValueException('Aggregate-eligible non-USD order requires a positive frozen FX rate.');
-        }
-
-        return $this->decimalToCents(bcmul($amount, $rate, 10), round: true);
-    }
-
-    private function transactionCurrency(Model $order): string
-    {
-        return strtoupper((string) ($order->financials?->currency ?? $order->currency ?? 'USD'));
-    }
 
     private function decimalToCents(string $value, bool $round = false): int
     {

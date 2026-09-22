@@ -102,11 +102,16 @@ final class EloquentProductRepository implements ProductRepository
     {
         return Product::query()
             ->when(isset($filters['search']) && $filters['search'] !== '', function ($q) use ($filters): void {
-                $search = '%'.$filters['search'].'%';
-                $q->where(function ($inner) use ($search): void {
+                $raw = trim((string) $filters['search']);
+                $search = '%'.$raw.'%';
+                $q->where(function ($inner) use ($raw, $search): void {
                     $inner->where('sku', 'like', $search)
                         ->orWhere('name', 'like', $search)
+                        ->orWhere('gtin', 'like', $search)
                         ->orWhereHas('skuAliases', fn ($a) => $a->where('alias_sku', 'like', $search));
+                    if (ctype_digit($raw)) {
+                        $inner->orWhere('woocommerce_product_id', (int) $raw);
+                    }
                 });
             })
             ->orderBy('name')

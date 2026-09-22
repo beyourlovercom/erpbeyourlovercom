@@ -255,6 +255,12 @@ const fulfillmentProgressLabel = computed(() => {
   return fulfillment.replacement_count > 0 ? `${original} · 售后补发 ${fulfillment.replacement_count}` : original
 })
 
+const fulfillmentSegments = computed(() => props.order.fulfillment?.segments ?? [])
+const pendingFulfillmentSegments = computed(() => fulfillmentSegments.value.filter(segment => segment.shipment.shipment_status === 'pending'))
+const reopenFulfillmentSegments = computed(() => fulfillmentSegments.value.filter(segment => segment.shipment.shipment_status !== 'pending'))
+const singleShipmentPending = computed(() => !['shipped', 'completed'].includes(props.order.shipment?.shipment_status ?? 'pending'))
+const reopenFulfillment = (orderId: number) => router.post(`/logistics/orders/${orderId}/reopen`, { logistics_note: '订单详情重开发货' }, { preserveScroll: true })
+
 const reallocationOpen = ref(false)
 const allocationEditing = computed(() => Boolean(
   props.allocationUi?.status === 'pending'
@@ -458,7 +464,6 @@ const submitReplacement = () => {
           <div class="erp-form-header-actions page-header-actions">
             <button v-if="editMode" type="button" class="erp-btn erp-btn-secondary" @click="cancelEdit">取消编辑</button>
             <a :href="basePath" class="erp-btn erp-btn-secondary">返回列表</a>
-            <a v-if="canOperateLogistics && order.order_status === 'pending_shipment'" :href="`/logistics/pending?order_id=${order.id}`" class="erp-btn erp-btn-primary">履约发货</a>
             <a v-if="canViewProfit && !isKol" :href="`/accounting/order-costs?search=${encodeURIComponent(order.erp_order_id ?? '')}`" class="erp-btn erp-btn-secondary">查看订单利润</a>
             <a v-if="canCreateProcurement && !order.procurement_order" :href="`/purchase/orders/from-order/${order.id}/create`" class="erp-btn erp-btn-primary">创建采购订单</a>
             <a v-if="order.procurement_order" :href="`/purchase/orders/${order.procurement_order.id}`" class="erp-btn erp-btn-secondary">查看采购订单 · {{ order.procurement_order.procurement_number }}</a>
@@ -488,7 +493,17 @@ const submitReplacement = () => {
               <h2 class="erp-form-card-title">履约状态</h2>
               <span v-if="hasFulfillmentTable" class="ord-split-badge">{{ fulfillmentBadgeLabel }}</span>
             </div>
-            <button v-if="canCreateReplacement" type="button" class="erp-btn erp-btn-secondary" @click="replacementOpen = true">+ 新增补发</button>
+            <div class="ord-fulfillment-actions" data-testid="fulfillment-actions">
+              <template v-if="hasFulfillmentTable">
+                <button v-for="segment in pendingFulfillmentSegments" :key="`ship-${segment.order_id}`" type="button" class="erp-btn erp-btn-primary ord-fulfillment-cta" @click="openShipmentEditor(segment)">{{ segment.suffix ? `${segment.suffix} · ` : '' }}{{ canOperateLogistics ? '履约发货' : '查看履约' }}</button>
+                <button v-for="segment in reopenFulfillmentSegments" v-if="canOperateLogistics" :key="`reopen-${segment.order_id}`" type="button" class="erp-btn erp-btn-secondary ord-fulfillment-cta" @click="reopenFulfillment(segment.order_id)">{{ segment.suffix ? `${segment.suffix} · ` : '' }}重开发货</button>
+              </template>
+              <template v-else>
+                <button v-if="singleShipmentPending" type="button" class="erp-btn erp-btn-primary ord-fulfillment-cta" @click="openShipmentEditor({ order_id: order.id, erp_order_id: order.erp_order_id, shipment: order.shipment ?? undefined })">{{ canOperateLogistics ? '履约发货' : '查看履约' }}</button>
+                <button v-else-if="canOperateLogistics" type="button" class="erp-btn erp-btn-secondary ord-fulfillment-cta" @click="reopenFulfillment(order.id)">重开发货</button>
+              </template>
+              <button v-if="canCreateReplacement" type="button" class="erp-btn erp-btn-secondary ord-fulfillment-cta" @click="replacementOpen = true">+ 新增补发</button>
+            </div>
 
           </div>
 
@@ -544,8 +559,6 @@ const submitReplacement = () => {
                     <td>
                       <div class="ord-fulfillment-row-actions">
                         <button v-if="allocationUi?.can_partial_reallocate && segment.can_reallocate" type="button" class="erp-btn erp-btn-secondary ord-ship-action" @click="openPartialReallocation(segment)">调整分仓</button>
-                        <button v-if="segment.shipment.shipment_status === 'pending'" type="button" class="erp-btn erp-btn-secondary ord-ship-action" @click="openShipmentEditor(segment)">{{ canOperateLogistics ? '填写物流 / 发货' : '查看履约' }}</button>
-                        <button v-else-if="canOperateLogistics" type="button" class="erp-btn erp-btn-secondary ord-ship-action" @click="router.post(`/logistics/orders/${segment.order_id}/reopen`, { logistics_note: '订单详情重开发货' }, { preserveScroll: true })">重开发货</button>
                         <span v-else>—</span>
                       </div>
                     </td>
@@ -583,18 +596,14 @@ const submitReplacement = () => {
               </div>
             </div>
 
-            <div class="ord-fulfillment-action">
-              <button v-if="order.shipment?.shipment_status !== 'shipped' && order.shipment?.shipment_status !== 'completed'" type="button" class="erp-btn erp-btn-primary" @click="openShipmentEditor({ order_id: order.id, erp_order_id: order.erp_order_id, shipment: order.shipment ?? undefined })">{{ canOperateLogistics ? '填写物流 / 确认发货' : '查看履约' }}</button>
-              <button v-else-if="canOperateLogistics" type="button" class="erp-btn erp-btn-secondary" @click="router.post(`/logistics/orders/${order.id}/reopen`, { logistics_note: '订单详情重开发货' }, { preserveScroll: true })">重开发货</button>
 
-            </div>
           </template>
         </div>
 
         <!-- Operational markers: explicit human marks, not a second Order status -->
         <div class="erp-form-card">
           <h2 class="erp-form-card-title">辅助标记</h2>
-          <p class="ord-inventory-help">用于异常、运输中、退货、缺货等辅助业务视图，不是发货入口。实际发货请在上方“履约状态”中填写仓库、物流商、渠道、Tracking 与发货时间。</p>
+          <p class="ord-inventory-help">用于异常、运输中、退货、缺货等辅助业务视图，不是发货入口。所有发货、重发、补发操作统一在上方“履约状态”处理；这里仅保留辅助业务标记。</p>
           <div class="ord-marker-row">
             <button v-for="marker in operationalMarkerOptions" :key="marker.key" type="button" class="erp-btn erp-btn-secondary ord-marker" :class="{ active: markerActive(marker.key) }" :disabled="!canMarkOperational" @click="toggleMarker(marker.key)">{{ markerActive(marker.key) ? '✓ ' : '' }}{{ marker.label }}</button>
           </div>
@@ -1108,11 +1117,6 @@ const submitReplacement = () => {
   color: #142126;
 }
 
-.ord-fulfillment-action {
-  padding-top: 8px;
-  border-top: 1px solid #e4eaed;
-}
-
 .ord-fulfillment-heading {
   display: flex;
   align-items: center;
@@ -1120,6 +1124,15 @@ const submitReplacement = () => {
   gap: 12px;
   margin-bottom: 14px;
 }
+
+.ord-fulfillment-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ord-fulfillment-cta { white-space: nowrap; }
 
 .ord-fulfillment-title-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .ord-fulfillment-heading .erp-form-card-title { margin-bottom: 0; }
@@ -1311,6 +1324,8 @@ const submitReplacement = () => {
 .ord-partial-reallocation-warning { margin-top: 14px; padding: 10px 12px; border-radius: 10px; background: #fff7e8; color: #8a6200; font-size: 11px; }
 
 @media (max-width: 767px) {
+  .ord-fulfillment-heading { align-items: flex-start; flex-direction: column; }
+  .ord-fulfillment-actions { width: 100%; justify-content: flex-start; }
   .erp-form-header-actions {
     width: 100%;
     justify-content: flex-start;
