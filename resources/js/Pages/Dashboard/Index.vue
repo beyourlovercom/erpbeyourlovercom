@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { Head, Link } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
+type DashboardWorkspace = { role:string; label:string; mode:'boss'|'work'; eyebrow:string; title:string; description:string }
 type DashboardVisibility = { operations:boolean; inventory:boolean; sync:boolean; finance:boolean; procurement:boolean }
 type StatusMetric = { key:string; label:string; url:string; count:number }
 type OperationsSnapshot = Record<'wait_stock'|'pending'|'awaiting'|'transit'|'exception'|'review'|'completed'|'cancelled', StatusMetric|null>
@@ -19,7 +20,7 @@ type ProcurementRow = { id:number; procurement_number:string; status:string; sou
 type ProcurementProgress = { active:number; counts:Record<'pending'|'purchasing'|'ordered'|'completed'|'cancelled', number>; recent:ProcurementRow[] }
 
 const props = withDefaults(defineProps<{
-  visibility:DashboardVisibility; period?:'7d'|'30d'|'90d'|'custom'; dateFrom?:string|null; dateTo?:string|null
+  workspace:DashboardWorkspace; visibility:DashboardVisibility; period?:'7d'|'30d'|'90d'|'custom'; dateFrom?:string|null; dateTo?:string|null
   operations?:OperationsSnapshot|null; inventoryRisk?:InventoryRisk|null; syncHealth?:SyncHealth|null
   financeSnapshot?:FinanceSnapshot|null; procurementProgress?:ProcurementProgress|null
 }>(), { period:'7d', dateFrom:null, dateTo:null, operations:null, inventoryRisk:null, syncHealth:null, financeSnapshot:null, procurementProgress:null })
@@ -59,9 +60,9 @@ const chart = computed(() => {
     <section class="dashboard-shell-page">
       <header class="dashboard-hero">
         <div>
-          <p class="mvp-kicker">老板 / 运营总览</p>
-          <h2>经营与运营总览</h2>
-          <p>先看异常和瓶颈，再进入对应业务系统处理；首页只聚合，不成为第二套业务真相源。</p>
+          <p class="mvp-kicker">{{ workspace.eyebrow }}</p>
+          <h2>{{ workspace.title }}</h2>
+          <p>{{ workspace.description }}</p>
         </div>
         <div class="dashboard-period" aria-label="经营时间范围">
           <Link v-for="item in periodOptions" :key="item.value" class="period-option" :class="{ active: props.period === item.value }" :href="periodHref(item.value)">{{ item.label }}</Link>

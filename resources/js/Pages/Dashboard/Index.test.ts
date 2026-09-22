@@ -40,6 +40,7 @@ const financeSnapshot = {
   ],
 }
 const baseProps = {
+  workspace:{role:'administrator',label:'管理员',mode:'boss' as const,eyebrow:'老板 / 管理员总览',title:'经营与运营总览',description:'先看经营结果、异常和瓶颈，再进入对应业务系统处理。'},
   visibility: allVisible,
   period: '7d' as const,
   dateFrom: '2026-09-14',
@@ -52,6 +53,16 @@ const baseProps = {
 }
 
 describe('dashboard redesign', () => {
+
+  it('renders a role-aware workspace identity without changing permission-scoped module truth', () => {
+    const operationsWorkspace = { role:'operations',label:'运营',mode:'work' as const,eyebrow:'运营工作台',title:'今日运营总览',description:'聚合今天需要推进的履约、库存、同步与经营信号。' }
+    const wrapper = mount(Dashboard, { props: { ...baseProps, workspace:operationsWorkspace } })
+    expect(wrapper.text()).toContain('运营工作台')
+    expect(wrapper.text()).toContain('今日运营总览')
+    expect(wrapper.text()).not.toContain('老板 / 管理员总览')
+    expect(wrapper.find('#operations').exists()).toBe(true)
+  })
+
   it('renders canonical D3 live metrics and removes the legacy duplicate KPI contract', () => {
     const wrapper = mount(Dashboard, { props: baseProps })
     expect(wrapper.text()).toContain('经营与运营总览')
