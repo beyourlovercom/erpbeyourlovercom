@@ -6,7 +6,9 @@ use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Orders\Infrastructure\Models\OrderExternalReference;
+use App\Modules\Products\Application\SkuAliasService;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Products\Infrastructure\Models\ProductSkuReconciliation;
 use App\Modules\Sync\Infrastructure\Models\SyncRun;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -67,6 +69,24 @@ final class WooCommerceInboundTest extends TestCase
         $this->assertSame(100101, $order->items->first()->woocommerce_line_item_id);
         $this->assertSame('21.50', $order->items->first()->unit_price);
         $this->assertDatabaseHas('audit_records', ['action' => 'order.inbound_updated']);
+    }
+
+    public function test_empty_shipping_phone_falls_back_to_billing_phone(): void
+    {
+        $user = $this->userWith(['sync.operate']);
+        $product = Product::create([
+            'woocommerce_product_id' => 5003, 'sku' => 'WOO-5003', 'name' => 'Phone Fallback Widget', 'product_type' => 'simple',
+        ]);
+        $payload = $this->wooOrder(103, 'WC-103', 'processing', '19.95', 5003, 'WOO-5003');
+        $payload['shipping']['phone'] = '';
+        $payload['billing']['phone'] = '+49123456';
+        Http::fake(['https://shop.test/wp-json/wc/v3/orders/103' => Http::response($payload, 200)]);
+
+        $this->actingAs($user)->post('/sync/woocommerce/single', ['woo_order_id' => 103])->assertSessionHasNoErrors();
+
+        $order = Order::with('address')->firstOrFail();
+        $this->assertSame($product->id, $order->items()->firstOrFail()->product_id);
+        $this->assertSame('+49123456', $order->address->phone);
     }
 
     public function test_single_import_preserves_long_woo_address_line_2_snapshot(): void
@@ -133,15 +153,16 @@ final class WooCommerceInboundTest extends TestCase
                     $shell = $this->wooOrder(406, 'WC-406');
                     $shell['created_via'] = 'admin';
                     $shell['line_items'] = [];
+
                     return Http::response([$valid, $shell], 200, ['X-WP-TotalPages' => '1']);
                 }
+
                 return Http::response([], 404);
             });
 
             $response = $this->actingAs($user)->post('/sync/woocommerce/incremental');
             $response->assertSessionHasNoErrors();
-            $response->assertSessionHas('woocommerce_import_summary', fn (array $summary): bool =>
-                $summary['seen'] === 2
+            $response->assertSessionHas('woocommerce_import_summary', fn (array $summary): bool => $summary['seen'] === 2
                 && $summary['created'] === 1
                 && $summary['updated'] === 0
                 && $summary['skipped'] === 1
@@ -168,6 +189,7 @@ final class WooCommerceInboundTest extends TestCase
                 }
                 $query = [];
                 parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
                 return ($query['after'] ?? null) === '2026-08-27T00:00:00+00:00'
                     && ($query['before'] ?? null) === '2026-08-27T15:30:00+00:00'
                     && ($query['status'] ?? null) === 'any'
@@ -188,6 +210,7 @@ final class WooCommerceInboundTest extends TestCase
             $query = [];
             parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
             $page = (int) ($query['page'] ?? 1);
+
             return Http::response(
                 [$this->wooOrder($page === 1 ? 501 : 502, $page === 1 ? 'WC-501' : 'WC-502')],
                 200,
@@ -210,7 +233,7 @@ final class WooCommerceInboundTest extends TestCase
             'source_type' => 'manual', 'woocommerce_product_id' => null,
             'sku' => 'VM467A', 'name' => 'Canonical Product', 'product_type' => 'simple',
         ]);
-        $aliasService = app(\App\Modules\Products\Application\SkuAliasService::class);
+        $aliasService = app(SkuAliasService::class);
         $aliasService->createAlias($product->id, 'VM467A DARK GREEN');
 
         // Woo order with no woocommerce_product_id (=0) but SKU = alias
@@ -239,7 +262,7 @@ final class WooCommerceInboundTest extends TestCase
         $this->assertNull($item->product_id, 'product_id must remain null for unresolved');
         $this->assertSame('BRAND-NEW-UNKNOWN', $item->sku, 'raw sku preserved');
 
-        $reconciliation = \App\Modules\Products\Infrastructure\Models\ProductSkuReconciliation::where('raw_sku', 'BRAND-NEW-UNKNOWN')->first();
+        $reconciliation = ProductSkuReconciliation::where('raw_sku', 'BRAND-NEW-UNKNOWN')->first();
         $this->assertNotNull($reconciliation, 'reconciliation observation must be created');
         $this->assertSame('open', $reconciliation->status);
         $this->assertSame('woocommerce_order', $reconciliation->last_source_type);
@@ -261,7 +284,7 @@ final class WooCommerceInboundTest extends TestCase
             'source_type' => 'manual', 'woocommerce_product_id' => null,
             'sku' => 'OTHER-PRODUCT', 'name' => 'Other Product', 'product_type' => 'simple',
         ]);
-        $aliasService = app(\App\Modules\Products\Application\SkuAliasService::class);
+        $aliasService = app(SkuAliasService::class);
         $aliasService->createAlias($otherProduct->id, 'ALIAS-SKU');
 
         // Woo order with strong product_id=5001 but line item SKU = ALIAS-SKU (an alias for other product)
@@ -328,6 +351,7 @@ final class WooCommerceInboundTest extends TestCase
         }
         $user = User::factory()->create(['is_active' => true]);
         $user->roles()->attach($role);
+
         return $user;
     }
 }

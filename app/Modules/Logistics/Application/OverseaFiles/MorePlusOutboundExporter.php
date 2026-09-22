@@ -54,7 +54,7 @@ final class MorePlusOutboundExporter
                 $row[10] = $this->required($a->city, '城市', $order->erp_order_id);
                 $row[11] = $this->required($a->postal_code, '邮编', $order->erp_order_id);
                 $row[12] = $this->required(strtoupper((string) $a->country), '国家', $order->erp_order_id);
-                $row[13] = $a->phone;
+                $row[13] = $this->required($a->phone, '电话', $order->erp_order_id);
                 $row[15] = 'Selected by Warehouse';
                 $row[22] = $order->order_note ?: $shipment->logistics_note;
             }

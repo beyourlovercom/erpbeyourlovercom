@@ -232,6 +232,17 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $this->actingAs($user)->get('/logistics/oversea/us-moreplus/export')->assertStatus(422);
     }
 
+    public function test_moreplus_export_fails_closed_when_recipient_phone_is_missing(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-LA'], '007erp-0920-c40760');
+        $order->address()->update(['phone' => '']);
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+
+        $this->actingAs($user)->get('/logistics/oversea/us-moreplus/export')->assertStatus(422);
+    }
+
     public function test_pending_moreplus_orders_download_real_xlsx_block_rows(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
@@ -253,6 +264,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $this->assertSame('Order NO', $rows[0][0]);
         $this->assertSame('C40761-007', $rows[1][0]);
         $this->assertSame('REVIEW-SKU', $rows[1][1]);
+        $this->assertSame('+1 555 0100', $rows[1][13]);
         $this->assertSame('Selected by Warehouse', $rows[1][15]);
         $this->assertSame('', $rows[2][0]);
         $this->assertSame('SECOND-SKU', $rows[2][1]);
