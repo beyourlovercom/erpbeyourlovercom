@@ -425,9 +425,13 @@ final class ProductService
         $nullableFloat = fn (string $k) => isset($attributes[$k]) && $attributes[$k] !== '' ? (float) $attributes[$k] : null;
 
         $sku = $attributes['sku'] ?? null;
+        $labelSku = isset($attributes['label_sku']) && trim((string) $attributes['label_sku']) !== ''
+            ? trim((string) $attributes['label_sku'])
+            : null;
         if ($sku !== null && $sku !== '') {
             $this->assertNoAliasMatchKeyCollision((string) $sku);
         }
+        $this->assertLabelIdentityAvailable($sku !== null ? (string) $sku : null, $labelSku, null);
 
         $weightKg = $nullableFloat('weight_kg');
         $shippingWeightKg = $nullableFloat('shipping_weight_kg');
@@ -437,6 +441,8 @@ final class ProductService
             'woocommerce_product_id' => null,
             'product_type' => $attributes['product_type'] ?? 'simple',
             'sku' => $attributes['sku'] ?? null,
+            'label_sku' => $labelSku,
+            'label_description' => $nullable('label_description'),
             'gtin' => $nullable('gtin'),
             'name' => $attributes['name'],
             'unit' => $nullable('unit'),
@@ -479,9 +485,17 @@ final class ProductService
         $pickFloat = fn (string $k, mixed $default) => array_key_exists($k, $attributes) ? ($attributes[$k] !== '' && $attributes[$k] !== null ? (float) $attributes[$k] : null) : $default;
 
         $newSku = array_key_exists('sku', $attributes) ? ($attributes['sku'] ?: null) : $product->getAttribute('sku');
+        $newLabelSku = array_key_exists('label_sku', $attributes)
+            ? (trim((string) ($attributes['label_sku'] ?? '')) !== '' ? trim((string) $attributes['label_sku']) : null)
+            : $product->getAttribute('label_sku');
         if ($newSku !== null && $newSku !== $product->getAttribute('sku')) {
             $this->assertNoAliasMatchKeyCollision((string) $newSku);
         }
+        $this->assertLabelIdentityAvailable(
+            $newSku !== null ? (string) $newSku : null,
+            $newLabelSku !== null ? (string) $newLabelSku : null,
+            (int) $product->getKey(),
+        );
 
         // Determine new weight values; weight changes require provenance creation.
         $newWeightKg = array_key_exists('weight_kg', $attributes)
@@ -500,6 +514,8 @@ final class ProductService
         $this->products->update($product, [
             'product_type' => $attributes['product_type'] ?? $product->getAttribute('product_type'),
             'sku' => array_key_exists('sku', $attributes) ? ($attributes['sku'] ?: null) : $product->getAttribute('sku'),
+            'label_sku' => $newLabelSku,
+            'label_description' => $pick('label_description', $product->getAttribute('label_description')),
             'gtin' => $pick('gtin', $product->getAttribute('gtin')),
             'name' => $attributes['name'] ?? $product->getAttribute('name'),
             'unit' => $pick('unit', $product->getAttribute('unit')),
@@ -535,6 +551,28 @@ final class ProductService
             $this->weightEvidence->createAndAdoptManualEntry($product, 'shipping_reference_weight', $newShippingWeightKg, $actorUserId, confirmed: true);
         } elseif ($shippingWeightKgChanged && $newShippingWeightKg === null) {
             $this->weightEvidence->clearWeight($product, 'shipping_reference_weight', $actorUserId);
+        }
+    }
+
+    private function assertLabelIdentityAvailable(?string $sku, ?string $labelSku, ?int $currentProductId): void
+    {
+        if ($sku !== null && trim($sku) !== '') {
+            $labelOwner = $this->products->findByLabelSku(trim($sku));
+            if ($labelOwner !== null && (int) $labelOwner->getKey() !== $currentProductId) {
+                throw new \RuntimeException('SKU 已被其他产品作为蓝标 SKU 使用。');
+            }
+        }
+
+        if ($labelSku !== null && trim($labelSku) !== '') {
+            $canonicalOwner = $this->products->findBySku(trim($labelSku));
+            if ($canonicalOwner !== null && (int) $canonicalOwner->getKey() !== $currentProductId) {
+                throw new \RuntimeException('蓝标 SKU 已被其他产品的 SKU 使用。');
+            }
+
+            $labelOwner = $this->products->findByLabelSku(trim($labelSku));
+            if ($labelOwner !== null && (int) $labelOwner->getKey() !== $currentProductId) {
+                throw new \RuntimeException('蓝标 SKU 已被其他产品使用。');
+            }
         }
     }
 

@@ -21,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -171,6 +172,8 @@ final class ProductController
     {
         $data = $request->validate([
             'sku' => ['required', 'string', 'max:128', 'unique:products,sku'],
+            'label_sku' => ['nullable', 'string', 'max:128', 'unique:products,label_sku'],
+            'label_description' => ['nullable', 'string', 'max:512'],
             'name' => ['required', 'string', 'max:512'],
             'product_type' => ['sometimes', 'string', 'max:64'],
             'gtin' => ['nullable', 'string', 'max:128'],
@@ -196,7 +199,8 @@ final class ProductController
         try {
             $product = $this->products->createManual($data);
         } catch (\RuntimeException $e) {
-            return back()->withErrors(['sku' => $e->getMessage()])->withInput();
+            $field = str_contains($e->getMessage(), '蓝标') ? 'label_sku' : 'sku';
+            return back()->withErrors([$field => $e->getMessage()])->withInput();
         }
 
         return redirect()->route('products.edit', $product->id)->with('success', '产品已创建');
@@ -223,6 +227,8 @@ final class ProductController
                 'source_type' => $product->source_type,
                 'product_type' => $product->product_type,
                 'sku' => $product->sku,
+                'label_sku' => $product->label_sku,
+                'label_description' => $product->label_description,
                 'gtin' => $product->gtin,
                 'name' => $product->name,
                 'unit' => $product->unit,
@@ -260,6 +266,8 @@ final class ProductController
 
         $data = $request->validate([
             'sku' => ['nullable', 'string', 'max:128', 'unique:products,sku,'.$id],
+            'label_sku' => ['nullable', 'string', 'max:128', Rule::unique('products', 'label_sku')->ignore($id)],
+            'label_description' => ['nullable', 'string', 'max:512'],
             'name' => ['required', 'string', 'max:512'],
             'product_type' => ['sometimes', 'string', 'max:64'],
             'gtin' => ['nullable', 'string', 'max:128'],
@@ -285,7 +293,8 @@ final class ProductController
         try {
             $this->products->updateProduct($product, $data);
         } catch (\RuntimeException $e) {
-            return back()->withErrors(['sku' => $e->getMessage()])->withInput();
+            $field = str_contains($e->getMessage(), '蓝标') ? 'label_sku' : 'sku';
+            return back()->withErrors([$field => $e->getMessage()])->withInput();
         }
 
         return redirect()->route('products.edit', $id)->with('success', '产品已更新');

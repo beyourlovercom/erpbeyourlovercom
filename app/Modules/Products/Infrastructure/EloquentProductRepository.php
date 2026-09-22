@@ -40,6 +40,11 @@ final class EloquentProductRepository implements ProductRepository
         return Product::where('sku', $sku)->whereNotNull('sku')->first();
     }
 
+    public function findByLabelSku(string $labelSku): ?Model
+    {
+        return Product::where('label_sku', $labelSku)->whereNotNull('label_sku')->first();
+    }
+
     public function findBySkuMatchKey(string $matchKey): ?Model
     {
         // Use PHP-side SkuMatchKey comparison so behaviour is identical across
