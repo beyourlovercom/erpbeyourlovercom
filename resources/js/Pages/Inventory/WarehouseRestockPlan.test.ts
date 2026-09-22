@@ -115,6 +115,8 @@ describe('Warehouse Restock Plan Snapshot', () => {
           status_label: '已排队',
           status_detail: '等待公司 Windows 执行节点领取',
           attempt_count: 0,
+          next_attempt_at: null,
+          is_retry_scheduled: false,
           requested_at: '2026-09-20T15:00:00+08:00',
           started_at: null,
           completed_at: null,
