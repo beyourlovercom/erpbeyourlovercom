@@ -3,7 +3,7 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { execFileSync } = require('child_process')
+const { spawn } = require('child_process')
 
 function arg(name, fallback = null) {
   const index = process.argv.indexOf(name)
@@ -64,12 +64,67 @@ async function uploadArtifact(base, token, workerId, reference, artifact, kind, 
   )
 }
 
+function runGeneratorWithHeartbeat(generator, jobJson, jobDir, heartbeat, heartbeatMs) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [
+      generator,
+      '--job', jobJson,
+      '--output', jobDir,
+    ], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
+
+    let stdout = ''
+    let stderr = ''
+    let heartbeatBusy = false
+    let heartbeatError = null
+
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk) => { stdout += chunk })
+    child.stderr.on('data', (chunk) => { stderr += chunk })
+
+    const timer = setInterval(async () => {
+      if (heartbeatBusy || heartbeatError) return
+      heartbeatBusy = true
+      try {
+        await heartbeat()
+      } catch (error) {
+        heartbeatError = error
+        child.kill()
+      } finally {
+        heartbeatBusy = false
+      }
+    }, heartbeatMs)
+
+    child.on('error', (error) => {
+      clearInterval(timer)
+      reject(error)
+    })
+
+    child.on('close', (code, signal) => {
+      clearInterval(timer)
+      if (heartbeatError) {
+        reject(new Error(`heartbeat failed while generator was running: ${heartbeatError.message}`))
+        return
+      }
+      if (code !== 0) {
+        reject(new Error(`Generator exited ${code ?? 'null'} signal=${signal ?? 'none'} :: ${stderr.trim()}`))
+        return
+      }
+      resolve(stdout)
+    })
+  })
+}
+
 async function main() {
   const api = String(arg('--api', '')).replace(/\/$/, '')
   const runtime = arg('--runtime', __dirname)
   const outputRoot = arg('--output-root')
   const workerId = arg('--worker', process.env.COMPUTERNAME || 'company-win-label-01')
   const token = arg('--token', process.env.BYL_BLUE_LABEL_WORKER_TOKEN || '')
+  const heartbeatMs = Math.max(1000, Math.min(120_000, Number(arg('--heartbeat-ms', '30000'))))
 
   if (!api || !outputRoot || !token) {
     throw new Error('usage: dispatch-once.cjs --api URL --runtime DIR --output-root DIR [--worker ID] [--token TOKEN]')
@@ -84,23 +139,24 @@ async function main() {
 
   const job = claim.job
   const reference = String(job.reference)
+  const attempt = Number(job.attempt_count || 1)
   const generator = path.join(runtime, 'generate-blue-labels.cjs')
-  const jobDir = path.join(outputRoot, reference)
-  const jobJson = path.join(os.tmpdir(), `${reference}.json`)
+  const jobDir = path.join(outputRoot, reference, `attempt-${attempt}`)
+  const jobJson = path.join(os.tmpdir(), `${reference}-attempt-${attempt}.json`)
   let started = false
+
+  const heartbeat = () => postJson(
+    api, token, workerId, `/jobs/${encodeURIComponent(reference)}/heartbeat`,
+  )
 
   try {
     await postJson(api, token, workerId, `/jobs/${encodeURIComponent(reference)}/start`)
     started = true
 
     fs.writeFileSync(jobJson, JSON.stringify(job.payload, null, 2) + '\n', 'utf8')
-    await postJson(api, token, workerId, `/jobs/${encodeURIComponent(reference)}/heartbeat`)
+    await heartbeat()
 
-    const runtimeOutput = execFileSync(process.execPath, [
-      generator,
-      '--job', jobJson,
-      '--output', jobDir,
-    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    const runtimeOutput = await runGeneratorWithHeartbeat(generator, jobJson, jobDir, heartbeat, heartbeatMs)
 
     const manifestPath = path.join(jobDir, 'manifest.json')
     if (!fs.existsSync(manifestPath)) throw new Error(`manifest.json not found: ${manifestPath}`)
@@ -108,6 +164,7 @@ async function main() {
 
     for (const artifact of manifest.artifacts || []) {
       const labelSku = String(artifact.label_sku)
+      await heartbeat()
       await uploadArtifact(
         api, token, workerId, reference, artifact, 'btw',
         path.join(jobDir, 'labels', `${labelSku}.btw`),
@@ -118,20 +175,22 @@ async function main() {
       )
     }
 
-    await postJson(api, token, workerId, `/jobs/${encodeURIComponent(reference)}/heartbeat`)
+    await heartbeat()
     const completed = await postJson(api, token, workerId, `/jobs/${encodeURIComponent(reference)}/complete`, {
       manifest,
       output_root: jobDir,
     })
 
     process.stdout.write(
-      `BLUE_LABEL_DISPATCH_OK reference=${reference} status=${completed.job.status} output=${jobDir}\n${runtimeOutput.trim()}\n`,
+      `BLUE_LABEL_DISPATCH_OK reference=${reference} attempt=${attempt} status=${completed.job.status} output=${jobDir}\n${runtimeOutput.trim()}\n`,
     )
   } catch (error) {
     if (started) {
       try {
         await postJson(api, token, workerId, `/jobs/${encodeURIComponent(reference)}/fail`, {
-          error_code: 'dispatch_failure',
+          error_code: String(error?.message || '').startsWith('heartbeat failed')
+            ? 'heartbeat_failure'
+            : 'dispatch_failure',
           error_message: String(error?.message || error).slice(0, 4000),
         })
       } catch (reportError) {

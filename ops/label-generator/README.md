@@ -302,3 +302,78 @@ The second SKU intentionally lacked packaging evidence; its packaging cells rema
 being guessed.
 
 All temporary HTTP services, SQLite data, Windows output, and UAT files were removed after verification.
+
+## M8 worker reliability and continuous operation
+
+The Windows worker can now run continuously through:
+
+    windows/worker-loop.cjs
+
+Default behavior:
+
+    poll -> claim -> dispatch -> poll again
+
+If the queue is empty the worker exits each bounded dispatcher iteration with
+BLUE_LABEL_DISPATCH_IDLE and sleeps before the next poll.
+
+### Heartbeat
+
+The dispatcher sends heartbeats while the fixed generator child process is still running.
+Production default heartbeat interval is 30 seconds. The interval is configurable only for
+controlled UAT through --heartbeat-ms.
+
+### Retry and lease recovery
+
+ERP now tracks next_attempt_at and uses bounded exponential backoff.
+
+Default policy:
+
+    max attempts: 3
+    retry base: 30 seconds
+    delay: 30s, 60s, 120s ... capped at 3600s
+
+Retryable worker failures:
+
+    dispatch_failure
+    worker_crash
+    heartbeat_failure
+
+When a retry is scheduled:
+- worker ownership is released;
+- the previous lease is cleared;
+- unfinished ERP artifact files are deleted;
+- the immutable Restock Plan job payload remains unchanged;
+- the next worker attempt receives the same job reference and frozen business data;
+- Windows output uses a separate attempt-N directory.
+
+Expired claimed/running leases are recovered automatically when a worker polls the queue.
+If max attempts are exhausted, the job becomes terminal failed with worker_lease_exhausted.
+
+### Long-running worker contract
+
+A production worker process must receive BYL_BLUE_LABEL_WORKER_TOKEN through its process
+environment. The token is never stored in Git, never rendered to the ERP browser, and never
+passed in the normal command line.
+
+Example:
+
+    node worker-loop.cjs --api https://erp.beyourlover.com/api/internal/blue-label-worker --runtime C:\BYL\blue-label-runtime --output-root C:\BYL\blue-label-output --worker company-win-label-01
+
+The worker loop is deterministic infrastructure. Codex/DC may install, inspect, restart, or
+repair it, but label generation itself does not require AI reasoning.
+
+### M8 isolated continuous-worker UAT
+
+Temporary SQLite ERP + real company Windows + installed BarTender:
+
+    job: BLJ-M8UAT-20260922-FJZ0KEKA37
+    worker: company-win-label-01
+    loop iterations: 3
+    iteration 1: BLUE_LABEL_DISPATCH_OK
+    iteration 2: BLUE_LABEL_DISPATCH_IDLE
+    iteration 3: BLUE_LABEL_DISPATCH_IDLE
+    final status: succeeded
+    attempt_count: 1
+
+During generation, the temporary ERP observed repeated heartbeat requests before artifact upload
+and completion. No Production data or Production token was used.
