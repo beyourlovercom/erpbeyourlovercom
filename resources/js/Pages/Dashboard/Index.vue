@@ -5,6 +5,8 @@ import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
 type DashboardWorkspace = { role:string; label:string; mode:'boss'|'work'; eyebrow:string; title:string; description:string }
 type DashboardVisibility = { operations:boolean; inventory:boolean; sync:boolean; finance:boolean; procurement:boolean }
+type RoleSnapshotCard = { label:string; value:number|string; href:string; helper?:string }
+type RoleSnapshot = { kind:string; title:string; description:string; cards:RoleSnapshotCard[]; highlights:string[] }
 type StatusMetric = { key:string; label:string; url:string; count:number }
 type OperationsSnapshot = Record<'wait_stock'|'pending'|'awaiting'|'transit'|'exception'|'review'|'completed'|'cancelled', StatusMetric|null>
 type InventoryRisk = { stock_alert_rows:number; out_of_stock_rows:number; low_stock_rows:number; quantity_available:number; warehouse_data_gap_count:number; warehouse_total_count:number }
@@ -20,10 +22,10 @@ type ProcurementRow = { id:number; procurement_number:string; status:string; sou
 type ProcurementProgress = { active:number; counts:Record<'pending'|'purchasing'|'ordered'|'completed'|'cancelled', number>; recent:ProcurementRow[] }
 
 const props = withDefaults(defineProps<{
-  workspace:DashboardWorkspace; quickActions?:Array<{label:string;href:string}>; visibility:DashboardVisibility; period?:'7d'|'30d'|'90d'|'custom'; dateFrom?:string|null; dateTo?:string|null
+  workspace:DashboardWorkspace; quickActions?:Array<{label:string;href:string}>; roleSnapshot?:RoleSnapshot|null; visibility:DashboardVisibility; period?:'7d'|'30d'|'90d'|'custom'; dateFrom?:string|null; dateTo?:string|null
   operations?:OperationsSnapshot|null; inventoryRisk?:InventoryRisk|null; syncHealth?:SyncHealth|null
   financeSnapshot?:FinanceSnapshot|null; procurementProgress?:ProcurementProgress|null
-}>(), { quickActions:() => [], period:'7d', dateFrom:null, dateTo:null, operations:null, inventoryRisk:null, syncHealth:null, financeSnapshot:null, procurementProgress:null })
+}>(), { quickActions:() => [], roleSnapshot:null, period:'7d', dateFrom:null, dateTo:null, operations:null, inventoryRisk:null, syncHealth:null, financeSnapshot:null, procurementProgress:null })
 
 const periodOptions = [{ value:'7d',label:'近 7 天' },{ value:'30d',label:'近 30 天' },{ value:'90d',label:'近 90 天' }] as const
 const periodHref = (period:string) => `/dashboard?period=${period}`
@@ -33,6 +35,7 @@ const statusMeta = [
 ] as const
 const statusLabel = (value:string) => statusMeta.find(item => item.value === value)?.label || value
 const integer = (value:number) => new Intl.NumberFormat('zh-CN').format(value)
+const roleValue = (value:number|string) => typeof value === 'number' ? integer(value) : value
 const usd = (value:string) => `$${new Intl.NumberFormat('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(value || 0))}`
 const percent = (value:number) => `${Number(value).toFixed(value % 1 === 0 ? 0 : 1)}%`
 const financeUrl = computed(() => `/accounting/order-costs?date_from=${props.dateFrom || ''}&date_to=${props.dateTo || ''}`)
@@ -64,7 +67,7 @@ const chart = computed(() => {
           <h2>{{ workspace.title }}</h2>
           <p>{{ workspace.description }}</p>
         </div>
-        <div class="dashboard-period" aria-label="经营时间范围">
+        <div v-if="visibility.finance" class="dashboard-period" aria-label="经营时间范围">
           <Link v-for="item in periodOptions" :key="item.value" class="period-option" :class="{ active: props.period === item.value }" :href="periodHref(item.value)">{{ item.label }}</Link>
           <Link class="period-option" :class="{ active: props.period === 'custom' }" href="/dashboard?period=custom">自定义</Link>
         </div>
@@ -75,7 +78,7 @@ const chart = computed(() => {
         <Link v-for="action in quickActions" :key="action.href" class="mvp-button" :href="action.href">{{ action.label }}</Link>
       </div>
 
-      <form v-if="props.period === 'custom'" class="dashboard-custom-period" method="get" action="/dashboard">
+      <form v-if="visibility.finance && props.period === 'custom'" class="dashboard-custom-period" method="get" action="/dashboard">
         <input type="hidden" name="period" value="custom">
         <label>开始日期<input type="date" name="date_from" :value="props.dateFrom || ''"></label>
         <label>结束日期<input type="date" name="date_to" :value="props.dateTo || ''"></label>
@@ -83,12 +86,27 @@ const chart = computed(() => {
       </form>
 
       <nav class="dashboard-section-nav" aria-label="仪表盘分区">
+        <a v-if="roleSnapshot" href="#role-workspace">我的工作</a>
         <a v-if="visibility.operations" href="#operations">当前运营</a>
         <a v-if="visibility.inventory" href="#inventory">库存风险</a>
         <a v-if="visibility.sync" href="#sync">同步健康</a>
         <a v-if="visibility.finance" href="#finance">经营财务</a>
         <a v-if="visibility.procurement" href="#procurement">采购</a>
       </nav>
+
+      <section v-if="roleSnapshot" id="role-workspace" class="dashboard-section-shell role-workspace-section">
+        <div class="dashboard-section-heading">
+          <div><p class="mvp-kicker">角色工作台</p><h3>{{ roleSnapshot.title }}</h3><p>{{ roleSnapshot.description }}</p></div>
+        </div>
+        <div class="dashboard-kpi-grid role-workspace-grid">
+          <Link v-for="card in roleSnapshot.cards" :key="card.label + card.href" class="dashboard-live-card" :href="card.href">
+            <span>{{ card.label }}</span><strong>{{ roleValue(card.value) }}</strong><small>{{ card.helper || '查看明细 →' }}</small>
+          </Link>
+        </div>
+        <div v-if="roleSnapshot.highlights.length" class="role-workspace-highlights">
+          <span v-for="item in roleSnapshot.highlights" :key="item">{{ item }}</span>
+        </div>
+      </section>
 
       <section v-if="visibility.operations && operations" id="operations" class="dashboard-section-shell">
         <div class="dashboard-section-heading">
@@ -202,7 +220,7 @@ const chart = computed(() => {
         </Link>
       </section>
 
-      <section v-if="!visibility.operations && !visibility.inventory && !visibility.sync && !visibility.finance && !visibility.procurement" class="dashboard-empty">当前账号暂无可展示的业务总览模块。</section>
+      <section v-if="!roleSnapshot && !visibility.operations && !visibility.inventory && !visibility.sync && !visibility.finance && !visibility.procurement" class="dashboard-empty">当前账号暂无可展示的业务总览模块。</section>
     </section>
   </AuthenticatedLayout>
 </template>
@@ -223,15 +241,18 @@ const chart = computed(() => {
 .dashboard-live-card{display:block;min-width:0;padding:15px;border:1px solid var(--byl-border-subtle);border-radius:var(--byl-radius-lg);background:var(--byl-readonly-bg);color:inherit;text-decoration:none;transition:border-color .15s ease,transform .15s ease}.dashboard-live-card:hover{border-color:var(--byl-accent);transform:translateY(-1px)}.dashboard-live-card span{display:block;color:var(--byl-text-muted);font-size:11px}.dashboard-live-card strong{display:block;margin-top:8px;font-size:25px;color:var(--byl-text)}.dashboard-live-card small{display:block;margin-top:6px;color:var(--byl-text-muted);font-size:10px}.dashboard-live-card.emphasis,.dashboard-live-card.estimated{background:var(--byl-status-bg)}.dashboard-live-card.alert strong{color:var(--byl-danger,var(--byl-text))}
 .operations-secondary{display:flex;justify-content:flex-end;gap:18px;margin-top:12px}.operations-secondary a{color:var(--byl-text-secondary);font-size:12px;text-decoration:none}.operations-secondary strong{margin-left:5px;color:var(--byl-text)}
 .summary-foot{margin-top:12px;color:var(--byl-text-muted);font-size:11px}.summary-foot strong{color:var(--byl-text)}
+.role-workspace-section{border-color:color-mix(in srgb,var(--byl-accent) 24%,var(--byl-border-subtle));background:color-mix(in srgb,var(--byl-surface) 96%,var(--byl-status-bg))}
+.role-workspace-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.role-workspace-highlights{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.role-workspace-highlights span{display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border-radius:var(--byl-radius-round);background:var(--byl-readonly-bg);color:var(--byl-text-secondary);font-size:11px}
 .finance-loading{display:grid;gap:16px}.finance-loading h3{margin:5px 0 6px;font-size:20px}.finance-loading p:not(.mvp-kicker){margin:0;color:var(--byl-text-secondary);font-size:13px}.loading-bars{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.loading-bars span{height:72px;border-radius:var(--byl-radius-lg);background:var(--byl-readonly-bg);animation:pulse 1.4s ease-in-out infinite}.loading-bars span:nth-child(2){animation-delay:.12s}.loading-bars span:nth-child(3){animation-delay:.24s}.loading-bars span:nth-child(4){animation-delay:.36s}@keyframes pulse{50%{opacity:.45}}
 .finance-summary-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:12px}.finance-summary-row>div{padding:14px;border-top:1px solid var(--byl-border-subtle)}.finance-summary-row span,.finance-summary-row small{display:block;color:var(--byl-text-muted);font-size:10px}.finance-summary-row strong{display:block;margin:6px 0 3px;font-size:17px}
 .finance-chart-card{margin-top:14px;padding:16px;border:1px solid var(--byl-border-subtle);border-radius:var(--byl-radius-lg)}.chart-heading{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.chart-heading>div:first-child{display:grid;gap:4px}.chart-heading small{color:var(--byl-text-muted);font-size:10px}.chart-legend{display:flex;gap:12px;font-size:10px;color:var(--byl-text-secondary)}.chart-legend span:before{content:'';display:inline-block;width:12px;height:2px;margin-right:5px;vertical-align:middle;background:currentColor}.chart-legend .revenue{color:var(--byl-accent)}.chart-legend .cost{color:var(--byl-text-secondary)}.chart-legend .profit{color:var(--byl-status-ink)}
 .finance-chart-card svg{display:block;width:100%;height:220px;margin-top:12px;overflow:visible}.trend-line{fill:none;stroke-width:.7;vector-effect:non-scaling-stroke}.revenue-line{stroke:var(--byl-accent)}.cost-line{stroke:var(--byl-text-secondary)}.profit-line{stroke:var(--byl-status-ink)}.zero-line{stroke:var(--byl-border-control);stroke-width:.25;vector-effect:non-scaling-stroke;stroke-dasharray:2 2}.chart-axis{display:flex;justify-content:space-between;color:var(--byl-text-muted);font-size:10px}.finance-health{margin-top:10px;color:var(--byl-text-muted);font-size:10px}
 .procurement-section{padding:0;overflow:hidden}.procurement-section>.dashboard-section-heading,.procurement-section>.dashboard-kpi-grid,.procurement-section>.procurement-recent{margin-left:20px;margin-right:20px}.procurement-section>.dashboard-section-heading{margin-top:20px}.procurement-recent{display:grid;gap:8px;padding:0 0 20px}.procurement-row{display:grid;grid-template-columns:minmax(180px,1.2fr) 100px minmax(180px,1fr);gap:14px;align-items:center;padding:12px 14px;border:1px solid var(--byl-border-subtle);border-radius:var(--byl-radius-lg);text-decoration:none;color:inherit}.procurement-id{display:grid;gap:3px}.procurement-id span,.procurement-logistics{font-size:12px;color:var(--byl-text-secondary)}.procurement-status{font-size:12px;font-weight:700}
 .procurement-quiet{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:18px 20px;color:inherit;text-decoration:none}.procurement-quiet span{color:var(--byl-accent);font-size:12px;font-weight:700}.dashboard-empty{padding:36px;border:1px dashed var(--byl-border-control);border-radius:var(--byl-radius-xl);color:var(--byl-text-muted);text-align:center}
-@media(max-width:1100px){.operations-funnel{grid-template-columns:repeat(3,minmax(0,1fr))}.dashboard-kpi-grid,.finance-summary-row{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:1100px){.operations-funnel{grid-template-columns:repeat(3,minmax(0,1fr))}.dashboard-kpi-grid,.finance-summary-row,.role-workspace-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.loading-bars{grid-template-columns:repeat(2,1fr)}.dashboard-shell-page{gap:14px}.dashboard-hero{align-items:flex-start;flex-direction:column}.dashboard-hero h2{font-size:25px}.dashboard-period{justify-content:flex-start;width:100%;flex-wrap:nowrap;overflow-x:auto}.period-option{white-space:nowrap}.dashboard-custom-period{display:grid;grid-template-columns:1fr 1fr}.dashboard-custom-period button{grid-column:1/-1}.dashboard-section-shell{padding:16px}.dashboard-section-heading{display:grid}.dashboard-section-heading .mvp-button{justify-self:start}.operations-funnel,.dashboard-kpi-grid,.finance-summary-row{grid-template-columns:repeat(2,minmax(0,1fr))}.context-strip{grid-template-columns:auto auto}.context-strip small{grid-column:1/-1;text-align:left}.finance-chart-card svg{height:170px}.procurement-section{padding:0}.procurement-row{grid-template-columns:1fr;gap:5px}.procurement-quiet{align-items:flex-start;flex-direction:column}}
-@media(max-width:430px){.operations-funnel,.dashboard-kpi-grid,.finance-summary-row{grid-template-columns:1fr}.dashboard-custom-period{grid-template-columns:1fr}.dashboard-custom-period button{grid-column:auto}.finance-chart-card svg{height:140px}}
+@media(max-width:430px){.operations-funnel,.dashboard-kpi-grid,.finance-summary-row,.role-workspace-grid{grid-template-columns:1fr}.dashboard-custom-period{grid-template-columns:1fr}.dashboard-custom-period button{grid-column:auto}.finance-chart-card svg{height:140px}}
 .dashboard-role-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 16px}.dashboard-role-actions>span{font-size:12px;font-weight:700;color:#64748b;margin-right:2px}
 @media(max-width:640px){.dashboard-role-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-role-actions>span{grid-column:1/-1}.dashboard-role-actions .mvp-button{text-align:center;justify-content:center}}
 </style>
