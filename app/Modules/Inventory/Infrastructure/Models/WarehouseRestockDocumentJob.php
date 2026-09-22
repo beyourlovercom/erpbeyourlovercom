@@ -11,7 +11,7 @@ final class WarehouseRestockDocumentJob extends Model
     protected $fillable = [
         'warehouse_id', 'restock_plan_id', 'reference', 'document_kind', 'status',
         'schema_version', 'template_version', 'generator_version', 'dispatch_mode',
-        'plan_snapshot_checksum', 'payload_checksum', 'payload', 'attempt_count',
+        'plan_snapshot_checksum', 'payload_checksum', 'payload', 'attempt_count', 'next_attempt_at',
         'worker_id', 'claimed_at', 'lease_expires_at', 'started_at', 'last_heartbeat_at',
         'completed_at', 'failed_at', 'result_manifest', 'result_manifest_checksum',
         'output_root', 'last_error_code', 'last_error_message', 'requested_by', 'requested_at',
@@ -24,6 +24,7 @@ final class WarehouseRestockDocumentJob extends Model
             'restock_plan_id' => 'integer',
             'payload' => 'array',
             'attempt_count' => 'integer',
+            'next_attempt_at' => 'datetime',
             'claimed_at' => 'datetime',
             'lease_expires_at' => 'datetime',
             'started_at' => 'datetime',

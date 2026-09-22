@@ -160,6 +160,15 @@ final class WarehouseRestockPackageService
         ];
     }
 
+    public function discardIncomplete(WarehouseRestockDocumentJob $job): void
+    {
+        if ($job->status === WarehouseRestockDocumentJobService::STATUS_SUCCEEDED) {
+            return;
+        }
+
+        Storage::disk('local')->deleteDirectory($this->root($job));
+    }
+
     public function piPath(WarehouseRestockDocumentJob $job): string
     {
         return $this->root($job).'/PI.xlsx';

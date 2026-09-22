@@ -72,6 +72,8 @@ return [
     'blue_label_worker' => [
         'token' => env('BLUE_LABEL_WORKER_TOKEN', ''),
         'lease_seconds' => max(30, min(900, (int) env('BLUE_LABEL_WORKER_LEASE_SECONDS', 180))),
+        'max_attempts' => max(1, min(10, (int) env('BLUE_LABEL_WORKER_MAX_ATTEMPTS', 3))),
+        'retry_base_seconds' => max(5, min(3600, (int) env('BLUE_LABEL_WORKER_RETRY_BASE_SECONDS', 30))),
     ],
 
     'postmark' => [
