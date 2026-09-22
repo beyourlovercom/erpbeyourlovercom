@@ -152,7 +152,7 @@ final class OverseaWarehouseController
     public function reopenReview(Request $request, Order $order): RedirectResponse
     {
         $reopened = $this->reviews->reopenReview($order, $request->user());
-        $code = $reopened->shipment?->warehouse?->code;
+        $code = OverseaWarehouseReviewService::canonicalWarehouseCode($reopened->shipment?->warehouse?->code);
         $key = array_search($code, OverseaWarehouseReviewService::WAREHOUSE_CODE_BY_KEY, true);
         abort_unless(is_string($key), 422, '该订单不是海外仓订单');
 
@@ -176,8 +176,9 @@ final class OverseaWarehouseController
     {
         $byCode = Warehouse::query()
             ->where('is_active', true)
-            ->whereIn('code', array_values(OverseaWarehouseReviewService::WAREHOUSE_CODE_BY_KEY))
-            ->get()->keyBy('code');
+            ->get()
+            ->filter(fn (Warehouse $warehouse): bool => OverseaWarehouseReviewService::canonicalWarehouseCode($warehouse->code) !== null)
+            ->keyBy(fn (Warehouse $warehouse): string => (string) OverseaWarehouseReviewService::canonicalWarehouseCode($warehouse->code));
 
         return collect(OverseaWarehouseReviewService::WAREHOUSE_CODE_BY_KEY)
             ->mapWithKeys(function (string $code, string $key) use ($byCode): array {
@@ -252,7 +253,7 @@ final class OverseaWarehouseController
             'country' => $order?->address?->country,
             'warehouse_id' => $shipment->warehouse_id,
             'warehouse_name' => $shipment->warehouse?->name,
-            'carrier' => $shipment->carrier ?: (OverseaWarehouseReviewService::CARRIER_BY_CODE[$shipment->warehouse?->code] ?? null),
+            'carrier' => $shipment->carrier ?: OverseaWarehouseReviewService::carrierForWarehouseCode($shipment->warehouse?->code),
             'service' => $shipment->service,
             'carrier_selection_source' => $shipment->carrier_selection_source,
             'tracking_number' => $shipment->tracking_number,
