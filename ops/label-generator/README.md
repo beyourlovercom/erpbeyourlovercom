@@ -196,3 +196,109 @@ Evidence:
 The Windows run used the real installed BarTender runtime and returned the completion manifest
 through the M6 Worker API. The temporary test token, SQLite database, HTTP services, and output
 directory are UAT-only and are not part of Production configuration.
+
+## M7 PI and ERP package archive
+
+M7 upgrades a successful worker result from "files exist on Windows" to "operators can download a complete ERP-owned package".
+
+Canonical PI template:
+
+    templates/007-PI-sea-canonical-v1.xlsx
+
+Canonical template SHA-256:
+
+    68157db503a12fc721cae80409958f532208b57b8cb8acd58137776a68a54
+
+The workbook is the uploaded real 007 sea-freight PI workbook. V1 preserves its workbook structure, styles,
+hidden sheets, formulas, and layout. Only the PI worksheet data slots are rewritten.
+
+PI V1 supports rows 5 through 22, therefore at most 18 SKUs. A larger job fails closed instead of
+silently expanding or redesigning the template.
+
+Frozen PI mapping:
+
+    B  Label SKU
+    C  Product name
+    D  final restock quantity
+    E  units per carton
+    F  carton count
+    G  L×W×H cm only when all dimensions are authoritative
+    H  packaged weight only when authoritative
+    K  frozen available inventory
+
+Unit price, subtotal, in-transit quantity, 30-day sales, and sellable-days remain blank in V1 when the
+confirmed Restock Plan does not contain an authoritative field with the same business definition.
+120-day shipment volume is never substituted for 30-day sales.
+
+### Artifact return to ERP
+
+The Worker uploads every generated BTW and PDF back to the authenticated ERP Worker API before calling
+complete. Each upload carries its manifest SHA-256 and is verified again by ERP.
+
+ERP private storage layout:
+
+    inventory/restock-documents/<job-reference>/
+      PI.xlsx
+      manifest.json
+      blue-labels/
+        <label-sku>.btw
+      sku-labels/
+        <label-sku>.pdf
+      <job-reference>.zip
+
+The downloadable ZIP contains:
+
+    PI.xlsx
+    manifest.json
+    蓝标/<label-sku>.btw
+    sku标签/<label-sku>.pdf
+
+The job only becomes succeeded after all expected worker artifacts have arrived, their SHA-256 values
+match the worker manifest, PI generation succeeds, and the final ZIP is created.
+
+Warehouse Restock UI then exposes two private authenticated downloads:
+
+    下载 PI
+    下载完整包
+
+### M7 isolated full-chain UAT
+
+No Production data was touched.
+
+Temporary SQLite ERP + real company Windows + installed BarTender generated and returned:
+
+    job: BLJ-M7UAT-20260922-JTT8WDAEBR
+    plan: RP-M7-UAT-001
+    worker: company-win-label-01
+    items: 2
+    status: succeeded
+    attempt_count: 1
+
+ERP received:
+
+    C549A.btw
+    C549A.pdf
+    CA755B.btw
+    CA755B.pdf
+    PI.xlsx
+    manifest.json
+    BLJ-M7UAT-20260922-JTT8WDAEBR.zip
+
+PI evidence included:
+
+    B2 = RP-M7-UAT-001
+    B3 = 2026/09/22
+    B5 = C549A
+    C5 = VC549A 磁吸穿戴裸机玫红色成品 APP款
+    D5 = 10
+    E5 = 5
+    F5 = 2
+    G5 = 20×10×5 cm
+    H5 = 0.3
+    K5 = 2
+    D24 = SUM(D5:D22), cached total 13
+
+The second SKU intentionally lacked packaging evidence; its packaging cells remained blank instead of
+being guessed.
+
+All temporary HTTP services, SQLite data, Windows output, and UAT files were removed after verification.
