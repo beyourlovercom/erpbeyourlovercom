@@ -57,6 +57,7 @@ Route::middleware(['web','auth','can:inventory.operate'])->group(function (): vo
     Route::patch('/inventory/{warehouse}/inbound/{batch}/advance',[WarehouseController::class,'advanceInbound'])->whereNumber('batch')->name('inventory.inbound.advance');
     Route::patch('/inventory/{warehouse}/restock-supplement',[WarehouseController::class,'saveRestockSupplement'])->name('inventory.restock.supplement');
     Route::post('/inventory/{warehouse}/restock-plans/confirm',[WarehouseController::class,'confirmRestockPlan'])->name('inventory.restock.plan.confirm');
+    Route::post('/inventory/{warehouse}/restock-plans/{plan}/blue-label-jobs',[WarehouseController::class,'requestRestockBlueLabels'])->whereNumber('plan')->name('inventory.restock.blue-label-job.store');
     Route::post('/inventory/{warehouse}/clearance',[WarehouseController::class,'addClearance'])->name('inventory.clearance.store');
     Route::patch('/inventory/{warehouse}/clearance/{clearance}',[WarehouseController::class,'updateClearance'])->whereNumber('clearance')->name('inventory.clearance.update');
     Route::delete('/inventory/{warehouse}/clearance/{clearance}',[WarehouseController::class,'removeClearance'])->whereNumber('clearance')->name('inventory.clearance.destroy');
