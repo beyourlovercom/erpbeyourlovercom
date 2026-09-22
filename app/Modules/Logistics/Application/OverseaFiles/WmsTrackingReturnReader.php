@@ -49,20 +49,21 @@ final class WmsTrackingReturnReader
     {
         $out = [];
         foreach ($headers as $index => $raw) {
-            $h = mb_strtolower(trim((string) $raw));
-            if (str_contains($h, 'reference order no.') || str_contains($h, '参考单号')) {
+            $normalized = preg_replace('/\s+/u', ' ', trim((string) $raw));
+            $h = mb_strtolower($normalized ?? trim((string) $raw));
+            if (in_array($h, ['reference order no./参考单号', 'reference order no.', '参考单号'], true)) {
                 $out['order_reference'] = $index;
-            } elseif (str_contains($h, 'tracking no.') || str_contains($h, '物流跟踪号')) {
+            } elseif (in_array($h, ['tracking no./物流跟踪号', 'tracking no.', '物流跟踪号'], true)) {
                 $out['tracking_number'] = $index;
-            } elseif (str_contains($h, 'outbound order no.') || str_contains($h, '出库单号')) {
+            } elseif (in_array($h, ['outbound order no./出库单号', 'outbound order no.', '出库单号'], true)) {
                 $out['provider_order_reference'] = $index;
             } elseif ($h === 'carrier/承运商' || $h === 'carrier') {
                 $out['carrier'] = $index;
-            } elseif (str_contains($h, 'shipping service') || str_contains($h, '物流渠道')) {
+            } elseif ($h === 'shipping service/物流渠道' || $h === 'shipping service' || $h === '物流渠道') {
                 $out['provider_service'] = $index;
             } elseif ($h === 'status/状态' || $h === 'status') {
                 $out['provider_status'] = $index;
-            } elseif (str_contains($h, 'outboundtime') || str_contains($h, '出库时间')) {
+            } elseif ($h === 'outboundtime/出库时间' || $h === 'outboundtime' || $h === '出库时间') {
                 $out['shipped_at'] = $index;
             }
         }

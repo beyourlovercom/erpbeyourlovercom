@@ -343,6 +343,46 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $this->assertSame('USPS-NJ(USPS-NJ)', $stored['rows'][0]['provider_service']);
     }
 
+    public function test_wms_real_full_headers_keep_primary_tracking_and_outbound_reference(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-NY'], '007erp-0920-c40801');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $file = $this->providerXlsx('usny-real-full-header-return.xlsx', '出库单',
+            [
+                'Outbound Order No./出库单号',
+                'Reference order No./参考单号',
+                'Tracking No./物流跟踪号',
+                'Return Tracking No./回邮单号',
+                'Related Outbound Order No./关联出库单号',
+                "Package 1\nTracking No./子物流跟踪号",
+                'Status/状态',
+                'Shipping service/物流渠道',
+                'OutboundTime/出库时间',
+                'Carrier/承运商',
+            ],
+            [[
+                'OB-PRIMARY',
+                'C40801-007',
+                '9214490416421805721875',
+                'RETURN-TRACKING-DECOY',
+                'RELATED-OUTBOUND-DECOY',
+                'PACKAGE-TRACKING-DECOY',
+                '仓库处理中',
+                'USPS-NJ(USPS-NJ)',
+                '',
+                'usps',
+            ]]);
+
+        $this->actingAs($user)->post('/logistics/oversea/us-ny/tracking-import/preview', ['file' => $file])->assertRedirect();
+        $stored = session('logistics.oversea_tracking_return.us-ny');
+        $this->assertSame(1, $stored['apply_count']);
+        $this->assertSame(0, $stored['blocked_count']);
+        $this->assertSame('9214490416421805721875', $stored['rows'][0]['tracking_number']);
+        $this->assertSame('OB-PRIMARY', $stored['rows'][0]['provider_order_reference']);
+    }
+
     public function test_canada_real_xlsx_return_matches_customer_order_reference(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
@@ -359,6 +399,25 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $this->assertSame(0, $stored['blocked_count']);
         $this->assertSame('Canada Post', $stored['rows'][0]['carrier']);
         $this->assertSame('1030896460840281', $stored['rows'][0]['tracking_number']);
+    }
+
+    public function test_canada_order_only_export_file_is_fail_closed_as_tracking_return(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['CA'], '007erp-0920-k26011301', 'CA');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $file = $this->providerXlsx('ca-order-only-export.xlsx', 'SHEET',
+            ['订单号'],
+            [['KOL26011301']]);
+
+        $this->actingAs($user)->post('/logistics/oversea/ca/tracking-import/preview', ['file' => $file])
+            ->assertStatus(422);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id,
+            'shipment_status' => 'pending',
+            'tracking_number' => null,
+        ]);
     }
 
     public function test_three_sm_xlsx_return_is_fail_closed_until_real_template_exists(): void
