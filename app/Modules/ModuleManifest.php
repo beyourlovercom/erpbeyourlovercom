@@ -17,6 +17,7 @@ use App\Modules\Marketing\Providers\MarketingServiceProvider;
 use App\Modules\NotificationCenter\Providers\NotificationCenterServiceProvider;
 use App\Modules\Orders\Providers\OrdersServiceProvider;
 use App\Modules\Runtime\Providers\RuntimeServiceProvider;
+use App\Modules\Search\Providers\SearchServiceProvider;
 use App\Modules\Shell\Providers\ShellServiceProvider;
 use App\Modules\Support\Providers\SupportServiceProvider;
 use App\Modules\Sync\Providers\SyncServiceProvider;
@@ -42,6 +43,7 @@ final class ModuleManifest
             FinanceServiceProvider::class,
             GuidesServiceProvider::class,
             RuntimeServiceProvider::class,
+            SearchServiceProvider::class,
             AuditServiceProvider::class,
             SyncServiceProvider::class,
             ManualSyncServiceProvider::class,
