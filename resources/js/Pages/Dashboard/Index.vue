@@ -20,10 +20,10 @@ type ProcurementRow = { id:number; procurement_number:string; status:string; sou
 type ProcurementProgress = { active:number; counts:Record<'pending'|'purchasing'|'ordered'|'completed'|'cancelled', number>; recent:ProcurementRow[] }
 
 const props = withDefaults(defineProps<{
-  workspace:DashboardWorkspace; visibility:DashboardVisibility; period?:'7d'|'30d'|'90d'|'custom'; dateFrom?:string|null; dateTo?:string|null
+  workspace:DashboardWorkspace; quickActions?:Array<{label:string;href:string}>; visibility:DashboardVisibility; period?:'7d'|'30d'|'90d'|'custom'; dateFrom?:string|null; dateTo?:string|null
   operations?:OperationsSnapshot|null; inventoryRisk?:InventoryRisk|null; syncHealth?:SyncHealth|null
   financeSnapshot?:FinanceSnapshot|null; procurementProgress?:ProcurementProgress|null
-}>(), { period:'7d', dateFrom:null, dateTo:null, operations:null, inventoryRisk:null, syncHealth:null, financeSnapshot:null, procurementProgress:null })
+}>(), { quickActions:() => [], period:'7d', dateFrom:null, dateTo:null, operations:null, inventoryRisk:null, syncHealth:null, financeSnapshot:null, procurementProgress:null })
 
 const periodOptions = [{ value:'7d',label:'近 7 天' },{ value:'30d',label:'近 30 天' },{ value:'90d',label:'近 90 天' }] as const
 const periodHref = (period:string) => `/dashboard?period=${period}`
@@ -69,6 +69,11 @@ const chart = computed(() => {
           <Link class="period-option" :class="{ active: props.period === 'custom' }" href="/dashboard?period=custom">自定义</Link>
         </div>
       </header>
+
+      <div v-if="workspace.mode === 'work' && quickActions.length" class="dashboard-role-actions" aria-label="今日快捷入口">
+        <span>今日快捷入口</span>
+        <Link v-for="action in quickActions" :key="action.href" class="mvp-button" :href="action.href">{{ action.label }}</Link>
+      </div>
 
       <form v-if="props.period === 'custom'" class="dashboard-custom-period" method="get" action="/dashboard">
         <input type="hidden" name="period" value="custom">
@@ -227,4 +232,6 @@ const chart = computed(() => {
 @media(max-width:1100px){.operations-funnel{grid-template-columns:repeat(3,minmax(0,1fr))}.dashboard-kpi-grid,.finance-summary-row{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.loading-bars{grid-template-columns:repeat(2,1fr)}.dashboard-shell-page{gap:14px}.dashboard-hero{align-items:flex-start;flex-direction:column}.dashboard-hero h2{font-size:25px}.dashboard-period{justify-content:flex-start;width:100%;flex-wrap:nowrap;overflow-x:auto}.period-option{white-space:nowrap}.dashboard-custom-period{display:grid;grid-template-columns:1fr 1fr}.dashboard-custom-period button{grid-column:1/-1}.dashboard-section-shell{padding:16px}.dashboard-section-heading{display:grid}.dashboard-section-heading .mvp-button{justify-self:start}.operations-funnel,.dashboard-kpi-grid,.finance-summary-row{grid-template-columns:repeat(2,minmax(0,1fr))}.context-strip{grid-template-columns:auto auto}.context-strip small{grid-column:1/-1;text-align:left}.finance-chart-card svg{height:170px}.procurement-section{padding:0}.procurement-row{grid-template-columns:1fr;gap:5px}.procurement-quiet{align-items:flex-start;flex-direction:column}}
 @media(max-width:430px){.operations-funnel,.dashboard-kpi-grid,.finance-summary-row{grid-template-columns:1fr}.dashboard-custom-period{grid-template-columns:1fr}.dashboard-custom-period button{grid-column:auto}.finance-chart-card svg{height:140px}}
+.dashboard-role-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 16px}.dashboard-role-actions>span{font-size:12px;font-weight:700;color:#64748b;margin-right:2px}
+@media(max-width:640px){.dashboard-role-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-role-actions>span{grid-column:1/-1}.dashboard-role-actions .mvp-button{text-align:center;justify-content:center}}
 </style>

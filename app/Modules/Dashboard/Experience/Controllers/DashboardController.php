@@ -36,6 +36,7 @@ final class DashboardController
 
         return Inertia::render('Dashboard/Index', [
             'workspace' => $workspace,
+            'quickActions' => $this->quickActions($workspace['role'], $user),
             'visibility' => $visibility,
             'period' => $period,
             'dateFrom' => $dateFrom,
@@ -68,6 +69,25 @@ final class DashboardController
         };
 
         return ['role' => $key, 'label' => $preset?->label() ?? '自定义权限'] + $meta;
+    }
+
+    private function quickActions(string $role, $user): array
+    {
+        $actions = match ($role) {
+            'operations' => [['label'=>'待分仓','href'=>'/logistics/wait-stock','permission'=>'logistics.view'],['label'=>'待发货','href'=>'/logistics/pending','permission'=>'logistics.view'],['label'=>'网站同步','href'=>'/sync','permission'=>'sync.view'],['label'=>'库存预警','href'=>'/inventory/products?stock_status=alert','permission'=>'inventory.view']],
+            'logistics' => [['label'=>'待分仓','href'=>'/logistics/wait-stock','permission'=>'logistics.view'],['label'=>'国内发货','href'=>'/logistics/domestic','permission'=>'logistics.view'],['label'=>'海外仓发货','href'=>'/logistics/overseas','permission'=>'logistics.view'],['label'=>'异常订单','href'=>'/logistics/exceptions','permission'=>'logistics.view']],
+            'finance' => [['label'=>'订单利润','href'=>'/accounting/order-costs','permission'=>'analysis.view'],['label'=>'财务中心','href'=>'/accounting','permission'=>'accounting.view']],
+            'kol_specialist' => [['label'=>'网红总览','href'=>'/kol','permission'=>'kol.view'],['label'=>'我的网红','href'=>'/kol/library','permission'=>'kol.view'],['label'=>'合作记录','href'=>'/kol/collaborations','permission'=>'kol.view'],['label'=>'内容记录','href'=>'/kol/content','permission'=>'kol.view']],
+            'kol_manager' => [['label'=>'网红总览','href'=>'/kol','permission'=>'kol.view'],['label'=>'审批中心','href'=>'/kol/approvals','permission'=>'kol.approvals.manage'],['label'=>'合作记录','href'=>'/kol/collaborations','permission'=>'kol.view'],['label'=>'佣金','href'=>'/kol/commissions','permission'=>'kol.view']],
+            'sales_representative' => [['label'=>'客户中心','href'=>'/customers','permission'=>'customers.view'],['label'=>'客户库','href'=>'/customers/library','permission'=>'customers.view'],['label'=>'订单','href'=>'/orders','permission'=>'orders.view']],
+            'writer' => [['label'=>'内容文档','href'=>'/docs','permission'=>'guides.view']],
+            default => [],
+        };
+
+        return array_values(array_map(
+            fn (array $action): array => ['label'=>$action['label'],'href'=>$action['href']],
+            array_filter($actions, fn (array $action): bool => $user?->can($action['permission']) ?? false),
+        ));
     }
 
     private function periodRange(Request $request, string $period): array
