@@ -162,6 +162,30 @@ describe('Orders/Show V2', () => {
     expect(wrapper.text()).toContain('内部备注')
   })
 
+  it('centralizes every shipping CTA in the fulfillment status action area', () => {
+    const shippedOrder = {
+      ...baseOrder,
+      shipment: { shipment_status: 'shipped', warehouse_id: 1, warehouse_name: '中国工厂', carrier: '4PX', service: 'SD标准挂号-带电', tracking_number: '4PX3003', shipped_at: '2026-09-01T08:00:00Z' },
+    }
+    const wrapper = mount(Show, { props: { order: shippedOrder, audit, canOperateLogistics: true, canCreateReplacement: true } })
+    const actions = wrapper.get('[data-testid="fulfillment-actions"]')
+    expect(actions.text()).toContain('重开发货')
+    expect(actions.text()).toContain('新增补发')
+    expect(wrapper.get('.page-header-actions').text()).not.toContain('履约发货')
+    expect(wrapper.find('.ord-fulfillment-action').exists()).toBe(false)
+  })
+
+  it('keeps split fulfillment shipping and reopen CTAs out of row actions', () => {
+    const wrapper = mount(Show, { props: { order: splitOrder, audit, canOperateLogistics: true, canCreateReplacement: true } })
+    const actions = wrapper.get('[data-testid="fulfillment-actions"]')
+    expect(actions.text()).toContain('B · 履约发货')
+    expect(actions.text()).toContain('A · 重开发货')
+    expect(actions.text()).toContain('新增补发')
+    const rowActions = wrapper.findAll('.ord-fulfillment-row-actions').map(row => row.text()).join(' ')
+    expect(rowActions).not.toContain('履约发货')
+    expect(rowActions).not.toContain('重开发货')
+  })
+
   it('auto-fills USPS Priority when the selected fulfillment warehouse is in the US', async () => {
     const order = { ...baseOrder, shipment: { ...baseOrder.shipment, warehouse_id: 1, warehouse_name: '美西 MorePlus 仓' } }
     const wrapper = mount(Show, { props: {
@@ -172,7 +196,7 @@ describe('Orders/Show V2', () => {
       warehouseRouting: { 1: { carrier: 'USPS', service: 'USPS Priority Mail', carrier_service_id: 101, automatic: true } },
       carrierOptions: [{ value: 'USPS', label: 'USPS / 美国邮政', default_service_id: 101, default_service_value: 'USPS Priority Mail', services: [{ id: 101, key: 'priority_mail', value: 'USPS Priority Mail', label: 'Priority Mail / 优先件', name_en: 'Priority Mail', name_zh: '优先件' }] }],
     } })
-    await wrapper.findAll('button').find(btn => btn.text().includes('填写物流 / 确认发货'))!.trigger('click')
+    await wrapper.find('[data-testid="fulfillment-actions"]').findAll('button').find(btn => btn.text().includes('履约发货'))!.trigger('click')
     const selects = wrapper.find('.ord-shipment-form').findAll('select')
     expect((selects[0].element as HTMLSelectElement).value).toBe('1')
     expect((selects[1].element as HTMLSelectElement).value).toBe('USPS')
@@ -187,12 +211,12 @@ describe('Orders/Show V2', () => {
       warehouses: [{ id: 1, slug: 'us-la', name: '美西 MorePlus 仓', code: 'US-LA', country_code: 'US' }],
       carrierOptions: [{ value: 'USPS', label: 'USPS / 美国邮政', default_service_id: 101, default_service_value: 'USPS Priority Mail', services: [{ id: 101, key: 'priority_mail', value: 'USPS Priority Mail', label: 'Priority Mail / 优先件', name_en: 'Priority Mail', name_zh: '优先件' }] }],
     } })
-    const button = wrapper.findAll('button').find(btn => btn.text().includes('填写物流 / 确认发货'))
+    const button = wrapper.find('[data-testid="fulfillment-actions"]').findAll('button').find(btn => btn.text().includes('履约发货'))
     expect(button).toBeTruthy()
     await button!.trigger('click')
     expect(wrapper.text()).toContain('填写物流并发货')
     expect(wrapper.find('.ord-shipment-form').exists()).toBe(true)
-    expect(wrapper.text()).toContain('实际发货请在上方“履约状态”中填写仓库')
+    expect(wrapper.text()).toContain('所有发货、重发、补发操作统一在上方“履约状态”处理')
   })
 
   it('offers fulfillment execution per pending split segment without changing shipped siblings', async () => {
@@ -206,7 +230,7 @@ describe('Orders/Show V2', () => {
       ],
       carrierOptions: [{ value: '4PX', label: '4PX / 速达', default_service_id: 201, default_service_value: 'SD经济挂号-带电', services: [{ id: 201, key: 'sd_economy_registered_battery', value: 'SD经济挂号-带电', label: 'Economy Registered - Battery / SD经济挂号-带电', name_en: 'Economy Registered - Battery', name_zh: 'SD经济挂号-带电' }] }, { value: 'USPS', label: 'USPS / 美国邮政', default_service_id: 101, default_service_value: 'USPS Priority Mail', services: [{ id: 101, key: 'priority_mail', value: 'USPS Priority Mail', label: 'Priority Mail / 优先件', name_en: 'Priority Mail', name_zh: '优先件' }] }],
     } })
-    const shipButtons = wrapper.findAll('button').filter(btn => btn.text().includes('填写物流 / 发货'))
+    const shipButtons = wrapper.find('[data-testid="fulfillment-actions"]').findAll('button').filter(btn => btn.text().includes('履约发货'))
     expect(shipButtons).toHaveLength(1)
     expect(wrapper.findAll('button').some(btn => btn.text().includes('重开发货'))).toBe(true)
     await shipButtons[0].trigger('click')
@@ -283,15 +307,19 @@ describe('Orders/Show V2', () => {
     expect(wrapper.find('a[href="/kol/orders"]').exists()).toBe(true)
   })
 
-  it('shows direct 履约发货 action for an authorized pending order', () => {
+  it('shows 履约发货 only inside the fulfillment action area for an authorized pending order', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canOperateLogistics: true } })
-    const action = wrapper.find('a[href="/logistics/pending?order_id=1"]')
-    expect(action.exists()).toBe(true)
-    expect(action.text()).toBe('履约发货')
+    const actions = wrapper.get('[data-testid="fulfillment-actions"]')
+    expect(actions.text()).toContain('履约发货')
+    expect(wrapper.find('a[href="/logistics/pending?order_id=1"]').exists()).toBe(false)
+    expect(wrapper.get('.page-header-actions').text()).not.toContain('履约发货')
   })
 
-  it('does not show 履约发货 action without logistics execution authority', () => {
+  it('shows centralized read-only fulfillment access without logistics execution authority', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canOperateLogistics: false } })
+    const actions = wrapper.get('[data-testid="fulfillment-actions"]')
+    expect(actions.text()).toContain('查看履约')
+    expect(actions.text()).not.toContain('履约发货')
     expect(wrapper.find('a[href="/logistics/pending?order_id=1"]').exists()).toBe(false)
   })
 
@@ -484,13 +512,13 @@ describe('Orders/Show V2', () => {
       shipment: { shipment_status: 'shipped', carrier: 'DHL', tracking_number: 'TRACK123', shipped_at: null },
     }
     const wrapper = mount(Show, { props: { order: orderWithTracking, audit, canOperateLogistics: true } })
-    const reopenBtn = wrapper.findAll('button[type="button"]').find(b => b.text().includes('重开发货'))
+    const reopenBtn = wrapper.find('[data-testid="fulfillment-actions"]').findAll('button').find(b => b.text().includes('重开发货'))
     expect(reopenBtn).toBeTruthy()
   })
 
   it('does not show reopen button without tracking number', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit } })
-    const reopenBtn = wrapper.findAll('button[type="button"]').find(b => b.text().includes('重开发货'))
+    const reopenBtn = wrapper.find('[data-testid="fulfillment-actions"]').findAll('button').find(b => b.text().includes('重开发货'))
     expect(reopenBtn).toBeFalsy()
   })
 
