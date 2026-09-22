@@ -36,6 +36,25 @@ final class BlueLabelWorkerController extends Controller
         return response()->json(['job' => $this->jobs->workerPayload($updated)]);
     }
 
+    public function artifact(Request $request, string $job, string $kind, string $labelSku): JsonResponse
+    {
+        $validated = $request->validate([
+            'file' => ['required', 'file', 'max:10240'],
+        ]);
+        $sha256 = strtolower(trim((string) $request->header('X-Content-SHA256', '')));
+
+        $stored = $this->jobs->storeArtifact(
+            $job,
+            $this->workerId($request),
+            $kind,
+            $labelSku,
+            $validated['file'],
+            $sha256,
+        );
+
+        return response()->json(['artifact' => $stored]);
+    }
+
     public function complete(Request $request, string $job): JsonResponse
     {
         $validated = $request->validate([
