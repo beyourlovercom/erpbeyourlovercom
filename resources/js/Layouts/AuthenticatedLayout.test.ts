@@ -68,7 +68,7 @@ describe('authenticated layout', () => {
     expect(wrapper.classes()).toContain('sidebar-collapsed')
   })
 
-  it('keeps the page header free of account controls', () => { const wrapper = mount(AuthenticatedLayout, { props: { title: '同步', breadcrumbs: ['同步'] } }); const topbar = wrapper.find('.shell-topbar'); expect(topbar.findAll('button')).toHaveLength(2); expect(topbar.find('[aria-label="打开通知中心"]').exists()).toBe(true); expect(topbar.text()).not.toContain('Owner'); expect(topbar.text()).not.toContain('退出登录') })
+  it('keeps the page header free of account controls', () => { const wrapper = mount(AuthenticatedLayout, { props: { title: '同步', breadcrumbs: ['同步'] } }); const topbar = wrapper.find('.shell-topbar'); expect(topbar.findAll('button')).toHaveLength(3); expect(topbar.find('[aria-label="全局搜索"]').exists()).toBe(true); expect(topbar.find('[aria-label="打开通知中心"]').exists()).toBe(true); expect(topbar.text()).not.toContain('Owner'); expect(topbar.text()).not.toContain('退出登录') })
 
   it('does not fabricate unauthorized navigation', () => { const wrapper = mount(AuthenticatedLayout, { props: { title: '同步', breadcrumbs: ['同步'] } }); expect(wrapper.text()).toContain('同步'); expect(wrapper.text()).not.toContain('设置') })
 
