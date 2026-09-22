@@ -10,30 +10,58 @@ function arg(name, fallback = null) {
   return index >= 0 ? process.argv[index + 1] : fallback
 }
 
-async function post(base, token, workerId, endpoint, body = null) {
+async function request(base, token, workerId, endpoint, options = {}) {
   const response = await fetch(base + endpoint, {
-    method: 'POST',
+    method: options.method || 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'X-BYL-Worker-ID': workerId,
       Accept: 'application/json',
-      'Content-Type': 'application/json',
+      ...(options.headers || {}),
     },
-    body: body === null ? undefined : JSON.stringify(body),
+    body: options.body,
   })
 
   const text = await response.text()
   let json = null
   if (text !== '') {
-    try { json = JSON.parse(text) } catch { /* keep raw text below */ }
+    try { json = JSON.parse(text) } catch { /* preserve raw detail below */ }
   }
 
   if (!response.ok) {
     const detail = json?.message || text || `HTTP ${response.status}`
-    throw new Error(`POST ${endpoint} failed: ${response.status} ${detail}`)
+    throw new Error(`${options.method || 'POST'} ${endpoint} failed: ${response.status} ${detail}`)
   }
 
   return json
+}
+
+async function postJson(base, token, workerId, endpoint, body = null) {
+  return request(base, token, workerId, endpoint, {
+    headers: { 'Content-Type': 'application/json' },
+    body: body === null ? undefined : JSON.stringify(body),
+  })
+}
+
+async function uploadArtifact(base, token, workerId, reference, artifact, kind, filePath) {
+  if (!fs.existsSync(filePath)) throw new Error(`artifact not found: ${filePath}`)
+  const sha = String(artifact[`${kind}_sha256`] || '').trim()
+  if (!/^[a-f0-9]{64}$/.test(sha)) throw new Error(`invalid ${kind} sha256 for ${artifact.label_sku}`)
+
+  const data = fs.readFileSync(filePath)
+  const form = new FormData()
+  form.append('file', new Blob([data]), path.basename(filePath))
+
+  return request(
+    base,
+    token,
+    workerId,
+    `/jobs/${encodeURIComponent(reference)}/artifacts/${kind}/${encodeURIComponent(artifact.label_sku)}`,
+    {
+      headers: { 'X-Content-SHA256': sha },
+      body: form,
+    },
+  )
 }
 
 async function main() {
@@ -48,7 +76,7 @@ async function main() {
   }
   if (!/^[A-Za-z0-9._-]{3,128}$/.test(workerId)) throw new Error('Invalid worker id')
 
-  const claim = await post(api, token, workerId, '/claim')
+  const claim = await postJson(api, token, workerId, '/claim')
   if (!claim?.job) {
     process.stdout.write('BLUE_LABEL_DISPATCH_IDLE\n')
     return
@@ -62,11 +90,11 @@ async function main() {
   let started = false
 
   try {
-    await post(api, token, workerId, `/jobs/${encodeURIComponent(reference)}/start`)
+    await postJson(api, token, workerId, `/jobs/${encodeURIComponent(reference)}/start`)
     started = true
 
     fs.writeFileSync(jobJson, JSON.stringify(job.payload, null, 2) + '\n', 'utf8')
-    await post(api, token, workerId, `/jobs/${encodeURIComponent(reference)}/heartbeat`)
+    await postJson(api, token, workerId, `/jobs/${encodeURIComponent(reference)}/heartbeat`)
 
     const runtimeOutput = execFileSync(process.execPath, [
       generator,
@@ -78,8 +106,20 @@ async function main() {
     if (!fs.existsSync(manifestPath)) throw new Error(`manifest.json not found: ${manifestPath}`)
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
 
-    await post(api, token, workerId, `/jobs/${encodeURIComponent(reference)}/heartbeat`)
-    const completed = await post(api, token, workerId, `/jobs/${encodeURIComponent(reference)}/complete`, {
+    for (const artifact of manifest.artifacts || []) {
+      const labelSku = String(artifact.label_sku)
+      await uploadArtifact(
+        api, token, workerId, reference, artifact, 'btw',
+        path.join(jobDir, 'labels', `${labelSku}.btw`),
+      )
+      await uploadArtifact(
+        api, token, workerId, reference, artifact, 'pdf',
+        path.join(jobDir, 'labels', `${labelSku}.pdf`),
+      )
+    }
+
+    await postJson(api, token, workerId, `/jobs/${encodeURIComponent(reference)}/heartbeat`)
+    const completed = await postJson(api, token, workerId, `/jobs/${encodeURIComponent(reference)}/complete`, {
       manifest,
       output_root: jobDir,
     })
@@ -90,7 +130,7 @@ async function main() {
   } catch (error) {
     if (started) {
       try {
-        await post(api, token, workerId, `/jobs/${encodeURIComponent(reference)}/fail`, {
+        await postJson(api, token, workerId, `/jobs/${encodeURIComponent(reference)}/fail`, {
           error_code: 'dispatch_failure',
           error_message: String(error?.message || error).slice(0, 4000),
         })

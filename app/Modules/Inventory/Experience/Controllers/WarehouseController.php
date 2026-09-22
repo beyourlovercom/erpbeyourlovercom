@@ -10,7 +10,9 @@ use App\Modules\Inventory\Application\WarehouseInboundLifecycleService;
 use App\Modules\Inventory\Application\WarehouseRestockProjection;
 use App\Modules\Inventory\Application\WarehouseRestockPlanService;
 use App\Modules\Inventory\Application\WarehouseRestockDocumentJobService;
+use App\Modules\Inventory\Application\WarehouseRestockPackageService;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
+use App\Modules\Inventory\Infrastructure\Models\WarehouseRestockDocumentJob;
 use App\Modules\Inventory\Infrastructure\WarehouseCost\WarehouseBillImportService;
 use App\Modules\Inventory\Infrastructure\WarehouseCost\WarehouseBillReconciliationService;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseBillImportBatch;
@@ -34,6 +36,7 @@ final class WarehouseController
         private readonly WarehouseRestockProjection $restock,
         private readonly WarehouseRestockPlanService $restockPlans,
         private readonly WarehouseRestockDocumentJobService $restockDocumentJobs,
+        private readonly WarehouseRestockPackageService $restockPackages,
         private readonly WarehouseBillImportService $billImport,
         private readonly WarehouseBillReconciliationService $reconciliation,
         private readonly WarehouseShipmentProjection $shipments,
@@ -75,6 +78,38 @@ final class WarehouseController
             'canManage'=>auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false,
         ]);
     }
+    public function downloadRestockDocument(
+        string $warehouse,
+        int $plan,
+        int $job,
+        string $artifact,
+    ) {
+        $w = $this->inventory->warehouse($warehouse);
+        $documentJob = WarehouseRestockDocumentJob::query()
+            ->whereKey($job)
+            ->where('warehouse_id', $w->id)
+            ->where('restock_plan_id', $plan)
+            ->where('status', WarehouseRestockDocumentJobService::STATUS_SUCCEEDED)
+            ->firstOrFail();
+
+        $path = match ($artifact) {
+            'pi' => $this->restockPackages->piPath($documentJob),
+            'package' => $this->restockPackages->packagePath($documentJob),
+            default => abort(404),
+        };
+        abort_unless(Storage::disk('local')->exists($path), 404);
+
+        $filename = $artifact === 'pi'
+            ? $documentJob->reference.'-PI.xlsx'
+            : $documentJob->reference.'.zip';
+
+        return Storage::disk('local')->download(
+            $path,
+            $filename,
+            ['Cache-Control' => 'private, no-store'],
+        );
+    }
+
     public function update(Request $request,string $warehouse): RedirectResponse
     {
         $w=$this->inventory->warehouse($warehouse);
