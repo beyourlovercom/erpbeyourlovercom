@@ -3,6 +3,8 @@
 namespace App\Modules\Logistics\Application;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Application\OverseaFiles\OverseaTrackingReturnFileReader;
+use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -12,6 +14,7 @@ use DomainException;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 use Throwable;
 
 final class OverseaTrackingReturnService
@@ -21,16 +24,21 @@ final class OverseaTrackingReturnService
     public function __construct(
         private readonly ShipmentService $shipments,
         private readonly WooCommerceTrackingOutboundService $trackingOutbound,
+        private readonly OverseaTrackingReturnFileReader $files,
+        private readonly WarehouseOrderReference $references,
     ) {}
 
     /** @return array<string,mixed> */
     public function preview(string $warehouseKey, UploadedFile $file): array
     {
-        $rows = $this->readCsv($file);
-        abort_if($rows === [], 422, '单号表没有可处理的数据行。');
-        abort_if(count($rows) > self::MAX_ROWS, 422, '单次最多上传 500 行。');
+        try {
+            $normalized = $this->files->read($warehouseKey, $file);
+        } catch (InvalidArgumentException $e) {
+            abort(422, $e->getMessage());
+        }
+        abort_if($normalized === [], 422, '单号表没有可处理的数据行。');
+        abort_if(count($normalized) > self::MAX_ROWS, 422, '单次最多上传 500 行。');
 
-        $normalized = $this->normalizeRows($rows);
         $plan = $this->plan($warehouseKey, $normalized);
         $token = hash('sha256', json_encode([$warehouseKey, $normalized], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
@@ -92,42 +100,49 @@ final class OverseaTrackingReturnService
         $code = OverseaWarehouseReviewService::WAREHOUSE_CODE_BY_KEY[$warehouseKey] ?? null;
         abort_unless($code, 404, '未知海外仓。');
         $warehouse = Warehouse::query()->where('code', $code)->where('is_active', true)->firstOrFail();
-        $activeCarriers = Carrier::query()->where('is_active', true)->pluck('name')->mapWithKeys(fn ($name) => [mb_strtolower(trim((string) $name)) => (string) $name]);
-        $orders = Order::query()->with(['shipment.overseaReview'])
-            ->whereIn('erp_order_id', collect($normalized)->pluck('order_number')->filter()->unique()->all())
-            ->get()->keyBy('erp_order_id');
+        $activeCarriers = Carrier::query()->where('is_active', true)->pluck('name')->mapWithKeys(
+            fn ($name) => [mb_strtolower(trim((string) $name)) => (string) $name]
+        );
+        $identityMap = $this->identityMap($warehouseKey, (int) $warehouse->id);
 
         $seen = [];
         $planned = [];
         foreach ($normalized as $row) {
-            $number = (string) ($row['order_number'] ?? '');
-            $tracking = (string) ($row['tracking_number'] ?? '');
-            $rawShippedAt = (string) ($row['shipped_at'] ?? '');
+            $number = trim((string) ($row['order_reference'] ?? ''));
+            $tracking = trim((string) ($row['tracking_number'] ?? ''));
             $carrierInput = trim((string) ($row['carrier'] ?? ''));
             $messages = [];
 
+            if (filled($row['parse_error'] ?? null)) {
+                $messages[] = (string) $row['parse_error'];
+            }
             if ($number === '') {
                 $messages[] = '订单号为空';
             }
             if ($tracking === '' || preg_match('/\A[A-Za-z0-9][A-Za-z0-9._:\/+\-]{0,127}\z/', $tracking) !== 1) {
                 $messages[] = 'Tracking No. 无效';
             }
-            if ($rawShippedAt === '' || preg_match('/(?:Z|[+-]\d{2}:?\d{2})$/i', $rawShippedAt) !== 1) {
-                $messages[] = '发货时间必须包含真实时区偏移，例如 2026-09-15T10:30:00-07:00';
+            $identityKey = $this->identityKey($number);
+            if ($number !== '' && isset($seen[$identityKey])) {
+                $messages[] = '同一文件订单号重复或包含多个包裹，当前 Shipment 无法安全自动合并';
             }
-            if ($number !== '' && isset($seen[$number])) {
-                $messages[] = '同一文件订单号重复';
+            if ($number !== '') {
+                $seen[$identityKey] = true;
             }
-            $seen[$number] = true;
 
-            $order = $orders->get($number);
+            $matches = $identityMap[$identityKey] ?? [];
+            $order = count($matches) === 1 ? $matches[0] : null;
+            if (count($matches) > 1) {
+                $messages[] = 'ERP 订单号匹配不唯一';
+            } elseif (! $order) {
+                $messages[] = 'ERP 找不到该订单号';
+            }
+
             $shipment = $order?->shipment;
             $review = $shipment?->overseaReview;
-            if (! $order) {
-                $messages[] = 'ERP 找不到该订单号';
-            } elseif (! $shipment) {
+            if ($order && ! $shipment) {
                 $messages[] = '订单没有 Shipment';
-            } else {
+            } elseif ($shipment) {
                 if ((int) $shipment->warehouse_id !== (int) $warehouse->id) {
                     $messages[] = '订单不属于当前海外仓';
                 }
@@ -136,7 +151,9 @@ final class OverseaTrackingReturnService
                 }
             }
 
-            $carrier = $carrierInput !== '' ? $activeCarriers->get(mb_strtolower($carrierInput)) : ($shipment?->carrier ?: (OverseaWarehouseReviewService::CARRIER_BY_CODE[$code] ?? null));
+            $carrier = $carrierInput !== ''
+                ? $activeCarriers->get(mb_strtolower($carrierInput))
+                : ($shipment?->carrier ?: (OverseaWarehouseReviewService::CARRIER_BY_CODE[$code] ?? null));
             if (! $carrier) {
                 $messages[] = '承运商为空或未启用';
             }
@@ -144,14 +161,9 @@ final class OverseaTrackingReturnService
                 $messages[] = '文件中的承运商未启用';
             }
 
-            $shippedAt = null;
-            if ($rawShippedAt !== '' && $messages === []) {
-                try {
-                    $shippedAt = CarbonImmutable::parse($rawShippedAt)->utc()->toIso8601String();
-                } catch (Throwable) {
-                    $messages[] = '发货时间无法解析';
-                }
-            }
+            $providerShippedAt = $this->providerShippedAt($row['shipped_at'] ?? null);
+            $effectiveShippedAt = $providerShippedAt ?? now()->utc()->toIso8601String();
+            $shippedTimeSource = $providerShippedAt !== null ? 'provider' : 'apply';
 
             if ($shipment && $shipment->shipment_status === 'pending' && filled($shipment->tracking_number) && $shipment->tracking_number !== $tracking) {
                 $messages[] = 'ERP 已有不同 Tracking，禁止覆盖';
@@ -162,9 +174,11 @@ final class OverseaTrackingReturnService
                 if ($shipment->shipment_status === 'pending' && $order?->order_status?->value === 'pending_shipment') {
                     $status = 'apply';
                 } elseif ($shipment->shipment_status === 'shipped') {
-                    $sameTime = $shipment->shipped_at && CarbonImmutable::parse($shipment->shipped_at)->equalTo(CarbonImmutable::parse($shippedAt));
                     $sameCarrier = mb_strtolower((string) $shipment->carrier) === mb_strtolower((string) $carrier);
-                    $status = $shipment->tracking_number === $tracking && $sameCarrier && $sameTime ? 'noop' : 'blocked';
+                    $sameTracking = $shipment->tracking_number === $tracking;
+                    $sameTime = $providerShippedAt === null
+                        || ($shipment->shipped_at && CarbonImmutable::parse($shipment->shipped_at)->equalTo(CarbonImmutable::parse($providerShippedAt)));
+                    $status = $sameTracking && $sameCarrier && $sameTime ? 'noop' : 'blocked';
                     if ($status === 'blocked') {
                         $messages[] = '订单已经发货且现有履约事实与文件不一致';
                     }
@@ -174,12 +188,16 @@ final class OverseaTrackingReturnService
             }
 
             $planned[] = [
-                'row' => (int) $row['row'],
+                'row' => (int) ($row['row'] ?? 0),
                 'order_id' => $order?->id,
                 'order_number' => $number,
                 'tracking_number' => $tracking,
                 'carrier' => $carrier,
-                'shipped_at' => $shippedAt ?: $rawShippedAt,
+                'shipped_at' => $effectiveShippedAt,
+                'shipped_time_source' => $shippedTimeSource,
+                'provider_order_reference' => $row['provider_order_reference'] ?? null,
+                'provider_service' => $row['provider_service'] ?? null,
+                'provider_status' => $row['provider_status'] ?? null,
                 'status' => $status,
                 'message' => implode('；', $messages),
             ];
@@ -193,74 +211,47 @@ final class OverseaTrackingReturnService
         ];
     }
 
-    /** @return list<array<string,mixed>> */
-    private function readCsv(UploadedFile $file): array
+    /** @return array<string,list<Order>> */
+    private function identityMap(string $warehouseKey, int $warehouseId): array
     {
-        $handle = fopen($file->getRealPath(), 'rb');
-        abort_unless($handle !== false, 422, '无法读取单号表。');
-        try {
-            $headers = fgetcsv($handle) ?: [];
-            if (isset($headers[0])) {
-                $headers[0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) $headers[0]);
-            }
-            $map = $this->headerMap($headers);
-            foreach (['order_number', 'tracking_number', 'shipped_at'] as $required) {
-                abort_unless(isset($map[$required]), 422, '单号表缺少必填列：订单号、Tracking No.、发货时间(ISO8601含时区)。');
-            }
-            $rows = [];
-            $rowNo = 2;
-            while (($cells = fgetcsv($handle)) !== false) {
-                if (collect($cells)->filter(fn ($value) => trim((string) $value) !== '')->isEmpty()) {
-                    $rowNo++;
+        $orders = Order::query()
+            ->with(['shipment.overseaReview'])
+            ->whereHas('shipment', fn ($q) => $q->where('warehouse_id', $warehouseId)->whereIn('shipment_status', ['pending', 'shipped']))
+            ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))
+            ->get();
 
-                    continue;
-                }
-                $rows[] = ['row' => $rowNo, 'cells' => $cells, 'map' => $map];
-                $rowNo++;
-            }
-
-            return $rows;
-        } finally {
-            fclose($handle);
-        }
-    }
-
-    /** @param list<array<string,mixed>> $rows @return list<array<string,mixed>> */
-    private function normalizeRows(array $rows): array
-    {
-        return collect($rows)->map(function (array $row): array {
-            $cells = $row['cells'];
-            $map = $row['map'];
-            $get = fn (string $key): string => isset($map[$key]) ? trim((string) ($cells[$map[$key]] ?? '')) : '';
-
-            return [
-                'row' => (int) $row['row'],
-                'order_number' => $get('order_number'),
-                'tracking_number' => $get('tracking_number'),
-                'shipped_at' => $get('shipped_at'),
-                'carrier' => $get('carrier'),
-            ];
-        })->all();
-    }
-
-    /** @return array<string,int> */
-    private function headerMap(array $headers): array
-    {
         $map = [];
-        foreach ($headers as $i => $header) {
-            $n = mb_strtolower(trim((string) $header));
-            if (in_array($n, ['订单号', 'erp订单号', 'order number', 'order no.', 'order no'], true)) {
-                $map['order_number'] = $i;
-            } elseif (in_array($n, ['tracking no.', 'tracking no', 'tracking number', 'tracking', '追踪单号', '物流单号'], true)) {
-                $map['tracking_number'] = $i;
-            } elseif (str_contains($n, '发货时间') || in_array($n, ['shipped_at', 'shipped at'], true)) {
-                $map['shipped_at'] = $i;
-            } elseif (in_array($n, ['carrier', '承运商', '物流商'], true)) {
-                $map['carrier'] = $i;
+        foreach ($orders as $order) {
+            $keys = [(string) $order->erp_order_id];
+            try {
+                $keys[] = $warehouseKey === 'ca' ? $this->references->canada($order) : $this->references->warehouse($order);
+            } catch (DomainException) {
+                // Legacy/non-canonical ERP IDs remain matchable by their exact ERP ID only.
+            }
+            foreach (array_unique(array_filter($keys)) as $key) {
+                $map[$this->identityKey($key)][] = $order;
             }
         }
 
         return $map;
+    }
+
+    private function identityKey(string $value): string
+    {
+        return strtoupper(preg_replace('/\s+/', '', trim($value)) ?? '');
+    }
+
+    private function providerShippedAt(mixed $value): ?string
+    {
+        $value = trim((string) ($value ?? ''));
+        if ($value === '' || preg_match('/(?:Z|[+-]\\d{2}:?\\d{2})$/i', $value) !== 1) {
+            return null;
+        }
+        try {
+            return CarbonImmutable::parse($value)->utc()->toIso8601String();
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     private function hasWooRoot(Order $order): bool

@@ -7,14 +7,17 @@ use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
-use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
+use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxWriter;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Sync\Application\Contracts\WooCommerceTrackingGateway;
+use DOMDocument;
+use DOMXPath;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
+use ZipArchive;
 
 final class OverseaWarehouseWorkbenchTest extends TestCase
 {
@@ -36,7 +39,6 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->where('rows.data.0.carrier', 'USPS')
             ->where('rows.data.0.review_status', 'pending'));
     }
-
 
     public function test_three_sm_uses_canonical_us_3sm_url_and_legacy_keys_still_resolve(): void
     {
@@ -190,38 +192,263 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         }
     }
 
-    public function test_pending_warehouse_orders_can_be_downloaded_as_standard_csv(): void
+    public function test_export_fails_closed_with_422_for_noncanonical_order_reference(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
         $warehouses = $this->warehouses();
-        $order = $this->orderAt($warehouses['US-LA'], '007-OVERSEA-EXPORT');
+        $order = $this->orderAt($warehouses['US-LA'], 'LEGACY-NONCANONICAL-ID');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+
+        $this->actingAs($user)->get('/logistics/oversea/us-moreplus/export')->assertStatus(422);
+    }
+
+    public function test_pending_moreplus_orders_download_real_xlsx_block_rows(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-LA'], '007erp-0920-c40761');
+        $order->items()->create([
+            'product_summary' => 'Second Product', 'sku' => 'SECOND-SKU', 'quantity' => 3,
+            'unit_price' => '10.00', 'line_revenue' => '30.00',
+        ]);
         $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
 
         $response = $this->actingAs($user)->get('/logistics/oversea/us-moreplus/export');
         $response->assertOk();
-        $this->assertStringContainsString('attachment; filename=007-us-moreplus-orders-', (string) $response->headers->get('content-disposition'));
-        $content = $response->streamedContent();
-        $this->assertStringContainsString('订单号', $content);
-        $this->assertStringContainsString('007-OVERSEA-EXPORT', $content);
-        $this->assertStringContainsString('USPS', $content);
+        $this->assertStringContainsString('attachment; filename="007-us-moreplus-orders-', (string) $response->headers->get('content-disposition'));
+        $this->assertStringEndsWith('.xlsx"', (string) $response->headers->get('content-disposition'));
+        $this->assertSame('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $response->headers->get('content-type'));
+
+        $rows = $this->xlsxRows($response->getContent());
+        $this->assertSame('Order NO', $rows[0][0]);
+        $this->assertSame('C40761-007', $rows[1][0]);
+        $this->assertSame('REVIEW-SKU', $rows[1][1]);
+        $this->assertSame('Selected by Warehouse', $rows[1][15]);
+        $this->assertSame('', $rows[2][0]);
+        $this->assertSame('SECOND-SKU', $rows[2][1]);
+        $this->assertSame('3', $rows[2][2]);
     }
 
-    public function test_tracking_return_preview_is_read_only_and_blocks_timestamp_without_timezone(): void
+    public function test_wms_family_exports_real_usny_us3sm_and_de_profiles(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
         $warehouses = $this->warehouses();
-        $order = $this->orderAt($warehouses['US-LA'], '007-OVERSEA-RETURN-BLOCKED');
+        $cases = [
+            ['US-NY', '007erp-0920-c40801', 'US', '/logistics/oversea/us-ny/export', ['US01', 'C40801-007', 'USPS-NJ', '']],
+            ['US-SM', '007erp-0920-c40802', 'US', '/logistics/oversea/us-3sm/export', ['Yangfan', 'C40802-007', 'Service with the lowest price', 'USPS']],
+            ['DE', '007erp-0920-c40803', 'NL', '/logistics/oversea/de-tianyun/export', ['Hannover', 'C40803-007', 'DHL PAKET International N', '']],
+        ];
+
+        foreach ($cases as [$code, $erp, $country, $url, $expected]) {
+            $order = $this->orderAt($warehouses[$code], $erp, $country);
+            $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+            $response = $this->actingAs($user)->get($url)->assertOk();
+            $rows = $this->xlsxRows($response->getContent());
+            $this->assertSame('Warehouse Code/仓库代码', $rows[0][0]);
+            $this->assertSame($expected[0], $rows[1][0]);
+            $this->assertSame($expected[1], $rows[1][3]);
+            $this->assertSame($expected[2], $rows[1][5]);
+            $this->assertSame($expected[3], $rows[1][6] ?? '');
+            $this->assertSame('REVIEW-SKU', $rows[1][24]);
+            $this->assertSame('2', $rows[1][25]);
+        }
+    }
+
+    public function test_canada_export_matches_real_reference_and_provider_profile(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['CA'], '007erp-0920-k26011301', 'CA');
         $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
-        $csv = "订单号,Carrier,Tracking No.,发货时间(ISO8601含时区)\n007-OVERSEA-RETURN-BLOCKED,USPS,9400111899223856928499,2026-09-15 10:30:00\n";
+
+        $response = $this->actingAs($user)->get('/logistics/oversea/ca/export')->assertOk();
+        $rows = $this->xlsxRows($response->getContent());
+        $this->assertSame('客户参考号', $rows[0][0]);
+        $this->assertSame('KOL26011301', $rows[1][0]);
+        $this->assertSame('CA02_多伦多仓', $rows[1][1]);
+        $this->assertSame('CAPOST[加拿大邮政多伦多]', $rows[1][2]);
+        $this->assertSame('CA', $rows[1][16]);
+        $this->assertSame('REVIEW-SKU', $rows[1][39]);
+        $this->assertSame('2', $rows[1][40]);
+        $this->assertSame('G  良好', $rows[1][42]);
+    }
+
+    public function test_moreplus_real_xlsx_return_matches_provider_reference_and_is_idempotent_without_shipped_time(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-LA'], '007erp-0920-c40761');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $file = $this->providerXlsx('moreplus-return.xlsx', '0',
+            ['Outbound Order#', 'Order#', 'Shipped Time', 'Master Tracking#', 'Tracking#', 'Requested via', 'Ship Via', 'Carrier'],
+            [['MP-1', 'C40761-007', '', '92144904245461009999', '92144904245461009999', 'Selected by warehouse', 'USPS Ground Advantage', 'usps']]);
+
+        $this->actingAs($user)->post('/logistics/oversea/us-moreplus/tracking-import/preview', ['file' => $file])
+            ->assertRedirect('/logistics/oversea/us-moreplus?view=pending');
+        $stored = session('logistics.oversea_tracking_return.us-moreplus');
+        $this->assertSame(1, $stored['apply_count']);
+        $this->assertSame(0, $stored['blocked_count']);
+        $this->assertSame('USPS Ground Advantage', $stored['rows'][0]['provider_service']);
+        $this->assertSame('USPS', $stored['rows'][0]['carrier']);
+
+        $this->actingAs($user)->post('/logistics/oversea/us-moreplus/tracking-import/apply', ['token' => $stored['token']])
+            ->assertRedirect('/logistics/oversea/us-moreplus?view=shipped');
+        $shipment = $order->fresh('shipment')->shipment;
+        $this->assertSame('shipped', $shipment->shipment_status);
+        $this->assertSame('92144904245461009999', $shipment->tracking_number);
+        $this->assertNotNull($shipment->shipped_at);
+
+        $fileAgain = $this->providerXlsx('moreplus-return.xlsx', '0',
+            ['Outbound Order#', 'Order#', 'Shipped Time', 'Master Tracking#', 'Tracking#', 'Requested via', 'Ship Via', 'Carrier'],
+            [['MP-1', 'C40761-007', '', '92144904245461009999', '92144904245461009999', 'Selected by warehouse', 'USPS Ground Advantage', 'usps']]);
+        $this->actingAs($user)->post('/logistics/oversea/us-moreplus/tracking-import/preview', ['file' => $fileAgain])->assertRedirect();
+        $again = session('logistics.oversea_tracking_return.us-moreplus');
+        $this->assertSame(0, $again['apply_count']);
+        $this->assertSame(1, $again['noop_count']);
+        $this->assertSame(0, $again['blocked_count']);
+    }
+
+    public function test_moreplus_real_xlsx_return_blocks_master_tracking_conflict(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-LA'], '007erp-0920-c40755');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $file = $this->providerXlsx('moreplus-return.xlsx', '0',
+            ['Outbound Order#', 'Order#', 'Shipped Time', 'Master Tracking#', 'Tracking#', 'Ship Via', 'Carrier'],
+            [['MP-2', 'C40755-007', '', '92144904245461009344', '92144904245461009343', 'USPS Ground Advantage', 'usps']]);
+
+        $this->actingAs($user)->post('/logistics/oversea/us-moreplus/tracking-import/preview', ['file' => $file])->assertRedirect();
+        $stored = session('logistics.oversea_tracking_return.us-moreplus');
+        $this->assertSame(0, $stored['apply_count']);
+        $this->assertSame(1, $stored['blocked_count']);
+        $this->assertStringContainsString('Master Tracking# 与 Tracking# 不一致', $stored['rows'][0]['message']);
+    }
+
+    public function test_usny_real_xlsx_return_uses_reference_tracking_and_ignores_provider_pending_status(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-NY'], '007erp-0920-c40801');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $file = $this->providerXlsx('usny-return.xlsx', 'Sheet1',
+            ['Outbound Order No./出库单号', 'Reference order No./参考单号', 'Status/状态', 'Shipping service/物流渠道', 'Tracking No./物流跟踪号', 'Tracking Status/物流状态', 'OutboundTime/出库时间', 'Carrier/承运商'],
+            [['OB-40801', 'C40801-007', '仓库处理中', 'USPS-NJ(USPS-NJ)', '9214490416421805721875', 'Pending', '', 'usps']]);
+
+        $this->actingAs($user)->post('/logistics/oversea/us-ny/tracking-import/preview', ['file' => $file])->assertRedirect();
+        $stored = session('logistics.oversea_tracking_return.us-ny');
+        $this->assertSame(1, $stored['apply_count']);
+        $this->assertSame(0, $stored['blocked_count']);
+        $this->assertSame('仓库处理中', $stored['rows'][0]['provider_status']);
+        $this->assertSame('USPS-NJ(USPS-NJ)', $stored['rows'][0]['provider_service']);
+    }
+
+    public function test_wms_real_full_headers_keep_primary_tracking_and_outbound_reference(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-NY'], '007erp-0920-c40801');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $file = $this->providerXlsx('usny-real-full-header-return.xlsx', '出库单',
+            [
+                'Outbound Order No./出库单号',
+                'Reference order No./参考单号',
+                'Tracking No./物流跟踪号',
+                'Return Tracking No./回邮单号',
+                'Related Outbound Order No./关联出库单号',
+                "Package 1\nTracking No./子物流跟踪号",
+                'Status/状态',
+                'Shipping service/物流渠道',
+                'OutboundTime/出库时间',
+                'Carrier/承运商',
+            ],
+            [[
+                'OB-PRIMARY',
+                'C40801-007',
+                '9214490416421805721875',
+                'RETURN-TRACKING-DECOY',
+                'RELATED-OUTBOUND-DECOY',
+                'PACKAGE-TRACKING-DECOY',
+                '仓库处理中',
+                'USPS-NJ(USPS-NJ)',
+                '',
+                'usps',
+            ]]);
+
+        $this->actingAs($user)->post('/logistics/oversea/us-ny/tracking-import/preview', ['file' => $file])->assertRedirect();
+        $stored = session('logistics.oversea_tracking_return.us-ny');
+        $this->assertSame(1, $stored['apply_count']);
+        $this->assertSame(0, $stored['blocked_count']);
+        $this->assertSame('9214490416421805721875', $stored['rows'][0]['tracking_number']);
+        $this->assertSame('OB-PRIMARY', $stored['rows'][0]['provider_order_reference']);
+    }
+
+    public function test_canada_real_xlsx_return_matches_customer_order_reference(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['CA'], '007erp-0920-k26011301', 'CA');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $file = $this->providerXlsx('ca-return.xlsx', 'SHEET',
+            ['订单号', '包裹序号', 'com_lab_3015', '长(cm)', '宽(cm)', '高(cm)', '重量(kg)'],
+            [['KOL26011301', '1', '1030896460840281', '10', '10', '10', '0.3']]);
+
+        $this->actingAs($user)->post('/logistics/oversea/ca/tracking-import/preview', ['file' => $file])->assertRedirect();
+        $stored = session('logistics.oversea_tracking_return.ca');
+        $this->assertSame(1, $stored['apply_count']);
+        $this->assertSame(0, $stored['blocked_count']);
+        $this->assertSame('Canada Post', $stored['rows'][0]['carrier']);
+        $this->assertSame('1030896460840281', $stored['rows'][0]['tracking_number']);
+    }
+
+    public function test_canada_order_only_export_file_is_fail_closed_as_tracking_return(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['CA'], '007erp-0920-k26011301', 'CA');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $file = $this->providerXlsx('ca-order-only-export.xlsx', 'SHEET',
+            ['订单号'],
+            [['KOL26011301']]);
+
+        $this->actingAs($user)->post('/logistics/oversea/ca/tracking-import/preview', ['file' => $file])
+            ->assertStatus(422);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id,
+            'shipment_status' => 'pending',
+            'tracking_number' => null,
+        ]);
+    }
+
+    public function test_three_sm_xlsx_return_is_fail_closed_until_real_template_exists(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-SM'], '007erp-0920-c40802');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $file = $this->providerXlsx('3sm-return.xlsx', 'Sheet1', ['Order', 'Tracking'], [['C40802-007', '9400111']]);
+
+        $this->actingAs($user)->post('/logistics/oversea/us-3sm/tracking-import/preview', ['file' => $file])
+            ->assertStatus(422);
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'shipment_status' => 'pending', 'tracking_number' => null]);
+    }
+
+    public function test_tracking_return_preview_is_read_only_and_does_not_require_provider_shipped_time(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-LA'], '007-OVERSEA-RETURN-PREVIEW');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $csv = "订单号,Carrier,Tracking No.,发货时间(ISO8601含时区)\n007-OVERSEA-RETURN-PREVIEW,USPS,9400111899223856928499,2026-09-15 10:30:00\n";
 
         $this->actingAs($user)->post('/logistics/oversea/us-moreplus/tracking-import/preview', [
             'file' => UploadedFile::fake()->createWithContent('return.csv', $csv),
         ])->assertRedirect('/logistics/oversea/us-moreplus?view=pending');
 
         $this->actingAs($user)->get('/logistics/oversea/us-moreplus?view=pending')->assertInertia(fn (Assert $page) => $page
-            ->where('trackingImportPreview.apply_count', 0)
-            ->where('trackingImportPreview.blocked_count', 1)
-            ->where('trackingImportPreview.rows.0.status', 'blocked'));
+            ->where('trackingImportPreview.apply_count', 1)
+            ->where('trackingImportPreview.blocked_count', 0)
+            ->where('trackingImportPreview.rows.0.status', 'apply'));
         $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'shipment_status' => 'pending', 'tracking_number' => null]);
     }
 
@@ -331,6 +558,61 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $this->actingAs($user)->get('/logistics/oversea/us-ny')->assertInertia(fn (Assert $page) => $page->where('canOperate', false));
     }
 
+    /** @param list<string> $headers @param list<list<mixed>> $rows */
+    private function providerXlsx(string $filename, string $sheet, array $headers, array $rows): UploadedFile
+    {
+        $bytes = app(ProviderXlsxWriter::class)->write($sheet, $headers, $rows);
+
+        return UploadedFile::fake()->createWithContent($filename, $bytes);
+    }
+
+    /** @return list<list<string>> */
+    private function xlsxRows(string $bytes): array
+    {
+        $path = tempnam(sys_get_temp_dir(), 'oversea-export-test-');
+        file_put_contents($path, $bytes);
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($path) === true);
+        $xml = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $zip->close();
+        @unlink($path);
+        $this->assertIsString($xml);
+
+        $doc = new DOMDocument;
+        $this->assertTrue($doc->loadXML($xml));
+        $xp = new DOMXPath($doc);
+        $xp->registerNamespace('m', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+        $rows = [];
+        foreach ($xp->query('//m:sheetData/m:row') as $rowNode) {
+            $row = [];
+            foreach ($xp->query('./m:c', $rowNode) as $cell) {
+                preg_match('/^([A-Z]+)/', $cell->getAttribute('r'), $match);
+                $index = $this->columnIndex($match[1] ?? 'A');
+                $value = $cell->getAttribute('t') === 'inlineStr'
+                    ? ($xp->query('./m:is/m:t', $cell)->item(0)?->textContent ?? '')
+                    : ($xp->query('./m:v', $cell)->item(0)?->textContent ?? '');
+                $row[$index] = $value;
+            }
+            if ($row !== []) {
+                ksort($row);
+                $max = max(array_keys($row));
+                $rows[] = array_map(fn ($i) => (string) ($row[$i] ?? ''), range(0, $max));
+            }
+        }
+
+        return $rows;
+    }
+
+    private function columnIndex(string $letters): int
+    {
+        $index = 0;
+        foreach (str_split($letters) as $letter) {
+            $index = ($index * 26) + (ord($letter) - 64);
+        }
+
+        return $index - 1;
+    }
+
     /** @return array<string,Warehouse> */
     private function warehouses(): array
     {
@@ -358,6 +640,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             InventorySyncBatch::query()->create(['warehouse_id' => $warehouse->id, 'source_type' => 'api', 'sync_mode' => 'full', 'status' => 'confirmed', 'confirmed_at' => now()]);
             WarehouseInventory::query()->updateOrCreate(['warehouse_id' => $warehouse->id, 'product_id' => $product->id], ['quantity_on_hand' => 100, 'quantity_reserved' => 0]);
         }
+
         return $result;
     }
 
@@ -385,8 +668,10 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             'shipment_status' => 'pending', 'warehouse_id' => $warehouse->id,
             'warehouse_selection_source' => 'manual',
         ]);
+
         return $order->fresh(['address', 'items', 'shipment.warehouse']);
     }
+
     private function userWith(array $permissions): User
     {
         $role = Role::query()->create([
@@ -401,6 +686,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         }
         $user = User::factory()->create(['is_active' => true]);
         $user->roles()->attach($role);
+
         return $user;
     }
 
@@ -411,6 +697,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         ], ['label' => '运营']);
         $user = User::factory()->create(['email' => $email, 'is_active' => true]);
         $user->roles()->attach($role);
+
         return $user;
     }
 }
@@ -418,8 +705,11 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
 final class TrackingReturnFakeWooGateway implements WooCommerceTrackingGateway
 {
     public int $trackingCalls = 0;
+
     public int $providerOrderId = 0;
+
     public string $trackingNumber = '';
+
     public array $lineItems = [];
 
     public function descriptor(): array
