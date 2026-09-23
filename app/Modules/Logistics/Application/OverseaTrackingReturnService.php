@@ -116,6 +116,12 @@ final class OverseaTrackingReturnService
             if (filled($row['parse_error'] ?? null)) {
                 $messages[] = (string) $row['parse_error'];
             }
+            if ((bool) ($row['cancelled'] ?? false)) {
+                $messages[] = 'Provider 回传显示订单已取消，禁止标记发货';
+            }
+            if ($this->knownWarehouseMismatch($warehouseKey, $row['provider_warehouse'] ?? null)) {
+                $messages[] = 'Provider 回传仓库与当前 ERP 仓库明确不一致';
+            }
             if ($number === '') {
                 $messages[] = '订单号为空';
             }
@@ -198,6 +204,12 @@ final class OverseaTrackingReturnService
                 'provider_order_reference' => $row['provider_order_reference'] ?? null,
                 'provider_service' => $row['provider_service'] ?? null,
                 'provider_status' => $row['provider_status'] ?? null,
+                'provider_warehouse' => $row['provider_warehouse'] ?? null,
+                'tracking_status' => $row['tracking_status'] ?? null,
+                'package_tracking' => $row['package_tracking'] ?? null,
+                'return_tracking' => $row['return_tracking'] ?? null,
+                'cancellation_reason' => $row['cancellation_reason'] ?? null,
+                'provider_evidence' => $row['provider_evidence'] ?? [],
                 'status' => $status,
                 'message' => implode('；', $messages),
             ];
@@ -239,6 +251,32 @@ final class OverseaTrackingReturnService
     private function identityKey(string $value): string
     {
         return strtoupper(preg_replace('/\s+/', '', trim($value)) ?? '');
+    }
+
+    private function knownWarehouseMismatch(string $warehouseKey, mixed $providerWarehouse): bool
+    {
+        $value = mb_strtolower(trim((string) ($providerWarehouse ?? '')));
+        if ($value === '') {
+            return false;
+        }
+
+        $known = [
+            'us-ny' => ['us01'],
+            'us-3sm' => ['yangfan'],
+            'de-tianyun' => ['hannover'],
+            'ca' => ['ca02_多伦多仓'],
+        ];
+        $detected = null;
+        foreach ($known as $key => $markers) {
+            foreach ($markers as $marker) {
+                if (str_contains($value, mb_strtolower($marker))) {
+                    $detected = $key;
+                    break 2;
+                }
+            }
+        }
+
+        return $detected !== null && $detected !== $warehouseKey;
     }
 
     private function providerShippedAt(mixed $value): ?string

@@ -24,7 +24,7 @@ final class OverseaTrackingReturnFileReader
         return match ($warehouseKey) {
             'us-ny', 'de-tianyun' => $this->wms->read($file),
             'us-moreplus' => $this->morePlus->read($file),
-            'ca' => $this->canada->read($file),
+            'ca' => throw new InvalidArgumentException('加拿大仓真实 Tracking 回传协议尚未冻结，请使用逐单 Tracking；禁止猜测回传字段。'),
             'us-3sm' => throw new InvalidArgumentException('世迈目前没有真实物流单号回传模板，请使用逐单 Tracking 录入。'),
             default => throw new InvalidArgumentException('未知海外仓回传格式。'),
         };
@@ -77,7 +77,14 @@ final class OverseaTrackingReturnFileReader
                     'carrier' => $get('carrier') ?: null,
                     'provider_service' => null,
                     'provider_status' => null,
+                    'provider_warehouse' => null,
+                    'tracking_status' => null,
+                    'package_tracking' => null,
+                    'return_tracking' => null,
+                    'cancelled' => false,
+                    'cancellation_reason' => null,
                     'shipped_at' => $get('shipped_at') ?: null,
+                    'provider_evidence' => collect($headers)->mapWithKeys(fn ($header, $index) => [trim((string) $header) => trim((string) ($cells[$index] ?? ''))])->all(),
                     'parse_error' => null,
                 ];
                 $rowNumber++;

@@ -43,7 +43,7 @@ Return matching is exact/fail-closed using the corresponding provider reference/
 
 ### 4.1 WMS-64 family — US-NY / US-SM / DE
 
-One order = one row. Header A:BL is identical across the three real templates. Supports horizontal `SKU1..SKU20` + `Quantity1..Quantity20`.
+One order = one row. Header A:BL is identical across the three real templates. Template exposes `SKU1..SKU20`, but Provider instruction is frozen at **max 10 SKUs** for V1. SKU11..SKU20 are reserved and must not be used until Provider explicitly confirms support.
 
 Required provider profile values:
 
@@ -114,12 +114,13 @@ Tracking resolution:
 
 ### 5.3 Canada return — CA
 
-Core fields:
-- first column `订单号` corresponds to the customer order identity per Owner confirmation;
-- `包裹序号` retained for evidence/conflict checks;
-- third column `com_lab_3015` is the provider Tracking field.
+The uploaded Canada return sample is insufficient to freeze a Tracking protocol (only the order-reference column is reliable).
 
-The parser normalizes the provider-specific tracking header to canonical `tracking_number`.
+V1 rule:
+- batch Tracking return remains **fail-closed**;
+- do not infer `包裹序号`, `com_lab_3015`, or any other Tracking column from synthetic fixtures;
+- use manual per-order Tracking until a real post-shipment provider return XLSX is supplied;
+- once a real sample exists, create a separate Owner-reviewed return field contract before enabling batch Apply.
 
 ### 5.4 US-SM return
 

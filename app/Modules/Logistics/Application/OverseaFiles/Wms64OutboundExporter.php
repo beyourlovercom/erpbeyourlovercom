@@ -44,19 +44,24 @@ final class Wms64OutboundExporter
         abort_unless($order && $order->address, 422, '海外仓订单缺少收件地址。');
         $items = $order->items->values();
         abort_if($items->isEmpty(), 422, "订单 {$order->erp_order_id} 没有可导出的 SKU。");
-        abort_if($items->count() > 20, 422, "订单 {$order->erp_order_id} 超过 WMS 模板 20 个 SKU 上限。");
+        abort_if($items->count() > 10, 422, "订单 {$order->erp_order_id} 超过 Provider 已确认的 10 个 SKU 上限。");
 
         [$warehouseCode, $shippingService, $carrier] = $this->profile($warehouseKey, strtoupper((string) $order->address->country));
         $a = $order->address;
         $row = array_fill(0, count(self::HEADERS), null);
+        $country = $this->required(strtoupper((string) $a->country), '国家', $order->erp_order_id);
         $row[0] = $warehouseCode;
+        $row[1] = $this->salesPlatform($order);
         $row[3] = $this->references->warehouse($order);
+        $row[4] = $this->platformOrderNumber($order);
         $row[5] = $shippingService;
         $row[6] = $carrier;
         $row[10] = $this->required($a->recipient_name, '收件人', $order->erp_order_id);
-        $row[11] = $a->phone;
-        $row[15] = $this->required(strtoupper((string) $a->country), '国家', $order->erp_order_id);
-        $row[16] = $a->province_state;
+        $row[11] = $this->required($a->phone, '电话', $order->erp_order_id);
+        $row[12] = $this->optional($a->email);
+        $row[14] = $this->optional($a->company);
+        $row[15] = $country;
+        $row[16] = $this->state($a->province_state, $country, $order->erp_order_id);
         $row[18] = $this->required($a->city, '城市', $order->erp_order_id);
         $row[19] = $this->required($a->postal_code, '邮编', $order->erp_order_id);
         $row[21] = $this->required($a->address_line_1, '地址1', $order->erp_order_id);
@@ -82,6 +87,35 @@ final class Wms64OutboundExporter
             'de-tianyun' => ['Hannover', $country === 'DE' ? 'DHL PAKET DOMESTIC' : 'DHL PAKET International N', null],
             default => abort(422, '该仓库不属于 WMS-64 导出家族。'),
         };
+    }
+
+    private function salesPlatform(mixed $order): ?string
+    {
+        $source = $order->source_type instanceof \BackedEnum ? $order->source_type->value : (string) $order->source_type;
+
+        return $source === 'woocommerce' ? 'Woocommerce' : null;
+    }
+
+    private function platformOrderNumber(mixed $order): ?string
+    {
+        return $this->salesPlatform($order) === 'Woocommerce' ? $this->optional($order->external_order_number) : null;
+    }
+
+    private function state(mixed $value, string $country, string $order): string
+    {
+        $value = trim((string) ($value ?? ''));
+        if (in_array($country, ['US', 'CA'], true)) {
+            abort_if($value === '', 422, "订单 {$order} 缺少州/省，不能导出仓库文件。");
+        }
+
+        return $value;
+    }
+
+    private function optional(mixed $value): ?string
+    {
+        $value = trim((string) ($value ?? ''));
+
+        return $value !== '' ? $value : null;
     }
 
     private function required(mixed $value, string $label, string $order): string
