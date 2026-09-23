@@ -14,262 +14,263 @@
       "direction": "OUT",
       "source_template": "美西moreplus订单导入发货模版.xlsx",
       "template_status": "23 columns",
-      "owner_status": "owner_review",
+      "owner_status": "confirmed",
       "fields": [
         {
           "ordinal": 1,
           "header": "Order NO",
           "semantic_role": "Outbound Order Reference",
           "proposed_source": "ERP canonical provider reference",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "requirement": "Required",
+          "provider_rule": "Canonical provider reference, e.g. C40373-007.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 2,
           "header": "SKU",
           "semantic_role": "SKU",
           "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
+          "requirement": "Required",
           "provider_rule": "",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 3,
           "header": "SKU Qty",
           "semantic_role": "Quantity",
           "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
+          "requirement": "Required",
           "provider_rule": "",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 4,
           "header": "Tag",
-          "semantic_role": "Owner Review",
-          "proposed_source": "Owner Review",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "semantic_role": "Tag",
+          "proposed_source": "Blank by default",
+          "requirement": "Optional",
+          "provider_rule": "Explicit blank unless a future owner-approved tagging rule is added.",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 5,
           "header": "Request Ship Date",
-          "semantic_role": "Owner Review",
-          "proposed_source": "Owner Review",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "semantic_role": "Request Ship Date",
+          "proposed_source": "Blank by default",
+          "requirement": "Optional",
+          "provider_rule": "Do not auto-populate a date.",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 6,
           "header": "Recipient Name",
           "semantic_role": "Recipient Name",
-          "proposed_source": "ERP order address/contact snapshot",
-          "requirement": "PROPOSED Required",
+          "proposed_source": "ERP canonical recipient snapshot",
+          "requirement": "Required",
           "provider_rule": "",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 7,
           "header": "Recipient Company",
           "semantic_role": "Recipient Company",
-          "proposed_source": "PROPOSED: canonical contact snapshot; Woo shipping.company -> billing.company fallback",
-          "requirement": "PROPOSED Optional",
-          "provider_rule": "",
+          "proposed_source": "Canonical contact snapshot; Woo shipping.company -> billing.company fallback",
+          "requirement": "Optional",
+          "provider_rule": "If source exists it must be exported; otherwise explicit blank.",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 8,
           "header": "Recipient Address Line 1",
           "semantic_role": "Recipient Address 1",
           "proposed_source": "ERP order address line 1",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "Template comment: max 35 chars; overflow should move to Address Line 2.",
+          "requirement": "Required",
+          "provider_rule": "Provider max 35 chars. Never silently truncate; over-limit must fail closed / enter correction flow.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 9,
           "header": "Recipient Address Line 2",
           "semantic_role": "Recipient Address 2",
           "proposed_source": "ERP order address line 2",
-          "requirement": "PROPOSED Optional",
+          "requirement": "Optional",
           "provider_rule": "",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 10,
           "header": "Recipient State",
           "semantic_role": "Recipient State",
           "proposed_source": "ERP order address province/state",
-          "requirement": "PROPOSED Optional",
-          "provider_rule": "",
+          "requirement": "Conditional Required",
+          "provider_rule": "Required where destination/provider requires state/province; US/CA at minimum.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 11,
           "header": "Recipient City",
           "semantic_role": "Recipient City",
           "proposed_source": "ERP order address city",
-          "requirement": "PROPOSED Required",
+          "requirement": "Required",
           "provider_rule": "",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 12,
           "header": "Recipient ZipCode",
           "semantic_role": "Recipient Postal Code",
           "proposed_source": "ERP order address postal code",
-          "requirement": "PROPOSED Required",
+          "requirement": "Required",
           "provider_rule": "",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 13,
           "header": "Recipient Country",
           "semantic_role": "Recipient Country",
-          "proposed_source": "ERP order address country",
-          "requirement": "PROPOSED Required",
+          "proposed_source": "ERP order address country code",
+          "requirement": "Required",
           "provider_rule": "",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 14,
           "header": "Recipient Phone",
           "semantic_role": "Recipient Phone",
           "proposed_source": "Canonical contact snapshot; Woo shipping.phone -> billing.phone fallback",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "requirement": "Required",
+          "provider_rule": "Missing both sources must fail closed.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 15,
           "header": "Recipient Email",
           "semantic_role": "Recipient Email",
-          "proposed_source": "PROPOSED: canonical contact snapshot; Woo shipping.email -> billing.email fallback",
-          "requirement": "PROPOSED Optional",
-          "provider_rule": "",
+          "proposed_source": "Canonical contact snapshot; Woo shipping.email -> billing.email fallback",
+          "requirement": "Optional",
+          "provider_rule": "If source exists it must be exported; missing email does not block shipment.",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 16,
           "header": "Request Shipping Service",
           "semantic_role": "Shipping Service/Profile",
-          "proposed_source": "Provider profile / routing rule",
-          "requirement": "Owner Review",
-          "provider_rule": "Template enum. Current business profile uses 'Selected by Warehouse'.",
+          "proposed_source": "Constant: Selected by Warehouse",
+          "requirement": "Required",
+          "provider_rule": "Fixed to Selected by Warehouse for current MorePlus flow.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 17,
           "header": "Warehouse Customized Service Name",
-          "semantic_role": "Owner Review",
-          "proposed_source": "Owner Review",
-          "requirement": "Owner Review",
-          "provider_rule": "Required by provider only when Request Shipping Service = Warehouse Customized Service.",
+          "semantic_role": "Warehouse Customized Service Name",
+          "proposed_source": "Blank for Selected by Warehouse",
+          "requirement": "Conditional Required",
+          "provider_rule": "N/A/blank for Selected by Warehouse; required only if Warehouse Customized Service is selected.",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 18,
           "header": "Signature Option",
-          "semantic_role": "Owner Review",
-          "proposed_source": "Owner Review",
-          "requirement": "Owner Review",
-          "provider_rule": "Optional; blank defaults to actual shipping service signature behavior.",
+          "semantic_role": "Signature Option",
+          "proposed_source": "Blank by default",
+          "requirement": "Optional",
+          "provider_rule": "Blank uses provider/actual shipping-service default signature behavior.",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 19,
           "header": "Tracking Number",
           "semantic_role": "Provider Generated / Outbound Blank",
-          "proposed_source": "Provider-generated; outbound blank unless contract says otherwise",
+          "proposed_source": "Provider-generated tracking",
           "requirement": "N/A outbound / Provider generated",
-          "provider_rule": "",
+          "provider_rule": "Must remain blank in outbound file.",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 20,
           "header": "Shipping Carrier",
           "semantic_role": "Carrier/Profile",
-          "proposed_source": "Provider profile / routing rule",
-          "requirement": "Owner Review",
-          "provider_rule": "Template enum; current 'Selected by Warehouse' flow can leave outbound carrier blank.",
+          "proposed_source": "Provider-selected carrier",
+          "requirement": "N/A outbound / Provider generated",
+          "provider_rule": "Under Selected by Warehouse, provider decides carrier; outbound blank.",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 21,
           "header": "Insurance",
-          "semantic_role": "Owner Review",
-          "proposed_source": "Owner Review",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "semantic_role": "Insurance",
+          "proposed_source": "Blank by default",
+          "requirement": "Optional",
+          "provider_rule": "Blank means no extra insurance requested.",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 22,
           "header": "Cod",
-          "semantic_role": "Owner Review",
-          "proposed_source": "Owner Review",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "semantic_role": "COD",
+          "proposed_source": "Blank by default",
+          "requirement": "Optional",
+          "provider_rule": "Blank means COD disabled/not requested.",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 23,
           "header": "Notes",
           "semantic_role": "Order/Logistics Note",
-          "proposed_source": "ERP order_note -> shipment.logistics_note",
-          "requirement": "PROPOSED Optional",
+          "proposed_source": "ERP order_note -> shipment.logistics_note fallback",
+          "requirement": "Optional",
           "provider_rule": "",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         }
-      ]
+      ],
+      "owner_notes": "Owner PASS 2026-09-23: all 23 outbound fields confirmed."
     },
     {
       "key": "02_MOREPLUS_RETURN",
@@ -5289,5 +5290,6 @@
         }
       ]
     }
-  ]
+  ],
+  "last_owner_review": "2026-09-23"
 }
