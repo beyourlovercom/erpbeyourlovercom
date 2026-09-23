@@ -27,7 +27,7 @@ final class DomesticPendingBatchExporter
         $sheet->setTitle('ERP批量发货登记');
         $sheet->fromArray([[
             'ERP订单号', '客户单号', '承运商', '服务', 'Tracking',
-            '收件人', '电话', '国家/地区', '州/省', '城市', '邮编', '地址',
+            '收件人', '电话', 'Email', '国家/地区', '州/省', '城市', '邮编', '地址',
             'SKU/数量', '物流备注',
         ]]);
 
@@ -58,6 +58,7 @@ final class DomesticPendingBatchExporter
                 '',
                 (string) $address?->recipient_name,
                 (string) $address?->phone,
+                (string) $address?->email,
                 (string) $address?->country,
                 (string) $address?->province_state,
                 (string) $address?->city,
@@ -72,7 +73,7 @@ final class DomesticPendingBatchExporter
         }
 
         $sheet->freezePane('A2');
-        foreach (range('A', 'N') as $column) {
+        foreach (range('A', 'O') as $column) {
             $sheet->getColumnDimension($column)->setAutoSize(true);
         }
 
