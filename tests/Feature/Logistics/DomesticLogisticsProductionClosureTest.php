@@ -3,7 +3,6 @@
 namespace Tests\Feature\Logistics;
 
 use App\Models\User;
-use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
 use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
@@ -28,15 +27,6 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
     public function test_speeda_export_uses_real_24_column_contract_and_blocks_missing_phone(): void
     {
         $order = $this->domesticOrder('007-0923-c50001', '4PX', reviewed: true, phone: '13800138000', quantity: 2);
-        $customer = Customer::query()->create([
-            'name' => 'Test Customer',
-            'email' => 'buyer@example.test',
-            'phone' => '13800138000',
-            'country_code' => 'DE',
-            'source_type' => 'manual',
-        ]);
-        $order->forceFill(['customer_id' => $customer->id])->save();
-
         $bytes = app(SpeedaOutboundExporter::class)->export(collect([$order->fresh()]));
         $path = tempnam(sys_get_temp_dir(), 'speeda-test-');
         file_put_contents($path, $bytes);
@@ -114,8 +104,10 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
             self::assertSame('ERP订单号', $sheet->getCell('A1')->getValue());
             self::assertSame('承运商', $sheet->getCell('C1')->getValue());
             self::assertSame('Tracking', $sheet->getCell('E1')->getValue());
+            self::assertSame('Email', $sheet->getCell('H1')->getValue());
             self::assertSame('007-0923-c50101', $sheet->getCell('A2')->getValue());
             self::assertSame('4PX', $sheet->getCell('C2')->getValue());
+            self::assertSame('buyer@example.test', $sheet->getCell('H2')->getValue());
             self::assertSame('007-0923-c50102', $sheet->getCell('A3')->getValue());
             self::assertSame('DHL', $sheet->getCell('C3')->getValue());
             self::assertSame('', (string) $sheet->getCell('E2')->getValue());
@@ -232,6 +224,7 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         $order->address()->create([
             'recipient_name' => 'Closure Recipient',
             'phone' => $phone,
+            'email' => 'buyer@example.test',
             'country' => 'DE',
             'province_state' => 'DE-SN',
             'city' => 'Dresden',

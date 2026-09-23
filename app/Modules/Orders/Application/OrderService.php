@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\DB;
 final class OrderService
 {
     private const ADDRESS_FIELDS = [
-        'recipient_name', 'phone', 'country', 'province_state', 'city',
+        'recipient_name', 'phone', 'email', 'company', 'country', 'province_state', 'city',
         'address_line_1', 'address_line_2', 'postal_code',
     ];
 

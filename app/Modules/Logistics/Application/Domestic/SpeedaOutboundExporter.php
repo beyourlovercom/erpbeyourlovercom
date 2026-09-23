@@ -2,7 +2,6 @@
 
 namespace App\Modules\Logistics\Application\Domestic;
 
-use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use DomainException;
@@ -136,7 +135,6 @@ final class SpeedaOutboundExporter
 
             $order->loadMissing(['address', 'items.product', 'externalReferences']);
             $address = $order->address;
-            $customer = $order->customer_id ? Customer::query()->find($order->customer_id) : null;
             $countryCode = strtoupper(trim((string) $address?->country));
             $country = $countryMap[$countryCode] ?? $countryCode;
             $quantity = max(1, (int) $order->items->sum('quantity'));
@@ -155,7 +153,7 @@ final class SpeedaOutboundExporter
                 trim((string) $address?->address_line_2),
             ]))), DataType::TYPE_STRING);
             $sheet->setCellValueExplicit("I{$row}", trim((string) $address?->phone), DataType::TYPE_STRING);
-            $sheet->setCellValueExplicit("J{$row}", trim((string) $customer?->email), DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit("J{$row}", trim((string) $address?->email), DataType::TYPE_STRING);
             $sheet->setCellValueExplicit("K{$row}", trim((string) $address?->postal_code), DataType::TYPE_STRING);
 
             // Explicit owner freeze: these fields must be blank rather than guessed.
