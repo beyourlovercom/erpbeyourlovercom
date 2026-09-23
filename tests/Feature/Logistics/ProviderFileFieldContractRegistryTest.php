@@ -70,6 +70,11 @@ final class ProviderFileFieldContractRegistryTest extends TestCase
         foreach (['Outbound Order#', 'Order#', 'Shipped Time', 'Master Tracking#', 'Tracking#', 'Ship Via', 'Carrier'] as $header) {
             $this->assertContains($header, $moreplus);
         }
+        $variants = collect($this->template('02_MOREPLUS_RETURN')['accepted_variants'] ?? [])->keyBy('id');
+        $this->assertSame('02_MOREPLUS_RETURN', $variants['standard_return_49']['headers_source'] ?? null);
+        $this->assertSame('01_MOREPLUS_OUT', $variants['outbound_roundtrip_23']['headers_source'] ?? null);
+        $this->assertSame('Order NO', $variants['outbound_roundtrip_23']['match_key'] ?? null);
+        $this->assertSame(['Tracking Number'], $variants['outbound_roundtrip_23']['tracking_fields'] ?? null);
 
         foreach (['04_USNY_RETURN', '08_DE_RETURN'] as $key) {
             $headers = $this->contractHeaders($key);

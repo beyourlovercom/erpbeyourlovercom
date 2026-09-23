@@ -820,7 +820,31 @@
           "owner_notes": "Owner PASS 2026-09-23"
         }
       ],
-      "owner_notes": "Owner PASS 2026-09-23: all 49 MorePlus return fields confirmed."
+      "owner_notes": "Owner PASS 2026-09-23: all 49 MorePlus return fields confirmed. Live canary 2026-09-23 confirmed provider may also return the original 23-column outbound template with Tracking Number populated.",
+      "accepted_variants": [
+        {
+          "id": "standard_return_49",
+          "headers_source": "02_MOREPLUS_RETURN",
+          "match_key": "Order#",
+          "tracking_fields": [
+            "Master Tracking#",
+            "Tracking#"
+          ],
+          "status": "confirmed"
+        },
+        {
+          "id": "outbound_roundtrip_23",
+          "headers_source": "01_MOREPLUS_OUT",
+          "match_key": "Order NO",
+          "tracking_fields": [
+            "Tracking Number"
+          ],
+          "carrier_field": "Shipping Carrier",
+          "service_field": "Request Shipping Service",
+          "status": "confirmed_live_canary_2026-09-23",
+          "evidence_sha256": "e702d6f50a8310a9b97ee445c9c6dd6bb3bf1ad01ed9a841a02468ab6f6a0ce4"
+        }
+      ]
     },
     {
       "key": "03_USNY_OUT",

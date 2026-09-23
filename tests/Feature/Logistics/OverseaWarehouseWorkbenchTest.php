@@ -372,6 +372,31 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         }
     }
 
+    public function test_moreplus_outbound_roundtrip_return_previews_real_tracking_without_apply(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-LA'], '007erp-0920-c40762');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $file = $this->providerXlsx('moreplus-roundtrip-return.xlsx', 'Template',
+            ['Order NO', 'SKU', 'SKU Qty', 'Tag', 'Request Ship Date', 'Recipient Name', 'Recipient Company', 'Recipient Address Line 1', 'Recipient Address Line 2', 'Recipient State', 'Recipient City', 'Recipient ZipCode', 'Recipient Country', 'Recipient Phone', 'Recipient Email', 'Request Shipping Service', 'Warehouse Customized Service Name', 'Signature Option', 'Tracking Number', 'Shipping Carrier', 'Insurance', 'Cod', 'Notes'],
+            [['C40762-007', 'REVIEW-SKU', 1, '', '', 'Review Recipient', '', '1 Main St', '', 'CA', 'City', '90001', 'US', '+1 555 0100', 'review@example.test', 'Selected by Warehouse', '', '', '9434650105794034942869', '', '', '', '']]);
+
+        $this->actingAs($user)->post('/logistics/oversea/us-moreplus/tracking-import/preview', ['file' => $file])
+            ->assertRedirect('/logistics/oversea/us-moreplus?view=pending');
+        $stored = session('logistics.oversea_tracking_return.us-moreplus');
+        $this->assertSame(1, $stored['apply_count']);
+        $this->assertSame(0, $stored['blocked_count']);
+        $this->assertSame('9434650105794034942869', $stored['rows'][0]['tracking_number']);
+        $this->assertSame('Selected by Warehouse', $stored['rows'][0]['provider_service']);
+        $this->assertSame('9434650105794034942869', $stored['rows'][0]['provider_evidence']['Tracking Number']);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id,
+            'shipment_status' => 'pending',
+            'tracking_number' => null,
+        ]);
+    }
+
     public function test_moreplus_real_xlsx_return_matches_provider_reference_and_is_idempotent_without_shipped_time(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
