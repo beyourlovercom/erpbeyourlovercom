@@ -137,6 +137,7 @@ final class WooCommerceOrderNormalizer
         if (! array_key_exists($key, $payload) || $payload[$key] === '') {
             return null;
         }
+
         return $this->moneyCents($payload[$key]);
     }
 
@@ -156,6 +157,7 @@ final class WooCommerceOrderNormalizer
         if ((int) $fraction[2] >= 5) {
             $cents++;
         }
+
         return ($matches['sign'] ?? '') === '-' ? -$cents : $cents;
     }
 
@@ -163,6 +165,7 @@ final class WooCommerceOrderNormalizer
     {
         $sign = $cents < 0 ? '-' : '';
         $absolute = abs($cents);
+
         return $sign.intdiv($absolute, 100).'.'.str_pad((string) ($absolute % 100), 2, '0', STR_PAD_LEFT);
     }
 
@@ -186,9 +189,12 @@ final class WooCommerceOrderNormalizer
             $name = trim((string) ($source['company'] ?? '')) ?: 'WooCommerce customer';
         }
 
+        $shippingPhone = trim((string) ($shipping['phone'] ?? ''));
+        $billingPhone = trim((string) ($billing['phone'] ?? ''));
+
         return [
             'recipient_name' => $name,
-            'phone' => trim((string) ($shipping['phone'] ?? $billing['phone'] ?? '')),
+            'phone' => $shippingPhone !== '' ? $shippingPhone : $billingPhone,
             'country' => strtoupper(trim((string) ($source['country'] ?? ''))),
             'province_state' => trim((string) ($source['state'] ?? '')),
             'city' => trim((string) ($source['city'] ?? '')),
@@ -205,6 +211,7 @@ final class WooCommerceOrderNormalizer
                 return true;
             }
         }
+
         return false;
     }
 
@@ -240,12 +247,14 @@ final class WooCommerceOrderNormalizer
                 'unit_price' => number_format((float) $price, 2, '.', ''),
             ];
         }
+
         return $result;
     }
 
     private function nullable(string $value): ?string
     {
         $value = trim($value);
+
         return $value === '' ? null : $value;
     }
 }
