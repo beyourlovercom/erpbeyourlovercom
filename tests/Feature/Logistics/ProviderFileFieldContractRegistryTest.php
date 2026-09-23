@@ -41,6 +41,19 @@ final class ProviderFileFieldContractRegistryTest extends TestCase
         }
     }
 
+    public function test_confirmed_contracts_have_no_silent_or_ignored_fields(): void
+    {
+        foreach ($this->registry['templates'] as $template) {
+            if ($template['owner_status'] !== 'confirmed') {
+                continue;
+            }
+            foreach ($template['fields'] as $field) {
+                $this->assertStringNotContainsString('silent blank', strtolower((string) $field['current_code']), $template['key'].' #'.$field['ordinal']);
+                $this->assertStringNotContainsString('ignored by reader', strtolower((string) $field['current_code']), $template['key'].' #'.$field['ordinal']);
+            }
+        }
+    }
+
     public function test_outbound_runtime_headers_match_contract_exactly(): void
     {
         $this->assertSame($this->headers(MorePlusOutboundExporter::class), $this->contractHeaders('01_MOREPLUS_OUT'));
@@ -83,7 +96,9 @@ final class ProviderFileFieldContractRegistryTest extends TestCase
     private function template(string $key): array
     {
         foreach ($this->registry['templates'] as $template) {
-            if ($template['key'] === $key) return $template;
+            if ($template['key'] === $key) {
+                return $template;
+            }
         }
         $this->fail("Missing provider field contract: {$key}");
     }

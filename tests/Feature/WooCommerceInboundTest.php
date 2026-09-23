@@ -79,7 +79,11 @@ final class WooCommerceInboundTest extends TestCase
         ]);
         $payload = $this->wooOrder(103, 'WC-103', 'processing', '19.95', 5003, 'WOO-5003');
         $payload['shipping']['phone'] = '';
+        $payload['shipping']['email'] = '';
+        $payload['shipping']['company'] = '';
         $payload['billing']['phone'] = '+49123456';
+        $payload['billing']['email'] = 'ada.billing@example.test';
+        $payload['billing']['company'] = 'Analytical Engines Ltd';
         Http::fake(['https://shop.test/wp-json/wc/v3/orders/103' => Http::response($payload, 200)]);
 
         $this->actingAs($user)->post('/sync/woocommerce/single', ['woo_order_id' => 103])->assertSessionHasNoErrors();
@@ -87,6 +91,8 @@ final class WooCommerceInboundTest extends TestCase
         $order = Order::with('address')->firstOrFail();
         $this->assertSame($product->id, $order->items()->firstOrFail()->product_id);
         $this->assertSame('+49123456', $order->address->phone);
+        $this->assertSame('ada.billing@example.test', $order->address->email);
+        $this->assertSame('Analytical Engines Ltd', $order->address->company);
     }
 
     public function test_single_import_preserves_long_woo_address_line_2_snapshot(): void

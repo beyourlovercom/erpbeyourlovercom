@@ -191,10 +191,16 @@ final class WooCommerceOrderNormalizer
 
         $shippingPhone = trim((string) ($shipping['phone'] ?? ''));
         $billingPhone = trim((string) ($billing['phone'] ?? ''));
+        $shippingEmail = trim((string) ($shipping['email'] ?? ''));
+        $billingEmail = trim((string) ($billing['email'] ?? ''));
+        $shippingCompany = trim((string) ($shipping['company'] ?? ''));
+        $billingCompany = trim((string) ($billing['company'] ?? ''));
 
         return [
             'recipient_name' => $name,
             'phone' => $shippingPhone !== '' ? $shippingPhone : $billingPhone,
+            'email' => $shippingEmail !== '' ? $shippingEmail : $billingEmail,
+            'company' => $shippingCompany !== '' ? $shippingCompany : $billingCompany,
             'country' => strtoupper(trim((string) ($source['country'] ?? ''))),
             'province_state' => trim((string) ($source['state'] ?? '')),
             'city' => trim((string) ($source['city'] ?? '')),

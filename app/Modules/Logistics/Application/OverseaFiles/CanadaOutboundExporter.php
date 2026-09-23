@@ -45,16 +45,21 @@ final class CanadaOutboundExporter
 
         $a = $order->address;
         $row = array_fill(0, count(self::HEADERS), null);
+        $country = $this->required(strtoupper((string) $a->country), '国家', $order->erp_order_id);
         $row[0] = $this->references->canada($order);
         $row[1] = 'CA02_多伦多仓';
         $row[2] = 'CAPOST[加拿大邮政多伦多]';
-        $row[16] = $this->required(strtoupper((string) $a->country), '国家', $order->erp_order_id);
-        $row[17] = $a->province_state;
+        $row[13] = $this->salesPlatform($order);
+        $row[14] = $this->platformOrderNumber($order);
+        $row[16] = $country;
+        $row[17] = $this->state($a->province_state, $country, $order->erp_order_id);
         $row[18] = $this->required($a->city, '城市', $order->erp_order_id);
-        $row[20] = trim(implode(' ', array_filter([$a->address_line_1, $a->address_line_2])));
+        $row[20] = $this->required(trim(implode(' ', array_filter([$a->address_line_1, $a->address_line_2]))), '街道', $order->erp_order_id);
         $row[21] = $this->required($a->postal_code, '邮编', $order->erp_order_id);
         $row[22] = $this->required($a->recipient_name, '收件人', $order->erp_order_id);
-        $row[23] = $a->phone;
+        $row[23] = $this->required($a->phone, '电话', $order->erp_order_id);
+        $row[24] = $this->optional($a->email);
+        $row[25] = $this->optional($a->company);
         $row[30] = $order->order_note ?: $shipment->logistics_note;
 
         foreach ($items as $index => $item) {
@@ -67,6 +72,35 @@ final class CanadaOutboundExporter
         }
 
         return $row;
+    }
+
+    private function salesPlatform(mixed $order): ?string
+    {
+        $source = $order->source_type instanceof \BackedEnum ? $order->source_type->value : (string) $order->source_type;
+
+        return $source === 'woocommerce' ? 'Woocommerce' : null;
+    }
+
+    private function platformOrderNumber(mixed $order): ?string
+    {
+        return $this->salesPlatform($order) === 'Woocommerce' ? $this->optional($order->external_order_number) : null;
+    }
+
+    private function state(mixed $value, string $country, string $order): string
+    {
+        $value = trim((string) ($value ?? ''));
+        if (in_array($country, ['US', 'CA'], true)) {
+            abort_if($value === '', 422, "订单 {$order} 缺少州/省，不能导出加拿大仓文件。");
+        }
+
+        return $value;
+    }
+
+    private function optional(mixed $value): ?string
+    {
+        $value = trim((string) ($value ?? ''));
+
+        return $value !== '' ? $value : null;
     }
 
     private function required(mixed $value, string $label, string $order): string

@@ -23,7 +23,7 @@
           "proposed_source": "ERP canonical provider reference",
           "requirement": "Required",
           "provider_rule": "Canonical provider reference, e.g. C40373-007.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -34,7 +34,7 @@
           "proposed_source": "ERP order_item.sku",
           "requirement": "Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -45,7 +45,7 @@
           "proposed_source": "ERP order_item.quantity",
           "requirement": "Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -56,7 +56,7 @@
           "proposed_source": "Blank by default",
           "requirement": "Optional",
           "provider_rule": "Explicit blank unless a future owner-approved tagging rule is added.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -67,7 +67,7 @@
           "proposed_source": "Blank by default",
           "requirement": "Optional",
           "provider_rule": "Do not auto-populate a date.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -78,7 +78,7 @@
           "proposed_source": "ERP canonical recipient snapshot",
           "requirement": "Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -89,7 +89,7 @@
           "proposed_source": "Canonical contact snapshot; Woo shipping.company -> billing.company fallback",
           "requirement": "Optional",
           "provider_rule": "If source exists it must be exported; otherwise explicit blank.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -100,7 +100,7 @@
           "proposed_source": "ERP order address line 1",
           "requirement": "Required",
           "provider_rule": "Provider max 35 chars. Never silently truncate; over-limit must fail closed / enter correction flow.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -111,7 +111,7 @@
           "proposed_source": "ERP order address line 2",
           "requirement": "Optional",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -122,7 +122,7 @@
           "proposed_source": "ERP order address province/state",
           "requirement": "Conditional Required",
           "provider_rule": "Required where destination/provider requires state/province; US/CA at minimum.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -133,7 +133,7 @@
           "proposed_source": "ERP order address city",
           "requirement": "Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -144,7 +144,7 @@
           "proposed_source": "ERP order address postal code",
           "requirement": "Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -155,7 +155,7 @@
           "proposed_source": "ERP order address country code",
           "requirement": "Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -166,7 +166,7 @@
           "proposed_source": "Canonical contact snapshot; Woo shipping.phone -> billing.phone fallback",
           "requirement": "Required",
           "provider_rule": "Missing both sources must fail closed.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -177,7 +177,7 @@
           "proposed_source": "Canonical contact snapshot; Woo shipping.email -> billing.email fallback",
           "requirement": "Optional",
           "provider_rule": "If source exists it must be exported; missing email does not block shipment.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -188,7 +188,7 @@
           "proposed_source": "Constant: Selected by Warehouse",
           "requirement": "Required",
           "provider_rule": "Fixed to Selected by Warehouse for current MorePlus flow.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -199,7 +199,7 @@
           "proposed_source": "Blank for Selected by Warehouse",
           "requirement": "Conditional Required",
           "provider_rule": "N/A/blank for Selected by Warehouse; required only if Warehouse Customized Service is selected.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -210,7 +210,7 @@
           "proposed_source": "Blank by default",
           "requirement": "Optional",
           "provider_rule": "Blank uses provider/actual shipping-service default signature behavior.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -221,7 +221,7 @@
           "proposed_source": "Provider-generated tracking",
           "requirement": "N/A outbound / Provider generated",
           "provider_rule": "Must remain blank in outbound file.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit provider-generated outbound blank",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -232,7 +232,7 @@
           "proposed_source": "Provider-selected carrier",
           "requirement": "N/A outbound / Provider generated",
           "provider_rule": "Under Selected by Warehouse, provider decides carrier; outbound blank.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit provider-generated outbound blank",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -243,7 +243,7 @@
           "proposed_source": "Blank by default",
           "requirement": "Optional",
           "provider_rule": "Blank means no extra insurance requested.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -254,7 +254,7 @@
           "proposed_source": "Blank by default",
           "requirement": "Optional",
           "provider_rule": "Blank means COD disabled/not requested.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -265,7 +265,7 @@
           "proposed_source": "ERP order_note -> shipment.logistics_note fallback",
           "requirement": "Optional",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         }
@@ -287,7 +287,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Preserve Outbound Order# as provider evidence; not primary ERP match key.",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -298,7 +298,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Required",
           "provider_rule": "Must match ERP canonical reference; blank blocks row.",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -309,7 +309,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Preserve only; no ERP write.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -320,7 +320,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Store evidence only.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -331,7 +331,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Preview/audit; must not reassign ERP warehouse.",
-          "current_code": "Ignored by reader",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -342,7 +342,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Create time only; not shipped_at.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -353,7 +353,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Submit time only; not shipped_at.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -364,7 +364,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Use if reliable/parseable; otherwise ERP Apply time.",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -375,7 +375,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Reader column required",
           "provider_rule": "Column required; value may be blank if Tracking# populated.",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -386,7 +386,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Reader column required",
           "provider_rule": "Column required; at least one of Master Tracking#/Tracking# must be non-empty; both non-empty and different => BLOCKED.",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -397,7 +397,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Label source evidence only.",
-          "current_code": "Ignored by reader",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -408,7 +408,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Never substitute for outbound Tracking#.",
-          "current_code": "Ignored by reader",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -419,7 +419,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Item count evidence; not a V1 Apply blocker.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -430,7 +430,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "SKU evidence; never overwrite ERP item.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -441,7 +441,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Qty evidence; never overwrite ERP quantity.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -452,7 +452,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Lot ID audit evidence.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -463,7 +463,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Expiration audit evidence.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -474,7 +474,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Provider S-SKU evidence only.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -485,7 +485,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Package quantity evidence.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -496,7 +496,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Packaging/material evidence; future warehouse-cost use.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -507,7 +507,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Preserve Client Shipping Charge for future actual cost reconciliation; does not block Tracking Apply.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -518,7 +518,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Preserve Fulfill Charge for future actual cost reconciliation; does not block Tracking Apply.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -529,7 +529,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Audit only.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -540,7 +540,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Do not override ERP Carrier/Service.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -551,7 +551,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Preview/audit; must not silently overwrite ERP Carrier Master service.",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -562,7 +562,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Preview differences explicitly; no silent overwrite.",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -573,7 +573,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Do not overwrite ERP address.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -584,7 +584,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Do not overwrite ERP address.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -595,7 +595,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Do not overwrite ERP address.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -606,7 +606,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "May compare; never overwrite ERP phone.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -617,7 +617,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "May compare; never overwrite ERP email.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -628,7 +628,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Do not overwrite ERP postal code.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -639,7 +639,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Do not overwrite ERP recipient name.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -650,7 +650,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Do not overwrite ERP company.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -661,7 +661,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Do not overwrite ERP address line 1.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -672,7 +672,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Do not overwrite ERP address line 2.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -683,7 +683,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Conditional Blocker",
           "provider_rule": "Explicit cancelled state => BLOCKED; no Tracking Apply.",
-          "current_code": "Ignored by reader",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -694,7 +694,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "COD evidence only.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -705,7 +705,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Insurance evidence only.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -716,7 +716,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Signature evidence only.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -727,7 +727,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Pending/processing does not block if valid tracking exists; explicit cancelled => BLOCKED.",
-          "current_code": "Ignored by reader",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -738,7 +738,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Dimension evidence.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -749,7 +749,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Volume evidence.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -760,7 +760,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Volume unit must stay paired with volume.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -771,7 +771,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Preserve actual package weight for future actual cost reconciliation.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -782,7 +782,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Weight unit must stay paired with weight; never guess kg/lb.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -793,7 +793,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Do not overwrite ERP tag.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -804,7 +804,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Optional",
           "provider_rule": "Preview/audit only; do not overwrite internal logistics note.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -815,7 +815,7 @@
           "proposed_source": "Provider return file",
           "requirement": "Conditional",
           "provider_rule": "Show when cancelled; cancelled rows remain BLOCKED.",
-          "current_code": "Ignored by reader",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         }
@@ -837,7 +837,7 @@
           "proposed_source": "Constant US01",
           "requirement": "Required",
           "provider_rule": "US-NY warehouse profile. Do not derive from order.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -848,7 +848,7 @@
           "proposed_source": "Woo order => Woocommerce enum when source known",
           "requirement": "Optional",
           "provider_rule": "If source is Woo and provider enum supports it, export Woocommerce.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -859,7 +859,7 @@
           "proposed_source": "Canonical ERP store label only",
           "requirement": "Optional",
           "provider_rule": "Do not invent from domain/connection key.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -870,7 +870,7 @@
           "proposed_source": "ERP canonical provider reference",
           "requirement": "Required",
           "provider_rule": "Canonical provider reference, e.g. C40801-007.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -881,7 +881,7 @@
           "proposed_source": "Woo/platform order number when available",
           "requirement": "Optional",
           "provider_rule": "If source exists it must be exported.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -892,7 +892,7 @@
           "proposed_source": "Constant USPS-NJ",
           "requirement": "Required",
           "provider_rule": "US-NY profile fixed to USPS-NJ.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -903,7 +903,7 @@
           "proposed_source": "Provider profile / conditional carrier",
           "requirement": "Conditional Required",
           "provider_rule": "Provider comment: required only for uploaded label / channels requiring carrier validation. Current USPS-NJ flow may leave blank.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -914,7 +914,7 @@
           "proposed_source": "Provider-generated tracking",
           "requirement": "N/A outbound / Provider generated",
           "provider_rule": "Must remain blank in outbound file.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit provider-generated outbound blank",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -925,7 +925,7 @@
           "proposed_source": "Blank by default",
           "requirement": "Optional",
           "provider_rule": "Only fill an owner-approved provider enum; otherwise blank.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -936,7 +936,7 @@
           "proposed_source": "Blank by default",
           "requirement": "Optional",
           "provider_rule": "Provider note: leave blank when no insurance requested.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -947,7 +947,7 @@
           "proposed_source": "ERP canonical recipient snapshot",
           "requirement": "Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -958,7 +958,7 @@
           "proposed_source": "Canonical contact snapshot; Woo shipping.phone -> billing.phone fallback",
           "requirement": "Required",
           "provider_rule": "Missing both sources must fail closed.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -969,7 +969,7 @@
           "proposed_source": "Canonical contact snapshot; Woo shipping.email -> billing.email fallback",
           "requirement": "Optional",
           "provider_rule": "If source exists it must be exported; missing email does not block shipment.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -980,7 +980,7 @@
           "proposed_source": "Canonical contact/customs snapshot when available",
           "requirement": "Conditional Optional",
           "provider_rule": "Only populate for destinations/customs requirements with a real source; never guess.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -991,7 +991,7 @@
           "proposed_source": "Canonical contact snapshot; Woo shipping.company -> billing.company fallback",
           "requirement": "Optional",
           "provider_rule": "If source exists it must be exported.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1002,7 +1002,7 @@
           "proposed_source": "ERP order address country code",
           "requirement": "Required",
           "provider_rule": "Provider template validates country code.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1013,7 +1013,7 @@
           "proposed_source": "ERP order address province/state",
           "requirement": "Conditional Required",
           "provider_rule": "Required where destination/provider requires state; US/CA at minimum.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1024,7 +1024,7 @@
           "proposed_source": "Structured canonical address field when available",
           "requirement": "Optional",
           "provider_rule": "Do not parse/guess from free-form address.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1035,7 +1035,7 @@
           "proposed_source": "ERP order address city",
           "requirement": "Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1046,7 +1046,7 @@
           "proposed_source": "ERP order address postal code",
           "requirement": "Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1057,7 +1057,7 @@
           "proposed_source": "Structured canonical address field when available",
           "requirement": "Optional",
           "provider_rule": "Do not infer from AddressLine1.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1068,7 +1068,7 @@
           "proposed_source": "ERP order address line 1",
           "requirement": "Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1079,7 +1079,7 @@
           "proposed_source": "ERP order address line 2",
           "requirement": "Optional",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1090,7 +1090,7 @@
           "proposed_source": "ERP order_note -> shipment.logistics_note fallback",
           "requirement": "Optional",
           "provider_rule": "Do not include internal debug/system notes.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1101,7 +1101,7 @@
           "proposed_source": "ERP order item SKU #1",
           "requirement": "Required",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1112,7 +1112,7 @@
           "proposed_source": "ERP order item quantity #1",
           "requirement": "Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1123,7 +1123,7 @@
           "proposed_source": "ERP order item SKU #2",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1134,7 +1134,7 @@
           "proposed_source": "ERP order item quantity #2",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1145,7 +1145,7 @@
           "proposed_source": "ERP order item SKU #3",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1156,7 +1156,7 @@
           "proposed_source": "ERP order item quantity #3",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1167,7 +1167,7 @@
           "proposed_source": "ERP order item SKU #4",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1178,7 +1178,7 @@
           "proposed_source": "ERP order item quantity #4",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1189,7 +1189,7 @@
           "proposed_source": "ERP order item SKU #5",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1200,7 +1200,7 @@
           "proposed_source": "ERP order item quantity #5",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1211,7 +1211,7 @@
           "proposed_source": "ERP order item SKU #6",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1222,7 +1222,7 @@
           "proposed_source": "ERP order item quantity #6",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1233,7 +1233,7 @@
           "proposed_source": "ERP order item SKU #7",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1244,7 +1244,7 @@
           "proposed_source": "ERP order item quantity #7",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1255,7 +1255,7 @@
           "proposed_source": "ERP order item SKU #8",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1266,7 +1266,7 @@
           "proposed_source": "ERP order item quantity #8",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1277,7 +1277,7 @@
           "proposed_source": "ERP order item SKU #9",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1288,7 +1288,7 @@
           "proposed_source": "ERP order item quantity #9",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1299,7 +1299,7 @@
           "proposed_source": "ERP order item SKU #10",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1310,7 +1310,7 @@
           "proposed_source": "ERP order item quantity #10",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1321,7 +1321,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1332,7 +1332,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1343,7 +1343,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1354,7 +1354,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1365,7 +1365,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1376,7 +1376,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1387,7 +1387,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1398,7 +1398,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1409,7 +1409,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1420,7 +1420,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1431,7 +1431,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1442,7 +1442,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1453,7 +1453,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1464,7 +1464,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1475,7 +1475,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1486,7 +1486,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1497,7 +1497,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1508,7 +1508,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1519,7 +1519,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1530,7 +1530,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         }
@@ -1552,7 +1552,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1563,7 +1563,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1574,7 +1574,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Reader column required",
           "provider_rule": "",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1585,7 +1585,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1596,7 +1596,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1607,7 +1607,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1618,7 +1618,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1629,7 +1629,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1640,7 +1640,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1651,7 +1651,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1662,7 +1662,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1673,7 +1673,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Reader column required",
           "provider_rule": "",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1684,7 +1684,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1695,7 +1695,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1706,7 +1706,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1717,7 +1717,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1728,7 +1728,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1739,7 +1739,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1750,7 +1750,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Reader column required",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1761,7 +1761,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1772,7 +1772,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1783,7 +1783,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1794,7 +1794,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1805,7 +1805,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1816,7 +1816,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1827,7 +1827,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1838,7 +1838,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1849,7 +1849,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1860,7 +1860,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1871,7 +1871,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1882,7 +1882,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1893,7 +1893,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1904,7 +1904,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1915,7 +1915,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1926,7 +1926,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1937,7 +1937,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1948,7 +1948,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1959,7 +1959,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1970,7 +1970,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1981,7 +1981,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -1992,7 +1992,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2003,7 +2003,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2014,7 +2014,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2025,7 +2025,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2036,7 +2036,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2047,7 +2047,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2058,7 +2058,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Reader column required",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2069,7 +2069,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2080,7 +2080,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2091,7 +2091,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2102,7 +2102,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2113,7 +2113,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2124,7 +2124,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2135,7 +2135,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2146,7 +2146,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2157,7 +2157,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2168,7 +2168,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2179,7 +2179,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2190,7 +2190,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2201,7 +2201,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2212,7 +2212,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2223,7 +2223,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2234,7 +2234,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2245,7 +2245,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2256,7 +2256,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2267,7 +2267,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2278,7 +2278,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2289,7 +2289,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2300,7 +2300,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2311,7 +2311,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2322,7 +2322,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2333,7 +2333,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2344,7 +2344,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2355,7 +2355,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2366,7 +2366,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2377,7 +2377,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2388,7 +2388,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2399,7 +2399,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         }
@@ -2421,7 +2421,7 @@
           "proposed_source": "Constant Yangfan",
           "requirement": "Required",
           "provider_rule": "US-SM warehouse profile. Do not derive from order.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2432,7 +2432,7 @@
           "proposed_source": "Owner Review",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2443,7 +2443,7 @@
           "proposed_source": "Owner Review",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2454,7 +2454,7 @@
           "proposed_source": "ERP canonical provider reference",
           "requirement": "PROPOSED Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2465,7 +2465,7 @@
           "proposed_source": "Owner Review",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2476,7 +2476,7 @@
           "proposed_source": "Constant Service with the lowest price",
           "requirement": "Required",
           "provider_rule": "US-SM profile fixed to Service with the lowest price.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2487,7 +2487,7 @@
           "proposed_source": "Constant USPS",
           "requirement": "Required",
           "provider_rule": "US-SM carrier fixed to USPS; provider chooses the concrete USPS service.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2498,7 +2498,7 @@
           "proposed_source": "Provider-generated tracking",
           "requirement": "N/A outbound / Provider generated",
           "provider_rule": "Must remain blank in outbound file.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit provider-generated outbound blank",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2509,7 +2509,7 @@
           "proposed_source": "Owner Review",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2520,7 +2520,7 @@
           "proposed_source": "Owner Review",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2531,7 +2531,7 @@
           "proposed_source": "ERP order address/contact snapshot",
           "requirement": "PROPOSED Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2542,7 +2542,7 @@
           "proposed_source": "Canonical contact snapshot; Woo shipping.phone -> billing.phone fallback",
           "requirement": "Required",
           "provider_rule": "Missing both sources must fail closed.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2553,7 +2553,7 @@
           "proposed_source": "Canonical contact snapshot; Woo shipping.email -> billing.email fallback",
           "requirement": "Optional",
           "provider_rule": "If source exists it must be exported; missing email does not block shipment.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2564,7 +2564,7 @@
           "proposed_source": "Owner Review",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2575,7 +2575,7 @@
           "proposed_source": "Canonical contact snapshot; Woo shipping.company -> billing.company fallback",
           "requirement": "Optional",
           "provider_rule": "If source exists it must be exported.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2586,7 +2586,7 @@
           "proposed_source": "ERP order address country",
           "requirement": "PROPOSED Required",
           "provider_rule": "Provider template data validation: country code required.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2597,7 +2597,7 @@
           "proposed_source": "ERP order address province/state",
           "requirement": "PROPOSED Optional",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2608,7 +2608,7 @@
           "proposed_source": "Owner Review",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2619,7 +2619,7 @@
           "proposed_source": "ERP order address city",
           "requirement": "PROPOSED Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2630,7 +2630,7 @@
           "proposed_source": "ERP order address postal code",
           "requirement": "PROPOSED Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2641,7 +2641,7 @@
           "proposed_source": "Owner Review",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2652,7 +2652,7 @@
           "proposed_source": "ERP order address line 1",
           "requirement": "PROPOSED Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2663,7 +2663,7 @@
           "proposed_source": "ERP order address line 2",
           "requirement": "PROPOSED Optional",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2674,7 +2674,7 @@
           "proposed_source": "ERP order_note -> shipment.logistics_note",
           "requirement": "PROPOSED Optional",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2685,7 +2685,7 @@
           "proposed_source": "ERP order item SKU #1",
           "requirement": "Required",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2696,7 +2696,7 @@
           "proposed_source": "ERP order item quantity #1",
           "requirement": "Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2707,7 +2707,7 @@
           "proposed_source": "ERP order item SKU #2",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2718,7 +2718,7 @@
           "proposed_source": "ERP order item quantity #2",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2729,7 +2729,7 @@
           "proposed_source": "ERP order item SKU #3",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2740,7 +2740,7 @@
           "proposed_source": "ERP order item quantity #3",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2751,7 +2751,7 @@
           "proposed_source": "ERP order item SKU #4",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2762,7 +2762,7 @@
           "proposed_source": "ERP order item quantity #4",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2773,7 +2773,7 @@
           "proposed_source": "ERP order item SKU #5",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2784,7 +2784,7 @@
           "proposed_source": "ERP order item quantity #5",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2795,7 +2795,7 @@
           "proposed_source": "ERP order item SKU #6",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2806,7 +2806,7 @@
           "proposed_source": "ERP order item quantity #6",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2817,7 +2817,7 @@
           "proposed_source": "ERP order item SKU #7",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2828,7 +2828,7 @@
           "proposed_source": "ERP order item quantity #7",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2839,7 +2839,7 @@
           "proposed_source": "ERP order item SKU #8",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2850,7 +2850,7 @@
           "proposed_source": "ERP order item quantity #8",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2861,7 +2861,7 @@
           "proposed_source": "ERP order item SKU #9",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2872,7 +2872,7 @@
           "proposed_source": "ERP order item quantity #9",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2883,7 +2883,7 @@
           "proposed_source": "ERP order item SKU #10",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty must be paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2894,7 +2894,7 @@
           "proposed_source": "ERP order item quantity #10",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2905,7 +2905,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2916,7 +2916,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2927,7 +2927,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2938,7 +2938,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2949,7 +2949,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2960,7 +2960,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2971,7 +2971,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2982,7 +2982,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -2993,7 +2993,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3004,7 +3004,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3015,7 +3015,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3026,7 +3026,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3037,7 +3037,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3048,7 +3048,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3059,7 +3059,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3070,7 +3070,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3081,7 +3081,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3092,7 +3092,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3103,7 +3103,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3114,7 +3114,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns but provider instruction says max 10 SKUs. V1 must fail closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         }
@@ -3147,7 +3147,7 @@
           "proposed_source": "Constant Hannover for provider XLSX only",
           "requirement": "Required",
           "provider_rule": "ERP business warehouse remains 德国天运 / DE. Hannover must never replace the ERP-facing warehouse name.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3158,7 +3158,7 @@
           "proposed_source": "Owner Review",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3169,7 +3169,7 @@
           "proposed_source": "Owner Review",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3180,7 +3180,7 @@
           "proposed_source": "ERP canonical provider reference",
           "requirement": "PROPOSED Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3191,7 +3191,7 @@
           "proposed_source": "Owner Review",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3202,7 +3202,7 @@
           "proposed_source": "DE => DHL PAKET DOMESTIC; non-DE => DHL PAKET International N",
           "requirement": "Required",
           "provider_rule": "Select automatically from destination country; no free-text operator choice.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3213,7 +3213,7 @@
           "proposed_source": "Blank outbound unless provider rule requires explicit carrier",
           "requirement": "Conditional Required",
           "provider_rule": "Do not infer Carrier merely from DHL text in shipping service. Provider return carrier is evidence only.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3224,7 +3224,7 @@
           "proposed_source": "Provider-generated; outbound blank unless contract says otherwise",
           "requirement": "N/A outbound / Provider generated",
           "provider_rule": "",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit provider-generated outbound blank",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3235,7 +3235,7 @@
           "proposed_source": "Owner Review",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3246,7 +3246,7 @@
           "proposed_source": "Owner Review",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3257,7 +3257,7 @@
           "proposed_source": "ERP order address/contact snapshot",
           "requirement": "PROPOSED Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3268,7 +3268,7 @@
           "proposed_source": "Canonical contact snapshot; Woo shipping.phone -> billing.phone fallback",
           "requirement": "Required",
           "provider_rule": "Missing both sources must fail closed.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3279,7 +3279,7 @@
           "proposed_source": "Canonical contact snapshot; Woo shipping.email -> billing.email fallback",
           "requirement": "Optional",
           "provider_rule": "If source exists it must be exported.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3290,7 +3290,7 @@
           "proposed_source": "Owner Review",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3301,7 +3301,7 @@
           "proposed_source": "Canonical contact snapshot; Woo shipping.company -> billing.company fallback",
           "requirement": "Optional",
           "provider_rule": "If source exists it must be exported.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3312,7 +3312,7 @@
           "proposed_source": "ERP order address country",
           "requirement": "PROPOSED Required",
           "provider_rule": "Provider template data validation: country code required.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3323,7 +3323,7 @@
           "proposed_source": "ERP order address province/state",
           "requirement": "PROPOSED Optional",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3334,7 +3334,7 @@
           "proposed_source": "Owner Review",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3345,7 +3345,7 @@
           "proposed_source": "ERP order address city",
           "requirement": "PROPOSED Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3356,7 +3356,7 @@
           "proposed_source": "ERP order address postal code",
           "requirement": "PROPOSED Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3367,7 +3367,7 @@
           "proposed_source": "Owner Review",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3378,7 +3378,7 @@
           "proposed_source": "ERP order address line 1",
           "requirement": "PROPOSED Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3389,7 +3389,7 @@
           "proposed_source": "ERP order address line 2",
           "requirement": "PROPOSED Optional",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3400,7 +3400,7 @@
           "proposed_source": "ERP order_note -> shipment.logistics_note",
           "requirement": "PROPOSED Optional",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3411,7 +3411,7 @@
           "proposed_source": "ERP order item SKU #1",
           "requirement": "Required",
           "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3422,7 +3422,7 @@
           "proposed_source": "ERP order item quantity #1",
           "requirement": "Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3433,7 +3433,7 @@
           "proposed_source": "ERP order item SKU #2",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3444,7 +3444,7 @@
           "proposed_source": "ERP order item quantity #2",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3455,7 +3455,7 @@
           "proposed_source": "ERP order item SKU #3",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3466,7 +3466,7 @@
           "proposed_source": "ERP order item quantity #3",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3477,7 +3477,7 @@
           "proposed_source": "ERP order item SKU #4",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3488,7 +3488,7 @@
           "proposed_source": "ERP order item quantity #4",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3499,7 +3499,7 @@
           "proposed_source": "ERP order item SKU #5",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3510,7 +3510,7 @@
           "proposed_source": "ERP order item quantity #5",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3521,7 +3521,7 @@
           "proposed_source": "ERP order item SKU #6",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3532,7 +3532,7 @@
           "proposed_source": "ERP order item quantity #6",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3543,7 +3543,7 @@
           "proposed_source": "ERP order item SKU #7",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3554,7 +3554,7 @@
           "proposed_source": "ERP order item quantity #7",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3565,7 +3565,7 @@
           "proposed_source": "ERP order item SKU #8",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3576,7 +3576,7 @@
           "proposed_source": "ERP order item quantity #8",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3587,7 +3587,7 @@
           "proposed_source": "ERP order item SKU #9",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3598,7 +3598,7 @@
           "proposed_source": "ERP order item quantity #9",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3609,7 +3609,7 @@
           "proposed_source": "ERP order item SKU #10",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3620,7 +3620,7 @@
           "proposed_source": "ERP order item quantity #10",
           "requirement": "Conditional Required",
           "provider_rule": "Required when paired SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3631,7 +3631,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3642,7 +3642,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3653,7 +3653,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3664,7 +3664,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3675,7 +3675,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3686,7 +3686,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3697,7 +3697,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3708,7 +3708,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3719,7 +3719,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3730,7 +3730,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3741,7 +3741,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3752,7 +3752,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3763,7 +3763,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3774,7 +3774,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3785,7 +3785,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3796,7 +3796,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3807,7 +3807,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3818,7 +3818,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3829,7 +3829,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3840,7 +3840,7 @@
           "proposed_source": "Reserved / do not use",
           "requirement": "Reserved / Blocked",
           "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
-          "current_code": "Mapped",
+          "current_code": "Explicitly blocked by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         }
@@ -3862,7 +3862,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve provider outbound order number; not primary ERP match key.",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3873,7 +3873,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Required",
           "provider_rule": "Must match ERP canonical reference; blank/unmatched/ambiguous => BLOCKED.",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3884,7 +3884,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3895,7 +3895,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Required for Apply",
           "provider_rule": "Normal shipment tracking. Must not be substituted by Return Tracking No.",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3906,7 +3906,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3917,7 +3917,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Conditional Safety Check",
           "provider_rule": "Warehouse mismatch vs DE => BLOCKED; never reassign ERP warehouse.",
-          "current_code": "Ignored by reader",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3928,7 +3928,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3939,7 +3939,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3950,7 +3950,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3961,7 +3961,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3972,7 +3972,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Pending/processing does not block valid Tracking; explicit Cancelled => BLOCKED.",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3983,7 +3983,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preview/audit only; do not silently overwrite ERP carrier master.",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -3994,7 +3994,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Never substitute for outbound Tracking No.",
-          "current_code": "Ignored by reader",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4005,7 +4005,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4016,7 +4016,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4027,7 +4027,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4038,7 +4038,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4049,7 +4049,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4060,7 +4060,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4071,7 +4071,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Use OutboundTime when reliable/parseable; otherwise ERP Apply time.",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4082,7 +4082,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Conditional Blocker",
           "provider_rule": "Nonempty cancel time / explicit cancellation => BLOCKED.",
-          "current_code": "Ignored by reader",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4093,7 +4093,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4104,7 +4104,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4115,7 +4115,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4126,7 +4126,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4137,7 +4137,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4148,7 +4148,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4159,7 +4159,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4170,7 +4170,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4181,7 +4181,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4192,7 +4192,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4203,7 +4203,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4214,7 +4214,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4225,7 +4225,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4236,7 +4236,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4247,7 +4247,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4258,7 +4258,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preview differences; no silent overwrite.",
-          "current_code": "Reader uses",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4269,7 +4269,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4280,7 +4280,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4291,7 +4291,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Owner Review",
           "provider_rule": "",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4302,7 +4302,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Reader uses + preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4313,7 +4313,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4324,7 +4324,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4335,7 +4335,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4346,7 +4346,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4357,7 +4357,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4368,7 +4368,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4379,7 +4379,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4390,7 +4390,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4401,7 +4401,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4412,7 +4412,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4423,7 +4423,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4434,7 +4434,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4445,7 +4445,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4456,7 +4456,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4467,7 +4467,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4478,7 +4478,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4489,7 +4489,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4500,7 +4500,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Optional",
           "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
-          "current_code": "Ignored by reader",
+          "current_code": "Preserved in provider_evidence",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         }
@@ -4522,7 +4522,7 @@
           "proposed_source": "ERP canonical provider reference",
           "requirement": "Required",
           "provider_rule": "Must be stable and traceable back to ERP order.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4533,7 +4533,7 @@
           "proposed_source": "Constant CA02_多伦多仓 for provider XLSX only",
           "requirement": "Required",
           "provider_rule": "ERP business warehouse remains 加拿大仓 / CA. Provider code must not replace ERP-facing name.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4544,7 +4544,7 @@
           "proposed_source": "Constant CAPOST[加拿大邮政多伦多]",
           "requirement": "Required",
           "provider_rule": "Provider product fixed for current Canada flow.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4555,7 +4555,7 @@
           "proposed_source": "Provider-generated / not requested by default",
           "requirement": "N/A outbound / Provider generated",
           "provider_rule": "Keep blank in default outbound flow; do not fabricate label/tracking/invoice data.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit provider-generated outbound blank",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4566,7 +4566,7 @@
           "proposed_source": "Provider-generated / not requested by default",
           "requirement": "N/A outbound / Provider generated",
           "provider_rule": "Keep blank in default outbound flow; do not fabricate label/tracking/invoice data.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit provider-generated outbound blank",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4577,7 +4577,7 @@
           "proposed_source": "Provider-generated / not requested by default",
           "requirement": "N/A outbound / Provider generated",
           "provider_rule": "Keep blank in default outbound flow; do not fabricate label/tracking/invoice data.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit provider-generated outbound blank",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4588,7 +4588,7 @@
           "proposed_source": "Provider-generated / not requested by default",
           "requirement": "N/A outbound / Provider generated",
           "provider_rule": "Keep blank in default outbound flow; do not fabricate label/tracking/invoice data.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit provider-generated outbound blank",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4599,7 +4599,7 @@
           "proposed_source": "Provider-generated / not requested by default",
           "requirement": "N/A outbound / Provider generated",
           "provider_rule": "Keep blank in default outbound flow; do not fabricate label/tracking/invoice data.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit provider-generated outbound blank",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4610,7 +4610,7 @@
           "proposed_source": "Provider-generated / not requested by default",
           "requirement": "N/A outbound / Provider generated",
           "provider_rule": "Keep blank in default outbound flow; do not fabricate label/tracking/invoice data.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit provider-generated outbound blank",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4621,7 +4621,7 @@
           "proposed_source": "Canonical customs/order/product data when genuinely available",
           "requirement": "Conditional",
           "provider_rule": "Populate only when provider/destination requires and source is real. Never guess declared value, currency, HS code, tax IDs, exporter data, insurance or signature.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4632,7 +4632,7 @@
           "proposed_source": "Canonical customs/order/product data when genuinely available",
           "requirement": "Conditional",
           "provider_rule": "Populate only when provider/destination requires and source is real. Never guess declared value, currency, HS code, tax IDs, exporter data, insurance or signature.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4643,7 +4643,7 @@
           "proposed_source": "Canonical customs/order/product data when genuinely available",
           "requirement": "Conditional",
           "provider_rule": "Populate only when provider/destination requires and source is real. Never guess declared value, currency, HS code, tax IDs, exporter data, insurance or signature.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4654,7 +4654,7 @@
           "proposed_source": "Canonical customs/order/product data when genuinely available",
           "requirement": "Conditional",
           "provider_rule": "Populate only when provider/destination requires and source is real. Never guess declared value, currency, HS code, tax IDs, exporter data, insurance or signature.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4665,7 +4665,7 @@
           "proposed_source": "Woo order => Woocommerce enum when supported",
           "requirement": "Optional",
           "provider_rule": "If source known and provider enum supports it, export canonical platform value.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4676,7 +4676,7 @@
           "proposed_source": "Woo/platform order number when available",
           "requirement": "Optional",
           "provider_rule": "If source exists it must be exported.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4687,7 +4687,7 @@
           "proposed_source": "Canonical seller/store identifier when explicitly configured",
           "requirement": "Optional",
           "provider_rule": "Do not invent.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4698,7 +4698,7 @@
           "proposed_source": "ERP order address country code",
           "requirement": "Required",
           "provider_rule": "Country code must be valid for provider.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4709,7 +4709,7 @@
           "proposed_source": "ERP order address province/state",
           "requirement": "Conditional Required",
           "provider_rule": "Required when destination/provider requires state/province.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4720,7 +4720,7 @@
           "proposed_source": "ERP order address city",
           "requirement": "Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4731,7 +4731,7 @@
           "proposed_source": "Structured canonical address field when available",
           "requirement": "Optional",
           "provider_rule": "Do not infer from free-form address.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4742,7 +4742,7 @@
           "proposed_source": "ERP address line 1 + line 2 as provider street field",
           "requirement": "Required",
           "provider_rule": "Do not silently truncate.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4753,7 +4753,7 @@
           "proposed_source": "ERP order address postal code",
           "requirement": "Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4764,7 +4764,7 @@
           "proposed_source": "ERP canonical recipient snapshot",
           "requirement": "Required",
           "provider_rule": "",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4775,7 +4775,7 @@
           "proposed_source": "Canonical contact snapshot; Woo shipping.phone -> billing.phone fallback",
           "requirement": "Required",
           "provider_rule": "Missing both sources must fail closed.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4786,7 +4786,7 @@
           "proposed_source": "Canonical contact snapshot; Woo shipping.email -> billing.email fallback",
           "requirement": "Optional",
           "provider_rule": "If source exists it must be exported; missing email does not block.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4797,7 +4797,7 @@
           "proposed_source": "Canonical contact snapshot; Woo shipping.company -> billing.company fallback",
           "requirement": "Optional",
           "provider_rule": "If source exists it must be exported.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4808,7 +4808,7 @@
           "proposed_source": "Canonical customs/contact data when genuinely available",
           "requirement": "Conditional Optional",
           "provider_rule": "Populate only from real source. Never guess ID/VAT/EORI/IOSS.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4819,7 +4819,7 @@
           "proposed_source": "Canonical customs/contact data when genuinely available",
           "requirement": "Conditional Optional",
           "provider_rule": "Populate only from real source. Never guess ID/VAT/EORI/IOSS.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4830,7 +4830,7 @@
           "proposed_source": "Canonical customs/contact data when genuinely available",
           "requirement": "Conditional Optional",
           "provider_rule": "Populate only from real source. Never guess ID/VAT/EORI/IOSS.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4841,7 +4841,7 @@
           "proposed_source": "Canonical customs/contact data when genuinely available",
           "requirement": "Conditional Optional",
           "provider_rule": "Populate only from real source. Never guess ID/VAT/EORI/IOSS.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4852,7 +4852,7 @@
           "proposed_source": "Canonical customs/contact data when genuinely available",
           "requirement": "Conditional Optional",
           "provider_rule": "Populate only from real source. Never guess ID/VAT/EORI/IOSS.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4863,7 +4863,7 @@
           "proposed_source": "Canonical customs/contact data when genuinely available",
           "requirement": "Conditional Optional",
           "provider_rule": "Populate only from real source. Never guess ID/VAT/EORI/IOSS.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4874,7 +4874,7 @@
           "proposed_source": "Canonical customs/contact data when genuinely available",
           "requirement": "Conditional Optional",
           "provider_rule": "Populate only from real source. Never guess ID/VAT/EORI/IOSS.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4885,7 +4885,7 @@
           "proposed_source": "Canonical customs/order/product data when genuinely available",
           "requirement": "Conditional",
           "provider_rule": "Populate only when provider/destination requires and source is real. Never guess declared value, currency, HS code, tax IDs, exporter data, insurance or signature.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4896,7 +4896,7 @@
           "proposed_source": "Canonical customs/order/product data when genuinely available",
           "requirement": "Conditional",
           "provider_rule": "Populate only when provider/destination requires and source is real. Never guess declared value, currency, HS code, tax IDs, exporter data, insurance or signature.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4907,7 +4907,7 @@
           "proposed_source": "Canonical customs/order/product data when genuinely available",
           "requirement": "Conditional",
           "provider_rule": "Populate only when provider/destination requires and source is real. Never guess declared value, currency, HS code, tax IDs, exporter data, insurance or signature.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4918,7 +4918,7 @@
           "proposed_source": "Canonical customs/order/product data when genuinely available",
           "requirement": "Conditional",
           "provider_rule": "Populate only when provider/destination requires and source is real. Never guess declared value, currency, HS code, tax IDs, exporter data, insurance or signature.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4929,7 +4929,7 @@
           "proposed_source": "Canonical customs/order/product data when genuinely available",
           "requirement": "Conditional",
           "provider_rule": "Populate only when provider/destination requires and source is real. Never guess declared value, currency, HS code, tax IDs, exporter data, insurance or signature.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4940,7 +4940,7 @@
           "proposed_source": "Canonical customs/order/product data when genuinely available",
           "requirement": "Conditional",
           "provider_rule": "Populate only when provider/destination requires and source is real. Never guess declared value, currency, HS code, tax IDs, exporter data, insurance or signature.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4951,7 +4951,7 @@
           "proposed_source": "ERP order item SKU #1",
           "requirement": "Required",
           "provider_rule": "SKU/Qty pair; max 5 SKUs.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4962,7 +4962,7 @@
           "proposed_source": "ERP order item quantity #1",
           "requirement": "Required",
           "provider_rule": "Required when SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4973,7 +4973,7 @@
           "proposed_source": "Blank unless canonical provider/order source exists",
           "requirement": "Optional",
           "provider_rule": "Do not invent batch/eBay identifiers.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4984,7 +4984,7 @@
           "proposed_source": "Constant G  良好 for current flow",
           "requirement": "Conditional",
           "provider_rule": "Only when item slot is used.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -4995,7 +4995,7 @@
           "proposed_source": "Blank unless canonical provider/order source exists",
           "requirement": "Optional",
           "provider_rule": "Do not invent batch/eBay identifiers.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5006,7 +5006,7 @@
           "proposed_source": "Blank unless canonical provider/order source exists",
           "requirement": "Optional",
           "provider_rule": "Do not invent batch/eBay identifiers.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5017,7 +5017,7 @@
           "proposed_source": "ERP order item SKU #2",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty pair; max 5 SKUs.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5028,7 +5028,7 @@
           "proposed_source": "ERP order item quantity #2",
           "requirement": "Conditional Required",
           "provider_rule": "Required when SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5039,7 +5039,7 @@
           "proposed_source": "Blank unless canonical provider/order source exists",
           "requirement": "Optional",
           "provider_rule": "Do not invent batch/eBay identifiers.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5050,7 +5050,7 @@
           "proposed_source": "Constant G  良好 for current flow",
           "requirement": "Conditional",
           "provider_rule": "Only when item slot is used.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5061,7 +5061,7 @@
           "proposed_source": "Blank unless canonical provider/order source exists",
           "requirement": "Optional",
           "provider_rule": "Do not invent batch/eBay identifiers.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5072,7 +5072,7 @@
           "proposed_source": "Blank unless canonical provider/order source exists",
           "requirement": "Optional",
           "provider_rule": "Do not invent batch/eBay identifiers.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5083,7 +5083,7 @@
           "proposed_source": "ERP order item SKU #3",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty pair; max 5 SKUs.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5094,7 +5094,7 @@
           "proposed_source": "ERP order item quantity #3",
           "requirement": "Conditional Required",
           "provider_rule": "Required when SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5105,7 +5105,7 @@
           "proposed_source": "Blank unless canonical provider/order source exists",
           "requirement": "Optional",
           "provider_rule": "Do not invent batch/eBay identifiers.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5116,7 +5116,7 @@
           "proposed_source": "Constant G  良好 for current flow",
           "requirement": "Conditional",
           "provider_rule": "Only when item slot is used.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5127,7 +5127,7 @@
           "proposed_source": "Blank unless canonical provider/order source exists",
           "requirement": "Optional",
           "provider_rule": "Do not invent batch/eBay identifiers.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5138,7 +5138,7 @@
           "proposed_source": "Blank unless canonical provider/order source exists",
           "requirement": "Optional",
           "provider_rule": "Do not invent batch/eBay identifiers.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5149,7 +5149,7 @@
           "proposed_source": "ERP order item SKU #4",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty pair; max 5 SKUs.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5160,7 +5160,7 @@
           "proposed_source": "ERP order item quantity #4",
           "requirement": "Conditional Required",
           "provider_rule": "Required when SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5171,7 +5171,7 @@
           "proposed_source": "Blank unless canonical provider/order source exists",
           "requirement": "Optional",
           "provider_rule": "Do not invent batch/eBay identifiers.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5182,7 +5182,7 @@
           "proposed_source": "Constant G  良好 for current flow",
           "requirement": "Conditional",
           "provider_rule": "Only when item slot is used.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5193,7 +5193,7 @@
           "proposed_source": "Blank unless canonical provider/order source exists",
           "requirement": "Optional",
           "provider_rule": "Do not invent batch/eBay identifiers.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5204,7 +5204,7 @@
           "proposed_source": "Blank unless canonical provider/order source exists",
           "requirement": "Optional",
           "provider_rule": "Do not invent batch/eBay identifiers.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5215,7 +5215,7 @@
           "proposed_source": "ERP order item SKU #5",
           "requirement": "Conditional Optional",
           "provider_rule": "SKU/Qty pair; max 5 SKUs.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5226,7 +5226,7 @@
           "proposed_source": "ERP order item quantity #5",
           "requirement": "Conditional Required",
           "provider_rule": "Required when SKU exists; quantity > 0.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5237,7 +5237,7 @@
           "proposed_source": "Blank unless canonical provider/order source exists",
           "requirement": "Optional",
           "provider_rule": "Do not invent batch/eBay identifiers.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5248,7 +5248,7 @@
           "proposed_source": "Constant G  良好 for current flow",
           "requirement": "Conditional",
           "provider_rule": "Only when item slot is used.",
-          "current_code": "Mapped",
+          "current_code": "Mapped / contract-enforced",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5259,7 +5259,7 @@
           "proposed_source": "Blank unless canonical provider/order source exists",
           "requirement": "Optional",
           "provider_rule": "Do not invent batch/eBay identifiers.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         },
@@ -5270,7 +5270,7 @@
           "proposed_source": "Blank unless canonical provider/order source exists",
           "requirement": "Optional",
           "provider_rule": "Do not invent batch/eBay identifiers.",
-          "current_code": "Unmapped / silent blank",
+          "current_code": "Explicit blank/conditional by confirmed contract",
           "owner_status": "confirmed",
           "owner_notes": "Owner PASS 2026-09-23"
         }
@@ -5292,7 +5292,7 @@
           "proposed_source": "Provider return file; ERP reader/evidence role",
           "requirement": "Insufficient sample — cannot freeze",
           "provider_rule": "",
-          "current_code": "Sample invalid/incomplete; reader expects 订单号 + 包裹序号 + com_lab_3015",
+          "current_code": "Fail-closed; real Tracking return schema not frozen",
           "owner_status": "blocked_need_real_sample",
           "owner_notes": "Need real post-shipment Canada provider return XLSX before freezing tracking return contract."
         }
@@ -5301,5 +5301,15 @@
     }
   ],
   "last_owner_review": "2026-09-23",
-  "owner_contract_freeze_status": "complete_except_blocked_real_samples"
+  "owner_contract_freeze_status": "complete_except_blocked_real_samples",
+  "implementation_contract_status": "local_validated",
+  "validation": {
+    "date": "2026-09-23",
+    "woo_inbound": "11 tests / 86 assertions PASS",
+    "oversea_logistics": "31 tests / 320 assertions PASS",
+    "registry": "4 tests / 2892 assertions PASS",
+    "vite_build": "942 modules PASS",
+    "pint": "14 files PASS",
+    "diff_check": "PASS"
+  }
 }
