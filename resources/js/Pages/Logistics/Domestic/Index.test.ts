@@ -46,6 +46,19 @@ describe('Domestic logistics production workbench', () => {
     expect(wrapper.find('input[type="file"]').attributes('accept')).toBe('.xls,.xlsx')
   })
 
+
+  it('shows a mixed-carrier ERP batch download/upload only on the pending work queue', () => {
+    const pending=mount(Index,{props:{...baseProps,view:'pending',trackingImportPreview:null,trackingImportProvider:null}})
+    expect(pending.find('a[href="/logistics/china/pending-batch/export"]').exists()).toBe(true)
+    expect(pending.text()).toContain('上传批量单号表')
+    expect(pending.text()).toContain('可混合承运商')
+    expect(pending.text()).toContain('不替代承运商自己的下单模板')
+
+    const history=mount(Index,{props:{...baseProps,view:'4px',trackingImportPreview:null,trackingImportProvider:null}})
+    expect(history.find('a[href="/logistics/china/pending-batch/export"]').exists()).toBe(false)
+    expect(history.text()).not.toContain('上传批量单号表')
+  })
+
   it('keeps cumulative carrier history query-only and hides provider upload/download controls', () => {
     const speedaHistory=mount(Index,{props:{...baseProps,view:'4px',trackingImportPreview:null,trackingImportProvider:null}})
     expect(speedaHistory.find('.provider-grid').exists()).toBe(false)

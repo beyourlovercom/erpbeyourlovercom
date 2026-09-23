@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
 use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
 use App\Modules\Logistics\Application\Domestic\SpeedaOutboundExporter;
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
@@ -22,6 +23,7 @@ final class DomesticLogisticsController
 
     public function __construct(
         private readonly SpeedaOutboundExporter $speeda,
+        private readonly DomesticPendingBatchExporter $pendingBatch,
         private readonly DomesticTrackingReturnService $tracking,
         private readonly WarehouseOrderReference $references,
     ) {}
@@ -120,6 +122,41 @@ final class DomesticLogisticsController
             'X-BYL-Exported-Orders' => (string) $result['exported_count'],
             'X-BYL-Blocked-Orders' => (string) count($result['blocked']),
         ]);
+    }
+
+    public function exportPendingBatch(): HttpResponse
+    {
+        $factory = $this->factory();
+        $orders = $this->baseQuery((int) $factory->id)
+            ->with(['address', 'items.product', 'shipment', 'externalReferences', 'operationalMarkers'])
+            ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER))
+            ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
+            ->orderBy('order_date')
+            ->orderBy('id')
+            ->get();
+
+        try {
+            $bytes = $this->pendingBatch->export($orders);
+        } catch (\DomainException $e) {
+            abort(422, $e->getMessage());
+        }
+
+        return response($bytes, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="007-domestic-pending-'.now()->format('ymd').'.xlsx"',
+            'Cache-Control' => 'no-store, private',
+            'X-BYL-Exported-Orders' => (string) $orders->count(),
+        ]);
+    }
+
+    public function previewPendingBatch(Request $request): RedirectResponse
+    {
+        return $this->previewTrackingReturn($request, 'generic');
+    }
+
+    public function applyPendingBatch(Request $request): RedirectResponse
+    {
+        return $this->applyTrackingReturn($request, 'generic');
     }
 
     public function previewTrackingReturn(Request $request, string $provider): RedirectResponse
@@ -266,13 +303,13 @@ final class DomesticLogisticsController
     private function provider(string $provider): string
     {
         $provider = strtolower(trim($provider));
-        abort_unless(in_array($provider, ['4px', 'weship'], true), 404);
+        abort_unless(in_array($provider, ['4px', 'weship', 'generic'], true), 404);
 
         return $provider;
     }
 
     private function providerLabel(string $provider): string
     {
-        return $provider === '4px' ? '速达' : '纬狮';
+        return match ($provider) { '4px' => '速达', 'weship' => '纬狮', default => '待发货批量' };
     }
 }
