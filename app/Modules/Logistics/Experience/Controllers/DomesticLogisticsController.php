@@ -175,14 +175,40 @@ final class DomesticLogisticsController
             'pending' => $query
                 ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
                 ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER)),
-            'today-4px' => $query->whereHas('shipment', fn ($q) => $q->whereDate('shipped_at', now()->toDateString())->whereRaw('LOWER(carrier) = ?', ['4px'])),
-            'today-weship' => $query->whereHas('shipment', fn ($q) => $q->whereDate('shipped_at', now()->toDateString())->whereRaw('LOWER(carrier) = ?', ['weship'])),
+            'today-4px' => $this->applyTodayProviderView($query, '4px'),
+            'today-weship' => $this->applyTodayProviderView($query, 'weship'),
             'exceptions' => $query->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'exception')),
-            'today' => $query->whereHas('shipment', fn ($q) => $q->whereDate('shipped_at', now()->toDateString())),
-            '4px' => $query->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending')->whereRaw('LOWER(carrier) = ?', ['4px'])),
-            'weship' => $query->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending')->whereRaw('LOWER(carrier) = ?', ['weship'])),
+            'today' => $this->applyTodayView($query),
+            '4px' => $query->whereHas('shipment', fn ($q) => $q->whereRaw('LOWER(carrier) = ?', ['4px'])),
+            'weship' => $query->whereHas('shipment', fn ($q) => $q->whereRaw('LOWER(carrier) = ?', ['weship'])),
             default => null,
         };
+    }
+
+    private function applyTodayProviderView(Builder $query, string $provider): Builder
+    {
+        return $query->where(function (Builder $daily) use ($provider): void {
+            $daily->where(function (Builder $pending) use ($provider): void {
+                $pending
+                    ->whereHas('shipment', fn ($q) => $q
+                        ->where('shipment_status', 'pending')
+                        ->whereRaw('LOWER(carrier) = ?', [$provider]))
+                    ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER));
+            })->orWhereHas('shipment', fn ($q) => $q
+                ->whereDate('shipped_at', now()->toDateString())
+                ->whereRaw('LOWER(carrier) = ?', [$provider]));
+        });
+    }
+
+    private function applyTodayView(Builder $query): Builder
+    {
+        return $query->where(function (Builder $daily): void {
+            $daily->where(function (Builder $pending): void {
+                $pending
+                    ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
+                    ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER));
+            })->orWhereHas('shipment', fn ($q) => $q->whereDate('shipped_at', now()->toDateString()));
+        });
     }
 
     private function row(Order $order, int $line): array

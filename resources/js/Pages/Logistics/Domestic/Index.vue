@@ -69,7 +69,7 @@ const statusLabel = (status:string) => status==='apply' ? '可应用' : status==
         </button>
       </nav>
 
-      <section v-if="view==='pending' || view==='4px' || view==='weship'" class="provider-grid">
+      <section v-if="view==='today' || view==='today-4px' || view==='today-weship'" class="provider-grid">
         <article class="provider-card">
           <div><strong>速达 / 4PX</strong><small>真实 24 列模板 · XLSX 下载 · XLS/XLSX 回传</small></div>
           <div class="actions">
