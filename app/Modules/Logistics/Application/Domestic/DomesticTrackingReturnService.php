@@ -154,7 +154,12 @@ final class DomesticTrackingReturnService
                 if (! $order->operationalMarkers->contains('marker', 'domestic_reviewed')) {
                     $messages[] = '订单尚未完成国内物流审核';
                 }
-                if (strcasecmp(trim((string) $shipment->carrier), $provider === '4px' ? '4PX' : 'Weship') !== 0) {
+                $expectedCarrier = $provider === 'generic'
+                    ? trim((string) ($source['carrier'] ?? ''))
+                    : ($provider === '4px' ? '4PX' : 'Weship');
+                if ($expectedCarrier === '') {
+                    $messages[] = '承运商为空';
+                } elseif (strcasecmp(trim((string) $shipment->carrier), $expectedCarrier) !== 0) {
                     $messages[] = '订单承运商与回传文件不一致';
                 }
                 if ($shipment->shipment_status === 'pending' && filled($shipment->tracking_number) && strcasecmp((string) $shipment->tracking_number, $tracking) !== 0) {
@@ -226,7 +231,7 @@ final class DomesticTrackingReturnService
     private function provider(string $provider): string
     {
         $provider = strtolower(trim($provider));
-        abort_unless(in_array($provider, ['4px', 'weship'], true), 404);
+        abort_unless(in_array($provider, ['4px', 'weship', 'generic'], true), 404);
 
         return $provider;
     }
