@@ -1543,7 +1543,7 @@
       "direction": "RETURN",
       "source_template": "美东系统导出单号模版(1).xlsx",
       "template_status": "78 columns",
-      "owner_status": "owner_review",
+      "owner_status": "confirmed",
       "fields": [
         {
           "ordinal": 1,
@@ -1553,8 +1553,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Reader uses",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 2,
@@ -1564,8 +1564,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 3,
@@ -1575,8 +1575,8 @@
           "requirement": "Reader column required",
           "provider_rule": "",
           "current_code": "Reader uses",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 4,
@@ -1586,8 +1586,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 5,
@@ -1597,8 +1597,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 6,
@@ -1608,8 +1608,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 7,
@@ -1619,8 +1619,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 8,
@@ -1630,8 +1630,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 9,
@@ -1641,8 +1641,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 10,
@@ -1652,8 +1652,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Reader uses",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 11,
@@ -1663,8 +1663,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Reader uses",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 12,
@@ -1674,8 +1674,8 @@
           "requirement": "Reader column required",
           "provider_rule": "",
           "current_code": "Reader uses",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 13,
@@ -1685,8 +1685,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 14,
@@ -1696,8 +1696,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 15,
@@ -1707,8 +1707,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 16,
@@ -1718,8 +1718,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 17,
@@ -1729,8 +1729,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 18,
@@ -1740,8 +1740,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 19,
@@ -1751,8 +1751,8 @@
           "requirement": "Reader column required",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 20,
@@ -1762,8 +1762,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 21,
@@ -1773,8 +1773,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 22,
@@ -1784,8 +1784,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 23,
@@ -1795,8 +1795,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 24,
@@ -1806,8 +1806,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 25,
@@ -1817,8 +1817,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 26,
@@ -1828,8 +1828,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Reader uses",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 27,
@@ -1839,8 +1839,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 28,
@@ -1850,8 +1850,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 29,
@@ -1861,8 +1861,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 30,
@@ -1872,8 +1872,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 31,
@@ -1883,8 +1883,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 32,
@@ -1894,8 +1894,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 33,
@@ -1905,8 +1905,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 34,
@@ -1916,8 +1916,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 35,
@@ -1927,8 +1927,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 36,
@@ -1938,8 +1938,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 37,
@@ -1949,8 +1949,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 38,
@@ -1960,8 +1960,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 39,
@@ -1971,8 +1971,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 40,
@@ -1982,8 +1982,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 41,
@@ -1993,8 +1993,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 42,
@@ -2004,8 +2004,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 43,
@@ -2015,8 +2015,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Reader uses",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 44,
@@ -2026,8 +2026,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 45,
@@ -2037,8 +2037,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 46,
@@ -2048,8 +2048,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 47,
@@ -2059,8 +2059,8 @@
           "requirement": "Reader column required",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 48,
@@ -2070,8 +2070,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 49,
@@ -2081,8 +2081,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 50,
@@ -2092,8 +2092,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 51,
@@ -2103,8 +2103,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 52,
@@ -2114,8 +2114,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 53,
@@ -2125,8 +2125,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 54,
@@ -2136,8 +2136,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 55,
@@ -2147,8 +2147,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 56,
@@ -2158,8 +2158,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 57,
@@ -2169,8 +2169,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 58,
@@ -2180,8 +2180,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 59,
@@ -2191,8 +2191,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 60,
@@ -2202,8 +2202,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 61,
@@ -2213,8 +2213,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 62,
@@ -2224,8 +2224,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 63,
@@ -2235,8 +2235,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 64,
@@ -2246,8 +2246,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 65,
@@ -2257,8 +2257,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 66,
@@ -2268,8 +2268,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 67,
@@ -2279,8 +2279,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 68,
@@ -2290,8 +2290,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 69,
@@ -2301,8 +2301,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 70,
@@ -2312,8 +2312,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 71,
@@ -2323,8 +2323,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 72,
@@ -2334,8 +2334,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 73,
@@ -2345,8 +2345,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 74,
@@ -2356,8 +2356,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 75,
@@ -2367,8 +2367,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 76,
@@ -2378,8 +2378,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 77,
@@ -2389,8 +2389,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 78,
@@ -2400,10 +2400,11 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         }
-      ]
+      ],
+      "owner_notes": "Owner PASS 2026-09-23: US-NY return owner rules confirmed; all 78 technical fields frozen under registry."
     },
     {
       "key": "05_USSM_OUT",
