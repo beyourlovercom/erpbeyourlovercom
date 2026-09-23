@@ -37,13 +37,24 @@ describe('Domestic logistics production workbench', () => {
   beforeEach(() => { routerPost.mockClear(); routerVisit.mockClear() })
 
   it('shows the daily domestic flow, Speeda export and fail-closed Weship export', () => {
-    const wrapper=mount(Index,{props:baseProps})
+    const wrapper=mount(Index,{props:{...baseProps,view:'today-4px'}})
     expect(wrapper.text()).toContain('国内发货')
     expect(wrapper.text()).toContain('单个异常订单不会阻断其他正常订单')
     expect(wrapper.find('a[href="/logistics/china/export/4px"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('下单模板 Fail Closed')
     expect(wrapper.find('a[href="/logistics/china/export/weship"]').exists()).toBe(false)
     expect(wrapper.find('input[type="file"]').attributes('accept')).toBe('.xls,.xlsx')
+  })
+
+  it('keeps cumulative carrier history query-only and hides provider upload/download controls', () => {
+    const speedaHistory=mount(Index,{props:{...baseProps,view:'4px',trackingImportPreview:null,trackingImportProvider:null}})
+    expect(speedaHistory.find('.provider-grid').exists()).toBe(false)
+    expect(speedaHistory.find('a[href="/logistics/china/export/4px"]').exists()).toBe(false)
+    expect(speedaHistory.find('input[type="file"]').exists()).toBe(false)
+
+    const weshipHistory=mount(Index,{props:{...baseProps,view:'weship',trackingImportPreview:null,trackingImportProvider:null}})
+    expect(weshipHistory.find('.provider-grid').exists()).toBe(false)
+    expect(weshipHistory.text()).not.toContain('上传纬狮单号表')
   })
 
   it('allows applying safe rows even when the preview contains blocked rows', async () => {
