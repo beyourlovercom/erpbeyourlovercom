@@ -5,6 +5,7 @@ namespace Tests\Feature\Logistics;
 use App\Models\User;
 use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
 use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
 use App\Modules\Logistics\Application\Domestic\SpeedaOutboundExporter;
 use App\Modules\Orders\Application\OrderKind;
@@ -97,6 +98,63 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         } finally {
             @unlink($path);
         }
+    }
+
+    public function test_pending_batch_export_and_mixed_carrier_tracking_upload_are_carrier_safe(): void
+    {
+        $speeda = $this->domesticOrder('007-0923-c50101', '4PX', reviewed: true, phone: '111', quantity: 1);
+        $other = $this->domesticOrder('007-0923-c50102', 'DHL', reviewed: true, phone: '222', quantity: 2);
+
+        $bytes = app(DomesticPendingBatchExporter::class)->export(collect([$speeda, $other]));
+        $path = tempnam(sys_get_temp_dir(), 'domestic-pending-').'.xlsx';
+        file_put_contents($path, $bytes);
+        try {
+            $book = IOFactory::load($path);
+            $sheet = $book->getActiveSheet();
+            self::assertSame('ERP订单号', $sheet->getCell('A1')->getValue());
+            self::assertSame('承运商', $sheet->getCell('C1')->getValue());
+            self::assertSame('Tracking', $sheet->getCell('E1')->getValue());
+            self::assertSame('007-0923-c50101', $sheet->getCell('A2')->getValue());
+            self::assertSame('4PX', $sheet->getCell('C2')->getValue());
+            self::assertSame('007-0923-c50102', $sheet->getCell('A3')->getValue());
+            self::assertSame('DHL', $sheet->getCell('C3')->getValue());
+            self::assertSame('', (string) $sheet->getCell('E2')->getValue());
+            $book->disconnectWorksheets();
+        } finally {
+            @unlink($path);
+        }
+
+        $sheet = new Spreadsheet;
+        $ws = $sheet->getActiveSheet();
+        $ws->fromArray([
+            ['ERP订单号', '客户单号', '承运商', '服务', 'Tracking'],
+            ['007-0923-c50101', '', '4PX', '', 'GENERIC-4PX-1'],
+            ['007-0923-c50102', '', 'UPS', '', 'GENERIC-WRONG-1'],
+        ]);
+        $uploadPath = tempnam(sys_get_temp_dir(), 'domestic-generic-').'.xlsx';
+        (new Xlsx($sheet))->save($uploadPath);
+        $sheet->disconnectWorksheets();
+
+        try {
+            $preview = app(DomesticTrackingReturnService::class)->preview(
+                'generic',
+                new UploadedFile($uploadPath, 'ERP待发货批量登记.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true),
+            );
+        } finally {
+            @unlink($uploadPath);
+        }
+
+        self::assertSame(1, $preview['apply_count']);
+        self::assertSame(1, $preview['blocked_count']);
+        self::assertSame('apply', $preview['rows'][0]['status']);
+        self::assertStringContainsString('承运商与回传文件不一致', $preview['rows'][1]['message']);
+
+        $actor = User::factory()->create(['is_active' => true]);
+        $result = app(DomesticTrackingReturnService::class)->apply('generic', $preview, $preview['token'], $actor);
+        self::assertSame(1, $result['applied_count']);
+        self::assertSame('shipped', $speeda->fresh()->shipment->shipment_status);
+        self::assertSame('GENERIC-4PX-1', $speeda->fresh()->shipment->tracking_number);
+        self::assertSame('pending', $other->fresh()->shipment->shipment_status);
     }
 
     public function test_speeda_legacy_xls_return_preview_and_partial_apply_isolated_by_row(): void

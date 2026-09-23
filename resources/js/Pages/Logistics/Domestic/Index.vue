@@ -17,11 +17,11 @@ type ProviderStatus = Record<'4px'|'weship',{export_ready:boolean;return_ready:b
 
 const props = defineProps<{
   view:string; rows:PageRows; viewCounts:Record<string,number>; canOperate:boolean
-  trackingImportProvider:'4px'|'weship'|null; trackingImportPreview:Preview|null; providerStatus:ProviderStatus
+  trackingImportProvider:'4px'|'weship'|'generic'|null; trackingImportPreview:Preview|null; providerStatus:ProviderStatus
 }>()
 
 const uploadInput = ref<HTMLInputElement|null>(null)
-const selectedProvider = ref<'4px'|'weship'>('4px')
+const selectedProvider = ref<'4px'|'weship'|'generic'>('4px')
 const tabs = [
   ['review','待审核'], ['pending','待发货'], ['today-4px','今日速达'], ['today-weship','今日纬狮'],
   ['exceptions','异常订单'], ['today','今日订单'], ['4px','速达订单'], ['weship','纬狮订单'],
@@ -31,18 +31,21 @@ const itemText = (row:Row) => row.items.map(item => (item.sku ?? '无SKU') + ' �
 const switchView = (view:string) => router.visit('/logistics/china?view=' + view, { preserveScroll:true, preserveState:true })
 const approve = (row:Row) => router.post('/logistics/china/orders/' + row.order_id + '/approve', {}, { preserveScroll:true, preserveState:true })
 const reopen = (row:Row) => router.post('/logistics/china/orders/' + row.order_id + '/reopen-review', {}, { preserveScroll:true, preserveState:true })
-const chooseUpload = (provider:'4px'|'weship') => { selectedProvider.value=provider; uploadInput.value?.click() }
+const chooseUpload = (provider:'4px'|'weship'|'generic') => { selectedProvider.value=provider; uploadInput.value?.click() }
 const previewFile = (event:Event) => {
   const input=event.target as HTMLInputElement
   const file=input.files?.[0]; if(!file) return
   const data=new FormData(); data.append('file',file)
-  router.post('/logistics/china/' + selectedProvider.value + '/tracking-import/preview', data, { forceFormData:true, preserveScroll:true, onFinish:()=>{ input.value='' } })
+  const url=selectedProvider.value==='generic' ? '/logistics/china/pending-batch/tracking-import/preview' : '/logistics/china/' + selectedProvider.value + '/tracking-import/preview'
+  router.post(url, data, { forceFormData:true, preserveScroll:true, onFinish:()=>{ input.value='' } })
 }
 const applyPreview = () => {
   if(!props.trackingImportPreview || !props.trackingImportProvider) return
-  router.post('/logistics/china/' + props.trackingImportProvider + '/tracking-import/apply', { token:props.trackingImportPreview.token }, { preserveScroll:true })
+  const url=props.trackingImportProvider==='generic' ? '/logistics/china/pending-batch/tracking-import/apply' : '/logistics/china/' + props.trackingImportProvider + '/tracking-import/apply'
+  router.post(url, { token:props.trackingImportPreview.token }, { preserveScroll:true })
 }
 const statusLabel = (status:string) => status==='apply' ? '可应用' : status==='noop' ? '重复跳过' : status==='applied' ? '已应用' : '阻断'
+const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '待发货批量登记' : props.trackingImportProvider ? props.providerStatus[props.trackingImportProvider].label : '')
 </script>
 
 <template>
@@ -69,15 +72,26 @@ const statusLabel = (status:string) => status==='apply' ? '可应用' : status==
         </button>
       </nav>
 
-      <section v-if="view==='pending' || view==='4px' || view==='weship'" class="provider-grid">
-        <article class="provider-card">
+      <section v-if="view==='pending'" class="pending-batch-card">
+        <div>
+          <strong>待发货 · 批量登记</strong>
+          <small>ERP 通用 XLSX，可混合承运商。下载后填写 Tracking 再上传；仅用于 ERP 发货登记，不替代承运商自己的下单模板。</small>
+        </div>
+        <div class="actions">
+          <a class="primary" href="/logistics/china/pending-batch/export">下载待发货批量表</a>
+          <button v-if="canOperate" type="button" class="secondary" @click="chooseUpload('generic')">上传批量单号表</button>
+        </div>
+      </section>
+
+      <section v-if="view==='today' || view==='today-4px' || view==='today-weship'" class="provider-grid" :class="{single:view==='today-4px' || view==='today-weship'}">
+        <article v-if="view!=='today-weship'" class="provider-card">
           <div><strong>速达 / 4PX</strong><small>真实 24 列模板 · XLSX 下载 · XLS/XLSX 回传</small></div>
           <div class="actions">
             <a class="primary" href="/logistics/china/export/4px">下载速达下单表</a>
             <button v-if="canOperate" type="button" class="secondary" @click="chooseUpload('4px')">上传速达单号表</button>
           </div>
         </article>
-        <article class="provider-card" :class="{blocked:!providerStatus.weship.export_ready}">
+        <article v-if="view!=='today-4px'" class="provider-card" :class="{blocked:!providerStatus.weship.export_ready}">
           <div><strong>纬狮 / Weship</strong><small>{{ providerStatus.weship.export_ready ? '真实模板已安装' : providerStatus.weship.reason }}</small></div>
           <div class="actions">
             <a v-if="providerStatus.weship.export_ready" class="primary" href="/logistics/china/export/weship">下载纬狮下单表</a>
@@ -90,7 +104,7 @@ const statusLabel = (status:string) => status==='apply' ? '可应用' : status==
 
       <section v-if="trackingImportPreview && trackingImportProvider" class="preview">
         <div class="preview-head">
-          <div><strong>{{ providerStatus[trackingImportProvider].label }} · 回传预览</strong><span>可应用 {{ trackingImportPreview.apply_count }} · 重复 {{ trackingImportPreview.noop_count }} · 阻断 {{ trackingImportPreview.blocked_count }}</span></div>
+          <div><strong>{{ previewLabel }} · 回传预览</strong><span>可应用 {{ trackingImportPreview.apply_count }} · 重复 {{ trackingImportPreview.noop_count }} · 阻断 {{ trackingImportPreview.blocked_count }}</span></div>
           <button v-if="canOperate && trackingImportPreview.apply_count>0" class="primary" type="button" @click="applyPreview">应用可安全行并标记发货</button>
         </div>
         <p>即使存在阻断行，也只跳过阻断行；可安全行仍会逐单提交 Shipment，并逐单尝试 Woo Tracking 同步。</p>
@@ -130,6 +144,7 @@ const statusLabel = (status:string) => status==='apply' ? '可应用' : status==
 </template>
 
 <style scoped>
-.domestic-page{padding:20px;min-width:0;color:#111827}.domestic-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.eyebrow{margin:0;color:#0f766e;font-size:11px;font-weight:800;letter-spacing:.08em}.domestic-head h1{margin:4px 0;font-size:30px}.domestic-head p{margin:0;color:#64748b;font-size:13px}.continuity{display:flex;gap:12px;align-items:center;margin:14px 0;padding:10px 12px;border:1px solid #b7ded8;border-radius:9px;background:#f2fbf9;color:#315f59;font-size:12px}.continuity strong{color:#0f766e}.tabs{display:flex;gap:5px;overflow-x:auto;border-bottom:1px solid #e2e8f0;margin-bottom:12px}.tabs button{border:0;background:transparent;padding:9px 12px;color:#536174;font-weight:700;white-space:nowrap;border-bottom:2px solid transparent}.tabs button.active{color:#0f766e;border-bottom-color:#0f766e}.tabs span{color:#94a3b8;margin-left:3px}.provider-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.provider-card{display:flex;justify-content:space-between;gap:10px;padding:12px;border:1px solid #dbe4e8;border-radius:10px;background:#fff}.provider-card>div:first-child{display:flex;flex-direction:column;gap:4px}.provider-card small{color:#64748b}.provider-card.blocked{background:#fffaf2}.actions{display:flex;gap:7px;align-items:center}.primary,.secondary,.approve,.approved button{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:0 11px;border-radius:7px;font-size:12px;font-weight:800;text-decoration:none}.primary,.approve{border:1px solid #0f8f82;background:#0f8f82;color:#fff}.secondary,.approved button{border:1px solid #b8c6cc;background:#fff;color:#334155}.blocked-tag{color:#a16207;font-size:12px;font-weight:800}.hidden{display:none}.preview{margin-bottom:12px;padding:12px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc}.preview-head{display:flex;justify-content:space-between;gap:12px}.preview-head>div{display:flex;flex-direction:column}.preview p{color:#64748b;font-size:12px}.table-wrap{overflow:auto;border:1px solid #dfe6ea;border-radius:10px;background:#fff}.table-wrap table{width:max-content;min-width:100%;border-collapse:collapse;font-size:12px}.table-wrap th,.table-wrap td{padding:8px;border-bottom:1px solid #e9eef1;text-align:left;white-space:nowrap}.table-wrap th{background:#f8fafc;color:#475569}.orders table{min-width:1500px}.orders a{color:#0f766e;font-weight:800;text-decoration:none}.approved{display:flex;gap:6px;align-items:center;color:#047857;font-weight:800}.approved button{min-height:26px;padding:0 7px;font-size:10px}.danger{color:#b91c1c;font-weight:800}.ready{color:#047857;font-weight:800}.empty{text-align:center!important;padding:30px!important;color:#94a3b8}.status-apply{color:#047857}.status-noop{color:#64748b}.status-blocked{color:#b91c1c}footer{padding:10px 2px;color:#64748b;font-size:12px}
-@media(max-width:800px){.domestic-page{padding:14px}.domestic-head{flex-direction:column}.provider-grid{grid-template-columns:1fr}.provider-card{flex-direction:column}.continuity{align-items:flex-start;flex-direction:column}.preview-head{flex-direction:column}}
+.domestic-page{padding:20px;min-width:0;color:#111827}.domestic-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.eyebrow{margin:0;color:#0f766e;font-size:11px;font-weight:800;letter-spacing:.08em}.domestic-head h1{margin:4px 0;font-size:30px}.domestic-head p{margin:0;color:#64748b;font-size:13px}.continuity{display:flex;gap:12px;align-items:center;margin:14px 0;padding:10px 12px;border:1px solid #b7ded8;border-radius:9px;background:#f2fbf9;color:#315f59;font-size:12px}.continuity strong{color:#0f766e}.tabs{display:flex;gap:5px;overflow-x:auto;border-bottom:1px solid #e2e8f0;margin-bottom:12px}.tabs button{border:0;background:transparent;padding:9px 12px;color:#536174;font-weight:700;white-space:nowrap;border-bottom:2px solid transparent}.tabs button.active{color:#0f766e;border-bottom-color:#0f766e}.tabs span{color:#94a3b8;margin-left:3px}.pending-batch-card{display:flex;justify-content:space-between;gap:12px;margin-bottom:12px;padding:12px;border:1px solid #b7ded8;border-radius:10px;background:#f2fbf9}.pending-batch-card>div:first-child{display:flex;flex-direction:column;gap:4px}.pending-batch-card small{color:#64748b;max-width:760px}
+.provider-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.provider-grid.single{grid-template-columns:1fr}.provider-card{display:flex;justify-content:space-between;gap:10px;padding:12px;border:1px solid #dbe4e8;border-radius:10px;background:#fff}.provider-card>div:first-child{display:flex;flex-direction:column;gap:4px}.provider-card small{color:#64748b}.provider-card.blocked{background:#fffaf2}.actions{display:flex;gap:7px;align-items:center}.primary,.secondary,.approve,.approved button{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:0 11px;border-radius:7px;font-size:12px;font-weight:800;text-decoration:none}.primary,.approve{border:1px solid #0f8f82;background:#0f8f82;color:#fff}.secondary,.approved button{border:1px solid #b8c6cc;background:#fff;color:#334155}.blocked-tag{color:#a16207;font-size:12px;font-weight:800}.hidden{display:none}.preview{margin-bottom:12px;padding:12px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc}.preview-head{display:flex;justify-content:space-between;gap:12px}.preview-head>div{display:flex;flex-direction:column}.preview p{color:#64748b;font-size:12px}.table-wrap{overflow:auto;border:1px solid #dfe6ea;border-radius:10px;background:#fff}.table-wrap table{width:max-content;min-width:100%;border-collapse:collapse;font-size:12px}.table-wrap th,.table-wrap td{padding:8px;border-bottom:1px solid #e9eef1;text-align:left;white-space:nowrap}.table-wrap th{background:#f8fafc;color:#475569}.orders table{min-width:1500px}.orders a{color:#0f766e;font-weight:800;text-decoration:none}.approved{display:flex;gap:6px;align-items:center;color:#047857;font-weight:800}.approved button{min-height:26px;padding:0 7px;font-size:10px}.danger{color:#b91c1c;font-weight:800}.ready{color:#047857;font-weight:800}.empty{text-align:center!important;padding:30px!important;color:#94a3b8}.status-apply{color:#047857}.status-noop{color:#64748b}.status-blocked{color:#b91c1c}footer{padding:10px 2px;color:#64748b;font-size:12px}
+@media(max-width:800px){.domestic-page{padding:14px}.domestic-head{flex-direction:column}.pending-batch-card{flex-direction:column}.provider-grid{grid-template-columns:1fr}.provider-card{flex-direction:column}.continuity{align-items:flex-start;flex-direction:column}.preview-head{flex-direction:column}}
 </style>

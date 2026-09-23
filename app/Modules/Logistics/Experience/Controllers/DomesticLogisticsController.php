@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
 use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
 use App\Modules\Logistics\Application\Domestic\SpeedaOutboundExporter;
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
@@ -22,6 +23,7 @@ final class DomesticLogisticsController
 
     public function __construct(
         private readonly SpeedaOutboundExporter $speeda,
+        private readonly DomesticPendingBatchExporter $pendingBatch,
         private readonly DomesticTrackingReturnService $tracking,
         private readonly WarehouseOrderReference $references,
     ) {}
@@ -122,6 +124,41 @@ final class DomesticLogisticsController
         ]);
     }
 
+    public function exportPendingBatch(): HttpResponse
+    {
+        $factory = $this->factory();
+        $orders = $this->baseQuery((int) $factory->id)
+            ->with(['address', 'items.product', 'shipment', 'externalReferences', 'operationalMarkers'])
+            ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER))
+            ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
+            ->orderBy('order_date')
+            ->orderBy('id')
+            ->get();
+
+        try {
+            $bytes = $this->pendingBatch->export($orders);
+        } catch (\DomainException $e) {
+            abort(422, $e->getMessage());
+        }
+
+        return response($bytes, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="007-domestic-pending-'.now()->format('ymd').'.xlsx"',
+            'Cache-Control' => 'no-store, private',
+            'X-BYL-Exported-Orders' => (string) $orders->count(),
+        ]);
+    }
+
+    public function previewPendingBatch(Request $request): RedirectResponse
+    {
+        return $this->previewTrackingReturn($request, 'generic');
+    }
+
+    public function applyPendingBatch(Request $request): RedirectResponse
+    {
+        return $this->applyTrackingReturn($request, 'generic');
+    }
+
     public function previewTrackingReturn(Request $request, string $provider): RedirectResponse
     {
         $provider = $this->provider($provider);
@@ -175,14 +212,40 @@ final class DomesticLogisticsController
             'pending' => $query
                 ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
                 ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER)),
-            'today-4px' => $query->whereHas('shipment', fn ($q) => $q->whereDate('shipped_at', now()->toDateString())->whereRaw('LOWER(carrier) = ?', ['4px'])),
-            'today-weship' => $query->whereHas('shipment', fn ($q) => $q->whereDate('shipped_at', now()->toDateString())->whereRaw('LOWER(carrier) = ?', ['weship'])),
+            'today-4px' => $this->applyTodayProviderView($query, '4px'),
+            'today-weship' => $this->applyTodayProviderView($query, 'weship'),
             'exceptions' => $query->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'exception')),
-            'today' => $query->whereHas('shipment', fn ($q) => $q->whereDate('shipped_at', now()->toDateString())),
-            '4px' => $query->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending')->whereRaw('LOWER(carrier) = ?', ['4px'])),
-            'weship' => $query->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending')->whereRaw('LOWER(carrier) = ?', ['weship'])),
+            'today' => $this->applyTodayView($query),
+            '4px' => $query->whereHas('shipment', fn ($q) => $q->whereRaw('LOWER(carrier) = ?', ['4px'])),
+            'weship' => $query->whereHas('shipment', fn ($q) => $q->whereRaw('LOWER(carrier) = ?', ['weship'])),
             default => null,
         };
+    }
+
+    private function applyTodayProviderView(Builder $query, string $provider): Builder
+    {
+        return $query->where(function (Builder $daily) use ($provider): void {
+            $daily->where(function (Builder $pending) use ($provider): void {
+                $pending
+                    ->whereHas('shipment', fn ($q) => $q
+                        ->where('shipment_status', 'pending')
+                        ->whereRaw('LOWER(carrier) = ?', [$provider]))
+                    ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER));
+            })->orWhereHas('shipment', fn ($q) => $q
+                ->whereDate('shipped_at', now()->toDateString())
+                ->whereRaw('LOWER(carrier) = ?', [$provider]));
+        });
+    }
+
+    private function applyTodayView(Builder $query): Builder
+    {
+        return $query->where(function (Builder $daily): void {
+            $daily->where(function (Builder $pending): void {
+                $pending
+                    ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
+                    ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER));
+            })->orWhereHas('shipment', fn ($q) => $q->whereDate('shipped_at', now()->toDateString()));
+        });
     }
 
     private function row(Order $order, int $line): array
@@ -240,13 +303,13 @@ final class DomesticLogisticsController
     private function provider(string $provider): string
     {
         $provider = strtolower(trim($provider));
-        abort_unless(in_array($provider, ['4px', 'weship'], true), 404);
+        abort_unless(in_array($provider, ['4px', 'weship', 'generic'], true), 404);
 
         return $provider;
     }
 
     private function providerLabel(string $provider): string
     {
-        return $provider === '4px' ? '速达' : '纬狮';
+        return match ($provider) { '4px' => '速达', 'weship' => '纬狮', default => '待发货批量' };
     }
 }

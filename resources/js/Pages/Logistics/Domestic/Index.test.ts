@@ -37,13 +37,50 @@ describe('Domestic logistics production workbench', () => {
   beforeEach(() => { routerPost.mockClear(); routerVisit.mockClear() })
 
   it('shows the daily domestic flow, Speeda export and fail-closed Weship export', () => {
-    const wrapper=mount(Index,{props:baseProps})
+    const wrapper=mount(Index,{props:{...baseProps,view:'today-4px'}})
     expect(wrapper.text()).toContain('国内发货')
     expect(wrapper.text()).toContain('单个异常订单不会阻断其他正常订单')
     expect(wrapper.find('a[href="/logistics/china/export/4px"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('下单模板 Fail Closed')
+    expect(wrapper.text()).not.toContain('纬狮 / Weship')
+    expect(wrapper.text()).not.toContain('下单模板 Fail Closed')
     expect(wrapper.find('a[href="/logistics/china/export/weship"]').exists()).toBe(false)
     expect(wrapper.find('input[type="file"]').attributes('accept')).toBe('.xls,.xlsx')
+  })
+
+
+  it('shows only the matching provider operation card on provider-specific daily tabs', () => {
+    const speeda=mount(Index,{props:{...baseProps,view:'today-4px',trackingImportPreview:null,trackingImportProvider:null}})
+    expect(speeda.text()).toContain('速达 / 4PX')
+    expect(speeda.text()).not.toContain('纬狮 / Weship')
+    expect(speeda.find('a[href="/logistics/china/export/4px"]').exists()).toBe(true)
+
+    const weship=mount(Index,{props:{...baseProps,view:'today-weship',trackingImportPreview:null,trackingImportProvider:null}})
+    expect(weship.text()).toContain('纬狮 / Weship')
+    expect(weship.text()).not.toContain('速达 / 4PX')
+    expect(weship.text()).toContain('上传纬狮单号表')
+  })
+
+  it('shows a mixed-carrier ERP batch download/upload only on the pending work queue', () => {
+    const pending=mount(Index,{props:{...baseProps,view:'pending',trackingImportPreview:null,trackingImportProvider:null}})
+    expect(pending.find('a[href="/logistics/china/pending-batch/export"]').exists()).toBe(true)
+    expect(pending.text()).toContain('上传批量单号表')
+    expect(pending.text()).toContain('可混合承运商')
+    expect(pending.text()).toContain('不替代承运商自己的下单模板')
+
+    const history=mount(Index,{props:{...baseProps,view:'4px',trackingImportPreview:null,trackingImportProvider:null}})
+    expect(history.find('a[href="/logistics/china/pending-batch/export"]').exists()).toBe(false)
+    expect(history.text()).not.toContain('上传批量单号表')
+  })
+
+  it('keeps cumulative carrier history query-only and hides provider upload/download controls', () => {
+    const speedaHistory=mount(Index,{props:{...baseProps,view:'4px',trackingImportPreview:null,trackingImportProvider:null}})
+    expect(speedaHistory.find('.provider-grid').exists()).toBe(false)
+    expect(speedaHistory.find('a[href="/logistics/china/export/4px"]').exists()).toBe(false)
+    expect(speedaHistory.find('input[type="file"]').exists()).toBe(false)
+
+    const weshipHistory=mount(Index,{props:{...baseProps,view:'weship',trackingImportPreview:null,trackingImportProvider:null}})
+    expect(weshipHistory.find('.provider-grid').exists()).toBe(false)
+    expect(weshipHistory.text()).not.toContain('上传纬狮单号表')
   })
 
   it('allows applying safe rows even when the preview contains blocked rows', async () => {

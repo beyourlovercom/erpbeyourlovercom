@@ -36,7 +36,12 @@ final class DomesticTrackingReturnReader
                 }
             }
 
-            $required = $provider === '4px' ? ['原单号', '转单号'] : ['客户单号'];
+            $required = match ($provider) {
+                '4px' => ['原单号', '转单号'],
+                'weship' => ['客户单号'],
+                'generic' => ['ERP订单号', '承运商', 'Tracking'],
+                default => throw new InvalidArgumentException('不支持的国内物流回传格式。'),
+            };
             foreach ($required as $header) {
                 if (! array_key_exists($header, $index)) {
                     throw new InvalidArgumentException("回传表缺少必填列：{$header}");
@@ -50,18 +55,13 @@ final class DomesticTrackingReturnReader
             $max = min($sheet->getHighestDataRow(), self::MAX_ROWS + 1);
             for ($r = 2; $r <= $max; $r++) {
                 $values = $sheet->rangeToArray("A{$r}:{$highestColumn}{$r}", null, true, true, false)[0] ?? [];
-                $reference = $provider === '4px'
-                    ? trim((string) ($values[$index['原单号']] ?? ''))
-                    : trim((string) ($values[$index['客户单号']] ?? ''));
-                if ($reference === '') {
-                    continue;
-                }
-
                 if ($provider === '4px') {
+                    $reference = trim((string) ($values[$index['原单号']] ?? ''));
                     $tracking = trim((string) ($values[$index['转单号']] ?? ''));
                     $carrier = '4PX';
                     $status = isset($index['状态']) ? trim((string) ($values[$index['状态']] ?? '')) : null;
-                } else {
+                } elseif ($provider === 'weship') {
+                    $reference = trim((string) ($values[$index['客户单号']] ?? ''));
                     $trackingA = isset($index['运单号']) ? trim((string) ($values[$index['运单号']] ?? '')) : '';
                     $trackingB = isset($index['服务商单号']) ? trim((string) ($values[$index['服务商单号']] ?? '')) : '';
                     $tracking = $trackingA !== '' ? $trackingA : $trackingB;
@@ -70,6 +70,14 @@ final class DomesticTrackingReturnReader
                     }
                     $carrier = 'Weship';
                     $status = isset($index['操作状态']) ? trim((string) ($values[$index['操作状态']] ?? '')) : null;
+                } else {
+                    $reference = trim((string) ($values[$index['ERP订单号']] ?? ''));
+                    $tracking = trim((string) ($values[$index['Tracking']] ?? ''));
+                    $carrier = trim((string) ($values[$index['承运商']] ?? ''));
+                    $status = 'ERP批量登记';
+                }
+                if ($reference === '') {
+                    continue;
                 }
 
                 $rows[] = [
