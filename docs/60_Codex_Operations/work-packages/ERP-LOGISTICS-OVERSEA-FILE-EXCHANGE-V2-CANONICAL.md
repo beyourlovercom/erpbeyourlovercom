@@ -112,6 +112,8 @@ Tracking resolution:
 
 `Shipped Time` is optional. If absent, Apply time becomes canonical `shipped_at` per Owner business rule.
 
+Live canary 2026-09-23 confirmed a second valid MorePlus return shape: the provider may return the original 23-column outbound `Template` with `Tracking Number` populated. This **outbound round-trip** variant is accepted only when the full 23 headers match the frozen MorePlus outbound contract exactly. Its match key is `Order NO`; its Tracking field is `Tracking Number`; `Shipping Carrier` and `Request Shipping Service` are treated as provider evidence when present. The same unique-order, existing-Tracking-conflict, review-approved and Apply safety gates still apply.
+
 ### 5.3 Canada return — CA
 
 The uploaded Canada return sample is insufficient to freeze a Tracking protocol (only the order-reference column is reliable).

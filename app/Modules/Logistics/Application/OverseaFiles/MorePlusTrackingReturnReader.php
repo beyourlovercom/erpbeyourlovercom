@@ -7,6 +7,13 @@ use InvalidArgumentException;
 
 final class MorePlusTrackingReturnReader
 {
+    private const ROUNDTRIP_HEADERS = [
+        'Order NO', 'SKU', 'SKU Qty', 'Tag', 'Request Ship Date', 'Recipient Name', 'Recipient Company', 'Recipient Address Line 1',
+        'Recipient Address Line 2', 'Recipient State', 'Recipient City', 'Recipient ZipCode', 'Recipient Country', 'Recipient Phone',
+        'Recipient Email', 'Request Shipping Service', 'Warehouse Customized Service Name', 'Signature Option', 'Tracking Number',
+        'Shipping Carrier', 'Insurance', 'Cod', 'Notes',
+    ];
+
     public function __construct(private readonly ProviderXlsxTableReader $xlsx) {}
 
     /** @return list<array<string,mixed>> */
@@ -14,21 +21,22 @@ final class MorePlusTrackingReturnReader
     {
         $table = $this->xlsx->read($file);
         $map = $this->map($table['headers']);
-        foreach (['order_reference', 'master_tracking', 'tracking_number'] as $required) {
-            if (! isset($map[$required])) {
-                throw new InvalidArgumentException('MorePlus 回传文件缺少 Order# / Master Tracking# / Tracking#。');
-            }
+        $standard = isset($map['order_reference'], $map['master_tracking'], $map['tracking_number']);
+        $roundtrip = $table['headers'] === self::ROUNDTRIP_HEADERS
+            && isset($map['roundtrip_order_reference'], $map['roundtrip_tracking_number']);
+        if (! $standard && ! $roundtrip) {
+            throw new InvalidArgumentException('MorePlus 回传文件必须是标准 Return 模板，或完整 23 列 Outbound round-trip 模板。');
         }
 
         $out = [];
         foreach ($table['rows'] as $source) {
             $get = fn (string $key): string => isset($map[$key]) ? trim((string) ($source['cells'][$map[$key]] ?? '')) : '';
-            $reference = $get('order_reference');
+            $reference = $standard ? $get('order_reference') : $get('roundtrip_order_reference');
             if ($reference === '') {
                 continue;
             }
-            $master = $get('master_tracking');
-            $tracking = $get('tracking_number');
+            $master = $standard ? $get('master_tracking') : '';
+            $tracking = $standard ? $get('tracking_number') : $get('roundtrip_tracking_number');
             $error = null;
             if ($master !== '' && $tracking !== '' && strcasecmp($master, $tracking) !== 0) {
                 $error = 'Master Tracking# 与 Tracking# 不一致';
@@ -41,8 +49,8 @@ final class MorePlusTrackingReturnReader
                 'order_reference' => $reference,
                 'provider_order_reference' => $get('provider_order_reference') ?: null,
                 'tracking_number' => $resolved,
-                'carrier' => $get('carrier') ?: null,
-                'provider_service' => $get('provider_service') ?: null,
+                'carrier' => ($standard ? $get('carrier') : $get('roundtrip_carrier')) ?: null,
+                'provider_service' => ($standard ? $get('provider_service') : $get('roundtrip_service')) ?: null,
                 'provider_status' => $status ?: null,
                 'provider_warehouse' => $get('provider_warehouse') ?: null,
                 'tracking_status' => null,
@@ -95,7 +103,15 @@ final class MorePlusTrackingReturnReader
         $out = [];
         foreach ($headers as $index => $raw) {
             $h = mb_strtolower(trim((string) $raw));
-            if ($h === 'order#') {
+            if ($h === 'order no') {
+                $out['roundtrip_order_reference'] = $index;
+            } elseif ($h === 'tracking number') {
+                $out['roundtrip_tracking_number'] = $index;
+            } elseif ($h === 'shipping carrier') {
+                $out['roundtrip_carrier'] = $index;
+            } elseif ($h === 'request shipping service') {
+                $out['roundtrip_service'] = $index;
+            } elseif ($h === 'order#') {
                 $out['order_reference'] = $index;
             } elseif ($h === 'outbound order#') {
                 $out['provider_order_reference'] = $index;
