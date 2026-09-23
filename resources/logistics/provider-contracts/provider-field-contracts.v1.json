@@ -3138,18 +3138,18 @@
       "direction": "OUT",
       "source_template": "德国仓导入发货-real.xlsx",
       "template_status": "64 columns",
-      "owner_status": "owner_review",
+      "owner_status": "confirmed",
       "fields": [
         {
           "ordinal": 1,
           "header": "Warehouse Code/仓库代码",
-          "semantic_role": "Warehouse Profile Constant",
-          "proposed_source": "Provider profile constant",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "semantic_role": "Provider Warehouse Code",
+          "proposed_source": "Constant Hannover for provider XLSX only",
+          "requirement": "Required",
+          "provider_rule": "ERP business warehouse remains 德国天运 / DE. Hannover must never replace the ERP-facing warehouse name.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 2,
@@ -3159,8 +3159,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 3,
@@ -3170,8 +3170,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 4,
@@ -3181,8 +3181,8 @@
           "requirement": "PROPOSED Required",
           "provider_rule": "",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 5,
@@ -3192,30 +3192,30 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 6,
           "header": "Shipping Service/物流渠道",
           "semantic_role": "Shipping Service/Profile",
-          "proposed_source": "Provider profile / routing rule",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "proposed_source": "DE => DHL PAKET DOMESTIC; non-DE => DHL PAKET International N",
+          "requirement": "Required",
+          "provider_rule": "Select automatically from destination country; no free-text operator choice.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 7,
           "header": "Carrier/承运商",
           "semantic_role": "Carrier/Profile",
-          "proposed_source": "Provider profile / routing rule",
-          "requirement": "Owner Review",
-          "provider_rule": "Provider comment: conditionally required when uploading label / channel requires carrier validation.",
+          "proposed_source": "Blank outbound unless provider rule requires explicit carrier",
+          "requirement": "Conditional Required",
+          "provider_rule": "Do not infer Carrier merely from DHL text in shipping service. Provider return carrier is evidence only.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 8,
@@ -3225,8 +3225,8 @@
           "requirement": "N/A outbound / Provider generated",
           "provider_rule": "",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 9,
@@ -3236,8 +3236,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 10,
@@ -3247,8 +3247,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 11,
@@ -3258,30 +3258,30 @@
           "requirement": "PROPOSED Required",
           "provider_rule": "",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 12,
           "header": "Recipient Phone/电话",
           "semantic_role": "Recipient Phone",
           "proposed_source": "Canonical contact snapshot; Woo shipping.phone -> billing.phone fallback",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "requirement": "Required",
+          "provider_rule": "Missing both sources must fail closed.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 13,
           "header": "Recipient Email/邮箱",
           "semantic_role": "Recipient Email",
-          "proposed_source": "PROPOSED: canonical contact snapshot; Woo shipping.email -> billing.email fallback",
-          "requirement": "PROPOSED Optional",
-          "provider_rule": "",
+          "proposed_source": "Canonical contact snapshot; Woo shipping.email -> billing.email fallback",
+          "requirement": "Optional",
+          "provider_rule": "If source exists it must be exported.",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 14,
@@ -3291,19 +3291,19 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 15,
           "header": "Recipient Company/公司名称",
           "semantic_role": "Recipient Company",
-          "proposed_source": "PROPOSED: canonical contact snapshot; Woo shipping.company -> billing.company fallback",
-          "requirement": "PROPOSED Optional",
-          "provider_rule": "",
+          "proposed_source": "Canonical contact snapshot; Woo shipping.company -> billing.company fallback",
+          "requirement": "Optional",
+          "provider_rule": "If source exists it must be exported.",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 16,
@@ -3313,8 +3313,8 @@
           "requirement": "PROPOSED Required",
           "provider_rule": "Provider template data validation: country code required.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 17,
@@ -3324,8 +3324,8 @@
           "requirement": "PROPOSED Optional",
           "provider_rule": "",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 18,
@@ -3335,8 +3335,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 19,
@@ -3346,8 +3346,8 @@
           "requirement": "PROPOSED Required",
           "provider_rule": "",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 20,
@@ -3357,8 +3357,8 @@
           "requirement": "PROPOSED Required",
           "provider_rule": "",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 21,
@@ -3368,8 +3368,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Unmapped / silent blank",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 22,
@@ -3379,8 +3379,8 @@
           "requirement": "PROPOSED Required",
           "provider_rule": "",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 23,
@@ -3390,8 +3390,8 @@
           "requirement": "PROPOSED Optional",
           "provider_rule": "",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 24,
@@ -3401,450 +3401,451 @@
           "requirement": "PROPOSED Optional",
           "provider_rule": "",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 25,
           "header": "SKU1/SKU1",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU1",
+          "proposed_source": "ERP order item SKU #1",
+          "requirement": "Required",
+          "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 26,
           "header": "Quantity1/出库数量1",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity1",
+          "proposed_source": "ERP order item quantity #1",
+          "requirement": "Required",
+          "provider_rule": "Required when paired SKU exists; quantity > 0.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 27,
           "header": "SKU2/SKU2",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU2",
+          "proposed_source": "ERP order item SKU #2",
+          "requirement": "Conditional Optional",
+          "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 28,
           "header": "Quantity2/出库数量2",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity2",
+          "proposed_source": "ERP order item quantity #2",
+          "requirement": "Conditional Required",
+          "provider_rule": "Required when paired SKU exists; quantity > 0.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 29,
           "header": "SKU3/SKU3",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU3",
+          "proposed_source": "ERP order item SKU #3",
+          "requirement": "Conditional Optional",
+          "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 30,
           "header": "Quantity3/出库数量3",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity3",
+          "proposed_source": "ERP order item quantity #3",
+          "requirement": "Conditional Required",
+          "provider_rule": "Required when paired SKU exists; quantity > 0.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 31,
           "header": "SKU4/SKU4",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU4",
+          "proposed_source": "ERP order item SKU #4",
+          "requirement": "Conditional Optional",
+          "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 32,
           "header": "Quantity4/出库数量4",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity4",
+          "proposed_source": "ERP order item quantity #4",
+          "requirement": "Conditional Required",
+          "provider_rule": "Required when paired SKU exists; quantity > 0.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 33,
           "header": "SKU5/SKU5",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU5",
+          "proposed_source": "ERP order item SKU #5",
+          "requirement": "Conditional Optional",
+          "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 34,
           "header": "Quantity5/出库数量5",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity5",
+          "proposed_source": "ERP order item quantity #5",
+          "requirement": "Conditional Required",
+          "provider_rule": "Required when paired SKU exists; quantity > 0.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 35,
           "header": "SKU6/SKU6",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU6",
+          "proposed_source": "ERP order item SKU #6",
+          "requirement": "Conditional Optional",
+          "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 36,
           "header": "Quantity6/出库数量6",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity6",
+          "proposed_source": "ERP order item quantity #6",
+          "requirement": "Conditional Required",
+          "provider_rule": "Required when paired SKU exists; quantity > 0.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 37,
           "header": "SKU7/SKU7",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU7",
+          "proposed_source": "ERP order item SKU #7",
+          "requirement": "Conditional Optional",
+          "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 38,
           "header": "Quantity7/出库数量7",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity7",
+          "proposed_source": "ERP order item quantity #7",
+          "requirement": "Conditional Required",
+          "provider_rule": "Required when paired SKU exists; quantity > 0.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 39,
           "header": "SKU8/SKU8",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU8",
+          "proposed_source": "ERP order item SKU #8",
+          "requirement": "Conditional Optional",
+          "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 40,
           "header": "Quantity8/出库数量8",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity8",
+          "proposed_source": "ERP order item quantity #8",
+          "requirement": "Conditional Required",
+          "provider_rule": "Required when paired SKU exists; quantity > 0.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 41,
           "header": "SKU9/SKU9",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU9",
+          "proposed_source": "ERP order item SKU #9",
+          "requirement": "Conditional Optional",
+          "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 42,
           "header": "Quantity9/出库数量9",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity9",
+          "proposed_source": "ERP order item quantity #9",
+          "requirement": "Conditional Required",
+          "provider_rule": "Required when paired SKU exists; quantity > 0.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 43,
           "header": "SKU10/SKU10",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU10",
+          "proposed_source": "ERP order item SKU #10",
+          "requirement": "Conditional Optional",
+          "provider_rule": "SKU/Qty paired; continuous packing; max 10 SKUs per provider instruction.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 44,
           "header": "Quantity10/出库数量10",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity10",
+          "proposed_source": "ERP order item quantity #10",
+          "requirement": "Conditional Required",
+          "provider_rule": "Required when paired SKU exists; quantity > 0.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 45,
           "header": "SKU11/SKU11",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU11",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 46,
           "header": "Quantity11/出库数量11",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity11",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 47,
           "header": "SKU12/SKU12",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU12",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 48,
           "header": "Quantity12/出库数量12",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity12",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 49,
           "header": "SKU13/SKU13",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU13",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 50,
           "header": "Quantity13/出库数量13",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity13",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 51,
           "header": "SKU14/SKU14",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU14",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 52,
           "header": "Quantity14/出库数量14",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity14",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 53,
           "header": "SKU15/SKU15",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU15",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 54,
           "header": "Quantity15/出库数量15",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity15",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 55,
           "header": "SKU16/SKU16",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU16",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 56,
           "header": "Quantity16/出库数量16",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity16",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 57,
           "header": "SKU17/SKU17",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU17",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 58,
           "header": "Quantity17/出库数量17",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity17",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 59,
           "header": "SKU18/SKU18",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU18",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 60,
           "header": "Quantity18/出库数量18",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity18",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 61,
           "header": "SKU19/SKU19",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU19",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 62,
           "header": "Quantity19/出库数量19",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity19",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 63,
           "header": "SKU20/SKU20",
-          "semantic_role": "SKU",
-          "proposed_source": "ERP order_item.sku",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "SKU20",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 64,
           "header": "Quantity20/出库数量20",
-          "semantic_role": "Quantity",
-          "proposed_source": "ERP order_item.quantity",
-          "requirement": "PROPOSED Required",
-          "provider_rule": "",
+          "semantic_role": "Quantity20",
+          "proposed_source": "Reserved / do not use",
+          "requirement": "Reserved / Blocked",
+          "provider_rule": "Template has columns beyond provider instruction max 10 SKUs; V1 fails closed above 10.",
           "current_code": "Mapped",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         }
-      ]
+      ],
+      "owner_notes": "Owner PASS 2026-09-23. ERP business warehouse name remains 德国天运 / DE; Hannover is provider/WMS export code only."
     },
     {
       "key": "08_DE_RETURN",
@@ -3852,29 +3853,29 @@
       "direction": "RETURN",
       "source_template": "德国仓导出物流单号模版(1).xlsx",
       "template_status": "59 columns",
-      "owner_status": "owner_review",
+      "owner_status": "confirmed",
       "fields": [
         {
           "ordinal": 1,
           "header": "Outbound Order No./出库单号",
           "semantic_role": "Provider Reference",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve provider outbound order number; not primary ERP match key.",
           "current_code": "Reader uses",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 2,
           "header": "Reference order No./参考单号",
           "semantic_role": "Match Key",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Reader column required",
-          "provider_rule": "",
+          "requirement": "Required",
+          "provider_rule": "Must match ERP canonical reference; blank/unmatched/ambiguous => BLOCKED.",
           "current_code": "Reader uses",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 3,
@@ -3884,19 +3885,19 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 4,
           "header": "Tracking No./物流跟踪号",
           "semantic_role": "Tracking Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Reader column required",
-          "provider_rule": "",
+          "requirement": "Required for Apply",
+          "provider_rule": "Normal shipment tracking. Must not be substituted by Return Tracking No.",
           "current_code": "Reader uses",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 5,
@@ -3906,19 +3907,19 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 6,
           "header": "Warehouse/仓库",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Warehouse Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Conditional Safety Check",
+          "provider_rule": "Warehouse mismatch vs DE => BLOCKED; never reassign ERP warehouse.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 7,
@@ -3928,8 +3929,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 8,
@@ -3939,8 +3940,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 9,
@@ -3950,8 +3951,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 10,
@@ -3961,41 +3962,41 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 11,
           "header": "Status/状态",
-          "semantic_role": "Provider Status/Evidence",
+          "semantic_role": "Provider Status Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Pending/processing does not block valid Tracking; explicit Cancelled => BLOCKED.",
           "current_code": "Reader uses",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 12,
           "header": "Shipping service/物流渠道",
           "semantic_role": "Service Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preview/audit only; do not silently overwrite ERP carrier master.",
           "current_code": "Reader uses",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 13,
           "header": "Return Tracking No./回邮单号",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Return Tracking Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Reader column required",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Never substitute for outbound Tracking No.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 14,
@@ -4005,8 +4006,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 15,
@@ -4016,8 +4017,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 16,
@@ -4027,8 +4028,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 17,
@@ -4038,8 +4039,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 18,
@@ -4049,8 +4050,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 19,
@@ -4060,30 +4061,30 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 20,
           "header": "OutboundTime/出库时间",
           "semantic_role": "Shipped Time Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Use OutboundTime when reliable/parseable; otherwise ERP Apply time.",
           "current_code": "Reader uses",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 21,
           "header": "Cancel time/取消时间",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Cancellation Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Conditional Blocker",
+          "provider_rule": "Nonempty cancel time / explicit cancellation => BLOCKED.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 22,
@@ -4093,173 +4094,173 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 23,
           "header": "Recipient/收件人",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Echo / Audit",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 24,
           "header": "Telephone/电话",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Echo / Audit",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 25,
           "header": "Email/邮箱",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Echo / Audit",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 26,
           "header": "Recipient tax ID/收件人税号",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Echo / Audit",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 27,
           "header": "Company name/公司名称",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Echo / Audit",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 28,
           "header": "Country/Region/国家/地区",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Echo / Audit",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 29,
           "header": "Province Name/省州名称",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Echo / Audit",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 30,
           "header": "Province Code/省州编码",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Echo / Audit",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 31,
           "header": "City/城市名称",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Echo / Audit",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 32,
           "header": "区县/District",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Echo / Audit",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 33,
           "header": "Post code/邮编",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Echo / Audit",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 34,
           "header": "House number/门牌号",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Echo / Audit",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 35,
           "header": "Address1/地址1",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Echo / Audit",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 36,
           "header": "Address2/地址2",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Echo / Audit",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Never overwrite ERP customer/contact/address snapshot.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 37,
           "header": "Carrier/承运商",
           "semantic_role": "Carrier Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preview differences; no silent overwrite.",
           "current_code": "Reader uses",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 38,
@@ -4269,8 +4270,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 39,
@@ -4280,8 +4281,8 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 40,
@@ -4291,219 +4292,220 @@
           "requirement": "Owner Review",
           "provider_rule": "",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 41,
           "header": "Package 1\nTracking No./子物流跟踪号",
-          "semantic_role": "Tracking Evidence",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Reader column required",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 42,
           "header": "Package 1\nPackage Size/包裹尺寸",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 43,
           "header": "Package 1\nPackage Size/包裹长",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 44,
           "header": "Package 1\nPackage Size/包裹宽",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 45,
           "header": "Package 1\nPackage Size/包裹高",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 46,
           "header": "Package 1\nPackage Weight/包裹重量",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 47,
           "header": "SKU 1\nSKU",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 48,
           "header": "SKU 1\nProduct Name/产品名称",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 49,
           "header": "SKU 1\nOutbound Qty/出库数量",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 50,
           "header": "SKU 1\nOMS Length/OMS长",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 51,
           "header": "SKU 1\nOMS Width/OMS宽",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 52,
           "header": "SKU 1\nOMS Height/OMS高",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 53,
           "header": "SKU 1\nOMS Weight/OMS重量",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 54,
           "header": "SKU 1\nWMS Length/WMS长",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 55,
           "header": "SKU 1\nWMS Width/WMS宽",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 56,
           "header": "SKU 1\nWMS Height/WMS高",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 57,
           "header": "SKU 1\nWMS Weight/WMS重量",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 58,
           "header": "SKU 1\nSize Unit/尺长单位",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         },
         {
           "ordinal": 59,
           "header": "SKU 1\nWeight Unit/重量单位",
-          "semantic_role": "Provider Evidence / Owner Review",
+          "semantic_role": "Provider Package / Item Evidence",
           "proposed_source": "Provider return file; ERP reader/evidence role",
-          "requirement": "Owner Review",
-          "provider_rule": "",
+          "requirement": "Optional",
+          "provider_rule": "Preserve dimensions/weights/items for audit and future actual-cost reconciliation; do not silently rewrite product master.",
           "current_code": "Ignored by reader",
-          "owner_status": "owner_review",
-          "owner_notes": ""
+          "owner_status": "confirmed",
+          "owner_notes": "Owner PASS 2026-09-23"
         }
-      ]
+      ],
+      "owner_notes": "Owner PASS 2026-09-23: DE return owner rules confirmed; all technical fields frozen under WMS return contract."
     },
     {
       "key": "09_CA_OUT",
