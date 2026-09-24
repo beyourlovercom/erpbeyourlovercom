@@ -84,8 +84,11 @@ final class ProviderFileFieldContractRegistryTest extends TestCase
         }
 
         $this->assertSame('blocked_need_real_sample', $this->template('06_USSM_RETURN')['owner_status']);
-        $this->assertSame('blocked_need_real_sample', $this->template('10_CA_RETURN')['owner_status']);
-        $this->assertSame(['订单号'], $this->contractHeaders('10_CA_RETURN'));
+        $this->assertSame('owner_review', $this->template('10_CA_RETURN')['owner_status']);
+        $this->assertSame(
+            ['订单号', '包裹序号', 'com_lab_3015', '长(cm)', '宽(cm)', '高(cm)', '重量(kg)'],
+            $this->contractHeaders('10_CA_RETURN')
+        );
     }
 
     private function headers(string $class): array

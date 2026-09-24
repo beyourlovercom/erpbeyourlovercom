@@ -116,13 +116,19 @@ Live canary 2026-09-23 confirmed a second valid MorePlus return shape: the provi
 
 ### 5.3 Canada return — CA
 
-The uploaded Canada return sample is insufficient to freeze a Tracking protocol (only the order-reference column is reliable).
+A real post-shipment Canada provider file was recovered on 2026-09-24. It has one `SHEET` with the exact 7-column header:
 
-V1 rule:
-- batch Tracking return remains **fail-closed**;
-- do not infer `包裹序号`, `com_lab_3015`, or any other Tracking column from synthetic fixtures;
-- use manual per-order Tracking until a real post-shipment provider return XLSX is supplied;
-- once a real sample exists, create a separate Owner-reviewed return field contract before enabling batch Apply.
+`订单号 | 包裹序号 | com_lab_3015 | 长(cm) | 宽(cm) | 高(cm) | 重量(kg)`
+
+Contract:
+- `订单号` = customer/order match key per Owner business rule; it must resolve uniquely through the existing ERP identity map or the row is **BLOCKED**;
+- `com_lab_3015` = Tracking Number;
+- `包裹序号` and parcel dimensions/weight are Provider evidence only;
+- the file has no reliable Carrier or shipped-at field, so ERP keeps the reviewed Shipment carrier and uses Apply time for `shipped_at`;
+- the parser accepts only the complete exact 7-column header. The older one-column `订单号` sample remains invalid and fail-closed;
+- a real historical sample whose `订单号` is not present in current ERP must preview as **BLOCKED / ERP 找不到该订单号**. Never infer a match from Tracking, package sequence, recipient data, or row position.
+
+This contract is pending Owner UAT PASS before merge/Production.
 
 ### 5.4 US-SM return
 

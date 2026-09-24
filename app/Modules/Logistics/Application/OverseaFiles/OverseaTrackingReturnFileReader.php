@@ -24,7 +24,7 @@ final class OverseaTrackingReturnFileReader
         return match ($warehouseKey) {
             'us-ny', 'de-tianyun' => $this->wms->read($file),
             'us-moreplus' => $this->morePlus->read($file),
-            'ca' => throw new InvalidArgumentException('加拿大仓真实 Tracking 回传协议尚未冻结，请使用逐单 Tracking；禁止猜测回传字段。'),
+            'ca' => $this->canada->read($file),
             'us-3sm' => throw new InvalidArgumentException('世迈目前没有真实物流单号回传模板，请使用逐单 Tracking 录入。'),
             default => throw new InvalidArgumentException('未知海外仓回传格式。'),
         };
