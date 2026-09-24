@@ -562,23 +562,48 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $this->assertStringContainsString('Provider 回传显示订单已取消', $stored['rows'][0]['message']);
     }
 
-    public function test_canada_tracking_return_is_fail_closed_until_real_provider_template_exists(): void
+    public function test_canada_real_seven_column_return_previews_tracking_by_customer_reference(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
         $warehouses = $this->warehouses();
         $order = $this->orderAt($warehouses['CA'], '007erp-0920-k26011301', 'CA');
         $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
-        $file = $this->providerXlsx('ca-return-unfrozen.xlsx', 'SHEET',
-            ['订单号', '包裹序号', 'com_lab_3015'],
-            [['KOL26011301', '1', '1030896460840281']]);
+        $file = $this->providerXlsx('ca-real-return.xlsx', 'SHEET',
+            ['订单号', '包裹序号', 'com_lab_3015', '长(cm)', '宽(cm)', '高(cm)', '重量(kg)'],
+            [['KOL26011301', '1', '1030896460840281', '0', '0', '0', '1.2']]);
 
         $this->actingAs($user)->post('/logistics/oversea/ca/tracking-import/preview', ['file' => $file])
-            ->assertStatus(422);
+            ->assertRedirect('/logistics/oversea/ca?view=pending');
+        $stored = session('logistics.oversea_tracking_return.ca');
+        $this->assertSame(1, $stored['apply_count']);
+        $this->assertSame(0, $stored['noop_count']);
+        $this->assertSame(0, $stored['blocked_count']);
+        $this->assertSame('KOL26011301', $stored['rows'][0]['order_number']);
+        $this->assertSame('1030896460840281', $stored['rows'][0]['tracking_number']);
+        $this->assertSame('1', $stored['rows'][0]['provider_evidence']['包裹序号']);
+        $this->assertCount(7, $stored['rows'][0]['provider_evidence']);
         $this->assertDatabaseHas('shipments', [
             'order_id' => $order->id,
             'shipment_status' => 'pending',
             'tracking_number' => null,
         ]);
+    }
+
+    public function test_canada_real_provider_sample_shape_blocks_when_customer_reference_is_unknown(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $file = $this->providerXlsx('ca-real-unknown-reference.xlsx', 'SHEET',
+            ['订单号', '包裹序号', 'com_lab_3015', '长(cm)', '宽(cm)', '高(cm)', '重量(kg)'],
+            [['99632-260915-0002', '1', '1030896460840281', '0', '0', '0', '1.2']]);
+
+        $this->actingAs($user)->post('/logistics/oversea/ca/tracking-import/preview', ['file' => $file])
+            ->assertRedirect('/logistics/oversea/ca?view=pending');
+        $stored = session('logistics.oversea_tracking_return.ca');
+        $this->assertSame(0, $stored['apply_count']);
+        $this->assertSame(1, $stored['blocked_count']);
+        $this->assertSame('99632-260915-0002', $stored['rows'][0]['order_number']);
+        $this->assertSame('1030896460840281', $stored['rows'][0]['tracking_number']);
+        $this->assertStringContainsString('ERP 找不到该订单号', $stored['rows'][0]['message']);
     }
 
     public function test_canada_order_only_export_file_is_fail_closed_as_tracking_return(): void
