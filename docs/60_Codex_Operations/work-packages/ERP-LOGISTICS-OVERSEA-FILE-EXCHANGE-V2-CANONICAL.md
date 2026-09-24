@@ -132,7 +132,19 @@ Owner UAT PASS 2026-09-24. PR #419 merged and the Canada return parser is Produc
 
 ### 5.4 US-SM return
 
-No real tracking-return template exists. Do not invent one. Keep manual tracking entry as the V1 fallback until a real sample is provided.
+No real tracking-return template exists. Do not invent one. Batch Tracking return remains fail-closed until a real provider return sample is supplied.
+
+This does **not** block US-SM daily fulfillment. The canonical V1 production path is:
+
+`approved Shipment → real US-SM outbound XLSX → warehouse processing → warehouse supplies real Tracking → Dede enters Tracking on the US-SM pending row → explicit 确认发货 → Shipment shipped → Woo Tracking sync`
+
+Rules:
+- a real Tracking value is required before manual confirmation;
+- manual confirmation is allowed only for an approved pending Shipment whose current warehouse is canonical `US-SM`;
+- the existing reviewed Carrier/service is preserved and `shipped_at` is the ERP confirmation time;
+- successful confirmation advances Overseas Review progress to `shipped` and immediately attempts canonical Woo Tracking outbound;
+- Woo sync failure must not erase the already-committed ERP shipment truth; it is surfaced for follow-up;
+- the file-return endpoint remains blocked for `us-3sm`; never infer a return schema from outbound files, historical generic warehouse files, recipient data, row position, or other providers.
 
 ## 6. Normalized return contract
 
