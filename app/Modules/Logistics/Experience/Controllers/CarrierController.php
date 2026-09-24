@@ -6,8 +6,8 @@ use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\CarrierService;
-use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
+use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -152,7 +152,10 @@ final class CarrierController
             $defaultKey = trim((string) ($payload['default_service_key'] ?? ''));
             $defaultId = (int) ($payload['default_service_id'] ?? 0);
             $default = collect($saved)->first(function (CarrierService $service) use ($defaultKey, $defaultId): bool {
-                if ($defaultKey !== '') return $service->service_key === $defaultKey;
+                if ($defaultKey !== '') {
+                    return $service->service_key === $defaultKey;
+                }
+
                 return (int) $service->id === $defaultId;
             });
             abort_unless($default && $default->is_active, 422, '默认运输 / 服务类型必须是已启用选项');
@@ -225,6 +228,7 @@ final class CarrierController
         $costs = collect($costs)->map(function (array $cost): array {
             $cost['total'] = round($cost['total'], 4);
             $cost['average'] = $cost['shipments'] > 0 ? round($cost['total'] / $cost['shipments'], 4) : null;
+
             return $cost;
         })->values()->all();
 
@@ -299,7 +303,6 @@ final class CarrierController
     private function statusBar(): array
     {
         return [
-            ['key' => 'pending', 'label' => '待发货', 'url' => '/logistics/pending', 'count' => Order::query()->where('order_status', 'pending_shipment')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->whereDoesntHave('logisticsReview', fn ($q) => $q->where('status', 'pending'))->count()],
             ['key' => 'awaiting', 'label' => '已发货', 'url' => '/logistics/awaiting-tracking', 'count' => Shipment::query()->where('shipment_status', 'shipped')->whereNotNull('shipped_at')->where(fn ($q) => $q->whereNull('tracking_number')->orWhere('tracking_number', ''))->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))->count()],
             ['key' => 'transit', 'label' => '运输中', 'url' => '/logistics/in-transit', 'count' => Shipment::query()->where('shipment_status', 'shipped')->whereNotNull('tracking_number')->where('tracking_number', '!=', '')->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))->count()],
             ['key' => 'exception', 'label' => '异常单', 'url' => '/logistics/exceptions', 'count' => Shipment::query()->where('shipment_status', 'exception')->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))->count()],

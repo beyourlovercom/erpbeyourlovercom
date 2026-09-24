@@ -315,7 +315,7 @@ final class LogisticsOsV1ClosureTest extends TestCase
     {
         $viewer = $this->userWith(['logistics.view']);
         $surfaces = [
-            '/logistics/pending' => 'Logistics/Index',
+            '/logistics/wait-stock' => 'Logistics/FulfillmentAllocation',
             '/logistics/awaiting-tracking' => 'Logistics/AwaitingTracking',
             '/logistics/in-transit' => 'Logistics/InTransit',
             '/logistics/exceptions' => 'Logistics/Exceptions',
@@ -333,8 +333,8 @@ final class LogisticsOsV1ClosureTest extends TestCase
     {
         $operator = $this->userWith(['logistics.view', 'logistics.operate']);
 
-        $this->actingAs($operator)->get('/logistics/pending')->assertInertia(
-            fn (Assert $page) => $page->component('Logistics/Index')->where('canOperate', true)
+        $this->actingAs($operator)->get('/logistics/wait-stock')->assertInertia(
+            fn (Assert $page) => $page->component('Logistics/FulfillmentAllocation')->where('canOperate', true)
         );
     }
 
@@ -342,20 +342,14 @@ final class LogisticsOsV1ClosureTest extends TestCase
     {
         [$operator, $order] = $this->scenario();
 
-        $this->actingAs($operator)->get('/logistics/pending?order_id='.$order->id)->assertInertia(
-            fn (Assert $page) => $page
-                ->component('Logistics/Index')
-                ->where('focusOrderId', $order->id)
-                ->where('orders.total', 1)
-                ->where('orders.data.0.id', $order->id)
-        );
+        $this->actingAs($operator)->get('/logistics/pending?order_id='.$order->id)->assertRedirect('/logistics/wait-stock');
     }
 
     public function test_administrator_role_receives_operate_ux_across_frontline_logistics_surfaces(): void
     {
         $admin = $this->userWithExactRole(['logistics.view', 'logistics.operate'], 'role_preset_administrator');
         $surfaces = [
-            '/logistics/pending' => 'Logistics/Index',
+            '/logistics/wait-stock' => 'Logistics/FulfillmentAllocation',
             '/logistics/awaiting-tracking' => 'Logistics/AwaitingTracking',
             '/logistics/in-transit' => 'Logistics/InTransit',
             '/logistics/exceptions' => 'Logistics/Exceptions',
@@ -377,13 +371,13 @@ final class LogisticsOsV1ClosureTest extends TestCase
         $this->actingAs($admin)->post("/logistics/orders/{$order->id}/draft", [])->assertRedirect();
     }
 
-    public function test_super_admin_is_also_read_only_for_frontline_logistics_execution(): void
+    public function test_super_admin_can_allocate_but_cannot_bypass_frontline_shipping_execution(): void
     {
         [, $order] = $this->scenario();
         $superAdmin = $this->userWithExactRole([], 'super_admin');
 
-        $this->actingAs($superAdmin)->get('/logistics/pending')->assertInertia(
-            fn (Assert $page) => $page->component('Logistics/Index')->where('canOperate', false)
+        $this->actingAs($superAdmin)->get('/logistics/wait-stock')->assertInertia(
+            fn (Assert $page) => $page->component('Logistics/FulfillmentAllocation')->where('canOperate', true)
         );
         $this->actingAs($superAdmin)->post("/logistics/orders/{$order->id}/ship", [])->assertForbidden();
     }
@@ -516,10 +510,9 @@ final class LogisticsOsV1ClosureTest extends TestCase
         ]);
         [, $operational] = $this->scenario();
 
-        $this->actingAs($user)->get('/logistics/pending')->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($user)->get('/logistics/wait-stock')->assertInertia(fn (Assert $page) => $page
             ->where('orders.total', 1)
-            ->where('orders.data.0.id', $operational->id)
-            ->where('statusBar.0.count', 1));
+            ->where('orders.data.0.id', $operational->id));
 
         $this->dispatch($user, $historical, $carrier, 'HIST-TRACK');
         $this->actingAs($user)->get('/logistics/in-transit')->assertInertia(fn (Assert $page) => $page
@@ -533,9 +526,9 @@ final class LogisticsOsV1ClosureTest extends TestCase
         $this->actingAs($user)->get('/logistics/in-transit')->assertInertia(fn (Assert $page) => $page
             ->where('shipments.data.0.order_url', "/customers/orders/{$order->id}")
             ->where('shipments.data.0.items.0.product_url', '/products/'.$order->items()->firstOrFail()->product_id)
-            ->has('statusBar', 7)
-            ->where('statusBar.0.label', '待发货')
-            ->where('statusBar.6.label', '已取消'));
+            ->has('statusBar', 6)
+            ->where('statusBar.0.label', '已发货')
+            ->where('statusBar.5.label', '已取消'));
 
         $this->actingAs($user)->get('/logistics/loss')->assertNotFound();
     }

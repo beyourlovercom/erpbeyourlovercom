@@ -2,17 +2,16 @@
 
 namespace Tests\Feature;
 
-use Inertia\Testing\AssertableInertia as Assert;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
-use App\Models\AuditRecord;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
-use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class ErpNavigationTest extends TestCase
@@ -35,15 +34,19 @@ class ErpNavigationTest extends TestCase
         $user->roles()->attach($role);
         $this->actingAs($user);
     }
+
     public function test_every_declared_navigation_path_is_available(): void
     {
-        foreach ($this->paths(config('erp_navigation')) as $path) $this->get($path)->assertOk();
+        foreach ($this->paths(config('erp_navigation')) as $path) {
+            $this->get($path)->assertOk();
+        }
     }
 
     public function test_shell_renders_required_modules_without_affiliate(): void
     {
-        $response = $this->get('/logistics/pending');
-        $response->assertInertia(fn (Assert $page) => $page->component('Logistics/Index')->has('shellNavigation', 13));
+        $response = $this->get('/logistics/wait-stock');
+        $response->assertInertia(fn (Assert $page) => $page->component('Logistics/FulfillmentAllocation')->has('shellNavigation', 13));
+        $this->get('/logistics/pending')->assertRedirect('/logistics/wait-stock');
     }
 
     public function test_accounting_third_level_navigation_is_rendered(): void
@@ -178,9 +181,14 @@ class ErpNavigationTest extends TestCase
     {
         $paths = [];
         foreach ($items as $item) {
-            if (isset($item['path'])) $paths[] = $item['path'];
-            if (isset($item['children'])) $paths = [...$paths, ...$this->paths($item['children'])];
+            if (isset($item['path'])) {
+                $paths[] = $item['path'];
+            }
+            if (isset($item['children'])) {
+                $paths = [...$paths, ...$this->paths($item['children'])];
+            }
         }
+
         return $paths;
     }
 }

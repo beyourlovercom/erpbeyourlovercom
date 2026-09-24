@@ -63,7 +63,7 @@ final class SpeedaOutboundExporter
      * @param  Collection<int,Order>  $orders
      * @return array{bytes:string,exported_count:int,blocked:list<array{order_id:int,erp_order_id:?string,reasons:list<string>}>}
      */
-    public function exportReady(Collection $orders): array
+    public function exportReady(Collection $orders, string $providerLabel = '速达'): array
     {
         $ready = collect();
         $blocked = [];
@@ -88,32 +88,32 @@ final class SpeedaOutboundExporter
                 ->take(5)
                 ->map(fn (array $row): string => ($row['erp_order_id'] ?: '#'.$row['order_id']).'：'.implode('、', $row['reasons']))
                 ->implode('；');
-            throw new DomainException('没有可安全导出的速达订单。'.$summary);
+            throw new DomainException('没有可安全导出的'.$providerLabel.'订单。'.$summary);
         }
 
         return [
-            'bytes' => $this->export($ready),
+            'bytes' => $this->export($ready, $providerLabel),
             'exported_count' => $ready->count(),
             'blocked' => $blocked,
         ];
     }
 
     /** @param Collection<int,Order> $orders */
-    public function export(Collection $orders): string
+    public function export(Collection $orders, string $providerLabel = '速达'): string
     {
         if ($orders->isEmpty()) {
-            throw new DomainException('当前没有可导出的速达待发货订单。');
+            throw new DomainException('当前没有可导出的'.$providerLabel.'待发货订单。');
         }
 
         $path = base_path(self::TEMPLATE);
         if (! is_file($path)) {
-            throw new RuntimeException('速达真实下单模板未安装。');
+            throw new RuntimeException('4PX / 纬狮共享 24 列下单模板未安装。');
         }
 
         $book = IOFactory::load($path);
         $sheet = $book->getSheetByName('标准上传格式');
         if (! $sheet) {
-            throw new RuntimeException('速达模板缺少“标准上传格式”工作表。');
+            throw new RuntimeException('4PX / 纬狮共享模板缺少“标准上传格式”工作表。');
         }
 
         $countryMap = $this->countryMap($book);
@@ -179,12 +179,12 @@ final class SpeedaOutboundExporter
                 'I' => '收件人电话',
                 'K' => '收件人邮编',
                 'Q' => '申报品数量1',
-            ], $sheet);
+            ], $sheet, $providerLabel);
         }
 
-        $tmp = tempnam(sys_get_temp_dir(), 'speeda-outbound-');
+        $tmp = tempnam(sys_get_temp_dir(), 'domestic-provider-outbound-');
         if ($tmp === false) {
-            throw new RuntimeException('无法创建速达导出临时文件。');
+            throw new RuntimeException('无法创建国内承运商导出临时文件。');
         }
         try {
             (new Xlsx($book))->save($tmp);
@@ -194,7 +194,7 @@ final class SpeedaOutboundExporter
             @unlink($tmp);
         }
         if (! is_string($bytes)) {
-            throw new RuntimeException('无法读取速达导出文件。');
+            throw new RuntimeException('无法读取国内承运商导出文件。');
         }
 
         return $bytes;
@@ -232,7 +232,7 @@ final class SpeedaOutboundExporter
     }
 
     /** @param array<string,string> $required */
-    private function assertRequired(Order $order, int $row, array $required, $sheet): void
+    private function assertRequired(Order $order, int $row, array $required, $sheet, string $providerLabel): void
     {
         $missing = [];
         foreach ($required as $column => $label) {
@@ -241,7 +241,7 @@ final class SpeedaOutboundExporter
             }
         }
         if ($missing !== []) {
-            throw new DomainException("订单 {$order->erp_order_id} 缺少速达必填字段：".implode('、', $missing));
+            throw new DomainException("订单 {$order->erp_order_id} 缺少{$providerLabel}必填字段：".implode('、', $missing));
         }
     }
 }

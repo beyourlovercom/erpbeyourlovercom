@@ -71,7 +71,7 @@ final class DomesticLogisticsController
             ] : null,
             'providerStatus' => [
                 '4px' => ['export_ready' => true, 'return_ready' => true, 'label' => '速达 / 4PX'],
-                'weship' => ['export_ready' => false, 'return_ready' => true, 'label' => '纬狮 / Weship', 'reason' => '真实下单模板尚未恢复；回传 XLSX 已按真实纬狮数据协议支持。'],
+                'weship' => ['export_ready' => true, 'return_ready' => true, 'label' => '纬狮 / Weship', 'note' => '与速达共用 24 列下单模板 · XLSX 下载 · XLS/XLSX 回传'],
             ],
         ]);
     }
@@ -98,26 +98,27 @@ final class DomesticLogisticsController
     public function export(string $provider): HttpResponse
     {
         $provider = $this->provider($provider);
-        abort_if($provider === 'weship', 409, '纬狮真实下单模板尚未安装，禁止猜测 Provider 格式。');
+        $carrier = $provider === '4px' ? '4px' : 'weship';
+        $label = $this->providerLabel($provider);
 
         $factory = $this->factory();
         $orders = $this->baseQuery((int) $factory->id)
             ->with(['address', 'items.product', 'externalReferences', 'operationalMarkers'])
             ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER))
-            ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending')->whereRaw('LOWER(carrier) = ?', ['4px']))
+            ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending')->whereRaw('LOWER(carrier) = ?', [$carrier]))
             ->orderBy('order_date')
             ->orderBy('id')
             ->get();
 
         try {
-            $result = $this->speeda->exportReady($orders);
+            $result = $this->speeda->exportReady($orders, $label);
         } catch (\DomainException $e) {
             abort(422, $e->getMessage());
         }
 
         return response($result['bytes'], 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'Content-Disposition' => 'attachment; filename="007-4px-orders-'.now()->format('ymd').'.xlsx"',
+            'Content-Disposition' => 'attachment; filename="007-'.$provider.'-orders-'.now()->format('ymd').'.xlsx"',
             'Cache-Control' => 'no-store, private',
             'X-BYL-Exported-Orders' => (string) $result['exported_count'],
             'X-BYL-Blocked-Orders' => (string) count($result['blocked']),
@@ -276,7 +277,7 @@ final class DomesticLogisticsController
             'shipment_status' => $shipment?->shipment_status,
             'shipped_at' => $shipment?->shipped_at?->toIso8601String(),
             'review_status' => $approved ? 'approved' : 'pending',
-            'export_blockers' => strcasecmp((string) $shipment?->carrier, '4PX') === 0
+            'export_blockers' => in_array(strtolower((string) $shipment?->carrier), ['4px', 'weship'], true)
                 ? $this->speeda->blockers($order)
                 : [],
             'items' => $order->items->map(fn ($item) => [
@@ -310,6 +311,8 @@ final class DomesticLogisticsController
 
     private function providerLabel(string $provider): string
     {
-        return match ($provider) { '4px' => '速达', 'weship' => '纬狮', default => '待发货批量' };
+        return match ($provider) {
+            '4px' => '速达', 'weship' => '纬狮', default => '待发货批量'
+        };
     }
 }

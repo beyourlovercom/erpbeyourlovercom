@@ -2,11 +2,14 @@
 
 namespace Tests\Feature\Logistics;
 
+use App\Models\Permission;
+use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
 use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
 use App\Modules\Logistics\Application\Domestic\SpeedaOutboundExporter;
+use App\Modules\Logistics\Experience\Controllers\DomesticLogisticsController;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderStatus;
@@ -23,6 +26,29 @@ use Tests\TestCase;
 final class DomesticLogisticsProductionClosureTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_domestic_workspace_is_formal_and_obsolete_pending_workspace_is_retired(): void
+    {
+        $formal = collect(config('erp_shell_navigation'))->firstWhere('key', 'logistics');
+        self::assertSame(
+            ['待分仓', '国内发货', '海外仓发货', '已发待单号', '运输中', '异常订单', '承运商'],
+            collect($formal['children'])->pluck('label')->all(),
+        );
+        self::assertSame(
+            ['/logistics/wait-stock', '/logistics/china', '/logistics/oversea', '/logistics/awaiting-tracking', '/logistics/in-transit', '/logistics/exceptions', '/logistics/carriers'],
+            collect($formal['children'])->pluck('path')->all(),
+        );
+        self::assertNotContains('/logistics/pending', collect($formal['children'])->pluck('path')->all());
+        self::assertNotContains('/logistics/pending', collect(config('erp_navigation.logistics.children'))->pluck('path')->all());
+
+        $domestic = app('router')->getRoutes()->getByName('logistics.china');
+        self::assertSame(DomesticLogisticsController::class.'@index', $domestic?->getActionName());
+
+        $user = $this->logisticsViewer();
+        $this->actingAs($user)->get('/logistics')->assertRedirect('/logistics/wait-stock');
+        $this->actingAs($user)->get('/logistics/pending')->assertRedirect('/logistics/wait-stock');
+        $this->actingAs($user)->get('/logistics/wait-stock')->assertInertia(fn ($page) => $page->component('Logistics/FulfillmentAllocation'));
+    }
 
     public function test_speeda_export_uses_real_24_column_contract_and_blocks_missing_phone(): void
     {
@@ -63,6 +89,40 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         $this->expectException(\DomainException::class);
         $this->expectExceptionMessage('收件人电话');
         app(SpeedaOutboundExporter::class)->export(collect([$missingPhone]));
+    }
+
+    public function test_weship_export_reuses_the_24_column_contract_but_remains_provider_isolated(): void
+    {
+        $speeda = $this->domesticOrder('007-0923-c50008', '4PX', reviewed: true, phone: '13800138008', quantity: 1);
+        $weship = $this->domesticOrder('007-0923-c50009', 'Weship', reviewed: true, phone: '13800138009', quantity: 3);
+        $user = $this->logisticsViewer();
+
+        $response = $this->actingAs($user)->get('/logistics/china/export/weship');
+        $response->assertOk();
+        self::assertStringContainsString('007-weship-orders-', (string) $response->headers->get('Content-Disposition'));
+        self::assertSame('1', $response->headers->get('X-BYL-Exported-Orders'));
+        self::assertSame('0', $response->headers->get('X-BYL-Blocked-Orders'));
+
+        $path = tempnam(sys_get_temp_dir(), 'weship-shared-template-');
+        file_put_contents($path, $response->getContent());
+        try {
+            $book = IOFactory::load($path);
+            $sheet = $book->getSheetByName('标准上传格式');
+            self::assertNotNull($sheet);
+            self::assertSame(24, Coordinate::columnIndexFromString($sheet->getHighestDataColumn()));
+            self::assertSame(2, $sheet->getHighestDataRow());
+            self::assertSame('C50009-007', $sheet->getCell('A2')->getValue());
+            self::assertSame('13800138009', $sheet->getCell('I2')->getValue());
+            self::assertSame('buyer@example.test', $sheet->getCell('J2')->getValue());
+            self::assertSame(3, (int) $sheet->getCell('Q2')->getValue());
+            self::assertNotSame('C50008-007', $sheet->getCell('A2')->getValue());
+            $book->disconnectWorksheets();
+        } finally {
+            @unlink($path);
+        }
+
+        self::assertSame('pending', $speeda->fresh()->shipment->shipment_status);
+        self::assertSame('pending', $weship->fresh()->shipment->shipment_status);
     }
 
     public function test_speeda_batch_export_keeps_valid_orders_moving_when_one_order_is_blocked(): void
@@ -207,6 +267,17 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         self::assertSame('blocked', $preview['rows'][0]['status']);
         self::assertStringContainsString('运单号与服务商单号不一致', $preview['rows'][0]['message']);
         self::assertSame('pending', $order->fresh()->shipment->shipment_status);
+    }
+
+    private function logisticsViewer(): User
+    {
+        $permission = Permission::query()->firstOrCreate(['key' => 'logistics.view'], ['label' => 'logistics.view']);
+        $role = Role::query()->create(['key' => 'domestic-closure-viewer', 'label' => 'Domestic Closure Viewer']);
+        $role->permissions()->attach($permission);
+        $user = User::factory()->create(['is_active' => true]);
+        $user->roles()->attach($role);
+
+        return $user;
     }
 
     private function domesticOrder(string $erpOrderId, string $carrier, bool $reviewed, string $phone, int $quantity): Order

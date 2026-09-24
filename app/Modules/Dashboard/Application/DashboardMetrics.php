@@ -38,7 +38,6 @@ final class DashboardMetrics
                 'url' => '/logistics/wait-stock',
                 'count' => $this->logistics->waitStockCount(),
             ],
-            'pending' => $status->get('pending'),
             'awaiting' => $status->get('awaiting'),
             'transit' => $status->get('transit'),
             'exception' => $status->get('exception'),
@@ -116,6 +115,7 @@ final class DashboardMetrics
 
             if (! $summary['base_currency_aggregate_eligible']) {
                 $fxExcluded++;
+
                 continue;
             }
 
@@ -177,7 +177,9 @@ final class DashboardMetrics
             'counts' => ['pending' => 0, 'purchasing' => 0, 'ordered' => 0, 'completed' => 0, 'cancelled' => 0],
             'recent' => [],
         ];
-        if (! Schema::hasTable('procurement_orders')) return $empty;
+        if (! Schema::hasTable('procurement_orders')) {
+            return $empty;
+        }
 
         $counts = $empty['counts'];
         DB::table('procurement_orders')
@@ -185,7 +187,9 @@ final class DashboardMetrics
             ->groupBy('status')
             ->get()
             ->each(function ($row) use (&$counts): void {
-                if (array_key_exists($row->status, $counts)) $counts[$row->status] = (int) $row->aggregate;
+                if (array_key_exists($row->status, $counts)) {
+                    $counts[$row->status] = (int) $row->aggregate;
+                }
             });
 
         $recent = DB::table('procurement_orders')

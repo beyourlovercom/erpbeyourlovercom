@@ -12,8 +12,8 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['web', 'auth'])->group(function (): void {
     $execution = ['can:logistics.operate', RequireLogisticsExecution::class];
     $allocation = [RequireFulfillmentAllocation::class];
-    Route::get('/logistics', [LogisticsController::class, 'index'])->middleware('can:logistics.view')->name('shell.logistics');
-    Route::get('/logistics/pending', [LogisticsController::class, 'index'])->middleware('can:logistics.view')->name('logistics.pending');
+    Route::get('/logistics', fn () => redirect()->route('logistics.wait-stock'))->middleware('can:logistics.view')->name('shell.logistics');
+    Route::get('/logistics/pending', fn () => redirect()->route('logistics.wait-stock'))->middleware('can:logistics.view')->name('logistics.pending');
     Route::get('/logistics/wait-stock', [LogisticsController::class, 'waitStock'])->middleware('can:logistics.view')->name('logistics.wait-stock');
     Route::get('/logistics/china', [DomesticLogisticsController::class, 'index'])->middleware('can:logistics.view')->name('logistics.china');
     Route::get('/logistics/china/export/{provider}', [DomesticLogisticsController::class, 'export'])->middleware('can:logistics.view')->whereIn('provider', ['4px', 'weship'])->name('logistics.china.export');

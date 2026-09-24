@@ -8,53 +8,68 @@ use Illuminate\Support\Collection;
 
 final class CarrierServiceCatalog
 {
+    /** @var array<string,Carrier|null> */
+    private array $carrierCache = [];
+
+    /** @var array<int,Collection<int,CarrierService>> */
+    private array $activeServiceCache = [];
+
     /** @return Collection<int,CarrierService> */
     public function activeServices(string $carrierName): Collection
     {
         $carrier = $this->carrier($carrierName);
-        if (! $carrier) return collect();
+        if (! $carrier) {
+            return collect();
+        }
 
-        return $carrier->services()
-            ->where('is_active', true)
-            ->orderBy('sort_order')
-            ->orderBy('id')
-            ->get();
+        return $this->servicesFor($carrier);
     }
 
     public function defaultService(string $carrierName, ?string $destinationCountry = null): ?CarrierService
     {
         $carrier = $this->carrier($carrierName);
-        if (! $carrier) return null;
+        if (! $carrier) {
+            return null;
+        }
 
+        $services = $this->servicesFor($carrier);
         $country = strtoupper(trim((string) $destinationCountry));
         if (strcasecmp($carrier->name, 'DHL') === 0 && $country === 'DE') {
-            $domestic = $carrier->services()->where('service_key', 'paket_domestic')->where('is_active', true)->first();
-            if ($domestic) return $domestic;
+            $domestic = $services->firstWhere('service_key', 'paket_domestic');
+            if ($domestic) {
+                return $domestic;
+            }
         }
 
         if ($carrier->default_service_id) {
-            $default = $carrier->services()->whereKey($carrier->default_service_id)->where('is_active', true)->first();
-            if ($default) return $default;
+            $default = $services->firstWhere('id', (int) $carrier->default_service_id);
+            if ($default) {
+                return $default;
+            }
         }
 
-        return $carrier->services()->where('is_active', true)->orderBy('sort_order')->orderBy('id')->first();
+        return $services->first();
     }
 
     public function resolve(string $carrierName, ?string $serviceValue, ?string $destinationCountry = null): ?CarrierService
     {
         $carrier = $this->carrier($carrierName);
-        if (! $carrier) return null;
+        if (! $carrier) {
+            return null;
+        }
 
         $serviceValue = trim((string) $serviceValue);
         if ($serviceValue !== '') {
             $needle = mb_strtolower($serviceValue);
-            return $carrier->services()
-                ->where('is_active', true)
-                ->get()
+
+            return $this->servicesFor($carrier)
                 ->first(function (CarrierService $service) use ($needle): bool {
                     foreach ([$service->service_value, $service->service_key, $service->name_en, $service->name_zh] as $candidate) {
-                        if ($candidate !== null && mb_strtolower(trim((string) $candidate)) === $needle) return true;
+                        if ($candidate !== null && mb_strtolower(trim((string) $candidate)) === $needle) {
+                            return true;
+                        }
                     }
+
                     return false;
                 });
         }
@@ -74,6 +89,7 @@ final class CarrierServiceCatalog
                 $default = $carrier->defaultService && $carrier->defaultService->is_active
                     ? $carrier->defaultService
                     : $carrier->services->first();
+
                 return [
                     'value' => $carrier->name,
                     'label' => $carrier->displayName(),
@@ -94,22 +110,53 @@ final class CarrierServiceCatalog
     public function serviceDisplayName(string $carrierName, ?string $serviceValue): ?string
     {
         $serviceValue = trim((string) $serviceValue);
-        if ($serviceValue === '') return null;
+        if ($serviceValue === '') {
+            return null;
+        }
         $service = $this->resolve($carrierName, $serviceValue);
+
         return $service?->displayName() ?: $serviceValue;
     }
 
     public function carrierDisplayName(string $carrierName): string
     {
         $carrier = $this->carrier($carrierName);
-        if (! $carrier) return trim($carrierName);
+        if (! $carrier) {
+            return trim($carrierName);
+        }
+
         return $carrier->displayName();
     }
 
     private function carrier(string $carrierName): ?Carrier
     {
         $carrierName = trim($carrierName);
-        if ($carrierName === '') return null;
-        return Carrier::query()->where('name', $carrierName)->where('is_active', true)->first();
+        if ($carrierName === '') {
+            return null;
+        }
+        $key = mb_strtolower($carrierName);
+        if (array_key_exists($key, $this->carrierCache)) {
+            return $this->carrierCache[$key];
+        }
+
+        return $this->carrierCache[$key] = Carrier::query()
+            ->where('name', $carrierName)
+            ->where('is_active', true)
+            ->first();
+    }
+
+    /** @return Collection<int,CarrierService> */
+    private function servicesFor(Carrier $carrier): Collection
+    {
+        $id = (int) $carrier->id;
+        if (array_key_exists($id, $this->activeServiceCache)) {
+            return $this->activeServiceCache[$id];
+        }
+
+        return $this->activeServiceCache[$id] = $carrier->services()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
     }
 }

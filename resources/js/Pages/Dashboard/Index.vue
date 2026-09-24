@@ -8,7 +8,7 @@ type DashboardVisibility = { operations:boolean; inventory:boolean; sync:boolean
 type RoleSnapshotCard = { label:string; value:number|string; href:string; helper?:string }
 type RoleSnapshot = { kind:string; title:string; description:string; cards:RoleSnapshotCard[]; highlights:string[] }
 type StatusMetric = { key:string; label:string; url:string; count:number }
-type OperationsSnapshot = Record<'wait_stock'|'pending'|'awaiting'|'transit'|'exception'|'review'|'completed'|'cancelled', StatusMetric|null>
+type OperationsSnapshot = Record<'wait_stock'|'awaiting'|'transit'|'exception'|'review'|'completed'|'cancelled', StatusMetric|null>
 type InventoryRisk = { stock_alert_rows:number; out_of_stock_rows:number; low_stock_rows:number; quantity_available:number; warehouse_data_gap_count:number; warehouse_total_count:number }
 type SyncHealth = { pending:number; retry_due:number; retry_waiting:number; processing:number; failed:number; conflicts:number }
 type FinanceTrendRow = { date:string; revenue_usd:string; estimated_cost_usd:string; estimated_profit_usd:string; aggregate_orders:number }
@@ -114,10 +114,10 @@ const chart = computed(() => {
           <Link class="mvp-button" href="/logistics">进入物流系统</Link>
         </div>
         <Link v-if="operations.wait_stock" class="context-strip" :href="operations.wait_stock.url">
-          <span>待分仓</span><strong>{{ integer(operations.wait_stock.count) }}</strong><small>属于待履约上下文，不与“待发货”相加</small>
+          <span>待分仓</span><strong>{{ integer(operations.wait_stock.count) }}</strong><small>未分仓订单；分仓后进入国内发货或海外仓发货</small>
         </Link>
         <div class="operations-funnel" aria-label="履约状态">
-          <Link v-for="item in [operations.pending,operations.awaiting,operations.transit,operations.exception,operations.review].filter(Boolean)" :key="item!.key" class="dashboard-live-card" :class="{ alert: item!.key === 'exception' || item!.key === 'review' }" :href="item!.url">
+          <Link v-for="item in [operations.awaiting,operations.transit,operations.exception,operations.review].filter(Boolean)" :key="item!.key" class="dashboard-live-card" :class="{ alert: item!.key === 'exception' || item!.key === 'review' }" :href="item!.url">
             <span>{{ item!.label }}</span><strong>{{ integer(item!.count) }}</strong><small>查看明细 →</small>
           </Link>
         </div>

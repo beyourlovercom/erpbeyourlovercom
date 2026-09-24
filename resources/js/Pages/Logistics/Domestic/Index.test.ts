@@ -29,20 +29,20 @@ const baseProps = {
   },
   providerStatus:{
     '4px':{export_ready:true,return_ready:true,label:'速达 / 4PX'},
-    weship:{export_ready:false,return_ready:true,label:'纬狮 / Weship',reason:'真实下单模板尚未恢复；回传 XLSX 已按真实纬狮数据协议支持。'},
+    weship:{export_ready:true,return_ready:true,label:'纬狮 / Weship',note:'与速达共用 24 列下单模板 · XLSX 下载 · XLS/XLSX 回传'},
   },
 }
 
 describe('Domestic logistics production workbench', () => {
   beforeEach(() => { routerPost.mockClear(); routerVisit.mockClear() })
 
-  it('shows the daily domestic flow, Speeda export and fail-closed Weship export', () => {
+  it('shows the daily domestic flow with isolated 4PX and Weship outbound downloads', () => {
     const wrapper=mount(Index,{props:{...baseProps,view:'today-4px'}})
     expect(wrapper.text()).toContain('国内发货')
     expect(wrapper.text()).toContain('单个异常订单不会阻断其他正常订单')
     expect(wrapper.find('a[href="/logistics/china/export/4px"]').exists()).toBe(true)
     expect(wrapper.text()).not.toContain('纬狮 / Weship')
-    expect(wrapper.text()).not.toContain('下单模板 Fail Closed')
+    expect(wrapper.text()).not.toContain('Fail Closed')
     expect(wrapper.find('a[href="/logistics/china/export/weship"]').exists()).toBe(false)
     expect(wrapper.find('input[type="file"]').attributes('accept')).toBe('.xls,.xlsx')
   })
@@ -57,7 +57,11 @@ describe('Domestic logistics production workbench', () => {
     const weship=mount(Index,{props:{...baseProps,view:'today-weship',trackingImportPreview:null,trackingImportProvider:null}})
     expect(weship.text()).toContain('纬狮 / Weship')
     expect(weship.text()).not.toContain('速达 / 4PX')
+    expect(weship.text()).toContain('与速达共用 24 列下单模板')
+    expect(weship.text()).not.toContain('Fail Closed')
+    expect(weship.text()).toContain('下载纬狮下单表')
     expect(weship.text()).toContain('上传纬狮单号表')
+    expect(weship.find('a[href="/logistics/china/export/weship"]').exists()).toBe(true)
   })
 
   it('shows a mixed-carrier ERP batch download/upload only on the pending work queue', () => {

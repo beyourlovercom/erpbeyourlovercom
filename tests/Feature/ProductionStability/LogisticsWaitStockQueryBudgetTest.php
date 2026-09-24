@@ -11,7 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
-final class LogisticsPendingQueryBudgetTest extends TestCase
+final class LogisticsWaitStockQueryBudgetTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -19,7 +19,7 @@ final class LogisticsPendingQueryBudgetTest extends TestCase
 
     private const PRODUCTION_QUERY_BUDGET = 100;
 
-    public function test_authenticated_pending_page_stays_within_production_query_budget_at_full_page_size(): void
+    public function test_authenticated_wait_stock_page_stays_within_production_query_budget_at_full_page_size(): void
     {
         $user = $this->logisticsViewer();
         $product = Product::query()->create([
@@ -66,17 +66,17 @@ final class LogisticsPendingQueryBudgetTest extends TestCase
             $queryCount++;
         });
 
-        $response = $this->get('/logistics/pending');
+        $response = $this->get('/logistics/wait-stock');
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
-            ->component('Logistics/Index')
+            ->component('Logistics/FulfillmentAllocation')
             ->where('orders.per_page', self::PAGE_SIZE)
             ->has('orders.data', self::PAGE_SIZE));
         $this->assertLessThanOrEqual(
             self::PRODUCTION_QUERY_BUDGET,
             $queryCount,
-            "Authenticated /logistics/pending exceeded the Production query budget: {$queryCount}",
+            "Authenticated /logistics/wait-stock exceeded the Production query budget: {$queryCount}",
         );
     }
 

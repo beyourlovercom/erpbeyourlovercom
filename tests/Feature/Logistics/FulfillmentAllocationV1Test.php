@@ -4,7 +4,6 @@ namespace Tests\Feature\Logistics;
 
 use App\Models\Role;
 use App\Models\User;
-use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\FulfillmentAllocationSubmissionService;
 use App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -32,6 +31,7 @@ final class FulfillmentAllocationV1Test extends TestCase
                 ->where('orders.data.0.allocation_decision.policy.human_confirmation_required', true)
                 ->where('warehouses', function ($rows): bool {
                     $codes = collect($rows)->pluck('code')->all();
+
                     return ! in_array('007', $codes, true)
                         && in_array('FACTORY', $codes, true)
                         && collect($codes)->diff(['FACTORY', 'US-NY', 'US-LA', 'US-SM', 'DE', 'CA'])->isEmpty();
@@ -71,14 +71,7 @@ final class FulfillmentAllocationV1Test extends TestCase
         self::assertSame([$items[0]->sku, $items[1]->sku], $children->map(fn ($child) => $child->items->first()?->sku)->all());
         self::assertSame([$order->erp_order_id.'A', $order->erp_order_id.'B'], collect($allocation->fresh()->plan_snapshot['derived_orders'])->pluck('erp_order_id')->all());
 
-        $this->actingAs($user)->get('/logistics/pending')->assertInertia(
-            fn (Assert $page) => $page->where('orders.data', function ($rows) use ($order): bool {
-                $ids = collect($rows)->pluck('erp_order_id');
-                return ! $ids->contains($order->erp_order_id)
-                    && $ids->contains($order->erp_order_id.'A')
-                    && $ids->contains($order->erp_order_id.'B');
-            })
-        );
+        $this->actingAs($user)->get('/logistics/pending')->assertRedirect('/logistics/wait-stock');
     }
 
     public function test_split_children_inherit_woo_line_item_identity_from_parent_items(): void
@@ -221,6 +214,7 @@ final class FulfillmentAllocationV1Test extends TestCase
         }
         $user = User::factory()->create(['is_active' => true]);
         $user->roles()->attach($role);
+
         return $user;
     }
 }

@@ -18,12 +18,12 @@ use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
 use App\Modules\Orders\Providers\OrdersServiceProvider;
 use App\Modules\Products\Providers\ProductsServiceProvider;
-use App\Modules\Support\Providers\SupportServiceProvider;
-use App\Modules\Traffic\Providers\TrafficServiceProvider;
 use App\Modules\Runtime\Providers\RuntimeServiceProvider;
 use App\Modules\Shell\Providers\ShellServiceProvider;
+use App\Modules\Support\Providers\SupportServiceProvider;
 use App\Modules\Sync\Providers\ManualSyncServiceProvider;
 use App\Modules\Sync\Providers\SyncServiceProvider;
+use App\Modules\Traffic\Providers\TrafficServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Support\AuthorizationKeys;
 use Illuminate\Contracts\Console\Kernel;
@@ -1190,8 +1190,6 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/Logistics/Carriers/Index.vue' => '4285fae56eec289f35620026938e49eb529cec41573bab96344fb5bfc9c9f921',
         'resources/js/Pages/Logistics/Carriers/Show.test.ts' => '5293a388312a9123449ff8ea54c9c3bc602028f71901d8ba243a6245b342f5ea',
         'resources/js/Pages/Logistics/Carriers/Show.vue' => '0cb4a23976aecf89c45f704cce8b49ba174662585be4c877bd3bea58d5b9c559',
-        'resources/js/Pages/Logistics/Index.test.ts' => 'bfc4a8b07e90741bd9fcdf94affd6c77b66106adcb7d16b1f37b790699f0bdcd',
-        'resources/js/Pages/Logistics/Index.vue' => '357f0e75ad3130cc84ac35aee6882443cfa95434363967f8f75142036c88456e',
         'resources/js/Pages/Marketing/Overview.vue' => 'cd8cf27254d675e43cac6e685f45c47472027a098459bfac6c27c189861a4117',
         'resources/js/Pages/Marketing/Planned.vue' => 'e19e425b047284a1ce9931c87c2346c5d30578de22c8b604ec7d431cd9d4718b',
         'resources/js/Pages/Marketing/Subscribers/Index.vue' => 'ba63d758645327b01a630dbe7e34828627a4682c1424bf5706d403c14676dfd7',
@@ -1417,7 +1415,7 @@ final class ModuleArchitectureTest extends TestCase
             'app/Modules/Sync/Application/Contracts/SyncOrchestrationRepository.php',
             'app/Modules/Sync/Application/Contracts/SyncOutboxRepository.php',
             'app/Modules/Sync/Application/Contracts/SyncRunRepository.php',
-        'app/Modules/Sync/Application/Contracts/SyncRunTracker.php',
+            'app/Modules/Sync/Application/Contracts/SyncRunTracker.php',
             'app/Modules/Sync/Application/Contracts/WooCommerceTrackingGateway.php',
             'app/Modules/Sync/Application/ManualSyncService.php',
             'app/Modules/Sync/Application/ManualSyncStatus.php',
@@ -1568,7 +1566,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('c2a8bf0d330081142af9d26f24ec1b78bddb89b20c66dc8bfdb48c15fd77e4d5', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('c77096f7fa4e11fadae2e9549032443658467ca17411521159dd6736d0d1887f', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);

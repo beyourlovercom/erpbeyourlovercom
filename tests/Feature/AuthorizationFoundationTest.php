@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -15,9 +14,12 @@ class AuthorizationFoundationTest extends TestCase
     private function userWith(array $permissions, string $roleKey = 'operator'): User
     {
         $role = Role::create(['key' => $roleKey, 'label' => $roleKey]);
-        foreach ($permissions as $key) $role->permissions()->create(['key' => $key, 'label' => $key]);
+        foreach ($permissions as $key) {
+            $role->permissions()->create(['key' => $key, 'label' => $key]);
+        }
         $user = User::factory()->create(['is_active' => true]);
         $user->roles()->attach($role);
+
         return $user;
     }
 
@@ -26,7 +28,7 @@ class AuthorizationFoundationTest extends TestCase
         $this->get('/dashboard')->assertRedirect('/login');
         $user = $this->userWith(['prototype.view']);
         $this->actingAs($user)->get('/dashboard')->assertForbidden();
-        $this->actingAs($user)->get('/logistics/pending')->assertOk();
+        $this->actingAs($user)->get('/logistics/pending')->assertForbidden();
         $this->actingAs($user)->get('/architecture/foundation')->assertForbidden();
     }
 
