@@ -24,6 +24,7 @@ final class OrdersServiceProvider extends ServiceProvider
             $this->commands([
                 \App\Modules\Orders\Experience\Console\SyncWooCommerceOrdersCommand::class,
                 \App\Modules\Orders\Experience\Console\PreviewStalePaymentsCommand::class,
+                \App\Modules\Orders\Experience\Console\PaymentHealthPreviewCommand::class,
                 \App\Modules\Orders\Experience\Console\RepairWooOrderIdentitiesCommand::class,
             ]);
         }
