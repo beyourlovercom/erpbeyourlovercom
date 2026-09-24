@@ -29,6 +29,7 @@ final class ShipmentService
         private readonly ShipmentAggregateStatusService $aggregateStatus,
         private readonly CarrierServiceCatalog $carrierServices,
         private readonly CarrierRoutingPolicy $carrierRouting,
+        private readonly FulfillmentPaymentGate $paymentGate,
     ) {}
 
     public function saveDraft(Model $order, array $attributes, ?Authenticatable $actor): Model
@@ -37,6 +38,7 @@ final class ShipmentService
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
+            $this->paymentGate->assertAllowed($lockedOrder);
             abort_unless($lockedOrder->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以保存履约草稿');
 
             $shipment = $lockedOrder->shipment()->firstOrCreate(['order_id' => $lockedOrder->getKey()]);
@@ -95,6 +97,7 @@ final class ShipmentService
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
+            $this->paymentGate->assertAllowed($lockedOrder);
             $shipment = $lockedOrder->shipment()->firstOrCreate(['order_id' => $lockedOrder->getKey()]);
             $alreadyShipped = $lockedOrder->order_status?->value === 'shipped' && $shipment->shipment_status === 'shipped';
             $before = $this->snapshot($shipment);

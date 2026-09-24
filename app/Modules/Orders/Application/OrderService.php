@@ -475,7 +475,7 @@ final class OrderService
         $financials = $order->financials()->first();
         $data['financial_evidence'] = $financials?->only([
             'currency', 'merchandise_list_amount', 'discount_amount', 'shipping_revenue', 'tax_collected',
-            'provider_order_total', 'refund_amount', 'refund_tax', 'payment_method', 'paid_at', 'provider',
+            'provider_order_total', 'refund_amount', 'refund_tax', 'payment_method', 'payment_transaction_id', 'paid_at', 'provider',
             'provider_reference', 'provider_order_status', 'provider_modified_at', 'revenue_provenance',
             'reconciliation_status', 'reconciliation_exception',
         ]);

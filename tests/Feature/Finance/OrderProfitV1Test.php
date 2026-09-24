@@ -22,6 +22,7 @@ final class OrderProfitV1Test extends TestCase
             'shipping_total' => '8.00',
             'total_tax' => '10.00',
             'payment_method' => 'stripe',
+            'transaction_id' => 'pi_payment_authority_40219',
             'line_items' => [[
                 'subtotal' => '100.00',
                 'total' => '90.00',
@@ -45,6 +46,7 @@ final class OrderProfitV1Test extends TestCase
         self::assertNull($normalized->settlementEvidence['reconciliation_exception']);
         self::assertSame('processing', $normalized->settlementEvidence['provider_order_status']);
         self::assertSame('stripe', $normalized->settlementEvidence['payment_method']);
+        self::assertSame('pi_payment_authority_40219', $normalized->settlementEvidence['payment_transaction_id']);
     }
 
     public function test_missing_woocommerce_financial_fields_remain_missing_instead_of_becoming_zero(): void

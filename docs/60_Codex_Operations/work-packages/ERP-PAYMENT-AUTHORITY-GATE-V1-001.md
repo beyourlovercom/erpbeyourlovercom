@@ -1,7 +1,7 @@
 # ERP-PAYMENT-AUTHORITY-GATE-V1-001
 
 STATUS: OWNER_CONFIRMED / ACTIVE
-EXECUTION_PROVIDER: US_CODEX_CLI
+EXECUTION_PROVIDER: GPT_WEB
 VERIFICATION_TIER: HIGH_RISK
 BASELINE: origin/main@d35e01fb80845ad426dac9757a087e049fb9f96d
 BRANCH: feature/erp-payment-authority-gate-v1-001
@@ -11,6 +11,7 @@ DEPENDENCY_TYPE: NONE
 DEPENDENCY_STATUS: N/A
 PARALLEL_SAFE: YES, dedicated worktree
 FOUNDATION_CHANGE_REQUIRED: NO
+PROVIDER_HANDOFF: US_CODEX_CLI attempted 2026-09-23 but exited before repository mutation due usage limit; serialized handoff to GPT_WEB + Remote Desktop Commander; worktree remained clean.
 
 ## Problem
 

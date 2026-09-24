@@ -285,7 +285,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
 
         foreach ($cases as [$code, $erp, $country, $url, $expected]) {
             $order = $this->orderAt($warehouses[$code], $erp, $country);
-            $order->update(['source_type' => 'woocommerce', 'external_order_number' => 'WC-'.$code]);
+            $this->markAsPaidWooOrder($order, 'WC-'.$code);
             $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
             $response = $this->actingAs($user)->get($url)->assertOk();
             $rows = $this->xlsxRows($response->getContent());
@@ -309,7 +309,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
         $warehouses = $this->warehouses();
         $order = $this->orderAt($warehouses['CA'], '007erp-0920-k26011301', 'CA');
-        $order->update(['source_type' => 'woocommerce', 'external_order_number' => 'WC-CA-26011301']);
+        $this->markAsPaidWooOrder($order, 'WC-CA-26011301');
         $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
 
         $response = $this->actingAs($user)->get('/logistics/oversea/ca/export')->assertOk();
@@ -797,6 +797,27 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         }
 
         return $result;
+    }
+
+    private function markAsPaidWooOrder(Order $order, string $externalOrderNumber): void
+    {
+        $order->update([
+            'source_type' => 'woocommerce',
+            'external_order_number' => $externalOrderNumber,
+        ]);
+        $order->financials()->create([
+            'currency' => 'USD',
+            'provider' => 'woocommerce',
+            'provider_reference' => $externalOrderNumber,
+            'provider_order_status' => 'processing',
+            'provider_modified_at' => now(),
+            'payment_method' => 'woocommerce_payments',
+            'payment_transaction_id' => 'TEST-'.strtoupper(str_replace(['-', ' '], '', $externalOrderNumber)).'-'.uniqid(),
+            'paid_at' => now(),
+            'provider_order_total' => '20.00',
+            'revenue_provenance' => 'provider_import',
+            'completeness_status' => 'INCOMPLETE',
+        ]);
     }
 
     private function orderAt(Warehouse $warehouse, string $erpOrderId, string $country = 'US'): Order
