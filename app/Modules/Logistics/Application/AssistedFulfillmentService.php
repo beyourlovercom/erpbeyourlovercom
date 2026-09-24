@@ -15,12 +15,14 @@ final class AssistedFulfillmentService
         private readonly FulfillmentPlanPreviewService $fulfillmentPlans,
         private readonly InventoryReservationService $reservations,
         private readonly ShipmentService $shipments,
+        private readonly FulfillmentPaymentGate $paymentGate,
     ) {}
 
     public function adoptRecommendation(Model $order, Authenticatable $actor): Model
     {
         return DB::transaction(function () use ($order, $actor): Model {
             $lockedOrder = $order::query()->with(['address', 'items', 'shipment'])->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->paymentGate->assertAllowed($lockedOrder);
             $items = $lockedOrder->items->map(fn ($item): array => ['product_id' => $item->product_id, 'quantity' => (int) $item->quantity])->values()->all();
             $productIds = collect($items)->pluck('product_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
             $context = array_replace(
@@ -67,6 +69,7 @@ final class AssistedFulfillmentService
     public function saveDraft(Model $order, array $attributes, Authenticatable $actor): Model
     {
         return DB::transaction(function () use ($order, $attributes, $actor): Model {
+            $this->paymentGate->assertAllowed($order);
             $active = $this->reservations->activeForOrder((int) $order->getKey());
             $requestedWarehouseId = isset($attributes['warehouse_id']) ? (int) $attributes['warehouse_id'] : null;
 
@@ -101,6 +104,7 @@ final class AssistedFulfillmentService
     public function markShipped(Model $order, array $attributes, Authenticatable $actor): Model
     {
         return DB::transaction(function () use ($order, $attributes, $actor): Model {
+            $this->paymentGate->assertAllowed($order);
             $active = $this->reservations->activeForOrder((int) $order->getKey());
             if ($active && (int) ($attributes['warehouse_id'] ?? 0) !== (int) $active['warehouse_id']) {
                 abort(409, '发货仓库与已预留库存仓库不一致，请先保存新的人工仓库选择。');

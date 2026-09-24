@@ -126,6 +126,7 @@ final class WooCommerceOrderNormalizer
             'refund_amount' => $this->formatNullableCents($refundAmountCents),
             'refund_tax' => $this->formatNullableCents($refundTaxCents),
             'payment_method' => $this->nullable((string) ($payload['payment_method'] ?? '')),
+            'payment_transaction_id' => $this->nullable((string) ($payload['transaction_id'] ?? '')),
             'paid_at' => $this->nullable((string) ($payload['date_paid_gmt'] ?? $payload['date_paid'] ?? '')),
             'reconciliation_status' => $reconciliationStatus,
             'reconciliation_exception' => $reconciliationException,

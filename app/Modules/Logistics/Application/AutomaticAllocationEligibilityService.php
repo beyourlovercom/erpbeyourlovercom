@@ -11,6 +11,7 @@ final class AutomaticAllocationEligibilityService
         private readonly WarehouseRecommendationService $recommendations,
         private readonly WarehouseRoutingPolicy $routingPolicy,
         private readonly FulfillmentPlanPreviewService $fulfillmentPlans,
+        private readonly FulfillmentPaymentGate $paymentGate,
     ) {}
 
     /** @return array<string,mixed> */
@@ -20,6 +21,11 @@ final class AutomaticAllocationEligibilityService
 
         if ($order->externalReferences->contains('provider', 'historical_logistics')) {
             return $this->blocked('HISTORICAL_EXCLUDED', 'historical_excluded', '历史物流订单永久排除自动分配。');
+        }
+
+        $payment = $this->paymentGate->evaluate($order);
+        if (! $payment['allowed']) {
+            return $this->blocked('PAYMENT_NOT_AUTHORIZED', $payment['reason_code'], $payment['reason_label']);
         }
 
         if ($order->order_status?->value !== 'pending_shipment') {
