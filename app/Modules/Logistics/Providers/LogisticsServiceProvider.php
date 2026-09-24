@@ -30,6 +30,7 @@ final class LogisticsServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/web.php');
+        $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/oversea_manual.php');
         if ($this->app->runningInConsole()) {
             $this->commands([
                 BackfillCustomerHistoricalShipmentsCommand::class,

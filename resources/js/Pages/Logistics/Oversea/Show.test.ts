@@ -16,6 +16,11 @@ const warehouseOptions = [
   { key: 'us-3sm', id: 2, code: 'US-SM', label: '美国3世迈仓', carrier: 'USPS', url: '/logistics/oversea/us-3sm' },
 ]
 const rows = { data: [], current_page: 1, last_page: 1, total: 0 }
+const usSmPendingRows = { data: [{
+  line: 1, order_id: 99, erp_order_id: '007-OVERSEA-USSM-99', order_url: '/orders/99', recipient_name: 'Recipient', country: 'US',
+  warehouse_id: 2, warehouse_name: '美国3世迈仓', carrier: 'USPS', service: null, carrier_selection_source: 'automatic',
+  tracking_number: null, progress: 'sending_pending', note: null, review_status: 'approved' as const, shipment_status: 'pending', items: [{ sku: 'REVIEW-SKU', quantity: 1 }],
+}], current_page: 1, last_page: 1, total: 1 }
 const viewCounts = { review: 0, pending: 0, shipped: 0, exceptions: 0, all: 0 }
 const preview = {
   token: 'a'.repeat(64), apply_count: 1, noop_count: 0, blocked_count: 0,
@@ -48,12 +53,36 @@ describe('Oversea Dede file exchange workbench', () => {
     expect(wrapper.text()).toContain('不会阻止发货')
   })
 
-  it('keeps 3SM fail-closed for file return and guides manual tracking entry', () => {
-    const wrapper = mountPage({ warehouseKey: 'us-3sm', warehouse: warehouseOptions[1], trackingImportPreview: null })
+  it('keeps 3SM file return disabled and exposes manual confirm after tracking entry', async () => {
+    const wrapper = mountPage({ warehouseKey: 'us-3sm', warehouse: warehouseOptions[1], trackingImportPreview: null, rows: usSmPendingRows })
     expect(wrapper.text()).not.toContain('上传物流回传表')
-    expect(wrapper.text()).toContain('世迈目前没有真实回传模板')
-    expect(wrapper.text()).toContain('逐单填写')
+    expect(wrapper.text()).toContain('世迈没有 Tracking 回传模板')
+    expect(wrapper.text()).toContain('确认发货')
     expect(wrapper.find('a[href="/logistics/oversea/us-3sm/export"]').exists()).toBe(true)
+
+    const input = wrapper.find('input.tracking-input')
+    await input.setValue('9400111899223856928599')
+    const button = wrapper.findAll('button').find(button => button.text() === '确认发货')
+    expect(button).toBeTruthy()
+    await button!.trigger('click')
+    expect(routerPost).toHaveBeenCalledWith(
+      '/logistics/oversea/us-3sm/orders/99/manual-ship',
+      { tracking_number: '9400111899223856928599' },
+      { preserveScroll: true },
+    )
+  })
+
+  it('blocks 3SM manual confirm in the browser until tracking exists', async () => {
+    const wrapper = mountPage({ warehouseKey: 'us-3sm', warehouse: warehouseOptions[1], trackingImportPreview: null, rows: usSmPendingRows })
+    const button = wrapper.findAll('button').find(button => button.text() === '确认发货')
+    expect(button).toBeTruthy()
+    await button!.trigger('click')
+    expect(routerPost).not.toHaveBeenCalledWith(
+      '/logistics/oversea/us-3sm/orders/99/manual-ship',
+      expect.anything(),
+      expect.anything(),
+    )
+    expect(wrapper.text()).toContain('请先填写真实 Tracking')
   })
 
   it('applies the frozen preview token through the selected warehouse route', async () => {

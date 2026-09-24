@@ -755,6 +755,101 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $this->assertDatabaseHas('sync_outbox', ['operation' => 'woocommerce.tracking_outbound', 'status' => 'completed']);
     }
 
+    public function test_us_sm_manual_confirm_marks_shipped_and_immediately_pushes_woo_tracking(): void
+    {
+        config([
+            'services.woocommerce.url' => 'https://shop.test',
+            'services.woocommerce.consumer_key' => 'ck_test',
+            'services.woocommerce.consumer_secret' => 'cs_test',
+            'services.woocommerce.connection_key' => 'shop-a',
+        ]);
+        $gateway = new TrackingReturnFakeWooGateway;
+        $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+
+        $root = Order::query()->create([
+            'internal_order_number' => 'ROOT-USSM-MANUAL',
+            'erp_order_id' => '007-OVERSEA-USSM-MANUAL',
+            'source_type' => 'woocommerce',
+            'order_kind' => 'customer',
+            'external_order_number' => 'WC-99101',
+            'order_date' => '2026-09-24',
+            'order_status' => 'pending_shipment',
+            'currency' => 'USD',
+        ]);
+        $root->externalReferences()->create([
+            'provider' => 'woocommerce', 'connection_key' => 'shop-a', 'reference' => '99101',
+        ]);
+
+        $child = Order::query()->create([
+            'fulfillment_parent_id' => $root->id,
+            'fulfillment_suffix' => 'B',
+            'internal_order_number' => 'CHILD-USSM-MANUAL-B',
+            'erp_order_id' => '007-OVERSEA-USSM-MANUALB',
+            'source_type' => 'manual_other',
+            'order_kind' => 'fulfillment_derived',
+            'order_date' => '2026-09-24',
+            'order_status' => 'pending_shipment',
+            'currency' => 'USD',
+        ]);
+        $child->items()->create([
+            'woocommerce_line_item_id' => 991011,
+            'product_summary' => 'US-SM package B',
+            'sku' => 'REVIEW-SKU',
+            'quantity' => 1,
+            'unit_price' => '10.00',
+            'line_revenue' => '10.00',
+        ]);
+        $child->shipment()->create([
+            'shipment_status' => 'pending',
+            'warehouse_id' => $warehouses['US-SM']->id,
+            'warehouse_selection_source' => 'manual',
+        ]);
+
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$child->id}/approve")->assertRedirect();
+        $this->actingAs($user)->post("/logistics/oversea/us-3sm/orders/{$child->id}/manual-ship", [
+            'tracking_number' => '9400111899223856928599',
+        ])->assertRedirect('/logistics/oversea/us-3sm?view=shipped');
+
+        $shipment = $child->fresh('shipment')->shipment;
+        $this->assertSame('shipped', $shipment->shipment_status);
+        $this->assertSame('USPS', $shipment->carrier);
+        $this->assertSame('9400111899223856928599', $shipment->tracking_number);
+        $this->assertNotNull($shipment->shipped_at);
+        $this->assertSame($user->id, $shipment->handled_by);
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id' => $child->id,
+            'status' => 'approved',
+            'progress' => 'shipped',
+        ]);
+
+        $this->assertSame(1, $gateway->trackingCalls);
+        $this->assertSame(99101, $gateway->providerOrderId);
+        $this->assertSame('9400111899223856928599', $gateway->trackingNumber);
+        $this->assertSame([['id' => 991011, 'quantity' => 1]], $gateway->lineItems);
+        $this->assertDatabaseHas('manual_syncs', ['order_id' => $child->id, 'website_sync_status' => 'completed']);
+        $this->assertDatabaseHas('sync_outbox', ['operation' => 'woocommerce.tracking_outbound', 'status' => 'completed']);
+    }
+
+    public function test_us_sm_manual_confirm_is_fail_closed_for_other_warehouses(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-LA'], '007-OVERSEA-NOT-USSM');
+
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $this->actingAs($user)->post("/logistics/oversea/us-3sm/orders/{$order->id}/manual-ship", [
+            'tracking_number' => '9400111899223856928501',
+        ])->assertStatus(422);
+
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id,
+            'shipment_status' => 'pending',
+            'tracking_number' => null,
+        ]);
+    }
+
     public function test_view_only_user_sees_page_but_not_operate_flag(): void
     {
         $user = $this->userWith(['logistics.view']);
