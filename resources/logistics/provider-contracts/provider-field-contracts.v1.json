@@ -3154,7 +3154,7 @@
       "owner_status": "blocked_need_real_sample",
       "fields": [],
       "notes": "No real provider return template. Batch return runtime must remain fail-closed. Daily fulfillment uses the explicit US-SM manual Tracking + confirm-shipment path.",
-      "owner_notes": "Owner-confirmed: no real US-SM tracking return template. Do not infer WMS return schema. This is not a daily-operations blocker: after approved outbound fulfillment, Dede records the real Tracking and explicitly confirms shipment; Shipment/Woo Tracking then follow the canonical fulfillment path."
+      "owner_notes": "Owner UAT PASS 2026-09-24. No real US-SM tracking return template exists, so batch return remains blocked_need_real_sample and must not infer WMS return schema. Daily operations are Production Active through the approved manual Tracking + explicit confirm-shipment path from PR #424; Shipment/Woo Tracking then follow the canonical fulfillment path. Post-deploy read-only audit found zero active US-SM operational shipments, so the first real approved US-SM order is the natural live canary."
     },
     {
       "key": "07_DE_OUT",
