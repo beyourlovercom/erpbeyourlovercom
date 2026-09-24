@@ -4,8 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\Role;
 use App\Models\User;
-use App\Modules\Orders\Application\OrderKindBackfill;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Orders\Application\OrderKindBackfill;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -121,13 +121,13 @@ final class OrderFulfillmentM1Test extends TestCase
         $this->actingAs($prototypeOnly)->post('/kol/orders', $this->payload('X', 'kol_fulfillment'))->assertForbidden();
     }
 
-    public function test_pending_shipment_queue_is_shared_across_both_order_kinds_and_labelled(): void
+    public function test_wait_stock_queue_is_shared_across_both_order_kinds_and_labelled(): void
     {
         $user = $this->userWith(['orders.view', 'orders.create', 'logistics.view', 'logistics.operate']);
         $this->actingAs($user)->post('/customers/orders', $this->payload('CUS-2'))->assertRedirect();
         $this->actingAs($user)->post('/kol/orders', $this->payload('KOL-2', 'kol_fulfillment'))->assertRedirect();
 
-        $this->actingAs($user)->get('/logistics/pending')->assertInertia(
+        $this->actingAs($user)->get('/logistics/wait-stock')->assertInertia(
             fn ($page) => $page->where('orders.total', 2)
         );
     }
@@ -327,7 +327,7 @@ final class OrderFulfillmentM1Test extends TestCase
         ];
     }
 
-    private function userWith(array $permissions, string $roleKey = null): User
+    private function userWith(array $permissions, ?string $roleKey = null): User
     {
         $role = Role::create(['key' => $roleKey ?? 'm1-'.uniqid(), 'label' => 'M1 Test Role']);
         foreach ($permissions as $permission) {

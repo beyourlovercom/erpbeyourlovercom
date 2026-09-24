@@ -8,7 +8,7 @@
 <body data-module="{{ $module }}" data-current-path="{{ $currentPath }}">
 <div class="app-shell">
     <nav class="global-rail" aria-label="全局导航">
-        <a class="brand-mark" href="/logistics/pending" aria-label="BYL ERP 首页"><span>BYL</span><small>ERP</small></a>
+        <a class="brand-mark" href="/logistics/wait-stock" aria-label="BYL ERP 首页"><span>BYL</span><small>ERP</small></a>
         <div class="rail-items">
             @foreach($navigation as $key => $item)
                 <a class="rail-item {{ $module === $key ? 'is-active' : '' }}" href="{{ $item['children'][array_key_first($item['children'])]['path'] }}" title="{{ $item['label'] }}" aria-label="{{ $item['label'] }}">

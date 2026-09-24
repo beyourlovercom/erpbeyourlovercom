@@ -19,7 +19,6 @@ const allVisible = { operations: true, inventory: true, sync: true, finance: tru
 const noneVisible = { operations: false, inventory: false, sync: false, finance: false, procurement: false }
 const operations = {
   wait_stock:{key:'wait_stock',label:'待分仓',url:'/logistics/wait-stock',count:120},
-  pending:{key:'pending',label:'待发货',url:'/logistics/pending',count:663},
   awaiting:{key:'awaiting',label:'已发货',url:'/logistics/awaiting-tracking',count:0},
   transit:{key:'transit',label:'运输中',url:'/logistics/in-transit',count:1847},
   exception:{key:'exception',label:'异常单',url:'/logistics/exceptions',count:2},
@@ -103,7 +102,7 @@ describe('dashboard redesign', () => {
   it('renders canonical D3 live metrics and removes the legacy duplicate KPI contract', () => {
     const wrapper = mount(Dashboard, { props: baseProps })
     expect(wrapper.text()).toContain('经营与运营总览')
-    expect(wrapper.text()).toContain('663')
+    expect(wrapper.text()).not.toContain('663')
     expect(wrapper.text()).toContain('1,847')
     expect(wrapper.text()).toContain('5,059')
     expect(wrapper.text()).toContain('$5,000.00')
@@ -113,12 +112,12 @@ describe('dashboard redesign', () => {
 
   it('makes operational and inventory risk cards drill into canonical views', () => {
     const wrapper = mount(Dashboard, { props: baseProps })
-    expect(wrapper.find('a[href="/logistics/pending"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/logistics/pending"]').exists()).toBe(false)
     expect(wrapper.find('a[href="/logistics/wait-stock"]').exists()).toBe(true)
     expect(wrapper.find('a[href="/inventory/products?stock_status=alert"]').exists()).toBe(true)
     expect(wrapper.find('a[href="/inventory/products?stock_status=out_of_stock"]').exists()).toBe(true)
     expect(wrapper.find('a[href="/inventory/products?stock_status=low_stock"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('不与“待发货”相加')
+    expect(wrapper.text()).toContain('分仓后进入国内发货或海外仓发货')
   })
 
   it('shows only sections allowed by the permission visibility contract', () => {

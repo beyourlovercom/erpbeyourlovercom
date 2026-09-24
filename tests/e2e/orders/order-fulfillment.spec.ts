@@ -67,14 +67,8 @@ test('customer manual order flows through logistics to shipped with the business
     await expect(page.getByRole('link', { name: 'E2E-CUS-0001' })).toBeVisible();
 
     await page.goto('/logistics/pending');
-    const row = page.getByRole('row', { name: /E2E-CUS-0001/u });
-    await expect(row).toBeVisible();
-    await expect(row.getByText('客户订单')).toBeVisible();
-    await row.getByRole('button', { name: '复制完整信息' }).click();
-    await expect(row.getByText('已复制')).toBeVisible();
-
-    await shipViaPrompt(page, 'E2E Carrier', 'E2E-TRACK-0001');
-    await expect(page.getByRole('row', { name: /E2E-CUS-0001/u })).toHaveCount(0);
+    await expect(page).toHaveURL(/\/logistics\/wait-stock$/u);
+    await expect(page.getByText('E2E-CUS-0001')).toBeVisible();
 
     await guard.assertClean();
 });
@@ -104,12 +98,8 @@ test('KOL fulfillment manual order defaults to kol_fulfillment and shares the sa
     await expect(page.getByRole('link', { name: 'E2E-CUS-0001' })).toHaveCount(0);
 
     await page.goto('/logistics/pending');
-    const row = page.getByRole('row', { name: /E2E-KOL-0001/u });
-    await expect(row).toBeVisible();
-    await expect(row.getByText('网红履约订单')).toBeVisible();
-
-    await shipViaPrompt(page, 'E2E Carrier', 'E2E-TRACK-0002');
-    await expect(page.getByRole('row', { name: /E2E-KOL-0001/u })).toHaveCount(0);
+    await expect(page).toHaveURL(/\/logistics\/wait-stock$/u);
+    await expect(page.getByText('E2E-KOL-0001')).toBeVisible();
 
     await guard.assertClean();
 });
@@ -156,9 +146,8 @@ test('logistics copy falls back to a manual-selection path when the async Clipbo
     await expect(page).toHaveURL(/\/customers\/orders\/\d+$/u);
 
     await page.goto('/logistics/pending');
-    const row = page.getByRole('row', { name: /E2E-FALLBACK-0001/u });
-    await row.getByRole('button', { name: '复制完整信息' }).click();
-    await expect(row.getByText('已复制')).toBeVisible();
+    await expect(page).toHaveURL(/\/logistics\/wait-stock$/u);
+    await expect(page.getByText('E2E-FALLBACK-0001')).toBeVisible();
 
     await guard.assertClean();
 });

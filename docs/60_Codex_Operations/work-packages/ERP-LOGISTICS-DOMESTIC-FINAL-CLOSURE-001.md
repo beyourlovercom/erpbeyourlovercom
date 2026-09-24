@@ -6,7 +6,7 @@ Owner authorized completion and closure of the domestic logistics branch on 2026
 
 ## Frozen runtime menu
 
-`待分仓 → 待发货 → 国内发货 → 海外仓发货 → 已发待单号 → 运输中 → 异常订单 → 承运商`
+`待分仓 → 国内发货 → 海外仓发货 → 已发待单号 → 运输中 → 异常订单 → 承运商`
 
 `国内发货` canonical route: `/logistics/china` / `logistics.china` / permission `logistics.view`.
 
@@ -56,3 +56,33 @@ The missing Weship outbound template is an external provider-protocol dependency
 Final close still requires Owner inspection of the real Local/UAT `/logistics/china` page and left navigation. Production deployment is a separate hard gate.
 
 - DomesticLogisticsProductionClosureTest: 6 tests / 72 assertions PASS after route-shadowing remediation.
+
+## Retired standalone pending workspace
+
+Owner confirmed on 2026-09-24 that the standalone `待发货` workspace is historical and superseded by `待分仓`, `国内发货`, and `海外仓发货`. `待发货` remains a valid order/shipment status label inside the domestic/oversea workflows, but it is no longer a standalone Logistics page. `/logistics` and `/logistics/pending` are compatibility redirects to `/logistics/wait-stock`; formal navigation, Dashboard actions and status bars must not link to the retired page. The retired Vue page and unit test are deleted.
+
+## 2026-09-24 standalone Pending workspace retirement
+
+Owner confirmed the standalone `待发货` page is historical. Final formal Logistics level-2 navigation is now:
+
+`待分仓 → 国内发货 → 海外仓发货 → 已发待单号 → 运输中 → 异常订单 → 承运商`
+
+Closure evidence after retirement:
+
+- retired Vue surface `resources/js/Pages/Logistics/Index.vue` and its unit test are deleted;
+- `/logistics` and `/logistics/pending` are permission-gated compatibility redirects to `/logistics/wait-stock`;
+- unauthorized users still receive 403 on the legacy URL;
+- Dashboard and Logistics status bars no longer link to the retired page;
+- `待发货` remains a business status label inside domestic/oversea workflows;
+- DomesticLogisticsProductionClosureTest: 6 tests / 80 assertions PASS;
+- FulfillmentAllocationV1Test: 6 tests / 55 assertions PASS;
+- LogisticsOsV1ClosureTest: 37 tests / 361 assertions PASS (1 MySQL-only skip);
+- OverseaWarehouseWorkbenchTest: 32 tests / 329 assertions PASS;
+- OrderFulfillmentM1Test: 17 tests / 209 assertions PASS;
+- AppShellNavigationTest: 20 tests / 348 assertions PASS;
+- ERP Navigation: 11 tests / 146 assertions PASS;
+- PageHeaderActionStandardTest: 4 tests / 15 assertions PASS;
+- wait-stock Production query budget at 50 rows: PASS at canonical <=100 queries after request-local carrier/service caching and batched active-reservation preload;
+- exact-main inherited ManualFulfillment adopt-recommendation failures remain 7/7 identical and are outside this closure scope;
+- Approved Menu inherited failures remain Accounting A8 / accounting-loss-orders and Marketing Traffic baseline drift only;
+- ModuleArchitecture inherited frozen module/layer/migration baseline drift remains outside this closure scope.

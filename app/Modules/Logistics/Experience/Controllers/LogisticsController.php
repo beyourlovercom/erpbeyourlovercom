@@ -2,43 +2,43 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
+use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Application\AssistedFulfillmentService;
 use App\Modules\Logistics\Application\AutomaticAllocationEligibilityService;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
-use App\Modules\Logistics\Application\AssistedFulfillmentService;
-use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
+use App\Modules\Logistics\Application\FulfillmentAllocationAccess;
 use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
 use App\Modules\Logistics\Application\FulfillmentAllocationSubmissionService;
-use App\Modules\Logistics\Application\FulfillmentAllocationAccess;
+use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\GiftSkuResolutionService;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\LogisticsStatusSummary;
-use App\Modules\Logistics\Application\UsFulfillmentZoneResolver;
-use App\Modules\Logistics\Application\ShipmentService;
-use App\Modules\Logistics\Application\ReplacementFulfillmentService;
 use App\Modules\Logistics\Application\PendingFulfillmentReallocationService;
+use App\Modules\Logistics\Application\ReplacementFulfillmentService;
+use App\Modules\Logistics\Application\ShipmentService;
+use App\Modules\Logistics\Application\UsFulfillmentZoneResolver;
 use App\Modules\Logistics\Application\WarehouseRecommendationService;
-use App\Modules\Logistics\Infrastructure\Models\Carrier;
-use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Models\LogisticsReview;
+use App\Modules\Logistics\Infrastructure\Models\Shipment;
+use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
-use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
-use App\Modules\Inventory\Infrastructure\Models\Warehouse;
-use App\Modules\Shell\Application\UserUiPreferenceService;
-use Illuminate\Http\Request;
 use Illuminate\Database\QueryException;
-use PDOException;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use PDOException;
 
 final class LogisticsController
 {
     private const PER_PAGE = 50;
-    private const PENDING_GRID_NAMESPACE = 'grid.logistics.pending.v1';
 
     public function __construct(
         private readonly ShipmentService $shipments,
@@ -58,47 +58,7 @@ final class LogisticsController
         private readonly CarrierRoutingPolicy $carrierRouting,
         private readonly CarrierServiceCatalog $carrierServices,
         private readonly OrderPackagingReferenceProjection $packagingReferences,
-        private readonly UserUiPreferenceService $uiPreferences,
     ) {}
-
-    public function index(Request $request): Response
-    {
-        $focusOrderId = $request->integer('order_id');
-        $ordersQuery = Order::query()->with(['address', 'items.product', 'owner', 'shipment.warehouse', 'externalReferences:id,order_id,provider'])
-            ->where('order_status', 'pending_shipment')
-            ->whereDoesntHave('fulfillmentChildren')
-            ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))
-            ->whereDoesntHave('logisticsReview', fn ($q) => $q->where('status', 'pending'));
-
-        if ($focusOrderId > 0) {
-            $ordersQuery->whereKey($focusOrderId);
-        }
-
-        $orders = $ordersQuery->latest('order_date')->latest('id')
-            ->paginate(self::PER_PAGE)->withQueryString();
-
-        $productIds = collect($orders->items())->flatMap(fn (Order $order) => $order->items->pluck('product_id'))->filter()->unique()->values()->all();
-        $recommendationContext = $this->recommendations->prepare($productIds);
-        $fulfillmentContext = $this->fulfillmentPlans->prepare($productIds);
-        $context = array_replace($recommendationContext, $fulfillmentContext);
-        $activeReservations = InventoryReservation::query()
-            ->whereIn('order_id', collect($orders->items())->pluck('id')->all())
-            ->where('status', 'reserved')
-            ->get()
-            ->keyBy('order_id')
-            ->all();
-
-        return Inertia::render('Logistics/Index', [
-            'orders' => $orders->through(fn (Order $order): array => $this->data($order, $context, $activeReservations))->toArray(),
-            'warehouses' => $context['warehouses'],
-            'carrierOptions' => $this->carrierServices->options(),
-            'statusBar' => $this->statusSummary->statusBar(),
-            'gridPreferenceNamespace' => self::PENDING_GRID_NAMESPACE,
-            'gridPreference' => $request->user() ? $this->uiPreferences->get($request->user(), self::PENDING_GRID_NAMESPACE) : null,
-            'canOperate' => $this->executionAccess->allows($request->user()),
-            'focusOrderId' => $focusOrderId > 0 ? $focusOrderId : null,
-        ]);
-    }
 
     public function waitStock(Request $request): Response
     {
@@ -110,13 +70,19 @@ final class LogisticsController
         $productIds = collect($orders->items())->flatMap(fn (Order $order) => $order->items->pluck('product_id'))->filter()->unique()->values()->all();
         $context = array_replace($this->recommendations->prepare($productIds), $this->fulfillmentPlans->prepare($productIds));
         $context['gift_resolution'] = $this->giftSkuResolutions->prepare();
+        $activeReservations = InventoryReservation::query()
+            ->whereIn('order_id', collect($orders->items())->pluck('id')->all())
+            ->where('status', 'reserved')
+            ->get()
+            ->keyBy('order_id')
+            ->all();
         $allowedCodes = array_map('strtoupper', (array) config('warehouse_master.fulfillment_codes', []));
         $warehouses = collect($context['warehouses'] ?? [])
             ->filter(fn (array $warehouse): bool => in_array(strtoupper((string) ($warehouse['code'] ?? '')), $allowedCodes, true))
             ->values()->all();
 
         return Inertia::render('Logistics/FulfillmentAllocation', [
-            'orders' => $orders->through(fn (Order $order): array => $this->data($order, $context))->toArray(),
+            'orders' => $orders->through(fn (Order $order): array => $this->data($order, $context, $activeReservations))->toArray(),
             'warehouses' => $warehouses,
             'carrierOptions' => $this->carrierServices->options(),
             'pendingTotal' => $orders->total(),
@@ -124,7 +90,7 @@ final class LogisticsController
         ]);
     }
 
-    public function submitRecommendedAllocation(Request $request, Order $order): \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
+    public function submitRecommendedAllocation(Request $request, Order $order): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
             'plan_key' => ['required', 'string', 'max:128'],
@@ -134,10 +100,11 @@ final class LogisticsController
         if ($request->expectsJson()) {
             return response()->json(['status' => $allocation->status, 'decision_source' => $allocation->decision_source, 'submitted_at' => $allocation->submitted_at?->toIso8601String()]);
         }
+
         return back()->with('success', '已采用系统推荐并提交分仓');
     }
 
-    public function submitManualAllocation(Request $request, Order $order): \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
+    public function submitManualAllocation(Request $request, Order $order): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
             'assignments' => ['required', 'array', 'min:1'],
@@ -152,10 +119,11 @@ final class LogisticsController
         if ($request->expectsJson()) {
             return response()->json(['status' => $allocation->status, 'decision_source' => $allocation->decision_source, 'submitted_at' => $allocation->submitted_at?->toIso8601String()]);
         }
+
         return back()->with('success', '人工分仓方案已提交');
     }
 
-    public function submitQuickAllocation(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    public function submitQuickAllocation(Request $request, Order $order): RedirectResponse
     {
         $data = $request->validate([
             'assignments' => ['required', 'array', 'min:1'],
@@ -196,14 +164,14 @@ final class LogisticsController
         return back()->with('success', '分仓已提交');
     }
 
-    public function saveDraft(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    public function saveDraft(Request $request, Order $order): RedirectResponse
     {
         $this->assistedFulfillment->saveDraft($order, $request->validate($this->draftRules()), $request->user());
 
         return back()->with('success', '履约草稿已保存');
     }
 
-    public function adoptRecommendation(Request $request, Order $order): \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
+    public function adoptRecommendation(Request $request, Order $order): RedirectResponse|JsonResponse
     {
         $result = $this->assistedFulfillment->adoptRecommendation($order, $request->user());
 
@@ -281,25 +249,78 @@ final class LogisticsController
         $reviews = LogisticsReview::query()->with(['order.address', 'order.items.product', 'order.shipment.warehouse'])
             ->where('status', 'pending')->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
             ->latest('requested_at')->paginate(self::PER_PAGE)->withQueryString();
+
         return Inertia::render('Logistics/Review', ['reviews' => $reviews->through(fn (LogisticsReview $review): array => [...$this->queueRow($review->order->shipment), 'review_id' => $review->id, 'reason' => $review->reason, 'trigger' => $review->trigger, 'requested_at' => $review->requested_at?->toIso8601String()])->toArray(), 'statusBar' => $this->statusSummary->statusBar(), 'canOperate' => $this->executionAccess->allows($request->user())]);
     }
 
-    public function completed(Request $request): Response { return $this->projection($request, 'completed', 'Logistics/Completed', fn ($q) => $q->where('shipment_status', 'completed')); }
+    public function completed(Request $request): Response
+    {
+        return $this->projection($request, 'completed', 'Logistics/Completed', fn ($q) => $q->where('shipment_status', 'completed'));
+    }
+
     public function cancelled(Request $request): Response
     {
         $orders = Order::query()->with(['address', 'items.product', 'shipment.warehouse'])->where('order_status', 'cancelled')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->latest('order_date')->latest('id')->paginate(self::PER_PAGE)->withQueryString();
+
         return Inertia::render('Logistics/Cancelled', ['orders' => $orders->through(fn (Order $order) => $this->orderProjection($order))->toArray(), 'statusBar' => $this->statusSummary->statusBar()]);
     }
 
-    public function decideReview(Request $request, Order $order): \Illuminate\Http\RedirectResponse { $data = $request->validate(['destination' => ['required', 'string'], 'decision_note' => ['required', 'string', 'max:5000']]); $this->shipments->decideReview($order, $data['destination'], $data['decision_note'], $request->user()); return back()->with('success', '复核已处理'); }
-    public function pause(Request $request, Order $order): \Illuminate\Http\RedirectResponse { $data = $request->validate(['logistics_note' => ['required', 'string', 'max:5000']]); $this->shipments->pauseException($order, $data['logistics_note'], $request->user()); return back()->with('success', '订单已暂停'); }
-    public function redispatch(Request $request, Order $order): \Illuminate\Http\RedirectResponse { $data = $request->validate(['logistics_note' => ['required', 'string', 'max:5000']]); $this->shipments->requestReview($order, 'redispatch', $data['logistics_note'], $request->user()); return back()->with('success', '重新派件已提交复核'); }
-    public function reship(Request $request, Order $order): \Illuminate\Http\RedirectResponse { $data = $request->validate(['logistics_note' => ['required', 'string', 'max:5000']]); $this->shipments->reship($order, $data, $request->user()); return back()->with('success', '已保留原始履约证据并重置待发货'); }
-    public function contactUser(Request $request, Order $order): \Illuminate\Http\RedirectResponse { $data = $request->validate(['logistics_note' => ['required', 'string', 'max:5000']]); $this->shipments->contactUser($order, $data['logistics_note'], $request->user()); return back()->with('success', '已记录联系用户'); }
-    public function cancelException(Request $request, Order $order): \Illuminate\Http\RedirectResponse { $data = $request->validate(['logistics_note' => ['required', 'string', 'max:5000']]); $this->shipments->cancelException($order, $data['logistics_note'], $request->user()); return back()->with('success', '订单已取消，未执行实际退款'); }
-    public function markCompleted(Request $request, Order $order): \Illuminate\Http\RedirectResponse { $this->shipments->markCompleted($order, $request->user()); return back()->with('success', '物流已标记完结'); }
+    public function decideReview(Request $request, Order $order): RedirectResponse
+    {
+        $data = $request->validate(['destination' => ['required', 'string'], 'decision_note' => ['required', 'string', 'max:5000']]);
+        $this->shipments->decideReview($order, $data['destination'], $data['decision_note'], $request->user());
 
-    public function updateTracking(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+        return back()->with('success', '复核已处理');
+    }
+
+    public function pause(Request $request, Order $order): RedirectResponse
+    {
+        $data = $request->validate(['logistics_note' => ['required', 'string', 'max:5000']]);
+        $this->shipments->pauseException($order, $data['logistics_note'], $request->user());
+
+        return back()->with('success', '订单已暂停');
+    }
+
+    public function redispatch(Request $request, Order $order): RedirectResponse
+    {
+        $data = $request->validate(['logistics_note' => ['required', 'string', 'max:5000']]);
+        $this->shipments->requestReview($order, 'redispatch', $data['logistics_note'], $request->user());
+
+        return back()->with('success', '重新派件已提交复核');
+    }
+
+    public function reship(Request $request, Order $order): RedirectResponse
+    {
+        $data = $request->validate(['logistics_note' => ['required', 'string', 'max:5000']]);
+        $this->shipments->reship($order, $data, $request->user());
+
+        return back()->with('success', '已保留原始履约证据并重置待发货');
+    }
+
+    public function contactUser(Request $request, Order $order): RedirectResponse
+    {
+        $data = $request->validate(['logistics_note' => ['required', 'string', 'max:5000']]);
+        $this->shipments->contactUser($order, $data['logistics_note'], $request->user());
+
+        return back()->with('success', '已记录联系用户');
+    }
+
+    public function cancelException(Request $request, Order $order): RedirectResponse
+    {
+        $data = $request->validate(['logistics_note' => ['required', 'string', 'max:5000']]);
+        $this->shipments->cancelException($order, $data['logistics_note'], $request->user());
+
+        return back()->with('success', '订单已取消，未执行实际退款');
+    }
+
+    public function markCompleted(Request $request, Order $order): RedirectResponse
+    {
+        $this->shipments->markCompleted($order, $request->user());
+
+        return back()->with('success', '物流已标记完结');
+    }
+
+    public function updateTracking(Request $request, Order $order): RedirectResponse
     {
         $data = $request->validate(['tracking_number' => ['required', 'string', 'max:128']]);
         $this->shipments->updateTracking($order, $data['tracking_number'], $request->user());
@@ -307,7 +328,7 @@ final class LogisticsController
         return back()->with('success', '追踪号已更新');
     }
 
-    public function markException(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    public function markException(Request $request, Order $order): RedirectResponse
     {
         $data = $request->validate(['logistics_note' => ['required', 'string', 'max:5000']]);
         $this->shipments->markException($order, $data['logistics_note'], $request->user());
@@ -315,14 +336,14 @@ final class LogisticsController
         return back()->with('success', '已标记物流异常');
     }
 
-    public function resolveException(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    public function resolveException(Request $request, Order $order): RedirectResponse
     {
         $this->shipments->resolveException($order, $request->user());
 
         return back()->with('success', '异常已解除，物流已恢复运输中');
     }
 
-    public function markShipped(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    public function markShipped(Request $request, Order $order): RedirectResponse
     {
         $data = $request->validate([
             'warehouse_id' => ['required', 'integer', Rule::exists('warehouses', 'id')->where('is_active', true)],
@@ -338,7 +359,7 @@ final class LogisticsController
         return back()->with('success', $msg);
     }
 
-    public function reopen(Request $request, Order $order): \Illuminate\Http\RedirectResponse
+    public function reopen(Request $request, Order $order): RedirectResponse
     {
         $data = $request->validate(['logistics_note' => ['nullable', 'string', 'max:5000']]);
         $this->shipments->reopen($order, $request->user(), $data['logistics_note'] ?? null);
@@ -346,7 +367,7 @@ final class LogisticsController
         return back()->with('success', '发货已重开，可修正后重新发货');
     }
 
-    public function reallocatePendingFulfillment(Request $request, Order $order): \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
+    public function reallocatePendingFulfillment(Request $request, Order $order): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
             'warehouse_id' => ['required', 'integer', Rule::exists('warehouses', 'id')->where('is_active', true)],
@@ -372,7 +393,7 @@ final class LogisticsController
         return back()->with('success', '履约 '.$updated->fulfillment_suffix.' 已调整分仓');
     }
 
-    public function createReplacementFulfillment(Request $request, Order $order): \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
+    public function createReplacementFulfillment(Request $request, Order $order): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
             'reason' => ['required', 'string', Rule::in(array_keys(ReplacementFulfillmentService::REASONS))],
@@ -410,10 +431,11 @@ final class LogisticsController
                 'suffix' => $replacement->fulfillment_suffix,
             ], 201);
         }
+
         return back()->with('success', '补发履约单 '.$replacement->fulfillment_suffix.' 已创建');
     }
 
-    public function payload(Order $order): \Illuminate\Http\JsonResponse
+    public function payload(Order $order): JsonResponse
     {
         $order->load(['address', 'items', 'shipment.warehouse']);
         $packaging = $this->packagingReferences->forOrder($order);
@@ -468,8 +490,14 @@ final class LogisticsController
         ];
     }
 
-    private function projection(Request $request, string $kind, string $component, \Closure $filter): Response { $shipments = Shipment::query()->with(['order.address', 'order.items.product', 'order.logisticsReview', 'warehouse'])->where($filter)->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
-            ->latest('shipped_at')->latest('id')->paginate(self::PER_PAGE)->withQueryString(); return Inertia::render($component, ['shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(), 'statusBar' => $this->statusSummary->statusBar()]); }
+    private function projection(Request $request, string $kind, string $component, \Closure $filter): Response
+    {
+        $shipments = Shipment::query()->with(['order.address', 'order.items.product', 'order.logisticsReview', 'warehouse'])->where($filter)->whereDoesntHave('order.logisticsReview', fn ($q) => $q->where('status', 'pending'))->whereHas('order', fn ($q) => $q->where('order_status', '!=', 'cancelled')->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
+            ->latest('shipped_at')->latest('id')->paginate(self::PER_PAGE)->withQueryString();
+
+        return Inertia::render($component, ['shipments' => $shipments->through(fn ($s) => $this->queueRow($s))->toArray(), 'statusBar' => $this->statusSummary->statusBar()]);
+    }
+
     private function orderProjection(Order $order): array
     {
         return [
@@ -492,7 +520,16 @@ final class LogisticsController
             ])->all(),
         ];
     }
-    private function orderUrl(?Order $order): ?string { if (! $order || $order->order_kind?->value === 'fulfillment_derived') return null; return $order->order_kind?->value === 'kol_fulfillment' ? "/kol/orders/{$order->id}" : "/customers/orders/{$order->id}"; }
+
+    private function orderUrl(?Order $order): ?string
+    {
+        if (! $order || $order->order_kind?->value === 'fulfillment_derived') {
+            return null;
+        }
+
+        return $order->order_kind?->value === 'kol_fulfillment' ? "/kol/orders/{$order->id}" : "/customers/orders/{$order->id}";
+    }
+
     private function draftRules(): array
     {
         return [
@@ -536,6 +573,7 @@ final class LogisticsController
         $carrierRoutes = collect((array) config('warehouse_master.fulfillment_codes', []))->mapWithKeys(function (string $code) use ($order): array {
             $route = $this->carrierRouting->warehouseRoute($order->address?->country, $code);
             $carrier = trim((string) ($route['carrier'] ?? ''));
+
             return [$code => [
                 'carrier' => $carrier !== '' ? $carrier : null,
                 'carrier_label' => $carrier !== '' ? $this->carrierRouting->displayName($carrier) : null,
@@ -552,9 +590,9 @@ final class LogisticsController
             'internal_order_number' => $order->internal_order_number,
             'order_kind' => $order->order_kind?->value,
             'order_kind_label' => match ($order->order_kind) {
-                \App\Modules\Orders\Application\OrderKind::Customer => '客户订单',
-                \App\Modules\Orders\Application\OrderKind::KolFulfillment => '网红履约订单',
-                \App\Modules\Orders\Application\OrderKind::FulfillmentDerived => '履约衍生订单',
+                OrderKind::Customer => '客户订单',
+                OrderKind::KolFulfillment => '网红履约订单',
+                OrderKind::FulfillmentDerived => '履约衍生订单',
                 null => '未分类',
             },
             'recipient_name' => $order->address?->recipient_name,

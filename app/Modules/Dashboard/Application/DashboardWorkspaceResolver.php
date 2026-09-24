@@ -15,7 +15,7 @@ final class DashboardWorkspaceResolver
         $meta = match ($preset) {
             RolePreset::Administrator => ['mode' => 'boss', 'eyebrow' => '老板 / 管理员总览', 'title' => '经营与运营总览', 'description' => '先看经营结果、异常和瓶颈，再进入对应业务系统处理。'],
             RolePreset::Operations => ['mode' => 'work', 'eyebrow' => '运营工作台', 'title' => '今日运营总览', 'description' => '聚合今天需要推进的履约、库存、同步与经营信号。'],
-            RolePreset::Logistics => ['mode' => 'work', 'eyebrow' => '物流工作台', 'title' => '今日履约任务', 'description' => '优先处理待分仓、待发货、运输异常与复核任务。'],
+            RolePreset::Logistics => ['mode' => 'work', 'eyebrow' => '物流工作台', 'title' => '今日履约任务', 'description' => '优先处理待分仓、国内/海外发货、运输异常与复核任务。'],
             RolePreset::Finance => ['mode' => 'work', 'eyebrow' => '财务工作台', 'title' => '经营财务总览', 'description' => '聚焦收入、成本、利润覆盖与需要补齐的财务证据。'],
             RolePreset::KolSpecialist, RolePreset::KolManager => ['mode' => 'work', 'eyebrow' => '网红工作台', 'title' => '今日网红运营', 'description' => '聚合网红履约、审批、订单与待处理事项。'],
             RolePreset::SalesRepresentative => ['mode' => 'work', 'eyebrow' => '业务员工作台', 'title' => '今日客户与订单', 'description' => '聚合客户、订单和需要继续跟进的业务事项。'],

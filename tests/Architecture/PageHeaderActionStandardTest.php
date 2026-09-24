@@ -11,7 +11,6 @@ use Tests\TestCase;
  *
  * Audited no-change exceptions (actions are not page-level):
  *   - resources/js/Pages/Inventory/Sync.vue      (workflow-step-local import buttons)
- *   - resources/js/Pages/Logistics/Index.vue     (per-order record-card actions)
  *
  * Feature-only exclusions (not present on current main — enforced by their own PRs):
  *   - Customers/Subscribers/*
@@ -64,6 +63,7 @@ final class PageHeaderActionStandardTest extends TestCase
         if (! file_exists($path)) {
             throw new \RuntimeException("File not found: $path");
         }
+
         return file_get_contents($path);
     }
 
@@ -75,6 +75,7 @@ final class PageHeaderActionStandardTest extends TestCase
             $path = $this->projectPath($relative);
             if (! file_exists($path)) {
                 $violations[] = $relative.' [file not found]';
+
                 continue;
             }
             $source = file_get_contents($path);
@@ -93,6 +94,7 @@ final class PageHeaderActionStandardTest extends TestCase
             $path = $this->projectPath($relative);
             if (! file_exists($path)) {
                 $violations[] = $relative.' [file not found]';
+
                 continue;
             }
             $source = file_get_contents($path);
@@ -135,7 +137,6 @@ final class PageHeaderActionStandardTest extends TestCase
     {
         // These pages have been explicitly audited and confirmed to have no page-level actions.
         // Inventory/Sync.vue: import buttons are workflow-step-local actions.
-        // Logistics/Index.vue: save/ship/copy buttons are per-order record-card actions.
         // If either file gains a genuine page-level action in future, migrate it then.
         $this->assertTrue(true, 'no-change exceptions acknowledged');
     }

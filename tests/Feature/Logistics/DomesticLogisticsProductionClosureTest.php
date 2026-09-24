@@ -2,11 +2,14 @@
 
 namespace Tests\Feature\Logistics;
 
+use App\Models\Permission;
+use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
 use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
 use App\Modules\Logistics\Application\Domestic\SpeedaOutboundExporter;
+use App\Modules\Logistics\Experience\Controllers\DomesticLogisticsController;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderStatus;
@@ -24,31 +27,27 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_domestic_workspace_is_formal_and_cannot_be_shadowed_by_legacy_prototype_routes(): void
+    public function test_domestic_workspace_is_formal_and_obsolete_pending_workspace_is_retired(): void
     {
         $formal = collect(config('erp_shell_navigation'))->firstWhere('key', 'logistics');
         self::assertSame(
-            ['待分仓', '待发货', '国内发货', '海外仓发货', '已发待单号', '运输中', '异常订单', '承运商'],
+            ['待分仓', '国内发货', '海外仓发货', '已发待单号', '运输中', '异常订单', '承运商'],
             collect($formal['children'])->pluck('label')->all(),
         );
         self::assertSame(
-            ['/logistics/wait-stock', '/logistics/pending', '/logistics/china', '/logistics/oversea', '/logistics/awaiting-tracking', '/logistics/in-transit', '/logistics/exceptions', '/logistics/carriers'],
+            ['/logistics/wait-stock', '/logistics/china', '/logistics/oversea', '/logistics/awaiting-tracking', '/logistics/in-transit', '/logistics/exceptions', '/logistics/carriers'],
             collect($formal['children'])->pluck('path')->all(),
         );
+        self::assertNotContains('/logistics/pending', collect($formal['children'])->pluck('path')->all());
+        self::assertNotContains('/logistics/pending', collect(config('erp_navigation.logistics.children'))->pluck('path')->all());
 
-        $legacyPaths = collect(config('erp_navigation.logistics.children'))->pluck('path')->all();
-        self::assertNotContains('/logistics/china', $legacyPaths, 'Domestic workspace must not be re-registered by the legacy prototype shell.');
-        self::assertNotContains('/logistics/oversea', $legacyPaths, 'Oversea workspace must not be re-registered by the legacy prototype shell.');
-        self::assertNotContains('/logistics/carriers', $legacyPaths, 'Carrier workspace must not be re-registered by the legacy prototype shell.');
+        $domestic = app('router')->getRoutes()->getByName('logistics.china');
+        self::assertSame(DomesticLogisticsController::class.'@index', $domestic?->getActionName());
 
-        $route = app('router')->getRoutes()->getByName('logistics.china');
-        self::assertNotNull($route);
-        self::assertSame('/logistics/china', '/'.ltrim($route->uri(), '/'));
-        self::assertSame(
-            \App\Modules\Logistics\Experience\Controllers\DomesticLogisticsController::class.'@index',
-            $route->getActionName(),
-            'Domestic route ownership must remain with the real Logistics controller, never ErpShellController prototype.',
-        );
+        $user = $this->logisticsViewer();
+        $this->actingAs($user)->get('/logistics')->assertRedirect('/logistics/wait-stock');
+        $this->actingAs($user)->get('/logistics/pending')->assertRedirect('/logistics/wait-stock');
+        $this->actingAs($user)->get('/logistics/wait-stock')->assertInertia(fn ($page) => $page->component('Logistics/FulfillmentAllocation'));
     }
 
     public function test_speeda_export_uses_real_24_column_contract_and_blocks_missing_phone(): void
@@ -234,6 +233,17 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         self::assertSame('blocked', $preview['rows'][0]['status']);
         self::assertStringContainsString('运单号与服务商单号不一致', $preview['rows'][0]['message']);
         self::assertSame('pending', $order->fresh()->shipment->shipment_status);
+    }
+
+    private function logisticsViewer(): User
+    {
+        $permission = Permission::query()->firstOrCreate(['key' => 'logistics.view'], ['label' => 'logistics.view']);
+        $role = Role::query()->create(['key' => 'domestic-closure-viewer', 'label' => 'Domestic Closure Viewer']);
+        $role->permissions()->attach($permission);
+        $user = User::factory()->create(['is_active' => true]);
+        $user->roles()->attach($role);
+
+        return $user;
     }
 
     private function domesticOrder(string $erpOrderId, string $carrier, bool $reviewed, string $phone, int $quantity): Order

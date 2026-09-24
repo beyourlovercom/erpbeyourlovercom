@@ -27,7 +27,7 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         [$user, $order, $product, $warehouse] = $this->scenario();
         $this->makeReservable($warehouse, $product, 12, 3);
 
-        $this->actingAs($user)->get('/logistics/pending')->assertInertia(
+        $this->actingAs($user)->get('/logistics/wait-stock')->assertInertia(
             fn (Assert $page) => $page
                 ->where('orders.data.0.id', $order->id)
                 ->where('orders.data.0.items.0.availability', fn ($rows) => collect($rows)->contains(
@@ -124,7 +124,7 @@ final class ManualFulfillmentIntegrationTest extends TestCase
             $queries[] = strtolower($query->sql);
         });
 
-        $this->actingAs($user)->get('/logistics/pending')->assertOk();
+        $this->actingAs($user)->get('/logistics/wait-stock')->assertOk();
 
         $externalReferenceLoads = collect($queries)->filter(fn (string $sql): bool => str_contains($sql, 'from "order_external_references" where "order_external_references"."order_id" in')
             || str_contains($sql, 'from `order_external_references` where `order_external_references`.`order_id` in')
@@ -136,9 +136,9 @@ final class ManualFulfillmentIntegrationTest extends TestCase
             && str_contains($sql, 'shipping_weight_evidence_id')
         )->count();
 
-        $this->assertSame(1, $externalReferenceLoads, 'Pending page must eager-load external references once for the page.');
-        $this->assertSame(1, $packagingStandardLoads, 'Pending page must load packaging standards once for the page.');
-        $this->assertSame(1, $shippingWeightStandardLoads, 'Pending page must load shipping-weight standards once for the page.');
+        $this->assertSame(1, $externalReferenceLoads, 'Wait-stock page must eager-load external references once for the page.');
+        $this->assertSame(1, $packagingStandardLoads, 'Wait-stock page must load packaging standards once for the page.');
+        $this->assertSame(1, $shippingWeightStandardLoads, 'Wait-stock page must load shipping-weight standards once for the page.');
     }
 
     public function test_order_detail_exposes_inventory_and_selected_warehouse(): void
@@ -207,7 +207,7 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         );
     }
 
-    public function test_logistics_projects_safe_warehouse_recommendation_without_persisting_it(): void
+    public function test_wait_stock_projects_inventory_context_without_persisting_a_shipment(): void
     {
         [$user, $order, $product, $warehouse] = $this->scenario();
         $warehouse->serviceRegions()->create(['country_code' => 'US', 'priority' => 1]);
@@ -220,11 +220,13 @@ final class ManualFulfillmentIntegrationTest extends TestCase
             ['quantity_on_hand' => 5, 'quantity_reserved' => 1],
         );
 
-        $this->actingAs($user)->get('/logistics/pending')->assertInertia(
+        $this->actingAs($user)->get('/logistics/wait-stock')->assertInertia(
             fn (Assert $page) => $page
-                ->where('orders.data.0.warehouse_recommendation.status', 'recommended')
-                ->where('orders.data.0.warehouse_recommendation.warehouse.id', $warehouse->id)
-                ->where('orders.data.0.warehouse_recommendation.country_code', 'US')
+                ->component('Logistics/FulfillmentAllocation')
+                ->where('orders.data.0.id', $order->id)
+                ->where('orders.data.0.items.0.availability', fn ($rows) => collect($rows)->contains(
+                    fn ($row) => $row['warehouse_id'] === $warehouse->id && $row['quantity_available'] === 4
+                ))
         );
 
         $this->assertDatabaseMissing('shipments', ['order_id' => $order->id]);
