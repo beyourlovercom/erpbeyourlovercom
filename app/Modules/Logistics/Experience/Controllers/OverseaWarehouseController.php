@@ -5,6 +5,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
+use App\Modules\Logistics\Application\LogisticsReviewAccess;
 use App\Modules\Logistics\Application\OverseaFiles\OverseaOutboundFileService;
 use App\Modules\Logistics\Application\OverseaTrackingReturnService;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
@@ -31,6 +32,7 @@ final class OverseaWarehouseController
         private readonly OverseaWarehouseReviewService $reviews,
         private readonly OverseaTrackingReturnService $trackingReturns,
         private readonly LogisticsExecutionAccess $executionAccess,
+        private readonly LogisticsReviewAccess $reviewAccess,
         private readonly CarrierServiceCatalog $carrierServices,
         private readonly OverseaOutboundFileService $outboundFiles,
     ) {}
@@ -72,7 +74,7 @@ final class OverseaWarehouseController
             'view' => $view,
             'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => $this->row($shipment, $start + $index + 1))->toArray(),
             'viewCounts' => $this->viewCounts($warehouseMap, $selectedWarehouse),
-            'canReview' => $this->executionAccess->allows($request->user()),
+            'canReview' => $this->reviewAccess->allows($request->user()),
             'canOperate' => $warehouseKey !== 'all' && $this->executionAccess->allows($request->user()),
             'carrierOptions' => $this->carrierServices->options(),
             'trackingImportPreview' => $warehouseKey === 'all' ? null : (collect((array) $request->session()->get($this->trackingSessionKey($warehouseKey), []))->except('normalized_rows')->all() ?: null),
@@ -143,6 +145,11 @@ final class OverseaWarehouseController
             'service' => ['sometimes', 'nullable', 'string', 'max:191'],
             'tracking_number' => ['sometimes', 'nullable', 'string', 'max:128'],
         ]);
+        if (! $this->executionAccess->allows($request->user())) {
+            $forbidden = array_diff(array_keys($data), ['warehouse_id', 'note']);
+            abort_if($forbidden !== [], 403, '当前账号仅可审核，不可修改发货执行字段');
+        }
+
         $this->reviews->updateDraft($order, $data, $request->user());
 
         return back()->with('success', '海外仓审核信息已保存');
