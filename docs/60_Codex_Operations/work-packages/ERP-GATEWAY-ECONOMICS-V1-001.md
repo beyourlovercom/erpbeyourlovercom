@@ -3,7 +3,7 @@
 STATUS: OWNER_CONFIRMED / ACTIVE
 EXECUTION_PROVIDER: GPT_WEB
 VERIFICATION_TIER: HIGH_RISK
-BASELINE: origin/main@eec2ac697d299499c73db92b491876177862d044
+BASELINE: origin/main@b70fc0f13af3adb1e68e80eec38eb655a896d69f
 BRANCH: feature/erp-gateway-economics-v1-001
 WORKTREE: /Users/a/AI/007/worktrees/erp-gateway-economics-v1-001
 DEPENDENCIES: Payment Authority Gate V1; Stale Pending Reconciliation V1; Payment Observability V1 all MERGED
@@ -177,23 +177,76 @@ Implement -> focused tests -> payment/Woo/Finance/Observability regression -> fr
 
 Production remains unauthorized.
 
+## Implementation / Verification Evidence — 2026-09-24
+
+Implementation head before closure evidence:
+- d6ee136d8b06e509bab4355830fc624392c8d2f2
+
+Actual gateway-fee evidence audit:
+- WooPayments plugin stores actual processor fee in _wcpay_transaction_fee.
+- Checkout Plugins Stripe stores actual processor fee in _cpsw_stripe_fee.
+- Payment Plugins PayPal stores actual processor fee in _paypal_fee.
+- Installed Airwallex plugin exposes no equivalent canonical order-level processor fee field found by audit.
+- In the 2026-04-01+ current processing/completed cohort, distinct actual-fee evidence coverage is complete for the audited major methods: WooPayments 861/861, Stripe Element 88/88, PayPal wallet+card 464/464.
+- Currency audit confirms USD, EUR, GBP, CAD and AUD; V1 prohibits cross-currency monetary totals.
+- Duplicate fee metadata exists historically. WooPayments has many duplicate rows and at least one order with conflicting distinct fee values; Stripe/PayPal duplicates observed in audit were value-consistent. V1 therefore treats conflicting duplicate fee evidence as conflict/null rather than choosing MAX/MIN.
+- Woo REST v2 order response returns order meta_data and only filters Woo core internal keys under HPOS; the audited gateway fee keys are plugin keys, not Woo core internal keys, so the authenticated Orders REST path can carry them.
+
+Implementation:
+- Added nullable order_financials actual_payment_fee, actual_payment_fee_source, actual_payment_fee_status.
+- Woo normalizer recognizes only the three audited actual-fee meta contracts and records observed/missing/conflict/invalid/unavailable explicitly.
+- Airwallex fee remains unavailable; no 3.5% fallback is written into actual fee fields.
+- Existing Woo financial bootstrap and inbound update paths carry the new evidence.
+- Added read-only payments:economics-preview in Finance.
+- Economics rows are gateway × currency only.
+- Captured means paid_at exists, even if the order is later refunded or placed on hold.
+- Actual fee effective rate uses only orders with observed fee evidence.
+- Owner 3.5% fee remains separately labelled accounting estimate.
+- Full net-after-refund-and-actual-fee is emitted only when gross, refund and actual-fee evidence coverage are complete.
+- Coverage declares raw provider attempts, webhook events, dispute/chargeback cost and Airwallex actual processor fee unavailable.
+- No gateway ranking/winner is produced.
+
+Validation:
+- P1.8 focused suite: 11 tests / 83 assertions PASS.
+- Combined gateway economics + Woo inbound/sync + Finance evidence/materialization + P1.6/P1.7 regression: 93 tests / 564 assertions PASS.
+- Orders regression excluding inherited OrderSavedViews baseline failure: 29 tests / 96 assertions PASS.
+- Fresh SQLite migrate:fresh PASS; actual_payment_fee / actual_payment_fee_source / actual_payment_fee_status verified present.
+- payments:economics-preview command registration verified.
+- JSON privacy test confirms no raw transaction id, fee meta key, customer name, phone or email is emitted.
+- Preview zero-database-write test PASS.
+- New/owned files Pint PASS.
+- OrderService and FinanceServiceProvider Pint issues reproduce on origin/main; no broad formatting rewrite introduced.
+- git diff --check PASS.
+- Production migration, backfill, deploy, Woo mutation and gateway routing change: NOT performed.
+
+Residual risk / next gate:
+- Existing Production history will not have the new ERP actual-fee fields until a separately approved migration + historical Woo evidence backfill is executed.
+- Airwallex actual processor cost remains unavailable in V1.
+- Dispute/chargeback cost remains unavailable in ERP V1.
+- P1.9 closure must not claim cross-currency economics or raw processor authorization rates from this dataset.
+
 PROJECT POSITION
 PROGRAM_ROADMAP: BYL Payment Reliability lane
 CURRENT_TRACK_PHASE_MAP: P1.7 MERGED -> P1.8 Gateway Economics CURRENT -> P1.9 Payment Reliability Closure WAITING
 CURRENT_PHASE: P1.8 Gateway Economics
 CURRENT_WORK_PACKAGE: ERP-GATEWAY-ECONOMICS-V1-001
-PACKAGE_STATUS: OWNER_CONFIRMED / ACTIVE
-WAITING_PHASES: P1.9
-BASELINE: origin/main@eec2ac697d299499c73db92b491876177862d044
-GLOBAL_GATE: Local/Dev implementation authorized; Production unauthorized
+PACKAGE_STATUS: IMPLEMENTED / VERIFIED / CI_CHECK_PENDING
+WAITING_PHASES: PR #422 merge gate; P1.9
+BASELINE: origin/main@b70fc0f13af3adb1e68e80eec38eb655a896d69f
+GITHUB_STATE: PR #422 open; implementation head d6ee136d8b06e509bab4355830fc624392c8d2f2
+GLOBAL_GATE: LOCAL VERIFICATION PASS; Production unauthorized
 PRODUCTION_DEPLOYMENT_STATUS: NO
+NEXT_DEPENDENCY: PR #422 merge decision; P1.9 waits for merge
 EVIDENCE_AS_OF: 2026-09-24
 
 ROADMAP HOURS
 CURRENT_PACKAGE_ESTIMATE: planning 3.0h; range 1.8-4.5h
 ESTIMATE_CONFIDENCE: medium-high
 ESTIMATE_METHOD: additive fee-evidence schema + Woo normalizer import + read-only economics preview + regression
-ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE
+ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE — no accepted repository Work Log records productive actual hours; chat/tool elapsed time is not used as hours evidence
+ACTUAL_HOURS_BREAKDOWN: UNKNOWN WITH EVIDENCE
+VARIANCE: UNKNOWN WITH EVIDENCE — actual hours unavailable
+VARIANCE_REASON: no accepted actual-hours ledger
 MIGRATION: AUTHORING/LOCAL TEST INCLUDED; PRODUCTION EXECUTION EXCLUDED
 DEPLOYMENT: EXCLUDED
 OWNER_REVIEW: EXCLUDED
