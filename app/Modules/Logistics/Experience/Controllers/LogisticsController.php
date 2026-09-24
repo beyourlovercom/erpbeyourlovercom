@@ -76,13 +76,14 @@ final class LogisticsController
             ->get()
             ->keyBy('order_id')
             ->all();
+        $paymentDecisions = $this->automaticAllocationEligibility->preparePaymentDecisions($orders->items());
         $allowedCodes = array_map('strtoupper', (array) config('warehouse_master.fulfillment_codes', []));
         $warehouses = collect($context['warehouses'] ?? [])
             ->filter(fn (array $warehouse): bool => in_array(strtoupper((string) ($warehouse['code'] ?? '')), $allowedCodes, true))
             ->values()->all();
 
         return Inertia::render('Logistics/FulfillmentAllocation', [
-            'orders' => $orders->through(fn (Order $order): array => $this->data($order, $context, $activeReservations))->toArray(),
+            'orders' => $orders->through(fn (Order $order): array => $this->data($order, $context, $activeReservations, $paymentDecisions))->toArray(),
             'warehouses' => $warehouses,
             'carrierOptions' => $this->carrierServices->options(),
             'pendingTotal' => $orders->total(),
@@ -542,8 +543,12 @@ final class LogisticsController
         ];
     }
 
-    private function data(Order $order, array $context, array $activeReservationsByOrderId = []): array
-    {
+    private function data(
+        Order $order,
+        array $context,
+        array $activeReservationsByOrderId = [],
+        array $paymentDecisionsByOrderId = [],
+    ): array {
         $destinationContext = [
             'province_state' => $order->address?->province_state,
             'city' => $order->address?->city,
@@ -633,7 +638,12 @@ final class LogisticsController
                 'plan_snapshot' => $allocation->plan_snapshot,
                 'submitted_at' => $allocation->submitted_at?->toIso8601String(),
             ] : null,
-            'automatic_allocation' => $this->automaticAllocationEligibility->evaluate($order, $recommendation, $activeReservationsByOrderId),
+            'automatic_allocation' => $this->automaticAllocationEligibility->evaluate(
+                $order,
+                $recommendation,
+                $activeReservationsByOrderId,
+                $paymentDecisionsByOrderId[$order->id] ?? null,
+            ),
             'shipment' => $order->shipment ? [
                 ...$order->shipment->only(['warehouse_id', 'warehouse_selection_source', 'carrier', 'service', 'carrier_selection_source', 'tracking_number', 'shipped_at', 'logistics_note']),
                 'warehouse_name' => $order->shipment->warehouse?->name,

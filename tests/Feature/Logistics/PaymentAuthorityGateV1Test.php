@@ -68,6 +68,24 @@ final class PaymentAuthorityGateV1Test extends TestCase
         }
     }
 
+    public function test_batch_payment_snapshot_preserves_paid_pending_and_manual_authority_states(): void
+    {
+        $paid = $this->wooOrder();
+        $this->financials($paid, 'processing', now(), 'BATCH-PAID-'.uniqid());
+        $pending = $this->wooOrder();
+        $this->financials($pending, 'pending', null);
+        $manual = $this->manualOrder();
+
+        $decisions = app(FulfillmentPaymentGate::class)->prepare([$paid, $pending, $manual]);
+
+        $this->assertTrue($decisions[$paid->id]['allowed']);
+        $this->assertSame('paid', $decisions[$paid->id]['state']);
+        $this->assertFalse($decisions[$pending->id]['allowed']);
+        $this->assertSame('payment_pending', $decisions[$pending->id]['reason_code']);
+        $this->assertTrue($decisions[$manual->id]['allowed']);
+        $this->assertSame('not_required', $decisions[$manual->id]['state']);
+    }
+
     public function test_woo_order_missing_financial_evidence_is_unconfirmed_and_blocked(): void
     {
         $order = $this->wooOrder();

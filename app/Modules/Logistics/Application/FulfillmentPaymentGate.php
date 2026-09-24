@@ -18,20 +18,32 @@ final class FulfillmentPaymentGate
             ? $order
             : Order::query()->whereKey($order->getKey())->firstOrFail();
 
-        $state = $this->payments->state($canonical);
+        return $this->decision($this->payments->state($canonical));
+    }
 
-        return [
-            'allowed' => $state->allowsFulfillment(),
-            'state' => $state->value,
-            'reason_code' => $this->reasonCode($state),
-            'reason_label' => $this->reasonLabel($state),
-        ];
+    /** @param iterable<Order> $orders @return array<int,array{allowed:bool,state:string,reason_code:string,reason_label:string}> */
+    public function prepare(iterable $orders): array
+    {
+        return collect($this->payments->statesFor($orders))
+            ->map(fn (PaymentAuthorityState $state): array => $this->decision($state))
+            ->all();
     }
 
     public function assertAllowed(Model $order): void
     {
         $decision = $this->evaluate($order);
         abort_unless($decision['allowed'], 409, $decision['reason_label']);
+    }
+
+    /** @return array{allowed:bool,state:string,reason_code:string,reason_label:string} */
+    private function decision(PaymentAuthorityState $state): array
+    {
+        return [
+            'allowed' => $state->allowsFulfillment(),
+            'state' => $state->value,
+            'reason_code' => $this->reasonCode($state),
+            'reason_label' => $this->reasonLabel($state),
+        ];
     }
 
     private function reasonCode(PaymentAuthorityState $state): string

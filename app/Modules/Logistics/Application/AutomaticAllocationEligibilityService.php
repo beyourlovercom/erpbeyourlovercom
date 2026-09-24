@@ -14,16 +14,26 @@ final class AutomaticAllocationEligibilityService
         private readonly FulfillmentPaymentGate $paymentGate,
     ) {}
 
-    /** @return array<string,mixed> */
-    public function evaluate(Order $order, ?array $recommendation = null, ?array $activeReservationsByOrderId = null): array
+    /** @param iterable<Order> $orders @return array<int,array{allowed:bool,state:string,reason_code:string,reason_label:string}> */
+    public function preparePaymentDecisions(iterable $orders): array
     {
+        return $this->paymentGate->prepare($orders);
+    }
+
+    /** @return array<string,mixed> */
+    public function evaluate(
+        Order $order,
+        ?array $recommendation = null,
+        ?array $activeReservationsByOrderId = null,
+        ?array $paymentDecision = null,
+    ): array {
         $order->loadMissing(['address', 'items', 'shipment.warehouse', 'externalReferences']);
 
         if ($order->externalReferences->contains('provider', 'historical_logistics')) {
             return $this->blocked('HISTORICAL_EXCLUDED', 'historical_excluded', '历史物流订单永久排除自动分配。');
         }
 
-        $payment = $this->paymentGate->evaluate($order);
+        $payment = $paymentDecision ?? $this->paymentGate->evaluate($order);
         if (! $payment['allowed']) {
             return $this->blocked('PAYMENT_NOT_AUTHORIZED', $payment['reason_code'], $payment['reason_label']);
         }
