@@ -24,6 +24,29 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_domestic_workspace_is_present_in_both_formal_and_legacy_logistics_menus(): void
+    {
+        $formal = collect(config('erp_shell_navigation'))->firstWhere('key', 'logistics');
+        self::assertSame(
+            ['待分仓', '待发货', '国内发货', '海外仓发货', '已发待单号', '运输中', '异常订单', '承运商'],
+            collect($formal['children'])->pluck('label')->all(),
+        );
+        self::assertSame(
+            ['/logistics/wait-stock', '/logistics/pending', '/logistics/china', '/logistics/oversea', '/logistics/awaiting-tracking', '/logistics/in-transit', '/logistics/exceptions', '/logistics/carriers'],
+            collect($formal['children'])->pluck('path')->all(),
+        );
+
+        $legacy = collect(config('erp_navigation.logistics.children'));
+        self::assertSame(
+            ['待分仓', '待发货', '国内发货', '海外仓发货', '已发待单号', '运输中', '异常订单', '承运商'],
+            $legacy->pluck('label')->all(),
+        );
+        self::assertSame(
+            ['/logistics/wait-stock', '/logistics/pending', '/logistics/china', '/logistics/oversea', '/logistics/awaiting-tracking', '/logistics/in-transit', '/logistics/exceptions', '/logistics/carriers'],
+            $legacy->pluck('path')->all(),
+        );
+    }
+
     public function test_speeda_export_uses_real_24_column_contract_and_blocks_missing_phone(): void
     {
         $order = $this->domesticOrder('007-0923-c50001', '4PX', reviewed: true, phone: '13800138000', quantity: 2);

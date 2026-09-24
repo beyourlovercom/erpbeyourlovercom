@@ -9,6 +9,7 @@ return [
         'awaiting-tracking' => ['label' => '已发待单号', 'path' => '/logistics/awaiting-tracking'],
         'in-transit' => ['label' => '运输中', 'path' => '/logistics/in-transit'],
         'exceptions' => ['label' => '异常订单', 'path' => '/logistics/exceptions'],
+        'carriers' => ['label' => '承运商', 'path' => '/logistics/carriers'],
     ]],
     'customers' => ['icon' => '👥', 'label' => '客户', 'children' => [
         'orders' => ['label' => '订单', 'path' => '/customers/orders'],

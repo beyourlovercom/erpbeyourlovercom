@@ -43,7 +43,7 @@ The missing Weship outbound template is an external provider-protocol dependency
 
 ## Validation status
 
-- DomesticLogisticsProductionClosureTest: 5 tests / 64 assertions PASS.
+- DomesticLogisticsProductionClosureTest: 6 tests / 68 assertions PASS (including exact formal + legacy Logistics menu parity).
 - AppShell focused Logistics navigation: 1 test / 58 assertions PASS.
 - Domestic + AuthenticatedLayout Vitest: 15 tests PASS.
 - Vue TypeScript: PASS.
