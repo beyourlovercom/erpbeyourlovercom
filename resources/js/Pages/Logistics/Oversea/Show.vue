@@ -2,6 +2,8 @@
 import { Head, router } from '@inertiajs/vue3'
 import { computed, reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
+import ColumnSettingsHeader from '../../../Components/DataGrid/ColumnSettingsHeader.vue'
+import { useAccountGridPreferences, type GridColumnDefinition } from '../../../Composables/useAccountGridPreferences'
 
 type WarehouseOption = { key:string; id:number; code:string; label:string; carrier:string|null; url:string }
 type Item = { sku:string|null; quantity:number }
@@ -12,14 +14,32 @@ type Row = {
   warehouse_id:number; warehouse_name:string|null; carrier:string|null; service:string|null; carrier_selection_source:string|null; tracking_number:string|null
   progress:string; note:string|null; review_status:'approved'|'pending'; shipment_status:string; items:Item[]
 }
-type PageRows = { data:Row[]; current_page:number; last_page:number; total:number; links?:{url:string|null;label:string;active:boolean}[] }
+type PageRows = { data:Row[]; current_page:number; last_page:number; per_page:number; total:number; from:number|null; to:number|null; links?:{url:string|null;label:string;active:boolean}[] }
+type ColumnKey = 'line'|'order'|'warehouse'|'carrier'|'service'|'tracking'|'note'|'recipient'|'country'|'items'
+const columnDefinitions: GridColumnDefinition<ColumnKey>[] = [
+  { key:'line', label:'#', defaultVisible:true },
+  { key:'order', label:'订单号', defaultVisible:true },
+  { key:'warehouse', label:'Stock 仓库', defaultVisible:true },
+  { key:'carrier', label:'Carrier 承运商', defaultVisible:true },
+  { key:'service', label:'运输 / 服务类型', defaultVisible:true },
+  { key:'tracking', label:'追踪单号 Tracking No.', defaultVisible:true },
+  { key:'note', label:'备注', defaultVisible:true },
+  { key:'recipient', label:'收件人', defaultVisible:true },
+  { key:'country', label:'国家', defaultVisible:true },
+  { key:'items', label:'SKU / 数量', defaultVisible:true },
+]
 type TrackingImportRow = { row:number; order_id:number|null; order_number:string; tracking_number:string; carrier:string|null; shipped_at:string; shipped_time_source:'provider'|'apply'; provider_order_reference:string|null; provider_service:string|null; provider_status:string|null; status:'apply'|'noop'|'blocked'; message:string }
 type TrackingImportPreview = { token:string; rows:TrackingImportRow[]; apply_count:number; noop_count:number; blocked_count:number }
 const props = defineProps<{
   warehouseKey:string; warehouse:WarehouseOption|null; warehouseOptions:WarehouseOption[]; view:string
-  rows:PageRows; viewCounts:Record<string,number>; canOperate:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null
+  rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canOperate:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null
 }>()
 
+const grid = reactive(useAccountGridPreferences<ColumnKey>({
+  namespace:'grid.logistics.oversea.workbench.v1',
+  definitions:columnDefinitions,
+}))
+const canEditRow = computed(() => props.canOperate || (props.canReview && props.view === 'review'))
 const drafts = reactive<Record<number,{ note:string; carrier:string; service:string; tracking_number:string }>>({})
 const trackingFileInput = ref<HTMLInputElement|null>(null)
 const trackingPreviewRows = computed(() => props.trackingImportPreview?.rows.slice(0, 20) ?? [])
@@ -46,8 +66,8 @@ const viewTabs = [
 
 const pageTitle = computed(() => props.warehouse ? `海外仓发货 · ${props.warehouse.label}` : '海外仓发货 · 全部海外仓')
 const basePath = computed(() => props.warehouse ? props.warehouse.url : '/logistics/oversea')
-const switchView = (view:string) => router.visit(`${basePath.value}?view=${view}`, { preserveScroll:true, preserveState:true, only:['rows','view','viewCounts','warehouse','warehouseKey','warehouseOptions','canOperate','carrierOptions'] })
-const switchWarehouse = (url:string) => router.visit(`${url}?view=${props.view}`, { preserveScroll:true, preserveState:true })
+const switchView = (view:string) => router.visit(`${basePath.value}?view=${encodeURIComponent(view)}&page=1&per_page=${props.rows.per_page || 50}`, { preserveScroll:true, preserveState:true, only:['rows','view','viewCounts','warehouse','warehouseKey','warehouseOptions','canReview','canOperate','carrierOptions'] })
+const switchWarehouse = (url:string) => router.visit(`${url}?view=${encodeURIComponent(props.view)}&page=1&per_page=${props.rows.per_page || 50}`, { preserveScroll:true, preserveState:true })
 const saveDraft = (row:Row, payload:Record<string,string|number|null>) => router.patch(`/logistics/oversea/orders/${row.order_id}/draft`, payload, { preserveScroll:true, preserveState:true })
 const changeWarehouse = (row:Row, warehouseId:number) => saveDraft(row, { warehouse_id:Number(warehouseId) })
 const changeWarehouseFromEvent = (row:Row, event:Event) => changeWarehouse(row, Number((event.target as HTMLSelectElement).value))
@@ -87,7 +107,37 @@ const reject = (row:Row) => {
   router.post(`/logistics/oversea/orders/${row.order_id}/reject`, { note }, { preserveScroll:true, preserveState:true })
 }
 const itemText = (row:Row) => row.items.map(item => `${item.sku ?? '无SKU'} × ${item.quantity}`).join(' / ') || '—'
-const goPage = (page:number) => router.visit(`${basePath.value}?view=${props.view}&page=${page}`, { preserveScroll:true, preserveState:true })
+const pageUrl = (page:number, perPage:number = props.rows.per_page || 50) => `${basePath.value}?view=${encodeURIComponent(props.view)}&page=${page}&per_page=${perPage}`
+const goPage = (page:number) => {
+  const next = Math.max(1, Math.min(props.rows.last_page || 1, page))
+  router.visit(pageUrl(next), { preserveScroll:true, preserveState:true })
+}
+const changePerPage = (event:Event) => {
+  const perPage = Number((event.target as HTMLSelectElement).value)
+  router.visit(pageUrl(1, perPage), { preserveScroll:true, preserveState:true })
+}
+const jumpPage = ref('')
+const submitJump = () => {
+  const page = Number(jumpPage.value)
+  if (!Number.isInteger(page)) return
+  goPage(page)
+}
+const compactPages = computed<(number|string)[]>(() => {
+  const last = props.rows.last_page || 1
+  if (last <= 7) return Array.from({ length:last }, (_, index) => index + 1)
+  const pages = new Set<number>([1, last])
+  for (let page = props.rows.current_page - 2; page <= props.rows.current_page + 2; page++) {
+    if (page > 1 && page < last) pages.add(page)
+  }
+  const ordered = [...pages].sort((a,b) => a-b)
+  const result:(number|string)[] = []
+  ordered.forEach((page, index) => {
+    const previous = ordered[index - 1]
+    if (index > 0 && previous !== undefined && page - previous > 1) result.push(`ellipsis-${previous}-${page}`)
+    result.push(page)
+  })
+  return result
+})
 </script>
 
 <template>
@@ -141,38 +191,65 @@ const goPage = (page:number) => router.visit(`${basePath.value}?view=${props.vie
       <div class="oversea-table-wrap">
         <table class="oversea-table">
           <thead><tr>
-            <th class="decision-col">审核</th><th class="line-col">#</th><th>订单号</th><th>Stock 仓库</th><th>Carrier 承运商</th>
-            <th>运输 / 服务类型</th><th>追踪单号 Tracking No.</th><th>备注</th><th>收件人</th><th>国家</th><th>SKU / 数量</th>
+            <th class="decision-col sticky-decision">审核</th>
+            <th v-for="column in grid.visibleColumns" :key="column.key" :class="{ 'line-col':column.key === 'line' }">{{ column.label }}</th>
+            <ColumnSettingsHeader :columns="grid.columns" :sync-state="grid.syncState" @toggle="grid.toggle" @start-drag="grid.startDrag" @drop="grid.drop" @reset="grid.reset" />
           </tr></thead>
           <tbody>
             <tr v-for="row in rows.data" :key="row.order_id">
-              <td class="decision-cell">
-                <template v-if="canOperate && view === 'review'">
+              <td class="decision-cell sticky-decision">
+                <template v-if="canReview && view === 'review'">
                   <button type="button" class="decision approve" @mousedown.prevent @click="approve(row)">通过</button>
                   <button type="button" class="decision reject" title="如需驳回，请先填写备注原因" @mousedown.prevent @click="reject(row)">驳回</button>
                 </template>
                 <div v-else-if="row.review_status === 'approved'" class="decision-approved"><span class="decision-state approved">已通过</span><button v-if="canOperate" type="button" class="reopen-review" @click="reopenReview(row)">重新审核</button></div>
                 <span v-else class="decision-state">待审核</span>
               </td>
-              <td class="line-col">{{ row.line }}</td>
-              <td><a class="order-link" :href="row.order_url ?? `/orders/${row.order_id}`">{{ row.erp_order_id ?? '—' }}</a></td>
-              <td><select :value="row.warehouse_id" :disabled="!canOperate || view !== 'review'" class="cell-select warehouse" @change="changeWarehouseFromEvent(row, $event)"><option v-for="option in warehouseOptions" :key="option.id" :value="option.id">{{ option.label }}</option></select></td>
-              <td><select v-model="draft(row).carrier" :disabled="!canOperate || row.shipment_status === 'shipped'" class="cell-select carrier" @change="saveCarrier(row)"><option v-for="carrier in carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select></td><td><select v-model="draft(row).service" :disabled="!canOperate || row.shipment_status === 'shipped' || !draft(row).carrier" class="cell-select service" @change="saveService(row)"><option value="">请选择服务类型</option><option v-for="service in serviceOptionsFor(draft(row).carrier)" :key="service.id" :value="service.value">{{ service.label }}</option></select></td>
-              <td class="tracking-cell"><div class="tracking-entry"><input v-model="draft(row).tracking_number" :disabled="!canOperate || row.shipment_status === 'shipped'" class="tracking-input" placeholder="填写发货单号" @blur="saveTracking(row)" /><button v-if="canOperate && warehouseKey === 'us-3sm' && view === 'pending' && row.review_status === 'approved' && row.shipment_status === 'pending'" type="button" class="manual-ship-button" @mousedown.prevent @click="manualShipUsSm(row)">确认发货</button></div></td>
-              <td><div class="note-cell"><input v-model="draft(row).note" :disabled="!canOperate" class="note-input" :class="{ error: !!rowErrors[row.order_id] }" placeholder="等海运 / 等空运 / 缺货 / 太贵 / 送不到…" @input="rowErrors[row.order_id] = ''" @blur="view === 'review' ? undefined : saveNote(row)" /><small v-if="rowErrors[row.order_id]" class="note-error">{{ rowErrors[row.order_id] }}</small></div></td>
-              <td>{{ row.recipient_name ?? '—' }}</td>
-              <td>{{ row.country ?? '—' }}</td>
-              <td class="items-cell">{{ itemText(row) }}</td>
+              <td v-for="column in grid.visibleColumns" :key="column.key" :class="{ 'line-col':column.key === 'line', 'tracking-cell':column.key === 'tracking', 'items-cell':column.key === 'items' }">
+                <template v-if="column.key === 'line'">{{ row.line }}</template>
+                <template v-else-if="column.key === 'order'"><a class="order-link" :href="row.order_url ?? `/orders/${row.order_id}`">{{ row.erp_order_id ?? '—' }}</a></template>
+                <template v-else-if="column.key === 'warehouse'"><select :value="row.warehouse_id" :disabled="!canReview || view !== 'review'" class="cell-select warehouse" @change="changeWarehouseFromEvent(row, $event)"><option v-for="option in warehouseOptions" :key="option.id" :value="option.id">{{ option.label }}</option></select></template>
+                <template v-else-if="column.key === 'carrier'"><select v-model="draft(row).carrier" :disabled="!canOperate || row.shipment_status === 'shipped'" class="cell-select carrier" @change="saveCarrier(row)"><option v-for="carrier in carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select></template>
+                <template v-else-if="column.key === 'service'"><select v-model="draft(row).service" :disabled="!canEditRow || row.shipment_status === 'shipped' || !draft(row).carrier" class="cell-select service" @change="saveService(row)"><option value="">请选择服务类型</option><option v-for="service in serviceOptionsFor(draft(row).carrier)" :key="service.id" :value="service.value">{{ service.label }}</option></select></template>
+                <template v-else-if="column.key === 'tracking'"><div class="tracking-entry"><input v-model="draft(row).tracking_number" :disabled="!canOperate || row.shipment_status === 'shipped'" class="tracking-input" placeholder="填写发货单号" @blur="saveTracking(row)" /><button v-if="canOperate && warehouseKey === 'us-3sm' && view === 'pending' && row.review_status === 'approved' && row.shipment_status === 'pending'" type="button" class="manual-ship-button" @mousedown.prevent @click="manualShipUsSm(row)">确认发货</button></div></template>
+                <template v-else-if="column.key === 'note'"><div class="note-cell"><input v-model="draft(row).note" :disabled="!canEditRow" class="note-input" :class="{ error: !!rowErrors[row.order_id] }" placeholder="等海运 / 等空运 / 缺货 / 太贵 / 送不到…" @input="rowErrors[row.order_id] = ''" @blur="view === 'review' ? undefined : saveNote(row)" /><small v-if="rowErrors[row.order_id]" class="note-error">{{ rowErrors[row.order_id] }}</small></div></template>
+                <template v-else-if="column.key === 'recipient'">{{ row.recipient_name ?? '—' }}</template>
+                <template v-else-if="column.key === 'country'">{{ row.country ?? '—' }}</template>
+                <template v-else>{{ itemText(row) }}</template>
+              </td>
+              <td class="settings-spacer" aria-hidden="true"></td>
             </tr>
-            <tr v-if="!rows.data.length"><td colspan="11" class="empty-cell">当前视图暂无订单</td></tr>
+            <tr v-if="!rows.data.length"><td :colspan="grid.visibleColumns.length + 2" class="empty-cell">当前视图暂无订单</td></tr>
           </tbody>
         </table>
       </div>
 
       <footer class="oversea-footer">
-        <span>共 {{ rows.total }} 条记录</span>
-        <div class="pagination" v-if="rows.last_page > 1">
-          <button v-for="page in rows.last_page" :key="page" type="button" :class="{ active: page === rows.current_page }" @click="goPage(page)">{{ page }}</button>
+        <div class="pagination-summary">
+          <span>共 {{ rows.total }} 条</span>
+          <span>第 {{ rows.current_page }} / {{ rows.last_page }} 页</span>
+          <span v-if="rows.from !== null && rows.to !== null">{{ rows.from }}–{{ rows.to }} / {{ rows.total }}</span>
+        </div>
+        <div class="pagination-toolbar">
+          <label class="page-size">每页
+            <select :value="rows.per_page" @change="changePerPage">
+              <option :value="20">20</option><option :value="50">50</option><option :value="100">100</option>
+            </select> 条
+          </label>
+          <div class="pagination" v-if="rows.last_page > 1">
+            <button type="button" :disabled="rows.current_page <= 1" @click="goPage(1)">首页</button>
+            <button type="button" :disabled="rows.current_page <= 1" @click="goPage(rows.current_page - 1)">上一页</button>
+            <template v-for="item in compactPages" :key="item">
+              <button v-if="typeof item === 'number'" type="button" :class="{ active:item === rows.current_page }" @click="goPage(item)">{{ item }}</button>
+              <span v-else class="page-ellipsis">…</span>
+            </template>
+            <button type="button" :disabled="rows.current_page >= rows.last_page" @click="goPage(rows.current_page + 1)">下一页</button>
+            <button type="button" :disabled="rows.current_page >= rows.last_page" @click="goPage(rows.last_page)">末页</button>
+          </div>
+          <label class="page-jump">跳至第
+            <input v-model="jumpPage" inputmode="numeric" aria-label="跳转页码" @keyup.enter="submitJump" />
+            页 <button type="button" @click="submitJump">跳转</button>
+          </label>
         </div>
       </footer>
         </main>
@@ -186,8 +263,8 @@ const goPage = (page:number) => router.visit(`${basePath.value}?view=${props.vie
 .oversea-file-actions{display:flex;gap:10px}.hidden-file{display:none}.file-button{height:40px;padding:0 16px;border:1px solid #0f8f82;border-radius:8px;background:white;color:#0d796f;font-weight:700}.file-button.primary{background:#0f8f82;color:white}.file-link{display:inline-flex;align-items:center;text-decoration:none}.file-button:disabled{opacity:.45;cursor:not-allowed}.oversea-file-flow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:-2px 0 12px;padding:9px 11px;border:1px solid #dbe7e5;border-radius:8px;background:#f5fbfa;color:#395d59;font-size:12px}.oversea-file-flow b{color:#94a3b8}.oversea-file-flow small{flex-basis:100%;color:#64748b}
 .tracking-preview{margin:0 0 14px;padding:12px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc}.tracking-preview-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.tracking-preview-head>div{display:flex;flex-direction:column;gap:3px}.tracking-preview-head strong{color:#0f172a}.tracking-preview-head span,.tracking-hint,.tracking-preview small{color:#64748b;font-size:12px}.tracking-hint{margin:8px 0}.tracking-preview-table-wrap{overflow:auto;border:1px solid #e2e8f0;border-radius:8px;background:#fff}.tracking-preview-table{width:100%;min-width:980px;border-collapse:collapse;font-size:12px}.tracking-preview-table th,.tracking-preview-table td{padding:7px 8px;border-bottom:1px solid #edf2f7;text-align:left;white-space:nowrap}.tracking-preview-table th{background:#f8fafc;color:#475569}.tracking-status{font-weight:800}.tracking-status.apply{color:#047857}.tracking-status.noop{color:#64748b}.tracking-status.blocked{color:#b91c1c}
 .oversea-tabs{display:flex;gap:6px;align-items:center;margin:0 0 12px;border-bottom:1px solid #e2e8f0;overflow-x:auto}.oversea-tab{border:0;background:transparent;padding:9px 14px 8px;color:#536174;font-weight:700;white-space:nowrap;border-bottom:2px solid transparent}.oversea-tab span{margin-left:4px;color:#94a3b8;font-weight:600}.oversea-tab.active{color:#0f766e;border-bottom-color:#0f766e}.oversea-tab.active span{color:#0f766e}
-.oversea-table-wrap{overflow:auto;border:1px solid #dfe6ea;border-radius:10px;background:white}.oversea-table{width:max-content;min-width:1760px;border-collapse:collapse;font-size:13px}.oversea-table th{padding:7px 8px;background:#f8fafc;color:#425466;font-weight:700;text-align:left;border-right:1px solid #e5eaee;border-bottom:1px solid #dfe6ea;white-space:nowrap}.oversea-table td{padding:3px 7px;border-right:1px solid #edf1f4;border-bottom:1px solid #e7ecef;vertical-align:middle;white-space:nowrap}.oversea-table tr:last-child td{border-bottom:0}.decision-col{width:118px}.line-col{width:44px;text-align:center!important;color:#64748b}.decision-cell{white-space:nowrap}.decision{border:1px solid transparent;border-radius:6px;padding:5px 9px;font-weight:700;margin-right:4px}.decision.approve{background:#0ca678;color:white}.decision.reject{background:white;color:#d33;border-color:#efb6b6}.decision-state{font-weight:700;color:#a16207}.decision-state.approved{color:#087f5b}.decision-approved{display:flex;flex-direction:column;align-items:flex-start;gap:2px}.reopen-review{border:1px solid #99cfc7;background:#fff;color:#0f766e;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700}
+.oversea-table-wrap{overflow:auto;border:1px solid #dfe6ea;border-radius:10px;background:white}.oversea-table{width:max-content;min-width:1760px;border-collapse:separate;border-spacing:0;font-size:13px}.oversea-table th{padding:7px 8px;background:#f8fafc;color:#425466;font-weight:700;text-align:left;border-right:1px solid #e5eaee;border-bottom:1px solid #dfe6ea;white-space:nowrap}.oversea-table td{padding:3px 7px;border-right:1px solid #edf1f4;border-bottom:1px solid #e7ecef;vertical-align:middle;white-space:nowrap;background:#fff}.oversea-table tr:last-child td{border-bottom:0}.decision-col{width:118px;min-width:118px}.sticky-decision{position:sticky;left:0;z-index:4;background:#fff!important;box-shadow:6px 0 10px rgba(15,23,42,.06)}th.sticky-decision{z-index:6;background:#f8fafc!important}.line-col{width:44px;text-align:center!important;color:#64748b}.decision-cell{white-space:nowrap}.settings-spacer{width:46px;min-width:46px}.decision{border:1px solid transparent;border-radius:6px;padding:5px 9px;font-weight:700;margin-right:4px}.decision.approve{background:#0ca678;color:white}.decision.reject{background:white;color:#d33;border-color:#efb6b6}.decision-state{font-weight:700;color:#a16207}.decision-state.approved{color:#087f5b}.decision-approved{display:flex;flex-direction:column;align-items:flex-start;gap:2px}.reopen-review{border:1px solid #99cfc7;background:#fff;color:#0f766e;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700}
 .cell-select,.note-input{width:100%;min-height:30px;border:1px solid #d7e0e5;border-radius:6px;background:white;color:#334155;padding:3px 7px}.cell-select:disabled,.note-input:disabled{background:#f8fafc;color:#64748b}.cell-select.warehouse{min-width:135px}.carrier-cell{display:flex;flex-direction:column;gap:3px;min-width:150px}.carrier-cell small{color:#94a3b8;font-size:11px}.cell-select.carrier{min-width:145px}.tracking-cell{min-width:240px}.tracking-entry{display:flex;align-items:center;gap:6px}.tracking-input{width:100%;min-width:220px;min-height:30px;border:1px solid #d7e0e5;border-radius:6px;background:#fff;color:#334155;padding:3px 7px}.tracking-input:disabled{background:#f8fafc;color:#64748b}.manual-ship-button{min-height:30px;white-space:nowrap;border:1px solid #0f766e;border-radius:6px;background:#0f766e;color:#fff;font-weight:700;padding:3px 9px;cursor:pointer}.note-cell{display:flex;flex-direction:column;gap:4px}.note-input{min-width:260px}.note-input.error{border-color:#dc2626}.note-error{color:#dc2626;font-size:11px}.order-link{display:inline-block;min-width:180px;color:#0f766e;font-weight:700;text-decoration:none;white-space:nowrap}.order-link:hover{text-decoration:underline}.items-cell{min-width:180px;color:#475569}.empty-cell{text-align:center!important;color:#94a3b8;padding:30px!important}
-.oversea-footer{display:flex;justify-content:space-between;align-items:center;padding:14px 2px;color:#64748b}.pagination{display:flex;gap:5px}.pagination button{border:1px solid #d7e0e5;background:white;border-radius:6px;min-width:32px;height:32px;color:#475569}.pagination button.active{background:#0f766e;border-color:#0f766e;color:white}
+.oversea-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;max-width:100%;padding:14px 2px;color:#64748b}.pagination-summary{display:flex;gap:10px;flex-wrap:wrap;font-size:12px}.pagination-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;min-width:0;max-width:100%}.page-size,.page-jump{display:flex;align-items:center;gap:5px;white-space:nowrap;font-size:12px}.page-size select,.page-jump input{height:32px;border:1px solid #d7e0e5;border-radius:6px;background:#fff;color:#475569;padding:0 7px}.page-jump input{width:58px}.page-jump button,.pagination button{border:1px solid #d7e0e5;background:white;border-radius:6px;min-width:32px;height:32px;padding:0 8px;color:#475569;white-space:nowrap}.pagination{display:flex;align-items:center;gap:5px;flex-wrap:wrap;min-width:0}.pagination button:disabled,.page-jump button:disabled{opacity:.45;cursor:not-allowed}.pagination button.active{background:#0f766e;border-color:#0f766e;color:white}.page-ellipsis{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:32px;color:#94a3b8}
 @media (max-width:900px){.oversea-workbench{grid-template-columns:1fr}.warehouse-rail{position:static;display:flex;gap:6px;overflow-x:auto}.warehouse-rail-title{display:none}.warehouse-link{width:auto;flex:0 0 auto}.oversea-heading{flex-direction:column}.oversea-file-actions{align-self:stretch}.file-button{flex:1}.oversea-page{padding:14px}}
 </style>
