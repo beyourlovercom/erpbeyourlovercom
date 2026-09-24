@@ -112,6 +112,8 @@ final class WooCommerceOrderNormalizer
             $reconciliationStatus = $reconciliationException === null ? 'matched' : 'exception';
         }
 
+        $actualFee = $this->actualPaymentFeeEvidence($payload);
+
         return [
             'provider' => 'woocommerce',
             'provider_reference' => $reference,
@@ -127,9 +129,73 @@ final class WooCommerceOrderNormalizer
             'refund_tax' => $this->formatNullableCents($refundTaxCents),
             'payment_method' => $this->nullable((string) ($payload['payment_method'] ?? '')),
             'payment_transaction_id' => $this->nullable((string) ($payload['transaction_id'] ?? '')),
+            'actual_payment_fee' => $actualFee['amount'],
+            'actual_payment_fee_source' => $actualFee['source'],
+            'actual_payment_fee_status' => $actualFee['status'],
             'paid_at' => $this->nullable((string) ($payload['date_paid_gmt'] ?? $payload['date_paid'] ?? '')),
             'reconciliation_status' => $reconciliationStatus,
             'reconciliation_exception' => $reconciliationException,
+        ];
+    }
+
+    /** @return array{amount:?string,source:?string,status:string} */
+    private function actualPaymentFeeEvidence(array $payload): array
+    {
+        $method = strtolower(trim((string) ($payload['payment_method'] ?? '')));
+        $source = match (true) {
+            str_starts_with($method, 'woocommerce_payments') => '_wcpay_transaction_fee',
+            $method === 'cpsw_stripe_element' => '_cpsw_stripe_fee',
+            in_array($method, ['ppcp', 'ppcp_card'], true) => '_paypal_fee',
+            default => null,
+        };
+
+        if ($source === null) {
+            return ['amount' => null, 'source' => null, 'status' => 'unavailable'];
+        }
+
+        $meta = $payload['meta_data'] ?? [];
+        if (! is_array($meta)) {
+            return ['amount' => null, 'source' => $source, 'status' => 'missing'];
+        }
+
+        $seen = false;
+        $values = [];
+        foreach ($meta as $row) {
+            if (! is_array($row) || (string) ($row['key'] ?? '') !== $source) {
+                continue;
+            }
+
+            $seen = true;
+            $value = $row['value'] ?? null;
+            if (! is_scalar($value)) {
+                return ['amount' => null, 'source' => $source, 'status' => 'invalid'];
+            }
+
+            try {
+                $cents = $this->moneyCents($value);
+            } catch (InvalidArgumentException) {
+                return ['amount' => null, 'source' => $source, 'status' => 'invalid'];
+            }
+
+            if ($cents < 0) {
+                return ['amount' => null, 'source' => $source, 'status' => 'invalid'];
+            }
+
+            $values[$this->formatCents($cents)] = true;
+        }
+
+        if (! $seen) {
+            return ['amount' => null, 'source' => $source, 'status' => 'missing'];
+        }
+
+        if (count($values) !== 1) {
+            return ['amount' => null, 'source' => $source, 'status' => 'conflict'];
+        }
+
+        return [
+            'amount' => (string) array_key_first($values),
+            'source' => $source,
+            'status' => 'observed',
         ];
     }
 
