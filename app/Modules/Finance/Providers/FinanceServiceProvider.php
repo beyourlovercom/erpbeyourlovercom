@@ -12,6 +12,7 @@ use App\Modules\Finance\Infrastructure\EloquentFxManualRateRepository;
 use App\Modules\Finance\Infrastructure\EloquentWooFinancialBootstrapOrderStore;
 use App\Modules\Finance\Experience\Console\Commands\BootstrapWooFinancialEvidenceCommand;
 use App\Modules\Finance\Experience\Console\Commands\GatewayEconomicsPreviewCommand;
+use App\Modules\Finance\Experience\Console\Commands\PaymentReliabilityClosureCommand;
 use App\Modules\Finance\Experience\Console\Commands\MaterializeActualLastMileCommand;
 use App\Modules\Finance\Experience\Console\Commands\MaterializeContinuousDeltaCommand;
 use App\Modules\Finance\Experience\Console\Commands\MaterializeFixedCostsCommand;
@@ -41,7 +42,7 @@ final class FinanceServiceProvider extends ServiceProvider
     {
         $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/web.php');
         if ($this->app->runningInConsole()) {
-            $this->commands([MaterializeOrderCostsCommand::class, MaterializeActualLastMileCommand::class, MaterializeContinuousDeltaCommand::class, MaterializeFixedCostsCommand::class, MaterializeLastMileEstimatesCommand::class, MaterializeKolCommissionsCommand::class, MaterializeMultiShipmentCostsCommand::class, MaterializeProductCostsCommand::class, MaterializeWarehouseCostsCommand::class, MaterializePaymentFeesCommand::class, RepairPaymentFeeLegacyFxCommand::class, BootstrapWooFinancialEvidenceCommand::class, GatewayEconomicsPreviewCommand::class, P82EstimatedReconciliationCommand::class, MaterializeP82EstimatedLastMileCommand::class]);
+            $this->commands([MaterializeOrderCostsCommand::class, MaterializeActualLastMileCommand::class, MaterializeContinuousDeltaCommand::class, MaterializeFixedCostsCommand::class, MaterializeLastMileEstimatesCommand::class, MaterializeKolCommissionsCommand::class, MaterializeMultiShipmentCostsCommand::class, MaterializeProductCostsCommand::class, MaterializeWarehouseCostsCommand::class, MaterializePaymentFeesCommand::class, RepairPaymentFeeLegacyFxCommand::class, BootstrapWooFinancialEvidenceCommand::class, GatewayEconomicsPreviewCommand::class, PaymentReliabilityClosureCommand::class, P82EstimatedReconciliationCommand::class, MaterializeP82EstimatedLastMileCommand::class]);
         }
     }
 }
