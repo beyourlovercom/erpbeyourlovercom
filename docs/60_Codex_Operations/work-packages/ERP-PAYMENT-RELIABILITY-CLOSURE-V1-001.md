@@ -189,22 +189,61 @@ CI runner scheduling failure with runner_id=0 / steps=[] may use the already est
 
 Stop at Owner UAT. Production is explicitly excluded.
 
+## Implementation / Verification Evidence — 2026-09-24
+
+- Implementation head before closure-evidence commit: 92fca44aaae3a4314d9b96e0920bd6750d8f17e5.
+- Added canonical PaymentReliabilityClosureService and payments:reliability-closure command.
+- Closure composes the existing PaymentHealthPreviewService and GatewayEconomicsPreviewService; no third payment calculation path was introduced.
+- Frozen gateway ownership / Checkout handoff lives in config/payment_reliability.php and does not mutate gateway settings or routing.
+- Runtime state is ready / review / blocked and is explicitly not Production authorization.
+- Rollout gates expose payment-authority safety, Woo inbound sync, stale-payment review, economics evidence, provider telemetry coverage, Production schema, Production backfill, and Checkout routing state.
+- Production schema remains pending_external; historical backfill remains not_authorized; Checkout routing remains contract_frozen_not_applied.
+- Coverage gaps remain explicit: raw provider attempts, canonical webhook event store, dispute/chargeback cost, and Airwallex actual processor fee.
+- No P1.9 schema/migration, scheduler, dashboard UI, Woo mutation, gateway configuration change, Production write, or deploy was added.
+
+Validation:
+- P1.9 focused closure: 10 tests / 59 assertions PASS.
+- Full Payment Reliability chain P1.6.1-P1.9 + Woo/Finance/Sync: 88 tests / 473 assertions PASS.
+- Finance full regression: 167 tests / 1235 assertions PASS, 1 skipped.
+- Orders regression excluding inherited OrderSavedViews baseline failure: 29 tests / 96 assertions PASS.
+- payments:reliability-closure command registration verified.
+- JSON privacy test proves no raw transaction id, fee meta key, recipient name, phone, or email is emitted.
+- Read-only closure preview proves zero DB writes.
+- Gateway ownership / Checkout handoff exact-contract test PASS.
+- Same-as-of composition and gateway × currency separation test PASS.
+- No cross-currency amount total is emitted.
+- P1.9 introduces no migration.
+- New/owned files Pint PASS.
+- FinanceServiceProvider Pint issue reproduces on origin/main and is inherited formatting debt.
+- git diff --check PASS.
+- Production deploy/write/mutation: NOT performed.
+
+UAT target:
+- One canonical read-only command: payments:reliability-closure.
+- Owner UAT checks runtime state, rollout gates, gateway ownership matrix, Checkout handoff, and explicit Production prerequisites.
+- Production remains outside this package even after Owner UAT PASS.
+
 PROJECT POSITION
 PROGRAM_ROADMAP: BYL Payment Reliability lane
 CURRENT_TRACK_PHASE_MAP: P1.6.1 MERGED -> P1.6.2 MERGED -> P1.7 MERGED -> P1.8 MERGED -> P1.9 Payment Reliability Closure CURRENT
 CURRENT_PHASE: P1.9 Payment Reliability Closure
 CURRENT_WORK_PACKAGE: ERP-PAYMENT-RELIABILITY-CLOSURE-V1-001
-PACKAGE_STATUS: OWNER_CONFIRMED / EXECUTE_THROUGH_UAT
+PACKAGE_STATUS: IMPLEMENTED / VERIFIED / CI_PENDING / UAT_PENDING
 BASELINE: origin/main@34ace327d934cb72f2ea9e6e1dd47d00a67535eb
-GLOBAL_GATE: continuous execution through UAT authorized; Production unauthorized
+GITHUB_STATE: PR #423 open; implementation head 92fca44aaae3a4314d9b96e0920bd6750d8f17e5
+GLOBAL_GATE: LOCAL VERIFICATION PASS; continuous execution through UAT authorized; Production unauthorized
 PRODUCTION_DEPLOYMENT_STATUS: NO
+NEXT_DEPENDENCY: PR #423 CI/merge, then Owner UAT
 EVIDENCE_AS_OF: 2026-09-24
 
 ROADMAP HOURS
 CURRENT_PACKAGE_ESTIMATE: planning 2.0h; range 1.2-3.2h
 ESTIMATE_CONFIDENCE: high
 ESTIMATE_METHOD: composition layer + frozen contract + read-only command + regression/UAT
-ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE
+ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE — no accepted repository Work Log records productive actual hours; chat/tool elapsed time is not used as hours evidence
+ACTUAL_HOURS_BREAKDOWN: UNKNOWN WITH EVIDENCE
+VARIANCE: UNKNOWN WITH EVIDENCE — actual hours unavailable
+VARIANCE_REASON: no accepted actual-hours ledger
 MIGRATION: EXCLUDED
 DEPLOYMENT: EXCLUDED
 OWNER_REVIEW: UAT STOP
