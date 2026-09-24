@@ -186,19 +186,55 @@ Implement -> focused tests -> P1.6.1/P1.6.2 + Woo inbound regression -> Pint/dif
 
 No Production action is included.
 
+## Implementation / Verification Evidence — 2026-09-24
+
+- Implementation head before closure evidence: 943c54fbc041ed0e2233f357089cadd1c2551ceb.
+- Added read-only PaymentHealthPreviewService and payments:health-preview command.
+- Added descriptive Woo payment-order cohort metrics by gateway. Output explicitly states Woo payment orders are not raw provider attempts.
+- Added current stale-payment backlog integration from P1.6.2.
+- Added critical fulfillment/payment mismatch detection across shipped/completed state, FulfillmentAllocation, Shipment, and active inventory reservation materialization.
+- Added payment-evidence-gap visibility for processing/completed Woo states missing paid_at.
+- Added duplicate non-null payment transaction identity invariant visibility without exposing raw transaction ids.
+- Added Woo automatic inbound sync health: healthy / partial / failed / stale / missing with a 2.5-hour default stale threshold.
+- Overall health is ok / warning / critical only; hard-failed and stale-unpaid counts remain descriptive signals and do not by themselves create a critical state.
+- No schema, scheduler, dashboard UI, alert delivery, Woo mutation, payment routing change, Production write or deploy was added.
+
+Validation:
+- P1.7 focused suite: 14 tests / 57 assertions PASS.
+- P1.7 + P1.6.1 + P1.6.2 + Woo inbound/sync + finance + SyncRun regression: 58 tests / 281 assertions PASS.
+- Orders regression excluding inherited OrderSavedViews baseline failure: 29 tests / 96 assertions PASS.
+- payments:health-preview command registration verified.
+- JSON privacy test proves no raw transaction id, recipient name, phone, or email is emitted.
+- Read-only test proves preview performs zero database writes.
+- Duplicate-transaction detection positive path tested using a test-database-only temporary index drop; Production migration remains unchanged.
+- New/owned files Pint PASS.
+- OrdersServiceProvider Pint issue reproduces on origin/main and is inherited formatting debt; no broad unrelated formatting rewrite was applied.
+- git diff --check PASS.
+- Production migration/write/deploy: NOT performed.
+
+Coverage limitations intentionally remain explicit:
+- raw_provider_attempts = unavailable.
+- webhook_event_store = unavailable.
+- payment_orders_are_not_raw_attempts = true.
+
+Residual risk:
+- V1 cannot diagnose provider-level authorization attempts or webhook delivery failures because those event streams are not canonically stored in ERP.
+- V1 is read-only; alert delivery and any provider telemetry ingestion are separate future packages.
+- P1.8 Gateway Economics must not treat payment-order cohort counts as raw processor attempts.
+
 PROJECT POSITION
 PROGRAM_ROADMAP: BYL Payment Reliability lane
 CURRENT_TRACK_PHASE_MAP: P1.6.1 MERGED -> P1.6.2 MERGED -> P1.7 Payment Observability CURRENT -> P1.8 Gateway Economics WAITING -> P1.9 Payment Reliability Closure WAITING
 COMPLETED_PHASES: P1.0-P1.6.2
 CURRENT_PHASE: P1.7 Payment Observability
 CURRENT_WORK_PACKAGE: ERP-PAYMENT-OBSERVABILITY-V1-001
-PACKAGE_STATUS: OWNER_CONFIRMED / ACTIVE
-WAITING_PHASES: P1.8; P1.9
+PACKAGE_STATUS: IMPLEMENTED / VERIFIED / CI_CHECK_PENDING
+WAITING_PHASES: PR #420 merge gate; P1.8; P1.9
 BASELINE: origin/main@049172b46b71f5a235692e48c8512c6e78c32dbe
-GITHUB_STATE: dedicated branch/worktree; Draft PR pending
-GLOBAL_GATE: read-only local/dev implementation authorized; Production unauthorized
+GITHUB_STATE: PR #420 open; implementation head 943c54fbc041ed0e2233f357089cadd1c2551ceb
+GLOBAL_GATE: LOCAL VERIFICATION PASS; Production unauthorized
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: none
+NEXT_DEPENDENCY: PR #420 merge decision; P1.8 waits for merge
 EVIDENCE_AS_OF: 2026-09-24
 
 ROADMAP HOURS
@@ -207,7 +243,10 @@ ARCHITECTURE_GATE_REMAINING: 0h
 ESTIMATE_CONFIDENCE: medium-high
 ESTIMATE_AS_OF: 2026-09-24
 ESTIMATE_METHOD: read-only metrics service + sync health + bounded anomaly command + focused regressions
-ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE
+ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE — no accepted repository Work Log records productive actual hours; chat/tool elapsed time is not used as hours evidence
+ACTUAL_HOURS_BREAKDOWN: UNKNOWN WITH EVIDENCE
+VARIANCE: UNKNOWN WITH EVIDENCE — actual hours unavailable
+VARIANCE_REASON: no accepted actual-hours ledger
 MIGRATION: EXCLUDED
 DEPLOYMENT: EXCLUDED
 OWNER_REVIEW: EXCLUDED
