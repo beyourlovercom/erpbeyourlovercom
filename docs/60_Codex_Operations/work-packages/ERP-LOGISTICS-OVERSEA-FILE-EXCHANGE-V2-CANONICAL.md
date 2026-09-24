@@ -218,7 +218,7 @@ No new Export Batch schema in V1 unless implementation proves existing review/au
 
 ## 10. UAT target
 
-Dede must be able to perform:
+For warehouses with a confirmed provider return protocol, Dede must be able to perform:
 1. approve warehouse-assigned orders;
 2. open one warehouse page;
 3. download that warehouse's real XLSX format with frozen filename;
@@ -227,5 +227,22 @@ Dede must be able to perform:
 6. confirm Apply once;
 7. see Tracking + shipped state in ERP;
 8. verify no second upload is requested.
+
+For US-SM / 世迈, the equivalent confirmed production path is manual Tracking + explicit `确认发货`; batch return stays fail-closed until a real provider sample exists.
+
+## 11. Production closure — 2026-09-24
+
+Overseas Logistics V1 is closed for daily staff operations.
+
+Production status:
+- MorePlus / US-LA: real outbound + real Tracking return + real C2 shipment/Woo round-trip canary PASS;
+- US-NY: real WMS outbound/return contract active;
+- DE / 天运: real WMS outbound/return contract active;
+- CA: real outbound + exact 7-column Tracking return protocol confirmed and Production preview PASS;
+- US-SM / 世迈: real outbound active; no provider return template exists, so manual Tracking + explicit confirm-shipment path is Production Active; batch return remains fail-closed by design.
+
+PR #424 merged at `2ed179c89755e8ee18e0538323589b255e888b7a` after Owner UAT PASS. The bounded Production overlay deployed the dedicated US-SM manual shipment route/UI without migrations, Woo mutations, or business-data writes during deployment. Post-deploy route/smoke PASS.
+
+Read-only Production audit immediately after deploy found canonical `US-SM` warehouse id 7 with zero active operational shipments (`all=0 / pending=0 / approved_pending=0 / shipped=0 / exceptions=0`), so no real US-SM canary order existed to execute. This does not block staff entry; the first real approved US-SM order becomes the natural live canary.
 
 No Production business-data writes are authorized by this document.
