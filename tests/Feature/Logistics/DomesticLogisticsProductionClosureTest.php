@@ -91,6 +91,40 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         app(SpeedaOutboundExporter::class)->export(collect([$missingPhone]));
     }
 
+    public function test_weship_export_reuses_the_24_column_contract_but_remains_provider_isolated(): void
+    {
+        $speeda = $this->domesticOrder('007-0923-c50008', '4PX', reviewed: true, phone: '13800138008', quantity: 1);
+        $weship = $this->domesticOrder('007-0923-c50009', 'Weship', reviewed: true, phone: '13800138009', quantity: 3);
+        $user = $this->logisticsViewer();
+
+        $response = $this->actingAs($user)->get('/logistics/china/export/weship');
+        $response->assertOk();
+        self::assertStringContainsString('007-weship-orders-', (string) $response->headers->get('Content-Disposition'));
+        self::assertSame('1', $response->headers->get('X-BYL-Exported-Orders'));
+        self::assertSame('0', $response->headers->get('X-BYL-Blocked-Orders'));
+
+        $path = tempnam(sys_get_temp_dir(), 'weship-shared-template-');
+        file_put_contents($path, $response->getContent());
+        try {
+            $book = IOFactory::load($path);
+            $sheet = $book->getSheetByName('标准上传格式');
+            self::assertNotNull($sheet);
+            self::assertSame(24, Coordinate::columnIndexFromString($sheet->getHighestDataColumn()));
+            self::assertSame(2, $sheet->getHighestDataRow());
+            self::assertSame('C50009-007', $sheet->getCell('A2')->getValue());
+            self::assertSame('13800138009', $sheet->getCell('I2')->getValue());
+            self::assertSame('buyer@example.test', $sheet->getCell('J2')->getValue());
+            self::assertSame(3, (int) $sheet->getCell('Q2')->getValue());
+            self::assertNotSame('C50008-007', $sheet->getCell('A2')->getValue());
+            $book->disconnectWorksheets();
+        } finally {
+            @unlink($path);
+        }
+
+        self::assertSame('pending', $speeda->fresh()->shipment->shipment_status);
+        self::assertSame('pending', $weship->fresh()->shipment->shipment_status);
+    }
+
     public function test_speeda_batch_export_keeps_valid_orders_moving_when_one_order_is_blocked(): void
     {
         $ready = $this->domesticOrder('007-0923-c50006', '4PX', reviewed: true, phone: '13800138001', quantity: 1);

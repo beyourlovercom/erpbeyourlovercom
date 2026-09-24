@@ -25,12 +25,13 @@ Owner authorized completion and closure of the domestic logistics branch on 2026
 ### Weship / 纬狮
 
 - Owner routing remains MX / CL → Weship;
-- real return evidence contract is implemented and conflict-safe;
-- no real outbound/order-upload template exists in repository history or supplied file library as of 2026-09-24;
-- therefore provider-specific outbound export remains intentionally fail-closed; no guessed provider file format is permitted;
-- the generic domestic pending-batch XLSX may register ERP fulfillment but explicitly does not impersonate a Weship provider order template.
-
-The missing Weship outbound template is an external provider-protocol dependency, not an unimplemented inferred contract. When a real template is supplied, it requires its own field-contract inspection before enabling provider-specific export.
+- Owner confirmed on 2026-09-24 that Weship outbound uses the same 24-column order-upload template contract as 4PX / 速达;
+- the physical workbook remains the frozen 4PX 24-column template; ERP fills the same green/canonical fields for both providers;
+- provider batches remain isolated: 4PX export contains only pending reviewed 4PX shipments, while Weship export contains only pending reviewed Weship shipments;
+- Weship download filename is `007-weship-orders-YYMMDD.xlsx`; 4PX remains `007-4px-orders-YYMMDD.xlsx`;
+- required Phone / canonical Email / address / quantity / IOSS rules and per-order blocker isolation are shared across both providers;
+- real return evidence contract remains provider-specific and conflict-safe;
+- no guessed provider schema remains: the shared 24-column contract is now an explicit Owner-frozen business rule.
 
 ## Closure gates
 
@@ -86,3 +87,7 @@ Closure evidence after retirement:
 - exact-main inherited ManualFulfillment adopt-recommendation failures remain 7/7 identical and are outside this closure scope;
 - Approved Menu inherited failures remain Accounting A8 / accounting-loss-orders and Marketing Traffic baseline drift only;
 - ModuleArchitecture inherited frozen module/layer/migration baseline drift remains outside this closure scope.
+
+## 2026-09-24 Weship shared outbound-template freeze
+
+Owner explicitly confirmed that the 4PX / 速达 outbound template is also the canonical Weship outbound template. Domestic Closure therefore treats both providers as `export_ready=true`, while preserving provider-isolated order selection and filenames. Regression coverage verifies a mixed database state with both carriers exports exactly one Weship row through `/logistics/china/export/weship`, keeps the 24-column contract, and leaves Shipment state unchanged.
