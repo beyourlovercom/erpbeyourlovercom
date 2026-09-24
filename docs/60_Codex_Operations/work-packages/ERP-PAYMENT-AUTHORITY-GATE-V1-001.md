@@ -91,21 +91,52 @@ This is backend/data-safety scope. No pre-development visual gate is required. I
 
 Production release remains unauthorized.
 
+## Implementation / Verification Evidence — 2026-09-24
+
+- Provider handoff: US Codex CLI exited before repository mutation because its usage limit was exhausted; GPT Web + Remote Desktop Commander resumed the same dedicated worktree serially. No concurrent implementation provider existed.
+- Implementation head: b15db3977e414f1334291a3fabde08001ad3dcc2.
+- Added canonical PaymentAuthorityState / PaymentAuthorityService and one Logistics FulfillmentPaymentGate.
+- Woo inbound now persists nullable payment_transaction_id; order_financials adds a nullable-safe composite unique index on payment_method + payment_transaction_id.
+- Blocked payment states take precedence over historical paid_at, so paid-then-disputed/on-hold Woo orders remain blocked.
+- The shared gate protects automatic allocation, recommended/manual fulfillment allocation, assisted reservation/draft flows, shared Shipment draft mutation, and mark-shipped. Non-Woo/manual/KOL/historical behavior remains not_required.
+- Overseas warehouse fixtures that intentionally represented orders as Woo orders were updated to include paid Woo evidence; the gate was not weakened.
+
+Local verification:
+- Focused payment/fulfillment: 29 tests / 177 assertions PASS.
+- Overseas warehouse regression: 31 tests / 320 assertions PASS.
+- Broad affected regression: 266 tests / 5005 assertions PASS, 1 skipped.
+- Temporary SQLite migrate:fresh PASS; payment_transaction_id and order_financials_payment_transaction_unique verified present.
+- New/owned files Pint PASS. Four modified legacy files already fail Pint on origin/main; no unrelated formatting rewrite was introduced.
+- git diff --check PASS.
+- Production migration/data write/deploy NOT performed.
+
+GitHub CI:
+- ERP Production Stability V1 CI run 35941892159 on implementation head b15db3977e414f1334291a3fabde08001ad3dcc2 ended before runner assignment.
+- sqlite-regression: runner_id=0, steps=[].
+- mysql8-runtime: runner_id=0, steps=[].
+- Both jobs ended within roughly two seconds without executing test steps; classify as CI infrastructure/scheduling failure, not code-test failure.
+- No usable job log existed because no runner step executed.
+
+Residual risk:
+- No historical transaction-id backfill was executed; legacy financial rows remain nullable until refreshed or separately reconciled.
+- Production migration is a separate explicit gate.
+- P1.6.2 owns stale pending lifecycle cleanup.
+
 PROJECT POSITION
 PROGRAM_ROADMAP: BYL ERP canonical roadmap plus bounded Payment Reliability safety lane; this package does not replace other program tracks.
 CURRENT_TRACK_PHASE_MAP: P1.6 Runtime Reliability Audit COMPLETE -> P1.6.1 Payment Authority Gate V1 CURRENT -> P1.6.2 Stale Pending Reconciliation WAITING -> P1.7 Payment Observability WAITING
 COMPLETED_PHASES: P1.0-P1.6 audit/evidence phases
 CURRENT_PHASE: P1.6.1 Payment Authority Gate V1
 CURRENT_WORK_PACKAGE: ERP-PAYMENT-AUTHORITY-GATE-V1-001
-PACKAGE_STATUS: OWNER_CONFIRMED / ACTIVE
-WAITING_PHASES: P1.6.2; P1.7
+PACKAGE_STATUS: IMPLEMENTED / VERIFIED / CI_INFRASTRUCTURE_EXCEPTION_EVIDENCED
+WAITING_PHASES: PR #415 delivery/merge gate; P1.6.2; P1.7
 BASELINE: origin/main@d35e01fb80845ad426dac9757a087e049fb9f96d
-GITHUB_STATE: dedicated branch/worktree, one delivery PR
+GITHUB_STATE: PR #415 open; implementation head b15db3977e414f1334291a3fabde08001ad3dcc2; Actions run 35941892159 failed before runner assignment
 SOURCE_CONFLICTS: AI/CURRENT_CONTEXT.md is stale relative to current main and current Owner-confirmed work; GitHub main plus this package govern this bounded scope.
-GLOBAL_GATE: backend safety implementation authorized; Production unauthorized
+GLOBAL_GATE: LOCAL VERIFICATION PASS; GitHub CI infrastructure exception evidenced; Production unauthorized
 PRODUCTION_DEPLOYMENT_STATUS: NO; explicitly excluded
-NEXT_DEPENDENCY: none for implementation; P1.6.2 waits for merge
-EVIDENCE_AS_OF: 2026-09-23
+NEXT_DEPENDENCY: PR #415 delivery/merge decision under evidenced CI infrastructure exception; P1.6.2 waits for merge
+EVIDENCE_AS_OF: 2026-09-24
 
 ROADMAP HOURS
 CURRENT_PACKAGE_ESTIMATE: planning 2.5h; range 1.5-4.0h
@@ -131,6 +162,10 @@ REMEDIATION_BUFFER: 0.3h planning; range 0.2-0.5h
 ESTIMATED_EFFECTIVE_HOURS: 2.5h
 ESTIMATE_RANGE: 1.5-4.0h
 ESTIMATE_BASIS: frozen additive schema + central authority service + bounded fulfillment wiring + focused regressions
+ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE — no accepted repository Work Log records productive actual hours for this package; chat/tool elapsed time is not used as hours evidence
+ACTUAL_HOURS_BREAKDOWN: UNKNOWN WITH EVIDENCE — no accepted component-level Work Log exists
+VARIANCE: UNKNOWN WITH EVIDENCE — actual effective hours are unavailable, so variance cannot be calculated safely
+VARIANCE_REASON: accepted actual-hours evidence is unavailable; no value is fabricated from PR/chat/tool timestamps
 OWNER_REVIEW: EXCLUDED
 MERGE: INCLUDED
 MIGRATION: INCLUDED
