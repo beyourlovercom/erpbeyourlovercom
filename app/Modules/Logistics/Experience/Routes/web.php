@@ -7,10 +7,12 @@ use App\Modules\Logistics\Experience\Controllers\LogisticsController;
 use App\Modules\Logistics\Experience\Controllers\OverseaWarehouseController;
 use App\Modules\Logistics\Experience\Middleware\RequireFulfillmentAllocation;
 use App\Modules\Logistics\Experience\Middleware\RequireLogisticsExecution;
+use App\Modules\Logistics\Experience\Middleware\RequireLogisticsReview;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth'])->group(function (): void {
     $execution = ['can:logistics.operate', RequireLogisticsExecution::class];
+    $review = [RequireLogisticsReview::class];
     $allocation = [RequireFulfillmentAllocation::class];
     Route::get('/logistics', fn () => redirect()->route('logistics.wait-stock'))->middleware('can:logistics.view')->name('shell.logistics');
     Route::get('/logistics/pending', fn () => redirect()->route('logistics.wait-stock'))->middleware('can:logistics.view')->name('logistics.pending');
@@ -28,10 +30,10 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics/oversea/{warehouse}/export', [OverseaWarehouseController::class, 'export'])->middleware('can:logistics.view')->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea.export');
     Route::post('/logistics/oversea/{warehouse}/tracking-import/preview', [OverseaWarehouseController::class, 'previewTrackingReturn'])->middleware($execution)->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea.tracking-import.preview');
     Route::post('/logistics/oversea/{warehouse}/tracking-import/apply', [OverseaWarehouseController::class, 'applyTrackingReturn'])->middleware($execution)->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea.tracking-import.apply');
-    Route::patch('/logistics/oversea/orders/{order}/draft', [OverseaWarehouseController::class, 'updateDraft'])->middleware($execution)->name('logistics.oversea.draft');
-    Route::post('/logistics/oversea/orders/{order}/approve', [OverseaWarehouseController::class, 'approve'])->middleware($execution)->name('logistics.oversea.approve');
+    Route::patch('/logistics/oversea/orders/{order}/draft', [OverseaWarehouseController::class, 'updateDraft'])->middleware($review)->name('logistics.oversea.draft');
+    Route::post('/logistics/oversea/orders/{order}/approve', [OverseaWarehouseController::class, 'approve'])->middleware($review)->name('logistics.oversea.approve');
     Route::post('/logistics/oversea/orders/{order}/reopen-review', [OverseaWarehouseController::class, 'reopenReview'])->middleware($execution)->name('logistics.oversea.reopen-review');
-    Route::post('/logistics/oversea/orders/{order}/reject', [OverseaWarehouseController::class, 'reject'])->middleware($execution)->name('logistics.oversea.reject');
+    Route::post('/logistics/oversea/orders/{order}/reject', [OverseaWarehouseController::class, 'reject'])->middleware($review)->name('logistics.oversea.reject');
     Route::get('/logistics/awaiting-tracking', [LogisticsController::class, 'awaitingTracking'])->middleware('can:logistics.view')->name('logistics.awaiting-tracking');
     Route::get('/logistics/in-transit', [LogisticsController::class, 'inTransit'])->middleware('can:logistics.view')->name('logistics.in-transit');
     Route::get('/logistics/exceptions', [LogisticsController::class, 'exceptions'])->middleware('can:logistics.view')->name('logistics.exceptions');

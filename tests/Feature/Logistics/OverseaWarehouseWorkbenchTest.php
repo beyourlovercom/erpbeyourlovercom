@@ -850,6 +850,44 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         ]);
     }
 
+    public function test_super_admin_can_review_without_frontline_fulfillment_edit_access(): void
+    {
+        $role = Role::query()->create(['key' => 'super_admin', 'label' => 'Super Admin']);
+        $user = User::factory()->create(['is_active' => true]);
+        $user->roles()->attach($role);
+        $this->assertTrue($user->hasPermission('logistics.operate'));
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-LA'], '007-OVERSEA-OWNER-REVIEW');
+
+        $this->actingAs($user)->get('/logistics/oversea?view=review')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('warehouseKey', 'all')
+                ->where('canReview', true)
+                ->where('canOperate', false)
+            );
+
+        $this->actingAs($user)
+            ->patch("/logistics/oversea/orders/{$order->id}/draft", ['tracking_number' => 'OWNER-MUST-NOT-EDIT'])
+            ->assertForbidden();
+
+        $this->actingAs($user)
+            ->patch("/logistics/oversea/orders/{$order->id}/draft", ['note' => 'Owner review note'])
+            ->assertRedirect();
+
+        $this->actingAs($user)
+            ->post("/logistics/oversea/orders/{$order->id}/approve", ['note' => 'Owner review note'])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('oversea_warehouse_reviews', [
+            'order_id' => $order->id,
+            'status' => 'approved',
+        ]);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id,
+            'tracking_number' => null,
+        ]);
+    }
+
     public function test_all_warehouse_review_allows_operations_and_uses_canonical_pagination(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
