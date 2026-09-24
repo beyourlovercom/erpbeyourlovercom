@@ -99,6 +99,21 @@
       "sort": 30
     },
     {
+      "code": "logistics-wait-stock",
+      "parent_code": "logistics",
+      "level": 2,
+      "label_zh": "待分仓",
+      "slug": "wait-stock",
+      "url": "/logistics/wait-stock",
+      "route": "logistics.wait-stock",
+      "permission": "logistics.view",
+      "emoji": null,
+      "function_zh": "处理待分仓订单并进入国内或海外履约分配。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 10
+    },
+    {
       "code": "logistics-pending",
       "parent_code": "logistics",
       "level": 2,
@@ -111,7 +126,37 @@
       "function_zh": "管理待发货订单列表和发货操作。",
       "status": "implemented",
       "progress": 100,
-      "sort": 10
+      "sort": 20
+    },
+    {
+      "code": "logistics-china",
+      "parent_code": "logistics",
+      "level": 2,
+      "label_zh": "国内发货",
+      "slug": "china",
+      "url": "/logistics/china",
+      "route": "logistics.china",
+      "permission": "logistics.view",
+      "emoji": null,
+      "function_zh": "管理中国工厂国内履约审核、承运商文件交换、Tracking 回传 Preview / Apply 与发货闭环。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 30
+    },
+    {
+      "code": "logistics-oversea",
+      "parent_code": "logistics",
+      "level": 2,
+      "label_zh": "海外仓发货",
+      "slug": "oversea",
+      "url": "/logistics/oversea",
+      "route": "logistics.oversea",
+      "permission": "logistics.view",
+      "emoji": null,
+      "function_zh": "管理海外仓审核、Provider 文件交换、Tracking 回传和真实发货。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 40
     },
     {
       "code": "logistics-awaiting-tracking",
@@ -126,7 +171,7 @@
       "function_zh": "管理已发货但物流单号尚未回填的订单。",
       "status": "implemented",
       "progress": 100,
-      "sort": 20
+      "sort": 50
     },
     {
       "code": "logistics-in-transit",
@@ -141,7 +186,7 @@
       "function_zh": "查看运输中的物流订单状态。",
       "status": "implemented",
       "progress": 100,
-      "sort": 30
+      "sort": 60
     },
     {
       "code": "logistics-exceptions",
@@ -156,7 +201,7 @@
       "function_zh": "处理物流异常订单。",
       "status": "implemented",
       "progress": 100,
-      "sort": 40
+      "sort": 70
     },
     {
       "code": "logistics-carriers",
@@ -171,7 +216,7 @@
       "function_zh": "按承运商汇总 canonical Shipment 发货历史、计费重量、实际物流费用与原始账单凭证。",
       "status": "implemented",
       "progress": 100,
-      "sort": 50
+      "sort": 80
     },
     {
       "code": "sync",

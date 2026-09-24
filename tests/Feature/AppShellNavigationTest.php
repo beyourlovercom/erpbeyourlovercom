@@ -102,24 +102,32 @@ class AppShellNavigationTest extends TestCase
     {
         $user = $this->userWith(['dashboard.view', 'logistics.view'], 'operator-without-prototype');
         $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
-            ->has('shellNavigation.1.children', 5)
-            ->where('shellNavigation.1.children.0.key', 'logistics-pending')
-            ->where('shellNavigation.1.children.0.label', '待发货')
-            ->where('shellNavigation.1.children.1.key', 'logistics-awaiting-tracking')
-            ->where('shellNavigation.1.children.1.label', '已发待单号')
-            ->where('shellNavigation.1.children.2.label', '运输中')
-            ->where('shellNavigation.1.children.3.label', '异常订单')
-            ->where('shellNavigation.1.children.4.key', 'logistics-carriers')
-            ->where('shellNavigation.1.children.4.label', '承运商'));
+            ->has('shellNavigation.1.children', 8)
+            ->where('shellNavigation.1.children.0.key', 'logistics-wait-stock')
+            ->where('shellNavigation.1.children.0.label', '待分仓')
+            ->where('shellNavigation.1.children.1.key', 'logistics-pending')
+            ->where('shellNavigation.1.children.1.label', '待发货')
+            ->where('shellNavigation.1.children.2.key', 'logistics-china')
+            ->where('shellNavigation.1.children.2.label', '国内发货')
+            ->where('shellNavigation.1.children.2.path', '/logistics/china')
+            ->where('shellNavigation.1.children.3.key', 'logistics-oversea')
+            ->where('shellNavigation.1.children.3.label', '海外仓发货')
+            ->where('shellNavigation.1.children.4.key', 'logistics-awaiting-tracking')
+            ->where('shellNavigation.1.children.5.key', 'logistics-in-transit')
+            ->where('shellNavigation.1.children.6.key', 'logistics-exceptions')
+            ->where('shellNavigation.1.children.7.key', 'logistics-carriers'));
 
         $withPrototype = $this->userWith(['dashboard.view', 'logistics.view', 'prototype.view'], 'operator-with-prototype');
         $this->actingAs($withPrototype)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
-            ->has('shellNavigation.1.children', 5)
-            ->where('shellNavigation.1.children.1.label', '已发待单号')
-            ->where('shellNavigation.1.children.2.label', '运输中')
-            ->where('shellNavigation.1.children.3.label', '异常订单')
-            ->where('shellNavigation.1.children.4.key', 'logistics-carriers')
-            ->where('shellNavigation.1.children.4.label', '承运商'));
+            ->has('shellNavigation.1.children', 8)
+            ->where('shellNavigation.1.children.0.label', '待分仓')
+            ->where('shellNavigation.1.children.1.label', '待发货')
+            ->where('shellNavigation.1.children.2.label', '国内发货')
+            ->where('shellNavigation.1.children.3.label', '海外仓发货')
+            ->where('shellNavigation.1.children.4.label', '已发待单号')
+            ->where('shellNavigation.1.children.5.label', '运输中')
+            ->where('shellNavigation.1.children.6.label', '异常订单')
+            ->where('shellNavigation.1.children.7.label', '承运商'));
     }
 
     public function test_inventory_navigation_includes_active_warehouse_shortcuts(): void

@@ -4,6 +4,8 @@ return [
     'logistics' => ['icon' => '🚚', 'label' => '物流', 'children' => [
         'wait-stock' => ['label' => '待分仓', 'path' => '/logistics/wait-stock'],
         'pending' => ['label' => '待发货', 'path' => '/logistics/pending'],
+        'china' => ['label' => '国内发货', 'path' => '/logistics/china'],
+        'oversea' => ['label' => '海外仓发货', 'path' => '/logistics/oversea'],
         'awaiting-tracking' => ['label' => '已发待单号', 'path' => '/logistics/awaiting-tracking'],
         'in-transit' => ['label' => '运输中', 'path' => '/logistics/in-transit'],
         'exceptions' => ['label' => '异常订单', 'path' => '/logistics/exceptions'],
