@@ -15,8 +15,9 @@ FOUNDATION_CHANGE_REQUIRED: NO
 Woo order inbound intentionally imports status=any. Payment Authority Gate V1 now prevents unpaid/disputed Woo orders from entering fulfillment mutation, but stale payment orders remain visible and accumulate indefinitely unless they are classified and reconciled.
 
 Historical Woo snapshot evidence for 2026-04-01 through 2026-08-28:
-- 76 pending/on-hold orders total.
-- 75 had neither date_paid nor transaction id.
+- 75 pending/on-hold orders total: 74 pending + 1 on-hold.
+- all 74 pending orders had neither date_paid nor transaction id.
+- the single on-hold PayPal order had both date_paid and transaction evidence.
 - PayPal wallet: 34 pending + 1 on-hold.
 - Airwallex Klarna: 21 pending.
 - Airwallex Card: 9 pending.
@@ -145,20 +146,57 @@ Implement -> focused tests -> affected Orders/Finance/Logistics regression -> di
 
 No Production action is included.
 
+## Implementation / Verification Evidence — 2026-09-24
+
+- Implementation head before closure evidence: 93d10bcdfc4f24a31e5efc36af63c343790e617b.
+- Added canonical read-only StalePaymentReconciliationPreviewService and classification enum.
+- Added orders:preview-stale-payments with --json, --as-of and bounded --limit.
+- Added configurable pending thresholds: default/PayPal/Stripe/Airwallex Card 24h; Airwallex Klarna 72h.
+- Output exposes only safe order/payment metadata and boolean evidence flags; raw transaction identity and customer PII are never emitted.
+- No --apply option, scheduler, Woo mutation, ERP business-state mutation, migration or Production write exists in this package.
+
+Validation:
+- P1.6.2 focused suite: 11 tests / 32 assertions PASS.
+- Payment Authority + Woo inbound/sync + finance evidence combined regression: 40 tests / 207 assertions PASS.
+- Orders regression excluding one inherited baseline failure: 15 tests / 39 assertions PASS.
+- The inherited OrderSavedViews loss-view test fails identically on clean baseline main@8a1d276a33b686a9011ecee080cbe46c0f3c689d and on this branch; no package diff touches that path.
+- Command registration verified: orders:preview-stale-payments is present.
+- New/owned files Pint PASS.
+- OrdersServiceProvider Pint issue is inherited from origin/main; no broad formatting rewrite was applied.
+- git diff --check PASS.
+- Test proves preview performs zero database writes.
+- Test proves JSON does not leak raw transaction id, phone, email or recipient name.
+
+Historical evidence correction:
+- source snapshot contains 75 pending/on-hold orders, not 76.
+- 74 are pending with no paid/transaction evidence.
+- 1 is PayPal on-hold with paid_at + transaction evidence and remains manual-review-only.
+
+GitHub CI:
+- ERP Production Stability V1 CI run 35945303562 on implementation head failed before runner assignment.
+- mysql8-runtime: runner_id=0, steps=[].
+- sqlite-regression: runner_id=0, steps=[].
+- Both jobs ended in about two seconds without executing workflow steps; classify as CI infrastructure/scheduling failure, not code-test failure.
+
+Residual risk:
+- V1 is classification/preview only; it does not clean source Woo orders.
+- Actual cancellation/reconciliation must first revalidate each candidate against live Woo and remains a separate Owner-gated write package.
+- on-hold remains manual review regardless of age.
+
 PROJECT POSITION
 PROGRAM_ROADMAP: BYL Payment Reliability safety lane within BYL ERP
 CURRENT_TRACK_PHASE_MAP: P1.6 Audit COMPLETE -> P1.6.1 Payment Authority Gate MERGED -> P1.6.2 Stale Pending Reconciliation CURRENT -> P1.7 Payment Observability WAITING
 COMPLETED_PHASES: P1.0-P1.6; P1.6.1
 CURRENT_PHASE: P1.6.2 Stale Pending Reconciliation
 CURRENT_WORK_PACKAGE: ERP-STALE-PENDING-RECONCILIATION-V1-001
-PACKAGE_STATUS: OWNER_CONFIRMED / ACTIVE
-WAITING_PHASES: P1.7
+PACKAGE_STATUS: IMPLEMENTED / VERIFIED / CI_INFRASTRUCTURE_EXCEPTION_EVIDENCED
+WAITING_PHASES: PR #418 merge gate; P1.7
 BASELINE: origin/main@8a1d276a33b686a9011ecee080cbe46c0f3c689d
-GITHUB_STATE: dedicated branch/worktree; Draft PR pending
-SOURCE_CONFLICTS: NONE
-GLOBAL_GATE: read-only local/dev implementation authorized; all real-data mutation unauthorized
+GITHUB_STATE: PR #418 open; implementation head 93d10bcdfc4f24a31e5efc36af63c343790e617b; Actions run 35945303562 failed before runner assignment
+SOURCE_CONFLICTS: inherited OrderSavedViews loss-view test fails identically on baseline main and branch; unrelated to this package
+GLOBAL_GATE: LOCAL VERIFICATION PASS; GitHub CI infrastructure exception evidenced; all real-data mutation unauthorized
 PRODUCTION_DEPLOYMENT_STATUS: NO
-NEXT_DEPENDENCY: none
+NEXT_DEPENDENCY: PR #418 merge decision; any real reconciliation write requires a new Owner-gated package
 EVIDENCE_AS_OF: 2026-09-24
 ROADMAP HOURS
 CURRENT_PACKAGE_ESTIMATE: planning 1.8h; range 1.0-3.0h
@@ -184,6 +222,10 @@ REMEDIATION_BUFFER: 0.2h planning; range 0.2-0.4h
 ESTIMATED_EFFECTIVE_HOURS: 1.8h
 ESTIMATE_RANGE: 1.0-3.0h
 ESTIMATE_BASIS: no schema; one classifier service; one read-only command; focused tests
+ACTUAL_EFFECTIVE_HOURS: UNKNOWN WITH EVIDENCE — no accepted repository Work Log records productive actual hours for this package
+ACTUAL_HOURS_BREAKDOWN: UNKNOWN WITH EVIDENCE
+VARIANCE: UNKNOWN WITH EVIDENCE — actual hours unavailable
+VARIANCE_REASON: no accepted actual-hours ledger; chat/tool elapsed time is not used as hours evidence
 OWNER_REVIEW: EXCLUDED
 MERGE: INCLUDED
 MIGRATION: EXCLUDED
