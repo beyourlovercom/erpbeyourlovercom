@@ -5307,7 +5307,7 @@
       "direction": "RETURN",
       "source_template": "加拿大导出物流单号模版(1).xlsx",
       "template_status": "real 7-column post-shipment sample observed",
-      "owner_status": "owner_review",
+      "owner_status": "confirmed",
       "fields": [
         {
           "ordinal": 1,
@@ -5317,7 +5317,7 @@
           "requirement": "Required",
           "provider_rule": "Owner business rule: first column corresponds to our customer order. Unknown or non-unique identity must BLOCK; never guess.",
           "current_code": "Parsed as order_reference; exact-match identity gate remains fail-closed",
-          "owner_status": "owner_review",
+          "owner_status": "confirmed",
           "owner_notes": "Real 7-column provider sample found 2026-09-24. Historical sample values are not present in current ERP, so real-file preview must safely BLOCK rather than infer identity."
         },
         {
@@ -5328,7 +5328,7 @@
           "requirement": "Evidence",
           "provider_rule": "Preserve exactly as provider evidence. Do not use package sequence as ERP identity or Tracking.",
           "current_code": "Preserved in provider_evidence only",
-          "owner_status": "owner_review",
+          "owner_status": "confirmed",
           "owner_notes": "Real sample values are package sequence numbers such as 1."
         },
         {
@@ -5339,7 +5339,7 @@
           "requirement": "Required",
           "provider_rule": "Real post-shipment sample contains parcel Tracking in this column.",
           "current_code": "Parsed as tracking_number; normal Tracking validation/conflict gates apply",
-          "owner_status": "owner_review",
+          "owner_status": "confirmed",
           "owner_notes": "Real sample contains values such as 1030896460840281."
         },
         {
@@ -5350,7 +5350,7 @@
           "requirement": "Evidence",
           "provider_rule": "Preserve provider value; not an ERP shipment identity field.",
           "current_code": "Preserved in provider_evidence only",
-          "owner_status": "owner_review",
+          "owner_status": "confirmed",
           "owner_notes": "Real sample field."
         },
         {
@@ -5361,7 +5361,7 @@
           "requirement": "Evidence",
           "provider_rule": "Preserve provider value; not an ERP shipment identity field.",
           "current_code": "Preserved in provider_evidence only",
-          "owner_status": "owner_review",
+          "owner_status": "confirmed",
           "owner_notes": "Real sample field."
         },
         {
@@ -5372,7 +5372,7 @@
           "requirement": "Evidence",
           "provider_rule": "Preserve provider value; not an ERP shipment identity field.",
           "current_code": "Preserved in provider_evidence only",
-          "owner_status": "owner_review",
+          "owner_status": "confirmed",
           "owner_notes": "Real sample field."
         },
         {
@@ -5383,21 +5383,21 @@
           "requirement": "Evidence",
           "provider_rule": "Preserve provider value; not an ERP shipment identity field.",
           "current_code": "Preserved in provider_evidence only",
-          "owner_status": "owner_review",
+          "owner_status": "confirmed",
           "owner_notes": "Real sample field."
         }
       ],
-      "owner_notes": "2026-09-24 real post-shipment Canada provider file confirms a 7-column return shape. Parser can be enabled with exact-header matching; identity remains fail-closed when 订单号 does not resolve uniquely to ERP. Awaiting Owner UAT PASS before merge/Production."
+      "owner_notes": "2026-09-24 real post-shipment Canada provider file confirms a 7-column return shape. Parser can be enabled with exact-header matching; identity remains fail-closed when 订单号 does not resolve uniquely to ERP. Owner UAT PASS 2026-09-24; Production bounded deploy + real-file read-only preview PASS."
     }
   ],
-  "last_owner_review": "2026-09-23",
+  "last_owner_review": "2026-09-24",
   "owner_contract_freeze_status": "complete_except_blocked_real_samples",
   "implementation_contract_status": "local_validated",
   "validation": {
-    "date": "2026-09-23",
+    "date": "2026-09-24",
     "woo_inbound": "11 tests / 86 assertions PASS",
-    "oversea_logistics": "31 tests / 320 assertions PASS",
-    "registry": "4 tests / 2892 assertions PASS",
+    "oversea_logistics": "33 tests / 344 assertions PASS",
+    "registry": "4 tests / 2920 assertions PASS",
     "vite_build": "942 modules PASS",
     "pint": "14 files PASS",
     "diff_check": "PASS"
