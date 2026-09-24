@@ -43,7 +43,7 @@ The missing Weship outbound template is an external provider-protocol dependency
 
 ## Validation status
 
-- DomesticLogisticsProductionClosureTest: 6 tests / 68 assertions PASS (including exact formal + legacy Logistics menu parity).
+- DomesticLogisticsProductionClosureTest locks the formal Logistics menu and route ownership; implemented Domestic/Oversea/Carrier paths are intentionally excluded from the legacy prototype menu to prevent route shadowing.
 - AppShell focused Logistics navigation: 1 test / 58 assertions PASS.
 - Domestic + AuthenticatedLayout Vitest: 15 tests PASS.
 - Vue TypeScript: PASS.
@@ -54,3 +54,5 @@ The missing Weship outbound template is an external provider-protocol dependency
 - ModuleArchitecture inherits the exact-main frozen module/layer/migration baseline drift; the changed menu SHA invariant is updated and does not add a failure.
 
 Final close still requires Owner inspection of the real Local/UAT `/logistics/china` page and left navigation. Production deployment is a separate hard gate.
+
+- DomesticLogisticsProductionClosureTest: 6 tests / 72 assertions PASS after route-shadowing remediation.
