@@ -21,7 +21,9 @@ use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
 final class OverseaWarehouseController
 {
-    private const PER_PAGE = 25;
+    private const DEFAULT_PER_PAGE = 50;
+
+    private const PER_PAGE_OPTIONS = [20, 50, 100];
 
     private const VIEWS = ['review', 'pending', 'shipped', 'exceptions', 'all'];
 
@@ -39,6 +41,10 @@ final class OverseaWarehouseController
         $warehouseKey = $warehouse ?: 'all';
         abort_unless($warehouseKey === 'all' || array_key_exists($warehouseKey, OverseaWarehouseReviewService::WAREHOUSE_CODE_BY_KEY), 404);
         $view = in_array((string) $request->query('view'), self::VIEWS, true) ? (string) $request->query('view') : 'review';
+        $perPage = (int) $request->query('per_page', self::DEFAULT_PER_PAGE);
+        if (! in_array($perPage, self::PER_PAGE_OPTIONS, true)) {
+            $perPage = self::DEFAULT_PER_PAGE;
+        }
         $warehouseMap = $this->warehouseMap();
         $selectedWarehouse = $warehouseKey === 'all' ? null : ($warehouseMap[$warehouseKey] ?? null);
         if ($warehouseKey !== 'all') {
@@ -56,7 +62,7 @@ final class OverseaWarehouseController
         }
         $this->applyView($base, $view);
 
-        $shipments = $base->latest('id')->paginate(self::PER_PAGE)->withQueryString();
+        $shipments = $base->latest('id')->paginate($perPage)->withQueryString();
         $start = ($shipments->currentPage() - 1) * $shipments->perPage();
 
         return Inertia::render('Logistics/Oversea/Show', [
@@ -66,6 +72,7 @@ final class OverseaWarehouseController
             'view' => $view,
             'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => $this->row($shipment, $start + $index + 1))->toArray(),
             'viewCounts' => $this->viewCounts($warehouseMap, $selectedWarehouse),
+            'canReview' => $this->executionAccess->allows($request->user()),
             'canOperate' => $warehouseKey !== 'all' && $this->executionAccess->allows($request->user()),
             'carrierOptions' => $this->carrierServices->options(),
             'trackingImportPreview' => $warehouseKey === 'all' ? null : (collect((array) $request->session()->get($this->trackingSessionKey($warehouseKey), []))->except('normalized_rows')->all() ?: null),

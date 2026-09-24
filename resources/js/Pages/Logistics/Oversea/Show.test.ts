@@ -15,12 +15,12 @@ const warehouseOptions = [
   { key: 'us-moreplus', id: 1, code: 'US-LA', label: '美西 MorePlus 仓', carrier: 'USPS', url: '/logistics/oversea/us-moreplus' },
   { key: 'us-3sm', id: 2, code: 'US-SM', label: '美国3世迈仓', carrier: 'USPS', url: '/logistics/oversea/us-3sm' },
 ]
-const rows = { data: [], current_page: 1, last_page: 1, total: 0 }
+const rows = { data: [], current_page: 1, last_page: 1, per_page: 50, total: 0, from: null, to: null }
 const usSmPendingRows = { data: [{
   line: 1, order_id: 99, erp_order_id: '007-OVERSEA-USSM-99', order_url: '/orders/99', recipient_name: 'Recipient', country: 'US',
   warehouse_id: 2, warehouse_name: '美国3世迈仓', carrier: 'USPS', service: null, carrier_selection_source: 'automatic',
   tracking_number: null, progress: 'sending_pending', note: null, review_status: 'approved' as const, shipment_status: 'pending', items: [{ sku: 'REVIEW-SKU', quantity: 1 }],
-}], current_page: 1, last_page: 1, total: 1 }
+}], current_page: 1, last_page: 1, per_page: 50, total: 1, from: 1, to: 1 }
 const viewCounts = { review: 0, pending: 0, shipped: 0, exceptions: 0, all: 0 }
 const preview = {
   token: 'a'.repeat(64), apply_count: 1, noop_count: 0, blocked_count: 0,
@@ -34,7 +34,7 @@ const preview = {
 
 const mountPage = (overrides: Record<string, unknown> = {}) => mount(Show, { props: {
   warehouseKey: 'us-moreplus', warehouse: warehouseOptions[0], warehouseOptions, view: 'pending', rows, viewCounts,
-  canOperate: true, carrierOptions: [], trackingImportPreview: preview, ...overrides,
+  canReview: true, canOperate: true, carrierOptions: [], trackingImportPreview: preview, ...overrides,
 } })
 
 describe('Oversea Dede file exchange workbench', () => {
@@ -83,6 +83,54 @@ describe('Oversea Dede file exchange workbench', () => {
       expect.anything(),
     )
     expect(wrapper.text()).toContain('请先填写真实 Tracking')
+  })
+
+  it('allows unified review actions from all overseas warehouses', async () => {
+    const reviewRows = { data: [{
+      line: 1, order_id: 77, erp_order_id: '007-OVERSEA-ALL-77', order_url: '/orders/77', recipient_name: 'Recipient', country: 'US',
+      warehouse_id: 1, warehouse_name: '美西 MorePlus 仓', carrier: 'USPS', service: null, carrier_selection_source: 'automatic',
+      tracking_number: null, progress: 'pending_review', note: null, review_status: 'pending' as const, shipment_status: 'pending', items: [{ sku: 'SKU-77', quantity: 1 }],
+    }], current_page: 1, last_page: 1, per_page: 50, total: 1, from: 1, to: 1 }
+    const wrapper = mountPage({ warehouseKey: 'all', warehouse: null, view: 'review', rows: reviewRows, trackingImportPreview: null, canReview: true, canOperate: false })
+    expect(wrapper.text()).toContain('通过')
+    expect(wrapper.text()).toContain('驳回')
+    const approve = wrapper.findAll('button').find(button => button.text() === '通过')
+    await approve!.trigger('click')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/oversea/orders/77/approve', { note: null }, { preserveScroll: true, preserveState: true })
+  })
+
+  it('uses canonical compact pagination and per-page / quick-jump controls', async () => {
+    const wrapper = mountPage({
+      rows: { data: [], current_page: 18, last_page: 36, per_page: 50, total: 1800, from: 851, to: 900 },
+      trackingImportPreview: null,
+    })
+    expect(wrapper.text()).toContain('共 1800 条')
+    expect(wrapper.text()).toContain('第 18 / 36 页')
+    expect(wrapper.text()).toContain('851–900 / 1800')
+    expect(wrapper.text()).toContain('首页')
+    expect(wrapper.text()).toContain('末页')
+    expect(wrapper.findAll('.page-ellipsis').length).toBeGreaterThan(0)
+    expect(wrapper.findAll('.pagination button').length).toBeLessThan(15)
+    const pageSize = wrapper.find('.page-size select')
+    expect(pageSize.findAll('option').map(option => option.text())).toEqual(['20','50','100'])
+    await pageSize.setValue('100')
+    expect(routerVisit).toHaveBeenCalledWith('/logistics/oversea/us-moreplus?view=pending&page=1&per_page=100', { preserveScroll: true, preserveState: true })
+
+    const jump = wrapper.find('input[aria-label="跳转页码"]')
+    await jump.setValue('30')
+    await jump.trigger('keyup.enter')
+    expect(routerVisit).toHaveBeenCalledWith('/logistics/oversea/us-moreplus?view=pending&page=30&per_page=50', { preserveScroll: true, preserveState: true })
+  })
+
+  it('keeps the review decision column sticky and exposes canonical column settings', async () => {
+    const wrapper = mountPage({ trackingImportPreview: null })
+    expect(wrapper.find('th.sticky-decision').text()).toBe('审核')
+    const trigger = wrapper.find('button[aria-label="列设置"]')
+    expect(trigger.exists()).toBe(true)
+    await trigger.trigger('click')
+    expect(wrapper.text()).toContain('列设置')
+    expect(wrapper.text()).toContain('订单号')
+    expect(wrapper.text()).toContain('Stock 仓库')
   })
 
   it('applies the frozen preview token through the selected warehouse route', async () => {

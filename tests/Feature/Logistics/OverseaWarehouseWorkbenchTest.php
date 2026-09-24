@@ -850,6 +850,28 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         ]);
     }
 
+    public function test_all_warehouse_review_allows_operations_and_uses_canonical_pagination(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses = $this->warehouses();
+        $this->orderAt($warehouses['US-LA'], '007-OVERSEA-ALL-REVIEW');
+
+        $this->actingAs($user)->get('/logistics/oversea?view=review')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('warehouseKey', 'all')
+                ->where('canReview', true)
+                ->where('canOperate', false)
+                ->where('rows.per_page', 50)
+                ->where('rows.current_page', 1)
+            );
+
+        $this->actingAs($user)->get('/logistics/oversea?view=review&per_page=20')
+            ->assertInertia(fn (Assert $page) => $page->where('rows.per_page', 20));
+
+        $this->actingAs($user)->get('/logistics/oversea?view=review&per_page=999')
+            ->assertInertia(fn (Assert $page) => $page->where('rows.per_page', 50));
+    }
+
     public function test_view_only_user_sees_page_but_not_operate_flag(): void
     {
         $user = $this->userWith(['logistics.view']);
