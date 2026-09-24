@@ -71,7 +71,7 @@ final class DomesticLogisticsController
             ] : null,
             'providerStatus' => [
                 '4px' => ['export_ready' => true, 'return_ready' => true, 'label' => '速达 / 4PX'],
-                'weship' => ['export_ready' => false, 'return_ready' => true, 'label' => '纬狮 / Weship', 'reason' => '真实下单模板尚未恢复；回传 XLSX 已按真实纬狮数据协议支持。'],
+                'weship' => ['export_ready' => false, 'return_ready' => true, 'label' => '纬狮 / Weship', 'reason' => '真实纬狮下单模板尚未接入；物流单号回传已可用。'],
             ],
         ]);
     }
@@ -98,7 +98,7 @@ final class DomesticLogisticsController
     public function export(string $provider): HttpResponse
     {
         $provider = $this->provider($provider);
-        abort_if($provider === 'weship', 409, '纬狮真实下单模板尚未安装，禁止猜测 Provider 格式。');
+        abort_if($provider === 'weship', 409, '纬狮下单模板尚未接入，当前暂不支持下单导出；物流单号回传已可用。');
 
         $factory = $this->factory();
         $orders = $this->baseQuery((int) $factory->id)
@@ -310,6 +310,8 @@ final class DomesticLogisticsController
 
     private function providerLabel(string $provider): string
     {
-        return match ($provider) { '4px' => '速达', 'weship' => '纬狮', default => '待发货批量' };
+        return match ($provider) {
+            '4px' => '速达', 'weship' => '纬狮', default => '待发货批量'
+        };
     }
 }
