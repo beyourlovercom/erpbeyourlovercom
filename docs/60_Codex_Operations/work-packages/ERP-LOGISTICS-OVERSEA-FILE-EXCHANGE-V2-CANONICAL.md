@@ -128,7 +128,7 @@ Contract:
 - the parser accepts only the complete exact 7-column header. The older one-column `订单号` sample remains invalid and fail-closed;
 - a real historical sample whose `订单号` is not present in current ERP must preview as **BLOCKED / ERP 找不到该订单号**. Never infer a match from Tracking, package sequence, recipient data, or row position.
 
-This contract is pending Owner UAT PASS before merge/Production.
+Owner UAT PASS 2026-09-24. PR #419 merged and the Canada return parser is Production Active. Real provider file Production preview parsed 3 rows and safely BLOCKED all 3 historical rows because their order references are not present in the current ERP; no business data changed.
 
 ### 5.4 US-SM return
 
