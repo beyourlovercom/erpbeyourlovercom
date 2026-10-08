@@ -12,21 +12,27 @@ use Illuminate\Contracts\Auth\Authenticatable;
  */
 final class KolOrderAccessScope
 {
-    public static function isOwnerOnly(Authenticatable $user): bool
+    public static function isKolOnly(Authenticatable $user): bool
     {
         return $user->can('kol.view')
-            && ! $user->can('kol.views.manage')
             && ! $user->can('customers.view')
             && ! $user->can('logistics.view')
             && ! $user->can('accounting.view')
             && ! $user->can('system.permissions.manage');
     }
 
+    public static function isOwnerOnly(Authenticatable $user): bool
+    {
+        return self::isKolOnly($user) && ! $user->can('kol.views.manage');
+    }
+
     public static function scopeFilters(Authenticatable $user, array $filters): array
     {
-        if (self::isOwnerOnly($user)) {
+        if (self::isKolOnly($user)) {
             $filters['order_kind'] = OrderKind::KolFulfillment->value;
-            $filters['owner_id'] = (int) $user->getAuthIdentifier();
+            if (self::isOwnerOnly($user)) {
+                $filters['owner_id'] = (int) $user->getAuthIdentifier();
+            }
         }
 
         return $filters;
@@ -34,21 +40,20 @@ final class KolOrderAccessScope
 
     public static function authorizeCreate(Authenticatable $user, OrderKind $kind): void
     {
-        if (self::isOwnerOnly($user)) {
+        if (self::isKolOnly($user)) {
             abort_unless($kind === OrderKind::KolFulfillment, 403);
         }
     }
 
     public static function authorize(Authenticatable $user, Order $order): void
     {
-        if (! self::isOwnerOnly($user)) {
+        if (! self::isKolOnly($user)) {
             return;
         }
 
-        abort_unless(
-            $order->order_kind === OrderKind::KolFulfillment
-            && (int) $order->owner_id === (int) $user->getAuthIdentifier(),
-            403
-        );
+        abort_unless($order->order_kind === OrderKind::KolFulfillment, 403);
+        if (self::isOwnerOnly($user)) {
+            abort_unless((int) $order->owner_id === (int) $user->getAuthIdentifier(), 403);
+        }
     }
 }

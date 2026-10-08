@@ -44,9 +44,15 @@ final class KolOrderOwnerScopeTest extends TestCase
         $manager = $this->userWith(['orders.view', 'kol.view', 'kol.views.manage']);
         $this->order($emma, 'kol_fulfillment', 'emma');
         $this->order($manager, 'kol_fulfillment', 'manager');
+        $customer = $this->order($manager, 'customer', 'customer-manager');
 
         $this->actingAs($manager)->get('/kol/orders')->assertOk()
             ->assertInertia(fn ($page) => $page->has('orders.data', 2)->where('orders.total', 2));
+        $this->actingAs($manager)->get('/orders')->assertOk()
+            ->assertInertia(fn ($page) => $page->has('orders.data', 2)->where('orders.total', 2));
+        $this->actingAs($manager)->get('/orders/'.$customer->id)->assertForbidden();
+        $this->actingAs($manager)->get('/customers/orders/create')->assertForbidden();
+        $this->actingAs($manager)->post('/customers/orders', [])->assertForbidden();
     }
 
     public function test_manual_kol_order_is_allocated_canonical_erp_identity(): void
