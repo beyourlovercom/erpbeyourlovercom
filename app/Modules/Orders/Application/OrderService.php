@@ -6,15 +6,17 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Finance\Application\Contracts\ConfirmedLossReader;
+use App\Modules\Orders\Application\Inbound\NormalizedInboundOrder;
 use App\Modules\Products\Application\Contracts\ProductExternalReferenceRepository;
 use App\Modules\Products\Application\Contracts\ProductRepository;
 use App\Modules\Products\Application\SkuIdentityResolver;
-use App\Modules\Orders\Application\Inbound\NormalizedInboundOrder;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\LazyCollection;
+use Illuminate\Support\Str;
 
 final class OrderService
 {
@@ -40,6 +42,8 @@ final class OrderService
             $orderClass = 'App\\Modules\\Orders\\Infrastructure\\Models\\Order';
             $address = array_intersect_key($attributes, array_flip(self::ADDRESS_FIELDS));
             $orderAttributes = array_diff_key($attributes, $address);
+            $isManualKol = $attributes['order_kind'] === OrderKind::KolFulfillment->value
+                && blank($orderAttributes['erp_order_id'] ?? null);
             $order = $orderClass::create([
                 ...$orderAttributes,
                 'external_order_number' => trim((string) $attributes['external_order_number']),
@@ -50,6 +54,14 @@ final class OrderService
                 'order_status' => OrderStatus::PendingShipment,
                 'owner_id' => $orderAttributes['owner_id'] ?? $actor?->getAuthIdentifier(),
             ]);
+            if ($isManualKol) {
+                // KOL master IDs use the ordinary kN namespace. Manual-only orders use
+                // a reserved high numeric range derived from the persisted order PK.
+                $order->erp_order_id = $this->orderIdentities->generate(
+                    'k', (string) (900000000000 + $order->id), (string) $attributes['order_date']
+                );
+                $order->save();
+            }
             $requiredAddressFields = ['recipient_name', 'phone', 'country', 'province_state', 'city', 'address_line_1'];
             $hasCompleteRequiredAddress = collect($requiredAddressFields)->every(
                 fn (string $field): bool => trim((string) ($address[$field] ?? '')) !== '',
@@ -263,23 +275,25 @@ final class OrderService
             ->withQueryString();
     }
 
-    public function exportCursor(array $filters): \Illuminate\Support\LazyCollection
+    public function exportCursor(array $filters): LazyCollection
     {
         return $this->filteredQuery($filters)->cursor();
     }
 
-    private function filteredQuery(array $filters): \Illuminate\Database\Eloquent\Builder
+    private function filteredQuery(array $filters): Builder
     {
         $orderClass = 'App\\Modules\\Orders\\Infrastructure\\Models\\Order';
         $query = $orderClass::query()
             ->with(['items', 'owner', 'address', 'shipment.warehouse', 'operationalMarkers'])
             ->when($filters['order_kind'] ?? null, fn ($query, string $kind) => $query->where('order_kind', $kind))
+            ->when($filters['owner_id'] ?? null, fn ($query, int $ownerId) => $query->where('owner_id', $ownerId))
             ->when($filters['warehouse_ownership'] ?? null, fn ($query, string $ownership) => $query->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('ownership_type', $ownership)))
             ->when($filters['search'] ?? null, function ($query, string $search): void {
                 $search = trim($search);
 
                 if (preg_match('/^dbid:(\d+)$/i', $search, $match) === 1) {
                     $query->whereKey((int) $match[1]);
+
                     return;
                 }
 
@@ -289,6 +303,7 @@ final class OrderService
                             ->orWhereHas('externalReferences', fn ($references) => $references->where('reference', $search))
                             ->orWhereHas('shipment', fn ($shipment) => $shipment->where('tracking_number', $search));
                     });
+
                     return;
                 }
 
@@ -309,7 +324,7 @@ final class OrderService
         return $query->latest('order_date')->latest('id');
     }
 
-    private function applyBusinessView(\Illuminate\Database\Eloquent\Builder $query, string $view): void
+    private function applyBusinessView(Builder $query, string $view): void
     {
         match ($view) {
             '', 'all' => null,
@@ -327,17 +342,17 @@ final class OrderService
         };
     }
 
-    private function applyMarkerView(\Illuminate\Database\Eloquent\Builder $query, string $marker): \Illuminate\Database\Eloquent\Builder
+    private function applyMarkerView(Builder $query, string $marker): Builder
     {
         return $query->whereHas('operationalMarkers', fn ($markers) => $markers->where('marker', $marker));
     }
 
-    private function applyLossView(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    private function applyLossView(Builder $query): Builder
     {
         return $this->confirmedLosses->applyConfirmedLossScope($query);
     }
 
-    private function applyStockoutView(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    private function applyStockoutView(Builder $query): Builder
     {
         return $this->applyMarkerView($query, 'stockout')
             ->whereExists(function ($stockout): void {
@@ -449,6 +464,7 @@ final class OrderService
             if (! empty($product->name)) {
                 return ['sku' => $sku, 'product_summary' => (string) $product->name];
             }
+
             return ['sku' => $sku, 'product_summary' => $sku];
         }
 
@@ -479,6 +495,7 @@ final class OrderService
             'provider_reference', 'provider_order_status', 'provider_modified_at', 'revenue_provenance',
             'reconciliation_status', 'reconciliation_exception',
         ]);
+
         return $data;
     }
 

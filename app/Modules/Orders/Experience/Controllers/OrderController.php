@@ -6,14 +6,14 @@ use App\Modules\Audit\Infrastructure\Models\AuditRecord;
 use App\Modules\Finance\Application\OrderAnalysisService;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Kol\Application\SavedViewService;
-use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
+use App\Modules\Logistics\Application\CarrierRoutingPolicy;
+use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\FulfillmentAllocationAccess;
+use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
-use App\Modules\Logistics\Application\CarrierServiceCatalog;
-use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
-use App\Modules\Logistics\Infrastructure\Models\Carrier;
+use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderService;
@@ -55,6 +55,7 @@ final class OrderController
         if ($kind) {
             $filters['order_kind'] = $kind->value;
         }
+        $filters = KolOrderAccessScope::scopeFilters($request->user(), $filters);
         $orders = $this->orders->list($filters);
 
         $isCustomerKind = $kind?->value === 'customer';
@@ -76,6 +77,7 @@ final class OrderController
     public function create(Request $request): Response
     {
         $kind = $this->kind($request);
+        KolOrderAccessScope::authorizeCreate($request->user(), $kind);
 
         return Inertia::render('Orders/Create', [
             'defaultOrderKind' => $kind->value,
@@ -86,6 +88,7 @@ final class OrderController
 
     public function store(Request $request): RedirectResponse
     {
+        KolOrderAccessScope::authorizeCreate($request->user(), $this->kind($request));
         $data = $request->validate($this->rules());
         $items = $data['items'];
         unset($data['items']);
@@ -101,12 +104,14 @@ final class OrderController
         return redirect()->route($routeName, $order)->with('success', '订单已创建');
     }
 
-    public function showAny(Order $order): RedirectResponse
+    public function showAny(Request $request, Order $order): RedirectResponse
     {
         $target = $order;
         if ($order->order_kind === OrderKind::FulfillmentDerived) {
             $target = $order->fulfillmentParent()->firstOrFail();
         }
+
+        KolOrderAccessScope::authorize($request->user(), $target);
 
         return match ($target->order_kind) {
             OrderKind::Customer => redirect()->route('customers.orders.show', $target),
@@ -118,6 +123,7 @@ final class OrderController
     public function show(Request $request, Order $order): Response
     {
         $this->authorizeKind($request, $order);
+        KolOrderAccessScope::authorize($request->user(), $order);
         $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync', 'operationalMarkers', 'procurementOrder', 'fulfillmentAllocation', 'fulfillmentChildren.items', 'fulfillmentChildren.shipment.warehouse', 'fulfillmentChildren.fulfillmentOrigin']);
         $productIds = $order->items->pluck('product_id')->filter()->unique()->values()->all();
         $inventoryAvailability = $this->availability->forProductIds($productIds);
@@ -132,6 +138,7 @@ final class OrderController
             'warehouses' => $warehouses,
             'warehouseRouting' => collect($warehouses)->mapWithKeys(function (array $warehouse) use ($order): array {
                 $route = $this->carrierRouting->warehouseRoute($order->address?->country, (string) ($warehouse['code'] ?? ''));
+
                 return [(int) $warehouse['id'] => [
                     'carrier' => $route['carrier'] ?? null,
                     'service' => $route['service'] ?? null,
@@ -196,10 +203,15 @@ final class OrderController
                 foreach (($decision['recommended_plan']['segments'] ?? []) as $segment) {
                     foreach (($segment['items'] ?? []) as $planItem) {
                         $matched = $order->items->first(function ($item) use ($planItem): bool {
-                            if ($item->product_id !== null && isset($planItem['product_id'])) return (int) $item->product_id === (int) $planItem['product_id'];
+                            if ($item->product_id !== null && isset($planItem['product_id'])) {
+                                return (int) $item->product_id === (int) $planItem['product_id'];
+                            }
+
                             return trim((string) $item->sku) !== '' && trim((string) $item->sku) === trim((string) ($planItem['sku'] ?? ''));
                         });
-                        if ($matched && isset($segment['warehouse_id'])) $recommendedByItem[(int) $matched->id] = (int) $segment['warehouse_id'];
+                        if ($matched && isset($segment['warehouse_id'])) {
+                            $recommendedByItem[(int) $matched->id] = (int) $segment['warehouse_id'];
+                        }
                     }
                 }
             } catch (\Throwable) {
@@ -212,14 +224,21 @@ final class OrderController
         foreach ((array) ($snapshot['segments'] ?? []) as $segment) {
             foreach ((array) ($segment['items'] ?? []) as $planItem) {
                 $matched = $order->items->first(function ($item) use ($planItem): bool {
-                    if ($item->product_id !== null && isset($planItem['product_id'])) return (int) $item->product_id === (int) $planItem['product_id'];
+                    if ($item->product_id !== null && isset($planItem['product_id'])) {
+                        return (int) $item->product_id === (int) $planItem['product_id'];
+                    }
+
                     return trim((string) $item->sku) !== '' && trim((string) $item->sku) === trim((string) ($planItem['sku'] ?? ''));
                 });
-                if ($matched && isset($segment['warehouse_id'])) $selectedByItem[(int) $matched->id] = (int) $segment['warehouse_id'];
+                if ($matched && isset($segment['warehouse_id'])) {
+                    $selectedByItem[(int) $matched->id] = (int) $segment['warehouse_id'];
+                }
             }
         }
         if (! $order->fulfillmentAllocation && $order->shipment?->warehouse_id) {
-            foreach ($selectedByItem as $itemId => $_) $selectedByItem[$itemId] = (int) $order->shipment->warehouse_id;
+            foreach ($selectedByItem as $itemId => $_) {
+                $selectedByItem[$itemId] = (int) $order->shipment->warehouse_id;
+            }
         }
 
         $originalChildren = $order->relationLoaded('fulfillmentChildren')
@@ -230,7 +249,10 @@ final class OrderController
         $fulfillmentSegments = $originalChildren->isNotEmpty() ? $originalChildren : collect([$order]);
         $logisticsStarted = $fulfillmentSegments->contains(function (Order $segment): bool {
             $shipment = $segment->shipment;
-            if (! $shipment) return false;
+            if (! $shipment) {
+                return false;
+            }
+
             return $shipment->shipment_status !== 'pending' || filled($shipment->tracking_number) || $shipment->shipped_at !== null;
         });
         $requiresFullFlow = $order->items->contains(fn ($item): bool => strcasecmp(trim((string) $item->sku), 'gift') === 0);
@@ -264,6 +286,7 @@ final class OrderController
     public function update(Request $request, Order $order): RedirectResponse
     {
         $this->authorizeKind($request, $order);
+        KolOrderAccessScope::authorize($request->user(), $order);
         $data = $request->validate($this->updateRules($order));
         $items = $data['items'] ?? null;
         unset($data['items']);
@@ -274,6 +297,7 @@ final class OrderController
 
     public function setOperationalMarker(Request $request, Order $order, string $marker): RedirectResponse
     {
+        KolOrderAccessScope::authorize($request->user(), $order);
         $data = $request->validate(['active' => ['required', 'boolean']]);
         $this->orders->setOperationalMarker($order, $marker, (bool) $data['active'], $request->user());
 
@@ -291,6 +315,7 @@ final class OrderController
         if ($kind) {
             $filters['order_kind'] = $kind->value;
         }
+        $filters = KolOrderAccessScope::scopeFilters($request->user(), $filters);
         $orders = $this->orders->exportCursor($filters);
 
         return response()->streamDownload(function () use ($orders): void {
@@ -446,7 +471,10 @@ final class OrderController
     private function segmentLogisticsStarted(Order $segment): bool
     {
         $shipment = $segment->shipment;
-        if (! $shipment) return false;
+        if (! $shipment) {
+            return false;
+        }
+
         return $shipment->shipment_status !== 'pending' || filled($shipment->tracking_number) || $shipment->shipped_at !== null;
     }
 
