@@ -30,7 +30,7 @@ jobs:
       - name: Static MySQL dialect gate
         run: php artisan test tests/Architecture/MySqlProductionCompatibilityTest.php
       - name: Logistics HTTP query-budget regression gate
-        run: php artisan test tests/Feature/ProductionStability/LogisticsPendingQueryBudgetTest.php
+        run: php artisan test tests/Feature/ProductionStability/LogisticsWaitStockQueryBudgetTest.php
       - name: Shell permission query-budget regression gate
         run: php artisan test tests/Feature/AppShellNavigationTest.php --filter=shell_navigation_permission_resolution_has_bounded_query_count
 
