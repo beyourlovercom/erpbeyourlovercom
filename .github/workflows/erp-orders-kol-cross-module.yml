@@ -1,0 +1,55 @@
+name: ERP Orders and KOL Cross-Module CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/Modules/Orders/**'
+      - 'app/Modules/Kol/**'
+      - 'app/Modules/Identity/Application/RolePreset.php'
+      - 'resources/js/Pages/Orders/**'
+      - 'tests/Feature/Orders/**'
+      - 'tests/Feature/Kol/**'
+      - '.github/workflows/erp-orders-kol-cross-module.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  orders-kol-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Install frontend dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Prepare Linux case-sensitive Inertia page path
+        run: ln -s Pages resources/js/pages
+      - name: Build frontend for Inertia HTTP assertions
+        run: npm run build
+      - name: Prepare isolated SQLite test environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+          php artisan migrate:fresh --force
+      - name: Orders and KOL HTTP authorization and identity regression
+        run: php artisan test tests/Feature/Orders tests/Feature/Kol
+      - name: Diff check
+        run: git diff --check origin/main...HEAD
