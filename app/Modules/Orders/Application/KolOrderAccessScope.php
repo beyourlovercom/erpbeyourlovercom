@@ -32,6 +32,13 @@ final class KolOrderAccessScope
         return $filters;
     }
 
+    public static function authorizeCreate(Authenticatable $user, OrderKind $kind): void
+    {
+        if (self::isOwnerOnly($user)) {
+            abort_unless($kind === OrderKind::KolFulfillment, 403);
+        }
+    }
+
     public static function authorize(Authenticatable $user, Order $order): void
     {
         if (! self::isOwnerOnly($user)) {

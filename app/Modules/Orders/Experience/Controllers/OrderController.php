@@ -77,6 +77,7 @@ final class OrderController
     public function create(Request $request): Response
     {
         $kind = $this->kind($request);
+        KolOrderAccessScope::authorizeCreate($request->user(), $kind);
 
         return Inertia::render('Orders/Create', [
             'defaultOrderKind' => $kind->value,
@@ -87,6 +88,7 @@ final class OrderController
 
     public function store(Request $request): RedirectResponse
     {
+        KolOrderAccessScope::authorizeCreate($request->user(), $this->kind($request));
         $data = $request->validate($this->rules());
         $items = $data['items'];
         unset($data['items']);

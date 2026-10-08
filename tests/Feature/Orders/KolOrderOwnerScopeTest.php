@@ -34,6 +34,8 @@ final class KolOrderOwnerScopeTest extends TestCase
         $this->actingAs($emma)->get('/orders/'.$foreign->id)->assertForbidden();
         $this->actingAs($emma)->get('/orders/'.$customer->id)->assertForbidden();
         $this->actingAs($emma)->get('/customers/orders/'.$customer->id)->assertForbidden();
+        $this->actingAs($emma)->get('/customers/orders/create')->assertForbidden();
+        $this->actingAs($emma)->post('/customers/orders', [])->assertForbidden();
     }
 
     public function test_manager_sees_all_kol_orders(): void
