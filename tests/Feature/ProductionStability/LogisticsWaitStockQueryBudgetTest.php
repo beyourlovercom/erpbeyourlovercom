@@ -70,7 +70,7 @@ final class LogisticsWaitStockQueryBudgetTest extends TestCase
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
-            ->component('Logistics/FulfillmentAllocation')
+            ->component('Logistics/FulfillmentAllocation', false)
             ->where('orders.per_page', self::PAGE_SIZE)
             ->has('orders.data', self::PAGE_SIZE));
         $this->assertLessThanOrEqual(
