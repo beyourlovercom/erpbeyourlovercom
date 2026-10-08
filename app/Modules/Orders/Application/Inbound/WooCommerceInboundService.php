@@ -13,9 +13,13 @@ use Throwable;
 final class WooCommerceInboundService
 {
     private const PER_PAGE = 100;
+
     private const MAX_PAGES = 100;
+
     private const OVERLAP_MINUTES = 5;
+
     private const AUTOMATIC_RUN_TYPE = 'woocommerce_order_incremental';
+
     private const MANUAL_TODAY_RUN_TYPE = 'woocommerce_order_manual_today';
 
     public function __construct(
@@ -29,6 +33,7 @@ final class WooCommerceInboundService
     {
         $descriptor = $this->gateway->descriptor();
         $descriptor['last_import_at'] = $this->lastImportedAt($descriptor['connection_key']);
+
         return $descriptor;
     }
 
@@ -40,6 +45,7 @@ final class WooCommerceInboundService
     public function importOne(int $providerOrderId, ?Authenticatable $actor): array
     {
         $payload = $this->gateway->fetchOrder($providerOrderId);
+
         return $this->importPayloads([$payload], $actor);
     }
 
@@ -52,6 +58,7 @@ final class WooCommerceInboundService
         }
 
         $modifiedAfter = CarbonImmutable::parse($lastImportedAt)->subMinutes(self::OVERLAP_MINUTES)->utc()->toIso8601String();
+
         return $this->importPages([
             'modified_after' => $modifiedAfter,
             'status' => 'any',
@@ -151,6 +158,7 @@ final class WooCommerceInboundService
     {
         $after = CarbonImmutable::parse($from)->startOfDay()->utc()->toIso8601String();
         $before = CarbonImmutable::parse($to)->endOfDay()->utc()->toIso8601String();
+
         return $this->importPages([
             'after' => $after,
             'before' => $before,
@@ -179,6 +187,7 @@ final class WooCommerceInboundService
         } while ($page <= $totalPages);
 
         $summary['pages'] = $page - 1;
+
         return $summary;
     }
 
@@ -202,6 +211,7 @@ final class WooCommerceInboundService
         } while ($page <= $totalPages);
 
         $summary['pages'] = $page - 1;
+
         return $summary;
     }
 
@@ -218,9 +228,17 @@ final class WooCommerceInboundService
             ]);
             $item = $this->runs->markProcessing($item);
 
+            if ($this->isDevSandboxOrder($payload)) {
+                $summary['skipped']++;
+                $this->runs->finishSkipped($item, 'dev_sandbox_order');
+
+                continue;
+            }
+
             if ($this->isNonProductAdminShell($payload)) {
                 $summary['skipped']++;
                 $this->runs->finishSkipped($item, 'non_product_admin_shell');
+
                 continue;
             }
 
@@ -282,9 +300,17 @@ final class WooCommerceInboundService
             ]);
             $item = $this->runs->markProcessing($item);
 
+            if ($this->isDevSandboxOrder($payload)) {
+                $summary['skipped']++;
+                $this->runs->finishSkipped($item, 'dev_sandbox_order');
+
+                continue;
+            }
+
             if ($this->isNonProductAdminShell($payload)) {
                 $summary['skipped']++;
                 $this->runs->finishSkipped($item, 'non_product_admin_shell');
+
                 continue;
             }
 
@@ -316,8 +342,15 @@ final class WooCommerceInboundService
         foreach ($payloads as $payload) {
             $summary['seen']++;
             $reference = (string) ($payload['id'] ?? '?');
+            // Never persist explicitly marked BYL Dev sandbox checkout orders in ERP.
+            if ($this->isDevSandboxOrder($payload)) {
+                $summary['skipped']++;
+
+                continue;
+            }
             if ($skipNonProductAdminShells && $this->isNonProductAdminShell($payload)) {
                 $summary['skipped']++;
+
                 continue;
             }
             try {
@@ -343,6 +376,32 @@ final class WooCommerceInboundService
             $connectionKey,
             'checkpoint_modified_at',
         ) ?? $this->lastImportedAt($connectionKey);
+    }
+
+    /**
+     * Fail closed for the exact synthetic checkout identity and native Dev UAT marker.
+     * Woo REST may omit private meta keys; the dedicated .invalid billing identity
+     * is therefore independently sufficient to exclude a sandbox order.
+     */
+    private function isDevSandboxOrder(array $payload): bool
+    {
+        $email = $payload['billing']['email'] ?? null;
+        if (is_string($email) && strtolower(trim($email)) === 'byl-p13@example.invalid') {
+            return true;
+        }
+
+        foreach (($payload['meta_data'] ?? []) as $meta) {
+            if (! is_array($meta) || ($meta['key'] ?? null) !== '_byl_dev_sandbox_p13') {
+                continue;
+            }
+
+            $value = $meta['value'] ?? null;
+            if (is_string($value) && strtolower(trim($value)) === 'yes') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function isNonProductAdminShell(array $payload): bool
@@ -433,6 +492,7 @@ final class WooCommerceInboundService
             $left[$key] += $right[$key];
         }
         $left['errors'] = array_slice([...$left['errors'], ...$right['errors']], 0, 20);
+
         return $left;
     }
 

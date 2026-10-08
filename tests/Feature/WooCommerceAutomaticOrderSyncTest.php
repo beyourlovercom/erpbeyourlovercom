@@ -8,11 +8,11 @@ use App\Modules\Orders\Infrastructure\Models\OrderExternalReference;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Sync\Application\Contracts\SyncRunTracker;
 use App\Modules\Sync\Infrastructure\Models\SyncRun;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Console\Scheduling\Schedule;
 use Tests\TestCase;
 
 final class WooCommerceAutomaticOrderSyncTest extends TestCase
@@ -48,8 +48,10 @@ final class WooCommerceAutomaticOrderSyncTest extends TestCase
                 $shell = $this->wooOrder(702, '01:12:00', 0);
                 $shell['created_via'] = 'admin';
                 $shell['line_items'] = [];
+
                 return Http::response([$valid, $shell], 200, ['X-WP-TotalPages' => '1']);
             }
+
             return Http::response([], 404);
         });
 
@@ -72,6 +74,82 @@ final class WooCommerceAutomaticOrderSyncTest extends TestCase
             && str_contains($request->url(), 'modified_after=2026-08-27T01%3A00%3A00%2B00%3A00'));
     }
 
+    public function test_automatic_sync_excludes_marked_dev_sandbox_order_and_advances_checkpoint(): void
+    {
+        Product::create([
+            'woocommerce_product_id' => 5001,
+            'sku' => 'WOO-5001',
+            'name' => 'Canonical Widget',
+            'product_type' => 'simple',
+        ]);
+        Http::fake(function (Request $request) {
+            if (str_ends_with($request->url(), '/orders/720')) {
+                return Http::response($this->wooOrder(720, '01:05:00', 5001), 200);
+            }
+            $sandbox = $this->wooOrder(721, '01:12:00', 5001);
+            $sandbox['meta_data'] = [['key' => '_byl_dev_sandbox_p13', 'value' => 'yes']];
+            $normal = $this->wooOrder(722, '01:10:00', 5001);
+            $normal['meta_data'] = [['key' => '_byl_dev_sandbox_p13', 'value' => 'no']];
+
+            return Http::response([$normal, $sandbox], 200, ['X-WP-TotalPages' => '1']);
+        });
+
+        app(WooCommerceInboundService::class)->importOne(720, null);
+        $this->artisan('orders:sync-woocommerce --json')->assertSuccessful();
+
+        $this->assertSame(2, Order::count());
+        $this->assertFalse(OrderExternalReference::where('reference', '721')->exists());
+        $this->assertTrue(OrderExternalReference::where('reference', '722')->exists());
+        $run = SyncRun::query()->latest('id')->firstOrFail();
+        $this->assertSame(2, $run->requested_items);
+        $this->assertSame(1, $run->succeeded_items);
+        $this->assertSame(1, $run->skipped_items);
+        $this->assertSame(0, $run->failed_items);
+        $this->assertSame('2026-08-27T01:12:00+00:00', $run->context['checkpoint_modified_at']);
+    }
+
+    public function test_single_import_excludes_exact_dev_synthetic_billing_identity_without_private_meta(): void
+    {
+        $sandbox = $this->wooOrder(730, '01:05:00', 5001);
+        $sandbox['billing']['email'] = 'BYL-P13@EXAMPLE.INVALID';
+        Http::fake(['https://shop.test/wp-json/wc/v3/orders/730' => Http::response($sandbox, 200)]);
+
+        $result = app(WooCommerceInboundService::class)->importOne(730, null);
+
+        $this->assertSame(1, $result['seen']);
+        $this->assertSame(1, $result['skipped']);
+        $this->assertSame(0, $result['failed']);
+        $this->assertSame(0, Order::count());
+        $this->assertFalse(OrderExternalReference::where('reference', '730')->exists());
+    }
+
+    public function test_manual_today_sync_excludes_dev_sandbox_order_but_keeps_normal_orders(): void
+    {
+        Product::create([
+            'woocommerce_product_id' => 5001,
+            'sku' => 'WOO-5001',
+            'name' => 'Canonical Widget',
+            'product_type' => 'simple',
+        ]);
+        Http::fake(function (Request $request) {
+            $sandbox = $this->wooOrder(740, '01:10:00', 5001);
+            $sandbox['meta_data'] = [['key' => '_byl_dev_sandbox_p13', 'value' => 'yes']];
+            $normal = $this->wooOrder(741, '01:12:00', 5001);
+
+            return Http::response([$sandbox, $normal], 200, ['X-WP-TotalPages' => '1']);
+        });
+
+        $result = app(WooCommerceInboundService::class)->importToday(null);
+
+        $this->assertSame(2, $result['seen']);
+        $this->assertSame(1, $result['skipped']);
+        $this->assertSame(1, $result['created']);
+        $this->assertSame(0, $result['failed']);
+        $this->assertSame(1, Order::count());
+        $this->assertFalse(OrderExternalReference::where('reference', '740')->exists());
+        $this->assertTrue(OrderExternalReference::where('reference', '741')->exists());
+    }
+
     public function test_real_zero_line_checkout_failure_does_not_advance_checkpoint(): void
     {
         Product::create([
@@ -90,6 +168,7 @@ final class WooCommerceAutomaticOrderSyncTest extends TestCase
             }
             $failed = $this->wooOrder(712, '01:20:00', 0);
             $failed['line_items'] = [];
+
             return Http::response([$failed], 200, ['X-WP-TotalPages' => '1']);
         });
 
