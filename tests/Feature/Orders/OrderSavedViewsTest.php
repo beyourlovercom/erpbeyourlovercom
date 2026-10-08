@@ -66,12 +66,13 @@ final class OrderSavedViewsTest extends TestCase
         $estimated->costEntries()->where('cost_type', 'product_cost')->update(['provenance' => 'estimated_reference', 'status' => 'estimated']);
 
         $this->assertViewContainsOnly($user, 'loss', 'ORDER-LOSS');
-        $this->actingAs($user)->get('/logistics/loss')->assertInertia(fn (Assert $page) => $page
-            ->has('orders', 1)
-            ->where('orders.0.order_number', 'ORDER-LOSS')
-            ->where('statusBar.7.count', 1));
-        $this->actingAs($user)->get('/logistics/carriers')->assertInertia(fn (Assert $page) => $page
-            ->where('statusBar.7.count', 1));
+        // The canonical confirmed-loss list is the Orders saved view, not the
+        // removed Logistics loss route/status-bar slot.
+        $this->actingAs($user)->get('/orders?view=loss')->assertInertia(fn (Assert $page) => $page
+            ->has('orders.data', 1)
+            ->where('orders.total', 1)
+            ->where('orders.data.0.external_order_number', 'ORDER-LOSS')
+            ->where('filters.view', 'loss'));
         $this->assertDatabaseMissing('order_operational_markers', ['order_id' => $loss->id, 'marker' => 'loss']);
         $this->assertSame('shipped', $loss->fresh()->order_status->value);
     }
