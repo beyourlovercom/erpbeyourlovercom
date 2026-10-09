@@ -75,17 +75,37 @@ final class KolLogisticsReadOnlyTest extends TestCase
         $this->actingAs($manager)->get('/logistics/china')->assertForbidden();
     }
 
-    public function test_logistics_only_and_mixed_roles_cannot_use_kol_only_endpoint(): void
+    public function test_mixed_kol_and_logistics_rights_do_not_expand_owner_scope(): void
     {
         $logistics = $this->userWith(['logistics.view', 'orders.view']);
         $mixed = $this->userWith(['kol.view', 'logistics.view', 'orders.view']);
+        $other = $this->userWith(['kol.view']);
         $stranger = $this->userWith(['dashboard.view']);
+        $own = $this->order($mixed, 'kol_fulfillment', 'mixed-own');
+        $foreign = $this->order($other, 'kol_fulfillment', 'mixed-foreign');
 
         $this->actingAs($logistics)->get('/kol/logistics')->assertForbidden();
-        $this->actingAs($mixed)->get('/kol/logistics')->assertForbidden();
+        // Holding logistics.view does not make a KOL specialist a team manager.
+        $this->actingAs($mixed)->get('/kol/logistics')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('isManager', false)
+                ->where('orders.total', 1)
+                ->where('orders.data.0.id', $own->id));
+        $this->actingAs($mixed)->get('/kol/logistics?search=dbid:'.$foreign->id)
+            ->assertOk()->assertInertia(fn ($page) => $page->where('orders.total', 0));
         $this->actingAs($stranger)->get('/kol/logistics')->assertForbidden();
         auth()->logout();
         $this->get('/kol/logistics')->assertRedirect('/login');
+    }
+
+    public function test_operations_role_can_see_kol_team_but_not_customer_orders(): void
+    {
+        $operations = $this->userWith(['kol.view', 'kol.views.manage', 'logistics.view']);
+        $emma = $this->userWith(['kol.view']);
+        $this->order($emma, 'kol_fulfillment', 'ops-emma');
+        $this->order($operations, 'customer', 'ops-customer');
+        $this->actingAs($operations)->get('/kol/logistics')->assertOk()
+            ->assertInertia(fn ($page) => $page->where('isManager', true)
+                ->where('orders.total', 1));
     }
 
     public function test_search_and_status_cannot_leak_foreign_order_counts(): void
