@@ -19,6 +19,7 @@ use App\Modules\ModuleManifest;
 use App\Modules\ModulesServiceProvider;
 use App\Modules\Orders\Providers\OrdersServiceProvider;
 use App\Modules\Runtime\Providers\RuntimeServiceProvider;
+use App\Modules\Search\Providers\SearchServiceProvider;
 use App\Modules\Shell\Providers\ShellServiceProvider;
 use App\Modules\Sync\Providers\SyncServiceProvider;
 use App\Modules\Sync\Providers\ManualSyncServiceProvider;
@@ -58,6 +59,7 @@ final class ModuleProviderTest extends TestCase
             FinanceServiceProvider::class,
             GuidesServiceProvider::class,
             RuntimeServiceProvider::class,
+            SearchServiceProvider::class,
             AuditServiceProvider::class,
             SyncServiceProvider::class,
             ManualSyncServiceProvider::class,
