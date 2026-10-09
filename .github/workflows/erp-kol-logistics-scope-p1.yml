@@ -1,0 +1,53 @@
+name: ERP KOL Scoped Logistics P1 CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/Modules/Orders/**'
+      - 'resources/js/Pages/Orders/KolLogistics.vue'
+      - 'menu/APPROVED_MENU.json'
+      - 'tests/Feature/Orders/KolLogisticsReadOnlyTest.php'
+      - '.github/workflows/erp-kol-logistics-scope-p1.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  kol-logistics-scope:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          npm ci --no-audit --no-fund
+      - name: Prepare Vite for Inertia page testing
+        run: |
+          ln -s Pages resources/js/pages
+          npm run typecheck
+          npm run build
+      - name: Isolated SQLite environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+          php artisan migrate:fresh --force
+      - name: Pure KOL ownership and Logistics route tests
+        run: php artisan test tests/Feature/Orders/KolLogisticsReadOnlyTest.php tests/Feature/Orders/KolOrderOwnerScopeTest.php tests/Feature/AppShellNavigationTest.php
+      - name: No production assets or whitespace violations
+        run: git diff --check origin/main...HEAD
