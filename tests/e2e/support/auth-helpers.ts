@@ -10,6 +10,9 @@ type SyntheticUsers = {
     unauthorized: SyntheticCredentials;
     inactive: SyntheticCredentials;
     missing: SyntheticCredentials;
+    kolEmma: SyntheticCredentials;
+    kolOther: SyntheticCredentials;
+    kolManager: SyntheticCredentials;
 };
 
 function requireSecret(name: 'BYL_E2E_ACTIVE_PASSWORD' | 'BYL_E2E_INACTIVE_PASSWORD'): string {
@@ -46,6 +49,18 @@ export function syntheticUsers(): SyntheticUsers {
         },
         missing: {
             email: `missing-${runId}@byl-e2e.invalid`,
+            password: activePassword,
+        },
+        kolEmma: {
+            email: `kol-emma-${runId}@byl-e2e.invalid`,
+            password: activePassword,
+        },
+        kolOther: {
+            email: `kol-other-${runId}@byl-e2e.invalid`,
+            password: activePassword,
+        },
+        kolManager: {
+            email: `kol-manager-${runId}@byl-e2e.invalid`,
             password: activePassword,
         },
     };

@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Models\Permission;
 use App\Models\Role;
+use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Models\User;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Contracts\Console\Kernel;
@@ -174,6 +176,68 @@ DB::transaction(function () use ($runId, $activePassword, $inactivePassword): vo
         'password' => Hash::make($activePassword),
         'is_active' => true,
     ]);
+    // All records below are constrained by the fail-closed disposable SQLite
+    // checks at the top of this file; they never touch a real ERP database.
+    $specialistRole = Role::query()->create(['key' => 'e2e_kol_specialist', 'label' => 'E2E KOL Specialist']);
+    $managerRole = Role::query()->create(['key' => 'e2e_kol_manager', 'label' => 'E2E KOL Manager']);
+    foreach (['dashboard.view', 'kol.view', 'orders.view', 'orders.create', 'products.view'] as $key) {
+        $permission = Permission::query()->firstOrCreate(['key' => $key], ['label' => $key]);
+        $specialistRole->permissions()->attach($permission);
+        $managerRole->permissions()->attach($permission);
+    }
+    $managerRole->permissions()->attach(
+        Permission::query()->firstOrCreate(['key' => 'kol.views.manage'], ['label' => 'kol.views.manage']),
+    );
+    $roleUsers = [];
+    foreach ([
+        ['emma', $specialistRole],
+        ['other', $specialistRole],
+        ['manager', $managerRole],
+    ] as [$label, $role]) {
+        $user = User::query()->create([
+            'name' => 'E2E KOL '.ucfirst($label),
+            'email' => "kol-{$label}-{$runId}@byl-e2e.invalid",
+            'password' => Hash::make($activePassword),
+            'is_active' => true,
+        ]);
+        $user->roles()->attach($role);
+        $roleUsers[$label] = $user;
+    }
+    foreach (['emma', 'other', 'manager'] as $label) {
+        $owner = $roleUsers[$label];
+        $order = Order::query()->create([
+            'internal_order_number' => 'E2E-KOL-'.strtoupper($label),
+            'erp_order_id' => '007erp-1009-k9'.$owner->id,
+            'source_type' => 'manual',
+            'order_kind' => 'kol_fulfillment',
+            'external_order_number' => 'E2E-KOL-'.strtoupper($label),
+            'order_date' => '2026-10-09',
+            'order_status' => 'pending_shipment',
+            'currency' => 'USD',
+            'owner_id' => $owner->id,
+        ]);
+        $order->shipment()->create([
+            'shipment_status' => 'shipped',
+            'carrier' => 'DHL',
+            'tracking_number' => 'E2E-TRACK-'.strtoupper($label).'-123456789012345678901234567890',
+        ]);
+    }
+    $customer = Order::query()->create([
+        'internal_order_number' => 'E2E-CUSTOMER-PRIVATE',
+        'erp_order_id' => '007erp-1009-c999',
+        'source_type' => 'manual',
+        'order_kind' => 'customer',
+        'external_order_number' => 'E2E-CUSTOMER-PRIVATE',
+        'order_date' => '2026-10-09',
+        'order_status' => 'pending_shipment',
+        'currency' => 'USD',
+        'owner_id' => $roleUsers['manager']->id,
+    ]);
+    $customer->shipment()->create([
+        'shipment_status' => 'shipped',
+        'tracking_number' => 'E2E-CUSTOMER-PRIVATE-TRACK',
+    ]);
+
     User::query()->create([
         'name' => 'E2E Inactive',
         'email' => "inactive-{$runId}@byl-e2e.invalid",
@@ -182,4 +246,4 @@ DB::transaction(function () use ($runId, $activePassword, $inactivePassword): vo
     ]);
 });
 
-fwrite(STDOUT, json_encode(['synthetic_users' => 3, 'synthetic_products' => 1, 'database' => 'disposable-sqlite'], JSON_THROW_ON_ERROR)."\n");
+fwrite(STDOUT, json_encode(['synthetic_users' => 6, 'synthetic_products' => 1, 'synthetic_kol_orders' => 3, 'synthetic_customer_orders' => 1, 'database' => 'disposable-sqlite'], JSON_THROW_ON_ERROR)."\n");
