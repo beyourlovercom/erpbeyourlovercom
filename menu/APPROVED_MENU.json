@@ -519,6 +519,21 @@
       "sort": 20
     },
     {
+      "code": "kol-logistics",
+      "parent_code": "kol",
+      "level": 2,
+      "label_zh": "物流进度",
+      "slug": "logistics",
+      "url": "/kol/logistics",
+      "route": "kol.logistics",
+      "permission": "kol.view",
+      "emoji": null,
+      "function_zh": "网红专员仅查看自己的 KOL 物流，网红经理仅查看团队 KOL 物流；不授予通用物流权限、导出或发货操作。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 25
+    },
+    {
       "code": "kol-library-create",
       "parent_code": "kol",
       "level": 2,
