@@ -10,6 +10,7 @@ const inputValue = ref(props.modelValue)
 const options = ref<SkuOption[]>([])
 const open = ref(false)
 const loading = ref(false)
+const errorMessage = ref('')
 const activeIndex = ref(-1)
 let debounceTimer: ReturnType<typeof setTimeout> | undefined
 let blurTimer: ReturnType<typeof setTimeout> | undefined
@@ -28,15 +29,29 @@ watch(() => props.modelValue, (value) => { inputValue.value = value })
 const fetchOptions = async (query: string) => {
   const sequence = ++requestSequence
   loading.value = true
+  errorMessage.value = ''
   open.value = true
   try {
     const response = await fetch(`/products/sku-search?q=${encodeURIComponent(query.trim())}`, {
       headers: { Accept: 'application/json' },
     })
-    const payload = await response.json()
+    if (!response.ok) {
+      throw new Error(response.status === 403
+        ? '没有 SKU 查询权限，请联系管理员'
+        : response.status === 401 ? '登录已失效，请重新登录' : 'SKU 查询暂时失败，请重试')
+    }
+    const payload: unknown = await response.json()
+    if (!Array.isArray(payload)) throw new Error('SKU 查询返回了无效数据')
     if (!mounted || sequence !== requestSequence) return
-    options.value = Array.isArray(payload) ? payload : []
+    options.value = payload
     activeIndex.value = options.value.length > 0 ? 0 : -1
+  } catch (error) {
+    if (!mounted || sequence !== requestSequence) return
+    options.value = []
+    activeIndex.value = -1
+    const message = error instanceof Error ? error.message : ''
+    errorMessage.value = ['SKU 查询', '没有 SKU', '登录已'].some(prefix => message.startsWith(prefix))
+      ? message : 'SKU 查询暂时失败，请重试'
   } finally {
     if (mounted && sequence === requestSequence) loading.value = false
   }
@@ -124,6 +139,7 @@ const onKeydown = (event: KeyboardEvent) => {
     </div>
     <ul v-if="open" class="sku-combobox-dropdown" role="listbox">
       <li v-if="loading" class="sku-combobox-state" aria-live="polite">正在加载产品…</li>
+      <li v-else-if="errorMessage" class="sku-combobox-state" role="alert">{{ errorMessage }}</li>
       <li v-else-if="options.length === 0" class="sku-combobox-state">暂无可选产品</li>
       <template v-else>
         <li
