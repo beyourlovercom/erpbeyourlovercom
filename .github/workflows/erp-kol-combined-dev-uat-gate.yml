@@ -1,0 +1,59 @@
+name: ERP KOL Combined Dev UAT Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/Modules/Orders/**'
+      - 'app/Modules/Products/**'
+      - 'app/Modules/Identity/**'
+      - 'resources/js/Pages/Orders/**'
+      - 'resources/js/Components/Products/**'
+      - 'menu/APPROVED_MENU.json'
+      - 'tests/Feature/Orders/KolSkuLogisticsIntegrationTest.php'
+      - '.github/workflows/erp-kol-combined-dev-uat-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  combined-kol-dev-uat:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: PHP 8.3 setup
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: Node 22 setup
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install PHP and JS dependencies
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          npm ci --no-audit --no-fund
+      - name: Typecheck and build
+        run: |
+          ln -s Pages resources/js/pages
+          npm run typecheck
+          npm run build
+      - name: Isolated SQLite schema
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+          php artisan migrate:fresh --force
+      - name: Combined KOL SKU logistics role and navigation tests
+        run: |
+          php artisan test tests/Feature/Orders/KolSkuLogisticsIntegrationTest.php tests/Feature/Orders/KolLogisticsReadOnlyTest.php tests/Feature/Orders/KolOrderOwnerScopeTest.php tests/Feature/Products/ProductManagementTest.php tests/Feature/Identity/PermissionMatrixTest.php tests/Feature/Identity/UserManagementTest.php tests/Feature/AppShellNavigationTest.php
+      - name: SKU Vue tests
+        run: npm test -- resources/js/Components/Products/SkuCombobox.test.ts
+      - name: Exact change hygiene
+        run: git diff --check origin/main...HEAD
