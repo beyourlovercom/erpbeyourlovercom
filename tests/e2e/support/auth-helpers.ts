@@ -67,7 +67,7 @@ export async function expectGenericLoginFailure(page: Page, credentials: Synthet
     await page.locator('input[name="password"]').fill(credentials.password);
     await page.getByRole('button', { name: '登录系统' }).click();
 
-    await expect(page.getByRole('alert')).toHaveText('错误：邮箱或密码不正确，请重试。');
+    await expect(page.getByRole('alert')).toHaveText('错误：名称/邮箱或密码不正确，请重试。');
     await expect(page).toHaveURL(/\/login$/u);
 }
 
