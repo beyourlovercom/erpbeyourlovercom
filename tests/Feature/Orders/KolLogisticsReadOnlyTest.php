@@ -84,6 +84,7 @@ final class KolLogisticsReadOnlyTest extends TestCase
         $this->actingAs($logistics)->get('/kol/logistics')->assertForbidden();
         $this->actingAs($mixed)->get('/kol/logistics')->assertForbidden();
         $this->actingAs($stranger)->get('/kol/logistics')->assertForbidden();
+        auth()->logout();
         $this->get('/kol/logistics')->assertRedirect('/login');
     }
 
