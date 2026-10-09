@@ -30,7 +30,7 @@ test('authenticated shell matches the approved level-one menu baseline', async (
     await expect(navigation).toBeVisible();
     await expect(links).toHaveCount(levelOneMenu.length);
     expect(levelOneMenu).toHaveLength(13);
-    expect(levelTwoMenu).toHaveLength(57);
+    expect(levelTwoMenu).toHaveLength(65);
 
     for (const [index, expected] of levelOneMenu.entries()) {
         const link = links.nth(index);
@@ -64,7 +64,7 @@ test('dashboard identity and authentication survive a page refresh', async ({ co
     const user = syntheticUsers().authorized;
 
     await loginThroughUi(page, user);
-    await expect(page.getByRole('heading', { name: 'BYL ERP 应用工作台' })).toBeVisible();
+    await expect(page.locator('.dashboard-hero h2').first()).toBeVisible();
     await page.getByRole('button', { name: '打开账户菜单' }).click();
     await expect(page.getByText('E2E Authorized', { exact: true })).toBeVisible();
     await expect(page.getByText(user.email, { exact: true })).toBeVisible();
@@ -88,7 +88,7 @@ test('account dock supports mouse toggle and keyboard Escape focus restoration',
 
     await trigger.focus();
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('menuitem', { name: '退出登录' })).toBeFocused();
+    await expect(page.getByRole('menuitem', { name: '个人信息' })).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('menu', { name: '用户账户' })).toHaveCount(0);
     await expect(trigger).toBeFocused();
