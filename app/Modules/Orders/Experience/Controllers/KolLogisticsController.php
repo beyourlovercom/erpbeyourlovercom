@@ -2,7 +2,6 @@
 
 namespace App\Modules\Orders\Experience\Controllers;
 
-use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\Request;
@@ -18,7 +17,10 @@ final class KolLogisticsController
     public function index(Request $request): Response
     {
         $actor = $request->user();
-        abort_unless($actor && KolOrderAccessScope::isKolOnly($actor), 403);
+        abort_unless($actor && $actor->can('kol.view'), 403);
+        // Team-wide visibility requires an explicit KOL management permission.
+        // Independent Logistics rights must never enlarge a specialist's KOL scope.
+        $isManager = $actor->can('kol.views.manage');
 
         $filters = $request->validate([
             'search' => ['nullable', 'string', 'max:120'],
@@ -31,7 +33,7 @@ final class KolLogisticsController
             ->where('order_kind', OrderKind::KolFulfillment->value)
             ->with(['shipment.warehouse', 'owner']);
 
-        if (KolOrderAccessScope::isOwnerOnly($actor)) {
+        if (! $isManager) {
             $query->where('owner_id', (int) $actor->getAuthIdentifier());
         }
 
@@ -79,7 +81,7 @@ final class KolLogisticsController
         return Inertia::render('Orders/KolLogistics', [
             'orders' => $orders->toArray(),
             'filters' => ['search' => $search, 'status' => $status],
-            'isManager' => ! KolOrderAccessScope::isOwnerOnly($actor),
+            'isManager' => $isManager,
         ]);
     }
 }
