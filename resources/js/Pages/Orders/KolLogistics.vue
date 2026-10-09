@@ -82,5 +82,8 @@ const page = (number: number) => router.get('/kol/logistics', { ...filters, page
 .card-title a{font-weight:700;color:var(--byl-text);overflow-wrap:anywhere}
 .meta,.details{display:flex;gap:8px 24px;flex-wrap:wrap;font-size:13px;margin:10px 0;color:var(--byl-text-muted)}
 .details{color:var(--byl-text)}.card-foot{border-top:1px solid var(--byl-border-subtle);padding-top:10px;font-size:13px}
-@media(max-width:640px){.shipment-card{padding:12px}.details{display:grid;grid-template-columns:1fr 1fr;gap:9px}.meta{display:grid;gap:5px}.card-title{align-items:flex-start}}
+.meta span,.details span,.card-foot span{min-width:0;overflow-wrap:anywhere}
+.kol-logistics .mvp-toolbar{display:flex;flex-wrap:wrap;max-width:100%}
+.kol-logistics .mvp-toolbar input{flex:1 1 240px;min-width:0;max-width:100%}
+@media(max-width:640px){.shipment-card{padding:12px}.details{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:9px}.meta{display:grid;gap:5px}.card-title{align-items:flex-start}.kol-logistics .mvp-toolbar input{flex-basis:100%}}
 </style>
