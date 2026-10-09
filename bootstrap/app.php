@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Identity\Experience\Console\Commands\CreateErpUser;
+use App\Modules\Identity\Experience\Console\Commands\StaffAccessReadinessAuditCommand;
 use App\Modules\Logistics\Experience\Console\Commands\AutomaticAllocationCommand;
 use App\Modules\Runtime\Experience\Console\Commands\RuntimeHealthCommand;
 use App\Modules\Identity\Experience\Middleware\ApplyLocalAdminBypass;
@@ -23,6 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withCommands([
         CreateErpUser::class,
+        StaffAccessReadinessAuditCommand::class,
         RuntimeHealthCommand::class,
         AutomaticAllocationCommand::class,
     ])

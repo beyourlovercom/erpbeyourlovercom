@@ -1,0 +1,40 @@
+name: ERP Staff Access Readiness Audit CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'bootstrap/app.php'
+      - 'app/Modules/Identity/Experience/Console/Commands/StaffAccessReadinessAuditCommand.php'
+      - 'tests/Feature/Identity/StaffAccessReadinessAuditTest.php'
+      - '.github/workflows/erp-staff-access-readiness-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  readonly-staff-access-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP 8.3 with SQLite
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: Locked Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Read-only permission drift regression
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+          ERP_LOCAL_ADMIN_BYPASS: 'false'
+        run: php artisan test tests/Feature/Identity/StaffAccessReadinessAuditTest.php --no-ansi
+      - name: No application state written
+        if: always()
+        run: |
+          test ! -f .env
+          test ! -e database/e2e.sqlite
