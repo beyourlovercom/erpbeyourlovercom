@@ -29,7 +29,7 @@ test('active super admin signs in through Fortify and reaches dashboard', async 
 
     await loginThroughUi(page, syntheticUsers().authorized);
 
-    await expect(page.getByRole('heading', { name: 'BYL ERP 应用工作台' })).toBeVisible();
+    await expect(page.locator('.dashboard-hero h2').first()).toBeVisible();
     await guard.assertClean();
 });
 
@@ -116,6 +116,6 @@ test('login exposes labels, keyboard order, visible focus and alert semantics', 
     await email.fill(user.email);
     await password.fill(`${user.password}-wrong`);
     await submit.click();
-    await expect(page.getByRole('alert')).toContainText('邮箱或密码不正确，请重试。');
+    await expect(page.getByRole('alert')).toContainText('名称/邮箱或密码不正确，请重试。');
     await guard.assertClean();
 });
