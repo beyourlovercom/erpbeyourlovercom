@@ -38,6 +38,10 @@ jobs:
         run: |
           composer install --no-interaction --prefer-dist --no-progress
           npm ci --no-audit --no-fund
+      - name: Build frontend for Inertia test views
+        run: |
+          ln -s Pages resources/js/pages
+          npm run build
       - name: Prepare isolated SQLite test environment
         run: |
           cp .env.example .env
