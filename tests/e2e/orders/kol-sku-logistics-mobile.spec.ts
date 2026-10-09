@@ -11,13 +11,13 @@ test('M14 SKU picker and KOL logistics render without horizontal overflow', asyn
     await loginThroughUi(page, syntheticUsers().authorized);
 
     await page.goto('/kol/orders/create');
-    await expect(page.getByRole('heading', { name: '新建网红履约订单', level: 1 })).toBeVisible();
+    await expect(page.locator('.erp-form-content h1').getByText('新建网红履约订单')).toBeVisible();
 
     // The SKU suggestion must come from the real local backend, not a mock.
-    const combobox = page.getByPlaceholder('输入 SKU 或产品名称…');
+    const combobox = page.getByPlaceholder('搜索 SKU 或产品名称…');
     await combobox.fill('E2E-SKU-0001');
-    await expect(page.locator('.sku-combobox-dropdown li').first()).toBeVisible();
-    await page.locator('.sku-combobox-dropdown li').first().click();
+    await expect(page.locator('.sku-combobox-option').first()).toBeVisible();
+    await page.locator('.sku-combobox-option').first().click();
     await expect(combobox).toHaveValue('E2E-SKU-0001');
 
     await page.getByRole('button', { name: '编辑订单号' }).click();
@@ -33,7 +33,7 @@ test('M14 SKU picker and KOL logistics render without horizontal overflow', asyn
 
     await expect(page).toHaveURL(/\/kol\/orders\/\d+$/u);
     await page.goto('/kol/logistics');
-    await expect(page.getByRole('heading', { name: '物流进度' })).toBeVisible();
+    await expect(page.locator('.kol-logistics h2').getByText('物流进度')).toBeVisible();
     const card = page.locator('.shipment-card').filter({ hasText: 'E2E-PR440-MOBILE' });
     await expect(card).toHaveCount(1);
     await expect(card).toContainText('待发货');
