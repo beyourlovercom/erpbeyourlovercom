@@ -12,9 +12,9 @@ function getFieldInput(page: Page, label: string) {
 }
 
 async function selectSkuProduct(page: Page, query: string): Promise<void> {
-    const combobox = page.getByPlaceholder('输入 SKU 或产品名称…');
+    const combobox = page.getByPlaceholder('搜索 SKU 或产品名称…');
     await combobox.fill(query);
-    const option = page.locator('.sku-combobox-dropdown li').first();
+    const option = page.locator('.sku-combobox-option').first();
     await option.waitFor({ state: 'visible' });
     await option.click();
 }
