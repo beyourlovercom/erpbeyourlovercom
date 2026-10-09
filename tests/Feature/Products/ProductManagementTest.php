@@ -94,6 +94,33 @@ final class ProductManagementTest extends TestCase
         $this->actingAs($user)->get('/products/sku-search?q=test')->assertOk();
     }
 
+    public function test_manual_order_creator_can_search_skus_without_full_product_access(): void
+    {
+        $user = $this->userWith(['orders.create']);
+        Product::create(['source_type' => 'manual', 'sku' => 'KOL-LOOKUP-001', 'name' => 'KOL Lookup', 'product_type' => 'simple']);
+
+        $this->actingAs($user)->getJson('/products/sku-search?q=KOL-LOOKUP')
+            ->assertOk()
+            ->assertJsonFragment(['sku' => 'KOL-LOOKUP-001']);
+        $this->actingAs($user)->get('/products/list')->assertForbidden();
+        $this->actingAs($user)->get('/products/create')->assertForbidden();
+    }
+
+    public function test_users_without_product_or_order_create_permission_cannot_query_skus(): void
+    {
+        $user = $this->userWith(['dashboard.view']);
+        $this->actingAs($user)->getJson('/products/sku-search?q=KOL')->assertForbidden();
+    }
+
+    public function test_product_view_and_sync_permission_does_not_allow_woocommerce_product_mutation(): void
+    {
+        $user = $this->userWith(['products.view', 'sync.operate']);
+        Product::create(['source_type' => 'manual', 'sku' => 'NO-PRODUCT-SYNC', 'name' => 'Not Syncable', 'product_type' => 'simple']);
+        $product = Product::query()->where('sku', 'NO-PRODUCT-SYNC')->firstOrFail();
+
+        $this->actingAs($user)->post("/products/{$product->id}/sync-woocommerce")->assertForbidden();
+    }
+
     public function test_empty_sku_search_returns_default_sku_ascending_options(): void
     {
         $user = $this->userWith(['products.view']);
