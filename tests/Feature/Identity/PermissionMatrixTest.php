@@ -224,6 +224,22 @@ final class PermissionMatrixTest extends TestCase
         $this->assertSame(100, $item['progress']);
     }
 
+    public function test_kol_and_logistics_role_defaults_include_product_view_without_mutation(): void
+    {
+        foreach ([RolePreset::KolSpecialist, RolePreset::KolManager, RolePreset::Logistics, RolePreset::Operations] as $preset) {
+            $keys = $preset->permissions();
+            $this->assertContains('products.view', $keys, $preset->value);
+            $this->assertNotContains('products.operate', $keys, $preset->value);
+        }
+
+        // KOL staff do not receive broad Logistics view or any logistics mutation
+        // simply because they can choose an SKU.
+        foreach ([RolePreset::KolSpecialist, RolePreset::KolManager] as $preset) {
+            $this->assertNotContains('logistics.view', $preset->permissions(), $preset->value);
+            $this->assertNotContains('logistics.operate', $preset->permissions(), $preset->value);
+        }
+    }
+
     private function adminUser(): User
     {
         return $this->userWithPreset(RolePreset::Administrator);

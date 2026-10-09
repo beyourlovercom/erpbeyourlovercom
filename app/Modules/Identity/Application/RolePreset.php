@@ -36,10 +36,10 @@ enum RolePreset: string
     public function permissions(): array
     {
         return match ($this) {
-            self::Logistics => ['dashboard.view', 'orders.view', 'logistics.view', 'logistics.operate', 'sync.view', 'sync.operate'],
+            self::Logistics => ['dashboard.view', 'orders.view', 'logistics.view', 'logistics.operate', 'sync.view', 'sync.operate', 'products.view'],
             self::SalesRepresentative => ['dashboard.view', 'customers.view', 'customers.operate', 'orders.view', 'orders.create', 'orders.edit'],
-            self::KolSpecialist => ['dashboard.view', 'kol.view', 'kol.operate', 'kol.payouts.request', 'orders.view', 'orders.create', 'orders.edit'],
-            self::KolManager => ['dashboard.view', 'kol.view', 'kol.operate', 'kol.views.manage', 'kol.approvals.manage', 'kol.affiliates.manage', 'kol.payouts.request', 'kol.payouts.approve', 'orders.view', 'orders.create', 'orders.edit'],
+            self::KolSpecialist => ['dashboard.view', 'kol.view', 'kol.operate', 'kol.payouts.request', 'orders.view', 'orders.create', 'orders.edit', 'products.view'],
+            self::KolManager => ['dashboard.view', 'kol.view', 'kol.operate', 'kol.views.manage', 'kol.approvals.manage', 'kol.affiliates.manage', 'kol.payouts.request', 'kol.payouts.approve', 'orders.view', 'orders.create', 'orders.edit', 'products.view'],
             self::Finance => ['dashboard.view', 'orders.view', 'accounting.view', 'analysis.view', 'kol.payouts.manage'],
             self::Operations => ['dashboard.view', 'customers.view', 'customers.operate', 'orders.view', 'orders.create', 'orders.edit', 'logistics.view', 'sync.view', 'analysis.view', 'inventory.view', 'procurement.view', 'products.view', 'kol.view', 'kol.operate', 'kol.views.manage', 'marketing.view', 'marketing.operate'],
             self::Writer => ['dashboard.view', 'guides.view', 'guides.manage'],

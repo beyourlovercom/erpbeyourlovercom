@@ -5,6 +5,7 @@ namespace Tests\Feature\Logistics;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -93,10 +94,11 @@ final class CarrierWorkspaceTest extends TestCase
 
         $this->assertDatabaseHas('logistics_carriers', ['name' => 'UniUni', 'is_active' => 1]);
 
-        $this->actingAs($user)->get('/logistics')->assertInertia(
-            fn (Assert $page) => $page
-                ->where('carrierOptions.12.value', 'UniUni')
-                ->where('carrierOptions.12.label', 'UniUni')
+        // The /logistics entry now redirects to Wait Stock. Verify the
+        // canonical carrier catalog instead of expecting the legacy homepage.
+        $this->assertContains(
+            'UniUni',
+            array_column(app(CarrierServiceCatalog::class)->options(), 'value'),
         );
     }
 

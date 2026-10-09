@@ -9,16 +9,19 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth'])->get('/products/packaging/media/{media}', [ProductPackagingProfileController::class, 'media'])->whereNumber('media')->name('products.packaging.media');
 
+// Order creators can select an SKU without full product-module access.
+// skuSearch() applies products.view OR orders.create to this endpoint only.
+Route::middleware(['web', 'auth'])->get('/products/sku-search', [ProductController::class, 'skuSearch'])->name('products.sku-search');
+
 Route::middleware(['web', 'auth', 'can:products.view'])->group(function (): void {
     Route::get('/products', [ProductController::class, 'dashboard'])->name('products.dashboard');
     Route::get('/products/list', [ProductController::class, 'index'])->name('products.list');
-    Route::get('/products/sku-search', [ProductController::class, 'skuSearch'])->name('products.sku-search');
     Route::get('/products/skus', [ProductSkuController::class, 'index'])->name('products.skus');
     Route::get('/products/sku-aliases', [ProductSkuAliasController::class, 'index'])->name('products.sku-aliases');
     Route::get('/products/weight-evidence', [ProductWeightEvidenceController::class, 'index'])->name('products.weight-evidence.index');
     Route::get('/products/{id}', [ProductController::class, 'show'])->whereNumber('id')->name('products.show');
     Route::get('/products/media/{media}', [ProductController::class, 'media'])->whereNumber('media')->name('products.media.show');
-    Route::post('/products/{id}/sync-woocommerce', [ProductController::class, 'syncWooCommerce'])->whereNumber('id')->middleware('can:sync.operate')->name('products.sync-woocommerce');
+    Route::post('/products/{id}/sync-woocommerce', [ProductController::class, 'syncWooCommerce'])->whereNumber('id')->middleware(['can:products.operate', 'can:sync.operate'])->name('products.sync-woocommerce');
 });
 
 Route::middleware(['web', 'auth', 'can:products.operate'])->group(function (): void {

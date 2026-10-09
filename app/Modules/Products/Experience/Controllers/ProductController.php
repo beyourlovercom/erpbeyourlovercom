@@ -359,6 +359,11 @@ final class ProductController
 
     public function skuSearch(Request $request): JsonResponse
     {
+        // This lookup does not confer access to the full Products module.
+        abort_unless(
+            $request->user()?->can('products.view') || $request->user()?->can('orders.create'),
+            403,
+        );
         $query = trim((string) $request->input('q', ''));
         $results = $this->products->searchSkus($query);
 
