@@ -44,6 +44,17 @@ return Application::configure(basePath: dirname(__DIR__))
             fn (Request $request) => $request->is('api/*'),
         );
         $exceptions->render(function (\Throwable $exception, Request $request) {
+            // Keep Laravel's native validation, authentication and authorization
+            // responses. These are expected client errors, not server outages.
+            // In particular, Inertia validation failures must redirect back with
+            // session errors rather than rendering Errors/ServerError as HTTP 500.
+            if ($exception instanceof \Illuminate\Validation\ValidationException
+                || $exception instanceof \Illuminate\Auth\AuthenticationException
+                || $exception instanceof \Illuminate\Auth\Access\AuthorizationException
+                || $exception instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) {
+                return null;
+            }
+
             $status = $exception instanceof HttpExceptionInterface ? $exception->getStatusCode() : 500;
             if ($request->expectsJson() || ! $request->header('X-Inertia') || config('app.debug') || $status < 500) {
                 return null;
