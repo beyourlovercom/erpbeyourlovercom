@@ -1,0 +1,37 @@
+name: ERP Inertia Auth Validation P0 CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'bootstrap/app.php'
+      - 'tests/Feature/Auth/AuthAuditTest.php'
+      - '.github/workflows/erp-inertia-auth-validation-p0.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inertia-auth-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP 8.3 with SQLite
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Isolated test runtime
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+          php artisan migrate:fresh --force
+      - name: Inertia login error and audit assertions
+        run: php artisan test tests/Feature/Auth/AuthAuditTest.php
+      - name: Diff check
+        run: git diff --check
