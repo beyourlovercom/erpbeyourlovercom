@@ -61,14 +61,15 @@ test('customer manual order flows through logistics to shipped with the business
     await page.getByRole('button', { name: '创建订单' }).click();
 
     await expect(page).toHaveURL(/\/customers\/orders\/\d+$/u);
-    await expect(page.getByRole('heading', { name: 'E2E-CUS-0001' })).toBeVisible();
+    const customerErpId = await page.locator('.erp-form-content h1').innerText();
+    expect(customerErpId).toMatch(/^007erp-[0-9]{4}-/u);
 
     await page.goto('/customers/orders');
-    await expect(page.getByRole('link', { name: 'E2E-CUS-0001' })).toBeVisible();
+    await expect(page.getByRole('link', { name: customerErpId }).first()).toBeVisible();
 
     await page.goto('/logistics/pending');
     await expect(page).toHaveURL(/\/logistics\/wait-stock$/u);
-    await expect(page.getByText('E2E-CUS-0001')).toBeVisible();
+    await expect(page.getByText(customerErpId, { exact: true }).first()).toBeVisible();
 
     await guard.assertClean();
 });
@@ -91,15 +92,16 @@ test('KOL fulfillment manual order defaults to kol_fulfillment and shares the sa
     await page.getByRole('button', { name: '创建订单' }).click();
 
     await expect(page).toHaveURL(/\/kol\/orders\/\d+$/u);
-    await expect(page.getByRole('heading', { name: 'E2E-KOL-0001' })).toBeVisible();
+    const kolErpId = await page.locator('.erp-form-content h1').innerText();
+    expect(kolErpId).toMatch(/^007erp-[0-9]{4}-k9/u);
 
     await page.goto('/kol/orders');
-    await expect(page.getByRole('link', { name: 'E2E-KOL-0001' })).toBeVisible();
+    await expect(page.getByRole('link', { name: kolErpId }).first()).toBeVisible();
     await expect(page.getByRole('link', { name: 'E2E-CUS-0001' })).toHaveCount(0);
 
     await page.goto('/logistics/pending');
     await expect(page).toHaveURL(/\/logistics\/wait-stock$/u);
-    await expect(page.getByText('E2E-KOL-0001')).toBeVisible();
+    await expect(page.getByText(kolErpId, { exact: true }).first()).toBeVisible();
 
     await guard.assertClean();
 });
@@ -144,10 +146,12 @@ test('logistics copy falls back to a manual-selection path when the async Clipbo
     await fillItemRow(page, 'Fallback Product', '1', '7.00');
     await page.getByRole('button', { name: '创建订单' }).click();
     await expect(page).toHaveURL(/\/customers\/orders\/\d+$/u);
+    const fallbackErpId = await page.locator('.erp-form-content h1').innerText();
+    expect(fallbackErpId).toMatch(/^007erp-[0-9]{4}-/u);
 
     await page.goto('/logistics/pending');
     await expect(page).toHaveURL(/\/logistics\/wait-stock$/u);
-    await expect(page.getByText('E2E-FALLBACK-0001')).toBeVisible();
+    await expect(page.getByText(fallbackErpId, { exact: true }).first()).toBeVisible();
 
     await guard.assertClean();
 });
