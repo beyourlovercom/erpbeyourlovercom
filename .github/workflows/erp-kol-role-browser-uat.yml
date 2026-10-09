@@ -1,0 +1,54 @@
+name: ERP KOL Specialist Manager Browser UAT
+
+on:
+  pull_request:
+    branches:
+      - integration/pr437-pr439-dev-uat-20261008
+    paths:
+      - 'tests/e2e/**'
+      - '.github/workflows/erp-kol-role-browser-uat.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-kol-roles:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked dependencies
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          npm ci --no-audit --no-fund
+      - name: Pinned isolated Chromium
+        run: |
+          browser_path="${RUNNER_TEMP}/byl-playwright/1.62.1"
+          mkdir -p "$browser_path"
+          echo "PLAYWRIGHT_BROWSERS_PATH=$browser_path" >> "$GITHUB_ENV"
+          PLAYWRIGHT_BROWSERS_PATH="$browser_path" ./node_modules/.bin/playwright install --with-deps chromium
+      - name: E2E static and fail-closed safety contracts
+        run: |
+          npm run typecheck:e2e
+          npm run test:e2e:contracts
+      - name: Role-scoped Chromium UAT in disposable loopback SQLite
+        env:
+          BYL_E2E_BROWSER: ''
+          BYL_E2E_SUITE: kol-role
+        run: npm run test:e2e
+      - name: No in-repository environment or test database
+        if: always()
+        run: |
+          test ! -e .env
+          test ! -e database/e2e.sqlite
