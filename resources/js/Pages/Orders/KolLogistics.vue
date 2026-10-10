@@ -57,12 +57,12 @@ const page = (number: number) => router.get('/kol/logistics', { ...filters, page
           </div>
           <div class="meta"><span>业务单号：{{ order.external_order_number }}</span><span>订单日期：{{ order.order_date || '—' }}</span></div>
           <div class="details">
-            <span>仓库：{{ order.warehouse || '待分配' }}</span>
+            <span>仓库：{{ order.warehouse || (order.shipment_status === 'pending' ? '待分配' : '未记录') }}</span>
             <span>承运商：{{ order.carrier || '待确认' }}</span>
             <span>单号：{{ order.tracking_number || '未填写' }}</span>
             <span v-if="isManager">负责人：{{ order.owner || '—' }}</span>
           </div>
-          <div class="card-foot"><span>发货时间：{{ order.shipped_at || '尚未发货' }}</span><Link :href="`/kol/orders/${order.id}`">查看订单</Link></div>
+          <div class="card-foot"><span>发货时间：{{ order.shipped_at || (order.shipment_status === 'pending' ? '尚未发货' : '未记录') }}</span><Link :href="`/kol/orders/${order.id}`">查看订单</Link></div>
         </article>
         <div v-if="orders.data.length === 0" class="mvp-empty">当前权限与筛选范围内没有物流记录</div>
       </div>
