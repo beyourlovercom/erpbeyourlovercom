@@ -25,6 +25,19 @@ final class PermissionMatrixTest extends TestCase
         $this->assertFalse($target->hasPermission('system.permissions.manage'));
     }
 
+    // A2: every built-in employee preset receives product catalog read-only access.
+    public function test_every_staff_preset_can_view_products_without_product_mutation_rights(): void
+    {
+        foreach (RolePreset::cases() as $preset) {
+            $user = $this->userWithPreset($preset);
+
+            $this->assertTrue($user->hasPermission('products.view'), $preset->value.' must view products');
+            if ($preset !== RolePreset::Administrator) {
+                $this->assertFalse($user->hasPermission('products.operate'), $preset->value.' must not edit products');
+            }
+        }
+    }
+
     // B: custom mode exact allow set overrides role permissions
     public function test_custom_mode_exact_allow_set_overrides_role_permissions(): void
     {
