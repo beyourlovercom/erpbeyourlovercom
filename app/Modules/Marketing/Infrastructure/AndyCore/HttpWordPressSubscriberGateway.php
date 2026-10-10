@@ -16,10 +16,23 @@ final class HttpWordPressSubscriberGateway implements WordPressSubscriberGateway
 
     public function descriptor(): array { return ['configured' => $this->configured(), 'url' => $this->baseUrl(), 'connection_key' => $this->connectionKey()]; }
 
-    public function snapshotSubscribers(?string $cursor = null, ?string $updatedAfter = null, int $limit = 100): array
+    public function snapshotSubscribers(?string $cursor = null, ?string $updatedAfter = null, int $limit = 100, ?string $source = null): array
     {
         if (! $this->configured()) throw new RuntimeException('Andy Core WordPress connector is not configured.');
-        $query = array_filter(['cursor' => $cursor, 'updated_after' => $updatedAfter, 'limit' => min(self::MaximumLimit, max(1, $limit))], fn ($value) => $value !== null);
+        if ($source !== null && $source !== 'andy_core_newsletter') {
+            throw new RuntimeException('Unsupported WordPress subscriber snapshot source.');
+        }
+        if ($source === 'andy_core_newsletter' && ! (bool) config('services.andy_core.newsletter_snapshot_enabled', false)) {
+            throw new RuntimeException('Andy Core native Newsletter snapshot contract is not enabled.');
+        }
+        if ($cursor !== null && (trim($cursor) === '' || strlen($cursor) > 1024)) {
+            throw new RuntimeException('Invalid subscriber snapshot cursor.');
+        }
+        if ($updatedAfter !== null && ! preg_match('/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:Z|[+-]\\d{2}:\\d{2})$/', $updatedAfter)) {
+            throw new RuntimeException('Invalid subscriber updated_after timestamp.');
+        }
+        // Source is part of the URL BEFORE signing; null retains exact Elementor legacy path.
+        $query = array_filter(['source' => $source, 'cursor' => $cursor, 'updated_after' => $updatedAfter, 'limit' => min(self::MaximumLimit, max(1, $limit))], fn ($value) => $value !== null);
         $path = self::Namespace.'/snapshot/subscribers?'.http_build_query($query);
         [$timestamp, $nonce] = [(string) CarbonImmutable::now('UTC')->getTimestamp(), Str::uuid()->toString()];
         $canonical = implode("\n", ['GET', $path, $timestamp, $nonce, $this->connectionKey(), '', hash('sha256', '')]);
@@ -40,7 +53,16 @@ final class HttpWordPressSubscriberGateway implements WordPressSubscriberGateway
         if (! is_array($raw) || ($raw['ok'] ?? null) !== true || ($raw['contract_version'] ?? null) !== '1' || ! is_string($raw['request_id'] ?? null) || $raw['request_id'] === '' || ($raw['connection_key'] ?? null) !== $this->connectionKey()) throw new RuntimeException('Andy Core WordPress connector returned an invalid response envelope.');
         $data = $raw['data'] ?? [];
         if (! is_array($data) || ! is_array($data['items'] ?? null)) throw new RuntimeException('Andy Core WordPress connector returned invalid subscriber data.');
-        return ['items' => array_values($data['items']), 'next_cursor' => isset($data['next_cursor']) && $data['next_cursor'] !== '' ? (string) $data['next_cursor'] : null, 'source_site' => isset($data['source_site']) ? (string) $data['source_site'] : $this->connectionKey(), 'request_id' => $raw['request_id']];
+        // Core native endpoint is pending a cross-repository freeze. Require a source echo
+        // so that an outdated Core server cannot silently return legacy Elementor items.
+        if ($source !== null && ($data['source'] ?? null) !== $source) {
+            throw new RuntimeException('Andy Core WordPress connector returned the wrong subscriber source.');
+        }
+        $next = $data['next_cursor'] ?? null;
+        if ($next !== null && (! is_string($next) || $next === '' || strlen($next) > 1024)) {
+            throw new RuntimeException('Andy Core WordPress connector returned an invalid cursor.');
+        }
+        return ['items' => array_values($data['items']), 'next_cursor' => $next, 'source_site' => isset($data['source_site']) ? (string) $data['source_site'] : $this->connectionKey(), 'request_id' => $raw['request_id'], 'source' => $source];
     }
 
     private function configured(): bool { return $this->baseUrl() !== '' && $this->keyId() !== '' && $this->secret() !== ''; }
