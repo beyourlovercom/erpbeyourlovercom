@@ -10,6 +10,7 @@ on:
       - 'app/Modules/Marketing/Application/**'
       - 'app/Modules/Marketing/Infrastructure/EloquentMarketingSubscriberSyncWriter.php'
       - 'tests/Feature/Marketing/NewsletterM2SyncTest.php'
+      - 'tests/Feature/Marketing/NewsletterM2HttpContractTest.php'
       - 'tests/Feature/Marketing/WordPressSubscriberSyncTest.php'
       - 'tests/Feature/Marketing/HttpWordPressSubscriberGatewayTest.php'
       - 'app/Modules/Sync/**'
@@ -59,6 +60,7 @@ jobs:
           tests/Feature/Kol/HttpAffiliateWpGatewayTest.php
           tests/Feature/Sync/WordPressConnectorSettingsTest.php
           tests/Feature/Marketing/NewsletterM2SyncTest.php
+          tests/Feature/Marketing/NewsletterM2HttpContractTest.php
           tests/Feature/Marketing/WordPressSubscriberSyncTest.php
           tests/Feature/Marketing/HttpWordPressSubscriberGatewayTest.php
           tests/Feature/SyncWorkspaceTest.php
