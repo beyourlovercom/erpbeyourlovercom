@@ -52,7 +52,7 @@ final class WordPressSubscriberSyncTest extends TestCase
     {
         $this->app->bind(WordPressSubscriberGateway::class, fn () => new class implements WordPressSubscriberGateway {
             public function descriptor(): array { return ['configured' => true, 'url' => 'https://wp.test', 'connection_key' => 'beyourlover.com']; }
-            public function snapshotSubscribers(?string $cursor = null, ?string $updatedAfter = null, int $limit = 100): array { throw new \RuntimeException('provider unavailable'); }
+            public function snapshotSubscribers(?string $cursor = null, ?string $updatedAfter = null, int $limit = 100, ?string $source = null): array { throw new \RuntimeException('provider unavailable'); }
         });
 
         $this->actingAs($this->operator())->post('/sync/wpapi/subscribers')
@@ -66,7 +66,7 @@ final class WordPressSubscriberSyncTest extends TestCase
         $this->app->bind(WordPressSubscriberGateway::class, fn () => new class($items) implements WordPressSubscriberGateway {
             public function __construct(private array $items) {}
             public function descriptor(): array { return ['configured' => true, 'url' => 'https://wp.test', 'connection_key' => 'beyourlover.com']; }
-            public function snapshotSubscribers(?string $cursor = null, ?string $updatedAfter = null, int $limit = 100): array { return ['items' => $this->items, 'next_cursor' => null, 'source_site' => 'beyourlover.com', 'request_id' => 'test-request']; }
+            public function snapshotSubscribers(?string $cursor = null, ?string $updatedAfter = null, int $limit = 100, ?string $source = null): array { return ['items' => $this->items, 'next_cursor' => null, 'source_site' => 'beyourlover.com', 'request_id' => 'test-request']; }
         });
     }
 
