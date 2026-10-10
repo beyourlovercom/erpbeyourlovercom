@@ -66,7 +66,7 @@ jobs:
 
       - name: Install disposable WordPress and pinned Core candidate
         env:
-          WP_DIR: \${{ runner.temp }}/m2-joint-wordpress
+          WP_DIR: ${{ runner.temp }}/m2-joint-wordpress
         run: |
           set -euo pipefail
           curl -fsSL -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
@@ -81,8 +81,8 @@ jobs:
 
       - name: Seed isolated Core + legacy provider fixtures and masked HMAC key
         env:
-          WP_DIR: \${{ runner.temp }}/m2-joint-wordpress
-          M2_CREDENTIALS_FILE: \${{ runner.temp }}/m2-shared-secret.txt
+          WP_DIR: ${{ runner.temp }}/m2-joint-wordpress
+          M2_CREDENTIALS_FILE: ${{ runner.temp }}/m2-shared-secret.txt
         run: |
           set -euo pipefail
           wp eval-file "$GITHUB_WORKSPACE/erp/tests/fixtures/marketing-m2-joint-wordpress-bootstrap.php" --path="$WP_DIR"
@@ -93,7 +93,7 @@ jobs:
 
       - name: Run actual WordPress REST callback over localhost HTTP
         env:
-          M2_WP_DOCROOT: \${{ runner.temp }}/m2-joint-wordpress
+          M2_WP_DOCROOT: ${{ runner.temp }}/m2-joint-wordpress
         run: |
           set -euo pipefail
           php -S 127.0.0.1:8090 -t "$M2_WP_DOCROOT" "$GITHUB_WORKSPACE/erp/tests/fixtures/marketing-m2-joint-wp-router.php" > "$RUNNER_TEMP/m2-wp-router.log" 2>&1 &
