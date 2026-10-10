@@ -7,6 +7,9 @@ on:
       - 'app/Modules/Kol/Infrastructure/AffiliateWp/**'
       - 'app/Modules/Marketing/Experience/Routes/web.php'
       - 'app/Modules/Marketing/Infrastructure/AndyCore/**'
+      - 'app/Modules/Marketing/Application/**'
+      - 'app/Modules/Marketing/Infrastructure/EloquentMarketingSubscriberSyncWriter.php'
+      - 'tests/Feature/Marketing/NewsletterM2SyncTest.php'
       - 'tests/Feature/Marketing/WordPressSubscriberSyncTest.php'
       - 'tests/Feature/Marketing/HttpWordPressSubscriberGatewayTest.php'
       - 'app/Modules/Sync/**'
@@ -55,6 +58,7 @@ jobs:
           php artisan test
           tests/Feature/Kol/HttpAffiliateWpGatewayTest.php
           tests/Feature/Sync/WordPressConnectorSettingsTest.php
+          tests/Feature/Marketing/NewsletterM2SyncTest.php
           tests/Feature/Marketing/WordPressSubscriberSyncTest.php
           tests/Feature/Marketing/HttpWordPressSubscriberGatewayTest.php
           tests/Feature/SyncWorkspaceTest.php
