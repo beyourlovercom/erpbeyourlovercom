@@ -127,9 +127,13 @@ final class NewsletterM2SyncTest extends TestCase
             'provider' => 'wordpress', 'external_subscription_id' => 'sub-site-b',
             'source_site' => 'site-b.example', 'status' => 'unsubscribed',
         ]);
-        $this->actingAs($this->operator())->withHeader('X-Inertia', 'true')
+        $this->actingAs($this->operator())
             ->get('/marketing/subscribers?source_site=site-b.example&status=subscribed')
-            ->assertOk()->assertJsonPath('props.subscribers.total', 0);
+            ->assertOk()
+            ->assertInertia(fn (\Inertia\Testing\AssertableInertia $page) => $page
+                ->component('Marketing/Subscribers/Index')
+                ->where('subscribers.total', 0)
+                ->etc());
     }
 
     private function native(string $status, string $at): array
