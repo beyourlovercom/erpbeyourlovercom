@@ -16,10 +16,12 @@ final class HttpWordPressSubscriberGateway implements WordPressSubscriberGateway
 
     public function descriptor(): array { return ['configured' => $this->configured(), 'url' => $this->baseUrl(), 'connection_key' => $this->connectionKey()]; }
 
-    public function snapshotSubscribers(?string $cursor = null, ?string $updatedAfter = null, int $limit = 100): array
+    public function snapshotSubscribers(?string $cursor = null, ?string $updatedAfter = null, int $limit = 100, ?string $source = null): array
     {
         if (! $this->configured()) throw new RuntimeException('Andy Core WordPress connector is not configured.');
-        $query = array_filter(['cursor' => $cursor, 'updated_after' => $updatedAfter, 'limit' => min(self::MaximumLimit, max(1, $limit))], fn ($value) => $value !== null);
+        if ($source !== null && $source !== 'andy_core_newsletter') throw new \InvalidArgumentException('Unsupported subscriber source.');
+        // The omitted source retains the historical Elementor HMAC URL exactly.
+        $query = array_filter([...($source === null ? [] : ['source' => $source]), 'cursor' => $cursor, 'updated_after' => $updatedAfter, 'limit' => min(self::MaximumLimit, max(1, $limit))], fn ($value) => $value !== null);
         $path = self::Namespace.'/snapshot/subscribers?'.http_build_query($query);
         [$timestamp, $nonce] = [(string) CarbonImmutable::now('UTC')->getTimestamp(), Str::uuid()->toString()];
         $canonical = implode("\n", ['GET', $path, $timestamp, $nonce, $this->connectionKey(), '', hash('sha256', '')]);
@@ -40,7 +42,12 @@ final class HttpWordPressSubscriberGateway implements WordPressSubscriberGateway
         if (! is_array($raw) || ($raw['ok'] ?? null) !== true || ($raw['contract_version'] ?? null) !== '1' || ! is_string($raw['request_id'] ?? null) || $raw['request_id'] === '' || ($raw['connection_key'] ?? null) !== $this->connectionKey()) throw new RuntimeException('Andy Core WordPress connector returned an invalid response envelope.');
         $data = $raw['data'] ?? [];
         if (! is_array($data) || ! is_array($data['items'] ?? null)) throw new RuntimeException('Andy Core WordPress connector returned invalid subscriber data.');
-        return ['items' => array_values($data['items']), 'next_cursor' => isset($data['next_cursor']) && $data['next_cursor'] !== '' ? (string) $data['next_cursor'] : null, 'source_site' => isset($data['source_site']) ? (string) $data['source_site'] : $this->connectionKey(), 'request_id' => $raw['request_id']];
+        if (count($data['items']) > min(self::MaximumLimit, max(1, $limit))) throw new RuntimeException('Andy Core snapshot exceeded requested page size.');
+        $next = $data['next_cursor'] ?? null;
+        if ($next !== null && (! is_string($next) || $next === '' || strlen($next) > 2048)) throw new RuntimeException('Andy Core returned an invalid snapshot cursor.');
+        $site = $data['source_site'] ?? $this->connectionKey();
+        if (! is_string($site) || ($source !== null && ! preg_match('/^[a-z0-9.-]{1,190}$/D', $site))) throw new RuntimeException('Andy Core returned an invalid source site.');
+        return ['items' => array_values($data['items']), 'next_cursor' => $next, 'source_site' => $site, 'request_id' => $raw['request_id']];
     }
 
     private function configured(): bool { return $this->baseUrl() !== '' && $this->keyId() !== '' && $this->secret() !== ''; }

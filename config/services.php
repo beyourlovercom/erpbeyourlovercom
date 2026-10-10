@@ -25,6 +25,8 @@ return [
         'retry_times' => (int) env('ANDY_CORE_RETRY_TIMES', 2),
         'retry_sleep_ms' => (int) env('ANDY_CORE_RETRY_SLEEP_MS', 500),
         'uat_fake' => filter_var(env('ANDY_CORE_UAT_FAKE', false), FILTER_VALIDATE_BOOL),
+        // Native source disabled until Core signs and freezes its snapshot contract.
+        'newsletter_snapshot_enabled' => filter_var(env('ANDY_CORE_NEWSLETTER_SNAPSHOT_ENABLED', false), FILTER_VALIDATE_BOOL),
     ],
 
     'woocommerce' => [
