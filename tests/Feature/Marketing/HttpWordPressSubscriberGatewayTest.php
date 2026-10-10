@@ -107,6 +107,65 @@ final class HttpWordPressSubscriberGatewayTest extends TestCase
         app(HttpWordPressSubscriberGateway::class)->snapshotSubscribers();
     }
 
+
+    public function test_explicit_native_source_is_included_in_signed_path_before_hmac(): void
+    {
+        $this->fakeSuccessfulSnapshot();
+        app(HttpWordPressSubscriberGateway::class)->snapshotSubscribers('native-token', '2026-10-10T01:00:00Z', 25, 'andy_core_newsletter');
+        Http::assertSent(function (Request $request): bool {
+            $parts = parse_url($request->url());
+            $signedPath = ($parts['path'] ?? '').'?'.($parts['query'] ?? '');
+            parse_str($parts['query'] ?? '', $query);
+            $canonical = implode("\n", ['GET', $signedPath,
+                $request->header('X-YBY-Timestamp')[0] ?? '',
+                $request->header('X-YBY-Nonce')[0] ?? '',
+                self::ConnectionKey, '', hash('sha256', '')]);
+            return $query === ['source' => 'andy_core_newsletter', 'cursor' => 'native-token',
+                    'updated_after' => '2026-10-10T01:00:00Z', 'limit' => '25']
+                && hash_equals(hash_hmac('sha256', $canonical, self::SharedSecret),
+                    $request->header('X-YBY-Signature')[0] ?? '');
+        });
+    }
+
+    public function test_unknown_source_is_rejected_before_network_call(): void
+    {
+        Http::fake();
+        try {
+            app(HttpWordPressSubscriberGateway::class)->snapshotSubscribers(null, null, 100, 'wordpress_users');
+            $this->fail('Unsupported source must not be accepted');
+        } catch (\InvalidArgumentException $expected) {
+            Http::assertNothingSent();
+        }
+    }
+
+    public function test_native_malformed_source_site_and_oversized_page_are_rejected(): void
+    {
+        Http::fake(['*' => Http::response($this->envelope([
+            'items' => [], 'source_site' => 'https://unexpected.example', 'next_cursor' => null,
+        ]), 200)]);
+        $this->expectException(\RuntimeException::class);
+        app(HttpWordPressSubscriberGateway::class)->snapshotSubscribers(null, null, 100, 'andy_core_newsletter');
+    }
+
+    public function test_native_page_limit_is_clamped_to_one_hundred_before_signing(): void
+    {
+        $this->fakeSuccessfulSnapshot();
+        app(HttpWordPressSubscriberGateway::class)->snapshotSubscribers(null, null, 1000, 'andy_core_newsletter');
+        Http::assertSent(function (Request $request): bool {
+            $parts = parse_url($request->url());
+            parse_str($parts['query'] ?? '', $query);
+            return $query === ['source' => 'andy_core_newsletter', 'limit' => '100'];
+        });
+    }
+
+    public function test_native_snapshot_http_503_is_a_provider_failure_not_an_empty_success(): void
+    {
+        Http::fake(['*' => Http::response(['error' => 'unavailable'], 503)]);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('HTTP 503');
+        app(HttpWordPressSubscriberGateway::class)->snapshotSubscribers(null, null, 100, 'andy_core_newsletter');
+    }
+
     private function envelope(array $data): array
     {
         return [

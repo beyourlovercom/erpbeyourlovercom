@@ -1,0 +1,125 @@
+name: ERP Marketing M2 Joint Core WordPress E2E (synthetic only)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/erp-marketing-m2-joint-uat.yml'
+      - 'tests/fixtures/marketing-m2-joint-*.php'
+      - 'tests/Feature/Marketing/NewsletterM2JointWordPressE2ETest.php'
+      - 'app/Modules/Marketing/**'
+      - 'config/services.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  joint-core-erp:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: m2_joint_disposable
+          MYSQL_USER: m2_joint
+          MYSQL_PASSWORD: runner-only-pass
+          MYSQL_ROOT_PASSWORD: runner-root-only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -prunner-root-only"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Check out private ERP candidate
+        uses: actions/checkout@v4
+        with:
+          path: erp
+
+      - name: Check out PUBLIC Core native candidate at audited exact SHA
+        uses: actions/checkout@v4
+        with:
+          repository: beyourlovercom/YBY-Core
+          ref: 41b6cdd1b185e089f80c50159d9908b811a11120
+          path: core
+          persist-credentials: false
+
+      - name: Setup isolated PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3, mysqli, pdo_mysql
+          coverage: none
+
+      - name: Install ERP dependencies without touching ERP production
+        working-directory: erp
+        run: |
+          set -euo pipefail
+          composer install --no-interaction --prefer-dist --no-progress
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+
+      - name: Install disposable WordPress and pinned Core candidate
+        env:
+          WP_DIR: ${{ runner.temp }}/m2-joint-wordpress
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+          chmod +x /usr/local/bin/wp
+          wp core download --path="$WP_DIR" --version=6.6.2
+          wp config create --path="$WP_DIR" --dbname=m2_joint_disposable --dbuser=m2_joint --dbpass=runner-only-pass --dbhost=127.0.0.1 --skip-check
+          wp core install --path="$WP_DIR" --url=http://127.0.0.1:8090 --title=M2JointSynthetic --admin_user=admin --admin_password=disposable-only --admin_email=admin@example.test --skip-email
+          mkdir -p "$WP_DIR/wp-content/plugins/yby-core"
+          cp -a core/. "$WP_DIR/wp-content/plugins/yby-core/"
+          wp plugin activate yby-core --path="$WP_DIR"
+          echo "M2_JOINT_CORE_GIT_PIN=41b6cdd1b185e089f80c50159d9908b811a11120"
+
+      - name: Seed isolated Core + legacy provider fixtures and masked HMAC key
+        env:
+          WP_DIR: ${{ runner.temp }}/m2-joint-wordpress
+          M2_CREDENTIALS_FILE: ${{ runner.temp }}/m2-shared-secret.txt
+        run: |
+          set -euo pipefail
+          wp eval-file "$GITHUB_WORKSPACE/erp/tests/fixtures/marketing-m2-joint-wordpress-bootstrap.php" --path="$WP_DIR"
+          test -s "$M2_CREDENTIALS_FILE"
+          secret="$(cat "$M2_CREDENTIALS_FILE")"
+          echo "::add-mask::$secret"
+          echo "M2_WP_SECRET=$secret" >> "$GITHUB_ENV"
+
+      - name: Run actual WordPress REST callback over localhost HTTP
+        env:
+          M2_WP_DOCROOT: ${{ runner.temp }}/m2-joint-wordpress
+        run: |
+          set -euo pipefail
+          php -S 127.0.0.1:8090 -t "$M2_WP_DOCROOT" "$GITHUB_WORKSPACE/erp/tests/fixtures/marketing-m2-joint-wp-router.php" > "$RUNNER_TEMP/m2-wp-router.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/m2-wp.pid"
+          for attempt in $(seq 1 40); do
+            if curl --silent --max-time 2 http://127.0.0.1:8090/wp-json/andy-core/v1/erp/snapshot/subscribers?limit=1 > "$RUNNER_TEMP/m2-health-body"; then
+              break
+            fi
+            sleep 1
+          done
+          test -s "$RUNNER_TEMP/m2-health-body"
+          kill -0 "$(cat "$RUNNER_TEMP/m2-wp.pid")"
+          echo "M2_JOINT_REAL_WORDPRESS_HTTP_STARTED=PASS"
+
+      - name: Execute real cross-repo signed HTTP to ERP subscriber DB UAT
+        working-directory: erp
+        env:
+          M2_WP_BASE_URL: http://127.0.0.1:8090
+        run: |
+          set -euo pipefail
+          php artisan test tests/Feature/Marketing/NewsletterM2JointWordPressE2ETest.php --no-ansi
+          echo "M2_JOINT_CROSS_REPO_HTTP_ERP_DB_PASS"
+
+      - name: Stop disposable WordPress HTTP server
+        if: always()
+        run: |
+          if test -f "$RUNNER_TEMP/m2-wp.pid"; then
+            kill "$(cat "$RUNNER_TEMP/m2-wp.pid")" || true
+          fi
