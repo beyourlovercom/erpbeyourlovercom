@@ -41,6 +41,7 @@ return [
     ['key' => 'kol', 'label' => '网红', 'emoji' => '⭐', 'path' => '/kol', 'route' => 'shell.kol', 'permission' => 'kol.view', 'status' => 'in_progress', 'progress' => 77, 'placeholder' => false, 'children' => [
         ['key' => 'kol-library', 'label' => '红人库', 'path' => '/kol/library', 'route' => 'kol.library', 'permission' => 'kol.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'kol-orders', 'label' => '网红订单', 'path' => '/kol/orders', 'route' => 'kol.orders', 'permission' => 'orders.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
+        ['key' => 'kol-logistics', 'label' => '物流进度', 'path' => '/kol/logistics', 'route' => 'kol.logistics', 'permission' => 'kol.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'kol-library-create', 'label' => '新增网红', 'path' => '/kol/library/create', 'route' => 'kol.library.create', 'permission' => 'kol.operate', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'kol-approval-kols', 'label' => 'KOL 审批', 'path' => '/kol/approvals/kols', 'route' => 'kol.approvals.kols', 'permission' => 'kol.approvals.manage', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'kol-approval-collaborations', 'label' => '付费合作审批', 'path' => '/kol/approvals/collaborations', 'route' => 'kol.approvals.collaborations', 'permission' => 'kol.approvals.manage', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],

@@ -124,6 +124,26 @@ class AppShellNavigationTest extends TestCase
             ->where('shellNavigation.1.children.6.label', '承运商'));
     }
 
+    public function test_owner_approved_kol_logistics_entry_is_visible_only_with_kol_permission(): void
+    {
+        $specialist = $this->userWith(['dashboard.view', 'kol.view', 'orders.view'], 'kol-logistics-menu-specialist');
+        $nav = app(ErpShellNavigation::class)->for($specialist);
+        $this->assertNull(collect($nav)->firstWhere('key', 'logistics'), 'KOL specialist must not receive general Logistics navigation');
+        $kol = collect($nav)->firstWhere('key', 'kol');
+        $this->assertNotNull($kol);
+        $item = collect($kol['children'])->firstWhere('key', 'kol-logistics');
+        $this->assertNotNull($item);
+        $this->assertSame('/kol/logistics', $item['path']);
+        $this->assertSame('kol.logistics', $item['route']);
+        $this->assertSame('物流进度', $item['label']);
+        $this->actingAs($specialist)->get('/kol/logistics')->assertOk();
+
+        $withoutKol = $this->userWith(['dashboard.view', 'logistics.view'], 'logistics-without-kol');
+        $other = app(ErpShellNavigation::class)->for($withoutKol);
+        $this->assertNull(collect($other)->firstWhere('key', 'kol'));
+        $this->actingAs($withoutKol)->get('/kol/logistics')->assertForbidden();
+    }
+
     public function test_inventory_navigation_includes_active_warehouse_shortcuts(): void
     {
         Warehouse::query()->delete();
