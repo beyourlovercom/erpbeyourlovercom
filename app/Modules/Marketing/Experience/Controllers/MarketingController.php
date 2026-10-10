@@ -77,13 +77,19 @@ final class MarketingController
         if ($search !== '') {
             $query->where(fn ($q) => $q->where('email', 'like', "%{$search}%")->orWhere('first_name', 'like', "%{$search}%")->orWhere('last_name', 'like', "%{$search}%"));
         }
-        foreach (['provider', 'source_site'] as $filter) {
-            if ($value = $request->input($filter)) {
-                $query->whereHas('subscriptions', fn ($q) => $q->where($filter, $value));
+        // Multiple filters must refer to ONE subscription row. Otherwise a
+        // subscribed fact from Site A could falsely satisfy Site B's opt-out.
+        $subscriptionFilters = [];
+        foreach (['provider', 'source_site', 'status'] as $filter) {
+            $value = $request->input($filter);
+            if (is_string($value) && trim($value) !== '') {
+                $subscriptionFilters[$filter] = trim($value);
             }
         }
-        if ($status = $request->input('status')) {
-            $query->whereHas('subscriptions', fn ($q) => $q->where('status', $status));
+        if ($subscriptionFilters !== []) {
+            $query->whereHas('subscriptions', function ($q) use ($subscriptionFilters): void {
+                foreach ($subscriptionFilters as $key => $value) $q->where($key, $value);
+            });
         }
 
         $subscribers = $query->orderBy('email')->paginate(50)->withQueryString();
