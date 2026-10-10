@@ -32,8 +32,11 @@ final class PermissionMatrixTest extends TestCase
             $user = $this->userWithPreset($preset);
 
             $this->assertTrue($user->hasPermission('products.view'), $preset->value.' must view products');
+            $this->assertTrue($user->hasPermission('inventory.view'), $preset->value.' must view inventory');
             if ($preset !== RolePreset::Administrator) {
                 $this->assertFalse($user->hasPermission('products.operate'), $preset->value.' must not edit products');
+                $this->assertFalse($user->hasPermission('inventory.operate'), $preset->value.' must not operate inventory');
+                $this->assertFalse($user->hasPermission('inventory.warehouses.manage'), $preset->value.' must not manage warehouses');
             }
         }
     }
