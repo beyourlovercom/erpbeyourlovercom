@@ -342,3 +342,48 @@ Each implementation package remains bounded and independently tested. M1.2B must
 - `ERP-KOL-V1-CROSS-PHASE-CLOSURE-001`: OWNER UAT PASS / PR #143 / READY FOR REVIEW.
 
 Cross-phase Closure remains verification/UAT only unless a regression proves a bounded compatibility defect. The deferred intelligence/automation list in section 10, including influencer discovery and Instagram/X automation, remains deferred and is not activated by V1 closure.
+## 13. Production operational status and Owner pause — 2026-10-10
+
+**Scope of this status update:** Latest Owner operational acceptance and Production evidence, following the historical V1 cross-phase closure. This is a dated operational addendum to the canonical roadmap, **not** a new Roadmap, a fresh implementation phase, or a claim that every future KOL intelligence / commission capability is complete.
+
+**Owner decision (2026-10-10):** The KOL module's immediate business requirement is: an authorized **internal KOL Specialist** enters influencer information in ERP; creating the KOL automatically provisions a corresponding **WordPress account**, an **active AffiliateWP account**, and a **KOL-linked unique WooCommerce Coupon** on the live WWW site. This core workflow may be used in normal operations. **Pause further KOL-module development for now.** ERP commission lookup/dashboard completeness is not an operational activation gate: **AffiliateWP remains the authoritative Affiliate/Referral/Payout system**, WooCommerce the Coupon and customer-order provider, and ERP a managed entry point and read projection. No duplicate ERP commission authority is to be introduced.
+
+### 13.1 Current Production operating path
+
+| Capability | Owner-facing operating status | Evidence / boundary |
+| --- | --- | --- |
+| KOL specialist creates KOL via ERP | **LIVE / actual Hiko specialist Production canary PASS** | Real ERP actor Hiko #6 created the bounded KOL canary and KOL audit/owner record was verified. [Issue #447](https://github.com/beyourlovercom/erpbeyourlovercom/issues/447), closed with cleanup exception. |
+| New WordPress user | **LIVE / Production E2E PASS** | Signed WWW provider readback confirmed WordPress user for Hiko-created KOL. |
+| New AffiliateWP account | **LIVE / Production E2E PASS** | Signed provider readback confirmed active AffiliateWP account bound to the WordPress user/KOL. |
+| New dedicated WooCommerce coupon | **LIVE / Production E2E PASS** | Signed provider readback confirmed linked Coupon, 20% policy **in the verified canary**. A discount policy is configuration, not a permanent promise for every later KOL. |
+| Coupon code uniqueness | **IMPLEMENTED** | Create form requires the Specialist to **enter a code**; ERP checks case-insensitive normalized code in ERP coupon mirror **and live WWW/WooCommerce**, blocking duplicates and unavailable/provider-error preflight. Creation uses idempotency and exact provider readback. **Code is NOT generated automatically** by the current Create form. |
+| KOL Specialist order visibility | **Production Owner UAT PASS within tested scope** | SQL-level ownership and foreign-ID denial; Hiko #6 has no real owned fulfillment rows at the verification point. [Issue #429](https://github.com/beyourlovercom/erpbeyourlovercom/issues/429), closed. |
+| KOL Manager order visibility | **Production Owner UAT PASS** | Emma #3 and Guts #2 are KOL Managers, not Specialists, and see team KOL orders. Manager KOL scope does not imply customer-order scope. [Issue #429](https://github.com/beyourlovercom/erpbeyourlovercom/issues/429). |
+| KOL-only logistics status | **LIVE / Production code-only deploy + Owner UAT PASS** | Read-only \`/kol/logistics\` shipped in scoped 7-file RC, owner-only for Specialist, all-KOL-only for Manager, no broad Logistics edit/export or customer PII. [Issue #438](https://github.com/beyourlovercom/erpbeyourlovercom/issues/438), closed. |
+| AffiliateWP referrals, commissions and payouts | **Provider truth = AffiliateWP** | Do not require ERP commission UI to be complete for KOL account provisioning. A full, naturally occurring coupon-redemption → referred order → commission → refund/payout E2E was **not** established by the account-creation canary. |
+
+**Operational entry:** [Create KOL on live ERP](https://erp.beyourlover.com/kol/library/create). The employee must provide a fresh contact email, WordPress password and confirmation (at least 12 chars, containing letters and numbers), manually chosen unique Coupon code, and other required form information. The create endpoint calls \`KolCreateAutoProvisionService\` and only returns full success after Affiliate and Coupon are active with verified provider readback. On partial failure ERP retains a KOL requiring attention; **do not blindly re-create the same identity**. The production-side signed Connector health check on 2026-10-10 returned \`ok=true\`, \`woocommerce_active=true\`, \`affiliatewp_active=true\`, and \`writable=true\`; this does not replace per-KOL readback.
+
+### 13.2 Relevant GitHub/Production closure facts
+
+- KOL V1 M1.0–M1.4F cross-phase foundation was historically closed (see original sections above and [reconciliation V3](28_ERP_ROADMAP_PRODUCTION_RECONCILIATION_V3.md)). Do not repeat these phases.
+- [Issue #445](https://github.com/beyourlovercom/erpbeyourlovercom/issues/445): earlier Production provisioning canary; closed with its documented limits.
+- [Issue #447](https://github.com/beyourlovercom/erpbeyourlovercom/issues/447): **real Hiko specialist** creating ERP KOL then WWW WordPress/AffiliateWP/Coupon E2E; **functional Owner PASS**, closed with **explicit residual cleanup waiver**, not a zero-residue result.
+- [Issue #429](https://github.com/beyourlovercom/erpbeyourlovercom/issues/429): KOL order ownership isolation; **Owner UAT PASS**, closed.
+- [Issue #438](https://github.com/beyourlovercom/erpbeyourlovercom/issues/438): dedicated read-only KOL Logistics; scoped Production code release and three-role Owner UAT **PASS**, closed.
+- **Production deployment identity as of 2026-10-10:** \`/Users/a/AI/production/erp.beyourlover.com/releases/kol-p1-scoped-20261010-d27234f8\` (immutable scoped overlay, not all of latest main). P1 RC SHA-256 \`d27234f8483298de37aee938b13ed7e41c4b7a7c88438c5d9de52b5f3053ac43\`, 7 files; prior release preserved for rollback. Independent backup and isolated MySQL restore parity PASS. The historical deploy report explicitly recorded **no DB migration, business DML, permission changes, Woo sync, or service restarts**. Subsequent deployments must reconfirm current state; this snapshot is not an evergreen deployment approval.
+
+### 13.3 Known limitations and non-blocking follow-ups (do not mislabel PASS)
+
+1. **Residual temporary Canary records:** Hiko E2E KOL **#963** and ERP affiliate/coupon mirrors (**#1791 / #2845**) were deliberately **not hard-deleted**. WordPress/Affiliate identity deletion appeared to complete, but Woo Coupon **#41360** still resolved in signed coupon lookup; permanent deletion and coupon redemption-disable status are **not proven**. Owner explicitly waived this fixture cleanup as a prerequisite to functional closure, **not** the risk that the coupon may remain valid. Any future cleanup must be separately scoped with exact IDs and provider readback; never re-create the same fixture.
+2. **Positive real specialist-owned fulfillment:** Hiko #6 owned **zero** KOL fulfillment orders during Production Owner UAT. Synthetic own-order positive coverage passed; verify naturally occurring Hiko-owned order visibility when data exist. No Production synthetic order creation is authorized by this roadmap entry.
+3. **Live referral/commission outcome:** A real coupon redemption → Woo customer order → AffiliateWP referral/commission → refund or payout path is a **separate operational observation**. It does not block accepting the tested account-creation workflow; never claim it was fully tested by the provisioning canary.
+4. **Code UX:** Manually entered unique code is live; auto-generated suggested unique code is a **deferred UX enhancement**, not present today.
+5. **Historical unrelated typecheck debt:** The P1 production-sourced build has two pre-existing Logistics TypeScript test diagnostics, identically present before and after P1. Do not claim global typecheck green on that basis.
+
+### 13.4 Paused / resumption contract
+
+**Development state: TEMPORARILY PAUSED by Owner; core operational workflow is LIVE.** Do not infer a new permission to deploy, alter Production data, clean Canary residues, change discount rates, grant roles or change WooCommerce/AffiliateWP providers. The three completed P0/P1 issues (#447, #429, #438) remain closed.
+
+When the Owner resumes this track: start from **GitHub main as source truth**, read this dated addendum plus linked issue evidence, recheck the **then-current** Production release and WWW Connector, and choose only a new bounded task (for example: operational coupon→referral check, exact-ID canary cleanup, or optional code generator). Do **not** restart M1.0–M1.4F or mistake the paused state for unverified operational readiness.
+
