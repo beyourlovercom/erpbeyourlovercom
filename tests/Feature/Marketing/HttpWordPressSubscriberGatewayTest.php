@@ -147,6 +147,25 @@ final class HttpWordPressSubscriberGatewayTest extends TestCase
         app(HttpWordPressSubscriberGateway::class)->snapshotSubscribers(null, null, 100, 'andy_core_newsletter');
     }
 
+    public function test_native_page_limit_is_clamped_to_one_hundred_before_signing(): void
+    {
+        $this->fakeSuccessfulSnapshot();
+        app(HttpWordPressSubscriberGateway::class)->snapshotSubscribers(null, null, 1000, 'andy_core_newsletter');
+        Http::assertSent(function (Request $request): bool {
+            $parts = parse_url($request->url());
+            parse_str($parts['query'] ?? '', $query);
+            return $query === ['source' => 'andy_core_newsletter', 'limit' => '100'];
+        });
+    }
+
+    public function test_native_snapshot_http_503_is_a_provider_failure_not_an_empty_success(): void
+    {
+        Http::fake(['*' => Http::response(['error' => 'unavailable'], 503)]);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('HTTP 503');
+        app(HttpWordPressSubscriberGateway::class)->snapshotSubscribers(null, null, 100, 'andy_core_newsletter');
+    }
+
     private function envelope(array $data): array
     {
         return [
