@@ -107,6 +107,79 @@ final class HttpWordPressSubscriberGatewayTest extends TestCase
         app(HttpWordPressSubscriberGateway::class)->snapshotSubscribers();
     }
 
+
+    public function test_native_source_and_cursor_are_signed_as_exact_path_and_query(): void
+    {
+        config(['services.andy_core.newsletter_snapshot_enabled' => true]);
+        Http::fake(['*' => Http::response($this->envelope([
+            'source' => 'andy_core_newsletter', 'items' => [], 'next_cursor' => null,
+            'source_site' => self::ConnectionKey,
+        ]), 200)]);
+
+        app(HttpWordPressSubscriberGateway::class)->snapshotSubscribers(
+            'native-cursor', '2026-09-01T00:00:00Z', 100, 'andy_core_newsletter'
+        );
+        Http::assertSent(function (Request $request): bool {
+            $parts = parse_url($request->url());
+            $path = ($parts['path'] ?? '').'?'.($parts['query'] ?? '');
+            parse_str($parts['query'] ?? '', $query);
+            $canonical = implode("\n", [
+                'GET', $path,
+                $request->header('X-YBY-Timestamp')[0] ?? '',
+                $request->header('X-YBY-Nonce')[0] ?? '',
+                self::ConnectionKey, '', hash('sha256', ''),
+            ]);
+            return $query === [
+                'source' => 'andy_core_newsletter', 'cursor' => 'native-cursor',
+                'updated_after' => '2026-09-01T00:00:00Z', 'limit' => '100',
+            ] && hash_equals(
+                hash_hmac('sha256', $canonical, self::SharedSecret),
+                $request->header('X-YBY-Signature')[0] ?? ''
+            );
+        });
+    }
+
+    public function test_native_snapshot_is_denied_by_default_until_core_contract_freeze(): void
+    {
+        config(['services.andy_core.newsletter_snapshot_enabled' => false]);
+        Http::fake();
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('not enabled');
+        app(HttpWordPressSubscriberGateway::class)->snapshotSubscribers(source: 'andy_core_newsletter');
+        Http::assertNothingSent();
+    }
+
+    public function test_old_core_endpoint_cannot_be_misread_as_native_response(): void
+    {
+        config(['services.andy_core.newsletter_snapshot_enabled' => true]);
+        // A legacy Core instance can return valid HMAC envelope but ignores source.
+        $this->fakeSuccessfulSnapshot();
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('wrong subscriber source');
+        app(HttpWordPressSubscriberGateway::class)->snapshotSubscribers(source: 'andy_core_newsletter');
+    }
+
+    public function test_native_http_503_redirect_and_invalid_cursor_fail_closed(): void
+    {
+        config(['services.andy_core.newsletter_snapshot_enabled' => true]);
+        foreach ([503, 302] as $status) {
+            Http::fake(['*' => Http::response([], $status)]);
+            try {
+                app(HttpWordPressSubscriberGateway::class)->snapshotSubscribers(source: 'andy_core_newsletter');
+                $this->fail('Provider failure should throw.');
+            } catch (\RuntimeException $exception) {
+                $this->assertStringContainsString('HTTP '.$status, $exception->getMessage());
+            }
+        }
+        Http::fake(['*' => Http::response($this->envelope([
+            'source' => 'andy_core_newsletter', 'items' => [],
+            'next_cursor' => ['malformed'], 'source_site' => self::ConnectionKey,
+        ]), 200)]);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('invalid cursor');
+        app(HttpWordPressSubscriberGateway::class)->snapshotSubscribers(source: 'andy_core_newsletter');
+    }
+
     private function envelope(array $data): array
     {
         return [
