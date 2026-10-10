@@ -113,6 +113,25 @@ final class NewsletterM2SyncTest extends TestCase
         $this->assertDatabaseHas('sync_run_items', ['provider_reference' => 'andy_core_newsletter', 'status' => 'failed']);
     }
 
+    public function test_combined_site_and_status_filters_match_the_same_subscription_fact(): void
+    {
+        $subscriber = \App\Modules\Marketing\Infrastructure\Models\MarketingSubscriber::query()
+            ->create(['email' => 'mixed@example.test']);
+        \App\Modules\Marketing\Infrastructure\Models\MarketingSubscription::query()->create([
+            'subscriber_id' => $subscriber->id, 'channel' => 'email',
+            'provider' => 'wordpress', 'external_subscription_id' => 'sub-site-a',
+            'source_site' => 'site-a.example', 'status' => 'subscribed',
+        ]);
+        \App\Modules\Marketing\Infrastructure\Models\MarketingSubscription::query()->create([
+            'subscriber_id' => $subscriber->id, 'channel' => 'email',
+            'provider' => 'wordpress', 'external_subscription_id' => 'sub-site-b',
+            'source_site' => 'site-b.example', 'status' => 'unsubscribed',
+        ]);
+        $this->actingAs($this->operator())->withHeader('X-Inertia', 'true')
+            ->get('/marketing/subscribers?source_site=site-b.example&status=subscribed')
+            ->assertOk()->assertJsonPath('props.subscribers.total', 0);
+    }
+
     private function native(string $status, string $at): array
     {
         return ['external_subscription_id' => self::NativeId, 'email' => 'user@example.test',
