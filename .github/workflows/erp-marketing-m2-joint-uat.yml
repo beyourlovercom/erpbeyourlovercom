@@ -44,7 +44,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: beyourlovercom/YBY-Core
-          ref: 41b6cdd1b185e089f80c50159d9908b811a11120
+          ref: fc2f60023a2d11210ebcd2c720d81a737f52964c
           path: core
           persist-credentials: false
 
@@ -77,7 +77,7 @@ jobs:
           mkdir -p "$WP_DIR/wp-content/plugins/yby-core"
           cp -a core/. "$WP_DIR/wp-content/plugins/yby-core/"
           wp plugin activate yby-core --path="$WP_DIR"
-          echo "M2_JOINT_CORE_GIT_PIN=41b6cdd1b185e089f80c50159d9908b811a11120"
+          echo "M2_JOINT_CORE_GIT_PIN=fc2f60023a2d11210ebcd2c720d81a737f52964c"
 
       - name: Seed isolated Core + legacy provider fixtures and masked HMAC key
         env:
