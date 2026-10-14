@@ -43,7 +43,7 @@ const props = defineProps<{
   media?: ProductMedia[]
   woo?: { provider_status: string | null; categories: string[]; description: string | null; short_description: string | null; variation_count: number | null; provider_created_at: string | null; provider_modified_at: string | null; last_synced_at: string | null; connection_key: string } | null
   parameterTask?: {id:number; enabled:boolean; is_required:boolean; assigned_user_id:number|null; required_fields:string[]}|null
-  parameterSubmissions?: {id:number;status:string;created_by:number;review_note:string|null;submitted_at:string|null;measurements:Record<string,string>;accessories:{name:string;quantity:number;unit:string}[]}[]
+  parameterSubmissions?: {id:number;status:string;created_by:number;review_note:string|null;submitted_at:string|null;measurements:Record<string,string>;accessories:{name:string;quantity:number;unit:string}[];notes?:string|null;media?:{id:number;name:string;url:string}[]}[]
   approvedParameterMeasurements?: Record<string,string>
   approvedAccessories?: {name:string;quantity:number|string;unit:string;notes:string|null}[]
   factoryUserOptions?: {id:number;name:string}[]
@@ -112,9 +112,26 @@ function saveFactoryTask() {
   router.post('/products/parameter-tasks/'+props.product.id, {...factoryTask}, {preserveScroll:true})
 }
 function reviewSubmission(id:number, decision:'approved'|'rejected') {
-  const apply_accessories = decision === 'approved' && window.confirm('如有配件清单，是否将它采纳为该产品当前清单？')
+  const target=(props.parameterSubmissions??[]).find(x=>x.id===id)
+  if (!target || target.status!=='submitted') return
+  let review_note=''
+  if (decision==='rejected') {
+    const explanation=window.prompt('请填写驳回理由（工厂员工可在记录中查看）')
+    if(!explanation?.trim()) return
+    review_note=explanation.trim()
+  }
+  const apply_accessories = decision === 'approved' && !!target.accessories?.length
+    && window.confirm('是否将已审核配件清单采纳为该产品当前清单？')
   router.post('/products/parameter-submissions/'+props.product.id+'/'+id+'/review',
-    {decision,apply_accessories},{preserveScroll:true})
+    {decision,apply_accessories,review_note},{preserveScroll:true})
+}
+const declaredCartonOverfilled=(measurements:Record<string,string>)=>{
+  const m=measurements
+  const pack=['package_length_cm','package_width_cm','package_height_cm'].map(k=>Number(m[k]))
+  const box=['carton_length_cm','carton_width_cm','carton_height_cm'].map(k=>Number(m[k]))
+  const units=Number(m.units_per_carton)
+  return [...pack,...box,units].every(x=>Number.isFinite(x)&&x>0)
+    && pack.reduce((a,b)=>a*b,1)*units > box.reduce((a,b)=>a*b,1)
 }
 
 const selectRelative = async (tab: Tab, delta: number) => {
@@ -170,6 +187,7 @@ const selectRelative = async (tab: Tab, delta: number) => {
         <p class="product360-meta-note">此阶段不向工厂开放产品主档修改权限，不自动采纳测量结果；原有重量证据审核照常运行。</p>
         <div v-if="canOperate" class="product360-factory-task">
           <h4>指定工厂填写任务</h4>
+          <a href="/products/factory-parameters" class="product360-meta-note">工厂员工任务入口（仅显示被分配的产品） →</a>
           <label><input v-model="factoryTask.enabled" type="checkbox" /> 启用填写任务</label>
           <label><input v-model="factoryTask.is_required" type="checkbox" /> 必填任务</label>
           <label>指派员工
@@ -187,11 +205,26 @@ const selectRelative = async (tab: Tab, delta: number) => {
           <p class="product360-meta-note">工厂员工仅能查看获指派产品的独立参数填报页，不能因此获得产品成本或审核权限。</p>
           <h4>近期测量提交</h4>
           <div v-for="record in parameterSubmissions ?? []" :key="record.id" class="product360-factory-record">
-            <span>#{{ record.id }} · {{record.status}} · 工厂员工 #{{record.created_by}}</span>
-            <button v-if="record.status === 'submitted'" type="button" @click="reviewSubmission(record.id,'approved')">审核通过</button>
-            <button v-if="record.status === 'submitted'" type="button" @click="reviewSubmission(record.id,'rejected')">驳回</button>
-            <small v-if="record.review_note">{{record.review_note}}</small>
+            <div class="product360-evidence-head">
+              <strong>#{{record.id}} · {{record.status}} · 填报人 #{{record.created_by}}</strong>
+              <small>{{record.submitted_at ? date(record.submitted_at) : '未提交'}}</small>
+            </div>
+            <div class="product360-evidence-fields">
+              <span v-for="(val,key) in record.measurements" :key="key">{{key}}：{{val}}</span>
+            </div>
+            <p v-if="record.notes" class="product360-meta-note">说明：{{record.notes}}</p>
+            <p v-if="record.accessories?.length" class="product360-meta-note">配件：{{record.accessories.map(a=>a.name+' × '+a.quantity+' '+a.unit).join('、')}}</p>
+            <div v-if="record.media?.length" class="product360-v2-actions">
+              <a v-for="photo in record.media" :key="photo.id" :href="photo.url" target="_blank" rel="noopener" class="mvp-button mvp-button-secondary">查看照片：{{photo.name}}</a>
+            </div>
+            <p v-if="declaredCartonOverfilled(record.measurements)" class="product360-anomaly">包装体积 × 装箱数量超过外箱体积，禁止直接审核采纳；请工厂核实。</p>
+            <p v-if="record.review_note" class="product360-meta-note">审核备注：{{record.review_note}}</p>
+            <div v-if="record.status === 'submitted'" class="product360-v2-actions">
+              <button type="button" :disabled="declaredCartonOverfilled(record.measurements)" @click="reviewSubmission(record.id,'approved')">审核通过</button>
+              <button type="button" @click="reviewSubmission(record.id,'rejected')">驳回</button>
+            </div>
           </div>
+          <p v-if="!parameterSubmissions?.length" class="product360-meta-note">暂无测量提交记录</p>
         </div>
         <div class="product360-v2-actions"><Link href="/products/weight-evidence" class="mvp-button mvp-button-secondary">现有重量证据工作区</Link><Link v-if="canOperate" :href="'/products/' + product.id + '/edit'" class="mvp-button mvp-button-secondary">现有产品编辑</Link></div>
       </article>
@@ -233,6 +266,11 @@ const selectRelative = async (tab: Tab, delta: number) => {
 .product360-factory-task input[type=checkbox] { accent-color:#176e50; }
 .product360-required-fields { display:flex; gap:9px; flex-wrap:wrap; align-items:center; }
 .product360-factory-record { display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid #e4ebe5; flex-wrap:wrap; }
+.product360-evidence-head{display:flex;gap:12px;justify-content:space-between;flex-wrap:wrap}
+.product360-evidence-fields{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.product360-evidence-fields span{padding:4px 7px;background:#eff5f0;border-radius:5px;font-size:11px}
+.product360-anomaly{padding:8px;background:#fff0e5;color:#a75a2a;border-radius:6px;font-size:12px}
+.product360-factory-record button:disabled{opacity:.4;cursor:not-allowed}
 .product360-factory-record button { border:1px solid #aacbb8; border-radius:6px; padding:5px 10px; background:#fff; color:#20694a; }
 
 .product360-subtabs{display:flex;gap:6px;flex-wrap:wrap;margin:-4px 0 14px;}

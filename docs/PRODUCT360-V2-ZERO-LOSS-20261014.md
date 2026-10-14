@@ -37,13 +37,37 @@
 6. Production untouched; final Owner visual desktop and iPhone14 UAT **separately required** before main merge/deploy.
 
 ## M3 isolated factory-parameter workflow (2026-10-14)
-- Added Product-owned \`product_parameter_tasks\`, \`product_parameter_submissions\`, \`product_parameter_media\`, \`product_parameter_accessories\`. **No migration applied to Dev/Production**. Migration verified in temporary SQLite only.
+- Added Product-owned `product_parameter_tasks`, `product_parameter_submissions`, `product_parameter_media`, `product_parameter_accessories`. **No migration applied to Dev/Production**. Migration verified in temporary SQLite only.
 - Product 360 uses same Product ID; admins assign one specific active staff ID per Product and select individual required fields. No separate Product master/list was created.
-- Dedicated factory route under \`/products/factory-parameters/{product}\` is gated by the existing \`inventory.packaging.submit\` permission **AND** a record-level enabled + assigned-user check. Does not grant \`products.view\`, \`products.operate\`, cost access, Woo sync or audit permissions.
+- Dedicated factory route under `/products/factory-parameters/{product}` is gated by the existing `inventory.packaging.submit` permission **AND** a record-level enabled + assigned-user check. Does not grant `products.view`, `products.operate`, cost access, Woo sync or audit permissions.
 - Factory can save own drafts, enter measured product/box/courier/carton weights and dimensions (unknown fields remain unfilled), enter accessories/quantities, upload up to eight OPTIONAL images, and submit for review. Submission cannot be edited; subsequent corrections create a new draft.
-- Existing Inventory \`packaging_measurement\` requires weight/dimension images and was intentionally **NOT** reused/changed: it is shipment-level rather than product-parameter evidence.
-- Separate \`products.operate\` review. Reviewers cannot approve their own submission. Approval never auto-writes \`products.weight_kg\`, \`shipping_weight_kg\` or shipment truth. Accessory snapshot adoption is an explicit reviewer switch; data remains sourced to approved evidence ID.
-- Original \`/products/weight-evidence\` adoption/override rules and original packaging page remain unchanged; no automated backfill/sibling SKU data inference.
+- Existing Inventory `packaging_measurement` requires weight/dimension images and was intentionally **NOT** reused/changed: it is shipment-level rather than product-parameter evidence.
+- Separate `products.operate` review. Reviewers cannot approve their own submission. Approval never auto-writes `products.weight_kg`, `shipping_weight_kg` or shipment truth. Accessory snapshot adoption is an explicit reviewer switch; data remains sourced to approved evidence ID.
+- Original `/products/weight-evidence` adoption/override rules and original packaging page remain unchanged; no automated backfill/sibling SKU data inference.
 - Factory form is mobile responsive; Admin Product 360 shows task controls and last submissions, approved material/box/courier parameters and current approved accessories.
-- Local isolated focused PHP regression \`Product360Test\` + \`WeightEvidenceTest\` + \`ProductParameterFactoryWorkflowTest\`: **38/38 PASS, 191 assertions**; Vue Product 360 + Product Grid **35/35 PASS**; Vue typecheck **PASS**; Vite production build **PASS**.
+- Local isolated focused PHP regression `Product360Test` + `WeightEvidenceTest` + `ProductParameterFactoryWorkflowTest`: **38/38 PASS, 191 assertions**; Vue Product 360 + Product Grid **35/35 PASS**; Vue typecheck **PASS**; Vite production build **PASS**.
 - **Remaining release gate:** real role/screenshot Owner UAT on isolated deployment, Migration/MySQL8 and rollback rehearsal, security review on file/photo downloads and role assignment; PR remains DRAFT and must not merge/deploy Production without distinct approval.
+
+## M3 security + canonical table consolidation checkpoint (2026-10-14, continued)
+- GitHub PR #459 early M3 exact-head `592ce758cdd8b513f369ff5addf2b1af2b423103`: **3/3 GitHub CI SUCCESS** (`sqlite-regression`, `mysql8-runtime`, `kol-sku-permission`); new commit CI must be rechecked independently.
+- Canonical `/products/list` has **three view configurations of the same row and table**: standard, weight/dimensions, inside-package accessories. Existing Product ID, SKU, search, pagination and preferred standard columns remain; no second Product master/grid table created. Only verified approved fields/approved accessories are displayed as authoritative, with a separate review-status column to avoid disguising submitted evidence as approved.
+- Server-side filters: 已填 / 待填 / 必填 / 其他 apply to the same Products pagination query; category counts are placed in the filter tabs, **no separate large count boxes**. Accessory view filters 有配件 / 待补充.
+- Scoped factory inbox `/products/factory-parameters`: assigned products ONLY. Registered under original Inventory shell as **产品参数填报**, preserves existing 包装与测量 entry. Factory role cannot enter full Product grid or read costs without separate Product permission.
+- Admin Product 360 review shows submitted measurements, supporting notes, accessories, media links, author and time; rejection now requires a reason. No automatic Product master overwrite.
+- Assignment must target an active staff account already holding `inventory.packaging.submit`, and "required" must specify concrete required fields. Unknown/disabled/unauthorized accounts are rejected.
+- Carton geometry fail-closed: if declared package volume × pieces/carton > master carton volume, allow draft/submission for historical evidence but **reject approval** and show admin warning; e.g. 50×23×19 cm ×12 cannot fit a 60×40×50 cm carton even by volume alone. This is a necessary but not sufficient packing feasibility check.
+- More recent approved partial submissions **do not erase older approved parameter values**; product detail overlays the latest confirmed nonempty field by field.
+- Audit target `ProductParameterTask::class` used for task assignment, `ProductParameterSubmission::class` for measurement submissions.
+- Isolated SQLite scratch DB migration lifecycle: **4/4 new tables up PASS → 4/4 rolled back PASS → 4/4 reapplied PASS**, original `products` table preserved. No Dev/Production schema changes.
+- Regression: `Product360Test + WeightEvidenceTest + ProductParameterFactoryWorkflowTest + ProductParameterGridViewsTest + AppShellNavigationTest`: **65/65 PHP PASS, 696 assertions**.
+- Vue: `Index.test.ts + Show.v2.test.ts + ProductParameterViews.v2.test.ts`: **39/39 PASS**. Full `npm run typecheck`, full Vite build, `git diff --check` PASS.
+- Separate local `ProductGridExportTest` Excel generation requires PhpSpreadsheet, which is absent from this scratch checkout's pre-existing Composer vendor snapshot; this unrelated environment limitation is not evidence of an XLSX regression. New GitHub CI should verify full dependencies; standard list XLSX export and its original PHP endpoint were left unchanged.
+- **Hard gate remains:** remote isolated authenticated browser session startup was blocked by a remote security gate. No screenshot/desktop/iPhone14 Owner UAT can honestly be declared PASS on current evidence. Do not bypass the gate, deploy Production, run real-world migrations, merge Draft PR, reboot READY devices or touch real Woo/orders/payment records.
+
+## Final Owner UAT acceptance sequence (once authorized isolated GUI is available)
+1. Open `/products/list` as manager, verify identical main grid and three view presets. Search/paginate; measurement statuses and accessory totals correlate with same Product ID.
+2. Open Product 360, inspect 5 top-level and nested tabs, compare every legacy panel/column/action/permission against zero-loss matrix.
+3. Assign one **synthetic** SKU to a test factory account with `inventory.packaging.submit`. Factory sees only their own task in Inventory → 产品参数填报; no costs/general product list access.
+4. On actual iPhone 14 viewport 390×844: fill net/box/courier weights, package and carton dimensions, material and accessories, save draft, submit **without** photo; optionally test image capture/upload. Confirm validation and anti-double-submit.
+5. Admin reviews evidence and photos, rejects invalid carton geometry, records reason; submit corrected data, approve only after review, optionally adopts accessories; verify Product weight/stock/orders/Woo untouched.
+6. Negative security checks for unassigned, inactive, read-only roles and cross-product photo URLs, rollback/recovery, audit evidence and exact-head CI before separate merge/deploy approval.

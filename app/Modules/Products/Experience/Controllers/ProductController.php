@@ -64,14 +64,63 @@ final class ProductController
     public function index(Request $request): Response
     {
         $filters = $request->only(['search', 'sort', 'direction']);
+        $view = in_array($request->query('view'), ['standard','measurements','accessories'], true)
+            ? $request->query('view') : 'standard';
+        $parameterStatus = (string) $request->query('parameter_status', '');
+        if ($view !== 'standard') $filters += ['view' => $view, 'parameter_status' => $parameterStatus];
         $perPage = $this->productListPageSize($request);
         $products = $this->products->list($filters, $perPage);
         $this->loadGridRelations($products->getCollection());
         $stock = $this->inventory->forProductIds($products->getCollection()->pluck('id')->all());
+        $parameterRows = [];
+        if ($view !== 'standard') {
+            $ids = $products->getCollection()->pluck('id')->all();
+            $tasks = ProductParameterTask::query()->whereIn('product_id', $ids)->get()->keyBy('product_id');
+            $submissions = ProductParameterSubmission::query()->whereIn('product_id', $ids)
+                ->whereIn('status', ['submitted','approved'])->orderByDesc('id')->get()->groupBy('product_id');
+            $parts = ProductParameterAccessory::query()->whereIn('product_id', $ids)
+                ->get()->groupBy('product_id');
+            foreach ($ids as $id) {
+                $history = $submissions->get($id, collect());
+                $approved = $history->where('status', 'approved');
+                $measures = [];
+                foreach ($approved as $record) {
+                    foreach ($record->measurements ?? [] as $key => $value) {
+                        if (!array_key_exists($key, $measures) && $value !== null && $value !== '') {
+                            $measures[$key] = $value;
+                        }
+                    }
+                }
+                $assigned = $tasks->get($id);
+                $state = $history->isNotEmpty() ? '已填'
+                    : ($assigned?->enabled ? ($assigned->is_required ? '必填' : '待填') : '其他');
+                $accessories = $parts->get($id, collect());
+                $parameterRows[$id] = [
+                    'parameter_status' => $state,
+                    'parameter_review_status' => $history->first()?->status === 'submitted' ? '待审核'
+                        : ($history->first()?->status === 'approved' ? '已采纳' : null),
+                    'material' => $measures['material'] ?? null,
+                    'net_weight_kg' => $measures['net_weight_kg'] ?? null,
+                    'color_box_gross_kg' => $measures['color_box_gross_kg'] ?? null,
+                    'courier_gross_kg' => $measures['courier_gross_kg'] ?? null,
+                    'package_dimensions' => $this->measurementDimension($measures, 'package'),
+                    'carton_dimensions' => $this->measurementDimension($measures, 'carton'),
+                    'carton_gross_weight_kg' => $measures['carton_gross_weight_kg'] ?? null,
+                    'accessories_count' => $accessories->count(),
+                    'accessories_summary' => $accessories->map(fn ($a) =>
+                        $a->name.' × '.$a->quantity.' '.$a->unit)->join('、'),
+                ];
+            }
+        }
 
         return Inertia::render('Products/Index', [
-            'products' => $products->through(fn (Product $p): array => $this->gridRow($p, $stock[(int) $p->id] ?? []))->toArray(),
-            'filters' => $request->only(['search', 'per_page', 'sort', 'direction']),
+            'products' => $products->through(fn (Product $p): array => [
+                ...$this->gridRow($p, $stock[(int) $p->id] ?? []),
+                ...($parameterRows[(int) $p->id] ?? []),
+            ])->toArray(),
+            'filters' => [...$request->only(['search', 'per_page', 'sort', 'direction']),
+                'view' => $view, 'parameter_status' => $parameterStatus],
+            'parameterCounts' => $view === 'measurements' ? $this->parameterCoverageCounts() : [],
             'canOperate' => Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false,
         ]);
     }
@@ -217,6 +266,30 @@ final class ProductController
     }
 
     /** @return array<string,string> */
+    private function measurementDimension(array $m, string $prefix): ?string
+    {
+        $keys = [$prefix.'_length_cm', $prefix.'_width_cm', $prefix.'_height_cm'];
+        if (!collect($keys)->every(fn ($key) => is_numeric($m[$key] ?? null)
+            && (float) $m[$key] > 0)) return null;
+        return implode(' × ', array_map(fn ($key) => (string) $m[$key], $keys)).' cm';
+    }
+
+    private function parameterCoverageCounts(): array
+    {
+        $accepted = fn ($q) => $q->whereIn('status', ['submitted','approved']);
+        $unfilled = Product::query()->whereDoesntHave('parameterSubmissions', $accepted);
+        return [
+            '全部' => Product::query()->count(),
+            '已填' => Product::query()->whereHas('parameterSubmissions', $accepted)->count(),
+            '必填' => (clone $unfilled)->whereHas('parameterTask', fn ($q) =>
+                $q->where('enabled', true)->where('is_required', true))->count(),
+            '待填' => (clone $unfilled)->whereHas('parameterTask', fn ($q) =>
+                $q->where('enabled', true)->where('is_required', false))->count(),
+            '其他' => (clone $unfilled)->whereDoesntHave('parameterTask', fn ($q) =>
+                $q->where('enabled', true))->count(),
+        ];
+    }
+
     private static function gridExportColumns(): array
     {
         return [
@@ -260,10 +333,20 @@ final class ProductController
         $canManageProduct = Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false;
         $parameterTask = ProductParameterTask::query()->where('product_id', $id)->first();
         $parameterSubmissions = $canManageProduct
-            ? ProductParameterSubmission::query()->where('product_id', $id)->latest('id')->limit(15)->get()
+            ? ProductParameterSubmission::query()->where('product_id', $id)->with('media')->latest('id')->limit(15)->get()
             : collect();
-        $latestApprovedParameters = ProductParameterSubmission::query()->where('product_id', $id)
-            ->where('status', 'approved')->latest('reviewed_at')->first();
+        $approvedParameterMeasurements = [];
+        // Overlay latest confirmed non-empty values, rather than hiding previously
+        // approved fields when a later submission updates only one parameter.
+        ProductParameterSubmission::query()->where('product_id', $id)
+            ->where('status', 'approved')->orderByDesc('reviewed_at')->orderByDesc('id')
+            ->get(['measurements'])->each(function ($record) use (&$approvedParameterMeasurements): void {
+                foreach ($record->measurements ?? [] as $key => $value) {
+                    if (!array_key_exists($key, $approvedParameterMeasurements) && $value !== null && $value !== '') {
+                        $approvedParameterMeasurements[$key] = $value;
+                    }
+                }
+            });
 
         return Inertia::render('Products/Show', [
             'product' => [
@@ -311,7 +394,7 @@ final class ProductController
             'collaborations' => $this->kolProjection->forProduct($id),
             'kolShipping' => $this->kolProjection->shippingSummaryForProduct($id),
             'audit' => $this->activityProjection->forProduct($id),
-            'parameterTask' => $parameterTask ? [
+            'parameterTask' => $canManageProduct && $parameterTask ? [
                 'id' => $parameterTask->id, 'enabled' => $parameterTask->enabled,
                 'is_required' => $parameterTask->is_required,
                 'assigned_user_id' => $parameterTask->assigned_user_id,
@@ -323,12 +406,20 @@ final class ProductController
                 'submitted_at' => $r->submitted_at?->toIso8601String(),
                 'measurements' => $r->measurements ?? [],
                 'accessories' => $r->accessories ?? [],
+                'notes' => $r->notes,
+                'media' => $r->media->map(fn ($m) => ['id' => $m->id,
+                    'name' => $m->original_name,
+                    'url' => route('products.parameter.media', $m->id)])->all(),
             ])->all(),
-            'approvedParameterMeasurements' => $latestApprovedParameters?->measurements ?? [],
+            'approvedParameterMeasurements' => $approvedParameterMeasurements,
             'approvedAccessories' => ProductParameterAccessory::query()->where('product_id', $id)
                 ->orderBy('id')->get(['name', 'quantity', 'unit', 'notes'])->toArray(),
             'factoryUserOptions' => $canManageProduct
-                ? User::query()->where('is_active', true)->orderBy('name')->get(['id', 'name'])->toArray()
+                ? User::query()->where('is_active', true)
+                    ->where(function ($query): void {
+                        $query->whereHas('roles.permissions', fn ($p) => $p->where('key', 'inventory.packaging.submit'))
+                            ->orWhereHas('customPermissions', fn ($p) => $p->where('key', 'inventory.packaging.submit'));
+                    })->orderBy('name')->get(['id', 'name'])->toArray()
                 : [],
             'canOperate' => Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false,
             'canSync' => Auth::user()?->can(AuthorizationKeys::SyncOperate->value) ?? false,

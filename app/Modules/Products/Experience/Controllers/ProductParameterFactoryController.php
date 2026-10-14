@@ -10,6 +10,7 @@ use App\Modules\Products\Infrastructure\Models\ProductParameterAccessory;
 use App\Modules\Products\Infrastructure\Models\ProductParameterMedia;
 use App\Modules\Products\Infrastructure\Models\ProductParameterSubmission;
 use App\Modules\Products\Infrastructure\Models\ProductParameterTask;
+use App\Modules\Identity\Infrastructure\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +34,25 @@ final class ProductParameterFactoryController
     private const TEXT_FIELDS = ['material', 'weight_composition'];
 
     public function __construct(private readonly AuditRecorder $audit) {}
+
+    public function inbox(Request $request): Response
+    {
+        abort_unless($request->user()?->can('inventory.packaging.submit'), 403);
+        $query = ProductParameterTask::query()->where('enabled', true)
+            ->where('assigned_user_id', $request->user()->id)
+            ->with('product:id,sku,name');
+        $tasks = $query->orderByDesc('updated_at')->get()->map(function (ProductParameterTask $task): array {
+            $latest = ProductParameterSubmission::query()->where('task_id', $task->id)
+                ->where('created_by', $task->assigned_user_id)->latest('id')->first();
+            $status = in_array($latest?->status, ['submitted', 'approved'], true) ? '已填'
+                : ($task->is_required ? '必填' : '待填');
+            return ['product_id' => $task->product_id,
+                'sku' => $task->product?->sku, 'name' => $task->product?->name,
+                'status' => $status, 'latest_status' => $latest?->status,
+                'required' => $task->is_required];
+        })->all();
+        return Inertia::render('Products/FactoryParameterTasks', ['tasks' => $tasks]);
+    }
 
     public function factory(Request $request, Product $product): Response
     {
@@ -66,6 +86,15 @@ final class ProductParameterFactoryController
         if ($data['enabled'] && empty($data['assigned_user_id'])) {
             throw ValidationException::withMessages(['assigned_user_id' => '启用工厂任务前必须指定员工']);
         }
+        if ($data['enabled']) {
+            $employee = User::query()->find($data['assigned_user_id']);
+            if (! $employee || ! $employee->is_active || ! $employee->hasPermission('inventory.packaging.submit')) {
+                throw ValidationException::withMessages(['assigned_user_id' => '员工需要启用且拥有包装测量提交权限']);
+            }
+            if ($data['is_required'] && empty($data['required_fields'])) {
+                throw ValidationException::withMessages(['required_fields' => '必填任务必须指定至少一个必填字段']);
+            }
+        }
         $before = ProductParameterTask::query()->where('product_id', $product->id)->first()?->toArray();
         $task = ProductParameterTask::query()->updateOrCreate(
             ['product_id' => $product->id],
@@ -77,8 +106,9 @@ final class ProductParameterFactoryController
                 'updated_by' => $request->user()->id,
             ],
         );
-        $this->audit($request, 'product.parameter_task.configured', $task->id,
-            $before, ['product_id' => $product->id, 'enabled' => $task->enabled,
+        $this->audit->record(AuditActor::user($request->user(), AuditSource::Web),
+            'product.parameter_task.configured', ProductParameterTask::class, $task->id,
+            before: $before, after: ['product_id' => $product->id, 'enabled' => $task->enabled,
                 'assigned_user_id' => $task->assigned_user_id, 'is_required' => $task->is_required]);
         return back()->with('success', '工厂任务设置已保存');
     }
@@ -169,9 +199,25 @@ final class ProductParameterFactoryController
         abort_unless((int) $submission->created_by !== (int) $request->user()->id, 403, '不能审核自己的填报');
         $data = $request->validate([
             'decision' => ['required', Rule::in(['approved', 'rejected'])],
-            'review_note' => ['nullable', 'string', 'max:5000'],
+            'review_note' => ['required_if:decision,rejected', 'nullable', 'string', 'max:5000'],
             'apply_accessories' => ['nullable', 'boolean'],
         ]);
+        // Packaging declarations cannot become approved truth if the carton is
+        // mathematically too small to contain the stated number of sales packs.
+        if ($data['decision'] === 'approved') {
+            $m = $submission->measurements ?? [];
+            $package = ['package_length_cm','package_width_cm','package_height_cm'];
+            $carton = ['carton_length_cm','carton_width_cm','carton_height_cm'];
+            if (collect([...$package, ...$carton, 'units_per_carton'])
+                ->every(fn ($key) => is_numeric($m[$key] ?? null) && (float) $m[$key] > 0)) {
+                $productVolume = array_product(array_map(fn ($key) => (float) $m[$key], $package));
+                $cartonVolume = array_product(array_map(fn ($key) => (float) $m[$key], $carton));
+                if ($cartonVolume < $productVolume * (float) $m['units_per_carton']) {
+                    throw ValidationException::withMessages(['measurements' =>
+                        '单件包装体积 × 装箱数量超过外箱容积，请工厂核实后重新提交']);
+                }
+            }
+        }
         DB::transaction(function () use ($request, $product, $submission, $data): void {
             $record = ProductParameterSubmission::query()->lockForUpdate()->findOrFail($submission->id);
             abort_unless($record->product_id === $product->id && $record->status === 'submitted', 422);

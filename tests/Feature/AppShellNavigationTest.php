@@ -175,9 +175,11 @@ class AppShellNavigationTest extends TestCase
         $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
             ->has('shellNavigation', 2)
             ->where('shellNavigation.1.key', 'inventory')
-            ->has('shellNavigation.1.children', 1)
+            ->has('shellNavigation.1.children', 2)
             ->where('shellNavigation.1.children.0.key', 'inventory-packaging')
-            ->where('shellNavigation.1.children.0.path', '/inventory/packaging'));
+            ->where('shellNavigation.1.children.0.path', '/inventory/packaging')
+            ->where('shellNavigation.1.children.1.key', 'inventory-factory-parameters')
+            ->where('shellNavigation.1.children.1.path', '/products/factory-parameters'));
     }
 
     public function test_accounting_navigation_closes_to_overview_and_order_profit(): void

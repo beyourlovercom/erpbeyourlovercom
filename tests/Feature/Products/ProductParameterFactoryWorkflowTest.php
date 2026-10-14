@@ -49,7 +49,7 @@ final class ProductParameterFactoryWorkflowTest extends TestCase
             'net_weight_kg' => 1.589, 'package_length_cm' => 50,
             'package_width_cm' => 23, 'package_height_cm' => 19,
             'color_box_gross_kg' => 1.64, 'courier_gross_kg' => 1.8,
-            'carton_length_cm' => 60, 'carton_width_cm' => 40, 'carton_height_cm' => 50,
+            'carton_length_cm' => 100, 'carton_width_cm' => 60, 'carton_height_cm' => 50,
             'units_per_carton' => 12, 'carton_gross_weight_kg' => 20],
             'accessories' => [['name' => 'small pillow', 'quantity' => 1, 'unit' => 'pcs']]];
     }
@@ -144,6 +144,78 @@ final class ProductParameterFactoryWorkflowTest extends TestCase
             ['photo'=>UploadedFile::fake()->image('scale.jpg')])->assertRedirect();
         $this->assertDatabaseCount('product_parameter_media',1);
         $this->assertDatabaseCount('product_parameter_accessories',0);
+    }
+
+    public function test_factory_inbox_contains_only_assigned_products_and_supports_filtering(): void
+    {
+        $one=$this->product(); $two=$this->product();
+        $factory=$this->userWith(['inventory.packaging.submit']);
+        $other=$this->userWith(['inventory.packaging.submit']);
+        $this->assign($one,$factory);
+        $this->assign($two,$other);
+        $this->actingAs($factory)->get('/products/factory-parameters')->assertOk()
+            ->assertInertia(fn ($p) => $p->component('Products/FactoryParameterTasks')
+                ->has('tasks',1)->where('tasks.0.product_id',$one->id));
+        $this->actingAs($other)->get('/products/factory-parameters')->assertOk()
+            ->assertInertia(fn ($p) => $p->has('tasks',1)->where('tasks.0.product_id',$two->id));
+    }
+
+    public function test_unrealistic_carton_geometry_blocks_approval_but_does_not_delete_submitted_evidence(): void
+    {
+        $p=$this->product();
+        $factory=$this->userWith(['inventory.packaging.submit']);
+        $admin=$this->userWith(['products.operate']);
+        $this->assign($p,$factory);
+        $data=$this->measurement();
+        $data['measurements']['carton_length_cm']=60;
+        $data['measurements']['carton_width_cm']=40;
+        $data['measurements']['carton_height_cm']=50;
+        $root='/products/factory-parameters/'.$p->id;
+        $this->actingAs($factory)->post($root.'/draft',$data)->assertRedirect();
+        $submission=ProductParameterSubmission::firstOrFail();
+        $this->post($root.'/submissions/'.$submission->id.'/submit')->assertRedirect();
+        $this->actingAs($admin)->post('/products/parameter-submissions/'.$p->id.'/'.$submission->id.'/review',
+            ['decision'=>'approved','apply_accessories'=>true])->assertSessionHasErrors('measurements');
+        $this->assertSame('submitted',$submission->fresh()->status);
+        $this->assertDatabaseCount('product_parameter_accessories',0);
+        $this->assertSame('1.5000',(string)$p->fresh()->weight_kg);
+    }
+
+    public function test_inactive_or_unauthorized_employee_cannot_be_assigned(): void
+    {
+        $p=$this->product();
+        $admin=$this->userWith(['products.operate']);
+        $viewer=$this->userWith(['products.view']);
+        $factory=$this->userWith(['inventory.packaging.submit']);
+        $url='/products/parameter-tasks/'.$p->id;
+        $this->actingAs($admin)->post($url,['enabled'=>true,'is_required'=>true,
+            'assigned_user_id'=>$viewer->id,'required_fields'=>['net_weight_kg']])
+            ->assertSessionHasErrors('assigned_user_id');
+        $factory->update(['is_active'=>false]);
+        $this->post($url,['enabled'=>true,'is_required'=>true,
+            'assigned_user_id'=>$factory->id,'required_fields'=>['net_weight_kg']])
+            ->assertSessionHasErrors('assigned_user_id');
+        $this->post($url,['enabled'=>true,'is_required'=>true,
+            'assigned_user_id'=>$viewer->id,'required_fields'=>[]])
+            ->assertSessionHasErrors();
+        $this->assertDatabaseCount('product_parameter_tasks',0);
+    }
+
+    public function test_rejection_requires_a_reason_and_does_not_erase_previous_approval(): void
+    {
+        $p=$this->product();
+        $factory=$this->userWith(['inventory.packaging.submit']);
+        $admin=$this->userWith(['products.operate']);
+        $this->assign($p,$factory,false);
+        $root='/products/factory-parameters/'.$p->id;
+        $this->actingAs($factory)->post($root.'/draft', ['measurements'=>['material'=>'cotton']])->assertRedirect();
+        $submission=ProductParameterSubmission::firstOrFail();
+        $this->post($root.'/submissions/'.$submission->id.'/submit')->assertRedirect();
+        $review='/products/parameter-submissions/'.$p->id.'/'.$submission->id.'/review';
+        $this->actingAs($admin)->post($review,['decision'=>'rejected'])->assertSessionHasErrors('review_note');
+        $this->post($review,['decision'=>'rejected','review_note'=>'请确认材质来源'])->assertRedirect();
+        $this->assertSame('rejected',$submission->fresh()->status);
+        $this->assertSame('请确认材质来源',$submission->fresh()->review_note);
     }
 
     public function test_invalid_fields_and_unassigned_products_are_never_modified(): void

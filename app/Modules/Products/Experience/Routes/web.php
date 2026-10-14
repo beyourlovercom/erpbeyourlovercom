@@ -16,6 +16,7 @@ Route::middleware(['web', 'auth'])->get('/products/sku-search', [ProductControll
 
 // Dedicated factory routes do not grant products.view or products.operate.
 Route::middleware(['web', 'auth'])->group(function (): void {
+    Route::get('/products/factory-parameters', [ProductParameterFactoryController::class, 'inbox'])->name('products.parameter.inbox');
     Route::get('/products/factory-parameters/{product}', [ProductParameterFactoryController::class, 'factory'])->whereNumber('product')->name('products.parameter.factory');
     Route::post('/products/factory-parameters/{product}/draft', [ProductParameterFactoryController::class, 'saveDraft'])->whereNumber('product')->name('products.parameter.draft');
     Route::post('/products/factory-parameters/{product}/submissions/{submission}/submit', [ProductParameterFactoryController::class, 'submit'])->whereNumber('product')->whereNumber('submission')->name('products.parameter.submit');

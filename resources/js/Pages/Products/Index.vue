@@ -11,6 +11,9 @@ type ColumnKey =
   | 'sale_price' | 'brand' | 'available_stock' | 'gtin' | 'label_description'
   | 'dimensions_cm' | 'shipping_weight_kg' | 'standard_production_cost'
   | 'standard_packaging_cost' | 'cost_currency' | 'unit' | 'source'
+  | 'parameter_status' | 'parameter_review_status' | 'material' | 'net_weight_kg' | 'color_box_gross_kg'
+  | 'courier_gross_kg' | 'package_dimensions' | 'carton_dimensions'
+  | 'carton_gross_weight_kg' | 'accessories_count' | 'accessories_summary'
 type Product = {
   id: number
   sku: string | null
@@ -29,9 +32,9 @@ type PaginatedProducts = {
   from: number | null
   to: number | null
 }
-type Filters = { search?: string; per_page?: string; sort?: string; direction?: string }
+type Filters = { search?: string; per_page?: string; sort?: string; direction?: string; view?: string; parameter_status?: string }
 
-const props = defineProps<{ products: PaginatedProducts; filters: Filters; canOperate: boolean }>()
+const props = defineProps<{ products: PaginatedProducts; filters: Filters; canOperate: boolean; parameterCounts?: Record<string,number> }>()
 const search = ref(props.filters.search ?? '')
 const perPage = ref(props.filters.per_page ?? '50')
 const confirmDeleteId = ref<number | null>(null)
@@ -61,13 +64,39 @@ const definitions: GridColumnDefinition<ColumnKey>[] = [
   { key: 'cost_currency', label: '成本币种' },
   { key: 'unit', label: '单位' },
   { key: 'source', label: '来源' },
+  { key: 'parameter_status', label: '资料状态', defaultVisible: false },
+  { key: 'parameter_review_status', label: '审核情况', defaultVisible: false },
+  { key: 'material', label: '产品材质', defaultVisible: false },
+  { key: 'net_weight_kg', label: '工厂净重 kg', defaultVisible: false },
+  { key: 'color_box_gross_kg', label: '彩盒毛重 kg', defaultVisible: false },
+  { key: 'courier_gross_kg', label: '快递毛重 kg', defaultVisible: false },
+  { key: 'package_dimensions', label: '单件包装尺寸', defaultVisible: false },
+  { key: 'carton_dimensions', label: '外箱尺寸', defaultVisible: false },
+  { key: 'carton_gross_weight_kg', label: '整箱毛重 kg', defaultVisible: false },
+  { key: 'accessories_count', label: '配件种类', defaultVisible: false },
+  { key: 'accessories_summary', label: '包装内配件', defaultVisible: false },
 ]
-const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } =
+const { columns, visibleColumns: persistedVisibleColumns, toggle, startDrag, drop, reset, syncState } =
   useAccountGridPreferences<ColumnKey>({
     namespace: 'grid.products.index.v1',
     definitions,
     requiredKeys: ['sku', 'name'],
   })
+const currentView = computed<string>(() => ['standard','measurements','accessories'].includes(props.filters.view ?? '')
+  ? props.filters.view! : 'standard')
+const viewDefs: Record<string, ColumnKey[]> = {
+  measurements: ['sku','name','parameter_status','parameter_review_status','material','net_weight_kg','color_box_gross_kg','courier_gross_kg','package_dimensions','carton_dimensions','carton_gross_weight_kg'],
+  accessories: ['sku','name','parameter_status','accessories_count','accessories_summary'],
+}
+const visibleColumns = computed(() => currentView.value === 'standard'
+  ? persistedVisibleColumns.value
+  : (viewDefs[currentView.value] ?? []).map((key: ColumnKey) => definitions.find(d => d.key === key)!).filter(Boolean))
+const activeStatus = computed(() => props.filters.parameter_status || '全部')
+const statuses = computed(() => currentView.value === 'measurements'
+  ? ['全部','已填','待填','必填','其他']
+  : currentView.value === 'accessories' ? ['全部','有配件','待补充'] : [])
+const changeView=(name:string)=>go({view:name,parameter_status:'',page:1})
+const changeStatus=(name:string)=>go({parameter_status:name==='全部'?'':name,page:1})
 const sortable = new Set<ColumnKey>(['sku', 'name', 'regular_price', 'sale_price', 'shipping_weight_kg'])
 const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '产品', href: '/products' }, '产品列表']
 
@@ -76,6 +105,8 @@ const query = (extra: Record<string, string | number> = {}) => ({
   per_page: perPage.value,
   sort: props.filters.sort ?? 'name',
   direction: props.filters.direction ?? 'asc',
+  view: currentView.value ?? 'standard',
+  parameter_status: props.filters.parameter_status ?? '',
   ...extra,
 })
 const go = (extra: Record<string, string | number>) => {
@@ -138,13 +169,27 @@ const doDelete = () => {
             <button class="product-search-submit" type="submit">搜索</button>
           </form>
           <div class="mvp-page-actions page-header-actions">
-            <a class="mvp-button mvp-button-secondary" :href="exportUrl" download>下载 XLSX</a>
+            <a v-if="currentView==='standard'" class="mvp-button mvp-button-secondary" :href="exportUrl" download>下载 XLSX</a>
             <template v-if="canOperate">
               <a href="/products/import" class="mvp-button mvp-button-secondary">导入 CSV</a>
               <a href="/products/create" class="mvp-button mvp-button-primary">新增产品</a>
             </template>
           </div>
         </div>
+      </div>
+
+      <div class="product-grid-view-selector">
+        <nav aria-label="产品列表视图" class="product-grid-view-tabs">
+          <button v-for="choice in [{key:'standard',label:'标准产品列表'},{key:'measurements',label:'重量与尺寸'},{key:'accessories',label:'包装内配件'}]"
+            :key="choice.key" type="button" :class="{active:currentView===choice.key}"
+            @click="changeView(choice.key)">{{choice.label}}</button>
+        </nav>
+        <nav v-if="statuses.length" aria-label="产品资料填报状态" class="product-grid-status-tabs">
+          <button v-for="status in statuses" :key="status" type="button" :class="{active:activeStatus===status}"
+            @click="changeStatus(status)">{{status}}
+            <small v-if="currentView==='measurements'">{{parameterCounts?.[status]??0}}</small>
+          </button>
+        </nav>
       </div>
 
       <div v-if="confirmDeleteId !== null" class="mvp-confirm-overlay">
@@ -192,6 +237,7 @@ const doDelete = () => {
                 <template v-else-if="col.key === 'name'"><a :href="'/products/' + p.id" class="product-grid-link">{{ p.name }}</a></template>
                 <template v-else-if="col.key === 'image_url'"><img v-if="p.image_url && !failedImageIds.includes(p.id)" :src="p.image_url" :alt="p.name" class="product-thumbnail" loading="lazy" referrerpolicy="no-referrer" @error="markImageFailed(p.id)"><span v-else class="product-image-empty">—</span></template>
                 <template v-else-if="col.key === 'woo_url'"><a v-if="p.woo_url" :href="p.woo_url" target="_blank" rel="noopener noreferrer" class="product-grid-link external-url">{{ p.woo_url }}</a><span v-else>—</span></template>
+                <template v-else-if="col.key === 'parameter_status'"><span class="product-status">{{fmt(p.parameter_status)}}</span></template>
                 <template v-else>{{ cellValue(p, col.key) }}</template>
               </td>
               <td class="grid-actions">
@@ -230,6 +276,14 @@ const doDelete = () => {
 </template>
 
 <style scoped>
+
+.product-grid-view-selector{display:grid;gap:9px;margin:11px 0 12px}
+.product-grid-view-tabs,.product-grid-status-tabs{display:flex;gap:6px;flex-wrap:wrap}
+.product-grid-view-tabs button,.product-grid-status-tabs button{border:1px solid #d9e6dd;background:#fff;border-radius:7px;color:#597c64;padding:8px 11px;font-size:12px;font-weight:600;cursor:pointer}
+.product-grid-view-tabs button.active,.product-grid-status-tabs button.active{background:#176b4f;color:#fff;border-color:#176b4f}
+.product-grid-status-tabs small{margin-left:6px;font-size:10px;opacity:.8}
+@media(max-width:640px){.product-grid-view-tabs,.product-grid-status-tabs{flex-wrap:nowrap;overflow-x:auto;padding-bottom:3px}.product-grid-view-tabs button,.product-grid-status-tabs button{white-space:nowrap;flex-shrink:0}}
+
 .product-grid-page{--grid-green:#166b57;--grid-border:#d6dedb;font-family:PingFang SC,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#172725}
 .product-grid-page .mvp-page-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .product-header-controls{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-left:auto}
