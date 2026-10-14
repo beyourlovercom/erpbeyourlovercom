@@ -97,7 +97,7 @@ const exportUrl = computed(() => {
   return '/products/list/export?' + params.toString()
 })
 const fmt = (value: unknown) => value === null || value === undefined || value === '' ? '—' : String(value)
-const cellValue = (p: Product, key: ColumnKey) => fmt(p[key])
+const cellValue = (p: Product, key: ColumnKey) => key === 'source' && p.source == null ? (p.source_type === 'manual' ? '手动' : 'Woo') : fmt(p[key])
 const doDelete = () => {
   if (confirmDeleteId.value === null) return
   router.delete('/products/' + confirmDeleteId.value, { onFinish: () => { confirmDeleteId.value = null } })
