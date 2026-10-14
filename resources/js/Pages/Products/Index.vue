@@ -35,6 +35,8 @@ const props = defineProps<{ products: PaginatedProducts; filters: Filters; canOp
 const search = ref(props.filters.search ?? '')
 const perPage = ref(props.filters.per_page ?? '50')
 const confirmDeleteId = ref<number | null>(null)
+const failedImageIds = ref<number[]>([])
+const markImageFailed = (id: number) => { if (!failedImageIds.value.includes(id)) failedImageIds.value.push(id) }
 const definitions: GridColumnDefinition<ColumnKey>[] = [
   { key: 'status', label: '状态' },
   { key: 'sku', label: 'SKU' },
@@ -82,6 +84,18 @@ const go = (extra: Record<string, string | number>) => {
 const applySearch = () => go({ search: search.value.trim(), page: 1 })
 const changePerPage = () => go({ per_page: perPage.value, page: 1 })
 const goToPage = (page: number) => go({ page })
+const paginationItems = computed<(number | string)[]>(() => {
+  const last = Math.max(1, props.products.last_page)
+  const current = Math.min(last, Math.max(1, props.products.current_page))
+  const pages = Array.from(new Set([1, last, current - 2, current - 1, current, current + 1, current + 2]))
+    .filter(page => page >= 1 && page <= last).sort((a, b) => a - b)
+  const items: (number | string)[] = []
+  for (let i = 0; i < pages.length; i++) {
+    if (i > 0 && pages[i] - pages[i - 1] > 1) items.push('…')
+    items.push(pages[i])
+  }
+  return items
+})
 const sortBy = (key: ColumnKey) => {
   if (!sortable.has(key)) return
   const direction = props.filters.sort === key && props.filters.direction !== 'desc' ? 'desc' : 'asc'
@@ -114,21 +128,23 @@ const doDelete = () => {
           <h2>产品列表</h2>
           <p>共 {{ products.total }} 件产品 · 数据来自 ERP 产品主表</p>
         </div>
-        <div class="mvp-page-actions page-header-actions">
-          <a class="mvp-button mvp-button-secondary" :href="exportUrl" download>下载 XLSX</a>
-          <template v-if="canOperate">
-            <a href="/products/import" class="mvp-button mvp-button-secondary">导入 CSV</a>
-            <a href="/products/create" class="mvp-button mvp-button-primary">新增产品</a>
-          </template>
+        <div class="product-header-controls">
+          <form class="product-search" role="search" @submit.prevent="applySearch">
+            <svg class="product-search-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+              <circle cx="10.8" cy="10.8" r="6.8" />
+              <path d="m16 16 5 5" />
+            </svg>
+            <input v-model="search" aria-label="搜索 SKU 或产品名称" type="search" placeholder="搜索 SKU / 名称 / GTIN" class="product-search-input">
+            <button class="product-search-submit" type="submit">搜索</button>
+          </form>
+          <div class="mvp-page-actions page-header-actions">
+            <a class="mvp-button mvp-button-secondary" :href="exportUrl" download>下载 XLSX</a>
+            <template v-if="canOperate">
+              <a href="/products/import" class="mvp-button mvp-button-secondary">导入 CSV</a>
+              <a href="/products/create" class="mvp-button mvp-button-primary">新增产品</a>
+            </template>
+          </div>
         </div>
-      </div>
-
-      <div class="grid-toolbar">
-        <form class="mvp-filter-bar grid-search" @submit.prevent="applySearch">
-          <input v-model="search" aria-label="搜索 SKU 或产品名称" type="search" placeholder="搜索 SKU / 产品名称 / GTIN…" class="mvp-search-input">
-          <button class="mvp-button" type="submit">搜索</button>
-        </form>
-        <span class="grid-hint">点击表头可排序 · 右上角 … 设置显示列和拖拽顺序</span>
       </div>
 
       <div v-if="confirmDeleteId !== null" class="mvp-confirm-overlay">
@@ -139,6 +155,18 @@ const doDelete = () => {
             <button class="mvp-button mvp-button-secondary" type="button" @click="confirmDeleteId = null">取消</button>
           </div>
         </div>
+      </div>
+
+      <div class="grid-topbar">
+        <span class="grid-hint">点击表头排序 · 右上角 … 调整显示列</span>
+        <nav class="grid-pages" aria-label="产品列表顶部分页">
+          <button type="button" class="grid-page-nav" :disabled="products.current_page <= 1" @click="goToPage(products.current_page - 1)">上一页</button>
+          <template v-for="(item, i) in paginationItems" :key="'top-' + i">
+            <span v-if="typeof item === 'string'" class="grid-ellipsis">…</span>
+            <button v-else type="button" class="grid-page-number" :class="{ active: item === products.current_page }" :aria-current="item === products.current_page ? 'page' : undefined" @click="goToPage(item)">{{ item }}</button>
+          </template>
+          <button type="button" class="grid-page-nav" :disabled="products.current_page >= products.last_page" @click="goToPage(products.current_page + 1)">下一页</button>
+        </nav>
       </div>
 
       <div class="product-grid-scroller" role="region" aria-label="真实产品数据表" tabindex="0">
@@ -162,7 +190,7 @@ const doDelete = () => {
                 <template v-if="col.key === 'status'"><span class="product-status" :class="{ inactive: !p.is_active }">{{ p.is_active ? '启用' : '停用' }}</span></template>
                 <template v-else-if="col.key === 'sku'"><a :href="'/products/' + p.id" class="product-grid-link">{{ fmt(p.sku) }}</a></template>
                 <template v-else-if="col.key === 'name'"><a :href="'/products/' + p.id" class="product-grid-link">{{ p.name }}</a></template>
-                <template v-else-if="col.key === 'image_url'"><img v-if="p.image_url" :src="p.image_url" :alt="p.name" class="product-thumbnail" loading="lazy"><span v-else>—</span></template>
+                <template v-else-if="col.key === 'image_url'"><img v-if="p.image_url && !failedImageIds.includes(p.id)" :src="p.image_url" :alt="p.name" class="product-thumbnail" loading="lazy" referrerpolicy="no-referrer" @error="markImageFailed(p.id)"><span v-else class="product-image-empty">—</span></template>
                 <template v-else-if="col.key === 'woo_url'"><a v-if="p.woo_url" :href="p.woo_url" target="_blank" rel="noopener noreferrer" class="product-grid-link external-url">{{ p.woo_url }}</a><span v-else>—</span></template>
                 <template v-else>{{ cellValue(p, col.key) }}</template>
               </td>
@@ -181,9 +209,12 @@ const doDelete = () => {
       </div>
       <div class="grid-footer">
         <div class="grid-result-count">显示 {{ products.from ?? 0 }}–{{ products.to ?? 0 }} / {{ products.total }} 条</div>
-        <nav class="grid-pages" aria-label="产品列表分页">
+        <nav class="grid-pages" aria-label="产品列表底部分页">
           <button type="button" :disabled="products.current_page <= 1" @click="goToPage(products.current_page - 1)">上一页</button>
-          <span>第 {{ products.current_page }} / {{ products.last_page }} 页</span>
+          <template v-for="(item, i) in paginationItems" :key="'bottom-' + i">
+            <span v-if="typeof item === 'string'" class="grid-ellipsis">…</span>
+            <button v-else type="button" class="grid-page-number" :class="{ active: item === products.current_page }" :aria-current="item === products.current_page ? 'page' : undefined" @click="goToPage(item)">{{ item }}</button>
+          </template>
           <button type="button" :disabled="products.current_page >= products.last_page" @click="goToPage(products.current_page + 1)">下一页</button>
         </nav>
         <label class="grid-page-size">每页显示
@@ -200,9 +231,18 @@ const doDelete = () => {
 
 <style scoped>
 .product-grid-page{--grid-green:#166b57;--grid-border:#d6dedb;font-family:PingFang SC,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#172725}
-.grid-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap}
-.grid-search{display:flex;align-items:center;gap:8px;margin-bottom:0}
-.grid-search input{width:min(420px,65vw)}
+.product-grid-page .mvp-page-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.product-header-controls{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-left:auto}
+.product-header-controls .page-header-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.product-search{display:flex;align-items:center;gap:6px;width:clamp(225px,22vw,330px);height:39px;background:#fff;border:1px solid #c4d9d1;border-radius:9px;padding:3px 4px 3px 12px;box-shadow:0 1px 3px rgba(21,58,45,.08);transition:border-color .15s,box-shadow .15s}
+.product-search:focus-within{border-color:#167c63;box-shadow:0 0 0 3px rgba(22,124,99,.12)}
+.product-search-icon{width:17px;height:17px;flex:0 0 17px;color:#6e867d}
+.product-search-input{background:transparent!important;border:0!important;box-shadow:none!important;outline:0!important;padding:0 2px!important;min-width:0;flex:1;width:100%;font:inherit;font-size:13px;color:#172725}
+.product-search-input:focus{outline:0!important;box-shadow:none!important}
+.product-search-input::placeholder{color:#879a93}
+.product-search-submit{height:31px;flex:0 0 auto;padding:0 15px;background:#166b57;color:white;border:0;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer}
+.product-search-submit:hover{background:#0d5947}
+.grid-topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 9px;min-height:34px}
 .grid-hint,.grid-data-note{font-size:12px;color:#657977}
 .grid-data-note{margin-top:9px;line-height:1.65}
 .product-grid-scroller{overflow:auto;max-width:100%;max-height:min(70vh,960px);border:1px solid var(--grid-border);background:#fff;overscroll-behavior:contain}
@@ -223,12 +263,17 @@ const doDelete = () => {
 .danger-link{border:0;padding:0;background:transparent;color:#b73c38;cursor:pointer;font-size:12px}
 .head-sort{display:inline-flex;align-items:center;gap:6px;background:transparent;border:0;color:inherit;font-size:inherit;font-weight:inherit;cursor:pointer}
 .sort-mark{opacity:.7;font-size:10px}
-.grid-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 2px;font-size:13px}
-.grid-pages{display:flex;align-items:center;gap:10px}
-.grid-pages button,.grid-page-size select{padding:6px 10px;border:1px solid var(--grid-border);border-radius:5px;background:#fff;cursor:pointer}
+.grid-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 10px;font-size:13px;position:sticky;bottom:0;background:#fff;z-index:4;border:1px solid var(--grid-border);border-top:0;box-shadow:0 -3px 12px rgba(0,0,0,.035)}
+.grid-pages{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.grid-pages button,.grid-page-size select{padding:6px 10px;border:1px solid var(--grid-border);border-radius:6px;background:#fff;cursor:pointer;color:#27453b;font-size:12px;min-height:30px}
+.grid-pages button:hover:not(:disabled){border-color:#166b57;background:#eaf5f0}
+.grid-pages button.active{background:#166b57;color:#fff;border-color:#166b57;font-weight:700}
 .grid-pages button:disabled{opacity:.45;cursor:not-allowed}
+.grid-ellipsis{color:#71857c;padding:0 3px}
+.product-image-empty{color:#8e9d99}
 .grid-page-size{display:flex;align-items:center;gap:8px}
 :deep(.product-data-table .column-settings-header){position:sticky!important;right:0;top:0;z-index:5!important;background:var(--grid-green);box-shadow:-1px 0 0 var(--grid-border)}
 .end-cap{position:sticky;right:0;z-index:1;width:46px;min-width:46px!important;padding:0!important;background:#fff;box-shadow:-1px 0 0 var(--grid-border)}
-@media(max-width:640px){.product-grid-page{padding-inline:10px}.grid-toolbar{align-items:stretch}.grid-hint{display:none}.grid-footer{justify-content:flex-start}.grid-page-size{margin-left:auto}.product-grid-scroller{max-height:68vh}.product-data-table{font-size:12px}}
+@media(max-width:1100px){.product-header-controls{width:100%;justify-content:space-between;margin-left:0}.product-search{flex:1;max-width:450px}}
+@media(max-width:640px){.product-grid-page{padding-inline:10px}.product-header-controls{align-items:stretch}.product-search{width:100%;max-width:none;flex:1 1 100%}.page-header-actions{width:100%}.grid-topbar{justify-content:flex-end}.grid-hint{display:none}.grid-footer{justify-content:flex-start}.grid-result-count{width:100%}.grid-page-size{margin-left:auto}.product-grid-scroller{max-height:60vh}.product-data-table{font-size:12px}.grid-pages{gap:3px}.grid-pages button{padding:5px 8px}}
 </style>
