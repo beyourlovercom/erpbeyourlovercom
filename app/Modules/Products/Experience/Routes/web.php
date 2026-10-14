@@ -16,6 +16,7 @@ Route::middleware(['web', 'auth'])->get('/products/sku-search', [ProductControll
 Route::middleware(['web', 'auth', 'can:products.view'])->group(function (): void {
     Route::get('/products', [ProductController::class, 'dashboard'])->name('products.dashboard');
     Route::get('/products/list', [ProductController::class, 'index'])->name('products.list');
+    Route::get('/products/list/export', [ProductController::class, 'export'])->name('products.list.export');
     Route::get('/products/skus', [ProductSkuController::class, 'index'])->name('products.skus');
     Route::get('/products/sku-aliases', [ProductSkuAliasController::class, 'index'])->name('products.sku-aliases');
     Route::get('/products/weight-evidence', [ProductWeightEvidenceController::class, 'index'])->name('products.weight-evidence.index');
