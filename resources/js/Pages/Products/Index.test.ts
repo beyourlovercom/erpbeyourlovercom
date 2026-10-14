@@ -19,6 +19,7 @@ const makeProduct = (overrides = {}) => ({
   sku: null, name: 'Test', unit: null, is_active: true,
   shipping_weight_kg: null, standard_production_cost: null, standard_packaging_cost: null,
   cost_currency: null, sale_price: null, regular_price: '89.00',
+  image_url: null, woo_url: null,
   ...overrides,
 })
 
