@@ -426,8 +426,8 @@ final class ProductController
             'factoryUserOptions' => $canManageProduct
                 ? User::query()->where('is_active', true)
                     ->where(function ($query): void {
-                        $query->whereHas('roles.permissions', fn ($p) => $p->where('key', 'inventory.packaging.submit'))
-                            ->orWhereHas('customPermissions', fn ($p) => $p->where('key', 'inventory.packaging.submit'));
+                        $query->whereHas('roles.permissions', fn ($p) => $p->where('key', 'products.parameters.submit'))
+                            ->orWhereHas('customPermissions', fn ($p) => $p->where('key', 'products.parameters.submit'));
                     })->orderBy('name')->get(['id', 'name'])->toArray()
                 : [],
             'canOperate' => Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false,

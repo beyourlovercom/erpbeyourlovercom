@@ -85,7 +85,7 @@ final class ProductParameterGridViewsTest extends TestCase
     {
         $factory=User::factory()->create(['is_active'=>true]);
         $r=Role::create(['key'=>'factoryonly-'.uniqid(),'label'=>'Factory Only']);
-        $r->permissions()->firstOrCreate(['key'=>'inventory.packaging.submit'],['label'=>'Submit']);
+        $r->permissions()->firstOrCreate(['key'=>'products.parameters.submit'],['label'=>'Submit']);
         $factory->roles()->attach($r);
         $this->actingAs($factory)->get('/products/list?view=measurements')->assertForbidden();
     }

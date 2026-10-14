@@ -73,6 +73,7 @@ final class PermissionCatalog
                 'label' => '产品',
                 'permissions' => [
                     ['key' => 'products.view', 'label' => '查看产品'],
+                    ['key' => 'products.parameters.submit', 'label' => '填写获指派产品参数'],
                 ],
             ],
             '指南' => [

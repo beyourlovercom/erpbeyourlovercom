@@ -57,8 +57,8 @@ final class ProductParameterFactoryWorkflowTest extends TestCase
     public function test_unassigned_and_unauthorized_factory_access_fail_closed(): void
     {
         $p = $this->product();
-        $factory = $this->userWith(['inventory.packaging.submit']);
-        $stranger = $this->userWith(['inventory.packaging.submit']);
+        $factory = $this->userWith(['products.parameters.submit']);
+        $stranger = $this->userWith(['products.parameters.submit']);
         $viewer = $this->userWith(['products.view']);
         $this->assign($p, $factory);
 
@@ -71,10 +71,27 @@ final class ProductParameterFactoryWorkflowTest extends TestCase
                 ->missing('costs')->has('product.sku')->has('task.required_fields'));
     }
 
+    public function test_legacy_inventory_packaging_submit_does_not_grant_product_parameters_access(): void
+    {
+        $product=$this->product();
+        $packingEmployee=$this->userWith(['inventory.packaging.submit']);
+        $task=ProductParameterTask::create([
+            'product_id'=>$product->id,
+            'assigned_user_id'=>$packingEmployee->id,
+            'enabled'=>true, 'is_required'=>false, 'required_fields'=>[],
+        ]);
+        $this->actingAs($packingEmployee)->get('/products/factory-parameters')->assertForbidden();
+        $this->get('/products/factory-parameters/'.$product->id)->assertForbidden();
+        $this->post('/products/factory-parameters/'.$product->id.'/draft',
+            ['measurements'=>['material'=>'cotton']])->assertForbidden();
+        $this->assertDatabaseCount('product_parameter_submissions',0);
+        $this->assertSame((int) $packingEmployee->id, (int) $task->fresh()->assigned_user_id);
+    }
+
     public function test_factory_can_save_and_submit_without_photo_without_changing_product_master(): void
     {
         $p = $this->product();
-        $factory = $this->userWith(['inventory.packaging.submit']);
+        $factory = $this->userWith(['products.parameters.submit']);
         $this->assign($p, $factory);
         $root = '/products/factory-parameters/'.$p->id;
         $this->actingAs($factory)->post($root.'/draft', $this->measurement())->assertRedirect();
@@ -92,7 +109,7 @@ final class ProductParameterFactoryWorkflowTest extends TestCase
 
     public function test_required_field_blocks_submit_but_not_draft_and_photo_remains_optional(): void
     {
-        $p = $this->product();$factory = $this->userWith(['inventory.packaging.submit']);
+        $p = $this->product();$factory = $this->userWith(['products.parameters.submit']);
         $this->assign($p, $factory);
         $root = '/products/factory-parameters/'.$p->id;
         $this->actingAs($factory)->post($root.'/draft',
@@ -106,7 +123,7 @@ final class ProductParameterFactoryWorkflowTest extends TestCase
     {
         $p=$this->product();
         $admin=$this->userWith(['products.view','products.operate']);
-        $factory=$this->userWith(['inventory.packaging.submit']);
+        $factory=$this->userWith(['products.parameters.submit']);
         $url='/products/parameter-tasks/'.$p->id;
         $this->actingAs($admin)->post($url,['enabled'=>true,'is_required'=>true,
             'assigned_user_id'=>$factory->id,'required_fields'=>['net_weight_kg']])->assertRedirect();
@@ -129,7 +146,7 @@ final class ProductParameterFactoryWorkflowTest extends TestCase
     public function test_approval_cannot_wipe_existing_accessories_with_empty_submission(): void
     {
         $product=$this->product();
-        $factory=$this->userWith(['inventory.packaging.submit']);
+        $factory=$this->userWith(['products.parameters.submit']);
         $admin=$this->userWith(['products.operate']);
         $task=$this->assign($product,$factory,false);
         $older=ProductParameterSubmission::query()->create([
@@ -164,8 +181,8 @@ final class ProductParameterFactoryWorkflowTest extends TestCase
     {
         Storage::fake('local');
         $a=$this->product();$b=$this->product();
-        $factory=$this->userWith(['inventory.packaging.submit']);
-        $other=$this->userWith(['inventory.packaging.submit']);
+        $factory=$this->userWith(['products.parameters.submit']);
+        $other=$this->userWith(['products.parameters.submit']);
         $this->assign($a,$factory);$this->assign($b,$other);
         $root='/products/factory-parameters/'.$a->id;
         $this->actingAs($factory)->post($root.'/draft',$this->measurement())->assertRedirect();
@@ -183,8 +200,8 @@ final class ProductParameterFactoryWorkflowTest extends TestCase
     public function test_factory_inbox_contains_only_assigned_products_and_supports_filtering(): void
     {
         $one=$this->product(); $two=$this->product();
-        $factory=$this->userWith(['inventory.packaging.submit']);
-        $other=$this->userWith(['inventory.packaging.submit']);
+        $factory=$this->userWith(['products.parameters.submit']);
+        $other=$this->userWith(['products.parameters.submit']);
         $this->assign($one,$factory);
         $this->assign($two,$other);
         $this->actingAs($factory)->get('/products/factory-parameters')->assertOk()
@@ -197,7 +214,7 @@ final class ProductParameterFactoryWorkflowTest extends TestCase
     public function test_unrealistic_carton_geometry_blocks_approval_but_does_not_delete_submitted_evidence(): void
     {
         $p=$this->product();
-        $factory=$this->userWith(['inventory.packaging.submit']);
+        $factory=$this->userWith(['products.parameters.submit']);
         $admin=$this->userWith(['products.operate']);
         $this->assign($p,$factory);
         $data=$this->measurement();
@@ -220,7 +237,7 @@ final class ProductParameterFactoryWorkflowTest extends TestCase
         $p=$this->product();
         $admin=$this->userWith(['products.operate']);
         $viewer=$this->userWith(['products.view']);
-        $factory=$this->userWith(['inventory.packaging.submit']);
+        $factory=$this->userWith(['products.parameters.submit']);
         $url='/products/parameter-tasks/'.$p->id;
         $this->actingAs($admin)->post($url,['enabled'=>true,'is_required'=>true,
             'assigned_user_id'=>$viewer->id,'required_fields'=>['net_weight_kg']])
@@ -238,7 +255,7 @@ final class ProductParameterFactoryWorkflowTest extends TestCase
     public function test_rejection_requires_a_reason_and_does_not_erase_previous_approval(): void
     {
         $p=$this->product();
-        $factory=$this->userWith(['inventory.packaging.submit']);
+        $factory=$this->userWith(['products.parameters.submit']);
         $admin=$this->userWith(['products.operate']);
         $this->assign($p,$factory,false);
         $root='/products/factory-parameters/'.$p->id;
@@ -254,7 +271,7 @@ final class ProductParameterFactoryWorkflowTest extends TestCase
 
     public function test_invalid_fields_and_unassigned_products_are_never_modified(): void
     {
-        $p=$this->product();$factory=$this->userWith(['inventory.packaging.submit']);
+        $p=$this->product();$factory=$this->userWith(['products.parameters.submit']);
         $this->assign($p,$factory);
         $url='/products/factory-parameters/'.$p->id.'/draft';
         $this->actingAs($factory)->post($url,['measurements'=>['payment_amount'=>100]])->assertSessionHasErrors();

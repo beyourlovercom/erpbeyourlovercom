@@ -39,7 +39,7 @@
 ## M3 isolated factory-parameter workflow (2026-10-14)
 - Added Product-owned `product_parameter_tasks`, `product_parameter_submissions`, `product_parameter_media`, `product_parameter_accessories`. **No migration applied to Dev/Production**. Migration verified in temporary SQLite only.
 - Product 360 uses same Product ID; admins assign one specific active staff ID per Product and select individual required fields. No separate Product master/list was created.
-- Dedicated factory route under `/products/factory-parameters/{product}` is gated by the existing `inventory.packaging.submit` permission **AND** a record-level enabled + assigned-user check. Does not grant `products.view`, `products.operate`, cost access, Woo sync or audit permissions.
+- Dedicated factory route under `/products/factory-parameters/{product}` is gated by the dedicated `products.parameters.submit` permission **AND** a record-level enabled + assigned-user check. Does not grant `products.view`, `products.operate`, cost access, Woo sync or audit permissions.
 - Factory can save own drafts, enter measured product/box/courier/carton weights and dimensions (unknown fields remain unfilled), enter accessories/quantities, upload up to eight OPTIONAL images, and submit for review. Submission cannot be edited; subsequent corrections create a new draft.
 - Existing Inventory `packaging_measurement` requires weight/dimension images and was intentionally **NOT** reused/changed: it is shipment-level rather than product-parameter evidence.
 - Separate `products.operate` review. Reviewers cannot approve their own submission. Approval never auto-writes `products.weight_kg`, `shipping_weight_kg` or shipment truth. Accessory snapshot adoption is an explicit reviewer switch; data remains sourced to approved evidence ID.
@@ -54,7 +54,7 @@
 - Server-side filters: 已填 / 待填 / 必填 / 其他 apply to the same Products pagination query; category counts are placed in the filter tabs, **no separate large count boxes**. Accessory view filters 有配件 / 待补充.
 - Scoped factory inbox `/products/factory-parameters`: assigned products ONLY. Registered under original Inventory shell as **产品参数填报**, preserves existing 包装与测量 entry. Factory role cannot enter full Product grid or read costs without separate Product permission.
 - Admin Product 360 review shows submitted measurements, supporting notes, accessories, media links, author and time; rejection now requires a reason. No automatic Product master overwrite.
-- Assignment must target an active staff account already holding `inventory.packaging.submit`, and "required" must specify concrete required fields. Unknown/disabled/unauthorized accounts are rejected.
+- Assignment must target an active staff account already holding `products.parameters.submit`, and "required" must specify concrete required fields. Unknown/disabled/unauthorized accounts are rejected.
 - Carton geometry fail-closed: if declared package volume × pieces/carton > master carton volume, allow draft/submission for historical evidence but **reject approval** and show admin warning; e.g. 50×23×19 cm ×12 cannot fit a 60×40×50 cm carton even by volume alone. This is a necessary but not sufficient packing feasibility check.
 - More recent approved partial submissions **do not erase older approved parameter values**; product detail overlays the latest confirmed nonempty field by field.
 - Audit target `ProductParameterTask::class` used for task assignment, `ProductParameterSubmission::class` for measurement submissions.
@@ -67,7 +67,7 @@
 ## Final Owner UAT acceptance sequence (once authorized isolated GUI is available)
 1. Open `/products/list` as manager, verify identical main grid and three view presets. Search/paginate; measurement statuses and accessory totals correlate with same Product ID.
 2. Open Product 360, inspect 5 top-level and nested tabs, compare every legacy panel/column/action/permission against zero-loss matrix.
-3. Assign one **synthetic** SKU to a test factory account with `inventory.packaging.submit`. Factory sees only their own task in Inventory → 产品参数填报; no costs/general product list access.
+3. Assign one **synthetic** SKU to a test factory account with `products.parameters.submit`. Factory sees only their own task in Inventory → 产品参数填报; no costs/general product list access.
 4. On actual iPhone 14 viewport 390×844: fill net/box/courier weights, package and carton dimensions, material and accessories, save draft, submit **without** photo; optionally test image capture/upload. Confirm validation and anti-double-submit.
 5. Admin reviews evidence and photos, rejects invalid carton geometry, records reason; submit corrected data, approve only after review, optionally adopts accessories; verify Product weight/stock/orders/Woo untouched.
 6. Negative security checks for unassigned, inactive, read-only roles and cross-product photo URLs, rollback/recovery, audit evidence and exact-head CI before separate merge/deploy approval.
@@ -77,6 +77,14 @@
 - Measurement view shows independently computed package volume (L, from approved package dimensions only).
 - Admin evidence details render Chinese parameter labels, not raw internal field identifiers.
 - Exact-head CI on intermediate `74e6ef201c4cd501a6153e9795a2efa821ba3fc1`: `mysql8-runtime`, `sqlite-regression`, `kol-sku-permission`, `closure`, `approval-dashboard` all SUCCESS. Recheck CI after subsequent small UI patch commit.
+
+## M4 least-privilege factory permission separation (P0)
+- Split Product-only factory form into **`products.parameters.submit`**, a dedicated key in the canonical Product permission catalog. This is **not** `inventory.packaging.submit`, which belongs to order/shipment packaging and must remain independently protected.
+- Factory task assignment requires a user whose **effective** permissions include the new Product parameter key, plus explicit per-Product assigned-user and enabled checks. Product master read (`products.view`), edit (`products.operate`), costing and legacy order packaging remain denied to a user with only the new permission.
+- Existing inventory packaging submissions, reviews and Inventory UI permissions remain unchanged. The factory task inbox continues to appear under Inventory as the sole new child for this role, using the new dedicated permission.
+- Old `inventory.packaging.submit` holders **do not automatically gain Product parameter access**, even if a stale/malformed task row points to them. This is tested with direct route, inbox and draft POST checks.
+- The new permission is available for explicit selection in role/user administration; it is **not** auto-granted to existing factory staff or role presets. Granting any real user permission requires a separate owner-authorized environment action.
+- No Production permissions or assignments were changed.
 
 ## M4 Dev-only isolated runtime smoke & accessory zero-loss guard
 - Owner explicitly approved Dev-only Owner UAT staging, **not** main merge or Production changes.
@@ -91,6 +99,6 @@
 ### Resume requirements (do not skip)
 1. Resolve the remote security gate through an authorized account provisioning path; do **not** try to rephrase or bypass previously denied seed action. Owner/test ops may provision synthetic accounts in the isolated environment using an approved mechanism.
 2. Verify UAT release exact candidate + matching compiled assets and database copy and restore pointer. Do not use Production/real Dev DB.
-3. Grant one synthetic admin with products.operate and one scoped factory employee with inventory.packaging.submit; assign one synthetic SKU only.
+3. Grant one synthetic admin with products.operate and one scoped factory employee with products.parameters.submit; assign one synthetic SKU only.
 4. On authorized Desktop/iPhone14 browser: run full 9→5 old panel parity, product list 3-view parity, factory task / draft / photo-optional submit, manager review and accessory preservation, negative permission checks. Capture evidence.
 5. Only then request explicit Owner PASS, and separately request exact-head PR merge / deployment approval.

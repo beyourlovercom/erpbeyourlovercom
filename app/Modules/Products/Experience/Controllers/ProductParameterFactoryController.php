@@ -37,7 +37,7 @@ final class ProductParameterFactoryController
 
     public function inbox(Request $request): Response
     {
-        abort_unless($request->user()?->can('inventory.packaging.submit'), 403);
+        abort_unless($request->user()?->can('products.parameters.submit'), 403);
         $query = ProductParameterTask::query()->where('enabled', true)
             ->where('assigned_user_id', $request->user()->id)
             ->with('product:id,sku,name');
@@ -88,7 +88,7 @@ final class ProductParameterFactoryController
         }
         if ($data['enabled']) {
             $employee = User::query()->find($data['assigned_user_id']);
-            if (! $employee || ! $employee->is_active || ! $employee->hasPermission('inventory.packaging.submit')) {
+            if (! $employee || ! $employee->is_active || ! $employee->hasPermission('products.parameters.submit')) {
                 throw ValidationException::withMessages(['assigned_user_id' => '员工需要启用且拥有包装测量提交权限']);
             }
             if ($data['is_required'] && empty($data['required_fields'])) {
@@ -251,7 +251,7 @@ final class ProductParameterFactoryController
 
     private function assignedTask(Request $request, Product $product): ProductParameterTask
     {
-        abort_unless($request->user()?->can('inventory.packaging.submit'), 403);
+        abort_unless($request->user()?->can('products.parameters.submit'), 403);
         $task = ProductParameterTask::query()->where('product_id', $product->id)
             ->where('enabled', true)->where('assigned_user_id', $request->user()->id)->first();
         abort_unless($task !== null, 403);
