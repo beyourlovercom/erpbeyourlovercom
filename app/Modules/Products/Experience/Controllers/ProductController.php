@@ -167,7 +167,7 @@ final class ProductController
             'status' => $p->is_active ? '启用' : '停用',
             'gtin' => $p->gtin,
             'label_description' => $p->label_description,
-            'image_url' => $media ? route('products.media.show', $media->id) : null,
+            'image_url' => $this->gridImageUrl($media),
             'woo_url' => $snapshot?->permalink,
             'units_per_carton' => $p->packagingProfile?->units_per_carton,
             // These are PRODUCT dimensions, not packaged dimensions.
@@ -187,6 +187,22 @@ final class ProductController
             'packaging_dimensions' => null,
             'brand' => null,
         ];
+    }
+
+    /** Use canonical local media only when present; otherwise show the recorded Woo image. */
+    private function gridImageUrl(?ProductMedia $media): ?string
+    {
+        if ($media === null) return null;
+        if ($media->storage_path && Storage::disk('local')->exists($media->storage_path)) {
+            return route('products.media.show', $media->id);
+        }
+        $source = trim((string) $media->source_url);
+        if (! filter_var($source, FILTER_VALIDATE_URL)) return null;
+        $parts = parse_url($source);
+        if (strtolower((string) ($parts['scheme'] ?? '')) !== 'https') return null;
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        if ($host !== 'beyourlover.com' && ! str_ends_with($host, '.beyourlover.com')) return null;
+        return $source;
     }
 
     /** @return array<string,string> */
