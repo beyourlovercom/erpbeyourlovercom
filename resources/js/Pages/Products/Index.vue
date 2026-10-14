@@ -228,6 +228,7 @@ const doDelete = () => {
 .grid-pages button,.grid-page-size select{padding:6px 10px;border:1px solid var(--grid-border);border-radius:5px;background:#fff;cursor:pointer}
 .grid-pages button:disabled{opacity:.45;cursor:not-allowed}
 .grid-page-size{display:flex;align-items:center;gap:8px}
-.end-cap{width:46px;min-width:46px!important;padding:0!important}
+:deep(.product-data-table .column-settings-header){position:sticky!important;right:0;top:0;z-index:5!important;background:var(--grid-green);box-shadow:-1px 0 0 var(--grid-border)}
+.end-cap{position:sticky;right:0;z-index:1;width:46px;min-width:46px!important;padding:0!important;background:#fff;box-shadow:-1px 0 0 var(--grid-border)}
 @media(max-width:640px){.product-grid-page{padding-inline:10px}.grid-toolbar{align-items:stretch}.grid-hint{display:none}.grid-footer{justify-content:flex-start}.grid-page-size{margin-left:auto}.product-grid-scroller{max-height:68vh}.product-data-table{font-size:12px}}
 </style>
