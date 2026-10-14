@@ -127,7 +127,7 @@ final class ProductGridExportTest extends TestCase
             'source_type' => 'woocommerce', 'product_type' => 'simple',
             'sku' => 'MEDIA-FALLBACK-1', 'name' => 'Media fallback',
         ]);
-        ProductMedia::create([
+        $media = ProductMedia::create([
             'product_id' => $product->id,
             'provider' => 'woocommerce',
             'connection_key' => 'beyourlover.com',
@@ -144,6 +144,11 @@ final class ProductGridExportTest extends TestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('products.data.0.image_url', 'https://img.beyourlover.com/products/verified.webp'));
+
+        $media->update(['source_url' => 'https://img.beyourlover.com/products/首图.png']);
+        $this->actingAs($viewer)->get('/products/list?search=MEDIA-FALLBACK-1')
+            ->assertInertia(fn ($page) => $page
+                ->where('products.data.0.image_url', 'https://img.beyourlover.com/products/%E9%A6%96%E5%9B%BE.png'));
     }
 
     public function test_grid_prefers_existing_local_image_and_rejects_non_brand_remote_image(): void
