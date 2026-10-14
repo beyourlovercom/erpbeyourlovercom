@@ -101,6 +101,16 @@ const factoryTask = reactive({
 })
 const measured = (key: string) => props.approvedParameterMeasurements?.[key] ?? null
 const approvedMeasure = (key: string, suffix = '') => measured(key) ? String(measured(key)) + suffix : '待填写'
+const parameterLabels: Record<string,string> = {
+  material:'产品材质',weight_composition:'重量组成说明',
+  product_length_cm:'裸品长 cm',product_width_cm:'裸品宽 cm',product_height_cm:'裸品高 cm',
+  net_weight_kg:'产品净重 kg',color_box_gross_kg:'彩盒毛重 kg',
+  courier_gross_kg:'快递毛重 kg',shipping_weight_kg:'运输参考重量 kg',
+  package_length_cm:'包装长 cm',package_width_cm:'包装宽 cm',package_height_cm:'包装高 cm',
+  carton_length_cm:'外箱长 cm',carton_width_cm:'外箱宽 cm',carton_height_cm:'外箱高 cm',
+  units_per_carton:'每箱数量 pcs',carton_gross_weight_kg:'整箱毛重 kg'
+}
+const parameterLabel=(key:string)=>parameterLabels[key] ?? key
 const coreRequired = [
   {key:'material',name:'产品材质'}, {key:'weight_composition',name:'重量组成'},
   {key:'net_weight_kg',name:'净重'}, {key:'color_box_gross_kg',name:'彩盒毛重'},
@@ -172,7 +182,9 @@ const selectRelative = async (tab: Tab, delta: number) => {
         <div class="product360-detail-grid product360-parameters-grid">
           <p>产品名称：{{ display(product.name) }}</p><p>SKU：{{ display(product.sku) }}</p>
           <p>产品类型：{{ display(product.product_type) }}</p><p>产品材质：{{ approvedMeasure('material') }}</p>
-          <p>重量组成说明：{{ approvedMeasure('weight_composition') }}</p><p>产品净重（现有参考）：{{ weight(product.weight_kg) }}</p>
+          <p>重量组成说明：{{ approvedMeasure('weight_composition') }}</p>
+          <p>已审核工厂净重：{{ approvedMeasure('net_weight_kg',' kg') }}</p>
+          <p>ERP 产品重量（现行标准）：{{ weight(product.weight_kg) }}</p>
           <p>彩盒毛重：{{ approvedMeasure('color_box_gross_kg',' kg') }}</p><p>快递毛重：{{ approvedMeasure('courier_gross_kg',' kg') }}</p>
           <p>运输参考重量：{{ weight(product.shipping_weight_kg) }}</p>
           <p>产品尺寸：{{ [product.length_cm, product.width_cm, product.height_cm].every(v => v !== null && v !== undefined) ? [product.length_cm, product.width_cm, product.height_cm].join(' × ') + ' cm' : '待填写' }}</p>
@@ -210,7 +222,7 @@ const selectRelative = async (tab: Tab, delta: number) => {
               <small>{{record.submitted_at ? date(record.submitted_at) : '未提交'}}</small>
             </div>
             <div class="product360-evidence-fields">
-              <span v-for="(val,key) in record.measurements" :key="key">{{key}}：{{val}}</span>
+              <span v-for="(val,key) in record.measurements" :key="key">{{parameterLabel(String(key))}}：{{val}}</span>
             </div>
             <p v-if="record.notes" class="product360-meta-note">说明：{{record.notes}}</p>
             <p v-if="record.accessories?.length" class="product360-meta-note">配件：{{record.accessories.map(a=>a.name+' × '+a.quantity+' '+a.unit).join('、')}}</p>

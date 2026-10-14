@@ -71,3 +71,9 @@
 4. On actual iPhone 14 viewport 390×844: fill net/box/courier weights, package and carton dimensions, material and accessories, save draft, submit **without** photo; optionally test image capture/upload. Confirm validation and anti-double-submit.
 5. Admin reviews evidence and photos, rejects invalid carton geometry, records reason; submit corrected data, approve only after review, optionally adopts accessories; verify Product weight/stock/orders/Woo untouched.
 6. Negative security checks for unassigned, inactive, read-only roles and cross-product photo URLs, rollback/recovery, audit evidence and exact-head CI before separate merge/deploy approval.
+
+## M4 pre-UAT usability patch
+- `参数总览` explicitly distinguishes reviewed factory net weight from current ERP master weight; approval does not imply automatic adoption.
+- Measurement view shows independently computed package volume (L, from approved package dimensions only).
+- Admin evidence details render Chinese parameter labels, not raw internal field identifiers.
+- Exact-head CI on intermediate `74e6ef201c4cd501a6153e9795a2efa821ba3fc1`: `mysql8-runtime`, `sqlite-regression`, `kol-sku-permission`, `closure`, `approval-dashboard` all SUCCESS. Recheck CI after subsequent small UI patch commit.

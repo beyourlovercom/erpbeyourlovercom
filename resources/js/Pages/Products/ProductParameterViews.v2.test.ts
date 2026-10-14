@@ -21,7 +21,7 @@ const page = {
     id:7,sku:'DEMO-FACTORY',name:'Pillow',is_active:true,image_url:null,woo_url:null,
     parameter_status:'已填',parameter_review_status:'待审核',material:'Cotton+Memory Foam',
     net_weight_kg:'1.589',color_box_gross_kg:'1.65',courier_gross_kg:'1.83',
-    package_dimensions:'50 × 23 × 19 cm',carton_dimensions:'60 × 40 × 50 cm',
+    package_dimensions:'50 × 23 × 19 cm',package_volume_l:21.85,carton_dimensions:'60 × 40 × 50 cm',
     carton_gross_weight_kg:'20',accessories_count:1,accessories_summary:'Pillow × 1 pcs'
   }],
   current_page:1,last_page:1,total:1,per_page:50,from:1,to:1
@@ -38,6 +38,8 @@ describe('Product OS canonical grid views', () => {
       expect(w.text()).toContain(t)
     }
     expect(w.text()).toContain('50 × 23 × 19 cm')
+    expect(w.text()).toContain('包装体积 L')
+    expect(w.text()).toContain('21.85')
     expect(w.text()).toContain('待审核')
     expect(w.find('a[href="/products/7"]').exists()).toBe(true)
     expect(w.find('a[download]').exists()).toBe(false)

@@ -104,6 +104,7 @@ final class ProductController
                     'color_box_gross_kg' => $measures['color_box_gross_kg'] ?? null,
                     'courier_gross_kg' => $measures['courier_gross_kg'] ?? null,
                     'package_dimensions' => $this->measurementDimension($measures, 'package'),
+                    'package_volume_l' => $this->measurementVolume($measures, 'package'),
                     'carton_dimensions' => $this->measurementDimension($measures, 'carton'),
                     'carton_gross_weight_kg' => $measures['carton_gross_weight_kg'] ?? null,
                     'accessories_count' => $accessories->count(),
@@ -272,6 +273,14 @@ final class ProductController
         if (!collect($keys)->every(fn ($key) => is_numeric($m[$key] ?? null)
             && (float) $m[$key] > 0)) return null;
         return implode(' × ', array_map(fn ($key) => (string) $m[$key], $keys)).' cm';
+    }
+
+    private function measurementVolume(array $m, string $prefix): ?float
+    {
+        $keys = [$prefix.'_length_cm', $prefix.'_width_cm', $prefix.'_height_cm'];
+        if (!collect($keys)->every(fn ($key) => is_numeric($m[$key] ?? null)
+            && (float) $m[$key] > 0)) return null;
+        return round(array_product(array_map(fn ($key) => (float) $m[$key], $keys)) / 1000, 3);
     }
 
     private function parameterCoverageCounts(): array

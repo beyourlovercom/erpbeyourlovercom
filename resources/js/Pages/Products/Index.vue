@@ -12,7 +12,7 @@ type ColumnKey =
   | 'dimensions_cm' | 'shipping_weight_kg' | 'standard_production_cost'
   | 'standard_packaging_cost' | 'cost_currency' | 'unit' | 'source'
   | 'parameter_status' | 'parameter_review_status' | 'material' | 'net_weight_kg' | 'color_box_gross_kg'
-  | 'courier_gross_kg' | 'package_dimensions' | 'carton_dimensions'
+  | 'courier_gross_kg' | 'package_dimensions' | 'package_volume_l' | 'carton_dimensions'
   | 'carton_gross_weight_kg' | 'accessories_count' | 'accessories_summary'
 type Product = {
   id: number
@@ -71,6 +71,7 @@ const definitions: GridColumnDefinition<ColumnKey>[] = [
   { key: 'color_box_gross_kg', label: '彩盒毛重 kg', defaultVisible: false },
   { key: 'courier_gross_kg', label: '快递毛重 kg', defaultVisible: false },
   { key: 'package_dimensions', label: '单件包装尺寸', defaultVisible: false },
+  { key: 'package_volume_l', label: '包装体积 L', defaultVisible: false },
   { key: 'carton_dimensions', label: '外箱尺寸', defaultVisible: false },
   { key: 'carton_gross_weight_kg', label: '整箱毛重 kg', defaultVisible: false },
   { key: 'accessories_count', label: '配件种类', defaultVisible: false },
@@ -85,7 +86,7 @@ const { columns, visibleColumns: persistedVisibleColumns, toggle, startDrag, dro
 const currentView = computed<string>(() => ['standard','measurements','accessories'].includes(props.filters.view ?? '')
   ? props.filters.view! : 'standard')
 const viewDefs: Record<string, ColumnKey[]> = {
-  measurements: ['sku','name','parameter_status','parameter_review_status','material','net_weight_kg','color_box_gross_kg','courier_gross_kg','package_dimensions','carton_dimensions','carton_gross_weight_kg'],
+  measurements: ['sku','name','parameter_status','parameter_review_status','material','net_weight_kg','color_box_gross_kg','courier_gross_kg','package_dimensions','package_volume_l','carton_dimensions','carton_gross_weight_kg'],
   accessories: ['sku','name','parameter_status','accessories_count','accessories_summary'],
 }
 const visibleColumns = computed(() => currentView.value === 'standard'

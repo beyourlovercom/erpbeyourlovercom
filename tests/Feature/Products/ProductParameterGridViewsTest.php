@@ -70,7 +70,8 @@ final class ProductParameterGridViewsTest extends TestCase
         $this->get('/products/list?'.http_build_query(['view'=>'measurements','parameter_status'=>'已填']))
             ->assertInertia(fn ($page) => $page->where('products.data.0.net_weight_kg', '1.589')
                 ->where('products.data.0.material', '棉+记忆棉内芯')
-                ->where('products.data.0.package_dimensions', '50 × 23 × 19 cm'));
+                ->where('products.data.0.package_dimensions', '50 × 23 × 19 cm')
+                ->where('products.data.0.package_volume_l', 21.85));
 
         $this->get('/products/list?'.http_build_query(['view'=>'accessories','parameter_status'=>'有配件']))
             ->assertInertia(fn ($page) => $page->where('products.data.0.id', $filled->id)
