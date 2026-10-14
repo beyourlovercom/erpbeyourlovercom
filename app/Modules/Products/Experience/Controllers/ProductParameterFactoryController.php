@@ -202,6 +202,14 @@ final class ProductParameterFactoryController
             'review_note' => ['required_if:decision,rejected', 'nullable', 'string', 'max:5000'],
             'apply_accessories' => ['nullable', 'boolean'],
         ]);
+        // Fail closed: an approved measurement-only submission cannot silently
+        // erase the last approved accessories snapshot, even if a client sends
+        // apply_accessories=true directly rather than using the checkbox UI.
+        if ($data['decision'] === 'approved' && ($data['apply_accessories'] ?? false)
+            && count($submission->accessories ?? []) === 0) {
+            throw ValidationException::withMessages(['apply_accessories' =>
+                '本次没有配件明细；不能用空清单覆盖已有已审核配件']);
+        }
         // Packaging declarations cannot become approved truth if the carton is
         // mathematically too small to contain the stated number of sales packs.
         if ($data['decision'] === 'approved') {

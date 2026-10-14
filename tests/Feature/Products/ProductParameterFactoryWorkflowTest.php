@@ -126,6 +126,40 @@ final class ProductParameterFactoryWorkflowTest extends TestCase
         $this->post($review,['decision'=>'rejected'])->assertStatus(422);
     }
 
+    public function test_approval_cannot_wipe_existing_accessories_with_empty_submission(): void
+    {
+        $product=$this->product();
+        $factory=$this->userWith(['inventory.packaging.submit']);
+        $admin=$this->userWith(['products.operate']);
+        $task=$this->assign($product,$factory,false);
+        $older=ProductParameterSubmission::query()->create([
+            'product_id'=>$product->id, 'task_id'=>$task->id, 'created_by'=>$factory->id,
+            'status'=>'approved', 'measurements'=>['material'=>'cotton'],
+            'accessories'=>[['name'=>'Existing pillow','quantity'=>1,'unit'=>'pcs']],
+            'submitted_at'=>now(), 'reviewed_at'=>now(), 'reviewed_by'=>$admin->id,
+        ]);
+        ProductParameterAccessory::query()->create([
+            'product_id'=>$product->id, 'approved_submission_id'=>$older->id,
+            'name'=>'Existing pillow', 'quantity'=>1, 'unit'=>'pcs',
+        ]);
+        $new=ProductParameterSubmission::query()->create([
+            'product_id'=>$product->id, 'task_id'=>$task->id, 'created_by'=>$factory->id,
+            'status'=>'submitted', 'measurements'=>['net_weight_kg'=>1.62],
+            'accessories'=>[], 'submitted_at'=>now(),
+        ]);
+        $url='/products/parameter-submissions/'.$product->id.'/'.$new->id.'/review';
+        $this->actingAs($admin)->post($url,[
+            'decision'=>'approved','apply_accessories'=>true,
+        ])->assertSessionHasErrors('apply_accessories');
+        $this->assertSame('submitted',$new->fresh()->status);
+        $this->assertDatabaseCount('product_parameter_accessories',1);
+        $this->assertSame('Existing pillow',ProductParameterAccessory::firstOrFail()->name);
+        $this->post($url,['decision'=>'approved','apply_accessories'=>false])->assertRedirect();
+        $this->assertSame('approved',$new->fresh()->status);
+        $this->assertSame('Existing pillow',ProductParameterAccessory::firstOrFail()->name);
+        $this->assertSame('1.5000',(string)$product->fresh()->weight_kg);
+    }
+
     public function test_cross_product_draft_or_photo_access_is_rejected(): void
     {
         Storage::fake('local');

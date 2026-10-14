@@ -77,3 +77,20 @@
 - Measurement view shows independently computed package volume (L, from approved package dimensions only).
 - Admin evidence details render Chinese parameter labels, not raw internal field identifiers.
 - Exact-head CI on intermediate `74e6ef201c4cd501a6153e9795a2efa821ba3fc1`: `mysql8-runtime`, `sqlite-regression`, `kol-sku-permission`, `closure`, `approval-dashboard` all SUCCESS. Recheck CI after subsequent small UI patch commit.
+
+## M4 Dev-only isolated runtime smoke & accessory zero-loss guard
+- Owner explicitly approved Dev-only Owner UAT staging, **not** main merge or Production changes.
+- Exact-head PR #459 `c9040fcd304ff01a7a63c556312f7baf12f9b9ae` and 5/5 CI SUCCESS were checked before preparation.
+- On US Mac mini, staged a separate read-only code release under `/Users/a/AI/verify/product360-v2-owner-uat-20261014/releases/pr459-c9040fcd`, compiled assets, dedicated .env (SQLite, file sessions, no outbound mail), and isolated DB under `shared/uat.sqlite`.
+- Snapshot `backups/uat-db-pristine.sqlite` SHA256 `41a4717f1a43e15e55ae9d3ade653a9ceef75137d61f3e19f67fb4572990324e`, matching isolated DB. Six key tables contain **zero** rows; no identities, real Product, Photos or submissions were inserted. Production and existing local Dev remained untouched.
+- Runtime smoke only: Laravel localhost-only `127.0.0.1:18765` login route HTTP 200; unauthenticated `/products/list`, `/products/factory-parameters`, `/products/1`, `/products/weight-evidence` all correctly redirect to Login. The temporary localhost service was then **stopped**.
+- Remote platform safety guard rejected synthetic UAT account/product seed. Must NOT retry by using alternate tools, real staff identities or real records. No successful authenticated Owner browser / iPhone14 UAT evidence exists.
+- Review found a P0 data-loss path: if a submission has **zero accessories** but a client sends `apply_accessories=true`, old code would clear the canonical approved accessories snapshot. Fix: server refuses the flag (validation) before any record transition or deletion. A regression tests the entire before/after lifecycle including review-without-accessory-adoption.
+- After fix, isolated focused regressions: **PHP 66/66 PASS (707 assertions)** and Vue **39/39 PASS**; vue-tsc, Vite build and git diff checks PASS. New GitHub CI must be rechecked on amended head.
+
+### Resume requirements (do not skip)
+1. Resolve the remote security gate through an authorized account provisioning path; do **not** try to rephrase or bypass previously denied seed action. Owner/test ops may provision synthetic accounts in the isolated environment using an approved mechanism.
+2. Verify UAT release exact candidate + matching compiled assets and database copy and restore pointer. Do not use Production/real Dev DB.
+3. Grant one synthetic admin with products.operate and one scoped factory employee with inventory.packaging.submit; assign one synthetic SKU only.
+4. On authorized Desktop/iPhone14 browser: run full 9→5 old panel parity, product list 3-view parity, factory task / draft / photo-optional submit, manager review and accessory preservation, negative permission checks. Capture evidence.
+5. Only then request explicit Owner PASS, and separately request exact-head PR merge / deployment approval.
