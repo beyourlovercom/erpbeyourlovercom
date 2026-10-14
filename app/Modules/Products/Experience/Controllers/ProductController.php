@@ -196,13 +196,19 @@ final class ProductController
         if ($media->storage_path && Storage::disk('local')->exists($media->storage_path)) {
             return route('products.media.show', $media->id);
         }
-        $source = trim((string) $media->source_url);
-        if (! filter_var($source, FILTER_VALIDATE_URL)) return null;
-        $parts = parse_url($source);
-        if (strtolower((string) ($parts['scheme'] ?? '')) !== 'https') return null;
+        $parts = parse_url(trim((string) $media->source_url));
+        if (! is_array($parts) || strtolower((string) ($parts['scheme'] ?? '')) !== 'https') return null;
+        if (isset($parts['user']) || isset($parts['pass']) || isset($parts['port'])) return null;
         $host = strtolower((string) ($parts['host'] ?? ''));
         if ($host !== 'beyourlover.com' && ! str_ends_with($host, '.beyourlover.com')) return null;
-        return $source;
+        // The first-party CDN includes historic Chinese filenames; encode UTF-8 path
+        // characters for a standards-compliant img src without changing stored media.
+        $encode = static fn (array $match): string => rawurlencode($match[0]);
+        $path = preg_replace_callback('/[^\\x21-\\x7E]/u', $encode, (string) ($parts['path'] ?? ''));
+        $query = isset($parts['query']) ? '?'.preg_replace_callback('/[^\\x21-\\x7E]/u', $encode, $parts['query']) : '';
+        if ($path === null || $query === null) return null;
+        $source = 'https://'.$host.$path.$query;
+        return filter_var($source, FILTER_VALIDATE_URL) ? $source : null;
     }
 
     /** @return array<string,string> */
