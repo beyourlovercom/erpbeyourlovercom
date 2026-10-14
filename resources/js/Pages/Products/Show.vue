@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3'
+import { Head, Link, router } from '@inertiajs/vue3'
 import { computed, nextTick, reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
@@ -42,6 +42,11 @@ const props = defineProps<{
   hasWooProductReference?: boolean
   media?: ProductMedia[]
   woo?: { provider_status: string | null; categories: string[]; description: string | null; short_description: string | null; variation_count: number | null; provider_created_at: string | null; provider_modified_at: string | null; last_synced_at: string | null; connection_key: string } | null
+  parameterTask?: {id:number; enabled:boolean; is_required:boolean; assigned_user_id:number|null; required_fields:string[]}|null
+  parameterSubmissions?: {id:number;status:string;created_by:number;review_note:string|null;submitted_at:string|null;measurements:Record<string,string>;accessories:{name:string;quantity:number;unit:string}[]}[]
+  approvedParameterMeasurements?: Record<string,string>
+  approvedAccessories?: {name:string;quantity:number|string;unit:string;notes:string|null}[]
+  factoryUserOptions?: {id:number;name:string}[]
   wooSyncHistory?: { status: string; result_code: string | null; error_message: string | null; completed_at: string | null; run_id: number }[]
 }>()
 
@@ -88,6 +93,30 @@ const wooGroups = computed(() => Object.values(props.externalReferences.reduce((
   return groups
 }, {} as Record<string, { connectionKey: string; products: string[]; variations: string[] }>)))
 const mediaItems = computed(() => props.media ?? [])
+const factoryTask = reactive({
+  enabled: props.parameterTask?.enabled ?? false,
+  is_required: props.parameterTask?.is_required ?? false,
+  assigned_user_id: props.parameterTask?.assigned_user_id ?? null as number|null,
+  required_fields: [...(props.parameterTask?.required_fields ?? [])] as string[],
+})
+const measured = (key: string) => props.approvedParameterMeasurements?.[key] ?? null
+const approvedMeasure = (key: string, suffix = '') => measured(key) ? String(measured(key)) + suffix : '待填写'
+const coreRequired = [
+  {key:'material',name:'产品材质'}, {key:'weight_composition',name:'重量组成'},
+  {key:'net_weight_kg',name:'净重'}, {key:'color_box_gross_kg',name:'彩盒毛重'},
+  {key:'courier_gross_kg',name:'快递毛重'},
+  {key:'package_length_cm',name:'包装长'}, {key:'package_width_cm',name:'包装宽'},
+  {key:'package_height_cm',name:'包装高'}, {key:'units_per_carton',name:'每箱数量'},
+]
+function saveFactoryTask() {
+  router.post('/products/parameter-tasks/'+props.product.id, {...factoryTask}, {preserveScroll:true})
+}
+function reviewSubmission(id:number, decision:'approved'|'rejected') {
+  const apply_accessories = decision === 'approved' && window.confirm('如有配件清单，是否将它采纳为该产品当前清单？')
+  router.post('/products/parameter-submissions/'+props.product.id+'/'+id+'/review',
+    {decision,apply_accessories},{preserveScroll:true})
+}
+
 const selectRelative = async (tab: Tab, delta: number) => {
   const index = tabs.indexOf(tab)
   navigateTab(tabs[(index + delta + tabs.length) % tabs.length])
@@ -125,12 +154,12 @@ const selectRelative = async (tab: Tab, delta: number) => {
         <h3>产品参数总览</h3>
         <div class="product360-detail-grid product360-parameters-grid">
           <p>产品名称：{{ display(product.name) }}</p><p>SKU：{{ display(product.sku) }}</p>
-          <p>产品类型：{{ display(product.product_type) }}</p><p>产品材质：待填写</p>
-          <p>重量组成说明：待填写</p><p>产品净重（现有参考）：{{ weight(product.weight_kg) }}</p>
-          <p>彩盒毛重：待填写</p><p>快递毛重：待填写</p>
+          <p>产品类型：{{ display(product.product_type) }}</p><p>产品材质：{{ approvedMeasure('material') }}</p>
+          <p>重量组成说明：{{ approvedMeasure('weight_composition') }}</p><p>产品净重（现有参考）：{{ weight(product.weight_kg) }}</p>
+          <p>彩盒毛重：{{ approvedMeasure('color_box_gross_kg',' kg') }}</p><p>快递毛重：{{ approvedMeasure('courier_gross_kg',' kg') }}</p>
           <p>运输参考重量：{{ weight(product.shipping_weight_kg) }}</p>
           <p>产品尺寸：{{ [product.length_cm, product.width_cm, product.height_cm].every(v => v !== null && v !== undefined) ? [product.length_cm, product.width_cm, product.height_cm].join(' × ') + ' cm' : '待填写' }}</p>
-          <p>单件包装尺寸：待填写</p><p>外箱尺寸 / 装箱数量 / 整箱重量：待填写</p>
+          <p>单件包装尺寸：{{ measured('package_length_cm') && measured('package_width_cm') && measured('package_height_cm') ? [measured('package_length_cm'),measured('package_width_cm'),measured('package_height_cm')].join(' × ') + ' cm' : '待填写' }}</p><p>外箱尺寸：{{ measured('carton_length_cm') && measured('carton_width_cm') && measured('carton_height_cm') ? [measured('carton_length_cm'),measured('carton_width_cm'),measured('carton_height_cm')].join(' × ') + ' cm' : '待填写' }} · 装箱：{{ approvedMeasure('units_per_carton',' pcs') }} · 整箱毛重：{{ approvedMeasure('carton_gross_weight_kg',' kg') }}</p>
         </div>
         <p class="product360-meta-note">产品净重、运输参考重量、彩盒毛重和快递毛重不能互相替代。待核实资料不得伪装为已确认参数。</p>
         <div class="product360-v2-actions"><button type="button" class="mvp-button mvp-button-secondary" @click="activeSubTab='工厂填报'">工厂填报</button><button type="button" class="mvp-button mvp-button-secondary" @click="activeSubTab='包装与配件'">包装与配件</button></div>
@@ -139,11 +168,39 @@ const selectRelative = async (tab: Tab, delta: number) => {
         <h3>工厂填报</h3>
         <p>工厂专属任务、状态与可选照片的直填功能，需要受控的证据审核 API 与工厂角色授权后才能启用。</p>
         <p class="product360-meta-note">此阶段不向工厂开放产品主档修改权限，不自动采纳测量结果；原有重量证据审核照常运行。</p>
+        <div v-if="canOperate" class="product360-factory-task">
+          <h4>指定工厂填写任务</h4>
+          <label><input v-model="factoryTask.enabled" type="checkbox" /> 启用填写任务</label>
+          <label><input v-model="factoryTask.is_required" type="checkbox" /> 必填任务</label>
+          <label>指派员工
+            <select v-model.number="factoryTask.assigned_user_id">
+              <option :value="null">请选择员工</option>
+              <option v-for="u in factoryUserOptions ?? []" :key="u.id" :value="u.id">{{ u.name }} · #{{ u.id }}</option>
+            </select>
+          </label>
+          <div class="product360-required-fields"><strong>指定必填字段（可选）</strong>
+            <label v-for="field in coreRequired" :key="field.key">
+              <input v-model="factoryTask.required_fields" type="checkbox" :value="field.key"/> {{ field.name }}
+            </label>
+          </div>
+          <button type="button" class="mvp-button mvp-button-primary" @click="saveFactoryTask">保存任务与权限</button>
+          <p class="product360-meta-note">工厂员工仅能查看获指派产品的独立参数填报页，不能因此获得产品成本或审核权限。</p>
+          <h4>近期测量提交</h4>
+          <div v-for="record in parameterSubmissions ?? []" :key="record.id" class="product360-factory-record">
+            <span>#{{ record.id }} · {{record.status}} · 工厂员工 #{{record.created_by}}</span>
+            <button v-if="record.status === 'submitted'" type="button" @click="reviewSubmission(record.id,'approved')">审核通过</button>
+            <button v-if="record.status === 'submitted'" type="button" @click="reviewSubmission(record.id,'rejected')">驳回</button>
+            <small v-if="record.review_note">{{record.review_note}}</small>
+          </div>
+        </div>
         <div class="product360-v2-actions"><Link href="/products/weight-evidence" class="mvp-button mvp-button-secondary">现有重量证据工作区</Link><Link v-if="canOperate" :href="'/products/' + product.id + '/edit'" class="mvp-button mvp-button-secondary">现有产品编辑</Link></div>
       </article>
       <article v-else-if="activeTab === '产品参数' && activeSubTab === '包装与配件'" class="erp-form-card" role="tabpanel" tabindex="0">
         <h3>包装与配件</h3><p>原有包装方案、包装预设、包装材料、案例图片与装箱配置全部保留。</p>
-        <p class="product360-meta-note">包装内含配件尚未建立经过审核的标准清单，当前不自动推测名称与数量。</p>
+        <p class="product360-meta-note">已审核采纳的包装内含物 / 配件清单：</p>
+        <table v-if="approvedAccessories?.length" class="mvp-table"><thead><tr><th>配件名称</th><th>数量</th><th>单位</th><th>说明</th></tr></thead>
+          <tbody><tr v-for="(part,i) in approvedAccessories" :key="i"><td>{{part.name}}</td><td>{{part.quantity}}</td><td>{{part.unit}}</td><td>{{part.notes||'—'}}</td></tr></tbody></table>
+        <p v-else class="mvp-empty">尚未有经过审核的包装内配件清单</p>
         <Link v-if="canOperate" :href="'/products/' + product.id + '/packaging'" class="mvp-button mvp-button-secondary">进入原包装方案</Link>
         <p v-else class="product360-meta-note">包装编辑需要现有产品操作权限。</p>
       </article>
@@ -169,6 +226,15 @@ const selectRelative = async (tab: Tab, delta: number) => {
 </template>
 
 <style scoped>
+.product360-factory-task { margin:18px 0; padding:14px; border:1px solid #dce8dd; border-radius:8px; background:#f9fcf9; display:grid; gap:12px; }
+.product360-factory-task h4 { margin:0; color:#20583c; }
+.product360-factory-task label { display:flex; align-items:center; gap:8px; font-size:12px; }
+.product360-factory-task select { padding:8px; border:1px solid #d1e1d4; border-radius:7px; }
+.product360-factory-task input[type=checkbox] { accent-color:#176e50; }
+.product360-required-fields { display:flex; gap:9px; flex-wrap:wrap; align-items:center; }
+.product360-factory-record { display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid #e4ebe5; flex-wrap:wrap; }
+.product360-factory-record button { border:1px solid #aacbb8; border-radius:6px; padding:5px 10px; background:#fff; color:#20694a; }
+
 .product360-subtabs{display:flex;gap:6px;flex-wrap:wrap;margin:-4px 0 14px;}
 .product360-subtabs button{border:1px solid #d8e6dc;border-radius:7px;background:#fff;padding:8px 11px;color:#527263;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
 .product360-subtabs button.active{border-color:#96c8ac;background:#eaf6ee;color:#156d4e}

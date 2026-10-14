@@ -16,6 +16,10 @@ use App\Modules\Products\Application\WooCommerceProductInboundService;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductMedia;
 use App\Modules\Products\Infrastructure\Models\ProductProviderSnapshot;
+use App\Modules\Products\Infrastructure\Models\ProductParameterTask;
+use App\Modules\Products\Infrastructure\Models\ProductParameterSubmission;
+use App\Modules\Products\Infrastructure\Models\ProductParameterAccessory;
+use App\Modules\Identity\Infrastructure\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -253,6 +257,14 @@ final class ProductController
         $media = ProductMedia::query()->where(['product_id' => $id, 'provider' => 'woocommerce', 'connection_key' => $connection])->orderBy('position')->get();
         $recentProductRuns = \App\Modules\Sync\Infrastructure\Models\SyncRunItem::query()->with('run')->where('product_id', $id)->where('operation', 'woocommerce.product_inbound')->latest('id')->limit(10)->get()->map(fn ($item): array => ['status' => $item->status?->value ?? $item->status, 'result_code' => $item->result_code, 'error_message' => $item->error_message, 'completed_at' => $item->completed_at?->toIso8601String(), 'run_id' => $item->sync_run_id])->all();
 
+        $canManageProduct = Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false;
+        $parameterTask = ProductParameterTask::query()->where('product_id', $id)->first();
+        $parameterSubmissions = $canManageProduct
+            ? ProductParameterSubmission::query()->where('product_id', $id)->latest('id')->limit(15)->get()
+            : collect();
+        $latestApprovedParameters = ProductParameterSubmission::query()->where('product_id', $id)
+            ->where('status', 'approved')->latest('reviewed_at')->first();
+
         return Inertia::render('Products/Show', [
             'product' => [
                 'id' => (int) $product->id,
@@ -299,6 +311,25 @@ final class ProductController
             'collaborations' => $this->kolProjection->forProduct($id),
             'kolShipping' => $this->kolProjection->shippingSummaryForProduct($id),
             'audit' => $this->activityProjection->forProduct($id),
+            'parameterTask' => $parameterTask ? [
+                'id' => $parameterTask->id, 'enabled' => $parameterTask->enabled,
+                'is_required' => $parameterTask->is_required,
+                'assigned_user_id' => $parameterTask->assigned_user_id,
+                'required_fields' => $parameterTask->required_fields ?? [],
+            ] : null,
+            'parameterSubmissions' => $parameterSubmissions->map(fn ($r) => [
+                'id' => $r->id, 'status' => $r->status,
+                'created_by' => $r->created_by, 'review_note' => $r->review_note,
+                'submitted_at' => $r->submitted_at?->toIso8601String(),
+                'measurements' => $r->measurements ?? [],
+                'accessories' => $r->accessories ?? [],
+            ])->all(),
+            'approvedParameterMeasurements' => $latestApprovedParameters?->measurements ?? [],
+            'approvedAccessories' => ProductParameterAccessory::query()->where('product_id', $id)
+                ->orderBy('id')->get(['name', 'quantity', 'unit', 'notes'])->toArray(),
+            'factoryUserOptions' => $canManageProduct
+                ? User::query()->where('is_active', true)->orderBy('name')->get(['id', 'name'])->toArray()
+                : [],
             'canOperate' => Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false,
             'canSync' => Auth::user()?->can(AuthorizationKeys::SyncOperate->value) ?? false,
             'hasWooProductReference' => $configuredProductReference !== null,

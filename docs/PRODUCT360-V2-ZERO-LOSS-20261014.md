@@ -35,3 +35,15 @@
 4. View-only Users cannot see mutate actions.
 5. Vue focused tests + production Vite build; no new TypeScript errors.
 6. Production untouched; final Owner visual desktop and iPhone14 UAT **separately required** before main merge/deploy.
+
+## M3 isolated factory-parameter workflow (2026-10-14)
+- Added Product-owned \`product_parameter_tasks\`, \`product_parameter_submissions\`, \`product_parameter_media\`, \`product_parameter_accessories\`. **No migration applied to Dev/Production**. Migration verified in temporary SQLite only.
+- Product 360 uses same Product ID; admins assign one specific active staff ID per Product and select individual required fields. No separate Product master/list was created.
+- Dedicated factory route under \`/products/factory-parameters/{product}\` is gated by the existing \`inventory.packaging.submit\` permission **AND** a record-level enabled + assigned-user check. Does not grant \`products.view\`, \`products.operate\`, cost access, Woo sync or audit permissions.
+- Factory can save own drafts, enter measured product/box/courier/carton weights and dimensions (unknown fields remain unfilled), enter accessories/quantities, upload up to eight OPTIONAL images, and submit for review. Submission cannot be edited; subsequent corrections create a new draft.
+- Existing Inventory \`packaging_measurement\` requires weight/dimension images and was intentionally **NOT** reused/changed: it is shipment-level rather than product-parameter evidence.
+- Separate \`products.operate\` review. Reviewers cannot approve their own submission. Approval never auto-writes \`products.weight_kg\`, \`shipping_weight_kg\` or shipment truth. Accessory snapshot adoption is an explicit reviewer switch; data remains sourced to approved evidence ID.
+- Original \`/products/weight-evidence\` adoption/override rules and original packaging page remain unchanged; no automated backfill/sibling SKU data inference.
+- Factory form is mobile responsive; Admin Product 360 shows task controls and last submissions, approved material/box/courier parameters and current approved accessories.
+- Local isolated focused PHP regression \`Product360Test\` + \`WeightEvidenceTest\` + \`ProductParameterFactoryWorkflowTest\`: **38/38 PASS, 191 assertions**; Vue Product 360 + Product Grid **35/35 PASS**; Vue typecheck **PASS**; Vite production build **PASS**.
+- **Remaining release gate:** real role/screenshot Owner UAT on isolated deployment, Migration/MySQL8 and rollback rehearsal, security review on file/photo downloads and role assignment; PR remains DRAFT and must not merge/deploy Production without distinct approval.
