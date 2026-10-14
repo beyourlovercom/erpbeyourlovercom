@@ -114,8 +114,9 @@ final class EloquentProductRepository implements ProductRepository
                     }
                 });
             })
-            ->orderBy('name')
-            ->paginate(min($perPage, 200))
+            ->orderBy(in_array($filters['sort'] ?? 'name', ['name', 'sku', 'regular_price', 'sale_price', 'shipping_weight_kg', 'id'], true) ? $filters['sort'] ?? 'name' : 'name', ($filters['direction'] ?? 'asc') === 'desc' ? 'desc' : 'asc')
+            ->orderBy('id')
+            ->paginate(max(1, $perPage))
             ->withQueryString();
     }
 

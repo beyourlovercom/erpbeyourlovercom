@@ -13,6 +13,7 @@ use App\Modules\Products\Application\Contracts\SkuAliasRepository;
 use App\Modules\Products\Application\ProductService;
 use App\Modules\Products\Application\ProductWeightEvidenceService;
 use App\Modules\Products\Application\WooCommerceProductInboundService;
+use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductMedia;
 use App\Modules\Products\Infrastructure\Models\ProductProviderSnapshot;
 use Illuminate\Http\JsonResponse;
@@ -22,6 +23,11 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -47,30 +53,159 @@ final class ProductController
         ]);
     }
 
+    /**
+     * Read-only Product OS grid. The canonical Products table remains the owner:
+     * Woo snapshots/media, packaging standards and inventory are projections only.
+     */
     public function index(Request $request): Response
     {
-        $products = $this->products->list($request->only(['search']));
+        $filters = $request->only(['search', 'sort', 'direction']);
+        $perPage = $this->productListPageSize($request);
+        $products = $this->products->list($filters, $perPage);
+        $this->loadGridRelations($products->getCollection());
+        $stock = $this->inventory->forProductIds($products->getCollection()->pluck('id')->all());
 
         return Inertia::render('Products/Index', [
-            'products' => $products->through(fn ($p): array => [
-                'id' => $p->id,
-                'woocommerce_product_id' => $p->woocommerce_product_id,
-                'source_type' => $p->source_type,
-                'product_type' => $p->product_type,
-                'sku' => $p->sku,
-                'name' => $p->name,
-                'unit' => $p->unit,
-                'is_active' => $p->is_active,
-                'shipping_weight_kg' => $p->shipping_weight_kg,
-                'standard_production_cost' => $p->standard_production_cost,
-                'standard_packaging_cost' => $p->standard_packaging_cost,
-                'cost_currency' => $p->cost_currency,
-                'sale_price' => $p->sale_price,
-                'regular_price' => $p->regular_price,
-            ])->toArray(),
-            'filters' => $request->only(['search']),
+            'products' => $products->through(fn (Product $p): array => $this->gridRow($p, $stock[(int) $p->id] ?? []))->toArray(),
+            'filters' => $request->only(['search', 'per_page', 'sort', 'direction']),
             'canOperate' => Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false,
         ]);
+    }
+
+    /**
+     * Export every row matching the current search, not merely the current page.
+     * All cell values are explicit strings so untrusted product names cannot
+     * become spreadsheet formulas when an XLSX file is opened.
+     */
+    public function export(Request $request): StreamedResponse
+    {
+        $filters = $request->only(['search', 'sort', 'direction']);
+        $products = $this->products->list($filters, max(1, $this->products->totalCount()));
+        $this->loadGridRelations($products->getCollection());
+        $stock = $this->inventory->forProductIds($products->getCollection()->pluck('id')->all());
+        $fields = self::gridExportColumns();
+        $requested = array_filter(explode(',', (string) $request->query('columns', '')));
+        $columns = [];
+        foreach ($requested as $key) {
+            if (isset($fields[$key]) && ! isset($columns[$key])) $columns[$key] = $fields[$key];
+        }
+        if (! $columns) $columns = $fields;
+
+        $rows = $products->getCollection()->map(fn (Product $p): array => $this->gridRow($p, $stock[(int) $p->id] ?? []))->all();
+
+        return response()->streamDownload(static function () use ($rows, $columns): void {
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('产品列表');
+            $col = 1;
+            foreach ($columns as $label) {
+                $sheet->setCellValueExplicit(Coordinate::stringFromColumnIndex($col++).'1', $label, DataType::TYPE_STRING);
+            }
+            foreach ($rows as $offset => $row) {
+                $col = 1;
+                foreach ($columns as $key => $label) {
+                    $value = $row[$key] ?? null;
+                    $sheet->setCellValueExplicit(
+                        Coordinate::stringFromColumnIndex($col++).($offset + 2),
+                        $value === null || $value === '' ? '—' : (string) $value,
+                        DataType::TYPE_STRING
+                    );
+                }
+            }
+            $last = Coordinate::stringFromColumnIndex(count($columns));
+            $sheet->getStyle('A1:'.$last.'1')->getFont()->setBold(true);
+            $sheet->freezePane('C2');
+            $sheet->setAutoFilter('A1:'.$last.(count($rows) + 1));
+            foreach (range(1, count($columns)) as $index) {
+                $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($index))->setWidth(24);
+            }
+            (new Xlsx($spreadsheet))->save('php://output');
+            $spreadsheet->disconnectWorksheets();
+        }, 'BYL-products-'.now()->format('Ymd-His').'.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Cache-Control' => 'private, no-store',
+        ]);
+    }
+
+    private function productListPageSize(Request $request): int
+    {
+        $requested = (string) $request->query('per_page', '50');
+        if ($requested === 'all') return max(1, $this->products->totalCount());
+        return in_array($requested, ['20', '50', '100'], true) ? (int) $requested : 50;
+    }
+
+    private function loadGridRelations(\Illuminate\Database\Eloquent\Collection $products): void
+    {
+        $connection = (string) config('services.woocommerce.connection_key', 'beyourlover.com');
+        $products->load([
+            'packagingProfile',
+            'providerSnapshots' => fn ($query) => $query->where('provider', 'woocommerce')->where('connection_key', $connection),
+            'media' => fn ($query) => $query->where('provider', 'woocommerce')->where('connection_key', $connection)->where('is_primary', true),
+        ]);
+    }
+
+    /** @param array<int,array<string,mixed>> $warehouses */
+    private function gridRow(Product $p, array $warehouses): array
+    {
+        $snapshot = $p->providerSnapshots->first();
+        $media = $p->media->first();
+        // Partial or unverified warehouses must never be mistaken for zero stock.
+        $stockKnown = $warehouses !== [] && collect($warehouses)->every(
+            fn (array $row): bool => $row['quantity_available'] !== null
+        );
+        $dimensions = $p->length_cm !== null && $p->width_cm !== null && $p->height_cm !== null
+            ? $p->length_cm.'×'.$p->width_cm.'×'.$p->height_cm
+            : null;
+
+        return [
+            'id' => (int) $p->id,
+            'sku' => $p->sku,
+            'name' => $p->name,
+            'source_type' => $p->source_type,
+            'source' => $p->source_type === 'manual' ? '手动' : 'Woo',
+            'is_active' => (bool) $p->is_active,
+            'status' => $p->is_active ? '启用' : '停用',
+            'gtin' => $p->gtin,
+            'label_description' => $p->label_description,
+            'image_url' => $media ? route('products.media.show', $media->id) : null,
+            'woo_url' => $snapshot?->permalink,
+            'units_per_carton' => $p->packagingProfile?->units_per_carton,
+            // These are PRODUCT dimensions, not packaged dimensions.
+            'dimensions_cm' => $dimensions,
+            'weight_kg' => $p->weight_kg,
+            'shipping_weight_kg' => $p->shipping_weight_kg,
+            'unit' => $p->unit,
+            'standard_production_cost' => $p->standard_production_cost,
+            'standard_packaging_cost' => $p->standard_packaging_cost,
+            'cost_currency' => $p->cost_currency,
+            'sale_price' => $p->sale_price,
+            'regular_price' => $p->regular_price,
+            'available_stock' => $stockKnown ? array_sum(array_column($warehouses, 'quantity_available')) : null,
+            // Tencent sheet-only fields lack canonical mappings in Product OS.
+            'cnf' => null,
+            'material_name' => null,
+            'packaging_dimensions' => null,
+            'brand' => null,
+        ];
+    }
+
+    /** @return array<string,string> */
+    private static function gridExportColumns(): array
+    {
+        return [
+            'status' => '状态', 'sku' => 'SKU', 'cnf' => 'CNF（待接入）',
+            'material_name' => '物料名称（待接入）', 'name' => '产品名称',
+            'image_url' => '图片链接', 'woo_url' => '官网链接',
+            'units_per_carton' => '标准装箱数', 'packaging_dimensions' => '包装尺寸（待接入）',
+            'weight_kg' => '商品重量 kg', 'regular_price' => '原价',
+            'sale_price' => '售价', 'brand' => '品牌（待接入）',
+            'available_stock' => '可用库存（已核实仓库）',
+            'gtin' => 'GTIN', 'label_description' => '蓝标描述',
+            'dimensions_cm' => '商品尺寸 cm', 'shipping_weight_kg' => '运重 kg',
+            'standard_production_cost' => '标准生产成本',
+            'standard_packaging_cost' => '标准包材成本',
+            'cost_currency' => '成本币种', 'unit' => '单位', 'source' => '来源',
+        ];
     }
 
     public function create(): Response

@@ -7,6 +7,8 @@ on:
       - 'app/Modules/Identity/Application/RolePreset.php'
       - 'app/Modules/Products/Experience/**'
       - 'resources/js/Components/Products/SkuCombobox*'
+      - 'resources/js/Pages/Products/Index*'
+      - 'resources/js/Components/DataGrid/ColumnSettingsHeader.vue'
       - 'tests/Feature/Products/**'
       - 'tests/Feature/Identity/**'
       - 'tests/Feature/Orders/KolOrderOwnerScopeTest.php'
@@ -49,9 +51,9 @@ jobs:
           touch database/database.sqlite
           php artisan migrate:fresh --force
       - name: Products, Identity and KOL order scope regressions
-        run: php artisan test tests/Feature/Products/ProductManagementTest.php tests/Feature/Identity/PermissionMatrixTest.php tests/Feature/Orders/KolOrderOwnerScopeTest.php
-      - name: SKU combobox Vitest
-        run: npm test -- resources/js/Components/Products/SkuCombobox.test.ts
+        run: php artisan test tests/Feature/Products/ProductManagementTest.php tests/Feature/Products/ProductGridExportTest.php tests/Feature/Identity/PermissionMatrixTest.php tests/Feature/Orders/KolOrderOwnerScopeTest.php
+      - name: SKU combobox and Product Grid Vitest
+        run: npm test -- resources/js/Components/Products/SkuCombobox.test.ts resources/js/Pages/Products/Index.test.ts
       - name: Frontend typecheck and build
         run: |
           npm run typecheck

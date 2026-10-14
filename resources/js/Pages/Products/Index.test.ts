@@ -19,6 +19,7 @@ const makeProduct = (overrides = {}) => ({
   sku: null, name: 'Test', unit: null, is_active: true,
   shipping_weight_kg: null, standard_production_cost: null, standard_packaging_cost: null,
   cost_currency: null, sale_price: null, regular_price: '89.00',
+  image_url: null, woo_url: null,
   ...overrides,
 })
 
@@ -143,4 +144,40 @@ describe('Products/Index', () => {
     const wrapper = mount(Index, { props: { products: page, filters: {}, canOperate: false } })
     expect(wrapper.text()).toContain('停用')
   })
+
+  it('renders real media and official product links in the sheet grid', () => {
+    const p = makeProduct({
+      sku: 'GRID-IMG', name: 'Image test',
+      image_url: '/products/media/99',
+      woo_url: 'https://www.beyourlover.com/image-test',
+      units_per_carton: 24,
+      available_stock: null,
+    })
+    const wrapper = mount(Index, { props: { products: { ...emptyPage, total: 1, data: [p] }, filters: {}, canOperate: false } })
+    expect(wrapper.find('img[src="/products/media/99"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="https://www.beyourlover.com/image-test"]').attributes('rel')).toContain('noopener')
+    expect(wrapper.text()).toContain('24')
+  })
+
+  it('exposes account-backed column settings, visible-column export and drag ordering', async () => {
+    const wrapper = mount(Index, { props: { products: emptyPage, filters: {}, canOperate: false } })
+    expect(wrapper.find('a[href^="/products/list/export?"]').exists()).toBe(true)
+    const settings = wrapper.find('button[aria-label="列设置"]')
+    expect(settings.exists()).toBe(true)
+    await settings.trigger('click')
+    expect(wrapper.text()).toContain('恢复默认')
+    expect(wrapper.find('input[aria-label="SKU固定显示"]').exists()).toBe(true)
+  })
+
+  it('supports page-size changes including all and preserves active search', async () => {
+    const { router } = await import('@inertiajs/vue3')
+    const wrapper = mount(Index, { props: { products: emptyPage, filters: { search: 'test' }, canOperate: false } })
+    await wrapper.find('select[aria-label="每页显示条数"]').setValue('all')
+    expect(router.get).toHaveBeenCalledWith(
+      '/products/list',
+      expect.objectContaining({ search: 'test', per_page: 'all', page: 1 }),
+      expect.objectContaining({ preserveState: true }),
+    )
+  })
+
 })
