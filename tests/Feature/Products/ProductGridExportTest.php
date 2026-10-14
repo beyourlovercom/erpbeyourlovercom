@@ -5,6 +5,8 @@ namespace Tests\Feature\Products;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Products\Infrastructure\Models\ProductMedia;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -116,4 +118,72 @@ final class ProductGridExportTest extends TestCase
         $this->actingAs($viewer)->get('/products/list/export?columns=sku,name')->assertOk();
         $this->assertDatabaseHas('products', ['sku' => 'READ-ONLY-001', 'name' => 'Stay Unchanged']);
     }
+
+    public function test_grid_uses_verified_woo_cdn_when_local_media_file_is_missing(): void
+    {
+        config(['services.woocommerce.connection_key' => 'beyourlover.com']);
+        $viewer = $this->viewer();
+        $product = Product::create([
+            'source_type' => 'woocommerce', 'product_type' => 'simple',
+            'sku' => 'MEDIA-FALLBACK-1', 'name' => 'Media fallback',
+        ]);
+        $media = ProductMedia::create([
+            'product_id' => $product->id,
+            'provider' => 'woocommerce',
+            'connection_key' => 'beyourlover.com',
+            'provider_media_key' => 'media-fallback-1',
+            'source_url' => 'https://img.beyourlover.com/products/verified.webp',
+            'storage_path' => 'product-media/nonexistent-verified.webp',
+            'mime_type' => 'image/webp',
+            'size_bytes' => 1234,
+            'sha256' => str_repeat('a', 64),
+            'is_primary' => true,
+        ]);
+
+        $this->actingAs($viewer)->get('/products/list?search=MEDIA-FALLBACK-1')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('products.data.0.image_url', 'https://img.beyourlover.com/products/verified.webp'));
+
+        $media->update(['source_url' => 'https://img.beyourlover.com/products/首图.png']);
+        $this->actingAs($viewer)->get('/products/list?search=MEDIA-FALLBACK-1')
+            ->assertInertia(fn ($page) => $page
+                ->where('products.data.0.image_url', 'https://img.beyourlover.com/products/%E9%A6%96%E5%9B%BE.png'));
+    }
+
+    public function test_grid_prefers_existing_local_image_and_rejects_non_brand_remote_image(): void
+    {
+        config(['services.woocommerce.connection_key' => 'beyourlover.com']);
+        Storage::fake('local');
+        $viewer = $this->viewer();
+        $product = Product::create([
+            'source_type' => 'woocommerce', 'product_type' => 'simple',
+            'sku' => 'MEDIA-LOCAL-1', 'name' => 'Local media',
+        ]);
+        Storage::disk('local')->put('products/local-grid.png', 'test-image');
+        $media = ProductMedia::create([
+            'product_id' => $product->id,
+            'provider' => 'woocommerce',
+            'connection_key' => 'beyourlover.com',
+            'provider_media_key' => 'media-local-1',
+            'source_url' => 'https://img.beyourlover.com/products/local.png',
+            'storage_path' => 'products/local-grid.png',
+            'mime_type' => 'image/png',
+            'size_bytes' => 10,
+            'sha256' => str_repeat('b', 64),
+            'is_primary' => true,
+        ]);
+        $this->actingAs($viewer)->get('/products/list?search=MEDIA-LOCAL-1')
+            ->assertInertia(fn ($page) => $page
+                ->where('products.data.0.image_url', route('products.media.show', $media->id)));
+
+        $media->update([
+            'storage_path' => 'products/missing.png',
+            'source_url' => 'https://untrusted.invalid/pixel.png',
+        ]);
+        $this->actingAs($viewer)->get('/products/list?search=MEDIA-LOCAL-1')
+            ->assertInertia(fn ($page) => $page->where('products.data.0.image_url', null));
+    }
+
+
 }

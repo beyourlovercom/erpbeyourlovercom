@@ -180,4 +180,41 @@ describe('Products/Index', () => {
     )
   })
 
+  it('places the styled search inside the page header rather than a separate toolbar row', async () => {
+    const { router } = await import('@inertiajs/vue3')
+    vi.mocked(router.get).mockClear()
+    const wrapper = mount(Index, { props: { products: emptyPage, filters: {}, canOperate: true } })
+    const searchForm = wrapper.find('.mvp-page-heading form.product-search')
+    expect(searchForm.exists()).toBe(true)
+    expect(searchForm.find('svg.product-search-icon').exists()).toBe(true)
+    expect(wrapper.find('.grid-toolbar').exists()).toBe(false)
+    await searchForm.find('input').setValue('SKU-12')
+    await searchForm.trigger('submit')
+    expect(router.get).toHaveBeenCalledWith('/products/list', expect.objectContaining({ search: 'SKU-12', page: 1 }), expect.anything())
+  })
+
+  it('shows numeric pagination above the table with working page navigation', async () => {
+    const { router } = await import('@inertiajs/vue3')
+    vi.mocked(router.get).mockClear()
+    const page = { ...emptyPage, current_page: 2, last_page: 5, total: 250, from: 51, to: 100 }
+    const wrapper = mount(Index, { props: { products: page, filters: { search: 'grid', per_page: '50' }, canOperate: false } })
+    const nav = wrapper.find('nav[aria-label="产品列表顶部分页"]')
+    expect(nav.exists()).toBe(true)
+    expect(nav.find('button[aria-current="page"]').text()).toBe('2')
+    const thirdPage = nav.findAll('button').find(button => button.text() === '3')
+    expect(thirdPage).toBeDefined()
+    await thirdPage!.trigger('click')
+    expect(router.get).toHaveBeenCalledWith('/products/list', expect.objectContaining({ page: 3, search: 'grid', per_page: '50' }), expect.anything())
+    expect(wrapper.find('nav[aria-label="产品列表底部分页"]').exists()).toBe(true)
+  })
+
+  it('hides a broken image and shows an empty marker instead of a broken thumbnail', async () => {
+    const product = makeProduct({ image_url: 'https://img.beyourlover.com/sku.jpg' })
+    const wrapper = mount(Index, { props: { products: { ...emptyPage, total: 1, data: [product] }, filters: {}, canOperate: false } })
+    expect(wrapper.find('.product-thumbnail').exists()).toBe(true)
+    await wrapper.find('.product-thumbnail').trigger('error')
+    expect(wrapper.find('.product-thumbnail').exists()).toBe(false)
+    expect(wrapper.find('.product-image-empty').text()).toBe('—')
+  })
+
 })
