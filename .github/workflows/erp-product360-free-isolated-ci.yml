@@ -63,6 +63,25 @@ jobs:
           php -m | grep -i pdo_mysql
       - name: Install PHP dependencies in isolated checkout
         run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Install isolated Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Vue test dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Product360 and Identity visual-logic regression
+        run: |
+          npm exec -- vitest run \
+            resources/js/Pages/Products/Index.test.ts \
+            resources/js/Pages/Products/Show.v2.test.ts \
+            resources/js/Pages/Products/ProductParameterViews.v2.test.ts \
+            resources/js/Components/PermissionMatrix.test.ts \
+            resources/js/Pages/Identity/Users/Edit.test.ts \
+            resources/js/Pages/Identity/RolesPermissions/Index.test.ts --reporter=dot
+      - name: TypeScript and production build
+        run: |
+          npm run typecheck
+          npm run build
       - name: Product360/Identity/Factory security regression
         run: |
           php artisan test \
@@ -88,25 +107,6 @@ jobs:
           php artisan test \
             tests/Feature/ProductionStability/MySql8ProductionCompatibilityTest.php \
             tests/Feature/Finance/AccountingContinuousDeltaTest.php --no-ansi
-      - name: Install isolated Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Install Vue test dependencies
-        run: npm ci --no-audit --no-fund
-      - name: Product360 and Identity visual-logic regression
-        run: |
-          npm exec -- vitest run \
-            resources/js/Pages/Products/Index.test.ts \
-            resources/js/Pages/Products/Show.v2.test.ts \
-            resources/js/Pages/Products/ProductParameterViews.v2.test.ts \
-            resources/js/Components/PermissionMatrix.test.ts \
-            resources/js/Pages/Identity/Users/Edit.test.ts \
-            resources/js/Pages/Identity/RolesPermissions/Index.test.ts --reporter=dot
-      - name: TypeScript and production build
-        run: |
-          npm run typecheck
-          npm run build
       - name: Exact-head code-only closure
         shell: bash
         run: |
