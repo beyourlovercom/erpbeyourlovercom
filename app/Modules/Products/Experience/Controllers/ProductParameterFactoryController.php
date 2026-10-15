@@ -89,7 +89,7 @@ final class ProductParameterFactoryController
         if ($data['enabled']) {
             $employee = User::query()->find($data['assigned_user_id']);
             if (! $employee || ! $employee->is_active || ! $employee->hasPermission('products.parameters.submit')) {
-                throw ValidationException::withMessages(['assigned_user_id' => '员工需要启用且拥有包装测量提交权限']);
+                throw ValidationException::withMessages(['assigned_user_id' => '员工需要启用且拥有产品参数填报权限']);
             }
             if ($data['is_required'] && empty($data['required_fields'])) {
                 throw ValidationException::withMessages(['required_fields' => '必填任务必须指定至少一个必填字段']);

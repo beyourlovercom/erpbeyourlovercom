@@ -195,7 +195,7 @@ const selectRelative = async (tab: Tab, delta: number) => {
       </article>
       <article v-else-if="activeTab === '产品参数' && activeSubTab === '工厂填报'" class="erp-form-card" role="tabpanel" tabindex="0">
         <h3>工厂填报</h3>
-        <p>工厂专属任务、状态与可选照片的直填功能，需要受控的证据审核 API 与工厂角色授权后才能启用。</p>
+        <p>可为已启用的工厂测试员工指派本产品的填报任务。工厂填写材料、重量、包装尺寸与配件，照片选填；提交后由产品管理员审核。</p>
         <p class="product360-meta-note">此阶段不向工厂开放产品主档修改权限，不自动采纳测量结果；原有重量证据审核照常运行。</p>
         <div v-if="canOperate" class="product360-factory-task">
           <h4>指定工厂填写任务</h4>
