@@ -37,7 +37,7 @@ final class ProductParameterFactoryController
 
     public function inbox(Request $request): Response
     {
-        abort_unless($request->user()?->can('products.parameters.submit'), 403);
+        abort_unless($request->user()?->can('products.parameters.submit'), 403, '这是工厂专属填报入口，请使用已被指派的工厂账号登录。');
         $query = ProductParameterTask::query()->where('enabled', true)
             ->where('assigned_user_id', $request->user()->id)
             ->with('product:id,sku,name');
@@ -251,10 +251,10 @@ final class ProductParameterFactoryController
 
     private function assignedTask(Request $request, Product $product): ProductParameterTask
     {
-        abort_unless($request->user()?->can('products.parameters.submit'), 403);
+        abort_unless($request->user()?->can('products.parameters.submit'), 403, '这是工厂专属填报入口，请使用已被指派的工厂账号登录。');
         $task = ProductParameterTask::query()->where('product_id', $product->id)
             ->where('enabled', true)->where('assigned_user_id', $request->user()->id)->first();
-        abort_unless($task !== null, 403);
+        abort_unless($task !== null, 403, '当前账号未获指派本产品的填写任务；请核对登录账号或联系管理员分配。');
         return $task;
     }
 

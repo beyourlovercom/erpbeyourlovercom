@@ -11,12 +11,14 @@ use App\Modules\Orders\Application\ProductOrderProjection;
 use App\Modules\Products\Application\Contracts\ProductExternalReferenceRepository;
 use App\Modules\Products\Application\Contracts\SkuAliasRepository;
 use App\Modules\Products\Application\ProductService;
+use App\Modules\Products\Application\ProductPackagingPresentation;
 use App\Modules\Products\Application\ProductWeightEvidenceService;
 use App\Modules\Products\Application\WooCommerceProductInboundService;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductMedia;
 use App\Modules\Products\Infrastructure\Models\ProductProviderSnapshot;
 use App\Modules\Products\Infrastructure\Models\ProductParameterTask;
+use App\Modules\Products\Infrastructure\Models\ProductPackagingProfile;
 use App\Modules\Products\Infrastructure\Models\ProductParameterSubmission;
 use App\Modules\Products\Infrastructure\Models\ProductParameterAccessory;
 use App\Modules\Identity\Infrastructure\Models\User;
@@ -48,6 +50,7 @@ final class ProductController
         private readonly ProductKolProjection $kolProjection,
         private readonly ProductActivityProjection $activityProjection,
         private readonly WooCommerceProductInboundService $wooInbound,
+        private readonly ProductPackagingPresentation $packagingPresentation,
     ) {}
 
     public function dashboard(): Response
@@ -430,6 +433,11 @@ final class ProductController
                     'name' => $m->original_name,
                     'url' => route('products.parameter.media', $m->id)])->all(),
             ])->all(),
+            'packagingProfile' => $canManageProduct
+                ? (($packaging=ProductPackagingProfile::query()->with('media')->where('product_id', $id)->first())
+                    ? $this->packagingPresentation->serialize($packaging) : null)
+                : null,
+            'packagingPresets' => $canManageProduct ? $this->packagingPresentation->presets() : [],
             'approvedParameterMeasurements' => $approvedParameterMeasurements,
             'approvedAccessories' => ProductParameterAccessory::query()->where('product_id', $id)
                 ->orderBy('id')->get(['name', 'quantity', 'unit', 'notes'])->toArray(),

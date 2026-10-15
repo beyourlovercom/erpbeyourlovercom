@@ -3,6 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3'
 import { computed, nextTick, reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
+import PackagingEditor from '../../Components/Products/PackagingEditor.vue'
 import { useAccountGridPreferences, type GridColumnDefinition } from '../../Composables/useAccountGridPreferences'
 
 type ExternalReference = { provider: string; connection_key: string; reference: string; reference_type: string }
@@ -47,6 +48,14 @@ const props = defineProps<{
   approvedParameterMeasurements?: Record<string,string>
   approvedAccessories?: {name:string;quantity:number|string;unit:string;notes:string|null}[]
   factoryUserOptions?: {id:number;name:string}[]
+  packagingProfile?: {
+    id:number; preset_key:string|null; method:string; scenario:string|null; version:string|null; units_per_carton:number|null;
+    inherits_global_template:boolean;
+    default_image:{id:number|null;name:string|null;url:string}|null;
+    rendered_image:{id:number|null;name:string|null;url:string}|null;
+    examples:{id:number|null;name:string|null;url:string}[]
+  }|null
+  packagingPresets?: {key:string;label:string}[]
   wooSyncHistory?: { status: string; result_code: string | null; error_message: string | null; completed_at: string | null; run_id: number }[]
 }>()
 
@@ -156,7 +165,7 @@ const selectRelative = async (tab: Tab, delta: number) => {
   <Head :title="`${product.name} · Product360`" />
   <AuthenticatedLayout title="产品360" :breadcrumbs="['BYL ERP', '产品', product.name]">
     <section class="mvp-page product360-page">
-      <article class="erp-form-card product360-hero"><div><div class="product360-image" aria-label="产品图片占位"><img v-if="product.image_url" :src="product.image_url" :alt="product.name"><span v-else>暂无图片</span></div><div v-if="mediaItems.length > 1" class="product360-thumbnails"><img v-for="item in mediaItems" :key="item.id" :src="item.url" :alt="item.alt_text || product.name"></div></div><div class="product360-identity"><p class="mvp-kicker">{{ product.product_type }}</p><h1>{{ product.name }}</h1><p class="product360-sku">SKU {{ display(product.sku) }}</p><div class="product360-meta"><span>产品 ID：{{ product.id }}</span><span>来源：{{ source(product.source_type) }}</span><span>状态：{{ product.status === 'active' ? '启用' : '停用' }}</span><span>类型：{{ display(product.product_type) }}</span><span v-if="product.woo_sync_status">Woo 同步：{{ product.woo_sync_status === 'synced' ? '已同步' : (product.woo_sync_status === 'not_synced' ? '未同步' : '未配置') }}</span></div><div v-if="wooGroups.length" class="product360-external-summary"><span v-for="group in wooGroups" :key="group.connectionKey">{{ group.connectionKey }} · 产品 {{ group.products.join(', ') || '—' }}<template v-if="group.variations.length"> / 变体 {{ group.variations.join(', ') }}</template></span></div><p v-else class="product360-external-summary">Woo 外部引用：—</p></div><div class="product360-hero-actions"><Link href="/products/list" class="mvp-button mvp-button-secondary">返回列表</Link><a v-if="product.woo_url" :href="product.woo_url" target="_blank" rel="noreferrer" class="mvp-button mvp-button-secondary">查看 Woo</a><Link v-if="canSync && hasWooProductReference" :href="`/products/${product.id}/sync-woocommerce`" method="post" as="button" class="mvp-button mvp-button-secondary">刷新 Woo</Link><button type="button" class="mvp-button mvp-button-secondary" disabled title="当前没有可用的更多操作">更多</button><Link v-if="canOperate" :href="`/products/${product.id}/packaging`" class="mvp-button mvp-button-secondary">包装方案</Link><Link v-if="canOperate" :href="`/products/${product.id}/edit`" class="mvp-button mvp-button-primary">编辑产品</Link></div></article>
+      <article class="erp-form-card product360-hero"><div><div class="product360-image" aria-label="产品图片占位"><img v-if="product.image_url" :src="product.image_url" :alt="product.name"><span v-else>暂无图片</span></div><div v-if="mediaItems.length > 1" class="product360-thumbnails"><img v-for="item in mediaItems" :key="item.id" :src="item.url" :alt="item.alt_text || product.name"></div></div><div class="product360-identity"><p class="mvp-kicker">{{ product.product_type }}</p><h1>{{ product.name }}</h1><p class="product360-sku">SKU {{ display(product.sku) }}</p><div class="product360-meta"><span>产品 ID：{{ product.id }}</span><span>来源：{{ source(product.source_type) }}</span><span>状态：{{ product.status === 'active' ? '启用' : '停用' }}</span><span>类型：{{ display(product.product_type) }}</span><span v-if="product.woo_sync_status">Woo 同步：{{ product.woo_sync_status === 'synced' ? '已同步' : (product.woo_sync_status === 'not_synced' ? '未同步' : '未配置') }}</span></div><div v-if="wooGroups.length" class="product360-external-summary"><span v-for="group in wooGroups" :key="group.connectionKey">{{ group.connectionKey }} · 产品 {{ group.products.join(', ') || '—' }}<template v-if="group.variations.length"> / 变体 {{ group.variations.join(', ') }}</template></span></div><p v-else class="product360-external-summary">Woo 外部引用：—</p></div><div class="product360-hero-actions"><Link href="/products/list" class="mvp-button mvp-button-secondary">返回列表</Link><a v-if="product.woo_url" :href="product.woo_url" target="_blank" rel="noreferrer" class="mvp-button mvp-button-secondary">查看 Woo</a><Link v-if="canSync && hasWooProductReference" :href="`/products/${product.id}/sync-woocommerce`" method="post" as="button" class="mvp-button mvp-button-secondary">刷新 Woo</Link><button type="button" class="mvp-button mvp-button-secondary" disabled title="当前没有可用的更多操作">更多</button><Link v-if="canOperate" :href="`/products/${product.id}/edit`" class="mvp-button mvp-button-primary">编辑产品</Link></div></article>
       <div class="product360-tabs" role="tablist" aria-label="产品360标签页"><button v-for="tab in tabs" :key="tab" type="button" role="tab" :data-product360-tab="tab" :aria-selected="activeTab === tab" aria-controls="product360-content" :class="{ active: activeTab === tab }" @click="navigateTab(tab)" @keydown.left.prevent="selectRelative(tab, -1)" @keydown.right.prevent="selectRelative(tab, 1)">{{ tab }}</button></div>
       <nav v-if="activeTab !== '概览'" class="product360-subtabs" role="tablist" :aria-label="activeTab + '二级标签'">
         <button v-for="sub in subTabs[activeTab]" :key="sub" type="button" role="tab" :aria-selected="activeSubTab === sub"
@@ -241,13 +250,13 @@ const selectRelative = async (tab: Tab, delta: number) => {
         <div class="product360-v2-actions"><Link href="/products/weight-evidence" class="mvp-button mvp-button-secondary">现有重量证据工作区</Link><Link v-if="canOperate" :href="'/products/' + product.id + '/edit'" class="mvp-button mvp-button-secondary">现有产品编辑</Link></div>
       </article>
       <article v-else-if="activeTab === '产品参数' && activeSubTab === '包装与配件'" class="erp-form-card" role="tabpanel" tabindex="0">
-        <h3>包装与配件</h3><p>原有包装方案、包装预设、包装材料、案例图片与装箱配置全部保留。</p>
+        <h3>包装与配件</h3><p>包装方案、包装预设、方案版本、装箱数量、主示意图和案例图片都可以在当前 Tab 直接管理。</p>
         <p class="product360-meta-note">已审核采纳的包装内含物 / 配件清单：</p>
         <table v-if="approvedAccessories?.length" class="mvp-table"><thead><tr><th>配件名称</th><th>数量</th><th>单位</th><th>说明</th></tr></thead>
           <tbody><tr v-for="(part,i) in approvedAccessories" :key="i"><td>{{part.name}}</td><td>{{part.quantity}}</td><td>{{part.unit}}</td><td>{{part.notes||'—'}}</td></tr></tbody></table>
         <p v-else class="mvp-empty">尚未有经过审核的包装内配件清单</p>
-        <Link v-if="canOperate" :href="'/products/' + product.id + '/packaging'" class="mvp-button mvp-button-secondary">进入原包装方案</Link>
-        <p v-else class="product360-meta-note">包装编辑需要现有产品操作权限。</p>
+        <PackagingEditor v-if="canOperate" embedded :product="{id:Number(product.id),sku:product.sku ?? null,name:String(product.name)}" :packaging-profile="packagingProfile ?? null" :presets="packagingPresets ?? []" />
+        <p v-else class="product360-meta-note">包装方案维护需要产品操作权限；已审核配件仍可查阅。</p>
       </article>
       <article v-else-if="activeTab === '销售与合作' && activeSubTab === 'KOL 合作'" class="erp-form-card" role="tabpanel" tabindex="0">
         <h3>KOL 合作</h3>

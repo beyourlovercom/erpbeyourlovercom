@@ -10,6 +10,7 @@ on:
       - 'app/Modules/Identity/**'
       - 'resources/js/Pages/Products/**'
       - 'resources/js/Pages/Identity/**'
+      - 'resources/js/Components/Products/**'
       - 'resources/js/Components/PermissionMatrix*'
       - 'tests/Feature/Products/**'
   workflow_dispatch:
@@ -74,6 +75,7 @@ jobs:
           npm exec -- vitest run \
             resources/js/Pages/Products/Index.test.ts \
             resources/js/Pages/Products/Show.v2.test.ts \
+            resources/js/Components/Products/PackagingEditor.test.ts \
             resources/js/Pages/Products/ProductParameterViews.v2.test.ts \
             resources/js/Components/PermissionMatrix.test.ts \
             resources/js/Pages/Identity/Users/Edit.test.ts \
@@ -89,6 +91,7 @@ jobs:
             tests/Feature/Products/WeightEvidenceTest.php \
             tests/Feature/Products/ProductParameterFactoryWorkflowTest.php \
             tests/Feature/Products/ProductParameterBatchAssignmentTest.php \
+            tests/Feature/Products/Product360PackagingTabIntegrationTest.php \
             tests/Feature/Products/ProductParameterGridViewsTest.php \
             tests/Feature/AppShellNavigationTest.php \
             tests/Feature/Identity/PermissionMatrixTest.php --no-ansi

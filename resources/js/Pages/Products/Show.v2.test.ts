@@ -9,6 +9,9 @@ vi.mock('@inertiajs/vue3', () => ({
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({
   default: { props: ['title', 'breadcrumbs'], template: '<main><slot /></main>' },
 }))
+vi.mock('../../Components/Products/PackagingEditor.vue', () => ({
+  default: { props:['product','packagingProfile','presets','embedded'], template:'<section data-testid="embedded-packaging-editor">旧包装方案字段复用 · 包装方式 · 主示意图 · 真实包装案例图</section>' },
+}))
 vi.mock('../../Components/DataGrid/ColumnSettingsHeader.vue', () => ({
   default: { props: ['columns'], template: '<button type="button" aria-label="列设置">列设置</button>' },
 }))
@@ -88,11 +91,22 @@ describe('Product 360 V2 P0 — old nine-tabs no-loss', () => {
     expect(w.findAll('[data-product360-tab]').map(t => t.text())).toEqual([
       '概览', '产品参数', '销售与合作', '库存与物流', '关联与记录',
     ])
-    for (const link of ['/products/list', '/products/123/edit', '/products/123/packaging',
+    for (const link of ['/products/list', '/products/123/edit',
                         'https://www.beyourlover.com/uat-product']) {
       expect(w.findAll('a').some(a => a.attributes('href') === link)).toBe(true)
     }
     expect(w.text()).toContain('刷新 Woo')
+  })
+
+  it('embeds the full canonical packaging editor in Product Parameters Tab without a second-page link', async () => {
+    const w = make()
+    expect(w.findAll('a').some(a => a.attributes('href') === '/products/123/packaging')).toBe(false)
+    await navigate(w,'产品参数','包装与配件')
+    expect(w.find('[data-testid=embedded-packaging-editor]').exists()).toBe(true)
+    expect(w.text()).toContain('旧包装方案字段复用')
+    const readOnly = make(false)
+    await navigate(readOnly,'产品参数','包装与配件')
+    expect(readOnly.find('[data-testid=embedded-packaging-editor]').exists()).toBe(false)
   })
 
   it('supports arrow-key navigation for main and sub tabs', async () => {
@@ -189,7 +203,8 @@ describe('Product 360 V2 P0 — old nine-tabs no-loss', () => {
     expect(w.find('a[href="/products/weight-evidence"]').exists()).toBe(true)
     expect(w.find('form').exists()).toBe(false)
     await navigate(w, '产品参数', '包装与配件')
-    expect(w.find('a[href="/products/123/packaging"]').exists()).toBe(true)
+    expect(w.find('[data-testid=embedded-packaging-editor]').exists()).toBe(true)
+    expect(w.find('a[href="/products/123/packaging"]').exists()).toBe(false)
   })
 
   it('keeps privileged edit and packaging modification actions hidden for view-only role', async () => {
