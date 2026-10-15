@@ -115,8 +115,8 @@ describe('Product 360 V2 P0 — old nine-tabs no-loss', () => {
     expect(w.find('[data-product360-tab="产品参数"]').attributes('aria-selected')).toBe('true')
     expect(w.find('[data-product360-subtab="参数总览"]').attributes('aria-selected')).toBe('true')
     await w.find('[data-product360-subtab="参数总览"]').trigger('keydown.right')
-    expect(w.find('[data-product360-subtab="工厂填报"]').attributes('aria-selected')).toBe('true')
-    await w.find('[data-product360-subtab="工厂填报"]').trigger('keydown.left')
+    expect(w.find('[data-product360-subtab="参数填报与审核"]').attributes('aria-selected')).toBe('true')
+    await w.find('[data-product360-subtab="参数填报与审核"]').trigger('keydown.left')
     expect(w.find('[data-product360-subtab="参数总览"]').attributes('aria-selected')).toBe('true')
   })
 
@@ -199,7 +199,7 @@ describe('Product 360 V2 P0 — old nine-tabs no-loss', () => {
 
   it('preserves weight evidence & packaging links while factory write UI is gated', async () => {
     const w = make()
-    await navigate(w, '产品参数', '工厂填报')
+    await navigate(w, '产品参数', '参数填报与审核')
     expect(w.find('a[href="/products/weight-evidence"]').exists()).toBe(true)
     expect(w.find('form').exists()).toBe(false)
     await navigate(w, '产品参数', '包装与配件')

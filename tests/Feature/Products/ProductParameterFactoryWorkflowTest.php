@@ -54,6 +54,41 @@ final class ProductParameterFactoryWorkflowTest extends TestCase
             'accessories' => [['name' => 'small pillow', 'quantity' => 1, 'unit' => 'pcs']]];
     }
 
+    public function test_product_viewer_can_fill_and_submit_without_factory_assignment_but_cannot_approve(): void
+    {
+        $p = $this->product();
+        $viewer = $this->userWith(['products.view']);
+        $root = '/products/factory-parameters/'.$p->id;
+        $this->actingAs($viewer)->get($root)->assertOk()
+            ->assertInertia(fn ($page) => $page->component('Products/FactoryParameters')
+                ->where('task.is_required', false));
+        $this->post($root.'/draft', $this->measurement())->assertRedirect();
+        $s = ProductParameterSubmission::where('product_id', $p->id)->firstOrFail();
+        $this->assertNull($s->task_id);
+        $this->assertSame((int)$viewer->id,(int)$s->created_by);
+        $this->post($root.'/submissions/'.$s->id.'/submit')->assertRedirect();
+        $this->assertSame('submitted',$s->fresh()->status);
+        $this->post('/products/parameter-submissions/'.$p->id.'/'.$s->id.'/review',
+            ['decision'=>'approved'])->assertForbidden();
+        $this->assertSame('1.5000',(string)$p->fresh()->weight_kg);
+    }
+
+    public function test_general_viewer_cannot_modify_another_user_draft_or_cross_product_submission(): void
+    {
+        $p = $this->product();
+        $otherProduct = $this->product();
+        $owner = $this->userWith(['products.view']);
+        $other = $this->userWith(['products.view']);
+        $root = '/products/factory-parameters/'.$p->id;
+        $this->actingAs($owner)->post($root.'/draft', $this->measurement())->assertRedirect();
+        $s = ProductParameterSubmission::where('product_id', $p->id)->firstOrFail();
+        $this->actingAs($other)->post($root.'/submissions/'.$s->id.'/submit')->assertForbidden();
+        $this->post('/products/factory-parameters/'.$otherProduct->id.'/submissions/'.$s->id.'/submit')->assertForbidden();
+        $this->post('/products/factory-parameters/'.$otherProduct->id.'/submissions/'.$s->id.'/photo',
+            ['photo'=>UploadedFile::fake()->image('notmine.jpg')])->assertForbidden();
+        $this->assertSame('draft', $s->fresh()->status);
+    }
+
     public function test_unassigned_and_unauthorized_factory_access_fail_closed(): void
     {
         $p = $this->product();
@@ -65,7 +100,7 @@ final class ProductParameterFactoryWorkflowTest extends TestCase
         $url = '/products/factory-parameters/'.$p->id;
         $this->get($url)->assertRedirect('/login');
         $this->actingAs($stranger)->get($url)->assertForbidden();
-        $this->actingAs($viewer)->get($url)->assertForbidden();
+        $this->actingAs($viewer)->get($url)->assertOk();
         $this->actingAs($factory)->get($url)->assertOk()
             ->assertInertia(fn ($page) => $page->component('Products/FactoryParameters')
                 ->missing('costs')->has('product.sku')->has('task.required_fields'));

@@ -56,14 +56,14 @@ final class ProductParameterFactoryController
 
     public function factory(Request $request, Product $product): Response
     {
-        $task = $this->assignedTask($request, $product);
-        $submissions = ProductParameterSubmission::query()->where('task_id', $task->id)
-            ->where('created_by', $request->user()->id)->latest('id')->get();
+        $task = $this->entryTask($request, $product);
+        $submissions = ProductParameterSubmission::query()->where('created_by', $request->user()->id)
+            ->where('task_id', $task?->id)->latest('id')->get();
         $draft = $submissions->firstWhere('status', 'draft');
 
         return Inertia::render('Products/FactoryParameters', [
             'product' => $product->only(['id', 'sku', 'name']),
-            'task' => ['is_required' => $task->is_required, 'required_fields' => $task->required_fields ?? []],
+            'task' => ['is_required' => $task?->is_required ?? false, 'required_fields' => $task?->required_fields ?? []],
             'draft' => $draft ? $this->serialize($draft->load('media')) : null,
             'history' => $submissions->filter(fn ($s) => $s->status !== 'draft')->take(10)->map(
                 fn ($s) => ['id' => $s->id, 'status' => $s->status,
@@ -115,14 +115,14 @@ final class ProductParameterFactoryController
 
     public function saveDraft(Request $request, Product $product): RedirectResponse
     {
-        $task = $this->assignedTask($request, $product);
+        $task = $this->entryTask($request, $product);
         $data = $this->validatedEntry($request);
         $record = DB::transaction(function () use ($request, $task, $product, $data): ProductParameterSubmission {
-            $draft = ProductParameterSubmission::query()->where('task_id', $task->id)
+            $draft = ProductParameterSubmission::query()->where('task_id', $task?->id)
                 ->where('created_by', $request->user()->id)->where('status', 'draft')
                 ->lockForUpdate()->latest('id')->first();
             if (! $draft) {
-                $draft = new ProductParameterSubmission(['task_id' => $task->id,
+                $draft = new ProductParameterSubmission(['task_id' => $task?->id,
                     'product_id' => $product->id, 'created_by' => $request->user()->id,
                     'status' => 'draft']);
             }
@@ -137,9 +137,9 @@ final class ProductParameterFactoryController
 
     public function submit(Request $request, Product $product, ProductParameterSubmission $submission): RedirectResponse
     {
-        $task = $this->assignedTask($request, $product);
-        $this->mustOwnDraft($request, $task, $submission);
-        $required = $task->is_required ? ($task->required_fields ?? []) : [];
+        $task = $this->entryTask($request, $product);
+        $this->mustOwnDraft($request, $product, $task, $submission);
+        $required = $task?->is_required ? ($task->required_fields ?? []) : [];
         $measurements = $submission->measurements ?? [];
         foreach ($required as $field) {
             if (! in_array($field, self::MEASUREMENT_FIELDS, true) || ($measurements[$field] ?? '') === '') {
@@ -159,8 +159,8 @@ final class ProductParameterFactoryController
 
     public function upload(Request $request, Product $product, ProductParameterSubmission $submission): RedirectResponse
     {
-        $task = $this->assignedTask($request, $product);
-        $this->mustOwnDraft($request, $task, $submission);
+        $task = $this->entryTask($request, $product);
+        $this->mustOwnDraft($request, $product, $task, $submission);
         $request->validate(['photo' => ['required', 'image', 'mimes:jpeg,jpg,png,webp', 'max:10240']]);
         abort_if($submission->media()->count() >= 8, 422, '每次提交最多八张照片');
         $file = $request->file('photo');
@@ -183,9 +183,9 @@ final class ProductParameterFactoryController
     {
         $record = ProductParameterSubmission::query()->findOrFail($media->submission_id);
         $product = Product::query()->findOrFail($record->product_id);
-        if (! $request->user()?->can('products.operate')) {
+        if (! $request->user()?->can('products.operate') && ! $request->user()?->can('products.view')) {
             $task = $this->assignedTask($request, $product);
-            abort_unless($record->created_by === $request->user()->id && $record->task_id === $task->id, 403);
+            abort_unless($record->created_by === $request->user()->id && $record->task_id === $task?->id, 403);
         }
         abort_unless($media->disk === 'local' && Storage::disk('local')->exists($media->path), 404);
         return Storage::disk('local')->response($media->path, $media->original_name,
@@ -258,15 +258,25 @@ final class ProductParameterFactoryController
         return $task;
     }
 
+    private function entryTask(Request $request, Product $product): ?ProductParameterTask
+    {
+        // Product viewers edit only products they are already authorized to view.
+        // Task-only factory staff must remain scoped to their assigned product.
+        if ($request->user()?->can('products.view')) {
+            return null;
+        }
+        return $this->assignedTask($request, $product);
+    }
+
     private function mustManage(Request $request): void
     {
         abort_unless($request->user()?->can('products.operate'), 403);
     }
 
-    private function mustOwnDraft(Request $request, ProductParameterTask $task, ProductParameterSubmission $s): void
+    private function mustOwnDraft(Request $request, Product $product, ?ProductParameterTask $task, ProductParameterSubmission $s): void
     {
-        abort_unless((int) $s->product_id === (int) $task->product_id &&
-            (int) $s->task_id === (int) $task->id &&
+        abort_unless((int) $s->product_id === (int) $product->id &&
+            $s->task_id === $task?->id &&
             (int) $s->created_by === (int) $request->user()->id && $s->status === 'draft', 403);
     }
 

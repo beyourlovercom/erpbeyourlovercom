@@ -137,3 +137,9 @@
 - Product360 product reader only includes editable packaging data for users with products.operate; readonly product viewer continues to see approved accessory snapshot; factory staff still cannot access Product360 or Packaging editor via products.view.
 - Targeted local Vue 18/18 (Show+PackagingEditor) and PHP 23/23 (264 assertions) PASS, typecheck/build PASS; component/access control and old URL compatibility regression included in new self-hosted exact-head CI.
 - Remains DRAFT PR / no main merge / no Production deployment. Separate UAT Owner visual approval required after exact-head CI-PASS and isolated release switch. Preserve two test identities, Product #1, assigned factory task and draft.
+
+## M4.3 General collaborator entry permission (Owner PASS instruction, 2026-10-15)
+- Every user with effective products.view can open and edit parameter submissions for a Product without factory assignment; factory-task-only accounts still must be enabled and assigned, cannot read the full Product 360 master.
+- General drafts use task_id=NULL (additive migration only, previous task-bound entries unchanged); created_by and product_id enforce ownership, no cross-user/cross-product edits. Photos optional, validation/review unchanged; self-approval forbidden; approved measurements do not overwrite canonical Product weight or Woo.
+- Product360 subtab renamed 参数填报与审核, and links to the same parameter form, without an extra editable copy of Product master.
+- Synthetic local regressions include manager/viewer unassigned save → submit, failed self-review, failed cross-user / cross-product access, original factory restrictions, packaging no-loss. Owner visual UAT of the new general entry still required before final closure.
