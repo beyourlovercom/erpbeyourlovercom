@@ -6,6 +6,7 @@ use App\Modules\Products\Experience\Controllers\ProductSkuController;
 use App\Modules\Products\Experience\Controllers\ProductSkuAliasController;
 use App\Modules\Products\Experience\Controllers\ProductWeightEvidenceController;
 use App\Modules\Products\Experience\Controllers\ProductParameterFactoryController;
+use App\Modules\Products\Experience\Controllers\ProductParameterBatchController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth'])->get('/products/packaging/media/{media}', [ProductPackagingProfileController::class, 'media'])->whereNumber('media')->name('products.packaging.media');
@@ -25,6 +26,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
 });
 
 Route::middleware(['web', 'auth', 'can:products.operate'])->group(function (): void {
+    Route::post('/products/parameter-tasks/bulk', [ProductParameterBatchController::class, 'update'])->name('products.parameter.tasks.bulk');
     Route::post('/products/parameter-tasks/{product}', [ProductParameterFactoryController::class, 'assign'])->whereNumber('product')->name('products.parameter.task');
     Route::post('/products/parameter-submissions/{product}/{submission}/review', [ProductParameterFactoryController::class, 'review'])->whereNumber('product')->whereNumber('submission')->name('products.parameter.review');
 });

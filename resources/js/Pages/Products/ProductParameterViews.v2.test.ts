@@ -5,10 +5,10 @@ import Index from './Index.vue'
 import FactoryParameters from './FactoryParameters.vue'
 import FactoryParameterTasks from './FactoryParameterTasks.vue'
 
-const {go,save}=vi.hoisted(()=>({go:vi.fn(),save:vi.fn()}))
+const {go,save,post}=vi.hoisted(()=>({go:vi.fn(),save:vi.fn(),post:vi.fn()}))
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<div data-head />' },
-  router: { get: go, post: vi.fn(), delete: vi.fn() },
+  router: { get: go, post, delete: vi.fn() },
   useForm: (v: Record<string, unknown>) => reactive({...v, post:save, errors:{}, processing:false,isDirty:false}),
   usePage: () => ({url:'/products/list',props:{auth:{user:{id:1,name:'QA',email:'qa@invalid'}},shellNavigation:[]}}),
 }))
@@ -26,6 +26,79 @@ const page = {
   }],
   current_page:1,last_page:1,total:1,per_page:50,from:1,to:1
 }
+
+describe('Product Grid batch factory task approvals', () => {
+  const twoProducts = {
+    ...page,
+    total: 3,
+    data: [
+      {...page.data[0],id:7,sku:'SAMPLE-A',name:'Pillow A',parameter_assigned_user_id:2},
+      {...page.data[0],id:8,sku:'SAMPLE-B',name:'Pillow B',parameter_assigned_user_id:null},
+    ]
+  }
+
+  it('only exposes current-page selection and batch controls to Product managers', async () => {
+    const w=mount(Index,{props:{
+      products:twoProducts,filters:{view:'measurements'},canOperate:true,
+      parameterFactoryUsers:[{id:2,name:'QA Factory'}],
+    }})
+    expect(w.findAll('table.product-data-table')).toHaveLength(1)
+    expect(w.findAll('.parameter-select-cell input[type=checkbox]')).toHaveLength(3)
+    expect(w.find('.parameter-bulk-toolbar').exists()).toBe(true)
+    expect(w.text()).toContain('最多100件/次')
+    expect(w.text()).toContain('QA Factory')
+    const checkboxes=w.findAll('td.parameter-select-cell input[type=checkbox]')
+    await checkboxes[1].setValue(true)
+    expect(w.find('.parameter-bulk-title').text()).toContain('选中 1 件')
+    await w.find('th.parameter-select-cell input[type=checkbox]').setValue(true)
+    expect(w.find('.parameter-bulk-title').text()).toContain('选中 2 件')
+    const viewer=mount(Index,{props:{products:twoProducts,filters:{view:'measurements'},canOperate:false}})
+    expect(viewer.find('.parameter-bulk-toolbar').exists()).toBe(false)
+    expect(viewer.find('.parameter-select-cell').exists()).toBe(false)
+  })
+
+  it('posts exact checked product IDs with explicit role and required fields, never a page-wide filter', async () => {
+    vi.stubGlobal('confirm',vi.fn(()=>true))
+    post.mockClear()
+    const w=mount(Index,{props:{
+      products:twoProducts,filters:{view:'measurements'},canOperate:true,
+      parameterFactoryUsers:[{id:2,name:'QA Factory'}]
+    }})
+    await w.findAll('td.parameter-select-cell input[type=checkbox]')[0].setValue(true)
+    await w.find('select[aria-label="批量工厂员工"]').setValue('2')
+    const button=w.find('.parameter-bulk-submit')
+    expect(button.text()).toContain('1 件')
+    await button.trigger('click')
+    expect(post).toHaveBeenCalledWith('/products/parameter-tasks/bulk',
+      expect.objectContaining({
+        product_ids:[7],
+        action:'required',
+        assigned_user_id:2,
+        required_fields:expect.arrayContaining(['material','net_weight_kg']),
+        allow_reassign:false,
+      }),expect.anything())
+    const sent=post.mock.calls[0][1]
+    expect(sent).not.toHaveProperty('view')
+    expect(sent).not.toHaveProperty('search')
+    expect(sent).not.toHaveProperty('select_all')
+    vi.unstubAllGlobals()
+  })
+
+  it('requires assignee before submit and preserves other grid views', async () => {
+    post.mockClear()
+    const w=mount(Index,{props:{products:twoProducts,filters:{view:'measurements'},canOperate:true}})
+    await w.findAll('td.parameter-select-cell input[type=checkbox]')[0].setValue(true)
+    await w.find('.parameter-bulk-submit').trigger('click')
+    expect(w.find('[role=alert]').text()).toContain('请先选择工厂填报员工')
+    expect(post).not.toHaveBeenCalled()
+    const standard=mount(Index,{props:{products:twoProducts,filters:{view:'standard'},canOperate:true}})
+    expect(standard.find('.parameter-bulk-toolbar').exists()).toBe(false)
+    expect(standard.find('table.product-data-table').exists()).toBe(true)
+    const accessories=mount(Index,{props:{products:twoProducts,filters:{view:'accessories'},canOperate:true}})
+    expect(accessories.find('.parameter-bulk-toolbar').exists()).toBe(false)
+    expect(accessories.find('table.product-data-table').exists()).toBe(true)
+  })
+})
 
 describe('Product OS canonical grid views', () => {
   it('keeps same product row/table and shows measurement fields plus counts only within tabs', async () => {

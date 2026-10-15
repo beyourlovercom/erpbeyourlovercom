@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
 import { useAccountGridPreferences, type GridColumnDefinition } from '../../Composables/useAccountGridPreferences'
@@ -11,7 +11,7 @@ type ColumnKey =
   | 'sale_price' | 'brand' | 'available_stock' | 'gtin' | 'label_description'
   | 'dimensions_cm' | 'shipping_weight_kg' | 'standard_production_cost'
   | 'standard_packaging_cost' | 'cost_currency' | 'unit' | 'source'
-  | 'parameter_status' | 'parameter_review_status' | 'material' | 'net_weight_kg' | 'color_box_gross_kg'
+  | 'parameter_status' | 'parameter_review_status' | 'parameter_assigned_user_id' | 'material' | 'net_weight_kg' | 'color_box_gross_kg'
   | 'courier_gross_kg' | 'package_dimensions' | 'package_volume_l' | 'carton_dimensions'
   | 'carton_gross_weight_kg' | 'accessories_count' | 'accessories_summary'
 type Product = {
@@ -34,7 +34,13 @@ type PaginatedProducts = {
 }
 type Filters = { search?: string; per_page?: string; sort?: string; direction?: string; view?: string; parameter_status?: string }
 
-const props = defineProps<{ products: PaginatedProducts; filters: Filters; canOperate: boolean; parameterCounts?: Record<string,number> }>()
+const props = defineProps<{
+  products: PaginatedProducts
+  filters: Filters
+  canOperate: boolean
+  parameterCounts?: Record<string,number>
+  parameterFactoryUsers?: {id:number;name:string}[]
+}>()
 const search = ref(props.filters.search ?? '')
 const perPage = ref(props.filters.per_page ?? '50')
 const confirmDeleteId = ref<number | null>(null)
@@ -66,6 +72,7 @@ const definitions: GridColumnDefinition<ColumnKey>[] = [
   { key: 'source', label: '来源' },
   { key: 'parameter_status', label: '资料状态', defaultVisible: false },
   { key: 'parameter_review_status', label: '审核情况', defaultVisible: false },
+  { key: 'parameter_assigned_user_id', label: '工厂负责人', defaultVisible: false },
   { key: 'material', label: '产品材质', defaultVisible: false },
   { key: 'net_weight_kg', label: '工厂净重 kg', defaultVisible: false },
   { key: 'color_box_gross_kg', label: '彩盒毛重 kg', defaultVisible: false },
@@ -86,12 +93,68 @@ const { columns, visibleColumns: persistedVisibleColumns, toggle, startDrag, dro
 const currentView = computed<string>(() => ['standard','measurements','accessories'].includes(props.filters.view ?? '')
   ? props.filters.view! : 'standard')
 const viewDefs: Record<string, ColumnKey[]> = {
-  measurements: ['sku','name','parameter_status','parameter_review_status','material','net_weight_kg','color_box_gross_kg','courier_gross_kg','package_dimensions','package_volume_l','carton_dimensions','carton_gross_weight_kg'],
+  measurements: ['sku','name','parameter_status','parameter_review_status','parameter_assigned_user_id','material','net_weight_kg','color_box_gross_kg','courier_gross_kg','package_dimensions','package_volume_l','carton_dimensions','carton_gross_weight_kg'],
   accessories: ['sku','name','parameter_status','accessories_count','accessories_summary'],
 }
 const visibleColumns = computed(() => currentView.value === 'standard'
   ? persistedVisibleColumns.value
   : (viewDefs[currentView.value] ?? []).map((key: ColumnKey) => definitions.find(d => d.key === key)!).filter(Boolean))
+const selectedProductIds = ref<number[]>([])
+const bulkAction = ref<'required'|'optional'|'disable'>('required')
+const bulkAssignee = ref<number|null>(null)
+const bulkRequiredFields = ref<string[]>(['material','net_weight_kg','package_length_cm','package_width_cm','package_height_cm'])
+const bulkAllowReassign = ref(false)
+const bulkBusy = ref(false)
+const bulkError = ref('')
+const bulkRequiredChoices = [
+  {key:'material',label:'产品材质'}, {key:'weight_composition',label:'重量组成'},
+  {key:'net_weight_kg',label:'产品净重'}, {key:'color_box_gross_kg',label:'彩盒毛重'},
+  {key:'courier_gross_kg',label:'快递毛重'}, {key:'package_length_cm',label:'包装长'},
+  {key:'package_width_cm',label:'包装宽'}, {key:'package_height_cm',label:'包装高'},
+  {key:'units_per_carton',label:'每箱数量'}, {key:'carton_gross_weight_kg',label:'整箱毛重'}
+]
+const visibleBatchIds = computed(() => props.products.data.map(p=>p.id).slice(0,100))
+const isAllCurrentPageSelected = computed(() =>
+  visibleBatchIds.value.length > 0 && visibleBatchIds.value.every(id=>selectedProductIds.value.includes(id)))
+watch(() => props.products.data.map(p=>p.id).join(',')+'|'+props.filters.search+'|'+props.filters.parameter_status, () => {
+  selectedProductIds.value = []
+  bulkError.value = ''
+})
+const togglePageSelection = (checked:boolean) => {
+  selectedProductIds.value = checked ? [...visibleBatchIds.value] : []
+}
+const toggleSelection = (id:number, checked:boolean) => {
+  selectedProductIds.value = checked
+    ? [...new Set([...selectedProductIds.value, id])].slice(0,100)
+    : selectedProductIds.value.filter(x=>x!==id)
+}
+const applyBatch = () => {
+  if (!props.canOperate || currentView.value!=='measurements' || !selectedProductIds.value.length || bulkBusy.value) return
+  bulkError.value = ''
+  if (bulkAction.value!=='disable' && !bulkAssignee.value) {
+    bulkError.value = '请先选择工厂填报员工'
+    return
+  }
+  if (bulkAction.value==='required' && bulkRequiredFields.value.length===0) {
+    bulkError.value = '必填任务至少勾选一项必填字段'
+    return
+  }
+  const actionName = bulkAction.value==='required' ? '设为必填' : bulkAction.value==='optional' ? '设为待填' : '暂停填写'
+  if (!window.confirm('确认对当前勾选的 '+selectedProductIds.value.length+' 个产品执行「'+actionName+'」？不会影响其他页、产品主数据或历史审核记录。')) return
+  bulkBusy.value = true
+  router.post('/products/parameter-tasks/bulk', {
+    product_ids: selectedProductIds.value,
+    action: bulkAction.value,
+    assigned_user_id: bulkAction.value==='disable'?null:bulkAssignee.value,
+    required_fields: bulkAction.value==='required'?bulkRequiredFields.value:[],
+    allow_reassign: bulkAllowReassign.value,
+  }, {
+    preserveScroll:true,
+    onError:(errors:Record<string,string>)=>{bulkError.value=Object.values(errors).join('；') || '保存失败，请检查任务设置'},
+    onSuccess:()=>{selectedProductIds.value=[];bulkAllowReassign.value=false},
+    onFinish:()=>{bulkBusy.value=false},
+  })
+}
 const activeStatus = computed(() => props.filters.parameter_status || '全部')
 const statuses = computed(() => currentView.value === 'measurements'
   ? ['全部','已填','待填','必填','其他']
@@ -193,6 +256,42 @@ const doDelete = () => {
         </nav>
       </div>
 
+      <section v-if="canOperate && currentView==='measurements'" class="parameter-bulk-toolbar" aria-label="产品参数批量指定">
+        <div class="parameter-bulk-title">
+          <strong>批量指定工厂填写</strong>
+          <span>本页选中 {{selectedProductIds.length}} 件 · 最多100件/次 · 仅当前勾选产品生效</span>
+        </div>
+        <div class="parameter-bulk-controls">
+          <label>处理方式
+            <select v-model="bulkAction" aria-label="批量任务处理方式">
+              <option value="required">设为必填</option>
+              <option value="optional">设为待填（非必填）</option>
+              <option value="disable">暂停填写任务</option>
+            </select>
+          </label>
+          <label v-if="bulkAction!=='disable'">指派工厂员工
+            <select v-model.number="bulkAssignee" aria-label="批量工厂员工">
+              <option :value="null">请选择员工</option>
+              <option v-for="person in parameterFactoryUsers??[]" :key="person.id" :value="person.id">{{person.name}} · #{{person.id}}</option>
+            </select>
+          </label>
+          <button type="button" class="parameter-bulk-submit" :disabled="!selectedProductIds.length||bulkBusy" @click="applyBatch">应用于选中的 {{selectedProductIds.length}} 件</button>
+        </div>
+        <details v-if="bulkAction==='required'" class="parameter-bulk-details">
+          <summary>必填字段：已选择 {{bulkRequiredFields.length}} 项（点击展开修改）</summary>
+          <div class="parameter-bulk-fields" aria-label="批量必填字段">
+            <label v-for="item in bulkRequiredChoices" :key="item.key">
+              <input v-model="bulkRequiredFields" type="checkbox" :value="item.key" /> {{item.label}}
+            </label>
+          </div>
+        </details>
+        <label v-if="bulkAction!=='disable'" class="parameter-bulk-confirm">
+          <input v-model="bulkAllowReassign" type="checkbox" /> 允许重新指派已有任务（需要明确确认；待审核任务不能转交）
+        </label>
+        <p v-if="bulkAction==='disable'" class="parameter-bulk-note">暂停仅禁用新的工厂填报入口；不会删除既有草稿、提交、照片和已审核配件。待审核任务不得暂停。</p>
+        <p v-if="bulkError" class="parameter-bulk-error" role="alert">{{bulkError}}</p>
+      </section>
+
       <div v-if="confirmDeleteId !== null" class="mvp-confirm-overlay">
         <div class="mvp-confirm-dialog">
           <p>确认删除此产品？若该产品为 Woo 导入，下次导入相同 Woo ID 的 CSV 时将重新创建。</p>
@@ -219,6 +318,10 @@ const doDelete = () => {
         <table class="product-data-table">
           <thead>
             <tr>
+              <th v-if="canOperate && currentView==='measurements'" scope="col" class="parameter-select-cell">
+                <input type="checkbox" aria-label="选择本页产品（最多100件）" :checked="isAllCurrentPageSelected"
+                  :disabled="!visibleBatchIds.length" @change="togglePageSelection(($event.target as HTMLInputElement).checked)" />
+              </th>
               <th v-for="col in visibleColumns" :key="col.key" scope="col">
                 <button v-if="sortable.has(col.key)" type="button" class="head-sort" @click="sortBy(col.key)">
                   {{ col.label }}<span class="sort-mark" aria-hidden="true">{{ filters.sort === col.key ? (filters.direction === 'desc' ? '▼' : '▲') : '↕' }}</span>
@@ -232,6 +335,10 @@ const doDelete = () => {
           </thead>
           <tbody>
             <tr v-for="p in products.data" :key="p.id">
+              <td v-if="canOperate && currentView==='measurements'" class="parameter-select-cell">
+                <input type="checkbox" :aria-label="'选择 '+p.sku+' 工厂填报任务'" :checked="selectedProductIds.includes(p.id)"
+                  @change="toggleSelection(p.id,($event.target as HTMLInputElement).checked)" />
+              </td>
               <td v-for="col in visibleColumns" :key="col.key" :class="{ 'col-name': col.key === 'name', 'col-picture': col.key === 'image_url' }">
                 <template v-if="col.key === 'status'"><span class="product-status" :class="{ inactive: !p.is_active }">{{ p.is_active ? '启用' : '停用' }}</span></template>
                 <template v-else-if="col.key === 'sku'"><a :href="'/products/' + p.id" class="product-grid-link">{{ fmt(p.sku) }}</a></template>
@@ -239,6 +346,9 @@ const doDelete = () => {
                 <template v-else-if="col.key === 'image_url'"><img v-if="p.image_url && !failedImageIds.includes(p.id)" :src="p.image_url" :alt="p.name" class="product-thumbnail" loading="lazy" referrerpolicy="no-referrer" @error="markImageFailed(p.id)"><span v-else class="product-image-empty">—</span></template>
                 <template v-else-if="col.key === 'woo_url'"><a v-if="p.woo_url" :href="p.woo_url" target="_blank" rel="noopener noreferrer" class="product-grid-link external-url">{{ p.woo_url }}</a><span v-else>—</span></template>
                 <template v-else-if="col.key === 'parameter_status'"><span class="product-status">{{fmt(p.parameter_status)}}</span></template>
+                <template v-else-if="col.key === 'parameter_assigned_user_id'">
+                  {{ parameterFactoryUsers?.find(u=>u.id===p.parameter_assigned_user_id)?.name ?? (p.parameter_assigned_user_id ? '#'+p.parameter_assigned_user_id : '—') }}
+                </template>
                 <template v-else>{{ cellValue(p, col.key) }}</template>
               </td>
               <td class="grid-actions">
@@ -250,7 +360,7 @@ const doDelete = () => {
               </td>
               <td class="end-cap"></td>
             </tr>
-            <tr v-if="products.data.length === 0"><td :colspan="visibleColumns.length + 2" class="mvp-empty">暂无产品</td></tr>
+            <tr v-if="products.data.length === 0"><td :colspan="visibleColumns.length + 2 + (canOperate&&currentView==='measurements'?1:0)" class="mvp-empty">暂无产品</td></tr>
           </tbody>
         </table>
       </div>
@@ -277,6 +387,22 @@ const doDelete = () => {
 </template>
 
 <style scoped>
+.parameter-bulk-toolbar{display:grid;gap:11px;padding:14px;border:1px solid #cddfd2;border-radius:9px;background:#f8fbf8;margin:12px 0}
+.parameter-bulk-title{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.parameter-bulk-title strong{font-size:13px;color:#205d43}
+.parameter-bulk-title span,.parameter-bulk-note{font-size:11px;color:#708678}
+.parameter-bulk-controls{display:flex;gap:9px;align-items:end;flex-wrap:wrap}
+.parameter-bulk-controls label{display:grid;gap:5px;min-width:145px;font-size:11px;color:#587060}
+.parameter-bulk-controls select{border:1px solid #cad9cd;border-radius:6px;padding:8px;background:#fff;color:#284e37;font-size:12px}
+.parameter-bulk-submit{border:0;background:#176b4e;color:#fff;padding:9px 13px;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer}
+.parameter-bulk-submit:disabled{opacity:.42;cursor:not-allowed}
+.parameter-bulk-details{font-size:11px;color:#50715b}.parameter-bulk-details summary{cursor:pointer;font-weight:650}.parameter-bulk-details .parameter-bulk-fields{margin-top:9px}
+.parameter-bulk-fields{display:flex;gap:6px 12px;align-items:center;flex-wrap:wrap;font-size:11px}
+.parameter-bulk-fields label,.parameter-bulk-confirm{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#496d55}
+.parameter-bulk-fields input,.parameter-bulk-confirm input,.parameter-select-cell input{width:16px;height:16px;min-width:16px;min-height:16px;margin:0;padding:0;accent-color:#176b4e}
+.parameter-select-cell{text-align:center;min-width:38px;width:38px}
+.parameter-bulk-error{font-size:11px;color:#aa3a2d;background:#fff0ec;padding:8px;border-radius:5px}
+@media(max-width:620px){.parameter-bulk-controls label{flex:1;min-width:125px}.parameter-bulk-submit{width:100%}}
 
 .product-grid-view-selector{display:grid;gap:9px;margin:11px 0 12px}
 .product-grid-view-tabs,.product-grid-status-tabs{display:flex;gap:6px;flex-wrap:wrap}

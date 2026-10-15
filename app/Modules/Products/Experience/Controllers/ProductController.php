@@ -97,6 +97,9 @@ final class ProductController
                 $accessories = $parts->get($id, collect());
                 $parameterRows[$id] = [
                     'parameter_status' => $state,
+                    'parameter_task_enabled' => (bool) ($assigned?->enabled ?? false),
+                    'parameter_assigned_user_id' => $assigned?->assigned_user_id,
+                    'parameter_is_required' => (bool) ($assigned?->is_required ?? false),
                     'parameter_review_status' => $history->first()?->status === 'submitted' ? '待审核'
                         : ($history->first()?->status === 'approved' ? '已采纳' : null),
                     'material' => $measures['material'] ?? null,
@@ -122,6 +125,13 @@ final class ProductController
             'filters' => [...$request->only(['search', 'per_page', 'sort', 'direction']),
                 'view' => $view, 'parameter_status' => $parameterStatus],
             'parameterCounts' => $view === 'measurements' ? $this->parameterCoverageCounts() : [],
+            'parameterFactoryUsers' => $view === 'measurements' &&
+                (Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false)
+                ? User::query()->where('is_active', true)->orderBy('name')
+                    ->get(['id', 'name', 'is_active', 'permission_mode'])
+                    ->filter(fn ($u) => $u->hasPermission('products.parameters.submit'))
+                    ->map(fn ($u) => ['id' => (int) $u->id, 'name' => $u->name])->values()->all()
+                : [],
             'canOperate' => Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false,
         ]);
     }
