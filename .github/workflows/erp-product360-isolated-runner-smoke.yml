@@ -13,7 +13,7 @@ permissions:
 jobs:
   isolated-scheduling-smoke:
     if: github.repository == 'beyourlovercom/erpbeyourlovercom'
-    runs-on: [self-hosted, byl-erp-uat-ci]
+    runs-on: byl-erp-uat-ci
     timeout-minutes: 5
     steps:
       - name: Verify isolated ephemeral Ubuntu VM
