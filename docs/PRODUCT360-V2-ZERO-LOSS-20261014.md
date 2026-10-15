@@ -102,3 +102,11 @@
 3. Grant one synthetic admin with products.operate and one scoped factory employee with products.parameters.submit; assign one synthetic SKU only.
 4. On authorized Desktop/iPhone14 browser: run full 9→5 old panel parity, product list 3-view parity, factory task / draft / photo-optional submit, manager review and accessory preservation, negative permission checks. Capture evidence.
 5. Only then request explicit Owner PASS, and separately request exact-head PR merge / deployment approval.
+
+## M4 Owner-reported UI issue: permission matrix readability (2026-10-14)
+- Owner supplied screenshot of factory test user's 编辑用户 → 权限设置. Prior shared \`PermissionMatrix.vue\` had no dedicated layout CSS and inherited \`.mvp-form label\` grid styles, visually detaching checkboxes from Chinese labels. Technical English permission keys were not visible, risking incorrect selection.
+- Shared \`PermissionMatrix\` now renders **three fixed, consistently aligned columns in each permission row: Chinese label / English permission key / checkbox**, with dashed row dividers and compact section headers. Includes bilingual column headers, selected/total counts and per-section counts; full-row click target; accessible keyboard focus; responsive narrow-screen columns.
+- 全选 / 取消全选 controls placed before the first permission row, so a factory test operator can explicitly clear inherited Writer permissions before selecting \`dashboard.view\` and \`products.parameters.submit\`.
+- Edited User mode radio options now align each radio with its label and show explicit instructions in custom mode. Shared matrix applies to both **用户编辑** and **角色与权限**; actual permission submit endpoints, role templates, canonical permission keys, audit and persisted user permissions remain unmodified.
+- Vue UI regression contract includes Chinese/English/checkbox within same row and empty → two-field selected-state transitions. Focused UI suites **20/20 PASS**, TypeScript and Vite build PASS. These are not a substitute for Owner actual browser visual UAT.
+- **Hard gate:** Do not write/change UAT employee permissions on the user's behalf. The user explicitly controls actual role editing and final Owner visual acceptance. The common UI change is staged in the existing Draft PR #459 but not merged into GitHub main and not deployed to Production.
