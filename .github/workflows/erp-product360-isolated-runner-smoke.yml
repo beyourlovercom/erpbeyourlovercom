@@ -1,0 +1,34 @@
+name: ERP Product360 Isolated Free Runner Smoke
+
+on:
+  push:
+    branches:
+      - feature/product360-v2-ia-zero-loss
+    paths:
+      - '.github/workflows/erp-product360-isolated-runner-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-scheduling-smoke:
+    if: github.repository == 'beyourlovercom/erpbeyourlovercom'
+    runs-on: [self-hosted, byl-erp-uat-ci]
+    timeout-minutes: 5
+    steps:
+      - name: Verify isolated ephemeral Ubuntu VM
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = 'feature/product360-v2-ia-zero-loss'
+          test "$(uname -s)" = 'Linux'
+          test "$(uname -m)" = 'aarch64'
+          grep -q 'Ubuntu 24.04' /etc/os-release
+          if findmnt -rn -t virtiofs,9p,fuse.sshfs | grep -q .; then
+            echo 'BLOCKED: host folder mount detected'
+            exit 20
+          fi
+          echo "ISOLATED_FREE_RUNNER_SMOKE=PASS"
+          echo "PROJECT=Product360 V2 / Draft PR #459"
+          echo "SOURCE_SHA=$GITHUB_SHA"
+          echo 'NO_PRODUCTION_SECRETS=SUPPLIED_NONE'
