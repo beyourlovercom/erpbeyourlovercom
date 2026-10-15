@@ -81,6 +81,16 @@ final class ProductParameterGridViewsTest extends TestCase
             ->assertInertia(fn ($page) => $page->has('products.data', 3));
     }
 
+    public function test_inertia_page_resolution_uses_canonical_case_sensitive_pages_directory(): void
+    {
+        $this->assertContains(resource_path('js/Pages'), config('inertia.pages.paths'));
+        foreach (['Products/Index.vue', 'Products/Show.vue',
+            'Products/FactoryParameters.vue', 'Products/FactoryParameterTasks.vue'] as $path) {
+            $this->assertFileExists(resource_path('js/Pages/'.$path));
+        }
+        $this->assertTrue((bool) config('inertia.testing.ensure_pages_exist'));
+    }
+
     public function test_unprivileged_factory_submitter_cannot_access_full_product_grid(): void
     {
         $factory=User::factory()->create(['is_active'=>true]);
