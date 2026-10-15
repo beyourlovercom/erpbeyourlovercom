@@ -1,0 +1,115 @@
+name: ERP Product360 Free Isolated CI
+
+on:
+  push:
+    branches:
+      - feature/product360-v2-ia-zero-loss
+    paths:
+      - '.github/workflows/erp-product360-free-isolated-ci.yml'
+      - 'app/Modules/Products/**'
+      - 'app/Modules/Identity/**'
+      - 'resources/js/Pages/Products/**'
+      - 'resources/js/Pages/Identity/**'
+      - 'resources/js/Components/PermissionMatrix*'
+      - 'tests/Feature/Products/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  product360-private-regression:
+    if: github.repository == 'beyourlovercom/erpbeyourlovercom'
+    runs-on: byl-erp-uat-ci
+    timeout-minutes: 35
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-test-only
+          MYSQL_DATABASE: erp_stability_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pci-test-only"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    steps:
+      - name: Verify branch and isolated Linux VM
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "feature/product360-v2-ia-zero-loss"
+          test "$(uname -s)" = Linux
+          test "$(uname -m)" = aarch64
+          grep -q 'Ubuntu 24.04' /etc/os-release
+          if findmnt -rn -t virtiofs,9p,fuse.sshfs | grep -q .; then
+            echo "Blocked: host mount present" >&2
+            exit 30
+          fi
+          echo "PRIVATE_EPHEMERAL_LINUX_SANDBOX=PASS"
+      - name: Checkout exact branch SHA (read-only token)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify isolated PHP environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -v | head -1
+          composer --version | head -1
+          php -m | grep -i pdo_sqlite
+          php -m | grep -i pdo_mysql
+      - name: Install PHP dependencies in isolated checkout
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Product360/Identity/Factory security regression
+        run: |
+          php artisan test \
+            tests/Feature/Products/Product360Test.php \
+            tests/Feature/Products/WeightEvidenceTest.php \
+            tests/Feature/Products/ProductParameterFactoryWorkflowTest.php \
+            tests/Feature/Products/ProductParameterBatchAssignmentTest.php \
+            tests/Feature/Products/ProductParameterGridViewsTest.php \
+            tests/Feature/AppShellNavigationTest.php \
+            tests/Feature/Identity/PermissionMatrixTest.php --no-ansi
+      - name: MySQL 8.4 production-compatibility regression on synthetic DB
+        env:
+          BYL_MYSQL_STABILITY_ENABLED: '1'
+          BYL_MYSQL_STABILITY_DATABASE: erp_stability_test
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_DATABASE: erp_stability_test
+          DB_USERNAME: root
+          DB_PASSWORD: ci-test-only
+          ERP_LOCAL_ADMIN_BYPASS: 'false'
+        run: |
+          php artisan test \
+            tests/Feature/ProductionStability/MySql8ProductionCompatibilityTest.php \
+            tests/Feature/Finance/AccountingContinuousDeltaTest.php --no-ansi
+      - name: Install isolated Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Vue test dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Product360 and Identity visual-logic regression
+        run: |
+          npm exec -- vitest run \
+            resources/js/Pages/Products/Index.test.ts \
+            resources/js/Pages/Products/Show.v2.test.ts \
+            resources/js/Pages/Products/ProductParameterViews.v2.test.ts \
+            resources/js/Components/PermissionMatrix.test.ts \
+            resources/js/Pages/Identity/Users/Edit.test.ts \
+            resources/js/Pages/Identity/RolesPermissions/Index.test.ts --reporter=dot
+      - name: TypeScript and production build
+        run: |
+          npm run typecheck
+          npm run build
+      - name: Exact-head code-only closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- . ':!public/build'
+          echo "SELF_HOSTED_EXACT_HEAD_CI_PASS=$GITHUB_SHA"
