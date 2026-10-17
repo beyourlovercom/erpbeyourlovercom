@@ -36,7 +36,7 @@ describe('shared packaging editor used by Product360 and legacy URL', () => {
   it('embeds all prior full-edit sections without a second-page return link', () => {
     const w = mount(PackagingEditor, { props: { product, presets, packagingProfile: profile, embedded: true } })
     const text = w.text()
-    for (const name of ['包装方式', '方案名称', '几个/箱', '产品专属主示意图', '真实包装案例图', '产品默认示意图覆盖']) {
+    for (const name of ['包装方式', '方案名称', '几个/箱', '新版·包装示范图', '旧版·原有包装图', '产品默认示意图覆盖']) {
       expect(text).toContain(name)
     }
     expect((w.find('textarea').element as HTMLTextAreaElement).value).toBe('UAT only')
@@ -44,6 +44,8 @@ describe('shared packaging editor used by Product360 and legacy URL', () => {
     expect(w.findAll('img')).toHaveLength(3)
     expect(w.find('a[href="/products/17"]').exists()).toBe(false)
     expect(w.find('.packaging-admin-embedded').exists()).toBe(true)
+    expect(w.findAll('.comparison-card')).toHaveLength(2)
+    expect(w.find('.comparison-card-primary').exists()).toBe(true)
     expect(w.findAll('.case-grid figure')).toHaveLength(1)
   })
 

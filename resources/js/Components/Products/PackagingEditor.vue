@@ -57,23 +57,28 @@ function removeImage(image:ImageRef){if(image.id===null)return;if(!confirm(`删�
         </div>
       </article>
 
-      <article class="mvp-card admin-card">
-        <div class="card-head"><div><span class="num">2</span><div><h3>产品专属主示意图</h3><p>建议上传最终给工厂看的大图：真实包装照、设计图或 AI 渲染图均可。</p></div></div><span class="status-chip primary">优先展示</span></div>
-        <div class="media-editor hero-editor">
-          <div class="preview large"><img v-if="packagingProfile?.rendered_image" :src="packagingProfile.rendered_image.url" :alt="packagingProfile.rendered_image.name||'产品专属主示意图'"/><div v-else class="empty">暂无产品专属主示意图</div></div>
-          <div class="upload-panel"><strong>上传 / 替换主示意图</strong><p>工厂端优先显示此图；没有时退回默认示意图。</p><label class="upload-btn"><input type="file" accept="image/jpeg,image/png,image/webp" @change="upload('rendered',$event)"/>选择图片</label><button v-if="packagingProfile?.rendered_image?.id" type="button" class="text-danger" @click="removeImage(packagingProfile.rendered_image)">删除当前图片</button><small>JPG / PNG / WEBP · ≤ 10MB</small></div>
-        </div>
-      </article>
+      <section class="packaging-comparison-grid">
+        <article class="mvp-card admin-card comparison-card comparison-card-primary">
+          <div class="card-head comparison-head"><div><span class="num">2A</span><div><h3>新版·包装示范图（以这版本为主）</h3><p>当前给工厂执行的新版包装标准，后续包装优先以此图为准。</p></div></div><span class="status-chip primary">当前标准</span></div>
+          <div class="comparison-preview">
+            <div class="preview large"><img v-if="packagingProfile?.rendered_image" :src="packagingProfile.rendered_image.url" :alt="packagingProfile.rendered_image.name||'新版包装示范图'"/><div v-else class="empty">暂无新版包装示范图</div></div>
+          </div>
+          <div class="comparison-actions">
+            <div><strong>上传 / 替换新版示范图</strong><p>真实包装照、设计图或 AI 渲染图均可；工厂端优先显示此图。</p></div>
+            <div class="comparison-action-buttons"><label class="upload-btn"><input type="file" accept="image/jpeg,image/png,image/webp" @change="upload('rendered',$event)"/>选择图片</label><button v-if="packagingProfile?.rendered_image?.id" type="button" class="text-danger" @click="removeImage(packagingProfile.rendered_image)">删除当前图片</button></div>
+          </div>
+        </article>
 
-      <article class="mvp-card admin-card">
-        <div class="card-head"><div><span class="num">3</span><div><h3>真实包装案例图</h3><p>可上传多张工厂实际包装照片，帮助不同尺寸产品确认最终效果。</p></div></div><span class="status-chip">可多张</span></div>
-        <label class="case-dropzone"><input type="file" accept="image/jpeg,image/png,image/webp" multiple @change="upload('example',$event)"/><span>＋</span><strong>上传包装案例图</strong><small>支持一次选择多张 · JPG / PNG / WEBP · 单张 ≤ 10MB</small></label>
-        <div v-if="packagingProfile?.examples.length" class="case-grid"><figure v-for="image in packagingProfile.examples" :key="image.id||image.url"><img :src="image.url" :alt="image.name||'包装案例图'"/><figcaption>{{image.name||'包装案例图'}}</figcaption><button v-if="image.id" type="button" @click="removeImage(image)">×</button></figure></div>
-        <p v-else class="empty-note">还没有真实案例图。上传后，工厂端会在包装参考区域看到这些图片。</p>
-      </article>
+        <article class="mvp-card admin-card comparison-card">
+          <div class="card-head comparison-head"><div><span class="num muted-num">2B</span><div><h3>旧版·原有包装图</h3><p>保留原有包装照片作为历史对比，仅供参考，不再作为当前执行标准。</p></div></div><span class="status-chip muted">历史参考</span></div>
+          <label class="case-dropzone comparison-dropzone"><input type="file" accept="image/jpeg,image/png,image/webp" multiple @change="upload('example',$event)"/><span>＋</span><strong>上传旧版 / 原有包装图</strong><small>支持一次选择多张 · JPG / PNG / WEBP · 单张 ≤ 10MB</small></label>
+          <div v-if="packagingProfile?.examples.length" class="case-grid comparison-case-grid"><figure v-for="image in packagingProfile.examples" :key="image.id||image.url"><img :src="image.url" :alt="image.name||'旧版原有包装图'"/><figcaption>{{image.name||'旧版原有包装图'}}</figcaption><button v-if="image.id" type="button" @click="removeImage(image)">×</button></figure></div>
+          <p v-else class="empty-note">暂未上传旧版原有包装图；这里用于保留历史包装对比，不影响新版标准。</p>
+        </article>
+      </section>
 
       <article class="mvp-card admin-card optional-card">
-        <div class="card-head"><div><span class="num">4</span><div><h3>产品默认示意图覆盖</h3><p>可选。若不上传，系统继续使用所选预设方案的标准默认图。</p></div></div><span class="status-chip muted">可选</span></div>
+        <div class="card-head"><div><span class="num">3</span><div><h3>产品默认示意图覆盖</h3><p>可选。若不上传，系统继续使用所选预设方案的标准默认图。</p></div></div><span class="status-chip muted">可选</span></div>
         <div class="media-editor">
           <div class="preview"><img v-if="packagingProfile?.default_image" :src="packagingProfile.default_image.url" :alt="packagingProfile.default_image.name||'默认示意图'"/><div v-else class="empty">使用系统预设默认图</div></div>
           <div class="upload-panel"><strong>上传产品默认示意图</strong><p>适合产品尺寸特殊、标准预设图不够准确时覆盖。</p><label class="upload-btn secondary"><input type="file" accept="image/jpeg,image/png,image/webp" @change="upload('default',$event)"/>选择图片</label><button v-if="packagingProfile?.default_image?.id" type="button" class="text-danger" @click="removeImage(packagingProfile.default_image)">删除覆盖图</button></div>
@@ -89,4 +94,10 @@ function removeImage(image:ImageRef){if(image.id===null)return;if(!confirm(`删�
 .packaging-admin-embedded{margin:0 auto;max-width:100%}.packaging-admin-embedded .admin-heading h2{font-size:17px}.packaging-admin-embedded .admin-card{border:1px solid #e3eae6;border-radius:10px;background:#fff}
 @media(max-width:900px){.preset-grid{grid-template-columns:repeat(2,1fr)}.media-editor{grid-template-columns:1fr}.case-grid{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:700px){.packaging-admin-page{padding-bottom:24px}.admin-heading{gap:12px}.admin-heading .mvp-actions{display:grid;width:100%;grid-template-columns:1fr 1fr}.admin-card{padding:14px}.card-head{gap:8px}.card-head h3{font-size:16px}.preset-grid{grid-template-columns:1fr}.preset-option{min-height:54px}.meta-grid{grid-template-columns:1fr}.meta-grid .wide{grid-column:auto}.preview.large{min-height:220px}.preview.large img{min-height:220px}.case-grid{grid-template-columns:repeat(2,1fr)}.flow-note{flex-direction:column}}
+.packaging-comparison-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}.comparison-card{margin-top:0;min-width:0}.comparison-card-primary{border:1px solid #b9ddd4;box-shadow:0 0 0 2px rgba(22,133,120,.05)}.comparison-head{min-height:72px}.comparison-head .num{width:auto;min-width:30px;padding:0 7px}.comparison-head .muted-num{background:#819197}.comparison-preview{border-radius:12px;overflow:hidden}.comparison-card .preview.large{min-height:300px}.comparison-card .preview.large img{min-height:300px;max-height:420px}.comparison-actions{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid #edf1f2}.comparison-actions strong{font-size:13px}.comparison-actions p{margin:4px 0 0;color:#71838b;font-size:11px;line-height:1.5}.comparison-action-buttons{display:flex;flex-direction:column;align-items:flex-end;gap:7px;flex:0 0 auto}.comparison-dropzone{min-height:300px}.comparison-case-grid{grid-template-columns:repeat(2,1fr)}
+@media(max-width:900px){
+  .packaging-comparison-grid{grid-template-columns:1fr}
+  .comparison-case-grid{grid-template-columns:repeat(3,1fr)}
+  .comparison-dropzone{min-height:220px}
+}
 </style>
