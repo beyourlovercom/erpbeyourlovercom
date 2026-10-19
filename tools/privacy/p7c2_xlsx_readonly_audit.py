@@ -45,6 +45,7 @@ def audit(path, max_locations=50):
         "risky_email_occurrences": 0,
         "phone_like_occurrences": 0,
         "flagged_coordinates": [],
+        "other_xml_risk_parts": [],
         "warnings": ["Indicators need manual classification; names, addresses, files, history and runtime are not cleared."],
     }
     with zipfile.ZipFile(path) as xlsx:
@@ -92,6 +93,26 @@ def audit(path, max_locations=50):
             result["worksheets"].append({"xml_part": member, "flagged_cells": count})
         result["flagged_coordinate_limit"] = max_locations
         result["other_embedded_parts_present"] = sorted(n for n in names if n.startswith("xl/") and ("comments" in n.lower() or "externalLinks" in n or "connections" in n))
+        # Review shared-string leftovers, comments, metadata, links and drawing XML,
+        # including strings that no visible worksheet cell currently references.
+        other_xml = sorted(n for n in names if n.lower().endswith((".xml", ".rels", ".vml"))
+                           and not re.fullmatch(r"xl/worksheets/sheet\d+\.xml", n))
+        for member in other_xml:
+            try:
+                root = ET.fromstring(xlsx.read(member))
+            except ET.ParseError:
+                result["warnings"].append("Unreadable XML part: " + member)
+                continue
+            email_count = 0
+            phone_count = 0
+            for node in root.iter():
+                for value in [node.text or "", *node.attrib.values()]:
+                    emails, phones = fields(value)
+                    email_count += len(emails)
+                    phone_count += len(phones)
+            if email_count or phone_count:
+                result["other_xml_risk_parts"].append({"part": member, "email_risk": email_count, "phone_like": phone_count})
+        result["warnings"].append("Other XML risks can duplicate worksheet-referenced shared strings; classify before clearing.")
     return result
 
 
