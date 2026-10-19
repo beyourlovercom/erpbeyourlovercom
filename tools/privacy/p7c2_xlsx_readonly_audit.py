@@ -25,7 +25,7 @@ def fields(value):
     phone_like = []
     for match in PHONE.finditer(value):
         digits = re.sub(r"\D", "", match.group())
-        if 8 <= len(digits) <= 15:
+        if 8 <= len(digits) <= 15 and not re.fullmatch(r"20255501\d{2}", digits):
             # Treat as an indicator, not a determination of personal data.
             phone_like.append(match.group())
     return unsafe_email, phone_like

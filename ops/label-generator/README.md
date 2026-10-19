@@ -207,7 +207,7 @@ Canonical PI template:
 
 Canonical template SHA-256:
 
-    68157db503a12fc721cae80409958f532208b57b8cb8acd58137776a68a54
+    e117023f3955bad37860f13f3c2370ae16334df86270a43122131950814e91f1
 
 The workbook is the uploaded real 007 sea-freight PI workbook. V1 preserves its workbook structure, styles,
 hidden sheets, formulas, and layout. Only the PI worksheet data slots are rewritten.
