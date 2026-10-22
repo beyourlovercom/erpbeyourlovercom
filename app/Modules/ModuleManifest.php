@@ -5,6 +5,7 @@ namespace App\Modules;
 use App\Modules\Audit\Providers\AuditServiceProvider;
 use App\Modules\Backup\Providers\BackupServiceProvider;
 use App\Modules\BusinessProjects\Providers\BusinessProjectsServiceProvider;
+use App\Modules\B2B\Providers\B2BServiceProvider;
 use App\Modules\Customers\Providers\CustomersServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Identity\Providers\IdentityServiceProvider;
@@ -50,6 +51,7 @@ final class ModuleManifest
             ShellServiceProvider::class,
             DashboardServiceProvider::class,
             CustomersServiceProvider::class,
+            B2BServiceProvider::class;
             ProductsServiceProvider::class,
             ProcurementServiceProvider::class,
             InventoryServiceProvider::class,
