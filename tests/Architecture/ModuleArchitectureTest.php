@@ -62,6 +62,7 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/B2B/Experience/Controllers/B2BCaseController.php',
         'app/Modules/B2B/Experience/Controllers/B2BCaseWriteController.php',
         'app/Modules/B2B/Experience/Controllers/B2BSalesOpportunityController.php',
+        'app/Modules/B2B/Sales/B2BSalesFinanceTruthProjection.php',
         'app/Modules/B2B/Sales/B2BSalesPipeline.php',
         'app/Modules/B2B/Infrastructure/Models/B2BSalesOpportunity.php',
         'app/Modules/B2B/Infrastructure/Models/B2BSalesStageEvent.php',
