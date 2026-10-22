@@ -7,6 +7,12 @@ const props=defineProps<{
   canOperate:boolean; canAssign:boolean; owners:Array<{id:number;name:string}>;
 }>()
 const statusLabel = (status: string): string => ({ open: '处理中', won: '已成交', lost: '已流失', spam: '无效' } as Record<string, string>)[status] || status
+const stageLabel = (stage: string): string => ({ new: '新询盘', contacted: '已联系', qualified: '已验证', quoted: '已报价', negotiating: '谈判中' } as Record<string, string>)[stage] || stage
+const handlingLabel = (handling: string): string => ({ none: '已结束', waiting: '待处理', in_progress: '跟进中', waiting_customer: '等待客户回复' } as Record<string, string>)[handling] || handling
+const priorityLabel = (priority: string): string => ({ low: '低', normal: '正常', high: '高' } as Record<string, string>)[priority] || priority
+const sourceLabel = (source: string): string => ({ manual: '人工录入', website_form: '网站表单', email: '邮件', whatsapp_business: 'WhatsApp Business', trade_show: '展会', referral: '推荐', other: '其他' } as Record<string, string>)[source] || source
+const intentLabel = (intent: string): string => ({ retail: 'Retail（零售）', wholesale: 'Wholesale（批发）', authorized_distributor_interest: 'Authorized Distributor（授权经销意向）', exclusive_distributor_interest: 'Exclusive Distributor（独家经销意向）', other: '其他' } as Record<string, string>)[intent] || intent
+const activityLabel = (activity: string): string => ({ case_created: '新建询盘', verified_source_ingested: '接收外部询盘', note_added: '添加跟进备注', followup_scheduled: '安排下次跟进', stage_changed: '更新销售阶段', status_changed: '更新询盘状态', case_updated: '更新询盘资料', owner_assigned: '分配业务负责人' } as Record<string, string>)[activity] || activity
 const state=useForm({
   case_stage:props.case.stage,case_status:props.case.status,
   handling_state:props.case.handling==='none'?'in_progress':props.case.handling,
@@ -24,7 +30,7 @@ const assign=()=>owner.post(`/b2b/cases/${props.case.id}/assignment`,{preserveSc
   <Head :title="`${props.case.case_number||'询盘'} · BYL ERP`" />
   <AuthenticatedLayout title="B2B 询盘" :breadcrumbs="['BYL ERP','B2B 业务','询盘管理',props.case.case_number||'详情']">
     <main class="case-main">
-      <header><Link href="/b2b/inquiries">← 询盘列表</Link><h1>{{ props.case.title }}</h1><p>{{ props.case.case_number }} · {{ props.case.source }}</p></header>
+      <header><Link href="/b2b/inquiries">← 询盘列表</Link><h1>{{ props.case.title }}</h1><p>{{ props.case.case_number }} · {{ sourceLabel(props.case.source) }}</p></header>
       <div class="case-grid">
         <section class="panel">
           <h2>询盘详情</h2>
@@ -32,11 +38,11 @@ const assign=()=>owner.post(`/b2b/cases/${props.case.id}/assignment`,{preserveSc
             <dt>联系人</dt><dd>{{ props.case.contact||'—' }}</dd>
             <dt>国家</dt><dd>{{ props.case.country_code||'—' }}</dd>
             <dt>产品 / 数量</dt><dd>{{ props.case.product_interest||'未填写' }} / {{ props.case.requested_quantity||'待确认' }}</dd>
-            <dt>商业意向</dt><dd>{{ props.case.inquiry_kind }}</dd>
-            <dt>优先级</dt><dd>{{ props.case.priority }}</dd>
-            <dt>阶段</dt><dd>{{ props.case.stage }}</dd>
+            <dt>商业意向</dt><dd>{{ intentLabel(props.case.inquiry_kind) }}</dd>
+            <dt>优先级</dt><dd>{{ priorityLabel(props.case.priority) }}</dd>
+            <dt>阶段</dt><dd>{{ stageLabel(props.case.stage) }}</dd>
             <dt>询盘状态</dt><dd><span class="case-status" :class="'case-status--'+props.case.status">{{ statusLabel(props.case.status) }}</span></dd>
-            <dt>处理状态</dt><dd>{{ props.case.handling==='none' ? '已结束' : props.case.handling }}</dd>
+            <dt>处理状态</dt><dd>{{ handlingLabel(props.case.handling) }}</dd>
             <template v-if="props.case.status==='lost' && props.case.loss_reason_code"><dt>流失原因</dt><dd>{{ props.case.loss_reason_code }}</dd></template>
             <template v-if="props.case.closed_at"><dt>关闭时间</dt><dd>{{ props.case.closed_at.slice(0,16).replace('T',' ') }}</dd></template>
             <dt>下次跟进</dt><dd>{{ props.case.next_follow_up_at?props.case.next_follow_up_at.slice(0,16):'未设置' }}</dd></dl>
@@ -64,7 +70,7 @@ const assign=()=>owner.post(`/b2b/cases/${props.case.id}/assignment`,{preserveSc
             <label for="case-note">跟进备注</label><textarea id="case-note" v-model="note.body" rows="4" maxlength="5000" placeholder="记录客户问题、跟进内容和下一步计划"></textarea>
             <p class="error">{{ Object.values(note.errors).join(' · ') }}</p><button :disabled="note.processing || !note.body.trim()" type="submit">保存备注</button>
           </form>
-          <ol><li v-for="activity in activities" :key="activity.id"><span>{{ activity.time?activity.time.slice(0,16):'—' }}</span><strong>{{ activity.type }}</strong><p v-if="activity.text">{{ activity.text }}</p></li></ol>
+          <ol><li v-for="activity in activities" :key="activity.id"><span>{{ activity.time?activity.time.slice(0,16).replace('T',' '):'—' }}</span><strong>{{ activityLabel(activity.type) }}</strong><p v-if="activity.text">{{ activity.text }}</p></li></ol>
           <p v-if="!activities.length" class="muted">暂无跟进记录</p>
         </section>
       </div>
