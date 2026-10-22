@@ -167,17 +167,22 @@ final class B2BM5SecurityRegressionTest extends TestCase
         $assignee = $this->actor('m5-org-assignee', ['b2b.view', 'b2b.operate']);
         $other = $this->actor('m5-org-outsider', ['b2b.view', 'b2b.operate']);
         $org = B2BOrganization::create(['display_name' => 'Assignee Read-Only Company', 'owner_id' => $owner->id]);
+        $allowedContact = $org->contacts()->create(['name' => 'Assigned Contact', 'email_normalized' => 'allowed@example.invalid']);
+        $org->contacts()->create(['name' => 'Hidden Contact', 'email_normalized' => 'hidden@example.invalid']);
         $case = $this->sampleCase($org, $assignee);
+        $case->forceFill(['primary_contact_id' => $allowedContact->id])->save();
 
         $this->actingAs($assignee)->get('/b2b/companies')->assertOk()
             ->assertSee('Assignee Read-Only Company');
-        $this->actingAs($assignee)->get("/b2b/companies/{$org->id}")->assertOk();
+        $this->actingAs($assignee)->get("/b2b/companies/{$org->id}")
+            ->assertOk()->assertSee('Assigned Contact')->assertDontSee('Hidden Contact')
+            ->assertDontSee('hidden@example.invalid');
         $this->actingAs($assignee)->post("/b2b/companies/{$org->id}/contacts", [
             'name' => 'Unauthorized New Contact',
         ])->assertForbidden();
         $this->actingAs($other)->get("/b2b/companies/{$org->id}")->assertNotFound();
         $this->actingAs($assignee)->get("/b2b/cases/{$case->id}")->assertOk();
-        $this->assertDatabaseCount('b2b_contacts', 0);
+        $this->assertDatabaseCount('b2b_contacts', 2);
     }
 
     public function test_companies_with_cases_and_cases_with_activity_cannot_be_deleted_implicitly(): void
