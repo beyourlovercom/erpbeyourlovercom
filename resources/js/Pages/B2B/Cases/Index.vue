@@ -6,7 +6,7 @@ type CaseRow = {id:number;case_number:string|null;title:string;organization:stri
 type Page = {data:CaseRow[];links:Array<{url:string|null;label:string;active:boolean}>;total:number}
 const props=defineProps<{followupsOnly:boolean;overdueOnly:boolean;cases:Page;metrics:{total:number;open:number;waiting:number;overdue:number};filters:{search:string;source:string;status:string;stage:string};canOperate:boolean}>()
 const state=reactive({...props.filters})
-const run=()=>router.get('/b2b/inquiries',state,{preserveState:true,replace:true})
+const run=()=>router.get(props.followupsOnly ? '/b2b/followups' : '/b2b/inquiries',state,{preserveState:true,replace:true})
 const stageName=(s:string)=>({new:'新询盘',contacted:'已联系',qualified:'已验证',quoted:'已报价',negotiating:'谈判中'} as Record<string,string>)[s]||s
 </script>
 <template>
