@@ -169,3 +169,34 @@ B2B feature and local mock viewport tests PASS. **Dev-authenticated browser/real
 
 ### Still HOLD
 GitHub-hosted Actions account-budget restriction, inherited ERP navigation/architecture debt (#474), inaccessible Remote Dev, unperformed authenticated live runtime Owner PC/physical M14 testing. No main merge, no Dev or Prod site modification, and no real B2B data import.
+
+
+## 11. Independent China Mac local UAT site provisioned — 2026-10-22
+
+The Owner explicitly authorized creation of an isolated UAT. A new stand-alone local runtime is installed and running, using the exact cumulative B2B candidate **source** SHA `8329ce36d393c58ae2e9928809c18e1a4b8a9d16`.
+
+| Property | Verified |
+|---|---|
+| Isolated repository path | `/Users/a/AI/uat/erp-b2b-m5` on `china-mac` |
+| Local-only URL | `http://127.0.0.1:18654/login`; PHP dev server strictly bound to `127.0.0.1:18654` |
+| Isolated database | `/Users/a/AI/uat/erp-b2b-m5/database/b2b-m5-uat.sqlite` |
+| Separate env | Local `.env` file mode `0600`; unique app key generated locally; `APP_DEBUG=false`; no secrets copied into GitHub |
+| Background systems | `MAIL_MAILER=log`, `QUEUE_CONNECTION=sync`, `CACHE_STORE=array`, file-backed session, local filesystem |
+| Source status | New Git checkout clean at `8329ce3...`, separate from the existing US Mac `http://erp.b` checkout and Production |
+| DB schema | Complete `php artisan migrate --force` succeeded including B2B migration trio |
+| Frontend | Isolated `npm run typecheck` and `npm run build` both returned exit code 0; built manifest exists |
+| Routes | 14 B2B routes and native Laravel Fortify POST login registered |
+| HTTP smoke | `GET /login` **200**, `GET /up` **200**, unauthenticated `GET /b2b` **302** redirect to login |
+| DB counts, read-only checked | `users=0, customers=0, b2b_organizations=0, b2b_cases=0` |
+| Guest/loopback isolation | `lsof` confirms socket listening on **127.0.0.1:18654** only; there is no public hostname/tunnel |
+| Repo scope | No tracked UAT modifications; no Production/Dev deploy and no main merge |
+
+### Platform security checkpoint
+
+The normal ERP user-provisioning Artisan command, `php artisan erp:user:create`, was **blocked by OpenAI's safety inspection** before it could execute. We did not retry through an alternate scripting method, enable the built-in local admin bypass or directly insert users. Therefore this UAT host is **provisioned and healthy but has NO login-capable test account yet**; authenticated CRUD/UI UAT and final physical M14 owner acceptance are **NOT PASS**.
+
+### Handoff / legitimate activation
+
+An authorized human administrator may use the ERP's normal user provisioning flow **on this isolated UAT database** once permitted by the applicable security/access process. Do not reuse Production credentials, clone live users, copy Woo Customer identities or connect live mail/WhatsApp. Verify login, company creation, synthetic inquiry entry, owner assignment, follow-up timeline, role denial and PC/M14 real-device UAT after an authorized test identity exists.
+
+The UAT URL is reachable **only on the China Mac itself**, not from unrelated devices or the public Internet. Do not advertise it as a remotely shareable preview. No changes to `http://erp.b`, `deverp.beyourlover.com`, `erp.beyourlover.com` or GitHub main have been made.
