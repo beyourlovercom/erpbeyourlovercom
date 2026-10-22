@@ -122,3 +122,32 @@ Execution provider: **formal self-hosted OAuth MCP** `china-mac` (READY), isolat
 - New prospective rollout must be limited to Dev after its separate deployment gate, and main/Production changes remain unauthorized by this test record.
 
 **Current classification:** M1–M5 source implemented, PHP/Vue build and focused runtime tests PASS; DB migration/rollback PASS on isolated SQLite; inherited full-suite contract and PC/M14 UAT remain **HOLD**.
+
+
+## 9. China Mac frontend-only visual fixture and scoped CI gate — 2026-10-22
+
+**Owner-independent progress, NOT final Owner visual UAT**. Formal self-hosted OAuth `china-mac` permitted execution in a local disposable clone; no real authenticated B2B user account, production API, mail, website, Dev host or customer data was accessed. A separate, never-committed Vite HTML fixture injected synthetic Inertia v3 `script[data-page="app"]` page props and mounted the **actual repo Vue components**. This neither bypasses Production auth nor demonstrates live backend behavior.
+
+- Six view components: `B2B/Overview`, `B2B/Cases/Index`, `B2B/Companies/Index`, `B2B/Cases/Show`, `B2B/Cases/Create`, and Case follow-ups list.
+- Headless local Google Chrome browser inspected each at **1280×800 desktop** and **390×844 responsive mobile**; **12 component/view viewport checks**. Full document width equalled viewport width in all checks, with expected table-only inner horizontal scroll on desktop. Components had headings and mounted without JavaScript page exceptions. An incidental favicon request 404 on first desktop overview was not an app exception.
+- Mobile sidebar started aria-hidden=true, opening via the actual topbar mobile toggle changed it to false, B2B menu text became available, with no page error.
+- First rendering inspection exposed a concrete mobile ergonomics limitation: original 920px inquiry table only exposed its first two columns on mobile. A separate **mobile card list** was implemented in the actual `B2B/Cases/Index.vue`, preserving desktop table unchanged and displaying Case ref, Company, title, country, stage, product, quantity, source, next follow-up on cards.
+- After fix: at 390px the three synthetic cards were visible, desktop 1280px still showed the data table; in both widths there was no document-level horizontal overflow and browser page errors remained empty.
+- Source test `B2BMenuContractTest` was added to compare B2B level 1 and three child entries against the frozen Owner-approved B2B subset and ensure existing C-end `customers` route and permission stay unchanged; this avoids weakening the inherited Accounting/Marketing baseline tests.
+- **Actual China Mac PHPUnit after latest card fix and baseline pin:** 58 tests / 632 assertions **PASS** (`tests/Feature/B2B`, `AppShellNavigationTest`, `ModuleProviderTest`); `npm run typecheck` PASS; `npm run build` PASS, with only Vite chunk size advisory.
+- Exact feature SHA tested: `d2223411e883053db5ccd3c6ee15ac3ddb0692da`. Local HTML browser fixture and preview screenshots reside only on the China Mac temporary test directory, not in GitHub or a customer-facing website.
+
+### Root cause of GitHub Actions unstarted jobs proven via authenticated read-only GitHub CLI
+At [run #39732785153](https://github.com/beyourlovercom/erpbeyourlovercom/actions/runs/39732785153) `gh run view` showed two jobs failing before assignment, each annotated:
+```
+The job was not started because recent account payments have failed
+or your spending limit needs to be increased.
+Please check the 'Billing & plans' section in your settings
+```
+Do not claim this proves an actual failed transaction: it is the GitHub-hosted billing/budget *restriction message*. The repo's GitHub API reported **zero registered self-hosted runners**; cannot simply change existing workflow label to `self-hosted`. No payment, budget change or new Runner registration authorized/executed. GitHub-hosted CI is **still HOLD**, even though local tests passed.
+
+### Existing CI baseline debt isolated
+The inherited menu/architecture/C-end test failures and hosted Actions limitation are tracked separately in [Issue #474](https://github.com/beyourlovercom/erpbeyourlovercom/issues/474). Do not bulk waive main's 395 missing exact-file pins or silently change shared Accounting and Marketing menus while performing B2B work.
+
+### Current final gate
+B2B feature and local mock viewport tests PASS. **Dev-authenticated browser/real M14 Owner UAT, full shared-app frozen baseline, GitHub Actions, exact-head merge and Production release: NOT PASS**. No merge, no deploy, no customer data changed.
