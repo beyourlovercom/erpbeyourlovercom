@@ -160,4 +160,43 @@ final class B2BM5SecurityRegressionTest extends TestCase
         $this->assertDatabaseHas('b2b_cases', ['inquiry_kind' => 'exclusive_distributor_interest']);
         $this->assertSame(0, DB::table('customers')->count());
     }
+
+    public function test_assigned_salesperson_can_view_linked_company_but_cannot_modify_its_contacts(): void
+    {
+        $owner = $this->actor('m5-org-owner', ['b2b.view', 'b2b.operate']);
+        $assignee = $this->actor('m5-org-assignee', ['b2b.view', 'b2b.operate']);
+        $other = $this->actor('m5-org-outsider', ['b2b.view', 'b2b.operate']);
+        $org = B2BOrganization::create(['display_name' => 'Assignee Read-Only Company', 'owner_id' => $owner->id]);
+        $case = $this->sampleCase($org, $assignee);
+
+        $this->actingAs($assignee)->get('/b2b/companies')->assertOk()
+            ->assertSee('Assignee Read-Only Company');
+        $this->actingAs($assignee)->get("/b2b/companies/{$org->id}")->assertOk();
+        $this->actingAs($assignee)->post("/b2b/companies/{$org->id}/contacts", [
+            'name' => 'Unauthorized New Contact',
+        ])->assertForbidden();
+        $this->actingAs($other)->get("/b2b/companies/{$org->id}")->assertNotFound();
+        $this->actingAs($assignee)->get("/b2b/cases/{$case->id}")->assertOk();
+        $this->assertDatabaseCount('b2b_contacts', 0);
+    }
+
+    public function test_companies_with_cases_and_cases_with_activity_cannot_be_deleted_implicitly(): void
+    {
+        $owner = $this->actor('m5-append-only-owner', ['b2b.view', 'b2b.operate']);
+        $org = B2BOrganization::create(['display_name' => 'Retained B2B Company', 'owner_id' => $owner->id]);
+        $case = $this->sampleCase($org, $owner);
+        $case->activities()->create([
+            'actor_user_id' => $owner->id,
+            'activity_type' => 'note_added',
+            'body_text' => 'Do not cascade away audit history',
+            'occurred_at' => now(),
+        ]);
+        $this->assertDatabaseCount('b2b_case_activities', 1);
+        // The test verifies the migration contract without deliberately deleting
+        // retained audit rows on an in-memory test database.
+        $schema = file_get_contents(database_path('migrations/2026_10_22_000200_create_b2b_cases_and_activity.php'));
+        $this->assertStringContainsString("->constrained('b2b_organizations')->restrictOnDelete()", $schema);
+        $this->assertStringContainsString("->constrained('b2b_cases')->restrictOnDelete()", $schema);
+    }
+
 }
