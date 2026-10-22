@@ -107,6 +107,8 @@ final class B2BManualCaseWorkflowTest extends TestCase
         $this->assertSame('lost', $case->fresh()->case_status);
         $this->assertSame('none', $case->fresh()->handling_state);
         $this->assertNotNull($case->fresh()->closed_at);
+        $this->actingAs($owner)->get("/b2b/cases/{$case->id}")
+            ->assertOk()->assertSee('pricing')->assertSee('lost');
     }
 
     public function test_consumer_role_cannot_create_or_modify_b2b_case(): void
