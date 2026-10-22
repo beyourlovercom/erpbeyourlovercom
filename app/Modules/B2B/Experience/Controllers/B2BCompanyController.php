@@ -84,6 +84,18 @@ final class B2BCompanyController
     public function show(Request $request, B2BOrganization $organization): Response
     {
         $this->assertCanSee($request, $organization);
+        $canManageCompany = $request->user()->hasPermission('b2b.view_all')
+            || (int) $organization->owner_id === (int) $request->user()->getAuthIdentifier();
+        // A salesperson assigned to ONE Case may read that company but must
+        // not learn unrelated colleagues' business contacts in the same company.
+        $contacts = $organization->contacts()->orderByDesc('is_primary')->orderBy('id');
+        if (! $canManageCompany) {
+            $allowedContactIds = $organization->cases()
+                ->where('owner_id', $request->user()->getAuthIdentifier())
+                ->whereNotNull('primary_contact_id')
+                ->pluck('primary_contact_id');
+            $contacts->whereIn('id', $allowedContactIds);
+        }
 
         return Inertia::render('B2B/Companies/Show', [
             'organization' => [
@@ -92,13 +104,10 @@ final class B2BCompanyController
                 'country_code' => $organization->country_code,
                 'website_url' => $organization->website_url,
                 'stage' => $organization->stage,
-                'contacts' => $organization->contacts()->orderByDesc('is_primary')->orderBy('id')
+                'contacts' => $contacts
                     ->get(['id', 'name', 'job_title', 'email_normalized', 'phone', 'is_primary'])->toArray(),
             ],
-            'canOperate' => $request->user()->hasPermission('b2b.operate') && (
-                $request->user()->hasPermission('b2b.view_all')
-                || (int) $organization->owner_id === (int) $request->user()->getAuthIdentifier()
-            ),
+            'canOperate' => $request->user()->hasPermission('b2b.operate') && $canManageCompany,
         ]);
     }
 
