@@ -1279,11 +1279,11 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/lib/globalFeedback.test.ts' => '63887c4a11ca91d7014df88987bf6ccbaf54be0c03dc334f78711fec3ff519d6',
         'resources/js/lib/globalFeedback.ts' => '54ba6e2214e691f2059e239571fb9f70a533b8b2dae7a6d8923f8a2ee43fbfc3',
         'resources/js/types/navigation.ts' => '265ec164e751beaa4c53045fa431850601840cbea6deab4e7a87de72e8538327',
-        'resources/js/Pages/B2B/Overview.vue' => 'd0bb3ddf0c2ff2ef233309cc1d3b2b76aef27c7c19f7ff3d90fb0f4c18fb37d6',
+        'resources/js/Pages/B2B/Overview.vue' => 'fc3ec8a33060659ee18cdc3e312a2884149cdd56ff0bd654460e02b144dc41bb',
         'resources/js/Pages/B2B/Companies/Index.vue' => 'f90ca46af35a0dcf814f784016220b7fd4eb49f1ae6b703c4f7a98e26bdcfeda',
         'resources/js/Pages/B2B/Companies/Create.vue' => 'fce427039e7b5155978600108c7b2d968dd6860f51fb8e8b8cebb8a092bf7a37',
         'resources/js/Pages/B2B/Companies/Show.vue' => 'd0e701648af3ef32829eac9c3b86593589118d67bee21d6cf3ad2bb1ce087a90',
-        'resources/js/Pages/B2B/Cases/Index.vue' => '6c4a2685fc779d065afeba641cb74d55167a9b9b9a7cc9f168fd3823b116a2a4',
+        'resources/js/Pages/B2B/Cases/Index.vue' => '45c7275d67bdb9bee2abd8a0d6e7cbd417a5fdcdff9742b0e0dab17f0d125b39',
         'resources/js/Pages/B2B/Cases/Show.vue' => '274c5f20084ea88e94474945dbe58907244de87da4cc203aaa08fef00dca7c8d',
         'resources/js/Pages/B2B/Cases/Create.vue' => '7c7ccfef1aa129a64ad041a0bf79f5e6a3439695d42a6bc0e8e6f50a40f52f20',
     ];
