@@ -151,3 +151,21 @@ The inherited menu/architecture/C-end test failures and hosted Actions limitatio
 
 ### Current final gate
 B2B feature and local mock viewport tests PASS. **Dev-authenticated browser/real M14 Owner UAT, full shared-app frozen baseline, GitHub Actions, exact-head merge and Production release: NOT PASS**. No merge, no deploy, no customer data changed.
+
+
+## 10. Final Dev target discovery and Owner visual gate (2026-10-22)
+
+### Read-only environment facts (formal OAuth, no deployment)
+- US Mac mini `us-macmini` READY has existing local ERP at `/Users/a/AI/007/erpbeyourlovercom`, checked HEAD `952f5ad47ba8f01651267a05f566859b065a3d48` and HTTP `http://erp.b` returns 302 (login redirect). This is **not** the integrated B2B feature revision; it must not be overwritten by blindly copying PR files. Production release directory also exists on US Mac but was **not opened/changed**.
+- Canonical GitHub `main` via authenticated remote read: `60ccafc2848a9453cdfe018268517ca7ca7324fb`, unchanged compared with the known baseline. PR #473 remains Draft and out of main.
+- Historical Remote Dev target `https://deverp.beyourlover.com` is currently unreachable: China Mac HTTPS returned HTTP 000; US Mac DNS `dig +short` yielded no A/AAAA records. No Dev deployment target is presently available to verify. By contrast `https://erp.beyourlover.com` returned HTTP 200 from China Mac; it is **Production**, not a Dev testing fallback and was only probed for public response.
+- The only acceptable alternative for pre-Owner visual testing until Dev is restored is an **isolated local test directory**, not replacing `http://erp.b` or Production code.
+
+### Current evidence / Owner decision boundary
+- Isolated China Mac Chrome preview uses synthetic Inertia props and the checked Vue source of PR #473: 6 pages × PC 1280px + mobile 390px = 12 checked renders. Mobile Case-card fix is in PR and test results are documented in section 9. Screenshots are stored on the isolated China Mac under `/Users/a/.cache/aicc-b2b-m5-uat/visual-*.png`; these are **not Production screenshots** and must be clearly labeled mock-data.
+- Mobile navigation toggle and create form controls were checked by local Chrome. Browser mock data has zero authority over real customer cases, roles, API responses, ERP schema or Dev code revision.
+- Before a real Dev-backed Owner UAT, choose **one** environment approach in a scoped execution plan: (A) restore the known Remote Dev hostname and deploy the precise isolated candidate under a separate authorized release, or (B) provision a separate explicit local sandbox with synthetic data and clear base URL, preserving the existing `http://erp.b` environment. Do not bypass a platform safety inspection blocking account-seeding or data mutation.
+- Keep the final **physical M14 Owner UAT** open. PC and 390px headless Chrome checks are useful preliminary layout evidence, not literal iPhone 14 device proof.
+
+### Still HOLD
+GitHub-hosted Actions account-budget restriction, inherited ERP navigation/architecture debt (#474), inaccessible Remote Dev, unperformed authenticated live runtime Owner PC/physical M14 testing. No main merge, no Dev or Prod site modification, and no real B2B data import.
