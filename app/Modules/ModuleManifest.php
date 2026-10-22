@@ -51,7 +51,7 @@ final class ModuleManifest
             ShellServiceProvider::class,
             DashboardServiceProvider::class,
             CustomersServiceProvider::class,
-            B2BServiceProvider::class;
+            B2BServiceProvider::class,
             ProductsServiceProvider::class,
             ProcurementServiceProvider::class,
             InventoryServiceProvider::class,
