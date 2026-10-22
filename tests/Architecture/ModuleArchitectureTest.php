@@ -58,7 +58,10 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Audit/Infrastructure/Models/AuditRecord.php',
         'app/Modules/Audit/Providers/AuditServiceProvider.php',
         'app/Modules/B2B/Experience/Controllers/B2BOverviewController.php',
+        'app/Modules/B2B/Experience/Controllers/B2BCompanyController.php',
         'app/Modules/B2B/Experience/Routes/web.php',
+        'app/Modules/B2B/Infrastructure/Models/B2BOrganization.php',
+        'app/Modules/B2B/Infrastructure/Models/B2BContact.php',
         'app/Modules/B2B/Providers/B2BServiceProvider.php',
         'app/Modules/Backup/Application/BackupArtifactCleanupService.php',
         'app/Modules/Backup/Application/BackupArtifactData.php',
@@ -470,6 +473,8 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/B2B/Experience',
         'app/Modules/B2B/Experience/Controllers',
         'app/Modules/B2B/Experience/Routes',
+        'app/Modules/B2B/Infrastructure',
+        'app/Modules/B2B/Infrastructure/Models',
         'app/Modules/B2B/Providers',
         'app/Modules/Backup',
         'app/Modules/Backup/Application',
@@ -672,6 +677,11 @@ final class ModuleArchitectureTest extends TestCase
         'analysis.export',
         'analysis.update',
         'architecture.foundation',
+        'b2b.companies.index',
+        'b2b.companies.create',
+        'b2b.companies.show',
+        'b2b.companies.store',
+        'b2b.companies.contacts.store',
         'b2b.overview',
         'backup.automatic.update',
         'backup.index',
@@ -1090,6 +1100,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_09_11_200000_create_business_projects_tables.php' => '308d7148cdfb92d2a680264e062f1c4b3cce9bb4577bc330019913d7cb2aaf1f',
         'database/migrations/2026_09_11_200100_create_traffic_tables.php' => '1d906571872f99f3958e97469e0d34e26aeaae35d0db886b21251b8743233f46',
         'database/migrations/2026_10_22_000001_register_b2b_permissions.php' => '2f00112181f771a2477cbde3a1917abdb5020ada57a42a2528cd3fc6d2b86c08',
+        'database/migrations/2026_10_22_000100_create_b2b_organization_contacts.php' => '12efcd4e3a700dec7e15209f07309de4e980bdc22f7d211ee11f5515cd894096',
     ];
 
     private const FRONTEND_FILES = [
@@ -1254,7 +1265,10 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/lib/globalFeedback.test.ts' => '63887c4a11ca91d7014df88987bf6ccbaf54be0c03dc334f78711fec3ff519d6',
         'resources/js/lib/globalFeedback.ts' => '54ba6e2214e691f2059e239571fb9f70a533b8b2dae7a6d8923f8a2ee43fbfc3',
         'resources/js/types/navigation.ts' => '265ec164e751beaa4c53045fa431850601840cbea6deab4e7a87de72e8538327',
-        'resources/js/Pages/B2B/Overview.vue' => '1a014c198504f572de3e237a0b6141a43f2a5a4e344e92d9b7d0fe62568b0105',
+        'resources/js/Pages/B2B/Overview.vue' => 'd0bb3ddf0c2ff2ef233309cc1d3b2b76aef27c7c19f7ff3d90fb0f4c18fb37d6',
+        'resources/js/Pages/B2B/Companies/Index.vue' => 'f90ca46af35a0dcf814f784016220b7fd4eb49f1ae6b703c4f7a98e26bdcfeda',
+        'resources/js/Pages/B2B/Companies/Create.vue' => 'fce427039e7b5155978600108c7b2d968dd6860f51fb8e8b8cebb8a092bf7a37',
+        'resources/js/Pages/B2B/Companies/Show.vue' => 'd0e701648af3ef32829eac9c3b86593589118d67bee21d6cf3ad2bb1ce087a90',
     ];
 
     public function test_frozen_module_and_support_boundaries(): void
