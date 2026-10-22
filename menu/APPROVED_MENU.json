@@ -1,5 +1,5 @@
 {
-  "version": "2.4",
+  "version": "2.5",
   "status": "OWNER_APPROVED",
   "approved_at": "2026-10-22",
   "approved_head": "60ccafc2848a9453cdfe018268517ca7ca7324fb",
@@ -442,6 +442,21 @@
       "status": "implemented",
       "progress": 100,
       "sort": 30
+    },
+    {
+      "code": "b2b-sales",
+      "parent_code": "b2b",
+      "level": 2,
+      "label_zh": "销售漏斗",
+      "slug": "sales",
+      "url": "/b2b/sales",
+      "route": "b2b.sales.index",
+      "permission": "b2b.view",
+      "emoji": null,
+      "function_zh": "复用YBY销售商机Pipeline和五阶段进度路线图，S2/S3报价收款独立验收。",
+      "status": "in_progress",
+      "progress": 50,
+      "sort": 40
     },
     {
       "code": "marketing",
