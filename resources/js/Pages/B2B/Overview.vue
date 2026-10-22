@@ -18,8 +18,8 @@ defineProps<{
         </div>
       </header>
       <div class="b2b-banner" role="status">
-        <strong>模块基础框架已建立</strong>
-        <p>目前仅提供独立导航与权限隔离；客户、询盘和报价数据尚未接入。不会显示模拟的业务指标。</p>
+        <strong>B2B 业务模块 · 功能开发候选</strong>
+        <p>企业客户、人工询盘与跟进功能已编写，仍需通过 CI 和 PC/M14 UAT 后方可上线；报价和经销商授权尚未启用。这里不展示模拟业务指标。</p>
       </div>
       <section class="b2b-grid" aria-label="B2B 功能区域">
         <article v-for="workspace in workspaces" :key="workspace.key" class="b2b-card">
