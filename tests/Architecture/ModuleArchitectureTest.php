@@ -62,6 +62,11 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/B2B/Experience/Controllers/B2BCaseController.php',
         'app/Modules/B2B/Experience/Controllers/B2BCaseWriteController.php',
         'app/Modules/B2B/Experience/Controllers/B2BSalesOpportunityController.php',
+        'app/Modules/B2B/Experience/Controllers/B2BTradeOrderController.php',
+        'app/Modules/B2B/Infrastructure/Models/B2BTradeOrder.php',
+        'app/Modules/B2B/Infrastructure/Models/B2BTradeReceiptEvidence.php',
+        'app/Modules/B2B/Infrastructure/Models/B2BTradeAuditEvent.php',
+        'app/Modules/B2B/Sales/B2BTradeOrderService.php',
         'app/Modules/B2B/Sales/B2BSalesFinanceTruthProjection.php',
         'app/Modules/B2B/Sales/B2BSalesOrderAttributionGate.php',
         'app/Modules/B2B/Sales/B2BSalesExactMoney.php',
@@ -717,6 +722,12 @@ final class ModuleArchitectureTest extends TestCase
         'b2b.sales.won',
         'b2b.sales.lost',
         'b2b.sales.reopen',
+        'b2b.trade.index',
+        'b2b.trade.show',
+        'b2b.trade.store',
+        'b2b.trade.approve',
+        'b2b.trade.evidence.store',
+        'b2b.trade.evidence.review',
         'backup.automatic.update',
         'backup.index',
         'backup.legacy',
@@ -1039,6 +1050,7 @@ final class ModuleArchitectureTest extends TestCase
     ];
 
     private const MIGRATIONS = [
+        'database/migrations/2026_10_22_001200_create_b2b_trade_orders_and_receipt_evidence.php' => '4da60c6892f708ed2177b0b7681f0ea3ee582f3e813f95221d4684a03e651fdb',
         'database/migrations/0001_01_01_000000_create_users_table.php' => '10d79883bc08ce46510f9ad8b1830b4d06d586dc56ae2c8bac3b3e491f69a90f',
         'database/migrations/0001_01_01_000001_create_cache_table.php' => 'fbb4665e5a977e71df4e74ec75b3c06ca4f17ad0de7138fe9786639189978e77',
         'database/migrations/0001_01_01_000002_create_jobs_table.php' => 'df4910687180313a14a3f96a8bddd808ae145ed1b107cd772caf865c0dc2b746',
@@ -1141,6 +1153,8 @@ final class ModuleArchitectureTest extends TestCase
     ];
 
     private const FRONTEND_FILES = [
+        'resources/js/Pages/B2B/Trade/Index.vue' => 'e6fbcf59f6af9c6c48c55fa4028c0bc5d22e1233c572d89332de17ff9a3a7f97',
+        'resources/js/Pages/B2B/Trade/Show.vue' => '2eea80b169863803af9e9c60ec44025d6ab943ae366ef6491b4f7785c214a450',
         'resources/js/Pages/B2B/Sales/Index.vue' => '5726028856e21c97959ff129a995f6e9161aa8cbe28c0607c062c0a70138a518',
         'resources/js/Pages/B2B/Sales/Show.vue' => '729231a0b0e510144cf5dc0cf942aa05c45633fd47e56b4adc6859900c300353',
         'resources/js/Pages/Finance/ProfitDashboard.vue' => '806e8727de4919f216511d32134556e2a6ad3aaadbaa59f40a28784a7e5cdae8',

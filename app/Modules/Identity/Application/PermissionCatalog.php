@@ -41,6 +41,8 @@ final class PermissionCatalog
                     ['key' => 'b2b.export', 'label' => '导出 B2B 资料'],
                     ['key' => 'b2b.quotes_manage', 'label' => '管理 B2B 报价'],
                     ['key' => 'b2b.channels_manage', 'label' => '管理 B2B 渠道'],
+                    ['key' => 'b2b.trade.approve', 'label' => '审批 B2B 贸易订单'],
+                    ['key' => 'b2b.receipts.review', 'label' => '复核 B2B 收款凭证（不入账）'],
                 ],
             ],
             '物流' => [
