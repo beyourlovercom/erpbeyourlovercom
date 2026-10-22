@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3'
+import { Head, Link } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
 defineProps<{
-  workspaces: Array<{ key: string; title: string; description: string; available: boolean }>
+  workspaces: Array<{ key: string; title: string; description: string; available: boolean; href?: string }>
 }>()
 </script>
 
@@ -25,6 +25,7 @@ defineProps<{
         <article v-for="workspace in workspaces" :key="workspace.key" class="b2b-card">
           <div class="b2b-title"><h2>{{ workspace.title }}</h2><span>{{ workspace.available ? '已启用' : '待接入' }}</span></div>
           <p>{{ workspace.description }}</p>
+          <Link v-if="workspace.available && workspace.href" :href="workspace.href" class="workspace-link">进入管理 →</Link>
         </article>
       </section>
     </main>
@@ -44,6 +45,7 @@ defineProps<{
 .b2b-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .b2b-title h2 { margin: 0; font-size: 17px; font-weight: 650; color: #142126; }
 .b2b-title span { white-space: nowrap; border-radius: 20px; padding: 3px 8px; color: #56706a; background: #eef3f2; font-size: 11px; }
+.workspace-link {display:inline-block;margin-top:15px;color:#236f6a;font-size:13px;text-decoration:none;font-weight:600;}
 .b2b-card p { margin: 12px 0 0; font-size: 13px; line-height: 1.6; color: #607680; }
 @media (max-width: 680px) { .b2b-workspace { padding: 16px 12px 28px; } .b2b-grid { grid-template-columns: 1fr; gap: 10px; } .b2b-heading h1 { font-size: 23px; } .b2b-card { padding: 16px; min-height: 90px; } }
 </style>
