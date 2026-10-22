@@ -1,5 +1,5 @@
 {
-  "version": "2.3",
+  "version": "2.4",
   "status": "OWNER_APPROVED",
   "approved_at": "2026-10-22",
   "approved_head": "60ccafc2848a9453cdfe018268517ca7ca7324fb",
@@ -395,7 +395,7 @@
       "emoji": "💼",
       "function_zh": "独立管理企业客户、询盘、跟进、报价与经销商，不影响C端客户。",
       "status": "in_progress",
-      "progress": 45,
+      "progress": 65,
       "sort": 60
     },
     {
@@ -427,6 +427,21 @@
       "status": "implemented",
       "progress": 100,
       "sort": 20
+    },
+    {
+      "code": "b2b-followups",
+      "parent_code": "b2b",
+      "level": 2,
+      "label_zh": "跟进任务",
+      "slug": "followups",
+      "url": "/b2b/followups",
+      "route": "b2b.followups",
+      "permission": "b2b.view",
+      "emoji": null,
+      "function_zh": "查看开放询盘的下一次跟进日期与待办清单。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 30
     },
     {
       "code": "marketing",
