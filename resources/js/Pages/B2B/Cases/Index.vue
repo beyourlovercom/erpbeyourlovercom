@@ -13,7 +13,7 @@ const stageName=(s:string)=>({new:'新询盘',contacted:'已联系',qualified:'�
   <Head title="B2B 询盘 · BYL ERP" />
   <AuthenticatedLayout title="B2B 询盘" :breadcrumbs="['BYL ERP','B2B 业务','询盘管理']">
     <main class="b2b-page">
-      <header><div><h1>询盘管理</h1><p>统一记录企业采购意向与销售跟进</p></div><span v-if="canOperate" class="pending-action">人工录入将在 M4 开放</span></header>
+      <header><div><h1>询盘管理</h1><p>统一记录企业采购意向与销售跟进</p></div><Link v-if="canOperate" class="action" href="/b2b/inquiries/create">新增询盘</Link></header>
       <div class="metrics">
         <article><span>全部询盘</span><strong>{{ metrics.total }}</strong></article>
         <article><span>处理中</span><strong>{{ metrics.open }}</strong></article>
