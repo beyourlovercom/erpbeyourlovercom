@@ -38,7 +38,7 @@ const submitCreate = () => createForm.transform((data:any)=>({
         <div class="sales-canonical-hero-copy">
           <p class="sales-canonical-kicker">SALES OS</p>
           <h2>B2B 销售漏斗</h2>
-          <p>复用 YBY 商机管理与五阶段进度；报价版本、Won/Lost、回款由 S2/S3 分阶段接入。</p>
+          <p>复用 YBY 商机、五阶段、跟进、报价草稿和 Won/Lost；实际回款与应收由 S3 对接。</p>
         </div>
         <div class="sales-canonical-actions">
           <span class="customer-os-button" aria-disabled="true">回款 · S3 待适配</span>
@@ -49,9 +49,9 @@ const submitCreate = () => createForm.transform((data:any)=>({
 
       <div class="sales-kpi-grid">
         <article class="sales-kpi-card"><span class="sales-kpi-icon">🌱</span><div><span>进行中商机</span><strong>{{ metrics.open }}</strong><small>持续跟进的潜在机会</small></div></article>
-        <article class="sales-kpi-card is-blue"><span class="sales-kpi-icon">▤</span><div><span>报价 / 谈判</span><strong>{{ metrics.quoted }}</strong><small>目前处于报价阶段；报价系统 S2 待接入</small></div></article>
-        <article class="sales-kpi-card is-green"><span class="sales-kpi-icon">◆</span><div><span>已成交（S2 待适配）</span><strong>{{ metrics.won }}</strong><small>成功赢单的商机</small></div></article>
-        <article class="sales-kpi-card is-lost"><span class="sales-kpi-icon">×</span><div><span>已丢单（S2 待适配）</span><strong>{{ metrics.lost }}</strong><small>需要复盘或等待重新联系</small></div></article>
+        <article class="sales-kpi-card is-blue"><span class="sales-kpi-icon">▤</span><div><span>报价 / 谈判</span><strong>{{ metrics.quoted }}</strong><small>处于报价或谈判阶段；以真实报价版本为准</small></div></article>
+        <article class="sales-kpi-card is-green"><span class="sales-kpi-icon">◆</span><div><span>已成交</span><strong>{{ metrics.won }}</strong><small>成功赢单的商机</small></div></article>
+        <article class="sales-kpi-card is-lost"><span class="sales-kpi-icon">×</span><div><span>已丢单</span><strong>{{ metrics.lost }}</strong><small>需要复盘或等待重新联系</small></div></article>
         <article class="sales-kpi-card is-indigo"><span class="sales-kpi-icon">▥</span><div><span>Pipeline Value</span><strong>{{ money(metrics.pipeline_value_micros) }}</strong><small>商机预计总金额</small></div></article>
       </div>
 
@@ -92,7 +92,7 @@ const submitCreate = () => createForm.transform((data:any)=>({
                 <td>{{ money(row.expected_value_micros,row.currency) }}</td>
                 <td>{{ (row.probability_bps/100).toFixed(0) }}%</td>
                 <td>{{ row.next_follow_up_at ?? '—' }}</td>
-                <td><span class="sales-upcoming">S2 待接入</span></td>
+                <td>{{ row.quotes_count }}</td>
                 <td><Link class="customer-os-row-link" :href="`/b2b/sales/opportunities/${row.id}`">查看</Link></td>
               </tr>
             </tbody>

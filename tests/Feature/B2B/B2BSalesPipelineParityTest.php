@@ -87,7 +87,7 @@ final class B2BSalesPipelineParityTest extends TestCase
         $this->assertSame(6500, $first->fresh()->probability_bps);
         $this->assertDatabaseCount('b2b_sales_stage_events', 4);
         $visited = collect($pipeline->roadmap($first->fresh()))->pluck('key', 'visited');
-        $this->assertCount(5, $pipeline->roadmap($first->fresh()));
+        $this->assertCount(6, $pipeline->roadmap($first->fresh()), 'Five YBY active stages plus final Won/Lost node');
         $this->assertTrue($pipeline->roadmap($first->fresh())[3]['current']);
         $this->assertDatabaseCount('customers', 0);
         $this->assertFalse(\Schema::hasTable('b2b_sales_payment_receipts'));

@@ -53,3 +53,22 @@ Route::middleware(['web', 'auth', 'can:b2b.view', 'can:b2b.operate'])->group(fun
     Route::patch('/b2b/sales/opportunities/{opportunity}/stage', [B2BSalesOpportunityController::class, 'stage'])
         ->whereNumber('opportunity')->name('b2b.sales.stage');
 });
+
+
+// YBY Sales OS S2 — B2B-only follow-up, versioned draft quote, close/reopen and private files.
+Route::middleware(['web','auth','can:b2b.view'])->get(
+    '/b2b/sales/opportunities/{opportunity}/followups/{followUp}/attachments/{attachment}',
+    [B2BSalesOpportunityController::class,'attachment']
+)->whereNumber('opportunity')->whereNumber('followUp')->whereNumber('attachment')
+    ->name('b2b.sales.followups.attachments.download');
+
+Route::middleware(['web','auth','can:b2b.view','can:b2b.operate'])->group(function (): void {
+    Route::post('/b2b/sales/opportunities/{opportunity}/followups', [B2BSalesOpportunityController::class,'followUp'])->whereNumber('opportunity')->name('b2b.sales.followups.store');
+    Route::post('/b2b/sales/opportunities/{opportunity}/won', [B2BSalesOpportunityController::class,'won'])->whereNumber('opportunity')->name('b2b.sales.won');
+    Route::post('/b2b/sales/opportunities/{opportunity}/lost', [B2BSalesOpportunityController::class,'lost'])->whereNumber('opportunity')->name('b2b.sales.lost');
+    Route::post('/b2b/sales/opportunities/{opportunity}/reopen', [B2BSalesOpportunityController::class,'reopen'])->whereNumber('opportunity')->name('b2b.sales.reopen');
+});
+Route::middleware(['web','auth','can:b2b.view','can:b2b.operate','can:b2b.quotes_manage'])->post(
+    '/b2b/sales/opportunities/{opportunity}/quotes',
+    [B2BSalesOpportunityController::class,'quote']
+)->whereNumber('opportunity')->name('b2b.sales.quotes.store');

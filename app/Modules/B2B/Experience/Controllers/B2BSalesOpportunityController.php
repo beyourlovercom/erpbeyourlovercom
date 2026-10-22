@@ -5,6 +5,10 @@ namespace App\Modules\B2B\Experience\Controllers;
 use App\Modules\B2B\Infrastructure\Models\B2BCase;
 use App\Modules\B2B\Infrastructure\Models\B2BOrganization;
 use App\Modules\B2B\Infrastructure\Models\B2BSalesOpportunity;
+use App\Modules\B2B\Infrastructure\Models\B2BSalesFollowUp;
+use App\Modules\B2B\Infrastructure\Models\B2BSalesFollowUpAttachment;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use App\Modules\B2B\Sales\B2BSalesPipeline;
 use App\Modules\Identity\Infrastructure\Models\User;
 use Illuminate\Database\Eloquent\Builder;
@@ -58,7 +62,7 @@ final class B2BSalesOpportunityController
             });
         }
         $items = $scope->with(['organization:id,display_name,country_code', 'owner:id,name'])
-            ->withCount('stageEvents')
+            ->withCount(['stageEvents','quotes'])
             ->orderByRaw("CASE status WHEN 'open' THEN 0 WHEN 'won' THEN 1 ELSE 2 END")
             ->orderByRaw('next_follow_up_at IS NULL')
             ->orderBy('next_follow_up_at')
@@ -120,12 +124,33 @@ final class B2BSalesOpportunityController
                 'case' => $row->inquiryCase ? ['id'=>$row->inquiryCase->id,'case_number'=>$row->inquiryCase->case_number] : null,
                 'stage_events' => $events->map(fn ($event) => [
                     'id'=>$event->id, 'from_stage'=>$event->from_stage,
-                    'to_stage'=>$event->to_stage, 'source'=>$event->source,
+                    'to_stage'=>$event->to_stage, 'source'=>$event->source, 'reason'=>$event->reason,
                     'actor'=>$event->actor?->name, 'entered_at'=>$event->entered_at?->toIso8601String(),
                 ])->all(),
             ],
             'roadmap' => $this->pipeline->roadmap($row),
+            'followUps' => $row->followUps()->with('actor:id,name','attachments')->orderBy('happened_at')->orderBy('id')->get()
+                ->map(fn (B2BSalesFollowUp $fu) => [
+                    'id'=>$fu->id,'stage_key'=>$fu->stage_key,'channel'=>$fu->channel,
+                    'summary'=>$fu->summary,'outcome'=>$fu->outcome,'next_plan'=>$fu->next_plan,
+                    'happened_at'=>$fu->happened_at?->toIso8601String(),
+                    'actor'=>$fu->actor?->name,
+                    'attachments'=>$fu->attachments->map(fn ($a)=>[
+                        'id'=>$a->id,'name'=>$a->original_name,
+                        'href'=>route('b2b.sales.followups.attachments.download',[
+                            'opportunity'=>$row->id,'followUp'=>$fu->id,'attachment'=>$a->id,
+                        ]),
+                    ])->values()->all(),
+                ])->all(),
+            'quotes' => $row->quotes()->orderBy('version')->get()->map(fn ($q) => [
+                'id'=>$q->id,'quote_number'=>$q->quote_number,'version'=>$q->version,
+                'status'=>$q->status,'currency'=>$q->currency,'subtotal_micros'=>$q->subtotal_micros,
+                'discount_micros'=>$q->discount_micros,'tax_micros'=>$q->tax_micros,
+                'total_micros'=>$q->total_micros,'notes'=>$q->notes,
+            ])->all(),
             'canOperate' => $request->user()->hasPermission('b2b.operate'),
+            'canQuote' => $request->user()->hasPermission('b2b.quotes_manage'),
+
         ]);
     }
 
@@ -176,6 +201,82 @@ final class B2BSalesOpportunityController
         return back();
     }
 
+
+    public function followUp(Request $request, B2BSalesOpportunity $opportunity): RedirectResponse
+    {
+        $row = $this->visible($request)->findOrFail($opportunity->id);
+        $data = $request->validate([
+            'stage_key'=>['nullable',Rule::in([...B2BSalesPipeline::STAGES,'won','lost'])],
+            'channel'=>['required',Rule::in(['note','email','whatsapp','call','meeting'])],
+            'summary'=>['required','string','max:10000'],
+            'outcome'=>['nullable','string','max:64'],
+            'next_plan'=>['nullable','string','max:5000'],
+            'next_follow_up_at'=>['nullable','date'],
+            'attachments'=>['nullable','array','max:3'],
+            'attachments.*'=>['file','mimes:pdf,png,jpg,jpeg,docx','max:5120'],
+        ]);
+        $this->pipeline->followUp($row, $data, (int) $request->user()->getAuthIdentifier());
+        return back();
+    }
+
+    public function quote(Request $request, B2BSalesOpportunity $opportunity): RedirectResponse
+    {
+        $row = $this->visible($request)->findOrFail($opportunity->id);
+        $data = $request->validate([
+            'currency'=>['required','regex:/^[A-Z]{3}$/'],
+            'subtotal_micros'=>['required','integer','min:0','max:100000000000000'],
+            'discount_micros'=>['nullable','integer','min:0','max:100000000000000'],
+            'tax_micros'=>['nullable','integer','min:0','max:100000000000000'],
+            'valid_until'=>['nullable','date'],
+            'notes'=>['nullable','string','max:10000'],
+        ]);
+        $this->pipeline->quote($row, $data, (int) $request->user()->getAuthIdentifier());
+        return back();
+    }
+
+    public function won(Request $request, B2BSalesOpportunity $opportunity): RedirectResponse
+    {
+        $row = $this->visible($request)->findOrFail($opportunity->id);
+        $this->pipeline->close($row,'won',(int)$request->user()->getAuthIdentifier());
+        return back();
+    }
+
+    public function lost(Request $request, B2BSalesOpportunity $opportunity): RedirectResponse
+    {
+        $row = $this->visible($request)->findOrFail($opportunity->id);
+        $data=$request->validate([
+            'reason_code'=>['required','string','max:64'],
+            'reason_note'=>['nullable','string','max:2000'],
+        ]);
+        $this->pipeline->close($row,'lost',(int)$request->user()->getAuthIdentifier(),$data['reason_code'],$data['reason_note']??null);
+        return back();
+    }
+
+    public function reopen(Request $request, B2BSalesOpportunity $opportunity): RedirectResponse
+    {
+        $row = $this->visible($request)->findOrFail($opportunity->id);
+        $data=$request->validate([
+            'stage'=>['required',Rule::in(B2BSalesPipeline::STAGES)],
+            'reason'=>['required','string','max:191'],
+        ]);
+        $this->pipeline->reopen($row,$data['stage'],$data['reason'],(int)$request->user()->getAuthIdentifier());
+        return back();
+    }
+
+    public function attachment(Request $request, B2BSalesOpportunity $opportunity, B2BSalesFollowUp $followUp, B2BSalesFollowUpAttachment $attachment): BinaryFileResponse
+    {
+        $row = $this->visible($request)->findOrFail($opportunity->id);
+        abort_unless((int) $followUp->opportunity_id === (int) $row->id, 404);
+        abort_unless((int) $attachment->follow_up_id === (int) $followUp->id, 404);
+        abort_unless($attachment->disk === 'local',404);
+        abort_unless(Storage::disk('local')->exists($attachment->path),404);
+        return response()->download(
+            Storage::disk('local')->path($attachment->path),
+            $attachment->original_name,
+            ['X-Content-Type-Options'=>'nosniff'],
+        );
+    }
+
     private function summary(B2BSalesOpportunity $row): array
     {
         return [
@@ -188,7 +289,7 @@ final class B2BSalesOpportunityController
             'lost_reason_code'=>$row->lost_reason_code,
             'company'=>$row->organization ? ['id'=>$row->organization->id,'name'=>$row->organization->display_name,'country_code'=>$row->organization->country_code] : null,
             'owner'=>$row->owner ? ['id'=>$row->owner->id,'name'=>$row->owner->name] : null,
-            'quotes_count'=>0,
+            'quotes_count'=>(int) ($row->quotes_count ?? 0),
         ];
     }
 }
