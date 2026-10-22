@@ -13,7 +13,7 @@ final class B2BOverviewController
             'workspaces' => [
                 ['key' => 'inquiries', 'title' => '询盘管理', 'description' => '询盘收件箱、负责人分配及跟进记录', 'available' => true, 'href' => '/b2b/inquiries'],
                 ['key' => 'companies', 'title' => '企业客户', 'description' => '公司、采购联系人及客户关系', 'available' => true, 'href' => '/b2b/companies'],
-                ['key' => 'followups', 'title' => '跟进任务', 'description' => '下次跟进日期、提醒与跟进时间线', 'available' => false],
+                ['key' => 'followups', 'title' => '跟进任务', 'description' => '下次跟进日期、提醒与跟进时间线', 'available' => true, 'href' => '/b2b/inquiries?overdue=1'],
                 ['key' => 'quotes', 'title' => '报价管理', 'description' => '报价版本、审核及与订单的关联', 'available' => false],
                 ['key' => 'distributors', 'title' => '经销商管理', 'description' => '经销等级、区域授权与年度目标', 'available' => false],
             ],
