@@ -60,6 +60,7 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/B2B/Experience/Controllers/B2BOverviewController.php',
         'app/Modules/B2B/Experience/Controllers/B2BCompanyController.php',
         'app/Modules/B2B/Experience/Controllers/B2BCaseController.php',
+        'app/Modules/B2B/Experience/Controllers/B2BCaseWriteController.php',
         'app/Modules/B2B/Experience/Routes/web.php',
         'app/Modules/B2B/Infrastructure/Models/B2BOrganization.php',
         'app/Modules/B2B/Infrastructure/Models/B2BContact.php',
@@ -680,7 +681,13 @@ final class ModuleArchitectureTest extends TestCase
         'analysis.export',
         'analysis.update',
         'architecture.foundation',
+        'b2b.cases.assignment',
+        'b2b.cases.notes.store',
         'b2b.cases.show',
+        'b2b.cases.update',
+        'b2b.followups',
+        'b2b.inquiries.create',
+        'b2b.inquiries.store',
         'b2b.inquiries.index',
         'b2b.companies.index',
         'b2b.companies.create',
@@ -1275,8 +1282,9 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/B2B/Companies/Index.vue' => 'f90ca46af35a0dcf814f784016220b7fd4eb49f1ae6b703c4f7a98e26bdcfeda',
         'resources/js/Pages/B2B/Companies/Create.vue' => 'fce427039e7b5155978600108c7b2d968dd6860f51fb8e8b8cebb8a092bf7a37',
         'resources/js/Pages/B2B/Companies/Show.vue' => 'd0e701648af3ef32829eac9c3b86593589118d67bee21d6cf3ad2bb1ce087a90',
-        'resources/js/Pages/B2B/Cases/Index.vue' => '1bb28331a98934d31dd86b5d2c8b67645c0b8c097f78ba7896d38e93e38bea96',
-        'resources/js/Pages/B2B/Cases/Show.vue' => '2169e4aaef879ad1edd852912165b08a37f63a715535e39d4df75930e9b97caa',
+        'resources/js/Pages/B2B/Cases/Index.vue' => '6c4a2685fc779d065afeba641cb74d55167a9b9b9a7cc9f168fd3823b116a2a4',
+        'resources/js/Pages/B2B/Cases/Show.vue' => '274c5f20084ea88e94474945dbe58907244de87da4cc203aaa08fef00dca7c8d',
+        'resources/js/Pages/B2B/Cases/Create.vue' => '7c7ccfef1aa129a64ad041a0bf79f5e6a3439695d42a6bc0e8e6f50a40f52f20',
     ];
 
     public function test_frozen_module_and_support_boundaries(): void
@@ -1607,7 +1615,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame($this->sorted(array_keys(self::FRONTEND_FILES)), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('a185c33089e55cb223337fd13aac23954a0880f4a1af039690631d147b527717', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('5353645b0c3cca55adc05e65b06347c14e334f4741fb72cc33be4d42b830ff3d', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);
