@@ -1283,8 +1283,8 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/B2B/Companies/Index.vue' => 'f90ca46af35a0dcf814f784016220b7fd4eb49f1ae6b703c4f7a98e26bdcfeda',
         'resources/js/Pages/B2B/Companies/Create.vue' => 'fce427039e7b5155978600108c7b2d968dd6860f51fb8e8b8cebb8a092bf7a37',
         'resources/js/Pages/B2B/Companies/Show.vue' => 'd0e701648af3ef32829eac9c3b86593589118d67bee21d6cf3ad2bb1ce087a90',
-        'resources/js/Pages/B2B/Cases/Index.vue' => '21487d44a95ffeec023ef44b100f1744ecc19c553fd6c90b5f685efee172f94f',
-        'resources/js/Pages/B2B/Cases/Show.vue' => '069a82304d1383e31e2fd11ae78bf885ad8e0a4082172edc012c2a382b776867',
+        'resources/js/Pages/B2B/Cases/Index.vue' => '8b00d1e9b0720ede8821fd9bb2da5dabdb275fcf1729dd09858fb6c2fe5dc7ba',
+        'resources/js/Pages/B2B/Cases/Show.vue' => 'c66f3c367c0efd26bd961a5579cf71bd9fec55fc789e1e1f1d8ec14d022bf25a',
         'resources/js/Pages/B2B/Cases/Create.vue' => '7c7ccfef1aa129a64ad041a0bf79f5e6a3439695d42a6bc0e8e6f50a40f52f20',
     ];
 
