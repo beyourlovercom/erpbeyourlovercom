@@ -10,11 +10,11 @@ Route::middleware(['web', 'auth', 'can:b2b.view'])
 
 Route::middleware(['web', 'auth', 'can:b2b.view'])->group(function (): void {
     Route::get('/b2b/companies', [B2BCompanyController::class, 'index'])->name('b2b.companies.index');
-    Route::get('/b2b/companies/{organization}', [B2BCompanyController::class, 'show'])->name('b2b.companies.show');
+    Route::get('/b2b/companies/{organization}', [B2BCompanyController::class, 'show'])->whereNumber('organization')->name('b2b.companies.show');
 });
 
 Route::middleware(['web', 'auth', 'can:b2b.view', 'can:b2b.operate'])->group(function (): void {
     Route::get('/b2b/companies/create', [B2BCompanyController::class, 'create'])->name('b2b.companies.create');
     Route::post('/b2b/companies', [B2BCompanyController::class, 'store'])->name('b2b.companies.store');
-    Route::post('/b2b/companies/{organization}/contacts', [B2BCompanyController::class, 'storeContact'])->name('b2b.companies.contacts.store');
+    Route::post('/b2b/companies/{organization}/contacts', [B2BCompanyController::class, 'storeContact'])->whereNumber('organization')->name('b2b.companies.contacts.store');
 });
