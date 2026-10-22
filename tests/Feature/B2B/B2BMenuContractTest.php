@@ -45,6 +45,7 @@ final class B2BMenuContractTest extends TestCase
             'b2b-inquiries' => ['/b2b/inquiries', 'b2b.inquiries.index'],
             'b2b-companies' => ['/b2b/companies', 'b2b.companies.index'],
             'b2b-followups' => ['/b2b/followups', 'b2b.followups'],
+            'b2b-sales' => ['/b2b/sales', 'b2b.sales.index'],
         ];
         $this->assertSame(array_keys($expectedChildren), array_column($actual['children'], 'key'));
         foreach ($actual['children'] as $item) {

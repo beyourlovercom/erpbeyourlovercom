@@ -33,6 +33,11 @@ final class B2BCase extends Model
         ];
     }
 
+    public function salesOpportunity(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(B2BSalesOpportunity::class, 'case_id');
+    }
+
     public function organization(): BelongsTo
     {
         return $this->belongsTo(B2BOrganization::class, 'organization_id');

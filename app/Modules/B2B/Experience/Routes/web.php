@@ -4,6 +4,7 @@ use App\Modules\B2B\Experience\Controllers\B2BOverviewController;
 use App\Modules\B2B\Experience\Controllers\B2BCompanyController;
 use App\Modules\B2B\Experience\Controllers\B2BCaseController;
 use App\Modules\B2B\Experience\Controllers\B2BCaseWriteController;
+use App\Modules\B2B\Experience\Controllers\B2BSalesOpportunityController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth', 'can:b2b.view'])
@@ -39,3 +40,16 @@ Route::middleware(['web', 'auth', 'can:b2b.view', 'can:b2b.assign', 'can:b2b.vie
 Route::middleware(['web', 'auth', 'can:b2b.view'])
     ->get('/b2b/followups', [B2BCaseController::class, 'index'])
     ->name('b2b.followups');
+
+
+// YBY Sales OS parity / S1. BYL B2B-only company/contact/case FKs; no legacy C-end Customers.
+Route::middleware(['web', 'auth', 'can:b2b.view'])->group(function (): void {
+    Route::get('/b2b/sales', [B2BSalesOpportunityController::class, 'index'])->name('b2b.sales.index');
+    Route::get('/b2b/sales/opportunities/{opportunity}', [B2BSalesOpportunityController::class, 'show'])
+        ->whereNumber('opportunity')->name('b2b.sales.show');
+});
+Route::middleware(['web', 'auth', 'can:b2b.view', 'can:b2b.operate'])->group(function (): void {
+    Route::post('/b2b/sales/opportunities', [B2BSalesOpportunityController::class, 'store'])->name('b2b.sales.store');
+    Route::patch('/b2b/sales/opportunities/{opportunity}/stage', [B2BSalesOpportunityController::class, 'stage'])
+        ->whereNumber('opportunity')->name('b2b.sales.stage');
+});
