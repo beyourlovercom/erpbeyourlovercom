@@ -85,6 +85,7 @@ final class B2BCaseController
                 'case_number' => $case->case_number,
                 'title' => $case->title,
                 'organization_id' => $case->organization_id,
+                'owner_id' => $case->owner_id,
                 'organization' => $case->organization?->display_name,
                 'contact' => $case->primaryContact?->name,
                 'country_code' => $case->country_code ?? $case->organization?->country_code,
