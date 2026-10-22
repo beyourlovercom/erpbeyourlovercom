@@ -11,7 +11,7 @@ final class B2BOverviewController
     {
         return Inertia::render('B2B/Overview', [
             'workspaces' => [
-                ['key' => 'inquiries', 'title' => '询盘管理', 'description' => '询盘收件箱、负责人分配及跟进记录', 'available' => false],
+                ['key' => 'inquiries', 'title' => '询盘管理', 'description' => '询盘收件箱、负责人分配及跟进记录', 'available' => true, 'href' => '/b2b/inquiries'],
                 ['key' => 'companies', 'title' => '企业客户', 'description' => '公司、采购联系人及客户关系', 'available' => true, 'href' => '/b2b/companies'],
                 ['key' => 'followups', 'title' => '跟进任务', 'description' => '下次跟进日期、提醒与跟进时间线', 'available' => false],
                 ['key' => 'quotes', 'title' => '报价管理', 'description' => '报价版本、审核及与订单的关联', 'available' => false],
