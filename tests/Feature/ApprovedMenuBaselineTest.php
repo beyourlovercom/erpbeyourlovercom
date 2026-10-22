@@ -79,7 +79,7 @@ class ApprovedMenuBaselineTest extends TestCase
         $levelTwo = collect($items)->where('level', 2)->values();
 
         $this->assertCount(14, $levelOne, self::MISMATCH.': level-1 count');
-        $this->assertCount(66, $levelTwo, self::MISMATCH.': owner-approved level-2 count after retiring the obsolete Logistics pending workspace');
+        $this->assertCount(67, $levelTwo, self::MISMATCH.': owner-approved level-2 count after retiring the obsolete Logistics pending workspace');
         $this->assertSame(['settings-backup'], $levelTwo->where('code', 'settings-backup')->pluck('code')->all(), self::MISMATCH.': backup child approval');
         $this->assertSame(['settings-fx'], $levelTwo->where('code', 'settings-fx')->pluck('code')->all(), self::MISMATCH.': FX child approval');
         $this->assertSame(
