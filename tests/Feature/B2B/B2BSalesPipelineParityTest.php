@@ -65,7 +65,7 @@ final class B2BSalesPipelineParityTest extends TestCase
     public function test_yby_five_stage_semantics_and_expected_money_truth_are_reused(): void
     {
         $this->assertSame(['discovery','qualified','solution','quoted','negotiating'], B2BSalesPipeline::STAGES);
-        $this->assertSame([1000,3000,5000,7000,9000], array_map(
+        $this->assertSame([1000,3000,5000,6500,8000], array_map(
             fn ($key) => B2BSalesPipeline::PROBABILITIES[$key],
             B2BSalesPipeline::STAGES
         ));
@@ -84,7 +84,7 @@ final class B2BSalesPipelineParityTest extends TestCase
         $pipeline->advance($first, 'qualified', $owner->id);
         $pipeline->advance($first, 'solution', $owner->id);
         $pipeline->advance($first, 'quoted', $owner->id);
-        $this->assertSame(7000, $first->fresh()->probability_bps);
+        $this->assertSame(6500, $first->fresh()->probability_bps);
         $this->assertDatabaseCount('b2b_sales_stage_events', 4);
         $visited = collect($pipeline->roadmap($first->fresh()))->pluck('key', 'visited');
         $this->assertCount(5, $pipeline->roadmap($first->fresh()));

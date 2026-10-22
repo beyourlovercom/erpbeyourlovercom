@@ -26,8 +26,8 @@ final class B2BSalesPipeline
         'discovery' => 1000,
         'qualified' => 3000,
         'solution' => 5000,
-        'quoted' => 7000,
-        'negotiating' => 9000,
+        'quoted' => 6500,
+        'negotiating' => 8000,
         'won' => 10000,
         'lost' => 0,
     ];

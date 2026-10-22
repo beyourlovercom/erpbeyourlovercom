@@ -17,7 +17,7 @@ YBY already ships `SalesOpportunityService` (discovery→qualified→solution→
 | legacy `cases` | `b2b_cases`, case→opportunity unique & idempotent |
 | `sales_opportunities` | `b2b_sales_opportunities` |
 | `sales_opportunity_stage_events` | `b2b_sales_stage_events` (append-only, restrict FK delete) |
-| stage probabilities | YBY defaults: 10%,30%,50%,70%,90%; Won 100%, Lost 0% |
+| stage probabilities | YBY defaults: 10%,30%,50%,65%,80%; Won 100%, Lost 0% |
 | quote/payment truth | S2/S3, **not delivered in S1** |
 
 ## Permission/ownership contract
