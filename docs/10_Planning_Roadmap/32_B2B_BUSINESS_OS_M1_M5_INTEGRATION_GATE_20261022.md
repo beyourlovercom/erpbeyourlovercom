@@ -200,3 +200,22 @@ The normal ERP user-provisioning Artisan command, `php artisan erp:user:create`,
 An authorized human administrator may use the ERP's normal user provisioning flow **on this isolated UAT database** once permitted by the applicable security/access process. Do not reuse Production credentials, clone live users, copy Woo Customer identities or connect live mail/WhatsApp. Verify login, company creation, synthetic inquiry entry, owner assignment, follow-up timeline, role denial and PC/M14 real-device UAT after an authorized test identity exists.
 
 The UAT URL is reachable **only on the China Mac itself**, not from unrelated devices or the public Internet. Do not advertise it as a remotely shareable preview. No changes to `http://erp.b`, `deverp.beyourlover.com`, `erp.beyourlover.com` or GitHub main have been made.
+
+
+## 12. UAT guest-browser and anonymous security smoke — 2026-10-22
+
+This continues the Owner-authorized **independent local UAT**, and does not supersede the platform-denied test-account creation step in §11.
+
+### Concrete browser evidence from actual independent local Laravel server
+- Location: China Mac local UAT `http://127.0.0.1:18654`, source `8329ce36d393c58ae2e9928809c18e1a4b8a9d16`, separate SQLite database.
+- Local headless Google Chrome loaded the **actual UAT login page** at PC 1280×800 and narrow mobile 390×844: both returned **HTTP 200**, rendered native Username and Password inputs and one Submit action, **zero page JS errors**, **document width equalled viewport width**, and **zero third-party-domain requests** observed during this login-page load.
+- Preview screenshots stored only in UAT-local `storage/logs/login-PC.png` and `storage/logs/login-Mobile390.png`. These are login-page screenshots, **not authenticated B2B views or physical iPhone 14 UAT**.
+- Guest GET `/b2b`, `/b2b/inquiries`, `/b2b/companies`, `/b2b/followups`, `/b2b/inquiries/create`, `/b2b/cases/1` returned **302 to /login**, normal auth gating.
+- Anonymous POST without CSRF on `/b2b/companies`, `/b2b/inquiries`, `/b2b/cases/1/notes`, `/b2b/cases/1/assignment` returned **HTTP 419** (CSRF rejection). No request was made with credentials or a valid CSRF token.
+- After the security probes, the isolated SQLite database still had `users=0`, `customers=0`, `b2b_organizations=0`, `b2b_cases=0`, `b2b_case_activities=0`.
+- Socket inspection continued to show loopback-only `127.0.0.1:18654`. No public exposure or production endpoint change.
+
+### Security and UAT hold
+The standard Artisan admin-account provisioning invocation was blocked by the platform safety control before execution. No alternate account seeding, direct SQL insertion, local admin impersonation, authentication bypass or workaround was attempted. This is a meaningful **hard stop** for authenticated CRUD and permission-role browser UAT. Continue only after legitimate authorized human account provisioning through a permitted administrative workflow, then validate actual B2B case creation, role isolation, state changes and Owner PC/physical M14 acceptance.
+
+**Result:** UAT host online, guest UI and anonymous security checks PASS. Authenticated UAT **NOT PASS**, PR remains Draft; GitHub main, existing `http://erp.b`, remote Dev, and Production unchanged.
