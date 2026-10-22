@@ -5,6 +5,7 @@ use App\Modules\B2B\Experience\Controllers\B2BCompanyController;
 use App\Modules\B2B\Experience\Controllers\B2BCaseController;
 use App\Modules\B2B\Experience\Controllers\B2BCaseWriteController;
 use App\Modules\B2B\Experience\Controllers\B2BSalesOpportunityController;
+use App\Modules\B2B\Experience\Controllers\B2BTradeOrderController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth', 'can:b2b.view'])
@@ -72,3 +73,25 @@ Route::middleware(['web','auth','can:b2b.view','can:b2b.operate','can:b2b.quotes
     '/b2b/sales/opportunities/{opportunity}/quotes',
     [B2BSalesOpportunityController::class,'quote']
 )->whereNumber('opportunity')->name('b2b.sales.quotes.store');
+
+
+// S3-G3 independent B2B Trade Order, separate from Woo customer Orders and Accounting.
+Route::middleware(['web','auth','can:b2b.view'])->group(function (): void {
+    Route::get('/b2b/trade-orders', [B2BTradeOrderController::class, 'index'])->name('b2b.trade.index');
+    Route::get('/b2b/trade-orders/{tradeOrder}', [B2BTradeOrderController::class, 'show'])
+        ->whereNumber('tradeOrder')->name('b2b.trade.show');
+});
+Route::middleware(['web','auth','can:b2b.view'])
+    ->get('/b2b/trade-orders/{tradeOrder}/evidence/{evidence}/download', [B2BTradeOrderController::class, 'download'])
+    ->whereNumber('tradeOrder')->whereNumber('evidence')->name('b2b.trade.evidence.download');
+Route::middleware(['web','auth','can:b2b.view','can:b2b.operate'])->group(function (): void {
+    Route::post('/b2b/trade-orders', [B2BTradeOrderController::class, 'store'])->name('b2b.trade.store');
+    Route::post('/b2b/trade-orders/{tradeOrder}/evidence', [B2BTradeOrderController::class, 'evidence'])
+        ->whereNumber('tradeOrder')->name('b2b.trade.evidence.store');
+});
+Route::middleware(['web','auth','can:b2b.view','can:b2b.view_all','can:b2b.trade.approve'])
+    ->post('/b2b/trade-orders/{tradeOrder}/approve', [B2BTradeOrderController::class, 'approve'])
+    ->whereNumber('tradeOrder')->name('b2b.trade.approve');
+Route::middleware(['web','auth','can:b2b.view','can:b2b.view_all','can:b2b.receipts.review'])
+    ->post('/b2b/trade-orders/{tradeOrder}/evidence/{evidence}/review', [B2BTradeOrderController::class, 'review'])
+    ->whereNumber('tradeOrder')->whereNumber('evidence')->name('b2b.trade.evidence.review');

@@ -35,6 +35,7 @@ return [
         ['key' => 'b2b-companies', 'label' => '企业客户', 'path' => '/b2b/companies', 'route' => 'b2b.companies.index', 'permission' => 'b2b.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'b2b-followups', 'label' => '跟进任务', 'path' => '/b2b/followups', 'route' => 'b2b.followups', 'permission' => 'b2b.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'b2b-sales', 'label' => '销售漏斗', 'path' => '/b2b/sales', 'route' => 'b2b.sales.index', 'permission' => 'b2b.view', 'status' => 'in_progress', 'progress' => 50, 'placeholder' => false],
+        ['key' => 'b2b-trade', 'label' => '贸易订单', 'path' => '/b2b/trade-orders', 'route' => 'b2b.trade.index', 'permission' => 'b2b.view', 'status' => 'in_progress', 'progress' => 40, 'placeholder' => false],
     ]],
     ['key' => 'marketing', 'label' => '营销', 'emoji' => '📣', 'path' => '/marketing', 'route' => 'shell.marketing', 'permission' => 'marketing.view', 'status' => 'in_progress', 'progress' => 20, 'placeholder' => false, 'children' => [
         ['key' => 'marketing-traffic', 'label' => '流量总览', 'path' => '/marketing/traffic', 'route' => 'traffic.boss-dashboard', 'permission' => 'marketing.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],

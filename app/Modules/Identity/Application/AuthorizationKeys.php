@@ -26,6 +26,8 @@ enum AuthorizationKeys: string
     case B2BExport = 'b2b.export';
     case B2BQuotesManage = 'b2b.quotes_manage';
     case B2BChannelsManage = 'b2b.channels_manage';
+    case B2BTradeApprove = 'b2b.trade.approve';
+    case B2BReceiptsReview = 'b2b.receipts.review';
     case KolView = 'kol.view';
     case KolOperate = 'kol.operate';
     case KolViewsManage = 'kol.views.manage';

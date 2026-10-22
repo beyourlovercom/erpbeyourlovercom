@@ -1,5 +1,5 @@
 {
-  "version": "2.5",
+  "version": "2.6",
   "status": "OWNER_APPROVED",
   "approved_at": "2026-10-22",
   "approved_head": "60ccafc2848a9453cdfe018268517ca7ca7324fb",
@@ -457,6 +457,21 @@
       "status": "in_progress",
       "progress": 50,
       "sort": 40
+    },
+    {
+      "code": "b2b-trade",
+      "parent_code": "b2b",
+      "level": 2,
+      "label_zh": "贸易订单",
+      "slug": "trade-orders",
+      "url": "/b2b/trade-orders",
+      "route": "b2b.trade.index",
+      "permission": "b2b.view",
+      "emoji": null,
+      "function_zh": "独立B2B贸易订单及双人审批、收款凭证资料复核，不自动财务入账",
+      "status": "in_progress",
+      "progress": 40,
+      "sort": 50
     },
     {
       "code": "marketing",
