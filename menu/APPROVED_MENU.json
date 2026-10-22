@@ -1,8 +1,8 @@
 {
-  "version": "2.1",
+  "version": "2.4",
   "status": "OWNER_APPROVED",
-  "approved_at": "2026-09-05",
-  "approved_head": "9443d91410968288e54c587bc85f226b8b772cad",
+  "approved_at": "2026-10-22",
+  "approved_head": "60ccafc2848a9453cdfe018268517ca7ca7324fb",
   "governed_levels": [
     1,
     2
@@ -384,6 +384,66 @@
       "sort": 50
     },
     {
+      "code": "b2b",
+      "parent_code": null,
+      "level": 1,
+      "label_zh": "B2B 业务",
+      "slug": "b2b",
+      "url": "/b2b",
+      "route": "b2b.overview",
+      "permission": "b2b.view",
+      "emoji": "💼",
+      "function_zh": "独立管理企业客户、询盘、跟进、报价与经销商，不影响C端客户。",
+      "status": "in_progress",
+      "progress": 65,
+      "sort": 60
+    },
+    {
+      "code": "b2b-inquiries",
+      "parent_code": "b2b",
+      "level": 2,
+      "label_zh": "询盘管理",
+      "slug": "inquiries",
+      "url": "/b2b/inquiries",
+      "route": "b2b.inquiries.index",
+      "permission": "b2b.view",
+      "emoji": null,
+      "function_zh": "查看、筛选和跟踪企业采购询盘。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 10
+    },
+    {
+      "code": "b2b-companies",
+      "parent_code": "b2b",
+      "level": 2,
+      "label_zh": "企业客户",
+      "slug": "companies",
+      "url": "/b2b/companies",
+      "route": "b2b.companies.index",
+      "permission": "b2b.view",
+      "emoji": null,
+      "function_zh": "管理企业商业档案、采购联系人和业务负责人。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 20
+    },
+    {
+      "code": "b2b-followups",
+      "parent_code": "b2b",
+      "level": 2,
+      "label_zh": "跟进任务",
+      "slug": "followups",
+      "url": "/b2b/followups",
+      "route": "b2b.followups",
+      "permission": "b2b.view",
+      "emoji": null,
+      "function_zh": "查看开放询盘的下一次跟进日期与待办清单。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 30
+    },
+    {
       "code": "marketing",
       "parent_code": null,
       "level": 1,
@@ -396,7 +456,7 @@
       "function_zh": "管理邮件订阅身份与后续营销工作区入口。",
       "status": "in_progress",
       "progress": 20,
-      "sort": 60
+      "sort": 70
     },
     {
       "code": "marketing-subscribers",
@@ -486,7 +546,7 @@
       "function_zh": "管理网红资料、合作订单、内容进度和付款状态。",
       "status": "in_progress",
       "progress": 77,
-      "sort": 70
+      "sort": 80
     },
     {
       "code": "kol-library",
@@ -711,7 +771,7 @@
       "function_zh": "管理库存数量、仓库、库存变动和库存异常。",
       "status": "implemented",
       "progress": 100,
-      "sort": 80
+      "sort": 90
     },
     {
       "code": "inventory-overview",
@@ -801,7 +861,7 @@
       "function_zh": "管理采购需求、采购任务、供应商及采购进度。",
       "status": "in_progress",
       "progress": 33,
-      "sort": 90
+      "sort": 100
     },
     {
       "code": "procurement-overview",
@@ -861,7 +921,7 @@
       "function_zh": "管理产品、SKU、产品资料和相关业务配置。",
       "status": "implemented",
       "progress": 100,
-      "sort": 100
+      "sort": 110
     },
     {
       "code": "products-list",
@@ -936,7 +996,7 @@
       "function_zh": "管理ERP操作指南、业务标准和内部知识内容。",
       "status": "implemented",
       "progress": 100,
-      "sort": 110
+      "sort": 120
     },
     {
       "code": "guides-index",
@@ -996,7 +1056,7 @@
       "function_zh": "管理收入、支出、应收、应付及业务财务记录。",
       "status": "implemented",
       "progress": 100,
-      "sort": 120
+      "sort": 130
     },
     {
       "code": "accounting-overview",
@@ -1056,7 +1116,7 @@
       "function_zh": "管理ERP系统配置，并查看当前版本与近期发布摘要。",
       "status": "in_progress",
       "progress": 46,
-      "sort": 130
+      "sort": 140
     },
     {
       "code": "settings-statuses",

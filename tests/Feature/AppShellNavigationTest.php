@@ -267,7 +267,7 @@ class AppShellNavigationTest extends TestCase
         $this->actingAs($prototypeUser)->get('/guides')->assertForbidden();
         // /products now requires products.view (not prototype.view); prototype-only users are forbidden
         $this->actingAs($prototypeUser)->get('/products')->assertForbidden();
-        foreach (['/inventory', '/logistics', '/customers', '/kol', '/marketing', '/accounting', '/settings', '/sync'] as $path) {
+        foreach (['/inventory', '/logistics', '/customers', '/b2b', '/kol', '/marketing', '/accounting', '/settings', '/sync'] as $path) {
             $this->actingAs($prototypeUser)->get($path)->assertForbidden();
         }
     }
@@ -317,7 +317,7 @@ class AppShellNavigationTest extends TestCase
     {
         $user = $this->userWith([], 'super_admin');
         $this->actingAs($user)->get('/settings')->assertOk();
-        $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page->has('shellNavigation', 13));
+        $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page->has('shellNavigation', 14));
     }
 
     public function test_root_contract_and_legacy_prototype_access_remain_unchanged(): void
