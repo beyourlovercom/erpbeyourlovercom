@@ -87,6 +87,7 @@ return [
     ['key' => 'accounting', 'label' => '会计', 'emoji' => '🧾', 'path' => '/accounting', 'route' => 'accounting.index', 'permission' => 'accounting.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false, 'children' => [
         ['key' => 'accounting-overview', 'label' => '概览', 'path' => '/accounting', 'route' => 'accounting.index', 'permission' => 'accounting.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'accounting-order-costs', 'label' => '订单利润', 'path' => '/accounting/order-costs', 'route' => 'accounting.order-costs', 'permission' => 'analysis.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
+        ['key' => 'accounting-b2b-cash', 'label' => 'B2B 贸易收款', 'path' => '/accounting/b2b-trade-cash', 'route' => 'accounting.b2b-trade-cash.index', 'permission' => 'accounting.view', 'status' => 'in_progress', 'progress' => 65, 'placeholder' => false],
         ['key' => 'accounting-loss-orders', 'label' => '亏损订单', 'path' => '/accounting/order-costs?profit_status=loss', 'route' => 'accounting.order-costs', 'permission' => 'analysis.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
     ]],
     ['key' => 'settings', 'label' => '设置', 'emoji' => '⚙️', 'path' => '/settings', 'route' => 'shell.settings', 'permission' => 'system.permissions.manage', 'status' => 'in_progress', 'progress' => 46, 'placeholder' => false, 'children' => [

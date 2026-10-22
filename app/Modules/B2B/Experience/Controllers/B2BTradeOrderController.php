@@ -7,6 +7,7 @@ use App\Modules\B2B\Infrastructure\Models\B2BTradeReceiptEvidence;
 use App\Modules\B2B\Infrastructure\Models\B2BSalesOpportunity;
 use App\Modules\B2B\Infrastructure\Models\B2BSalesQuote;
 use App\Modules\B2B\Sales\B2BTradeOrderService;
+use App\Modules\Finance\Application\B2BTradeCashAccountingService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -88,6 +89,8 @@ final class B2BTradeOrderController
                     'type'=>$e->event_type,'occurred_at'=>$e->occurred_at?->toIso8601String(),
                 ])->all(),
             ],
+            'financeSummary'=>app(B2BTradeCashAccountingService::class)->summary($row),
+            'canOpenFinance'=>$request->user()->hasPermission('accounting.view'),
             'canOperate'=>$request->user()->hasPermission('b2b.operate'),
             'canApprove'=>$request->user()->hasPermission('b2b.trade.approve')
                 && $request->user()->hasPermission('b2b.view_all'),

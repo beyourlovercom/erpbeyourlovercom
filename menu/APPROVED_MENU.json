@@ -1,5 +1,5 @@
 {
-  "version": "2.6",
+  "version": "2.7",
   "status": "OWNER_APPROVED",
   "approved_at": "2026-10-22",
   "approved_head": "60ccafc2848a9453cdfe018268517ca7ca7324fb",
@@ -1117,6 +1117,21 @@
       "status": "implemented",
       "progress": 100,
       "sort": 20
+    },
+    {
+      "code": "accounting-b2b-cash",
+      "parent_code": "accounting",
+      "level": 2,
+      "label_zh": "B2B 贸易收款",
+      "slug": "b2b-trade-cash",
+      "url": "/accounting/b2b-trade-cash",
+      "route": "accounting.b2b-trade-cash.index",
+      "permission": "accounting.view",
+      "emoji": null,
+      "function_zh": "Finance独立核实B2B Trade收款及退款；未验证的凭证不计入实际现金",
+      "status": "in_progress",
+      "progress": 65,
+      "sort": 25
     },
     {
       "code": "accounting-loss-orders",

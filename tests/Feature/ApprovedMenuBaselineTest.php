@@ -23,7 +23,7 @@ class ApprovedMenuBaselineTest extends TestCase
         $this->assertFileExists($path, self::MISMATCH.': approved file is missing');
         $baseline = $this->baseline();
 
-        $this->assertSame('2.6', $baseline['version'] ?? null, self::MISMATCH.': version');
+        $this->assertSame('2.7', $baseline['version'] ?? null, self::MISMATCH.': version');
         $this->assertSame('OWNER_APPROVED', $baseline['status'] ?? null, self::MISMATCH.': status');
         $this->assertSame('2026-10-22', $baseline['approved_at'] ?? null, self::MISMATCH.': approved_at');
         $this->assertSame('60ccafc2848a9453cdfe018268517ca7ca7324fb', $baseline['approved_head'] ?? null, self::MISMATCH.': approved_head');
@@ -79,7 +79,7 @@ class ApprovedMenuBaselineTest extends TestCase
         $levelTwo = collect($items)->where('level', 2)->values();
 
         $this->assertCount(14, $levelOne, self::MISMATCH.': level-1 count');
-        $this->assertCount(70, $levelTwo, self::MISMATCH.': owner-approved level-2 count after retiring the obsolete Logistics pending workspace');
+        $this->assertCount(71, $levelTwo, self::MISMATCH.': owner-approved level-2 count after retiring the obsolete Logistics pending workspace');
         $this->assertSame(['settings-backup'], $levelTwo->where('code', 'settings-backup')->pluck('code')->all(), self::MISMATCH.': backup child approval');
         $this->assertSame(['settings-fx'], $levelTwo->where('code', 'settings-fx')->pluck('code')->all(), self::MISMATCH.': FX child approval');
         $this->assertSame(
