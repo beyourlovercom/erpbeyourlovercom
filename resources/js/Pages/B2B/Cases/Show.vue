@@ -6,6 +6,7 @@ const props=defineProps<{
   activities:Array<{id:number;type:string;text:string|null;time:string|null}>;
   canOperate:boolean; canAssign:boolean; owners:Array<{id:number;name:string}>;
 }>()
+const statusLabel = (status: string): string => ({ open: '处理中', won: '已成交', lost: '已流失', spam: '无效' } as Record<string, string>)[status] || status
 const state=useForm({
   case_stage:props.case.stage,case_status:props.case.status,
   handling_state:props.case.handling==='none'?'in_progress':props.case.handling,
@@ -34,7 +35,7 @@ const assign=()=>owner.post(`/b2b/cases/${props.case.id}/assignment`,{preserveSc
             <dt>商业意向</dt><dd>{{ props.case.inquiry_kind }}</dd>
             <dt>优先级</dt><dd>{{ props.case.priority }}</dd>
             <dt>阶段</dt><dd>{{ props.case.stage }}</dd>
-            <dt>询盘状态</dt><dd><span class="case-status" :class="'case-status--'+props.case.status">{{ ({open:'处理中',won:'已成交',lost:'已流失',spam:'无效'})[props.case.status] || props.case.status }}</span></dd>
+            <dt>询盘状态</dt><dd><span class="case-status" :class="'case-status--'+props.case.status">{{ statusLabel(props.case.status) }}</span></dd>
             <dt>处理状态</dt><dd>{{ props.case.handling==='none' ? '已结束' : props.case.handling }}</dd>
             <template v-if="props.case.status==='lost' && props.case.loss_reason_code"><dt>流失原因</dt><dd>{{ props.case.loss_reason_code }}</dd></template>
             <template v-if="props.case.closed_at"><dt>关闭时间</dt><dd>{{ props.case.closed_at.slice(0,16).replace('T',' ') }}</dd></template>
