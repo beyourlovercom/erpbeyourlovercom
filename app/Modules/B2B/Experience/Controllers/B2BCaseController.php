@@ -19,6 +19,7 @@ final class B2BCaseController
         $source = trim((string) $request->query('source', ''));
         $search = trim((string) $request->query('search', ''));
         $overdue = $request->query('overdue') === '1';
+        $followupsOnly = $request->routeIs('b2b.followups');
         $base = clone $query;
 
         if (in_array($status, ['open', 'won', 'lost', 'spam'], true)) {
@@ -29,6 +30,9 @@ final class B2BCaseController
         }
         if (in_array($source, ['manual', 'website_form', 'email', 'whatsapp_business', 'trade_show', 'referral', 'other'], true)) {
             $query->where('source_channel', $source);
+        }
+        if ($followupsOnly) {
+            $query->where('case_status', 'open')->whereNotNull('next_follow_up_at');
         }
         if ($overdue) {
             $query->where('case_status', 'open')->whereNotNull('next_follow_up_at')->where('next_follow_up_at', '<', now());
@@ -62,6 +66,7 @@ final class B2BCaseController
             ]),
             'filters' => compact('status', 'stage', 'source', 'search'),
             'overdueOnly' => $overdue,
+            'followupsOnly' => $followupsOnly,
             'metrics' => [
                 'total' => (clone $base)->count(),
                 'open' => (clone $base)->where('case_status', 'open')->count(),
