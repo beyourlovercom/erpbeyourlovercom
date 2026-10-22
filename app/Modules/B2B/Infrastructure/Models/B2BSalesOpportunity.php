@@ -18,6 +18,7 @@ final class B2BSalesOpportunity extends Model
             'probability_bps' => 'integer',
             'expected_close_date' => 'date',
             'next_follow_up_at' => 'datetime',
+            'last_follow_up_at' => 'datetime',
             'won_at' => 'datetime',
             'lost_at' => 'datetime',
         ];
@@ -37,6 +38,14 @@ final class B2BSalesOpportunity extends Model
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'owner_id');
+    }
+    public function followUps(): HasMany
+    {
+        return $this->hasMany(B2BSalesFollowUp::class, 'opportunity_id');
+    }
+    public function quotes(): HasMany
+    {
+        return $this->hasMany(B2BSalesQuote::class, 'opportunity_id');
     }
     public function stageEvents(): HasMany
     {
