@@ -98,6 +98,9 @@ final class B2BCompanyController
     public function storeContact(Request $request, B2BOrganization $organization): RedirectResponse
     {
         $this->assertCanSee($request, $organization);
+        if (is_string($request->input('email'))) {
+            $request->merge(['email' => strtolower(trim($request->input('email')))]);
+        }
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'job_title' => ['nullable', 'string', 'max:191'],
