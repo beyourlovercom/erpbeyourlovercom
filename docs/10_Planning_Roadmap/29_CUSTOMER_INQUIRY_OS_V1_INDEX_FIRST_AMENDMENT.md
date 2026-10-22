@@ -1,7 +1,7 @@
 ---
 type: proposed-amendment
 project: BYL ERP
-feature: Customer & Inquiry OS
+feature: B2B Business OS / Inquiry CRM
 version: 1.0-proposed
 status: DRAFT / NON-PRODUCTION / OWNER-UAT-PENDING
 parent_issue: https://github.com/beyourlovercom/erpbeyourlovercom/issues/466
@@ -14,15 +14,15 @@ verification_tier: HIGH_RISK_FOR_FUTURE_SCHEMA_IMPLEMENTATION
 # Customer & Inquiry OS V1 — M0 scope and index-first amendment
 
 ## 0. Intent, non-authority and guardrails
-This is a PROPOSED ADDENDUM, not a silent rewrite of the Owner-approved frozen ERP-INQUIRY-M1 contract. It documents the new Owner request to consolidate B2B and channel inquiry operations within the existing BYL ERP Customer OS. Until an explicit scope and visual UAT review occurs, this document grants **no** permission to deploy, execute schema migrations against real databases, read live mailboxes, import customer records, register WhatsApp callbacks, or send quotations/messages. Production orders, invoices, payments, KOL, Support, Woo B2C records and website forms are unchanged.
+This is a PROPOSED ADDENDUM, not a silent rewrite of the Owner-approved frozen ERP-INQUIRY-M1 contract. It documents the original M0 inquiry plan and the Owner's newer 2026-10-22 decision: B2C Customer OS and B2B Business OS must have separate first-level menus, backend module ownership, permissions and independent development/release scopes. The separate B2B module shall selectively reuse YBY ERP code rather than copy its database or overwrite the existing B2C Customers module. Until an explicit scope and visual UAT review occurs, this document grants **no** permission to deploy, execute schema migrations against real databases, read live mailboxes, import customer records, register WhatsApp callbacks, or send quotations/messages. Production orders, invoices, payments, KOL, Support, Woo B2C records and website forms are unchanged.
 
-**Single truth:** Customers module owns Contact, Company, Inquiry Case, assignment, quote relationship and lead pipeline. Existing Customer records remain Customer authority for orders; new Contact is not automatically a Woo customer. Existing Order authority remains Orders, and approved quotation workflow will reference canonical order/quote identity.
+**Single truth by bounded context:** The new B2B module owns B2B Contact/Inquiry Case/assignment/quote and distributor pipeline. Existing B2C Customers module remains the authority for Woo consumer and newsletter-facing Customer projections. Current legacy `Company` implementation resides in Customers and MUST NOT be overwritten or physically moved in M0; agree a versioned B2B Company port and data ownership before migrations. Existing Orders retains canonical Order truth; B2B and B2C use explicit application contracts rather than cross-module model writes. Existing Order authority remains Orders, and approved quotation workflow will reference canonical order/quote identity.
 
 ## 1. Existing repository facts
 - Laravel modular monolith, Inertia/Vue 3/TypeScript, permission-based routes and Audit.
 - Existing Customers entry is `GET /customers` / `shell.customers`; existing Customer Overview, Library, Groups, Company and Customer Import routes already run.
 - No `cases`, `contact_identities`, `channel_messages` feature implementation on main is evidenced. The frozen ERP-INQUIRY-M1 document contains architectural intentions, not deployment confirmation.
-- `/customers` should remain the overview entry in V1; `/customers/inquiries` is the new functional list, `/customers/cases/{case}` the case details. No new top-level sidebar.
+- `/customers` and existing customer pages remain the B2C entry. The Owner has approved a separate first-level B2B menu: `/b2b` (overview), `/b2b/inquiries` (inbox), `/b2b/cases/{case}` (detail). A new B2B module/nav permission namespace is required; do NOT repurpose the B2C `/customers` overview or legacy routes.
 - Shared data grid contract: `26_BYL_ERP_GLOBAL_DATA_GRID_VI_V1_1.md`; shared form standard `18_BYL_ERP_FORM_DESIGN_STANDARD_V1.md`.
 - #458's later, privacy-safe **index-first** directive explicitly conflicts with legacy M1 sections 11/12/13/14/20 storing message `body_text`, `body_html` or raw payload in MySQL.
 
@@ -35,7 +35,7 @@ This is a PROPOSED ADDENDUM, not a silent rewrite of the Owner-approved frozen E
 | Email messages | Full bodies, HTML and raw payload columns | **Prohibit bulk provider body/raw-payload replication**; store provider/thread/message indexes and minimal preview metadata only | Explicit frozen-contract amendment |
 | Attachments | Body-derived file copies | Provider-only pointer/metadata first; fetch on-demand only with approved policy | Separate phase |
 | External identity | Exact email/WhatsApp normalization | Preserve; duplicate case detection by provider ID and thread; conflict review before linking Company | Unit tests |
-| Customers dashboard | Proposed replace with Inbox landing | Preserve existing Customer overview at `/customers`; Inbox at `/customers/inquiries` | Owner visual UAT |
+| Menu/workspace | Original frozen contract had one Customers menu and one Inbox landing | **Owner-confirmed business separation**: keep B2C `/customers` unchanged; add new first-level B2B `/b2b`, inbox `/b2b/inquiries`, cases `/b2b/cases/{case}` | Versioned shell/menu amendment and scoped UAT |
 | Site source | Later source-aware ingestion | Signed server-to-server connection only after source accepted/persisted; never count clicks as leads | Integration gate |
 | Mailbox authorization | Gmail API/IMAP | Read-only scoped provider where technically enforceable; no ChatGPT connector tokens, no personal account scraping | Account owner/admin consent |
 | WhatsApp | Meta Cloud webhook | Official Business Platform, signed verified events; no personal-chat scraping or browser automation | Separate account approval |
@@ -79,7 +79,7 @@ Receive verified inquiry or operator-entered inquiry
 ```
 Case status, stage and attention handling remain separate. Terminal case is not silently reopened. Returning source message marks the open case as waiting unless workflow rules prohibit continuation.
 
-Permissions: existing `customers.view` read and `customers.operate` mutation; add reviewed permissions such as `inquiries.view_all`, `inquiries.assign`, `inquiries.export`, `inquiries.quotes_manage`, `inquiries.channels_manage` only after RBAC/row-scope review. Ordinary salesperson sees only their owned/assigned leads; sales manager sees authorized team scope; admin scope explicit. Hard fail-closed for direct-route/API/export access. Index-only mail headers and subject can be personal data; need access control, retention and export audit.
+Permissions: B2C `customers.view`/`customers.operate` remain unchanged for consumer workflows and MUST NOT automatically grant B2B rights. The new B2B namespace uses separately registered/gated permissions such as `b2b.view`, `b2b.operate`, `b2b.view_all`, `b2b.assign`, `b2b.export`, `b2b.quotes_manage`, `b2b.channels_manage`, subject to reviewed RBAC/row-scope rules. Ordinary salesperson sees only their owned/assigned leads; sales manager sees authorized team scope; admin scope explicit. Hard fail-closed for direct-route/API/export access. Index-only mail headers and subject can be personal data; need access control, retention and export audit.
 
 ## 6. Distributor classification (not legal authorization)
 Lead intent may specify one of: Retail / Wholesale / Authorized Distributor / Exclusive Distributor. It is a request category, not proof of authorized status.
@@ -87,10 +87,10 @@ Canonical distributor status requires independently verified company identity, c
 Tier/MOQ/price policies should be configurable access-controlled ERP business records (future Quote/Distributor work package). Do not publish confidential prices in source files, fixtures, public docs or GitHub issues.
 
 ## 7. UX outline (no fabricated counters)
-- `/customers`: keep Customer KPI summary; append Inquiry summary after real backend exists.
-- `/customers/inquiries`: data grid default columns Case ID / Received / Company-or-Contact / Country / Channel / Product(s) / Quantity / Stage / Owner / Next follow-up / Last activity; right-side row actions. Compact saved-column preferences, server pagination, mobile-safe filter / search.
-- `/customers/cases/{case}`: context header, company/contact cards, opportunity summary, activity and provider-message timeline, next-step task, safe quote/order references, immutable audit trail.
-- `/customers/inquiries/create`: responsive centered form per ERP Form Design Standard; two columns on desktop, single column on M14. Operators can enter manual lead without inventing source/provider IDs.
+- `/customers`: retain the existing B2C Customer overview, subscriber/order metrics and consumer navigation unchanged; do not insert B2B-only controls by default.
+- `/b2b/inquiries`: data grid default columns Case ID / Received / Company-or-Contact / Country / Channel / Product(s) / Quantity / Stage / Owner / Next follow-up / Last activity; right-side row actions. Compact saved-column preferences, server pagination, mobile-safe filter / search.
+- `/b2b/cases/{case}`: context header, company/contact cards, opportunity summary, activity and provider-message timeline, next-step task, safe quote/order references, immutable audit trail.
+- `/b2b/inquiries/create`: responsive centered form per ERP Form Design Standard; two columns on desktop, single column on M14. Operators can enter manual lead without inventing source/provider IDs.
 - Metric views: waiting now, waiting >24h, overdue follow-up, new/qualified/quoted/won/lost, channel/country/product segmentation; avoid counting same Case twice across multiple messages.
 
 ## 8. Milestone acceptance and staged rollout
@@ -108,5 +108,16 @@ Tests: permission and cross-owner leakage, duplicate provider/replay, returning 
 3. Approval of index-only messages versus original frozen body retention.
 4. Separate credential/connection consent and Production release gates.
 
-## 10. Task record
+## 10. Separate B2B/B2C module architecture (Owner decision 2026-10-22)
+
+- **Physical ownership**: Keep existing `app/Modules/Customers` for B2C. Add `app/Modules/B2B` as the B2B CRM bounded context with its own Experience/Routes, Application, Domain, Infrastructure and Providers. B2B UI components/pages live in a separate `resources/js/Pages/B2B` tree. Shared UI primitives may be reused but must not import business mutations into the other module.
+- **Menu/versioning**: add a distinct level-1 `B2B 业务` entry and `b2b.*` permissions through a reviewed, versioned exception/amendment to the frozen Shell/menu contract. No CSS-only hiding, no incidental exposure of B2B data from B2C pages.
+- **Tables**: do not create duplicate B2C customer, Woo order, Marketing Subscriber, Product or Finance canonical tables. B2B-specific Case/Contact/Message-index/Company relation may have their own logical tables in the same ERP database with foreign-key/API bridges where approved. Separate physical databases are NOT a prerequisite for module isolation.
+- **Legacy Company migration**: target currently has `app/Modules/Customers/Infrastructure/Models/Company.php`; avoid renaming/moving/deleting it or existing `companies` rows before a separately reviewed compatibility strategy. The new B2B module can initially read Company through a narrow authorized Application contract. One Company identity, not a second independent Company database.
+- **Cross-module bridge**: read-only or explicit authorized command/query DTO interfaces; no direct importing another module's Infrastructure models, direct writes to another module's tables, or sharing raw subscriber consent, Woo order or customer support records with B2B roles.
+- **Independent development**: one bounded Work Package/branch/PR per module; B2B changes have B2B-focused CI and cross-module non-regression checks; independent rollout/rollback. YBY ERP and BYL ERP remain fully separate repos/runtimes/DBs, with **selective source-code port only** and no automatic live cross-ERP synchronization.
+- **Role truth**: B2C customer permission never implies B2B prospect permission; B2B salesperson never gains C-end customer exports; admin cross-module access requires explicit assignment. Default-deny for unauthorized APIs, search, export and direct deep links.
+- **Acceptance**: a synthetic B2B case shall neither create/modify a B2C Customer or newsletter consent nor modify an Order; B2B Case changes cannot alter Customers UI/metrics; independent menu/permission checks pass on desktop and M14.
+
+## 11. Task record
 M0 planning tracked at #466 and mail-specific integration at #458. This file intentionally has no real client records and no price amounts. It is safe for eventual public repository review.
