@@ -83,3 +83,42 @@ Do **not** run schema migrations on Prod. For synthetic/local schema rehearsal u
 2. Run B2B-focused and core-regression tests and correct failing new code; separately track historic ArchitectureTest drift.
 3. Dev-only deploy with isolated/migration-safe rehearsals, then PC + M14 Owner UAT.
 4. Convert Draft #473 into the single final merge candidate after CI and UAT. Do not merge intermediate stacked PRs plus #473 as duplicates.
+
+
+## 8. Actual isolated China Mac verification — 2026-10-22 (supersedes earlier unverified gate status where noted)
+
+Execution provider: **formal self-hosted OAuth MCP** `china-mac` (READY), isolated checkout at `/Users/a/.cache/aicc-b2b-m5-uat/erp`, exact tested source base after syntax/navigation fix `87756e059b20b684fab4bf11fcb822b062047a93`. This directory is neither a Production ERP checkout nor a shared Dev site. The source was cloned with `git clone --depth 1`; no server/website deploy, no user data access or device restart.
+
+| Verification | Measured result | Limit |
+|---|---|---|
+| PHP CLI | 8.3.32 | China Mac local |
+| Composer | `composer install --no-scripts` exited 0, 137 packages | Isolated vendor only |
+| PHP syntax | **21/21 PASS** (11 B2B PHP, three migrations, seven B2B test files), plus checked changed shared PHP files | Actual `php -l` |
+| Frontend typecheck | `npm run typecheck` **exit 0** | Actual `vue-tsc --noEmit` |
+| Frontend build | `npm run build` **exit 0** (964 modules transformed) | Chunk-size warning only |
+| Isolated B2B PHPUnit | **28 tests / 169 assertions PASS** | SQLite `:memory:` |
+| Combined B2B + Shell Navigation PHPUnit | **49 tests / 527 assertions PASS** | SQLite `:memory:` |
+| B2C Customers + Marketing subscriber + selected Orders regressions | **94 tests, one failing**, 93 otherwise passed | Failure reproduced on clean `main`, not caused by B2B |
+| Standalone main comparison | `CustomerMasterTest::test_customer_detail_aggregates_only_explicitly_linked_customer_orders` **same failure** on untouched `main`: recentOrders.0.number `null` vs `WEB-1001` | Pre-existing C-end failure |
+| ApprovedMenuBaselineTest | clean `main`: **4 failures**; integrated candidate: **3 failures** | Legacy accounting-loss-orders URL/slug and marketing/accounting children drift, plus previously approved baseline metadata mismatch |
+| SQLite migration `migrate:fresh` | **exit 0**, all 3 B2B migrations run | Isolated local file `browser-uat.sqlite`, no Production |
+| SQLite `migrate:rollback --step=3` | **exit 0**, B2B migrations all rolled back | Isolated local file only |
+| SQLite re-apply `migrate` | **exit 0**, all 3 B2B migrations applied again | Isolated local file only |
+| `php artisan route:list --path=b2b` | **14 B2B routes registered** | Route registration, not visual browser check |
+| Original GitHub Actions workflows | **failure, no job steps** | No runner-level proof of root cause; still separate blocker |
+| True desktop/M14 screenshot/Owner visual UAT | **NOT EXECUTED / NOT PASS** | Do not infer from responsive CSS or compiled assets |
+
+### Runtime defects found and fixed before tests passed
+1. Source `app/Modules/ModuleManifest.php` mistakenly had `B2BServiceProvider::class;` instead of `,` and initially prevented Laravel boot. Fixed in cumulative PR by GitHub commit `d6f7d472aae3255626915b5c4b1c106a58261bb8`, then `php -l` and PHPUnit confirmed syntax resolution.
+2. Existing Shell navigation expected 13 first-level modules; Owner-approved B2B addition requires 14. Fixed in `AppShellNavigationTest`.
+3. Configured B2B progress (45) did not match versioned menu baseline (65); aligned to 65. The full AppShell+B2B suite then passed 49/49.
+4. Vite build manifest was absent from the fresh isolated checkout, causing initial Inertia response 500. Actual local `npm run build` generated the assets; this was a test environment setup issue, not a Prod bug.
+
+### Outstanding explicitly separated, not silently waived
+- `ApprovedMenuBaselineTest` still has 3 failing assertions due to historical Accounting / Marketing menu drift. Clean main fails 4; **do not rewrite unrelated Owner-approved navigation data just to force green CI**. Resolve through separate bounded baseline correction with product owner approval and exact source comparison.
+- The single CustomerMaster order-number failure is independently reproducible on clean main. Do not alter Consumer Customer domain in B2B PR without separate regression ownership.
+- GitHub-hosted CI is still failing before observable job steps; China Mac local tests provide concrete isolated evidence but are **not** substitute for authorized GitHub workflow gate.
+- A local synthetic browser-data seeding process could not proceed due platform execution safety inspection; no test account or live customer record was added. Actual PC/M14 screenshots and Owner UAT remain pending; do not claim visual PASS.
+- New prospective rollout must be limited to Dev after its separate deployment gate, and main/Production changes remain unauthorized by this test record.
+
+**Current classification:** M1–M5 source implemented, PHP/Vue build and focused runtime tests PASS; DB migration/rollback PASS on isolated SQLite; inherited full-suite contract and PC/M14 UAT remain **HOLD**.
