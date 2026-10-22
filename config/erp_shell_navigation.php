@@ -30,6 +30,7 @@ return [
         ['key' => 'customers-orders', 'label' => '客户订单', 'path' => '/customers/orders', 'route' => 'customers.orders', 'permission' => 'orders.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'customers-import', 'label' => '客户导入', 'path' => '/customers/import', 'route' => 'customers.import', 'permission' => 'customers.import', 'permissions_all' => ['system.permissions.manage'], 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
     ]],
+    ['key' => 'b2b', 'label' => 'B2B 业务', 'emoji' => '💼', 'path' => '/b2b', 'route' => 'b2b.overview', 'permission' => 'b2b.view', 'status' => 'in_progress', 'progress' => 15, 'placeholder' => false],
     ['key' => 'marketing', 'label' => '营销', 'emoji' => '📣', 'path' => '/marketing', 'route' => 'shell.marketing', 'permission' => 'marketing.view', 'status' => 'in_progress', 'progress' => 20, 'placeholder' => false, 'children' => [
         ['key' => 'marketing-traffic', 'label' => '流量总览', 'path' => '/marketing/traffic', 'route' => 'traffic.boss-dashboard', 'permission' => 'marketing.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'marketing-subscribers', 'label' => '邮件订阅', 'path' => '/marketing/subscribers', 'route' => 'marketing.subscribers', 'permission' => 'marketing.view', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
