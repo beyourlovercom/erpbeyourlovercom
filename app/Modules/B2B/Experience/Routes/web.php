@@ -81,6 +81,9 @@ Route::middleware(['web','auth','can:b2b.view'])->group(function (): void {
     Route::get('/b2b/trade-orders/{tradeOrder}', [B2BTradeOrderController::class, 'show'])
         ->whereNumber('tradeOrder')->name('b2b.trade.show');
 });
+Route::middleware(['web','auth','can:b2b.view'])
+    ->get('/b2b/trade-orders/{tradeOrder}/evidence/{evidence}/download', [B2BTradeOrderController::class, 'download'])
+    ->whereNumber('tradeOrder')->whereNumber('evidence')->name('b2b.trade.evidence.download');
 Route::middleware(['web','auth','can:b2b.view','can:b2b.operate'])->group(function (): void {
     Route::post('/b2b/trade-orders', [B2BTradeOrderController::class, 'store'])->name('b2b.trade.store');
     Route::post('/b2b/trade-orders/{tradeOrder}/evidence', [B2BTradeOrderController::class, 'evidence'])

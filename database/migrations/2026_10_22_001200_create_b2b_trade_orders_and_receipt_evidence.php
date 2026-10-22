@@ -38,6 +38,11 @@ return new class extends Migration {
             $t->char('currency', 3);
             $t->unsignedBigInteger('claimed_amount_micros');
             $t->date('claimed_paid_on')->nullable();
+            $t->string('attachment_disk', 32)->nullable();
+            $t->string('attachment_path', 1024)->nullable();
+            $t->string('attachment_name', 255)->nullable();
+            $t->string('attachment_mime', 127)->nullable();
+            $t->unsignedBigInteger('attachment_size')->nullable();
             $t->string('status', 24)->default('pending_review'); // pending_review,rejected,reviewed
             $t->text('review_note')->nullable();
             $t->timestamp('reviewed_at')->nullable();

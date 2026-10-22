@@ -10,6 +10,8 @@ use App\Modules\B2B\Infrastructure\Models\B2BSalesOpportunity;
 use App\Modules\B2B\Infrastructure\Models\B2BTradeOrder;
 use App\Modules\B2B\Sales\B2BSalesPipeline;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 final class B2BTradeOrderWorkflowTest extends TestCase
@@ -182,6 +184,50 @@ final class B2BTradeOrderWorkflowTest extends TestCase
         app(B2BSalesPipeline::class)->close($opp,'won',$seller->id);
         $this->actingAs($approver)->post("/b2b/trade-orders/{$order->id}/approve")->assertRedirect();
         $this->assertSame('approved', $order->fresh()->status);
+    }
+
+
+    public function test_receipt_document_is_private_and_other_salesperson_cannot_download(): void
+    {
+        Storage::fake('local');
+        $seller=$this->actor('s3-g3-file-seller', ['b2b.view','b2b.operate','b2b.quotes_manage']);
+        $manager=$this->actor('s3-g3-file-manager', ['b2b.view','b2b.view_all','b2b.trade.approve']);
+        $stranger=$this->actor('s3-g3-file-stranger', ['b2b.view','b2b.operate']);
+        [$opp,$quote]=$this->deal($seller);
+        $order=$this->submit($seller,$opp,$quote->id);
+        $this->actingAs($manager)->post("/b2b/trade-orders/{$order->id}/approve")->assertRedirect();
+        $this->actingAs($seller)->post("/b2b/trade-orders/{$order->id}/evidence", [
+            'source'=>'bank_transfer',
+            'reference'=>'UAT-PRIVATE-FILE-001',
+            'currency'=>'USD',
+            'claimed_amount_micros'=>125000000,
+            'attachment'=>UploadedFile::fake()->image('mock-bank.png'),
+        ])->assertRedirect();
+        $file=$order->evidence()->firstOrFail();
+        $this->assertSame('local',$file->attachment_disk);
+        $this->assertStringStartsWith('b2b-trade/evidence/'.$order->id.'/', $file->attachment_path);
+        Storage::disk('local')->assertExists($file->attachment_path);
+        $url="/b2b/trade-orders/{$order->id}/evidence/{$file->id}/download";
+        $this->actingAs($stranger)->get($url)->assertNotFound();
+        $this->actingAs($seller)->get($url)->assertOk()->assertHeader('X-Content-Type-Options','nosniff');
+        $this->actingAs($manager)->get($url)->assertOk();
+        $this->assertDatabaseCount('order_financials',0);
+    }
+
+    public function test_nonapproved_file_type_is_rejected(): void
+    {
+        Storage::fake('local');
+        $seller=$this->actor('s3-g3-blocked-file', ['b2b.view','b2b.operate','b2b.quotes_manage']);
+        $manager=$this->actor('s3-g3-blocked-file-manager', ['b2b.view','b2b.view_all','b2b.trade.approve']);
+        [$opp,$quote]=$this->deal($seller);
+        $order=$this->submit($seller,$opp,$quote->id);
+        $this->actingAs($manager)->post("/b2b/trade-orders/{$order->id}/approve")->assertRedirect();
+        $this->actingAs($seller)->post("/b2b/trade-orders/{$order->id}/evidence", [
+            'source'=>'bank_transfer','reference'=>'UAT-INVALID-FILE',
+            'currency'=>'USD','claimed_amount_micros'=>10000000,
+            'attachment'=>UploadedFile::fake()->create('malicious.zip', 10, 'application/zip'),
+        ])->assertSessionHasErrors('attachment');
+        $this->assertDatabaseCount('b2b_trade_receipt_evidence',0);
     }
 
 }

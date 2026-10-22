@@ -11,6 +11,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -80,6 +82,7 @@ final class B2BTradeOrderController
                     'status'=>$e->status,'recorded_by'=>$e->recorded_by,
                     'reviewed_at'=>$e->reviewed_at?->toIso8601String(),
                     'review_note'=>$e->review_note,
+                    'attachment_href'=>$e->attachment_path ? route('b2b.trade.evidence.download',['tradeOrder'=>$row->id,'evidence'=>$e->id]) : null,
                 ])->all(),
                 'events'=>$row->auditEvents->sortBy('id')->values()->map(fn ($e) => [
                     'type'=>$e->event_type,'occurred_at'=>$e->occurred_at?->toIso8601String(),
@@ -125,9 +128,25 @@ final class B2BTradeOrderController
             'currency'=>['required','regex:/^[A-Z]{3}$/'],
             'claimed_amount_micros'=>['required','integer','min:1','max:100000000000000'],
             'claimed_paid_on'=>['nullable','date'],
+            'attachment'=>['nullable','file','mimes:pdf,jpg,jpeg,png,webp','max:5120'],
         ]);
         $this->service->recordEvidence($tradeOrder, $data, (int)$request->user()->getAuthIdentifier());
         return back();
+    }
+
+    public function download(Request $request, B2BTradeOrder $tradeOrder, B2BTradeReceiptEvidence $evidence): BinaryFileResponse
+    {
+        $this->visible($request)->findOrFail($tradeOrder->id);
+        abort_unless((int) $evidence->trade_order_id === (int) $tradeOrder->id, 404);
+        abort_unless($evidence->attachment_disk === 'local'
+            && is_string($evidence->attachment_path)
+            && str_starts_with($evidence->attachment_path, 'b2b-trade/evidence/'.$tradeOrder->id.'/')
+            && Storage::disk('local')->exists($evidence->attachment_path), 404);
+        return response()->download(
+            Storage::disk('local')->path($evidence->attachment_path),
+            $evidence->attachment_name ?: 'receipt-evidence',
+            ['X-Content-Type-Options' => 'nosniff'],
+        );
     }
 
     public function review(Request $request, B2BTradeOrder $tradeOrder, B2BTradeReceiptEvidence $evidence): RedirectResponse

@@ -7,6 +7,10 @@ use App\Modules\B2B\Infrastructure\Models\B2BSalesQuote;
 use App\Modules\B2B\Infrastructure\Models\B2BTradeOrder;
 use App\Modules\B2B\Infrastructure\Models\B2BTradeReceiptEvidence;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Http\UploadedFile;
+use RuntimeException;
+use Throwable;
 use Illuminate\Validation\ValidationException;
 
 final class B2BTradeOrderService
@@ -69,7 +73,9 @@ final class B2BTradeOrderService
     public function recordEvidence(
         B2BTradeOrder $order, array $data, int $actorId
     ): B2BTradeReceiptEvidence {
-        return DB::transaction(function () use ($order, $data, $actorId): B2BTradeReceiptEvidence {
+        $storedPath = null;
+        try {
+            return DB::transaction(function () use ($order, $data, $actorId, &$storedPath): B2BTradeReceiptEvidence {
             $row = B2BTradeOrder::query()->lockForUpdate()->findOrFail($order->id);
             if ($row->status !== 'approved') {
                 throw ValidationException::withMessages(['trade_order' => '必须先审批贸易订单']);
@@ -94,9 +100,30 @@ final class B2BTradeOrderService
                 'claimed_paid_on' => $data['claimed_paid_on'] ?? null,
                 'status' => 'pending_review',
             ]);
+            $upload = $data['attachment'] ?? null;
+            if ($upload instanceof UploadedFile) {
+                $storedPath = $upload->store('b2b-trade/evidence/'.$row->id, 'local');
+                if (! is_string($storedPath) || $storedPath === '') {
+                    throw new RuntimeException('Could not persist the private receipt attachment');
+                }
+                $e->forceFill([
+                    'attachment_disk' => 'local',
+                    'attachment_path' => $storedPath,
+                    'attachment_name' => basename($upload->getClientOriginalName()),
+                    'attachment_mime' => $upload->getMimeType(),
+                    'attachment_size' => $upload->getSize(),
+                ])->save();
+            }
             $this->audit($row, $actorId, 'receipt_evidence_submitted', ['evidence_id' => $e->id]);
             return $e;
-        });
+            });
+        } catch (Throwable $error) {
+            // If a later DB write fails, avoid leaving a stray private document.
+            if (is_string($storedPath) && $storedPath !== '') {
+                Storage::disk('local')->delete($storedPath);
+            }
+            throw $error;
+        }
     }
 
     public function reviewEvidence(

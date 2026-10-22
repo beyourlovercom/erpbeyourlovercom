@@ -7,7 +7,7 @@ Owner explicitly selected a **standalone B2B Trade Order architecture** instead 
 
 ## Canonical B2B data contract
 - `b2b_trade_orders`: immutable-looking generated trade order number, scoped B2B company, Sales Opportunity and exactly one quote version (unique quote_id), seller owner, snapshot of quote price/line items in integer micro-units, internal draft/approved state and second-person approval evidence.
-- `b2b_trade_receipt_evidence`: B2B Trade Order only, submitted source+transaction reference with unique constraint, claimed amount/currency, pending/reviewed/rejected evidence **documents**. It is **not a cash ledger**, does not collect money, and “reviewed” explicitly means documentation inspected, **not actual received cash**.
+- `b2b_trade_receipt_evidence`: B2B Trade Order only, submitted source+transaction reference with unique constraint, claimed amount/currency, pending/reviewed/rejected evidence **documents**, and optional PRIVATE attachment (PDF/JPG/PNG/WebP, up to 5 MB). It is **not a cash ledger**, does not collect money, and “reviewed” explicitly means documentation inspected, **not actual received cash**.
 - `b2b_trade_audit_events`: append-only internal evidence of draft, order approval, claimed receipt submission and review; foreign keys restrict deletion of the record chain.
 - B2C `customers`, canonical `orders`, `order_financials`, Finance/Accounting journal and WooCommerce unchanged. Never copy or merge consumer customer_id into B2B organization_id.
 
@@ -16,12 +16,13 @@ Owner explicitly selected a **standalone B2B Trade Order architecture** instead 
 2. **Order approval requires** `b2b.view+b2b.view_all+b2b.trade.approve`, an Opportunity with status `won`, and a different user from the draft creator. Approval is an internal order signoff, **not** verified buyer acceptance, bank settlement or a recognized Accounting transaction.
 3. Claiming payment evidence requires an approved Trade Order, a positive amount in the same currency, an allowed source and globally unique source+reference. Claimants do not generate canonical OrderFinancial rows or gateway calls.
 4. Evidence review requires `b2b.view+b2b.view_all+b2b.receipts.review`, a second person distinct from claimant, mandatory reason, and an unreviewed record; cannot review twice. Reviewed evidence **must not** be included in actual cash or P&L before a separately approved Finance settlement linkage exists.
-5. Admin preset migration seeds the two new explicit B2B approval permissions; no consumer role receives them by default. Separate test cases exercise direct URL denial and seller/approver separation.
+5. Private receipt files use the existing Laravel `local` disk with restricted generated `b2b-trade/evidence/{order-id}/` paths, max 5 MB, allowed MIME/extension, owner-scoped authenticated download with `nosniff`. File storage is cleaned up on database transaction failure. Uploads never expose public URLs.
+6. Admin preset migration seeds the two new explicit B2B approval permissions; no consumer role receives them by default. Separate test cases exercise direct URL denial and seller/approver separation.
 
 ## UI and test evidence
 - New nested B2B menu `贸易订单`, listing/form, details, status, evidence and audit panels. Main China Mac UAT remains on the previous approved baseline: this S3-G3 feature is tested in a **separate** feature checkout, not deployed to it.
 - Actual `npm run typecheck` PASS and Vite build PASS.
-- **91 PHPUnit tests / 910 assertions PASS** across B2B/Shell/ModuleProvider/S3 finance checks, including 7 new Trade Order workflow tests.
+- **93 PHPUnit tests / 927 assertions PASS** across B2B/Shell/ModuleProvider/S3 finance checks, including 9 new Trade Order workflow tests with private document upload/download and unauthorized cross-salesperson attachment access denial.
 - Isolated dedicated SQLite `migrate:fresh`, one-step rollback and reapply each PASS. Three new B2B tables start empty, as do `order_financials` and `customers` in that test database.
 - Local headless Chrome rendered actual Vue list and details components at **1280×800 PC** and **390×844 mobile** — 4 checks, no JS errors or page horizontal overflow. The responsive Chrome preview injects **synthetic Inertia page props**; not actual authorized logged-in backend UAT or a physical M14.
 - Mobile card layout and business-readable decimal entry were retained. Backend stores exact integer micros. No production credentials or data were read.
