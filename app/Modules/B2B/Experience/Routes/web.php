@@ -35,3 +35,7 @@ Route::middleware(['web', 'auth', 'can:b2b.view', 'can:b2b.operate'])->group(fun
 Route::middleware(['web', 'auth', 'can:b2b.view', 'can:b2b.assign', 'can:b2b.view_all'])
     ->post('/b2b/cases/{case}/assignment', [B2BCaseWriteController::class, 'assign'])
     ->whereNumber('case')->name('b2b.cases.assignment');
+
+Route::middleware(['web', 'auth', 'can:b2b.view'])
+    ->get('/b2b/followups', [B2BCaseController::class, 'index'])
+    ->name('b2b.followups');
