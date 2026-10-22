@@ -5,6 +5,7 @@ namespace App\Modules\B2B\Experience\Controllers;
 use App\Modules\B2B\Infrastructure\Models\B2BCase;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use App\Modules\Identity\Infrastructure\Models\User;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -17,6 +18,7 @@ final class B2BCaseController
         $stage = trim((string) $request->query('stage', ''));
         $source = trim((string) $request->query('source', ''));
         $search = trim((string) $request->query('search', ''));
+        $overdue = $request->query('overdue') === '1';
         $base = clone $query;
 
         if (in_array($status, ['open', 'won', 'lost', 'spam'], true)) {
@@ -27,6 +29,9 @@ final class B2BCaseController
         }
         if (in_array($source, ['manual', 'website_form', 'email', 'whatsapp_business', 'trade_show', 'referral', 'other'], true)) {
             $query->where('source_channel', $source);
+        }
+        if ($overdue) {
+            $query->where('case_status', 'open')->whereNotNull('next_follow_up_at')->where('next_follow_up_at', '<', now());
         }
         if ($search !== '') {
             $query->where(function (Builder $q) use ($search): void {
@@ -56,6 +61,7 @@ final class B2BCaseController
                 'last_inbound_at' => $case->last_inbound_at?->toIso8601String(),
             ]),
             'filters' => compact('status', 'stage', 'source', 'search'),
+            'overdueOnly' => $overdue,
             'metrics' => [
                 'total' => (clone $base)->count(),
                 'open' => (clone $base)->where('case_status', 'open')->count(),
@@ -99,6 +105,12 @@ final class B2BCaseController
                     'text' => $item->body_text, 'time' => $item->occurred_at?->toIso8601String(),
                 ])->values()->all(),
             'canOperate' => $request->user()->hasPermission('b2b.operate'),
+            'canAssign' => $request->user()->hasPermission('b2b.assign') && $request->user()->hasPermission('b2b.view_all'),
+            'owners' => $request->user()->hasPermission('b2b.assign') && $request->user()->hasPermission('b2b.view_all')
+                ? User::query()->where('is_active', true)->orderBy('name')->get()
+                    ->filter(fn (User $user): bool => $user->hasPermission('b2b.view'))
+                    ->map(fn (User $user): array => ['id' => $user->id, 'name' => $user->name])->values()->all()
+                : [],
         ]);
     }
 
