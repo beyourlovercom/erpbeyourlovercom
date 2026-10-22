@@ -4,16 +4,16 @@ import { reactive } from 'vue'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 type CaseRow = {id:number;case_number:string|null;title:string;organization:string|null;contact:string|null;country_code:string|null;source:string;product_interest:string|null;requested_quantity:number|null;stage:string;status:string;handling:string;next_follow_up_at:string|null;last_inbound_at:string|null}
 type Page = {data:CaseRow[];links:Array<{url:string|null;label:string;active:boolean}>;total:number}
-const props=defineProps<{cases:Page;metrics:{total:number;open:number;waiting:number;overdue:number};filters:{search:string;source:string;status:string;stage:string};canOperate:boolean}>()
+const props=defineProps<{followupsOnly:boolean;overdueOnly:boolean;cases:Page;metrics:{total:number;open:number;waiting:number;overdue:number};filters:{search:string;source:string;status:string;stage:string};canOperate:boolean}>()
 const state=reactive({...props.filters})
 const run=()=>router.get('/b2b/inquiries',state,{preserveState:true,replace:true})
 const stageName=(s:string)=>({new:'新询盘',contacted:'已联系',qualified:'已验证',quoted:'已报价',negotiating:'谈判中'} as Record<string,string>)[s]||s
 </script>
 <template>
-  <Head title="B2B 询盘 · BYL ERP" />
+  <Head :title="followupsOnly ? 'B2B 跟进任务 · BYL ERP' : 'B2B 询盘 · BYL ERP'" />
   <AuthenticatedLayout title="B2B 询盘" :breadcrumbs="['BYL ERP','B2B 业务','询盘管理']">
     <main class="b2b-page">
-      <header><div><h1>询盘管理</h1><p>统一记录企业采购意向与销售跟进</p></div><Link v-if="canOperate" class="action" href="/b2b/inquiries/create">新增询盘</Link></header>
+      <header><div><h1>{{ followupsOnly ? '跟进任务' : '询盘管理' }}</h1><p>{{ followupsOnly ? '所有已安排下一次跟进的开放询盘' : '统一记录企业采购意向与销售跟进' }}</p></div><Link v-if="canOperate" class="action" href="/b2b/inquiries/create">新增询盘</Link></header>
       <div class="metrics">
         <article><span>全部询盘</span><strong>{{ metrics.total }}</strong></article>
         <article><span>处理中</span><strong>{{ metrics.open }}</strong></article>
