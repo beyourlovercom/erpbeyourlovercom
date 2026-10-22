@@ -5,6 +5,7 @@ namespace Tests\Architecture;
 use App\Modules\Audit\Providers\AuditServiceProvider;
 use App\Modules\Backup\Providers\BackupServiceProvider;
 use App\Modules\BusinessProjects\Providers\BusinessProjectsServiceProvider;
+use App\Modules\B2B\Providers\B2BServiceProvider;
 use App\Modules\Customers\Providers\CustomersServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Finance\Providers\FinanceServiceProvider;
@@ -56,6 +57,9 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Audit/Infrastructure/ImmutableAuditBuilder.php',
         'app/Modules/Audit/Infrastructure/Models/AuditRecord.php',
         'app/Modules/Audit/Providers/AuditServiceProvider.php',
+        'app/Modules/B2B/Experience/Controllers/B2BOverviewController.php',
+        'app/Modules/B2B/Experience/Routes/web.php',
+        'app/Modules/B2B/Providers/B2BServiceProvider.php',
         'app/Modules/Backup/Application/BackupArtifactCleanupService.php',
         'app/Modules/Backup/Application/BackupArtifactData.php',
         'app/Modules/Backup/Application/BackupEngineService.php',
@@ -462,6 +466,11 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Audit/Infrastructure',
         'app/Modules/Audit/Infrastructure/Models',
         'app/Modules/Audit/Providers',
+        'app/Modules/B2B',
+        'app/Modules/B2B/Experience',
+        'app/Modules/B2B/Experience/Controllers',
+        'app/Modules/B2B/Experience/Routes',
+        'app/Modules/B2B/Providers',
         'app/Modules/Backup',
         'app/Modules/Backup/Application',
         'app/Modules/Backup/Application/Contracts',
@@ -663,6 +672,7 @@ final class ModuleArchitectureTest extends TestCase
         'analysis.export',
         'analysis.update',
         'architecture.foundation',
+        'b2b.overview',
         'backup.automatic.update',
         'backup.index',
         'backup.legacy',
@@ -930,6 +940,13 @@ final class ModuleArchitectureTest extends TestCase
         'backup.publish_github',
         'backup.restore',
         'backup.view',
+        'b2b.assign',
+        'b2b.channels_manage',
+        'b2b.export',
+        'b2b.operate',
+        'b2b.quotes_manage',
+        'b2b.view',
+        'b2b.view_all',
         'customers.export',
         'customers.import',
         'customers.operate',
@@ -1072,6 +1089,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_09_06_180000_add_order_profit_evidence_contract.php' => 'a80d69865ef2351332e93840a9f2d227cf2a5c34e3830bd81300ff3c2d385ccc',
         'database/migrations/2026_09_11_200000_create_business_projects_tables.php' => '308d7148cdfb92d2a680264e062f1c4b3cce9bb4577bc330019913d7cb2aaf1f',
         'database/migrations/2026_09_11_200100_create_traffic_tables.php' => '1d906571872f99f3958e97469e0d34e26aeaae35d0db886b21251b8743233f46',
+        'database/migrations/2026_10_22_000001_register_b2b_permissions.php' => '2f00112181f771a2477cbde3a1917abdb5020ada57a42a2528cd3fc6d2b86c08',
     ];
 
     private const FRONTEND_FILES = [
@@ -1236,6 +1254,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/lib/globalFeedback.test.ts' => '63887c4a11ca91d7014df88987bf6ccbaf54be0c03dc334f78711fec3ff519d6',
         'resources/js/lib/globalFeedback.ts' => '54ba6e2214e691f2059e239571fb9f70a533b8b2dae7a6d8923f8a2ee43fbfc3',
         'resources/js/types/navigation.ts' => '265ec164e751beaa4c53045fa431850601840cbea6deab4e7a87de72e8538327',
+        'resources/js/Pages/B2B/Overview.vue' => '1a014c198504f572de3e237a0b6141a43f2a5a4e344e92d9b7d0fe62568b0105',
     ];
 
     public function test_frozen_module_and_support_boundaries(): void
@@ -1565,8 +1584,8 @@ PHP;
             self::assertFileExists($this->path($path));
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
-        self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('c77096f7fa4e11fadae2e9549032443658467ca17411521159dd6736d0d1887f', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame($this->sorted(array_keys(self::FRONTEND_FILES)), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
+        self::assertSame('820aa99d4260225ea5b15478506dead138ca4d414e8872d9dbf405a300a18337', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);
@@ -1593,6 +1612,7 @@ PHP;
             ShellServiceProvider::class,
             DashboardServiceProvider::class,
             CustomersServiceProvider::class,
+            B2BServiceProvider::class,
             ProductsServiceProvider::class,
             InventoryServiceProvider::class,
             MarketingServiceProvider::class,
