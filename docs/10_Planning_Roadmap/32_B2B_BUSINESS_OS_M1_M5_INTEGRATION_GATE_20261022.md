@@ -254,3 +254,28 @@ Following the Owner's confirmation of native ERP user creation, the China Mac **
 - UAT git HEAD = integrated PR #473 HEAD = `121d8de9b6f1b8ba6150a9d89b691f391f3fb7b8`, UAT tracked worktree clean.
 - Administrator-only browser UAT does **not** prove cross-user sales assignment in a real browser. Negative-role/owner restrictions remain backed by the separately passed automated PHPUnit suite, and may be physically exercised when a legitimately created second UAT role is available.
 - Remaining **HOLD**, not silently waived: physical M14 Owner final visual PASS; GitHub-hosted Actions account payment/budget restriction; inherited menu/architecture/C-end baseline debt tracked in #474; exact-head main merge/deploy authorization. No main merge, public Dev/WWW deployment, real lead import, or production mutation performed.
+
+
+## 14. Actual UAT final interaction polish — 2026-10-22
+
+The Owner asked to continue beyond the already authenticated M5 CRUD UAT. No production writes or main merge occurred.
+
+### Exact-head and environment
+- Canonical cumulative **Draft PR #473** remains the sole merge candidate; `main` unchanged.
+- China Mac independent UAT at `http://127.0.0.1:18654` (127.0.0.1 loopback only); test data only. UAT remains logged in through ERP normal session.
+- **Real read-back** at this checkpoint: `users=1`, `b2b_organizations=2`, `b2b_contacts=2`, `b2b_cases=2`, `b2b_case_activities=14`, `customers=0` (no Woo consumer writes).
+- Authenticated real UAT desktop width 1280: data table visible, mobile-card container hidden, 2 Case rows, document width=1280; authenticated Chrome width 390: mobile cards visible, table hidden, 2 Case cards, document width=390; neither redirected to login.
+
+### More real UI verification completed
+1. Status filter `lost` through the actual inquiry form produced `/b2b/inquiries?search=&source=&stage=&status=lost`, one result (Poland lost Case), excluded Malaysia open Case.
+2. Direct `?status=open` produced one result (Malaysia open Case), excluded Poland lost Case.
+3. Reviewing the real Case detail/list found untranslated **internal storage codes**, e.g. `lost`, `owner_assigned`, `in_progress` presented to the Chinese-language ERP operator. Corrected frontend **display-only** localized labels in `resources/js/Pages/B2B/Cases/Show.vue` and `Index.vue` for status, stage, handling, source, priority, distributor *interest*, and append-only activity types. No SQL statuses, saved Case or audit logic changed. The inbox column `最后来信` was renamed `最近询盘` because the M4 workflow includes manually recorded enquiries and must not misrepresent them as emails.
+4. Executed `npm run typecheck` exit 0 and `npm run build` exit 0 in isolated UAT. Vite emitted only the pre-existing nonblocking large-bundle advisory.
+5. Loaded the **actual logged-in** Case inbox and closed Case detail in Chrome: `已流失` and `人工录入` appeared in inbox; `Retail（零售）`, `已流失`, `关闭时间` and `分配业务负责人` appeared in detail, and raw `owner_assigned` was no longer visible.
+6. Re-executed isolated PHPUnit suite after UI work: `tests/Feature/B2B`, `tests/Feature/AppShellNavigationTest.php`, `tests/Architecture/ModuleProviderTest.php` — **58 tests / 635 assertions PASS**. Refreshed SHA-256 integrity pins for the two updated Vue files in architecture contract.
+7. No additional UAT users were seeded or given actual B2C access; cross-user negative owner visibility remains backed by automated feature tests. One-owner UI reassignment should not be misreported as multi-user reassignment.
+
+### Current gate
+M1–M5 implementation is ready for **Owner visual review** of the actual authenticated China Mac UAT. This is a browser responsive 390px approximation, not real hardware M14. Still **HOLD**: physical M14 Owner PASS, true multi-role browser UAT when a second authorized test role exists, GitHub-hosted Actions billing/budget restriction, unrelated baseline drift in Issue #474, and final exact-head merge/deploy authorization.
+
+Do not promote PR #473 to main or Production on the strength of local tests alone.
