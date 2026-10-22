@@ -219,3 +219,38 @@ This continues the Owner-authorized **independent local UAT**, and does not supe
 The standard Artisan admin-account provisioning invocation was blocked by the platform safety control before execution. No alternate account seeding, direct SQL insertion, local admin impersonation, authentication bypass or workaround was attempted. This is a meaningful **hard stop** for authenticated CRUD and permission-role browser UAT. Continue only after legitimate authorized human account provisioning through a permitted administrative workflow, then validate actual B2B case creation, role isolation, state changes and Owner PC/physical M14 acceptance.
 
 **Result:** UAT host online, guest UI and anonymous security checks PASS. Authenticated UAT **NOT PASS**, PR remains Draft; GitHub main, existing `http://erp.b`, remote Dev, and Production unchanged.
+
+
+## 13. Authenticated UAT end-to-end acceptance — 2026-10-22
+
+Following the Owner's confirmation of native ERP user creation, the China Mac **independent local** UAT at `http://127.0.0.1:18654` was verified to contain exactly one `administrator` user with all seven `b2b.*` rights, but **no C-end customer records**. The Owner logged in through the normal Chrome login page. The same authenticated Chrome tab opened `/b2b/followups`, then the following real UI operations were performed using native page input/change/click events (not direct SQL writes, fake API responses, cookie extraction or auth bypass).
+
+### Authenticated B2B operations verified
+| Operation | Real UI evidence | Database / state verification |
+|---|---|---|
+| Create Malaysia prospect | `/b2b/companies/create` → `/b2b/companies/1` with no validation error | `UAT SAMPLE - Malaysia Wholesale`, primary synthetic contact |
+| Create Poland prospect | Same normal UI → `/b2b/companies/2` | `UAT SAMPLE - Poland Retail Partner`, primary synthetic contact |
+| Create Malaysia Case | Native form `/b2b/inquiries/create` → `/b2b/cases/1` | 100-unit `Naughty Clock` wholesale interest, primary contact linked, next follow-up 2026-10-26 |
+| Update stage | Native `PATCH` from detail form | `case_stage=contacted`, `handling_state=in_progress` persisted |
+| Add follow-up note | Native textarea + Save Notes | Recorded in append-only `b2b_case_activities`, visible in timeline after reload |
+| Create Poland Case | Native form → `/b2b/cases/2` | 250-unit Retail inquiry, linked PL contact |
+| Manager assignment | Normal Case detail assignment form | `owner_assigned` activity persisted; only one test admin exists, so cross-user UI assignment cannot be claimed |
+| Close Poland as Lost | Native Case status form, with required loss reason | `case_status=lost`, `handling_state=none`, `closed_at` persisted, no open-stage editing form |
+| Case inbox | `/b2b/inquiries` | Both synthetic cases present; no UI errors |
+| Follow-ups | `/b2b/followups` | Open Malaysia Case present; closed Poland Case excluded |
+| C-end isolation | Read-only DB counts before/after | `customers=0`; no WordPress, Woo, payment, mail or real order changes |
+
+**Actual UI defect caught and fixed:** closed Case detail originally showed only handling `none` and omitted the final Case status, loss reason and close timestamp. The first attempted patch placed `loss_reason_code` in the inbox serializer, not the detail serializer; a new PHPUnit Case-detail test caught it. The final fix moved the fields to the actual `show()` Inertia props and added clear status labels and conditional loss/closure details. Integrated PR #473 HEAD **`121d8de9b6f1b8ba6150a9d89b691f391f3fb7b8`**; UAT git HEAD verified identical.
+
+**Isolated runtime dependency fix:** UAT originally linked Composer `vendor` to the older scratch checkout, making PHP class autoloading and web route rendering resolve some classes from the wrong tree. Removed **only the UAT vendor symlink**, installed a fully independent Composer `vendor` in the UAT directory, and restarted **only** the isolated loopback PHP dev server on 18654 (no computer restart). Verified the `B2BCaseController` Reflection source path points to `/Users/a/AI/uat/erp-b2b-m5/`, not old scratch code. Post-fix targeted suite **58 tests / 635 assertions PASS** (SQLite memory), PHP lint and Vue typecheck/build PASS. Logged-in Chrome kept its authenticated session and confirmed `已流失`, loss reason and closing timestamp in the real Case detail UI.
+
+### Actual signed-in responsive Chrome checks
+- Chrome normal authenticated session, not synthetic Inertia props: dedicated temporary Chrome window resized to **390px viewport** showed two visible mobile Case cards, desktop **1280px** showed the original table, and both had document width equal to viewport width.
+- The following seven actual authenticated B2B pages were separately opened at 390px with **no document-level horizontal overflow, no rendered validation errors, and no login redirect**: `/b2b`, `/b2b/companies`, `/b2b/companies/1`, `/b2b/inquiries/create`, `/b2b/cases/1`, `/b2b/cases/2`, `/b2b/followups`.
+- This is **Chrome responsive-width validation, not a physical iPhone 14 / M14 Owner PASS**; the Owner should review the actual isolated UAT in the China Mac Chrome on a physical device or approve a grounded alternative, and confirm layout/interaction before final release.
+
+### Final readback and gating
+- Independent UAT `GET /up = 200`; `users=1`, `b2b_organizations=2`, `b2b_contacts=2`, `b2b_cases=2` (one open, one lost), `b2b_case_activities=14`, `customers=0`. All records are unmistakably synthetic `UAT SAMPLE` business data.
+- UAT git HEAD = integrated PR #473 HEAD = `121d8de9b6f1b8ba6150a9d89b691f391f3fb7b8`, UAT tracked worktree clean.
+- Administrator-only browser UAT does **not** prove cross-user sales assignment in a real browser. Negative-role/owner restrictions remain backed by the separately passed automated PHPUnit suite, and may be physically exercised when a legitimately created second UAT role is available.
+- Remaining **HOLD**, not silently waived: physical M14 Owner final visual PASS; GitHub-hosted Actions account payment/budget restriction; inherited menu/architecture/C-end baseline debt tracked in #474; exact-head main merge/deploy authorization. No main merge, public Dev/WWW deployment, real lead import, or production mutation performed.
