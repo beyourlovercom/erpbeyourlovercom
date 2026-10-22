@@ -17,7 +17,11 @@ final class B2BCompanyController
         $search = trim((string) $request->query('search', ''));
         $query = B2BOrganization::query()->whereNull('archived_at');
         if (! $request->user()->hasPermission('b2b.view_all')) {
-            $query->where('owner_id', $request->user()->getAuthIdentifier());
+            $userId = $request->user()->getAuthIdentifier();
+            $query->where(function ($visible) use ($userId): void {
+                $visible->where('owner_id', $userId)
+                    ->orWhereHas('cases', fn ($cases) => $cases->where('owner_id', $userId));
+            });
         }
         if ($search !== '') {
             $query->where('display_name', 'like', '%'.str_replace(['%', '_'], ['\%', '\_'], $search).'%');
@@ -91,13 +95,21 @@ final class B2BCompanyController
                 'contacts' => $organization->contacts()->orderByDesc('is_primary')->orderBy('id')
                     ->get(['id', 'name', 'job_title', 'email_normalized', 'phone', 'is_primary'])->toArray(),
             ],
-            'canOperate' => $request->user()->hasPermission('b2b.operate'),
+            'canOperate' => $request->user()->hasPermission('b2b.operate') && (
+                $request->user()->hasPermission('b2b.view_all')
+                || (int) $organization->owner_id === (int) $request->user()->getAuthIdentifier()
+            ),
         ]);
     }
 
     public function storeContact(Request $request, B2BOrganization $organization): RedirectResponse
     {
         $this->assertCanSee($request, $organization);
+        // Assigned-case access grants company read access, not the right to change
+        // another salesperson's entire company/contact directory.
+        if (! $request->user()->hasPermission('b2b.view_all')) {
+            abort_unless((int) $organization->owner_id === (int) $request->user()->getAuthIdentifier(), 403);
+        }
         if (is_string($request->input('email'))) {
             $request->merge(['email' => strtolower(trim($request->input('email')))]);
         }
@@ -122,7 +134,10 @@ final class B2BCompanyController
     {
         abort_if($organization->archived_at !== null, 404);
         if (! $request->user()->hasPermission('b2b.view_all')) {
-            abort_unless((int) $organization->owner_id === (int) $request->user()->getAuthIdentifier(), 404);
+            $actorId = $request->user()->getAuthIdentifier();
+            $isOwner = (int) $organization->owner_id === (int) $actorId;
+            $hasAssignedCase = $organization->cases()->where('owner_id', $actorId)->exists();
+            abort_unless($isOwner || $hasAssignedCase, 404);
         }
     }
 }
