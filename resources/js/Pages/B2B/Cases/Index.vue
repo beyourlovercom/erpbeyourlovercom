@@ -8,6 +8,8 @@ const props=defineProps<{followupsOnly:boolean;overdueOnly:boolean;cases:Page;me
 const state=reactive({...props.filters})
 const run=()=>router.get(props.followupsOnly ? '/b2b/followups' : '/b2b/inquiries',state,{preserveState:true,replace:true})
 const stageName=(s:string)=>({new:'新询盘',contacted:'已联系',qualified:'已验证',quoted:'已报价',negotiating:'谈判中'} as Record<string,string>)[s]||s
+const statusName=(s:string)=>({open:'处理中',won:'已成交',lost:'已流失',spam:'无效'} as Record<string,string>)[s]||s
+const sourceName=(s:string)=>({manual:'人工录入',website_form:'网站表单',email:'邮件',whatsapp_business:'WhatsApp Business',trade_show:'展会',referral:'推荐',other:'其他'} as Record<string,string>)[s]||s
 </script>
 <template>
   <Head :title="followupsOnly ? 'B2B 跟进任务 · BYL ERP' : 'B2B 询盘 · BYL ERP'" />
@@ -28,14 +30,14 @@ const stageName=(s:string)=>({new:'新询盘',contacted:'已联系',qualified:'�
         <button type="submit">查询</button>
       </form>
       <div class="table-scroll">
-        <table><thead><tr><th>询盘编号</th><th>客户 / 主题</th><th>国家</th><th>来源</th><th>产品 / 数量</th><th>阶段</th><th>状态</th><th>最后来信</th></tr></thead>
+        <table><thead><tr><th>询盘编号</th><th>客户 / 主题</th><th>国家</th><th>来源</th><th>产品 / 数量</th><th>阶段</th><th>状态</th><th>最近询盘</th></tr></thead>
           <tbody>
             <tr v-for="item in cases.data" :key="item.id">
               <td><Link :href="`/b2b/cases/${item.id}`">{{ item.case_number||'—' }}</Link></td>
               <td><strong>{{ item.organization||item.contact||'未分配客户' }}</strong><small>{{ item.title }}</small></td>
-              <td>{{ item.country_code||'—' }}</td><td>{{ item.source }}</td>
+              <td>{{ item.country_code||'—' }}</td><td>{{ sourceName(item.source) }}</td>
               <td>{{ item.product_interest||'—' }}<small v-if="item.requested_quantity">数量：{{ item.requested_quantity }}</small></td>
-              <td>{{ stageName(item.stage) }}</td><td>{{ item.status==='open'?'进行中':item.status }}</td>
+              <td>{{ stageName(item.stage) }}</td><td>{{ statusName(item.status) }}</td>
               <td>{{ item.last_inbound_at?item.last_inbound_at.slice(0,10):'—' }}</td>
             </tr>
             <tr v-if="!cases.data.length"><td colspan="8" class="empty">暂无询盘记录；仅实际存储成功的 Case 会在此显示</td></tr>
@@ -46,7 +48,7 @@ const stageName=(s:string)=>({new:'新询盘',contacted:'已联系',qualified:'�
         <article v-for="item in cases.data" :key="item.id" class="mobile-case-card">
           <div class="mobile-case-top">
             <Link :href="`/b2b/cases/${item.id}`" class="mobile-case-number">{{ item.case_number || '查看询盘' }}</Link>
-            <span class="mobile-case-status">{{ item.status === 'open' ? '进行中' : item.status }}</span>
+            <span class="mobile-case-status">{{ statusName(item.status) }}</span>
           </div>
           <Link :href="`/b2b/cases/${item.id}`" class="mobile-case-company">{{ item.organization || item.contact || '未分配客户' }}</Link>
           <p class="mobile-case-title">{{ item.title }}</p>
@@ -55,7 +57,7 @@ const stageName=(s:string)=>({new:'新询盘',contacted:'已联系',qualified:'�
             <div><dt>阶段</dt><dd>{{ stageName(item.stage) }}</dd></div>
             <div><dt>产品</dt><dd>{{ item.product_interest || '—' }}</dd></div>
             <div><dt>数量</dt><dd>{{ item.requested_quantity ?? '待确认' }}</dd></div>
-            <div><dt>来源</dt><dd>{{ item.source }}</dd></div>
+            <div><dt>来源</dt><dd>{{ sourceName(item.source) }}</dd></div>
             <div><dt>下次跟进</dt><dd>{{ item.next_follow_up_at ? item.next_follow_up_at.slice(0,10) : '未安排' }}</dd></div>
           </dl>
         </article>
