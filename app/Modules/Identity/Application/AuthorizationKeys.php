@@ -49,6 +49,7 @@ enum AuthorizationKeys: string
     case GuidesView = 'guides.view';
     case GuidesManage = 'guides.manage';
     case AccountingView = 'accounting.view';
+    case FinanceB2BCashConfirm = 'finance.b2b_cash_confirm';
     case OrdersView = 'orders.view';
     case OrdersCreate = 'orders.create';
     case OrdersEdit = 'orders.edit';

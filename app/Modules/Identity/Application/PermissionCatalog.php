@@ -100,6 +100,7 @@ final class PermissionCatalog
                 'label' => '财务',
                 'permissions' => [
                     ['key' => 'accounting.view', 'label' => '查看财务'],
+                    ['key' => 'finance.b2b_cash_confirm', 'label' => '财务核实 B2B 贸易收款/退款'],
                     ['key' => 'analysis.view', 'label' => '查看分析报表'],
                 ],
             ],
