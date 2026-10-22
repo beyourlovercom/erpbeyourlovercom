@@ -1,5 +1,5 @@
 {
-  "version": "2.2",
+  "version": "2.3",
   "status": "OWNER_APPROVED",
   "approved_at": "2026-10-22",
   "approved_head": "60ccafc2848a9453cdfe018268517ca7ca7324fb",
@@ -395,8 +395,38 @@
       "emoji": "💼",
       "function_zh": "独立管理企业客户、询盘、跟进、报价与经销商，不影响C端客户。",
       "status": "in_progress",
-      "progress": 15,
+      "progress": 45,
       "sort": 60
+    },
+    {
+      "code": "b2b-inquiries",
+      "parent_code": "b2b",
+      "level": 2,
+      "label_zh": "询盘管理",
+      "slug": "inquiries",
+      "url": "/b2b/inquiries",
+      "route": "b2b.inquiries.index",
+      "permission": "b2b.view",
+      "emoji": null,
+      "function_zh": "查看、筛选和跟踪企业采购询盘。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 10
+    },
+    {
+      "code": "b2b-companies",
+      "parent_code": "b2b",
+      "level": 2,
+      "label_zh": "企业客户",
+      "slug": "companies",
+      "url": "/b2b/companies",
+      "route": "b2b.companies.index",
+      "permission": "b2b.view",
+      "emoji": null,
+      "function_zh": "管理企业商业档案、采购联系人和业务负责人。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 20
     },
     {
       "code": "marketing",

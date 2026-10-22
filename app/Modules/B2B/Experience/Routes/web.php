@@ -2,6 +2,7 @@
 
 use App\Modules\B2B\Experience\Controllers\B2BOverviewController;
 use App\Modules\B2B\Experience\Controllers\B2BCompanyController;
+use App\Modules\B2B\Experience\Controllers\B2BCaseController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth', 'can:b2b.view'])
@@ -17,4 +18,9 @@ Route::middleware(['web', 'auth', 'can:b2b.view', 'can:b2b.operate'])->group(fun
     Route::get('/b2b/companies/create', [B2BCompanyController::class, 'create'])->name('b2b.companies.create');
     Route::post('/b2b/companies', [B2BCompanyController::class, 'store'])->name('b2b.companies.store');
     Route::post('/b2b/companies/{organization}/contacts', [B2BCompanyController::class, 'storeContact'])->whereNumber('organization')->name('b2b.companies.contacts.store');
+});
+
+Route::middleware(['web', 'auth', 'can:b2b.view'])->group(function (): void {
+    Route::get('/b2b/inquiries', [B2BCaseController::class, 'index'])->name('b2b.inquiries.index');
+    Route::get('/b2b/cases/{case}', [B2BCaseController::class, 'show'])->whereNumber('case')->name('b2b.cases.show');
 });
