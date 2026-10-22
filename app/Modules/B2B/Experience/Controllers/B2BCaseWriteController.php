@@ -191,7 +191,7 @@ final class B2BCaseWriteController
         abort_unless($request->user()->hasPermission('b2b.assign') && $request->user()->hasPermission('b2b.view_all'), 403);
         $data = $request->validate(['owner_id' => ['required', 'integer', 'exists:users,id']]);
         $next = User::query()->whereKey((int) $data['owner_id'])->where('is_active', true)->firstOrFail();
-        abort_unless($next->hasPermission('b2b.view'), 422, '目标业务员缺少 B2B 查看权限');
+        abort_unless($next->hasPermission('b2b.view') && $next->hasPermission('b2b.operate'), 422, '目标业务员缺少 B2B 业务查看或跟进权限');
         $actor = $request->user();
 
         DB::transaction(function () use ($case, $actor, $next): void {

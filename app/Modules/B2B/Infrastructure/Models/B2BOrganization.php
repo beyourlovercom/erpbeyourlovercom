@@ -19,6 +19,11 @@ final class B2BOrganization extends Model
         return ['archived_at' => 'datetime'];
     }
 
+    public function cases(): HasMany
+    {
+        return $this->hasMany(B2BCase::class, 'organization_id');
+    }
+
     public function contacts(): HasMany
     {
         return $this->hasMany(B2BContact::class, 'organization_id');

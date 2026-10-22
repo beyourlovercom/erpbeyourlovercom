@@ -44,8 +44,13 @@ final class B2BCaseController
             });
         }
 
-        $cases = $query->with(['organization:id,display_name,country_code', 'primaryContact:id,name'])
-            ->orderByDesc('last_inbound_at')->paginate(30)->withQueryString();
+        $ordered = $query->with(['organization:id,display_name,country_code', 'primaryContact:id,name']);
+        if ($followupsOnly) {
+            $ordered->orderBy('next_follow_up_at')->orderBy('id');
+        } else {
+            $ordered->orderByDesc('last_inbound_at')->orderByDesc('id');
+        }
+        $cases = $ordered->paginate(30)->withQueryString();
 
         return Inertia::render('B2B/Cases/Index', [
             'cases' => $cases->through(fn (B2BCase $case): array => [
