@@ -1283,7 +1283,7 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/Pages/B2B/Companies/Index.vue' => 'f90ca46af35a0dcf814f784016220b7fd4eb49f1ae6b703c4f7a98e26bdcfeda',
         'resources/js/Pages/B2B/Companies/Create.vue' => 'fce427039e7b5155978600108c7b2d968dd6860f51fb8e8b8cebb8a092bf7a37',
         'resources/js/Pages/B2B/Companies/Show.vue' => 'd0e701648af3ef32829eac9c3b86593589118d67bee21d6cf3ad2bb1ce087a90',
-        'resources/js/Pages/B2B/Cases/Index.vue' => '45c7275d67bdb9bee2abd8a0d6e7cbd417a5fdcdff9742b0e0dab17f0d125b39',
+        'resources/js/Pages/B2B/Cases/Index.vue' => '21487d44a95ffeec023ef44b100f1744ecc19c553fd6c90b5f685efee172f94f',
         'resources/js/Pages/B2B/Cases/Show.vue' => '274c5f20084ea88e94474945dbe58907244de87da4cc203aaa08fef00dca7c8d',
         'resources/js/Pages/B2B/Cases/Create.vue' => '7c7ccfef1aa129a64ad041a0bf79f5e6a3439695d42a6bc0e8e6f50a40f52f20',
     ];
