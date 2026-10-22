@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('b2b_cases', function (Blueprint $table): void {
             $table->id();
             $table->string('case_number', 64)->nullable()->unique();
-            $table->foreignId('organization_id')->nullable()->constrained('b2b_organizations')->cascadeOnDelete();
+            $table->foreignId('organization_id')->nullable()->constrained('b2b_organizations')->restrictOnDelete();
             $table->foreignId('primary_contact_id')->nullable()->constrained('b2b_contacts')->nullOnDelete();
             $table->foreignId('owner_id')->nullable()->constrained('users')->nullOnDelete();
             $table->string('title', 255);
@@ -44,7 +44,7 @@ return new class extends Migration
 
         Schema::create('b2b_case_activities', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('case_id')->constrained('b2b_cases')->cascadeOnDelete();
+            $table->foreignId('case_id')->constrained('b2b_cases')->restrictOnDelete();
             $table->foreignId('actor_user_id')->nullable()->constrained('users')->nullOnDelete();
             $table->string('activity_type', 64);
             $table->text('body_text')->nullable();
