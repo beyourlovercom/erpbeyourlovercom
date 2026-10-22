@@ -66,8 +66,6 @@ final class B2BCaseController
                 'stage' => $case->case_stage,
                 'status' => $case->case_status,
                 'handling' => $case->handling_state,
-                'loss_reason_code' => $case->loss_reason_code,
-                'closed_at' => $case->closed_at?->toIso8601String(),
                 'next_follow_up_at' => $case->next_follow_up_at?->toIso8601String(),
                 'last_inbound_at' => $case->last_inbound_at?->toIso8601String(),
             ]),
@@ -109,6 +107,8 @@ final class B2BCaseController
                 'stage' => $case->case_stage,
                 'status' => $case->case_status,
                 'handling' => $case->handling_state,
+                'loss_reason_code' => $case->loss_reason_code,
+                'closed_at' => $case->closed_at?->toIso8601String(),
                 'next_follow_up_at' => $case->next_follow_up_at?->toIso8601String(),
             ],
             'activities' => $case->activities()->orderByDesc('occurred_at')->limit(100)
