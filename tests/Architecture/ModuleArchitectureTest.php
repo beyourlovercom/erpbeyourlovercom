@@ -62,6 +62,7 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/B2B/Experience/Controllers/B2BCaseController.php',
         'app/Modules/B2B/Experience/Controllers/B2BCaseWriteController.php',
         'app/Modules/B2B/Experience/Routes/web.php',
+        'app/Modules/B2B/Infrastructure/B2BVerifiedSourceIntake.php',
         'app/Modules/B2B/Infrastructure/Models/B2BOrganization.php',
         'app/Modules/B2B/Infrastructure/Models/B2BContact.php',
         'app/Modules/B2B/Infrastructure/Models/B2BCase.php',
@@ -1113,7 +1114,7 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_09_11_200100_create_traffic_tables.php' => '1d906571872f99f3958e97469e0d34e26aeaae35d0db886b21251b8743233f46',
         'database/migrations/2026_10_22_000001_register_b2b_permissions.php' => '2f00112181f771a2477cbde3a1917abdb5020ada57a42a2528cd3fc6d2b86c08',
         'database/migrations/2026_10_22_000100_create_b2b_organization_contacts.php' => '12efcd4e3a700dec7e15209f07309de4e980bdc22f7d211ee11f5515cd894096',
-        'database/migrations/2026_10_22_000200_create_b2b_cases_and_activity.php' => 'e362e71e171fe6d7d1167148473f002cda297f4030e57292d3848dab72634842',
+        'database/migrations/2026_10_22_000200_create_b2b_cases_and_activity.php' => '8a586cf548affe918732aa04c067b933022ff4e6f3a177269e3d62b98e722911',
     ];
 
     private const FRONTEND_FILES = [
