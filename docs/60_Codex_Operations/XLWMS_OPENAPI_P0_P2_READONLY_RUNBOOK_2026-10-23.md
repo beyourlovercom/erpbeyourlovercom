@@ -31,7 +31,7 @@ XLWMS_APP_KEY=
 XLWMS_APP_SECRET=
 XLWMS_TIMEOUT_SECONDS=15
 XLWMS_WAREHOUSE_MAP_JSON='{"US-NY":"OMS-WAREHOUSE-CODE"}'
-XLWMS_SKU_MAP_JSON='{"US-NY":{"ERP-SKU":"OMS-SKU"}}'
+XLWMS_SKU_MAP_JSON='{}' # optional exceptions only, e.g. {"US-NY":{"ERP-ALIAS":"OMS-NATIVE-SKU"}}'
 ```
 
 App Key / Secret supplied by warehouse are partially masked in chat, thus **no authenticated API execution** can be claimed until they are securely injected into the US Dev environment.
@@ -58,7 +58,7 @@ The second calls only the three allowlisted read-only endpoints. It prints HTTP 
 1. Disabled/missing credentials never make network calls.
 2. Sample signature canonicalization is covered by PHP tests.
 3. All P1 calls are signed, HTTPS, no redirects and no create endpoint available.
-4. ERP warehouse and SKU mapping is explicit, per warehouse, and fails closed if missing; configuration-only readiness is named `configured_unverified`, not ready to dispatch.
+4. ERP-to-OMS warehouse binding is explicit. SKUs use identical codes by default with **optional warehouse-scoped exception overrides only**. A missing SKU override is not an error; remote catalog existence remains unverified. Configuration-only readiness is named `configured_unverified`, never ready to dispatch.
 5. Remote existence of warehouse, SKU, channel and stock is **unverified** until real OMS authenticated read-only responses are inspected.
 6. No production modifications, no external orders, no migrations or customer-facing UI.
 
@@ -69,9 +69,9 @@ P3: outboundOrder/create and idempotency/remote read-after-timeout; P4: controll
 ## Verification and current blockers
 
 - Available: GitHub source review, PHP syntax / dedicated regression tests via CI (once workflow completes).
-- Blocked: current self-hosted Desktop Commander monthly usage limit; do not retry, reconnect or restart devices.
-- Blocked: complete masked credentials unavailable here; live read-only OMS auth and remote catalog mapping are not claimed.
-- Defer Prod/UAT proof until an authorized runtime and secrets are available.
+- The official Desktop Commander entry previously returned a usage limit; the self-hosted formal OAuth MCP was used on US Mac mini without device restarts.
+- Owner's actual one-shot test screenshot showed `verified`, HTTP 200, OMS code 200, and one warehouse row; no secrets are saved to source control or application storage by the page.
+- SKU existence, native shipping-channel selection, remote warehouse identity and Dev deployment/Production release remain separate proof gates.
 
 ## Admin-only one-time credential reality check (new)
 
@@ -90,3 +90,12 @@ P3: outboundOrder/create and idempotency/remote read-after-timeout; P4: controll
 Local US Mac isolated worktree PHP lint and targeted PHP regression tests passed: 12 tests / 59 assertions; Vite build and vue-tsc typecheck passed after correcting optional carrier integration prop. These are **simulated responses**, not live vendor authorization evidence. GitHub Actions remote jobs were failing at runner scheduling (no job steps available); US Mac local verification is the reliable source for this package.
 
 The formal `https://erp.beyourlover.com` Production endpoint must not be changed without its independent Production release authorization, even though read-only verification itself is not an outbound shipment operation.
+
+## Owner-frozen default-match contract (2026-10-23)
+
+- **Warehouse binding remains explicit:** ERP warehouse code -> real OMS warehouse code; never infer from labels or automatically bind another warehouse.
+- **SKU identity by default:** Submit the ERP SKU unchanged when the remote catalog confirms that same exact SKU. This is not a bulk mapping process. Store only differing warehouse-specific SKU aliases as exceptional overrides. Missing/ambiguous remote SKU or inactive stock must block that order in the future dispatch phase.
+- **Shipping channel is NOT mapped:** ERP channel/service master values are created from the actual warehouse's available OMS services. Future outbound payload must use the OMS native service code stored in ERP directly, with its human-friendly name separately displayed. Never invent a translation dictionary or guess service codes from names.
+- A channel absent, disabled, or not accepted by the selected warehouse must be flagged for administrator correction or creation in the ERP native carrier master; do not silently substitute another channel.
+- These read-only P0-P2 checks never assert a channel or SKU is remotely verified until a live catalog response has been compared. `auto_dispatch_enabled=false` remains hard OFF.
+- User-visible integration page should show connection, saved credentials after a separate secure-storage implementation and explicit warehouse binding. **Do not reintroduce mandatory SKU/channel mapping setup.** Normal matching is automatic; exceptions only.
