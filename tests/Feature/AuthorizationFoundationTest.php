@@ -47,7 +47,7 @@ class AuthorizationFoundationTest extends TestCase
             ->expectsQuestion('Email', 'bad-email')
             ->expectsQuestion('Password', 'short')
             ->expectsQuestion('Confirm password', 'different')
-            ->expectsChoice('Role', 'operator', ['super_admin', 'admin', 'manager', 'operator'])
+            ->expectsChoice('Role', 'operations', ['logistics', 'sales_representative', 'kol_specialist', 'kol_manager', 'finance', 'operations', 'writer', 'administrator'])
             ->assertExitCode(1);
         $this->assertDatabaseCount('users', 0);
         $this->artisan('erp:user:create')
@@ -55,7 +55,7 @@ class AuthorizationFoundationTest extends TestCase
             ->expectsQuestion('Email', 'owner@example.test')
             ->expectsQuestion('Password', 'a-strong-password-123')
             ->expectsQuestion('Confirm password', 'a-strong-password-123')
-            ->expectsChoice('Role', 'operator', ['super_admin', 'admin', 'manager', 'operator'])
+            ->expectsChoice('Role', 'operations', ['logistics', 'sales_representative', 'kol_specialist', 'kol_manager', 'finance', 'operations', 'writer', 'administrator'])
             ->assertExitCode(0);
         $this->assertDatabaseHas('users', ['email' => 'owner@example.test']);
         $this->assertDatabaseMissing('audit_records', ['after->password' => 'a-strong-password-123']);
