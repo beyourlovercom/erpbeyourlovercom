@@ -72,3 +72,21 @@ P3: outboundOrder/create and idempotency/remote read-after-timeout; P4: controll
 - Blocked: current self-hosted Desktop Commander monthly usage limit; do not retry, reconnect or restart devices.
 - Blocked: complete masked credentials unavailable here; live read-only OMS auth and remote catalog mapping are not claimed.
 - Defer Prod/UAT proof until an authorized runtime and secrets are available.
+
+## Admin-only one-time credential reality check (new)
+
+- Page after Dev deployment: `/logistics/integrations/xlwms`.
+- Menu access: Logistics → Carriers → **仓库 API · 领星 OMS** (visible only with `system.permissions.manage`).
+- Dedicated switch: `XLWMS_MANUAL_PROBE_ENABLED=true` on the authorized Dev runtime. This switch does **not** enable `XLWMS_ENABLED` catalog jobs or any outbound functionality.
+- Enter the real App Key and Secret in the authenticated page; click “测试连接（仅查询仓库）”.
+- This request sends one POST to `https://api.xlwms.com/openapi/v1/warehouse/options`, returns a sanitized JSON verdict, and clears the Secret from browser form state.
+- **No persistence**: page does not save credentials or expose them in Inertia props, redirects, sessions, database, settings table, logs, or Git.
+- Requires `system.permissions.manage` at GET and POST routes, CSRF, a 5-per-minute rate limit, no HTTP redirects and no URL override.
+- `verified` requires HTTP 200, explicit success code / flag and presence of `data`. If the vendor uses an undocumented response shape, report `unconfirmed` rather than claiming authentication.
+- **Read-only**: never invoke `outboundOrder/create`. No real order, warehouse inventory or WooCommerce status writes.
+
+### Readiness after P0-P2 branch UI addition
+
+Local US Mac isolated worktree PHP lint and targeted PHP regression tests passed: 12 tests / 59 assertions; Vite build and vue-tsc typecheck passed after correcting optional carrier integration prop. These are **simulated responses**, not live vendor authorization evidence. GitHub Actions remote jobs were failing at runner scheduling (no job steps available); US Mac local verification is the reliable source for this package.
+
+The formal `https://erp.beyourlover.com` Production endpoint must not be changed without its independent Production release authorization, even though read-only verification itself is not an outbound shipment operation.
