@@ -23,7 +23,7 @@ final class XlwmsReadOnlyConnectorTest extends TestCase
 
         $this->assertSame($expected, XlwmsSignature::sign('test-key', 'test-secret', '1653640516', $data));
         $this->assertSame(
-            '{"outer":{"a":1,"Z":2},"List":[{"a":1,"b":2}]}',
+            '{"List":[{"a":1,"b":2}],"outer":{"a":1,"Z":2}}',
             XlwmsSignature::dataJson((object) ['outer' => ['Z' => 2, 'a' => 1], 'List' => [['b' => 2, 'a' => 1]]])
         );
     }
@@ -54,7 +54,7 @@ final class XlwmsReadOnlyConnectorTest extends TestCase
         config()->set('xlwms.base_url', 'https://api.xlwms.com/openapi/v1');
         config()->set('xlwms.timeout_seconds', 10);
         config()->set('xlwms.auto_dispatch_enabled', false);
-        Http::fake(['api.xlwms.com/*' => Http::response(['code' => 200, 'data' => []])]);
+        Http::fake(['https://api.xlwms.com/*' => Http::response(['code' => 200, 'data' => []])]);
 
         $client = new XlwmsReadOnlyClient();
         $this->assertSame(200, $client->warehouses()['http_status']);
