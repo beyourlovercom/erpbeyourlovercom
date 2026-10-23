@@ -77,12 +77,18 @@ final class XlwmsReadOnlyClient
 
         // Do not call ->throw(): its exception can contain the authcode URL.
         // Redirects are off; avoid leaking the signed request to another host.
-        $response = Http::acceptJson()
-            ->asJson()
-            ->withOptions(['allow_redirects' => false])
-            ->connectTimeout(5)
-            ->timeout((int) config('xlwms.timeout_seconds', 15))
-            ->post($baseUrl.'/'.$endpoint.'?authcode='.$signature, $payload);
+        try {
+            $response = Http::acceptJson()
+                ->asJson()
+                ->withOptions(['allow_redirects' => false])
+                ->connectTimeout(5)
+                ->timeout((int) config('xlwms.timeout_seconds', 15))
+                ->post($baseUrl.'/'.$endpoint.'?authcode='.$signature, $payload);
+        } catch (\Throwable) {
+            // Signed URL can be embedded in transport exceptions; never
+            // chain the original exception into logs or user-facing output.
+            throw new RuntimeException('XLWMS read-only transport failed.');
+        }
 
         if (! $response->successful()) {
             throw new RuntimeException('XLWMS read-only request failed with HTTP '.$response->status().'.');
