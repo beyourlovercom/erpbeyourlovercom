@@ -16,7 +16,8 @@ final class XlwmsSingleOrderController
         return Inertia::render('Logistics/Oversea/XlwmsOrder', [
             'preview' => $service->preview($order),
             'canDispatch' => $access->allows($request->user())
-                && (bool) config('xlwms.live_dispatch_enabled',false),
+                && (bool) config('xlwms.live_dispatch_enabled',false)
+                && (int) config('xlwms.live_order_id', 0) === $order,
         ]);
     }
 

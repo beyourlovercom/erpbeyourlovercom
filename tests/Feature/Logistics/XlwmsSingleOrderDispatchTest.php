@@ -97,10 +97,29 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_global_live_switch_without_exact_owner_order_still_cannot_send(): void
+    {
+        $o=$this->orderFixture();
+        config()->set('xlwms.live_dispatch_enabled',true);
+        config()->set('xlwms.live_order_id',0);
+        Http::fake();
+        $s=app(SingleOrderDispatch::class);
+        $p=$s->preview($o->id);
+        try {
+            $s->dispatch($o->id,$p['payload_hash'],3);
+            $this->fail('Expected specific order allowlist denial');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            $this->assertSame(423,$e->getStatusCode());
+        }
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('xlwms_dispatch_attempts',0);
+    }
+
     public function test_duplicate_woocommerce_order_in_oms_blocks_creation(): void
     {
         $o=$this->orderFixture();
         config()->set('xlwms.live_dispatch_enabled',true);
+        config()->set('xlwms.live_order_id',$o->id);
         Http::fake(fn($req)=>Http::response([
             'code'=>200,'data'=>[['platformOrderNo'=>$o->external_order_number,'outboundOrderNo'=>'OMS-EXISTS']],
         ]));
@@ -118,6 +137,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
     {
         $o=$this->orderFixture();
         config()->set('xlwms.live_dispatch_enabled',true);
+        config()->set('xlwms.live_order_id',$o->id);
         Http::fake(function($req) use ($o) {
             if(str_contains($req->url(),'outboundOrder/detail'))return Http::response(['code'=>200,'data'=>[]]);
             if(str_contains($req->url(),'logistics/channel/list'))return Http::response(['code'=>200,'data'=>[
@@ -150,6 +170,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
     {
         $o=$this->orderFixture();
         config()->set('xlwms.live_dispatch_enabled',true);
+        config()->set('xlwms.live_order_id',$o->id);
         Http::fake(function($req){
             if(str_contains($req->url(),'outboundOrder/create'))throw new \RuntimeException('simulated timeout');
             if(str_contains($req->url(),'logistics/channel/list'))return Http::response(['code'=>200,'data'=>[

@@ -38,7 +38,10 @@ final class SingleOrderDispatch
     /** @return array{state:string,oms_order_no:?string} */
     public function dispatch(int $orderId, string $expectedHash, int $actorId): array
     {
-        abort_unless((bool) config('xlwms.live_dispatch_enabled', false), 423, '单笔真实下发尚未授权启用');
+        abort_unless((bool) config('xlwms.live_dispatch_enabled', false)
+            && (int) config('xlwms.live_order_id', 0) > 0
+            && (int) config('xlwms.live_order_id', 0) === $orderId,
+            423, '当前具体订单尚未获得单笔真实下发授权');
         $preview=$this->preview($orderId);
         abort_unless($preview['ready_for_remote_check'],409,'订单预检未通过或已有发货尝试');
         abort_unless(hash_equals($preview['payload_hash'],$expectedHash),409,'订单字段已更改，请重新预览');
