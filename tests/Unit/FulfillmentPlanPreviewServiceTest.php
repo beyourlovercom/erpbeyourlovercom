@@ -7,10 +7,14 @@ use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\UsFulfillmentZoneResolver;
 use App\Modules\Logistics\Application\WarehouseRoutingPolicy;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 final class FulfillmentPlanPreviewServiceTest extends TestCase
 {
+    // CarrierServiceCatalog reads live carrier tables; migrate only ephemeral test SQLite.
+    use RefreshDatabase;
+
     public function test_military_address_blocks_when_no_single_us_warehouse_can_fulfill_without_factory(): void
     {
         $warehouses = [
