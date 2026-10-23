@@ -2,28 +2,27 @@
 
 namespace App\Modules\Logistics\Experience\Controllers;
 
+use App\Modules\Inventory\Application\InventoryService;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use Inertia\Inertia;
 use Inertia\Response;
 
-/**
- * One-time warehouse integrations live under /settings/warehouses.
- * No provider secrets or warehouse assignments are exposed by the index.
- */
+/** The existing Warehouse Master is the only source of warehouse settings. */
 final class WarehouseSettingsController
 {
-    public function index(): Response
+    public function index(InventoryService $inventory): Response
     {
+        $warehouses = Warehouse::query()->orderBy('name')->get(['id', 'slug', 'code', 'name', 'country_code', 'is_active']);
         return Inertia::render('Settings/Warehouses/Index', [
-            'integrations' => [
-                [
-                    'id' => 'xlwms',
-                    'label' => '领星 OMS · 世迈仓 OpenAPI',
-                    'url' => '/settings/warehouses/xlwms',
-                    'capability' => 'read_only_probe',
-                    'configured' => false,
-                    'auto_dispatch_enabled' => false,
-                ],
-            ],
+            'warehouses' => $warehouses->map(fn (Warehouse $w): array => [
+                'id' => (int) $w->id,
+                'code' => (string) $w->code,
+                'name' => (string) $w->name,
+                'country_code' => $w->country_code,
+                'is_active' => (bool) $w->is_active,
+                'url' => '/inventory/'.rawurlencode($inventory->warehousePublicSlug($w)).'?tab=config',
+            ])->values()->all(),
+            'autoDispatchEnabled' => false,
         ]);
     }
 }
