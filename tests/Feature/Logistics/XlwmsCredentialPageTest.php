@@ -13,9 +13,11 @@ final class XlwmsCredentialPageTest extends TestCase
 {
     use RefreshDatabase;
 
+    private int $roleCounter = 0;
+
     private function userWith(array $permissions): User
     {
-        $role = Role::create(['key' => 'xlwms-test-'.count($permissions), 'label' => 'Test']);
+        $role = Role::create(['key' => 'xlwms-test-'.(++$this->roleCounter), 'label' => 'Test']);
         foreach ($permissions as $key) {
             $role->permissions()->create(['key' => $key, 'label' => $key]);
         }
