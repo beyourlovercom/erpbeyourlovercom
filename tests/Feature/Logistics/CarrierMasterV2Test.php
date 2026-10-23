@@ -50,7 +50,12 @@ final class CarrierMasterV2Test extends TestCase
         self::assertSame($air->id, $catalog->resolve('UPS', 'UPS Next Day Air')?->id);
 
         $air->forceFill(['is_active' => false])->save();
-        self::assertNull($catalog->resolve('UPS', 'UPS Next Day Air'));
+
+        // A request-scoped catalog intentionally caches its initial read.
+        // A new request resolves a fresh catalog and must reject disabled services.
+        $nextRequestCatalog = new CarrierServiceCatalog();
+        self::assertNull($nextRequestCatalog->resolve('UPS', 'UPS Next Day Air'));
+        self::assertSame($ground->id, $nextRequestCatalog->resolve('UPS', null)?->id);
     }
     public function test_blank_service_uses_carrier_default_and_dhl_uses_domestic_default_for_germany(): void
     {
