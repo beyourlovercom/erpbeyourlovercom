@@ -77,7 +77,8 @@ final class WarehouseController
             ),
             'canOperate'=>auth()->user()?->can(AuthorizationKeys::InventoryOperate->value) ?? false,
             'canManage'=>auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false,
-            'canManageOpenApi'=>auth()->user()?->can('system.permissions.manage') ?? false,
+            'canManageOpenApi'=>(auth()->user()?->can('system.permissions.manage') ?? false)
+                && strtoupper((string) $w->code) === 'US-SM',
             'openApiProbeEnabled'=>(bool) config('xlwms.manual_probe_enabled', false),
             'openApiConnection' => (auth()->user()?->can('system.permissions.manage') ?? false)
                 ? $this->openApiMetadata((int) $w->id) : null,
