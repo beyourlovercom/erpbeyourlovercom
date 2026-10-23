@@ -1,0 +1,55 @@
+name: ERP XLWMS Read-only P0-P2
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/Modules/Logistics/Infrastructure/Xlwms/**'
+      - 'app/Modules/Logistics/Application/XlwmsMappingReadinessService.php'
+      - 'app/Console/Commands/XlwmsReadOnlyAuditCommand.php'
+      - 'config/xlwms.php'
+      - 'tests/Feature/Logistics/XlwmsReadOnlyConnectorTest.php'
+      - '.github/workflows/erp-xlwms-readonly-p0p2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  xlwms-readonly:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: PHP syntax guard
+        run: |
+          php -l config/xlwms.php
+          php -l app/Modules/Logistics/Infrastructure/Xlwms/XlwmsSignature.php
+          php -l app/Modules/Logistics/Infrastructure/Xlwms/XlwmsReadOnlyClient.php
+          php -l app/Modules/Logistics/Application/XlwmsMappingReadinessService.php
+          php -l app/Console/Commands/XlwmsReadOnlyAuditCommand.php
+          php -l tests/Feature/Logistics/XlwmsReadOnlyConnectorTest.php
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Prepare isolated test environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+      - name: XLWMS isolated regression
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+          CACHE_STORE: array
+          QUEUE_CONNECTION: sync
+          SESSION_DRIVER: array
+          XLWMS_ENABLED: 'false'
+        run: php artisan test tests/Feature/Logistics/XlwmsReadOnlyConnectorTest.php
+      - name: Whitespace guard
+        run: git diff --check origin/main...HEAD
