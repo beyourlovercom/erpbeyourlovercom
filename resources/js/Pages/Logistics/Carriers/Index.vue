@@ -6,7 +6,7 @@ import StatusBar from '../../../Components/Logistics/StatusBar.vue'
 
 type CurrencyCost = { currency: string; total: number; average: number | null; shipments: number }
 type Carrier = { id: number; name: string; display_name: string; is_active: boolean; shipment_count: number; chargeable_weight_kg: number | null; chargeable_weight_coverage: number; costs_by_currency: CurrencyCost[]; this_month_count: number; last_shipped_at: string | null }
-const props = defineProps<{ carriers: Carrier[]; canOperate: boolean; canManageIntegrations: boolean; statusBar?: {key:string;label:string;url:string;count:number}[] }>()
+const props = defineProps<{ carriers: Carrier[]; canOperate: boolean; canManageIntegrations?: boolean; statusBar?: {key:string;label:string;url:string;count:number}[] }>()
 const createOpen = ref(false)
 const form = useForm({ name: '' })
 const createCarrier = () => form.post('/logistics/carriers', { preserveScroll: true, onSuccess: () => { form.reset(); createOpen.value = false } })
