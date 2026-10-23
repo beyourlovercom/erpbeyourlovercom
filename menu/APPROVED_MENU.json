@@ -1,8 +1,8 @@
 {
-  "version": "2.7",
+  "version": "2.8",
   "status": "OWNER_APPROVED",
-  "approved_at": "2026-10-22",
-  "approved_head": "60ccafc2848a9453cdfe018268517ca7ca7324fb",
+  "approved_at": "2026-10-23",
+  "approved_head": "49ce2543453ec54761ac8e45d3c665b668491ca1",
   "governed_levels": [
     1,
     2
@@ -489,6 +489,21 @@
       "sort": 70
     },
     {
+      "code": "marketing-traffic",
+      "parent_code": "marketing",
+      "level": 2,
+      "label_zh": "流量总览",
+      "slug": "traffic",
+      "url": "/marketing/traffic",
+      "route": "traffic.boss-dashboard",
+      "permission": "marketing.view",
+      "emoji": null,
+      "function_zh": "现有 Marketing 流量总览，展示站点流量及来源概况",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 10
+    },
+    {
       "code": "marketing-subscribers",
       "parent_code": "marketing",
       "level": 2,
@@ -501,7 +516,7 @@
       "function_zh": "只读查看 ERP Marketing 订阅身份和 provider/source 订阅事实。",
       "status": "implemented",
       "progress": 100,
-      "sort": 10
+      "sort": 20
     },
     {
       "code": "marketing-newsletters",
@@ -516,7 +531,7 @@
       "function_zh": "未来承载群发邮件引擎，当前尚未实现。",
       "status": "planned",
       "progress": 0,
-      "sort": 20
+      "sort": 30
     },
     {
       "code": "marketing-campaigns",
@@ -531,7 +546,7 @@
       "function_zh": "未来承载营销活动引擎，当前尚未实现。",
       "status": "planned",
       "progress": 0,
-      "sort": 30
+      "sort": 40
     },
     {
       "code": "marketing-automations",
@@ -546,7 +561,7 @@
       "function_zh": "未来承载营销自动化执行引擎，当前尚未实现。",
       "status": "planned",
       "progress": 0,
-      "sort": 40
+      "sort": 50
     },
     {
       "code": "marketing-promotions",
@@ -561,7 +576,7 @@
       "function_zh": "未来承载优惠促销工作区，当前尚未实现。",
       "status": "planned",
       "progress": 0,
-      "sort": 50
+      "sort": 60
     },
     {
       "code": "kol",
@@ -621,7 +636,7 @@
       "function_zh": "网红专员仅查看自己的 KOL 物流，网红经理仅查看团队 KOL 物流；不授予通用物流权限、导出或发货操作。",
       "status": "implemented",
       "progress": 100,
-      "sort": 25
+      "sort": 30
     },
     {
       "code": "kol-library-create",
@@ -636,7 +651,7 @@
       "function_zh": "新增 KOL 主数据，默认负责人、加入日期、合作类型、国家/语言和主运营社交平台。",
       "status": "implemented",
       "progress": 100,
-      "sort": 30
+      "sort": 40
     },
     {
       "code": "kol-approval-kols",
@@ -651,7 +666,7 @@
       "function_zh": "审核 KOL 资料与合作准入。",
       "status": "implemented",
       "progress": 100,
-      "sort": 40
+      "sort": 50
     },
     {
       "code": "kol-approval-collaborations",
@@ -666,7 +681,7 @@
       "function_zh": "审核付费合作申请。",
       "status": "implemented",
       "progress": 100,
-      "sort": 50
+      "sort": 60
     },
     {
       "code": "kol-approval-payouts",
@@ -681,7 +696,7 @@
       "function_zh": "审核 KOL 佣金付款。",
       "status": "implemented",
       "progress": 100,
-      "sort": 60
+      "sort": 70
     },
     {
       "code": "kol-opportunities",
@@ -696,7 +711,7 @@
       "function_zh": "管理 KOL 合作机会和跟进阶段（M1.1 CRM 包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 70
+      "sort": 80
     },
     {
       "code": "kol-collaborations",
@@ -711,7 +726,7 @@
       "function_zh": "查看 KOL 合作记录、产品/样品关联和发货投影（M1.2 合作包交付）。",
       "status": "implemented",
       "progress": 100,
-      "sort": 80
+      "sort": 90
     },
     {
       "code": "kol-communications",
@@ -726,7 +741,7 @@
       "function_zh": "记录 KOL 沟通历史和待跟进事项（M1.1 CRM 包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 90
+      "sort": 100
     },
     {
       "code": "kol-samples",
@@ -741,7 +756,7 @@
       "function_zh": "查看 KOL 样品和发货信息投影，复用 canonical 订单和物流真相（M1.2 合作包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 100
+      "sort": 110
     },
     {
       "code": "kol-content",
@@ -756,7 +771,7 @@
       "function_zh": "管理 KOL 内容发布记录和发布证据（M1.3 内容包交付）。",
       "status": "implemented",
       "progress": 100,
-      "sort": 110
+      "sort": 120
     },
     {
       "code": "kol-commissions",
@@ -771,7 +786,7 @@
       "function_zh": "管理 KOL 佣金记录和结算历史（M1.4 财务包交付）。",
       "status": "implemented",
       "progress": 100,
-      "sort": 120
+      "sort": 130
     },
     {
       "code": "kol-affiliatewp",
@@ -786,7 +801,7 @@
       "function_zh": "AffiliateWP 网红同步、KOL 绑定、审批状态与 provisioning 工作台；M1.4B 先交付 Influencer 模式，Coupon 模式属于 M1.4C。",
       "status": "implemented",
       "progress": 100,
-      "sort": 130
+      "sort": 140
     },
     {
       "code": "inventory",
@@ -1131,7 +1146,7 @@
       "function_zh": "Finance独立核实B2B Trade收款及退款；未验证的凭证不计入实际现金",
       "status": "in_progress",
       "progress": 65,
-      "sort": 25
+      "sort": 30
     },
     {
       "code": "accounting-loss-orders",
@@ -1146,7 +1161,7 @@
       "function_zh": "仅供财务查看已确认亏损订单，复用订单利润分析。",
       "status": "implemented",
       "progress": 100,
-      "sort": 30
+      "sort": 40
     },
     {
       "code": "settings",

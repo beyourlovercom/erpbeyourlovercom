@@ -37,8 +37,23 @@ The two latent owner-policy conflicts needing separate Logistics Owner decision:
 
 The two residual errors are outside B2B: unsupported warehouse import route response assertion shape, and ShipmentService active carrier service validation in an Inventory aging test. No production carrier name, routing, money, Woo identity or active DB was altered.
 
+## Owner V2.8 menu approval — 2026-10-23
+
+The Owner explicitly replied **pass** to the proposal to preserve the current Marketing, KOL and Accounting menu positions. The V2.8 update is a **frozen-source baseline revision, not an operational menu change**:
+
+- `menu/APPROVED_MENU.json` updated to `version=2.8`, `status=OWNER_APPROVED`, `approved_at=2026-10-23`, `approved_head=49ce2543453ec54761ac8e45d3c665b668491ca1`, the exact source HEAD whose existing runtime positions were inspected before approval.
+- The *already running* `marketing-traffic` now appears in the approved snapshot and its existing following siblings are renumbered 20–60.
+- KOL existing visual order unchanged, with canonical 10-unit sort offsets across 14 children.
+- Accounting existing visual order unchanged: overview (10), order costs (20), independent B2B cash (30), loss-orders shortcut (40).
+- `accounting-loss-orders` has its exact existing query-filter URL and its specifically approved `loss-orders` alias. New `approvedSlugForUrl` validates the URL pathname for all other entries and recognizes **only** this exact code/URL alias (no general mismatch bypass).
+- Frozen menu integrity tests remain active and strict; an additional V2.8 sequence test explicitly validates the approved Marketing/KOL/Accounting order and loss-orders URL.
+- Existing `config/erp_shell_navigation.php`, PHP routes, database migrations and business permissions are **not changed**. GitHub main and both independent S4/S6 environments remain unmodified.
+- This approval applies to the menu alone. It does **not** waive frozen Architecture manifests, other module legacy tests, hosted CI, Owner physical M14 or Finance approval.
+
+**V2.8 Menu Owner gate:** approved and technical tests PASS. **Overall B2B V1 Production gate:** still HOLD.
+
 ## Release checklist — still HOLD
 
-Owner reapproves menu snapshot; module owner reconciles frozen Architecture list without disabling CI; Logistics/Orders owners resolve legacy fixtures/behavior and complete full repo tests; GitHub hosted checks pass; authenticated role-browser and physical M14 Owner UAT passes; Finance owner signs off source-of-truth, FX/refunds and cash accounting; exact-head merge and production DB/deploy get separate approvals.
+Menu V2.8 approved and tests pass; module owner still reconciles frozen Architecture list without disabling CI; Logistics/Orders owners resolve legacy fixtures/behavior and complete full repo tests; GitHub hosted checks pass; authenticated role-browser and physical M14 Owner UAT passes; Finance owner signs off source-of-truth, FX/refunds and cash accounting; exact-head merge and production DB/deploy get separate approvals.
 
 Remain Draft: consolidated #483. Separate S4 Dev and S6 read-only RC services remain unchanged and available. New Trade and Finance writes default OFF; no GitHub main, live ERP or payment changes were made.
