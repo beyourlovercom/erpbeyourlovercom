@@ -35,6 +35,17 @@ final class OrderIdentityContractTest extends TestCase
         $this->assertSame('007-0910-c50123', $service->previewWooCustomer('WC-40414', '50123', '2026-09-10'));
     }
 
+    public function test_woo_identity_rejects_non_numeric_business_and_provider_references(): void
+    {
+        $service = app(OrderIdentityService::class);
+
+        // Do not weaken the production contract just to support old test-only
+        // WOO- prefixed examples: a numeric Woo business order is required.
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('WooCommerce order number must provide a numeric business order number.');
+        $service->previewWooCustomer('WOO-1001', 'WOO-ORDER-REF', '2026-09-01');
+    }
+
     public function test_customer_sequence_is_global_and_prefix_changes_do_not_reset_it(): void
     {
         $service = app(OrderIdentityService::class);
