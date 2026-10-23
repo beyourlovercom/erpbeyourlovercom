@@ -3,6 +3,7 @@
 namespace Tests\Feature\Logistics;
 
 use App\Models\Role;
+use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -33,13 +34,13 @@ final class XlwmsCredentialPageTest extends TestCase
         $this->actingAs($user)->get('/settings/warehouses')->assertForbidden();
 
         $admin = $this->userWith(['system.permissions.manage']);
+        Warehouse::query()->create(['slug' => 'us-sm', 'code' => 'US-SM', 'name' => '世迈仓', 'is_active' => true]);
         $this->actingAs($admin)->get('/settings/warehouses')->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Settings/Warehouses/Index')
-                ->has('integrations', 1)
-                ->where('integrations.0.url', '/settings/warehouses/xlwms')
-                ->where('integrations.0.configured', false)
-                ->where('integrations.0.auto_dispatch_enabled', false));
+                ->has('warehouses', 1)
+                ->where('warehouses.0.code', 'US-SM')
+                ->where('autoDispatchEnabled', false));
     }
 
     public function test_old_logistics_bookmark_redirects_but_does_not_accept_key_submissions(): void
@@ -68,16 +69,12 @@ final class XlwmsCredentialPageTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_admin_sees_form_but_secrets_are_never_rendered(): void
+    public function test_canonical_provider_get_redirects_to_existing_warehouse_settings(): void
     {
         $admin = $this->userWith(['system.permissions.manage']);
         config()->set('xlwms.manual_probe_enabled', true);
-        $this->actingAs($admin)->get('/settings/warehouses/xlwms')->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('Settings/Warehouses/Xlwms')
-                ->where('probeEnabled', true)
-                ->missing('appKey')
-                ->missing('appSecret'));
+        $this->actingAs($admin)->get('/settings/warehouses/xlwms')
+            ->assertRedirect('/settings/warehouses');
     }
 
     public function test_manual_test_stays_off_by_default_even_with_credentials(): void
