@@ -87,7 +87,7 @@ final class B2BTradeFinanceCashTest extends TestCase
     public function test_reviewed_sales_document_is_not_actual_finance_cash_until_treasury_confirmation(): void
     {
         $x=$this->setupTrade();
-        $summary=app(B2BTradeCashAccountingService::class)->summary($x['order']);
+        $summary=app(B2BTradeCashAccountingService::class)->summary((int)$x['order']->id);
         $this->assertSame('unpaid',$summary['status']);
         $this->assertSame(0,$summary['net_confirmed_micros']);
         $this->assertSame(250000000,$summary['outstanding_micros']);
@@ -104,7 +104,7 @@ final class B2BTradeFinanceCashTest extends TestCase
         $this->actingAs($x['reviewer'])->post($path,$this->receiptRequest())->assertForbidden();
         $this->actingAs($x['finance'])->post($path,$this->receiptRequest())->assertRedirect();
         $this->assertDatabaseCount('finance_b2b_trade_cash_events',1);
-        $summary=app(B2BTradeCashAccountingService::class)->summary($x['order']);
+        $summary=app(B2BTradeCashAccountingService::class)->summary((int)$x['order']->id);
         $this->assertSame('partial',$summary['status']);
         $this->assertSame(100000000,$summary['net_confirmed_micros']);
         $this->assertSame(150000000,$summary['outstanding_micros']);
@@ -147,8 +147,8 @@ final class B2BTradeFinanceCashTest extends TestCase
         $this->actingAs($x['finance'])->post($refundUrl,$this->refundRequest())
             ->assertSessionHasErrors(['refund']);
         $this->actingAs($x['refundVerifier'])->post($refundUrl,$this->refundRequest())->assertRedirect();
-        $this->assertSame('partial',app(B2BTradeCashAccountingService::class)->summary($x['order'])['status']);
-        $this->assertSame(75000000,app(B2BTradeCashAccountingService::class)->summary($x['order'])['net_confirmed_micros']);
+        $this->assertSame('partial',app(B2BTradeCashAccountingService::class)->summary((int)$x['order']->id)['status']);
+        $this->assertSame(75000000,app(B2BTradeCashAccountingService::class)->summary((int)$x['order']->id)['net_confirmed_micros']);
         $this->actingAs($x['refundVerifier'])->post($refundUrl,$this->refundRequest('UAT-G4-REFUND-TOO-MUCH','90.00'))
             ->assertSessionHasErrors(['refund']);
         $this->assertDatabaseCount('finance_b2b_trade_cash_events',2);

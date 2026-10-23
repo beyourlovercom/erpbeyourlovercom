@@ -89,7 +89,7 @@ final class B2BTradeOrderController
                     'type'=>$e->event_type,'occurred_at'=>$e->occurred_at?->toIso8601String(),
                 ])->all(),
             ],
-            'financeSummary'=>app(B2BTradeCashAccountingService::class)->summary($row),
+            'financeSummary'=>app(B2BTradeCashAccountingService::class)->summary((int)$row->id),
             'canOpenFinance'=>$request->user()->hasPermission('accounting.view'),
             'canOperate'=>$request->user()->hasPermission('b2b.operate'),
             'canApprove'=>$request->user()->hasPermission('b2b.trade.approve')

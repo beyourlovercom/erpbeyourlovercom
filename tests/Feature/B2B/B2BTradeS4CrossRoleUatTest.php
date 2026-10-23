@@ -120,7 +120,7 @@ final class B2BTradeS4CrossRoleUatTest extends TestCase
         $e=B2BTradeReceiptEvidence::query()->firstOrFail();
         $this->assertSame('pending_review',$e->status);
         // An approved trade and an unreviewed bank document are NOT collected cash.
-        $pre=app(B2BTradeCashAccountingService::class)->summary($order);
+        $pre=app(B2BTradeCashAccountingService::class)->summary((int)$order->id);
         $this->assertSame('unpaid',$pre['status']);
         $this->assertSame(0,$pre['net_confirmed_micros']);
 
@@ -132,14 +132,14 @@ final class B2BTradeS4CrossRoleUatTest extends TestCase
             'decision'=>'reviewed','reason'=>'S4 synthetic paperwork is in valid form',
         ])->assertRedirect();
         $this->assertSame('reviewed',$e->fresh()->status);
-        $this->assertSame('unpaid',app(B2BTradeCashAccountingService::class)->summary($order)['status']);
+        $this->assertSame('unpaid',app(B2BTradeCashAccountingService::class)->summary((int)$order->id)['status']);
 
         $paymentUrl="/accounting/b2b-trade-cash/{$order->id}/receipts/{$e->id}";
         $this->actingAs($t['manager'])->post($paymentUrl,$this->statement($claim['reference']))
             ->assertForbidden();
         $this->actingAs($t['finance'])->post($paymentUrl,$this->statement($claim['reference']))
             ->assertRedirect();
-        $paid=app(B2BTradeCashAccountingService::class)->summary($order);
+        $paid=app(B2BTradeCashAccountingService::class)->summary((int)$order->id);
         $this->assertSame('paid',$paid['status']);
         $this->assertSame(2999000000,$paid['net_confirmed_micros']);
         $this->assertSame(0,$paid['outstanding_micros']);
@@ -149,7 +149,7 @@ final class B2BTradeS4CrossRoleUatTest extends TestCase
         $refund=$this->statement('S4-SYNTHETIC-REFUND-001','99.00');
         $this->actingAs($t['finance'])->post($refundUrl,$refund)->assertSessionHasErrors('refund');
         $this->actingAs($t['refundFinance'])->post($refundUrl,$refund)->assertRedirect();
-        $net=app(B2BTradeCashAccountingService::class)->summary($order);
+        $net=app(B2BTradeCashAccountingService::class)->summary((int)$order->id);
         $this->assertSame('partial',$net['status']);
         $this->assertSame(2900000000,$net['net_confirmed_micros']);
         $this->assertSame(99000000,$net['outstanding_micros']);
@@ -177,7 +177,7 @@ final class B2BTradeS4CrossRoleUatTest extends TestCase
         $this->actingAs($t['finance'])->post($url,$this->statement('S4-DOC-UNREVIEWED'))->assertSessionHasErrors('confirmation');
         $this->assertDatabaseCount('finance_b2b_trade_cash_events',0);
         $this->assertSame('pending_review',$e->fresh()->status);
-        $this->assertSame('unpaid',app(B2BTradeCashAccountingService::class)->summary($order)['status']);
+        $this->assertSame('unpaid',app(B2BTradeCashAccountingService::class)->summary((int)$order->id)['status']);
     }
 
     public function test_finance_cannot_bind_evidence_or_refunds_to_another_trade_order(): void
@@ -209,7 +209,7 @@ final class B2BTradeS4CrossRoleUatTest extends TestCase
             "/accounting/b2b-trade-cash/{$b->id}/refunds/{$event->id}",
             $this->statement('S4-CROSS-ORDER-REFUND','1.00')
         )->assertNotFound();
-        $this->assertSame('unpaid',app(B2BTradeCashAccountingService::class)->summary($b)['status']);
+        $this->assertSame('unpaid',app(B2BTradeCashAccountingService::class)->summary((int)$b->id)['status']);
         $this->assertDatabaseCount('finance_b2b_trade_cash_events',1);
     }
 
