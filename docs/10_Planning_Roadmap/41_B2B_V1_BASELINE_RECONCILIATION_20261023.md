@@ -57,3 +57,7 @@ The Owner explicitly replied **pass** to the proposal to preserve the current Ma
 Menu V2.8 approved and tests pass; module owner still reconciles frozen Architecture list without disabling CI; Logistics/Orders owners resolve legacy fixtures/behavior and complete full repo tests; GitHub hosted checks pass; authenticated role-browser and physical M14 Owner UAT passes; Finance owner signs off source-of-truth, FX/refunds and cash accounting; exact-head merge and production DB/deploy get separate approvals.
 
 Remain Draft: consolidated #483. Separate S4 Dev and S6 read-only RC services remain unchanged and available. New Trade and Finance writes default OFF; no GitHub main, live ERP or payment changes were made.
+
+### Frozen source SHA alignment for this approved menu only
+
+The Architecture suite also freezes the SHA-256 of the Owner-approved menu JSON. Because Owner explicitly approved V2.8, that **single exact expected hash** was updated from the V2.7 checksum to `43cc692414878a20e3d9e97707894977e99425b1af301a5e6329c4a206ed1649` for the approved V2.8 bytes. This is a one-line contract alignment, **not** the blocked bulk-manifest rewrite: none of the `MODULE_DIRECTORIES`, `MODULE_FILES`, migration, frontend or route lists were rewritten or bypassed. The global Architecture suite still reports 3 independent historical failures; keep their release gate HOLD.
