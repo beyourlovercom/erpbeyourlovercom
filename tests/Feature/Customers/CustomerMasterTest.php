@@ -52,7 +52,7 @@ final class CustomerMasterTest extends TestCase
         $other = Customer::query()->create(['name' => 'Other Buyer', 'source_type' => 'manual']);
 
         $linkedOrderId = DB::table('orders')->insertGetId([
-            'internal_order_number' => 'CUS-ORDER-1', 'source_type' => 'manual', 'order_kind' => 'customer',
+            'internal_order_number' => 'CUS-ORDER-1', 'erp_order_id' => '007erp-0820-c1001', 'source_type' => 'manual', 'order_kind' => 'customer',
             'external_order_number' => 'WEB-1001', 'order_date' => '2026-08-20', 'order_status' => 'shipped',
             'customer_id' => $customer->id, 'created_at' => now(), 'updated_at' => now(),
         ]);
@@ -76,7 +76,8 @@ final class CustomerMasterTest extends TestCase
                 ->where('metrics.revenue_by_currency.0.revenue', 150)
                 ->where('metrics.revenue_by_currency.0.average_order_value', 150)
                 ->has('recentOrders', 1)
-                ->where('recentOrders.0.number', 'WEB-1001'));
+                ->where('recentOrders.0.number', '007erp-0820-c1001')
+                ->where('recentOrders.0.external_order_number', 'WEB-1001'));
     }
 
     public function test_unlinked_historical_orders_are_never_counted_or_backfilled(): void
