@@ -3,8 +3,16 @@
 namespace App\Modules\Logistics\Application;
 
 /**
- * P2 configuration-only mapping gate. It does not claim remote SKU existence,
- * reserve inventory, or create any outbound order.
+ * P2 configuration-only warehouse binding and SKU resolution.
+ *
+ * Owner-frozen contract:
+ * - Warehouse code must have an explicit ERP -> OMS binding.
+ * - ERP SKU is sent unchanged by default (identity resolution).
+ * - Only exceptional SKU differences require a per-warehouse override.
+ * - Logistics channel/service codes are native vendor codes configured directly
+ *   on the ERP carrier catalog; this module must not translate them.
+ *
+ * No remote catalog or inventory assertion, shipment creation or auto-dispatch.
  */
 final class XlwmsMappingReadinessService
 {
@@ -16,15 +24,13 @@ final class XlwmsMappingReadinessService
     {
         $code = strtoupper(trim($erpWarehouseCode));
         $warehouseMap = config('xlwms.warehouse_map', []);
-        $skuMaps = config('xlwms.sku_map', []);
+        $skuExceptions = config('xlwms.sku_map', []);
         $blockers = [];
         $remoteCode = null;
         $resolvedSkus = [];
 
-        if (! is_array($warehouseMap) || ! is_array($skuMaps)) {
-            $blockers[] = 'invalid_mapping_configuration';
-
-            return $this->result($remoteCode, $resolvedSkus, $blockers);
+        if (! is_array($warehouseMap) || ! is_array($skuExceptions)) {
+            return $this->result(null, [], ['invalid_mapping_configuration']);
         }
 
         foreach ($warehouseMap as $erp => $remote) {
@@ -42,16 +48,16 @@ final class XlwmsMappingReadinessService
             $blockers[] = 'warehouse_not_mapped';
         }
 
-        $warehouseSkuMap = [];
-        foreach ($skuMaps as $erpWarehouse => $mappings) {
+        $currentExceptions = [];
+        foreach ($skuExceptions as $erpWarehouse => $overrides) {
             if (is_string($erpWarehouse) && strtoupper(trim($erpWarehouse)) === $code) {
-                $warehouseSkuMap = $mappings;
+                $currentExceptions = $overrides;
                 break;
             }
         }
 
-        if (! is_array($warehouseSkuMap)) {
-            $blockers[] = 'invalid_sku_mapping';
+        if (! is_array($currentExceptions)) {
+            $blockers[] = 'invalid_sku_override_configuration';
         } else {
             foreach ($erpSkus as $erpSku) {
                 $erpSku = trim($erpSku);
@@ -59,12 +65,19 @@ final class XlwmsMappingReadinessService
                     $blockers[] = 'empty_erp_sku';
                     continue;
                 }
-                $remoteSku = $warehouseSkuMap[$erpSku] ?? null;
-                if (! is_string($remoteSku) || trim($remoteSku) === '') {
-                    $blockers[] = 'sku_not_mapped:'.$erpSku;
-                    continue;
+
+                // A missing override is normal: the ERP and vendor SKU match.
+                // Explicitly configured bad overrides must fail closed.
+                if (array_key_exists($erpSku, $currentExceptions)) {
+                    $override = $currentExceptions[$erpSku];
+                    if (! is_string($override) || trim($override) === '') {
+                        $blockers[] = 'invalid_sku_override:'.$erpSku;
+                        continue;
+                    }
+                    $resolvedSkus[$erpSku] = trim($override);
+                } else {
+                    $resolvedSkus[$erpSku] = $erpSku;
                 }
-                $resolvedSkus[$erpSku] = trim($remoteSku);
             }
         }
 
@@ -72,6 +85,8 @@ final class XlwmsMappingReadinessService
             $blockers[] = 'no_order_skus';
         }
 
+        // This is a local configuration check only. A same-name SKU is NOT proof
+        // that the OMS catalog contains it or that inventory is available.
         return $this->result($remoteCode, $resolvedSkus, array_values(array_unique($blockers)));
     }
 
