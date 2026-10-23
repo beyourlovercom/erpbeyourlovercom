@@ -5,6 +5,9 @@ use App\Modules\Logistics\Experience\Controllers\DomesticLogisticsController;
 use App\Modules\Logistics\Experience\Controllers\HistoricalImportController;
 use App\Modules\Logistics\Experience\Controllers\LogisticsController;
 use App\Modules\Logistics\Experience\Controllers\OverseaWarehouseController;
+use App\Modules\Logistics\Experience\Controllers\XlwmsCredentialController;
+use App\Modules\Logistics\Experience\Controllers\WarehouseSettingsController;
+use App\Modules\Logistics\Experience\Controllers\WarehouseOpenApiController;
 use App\Modules\Logistics\Experience\Middleware\RequireFulfillmentAllocation;
 use App\Modules\Logistics\Experience\Middleware\RequireLogisticsExecution;
 use App\Modules\Logistics\Experience\Middleware\RequireLogisticsReview;
@@ -14,6 +17,21 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     $execution = ['can:logistics.operate', RequireLogisticsExecution::class];
     $review = [RequireLogisticsReview::class];
     $allocation = [RequireFulfillmentAllocation::class];
+    // One-time warehouse API setup belongs under Settings, not Logistics.
+    Route::get('/settings/warehouses', [WarehouseSettingsController::class, 'index'])
+        ->middleware('can:system.permissions.manage')->name('settings.warehouses');
+    Route::redirect('/settings/warehouses/xlwms', '/settings/warehouses')
+        ->middleware('can:system.permissions.manage')->name('settings.warehouses.xlwms');
+    Route::post('/settings/warehouses/xlwms/verify', [XlwmsCredentialController::class, 'verify'])
+        ->middleware(['can:system.permissions.manage', 'throttle:5,1'])
+        ->name('settings.warehouses.xlwms.verify');
+    Route::post('/settings/warehouses/{warehouse}/openapi/xlwms', [WarehouseOpenApiController::class, 'save'])
+        ->middleware(['can:system.permissions.manage', 'throttle:5,1'])
+        ->name('settings.warehouses.openapi.xlwms.save');
+    // Bookmarks from the earlier Dev page redirect to the canonical Settings path.
+    // Intentionally do NOT preserve the old POST endpoint.
+    Route::redirect('/logistics/integrations/xlwms', '/settings/warehouses/xlwms')
+        ->middleware('can:system.permissions.manage')->name('logistics.integrations.xlwms.redirect');
     Route::get('/logistics', fn () => redirect()->route('logistics.wait-stock'))->middleware('can:logistics.view')->name('shell.logistics');
     Route::get('/logistics/pending', fn () => redirect()->route('logistics.wait-stock'))->middleware('can:logistics.view')->name('logistics.pending');
     Route::get('/logistics/wait-stock', [LogisticsController::class, 'waitStock'])->middleware('can:logistics.view')->name('logistics.wait-stock');

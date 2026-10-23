@@ -46,6 +46,7 @@ final class CarrierController
         return Inertia::render('Logistics/Carriers/Index', [
             'carriers' => $carriers,
             'canOperate' => (bool) $request->user()?->can('logistics.operate'),
+            'canManageIntegrations' => (bool) $request->user()?->can('system.permissions.manage'),
             'statusBar' => $this->statusBar(),
         ]);
     }

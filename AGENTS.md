@@ -1,5 +1,15 @@
 # REPOSITORY EXECUTION GOVERNANCE GATE
 
+# OWNER-FROZEN ERP SETTINGS / OPERATIONS INFORMATION ARCHITECTURE
+
+**Rule ID: `ERP_SETTINGS_ONE_TIME_OPERATIONS_SEPARATION_V1`. OWNER_APPROVED / ACTIVE.**
+
+- One-time and infrequently changed configuration belongs under the appropriate `/settings/...` section. This includes external API accounts, credentials, provider authorization, warehouse bindings, connection tests, and setup-oriented debugging.
+- Repeated operational workflows belong in the domain module that owns the action (e.g. Logistics: allocation, approval, shipment, Tracking, exception handling). Domain pages may link to Settings when the user has permission, but must not duplicate API settings forms or secret entry points.
+- For warehouse integrations, the canonical navigation is `/settings/warehouses` → select existing Warehouse Master record → the original warehouse **配置** tab (`/inventory/{public-slug}?tab=config`) → OpenAPI section beside the warehouse address editor. Do not maintain a second provider-specific setup page such as `/settings/warehouses/xlwms`. That old GET path is redirect-only. Provider POST handlers may remain under Settings but must be single-purpose and admin-only.
+- Warehouse binding must be explicit and evidence-backed. Default identical SKUs require no mapping; exceptional SKU differences are warehouse-specific. Shipping-service codes are stored as the provider-native ERP carrier values; do not create an extra carrier mapping table.
+- Permission controls, encrypted secret storage when implemented, and real outbound fulfillment gates remain mandatory regardless of which navigation section hosts the interface. Moving a UI is not authorization to enable dispatch or Production deployment.
+
 Before any formal task, read:
 
 - `AI/EXECUTION_ROLE_MODEL.md`

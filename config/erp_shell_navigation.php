@@ -84,7 +84,7 @@ return [
     ]],
     ['key' => 'settings', 'label' => '设置', 'emoji' => '⚙️', 'path' => '/settings', 'route' => 'shell.settings', 'permission' => 'system.permissions.manage', 'status' => 'in_progress', 'progress' => 46, 'placeholder' => false, 'children' => [
         ['key' => 'settings-statuses', 'label' => '状态设置', 'path' => '/settings/statuses', 'route' => 'settings.statuses', 'permission' => 'prototype.view', 'status' => 'planned', 'progress' => 0, 'placeholder' => false],
-        ['key' => 'settings-warehouses', 'label' => '仓库设置', 'path' => '/settings/warehouses', 'route' => 'settings.warehouses', 'permission' => 'prototype.view', 'status' => 'planned', 'progress' => 0, 'placeholder' => false],
+        ['key' => 'settings-warehouses', 'label' => '仓库设置', 'path' => '/settings/warehouses', 'route' => 'settings.warehouses', 'permission' => 'system.permissions.manage', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'settings-users', 'label' => '用户', 'path' => '/settings/users', 'route' => 'user.index', 'permission' => 'system.permissions.manage', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'settings-roles-permissions', 'label' => '角色与权限', 'path' => '/settings/roles-permissions', 'route' => 'settings.roles-permissions', 'permission' => 'system.permissions.manage', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],
         ['key' => 'settings-fx', 'label' => '汇率计算', 'path' => '/settings/fx', 'route' => 'settings.fx', 'permission' => 'system.permissions.manage', 'status' => 'implemented', 'progress' => 100, 'placeholder' => false],

@@ -1,0 +1,78 @@
+name: ERP XLWMS Read-only P0-P2
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/Modules/Logistics/Infrastructure/Xlwms/**'
+      - 'app/Modules/Logistics/Application/XlwmsMappingReadinessService.php'
+      - 'app/Console/Commands/XlwmsReadOnlyAuditCommand.php'
+      - 'config/xlwms.php'
+      - 'app/Modules/Logistics/Experience/Controllers/XlwmsCredentialController.php'
+      - 'app/Modules/Logistics/Experience/Routes/web.php'
+      - 'app/Modules/Logistics/Experience/Controllers/CarrierController.php'
+      - 'resources/js/Pages/Settings/Warehouses/**'
+      - 'app/Modules/Logistics/Experience/Controllers/WarehouseSettingsController.php'
+      - 'app/Modules/Logistics/Experience/Controllers/WarehouseOpenApiController.php'
+      - 'app/Modules/Logistics/Infrastructure/Xlwms/WarehouseOpenApiConnection.php'
+      - 'app/Modules/Inventory/Experience/Controllers/WarehouseController.php'
+      - 'resources/js/Pages/Inventory/WarehouseShow.vue'
+      - 'resources/js/Pages/Inventory/components/WarehouseOpenApi.vue'
+      - 'database/migrations/*_create_warehouse_openapi_connections_table.php'
+      - 'tests/Feature/Logistics/XlwmsWarehouseCredentialSaveTest.php'
+      - 'app/Modules/Shell/Experience/Routes/web.php'
+      - 'config/erp_shell_navigation.php'
+      - 'resources/js/Pages/Logistics/Carriers/Index.vue'
+      - 'tests/Feature/Logistics/XlwmsReadOnlyConnectorTest.php'
+      - 'tests/Feature/Logistics/XlwmsCredentialPageTest.php'
+      - '.github/workflows/erp-xlwms-readonly-p0p2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  xlwms-readonly:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: PHP syntax guard
+        run: |
+          php -l config/xlwms.php
+          php -l app/Modules/Logistics/Infrastructure/Xlwms/XlwmsSignature.php
+          php -l app/Modules/Logistics/Infrastructure/Xlwms/XlwmsReadOnlyClient.php
+          php -l app/Modules/Logistics/Application/XlwmsMappingReadinessService.php
+          php -l app/Modules/Logistics/Infrastructure/Xlwms/XlwmsCredentialProbe.php
+          php -l app/Modules/Logistics/Experience/Controllers/XlwmsCredentialController.php
+          php -l app/Modules/Logistics/Experience/Controllers/WarehouseSettingsController.php
+          php -l app/Modules/Logistics/Experience/Controllers/WarehouseOpenApiController.php
+          php -l database/migrations/2026_10_23_000001_create_warehouse_openapi_connections_table.php
+          php -l tests/Feature/Logistics/XlwmsWarehouseCredentialSaveTest.php
+          php -l app/Console/Commands/XlwmsReadOnlyAuditCommand.php
+          php -l tests/Feature/Logistics/XlwmsReadOnlyConnectorTest.php
+          php -l tests/Feature/Logistics/XlwmsCredentialPageTest.php
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Prepare isolated test environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+      - name: XLWMS isolated regression
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+          CACHE_STORE: array
+          QUEUE_CONNECTION: sync
+          SESSION_DRIVER: array
+          XLWMS_ENABLED: 'false'
+        run: php artisan test tests/Feature/Logistics/XlwmsReadOnlyConnectorTest.php tests/Feature/Logistics/XlwmsCredentialPageTest.php tests/Feature/Logistics/XlwmsWarehouseCredentialSaveTest.php
+      - name: Whitespace guard
+        run: git diff --check origin/main...HEAD
