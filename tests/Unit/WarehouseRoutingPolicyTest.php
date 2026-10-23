@@ -4,10 +4,14 @@ namespace Tests\Unit;
 
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\WarehouseRoutingPolicy;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 final class WarehouseRoutingPolicyTest extends TestCase
 {
+    // CarrierServiceCatalog reads live carrier tables; migrate only ephemeral test SQLite.
+    use RefreshDatabase;
+
     public function test_default_policy_keeps_de_automatic_and_us_assisted_only(): void
     {
         $policy = app(WarehouseRoutingPolicy::class);
