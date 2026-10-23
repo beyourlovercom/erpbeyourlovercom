@@ -19,7 +19,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     // One-time warehouse API setup belongs under Settings, not Logistics.
     Route::get('/settings/warehouses', [WarehouseSettingsController::class, 'index'])
         ->middleware('can:system.permissions.manage')->name('settings.warehouses');
-    Route::get('/settings/warehouses/xlwms', [XlwmsCredentialController::class, 'index'])
+    Route::redirect('/settings/warehouses/xlwms', '/settings/warehouses')
         ->middleware('can:system.permissions.manage')->name('settings.warehouses.xlwms');
     Route::post('/settings/warehouses/xlwms/verify', [XlwmsCredentialController::class, 'verify'])
         ->middleware(['can:system.permissions.manage', 'throttle:5,1'])
