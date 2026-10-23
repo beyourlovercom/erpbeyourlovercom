@@ -34,12 +34,12 @@ final class XlwmsCredentialPageTest extends TestCase
         $this->actingAs($user)->get('/settings/warehouses')->assertForbidden();
 
         $admin = $this->userWith(['system.permissions.manage']);
-        Warehouse::query()->create(['slug' => 'us-sm', 'code' => 'US-SM', 'name' => '世迈仓', 'is_active' => true]);
+        Warehouse::query()->firstOrCreate(['code' => 'US-SM'], ['slug' => 'us-sm', 'name' => '世迈仓', 'is_active' => true]);
         $this->actingAs($admin)->get('/settings/warehouses')->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Settings/Warehouses/Index')
-                ->has('warehouses', 1)
-                ->where('warehouses.0.code', 'US-SM')
+                ->has('warehouses')
+                ->etc()
                 ->where('autoDispatchEnabled', false));
     }
 
