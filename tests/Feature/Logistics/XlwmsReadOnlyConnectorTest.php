@@ -114,21 +114,60 @@ final class XlwmsReadOnlyConnectorTest extends TestCase
         }
     }
 
-    public function test_mapping_blocks_unmapped_skus_and_never_claims_remote_verification(): void
+    public function test_same_name_skus_use_identity_without_manual_mapping_or_claiming_remote_verification(): void
     {
         config()->set('xlwms.warehouse_map', ['US-LA' => 'WAREHOUSE-01']);
-        config()->set('xlwms.sku_map', ['US-LA' => ['ERP-A' => 'OMS-A']]);
+        config()->set('xlwms.sku_map', []);
 
-        $mapper = new XlwmsMappingReadinessService();
-        $blocked = $mapper->assess('US-LA', ['ERP-A', 'ERP-B']);
-        $this->assertSame('blocked', $blocked['status']);
-        $this->assertContains('sku_not_mapped:ERP-B', $blocked['blockers']);
-        $this->assertFalse($blocked['remote_verified']);
+        $result = (new XlwmsMappingReadinessService())->assess('us-la', ['BYL-A', 'BYL-B']);
+        $this->assertSame('configured_unverified', $result['status']);
+        $this->assertSame('WAREHOUSE-01', $result['warehouse_code']);
+        $this->assertSame(['BYL-A' => 'BYL-A', 'BYL-B' => 'BYL-B'], $result['sku_map']);
+        $this->assertSame([], $result['blockers']);
+        $this->assertFalse($result['remote_verified']);
+    }
 
-        $configured = $mapper->assess('us-la', ['ERP-A']);
-        $this->assertSame('configured_unverified', $configured['status']);
-        $this->assertSame('WAREHOUSE-01', $configured['warehouse_code']);
-        $this->assertSame(['ERP-A' => 'OMS-A'], $configured['sku_map']);
-        $this->assertFalse($configured['remote_verified']);
+    public function test_exception_override_is_warehouse_scoped_and_other_skus_stay_identical(): void
+    {
+        config()->set('xlwms.warehouse_map', ['US-LA' => 'WAREHOUSE-01', 'DE' => 'WAREHOUSE-02']);
+        config()->set('xlwms.sku_map', ['US-LA' => ['ERP-A' => 'OMS-ALIAS-A']]);
+
+        $service = new XlwmsMappingReadinessService();
+        $la = $service->assess('US-LA', ['ERP-A', 'ERP-B']);
+        $this->assertSame('configured_unverified', $la['status']);
+        $this->assertSame(['ERP-A' => 'OMS-ALIAS-A', 'ERP-B' => 'ERP-B'], $la['sku_map']);
+
+        $de = $service->assess('DE', ['ERP-A', 'ERP-B']);
+        $this->assertSame('configured_unverified', $de['status']);
+        $this->assertSame(['ERP-A' => 'ERP-A', 'ERP-B' => 'ERP-B'], $de['sku_map']);
+        $this->assertFalse($de['remote_verified']);
+    }
+
+    public function test_missing_warehouse_binding_and_invalid_exception_fail_closed(): void
+    {
+        config()->set('xlwms.warehouse_map', ['US-LA' => 'WAREHOUSE-01']);
+        config()->set('xlwms.sku_map', ['US-LA' => ['BYL-1' => '']]);
+
+        $service = new XlwmsMappingReadinessService();
+        $unbound = $service->assess('US-NY', ['BYL-2']);
+        $this->assertSame('blocked', $unbound['status']);
+        $this->assertContains('warehouse_not_mapped', $unbound['blockers']);
+
+        $badOverride = $service->assess('US-LA', ['BYL-1', 'BYL-2']);
+        $this->assertSame('blocked', $badOverride['status']);
+        $this->assertContains('invalid_sku_override:BYL-1', $badOverride['blockers']);
+        $this->assertSame(['BYL-2' => 'BYL-2'], $badOverride['sku_map']);
+    }
+
+    public function test_no_carrier_translation_is_required_for_sku_readiness(): void
+    {
+        config()->set('xlwms.warehouse_map', ['US-LA' => 'WAREHOUSE-01']);
+        config()->set('xlwms.sku_map', []);
+        // Carrier service is the warehouse native code; no map config exists.
+        $this->assertArrayNotHasKey('carrier_map', config('xlwms'));
+        $this->assertArrayNotHasKey('logistics_map', config('xlwms'));
+        $result = (new XlwmsMappingReadinessService())->assess('US-LA', ['BYL-101']);
+        $this->assertSame('configured_unverified', $result['status']);
+        $this->assertFalse($result['remote_verified']);
     }
 }
