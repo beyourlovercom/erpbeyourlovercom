@@ -40,6 +40,18 @@ final class XlwmsWarehouseCredentialSaveTest extends TestCase
         return ['app_key'=>'test-key-987654','app_secret'=>'test-secret-abcdef'];
     }
 
+    public function test_provider_credentials_cannot_be_written_to_a_different_warehouse(): void
+    {
+        Warehouse::query()->firstOrCreate(['code'=>'DE'], ['slug'=>'de','name'=>'德国仓','is_active'=>true,'type'=>'oversea']);
+        config()->set('xlwms.manual_probe_enabled', true);
+        Http::fake();
+        $this->actingAs($this->actor(true))
+            ->postJson('/settings/warehouses/de/openapi/xlwms', $this->input())
+            ->assertNotFound();
+        $this->assertDatabaseCount('warehouse_openapi_connections', 0);
+        Http::assertNothingSent();
+    }
+
     public function test_credentials_save_requires_administrator(): void
     {
         $this->warehouse();
