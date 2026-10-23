@@ -94,6 +94,26 @@ final class XlwmsReadOnlyConnectorTest extends TestCase
         }
     }
 
+    public function test_transport_exception_never_exposes_signed_url_or_secret(): void
+    {
+        config()->set('xlwms.enabled', true);
+        config()->set('xlwms.app_key', 'test-key');
+        config()->set('xlwms.app_secret', 'test-secret');
+        config()->set('xlwms.base_url', 'https://api.xlwms.com/openapi/v1');
+
+        Http::fake(function (): never {
+            throw new RuntimeException('https://api.xlwms.com/openapi/v1?authcode=SECRET-DIAGNOSTIC');
+        });
+
+        try {
+            (new XlwmsReadOnlyClient())->warehouses();
+            $this->fail('Transport error expected.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('XLWMS read-only transport failed.', $exception->getMessage());
+            $this->assertNull($exception->getPrevious());
+        }
+    }
+
     public function test_mapping_blocks_unmapped_skus_and_never_claims_remote_verification(): void
     {
         config()->set('xlwms.warehouse_map', ['US-LA' => 'WAREHOUSE-01']);
