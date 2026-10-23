@@ -300,7 +300,8 @@ final class ProductController
             'kolShipping' => $this->kolProjection->shippingSummaryForProduct($id),
             'audit' => $this->activityProjection->forProduct($id),
             'canOperate' => Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false,
-            'canSync' => Auth::user()?->can(AuthorizationKeys::SyncOperate->value) ?? false,
+            'canSync' => (Auth::user()?->can(AuthorizationKeys::SyncOperate->value) ?? false)
+                && (Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false),
             'hasWooProductReference' => $configuredProductReference !== null,
         ]);
     }

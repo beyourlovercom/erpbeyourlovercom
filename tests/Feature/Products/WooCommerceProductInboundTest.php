@@ -347,7 +347,13 @@ final class WooCommerceProductInboundTest extends TestCase
 
         $syncOperator = $this->userWith(['products.view', 'sync.operate']);
         $this->fakeSingle($payload);
-        $this->actingAs($syncOperator)->post("/products/{$product->id}/sync-woocommerce")->assertRedirect();
-        $this->actingAs($syncOperator)->get("/products/{$product->id}")->assertInertia(fn ($page) => $page->where('canSync', true)->where('canOperate', false));
+        // A sync-only user must not gain product mutation via the visible button.
+        $this->actingAs($syncOperator)->post("/products/{$product->id}/sync-woocommerce")->assertForbidden();
+        $this->actingAs($syncOperator)->get("/products/{$product->id}")->assertInertia(fn ($page) => $page->where('canSync', false)->where('canOperate', false));
+
+        $authorized = $this->userWith(['products.view', 'products.operate', 'sync.operate']);
+        $this->fakeSingle($payload);
+        $this->actingAs($authorized)->post("/products/{$product->id}/sync-woocommerce")->assertRedirect();
+        $this->actingAs($authorized)->get("/products/{$product->id}")->assertInertia(fn ($page) => $page->where('canSync', true)->where('canOperate', true));
     }
 }
