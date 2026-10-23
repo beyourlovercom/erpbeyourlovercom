@@ -167,6 +167,9 @@ final class Mvp1WorkflowTest extends TestCase
         $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'shipment_status' => 'pending', 'tracking_number' => null]);
         $this->assertDatabaseHas('manual_syncs', ['order_id' => $order->id, 'website_sync_status' => 'pending']);
         $this->assertSame(1, \App\Modules\Audit\Infrastructure\Models\AuditRecord::query()->where('action', 'shipment.reopened')->count());
+        $reopenAudit = \App\Modules\Audit\Infrastructure\Models\AuditRecord::query()->where('action', 'shipment.reopened')->firstOrFail();
+        $this->assertSame('shipped', $reopenAudit->before['shipment_status']);
+        $this->assertSame('pending', $reopenAudit->after['shipment_status']);
         $this->assertSame(1, \App\Modules\Audit\Infrastructure\Models\AuditRecord::query()->where('action', 'manual_sync.reopened')->count());
     }
 
