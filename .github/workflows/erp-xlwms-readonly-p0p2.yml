@@ -13,6 +13,13 @@ on:
       - 'app/Modules/Logistics/Experience/Controllers/CarrierController.php'
       - 'resources/js/Pages/Settings/Warehouses/**'
       - 'app/Modules/Logistics/Experience/Controllers/WarehouseSettingsController.php'
+      - 'app/Modules/Logistics/Experience/Controllers/WarehouseOpenApiController.php'
+      - 'app/Modules/Logistics/Infrastructure/Xlwms/WarehouseOpenApiConnection.php'
+      - 'app/Modules/Inventory/Experience/Controllers/WarehouseController.php'
+      - 'resources/js/Pages/Inventory/WarehouseShow.vue'
+      - 'resources/js/Pages/Inventory/components/WarehouseOpenApi.vue'
+      - 'database/migrations/*_create_warehouse_openapi_connections_table.php'
+      - 'tests/Feature/Logistics/XlwmsWarehouseCredentialSaveTest.php'
       - 'app/Modules/Shell/Experience/Routes/web.php'
       - 'config/erp_shell_navigation.php'
       - 'resources/js/Pages/Logistics/Carriers/Index.vue'
@@ -45,6 +52,9 @@ jobs:
           php -l app/Modules/Logistics/Infrastructure/Xlwms/XlwmsCredentialProbe.php
           php -l app/Modules/Logistics/Experience/Controllers/XlwmsCredentialController.php
           php -l app/Modules/Logistics/Experience/Controllers/WarehouseSettingsController.php
+          php -l app/Modules/Logistics/Experience/Controllers/WarehouseOpenApiController.php
+          php -l database/migrations/2026_10_23_000001_create_warehouse_openapi_connections_table.php
+          php -l tests/Feature/Logistics/XlwmsWarehouseCredentialSaveTest.php
           php -l app/Console/Commands/XlwmsReadOnlyAuditCommand.php
           php -l tests/Feature/Logistics/XlwmsReadOnlyConnectorTest.php
           php -l tests/Feature/Logistics/XlwmsCredentialPageTest.php
@@ -63,6 +73,6 @@ jobs:
           QUEUE_CONNECTION: sync
           SESSION_DRIVER: array
           XLWMS_ENABLED: 'false'
-        run: php artisan test tests/Feature/Logistics/XlwmsReadOnlyConnectorTest.php tests/Feature/Logistics/XlwmsCredentialPageTest.php
+        run: php artisan test tests/Feature/Logistics/XlwmsReadOnlyConnectorTest.php tests/Feature/Logistics/XlwmsCredentialPageTest.php tests/Feature/Logistics/XlwmsWarehouseCredentialSaveTest.php
       - name: Whitespace guard
         run: git diff --check origin/main...HEAD
