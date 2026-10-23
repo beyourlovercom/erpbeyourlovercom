@@ -18,7 +18,7 @@ $formalPaths = collect(config('erp_shell_navigation'))->pluck('path')->map($lega
 $implementedPaths = [
     '/orders', '/customers/orders', '/customers/orders/create', '/kol/orders', '/kol/orders/create',
     '/dashboard', '/logistics', '/sync', '/kol', '/products', '/accounting', '/accounting/order-costs', '/settings/users', '/settings/roles-permissions',
-    '/inventory', '/inventory/warehouses', '/guides', '/guides/videos', '/guides/manuals', '/settings', '/settings/changelog',
+    '/inventory', '/inventory/warehouses', '/settings/warehouses', '/guides', '/guides/videos', '/guides/manuals', '/settings', '/settings/changelog',
     '/customers', '/purchase',
     '/logistics/wait-stock', '/logistics/awaiting-tracking', '/logistics/in-transit', '/logistics/exceptions',
 ];
