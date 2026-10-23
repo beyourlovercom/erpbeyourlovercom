@@ -76,6 +76,8 @@ final class WarehouseController
             ),
             'canOperate'=>auth()->user()?->can(AuthorizationKeys::InventoryOperate->value) ?? false,
             'canManage'=>auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false,
+            'canManageOpenApi'=>auth()->user()?->can('system.permissions.manage') ?? false,
+            'openApiProbeEnabled'=>(bool) config('xlwms.manual_probe_enabled', false),
         ]);
     }
     public function downloadRestockDocument(
