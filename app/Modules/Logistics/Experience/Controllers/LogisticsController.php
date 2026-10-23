@@ -63,7 +63,7 @@ final class LogisticsController
     public function waitStock(Request $request): Response
     {
         $orders = $this->statusSummary->pendingAllocationQuery()
-            ->with(['address', 'items.product', 'owner', 'shipment.warehouse', 'fulfillmentAllocation', 'externalReferences:id,order_id,provider'])
+            ->with(['address', 'items.product', 'owner', 'shipment.warehouse', 'fulfillmentAllocation'])
             ->latest('order_date')->latest('id')
             ->paginate(self::PER_PAGE)->withQueryString();
 
