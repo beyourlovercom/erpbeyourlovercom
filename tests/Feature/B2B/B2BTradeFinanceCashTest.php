@@ -87,7 +87,7 @@ final class B2BTradeFinanceCashTest extends TestCase
     public function test_reviewed_sales_document_is_not_actual_finance_cash_until_treasury_confirmation(): void
     {
         $x=$this->setupTrade();
-        $summary=app(B2BTradeCashAccountingService::class)->summary($x['order']);
+        $summary=app(B2BTradeCashAccountingService::class)->summary((int)$x['order']->id);
         $this->assertSame('unpaid',$summary['status']);
         $this->assertSame(0,$summary['net_confirmed_micros']);
         $this->assertSame(250000000,$summary['outstanding_micros']);
@@ -104,7 +104,7 @@ final class B2BTradeFinanceCashTest extends TestCase
         $this->actingAs($x['reviewer'])->post($path,$this->receiptRequest())->assertForbidden();
         $this->actingAs($x['finance'])->post($path,$this->receiptRequest())->assertRedirect();
         $this->assertDatabaseCount('finance_b2b_trade_cash_events',1);
-        $summary=app(B2BTradeCashAccountingService::class)->summary($x['order']);
+        $summary=app(B2BTradeCashAccountingService::class)->summary((int)$x['order']->id);
         $this->assertSame('partial',$summary['status']);
         $this->assertSame(100000000,$summary['net_confirmed_micros']);
         $this->assertSame(150000000,$summary['outstanding_micros']);
@@ -147,8 +147,8 @@ final class B2BTradeFinanceCashTest extends TestCase
         $this->actingAs($x['finance'])->post($refundUrl,$this->refundRequest())
             ->assertSessionHasErrors(['refund']);
         $this->actingAs($x['refundVerifier'])->post($refundUrl,$this->refundRequest())->assertRedirect();
-        $this->assertSame('partial',app(B2BTradeCashAccountingService::class)->summary($x['order'])['status']);
-        $this->assertSame(75000000,app(B2BTradeCashAccountingService::class)->summary($x['order'])['net_confirmed_micros']);
+        $this->assertSame('partial',app(B2BTradeCashAccountingService::class)->summary((int)$x['order']->id)['status']);
+        $this->assertSame(75000000,app(B2BTradeCashAccountingService::class)->summary((int)$x['order']->id)['net_confirmed_micros']);
         $this->actingAs($x['refundVerifier'])->post($refundUrl,$this->refundRequest('UAT-G4-REFUND-TOO-MUCH','90.00'))
             ->assertSessionHasErrors(['refund']);
         $this->assertDatabaseCount('finance_b2b_trade_cash_events',2);
@@ -242,4 +242,59 @@ final class B2BTradeFinanceCashTest extends TestCase
         $this->assertDatabaseCount('finance_b2b_trade_cash_events',1);
     }
 
+
+    public function test_typed_finance_gateway_returns_persisted_event_identity_and_rejects_duplicate_direct_call(): void
+    {
+        $x=$this->setupTrade();
+        $cash=app(B2BTradeCashAccountingService::class);
+        $attestation=[...$this->receiptRequest(),'amount_micros'=>100000000];
+        $createdId=$cash->confirmReceipt((int)$x['order']->id,(int)$x['evidence']->id,$attestation,(int)$x['finance']->id);
+        $this->assertSame((int)FinanceB2BTradeCashEvent::query()->firstOrFail()->getKey(),$createdId);
+        try {
+            $cash->confirmReceipt((int)$x['order']->id,(int)$x['evidence']->id,$attestation,(int)$x['finance']->id);
+            $this->fail('A confirmed receipt reference may never be counted twice.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertArrayHasKey('external_reference',$exception->errors());
+        }
+        $this->assertDatabaseCount('finance_b2b_trade_cash_events',1);
+        $this->assertDatabaseCount('order_financials',0);
+    }
+
+    public function test_typed_finance_gateway_rejects_inactive_finance_even_without_http_middleware(): void
+    {
+        $x=$this->setupTrade();
+        $x['finance']->update(['is_active'=>false]);
+        $cash=app(B2BTradeCashAccountingService::class);
+        try {
+            $cash->confirmReceipt((int)$x['order']->id,(int)$x['evidence']->id,
+                [...$this->receiptRequest(),'amount_micros'=>100000000],(int)$x['finance']->id);
+            $this->fail('Inactive Finance must fail closed at service boundary.');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+            $this->assertSame(403,$exception->getStatusCode());
+        }
+        $this->assertDatabaseCount('finance_b2b_trade_cash_events',0);
+        $this->assertDatabaseCount('order_financials',0);
+    }
+
+    public function test_typed_finance_gateway_refund_requires_separate_finance_and_returns_refund_id(): void
+    {
+        $x=$this->setupTrade();
+        $cash=app(B2BTradeCashAccountingService::class);
+        $receiptId=$cash->confirmReceipt((int)$x['order']->id,(int)$x['evidence']->id,
+            [...$this->receiptRequest(),'amount_micros'=>100000000],(int)$x['finance']->id);
+        $refund=[...$this->refundRequest('UAT-DIRECT-REFUND-002','25.00'),'amount_micros'=>25000000];
+        try {
+            $cash->confirmRefund((int)$x['order']->id,$receiptId,$refund,(int)$x['finance']->id);
+            $this->fail('The receipt verifier may not verify their own refund.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertArrayHasKey('refund',$exception->errors());
+        }
+        $this->assertDatabaseCount('finance_b2b_trade_cash_events',1);
+        $refundId=$cash->confirmRefund((int)$x['order']->id,$receiptId,$refund,(int)$x['refundVerifier']->id);
+        $record=FinanceB2BTradeCashEvent::query()->findOrFail($refundId);
+        $this->assertSame('refund',$record->event_type);
+        $this->assertSame($receiptId,(int)$record->refund_of_id);
+        $this->assertSame(75000000,$cash->summary((int)$x['order']->id)['net_confirmed_micros']);
+        $this->assertDatabaseCount('order_financials',0);
+    }
 }

@@ -4,10 +4,12 @@ namespace App\Modules\Finance\Providers;
 
 use App\Modules\Finance\Application\ConfirmedLossProjection;
 use App\Modules\Finance\Application\Contracts\AccountingContinuousDeltaCandidateStore;
+use App\Modules\Finance\Application\Contracts\B2BTradeCashGateway;
 use App\Modules\Finance\Application\Contracts\ConfirmedLossReader;
 use App\Modules\Finance\Application\Contracts\FxManualRateRepository;
 use App\Modules\Finance\Application\Contracts\WooFinancialBootstrapOrderStore;
 use App\Modules\Finance\Infrastructure\EloquentAccountingContinuousDeltaCandidateStore;
+use App\Modules\Finance\Infrastructure\EloquentB2BTradeCashGateway;
 use App\Modules\Finance\Infrastructure\EloquentFxManualRateRepository;
 use App\Modules\Finance\Infrastructure\EloquentWooFinancialBootstrapOrderStore;
 use App\Modules\Finance\Experience\Console\Commands\BootstrapWooFinancialEvidenceCommand;
@@ -33,6 +35,7 @@ final class FinanceServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(AccountingContinuousDeltaCandidateStore::class, EloquentAccountingContinuousDeltaCandidateStore::class);
+        $this->app->bind(B2BTradeCashGateway::class, EloquentB2BTradeCashGateway::class);
         $this->app->bind(ConfirmedLossReader::class, ConfirmedLossProjection::class);
         $this->app->bind(FxManualRateRepository::class, EloquentFxManualRateRepository::class);
         $this->app->bind(WooFinancialBootstrapOrderStore::class, EloquentWooFinancialBootstrapOrderStore::class);

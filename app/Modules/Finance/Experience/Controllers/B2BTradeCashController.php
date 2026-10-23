@@ -27,7 +27,7 @@ final class B2BTradeCashController
                 'id'=>$row->id,
                 'number'=>$row->trade_order_number,
                 'company'=>$row->organization?->display_name,
-                'summary'=>$this->cash->summary($row),
+                'summary'=>$this->cash->summary((int)$row->id),
             ]),
         ]);
     }
@@ -45,7 +45,7 @@ final class B2BTradeCashController
                 'status'=>$row->status,
                 'company'=>$row->organization?->display_name,
                 'currency'=>$row->currency,
-                'summary'=>$this->cash->summary($row),
+                'summary'=>$this->cash->summary((int)$row->id),
                 'evidence'=>$row->evidence->map(fn (B2BTradeReceiptEvidence $e)=>[
                     'id'=>$e->id,
                     'source'=>$e->source,'reference'=>$e->reference,
@@ -85,7 +85,7 @@ final class B2BTradeCashController
         } catch(InvalidArgumentException $e) {
             throw \Illuminate\Validation\ValidationException::withMessages(['amount_decimal'=>'金额需大于零，最多两位小数']);
         }
-        $this->cash->confirmReceipt($tradeOrder,$evidence,$data,(int)$request->user()->getAuthIdentifier());
+        $this->cash->confirmReceipt((int)$tradeOrder->id,(int)$evidence->id,$data,(int)$request->user()->getAuthIdentifier());
         return back();
     }
 
@@ -106,7 +106,7 @@ final class B2BTradeCashController
         } catch (InvalidArgumentException $e) {
             throw \Illuminate\Validation\ValidationException::withMessages(['amount_decimal'=>'退款金额必须是正数，最多两位小数']);
         }
-        $this->cash->confirmRefund($tradeOrder,$cashEvent,$data,(int)$request->user()->getAuthIdentifier());
+        $this->cash->confirmRefund((int)$tradeOrder->id,(int)$cashEvent->id,$data,(int)$request->user()->getAuthIdentifier());
         return back();
     }
 }
