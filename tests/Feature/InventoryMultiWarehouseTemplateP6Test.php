@@ -13,7 +13,7 @@ final class InventoryMultiWarehouseTemplateP6Test extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_all_canonical_warehouses_share_one_detail_contract_and_only_us_la_has_bill_import_capability(): void
+    public function test_all_canonical_warehouses_share_one_detail_contract_and_only_enabled_warehouses_have_bill_import_capability(): void
     {
         $user=$this->userWith(['inventory.view','inventory.warehouses.manage']);
         foreach(['us-ny','us-la','us-3sm','de','ca','factory','007'] as $slug){
@@ -28,6 +28,11 @@ final class InventoryMultiWarehouseTemplateP6Test extends TestCase
                         ->where('warehouse.bill_import.label','MorePlus')
                         ->where('warehouse.bill_import.extension','xlsx')
                         ->where('warehouse.bill_import.format_label','XLSX');
+                } elseif($slug==='us-ny') {
+                    $page->where('warehouse.bill_import.provider','speeda-us-ny')
+                        ->where('warehouse.bill_import.label','速达美东仓')
+                        ->where('warehouse.bill_import.extension','xlsx')
+                        ->where('warehouse.bill_import.format_label','XLSX');
                 } else {
                     $page->where('warehouse.bill_import',null);
                 }
@@ -38,8 +43,8 @@ final class InventoryMultiWarehouseTemplateP6Test extends TestCase
     public function test_non_capability_warehouse_bill_import_routes_fail_closed(): void
     {
         $user=$this->userWith(['inventory.view','inventory.warehouses.manage']);
-        $this->actingAs($user)->post('/inventory/us-ny/costs/import/preview')->assertNotFound();
-        $this->actingAs($user)->post('/inventory/us-ny/costs/import/apply')->assertNotFound();
+        $this->actingAs($user)->post('/inventory/us-3sm/costs/import/preview')->assertNotFound();
+        $this->actingAs($user)->post('/inventory/us-3sm/costs/import/apply')->assertNotFound();
         $this->assertDatabaseCount('warehouse_bill_import_batches',0);
     }
 

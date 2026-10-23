@@ -218,7 +218,7 @@ final class InventoryWarehouseStorageAgingP9OperationalTest extends TestCase
         $this->app->make(ShipmentService::class)->markShipped($order, [
             'warehouse_id' => $warehouse->id,
             'carrier' => 'USPS',
-            'service' => 'Ground',
+            'service' => 'USPS Ground Advantage',
             'shipped_at' => '2026-09-18 08:00:00',
         ], null);
 
@@ -266,7 +266,7 @@ final class InventoryWarehouseStorageAgingP9OperationalTest extends TestCase
             $this->app->make(ShipmentService::class)->markShipped($order, [
                 'warehouse_id' => $warehouse->id,
                 'carrier' => 'USPS',
-                'service' => 'Ground',
+                'service' => 'USPS Ground Advantage',
                 'shipped_at' => '2026-09-18 08:00:00',
             ], null);
             self::fail('Expected FIFO blocker.');
