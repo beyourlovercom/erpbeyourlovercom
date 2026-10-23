@@ -7,6 +7,7 @@ use App\Modules\Logistics\Experience\Controllers\LogisticsController;
 use App\Modules\Logistics\Experience\Controllers\OverseaWarehouseController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsCredentialController;
 use App\Modules\Logistics\Experience\Controllers\WarehouseSettingsController;
+use App\Modules\Logistics\Experience\Controllers\WarehouseOpenApiController;
 use App\Modules\Logistics\Experience\Middleware\RequireFulfillmentAllocation;
 use App\Modules\Logistics\Experience\Middleware\RequireLogisticsExecution;
 use App\Modules\Logistics\Experience\Middleware\RequireLogisticsReview;
@@ -24,6 +25,9 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/settings/warehouses/xlwms/verify', [XlwmsCredentialController::class, 'verify'])
         ->middleware(['can:system.permissions.manage', 'throttle:5,1'])
         ->name('settings.warehouses.xlwms.verify');
+    Route::post('/settings/warehouses/{warehouse}/openapi/xlwms', [WarehouseOpenApiController::class, 'save'])
+        ->middleware(['can:system.permissions.manage', 'throttle:5,1'])
+        ->name('settings.warehouses.openapi.xlwms.save');
     // Bookmarks from the earlier Dev page redirect to the canonical Settings path.
     // Intentionally do NOT preserve the old POST endpoint.
     Route::redirect('/logistics/integrations/xlwms', '/settings/warehouses/xlwms')
