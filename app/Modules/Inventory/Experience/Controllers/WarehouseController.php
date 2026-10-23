@@ -339,7 +339,8 @@ final class WarehouseController
             'configured' => $entry !== null,
             'key_hint' => $entry ? '••••' . substr((string) $entry->app_key_encrypted, -4) : null,
             'last_verified_at' => $entry?->last_verified_at?->toIso8601String(),
-            'remote_warehouse_bound' => false,
+            'remote_warehouse_bound' => filled($entry?->oms_warehouse_code),
+            'oms_warehouse_code' => $entry?->oms_warehouse_code,
         ];
     }
 

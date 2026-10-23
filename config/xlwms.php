@@ -22,6 +22,8 @@ return [
     'sku_map' => json_decode((string) env('XLWMS_SKU_MAP_JSON', '{}'), true) ?: [],
     // Hard-off in P0-P2; a separate approved package is required for writes.
     'auto_dispatch_enabled' => false,
+    // P1-P3: deliberate single-order send; off until explicit Owner live-order authorization.
+    'live_dispatch_enabled' => filter_var(env('XLWMS_LIVE_DISPATCH_ENABLED', false), FILTER_VALIDATE_BOOL),
     // Separate opt-in for privileged one-shot read-only credential verification.
     // Entered keys are never stored or used for outbound-order creation.
     'manual_probe_enabled' => filter_var(env('XLWMS_MANUAL_PROBE_ENABLED', false), FILTER_VALIDATE_BOOL),
