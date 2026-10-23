@@ -25,13 +25,41 @@ final class XlwmsCredentialPageTest extends TestCase
         return $user;
     }
 
+    public function test_warehouse_settings_hub_is_admin_only_and_not_a_placeholder(): void
+    {
+        $user = $this->userWith(['logistics.view']);
+        $this->actingAs($user)->get('/settings/warehouses')->assertForbidden();
+
+        $admin = $this->userWith(['system.permissions.manage']);
+        $this->actingAs($admin)->get('/settings/warehouses')->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Settings/Warehouses/Index')
+                ->has('integrations', 1)
+                ->where('integrations.0.url', '/settings/warehouses/xlwms')
+                ->where('integrations.0.configured', false)
+                ->where('integrations.0.auto_dispatch_enabled', false));
+    }
+
+    public function test_old_logistics_bookmark_redirects_but_does_not_accept_key_submissions(): void
+    {
+        Http::fake();
+        $admin = $this->userWith(['system.permissions.manage']);
+        $this->actingAs($admin)->get('/logistics/integrations/xlwms')
+            ->assertRedirect('/settings/warehouses/xlwms');
+        $this->actingAs($admin)->postJson('/logistics/integrations/xlwms/verify', [
+            'app_key' => 'test-app-key',
+            'app_secret' => 'test-app-secret',
+        ])->assertNotFound();
+        Http::assertNothingSent();
+    }
+
     public function test_unauthorized_users_cannot_view_or_verify_keys(): void
     {
         Http::fake();
-        $this->get('/logistics/integrations/xlwms')->assertRedirect('/login');
+        $this->get('/settings/warehouses/xlwms')->assertRedirect('/login');
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
-        $this->actingAs($user)->get('/logistics/integrations/xlwms')->assertForbidden();
-        $this->actingAs($user)->postJson('/logistics/integrations/xlwms/verify', [
+        $this->actingAs($user)->get('/settings/warehouses/xlwms')->assertForbidden();
+        $this->actingAs($user)->postJson('/settings/warehouses/xlwms/verify', [
             'app_key' => 'test-app-key',
             'app_secret' => 'test-app-secret',
         ])->assertForbidden();
@@ -42,9 +70,9 @@ final class XlwmsCredentialPageTest extends TestCase
     {
         $admin = $this->userWith(['system.permissions.manage']);
         config()->set('xlwms.manual_probe_enabled', true);
-        $this->actingAs($admin)->get('/logistics/integrations/xlwms')->assertOk()
+        $this->actingAs($admin)->get('/settings/warehouses/xlwms')->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->component('Logistics/Integrations/XlwmsCredential')
+                ->component('Settings/Warehouses/Xlwms')
                 ->where('probeEnabled', true)
                 ->missing('appKey')
                 ->missing('appSecret'));
@@ -55,7 +83,7 @@ final class XlwmsCredentialPageTest extends TestCase
         $admin = $this->userWith(['system.permissions.manage']);
         config()->set('xlwms.manual_probe_enabled', false);
         Http::fake();
-        $this->actingAs($admin)->postJson('/logistics/integrations/xlwms/verify', [
+        $this->actingAs($admin)->postJson('/settings/warehouses/xlwms/verify', [
             'app_key' => 'test-app-key',
             'app_secret' => 'test-app-secret',
         ])->assertOk()->assertJsonPath('status', 'disabled');
@@ -73,7 +101,7 @@ final class XlwmsCredentialPageTest extends TestCase
             ]),
         ]);
 
-        $this->actingAs($admin)->postJson('/logistics/integrations/xlwms/verify', [
+        $this->actingAs($admin)->postJson('/settings/warehouses/xlwms/verify', [
             'app_key' => 'test-app-key',
             'app_secret' => 'test-app-secret',
         ])->assertOk()
@@ -97,7 +125,7 @@ final class XlwmsCredentialPageTest extends TestCase
         Http::fake([
             'https://api.xlwms.com/*' => Http::response(['code' => 40101, 'message' => 'Invalid signature']),
         ]);
-        $this->actingAs($admin)->postJson('/logistics/integrations/xlwms/verify', [
+        $this->actingAs($admin)->postJson('/settings/warehouses/xlwms/verify', [
             'app_key' => 'test-app-key',
             'app_secret' => 'test-app-secret',
         ])->assertOk()
@@ -111,7 +139,7 @@ final class XlwmsCredentialPageTest extends TestCase
         $admin = $this->userWith(['system.permissions.manage']);
         config()->set('xlwms.manual_probe_enabled', true);
         Http::fake();
-        $this->actingAs($admin)->post('/logistics/integrations/xlwms/verify', [
+        $this->actingAs($admin)->post('/settings/warehouses/xlwms/verify', [
             'app_key' => 'short',
             'app_secret' => 'SUPER-SECRET-DO-NOT-FLASH',
         ])->assertStatus(422)->assertJsonPath('status', 'invalid_credentials_format');
