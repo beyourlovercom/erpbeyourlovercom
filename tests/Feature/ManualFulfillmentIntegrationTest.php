@@ -519,6 +519,8 @@ final class ManualFulfillmentIntegrationTest extends TestCase
             'order_date' => '2026-08-27',
             'recipient_name' => 'Manual Fulfillment UAT',
             'country' => 'US',
+            'province_state' => 'CA',
+            'postal_code' => '90001',
             'items' => [[
                 'product_id' => $product->id,
                 'product_summary' => $product->name,
