@@ -75,8 +75,8 @@ P3: outboundOrder/create and idempotency/remote read-after-timeout; P4: controll
 
 ## Admin-only one-time credential reality check (new)
 
-- Page after Dev deployment: `/logistics/integrations/xlwms`.
-- Menu access: Logistics → Carriers → **仓库 API · 领星 OMS** (visible only with `system.permissions.manage`).
+- Page after Dev deployment: `/settings/warehouses/xlwms`.
+- Menu access: Settings → 仓库设置 → **领星 OMS · 世迈仓 OpenAPI** (Logistics → Carriers includes an admin-only shortcut) (visible only with `system.permissions.manage`).
 - Dedicated switch: `XLWMS_MANUAL_PROBE_ENABLED=true` on the authorized Dev runtime. This switch does **not** enable `XLWMS_ENABLED` catalog jobs or any outbound functionality.
 - Enter the real App Key and Secret in the authenticated page; click “测试连接（仅查询仓库）”.
 - This request sends one POST to `https://api.xlwms.com/openapi/v1/warehouse/options`, returns a sanitized JSON verdict, and clears the Secret from browser form state.
@@ -99,3 +99,14 @@ The formal `https://erp.beyourlover.com` Production endpoint must not be changed
 - A channel absent, disabled, or not accepted by the selected warehouse must be flagged for administrator correction or creation in the ERP native carrier master; do not silently substitute another channel.
 - These read-only P0-P2 checks never assert a channel or SKU is remotely verified until a live catalog response has been compared. `auto_dispatch_enabled=false` remains hard OFF.
 - User-visible integration page should show connection, saved credentials after a separate secure-storage implementation and explicit warehouse binding. **Do not reintroduce mandatory SKU/channel mapping setup.** Normal matching is automatic; exceptions only.
+
+## Owner-frozen navigation and ownership (2026-10-23)
+
+- **One-off configurations belong to Settings**: credentials, remote warehouse binding, account authorization, API connection verification, and exception-only SKU overrides.
+- **Repeated business activities belong to their dedicated modules**: order allocation, review, dispatch, shipping status, Tracking, exceptions, carrier execution; none should embed the API secret/settings form.
+- Canonical settings index: `/settings/warehouses` (replaces a Shell placeholder) with provider cards; XLWMS detail: `/settings/warehouses/xlwms`; read-only manual probe POST `/settings/warehouses/xlwms/verify`.
+- The historical Dev GET `/logistics/integrations/xlwms` redirects to the canonical Settings page for bookmarks. Historical POST is **removed**, not forwarded, to avoid dual credential endpoints.
+- Warehouse Settings and XLWMS page require `system.permissions.manage`; the API probe retains CSRF and throttle `5/min`. No secret persistence or warehouse binding is claimed by this route migration.
+- The Logistics carrier page has an admin-only **API 设置** shortcut. No duplicate management UI or auto-dispatch switch is presented in Logistics.
+- **Vendor distinction:** XLWMS is the API provider; '世迈仓' is the Owner-supplied display context. Do not implicitly bind it to the ERP `US-SM` warehouse or any other warehouse until the actual OMS warehouse identity is confirmed.
+- Automatic dispatch remains disabled until a separate authenticated warehouse binding + shipment UAT package is approved.
