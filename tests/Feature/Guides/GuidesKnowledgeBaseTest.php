@@ -86,7 +86,8 @@ final class GuidesKnowledgeBaseTest extends TestCase
             ->where('initialDate', '2026-09-07')
             ->where('entries.0.date', '2026-09-08')
             ->where('entries.1.date', '2026-09-07')
-            ->where('entries.0.html', fn (string $html): bool => str_contains($html, 'Accounting / Order Profit')));
+            ->where('entries.0.html', fn (string $html): bool => str_contains($html, 'Logistics / Carrier'))
+            ->where('entries.1.html', fn (string $html): bool => str_contains($html, 'Accounting / Order Profit')));
 
         $this->actingAs($manager)->get('/settings/changelog/create')->assertNotFound();
         $this->actingAs($manager)->post('/settings/changelog', [])->assertStatus(405);

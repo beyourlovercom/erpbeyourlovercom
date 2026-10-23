@@ -85,7 +85,8 @@ final class InventoryDataFreshnessM11Test extends TestCase
 
         $dashboard = app(InventoryService::class)->dashboard();
         $this->assertSame(1, $dashboard['warehouse_confirmed_count']);
-        $this->assertSame(5, $dashboard['warehouse_data_gap_count']);
+        $this->assertSame(7, Warehouse::query()->count());
+        $this->assertSame(6, $dashboard['warehouse_data_gap_count']);
     }
 
     private function warehouseSummary(string $slug): array

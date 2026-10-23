@@ -20,6 +20,9 @@ final class FulfillmentActualWeightEvidenceTest extends TestCase
             'source_type' => 'manual',
             'sku' => 'SCAN-WEIGHT-001',
             'name' => 'Scan Weight Product',
+            // Packaging cost is a separate required input; no dimensions needed.
+            'standard_packaging_cost' => '24.00',
+            'cost_currency' => 'CNY',
             'is_active' => true,
         ]);
         $evidence = ProductWeightEvidence::create([
@@ -52,7 +55,9 @@ final class FulfillmentActualWeightEvidenceTest extends TestCase
         $this->assertNull($result['segments'][0]['packaging']['volume_cm3']);
         $this->assertSame('actual_weight_only', $result['segments'][0]['routing']['components'][0]['billing_basis']);
         $this->assertSame(84.5, $result['segments'][0]['routing']['components'][0]['amount']);
-        $this->assertSame(108.5, $result['amount']);
+        $this->assertSame('CNY', $result['segments'][0]['packaging_cost']['components'][0]['currency']);
+        $this->assertSame(24.0, $result['segments'][0]['packaging_cost']['components'][0]['amount']);
+        $this->assertSame(132.5, $result['amount']);
         $this->assertDatabaseCount('product_packaging_profiles', 0);
     }
 
@@ -63,6 +68,8 @@ final class FulfillmentActualWeightEvidenceTest extends TestCase
             'sku' => 'UNBACKED-WEIGHT-001',
             'name' => 'Unbacked Weight Product',
             'shipping_weight_kg' => 0.5000,
+            'standard_packaging_cost' => '24.00',
+            'cost_currency' => 'CNY',
             'is_active' => true,
         ]);
 

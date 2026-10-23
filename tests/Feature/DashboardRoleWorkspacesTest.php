@@ -82,7 +82,7 @@ final class DashboardRoleWorkspacesTest extends TestCase
                 ->where('roleSnapshot.cards.2.value', 1)
                 ->where('roleSnapshot.cards.4.value', 1)
                 ->where('visibility.operations', false)
-                ->where('visibility.inventory', false)
+                ->where('visibility.inventory', true)
                 ->where('visibility.sync', false)
                 ->where('visibility.finance', false)
                 ->where('visibility.procurement', false)

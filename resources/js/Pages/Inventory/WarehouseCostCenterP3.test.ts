@@ -16,8 +16,9 @@ const costCenter = { months:[{ month:'2026-09',label:'2026年09月',currencies:[
 const baseProps={warehouse,clearanceProducts:[],clearanceCandidates:[],costCenter,billImportPreview:null,canOperate:false}
 
 describe('Warehouse Cost Center P3',()=>{
-  it('shows three month tabs and the four canonical cost KPIs directly',()=>{
+  it('shows three month tabs and the four canonical cost KPIs directly', async ()=>{
     const wrapper=mount(WarehouseShow,{props:{...baseProps,canManage:false}})
+    await wrapper.findAll('.warehouse-tabs button').find(button => button.text() === '成本')!.trigger('click')
     expect(wrapper.text()).toContain('最近 3 个月仓库费用')
     expect(wrapper.text()).toContain('2026年09月')
     expect(wrapper.text()).toContain('2026年08月')
@@ -30,18 +31,21 @@ describe('Warehouse Cost Center P3',()=>{
     expect(wrapper.find('input[type="month"]').exists()).toBe(false)
   })
 
-  it('allows warehouse managers to see the manual cost entry form',()=>{
+  it('allows warehouse managers to see the manual cost entry form', async ()=>{
     const wrapper=mount(WarehouseShow,{props:{...baseProps,canManage:true}})
+    await wrapper.findAll('.warehouse-tabs button').find(button => button.text() === '成本')!.trigger('click')
     expect(wrapper.find('input[type="month"]').exists()).toBe(true)
     expect(wrapper.find('input[placeholder="USD"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('记录费用')
   })
 
-  it('renders bill import from warehouse capability instead of slug hard-code',()=>{
+  it('renders bill import from warehouse capability instead of slug hard-code', async ()=>{
     const enabled=mount(WarehouseShow,{props:{...baseProps,canManage:true}})
+    await enabled.findAll('.warehouse-tabs button').find(button => button.text() === '成本')!.trigger('click')
     expect(enabled.text()).toContain('导入 MorePlus 仓库账单')
     const generic={...warehouse,slug:'us-ny',public_slug:'us-ny',code:'US-NY',name:'美东纽约仓',bill_import:null}
     const disabled=mount(WarehouseShow,{props:{...baseProps,warehouse:generic,canManage:true}})
+    await disabled.findAll('.warehouse-tabs button').find(button => button.text() === '成本')!.trigger('click')
     expect(disabled.text()).not.toContain('导入 MorePlus 仓库账单')
     expect(disabled.find('.cost-import-panel').exists()).toBe(false)
   })

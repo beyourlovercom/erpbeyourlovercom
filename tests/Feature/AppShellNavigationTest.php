@@ -185,15 +185,17 @@ class AppShellNavigationTest extends TestCase
         $user = $this->userWith(['dashboard.view', 'accounting.view', 'analysis.view', 'prototype.view']);
         $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
             ->where('shellNavigation.1.key', 'accounting')
-            ->has('shellNavigation.1.children', 3)
+            ->has('shellNavigation.1.children', 4)
             ->where('shellNavigation.1.children.0.key', 'accounting-overview')
             ->where('shellNavigation.1.children.0.path', '/accounting')
             ->where('shellNavigation.1.children.1.key', 'accounting-order-costs')
             ->where('shellNavigation.1.children.1.label', '订单利润')
             ->where('shellNavigation.1.children.1.path', '/accounting/order-costs')
-            ->where('shellNavigation.1.children.2.key', 'accounting-loss-orders')
-            ->where('shellNavigation.1.children.2.label', '亏损订单')
-            ->where('shellNavigation.1.children.2.path', '/accounting/order-costs?profit_status=loss'));
+            ->where('shellNavigation.1.children.2.key', 'accounting-b2b-cash')
+            ->where('shellNavigation.1.children.2.path', '/accounting/b2b-trade-cash')
+            ->where('shellNavigation.1.children.3.key', 'accounting-loss-orders')
+            ->where('shellNavigation.1.children.3.label', '亏损订单')
+            ->where('shellNavigation.1.children.3.path', '/accounting/order-costs?profit_status=loss'));
     }
 
     public function test_customer_import_is_available_from_customer_and_sync_navigation_with_the_same_workspace(): void
@@ -267,7 +269,7 @@ class AppShellNavigationTest extends TestCase
         $this->actingAs($prototypeUser)->get('/guides')->assertForbidden();
         // /products now requires products.view (not prototype.view); prototype-only users are forbidden
         $this->actingAs($prototypeUser)->get('/products')->assertForbidden();
-        foreach (['/inventory', '/logistics', '/customers', '/kol', '/marketing', '/accounting', '/settings', '/sync'] as $path) {
+        foreach (['/inventory', '/logistics', '/customers', '/b2b', '/kol', '/marketing', '/accounting', '/settings', '/sync'] as $path) {
             $this->actingAs($prototypeUser)->get($path)->assertForbidden();
         }
     }
@@ -317,7 +319,7 @@ class AppShellNavigationTest extends TestCase
     {
         $user = $this->userWith([], 'super_admin');
         $this->actingAs($user)->get('/settings')->assertOk();
-        $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page->has('shellNavigation', 13));
+        $this->actingAs($user)->get('/dashboard')->assertInertia(fn (Assert $page) => $page->has('shellNavigation', 14));
     }
 
     public function test_root_contract_and_legacy_prototype_access_remain_unchanged(): void

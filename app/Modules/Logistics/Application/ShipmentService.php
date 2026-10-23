@@ -365,10 +365,13 @@ final class ShipmentService
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
-            if ($shipment->shipment_status !== 'pending') {
+            // Snapshot the original state before snapshotAndReset mutates and saves
+            // it, otherwise the real shipped -> pending transition is unaudited.
+            $before = $this->snapshot($shipment);
+            $hadActiveShipment = $shipment->shipment_status !== 'pending';
+            if ($hadActiveShipment) {
                 $this->snapshotAndReset($lockedOrder, $shipment, $actor, $note);
             }
-            $before = $this->snapshot($shipment);
             $shipment->fill([
                 'shipment_status' => 'pending',
                 'warehouse_id' => null,
@@ -381,7 +384,7 @@ final class ShipmentService
                 'logistics_note' => null,
                 'handled_by' => null,
             ]);
-            $changed = $shipment->isDirty() || $lockedOrder->order_status?->value !== 'pending_shipment';
+            $changed = $hadActiveShipment || $shipment->isDirty() || $lockedOrder->order_status?->value !== 'pending_shipment';
             $shipment->save();
             if ($lockedOrder->order_status?->value !== 'pending_shipment') {
                 $lockedOrder->forceFill(['order_status' => 'pending_shipment'])->save();

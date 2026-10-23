@@ -103,7 +103,13 @@ class RuntimeFoundationTest extends TestCase
         $this->assertStringContainsString('runtime:health', $event->command);
         $this->assertStringContainsString('--quiet', $event->command);
         $this->assertStringContainsString('--no-interaction', $event->command);
-        $this->assertCount(1, $events);
+        // Only the health probe and three guarded backup maintenance cadences
+        // may be registered by default; no order/payment/fulfillment job.
+        $this->assertSame(
+            ['backup.scheduled.daily', 'backup.scheduled.monthly',
+                'backup.scheduled.weekly', 'runtime.health'],
+            collect($events)->pluck('description')->sort()->values()->all(),
+        );
     }
 
     public function test_public_up_endpoint_remains_available_and_registration_route_remains_absent(): void

@@ -1,8 +1,8 @@
 {
-  "version": "2.1",
+  "version": "2.8",
   "status": "OWNER_APPROVED",
-  "approved_at": "2026-09-05",
-  "approved_head": "9443d91410968288e54c587bc85f226b8b772cad",
+  "approved_at": "2026-10-23",
+  "approved_head": "49ce2543453ec54761ac8e45d3c665b668491ca1",
   "governed_levels": [
     1,
     2
@@ -384,6 +384,96 @@
       "sort": 50
     },
     {
+      "code": "b2b",
+      "parent_code": null,
+      "level": 1,
+      "label_zh": "B2B 业务",
+      "slug": "b2b",
+      "url": "/b2b",
+      "route": "b2b.overview",
+      "permission": "b2b.view",
+      "emoji": "💼",
+      "function_zh": "独立管理企业客户、询盘、跟进、报价与经销商，不影响C端客户。",
+      "status": "in_progress",
+      "progress": 65,
+      "sort": 60
+    },
+    {
+      "code": "b2b-inquiries",
+      "parent_code": "b2b",
+      "level": 2,
+      "label_zh": "询盘管理",
+      "slug": "inquiries",
+      "url": "/b2b/inquiries",
+      "route": "b2b.inquiries.index",
+      "permission": "b2b.view",
+      "emoji": null,
+      "function_zh": "查看、筛选和跟踪企业采购询盘。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 10
+    },
+    {
+      "code": "b2b-companies",
+      "parent_code": "b2b",
+      "level": 2,
+      "label_zh": "企业客户",
+      "slug": "companies",
+      "url": "/b2b/companies",
+      "route": "b2b.companies.index",
+      "permission": "b2b.view",
+      "emoji": null,
+      "function_zh": "管理企业商业档案、采购联系人和业务负责人。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 20
+    },
+    {
+      "code": "b2b-followups",
+      "parent_code": "b2b",
+      "level": 2,
+      "label_zh": "跟进任务",
+      "slug": "followups",
+      "url": "/b2b/followups",
+      "route": "b2b.followups",
+      "permission": "b2b.view",
+      "emoji": null,
+      "function_zh": "查看开放询盘的下一次跟进日期与待办清单。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 30
+    },
+    {
+      "code": "b2b-sales",
+      "parent_code": "b2b",
+      "level": 2,
+      "label_zh": "销售漏斗",
+      "slug": "sales",
+      "url": "/b2b/sales",
+      "route": "b2b.sales.index",
+      "permission": "b2b.view",
+      "emoji": null,
+      "function_zh": "复用YBY销售商机Pipeline和五阶段进度路线图，S2/S3报价收款独立验收。",
+      "status": "in_progress",
+      "progress": 50,
+      "sort": 40
+    },
+    {
+      "code": "b2b-trade",
+      "parent_code": "b2b",
+      "level": 2,
+      "label_zh": "贸易订单",
+      "slug": "trade-orders",
+      "url": "/b2b/trade-orders",
+      "route": "b2b.trade.index",
+      "permission": "b2b.view",
+      "emoji": null,
+      "function_zh": "独立B2B贸易订单及双人审批、收款凭证资料复核，不自动财务入账",
+      "status": "in_progress",
+      "progress": 40,
+      "sort": 50
+    },
+    {
       "code": "marketing",
       "parent_code": null,
       "level": 1,
@@ -396,7 +486,22 @@
       "function_zh": "管理邮件订阅身份与后续营销工作区入口。",
       "status": "in_progress",
       "progress": 20,
-      "sort": 60
+      "sort": 70
+    },
+    {
+      "code": "marketing-traffic",
+      "parent_code": "marketing",
+      "level": 2,
+      "label_zh": "流量总览",
+      "slug": "traffic",
+      "url": "/marketing/traffic",
+      "route": "traffic.boss-dashboard",
+      "permission": "marketing.view",
+      "emoji": null,
+      "function_zh": "现有 Marketing 流量总览，展示站点流量及来源概况",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 10
     },
     {
       "code": "marketing-subscribers",
@@ -411,7 +516,7 @@
       "function_zh": "只读查看 ERP Marketing 订阅身份和 provider/source 订阅事实。",
       "status": "implemented",
       "progress": 100,
-      "sort": 10
+      "sort": 20
     },
     {
       "code": "marketing-newsletters",
@@ -426,7 +531,7 @@
       "function_zh": "未来承载群发邮件引擎，当前尚未实现。",
       "status": "planned",
       "progress": 0,
-      "sort": 20
+      "sort": 30
     },
     {
       "code": "marketing-campaigns",
@@ -441,7 +546,7 @@
       "function_zh": "未来承载营销活动引擎，当前尚未实现。",
       "status": "planned",
       "progress": 0,
-      "sort": 30
+      "sort": 40
     },
     {
       "code": "marketing-automations",
@@ -456,7 +561,7 @@
       "function_zh": "未来承载营销自动化执行引擎，当前尚未实现。",
       "status": "planned",
       "progress": 0,
-      "sort": 40
+      "sort": 50
     },
     {
       "code": "marketing-promotions",
@@ -471,7 +576,7 @@
       "function_zh": "未来承载优惠促销工作区，当前尚未实现。",
       "status": "planned",
       "progress": 0,
-      "sort": 50
+      "sort": 60
     },
     {
       "code": "kol",
@@ -486,7 +591,7 @@
       "function_zh": "管理网红资料、合作订单、内容进度和付款状态。",
       "status": "in_progress",
       "progress": 77,
-      "sort": 70
+      "sort": 80
     },
     {
       "code": "kol-library",
@@ -531,7 +636,7 @@
       "function_zh": "网红专员仅查看自己的 KOL 物流，网红经理仅查看团队 KOL 物流；不授予通用物流权限、导出或发货操作。",
       "status": "implemented",
       "progress": 100,
-      "sort": 25
+      "sort": 30
     },
     {
       "code": "kol-library-create",
@@ -546,7 +651,7 @@
       "function_zh": "新增 KOL 主数据，默认负责人、加入日期、合作类型、国家/语言和主运营社交平台。",
       "status": "implemented",
       "progress": 100,
-      "sort": 30
+      "sort": 40
     },
     {
       "code": "kol-approval-kols",
@@ -561,7 +666,7 @@
       "function_zh": "审核 KOL 资料与合作准入。",
       "status": "implemented",
       "progress": 100,
-      "sort": 40
+      "sort": 50
     },
     {
       "code": "kol-approval-collaborations",
@@ -576,7 +681,7 @@
       "function_zh": "审核付费合作申请。",
       "status": "implemented",
       "progress": 100,
-      "sort": 50
+      "sort": 60
     },
     {
       "code": "kol-approval-payouts",
@@ -591,7 +696,7 @@
       "function_zh": "审核 KOL 佣金付款。",
       "status": "implemented",
       "progress": 100,
-      "sort": 60
+      "sort": 70
     },
     {
       "code": "kol-opportunities",
@@ -606,7 +711,7 @@
       "function_zh": "管理 KOL 合作机会和跟进阶段（M1.1 CRM 包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 70
+      "sort": 80
     },
     {
       "code": "kol-collaborations",
@@ -621,7 +726,7 @@
       "function_zh": "查看 KOL 合作记录、产品/样品关联和发货投影（M1.2 合作包交付）。",
       "status": "implemented",
       "progress": 100,
-      "sort": 80
+      "sort": 90
     },
     {
       "code": "kol-communications",
@@ -636,7 +741,7 @@
       "function_zh": "记录 KOL 沟通历史和待跟进事项（M1.1 CRM 包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 90
+      "sort": 100
     },
     {
       "code": "kol-samples",
@@ -651,7 +756,7 @@
       "function_zh": "查看 KOL 样品和发货信息投影，复用 canonical 订单和物流真相（M1.2 合作包交付）。",
       "status": "planned",
       "progress": 0,
-      "sort": 100
+      "sort": 110
     },
     {
       "code": "kol-content",
@@ -666,7 +771,7 @@
       "function_zh": "管理 KOL 内容发布记录和发布证据（M1.3 内容包交付）。",
       "status": "implemented",
       "progress": 100,
-      "sort": 110
+      "sort": 120
     },
     {
       "code": "kol-commissions",
@@ -681,7 +786,7 @@
       "function_zh": "管理 KOL 佣金记录和结算历史（M1.4 财务包交付）。",
       "status": "implemented",
       "progress": 100,
-      "sort": 120
+      "sort": 130
     },
     {
       "code": "kol-affiliatewp",
@@ -696,7 +801,7 @@
       "function_zh": "AffiliateWP 网红同步、KOL 绑定、审批状态与 provisioning 工作台；M1.4B 先交付 Influencer 模式，Coupon 模式属于 M1.4C。",
       "status": "implemented",
       "progress": 100,
-      "sort": 130
+      "sort": 140
     },
     {
       "code": "inventory",
@@ -711,7 +816,7 @@
       "function_zh": "管理库存数量、仓库、库存变动和库存异常。",
       "status": "implemented",
       "progress": 100,
-      "sort": 80
+      "sort": 90
     },
     {
       "code": "inventory-overview",
@@ -801,7 +906,7 @@
       "function_zh": "管理采购需求、采购任务、供应商及采购进度。",
       "status": "in_progress",
       "progress": 33,
-      "sort": 90
+      "sort": 100
     },
     {
       "code": "procurement-overview",
@@ -861,7 +966,7 @@
       "function_zh": "管理产品、SKU、产品资料和相关业务配置。",
       "status": "implemented",
       "progress": 100,
-      "sort": 100
+      "sort": 110
     },
     {
       "code": "products-list",
@@ -936,7 +1041,7 @@
       "function_zh": "管理ERP操作指南、业务标准和内部知识内容。",
       "status": "implemented",
       "progress": 100,
-      "sort": 110
+      "sort": 120
     },
     {
       "code": "guides-index",
@@ -996,7 +1101,7 @@
       "function_zh": "管理收入、支出、应收、应付及业务财务记录。",
       "status": "implemented",
       "progress": 100,
-      "sort": 120
+      "sort": 130
     },
     {
       "code": "accounting-overview",
@@ -1029,6 +1134,21 @@
       "sort": 20
     },
     {
+      "code": "accounting-b2b-cash",
+      "parent_code": "accounting",
+      "level": 2,
+      "label_zh": "B2B 贸易收款",
+      "slug": "b2b-trade-cash",
+      "url": "/accounting/b2b-trade-cash",
+      "route": "accounting.b2b-trade-cash.index",
+      "permission": "accounting.view",
+      "emoji": null,
+      "function_zh": "Finance独立核实B2B Trade收款及退款；未验证的凭证不计入实际现金",
+      "status": "in_progress",
+      "progress": 65,
+      "sort": 30
+    },
+    {
       "code": "accounting-loss-orders",
       "parent_code": "accounting",
       "level": 2,
@@ -1041,7 +1161,7 @@
       "function_zh": "仅供财务查看已确认亏损订单，复用订单利润分析。",
       "status": "implemented",
       "progress": 100,
-      "sort": 30
+      "sort": 40
     },
     {
       "code": "settings",
@@ -1056,7 +1176,7 @@
       "function_zh": "管理ERP系统配置，并查看当前版本与近期发布摘要。",
       "status": "in_progress",
       "progress": 46,
-      "sort": 130
+      "sort": 140
     },
     {
       "code": "settings-statuses",

@@ -369,7 +369,7 @@ class AuditFoundationTest extends TestCase
                 ->expectsQuestion('Email', 'owner@example.test')
                 ->expectsQuestion('Password', 'a-strong-password-123')
                 ->expectsQuestion('Confirm password', 'a-strong-password-123')
-                ->expectsChoice('Role', 'operator', ['super_admin', 'admin', 'manager', 'operator'])
+                ->expectsChoice('Role', 'operations', ['logistics', 'sales_representative', 'kol_specialist', 'kol_manager', 'finance', 'operations', 'writer', 'administrator'])
                 ->run();
             $this->fail('Provisioning should fail when its required audit cannot be written.');
         } catch (AuditWriteException $exception) {
