@@ -5,6 +5,7 @@ namespace Tests\Architecture;
 use App\Modules\Audit\Providers\AuditServiceProvider;
 use App\Modules\Backup\Providers\BackupServiceProvider;
 use App\Modules\BusinessProjects\Providers\BusinessProjectsServiceProvider;
+use App\Modules\B2B\Providers\B2BServiceProvider;
 use App\Modules\Customers\Providers\CustomersServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Finance\Providers\FinanceServiceProvider;
@@ -56,6 +57,36 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Audit/Infrastructure/ImmutableAuditBuilder.php',
         'app/Modules/Audit/Infrastructure/Models/AuditRecord.php',
         'app/Modules/Audit/Providers/AuditServiceProvider.php',
+        'app/Modules/B2B/Experience/Controllers/B2BOverviewController.php',
+        'app/Modules/B2B/Experience/Controllers/B2BCompanyController.php',
+        'app/Modules/B2B/Experience/Controllers/B2BCaseController.php',
+        'app/Modules/B2B/Experience/Controllers/B2BCaseWriteController.php',
+        'app/Modules/B2B/Experience/Controllers/B2BSalesOpportunityController.php',
+        'app/Modules/B2B/Experience/Controllers/B2BTradeOrderController.php',
+        'app/Modules/B2B/Infrastructure/Models/B2BTradeOrder.php',
+        'app/Modules/B2B/Infrastructure/Models/B2BTradeReceiptEvidence.php',
+        'app/Modules/B2B/Infrastructure/Models/B2BTradeAuditEvent.php',
+        'app/Modules/B2B/Sales/B2BTradeOrderService.php',
+        'app/Modules/B2B/Sales/B2BTradeReleaseGuard.php',
+        'app/Modules/Finance/Application/B2BTradeCashAccountingService.php',
+        'app/Modules/Finance/Infrastructure/Models/FinanceB2BTradeCashEvent.php',
+        'app/Modules/Finance/Experience/Controllers/B2BTradeCashController.php',
+        'app/Modules/B2B/Sales/B2BSalesFinanceTruthProjection.php',
+        'app/Modules/B2B/Sales/B2BSalesOrderAttributionGate.php',
+        'app/Modules/B2B/Sales/B2BSalesExactMoney.php',
+        'app/Modules/B2B/Sales/B2BSalesPipeline.php',
+        'app/Modules/B2B/Infrastructure/Models/B2BSalesOpportunity.php',
+        'app/Modules/B2B/Infrastructure/Models/B2BSalesStageEvent.php',
+        'app/Modules/B2B/Infrastructure/Models/B2BSalesQuote.php',
+        'app/Modules/B2B/Infrastructure/Models/B2BSalesFollowUp.php',
+        'app/Modules/B2B/Infrastructure/Models/B2BSalesFollowUpAttachment.php',
+        'app/Modules/B2B/Experience/Routes/web.php',
+        'app/Modules/B2B/Infrastructure/B2BVerifiedSourceIntake.php',
+        'app/Modules/B2B/Infrastructure/Models/B2BOrganization.php',
+        'app/Modules/B2B/Infrastructure/Models/B2BContact.php',
+        'app/Modules/B2B/Infrastructure/Models/B2BCase.php',
+        'app/Modules/B2B/Infrastructure/Models/B2BCaseActivity.php',
+        'app/Modules/B2B/Providers/B2BServiceProvider.php',
         'app/Modules/Backup/Application/BackupArtifactCleanupService.php',
         'app/Modules/Backup/Application/BackupArtifactData.php',
         'app/Modules/Backup/Application/BackupEngineService.php',
@@ -462,6 +493,14 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/Audit/Infrastructure',
         'app/Modules/Audit/Infrastructure/Models',
         'app/Modules/Audit/Providers',
+        'app/Modules/B2B',
+        'app/Modules/B2B/Experience',
+        'app/Modules/B2B/Experience/Controllers',
+        'app/Modules/B2B/Experience/Routes',
+        'app/Modules/B2B/Infrastructure',
+        'app/Modules/B2B/Infrastructure/Models',
+        'app/Modules/B2B/Providers',
+        'app/Modules/B2B/Sales',
         'app/Modules/Backup',
         'app/Modules/Backup/Application',
         'app/Modules/Backup/Application/Contracts',
@@ -663,6 +702,41 @@ final class ModuleArchitectureTest extends TestCase
         'analysis.export',
         'analysis.update',
         'architecture.foundation',
+        'b2b.cases.assignment',
+        'b2b.cases.notes.store',
+        'b2b.cases.show',
+        'b2b.cases.update',
+        'b2b.followups',
+        'b2b.inquiries.create',
+        'b2b.inquiries.store',
+        'b2b.inquiries.index',
+        'b2b.companies.index',
+        'b2b.companies.create',
+        'b2b.companies.show',
+        'b2b.companies.store',
+        'b2b.companies.contacts.store',
+        'b2b.overview',
+        'b2b.sales.index',
+        'b2b.sales.show',
+        'b2b.sales.store',
+        'b2b.sales.stage',
+        'b2b.sales.followups.store',
+        'b2b.sales.followups.attachments.download',
+        'b2b.sales.quotes.store',
+        'b2b.sales.won',
+        'b2b.sales.lost',
+        'b2b.sales.reopen',
+        'b2b.trade.index',
+        'b2b.trade.show',
+        'b2b.trade.store',
+        'b2b.trade.approve',
+        'b2b.trade.evidence.store',
+        'b2b.trade.evidence.review',
+        'b2b.trade.evidence.download',
+        'accounting.b2b-trade-cash.index',
+        'accounting.b2b-trade-cash.show',
+        'accounting.b2b-trade-cash.receipts.confirm',
+        'accounting.b2b-trade-cash.refunds.confirm',
         'backup.automatic.update',
         'backup.index',
         'backup.legacy',
@@ -923,6 +997,13 @@ final class ModuleArchitectureTest extends TestCase
         'analysis.view',
         'architecture.foundation.view',
         'audit.view',
+        'b2b.assign',
+        'b2b.channels_manage',
+        'b2b.export',
+        'b2b.operate',
+        'b2b.quotes_manage',
+        'b2b.view',
+        'b2b.view_all',
         'backup.create',
         'backup.delete',
         'backup.download',
@@ -978,6 +1059,8 @@ final class ModuleArchitectureTest extends TestCase
     ];
 
     private const MIGRATIONS = [
+        'database/migrations/2026_10_22_001300_create_finance_b2b_trade_cash_events.php' => 'e00b35d85f08239b8ac9e85f9ce440c85d7738dd2178b27ce81464914fb40589',
+        'database/migrations/2026_10_22_001200_create_b2b_trade_orders_and_receipt_evidence.php' => 'fb5cb1f9b2e99d11d752e69c7250887b10a83c2e8dfa120935ebf0a34237079e',
         'database/migrations/0001_01_01_000000_create_users_table.php' => '10d79883bc08ce46510f9ad8b1830b4d06d586dc56ae2c8bac3b3e491f69a90f',
         'database/migrations/0001_01_01_000001_create_cache_table.php' => 'fbb4665e5a977e71df4e74ec75b3c06ca4f17ad0de7138fe9786639189978e77',
         'database/migrations/0001_01_01_000002_create_jobs_table.php' => 'df4910687180313a14a3f96a8bddd808ae145ed1b107cd772caf865c0dc2b746',
@@ -1072,9 +1155,20 @@ final class ModuleArchitectureTest extends TestCase
         'database/migrations/2026_09_06_180000_add_order_profit_evidence_contract.php' => 'a80d69865ef2351332e93840a9f2d227cf2a5c34e3830bd81300ff3c2d385ccc',
         'database/migrations/2026_09_11_200000_create_business_projects_tables.php' => '308d7148cdfb92d2a680264e062f1c4b3cce9bb4577bc330019913d7cb2aaf1f',
         'database/migrations/2026_09_11_200100_create_traffic_tables.php' => '1d906571872f99f3958e97469e0d34e26aeaae35d0db886b21251b8743233f46',
+        'database/migrations/2026_10_22_000001_register_b2b_permissions.php' => '2f00112181f771a2477cbde3a1917abdb5020ada57a42a2528cd3fc6d2b86c08',
+        'database/migrations/2026_10_22_000100_create_b2b_organization_contacts.php' => '12efcd4e3a700dec7e15209f07309de4e980bdc22f7d211ee11f5515cd894096',
+        'database/migrations/2026_10_22_000200_create_b2b_cases_and_activity.php' => '8a586cf548affe918732aa04c067b933022ff4e6f3a177269e3d62b98e722911',
+        'database/migrations/2026_10_22_001000_create_b2b_sales_opportunities.php' => 'bafc6ba5b7d7869302970b0bb4ccd1026d694fefbd927a0f840756d6e4b8c06c',
+        'database/migrations/2026_10_22_001100_extend_b2b_sales_quotes_followups.php' => 'f005e70f5b4554fa13ae2080a0a42619500cb0b883ebda302920214636289962',
     ];
 
     private const FRONTEND_FILES = [
+        'resources/js/Pages/Finance/B2BTradeCash/Index.vue' => '2d1e30df778229245b4ac42eafb5b12f7dad5de62f078639321ab22f9cd32246',
+        'resources/js/Pages/Finance/B2BTradeCash/Show.vue' => '38c52bfdbd20091463a783e8766f155ca44f99e63843a907ba9a5267acd64382',
+        'resources/js/Pages/B2B/Trade/Index.vue' => 'e6fbcf59f6af9c6c48c55fa4028c0bc5d22e1233c572d89332de17ff9a3a7f97',
+        'resources/js/Pages/B2B/Trade/Show.vue' => '11aa207fa675f3092d9b040c517d2d94e0e3873b03705e649eebd7b6d93d8efa',
+        'resources/js/Pages/B2B/Sales/Index.vue' => '5726028856e21c97959ff129a995f6e9161aa8cbe28c0607c062c0a70138a518',
+        'resources/js/Pages/B2B/Sales/Show.vue' => '729231a0b0e510144cf5dc0cf942aa05c45633fd47e56b4adc6859900c300353',
         'resources/js/Pages/Finance/ProfitDashboard.vue' => '806e8727de4919f216511d32134556e2a6ad3aaadbaa59f40a28784a7e5cdae8',
         'resources/js/Components/Logistics/StatusBar.vue' => '5a1e0b77fc5b8972d48083fb6e177df8a3f5c3facb13233e469effec5afbd2f0',
         'resources/js/Components/AppShell/GlobalFeedbackIsland.test.ts' => '36d4310edf520357dd153cc19de772d774e3473606881298d734ed28e1725ce1',
@@ -1236,6 +1330,13 @@ final class ModuleArchitectureTest extends TestCase
         'resources/js/lib/globalFeedback.test.ts' => '63887c4a11ca91d7014df88987bf6ccbaf54be0c03dc334f78711fec3ff519d6',
         'resources/js/lib/globalFeedback.ts' => '54ba6e2214e691f2059e239571fb9f70a533b8b2dae7a6d8923f8a2ee43fbfc3',
         'resources/js/types/navigation.ts' => '265ec164e751beaa4c53045fa431850601840cbea6deab4e7a87de72e8538327',
+        'resources/js/Pages/B2B/Overview.vue' => 'fc3ec8a33060659ee18cdc3e312a2884149cdd56ff0bd654460e02b144dc41bb',
+        'resources/js/Pages/B2B/Companies/Index.vue' => 'f90ca46af35a0dcf814f784016220b7fd4eb49f1ae6b703c4f7a98e26bdcfeda',
+        'resources/js/Pages/B2B/Companies/Create.vue' => 'fce427039e7b5155978600108c7b2d968dd6860f51fb8e8b8cebb8a092bf7a37',
+        'resources/js/Pages/B2B/Companies/Show.vue' => 'd0e701648af3ef32829eac9c3b86593589118d67bee21d6cf3ad2bb1ce087a90',
+        'resources/js/Pages/B2B/Cases/Index.vue' => '8b00d1e9b0720ede8821fd9bb2da5dabdb275fcf1729dd09858fb6c2fe5dc7ba',
+        'resources/js/Pages/B2B/Cases/Show.vue' => 'c66f3c367c0efd26bd961a5579cf71bd9fec55fc789e1e1f1d8ec14d022bf25a',
+        'resources/js/Pages/B2B/Cases/Create.vue' => '7c7ccfef1aa129a64ad041a0bf79f5e6a3439695d42a6bc0e8e6f50a40f52f20',
     ];
 
     public function test_frozen_module_and_support_boundaries(): void
@@ -1565,8 +1666,8 @@ PHP;
             self::assertFileExists($this->path($path));
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
-        self::assertSame(array_keys(self::FRONTEND_FILES), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('c77096f7fa4e11fadae2e9549032443658467ca17411521159dd6736d0d1887f', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame($this->sorted(array_keys(self::FRONTEND_FILES)), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
+        self::assertSame('5353645b0c3cca55adc05e65b06347c14e334f4741fb72cc33be4d42b830ff3d', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);
@@ -1593,6 +1694,7 @@ PHP;
             ShellServiceProvider::class,
             DashboardServiceProvider::class,
             CustomersServiceProvider::class,
+            B2BServiceProvider::class,
             ProductsServiceProvider::class,
             InventoryServiceProvider::class,
             MarketingServiceProvider::class,

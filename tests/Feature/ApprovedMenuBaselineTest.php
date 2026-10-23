@@ -23,10 +23,10 @@ class ApprovedMenuBaselineTest extends TestCase
         $this->assertFileExists($path, self::MISMATCH.': approved file is missing');
         $baseline = $this->baseline();
 
-        $this->assertSame('2.1', $baseline['version'] ?? null, self::MISMATCH.': version');
+        $this->assertSame('2.7', $baseline['version'] ?? null, self::MISMATCH.': version');
         $this->assertSame('OWNER_APPROVED', $baseline['status'] ?? null, self::MISMATCH.': status');
-        $this->assertSame('2026-09-05', $baseline['approved_at'] ?? null, self::MISMATCH.': approved_at');
-        $this->assertSame('9443d91410968288e54c587bc85f226b8b772cad', $baseline['approved_head'] ?? null, self::MISMATCH.': approved_head');
+        $this->assertSame('2026-10-22', $baseline['approved_at'] ?? null, self::MISMATCH.': approved_at');
+        $this->assertSame('60ccafc2848a9453cdfe018268517ca7ca7324fb', $baseline['approved_head'] ?? null, self::MISMATCH.': approved_head');
         $this->assertSame([1, 2], $baseline['governed_levels'] ?? null, self::MISMATCH.': governed_levels');
         $this->assertIsArray($baseline['items'] ?? null, self::MISMATCH.': items');
     }
@@ -72,23 +72,23 @@ class ApprovedMenuBaselineTest extends TestCase
     }
 
     /** @throws JsonException */
-    public function test_current_approval_contains_exactly_the_thirteen_owner_approved_level_one_items(): void
+    public function test_current_approval_contains_fourteen_level_one_items_including_independent_b2b(): void
     {
         $items = $this->baseline()['items'];
         $levelOne = collect($items)->where('level', 1)->values();
         $levelTwo = collect($items)->where('level', 2)->values();
 
-        $this->assertCount(13, $levelOne, self::MISMATCH.': level-1 count');
-        $this->assertCount(64, $levelTwo, self::MISMATCH.': owner-approved level-2 count after retiring the obsolete Logistics pending workspace');
+        $this->assertCount(14, $levelOne, self::MISMATCH.': level-1 count');
+        $this->assertCount(71, $levelTwo, self::MISMATCH.': owner-approved level-2 count after retiring the obsolete Logistics pending workspace');
         $this->assertSame(['settings-backup'], $levelTwo->where('code', 'settings-backup')->pluck('code')->all(), self::MISMATCH.': backup child approval');
         $this->assertSame(['settings-fx'], $levelTwo->where('code', 'settings-fx')->pluck('code')->all(), self::MISMATCH.': FX child approval');
         $this->assertSame(
-            ['dashboard', 'orders', 'logistics', 'sync', 'customers', 'marketing', 'kol', 'inventory', 'procurement', 'products', 'guides', 'accounting', 'settings'],
+            ['dashboard', 'orders', 'logistics', 'sync', 'customers', 'b2b', 'marketing', 'kol', 'inventory', 'procurement', 'products', 'guides', 'accounting', 'settings'],
             $levelOne->pluck('code')->all(),
             self::MISMATCH.': level-1 order',
         );
         $this->assertSame(
-            ['📊', '📋', '🚚', '🔄', '👥', '📣', '⭐', '📦', '🛒', '🏷️', '📖', '🧾', '⚙️'],
+            ['📊', '📋', '🚚', '🔄', '👥', '💼', '📣', '⭐', '📦', '🛒', '🏷️', '📖', '🧾', '⚙️'],
             $levelOne->pluck('emoji')->all(),
             self::MISMATCH.': Emoji approval',
         );

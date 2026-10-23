@@ -31,6 +31,20 @@ final class PermissionCatalog
                     ['key' => 'customers.export', 'label' => '导出客户（保留）'],
                 ],
             ],
+            'B2B 业务' => [
+                'label' => 'B2B 业务',
+                'permissions' => [
+                    ['key' => 'b2b.view', 'label' => '查看 B2B 业务'],
+                    ['key' => 'b2b.operate', 'label' => '操作 B2B 业务'],
+                    ['key' => 'b2b.assign', 'label' => '分配 B2B 负责人'],
+                    ['key' => 'b2b.view_all', 'label' => '查看所有 B2B 询盘'],
+                    ['key' => 'b2b.export', 'label' => '导出 B2B 资料'],
+                    ['key' => 'b2b.quotes_manage', 'label' => '管理 B2B 报价'],
+                    ['key' => 'b2b.channels_manage', 'label' => '管理 B2B 渠道'],
+                    ['key' => 'b2b.trade.approve', 'label' => '审批 B2B 贸易订单'],
+                    ['key' => 'b2b.receipts.review', 'label' => '复核 B2B 收款凭证（不入账）'],
+                ],
+            ],
             '物流' => [
                 'label' => '物流',
                 'permissions' => [
@@ -86,6 +100,7 @@ final class PermissionCatalog
                 'label' => '财务',
                 'permissions' => [
                     ['key' => 'accounting.view', 'label' => '查看财务'],
+                    ['key' => 'finance.b2b_cash_confirm', 'label' => '财务核实 B2B 贸易收款/退款'],
                     ['key' => 'analysis.view', 'label' => '查看分析报表'],
                 ],
             ],
