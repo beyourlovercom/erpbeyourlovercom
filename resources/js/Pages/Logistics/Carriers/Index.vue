@@ -21,7 +21,7 @@ const dateTime = (value: string | null) => value ? new Date(value).toLocaleStrin
       <StatusBar :statuses="props.statusBar ?? []" />
       <div class="mvp-page-heading">
         <div><p class="mvp-kicker">Carrier Master</p><h2>承运商</h2><p>Carrier Master 是海外仓发货的承运商事实源；Shipment 仅补充真实发货、重量与费用统计。</p></div>
-        <div class="mvp-actions"><Link v-if="props.canManageIntegrations" class="mvp-button" href="/logistics/integrations/xlwms">仓库 API · 领星 OMS</Link><button v-if="props.canOperate" class="mvp-button mvp-button-primary" type="button" @click="createOpen = !createOpen">＋ 新增承运商</button></div>
+        <div class="mvp-actions"><Link v-if="props.canManageIntegrations" class="mvp-button" href="/settings/warehouses/xlwms">API 设置 ↗</Link><button v-if="props.canOperate" class="mvp-button mvp-button-primary" type="button" @click="createOpen = !createOpen">＋ 新增承运商</button></div>
       </div>
 
       <form v-if="props.canOperate && createOpen" class="mvp-card carrier-create" @submit.prevent="createCarrier">
