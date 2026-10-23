@@ -131,7 +131,8 @@ final class WarehouseRoutingPolicyTest extends TestCase
         $this->assertSame('JD / 京东快递', $policy->displayName('JD'));
         $this->assertSame('KingTrans / 唐歌', $policy->displayName('KingTrans'));
         $this->assertSame('USPS / 美国邮政', $policy->displayName('USPS'));
-        $this->assertSame('FedEx / 联邦', $policy->displayName('FedEx'));
+        // Owner-approved 2026-10-23: use the current seeded bilingual carrier label.
+        $this->assertSame('FedEx / 联邦快递', $policy->displayName('FedEx'));
     }
 
     public function test_runtime_config_contains_no_business_routing_rules(): void

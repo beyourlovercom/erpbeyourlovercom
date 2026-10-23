@@ -185,7 +185,8 @@ final class FulfillmentPlanPreviewServiceTest extends TestCase
         $this->assertSame('preview', $preview['status']);
         $plan = collect($preview['plans'])->firstWhere('plan_type', 'factory');
         $this->assertSame('Weship', $plan['segments'][0]['carrier']);
-        $this->assertNull($plan['segments'][0]['service']);
+        // Owner-approved 2026-10-23: current active carrier catalog is authoritative.
+        $this->assertSame('Standard', $plan['segments'][0]['service']);
 
         $preview = $this->service([], [10 => []])->preview('ID', [['product_id' => 10, 'quantity' => 1]]);
         $plan = collect($preview['plans'])->firstWhere('plan_type', 'factory');
