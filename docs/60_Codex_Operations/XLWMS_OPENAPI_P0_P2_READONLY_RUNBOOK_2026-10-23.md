@@ -110,3 +110,16 @@ The formal `https://erp.beyourlover.com` Production endpoint must not be changed
 - The Logistics carrier page has an admin-only **API 设置** shortcut. No duplicate management UI or auto-dispatch switch is presented in Logistics.
 - **Vendor distinction:** XLWMS is the API provider; '世迈仓' is the Owner-supplied display context. Do not implicitly bind it to the ERP `US-SM` warehouse or any other warehouse until the actual OMS warehouse identity is confirmed.
 - Automatic dispatch remains disabled until a separate authenticated warehouse binding + shipment UAT package is approved.
+
+## FINAL OWNER UAT — embedded Warehouse Master integration, 2026-10-23
+
+- Canonical entry: Settings / Warehouses -> existing warehouse -> Config tab -> OpenAPI accordion alongside address editor.
+- On US Mac local UAT: http://127.0.0.1:8891/settings/warehouses -> http://127.0.0.1:8891/inventory/us-3sm?tab=config.
+- Legacy GET /settings/warehouses/xlwms redirects to the central list; the independent provider UI was deleted. The probe-only POST remains at /settings/warehouses/xlwms/verify.
+- Save endpoint: POST /settings/warehouses/{warehouse}/openapi/xlwms, restricted to authorized administrators and ERP warehouse US-SM.
+- Button 1: test connection (no persistence). Button 2: verify and encrypt/save (only if OMS read-only probe confirms business success).
+- Encrypted credentials are stored in a separate warehouse_openapi_connections table by the Laravel encrypted model cast; the original warehouse master/address record is unaffected. Only a masked App Key suffix and timestamp may be shown to admins.
+- OMS actual remote warehouse code is NOT inferred or bound; automatic dispatch remains hard disabled. Identical SKUs need no mapping; logistics carrier service codes are native and require no mapping table.
+- Local isolated PHP regression: 43 passed / 462 assertions; frontend Vitest: 3 passed; TypeScript and Vite build: PASS. SQLite local-only migration applied; HTTP 200 and Chrome tab titles validated for both UAT pages.
+- The owner's real OMS credentials are NOT in Git or local test DB. The Owner can test and save them through the approved UAT UI after visual inspection.
+- PR #501 stays Draft. GitHub Actions jobs are still failing before execution steps; do not treat local PASS as GitHub CI green. No Production deployment or Main merge.
