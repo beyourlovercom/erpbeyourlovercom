@@ -17,7 +17,8 @@ return [
     'timeout_seconds' => max(2, min(30, (int) env('XLWMS_TIMEOUT_SECONDS', 15))),
     // Keys: ERP warehouse code -> XLWMS warehouse code.
     'warehouse_map' => json_decode((string) env('XLWMS_WAREHOUSE_MAP_JSON', '{}'), true) ?: [],
-    // Keys: ERP warehouse code -> { ERP SKU -> XLWMS SKU }.
+    // Optional exceptions only: ERP warehouse code -> { differing ERP SKU -> OMS SKU }.
+    // Missing override means use the original SKU unchanged; no full SKU mapping needed.
     'sku_map' => json_decode((string) env('XLWMS_SKU_MAP_JSON', '{}'), true) ?: [],
     // Hard-off in P0-P2; a separate approved package is required for writes.
     'auto_dispatch_enabled' => false,
