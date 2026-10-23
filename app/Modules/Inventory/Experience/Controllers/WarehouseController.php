@@ -21,6 +21,7 @@ use Illuminate\Support\Str;
 use Throwable;
 use App\Modules\Identity\Application\AuthorizationKeys;
 use App\Modules\Logistics\Application\WarehouseShipmentProjection;
+use App\Modules\Logistics\Infrastructure\Xlwms\WarehouseOpenApiConnection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -78,6 +79,8 @@ final class WarehouseController
             'canManage'=>auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false,
             'canManageOpenApi'=>auth()->user()?->can('system.permissions.manage') ?? false,
             'openApiProbeEnabled'=>(bool) config('xlwms.manual_probe_enabled', false),
+            'openApiConnection' => (auth()->user()?->can('system.permissions.manage') ?? false)
+                ? $this->openApiMetadata((int) $w->id) : null,
         ]);
     }
     public function downloadRestockDocument(
@@ -326,6 +329,19 @@ final class WarehouseController
     {
         return array_intersect_key($preview,array_flip(['provider','original_filename','source_checksum','plan_checksum','invoice_number','client_name','invoice_date','currency','invoice_total','invoice_core_total','other_invoice_total','other_invoice_categories','invoice_summary_categories','shipping_total','parcel_outbound_total','storage_total','periods','counts','monthly','already_applied','batch_id']));
     }
+    /** @return array{configured:bool,key_hint:?string,last_verified_at:?string,remote_warehouse_bound:bool} */
+    private function openApiMetadata(int $warehouseId): array
+    {
+        $entry = WarehouseOpenApiConnection::query()
+            ->where('warehouse_id', $warehouseId)->where('provider', 'xlwms')->first();
+        return [
+            'configured' => $entry !== null,
+            'key_hint' => $entry ? '••••' . substr((string) $entry->app_key_encrypted, -4) : null,
+            'last_verified_at' => $entry?->last_verified_at?->toIso8601String(),
+            'remote_warehouse_bound' => false,
+        ];
+    }
+
     private function warehouseRules(?int $ignoreId=null): array
     {
         return [
