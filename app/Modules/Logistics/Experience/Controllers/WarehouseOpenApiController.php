@@ -41,6 +41,8 @@ final class WarehouseOpenApiController
         $appKey = trim($data['app_key']);
         $appSecret = trim($data['app_secret']);
         $w = $inventory->warehouse($warehouse);
+        // Only the Owner-identified Shimai warehouse is enabled in this adapter phase.
+        abort_unless(strtoupper((string) $w->code) === 'US-SM', 404);
         $result = $probe->verify($appKey, $appSecret);
         if ($result['status'] !== 'verified') {
             return $response($result, 422);
