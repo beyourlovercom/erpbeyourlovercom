@@ -23,10 +23,10 @@ class ApprovedMenuBaselineTest extends TestCase
         $this->assertFileExists($path, self::MISMATCH.': approved file is missing');
         $baseline = $this->baseline();
 
-        $this->assertSame('2.7', $baseline['version'] ?? null, self::MISMATCH.': version');
+        $this->assertSame('2.8', $baseline['version'] ?? null, self::MISMATCH.': version');
         $this->assertSame('OWNER_APPROVED', $baseline['status'] ?? null, self::MISMATCH.': status');
-        $this->assertSame('2026-10-22', $baseline['approved_at'] ?? null, self::MISMATCH.': approved_at');
-        $this->assertSame('60ccafc2848a9453cdfe018268517ca7ca7324fb', $baseline['approved_head'] ?? null, self::MISMATCH.': approved_head');
+        $this->assertSame('2026-10-23', $baseline['approved_at'] ?? null, self::MISMATCH.': approved_at');
+        $this->assertSame('49ce2543453ec54761ac8e45d3c665b668491ca1', $baseline['approved_head'] ?? null, self::MISMATCH.': approved_head');
         $this->assertSame([1, 2], $baseline['governed_levels'] ?? null, self::MISMATCH.': governed_levels');
         $this->assertIsArray($baseline['items'] ?? null, self::MISMATCH.': items');
     }
@@ -51,7 +51,7 @@ class ApprovedMenuBaselineTest extends TestCase
             $this->assertFalse(str_starts_with($item['slug'], '/'), self::MISMATCH.': slug begins with slash for '.$item['code']);
             $this->assertStringNotContainsString('/', $item['slug'], self::MISMATCH.': slug contains slash for '.$item['code']);
             $this->assertStringNotContainsString(' ', $item['slug'], self::MISMATCH.': slug contains spaces for '.$item['code']);
-            $this->assertSame(basename(trim($item['url'], '/')), $item['slug'], self::MISMATCH.': slug does not match URL for '.$item['code']);
+            $this->assertSame($this->approvedSlugForUrl($item['code'], $item['url']), $item['slug'], self::MISMATCH.': slug does not match URL for '.$item['code']);
             $this->assertNotSame('', trim($item['function_zh']), self::MISMATCH.': empty function for '.$item['code']);
             $this->assertContains($item['status'], self::STATUSES, self::MISMATCH.': invalid status for '.$item['code']);
             $this->assertIsInt($item['progress'], self::MISMATCH.': progress type for '.$item['code']);
@@ -79,7 +79,7 @@ class ApprovedMenuBaselineTest extends TestCase
         $levelTwo = collect($items)->where('level', 2)->values();
 
         $this->assertCount(14, $levelOne, self::MISMATCH.': level-1 count');
-        $this->assertCount(71, $levelTwo, self::MISMATCH.': owner-approved level-2 count after retiring the obsolete Logistics pending workspace');
+        $this->assertCount(72, $levelTwo, self::MISMATCH.': owner-approved level-2 count after retiring the obsolete Logistics pending workspace');
         $this->assertSame(['settings-backup'], $levelTwo->where('code', 'settings-backup')->pluck('code')->all(), self::MISMATCH.': backup child approval');
         $this->assertSame(['settings-fx'], $levelTwo->where('code', 'settings-fx')->pluck('code')->all(), self::MISMATCH.': FX child approval');
         $this->assertSame(
@@ -93,10 +93,42 @@ class ApprovedMenuBaselineTest extends TestCase
             self::MISMATCH.': Emoji approval',
         );
         $this->assertSame(
-            ['accounting-overview', 'accounting-order-costs'],
+            ['accounting-overview', 'accounting-order-costs', 'accounting-b2b-cash', 'accounting-loss-orders'],
             $levelTwo->where('parent_code', 'accounting')->sortBy('sort')->pluck('code')->values()->all(),
             self::MISMATCH.': Accounting A8 level-2 closure',
         );
+    }
+
+    /** @throws JsonException */
+    public function test_owner_approved_v28_keeps_existing_marketing_kol_and_accounting_navigation(): void
+    {
+        $all = collect($this->baseline()['items']);
+        $marketing = $all->where('parent_code', 'marketing')->sortBy('sort')->values();
+        $this->assertSame(
+            ['marketing-traffic', 'marketing-subscribers', 'marketing-newsletters',
+                'marketing-campaigns', 'marketing-automations', 'marketing-promotions'],
+            $marketing->pluck('code')->all(),
+            self::MISMATCH.': owner-approved Marketing v2.8 sequence',
+        );
+        $this->assertSame([10, 20, 30, 40, 50, 60], $marketing->pluck('sort')->all());
+
+        $kol = $all->where('parent_code', 'kol')->sortBy('sort')->values();
+        $this->assertSame(range(10, 140, 10), $kol->pluck('sort')->all());
+        $this->assertSame('kol-logistics', $kol[2]['code']);
+
+        $accounting = $all->where('parent_code', 'accounting')->sortBy('sort')->values();
+        $this->assertSame(
+            ['accounting-overview', 'accounting-order-costs', 'accounting-b2b-cash',
+                'accounting-loss-orders'],
+            $accounting->pluck('code')->all(),
+        );
+        $this->assertSame([10, 20, 30, 40], $accounting->pluck('sort')->all());
+        $this->assertSame(
+            '/accounting/order-costs?profit_status=loss',
+            $accounting[3]['url'],
+            self::MISMATCH.': loss orders must retain the existing scoped query',
+        );
+        $this->assertSame('loss-orders', $accounting[3]['slug']);
     }
 
     /** @throws JsonException */
@@ -170,6 +202,22 @@ class ApprovedMenuBaselineTest extends TestCase
         }
     }
 
+    /**
+     * Loss Orders is an explicitly approved query-filtered alias of order-costs.
+     * All other routes use their real URL pathname, never a query-string basename.
+     */
+    private function approvedSlugForUrl(string $code, string $url): string
+    {
+        if ($code === 'accounting-loss-orders'
+            && $url === '/accounting/order-costs?profit_status=loss') {
+            return 'loss-orders';
+        }
+
+        $path = parse_url($url, PHP_URL_PATH);
+
+        return basename(trim(is_string($path) ? $path : '', '/'));
+    }
+
     private function comparableApprovedItem(array $item): array
     {
         return [
@@ -201,7 +249,7 @@ class ApprovedMenuBaselineTest extends TestCase
                 'parent_code' => $parentCode,
                 'level' => $level,
                 'label_zh' => $item['label'],
-                'slug' => basename(trim($item['path'], '/')),
+                'slug' => $this->approvedSlugForUrl($item['key'], $item['path']),
                 'url' => $item['path'],
                 'route' => $item['route'],
                 'permission' => $item['permission'],

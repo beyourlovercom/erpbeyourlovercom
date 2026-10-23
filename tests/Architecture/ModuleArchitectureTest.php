@@ -1667,7 +1667,7 @@ PHP;
             self::assertSame($hash, hash_file('sha256', $this->path($path)), 'FE-001 '.$path);
         }
         self::assertSame($this->sorted(array_keys(self::FRONTEND_FILES)), $this->allFilesUnder($this->path('resources/js')), 'FE-001 frontend file set changed');
-        self::assertSame('5353645b0c3cca55adc05e65b06347c14e334f4741fb72cc33be4d42b830ff3d', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
+        self::assertSame('43cc692414878a20e3d9e97707894977e99425b1af301a5e6329c4a206ed1649', hash_file('sha256', $this->path('menu/APPROVED_MENU.json')));
         self::assertSame($this->sorted(self::ROUTE_NAMES), $this->routeNames(), 'COMPAT-001 route names changed');
         $permissionKeys = array_values(array_filter(array_map(fn ($key): ?string => str_contains($key->value, '.') ? $key->value : null, AuthorizationKeys::cases())));
         sort($permissionKeys);
