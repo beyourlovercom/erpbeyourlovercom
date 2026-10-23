@@ -3,6 +3,7 @@
 namespace App\Modules\Finance\Application;
 
 use App\Modules\B2B\Infrastructure\Models\B2BTradeOrder;
+use App\Modules\B2B\Sales\B2BTradeReleaseGuard;
 use App\Modules\B2B\Infrastructure\Models\B2BTradeReceiptEvidence;
 use App\Modules\Finance\Infrastructure\Models\FinanceB2BTradeCashEvent;
 use App\Modules\Finance\Infrastructure\Models\OrderFinancial;
@@ -21,6 +22,7 @@ final class B2BTradeCashAccountingService
         B2BTradeOrder $order, B2BTradeReceiptEvidence $evidence,
         array $attestation, int $financeUserId
     ): FinanceB2BTradeCashEvent {
+        B2BTradeReleaseGuard::assertFinanceCashWriteAllowed();
         $this->authorizedFinance($financeUserId);
         return DB::transaction(function () use ($order, $evidence, $attestation, $financeUserId) {
             $trade=B2BTradeOrder::query()->lockForUpdate()->findOrFail($order->id);
@@ -75,6 +77,7 @@ final class B2BTradeCashAccountingService
         B2BTradeOrder $order, FinanceB2BTradeCashEvent $original,
         array $attestation, int $financeUserId
     ): FinanceB2BTradeCashEvent {
+        B2BTradeReleaseGuard::assertFinanceCashWriteAllowed();
         $this->authorizedFinance($financeUserId);
         return DB::transaction(function () use ($order,$original,$attestation,$financeUserId) {
             $trade=B2BTradeOrder::query()->lockForUpdate()->findOrFail($order->id);

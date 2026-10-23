@@ -17,6 +17,7 @@ final class B2BTradeOrderService
 {
     public function draft(B2BSalesOpportunity $opportunity, B2BSalesQuote $quote, int $actorId): B2BTradeOrder
     {
+        B2BTradeReleaseGuard::assertTradeWriteAllowed();
         if ((int) $quote->opportunity_id !== (int) $opportunity->id || $opportunity->status === 'lost') {
             throw ValidationException::withMessages(['quote_id' => '报价必须属于有效的本企业商机']);
         }
@@ -54,6 +55,7 @@ final class B2BTradeOrderService
 
     public function approve(B2BTradeOrder $order, int $approverId): B2BTradeOrder
     {
+        B2BTradeReleaseGuard::assertTradeWriteAllowed();
         return DB::transaction(function () use ($order, $approverId): B2BTradeOrder {
             $row = B2BTradeOrder::query()->lockForUpdate()->findOrFail($order->id);
             if ($row->status !== 'draft' || (int) $row->created_by === $approverId) {
@@ -73,6 +75,7 @@ final class B2BTradeOrderService
     public function recordEvidence(
         B2BTradeOrder $order, array $data, int $actorId
     ): B2BTradeReceiptEvidence {
+        B2BTradeReleaseGuard::assertTradeWriteAllowed();
         $storedPath = null;
         try {
             return DB::transaction(function () use ($order, $data, $actorId, &$storedPath): B2BTradeReceiptEvidence {
@@ -129,6 +132,7 @@ final class B2BTradeOrderService
     public function reviewEvidence(
         B2BTradeReceiptEvidence $evidence, int $reviewerId, string $decision, string $reason
     ): B2BTradeReceiptEvidence {
+        B2BTradeReleaseGuard::assertTradeWriteAllowed();
         return DB::transaction(function () use ($evidence, $reviewerId, $decision, $reason): B2BTradeReceiptEvidence {
             $e = B2BTradeReceiptEvidence::query()->lockForUpdate()->findOrFail($evidence->id);
             if ($e->status !== 'pending_review' || (int) $e->recorded_by === $reviewerId

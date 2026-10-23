@@ -67,6 +67,7 @@ final class ModuleArchitectureTest extends TestCase
         'app/Modules/B2B/Infrastructure/Models/B2BTradeReceiptEvidence.php',
         'app/Modules/B2B/Infrastructure/Models/B2BTradeAuditEvent.php',
         'app/Modules/B2B/Sales/B2BTradeOrderService.php',
+        'app/Modules/B2B/Sales/B2BTradeReleaseGuard.php',
         'app/Modules/Finance/Application/B2BTradeCashAccountingService.php',
         'app/Modules/Finance/Infrastructure/Models/FinanceB2BTradeCashEvent.php',
         'app/Modules/Finance/Experience/Controllers/B2BTradeCashController.php',
