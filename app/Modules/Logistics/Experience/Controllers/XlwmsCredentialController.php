@@ -5,20 +5,10 @@ namespace App\Modules\Logistics\Experience\Controllers;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsCredentialProbe;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
-use Inertia\Response;
 use Illuminate\Support\Facades\Validator;
 
 final class XlwmsCredentialController
 {
-    public function index(): Response
-    {
-        return Inertia::render('Settings/Warehouses/Xlwms', [
-            'probeEnabled' => (bool) config('xlwms.manual_probe_enabled', false),
-            'endpoint' => 'https://api.xlwms.com/openapi/v1/warehouse/options',
-        ]);
-    }
-
     public function verify(Request $request, XlwmsCredentialProbe $probe): JsonResponse
     {
         // POST JSON only; never flash/repopulate credentials via redirect or session.
