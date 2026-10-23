@@ -84,6 +84,29 @@ final class PaymentAuthorityGateV1Test extends TestCase
         $this->assertSame('payment_pending', $decisions[$pending->id]['reason_code']);
         $this->assertTrue($decisions[$manual->id]['allowed']);
         $this->assertSame('not_required', $decisions[$manual->id]['state']);
+        // The batched fresh reference read is reused by the consumer models.
+        foreach ([$paid, $pending, $manual] as $sourceOrder) {
+            $this->assertTrue($sourceOrder->relationLoaded('externalReferences'));
+        }
+    }
+
+    public function test_batch_payment_gate_blocks_after_provider_revokes_previously_cached_payment(): void
+    {
+        $order = $this->wooOrder();
+        $this->financials($order, 'processing', now(), 'PAID-BEFORE-REVOCATION');
+        $order->load(['financials', 'externalReferences']);
+        $this->assertSame('processing', $order->financials->provider_order_status);
+
+        // Revoke only in the disposable test DB, leaving the original loaded
+        // order stale: payout/fulfillment authority MUST read the fresh state.
+        $order->financials()->update(['provider_order_status' => 'pending', 'paid_at' => null]);
+        $decisions = app(FulfillmentPaymentGate::class)->prepare([$order]);
+
+        $this->assertFalse($decisions[$order->id]['allowed']);
+        $this->assertSame('payment_pending', $decisions[$order->id]['reason_code']);
+        $this->assertTrue($order->relationLoaded('externalReferences'));
+        $this->assertDatabaseCount('inventory_reservations', 0);
+        $this->assertDatabaseCount('shipments', 0);
     }
 
     public function test_woo_order_missing_financial_evidence_is_unconfirmed_and_blocked(): void

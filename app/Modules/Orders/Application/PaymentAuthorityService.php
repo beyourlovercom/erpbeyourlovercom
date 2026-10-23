@@ -43,7 +43,8 @@ final class PaymentAuthorityService
     /** @param iterable<Order> $orders @return array<int,PaymentAuthorityState> */
     public function statesFor(iterable $orders): array
     {
-        $ids = collect($orders)->map(fn (Order $order): int => (int) $order->id)->filter()->unique()->values();
+        $sourceOrders = collect($orders)->keyBy(fn (Order $order): int => (int) $order->id);
+        $ids = $sourceOrders->keys()->map(fn ($id): int => (int) $id)->filter()->unique()->values();
         if ($ids->isEmpty()) {
             return [];
         }
@@ -54,12 +55,17 @@ final class PaymentAuthorityService
             ->get()
             ->keyBy('id');
 
-        return $ids->mapWithKeys(function (int $id) use ($fresh): array {
+        return $ids->mapWithKeys(function (int $id) use ($fresh, $sourceOrders): array {
             /** @var Order|null $order */
             $order = $fresh->get($id);
             if (! $order) {
                 return [];
             }
+
+            // Reuse the SAME freshly queried external refs for the page-level
+            // eligibility guards. Never reuse stale financial state: the
+            // authority decision still evaluates the fresh order snapshot.
+            $sourceOrders->get($id)?->setRelation('externalReferences', $order->externalReferences);
 
             return [$id => $this->stateFromFreshSnapshot($order)];
         })->all();
