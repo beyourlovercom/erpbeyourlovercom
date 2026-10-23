@@ -17,3 +17,6 @@ Only replace these four invalid **test fixture values** with distinct numeric st
 
 ## Release boundary
 This docs/test-only repair is independently stacked on Owner menu V2.8 PR #484. It is not directly merged to main nor automatically deployed. Consolidated B2B V1 release candidate PR #483 remains Draft until integrated review, hosted CI and production owner gates. Both independent S4/S6 Dev servers and all real customers/orders/Finance cash remain untouched. B2B Trade/Finance write flags default OFF.
+
+### Explicit fail-closed negative coverage
+Added an independent OrderIdentityContractTest case rejecting WOO-1001 when *both* Woo external business order number and provider reference are nonnumeric. This guarantees that fixing the four product test fixtures does not loosen actual Woo identity validation. Product external refs + Order identity combined: **26 tests / 78 assertions PASS**; no production code changes.
