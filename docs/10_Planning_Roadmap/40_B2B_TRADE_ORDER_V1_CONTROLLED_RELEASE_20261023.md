@@ -44,3 +44,16 @@ Suggested controlled activation gates after Owner/Finance sign-off:
 - Explicit GitHub **exact-head** merge approval with all checks green; independent Dev deployment and final Production deployment/migration permission. No real funds/production business writes in candidate work.
 
 **Status verdict:** S5 candidate source and scoped security tests ready for review, but **NO Production GO**. Freeze further feature scope; complete Owner and global CI gates. Any issue discovered must generate a focused, testable fix and new exact HEAD.
+
+## S6 isolated read-only Dev smoke and main baseline audit (2026-10-23)
+
+Ran a second independent release-candidate worktree and new empty disposable SQLite database on US Mac mini, separate from existing S4 server and its six accounts.
+- APP_ENV=local, APP_DEBUG=false, MAIL_MAILER=log, administrator bypass false, Woo sync false, 0600 .env and SQLite. Both B2B_TRADE_WRITES_ENABLED and B2B_FINANCE_CASH_WRITES_ENABLED **false** at runtime.
+- Isolated php artisan migrate PASS. Initial rows: users=0, b2b_trade_orders=0, finance_b2b_trade_cash_events=0, orders=0, order_financials=0. No shared Production/Dev data imported.
+- New RC and existing S4 private server each returned HTTP 200 for /up and /login; anonymous B2B Trade and Accounting URLs returned HTTP 302 login redirects.
+- Remote Windows Tailscale client fetched the RC /login with HTTP 200; server is bound only to private Tailscale IPv4.
+- Real US Mac Chrome loaded and captured PC1280x800 and M14-class 375x812 viewports: **2/2 PASS** for login form, no JS exceptions/horizontal overflow and protected Accounting login redirect. This is live RC guest read-only smoke, **not** actual authenticated multi-role Owner UAT or physical iPhone.
+
+Separately reproduced frozen global menu and Architecture tests on a completely **unmodified GitHub main** checkout at 60ccafc: **6 failures across 13 tests**, the same six categories present on stacked S4 candidate. Thus the legacy #474 failure is independently proven on main and not introduced solely by B2B. It must **not** be waived for Production. The B2B-specific release candidate tests passed **109 tests and 1,066 assertions** including 3 default-OFF production write-kill-switch tests.
+
+S5 consolidated Draft candidate and S6 isolated read-only Dev smoke are PASS. Hosted GitHub CI/global owner baseline, actual signed-in multi-account PC Owner and physical M14, Finance Owner bank/manual source-of-truth signoff, exact-head merge and production SQL/deploy remain HOLD. No payment, real Trade Order, main merge, Production schema change or READY device restart occurred.
