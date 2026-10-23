@@ -29,7 +29,7 @@ final class XlwmsReadOnlyAuditCommand extends Command
             $result = $mapper->assess($this->option('warehouse'), $this->option('sku'));
             $this->line('Mapping status: '.$result['status']);
             $this->line('Warehouse mapped: '.($result['warehouse_code'] === null ? 'NO' : 'YES'));
-            $this->line('SKU mappings found: '.count($result['sku_map']));
+            $this->line('SKU resolutions (identity or exception): '.count($result['sku_map']));
             foreach ($result['blockers'] as $blocker) {
                 $this->warn('Mapping blocked: '.$blocker);
             }
