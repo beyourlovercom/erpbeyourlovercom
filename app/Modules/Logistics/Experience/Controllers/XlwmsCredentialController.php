@@ -13,7 +13,7 @@ final class XlwmsCredentialController
 {
     public function index(): Response
     {
-        return Inertia::render('Logistics/Integrations/XlwmsCredential', [
+        return Inertia::render('Settings/Warehouses/Xlwms', [
             'probeEnabled' => (bool) config('xlwms.manual_probe_enabled', false),
             'endpoint' => 'https://api.xlwms.com/openapi/v1/warehouse/options',
         ]);
