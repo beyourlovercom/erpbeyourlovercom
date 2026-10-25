@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref } from 'vue'
-const props = defineProps<{ warehouseCode: string; warehouseSlug: string; enabled: boolean; connection?: { configured:boolean;key_hint:string|null;last_verified_at:string|null;remote_warehouse_bound:boolean }|null }>()
+const props = defineProps<{ warehouseCode: string; warehouseSlug: string; enabled: boolean; connection?: { configured:boolean;key_hint:string|null;last_verified_at:string|null;remote_warehouse_bound:boolean;oms_warehouse_code?:string|null }|null }>()
 type Result = { status: string; http_status: number|null; code: string|null; warehouse_count: number|null }
+const warehouseOptions=ref<Array<{code:string;name:string;country:string}>>([]),selectedWhCode=ref(''),binding=ref(false),bindingStatus=ref(''),currentWhCode=ref(props.connection?.oms_warehouse_code||'')
 const appKey=ref(''),appSecret=ref(''),showSecret=ref(false),testing=ref(false),result=ref<Result|null>(null),error=ref(''),saved=ref(props.connection?.configured??false)
 const explain=(status:string):string => ({
 verified:'API 只读认证已通过；本次仅测试，密钥尚未保存。',
@@ -32,6 +33,37 @@ async function verify(save:boolean){
   }catch{error.value='验证请求未完成，请检查网络或刷新。'}
   finally{appSecret.value='';showSecret.value=false;testing.value=false}
 }
+
+async function loadWarehouses(){
+  if(!saved.value || binding.value)return
+  binding.value=true;bindingStatus.value=''
+  try{
+    const response=await fetch('/settings/warehouses/'+encodeURIComponent(props.warehouseSlug)+'/openapi/xlwms/warehouses',{credentials:'same-origin',cache:'no-store'})
+    if(!response.ok)throw Error('HTTP '+response.status)
+    const data=await response.json() as {warehouses:Array<{code:string;name:string;country:string}>}
+    warehouseOptions.value=data.warehouses
+    bindingStatus.value='已获取 OMS 授权仓库，请核对名称及所在国家后确认绑定。'
+  }catch{bindingStatus.value='读取 OMS 授权仓库失败，请检查保存的 API 凭据。'}
+  finally{binding.value=false}
+}
+async function bindWarehouse(){
+ if(!selectedWhCode.value || binding.value)return
+ binding.value=true;bindingStatus.value=''
+ try{
+   const token=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
+   if(!token)throw Error('no csrf')
+   const response=await fetch('/settings/warehouses/'+encodeURIComponent(props.warehouseSlug)+'/openapi/xlwms/bind',{
+     method:'POST',credentials:'same-origin',cache:'no-store',
+     headers:{'Content-Type':'application/json',Accept:'application/json','X-CSRF-TOKEN':token},
+     body:JSON.stringify({wh_code:selectedWhCode.value})
+   })
+   if(!response.ok)throw Error('HTTP '+response.status)
+   currentWhCode.value=selectedWhCode.value
+   bindingStatus.value='已绑定 OMS 仓库 '+selectedWhCode.value+'。这不等于已经授权自动发货。'
+ }catch{bindingStatus.value='OMS 仓库绑定失败：所选代码必须来自当前账户可用仓库。'}
+ finally{binding.value=false}
+}
+
 onBeforeUnmount(()=>{appKey.value='';appSecret.value='';result.value=null})
 </script>
 <template>
@@ -48,9 +80,22 @@ onBeforeUnmount(()=>{appKey.value='';appSecret.value='';result.value=null})
     </form>
     <p v-if="error" class="openapi-error" role="alert">{{error}}</p>
     <div v-if="result" class="openapi-result" role="status"><b>{{explain(result.status)}}</b><p>状态：{{result.status}} · HTTP {{result.http_status??'—'}} · OMS 代码 {{result.code??'—'}}</p><p v-if="result.warehouse_count!==null">返回仓库数：{{result.warehouse_count}}（尚未绑定当前仓库）</p></div>
+    <section class="openapi-binding">
+      <b>远端 OMS 仓库绑定</b>
+      <p class="openapi-help">已绑定代码：{{currentWhCode||'尚未绑定'}}。必须核实仓库实际名称及国家，不能自动按 ERP 名称猜测。</p>
+      <button class="button ghost" type="button" :disabled="!saved||binding" @click="loadWarehouses">读取 OMS 授权仓库列表</button>
+      <label v-if="warehouseOptions.length">选择真实对应的仓库
+        <select v-model="selectedWhCode"><option value="">请手动选择</option>
+          <option v-for="w in warehouseOptions" :key="w.code" :value="w.code">{{w.name}} · {{w.code}} · {{w.country}}</option>
+        </select>
+      </label>
+      <button v-if="warehouseOptions.length" type="button" class="button primary" :disabled="!selectedWhCode||binding" @click="bindWarehouse">确认绑定本仓库</button>
+      <p class="openapi-help" role="status">{{bindingStatus}}</p>
+    </section>
     <p class="openapi-help">安全说明：点击「仅测试」不会保存密钥；「验证并加密保存」仅在 OMS 返回明确成功后加密写入当前 ERP 仓库。Secret 不回显，也不存入 GitHub。未绑定远端仓库前不允许自动发货。</p>
   </div>
 </template>
 <style scoped>
 .warehouse-openapi{display:grid;gap:12px;padding:2px 0}.openapi-help{font-size:12px;color:#627268;margin:0;line-height:1.7}.openapi-state{background:#f1f5f2;padding:10px 13px;border-radius:8px;color:#345641;font-size:13px;font-weight:700}.openapi-form{display:grid;gap:12px;max-width:720px}.openapi-form label{display:grid;gap:6px;font-size:13px;font-weight:700}.openapi-form input{width:100%;max-width:650px;box-sizing:border-box;border:1px solid #d4dfd8;border-radius:8px;padding:10px;font-weight:400;color:#19271f;background:#fff}.secret-line{display:flex;gap:9px;align-items:center}.secret-line input{flex:1}.openapi-buttons{margin-top:5px;display:flex;align-items:center;gap:10px}.openapi-result{border:1px solid #cad9cf;border-radius:9px;padding:12px;background:#fafdfb;font-size:13px}.openapi-result p{margin:6px 0}.openapi-error{color:#a92c2c}
 </style>
+\n<style scoped>.openapi-binding{border-top:1px solid #dfe8e1;padding-top:14px;display:grid;gap:9px;max-width:720px}.openapi-binding label{display:grid;gap:6px}.openapi-binding select{padding:9px;border:1px solid #c9d4cb;border-radius:7px;background:#fff}</style>\n

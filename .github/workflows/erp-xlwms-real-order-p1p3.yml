@@ -1,0 +1,56 @@
+name: ERP XLWMS Single Real Order P1-P3
+
+on:
+  pull_request:
+    paths:
+      - 'app/Modules/Logistics/Application/Xlwms/**'
+      - 'app/Modules/Logistics/Infrastructure/Xlwms/**'
+      - 'app/Modules/Logistics/Experience/Controllers/XlwmsSingleOrderController.php'
+      - 'app/Modules/Logistics/Experience/Controllers/XlwmsWarehouseBindingController.php'
+      - 'app/Modules/Logistics/Experience/Routes/web.php'
+      - 'app/Modules/Inventory/Experience/Controllers/WarehouseController.php'
+      - 'resources/js/Pages/Logistics/Oversea/**'
+      - 'resources/js/Pages/Inventory/components/WarehouseOpenApi.vue'
+      - 'config/xlwms.php'
+      - 'database/migrations/*_create_xlwms_dispatch_attempts_table.php'
+      - 'tests/Feature/Logistics/Xlwms*Test.php'
+      - 'tests/Feature/Orders/OrderLineVerifiedSkuCorrectionTest.php'
+      - 'app/Modules/Orders/Application/OrderLineSkuCorrectionService.php'
+      - 'app/Modules/Orders/Experience/Controllers/OrderLineSkuCorrectionController.php'
+      - 'app/Modules/Orders/Experience/Routes/web.php'
+      - '.github/workflows/erp-xlwms-real-order-p1p3.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scoped-p1p3:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: Composer
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Prepare environment
+        run: cp .env.example .env && php artisan key:generate
+      - name: Isolated OMS regression
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+          CACHE_STORE: array
+          SESSION_DRIVER: array
+          QUEUE_CONNECTION: sync
+          XLWMS_LIVE_DISPATCH_ENABLED: 'false'
+        run: php artisan test tests/Feature/Orders/OrderLineVerifiedSkuCorrectionTest.php tests/Feature/Logistics/XlwmsSingleOrderDispatchTest.php tests/Feature/Logistics/XlwmsWarehouseBindingTest.php tests/Feature/Logistics/XlwmsReadOnlyConnectorTest.php
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run typecheck && npm run build
+      - run: git diff --check

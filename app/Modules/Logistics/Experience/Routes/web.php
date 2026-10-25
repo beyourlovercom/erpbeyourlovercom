@@ -6,6 +6,8 @@ use App\Modules\Logistics\Experience\Controllers\HistoricalImportController;
 use App\Modules\Logistics\Experience\Controllers\LogisticsController;
 use App\Modules\Logistics\Experience\Controllers\OverseaWarehouseController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsCredentialController;
+use App\Modules\Logistics\Experience\Controllers\XlwmsSingleOrderController;
+use App\Modules\Logistics\Experience\Controllers\XlwmsWarehouseBindingController;
 use App\Modules\Logistics\Experience\Controllers\WarehouseSettingsController;
 use App\Modules\Logistics\Experience\Controllers\WarehouseOpenApiController;
 use App\Modules\Logistics\Experience\Middleware\RequireFulfillmentAllocation;
@@ -28,6 +30,14 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/settings/warehouses/{warehouse}/openapi/xlwms', [WarehouseOpenApiController::class, 'save'])
         ->middleware(['can:system.permissions.manage', 'throttle:5,1'])
         ->name('settings.warehouses.openapi.xlwms.save');
+    Route::get('/settings/warehouses/{warehouse}/openapi/xlwms/warehouses',
+        [XlwmsWarehouseBindingController::class, 'options'])
+        ->middleware(['can:system.permissions.manage', 'throttle:5,1'])
+        ->name('settings.xlwms.warehouses.options');
+    Route::post('/settings/warehouses/{warehouse}/openapi/xlwms/bind',
+        [XlwmsWarehouseBindingController::class, 'bind'])
+        ->middleware(['can:system.permissions.manage', 'throttle:5,1'])
+        ->name('settings.xlwms.warehouses.bind');
     // Bookmarks from the earlier Dev page redirect to the canonical Settings path.
     // Intentionally do NOT preserve the old POST endpoint.
     Route::redirect('/logistics/integrations/xlwms', '/settings/warehouses/xlwms')
@@ -45,6 +55,18 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/china/orders/{order}/approve', [DomesticLogisticsController::class, 'approve'])->middleware($execution)->name('logistics.china.approve');
     Route::post('/logistics/china/orders/{order}/reopen-review', [DomesticLogisticsController::class, 'reopenReview'])->middleware($execution)->name('logistics.china.reopen-review');
     Route::get('/logistics/oversea/{warehouse?}', [OverseaWarehouseController::class, 'index'])->middleware('can:logistics.view')->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea');
+    Route::get('/logistics/oversea/us-3sm/orders/{order}/xlwms',
+        [XlwmsSingleOrderController::class, 'show'])
+        ->middleware('can:logistics.view')->whereNumber('order')
+        ->name('logistics.xlwms.order.preview');
+    Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/send',
+        [XlwmsSingleOrderController::class, 'send'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class,'throttle:2,1'])
+        ->whereNumber('order')->name('logistics.xlwms.order.send');
+    Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/reconcile',
+        [XlwmsSingleOrderController::class, 'reconcile'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class,'throttle:5,1'])
+        ->whereNumber('order')->name('logistics.xlwms.order.reconcile');
     Route::get('/logistics/oversea/{warehouse}/export', [OverseaWarehouseController::class, 'export'])->middleware('can:logistics.view')->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea.export');
     Route::post('/logistics/oversea/{warehouse}/tracking-import/preview', [OverseaWarehouseController::class, 'previewTrackingReturn'])->middleware($execution)->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea.tracking-import.preview');
     Route::post('/logistics/oversea/{warehouse}/tracking-import/apply', [OverseaWarehouseController::class, 'applyTrackingReturn'])->middleware($execution)->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea.tracking-import.apply');
