@@ -56,6 +56,37 @@ const latestRestockPlan = {
 }
 
 describe('Warehouse Restock Plan Snapshot', () => {
+  it('renders source cells with cell-local pencils and computed-cell inspectors', async () => {
+    const wrapper = mount(WarehouseShow, {
+      props: {
+        warehouse: { ...warehouse, inventories: [{
+          id: 99, product: { id: 1456, sku: 'VC549A', name: '磁吸穿戴', updated_at: '2026-10-01T00:00:00Z' },
+          quantity_on_hand: 12, quantity_reserved: 2, quantity_available: 10, stock_status: 'in_stock', stock_status_label: '有货',
+          inbound_at: '2026-09-01', stay_days: 30, location: 'A-01', standard_qoh: 8, expected_restock_qty: 4,
+          updated_at: '2026-10-01T00:00:00Z', product_updated_at: '2026-10-01T00:00:00Z',
+          replenishment: { policy_status: 'reorder', policy_label: '建议补货', shipped_90d_qty: 90, days_of_cover: 10, recommended_restock_qty: 4 },
+        }] },
+        clearanceProducts: [], clearanceCandidates: [], costCenter: { months: [] }, canOperate: true, canManage: false, canEditProducts: true,
+      },
+    })
+    await wrapper.findAll('button').find((button) => button.text().trim().startsWith('库存'))!.trigger('click')
+    const stockTab = wrapper.findAll('button').find((button) => button.text().trim().startsWith('当前库存'))
+    await stockTab!.trigger('click')
+
+    expect(wrapper.findAll('.inventory-table .cell-pencil')).toHaveLength(8)
+    expect(wrapper.text()).not.toContain('保存')
+    await wrapper.find('.inventory-table .computed-cell').trigger('click')
+    expect(wrapper.find('.cell-inspector').exists()).toBe(true)
+
+    const quantityCell = wrapper.findAll('.inventory-table .editable-cell').find((cell) => cell.text().includes('12'))
+    await quantityCell!.trigger('click')
+    const editor = quantityCell!.find('input')
+    expect(editor.exists()).toBe(true)
+    await editor.setValue('13')
+    await editor.trigger('keydown.enter')
+    expect(router.patch).toHaveBeenCalledWith('/inventory/us-3sm/stock/99/cell', expect.objectContaining({ field: 'quantity_on_hand', value: 13 }), expect.any(Object))
+  })
+
   it('shows effective blue-label identity and confirmed snapshot in the restock workspace', async () => {
     const wrapper = mount(WarehouseShow, {
       props: {
