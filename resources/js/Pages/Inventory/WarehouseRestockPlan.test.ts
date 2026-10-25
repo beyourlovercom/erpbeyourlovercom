@@ -1,13 +1,14 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import { router } from '@inertiajs/vue3'
+import { reactive } from 'vue'
 import WarehouseShow from './WarehouseShow.vue'
 
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
   Link: { props: ['href'], template: '<a :href="href"><slot /></a>' },
   router: { post: vi.fn(), patch: vi.fn(), get: vi.fn() },
-  useForm: (initial: Record<string, any>) => ({
+  useForm: (initial: Record<string, any>) => reactive({
     ...initial,
     processing: false,
     errors: {},
@@ -56,6 +57,31 @@ const latestRestockPlan = {
 }
 
 describe('Warehouse Restock Plan Snapshot', () => {
+  it('shows visible validation before sending an over-reserved manual product', async () => {
+    const wrapper = mount(WarehouseShow, {
+      props: {
+        warehouse, clearanceProducts: [], clearanceCandidates: [], costCenter: { months: [] },
+        canOperate: true, canManage: false, canEditProducts: true,
+      },
+    })
+    await wrapper.findAll('button').find(button => button.text().trim().startsWith('库存'))!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text().trim().startsWith('当前库存'))!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text().includes('新增产品'))!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text().includes('新建 SKU'))!.trigger('click')
+    const form = wrapper.find('form.inventory-add-form')
+    expect(form.attributes('novalidate')).toBeDefined()
+    const labeled = form.findAll('label')
+    const onHand = labeled.find(label => label.text().includes('当前库存'))!.find('input')
+    const reserved = labeled.find(label => label.text().includes('预留'))!.find('input')
+    await onHand.setValue('10')
+    await reserved.setValue('11')
+    expect(form.find('.inventory-field-error').text()).toContain('预留库存不能超过当前库存')
+    await form.trigger('submit')
+    expect(form.find('.inventory-add-error').text()).toContain('预留库存不能超过当前库存')
+    expect(form.find('input[aria-invalid="true"]').exists()).toBe(true)
+    expect(wrapper.find('.inventory-add-success').exists()).toBe(false)
+  })
+
   it('renders source cells with cell-local pencils and computed-cell inspectors', async () => {
     const wrapper = mount(WarehouseShow, {
       props: {

@@ -230,6 +230,10 @@ final class WarehouseController
             'new_sku' => ['nullable', 'string', 'max:128', 'unique:products,sku', 'required_without:product_id'],
             'new_name' => ['nullable', 'string', 'max:512', 'required_with:new_sku'],
             ...$this->inventoryRules(false),
+        ], [
+            'new_sku.unique' => '该 SKU 已存在，请切换“已有 SKU”并选择产品。',
+            'new_name.required_with' => '新建 SKU 时必须填写产品名称。',
+            'new_sku.required_without' => '请选择已有 SKU 或填写新 SKU。',
         ]);
         if (! empty($data['new_sku'])) {
             abort_unless($request->user()?->can(AuthorizationKeys::ProductsOperate->value), 403);

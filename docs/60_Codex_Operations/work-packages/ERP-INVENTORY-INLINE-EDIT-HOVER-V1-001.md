@@ -134,3 +134,11 @@ MIGRATION_FILE_AUTHORING: EXCLUDED
 MIGRATION_EXECUTION: EXCLUDED
 UAT: INCLUDED
 DEPLOYMENT: EXCLUDED
+
+## Manual add/save feedback repair (2026-10-25)
+
+- Root cause confirmed by Playwright in isolated US Mac Mini Dev UAT: input current stock 10 and reserved 11 sends an invalid request; server rejects it with 302 redirect/session errors, but Current Inventory new-product form did not render Inertia `useForm.errors`, so click appeared to do nothing. Separately the built Vite CSS did not yet include the newly added `.inventory-add-form` rules although Vue source had them, yielding bare inline labels/inputs exactly as Owner screenshot.
+- Fix: added reactive client-side integer/reservation validation with visible `role=alert` field/error banner; show backend error fallback for duplicate SKU and other server failures; clear on successful save, show `role=status` success message, keep quantity guard intact. Rebuilt Vite CSS with fresh content hash, confirmed four-column grid and bordered inputs in actual browser computed styles; localized duplicate/new SKU validation messages.
+- Browser evidence: invalid on_hand 10 / reserved 11 shows Chinese error without sending POST; CSS computed display:grid, four columns, input border 1px. Existing duplicate SKU returns 302/Inertia errors with a visible error banner; valid new SKU saved, visible success banner and new row; no page JS errors.
+- Verifications: targeted Vue Vitest 4 tests PASS (including new realtime validation regression test); PHP warehouse inventory suite 8 PASS / 53 assertions; Vue typecheck PASS; Vite build PASS; `git diff --check` PASS. Final GitHub CI outcome is evaluated on the new PR SHA after push.
+- Production unchanged, owner Live UAT still required; do not merge or deploy before approval.
