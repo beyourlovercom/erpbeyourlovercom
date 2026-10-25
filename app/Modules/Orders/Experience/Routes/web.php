@@ -2,6 +2,7 @@
 
 use App\Modules\Orders\Experience\Controllers\KolLogisticsController;
 use App\Modules\Orders\Experience\Controllers\OrderController;
+use App\Modules\Orders\Experience\Controllers\OrderLineSkuCorrectionController;
 use App\Modules\Orders\Experience\Controllers\OrderSavedViewController;
 use App\Modules\Orders\Experience\Controllers\WooCommerceInboundController;
 use Illuminate\Support\Facades\Route;
@@ -19,6 +20,11 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::delete('/orders/views/{savedView}', [OrderSavedViewController::class, 'destroy'])->middleware('can:orders.view')->name('orders.views.destroy');
     Route::post('/orders/{order}/operational-markers/{marker}', [OrderController::class, 'setOperationalMarker'])->middleware('can:orders.edit')->where('order', '[0-9]+')->whereIn('marker', ['exception', 'in_transit', 'return', 'stockout'])->name('orders.operational-markers.update');
     Route::get('/orders/procurement', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.procurement')->defaults('order_kind', 'all')->defaults('order_scope', 'external_warehouse');
+    // Preserves original Woo line IDs, item identity, source SKU, prices and audit.
+    // Canonical product remains intact even when the order-specific approved SKU is its Alias.
+    Route::patch('/orders/{order}/items/{item}/verified-sku', [OrderLineSkuCorrectionController::class, 'update'])
+        ->middleware(['can:orders.edit', 'can:system.permissions.manage', 'throttle:5,1'])
+        ->whereNumber('order')->whereNumber('item')->name('orders.items.verified-sku');
     Route::get('/orders/{order}', [OrderController::class, 'showAny'])->middleware('can:orders.view')->whereNumber('order')->name('orders.show');
     Route::get('/orders/procurement/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.procurement')->defaults('order_kind', 'all')->defaults('order_scope', 'external_warehouse');
     Route::get('/customers/orders', [OrderController::class, 'index'])->middleware('can:orders.view')->name('customers.orders')->defaults('order_kind', 'customer');

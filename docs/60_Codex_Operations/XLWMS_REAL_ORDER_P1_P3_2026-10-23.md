@@ -1,0 +1,10 @@
+
+## 2026-10-25 Owner-approved two-order SKU correction
+- Tencent BYL shipping sheet identifies two US-SM pending orders.
+- C41704-007 / ERP 007-1022-c41704 / DB 7679: target VP757A x1, original ERP VP757B x1. Production: inactive provisional VP757A product 1483 created, order updated to VP757A x1, original quantity and price unchanged; independent ERP readback confirmed pending_shipment. No Shipment or XLWMS submission.
+- C41691-007 / ERP 007-1022-c41691 / DB 7674: target MW820A x1 and VX609A x1, original MW820A x1 and gift x1. The exact target VX609A is globally an alias for canonical 609A (ROSEY), not a distinct canonical product. Existing generic OrderService update would rewrite VX609A to 609A and delete-recreate the Woo order line, so this order is UNCHANGED in Production.
+- New admin-only endpoint PATCH /orders/{order}/items/{item}/verified-sku preserves original Woo line ID, source SKU, row identity, quantity, price and source references. It sets the Owner-verified exact order SKU even when the corresponding product is resolved by an existing alias; global alias remains unchanged. Preconditions: pending order, no Shipment, no allocation, no child fulfillment, no XLWMS dispatch attempt, explicit original SKU match. The transaction writes an immutable audit record.
+- Production Settings/Warehouses is still prototype; production GET /settings/warehouses/xlwms and GET /logistics/oversea/us-3sm/orders/7679/xlwms both return HTTP 404. XLWMS real dispatch code has NOT been released; never claim actual shipment API was tested.
+- Tencent C41704 tracking field already has a tracking reference. Must inspect OMS for duplicate order or existing label before create.
+- ERP US-SM inventory is not synchronized (last sync null). Target SKU available stock is not established. Tencent C41691 tracking field reads '无货'.
+- No real XLWMS outboundOrder/create requests were sent; no Woo shipped-state change. Do not enable live dispatch pending authorized CI/deployment, confirmed exact OMS warehouse, approved SKU catalog and inventory, and duplicate check.

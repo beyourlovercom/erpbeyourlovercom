@@ -14,6 +14,10 @@ on:
       - 'config/xlwms.php'
       - 'database/migrations/*_create_xlwms_dispatch_attempts_table.php'
       - 'tests/Feature/Logistics/Xlwms*Test.php'
+      - 'tests/Feature/Orders/OrderLineVerifiedSkuCorrectionTest.php'
+      - 'app/Modules/Orders/Application/OrderLineSkuCorrectionService.php'
+      - 'app/Modules/Orders/Experience/Controllers/OrderLineSkuCorrectionController.php'
+      - 'app/Modules/Orders/Experience/Routes/web.php'
       - '.github/workflows/erp-xlwms-real-order-p1p3.yml'
   workflow_dispatch:
 
@@ -43,7 +47,7 @@ jobs:
           SESSION_DRIVER: array
           QUEUE_CONNECTION: sync
           XLWMS_LIVE_DISPATCH_ENABLED: 'false'
-        run: php artisan test tests/Feature/Logistics/XlwmsSingleOrderDispatchTest.php tests/Feature/Logistics/XlwmsWarehouseBindingTest.php tests/Feature/Logistics/XlwmsReadOnlyConnectorTest.php
+        run: php artisan test tests/Feature/Orders/OrderLineVerifiedSkuCorrectionTest.php tests/Feature/Logistics/XlwmsSingleOrderDispatchTest.php tests/Feature/Logistics/XlwmsWarehouseBindingTest.php tests/Feature/Logistics/XlwmsReadOnlyConnectorTest.php
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
