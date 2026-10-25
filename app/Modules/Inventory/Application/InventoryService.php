@@ -7,9 +7,12 @@ use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Inventory\Application\Contracts\InventoryRepository;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
+use App\Modules\Inventory\Infrastructure\Models\InventoryReservationItem;
+use App\Modules\Products\Application\ProductService;
 use App\Modules\Products\Application\Contracts\ProductRepository;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -18,6 +21,7 @@ final class InventoryService
     public function __construct(
         private readonly InventoryRepository $inventory,
         private readonly ProductRepository $products,
+        private readonly ProductService $productService,
         private readonly AuditRecorder $audit,
         private readonly WarehouseMasterRegistry $warehouseMaster,
     ) {}
@@ -134,9 +138,64 @@ final class InventoryService
         return DB::transaction(function () use ($warehouse, $product, $attributes, $actor): Model {
             $existing = $warehouse->inventories()->where('product_id', $product->getKey())->first();
             $before = $existing ? $this->inventoryAudit($existing) : null;
-            $saved = $this->inventory->upsertInventory($warehouse, $product, $this->normalizeInventory($attributes));
+            unset($attributes['new_sku'], $attributes['new_name']);
+            $normalized = $this->normalizeInventory($attributes);
+            if ((int) $normalized['quantity_reserved'] > (int) $normalized['quantity_on_hand']) {
+                throw ValidationException::withMessages(['quantity_reserved' => '预留库存不能超过当前库存。']);
+            }
+            $saved = $this->inventory->upsertInventory($warehouse, $product, $normalized);
             $this->record($actor, 'inventory.stock_saved', $saved, $before, $this->inventoryAudit($saved), $existing ? 'inventory_updated' : 'inventory_created');
             return $saved;
+        });
+    }
+
+    public function addInventory(Model $warehouse, ?int $productId, array $attributes, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($warehouse, $productId, $attributes, $actor): Model {
+            $product = $productId !== null
+                ? $this->products->findById($productId)
+                : $this->productService->createManual([
+                    'sku' => trim((string) ($attributes['new_sku'] ?? '')),
+                    'name' => trim((string) ($attributes['new_name'] ?? '')),
+                ]);
+            abort_if($product === null, 422, '产品不存在');
+
+            $existing = WarehouseInventory::withTrashed()->where('warehouse_id', $warehouse->getKey())
+                ->where('product_id', $product->getKey())->lockForUpdate()->first();
+            if ($existing?->trashed()) {
+                $existing->restore();
+            } elseif ($existing !== null) {
+                throw ValidationException::withMessages(['product_id' => '该产品已在当前仓库中，不能覆盖现有库存。']);
+            }
+
+            unset($attributes['new_sku'], $attributes['new_name']);
+            $normalized = $this->normalizeInventory($attributes);
+            if ((int) $normalized['quantity_reserved'] > (int) $normalized['quantity_on_hand']) {
+                throw ValidationException::withMessages(['quantity_reserved' => '预留库存不能超过当前库存。']);
+            }
+            $saved = $this->inventory->upsertInventory($warehouse, $product, $normalized);
+            $this->record($actor, 'inventory.warehouse_product_added', $saved, null, $this->inventoryAudit($saved), 'warehouse_product_added');
+            return $saved;
+        });
+    }
+
+    public function removeInventory(Model $warehouse, int $inventoryId, string $expectedUpdatedAt, ?Authenticatable $actor): void
+    {
+        DB::transaction(function () use ($warehouse, $inventoryId, $expectedUpdatedAt, $actor): void {
+            $item = WarehouseInventory::query()->where('warehouse_id', $warehouse->getKey())
+                ->whereKey($inventoryId)->lockForUpdate()->firstOrFail();
+            $this->assertFreshTimestamp($item->updated_at, $expectedUpdatedAt, '库存行已被其他操作更新，请刷新后重试。');
+            $activeReserved = (int) InventoryReservationItem::query()
+                ->where('warehouse_inventory_id', $item->getKey())
+                ->whereHas('reservation', fn ($query) => $query->where('status', 'reserved'))
+                ->sum('quantity');
+            if ((int) $item->quantity_on_hand !== 0 || (int) $item->quantity_reserved !== 0
+                || (int) $item->expected_restock_qty !== 0 || $activeReserved !== 0) {
+                throw ValidationException::withMessages(['inventory' => '只有当前库存、预留、预计备货和活动预留均为 0 时才能移出仓库。']);
+            }
+            $before = $this->inventoryAudit($item);
+            $item->delete();
+            $this->record($actor, 'inventory.warehouse_product_removed', $item, $before, null, 'warehouse_product_removed');
         });
     }
 
@@ -149,6 +208,90 @@ final class InventoryService
             $this->record($actor, 'inventory.stock_adjusted', $updated, $before, $this->inventoryAudit($updated), 'manual_inventory_adjustment');
             return $updated;
         });
+    }
+
+    /**
+     * Update exactly one source cell from the warehouse grid.
+     * The row and warehouse are re-scoped and locked here so a stale full-row
+     * snapshot can never overwrite a concurrent reservation or import.
+     *
+     * @param array{field:string,value:mixed,expected_updated_at:string,expected_product_updated_at?:string|null} $change
+     */
+    public function updateInventoryCell(Model $warehouse, int $inventoryId, array $change, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($warehouse, $inventoryId, $change, $actor): Model {
+            $lockedWarehouse = $warehouse->newQuery()->whereKey($warehouse->getKey())->lockForUpdate()->firstOrFail();
+            /** @var WarehouseInventory $item */
+            $item = WarehouseInventory::query()
+                ->where('warehouse_id', $lockedWarehouse->getKey())
+                ->whereKey($inventoryId)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $field = (string) $change['field'];
+            $this->assertFreshTimestamp($item->updated_at, (string) $change['expected_updated_at'], '库存行已被其他操作更新，请刷新后重试。');
+
+            if (in_array($field, ['sku', 'name'], true)) {
+                $product = $item->product()->lockForUpdate()->firstOrFail();
+                $expectedProductAt = (string) ($change['expected_product_updated_at'] ?? '');
+                $this->assertFreshTimestamp($product->updated_at, $expectedProductAt, '产品已被其他操作更新，请刷新后重试。');
+                $attributes = [$field => $field === 'sku' ? trim((string) $change['value']) : trim((string) $change['value'])];
+                if ($field === 'sku') {
+                    $existing = $this->products->findBySku((string) $attributes['sku']);
+                    if ($existing !== null && (int) $existing->getKey() !== (int) $product->getKey()) {
+                        throw ValidationException::withMessages(['value' => 'SKU 已被其他产品使用。']);
+                    }
+                }
+                if ($field === 'name' && $attributes['name'] === '') {
+                    throw ValidationException::withMessages(['value' => '产品名称不能为空。']);
+                }
+                $this->productService->updateProduct($product, $attributes);
+                return $item->fresh(['warehouse', 'product']);
+            }
+
+            $value = $this->normalizeCellValue($field, $change['value']);
+            if ($field === 'quantity_on_hand') {
+                $reserved = (int) $item->quantity_reserved;
+                if ((int) $value < $reserved) {
+                    throw ValidationException::withMessages(['value' => '当前库存不能低于已预留库存。']);
+                }
+            }
+            if ($field === 'quantity_reserved') {
+                $activeReserved = (int) InventoryReservationItem::query()
+                    ->where('warehouse_inventory_id', $item->getKey())
+                    ->whereHas('reservation', fn ($query) => $query->where('status', 'reserved'))
+                    ->sum('quantity');
+                if ((int) $value < $activeReserved) {
+                    throw ValidationException::withMessages(['value' => "不能低于活动订单已占用的 {$activeReserved} 件库存。"]);
+                }
+                if ((int) $value > (int) $item->quantity_on_hand) {
+                    throw ValidationException::withMessages(['value' => '预留库存不能超过当前库存。']);
+                }
+            }
+            $before = $this->inventoryAudit($item);
+            $updated = $this->inventory->updateInventory($item, [$field => $value]);
+            $this->record($actor, 'inventory.stock_cell_updated', $updated, $before, $this->inventoryAudit($updated), 'manual_inventory_cell_adjustment');
+            return $updated;
+        });
+    }
+
+    private function assertFreshTimestamp(?\DateTimeInterface $actual, string $expected, string $message): void
+    {
+        if ($actual === null || $expected === '' || ! Carbon::parse($expected)->equalTo($actual)) {
+            throw ValidationException::withMessages(['value' => $message]);
+        }
+    }
+
+    private function normalizeCellValue(string $field, mixed $value): mixed
+    {
+        if (in_array($field, ['quantity_on_hand', 'quantity_reserved', 'standard_qoh', 'expected_restock_qty'], true)) {
+            if (! is_int($value) && ! (is_string($value) && preg_match('/^\d+$/', $value))) {
+                throw ValidationException::withMessages(['value' => '数量必须是非负整数。']);
+            }
+            return (int) $value;
+        }
+        if ($field === 'inbound_at') return $value === '' ? null : $value;
+        if ($field === 'location') return $value === '' ? null : trim((string) $value);
+        throw ValidationException::withMessages(['field' => '不支持编辑该库存字段。']);
     }
 
     public function saveRestockSupplement(Model $warehouse, int $productId, int $quantity, ?Authenticatable $actor): Model

@@ -75,6 +75,7 @@ final class WarehouseController
                 (string)$request->query('shipment_status','all'),
             ),
             'canOperate'=>auth()->user()?->can(AuthorizationKeys::InventoryOperate->value) ?? false,
+            'canEditProducts'=>auth()->user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false,
             'canManage'=>auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false,
         ]);
     }
@@ -220,12 +221,65 @@ final class WarehouseController
         $this->inventory->saveInventory($w,$productId,$data,$request->user());
         return back()->with('success','库存已保存');
     }
+
+    public function addInventory(Request $request, string $warehouse): RedirectResponse
+    {
+        $w = $this->inventory->warehouse($warehouse);
+        $data = $request->validate([
+            'product_id' => ['nullable', 'integer', 'exists:products,id', 'required_without:new_sku'],
+            'new_sku' => ['nullable', 'string', 'max:128', 'unique:products,sku', 'required_without:product_id'],
+            'new_name' => ['nullable', 'string', 'max:512', 'required_with:new_sku'],
+            ...$this->inventoryRules(false),
+        ], [
+            'new_sku.unique' => '该 SKU 已存在，请切换“已有 SKU”并选择产品。',
+            'new_name.required_with' => '新建 SKU 时必须填写产品名称。',
+            'new_sku.required_without' => '请选择已有 SKU 或填写新 SKU。',
+        ]);
+        if (! empty($data['new_sku'])) {
+            abort_unless($request->user()?->can(AuthorizationKeys::ProductsOperate->value), 403);
+        }
+        $productId = isset($data['product_id']) ? (int) $data['product_id'] : null;
+        unset($data['product_id']);
+        $this->inventory->addInventory($w, $productId, $data, $request->user());
+        return back()->with('success', '产品已加入当前仓库库存');
+    }
+
+    public function removeInventory(Request $request, string $warehouse, int $inventory): RedirectResponse
+    {
+        $w = $this->inventory->warehouse($warehouse);
+        $data = $request->validate(['expected_updated_at' => ['required', 'date']]);
+        $this->inventory->removeInventory($w, $inventory, (string) $data['expected_updated_at'], $request->user());
+        return back()->with('success', '产品已从当前仓库移出');
+    }
     public function updateInventory(Request $request,string $warehouse,int $inventory): RedirectResponse
     {
         $w=$this->inventory->warehouse($warehouse);
         $data=$request->validate($this->inventoryRules(false));
         $this->inventory->updateInventory($w,$inventory,$data,$request->user());
         return back()->with('success','库存已更新');
+    }
+
+    public function updateInventoryCell(Request $request,string $warehouse,int $inventory): RedirectResponse
+    {
+        $w=$this->inventory->warehouse($warehouse);
+        $rules=[
+            'field'=>['required','string','in:sku,name,quantity_on_hand,quantity_reserved,location,inbound_at,standard_qoh,expected_restock_qty'],
+            'value'=>['present'],
+            'expected_updated_at'=>['required','date'],
+            'expected_product_updated_at'=>['nullable','date'],
+        ];
+        $field=(string) $request->input('field');
+        if (in_array($field, ['sku','name'], true)) $rules['value']=['present','string','max:512'];
+        elseif (in_array($field, ['quantity_on_hand','quantity_reserved','standard_qoh','expected_restock_qty'], true)) $rules['value']=['required','integer','min:0'];
+        elseif ($field==='location') $rules['value']=['nullable','string','max:128'];
+        elseif ($field==='inbound_at') $rules['value']=['nullable','date'];
+        $data=$request->validate($rules);
+        if (in_array($data['field'], ['sku','name'], true)) {
+            abort_unless($request->user()?->can(AuthorizationKeys::ProductsOperate->value), 403);
+            abort_unless(! empty($data['expected_product_updated_at']), 422, '缺少产品版本信息。');
+        }
+        $this->inventory->updateInventoryCell($w,$inventory,$data,$request->user());
+        return back()->with('success','单元格已更新');
     }
 
     public function advanceInbound(Request $request,string $warehouse,int $batch): RedirectResponse
@@ -395,7 +449,8 @@ final class WarehouseController
                 'id'=>$i->id,'product'=>['id'=>$i->product->id,'sku'=>$i->product->sku,'name'=>$i->product->name],
                 'quantity_on_hand'=>$i->quantity_on_hand,'quantity_reserved'=>$i->quantity_reserved,'quantity_available'=>$i->quantity_available,
                 'stock_status'=>InventoryStockStatus::classify((int)$i->quantity_available),'stock_status_label'=>InventoryStockStatus::label(InventoryStockStatus::classify((int)$i->quantity_available)),
-                'inbound_at'=>$i->inbound_at?->format('Y-m-d'),'stay_days'=>$i->stay_days,'location'=>$i->location,'standard_qoh'=>$i->standard_qoh,'expected_restock_qty'=>$i->expected_restock_qty,
+            'inbound_at'=>$i->inbound_at?->format('Y-m-d'),'stay_days'=>$i->stay_days,'location'=>$i->location,'standard_qoh'=>$i->standard_qoh,'expected_restock_qty'=>$i->expected_restock_qty,
+                'updated_at'=>$i->updated_at?->toIso8601String(),'product_updated_at'=>$i->product->updated_at?->toIso8601String(),
                 'replenishment'=>$this->inventory->replenishmentMetrics($i),
             ])->values()->all(),
         ];
