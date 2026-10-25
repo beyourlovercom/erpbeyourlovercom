@@ -6,7 +6,7 @@
 - Issue scope is active Owner-approved after the final visual design pass. No second design approval is required before implementation; live Local/UAT remains an Owner gate.
 - Worktree: `/Users/a/AI/007/worktrees/erp-inventory-inline-edit-hover-v1`.
 - Branch baseline: `feature/erp-inventory-inline-edit-hover-v1` at `60ccafc2` before implementation.
-- Execution provider: `EXECUTION_PROVIDER: GPT_WEB`.
+- Execution provider: `EXECUTION_PROVIDER: US_CODEX_CLI`.
 - Verification classification: `VERIFICATION_TIER = HIGH_RISK`.
 - Delivery: one separate Draft PR only; do not merge `main`, deploy Production, or mutate Production data.
 
@@ -71,23 +71,25 @@ Verification evidence:
 - `npm run build`: PASS; existing Vite chunk-size warning only.
 - `tests/Architecture/ModuleArchitectureTest.php`: not green on this baseline because its frozen module-directory and MIG-001 migration file lists already omit directories/migrations present in the checkout; no baseline file was changed in this package.
 
+GitHub CI evidence: PR #506 (GitHub Actions run 40158757772) returned failure for mysql8-runtime and sqlite-regression jobs within ~1 second with no runner assigned and no steps; similar runner-less failures are visible on Oct 23 historical runs. These are NOT counted as code test failures or CI PASS, and merge readiness is blocked pending runner recovery or an approved equivalent required check.
+
 Owner UAT state: implementation and automated verification complete; live Desktop Local/UAT inspection remains pending and is the required closure gate. No screenshots are claimed as deployment evidence. No Production database, deployment, merge, or other worktree was touched.
 
 PROJECT POSITION
 PROGRAM_ROADMAP: Architecture Migration / Global Architecture Gate → MVP1 Existing Operations / Tencent Docs Replacement → ERP-INQUIRY-M1 B2B Inquiry Foundation → ERP-INQUIRY-M1 Local Milestone UAT → milestone-gated remote release → MVP1.1 WooCommerce Inbound → MVP1.2 Single Tracking Outbound → MVP1.3 Sync Orchestration → Product / Media → WordPress Product and Image Sync → Content / SEO → Posts / Pages → GA4 / GSC / Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS and Social Providers → Inventory and Procurement → Accounting / ROI Expansion → Shopify and Additional Integrations → Production Hardening / Expansion
-CURRENT_TRACK_PHASE_MAP: Inventory and Procurement / warehouse current-inventory inline-edit remediation; prior inventory foundation and automatic allocation packages are baseline; this package is implementation pending automated verification and Owner live UAT; Production release is waiting.
+CURRENT_TRACK_PHASE_MAP: Inventory and Procurement / warehouse current-inventory inline-edit remediation; prior inventory foundation and automatic allocation packages are baseline; this package has completed implementation and bounded automated verification; GitHub Actions CI runner issue and Owner live UAT are pending; Production release is waiting.
 COMPLETED_PHASES: Architecture Migration / Global Architecture Gate; inventory foundation and existing warehouse inventory projections relevant to this package.
 CURRENT_PHASE: Inventory and Procurement — Warehouse current-inventory inline edit V1.
 CURRENT_WORK_PACKAGE: ERP-INVENTORY-INLINE-EDIT-HOVER-V1-001 / GitHub Issue #505.
-PACKAGE_STATUS: DESIGN_PASS_COMPLETE; IMPLEMENTATION_IN_PROGRESS; OWNER_UAT_PENDING.
+PACKAGE_STATUS: DESIGN_PASS_COMPLETE; DEV_IMPLEMENTED_AND_VERIFIED; GITHUB_CI_RUNNER_BLOCKED; OWNER_UAT_PENDING.
 WAITING_PHASES: Owner live Local/UAT PASS; any required follow-up; merge and Production release gates.
 BASELINE: Branch feature/erp-inventory-inline-edit-hover-v1 at 60ccafc2 before implementation; latest origin/main checked before mutation.
-GITHUB_STATE: Issue #505 OPEN; separate Draft PR required after implementation; no merge authorized in this package.
+GITHUB_STATE: Issue #505 OPEN; Draft PR #506 OPEN, branch pushed, main unmerged; no Production release authorized.
 SOURCE_CONFLICTS: NONE WITH EVIDENCE; Issue #505 body is the active scope and local governance files define the delivery gates.
-GLOBAL_GATE: HIGH_RISK verification; owner visual design PASS recorded in Issue #505; live Owner UAT remains mandatory.
+GLOBAL_GATE: HIGH_RISK verification; owner visual design PASS recorded in Issue #505; GitHub CI runner failed before any job steps; live Owner UAT remains mandatory.
 PRODUCTION_DEPLOYMENT_STATUS: NO WITH EVIDENCE — no Production command or data operation is in scope.
-NEXT_DEPENDENCY: Automated verification, Draft PR, then Owner inspection of prepared Local/UAT page.
-EVIDENCE_AS_OF: 2026-10-24; Issue body remote metadata reports an update on 2026-10-25.
+NEXT_DEPENDENCY: Resolve GitHub Actions pre-runner failure or independently validate equivalent required CI; then Owner inspection of isolated Local/UAT page.
+EVIDENCE_AS_OF: 2026-10-25; Draft PR #506 at e11acbd8 and GitHub run 40158757772 observed.
 
 ROADMAP HOURS
 CURRENT_PACKAGE_ESTIMATE: 8–14 effective hours; planning value 11 hours for bounded UI, service/controller hardening, tests, and delivery.
