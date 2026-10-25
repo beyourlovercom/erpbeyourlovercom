@@ -7,6 +7,7 @@ use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\InventoryReservation;
 use App\Modules\Inventory\Infrastructure\Models\InventoryReservationItem;
+use App\Modules\Inventory\Infrastructure\Models\InventoryAdjustment;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -117,6 +118,101 @@ final class WarehouseInlineEditV1Test extends TestCase
         $payload['expected_product_updated_at'] = $fresh->product->updated_at->toIso8601String();
         $this->actingAs($operator)->patch("/inventory/{$warehouse->slug}/stock/{$inventory->id}/cell", $payload)->assertSessionHasErrors('value');
         $this->assertSame('INLINE-NEW', $inventory->product->fresh()->sku);
+    }
+
+    public function test_current_inventory_adds_existing_sku_without_overwriting_and_restores_archived_row(): void
+    {
+        $operator = $this->userWith(['inventory.view', 'inventory.operate']);
+        [$warehouse, $inventory] = $this->stock('add-existing', 'ADD-EXISTING', 8, 0);
+
+        $this->actingAs($operator)->post("/inventory/{$warehouse->slug}/stock/add", [
+            'product_id' => $inventory->product_id, 'quantity_on_hand' => 99, 'quantity_reserved' => 0,
+        ])->assertSessionHasErrors('product_id');
+        $this->assertSame(8, $inventory->fresh()->quantity_on_hand);
+
+        $inventory->update(['quantity_on_hand' => 0, 'quantity_reserved' => 0, 'expected_restock_qty' => 0]);
+        $this->actingAs($operator)->delete("/inventory/{$warehouse->slug}/stock/{$inventory->id}", [
+            'expected_updated_at' => $inventory->fresh()->updated_at->toIso8601String(),
+        ])->assertRedirect();
+
+        $this->actingAs($operator)->post("/inventory/{$warehouse->slug}/stock/add", [
+            'product_id' => $inventory->product_id, 'quantity_on_hand' => 4, 'quantity_reserved' => 0,
+            'location' => 'RESTORED',
+        ])->assertRedirect();
+        $restored = $inventory->fresh();
+        $this->assertNull($restored->deleted_at);
+        $this->assertSame($inventory->id, $restored->id);
+        $this->assertSame(4, $restored->quantity_on_hand);
+    }
+
+    public function test_new_sku_requires_products_permission_and_creates_canonical_product(): void
+    {
+        [$warehouse] = $this->stock('add-new', 'ADD-BASE');
+        $payload = [
+            'new_sku' => 'ADD-MANUAL', 'new_name' => 'Manual Product',
+            'quantity_on_hand' => 3, 'quantity_reserved' => 0, 'location' => 'B-1',
+        ];
+        $operator = $this->userWith(['inventory.view', 'inventory.operate']);
+        $this->actingAs($operator)->post("/inventory/{$warehouse->slug}/stock/add", $payload)->assertForbidden();
+
+        $creator = $this->userWith(['inventory.view', 'inventory.operate', 'products.operate']);
+        $this->actingAs($creator)->post("/inventory/{$warehouse->slug}/stock/add", $payload)->assertRedirect();
+        $product = Product::where('sku', 'ADD-MANUAL')->firstOrFail();
+        $this->assertDatabaseHas('warehouse_inventory', [
+            'warehouse_id' => $warehouse->id, 'product_id' => $product->id, 'quantity_on_hand' => 3,
+        ]);
+    }
+
+    public function test_remove_is_blocked_by_stock_and_active_reservations_but_soft_delete_retains_history(): void
+    {
+        $operator = $this->userWith(['inventory.view', 'inventory.operate']);
+        [$warehouse, $inventory] = $this->stock('remove-stock', 'REMOVE-STOCK', 2, 0);
+        InventoryAdjustment::create([
+            'warehouse_id' => $warehouse->id, 'product_id' => $inventory->product_id,
+            'warehouse_inventory_id' => $inventory->id, 'quantity_before' => 0, 'quantity_after' => 2,
+            'reserved_before' => 0, 'reserved_after' => 0, 'reason' => 'test_history',
+        ]);
+        $this->actingAs($operator)->delete("/inventory/{$warehouse->slug}/stock/{$inventory->id}", [
+            'expected_updated_at' => $inventory->updated_at->toIso8601String(),
+        ])->assertSessionHasErrors('inventory');
+
+        $inventory->update(['quantity_on_hand' => 0, 'expected_restock_qty' => 0]);
+        $order = Order::create([
+            'internal_order_number' => 'REMOVE-ORDER', 'source_type' => 'manual',
+            'order_date' => '2026-10-01', 'order_status' => 'pending_shipment',
+        ]);
+        $reservation = InventoryReservation::create([
+            'reservation_key' => 'remove-reservation', 'payload_hash' => hash('sha256', 'remove'),
+            'order_id' => $order->id, 'warehouse_id' => $warehouse->id, 'status' => 'reserved',
+        ]);
+        InventoryReservationItem::create([
+            'inventory_reservation_id' => $reservation->id, 'warehouse_inventory_id' => $inventory->id,
+            'product_id' => $inventory->product_id, 'quantity' => 1,
+        ]);
+        $this->actingAs($operator)->delete("/inventory/{$warehouse->slug}/stock/{$inventory->id}", [
+            'expected_updated_at' => $inventory->fresh()->updated_at->toIso8601String(),
+        ])->assertSessionHasErrors('inventory');
+
+        $reservation->update(['status' => 'released']);
+        $inventory->refresh();
+        $this->actingAs($operator)->delete("/inventory/{$warehouse->slug}/stock/{$inventory->id}", [
+            'expected_updated_at' => $inventory->updated_at->toIso8601String(),
+        ])->assertRedirect();
+        $this->assertSoftDeleted('warehouse_inventory', ['id' => $inventory->id]);
+        $this->assertDatabaseHas('inventory_adjustments', ['warehouse_inventory_id' => $inventory->id]);
+    }
+
+    public function test_remove_and_add_are_warehouse_scoped(): void
+    {
+        $operator = $this->userWith(['inventory.view', 'inventory.operate']);
+        [$warehouse, $inventory] = $this->stock('remove-scope', 'REMOVE-SCOPE', 0, 0);
+        [$otherWarehouse, $otherInventory] = $this->stock('remove-other', 'REMOVE-OTHER', 0, 0);
+        $this->actingAs($operator)->delete("/inventory/{$warehouse->slug}/stock/{$otherInventory->id}", [
+            'expected_updated_at' => $otherInventory->updated_at->toIso8601String(),
+        ])->assertNotFound();
+        $this->assertNull($otherInventory->fresh()->deleted_at);
+        $this->assertNull($inventory->fresh()->deleted_at);
+        $this->assertNotSame($warehouse->id, $otherWarehouse->id);
     }
 
     /** @return array{0:Warehouse,1:WarehouseInventory} */

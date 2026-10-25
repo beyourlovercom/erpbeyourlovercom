@@ -33,6 +33,14 @@ Computed cells (available quantity, stock status, 90-day shipments, replenishmen
 - Computed-column inspector explains its canonical source: shipment evidence for shipped quantity, inventory formula for availability/status, and replenishment policy/manual supplement configuration for recommendation.
 - Desktop-only UAT; no mobile UAT is in scope.
 
+## Approved current-inventory add/remove extension
+
+- The same Draft PR #506 also carries the Owner-approved Current Inventory row lifecycle extension.
+- The “＋新增产品” action is placed in the Current Inventory header and reveals a compact form using InventorySkuCombobox for an existing canonical SKU or a ProductService::createManual path for a new canonical SKU/name. New-product creation requires products.operate; all stock writes require inventory.operate.
+- Adding an active warehouse/product pair fails closed without changing quantities. A soft-archived zero-stock row is restored by its existing warehouse/product identity.
+- Row-level “移出本仓” is warehouse-scoped, confirmation-protected, optimistic-timestamp checked, and allowed only when on-hand, reserved, expected-restock, and active reservation quantities are all zero. warehouse_inventory uses SoftDeletes; adjustment and audit history remain retained.
+- Excel import, existing Config stock form, hover-only pencils, canonical projections, and global Product truth remain unchanged.
+
 ## Safety and prohibitions
 
 - Never send a stale full-row snapshot for a cell edit.
@@ -71,7 +79,11 @@ Verification evidence:
 - `npm run build`: PASS; existing Vite chunk-size warning only.
 - `tests/Architecture/ModuleArchitectureTest.php`: not green on this baseline because its frozen module-directory and MIG-001 migration file lists already omit directories/migrations present in the checkout; no baseline file was changed in this package.
 
-GitHub CI evidence: PR #506 (GitHub Actions run 40158757772) returned failure for mysql8-runtime and sqlite-regression jobs within ~1 second with no runner assigned and no steps; similar runner-less failures are visible on Oct 23 historical runs. These are NOT counted as code test failures or CI PASS, and merge readiness is blocked pending runner recovery or an approved equivalent required check.
+- Local SQLite migration: PASS; applied 2026_10_24_000100_soft_delete_warehouse_inventory.
+- Current Inventory add/remove feature tests: PASS, 8 tests / 53 assertions, covering existing/new add, permission, duplicate protection, remove blockers, retained adjustment history, restore, and warehouse isolation.
+- Targeted frontend regression tests: PASS, 2 files / 6 tests; typecheck and build also PASS, with the existing Vite chunk-size warning only.
+
+ GitHub CI evidence: PR #506 (GitHub Actions run 40158757772) returned failure for mysql8-runtime and sqlite-regression jobs within ~1 second with no runner assigned and no steps; similar runner-less failures are visible on Oct 23 historical runs. These are NOT counted as code test failures or CI PASS, and merge readiness is blocked pending runner recovery or an approved equivalent required check.
 
 Owner UAT state: implementation and automated verification complete; live Desktop Local/UAT inspection remains pending and is the required closure gate. No screenshots are claimed as deployment evidence. No Production database, deployment, merge, or other worktree was touched.
 

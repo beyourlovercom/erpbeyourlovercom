@@ -55,7 +55,9 @@ Route::middleware(['web','auth','can:inventory.warehouses.manage'])->group(funct
 
 Route::middleware(['web','auth','can:inventory.operate'])->group(function (): void {
     Route::post('/inventory/{warehouse}/stock',[WarehouseController::class,'saveInventory'])->name('inventory.stock.store');
+    Route::post('/inventory/{warehouse}/stock/add',[WarehouseController::class,'addInventory'])->name('inventory.stock.add');
     Route::patch('/inventory/{warehouse}/stock/{inventory}',[WarehouseController::class,'updateInventory'])->name('inventory.stock.update');
+    Route::delete('/inventory/{warehouse}/stock/{inventory}',[WarehouseController::class,'removeInventory'])->whereNumber('inventory')->name('inventory.stock.remove');
     Route::patch('/inventory/{warehouse}/stock/{inventory}/cell',[WarehouseController::class,'updateInventoryCell'])->name('inventory.stock.cell.update');
     Route::patch('/inventory/{warehouse}/inbound/{batch}/advance',[WarehouseController::class,'advanceInbound'])->whereNumber('batch')->name('inventory.inbound.advance');
     Route::patch('/inventory/{warehouse}/restock-supplement',[WarehouseController::class,'saveRestockSupplement'])->name('inventory.restock.supplement');

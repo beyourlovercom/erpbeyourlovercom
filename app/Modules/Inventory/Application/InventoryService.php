@@ -138,9 +138,64 @@ final class InventoryService
         return DB::transaction(function () use ($warehouse, $product, $attributes, $actor): Model {
             $existing = $warehouse->inventories()->where('product_id', $product->getKey())->first();
             $before = $existing ? $this->inventoryAudit($existing) : null;
-            $saved = $this->inventory->upsertInventory($warehouse, $product, $this->normalizeInventory($attributes));
+            unset($attributes['new_sku'], $attributes['new_name']);
+            $normalized = $this->normalizeInventory($attributes);
+            if ((int) $normalized['quantity_reserved'] > (int) $normalized['quantity_on_hand']) {
+                throw ValidationException::withMessages(['quantity_reserved' => '预留库存不能超过当前库存。']);
+            }
+            $saved = $this->inventory->upsertInventory($warehouse, $product, $normalized);
             $this->record($actor, 'inventory.stock_saved', $saved, $before, $this->inventoryAudit($saved), $existing ? 'inventory_updated' : 'inventory_created');
             return $saved;
+        });
+    }
+
+    public function addInventory(Model $warehouse, ?int $productId, array $attributes, ?Authenticatable $actor): Model
+    {
+        return DB::transaction(function () use ($warehouse, $productId, $attributes, $actor): Model {
+            $product = $productId !== null
+                ? $this->products->findById($productId)
+                : $this->productService->createManual([
+                    'sku' => trim((string) ($attributes['new_sku'] ?? '')),
+                    'name' => trim((string) ($attributes['new_name'] ?? '')),
+                ]);
+            abort_if($product === null, 422, '产品不存在');
+
+            $existing = WarehouseInventory::withTrashed()->where('warehouse_id', $warehouse->getKey())
+                ->where('product_id', $product->getKey())->lockForUpdate()->first();
+            if ($existing?->trashed()) {
+                $existing->restore();
+            } elseif ($existing !== null) {
+                throw ValidationException::withMessages(['product_id' => '该产品已在当前仓库中，不能覆盖现有库存。']);
+            }
+
+            unset($attributes['new_sku'], $attributes['new_name']);
+            $normalized = $this->normalizeInventory($attributes);
+            if ((int) $normalized['quantity_reserved'] > (int) $normalized['quantity_on_hand']) {
+                throw ValidationException::withMessages(['quantity_reserved' => '预留库存不能超过当前库存。']);
+            }
+            $saved = $this->inventory->upsertInventory($warehouse, $product, $normalized);
+            $this->record($actor, 'inventory.warehouse_product_added', $saved, null, $this->inventoryAudit($saved), 'warehouse_product_added');
+            return $saved;
+        });
+    }
+
+    public function removeInventory(Model $warehouse, int $inventoryId, string $expectedUpdatedAt, ?Authenticatable $actor): void
+    {
+        DB::transaction(function () use ($warehouse, $inventoryId, $expectedUpdatedAt, $actor): void {
+            $item = WarehouseInventory::query()->where('warehouse_id', $warehouse->getKey())
+                ->whereKey($inventoryId)->lockForUpdate()->firstOrFail();
+            $this->assertFreshTimestamp($item->updated_at, $expectedUpdatedAt, '库存行已被其他操作更新，请刷新后重试。');
+            $activeReserved = (int) InventoryReservationItem::query()
+                ->where('warehouse_inventory_id', $item->getKey())
+                ->whereHas('reservation', fn ($query) => $query->where('status', 'reserved'))
+                ->sum('quantity');
+            if ((int) $item->quantity_on_hand !== 0 || (int) $item->quantity_reserved !== 0
+                || (int) $item->expected_restock_qty !== 0 || $activeReserved !== 0) {
+                throw ValidationException::withMessages(['inventory' => '只有当前库存、预留、预计备货和活动预留均为 0 时才能移出仓库。']);
+            }
+            $before = $this->inventoryAudit($item);
+            $item->delete();
+            $this->record($actor, 'inventory.warehouse_product_removed', $item, $before, null, 'warehouse_product_removed');
         });
     }
 

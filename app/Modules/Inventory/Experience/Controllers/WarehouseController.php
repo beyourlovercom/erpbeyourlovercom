@@ -221,6 +221,32 @@ final class WarehouseController
         $this->inventory->saveInventory($w,$productId,$data,$request->user());
         return back()->with('success','库存已保存');
     }
+
+    public function addInventory(Request $request, string $warehouse): RedirectResponse
+    {
+        $w = $this->inventory->warehouse($warehouse);
+        $data = $request->validate([
+            'product_id' => ['nullable', 'integer', 'exists:products,id', 'required_without:new_sku'],
+            'new_sku' => ['nullable', 'string', 'max:128', 'unique:products,sku', 'required_without:product_id'],
+            'new_name' => ['nullable', 'string', 'max:512', 'required_with:new_sku'],
+            ...$this->inventoryRules(false),
+        ]);
+        if (! empty($data['new_sku'])) {
+            abort_unless($request->user()?->can(AuthorizationKeys::ProductsOperate->value), 403);
+        }
+        $productId = isset($data['product_id']) ? (int) $data['product_id'] : null;
+        unset($data['product_id']);
+        $this->inventory->addInventory($w, $productId, $data, $request->user());
+        return back()->with('success', '产品已加入当前仓库库存');
+    }
+
+    public function removeInventory(Request $request, string $warehouse, int $inventory): RedirectResponse
+    {
+        $w = $this->inventory->warehouse($warehouse);
+        $data = $request->validate(['expected_updated_at' => ['required', 'date']]);
+        $this->inventory->removeInventory($w, $inventory, (string) $data['expected_updated_at'], $request->user());
+        return back()->with('success', '产品已从当前仓库移出');
+    }
     public function updateInventory(Request $request,string $warehouse,int $inventory): RedirectResponse
     {
         $w=$this->inventory->warehouse($warehouse);
