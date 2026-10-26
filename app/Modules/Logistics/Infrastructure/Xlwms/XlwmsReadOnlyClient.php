@@ -80,7 +80,7 @@ final class XlwmsReadOnlyClient
         try {
             $response = Http::acceptJson()
                 ->asJson()
-                ->withOptions(['allow_redirects' => false])
+                ->withOptions(['allow_redirects' => false, 'verify' => config('xlwms.ca_bundle') ?: true])
                 ->connectTimeout(5)
                 ->timeout((int) config('xlwms.timeout_seconds', 15))
                 ->post($baseUrl.'/'.$endpoint.'?authcode='.$signature, $payload);

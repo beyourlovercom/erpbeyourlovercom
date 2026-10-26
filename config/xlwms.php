@@ -15,6 +15,8 @@ return [
     'app_key' => env('XLWMS_APP_KEY', ''),
     'app_secret' => env('XLWMS_APP_SECRET', ''),
     'timeout_seconds' => max(2, min(30, (int) env('XLWMS_TIMEOUT_SECONDS', 15))),
+    // Optional trusted CA bundle. TLS verification stays enabled.
+    'ca_bundle' => (string) env('XLWMS_CA_BUNDLE', ''),
     // Keys: ERP warehouse code -> XLWMS warehouse code.
     'warehouse_map' => json_decode((string) env('XLWMS_WAREHOUSE_MAP_JSON', '{}'), true) ?: [],
     // Optional exceptions only: ERP warehouse code -> { differing ERP SKU -> OMS SKU }.

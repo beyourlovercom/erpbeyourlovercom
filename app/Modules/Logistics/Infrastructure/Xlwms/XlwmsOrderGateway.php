@@ -32,7 +32,7 @@ final class XlwmsOrderGateway
 
         try {
             $response = Http::acceptJson()->asJson()
-                ->withOptions(['allow_redirects' => false])
+                ->withOptions(['allow_redirects' => false, 'verify' => config('xlwms.ca_bundle') ?: true])
                 ->connectTimeout(5)->timeout(15)
                 ->post('https://api.xlwms.com/openapi/v1/'.$path.'?authcode='.$authcode, $payload);
         } catch (\Throwable) {
