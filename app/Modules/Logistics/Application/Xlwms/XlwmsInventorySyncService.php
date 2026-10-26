@@ -87,8 +87,11 @@ final class XlwmsInventorySyncService
             $reason = $stock === null ? 'ABSENT_LEDGER_NOT_READY' : null;
             $existingInventory = $stock === null ? null : WarehouseInventory::query()
                 ->where('warehouse_id', $warehouse->id)->where('product_id', (int) $resolved)->first();
-            if ($stock !== null && $stock['locked'] > (int) ($existingInventory?->quantity_reserved ?? 0)) {
-                $reason = 'OMS_LOCKED_STOCK_EXCEEDS_LOCAL_RESERVATIONS';
+            // OMS locked = stock committed to upcoming warehouse shipments. It is
+            // not a local ERP reservation and MUST NOT be copied or reconciled to
+            // warehouse_inventory.quantity_reserved. Physical QOH includes locked.
+            if ($stock !== null && (int) ($existingInventory?->quantity_reserved ?? 0) > $stock['total']) {
+                $reason = 'ERP_LOCAL_RESERVATIONS_EXCEED_OMS_PHYSICAL_QOH';
             }
             if ($stock !== null && ! $this->v2Enabled() && $this->hasProtectedState($warehouse->id, (int) $resolved)) $reason = 'LOT_RECONCILIATION_REQUIRED';
             if ($reason !== null) { $blocked++; $mismatches[] = ['sku' => $sku, 'reason' => $reason]; }
@@ -119,7 +122,7 @@ final class XlwmsInventorySyncService
                 'reason' => $row['reason'] ?? null,
             ];
         }
-        $checksum = hash('sha256', json_encode(['snapshot_schema' => $this->v2Enabled() ? 3 : 2, 'reconciliation_mode' => $this->v2Enabled() ? 'lot_v2' : 'quantity_v1', 'wh_code' => $whCode, 'catalog_skus' => array_keys($providerSkus), 'inventory' => $normalized, 'local_baseline' => $localBaseline, 'lot_baseline' => $this->v2LotBaseline($warehouse, $rows), 'unknown_age_baseline' => $this->v2UnknownAgeBaseline($warehouse, $rows)], JSON_THROW_ON_ERROR));
+        $checksum = hash('sha256', json_encode(['snapshot_schema' => $this->v2Enabled() ? 4 : 2, 'reconciliation_mode' => $this->v2Enabled() ? 'lot_v2' : 'quantity_v1', 'wh_code' => $whCode, 'catalog_skus' => array_keys($providerSkus), 'inventory' => $normalized, 'local_baseline' => $localBaseline, 'lot_baseline' => $this->v2LotBaseline($warehouse, $rows), 'unknown_age_baseline' => $this->v2UnknownAgeBaseline($warehouse, $rows)], JSON_THROW_ON_ERROR));
         $status = ($unmatched > 0 || $blocked > 0) ? 'blocked' : 'read_only';
         $snapshot = $this->persistAndMaybeApply($warehouse, $whCode, $checksum, $providerSkus, $normalized, $rows, $mismatches, $mapped, $unmatched, $blocked, $status, $apply, $localBaseline);
         $this->audit->record(AuditActor::system(AuditSource::InternalSystem), 'inventory.xlwms_snapshot_'.$snapshot->status, $snapshot::class, $snapshot->id, after: $this->result($snapshot), reason: 'xlwms_inventory_sync');
@@ -200,7 +203,6 @@ final class XlwmsInventorySyncService
                 if ($row['status'] !== 'matched' || ! isset($row['stock'])) continue;
                 $inventory = $current->get($row['product_id']);
                 if (($inventory && (int) $inventory->quantity_reserved > (int) $row['stock']['total'])
-                    || (int) ($inventory?->quantity_reserved ?? 0) < (int) $row['stock']['locked']
                     || $this->hasProtectedState($warehouse->id, (int) $row['product_id'])) {
                     $currentMismatches[] = ['sku' => $row['sku'], 'reason' => 'LOT_OR_RESERVATION_OR_PROVIDER_LOCK_CONFLICT'];
                 }
