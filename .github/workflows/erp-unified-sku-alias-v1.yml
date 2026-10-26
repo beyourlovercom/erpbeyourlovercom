@@ -30,6 +30,18 @@ jobs:
           coverage: none
       - name: Install PHP dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Node 22 for Inertia view tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Build frontend for existing Product360 Inertia tests
+        run: |
+          npm ci --no-audit --no-fund
+          ln -s Pages resources/js/pages
+          npm run build
+      - name: Frontend typecheck
+        run: npm run typecheck
       - name: Configure isolated SQLite test database
         run: |
           cp .env.example .env
