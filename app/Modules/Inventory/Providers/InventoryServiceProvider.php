@@ -16,18 +16,22 @@ use App\Modules\Inventory\Infrastructure\EloquentInventoryReservationRepository;
 use App\Modules\Inventory\Infrastructure\EloquentWarehouseCostAllocationEvidenceReader;
 use App\Modules\Inventory\Infrastructure\WarehouseCost\WarehouseLotConsumptionService;
 use App\Modules\Inventory\Infrastructure\EloquentP9WarehouseStorageCostEvidenceReader;
+use App\Modules\Logistics\Application\Xlwms\XlwmsInventoryGateway;
+use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventoryReadOnlyGateway;
 use Illuminate\Support\ServiceProvider;
 use App\Modules\Inventory\Experience\Console\PackagingScanPreviewCommand;
 use App\Modules\Inventory\Experience\Console\ImportWarehouseStorageCostCommand;
 use App\Modules\Inventory\Experience\Console\BridgeMorePlusCostsCommand;
 use App\Modules\Inventory\Experience\Console\AccrueWarehouseStorageAgingCostCommand;
 use App\Modules\Inventory\Experience\Console\RunWarehouseStorageAgingMonthlyCommand;
+use App\Modules\Inventory\Experience\Console\SyncXlwmsInventoryCommand;
 
 final class InventoryServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
         $this->app->bind(InventoryRepository::class, EloquentInventoryRepository::class);
+        $this->app->bind(XlwmsInventoryGateway::class, XlwmsInventoryReadOnlyGateway::class);
         $this->app->bind(InventoryAvailabilityReader::class, EloquentInventoryAvailabilityReader::class);
         $this->app->bind(InventoryBatchSyncRepository::class, EloquentInventoryBatchSyncRepository::class);
         $this->app->bind(InventoryReservationRepository::class, EloquentInventoryReservationRepository::class);
@@ -39,6 +43,6 @@ final class InventoryServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/web.php');
-        if ($this->app->runningInConsole()) $this->commands([PackagingScanPreviewCommand::class, ImportWarehouseStorageCostCommand::class, BridgeMorePlusCostsCommand::class, AccrueWarehouseStorageAgingCostCommand::class, RunWarehouseStorageAgingMonthlyCommand::class]);
+        if ($this->app->runningInConsole()) $this->commands([PackagingScanPreviewCommand::class, ImportWarehouseStorageCostCommand::class, BridgeMorePlusCostsCommand::class, AccrueWarehouseStorageAgingCostCommand::class, RunWarehouseStorageAgingMonthlyCommand::class, SyncXlwmsInventoryCommand::class]);
     }
 }
