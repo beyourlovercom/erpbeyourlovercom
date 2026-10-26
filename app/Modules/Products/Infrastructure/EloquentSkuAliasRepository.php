@@ -12,7 +12,7 @@ final class EloquentSkuAliasRepository implements SkuAliasRepository
 {
     public function findByMatchKey(string $matchKey): ?Model
     {
-        return ProductSkuAlias::where('match_key', $matchKey)->first();
+        return ProductSkuAlias::where('match_key', $matchKey)->where('is_active', true)->first();
     }
 
     public function createAlias(array $attributes): Model
