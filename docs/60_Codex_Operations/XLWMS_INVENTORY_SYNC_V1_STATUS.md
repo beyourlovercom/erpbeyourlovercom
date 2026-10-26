@@ -28,3 +28,5 @@ A separate **read-only** owner-authorized Dev API probe using existing encrypted
 Proof: tests/Feature/Logistics/XlwmsInventorySyncServiceTest.php and tests/Unit/Logistics/XlwmsInventoryPageParserTest.php. Real Dev read was observational only, not an execution of this unmerged service.
 
 A successful read-only snapshot may correctly be status=blocked when SKU/lot reconciliation is incomplete; scheduled collection reports success but emits a warning. --apply remains rejected while blocked.
+
+Catalog-only OMS product SKUs without an inventory ledger in US-SM are stored as snapshot rows (resolution_status=catalog_only, stock quantity=NULL). They are not zero stock, do not block stock-specific apply, and never cause Product Master creation. The snapshot checksum includes the product SKU catalog, so catalog-only changes are tracked.

@@ -92,6 +92,10 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         $result = $service->sync(true);
         self::assertSame('applied', $result['status']);
         self::assertSame(0, (int) $result['unmatched_sku_count']);
+        $catalogRow = XlwmsInventorySnapshot::query()->findOrFail($result['snapshot_id'])->rows()
+            ->where('provider_sku', 'CATALOG-OTHER-WAREHOUSE')->firstOrFail();
+        self::assertSame('catalog_only', $catalogRow->resolution_status);
+        self::assertNull($catalogRow->oms_total);
         self::assertSame(10, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)
             ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
     }

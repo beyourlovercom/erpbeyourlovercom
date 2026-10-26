@@ -87,6 +87,18 @@ final class XlwmsInventorySyncService
             if ($reason !== null) { $blocked++; $mismatches[] = ['sku' => $sku, 'reason' => $reason]; }
             $rows[] = ['sku' => $sku, 'status' => $reason ? 'blocked' : 'matched', 'product_id' => (int) $resolved, 'stock' => $stock, 'reason' => $reason];
         }
+        // Persist all OMS catalog SKUs, including SKUs with no ledger in US-SM.
+        // Catalog-only is deliberately not "unmatched" and never means stock zero.
+        foreach (array_keys($providerSkus) as $sku) {
+            if (isset($normalized[$sku])) continue;
+            $resolution = $this->resolver->resolve($sku);
+            $catalogProductId = ($resolution->type === SkuResolveResult::CANONICAL
+                || ($resolution->type === SkuResolveResult::ALIAS && $this->hasShimaiAliasEvidence($sku)))
+                ? $resolution->product?->getKey() : null;
+            $rows[] = ['sku' => $sku, 'status' => 'catalog_only',
+                'product_id' => $catalogProductId === null ? null : (int) $catalogProductId,
+                'reason' => 'ABSENT_WAREHOUSE_STOCK_LEDGER'];
+        }
         // Include local revision in identity so unchanged OMS data can repair a later ERP drift.
         $localBaseline = [];
         foreach ($rows as $row) {
@@ -100,7 +112,7 @@ final class XlwmsInventorySyncService
                 'reason' => $row['reason'] ?? null,
             ];
         }
-        $checksum = hash('sha256', json_encode(['wh_code' => $whCode, 'inventory' => $normalized, 'local_baseline' => $localBaseline], JSON_THROW_ON_ERROR));
+        $checksum = hash('sha256', json_encode(['wh_code' => $whCode, 'catalog_skus' => array_keys($providerSkus), 'inventory' => $normalized, 'local_baseline' => $localBaseline], JSON_THROW_ON_ERROR));
         $status = ($unmatched > 0 || $blocked > 0) ? 'blocked' : 'read_only';
         $snapshot = $this->persistAndMaybeApply($warehouse, $whCode, $checksum, $providerSkus, $normalized, $rows, $mismatches, $mapped, $unmatched, $blocked, $status, $apply);
         $this->audit->record(AuditActor::system(AuditSource::InternalSystem), 'inventory.xlwms_snapshot_'.$snapshot->status, $snapshot::class, $snapshot->id, after: $this->result($snapshot), reason: 'xlwms_inventory_sync');
