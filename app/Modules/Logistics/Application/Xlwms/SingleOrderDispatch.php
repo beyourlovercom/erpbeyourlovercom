@@ -27,6 +27,8 @@ final class SingleOrderDispatch
             'state'=>$attempt->state,
             'oms_order_no'=>$attempt->oms_order_no,
             'failure_code'=>$attempt->failure_code,
+            'duplicate_match_field'=>$attempt->duplicate_match_field,
+            'last_checked_at'=>$attempt->last_checked_at,
         ]:null;
         if($attempt) {
             $data['ready_for_remote_check']=false;
@@ -66,14 +68,19 @@ final class SingleOrderDispatch
         try {
             // Also check Woo-origin OMS orders that have the same platformOrderNo
             // but were previously imported with a different thirdOrderNo.
-            $already=$this->oms->findExisting($connection, $preview['oms_reference'],
-                $preview['payload']['platformOrderNo']);
+            $already=$this->oms->findExisting(
+                $connection, $preview['oms_reference'], $preview['payload']['platformOrderNo'],
+                [$preview['payload']['referOrderNo'], (string) $order->external_order_number]
+            );
             if ($already !== []) {
                 $attempt->forceFill([
                     'state'=>'blocked_existing_oms_order',
-                    'oms_order_no'=>(string)($already[0]['outboundOrderNo']??'')?:null,
+                    'oms_order_no'=>(string)($already[0]['outboundOrderNo']??$already[0]['orderNo']??'')?:null,
+                    'duplicate_match_field'=>$already[0]['_erp_match_field']??null,
+                    'failure_code'=>'OMS_DUPLICATE_ORDER',
+                    'last_checked_at'=>now(),
                 ])->save();
-                return ['state'=>'blocked_existing_oms_order','oms_order_no'=>$attempt->oms_order_no];
+                return $this->report($attempt);
             }
 
             // Read-only remote product/channel validation must succeed before
@@ -83,13 +90,15 @@ final class SingleOrderDispatch
                 $preview['payload']['logisticsChannel'],
                 array_column($preview['payload']['productList'], 'sku')
             );
-            $attempt->forceFill(['state'=>'request_in_flight'])->save();
+            $attempt->forceFill(['state'=>'request_in_flight','last_checked_at'=>now()])->save();
             $created=$this->oms->createSingle($connection,$preview['payload']);
             $attempt->forceFill([
                 'state'=>'submitted_oms',
                 'oms_order_no'=>$created['order_no'],
+                'last_checked_at'=>now(),
+                'failure_code'=>null,
             ])->save();
-            return ['state'=>'submitted_oms','oms_order_no'=>$created['order_no']];
+            return $this->report($attempt);
         } catch (\Throwable $e) {
             // Never retry automatically. A timeout/500 can occur AFTER OMS
             // accepted the request. Leave a durable state for manual detail check.
@@ -99,9 +108,17 @@ final class SingleOrderDispatch
                 'OMS_DETAIL_RESPONSE_INVALID', 'OMS_CATALOG_INPUT_INVALID',
                 'OMS_CHANNEL_NOT_AVAILABLE', 'OMS_PRODUCT_CATALOG_UNAVAILABLE',
                 'OMS_SKU_NOT_APPROVED_OR_MISSING',
+                'OMS_DUPLICATE_SCAN_INCOMPLETE', 'OMS_PAGE_RESPONSE_INVALID',
+                'OMS_DUPLICATE_LOOKUP_INPUT_INVALID',
             ], true) ? $e->getMessage() : 'OMS_UNEXPECTED_ERROR';
-            $attempt->forceFill(['state'=>'uncertain_manual_reconcile','failure_code'=>$code])->save();
-            return ['state'=>'uncertain_manual_reconcile','oms_order_no'=>null];
+            $isUncertain = $attempt->state === 'request_in_flight';
+            // Read-only/validation errors BEFORE create are blocked, not
+            // ambiguous creation results. Neither state allows blind retry.
+            $attempt->forceFill([
+                'state'=>$isUncertain?'uncertain_manual_reconcile':'blocked_preflight_error',
+                'failure_code'=>$code,'last_checked_at'=>now(),
+            ])->save();
+            return $this->report($attempt);
         }
     }
 
@@ -113,15 +130,44 @@ final class SingleOrderDispatch
         $connection=WarehouseOpenApiConnection::query()
             ->where('warehouse_id',$order->shipment->warehouse_id)->where('provider','xlwms')->firstOrFail();
         $platformNo=(string) ($order->external_order_number ?: $order->erp_order_id ?: $order->id);
-        $existing=$this->oms->findExisting($connection,$attempt->third_order_no,substr($platformNo,0,50));
+        $existing=$this->oms->findExisting(
+            $connection,$attempt->third_order_no,substr($platformNo,0,50),
+            [(string)$order->erp_order_id,(string)$order->external_order_number]
+        );
         if($existing !== []){
             $attempt->forceFill([
                 'state'=>'found_in_oms',
-                'oms_order_no'=>(string)($existing[0]['outboundOrderNo']??'')?:null,
+                'oms_order_no'=>(string)($existing[0]['outboundOrderNo']??$existing[0]['orderNo']??'')?:null,
+                'duplicate_match_field'=>$existing[0]['_erp_match_field']??null,
                 'failure_code'=>null,
+                'last_checked_at'=>now(),
             ])->save();
         }
-        return ['state'=>$attempt->state,'oms_order_no'=>$attempt->oms_order_no,
-            'remote_found'=>$existing!==[]];
+        if ($existing === []) {
+            $attempt->forceFill(['last_checked_at'=>now()])->save();
+        }
+        return $this->report($attempt) + ['remote_found'=>$existing!==[]];
+    }
+
+    /** Stable, redacted response for ERP status feedback; never log addresses/keys. */
+    private function report(XlwmsDispatchAttempt $attempt): array
+    {
+        $labels = [
+            'blocked_existing_oms_order'=>'OMS 已存在订单，禁止重复发货',
+            'blocked_preflight_error'=>'发送前检查失败，禁止提交',
+            'request_in_flight'=>'请求提交中，结果尚未确认',
+            'uncertain_manual_reconcile'=>'OMS 请求结果未知，先查单，不可直接重发',
+            'submitted_oms'=>'OMS 已接收订单（不代表已出库）',
+            'found_in_oms'=>'已在 OMS 查到对应订单',
+            'checking_existing'=>'正在检查 OMS 是否已有订单',
+        ];
+        return [
+            'state'=>$attempt->state,
+            'status_label'=>$labels[$attempt->state]??'等待处理',
+            'oms_order_no'=>$attempt->oms_order_no,
+            'failure_code'=>$attempt->failure_code,
+            'duplicate_match_field'=>$attempt->duplicate_match_field,
+            'last_checked_at'=>$attempt->last_checked_at,
+        ];
     }
 }
