@@ -32,6 +32,12 @@ final class XlwmsSingleOrderController
         return response()->json($result)->header('Cache-Control','no-store, private');
     }
 
+    public function status(int $order, SingleOrderDispatch $service): JsonResponse
+    {
+        return response()->json($service->checkStatus($order))
+            ->header('Cache-Control','no-store, private');
+    }
+
     public function reconcile(int $order, SingleOrderDispatch $service): JsonResponse
     {
         // Detail check is safe and does not retry order creation.

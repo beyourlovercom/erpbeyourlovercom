@@ -13,6 +13,7 @@ on:
       - 'resources/js/Pages/Inventory/components/WarehouseOpenApi.vue'
       - 'config/xlwms.php'
       - 'database/migrations/*_create_xlwms_dispatch_attempts_table.php'
+      - 'database/migrations/*_add_xlwms_readonly_order_status.php'
       - 'tests/Feature/Logistics/Xlwms*Test.php'
       - 'app/Modules/Logistics/Application/Xlwms/TestDraftPlan.php'
       - 'tests/Feature/Orders/OrderLineVerifiedSkuCorrectionTest.php'

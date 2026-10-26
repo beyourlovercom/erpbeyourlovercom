@@ -63,6 +63,10 @@ Route::middleware(['web', 'auth'])->group(function (): void {
         [XlwmsSingleOrderController::class, 'send'])
         ->middleware(['can:logistics.operate', RequireLogisticsExecution::class,'throttle:2,1'])
         ->whereNumber('order')->name('logistics.xlwms.order.send');
+    Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/status',
+        [XlwmsSingleOrderController::class, 'status'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class,'throttle:5,1'])
+        ->whereNumber('order')->name('logistics.xlwms.order.status');
     Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/reconcile',
         [XlwmsSingleOrderController::class, 'reconcile'])
         ->middleware(['can:logistics.operate', RequireLogisticsExecution::class,'throttle:5,1'])

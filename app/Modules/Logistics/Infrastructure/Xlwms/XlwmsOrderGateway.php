@@ -142,6 +142,63 @@ final class XlwmsOrderGateway
         return $matched;
     }
 
+    /**
+     * Read ONE known OMS outbound order by its provider-issued number.
+     * pageList supports exact outboundOrderNos; 10 rows is the LIVE tested
+     * vendor page limit. Never confuse an omitted/partial response with success.
+     *
+     * @return array{order_no:string,third_order_no:string,refer_order_no:string,platform_order_no:string,status_code:string,tracking_no:?string}|null
+     */
+    public function readExactOrderStatus(WarehouseOpenApiConnection $connection, string $omsOrderNo): ?array
+    {
+        if (! preg_match('/^[A-Za-z0-9_-]{6,100}$/', $omsOrderNo)
+            || ! filled($connection->oms_warehouse_code)) {
+            throw new RuntimeException('OMS_STATUS_QUERY_INVALID');
+        }
+        $json = $this->signedPost($connection, 'outboundOrder/pageList', [
+            'page' => 1, 'pageSize' => 10, 'outboundOrderNos' => $omsOrderNo,
+        ]);
+        $data = $json['data'] ?? null;
+        if (! is_array($data) || ! isset($data['records'])
+            || ! is_array($data['records'])
+            || ! isset($data['total']) || ! is_numeric($data['total'])
+            || count($data['records']) > 10 || (int) $data['total'] > 1) {
+            throw new RuntimeException('OMS_STATUS_RESPONSE_INVALID');
+        }
+        if ((int)$data['total'] === 0 && count($data['records']) === 0) {
+            return null;
+        }
+        if ((int)$data['total'] !== 1 || count($data['records']) !== 1) {
+            throw new RuntimeException('OMS_STATUS_RESPONSE_INVALID');
+        }
+        $item = $data['records'][0];
+        if (! is_array($item)
+            || ($item['outboundOrderNo'] ?? null) !== $omsOrderNo
+            || ($item['whCode'] ?? null) !== $connection->oms_warehouse_code) {
+            throw new RuntimeException('OMS_STATUS_IDENTITY_MISMATCH');
+        }
+        $status = $item['status'] ?? null;
+        if ((! is_int($status) && ! is_string($status))
+            || ! preg_match('/^[0-9]{1,2}$/', (string) $status)) {
+            throw new RuntimeException('OMS_STATUS_RESPONSE_INVALID');
+        }
+        // Do not accept arbitrary arrays or large untrusted tracking data.
+        $tracking = $item['logisticsTrackNo'] ?? null;
+        $tracking = is_string($tracking) ? trim($tracking) : null;
+        if ($tracking !== null && strlen($tracking) > 120) {
+            throw new RuntimeException('OMS_STATUS_RESPONSE_INVALID');
+        }
+
+        return [
+            'order_no' => $omsOrderNo,
+            'third_order_no' => trim((string)($item['thirdOrderNo'] ?? '')),
+            'refer_order_no' => trim((string)($item['referOrderNo'] ?? '')),
+            'platform_order_no' => trim((string)($item['platformOrderNo'] ?? '')),
+            'status_code' => (string)$status,
+            'tracking_no' => $tracking ?: null,
+        ];
+    }
+
     /** Verify exact OMS native channel and every requested SKU without writes. */
     public function assertCatalogReady(WarehouseOpenApiConnection $connection, string $whCode, string $channel, array $skuList): void
     {
