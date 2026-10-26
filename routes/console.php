@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Schedule;
 
 if (config('xlwms.inventory_sync_schedule_enabled', false)) {
     // Always fetch OMS snapshots on schedule; only enable ERP quantity writes separately.
-    $xlwmsSyncMode = config('xlwms.inventory_apply_enabled', false) ? '--apply' : '--dry-run';
+    $xlwmsSyncMode = (config('xlwms.inventory_apply_enabled', false) && config('xlwms.lot_reconciliation_v2_enabled', false)) ? '--apply' : '--dry-run';
     Schedule::command('xlwms:sync-inventory '.$xlwmsSyncMode)
         ->cron('*/'.(int) config('xlwms.inventory_sync_schedule_minutes', 30).' * * * *')
         ->withoutOverlapping();

@@ -4,7 +4,9 @@ namespace App\Modules\Logistics\Application\Xlwms;
 
 use App\Modules\Logistics\Infrastructure\Xlwms\WarehouseOpenApiConnection;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
+use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLot;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use Illuminate\Support\Facades\Schema;
 
 final class SingleOrderPreview
 {
@@ -61,8 +63,14 @@ final class SingleOrderPreview
                     ->where('product_id', $item->product_id)->first()
                 : null;
             if (! $inventory) $blocking[] = 'inventory_unverified:'.$sku;
-            elseif ((int) $inventory->quantity_available < $qty) {
-                $blocking[] = 'insufficient_warehouse_stock:'.$sku;
+            else {
+                $effectiveAvailable = (int) $inventory->quantity_available;
+                if ($shipment?->warehouse?->code === 'US-SM' && Schema::hasTable('xlwms_inventory_unverified_ages') && \DB::table('xlwms_inventory_unverified_ages')->where('warehouse_id', $shipment->warehouse_id)->where('product_id', $item->product_id)->exists()) {
+                    $dated = (int) WarehouseInventoryLot::query()->where('warehouse_id', $shipment->warehouse_id)->where('product_id', $item->product_id)->where('stock_status', 'sellable')->whereNotNull('putaway_date')->where('quantity', '>=', 0)->sum('quantity');
+                    $unknown = (int) \DB::table('xlwms_inventory_unverified_ages')->where('warehouse_id', $shipment->warehouse_id)->where('product_id', $item->product_id)->value('unknown_age_quantity');
+                    $effectiveAvailable = min($effectiveAvailable, max($dated - (int) $inventory->quantity_reserved, 0), max((int) $inventory->quantity_on_hand - $unknown - (int) $inventory->quantity_reserved, 0));
+                }
+                if ($effectiveAvailable < $qty) $blocking[] = 'insufficient_warehouse_stock:'.$sku;
             }
             $items[] = ['sku' => $sku, 'quantity' => $qty];
         }

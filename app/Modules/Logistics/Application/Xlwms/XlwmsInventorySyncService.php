@@ -21,7 +21,12 @@ use RuntimeException;
 
 final class XlwmsInventorySyncService
 {
-    public function __construct(private readonly XlwmsInventoryGateway $gateway, private readonly SkuIdentityResolver $resolver, private readonly XlwmsInventoryPageParser $parser, private readonly AuditRecorder $audit) {}
+    private readonly XlwmsLotReconciliationService $lotReconciliation;
+
+    public function __construct(private readonly XlwmsInventoryGateway $gateway, private readonly SkuIdentityResolver $resolver, private readonly XlwmsInventoryPageParser $parser, private readonly AuditRecorder $audit, ?XlwmsLotReconciliationService $lotReconciliation = null)
+    {
+        $this->lotReconciliation = $lotReconciliation ?? new XlwmsLotReconciliationService();
+    }
 
     /** @return array<string,mixed> */
     public function sync(bool $apply = false): array
@@ -46,7 +51,7 @@ final class XlwmsInventorySyncService
         $inventoryRows = $this->allPages(fn (int $page) => $this->gateway->integratedInventoryPage($connection, ['page' => $page, 'pageSize' => $pageSize, 'whCode' => $whCode, 'stockType' => 0]), fn (array $response, int $page) => $this->parser->inventoryPage($response, $whCode, $page, $pageSize), true);
         if ($inventoryRows === []) {
             $checksum = hash('sha256', json_encode(['snapshot_schema' => 2, 'wh_code' => $whCode, 'products' => array_keys($providerSkus), 'inventory' => []], JSON_THROW_ON_ERROR));
-            return $this->result($this->persistAndMaybeApply($warehouse, $whCode, $checksum, $providerSkus, [], [], [], [], 0, 0, 0, 'not_ready', false));
+            return $this->result($this->persistAndMaybeApply($warehouse, $whCode, $checksum, $providerSkus, [], [], [], [], 0, 0, 0, 'not_ready', false, []));
         }
 
         $normalized = [];
@@ -84,7 +89,7 @@ final class XlwmsInventorySyncService
             if ($stock !== null && $stock['locked'] > (int) ($existingInventory?->quantity_reserved ?? 0)) {
                 $reason = 'OMS_LOCKED_STOCK_EXCEEDS_LOCAL_RESERVATIONS';
             }
-            if ($stock !== null && $this->hasProtectedState($warehouse->id, (int) $resolved)) $reason = 'LOT_RECONCILIATION_REQUIRED';
+            if ($stock !== null && ! $this->v2Enabled() && $this->hasProtectedState($warehouse->id, (int) $resolved)) $reason = 'LOT_RECONCILIATION_REQUIRED';
             if ($reason !== null) { $blocked++; $mismatches[] = ['sku' => $sku, 'reason' => $reason]; }
             $rows[] = ['sku' => $sku, 'status' => $reason ? 'blocked' : 'matched', 'product_id' => (int) $resolved, 'stock' => $stock, 'reason' => $reason];
         }
@@ -113,9 +118,9 @@ final class XlwmsInventorySyncService
                 'reason' => $row['reason'] ?? null,
             ];
         }
-        $checksum = hash('sha256', json_encode(['snapshot_schema' => 2, 'wh_code' => $whCode, 'catalog_skus' => array_keys($providerSkus), 'inventory' => $normalized, 'local_baseline' => $localBaseline], JSON_THROW_ON_ERROR));
+        $checksum = hash('sha256', json_encode(['snapshot_schema' => $this->v2Enabled() ? 3 : 2, 'reconciliation_mode' => $this->v2Enabled() ? 'lot_v2' : 'quantity_v1', 'wh_code' => $whCode, 'catalog_skus' => array_keys($providerSkus), 'inventory' => $normalized, 'local_baseline' => $localBaseline, 'lot_baseline' => $this->v2LotBaseline($warehouse, $rows), 'unknown_age_baseline' => $this->v2UnknownAgeBaseline($warehouse, $rows)], JSON_THROW_ON_ERROR));
         $status = ($unmatched > 0 || $blocked > 0) ? 'blocked' : 'read_only';
-        $snapshot = $this->persistAndMaybeApply($warehouse, $whCode, $checksum, $providerSkus, $normalized, $rows, $mismatches, $mapped, $unmatched, $blocked, $status, $apply);
+        $snapshot = $this->persistAndMaybeApply($warehouse, $whCode, $checksum, $providerSkus, $normalized, $rows, $mismatches, $mapped, $unmatched, $blocked, $status, $apply, $localBaseline);
         $this->audit->record(AuditActor::system(AuditSource::InternalSystem), 'inventory.xlwms_snapshot_'.$snapshot->status, $snapshot::class, $snapshot->id, after: $this->result($snapshot), reason: 'xlwms_inventory_sync');
         return $this->result($snapshot);
     }
@@ -143,9 +148,33 @@ final class XlwmsInventorySyncService
         throw new RuntimeException('OMS_PAGINATION_INCOMPLETE');
     }
 
-    private function persistAndMaybeApply(Warehouse $warehouse, string $whCode, string $checksum, array $providerSkus, array $normalized, array $rows, array $mismatches, int $mapped, int $unmatched, int $blocked, string $status, bool $apply): XlwmsInventorySnapshot
+    private function persistAndMaybeApply(Warehouse $warehouse, string $whCode, string $checksum, array $providerSkus, array $normalized, array $rows, array $mismatches, int $mapped, int $unmatched, int $blocked, string $status, bool $apply, array $localBaseline): XlwmsInventorySnapshot
     {
-        return DB::transaction(function () use ($warehouse, $whCode, $checksum, $providerSkus, $normalized, $rows, $mismatches, $mapped, $unmatched, $blocked, $status, $apply): XlwmsInventorySnapshot {
+        return DB::transaction(function () use ($warehouse, $whCode, $checksum, $providerSkus, $normalized, $rows, $mismatches, $mapped, $unmatched, $blocked, $status, $apply, $localBaseline): XlwmsInventorySnapshot {
+            if ($this->v2Enabled()) {
+                $plan = $this->lotReconciliation->plan($warehouse, $rows, $localBaseline);
+                $allMismatches = [...$mismatches, ...$plan['blocked']];
+                if ($unmatched > 0) {
+                    $allMismatches[] = ['reason' => 'OMS_UNMATCHED_STOCK_SKUS', 'count' => $unmatched];
+                }
+                $byProduct = collect($rows)->filter(fn (array $r): bool => isset($r['product_id']) && $r['status'] === 'matched')
+                    ->groupBy('product_id')->filter(fn ($mapped): bool => $mapped->count() > 1);
+                foreach ($byProduct as $productId => $duplicates) {
+                    $allMismatches[] = ['reason' => 'OMS_MULTIPLE_SKUS_ONE_ERP_PRODUCT', 'product_id' => (int) $productId,
+                        'skus' => $duplicates->pluck('sku')->values()->all()];
+                }
+                $v2Status = $allMismatches === [] ? 'read_only' : 'blocked';
+                $snapshot = XlwmsInventorySnapshot::query()->where('warehouse_id', $warehouse->id)->where('checksum', $checksum)->lockForUpdate()->first();
+                if ($snapshot?->status === 'applied' || ($snapshot !== null && ! $apply)) {
+                    $snapshot->touch();
+                    return $snapshot->fresh();
+                }
+                if ($snapshot === null) $snapshot = $this->storeSnapshot($warehouse, $whCode, $checksum, $providerSkus, $normalized, $rows, $allMismatches, $mapped, $unmatched, count($allMismatches), $v2Status, false, [], $plan['summary']);
+                if ($allMismatches !== [] || ! $apply) return $snapshot->fresh();
+                $this->lotReconciliation->apply($warehouse, $plan, (int) $snapshot->id, $checksum);
+                $snapshot->update(['status' => 'applied', 'applied_at' => now(), 'summary' => [...($snapshot->summary ?? []), 'v2_applied' => true]]);
+                return $snapshot->fresh();
+            }
             $snapshot = XlwmsInventorySnapshot::query()->where('warehouse_id', $warehouse->id)->where('checksum', $checksum)->lockForUpdate()->first();
             if ($snapshot?->status === 'applied' || ($snapshot !== null && ! $apply)) {
                 $snapshot->touch(); // updated_at is last successful read of this unchanged source state
@@ -177,7 +206,7 @@ final class XlwmsInventorySyncService
         });
     }
 
-    private function storeSnapshot(Warehouse $warehouse, string $whCode, string $checksum, array $providerSkus, array $normalized, array $rows, array $mismatches, int $mapped, int $unmatched, int $blocked, string $status, bool $applied, array $errors): XlwmsInventorySnapshot
+    private function storeSnapshot(Warehouse $warehouse, string $whCode, string $checksum, array $providerSkus, array $normalized, array $rows, array $mismatches, int $mapped, int $unmatched, int $blocked, string $status, bool $applied, array $errors, array $extraSummary = []): XlwmsInventorySnapshot
     {
         $changes = [];
         foreach ($rows as $row) {
@@ -195,7 +224,7 @@ final class XlwmsInventorySyncService
         $snapshot = XlwmsInventorySnapshot::query()->create(['warehouse_id' => $warehouse->id, 'wh_code' => $whCode, 'checksum' => $checksum, 'status' => $status, 'fetched_at' => now(), 'applied_at' => $applied ? now() : null, 'provider_sku_count' => count($providerSkus), 'mapped_sku_count' => $mapped, 'unmatched_sku_count' => $unmatched, 'blocked_sku_count' => $blocked, 'summary' => ['oms_rows' => count($normalized), 'oms_good_qty' => array_sum(array_column($normalized, 'total')),
                     'oms_available_qty' => array_sum(array_column($normalized, 'available')),
                     'oms_locked_qty' => array_sum(array_column($normalized, 'locked')),
-                    'in_transit' => array_sum(array_column($normalized, 'in_transit')), 'changes' => $changes], 'mismatches' => $mismatches, 'errors' => $errors]);
+                    'in_transit' => array_sum(array_column($normalized, 'in_transit')), 'changes' => $changes, ...$extraSummary], 'mismatches' => $mismatches, 'errors' => $errors]);
         foreach ($rows as $row) XlwmsInventorySnapshotRow::query()->create(['snapshot_id' => $snapshot->id, 'provider_sku' => $row['sku'], 'product_id' => $row['product_id'] ?? null, 'resolution_status' => $row['status'], 'oms_total' => $row['stock']['total'] ?? null, 'oms_available' => $row['stock']['available'] ?? null, 'oms_locked' => $row['stock']['locked'] ?? null, 'oms_in_transit' => $row['stock']['in_transit'] ?? null, 'mismatch_reason' => $row['reason'] ?? null]);
         return $snapshot;
     }
@@ -216,6 +245,27 @@ final class XlwmsInventorySyncService
         return WarehouseInventory::query()->where('warehouse_id', $warehouseId)->where('product_id', $productId)->whereNotNull('inbound_at')->exists() || WarehouseInventoryLot::query()->where('warehouse_id', $warehouseId)->where('product_id', $productId)->exists() || WarehouseInventoryLotConsumption::query()->where('warehouse_id', $warehouseId)->where('product_id', $productId)->exists();
     }
 
+    private function v2Enabled(): bool
+    {
+        return (bool) config('xlwms.lot_reconciliation_v2_enabled', false);
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    private function v2LotBaseline(Warehouse $warehouse, array $rows): array
+    {
+        if (! $this->v2Enabled() || ! \Illuminate\Support\Facades\Schema::hasTable('warehouse_inventory_lots')) return [];
+        $ids = collect($rows)->pluck('product_id')->filter()->map(fn ($id): int => (int) $id)->unique();
+        return WarehouseInventoryLot::query()->where('warehouse_id', $warehouse->id)->whereIn('product_id', $ids)->orderBy('product_id')->orderBy('putaway_date')->orderBy('id')->get()->map(fn (WarehouseInventoryLot $lot): array => ['id' => (int) $lot->id, 'product_id' => (int) $lot->product_id, 'status' => $lot->stock_status, 'putaway_date' => $lot->putaway_date?->toDateString(), 'quantity' => (int) $lot->quantity, 'sync_batch_id' => $lot->sync_batch_id])->all();
+    }
+
+    /** @return array<int,int> */
+    private function v2UnknownAgeBaseline(Warehouse $warehouse, array $rows): array
+    {
+        if (! $this->v2Enabled() || ! \Illuminate\Support\Facades\Schema::hasTable('xlwms_inventory_unverified_ages')) return [];
+        $ids = collect($rows)->pluck('product_id')->filter()->map(fn ($id): int => (int) $id)->unique();
+        return \Illuminate\Support\Facades\DB::table('xlwms_inventory_unverified_ages')->where('warehouse_id', $warehouse->id)->whereIn('product_id', $ids)->orderBy('product_id')->pluck('unknown_age_quantity', 'product_id')->map(fn ($quantity): int => (int) $quantity)->all();
+    }
+
     /** @return array<string,mixed> */
     private function result(XlwmsInventorySnapshot $snapshot): array
     {
@@ -223,6 +273,6 @@ final class XlwmsInventorySyncService
             'oms_good_qty' => $snapshot->summary['oms_good_qty'] ?? null,
             'oms_available_qty' => $snapshot->summary['oms_available_qty'] ?? null,
             'oms_locked_qty' => $snapshot->summary['oms_locked_qty'] ?? null,
-            'changes' => $snapshot->summary['changes'] ?? [], 'checksum' => $snapshot->checksum];
+            'changes' => $snapshot->summary['changes'] ?? [], 'lot_reconciliation_v2' => (bool) ($snapshot->summary['v2'] ?? false), 'dated_lot_reductions' => $snapshot->summary['dated_lot_reductions'] ?? [], 'unknown_age_quantities' => $snapshot->summary['unknown_age'] ?? [], 'checksum' => $snapshot->checksum];
     }
 }

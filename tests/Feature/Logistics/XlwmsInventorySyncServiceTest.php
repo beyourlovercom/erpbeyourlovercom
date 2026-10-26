@@ -10,6 +10,7 @@ use App\Modules\Logistics\Application\Xlwms\XlwmsInventoryPageParser;
 use App\Modules\Logistics\Application\Xlwms\XlwmsInventorySyncService;
 use App\Modules\Logistics\Infrastructure\Xlwms\WarehouseOpenApiConnection;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventorySnapshot;
+use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventoryLotReconciliation;
 use App\Modules\Logistics\Application\Xlwms\XlwmsInventoryGateway;
 use App\Modules\Products\Application\Contracts\ProductRepository;
 use App\Modules\Products\Application\Contracts\SkuAliasRepository;
@@ -19,6 +20,7 @@ use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
 use App\Modules\Products\Application\SkuMatchKey;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Mockery;
 use Tests\TestCase;
@@ -32,6 +34,10 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         parent::setUp();
         if (! Schema::hasTable('xlwms_inventory_snapshots')) {
             $migration = require dirname(__DIR__, 3).'/database/migrations/2026_10_26_130000_create_xlwms_inventory_snapshots.php';
+            $migration->up();
+        }
+        if (! Schema::hasTable('xlwms_inventory_unverified_ages')) {
+            $migration = require dirname(__DIR__, 3).'/database/migrations/2026_10_26_140000_create_xlwms_lot_reconciliation_v2_tables.php';
             $migration->up();
         }
     }
@@ -136,6 +142,61 @@ final class XlwmsInventorySyncServiceTest extends TestCase
             ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
     }
 
+    public function test_v2_unmatched_provider_sku_prevents_partial_apply(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A']);
+        WarehouseInventory::query()->create(['warehouse_id' => $warehouse->id,
+            'product_id' => $products[0]->id, 'quantity_on_hand' => 20, 'quantity_reserved' => 0]);
+        $service = $this->service($products, ['SKU-A', 'SKU-NEW'], null,
+            ['SKU-A', 'SKU-NEW'], 0, ['SKU-A' => 10, 'SKU-NEW' => 5]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+
+        $result = $service->sync(true);
+        self::assertSame('blocked', $result['status']);
+        self::assertSame(20, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)
+            ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+        self::assertSame(0, DB::table('xlwms_inventory_lot_reconciliations')->count());
+    }
+
+    public function test_v2_reduces_oldest_lot_and_quarantines_missing_dates(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A', 'SKU-B', 'SKU-C', 'SKU-D']);
+        foreach ($products as $product) WarehouseInventory::query()->create(['warehouse_id' => $warehouse->id, 'product_id' => $product->id, 'quantity_on_hand' => 20, 'quantity_reserved' => 0]);
+        $old = WarehouseInventoryLot::query()->create(['warehouse_id' => $warehouse->id, 'product_id' => $products[3]->id, 'stock_status' => 'sellable', 'putaway_date' => '2026-01-01', 'quantity' => 20]);
+        WarehouseInventoryLot::query()->create(['warehouse_id' => $warehouse->id, 'product_id' => $products[3]->id, 'stock_status' => 'sellable', 'putaway_date' => '2026-02-01', 'quantity' => 5]);
+        $service = $this->service($products, ['SKU-A', 'SKU-B', 'SKU-C', 'SKU-D'], null, ['SKU-A', 'SKU-B', 'SKU-C', 'SKU-D'], 0, ['SKU-A' => 5, 'SKU-B' => 3, 'SKU-C' => 8, 'SKU-D' => 10]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+
+        $result = $service->sync(true);
+
+        self::assertSame('applied', $result['status']);
+        self::assertSame(5, WarehouseInventoryLot::query()->findOrFail($old->id)->quantity);
+        self::assertSame(5, DB::table('xlwms_inventory_unverified_ages')->where('product_id', $products[0]->id)->value('unknown_age_quantity'));
+        self::assertSame(3, DB::table('xlwms_inventory_unverified_ages')->where('product_id', $products[1]->id)->value('unknown_age_quantity'));
+        self::assertSame(8, DB::table('xlwms_inventory_unverified_ages')->where('product_id', $products[2]->id)->value('unknown_age_quantity'));
+        self::assertSame(4, XlwmsInventoryLotReconciliation::query()->count());
+    }
+
+    public function test_v2_protected_lot_blocks_every_sku_without_partial_update(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A', 'SKU-B']);
+        foreach ($products as $product) WarehouseInventory::query()->create(['warehouse_id' => $warehouse->id, 'product_id' => $product->id, 'quantity_on_hand' => 20, 'quantity_reserved' => 0]);
+        $batch = DB::table('inventory_sync_batches')->insertGetId(['warehouse_id' => $warehouse->id, 'source_type' => 'api', 'sync_mode' => 'full', 'status' => 'confirmed', 'preview_total_rows' => 1, 'preview_unique_skus' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        WarehouseInventoryLot::query()->create(['warehouse_id' => $warehouse->id, 'product_id' => $products[0]->id, 'stock_status' => 'sellable', 'putaway_date' => '2026-01-01', 'quantity' => 20, 'sync_batch_id' => $batch]);
+        $service = $this->service($products, ['SKU-A', 'SKU-B'], null, ['SKU-A', 'SKU-B'], 0, ['SKU-A' => 5, 'SKU-B' => 5]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+
+        $result = $service->sync(true);
+
+        self::assertSame('blocked', $result['status']);
+        self::assertSame(20, WarehouseInventory::query()->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+        self::assertSame(20, WarehouseInventory::query()->where('product_id', $products[1]->id)->value('quantity_on_hand'));
+        self::assertDatabaseHas('xlwms_inventory_snapshots', ['id' => $result['snapshot_id'], 'status' => 'blocked']);
+    }
+
     /** @return array{0:Warehouse,1:WarehouseOpenApiConnection,2:list<Product>} */
     private function fixture(array $skus): array
     {
@@ -145,13 +206,13 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         return [$warehouse, $connection, $products];
     }
 
-    private function service(array $products, array $catalogSkus, ?array $canonicalSkus = null, ?array $inventorySkus = null, int $locked = 0): XlwmsInventorySyncService
+    private function service(array $products, array $catalogSkus, ?array $canonicalSkus = null, ?array $inventorySkus = null, int $locked = 0, array $totals = []): XlwmsInventorySyncService
     {
         $gateway = Mockery::mock(XlwmsInventoryGateway::class);
         $gateway->shouldReceive('productPage')->andReturnUsing(fn (): array => ['code' => 200, 'data' => ['records' => array_map(fn (string $sku): array => ['sku' => $sku, 'productName' => $sku], $catalogSkus), 'total' => count($catalogSkus), 'page' => 1, 'pageSize' => 10, 'pages' => 1], 'msg' => 'OK']);
-        $gateway->shouldReceive('integratedInventoryPage')->andReturnUsing(function () use ($catalogSkus, $inventorySkus, $locked): array {
+        $gateway->shouldReceive('integratedInventoryPage')->andReturnUsing(function () use ($catalogSkus, $inventorySkus, $locked, $totals): array {
             $records = [];
-            foreach (($inventorySkus ?? $catalogSkus) as $index => $sku) $records[] = ['sku' => $sku, 'whCode' => 'US-SM', 'stockType' => 0, 'productTotalAmount' => $index === 0 ? 10 : 5, 'productStockDtl' => ['availableAmount' => ($index === 0 ? 10 : 5) - $locked, 'lockAmount' => $locked, 'transportAmount' => 0]];
+            foreach (($inventorySkus ?? $catalogSkus) as $index => $sku) { $total = $totals[$sku] ?? ($index === 0 ? 10 : 5); $records[] = ['sku' => $sku, 'whCode' => 'US-SM', 'stockType' => 0, 'productTotalAmount' => $total, 'productStockDtl' => ['availableAmount' => $total - $locked, 'lockAmount' => $locked, 'transportAmount' => 0]]; }
             return ['code' => 200, 'data' => ['records' => $records, 'total' => count($records), 'page' => 1, 'pageSize' => 10, 'pages' => 1], 'msg' => 'OK'];
         });
         $resolver = new SkuIdentityResolver($this->app->make(ProductRepository::class), $this->app->make(SkuAliasRepository::class), $this->app->make(SkuReconciliationRepository::class));
