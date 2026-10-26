@@ -8,6 +8,7 @@ use App\Modules\Logistics\Experience\Controllers\OverseaWarehouseController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsCredentialController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsSingleOrderController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsWarehouseBindingController;
+use App\Modules\Logistics\Experience\Controllers\XlwmsSkuMappingController;
 use App\Modules\Logistics\Experience\Controllers\WarehouseSettingsController;
 use App\Modules\Logistics\Experience\Controllers\WarehouseOpenApiController;
 use App\Modules\Logistics\Experience\Middleware\RequireFulfillmentAllocation;
@@ -38,6 +39,22 @@ Route::middleware(['web', 'auth'])->group(function (): void {
         [XlwmsWarehouseBindingController::class, 'bind'])
         ->middleware(['can:system.permissions.manage', 'throttle:5,1'])
         ->name('settings.xlwms.warehouses.bind');
+    // Per-warehouse exceptional SKU mapping API. No change to ERP canonical SKU.
+    Route::get('/settings/warehouses/{warehouse}/openapi/xlwms/sku-mappings',
+        [XlwmsSkuMappingController::class, 'index'])
+        ->middleware('can:system.permissions.manage')->name('settings.xlwms.sku-mappings.index');
+    Route::post('/settings/warehouses/{warehouse}/openapi/xlwms/sku-mappings',
+        [XlwmsSkuMappingController::class, 'propose'])
+        ->middleware(['can:system.permissions.manage','throttle:10,1'])
+        ->name('settings.xlwms.sku-mappings.propose');
+    Route::post('/settings/warehouses/{warehouse}/openapi/xlwms/sku-mappings/{mapping}/confirm',
+        [XlwmsSkuMappingController::class, 'confirm'])
+        ->middleware(['can:system.permissions.manage','throttle:5,1'])
+        ->whereNumber('mapping')->name('settings.xlwms.sku-mappings.confirm');
+    Route::post('/settings/warehouses/{warehouse}/openapi/xlwms/sku-mappings/{mapping}/disable',
+        [XlwmsSkuMappingController::class, 'disable'])
+        ->middleware(['can:system.permissions.manage','throttle:5,1'])
+        ->whereNumber('mapping')->name('settings.xlwms.sku-mappings.disable');
     // Bookmarks from the earlier Dev page redirect to the canonical Settings path.
     // Intentionally do NOT preserve the old POST endpoint.
     Route::redirect('/logistics/integrations/xlwms', '/settings/warehouses/xlwms')

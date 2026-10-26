@@ -102,6 +102,25 @@ final class XlwmsOrderGateway
         }
     }
 
+    /** Read-only vendor catalog proof. Does not establish physical equivalence. */
+    public function assertSkuApproved(WarehouseOpenApiConnection $connection, string $sku): void
+    {
+        if ($sku === '' || strlen($sku) > 128) {
+            throw new RuntimeException('OMS_SKU_INVALID');
+        }
+        $data=$this->signedPost($connection, 'product/pagelist', [
+            'page'=>1,'pageSize'=>100,'skuList'=>[$sku],
+        ]);
+        $records=$data['data']['records'] ?? null;
+        if (! is_array($records) || ! collect($records)->contains(
+            static fn ($row): bool=>is_array($row)
+                && (string)($row['sku']??'')===$sku
+                && (! isset($row['approveStatus']) || (int)$row['approveStatus']===2)
+        )) {
+            throw new RuntimeException('OMS_SKU_NOT_APPROVED_OR_MISSING');
+        }
+    }
+
     /** @param array<string,mixed> $singleOrder
      * @return array{confirmed:bool,order_no:?string}
      */
