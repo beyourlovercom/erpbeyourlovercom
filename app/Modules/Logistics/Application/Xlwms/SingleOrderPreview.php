@@ -8,6 +8,8 @@ use App\Modules\Orders\Infrastructure\Models\Order;
 
 final class SingleOrderPreview
 {
+    public function __construct(private readonly WarehouseSkuResolver $skuResolver) {}
+
     /** @return array<string,mixed> */
     public function forOrder(Order $order): array
     {
@@ -45,9 +47,18 @@ final class SingleOrderPreview
         $add($channel === '', 'native_logistics_channel_missing');
         $add($shipment?->carrierService && ! $shipment->carrierService->is_active, 'logistics_channel_inactive');
 
+        $skuInputs = $order->items->map(
+            static fn ($item): string => trim((string) ($item->resolved_fulfillment_sku ?: $item->sku))
+        )->values()->all();
+        $skuMapping = $this->skuResolver->resolve($shipment?->warehouse_id, $skuInputs);
+        foreach ($skuMapping['blockers'] as $blocker) {
+            $blocking[] = $blocker;
+        }
+
         $items = [];
         foreach ($order->items as $item) {
-            $sku = trim((string) ($item->resolved_fulfillment_sku ?: $item->sku));
+            $erpSku = trim((string) ($item->resolved_fulfillment_sku ?: $item->sku));
+            $sku = $skuMapping['resolved'][$erpSku] ?? '';
             $qty = (int) $item->quantity;
             if ($sku === '' || $qty <= 0) {
                 $blocking[] = 'invalid_item';
@@ -102,6 +113,7 @@ final class SingleOrderPreview
             'blockers' => array_values(array_unique($blocking)),
             'ready_for_remote_check' => $blocking === [],
             'payload' => $payload,
+            'sku_mapping' => $skuMapping['rows'],
             'payload_hash' => $fingerprint,
             'auto_dispatch' => false,
             'oms_reference' => $thirdOrderNo,

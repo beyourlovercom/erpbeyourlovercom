@@ -9,6 +9,7 @@ use App\Modules\Logistics\Application\Xlwms\SingleOrderDispatch;
 use App\Modules\Logistics\Infrastructure\Models\Carrier;
 use App\Modules\Logistics\Infrastructure\Models\CarrierService;
 use App\Modules\Logistics\Infrastructure\Xlwms\WarehouseOpenApiConnection;
+use App\Modules\Logistics\Infrastructure\Xlwms\WarehouseSkuMapping;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -78,6 +79,39 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $this->assertSame(1, $p['payload']['isSubmit']);
         $this->assertSame('BYL-ERP-'.$o->id, $p['payload']['thirdOrderNo']);
         Http::assertNothingSent();
+    }
+
+    public function test_draft_sku_map_blocks_send_but_displays_candidate(): void
+    {
+        $order=$this->orderFixture();
+        WarehouseSkuMapping::query()->create([
+            'warehouse_id'=>$order->shipment->warehouse_id,
+            'provider'=>'xlwms','erp_sku'=>'SAME-SKU',
+            'erp_sku_norm'=>'SAME-SKU','oms_sku'=>'OMS-OTHER',
+            'status'=>'draft',
+        ]);
+        $p=app(SingleOrderDispatch::class)->preview($order->id);
+        $this->assertFalse($p['ready_for_remote_check']);
+        $this->assertContains('sku_mapping_pending_confirmation:SAME-SKU',$p['blockers']);
+        $this->assertSame('SAME-SKU',$p['payload']['productList'][0]['sku']);
+        $this->assertSame('OMS-OTHER',$p['sku_mapping'][0]['oms_sku']);
+    }
+
+    public function test_only_confirmed_warehouse_exception_is_sent_to_vendor(): void
+    {
+        $order=$this->orderFixture();
+        WarehouseSkuMapping::query()->create([
+            'warehouse_id'=>$order->shipment->warehouse_id,
+            'provider'=>'xlwms','erp_sku'=>'SAME-SKU','erp_sku_norm'=>'SAME-SKU',
+            'oms_sku'=>'OMS-OTHER','status'=>'active',
+            'evidence_note'=>'Physical product and warehouse barcode independently confirmed.',
+            'confirmed_by'=>99,'confirmed_at'=>now(),
+        ]);
+        $p=app(SingleOrderDispatch::class)->preview($order->id);
+        $this->assertTrue($p['ready_for_remote_check']);
+        $this->assertSame('OMS-OTHER',$p['payload']['productList'][0]['sku']);
+        $this->assertSame('SAME-SKU',$order->items()->first()->sku);
+        $this->assertSame('active',$p['sku_mapping'][0]['status']);
     }
 
     public function test_dispatch_is_hard_off_by_default_and_never_calls_oms(): void
