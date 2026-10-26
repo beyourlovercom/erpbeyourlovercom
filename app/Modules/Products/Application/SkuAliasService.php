@@ -134,6 +134,7 @@ final class SkuAliasService
             $alias->forceFill([
                 'oms_verified_at' => now(),
                 'oms_verified_by_user_id' => $actor->getAuthIdentifier(),
+                'updated_by_user_id' => $actor->getAuthIdentifier(),
                 'oms_identity_evidence' => $evidence,
             ])->save();
             $this->audit->record(
@@ -163,6 +164,7 @@ final class SkuAliasService
             if ($wasActive === $active) return;
             $alias->forceFill([
                 'is_active' => $active,
+                'updated_by_user_id' => $actor->getAuthIdentifier(),
                 // An off/on cycle never restores historic OMS approval.
                 'oms_verified_at' => null,
                 'oms_verified_by_user_id' => null,

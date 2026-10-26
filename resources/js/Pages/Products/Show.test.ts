@@ -5,6 +5,8 @@ import Show from './Show.vue'
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
   Link: { props: ['href'], template: '<a :href="href"><slot /></a>' },
+  useForm: (defaults: Record<string, unknown>) => ({ ...defaults, errors: {}, processing: false, post: vi.fn(), reset: vi.fn() }),
+  router: { patch: vi.fn(), delete: vi.fn() },
 }))
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({ default: { props: ['title', 'breadcrumbs'], template: '<div><slot /></div>' } }))
 
@@ -205,10 +207,10 @@ describe('Products/Show Product360', () => {
   })
 
   it('renders SKU aliases as a compact read-only identity table with source evidence', async () => {
-    const wrapper = mount(Show, { props: { ...baseProps, skuAliases: [{ alias_sku: 'LEGACY-001', source_type: 'legacy_import', source_reference: 'legacy-sheet' }, { alias_sku: 'WOO-VAR-001', source_type: 'woocommerce', source_reference: 'shop-a:102' }] } })
+    const wrapper = mount(Show, { props: { ...baseProps, skuAliases: [{ id: 1, alias_sku: 'LEGACY-001', source_type: 'legacy_import', source_reference: 'legacy-sheet', notes: null, is_active: true, oms_verified_at: null, oms_identity_evidence: null, updated_by: null, updated_at: null }, { id: 2, alias_sku: 'WOO-VAR-001', source_type: 'woocommerce', source_reference: 'shop-a:102', notes: null, is_active: true, oms_verified_at: null, oms_identity_evidence: null, updated_by: null, updated_at: null }] } })
     await wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'SKU 别名')!.trigger('click')
     const panel = wrapper.find('#product360-6')
-    expect(panel.text()).toContain('Canonical SKU')
+    expect(panel.text()).toContain('ERP 主 SKU')
     expect(panel.text()).toContain('DEMO-1')
     expect(panel.text()).toContain('LEGACY-001')
     expect(panel.text()).toContain('历史导入')
@@ -217,6 +219,21 @@ describe('Products/Show Product360', () => {
     expect(panel.text()).toContain('WooCommerce')
     expect(panel.findAll('input')).toHaveLength(0)
     expect(panel.findAll('button')).toHaveLength(0)
+  })
+
+  it('offers scoped alias management only to products operators in the approved tab', async () => {
+    const wrapper = mount(Show, { props: {
+      ...baseProps, canOperate: true,
+      skuAliases: [{ id: 8, alias_sku: 'A001-W', source_type: 'xlwms', source_reference: 'stock-label', notes: 'Same physical product', is_active: true, oms_verified_at: null, oms_identity_evidence: null, updated_by: 'Dede', updated_at: null }],
+    } })
+    await wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'SKU 别名')!.trigger('click')
+    const panel = wrapper.find('#product360-6')
+    expect(panel.text()).toContain('添加 SKU 别名')
+    expect(panel.text()).toContain('待核实')
+    expect(panel.text()).toContain('Dede')
+    expect(panel.find('input[placeholder="输入新别名"]').exists()).toBe(true)
+    expect(panel.findAll('button').some(button => button.text() === '核实')).toBe(true)
+    expect(panel.text()).toContain('不同型号、颜色、赠品')
   })
 
   it('renders canonical Order, Shipment, and KOL relations as compact read-only tables', async () => {
