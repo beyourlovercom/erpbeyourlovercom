@@ -7,6 +7,7 @@ use App\Modules\Inventory\Application\InventoryStockStatus;
 use App\Modules\Inventory\Application\WarehouseClearanceService;
 use App\Modules\Inventory\Application\WarehouseInboundProjection;
 use App\Modules\Inventory\Application\WarehouseInboundLifecycleService;
+use App\Modules\Inventory\Application\WarehouseInboundReviewService;
 use App\Modules\Inventory\Application\WarehouseRestockProjection;
 use App\Modules\Inventory\Application\WarehouseRestockPlanService;
 use App\Modules\Inventory\Application\WarehouseRestockDocumentJobService;
@@ -33,6 +34,7 @@ final class WarehouseController
         private readonly WarehouseClearanceService $clearance,
         private readonly WarehouseInboundProjection $inbounds,
         private readonly WarehouseInboundLifecycleService $inboundLifecycle,
+        private readonly WarehouseInboundReviewService $inboundReview,
         private readonly WarehouseRestockProjection $restock,
         private readonly WarehouseRestockPlanService $restockPlans,
         private readonly WarehouseRestockDocumentJobService $restockDocumentJobs,
@@ -280,6 +282,19 @@ final class WarehouseController
         }
         $this->inventory->updateInventoryCell($w,$inventory,$data,$request->user());
         return back()->with('success','单元格已更新');
+    }
+
+    public function reviewInboundItem(Request $request, string $warehouse, int $batch, int $item): RedirectResponse
+    {
+        $w = $this->inventory->warehouse($warehouse);
+        $data = $request->validate([
+            'product_id' => ['required', 'integer', 'exists:products,id'],
+            'expected_updated_at' => ['required', 'date'],
+            'reason' => ['required', 'string', 'min:4', 'max:255'],
+        ]);
+        $this->inboundReview->review($w, $batch, $item, (int) $data['product_id'], (string) $data['expected_updated_at'], trim((string) $data['reason']), $request->user());
+
+        return back()->with('success', 'SKU 人工复核已保存；请单独确认激活本批库存。');
     }
 
     public function advanceInbound(Request $request,string $warehouse,int $batch): RedirectResponse
