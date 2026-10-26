@@ -21,6 +21,22 @@ final class XlwmsSingleOrderController
         ]);
     }
 
+    /** Minimal safe preflight for Dede's existing warehouse table row. */
+    public function inlinePreflight(int $order, SingleOrderDispatch $service): JsonResponse
+    {
+        $preview = $service->preview($order);
+        return response()->json([
+            'order_id' => $preview['order_id'],
+            'erp_order_id' => $preview['erp_order_id'],
+            'blockers' => $preview['blockers'],
+            'ready' => $preview['ready_for_remote_check'],
+            'payload_hash' => $preview['payload_hash'],
+            'oms_warehouse' => $preview['payload']['whCode'],
+            'items' => $preview['payload']['productList'],
+            'already_attempted' => $preview['attempt'] !== null,
+        ])->header('Cache-Control','no-store, private');
+    }
+
     public function send(int $order, Request $request, SingleOrderDispatch $service): JsonResponse
     {
         $data = $request->validate([

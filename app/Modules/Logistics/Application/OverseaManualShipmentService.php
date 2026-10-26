@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Application;
 
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
+use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\WooCommerceTrackingOutboundService;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -39,6 +40,20 @@ final class OverseaManualShipmentService
             409,
             '订单尚未完成当前仓库审核。',
         );
+
+        // Once an API attempt exists, do not bypass OMS fulfillment or
+        // cancellation via manual Tracking/Woo completion. A confirmed
+        // OMS shipment plus exact tracking is required for this fallback.
+        $omsAttempt = XlwmsDispatchAttempt::query()->where('order_id', $order->id)->first();
+        if ($omsAttempt) {
+            abort_unless(
+                (string) $omsAttempt->oms_status_code === '3'
+                    && filled($omsAttempt->oms_tracking_no)
+                    && hash_equals((string) $omsAttempt->oms_tracking_no, $trackingNumber),
+                409,
+                'OMS 已有下发记录：仅在 OMS 确认已出库且 Tracking 完全匹配时才能确认发货；已取消或结果不明不能绕过。',
+            );
+        }
 
         $carrier = trim((string) $shipment->carrier);
         abort_if($carrier === '', 422, '世迈发货缺少 Carrier。');

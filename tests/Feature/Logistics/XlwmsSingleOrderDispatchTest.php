@@ -65,6 +65,36 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         return $o->fresh();
     }
 
+    public function test_inline_preflight_is_permissioned_readonly_and_excludes_recipient_details(): void
+    {
+        $o=$this->orderFixture();
+        $role=\App\Models\Role::query()->firstOrCreate(
+            ['key'=>'xlwms_preflight_viewer'],['label'=>'Viewer']
+        );
+        $p=\App\Models\Permission::query()->firstOrCreate(
+            ['key'=>'logistics.view'],['label'=>'View Logistics']
+        );
+        $role->permissions()->syncWithoutDetaching([$p->id]);
+        $viewer=\App\Models\User::factory()->create(['is_active'=>true]);
+        $viewer->roles()->attach($role);
+        Http::preventStrayRequests();
+        Http::fake();
+        $result=$this->actingAs($viewer)->getJson(
+            '/logistics/oversea/us-3sm/orders/'.$o->id.'/xlwms/preflight'
+        )->assertOk()
+            ->assertJsonPath('order_id',$o->id)
+            ->assertJsonPath('ready',true)
+            ->assertJsonPath('already_attempted',false)
+            ->assertJsonPath('oms_warehouse','OMS-US-SM')
+            ->assertJsonPath('items.0.sku','SAME-SKU');
+        $json=$result->getContent();
+        $this->assertStringNotContainsString('Test Buyer',$json);
+        $this->assertStringNotContainsString('1 Test Road',$json);
+        $this->assertStringNotContainsString('TEST-SECRET',$json);
+        $this->assertDatabaseCount('xlwms_dispatch_attempts',0);
+        Http::assertNothingSent();
+    }
+
     public function test_local_preflight_has_exact_provider_fields_but_no_network(): void
     {
         $o=$this->orderFixture();
