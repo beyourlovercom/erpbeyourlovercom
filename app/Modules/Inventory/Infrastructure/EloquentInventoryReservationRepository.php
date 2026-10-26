@@ -99,10 +99,10 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
             ->get()
             ->keyBy('product_id');
 
-        $xlwmsCoverage = $warehouse->code === 'US-SM'
-            ? app(XlwmsInventoryCoverage::class)->coveredProductIds((int) $warehouseId) : null;
+        $xlwmsProviderAvailable = $warehouse->code === 'US-SM'
+            ? app(XlwmsInventoryCoverage::class)->providerAvailableByProductId((int) $warehouseId) : null;
         foreach ($required as $productId => $quantity) {
-            if ($xlwmsCoverage !== null && ! in_array((int) $productId, $xlwmsCoverage, true)) {
+            if ($xlwmsProviderAvailable !== null && ! array_key_exists((int) $productId, $xlwmsProviderAvailable)) {
                 throw new DomainException('OMS inventory SKU not confirmed for US-SM.');
             }
             $inventory = $lockedInventory->get($productId);
@@ -110,6 +110,12 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
                 throw new DomainException("Inventory row is missing for product {$productId}.");
             }
             $effectiveAvailable = (int) $inventory->quantity_available;
+            if ($xlwmsProviderAvailable !== null) {
+                // Lock shown by OMS may belong to an OMS-only outgoing order.
+                // Do not invent an ERP reservation, and never re-offer it here.
+                $effectiveAvailable = min($effectiveAvailable, max(0,
+                    (int) $xlwmsProviderAvailable[(int) $productId] - (int) $inventory->quantity_reserved));
+            }
             if ($warehouse->code === 'US-SM' && Schema::hasTable('xlwms_inventory_unverified_ages') && \DB::table('xlwms_inventory_unverified_ages')->where('warehouse_id', $warehouseId)->where('product_id', $productId)->exists()) {
                 $dated = (int) WarehouseInventoryLot::query()->where('warehouse_id', $warehouseId)->where('product_id', $productId)->where('stock_status', 'sellable')->whereNotNull('putaway_date')->where('quantity', '>=', 0)->sum('quantity');
                 $unknown = (int) \DB::table('xlwms_inventory_unverified_ages')->where('warehouse_id', $warehouseId)->where('product_id', $productId)->value('unknown_age_quantity');

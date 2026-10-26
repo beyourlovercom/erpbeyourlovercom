@@ -131,17 +131,97 @@ final class XlwmsInventorySyncServiceTest extends TestCase
             ->where('product_id', $products[0]->id)->count());
     }
 
-    public function test_vendor_locked_quantity_blocks_local_overstatement(): void
+    public function test_normal_outbound_oms_lock_does_not_require_matching_local_erp_reservation(): void
     {
         [$warehouse, , $products] = $this->fixture(['SKU-A']);
-        WarehouseInventory::query()->create(['warehouse_id' => $warehouse->id,
-            'product_id' => $products[0]->id, 'quantity_on_hand' => 3, 'quantity_reserved' => 0]);
-        $service = $this->service($products, ['SKU-A'], null, ['SKU-A'], 2);
+        WarehouseInventory::query()->create(['warehouse_id'=>$warehouse->id, 'product_id'=>$products[0]->id,
+            'quantity_on_hand'=>3, 'quantity_reserved'=>0]);
+        $service=$this->service($products,['SKU-A'],null,['SKU-A'],1,['SKU-A'=>10]);
         config()->set('xlwms.inventory_apply_enabled', true);
-        $result = $service->sync(true);
-        self::assertSame('blocked', $result['status']);
-        self::assertSame(3, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)
-            ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+        $preview=$service->sync(false);
+        self::assertSame('read_only', $preview['status']);
+        self::assertSame(1, $preview['oms_locked_qty']);
+        self::assertSame(9, $preview['oms_available_qty']);
+        self::assertSame('applied', $service->sync(true)['status']);
+        $inventory=WarehouseInventory::query()->where('warehouse_id',$warehouse->id)
+            ->where('product_id',$products[0]->id)->firstOrFail();
+        self::assertSame(10,(int)$inventory->quantity_on_hand);
+        self::assertSame(0,(int)$inventory->quantity_reserved);
+    }
+
+    public function test_provider_locked_units_limit_erp_allocation_without_inventing_local_reservations(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A']);
+        WarehouseInventory::query()->create(['warehouse_id'=>$warehouse->id, 'product_id'=>$products[0]->id,
+            'quantity_on_hand'=>10, 'quantity_reserved'=>0]);
+        WarehouseInventoryLot::query()->create(['warehouse_id'=>$warehouse->id, 'product_id'=>$products[0]->id,
+            'stock_status'=>'sellable','putaway_date'=>'2026-10-01','quantity'=>10]);
+        $remote=$this->service($products,['SKU-A'],null,['SKU-A'],1,['SKU-A'=>10]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled',true);
+        config()->set('xlwms.inventory_apply_enabled',true);
+        $preview=$remote->sync(false);
+        self::assertSame('read_only',$preview['status']);
+        self::assertSame(1,$preview['oms_locked_qty']);
+        config()->set('xlwms.inventory_first_apply_approved_checksum',$preview['checksum']);
+        self::assertSame('applied',$remote->sync(true)['status']);
+        self::assertSame(9,$this->usSmAvailable($warehouse->id,$products[0]->id));
+        self::assertSame(0,(int)WarehouseInventory::query()->where('warehouse_id',$warehouse->id)
+            ->where('product_id',$products[0]->id)->value('quantity_reserved'));
+        $row=XlwmsInventorySnapshot::query()->findOrFail($preview['snapshot_id'])
+            ->rows()->where('provider_sku','SKU-A')->firstOrFail();
+        self::assertSame(10,(int)$row->oms_total);
+        self::assertSame(9,(int)$row->oms_available);
+        self::assertSame(1,(int)$row->oms_locked);
+
+        // The warehouse ships the pending order: remote lock clears but
+        // physical QOH does not change until the later confirmed dispatch.
+        $released=$this->service($products,['SKU-A'],null,['SKU-A'],0,['SKU-A'=>10]);
+        self::assertSame('applied',$released->sync(true)['status']);
+        self::assertSame(10,$this->usSmAvailable($warehouse->id,$products[0]->id));
+    }
+
+    public function test_erp_reserved_stock_and_oms_external_lock_use_conservative_shared_cap(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A']);
+        WarehouseInventory::query()->create(['warehouse_id'=>$warehouse->id, 'product_id'=>$products[0]->id,
+            'quantity_on_hand'=>10, 'quantity_reserved'=>2]);
+        WarehouseInventoryLot::query()->create(['warehouse_id'=>$warehouse->id, 'product_id'=>$products[0]->id,
+            'stock_status'=>'sellable','putaway_date'=>'2026-10-01','quantity'=>10]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled',true);
+        config()->set('xlwms.inventory_apply_enabled',true);
+        $service=$this->service($products,['SKU-A'],null,['SKU-A'],1,['SKU-A'=>10]);
+        config()->set('xlwms.inventory_first_apply_approved_checksum',$service->sync(false)['checksum']);
+        self::assertSame('applied',$service->sync(true)['status']);
+        self::assertSame(7,$this->usSmAvailable($warehouse->id,$products[0]->id));
+        self::assertSame(2,(int)WarehouseInventory::query()->where('warehouse_id',$warehouse->id)
+            ->where('product_id',$products[0]->id)->value('quantity_reserved'));
+    }
+
+    public function test_blocked_provider_snapshot_closes_allocation_until_reconciled(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A']);
+        WarehouseInventory::query()->create(['warehouse_id'=>$warehouse->id, 'product_id'=>$products[0]->id,
+            'quantity_on_hand'=>10, 'quantity_reserved'=>0]);
+        WarehouseInventoryLot::query()->create(['warehouse_id'=>$warehouse->id, 'product_id'=>$products[0]->id,
+            'stock_status'=>'sellable','putaway_date'=>'2026-10-01','quantity'=>10]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled',true);
+        config()->set('xlwms.inventory_apply_enabled',true);
+        $service=$this->service($products,['SKU-A'],null,['SKU-A'],1,['SKU-A'=>10]);
+        config()->set('xlwms.inventory_first_apply_approved_checksum',$service->sync(false)['checksum']);
+        self::assertSame('applied',$service->sync(true)['status']);
+        self::assertSame(9,$this->usSmAvailable($warehouse->id,$products[0]->id));
+        // Invalid OMS delta > R7 max must block the *next* snapshot.
+        $failed=$this->service($products,['SKU-A'],null,['SKU-A'],1,['SKU-A'=>25]);
+        self::assertSame('blocked',$failed->sync(true)['status']);
+        self::assertSame(0,$this->usSmAvailable($warehouse->id,$products[0]->id));
+        self::assertSame(10,(int)WarehouseInventory::query()->where('warehouse_id',$warehouse->id)
+            ->where('product_id',$products[0]->id)->value('quantity_on_hand'));
+    }
+
+    private function usSmAvailable(int $warehouseId, int $productId): int
+    {
+        $choices=app(EloquentInventoryAvailabilityReader::class)->forProductIds([$productId]);
+        return (int) collect($choices[$productId])->firstWhere('warehouse_id',$warehouseId)['quantity_available'];
     }
 
     public function test_v2_first_apply_requires_exact_reviewed_checksum_without_mutating_inventory(): void

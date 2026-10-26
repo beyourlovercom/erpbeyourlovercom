@@ -52,7 +52,10 @@ final class XlwmsLotReconciliationService
             $reason = null;
             if (! $inventory) $reason = 'ERP_INVENTORY_ROW_MISSING';
             elseif (isset($baseline[$row['sku']]) && ((int) ($baseline[$row['sku']]['product_id'] ?? 0) !== $productId || $baseline[$row['sku']]['qoh'] !== $inventory->quantity_on_hand || $baseline[$row['sku']]['reserved'] !== $inventory->quantity_reserved || ($baseline[$row['sku']]['reason'] ?? null) !== ($row['reason'] ?? null))) $reason = 'ERP_LOCAL_BASELINE_CHANGED';
-            elseif ($locked > $reserved || $reserved > $provider) $reason = 'RESERVATION_PROVIDER_CONFLICT';
+            elseif ($reserved > $provider) $reason = 'ERP_RESERVATIONS_EXCEED_PROVIDER_PHYSICAL_QOH';
+            // Provider-locked units are confirmed upcoming OMS outbound stock,
+            // distinct from ERP's own reservation ledger. This is normal even
+            // when local ERP reservation == 0; never synthesize local holds here.
             $changingPhysicalOrLot = (int) ($inventory?->quantity_on_hand ?? 0) !== $provider
                 || $unknownBefore !== $unknownAfter || $adjustingLots;
             if ($reason === null && $changingPhysicalOrLot) {
