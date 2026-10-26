@@ -32,7 +32,7 @@ final class XlwmsOrderGateway
 
         try {
             $response = Http::acceptJson()->asJson()
-                ->withOptions(['allow_redirects' => false])
+                ->withOptions(['allow_redirects' => false, 'verify' => config('xlwms.ca_bundle') ?: true])
                 ->connectTimeout(5)->timeout(15)
                 ->post('https://api.xlwms.com/openapi/v1/'.$path.'?authcode='.$authcode, $payload);
         } catch (\Throwable) {
@@ -61,7 +61,7 @@ final class XlwmsOrderGateway
      * may have no thirdOrderNo / platformOrderNo and only referOrderNo.
      *
      * Never treat an incomplete page scan as "no duplicate". Keep the
-     * read-only scan bounded: a warehouse with >5,000 rows needs an
+     * read-only scan bounded: a warehouse with >500 rows needs an
      * independently verified exact-search provider contract before creating.
      *
      * @param list<string> $referenceNos Exact confirmed ERP/Woo references only.
@@ -96,7 +96,7 @@ final class XlwmsOrderGateway
 
         // Historical/manual warehouse orders are only discoverable by
         // referOrderNo in the paginated outbound order list.
-        $pageSize = 100;
+        $pageSize = 10;
         for ($page = 1; $page <= 50; $page++) {
             $response = $this->signedPost($connection, 'outboundOrder/pageList', [
                 'page' => $page, 'pageSize' => $pageSize,
@@ -153,7 +153,7 @@ final class XlwmsOrderGateway
         if (! is_array($channelRecords)
             || ! collect($channelRecords)->contains(static fn($r): bool =>
                 is_array($r) && ($r['channelCode'] ?? null) === $channel
-                && (! isset($r['whCodes']) || in_array($whCode, (array) $r['whCodes'], true)))) {
+                && (! isset($r['whCodes']) || (array) $r['whCodes'] === [] || in_array($whCode, (array) $r['whCodes'], true)))) {
             throw new RuntimeException('OMS_CHANNEL_NOT_AVAILABLE');
         }
         $products = $this->signedPost($connection, 'product/pagelist', [
@@ -167,6 +167,44 @@ final class XlwmsOrderGateway
                 && (! isset($r['approveStatus']) || (int) $r['approveStatus'] === 2));
             if (! $exists) throw new RuntimeException('OMS_SKU_NOT_APPROVED_OR_MISSING');
         }
+    }
+
+    /**
+     * T2 isolated non-submitting TEST draft. Only a local UAT runner may
+     * invoke this method after its own one-shot safety gate is satisfied.
+     * Must NEVER fallback to the normal isSubmit=1 createSingle method.
+     *
+     * @param array<string,mixed> $draft
+     * @return array{confirmed:bool,order_no:?string}
+     */
+    public function createTestDraftSingle(WarehouseOpenApiConnection $connection, array $draft): array
+    {
+        $reference = (string)($draft['referOrderNo'] ?? '');
+        $items = $draft['productList'] ?? null;
+        if (! app()->environment(['local','testing'])
+            || (int)($draft['isSubmit'] ?? -1) !== 0
+            || ! preg_match('/^TEST-XLWMS-[0-9]{3,12}$/', $reference)
+            || (string)($draft['platformOrderNo'] ?? '') !== $reference
+            || ! preg_match('/^BYL-TEST-[0-9]+$/', (string)($draft['thirdOrderNo'] ?? ''))
+            || ! str_contains(strtoupper((string)($draft['receiver'] ?? '')), 'DO NOT SHIP')
+            || ! is_array($items) || count($items) !== 1
+            || (int)($items[0]['quantity'] ?? 0) !== 1
+            || ! filled($draft['whCode'] ?? null)
+            || ! filled($draft['logisticsChannel'] ?? null)
+        ) {
+            throw new RuntimeException('OMS_TEST_DRAFT_SAFETY_CONTRACT_INVALID');
+        }
+        $data = $this->signedPost($connection, 'outboundOrder/create', [$draft]);
+        $matches = array_values(array_filter(
+            (array)($data['data'] ?? []),
+            static fn($row): bool => is_array($row)
+                && ($row['thirdOrderNo'] ?? null) === ($draft['thirdOrderNo'] ?? null)
+        ));
+        if (count($matches) !== 1 || ($matches[0]['success'] ?? null) !== true
+            || empty($matches[0]['orderNo'])) {
+            throw new RuntimeException('OMS_TEST_DRAFT_CREATE_UNCONFIRMED');
+        }
+        return ['confirmed'=>true,'order_no'=>(string)$matches[0]['orderNo']];
     }
 
     /** @param array<string,mixed> $singleOrder
