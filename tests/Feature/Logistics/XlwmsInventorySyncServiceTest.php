@@ -69,6 +69,11 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         self::assertSame('blocked', $result['status']);
         self::assertSame(3, WarehouseInventory::query()->where('product_id', $products[0]->id)->value('quantity_on_hand'));
         self::assertSame(1, WarehouseInventory::query()->where('product_id', $products[0]->id)->count());
+        $unmatchedRow = XlwmsInventorySnapshot::query()->findOrFail($result['snapshot_id'])->rows()
+            ->where('provider_sku', 'SKU-B')->firstOrFail();
+        self::assertSame('unmatched', $unmatchedRow->resolution_status);
+        self::assertSame(5, $unmatchedRow->oms_total);
+        self::assertSame(15, $result['oms_good_qty']);
     }
 
     public function test_lot_state_blocks_apply_without_quantity_write(): void

@@ -72,7 +72,8 @@ final class XlwmsInventorySyncService
             $resolution = $this->resolver->resolve($sku);
             $resolved = ($resolution->type === SkuResolveResult::CANONICAL || ($resolution->type === SkuResolveResult::ALIAS && $this->hasShimaiAliasEvidence($sku))) ? $resolution->product?->getKey() : null;
             if ($resolved === null) {
-                $rows[] = ['sku' => $sku, 'status' => 'unmatched', 'reason' => 'OMS_SKU_NOT_VERIFIED_ERP_IDENTITY'];
+                $rows[] = ['sku' => $sku, 'status' => 'unmatched', 'stock' => $normalized[$sku] ?? null,
+                    'reason' => 'OMS_SKU_NOT_VERIFIED_ERP_IDENTITY'];
                 $unmatched++; continue;
             }
             $mapped++;
@@ -191,7 +192,10 @@ final class XlwmsInventorySyncService
                     'ready' => $row['status'] === 'matched'];
             }
         }
-        $snapshot = XlwmsInventorySnapshot::query()->create(['warehouse_id' => $warehouse->id, 'wh_code' => $whCode, 'checksum' => $checksum, 'status' => $status, 'fetched_at' => now(), 'applied_at' => $applied ? now() : null, 'provider_sku_count' => count($providerSkus), 'mapped_sku_count' => $mapped, 'unmatched_sku_count' => $unmatched, 'blocked_sku_count' => $blocked, 'summary' => ['oms_rows' => count($normalized), 'in_transit' => array_sum(array_column($normalized, 'in_transit')), 'changes' => $changes], 'mismatches' => $mismatches, 'errors' => $errors]);
+        $snapshot = XlwmsInventorySnapshot::query()->create(['warehouse_id' => $warehouse->id, 'wh_code' => $whCode, 'checksum' => $checksum, 'status' => $status, 'fetched_at' => now(), 'applied_at' => $applied ? now() : null, 'provider_sku_count' => count($providerSkus), 'mapped_sku_count' => $mapped, 'unmatched_sku_count' => $unmatched, 'blocked_sku_count' => $blocked, 'summary' => ['oms_rows' => count($normalized), 'oms_good_qty' => array_sum(array_column($normalized, 'total')),
+                    'oms_available_qty' => array_sum(array_column($normalized, 'available')),
+                    'oms_locked_qty' => array_sum(array_column($normalized, 'locked')),
+                    'in_transit' => array_sum(array_column($normalized, 'in_transit')), 'changes' => $changes], 'mismatches' => $mismatches, 'errors' => $errors]);
         foreach ($rows as $row) XlwmsInventorySnapshotRow::query()->create(['snapshot_id' => $snapshot->id, 'provider_sku' => $row['sku'], 'product_id' => $row['product_id'] ?? null, 'resolution_status' => $row['status'], 'oms_total' => $row['stock']['total'] ?? null, 'oms_available' => $row['stock']['available'] ?? null, 'oms_locked' => $row['stock']['locked'] ?? null, 'oms_in_transit' => $row['stock']['in_transit'] ?? null, 'mismatch_reason' => $row['reason'] ?? null]);
         return $snapshot;
     }
@@ -215,6 +219,10 @@ final class XlwmsInventorySyncService
     /** @return array<string,mixed> */
     private function result(XlwmsInventorySnapshot $snapshot): array
     {
-        return ['snapshot_id' => $snapshot->id, 'status' => $snapshot->status, 'provider_sku_count' => $snapshot->provider_sku_count, 'mapped_sku_count' => $snapshot->mapped_sku_count, 'unmatched_sku_count' => $snapshot->unmatched_sku_count, 'blocked_sku_count' => $snapshot->blocked_sku_count, 'mismatches' => $snapshot->mismatches ?? [], 'fetched_at' => $snapshot->fetched_at?->toIso8601String(), 'last_checked_at' => $snapshot->updated_at?->toIso8601String(), 'changes' => $snapshot->summary['changes'] ?? [], 'checksum' => $snapshot->checksum];
+        return ['snapshot_id' => $snapshot->id, 'status' => $snapshot->status, 'provider_sku_count' => $snapshot->provider_sku_count, 'mapped_sku_count' => $snapshot->mapped_sku_count, 'unmatched_sku_count' => $snapshot->unmatched_sku_count, 'blocked_sku_count' => $snapshot->blocked_sku_count, 'mismatches' => $snapshot->mismatches ?? [], 'fetched_at' => $snapshot->fetched_at?->toIso8601String(), 'last_checked_at' => $snapshot->updated_at?->toIso8601String(), 'oms_inventory_sku_count' => $snapshot->summary['oms_rows'] ?? null,
+            'oms_good_qty' => $snapshot->summary['oms_good_qty'] ?? null,
+            'oms_available_qty' => $snapshot->summary['oms_available_qty'] ?? null,
+            'oms_locked_qty' => $snapshot->summary['oms_locked_qty'] ?? null,
+            'changes' => $snapshot->summary['changes'] ?? [], 'checksum' => $snapshot->checksum];
     }
 }
