@@ -11,6 +11,7 @@ on:
       - 'app/Modules/Products/Application/VerifiedOmsSkuSelector.php'
       - 'app/Modules/Products/Application/VerifiedOmsSnapshotPreflight.php'
       - 'app/Modules/Products/Application/VerifiedOmsCatalogApproval.php'
+      - 'app/Modules/Products/Application/VerifiedOmsProductIdentityResolver.php'
       - 'app/Modules/Products/Infrastructure/EloquentSkuAliasRepository.php'
       - 'app/Modules/Products/Infrastructure/Models/ProductSkuAlias.php'
       - 'database/migrations/*oms_verification*'
@@ -19,6 +20,7 @@ on:
       - 'tests/Unit/Products/VerifiedOmsSkuSelectorTest.php'
       - 'tests/Unit/Products/VerifiedOmsSnapshotPreflightTest.php'
       - 'tests/Unit/Products/VerifiedOmsCatalogApprovalTest.php'
+      - 'tests/Feature/Products/VerifiedOmsProductIdentityResolverTest.php'
       - '.github/workflows/erp-unified-sku-alias-v1.yml'
 
 permissions:
@@ -61,11 +63,12 @@ jobs:
           touch database/database.sqlite
           php artisan migrate:fresh --force
       - name: Existing Product SKU plus Unified Alias V1 gates
-        run: php artisan test tests/Feature/Products/SkuAliasTest.php tests/Feature/Products/UnifiedSkuAliasVerificationTest.php tests/Feature/Products/Product360SkuAliasManagementTest.php tests/Unit/Products/VerifiedOmsSkuSelectorTest.php tests/Unit/Products/VerifiedOmsSnapshotPreflightTest.php tests/Unit/Products/VerifiedOmsCatalogApprovalTest.php
+        run: php artisan test tests/Feature/Products/SkuAliasTest.php tests/Feature/Products/UnifiedSkuAliasVerificationTest.php tests/Feature/Products/Product360SkuAliasManagementTest.php tests/Unit/Products/VerifiedOmsSkuSelectorTest.php tests/Unit/Products/VerifiedOmsSnapshotPreflightTest.php tests/Unit/Products/VerifiedOmsCatalogApprovalTest.php tests/Feature/Products/VerifiedOmsProductIdentityResolverTest.php
       - name: Whitespace and code syntax
         run: |
           php -l app/Modules/Products/Application/VerifiedOmsSkuSelector.php
           php -l app/Modules/Products/Application/VerifiedOmsSnapshotPreflight.php
           php -l app/Modules/Products/Application/VerifiedOmsCatalogApproval.php
+          php -l app/Modules/Products/Application/VerifiedOmsProductIdentityResolver.php
           php -l app/Modules/Products/Application/SkuAliasService.php
           git diff --check origin/main...HEAD
