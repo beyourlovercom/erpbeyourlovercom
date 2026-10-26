@@ -6,11 +6,17 @@ use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
+use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLot;
+use App\Modules\Logistics\Application\Xlwms\XlwmsInventoryCoverage;
+use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventoryUnverifiedAge;
+use Illuminate\Support\Facades\Schema;
 
 final class EloquentInventoryAvailabilityReader implements InventoryAvailabilityReader
 {
     /** @var array<int,array<string,mixed>>|null */
     private ?array $activeWarehousesCache = null;
+
+    public function __construct(private readonly ?XlwmsInventoryCoverage $xlwmsCoverage = null) {}
 
     public function activeWarehouses(): array
     {
@@ -69,16 +75,32 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
             ->whereIn('warehouse_id', $warehouses->pluck('id')->all())
             ->get(['product_id', 'warehouse_id', 'quantity_on_hand', 'quantity_reserved', 'expected_restock_qty'])
             ->keyBy(fn (WarehouseInventory $row): string => $row->product_id.':'.$row->warehouse_id);
+        $usSm = $warehouses->firstWhere('code', 'US-SM');
+        $coverage = $usSm !== null ? app(XlwmsInventoryCoverage::class)->coveredProductIds((int) $usSm['id']) : null;
+        $unknown = collect();
+        $dated = collect();
+        if ($usSm !== null && Schema::hasTable('xlwms_inventory_unverified_ages')) {
+            $unknown = XlwmsInventoryUnverifiedAge::query()->where('warehouse_id', $usSm['id'])->whereIn('product_id', $ids)->pluck('unknown_age_quantity', 'product_id');
+            $dated = WarehouseInventoryLot::query()->where('warehouse_id', $usSm['id'])->whereIn('product_id', $ids)->where('stock_status', 'sellable')->whereNotNull('putaway_date')->where('quantity', '>=', 0)->selectRaw('product_id, SUM(quantity) AS quantity')->groupBy('product_id')->pluck('quantity', 'product_id');
+        }
 
         $result = [];
         foreach ($ids as $productId) {
-            $result[$productId] = $warehouses->map(function (array $warehouse) use ($rows, $productId): array {
+            $result[$productId] = $warehouses->map(function (array $warehouse) use ($rows, $productId, $usSm, $unknown, $dated, $coverage): array {
                 /** @var WarehouseInventory|null $row */
                 $row = $rows->get($productId.':'.$warehouse['id']);
                 $state = (string) $warehouse['inventory_state'];
                 $knownForProduct = $state === 'confirmed' || $row !== null;
                 $onHand = $knownForProduct ? (int) ($row?->quantity_on_hand ?? 0) : null;
                 $reserved = $knownForProduct ? (int) ($row?->quantity_reserved ?? 0) : null;
+                $available = $knownForProduct ? max($onHand - $reserved, 0) : null;
+                if ($available !== null && $usSm !== null && (int) $warehouse['id'] === (int) $usSm['id']
+                    && $coverage !== null && ! in_array((int) $productId, $coverage, true)) $available = 0;
+                if ($available !== null && $usSm !== null && (int) $warehouse['id'] === (int) $usSm['id'] && $unknown->has($productId)) {
+                    $available = min($available, max((int) $dated->get($productId, 0) - $reserved, 0));
+                    $unverified = (int) $unknown->get($productId, 0);
+                    if ($unverified > 0) $available = min($available, max($onHand - $unverified - $reserved, 0));
+                }
 
                 return [
                     'warehouse_id' => $warehouse['id'],
@@ -88,7 +110,7 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
                     'can_auto_allocate' => (bool) $warehouse['can_auto_allocate'],
                     'quantity_on_hand' => $onHand,
                     'quantity_reserved' => $reserved,
-                    'quantity_available' => $knownForProduct ? max($onHand - $reserved, 0) : null,
+                    'quantity_available' => $available,
                     // A missing product row does not prove that expected restock is zero.
                     'expected_restock_qty' => $row !== null && $row->expected_restock_qty !== null ? (int) $row->expected_restock_qty : null,
                 ];
