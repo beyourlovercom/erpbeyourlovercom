@@ -417,6 +417,50 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $this->assertSame('OMS_STATUS_IDENTITY_MISMATCH',$r['oms_status_failure_code']);
     }
 
+    public function test_view_only_logistics_user_can_query_oms_status_without_dispatch_permission(): void
+    {
+        $o=$this->orderFixture();
+        $this->statusAttempt($o);
+        $viewer=\App\Models\User::factory()->create(['is_active'=>true]);
+        $role=\App\Models\Role::query()->firstOrCreate(
+            ['key'=>'xlwms_readonly_status_viewer'],['label'=>'XLWMS Viewer']
+        );
+        $viewPermission=\App\Models\Permission::query()->firstOrCreate(
+            ['key'=>'logistics.view'],['label'=>'View Logistics']
+        );
+        $role->permissions()->syncWithoutDetaching([$viewPermission->id]);
+        $viewer->roles()->attach($role);
+        Http::preventStrayRequests();
+        Http::fake(fn()=>Http::response(['code'=>200,'data'=>[
+            'records'=>[[
+                'outboundOrderNo'=>'OBS-SAFE-123',
+                'thirdOrderNo'=>'BYL-ERP-'.$o->id,
+                'whCode'=>'OMS-US-SM','status'=>4,
+            ]],'total'=>1,
+        ]]));
+
+        $this->actingAs($viewer)->postJson(
+            '/logistics/oversea/us-3sm/orders/'.$o->id.'/xlwms/status'
+        )->assertOk()->assertJsonPath('read_only',true)
+            ->assertJsonPath('oms_status_label','已取消');
+        $this->assertSame('pending_shipment',$o->fresh()->order_status->value);
+        Http::assertNotSent(fn($r)=>str_contains($r->url(),'outboundOrder/create'));
+    }
+
+    public function test_user_without_logistics_view_cannot_query_oms_status(): void
+    {
+        $o=$this->orderFixture();
+        $this->statusAttempt($o);
+        $viewer=\App\Models\User::factory()->create(['is_active'=>true]);
+        Http::preventStrayRequests();
+        Http::fake();
+
+        $this->actingAs($viewer)->postJson(
+            '/logistics/oversea/us-3sm/orders/'.$o->id.'/xlwms/status'
+        )->assertForbidden();
+        Http::assertNothingSent();
+    }
+
     public function test_status_request_without_prior_dispatch_is_rejected_without_network(): void
     {
         $o=$this->orderFixture();

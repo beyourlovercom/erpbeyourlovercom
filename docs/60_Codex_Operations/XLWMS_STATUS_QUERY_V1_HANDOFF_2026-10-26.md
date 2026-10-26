@@ -24,3 +24,14 @@
 - SKU Alias V1 is approved separately for Product OS; avoid reviving the per-warehouse mapping PR #508.
 - PR #501 currently conflicts with main WarehouseShow.vue and must retain existing inline inventory editing.
 - Formal release requires integrated candidate, UAT/Owner visual PASS, explicit Production approval, read-only Production smoke and per-order Owner approval before physical dispatch.
+
+## Owner visual design PASS, Dev UI implementation
+- Owner explicitly replied pass to the compact OMS status panel visual proposal. Final live-page Owner UAT remains an independent acceptance gate.
+- Existing Logistics/Oversea/XlwmsOrder.vue now includes an inline read-only panel with OMS number, confirmed OMS state, tracking, unchanged ERP state, last successful check, and manual read-only refresh.
+- Manual refresh invokes ONLY the status endpoint. Failures appear as on-page red text and through the existing global feedback island. No navigation or outbound-create retries.
+- Code 3 is confirmed 已出库 and 4 is confirmed 已取消; unknown states are literal numeric values labeled 待核实.
+- POST status route requires only logistics.view (read-only), 5/min rate limit. It never grants logistics.operate nor enables create.
+- China Mac authenticated ERP Dev: http://127.0.0.1:8912/logistics/oversea/us-3sm/orders/8/xlwms
+- Actual browser click of 查询 OMS 最新状态（只读） yielded OBS0272610260RS 已取消, Tracking 暂无, ERP 待发货 and an OMS 状态已更新 global island success. No OMS write, no Woo mutation.
+- 85 scoped PHP tests / 635 assertions PASS; 5 Vue component tests PASS; TS and Vite build PASS. GitHub CI must pass.
+- Dev page opened in China Mac for final Owner UAT. Do not mark Owner post-implementation PASS without further explicit reply. Main and Production unchanged.
