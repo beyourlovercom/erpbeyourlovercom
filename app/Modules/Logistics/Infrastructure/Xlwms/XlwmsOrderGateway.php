@@ -16,7 +16,7 @@ final class XlwmsOrderGateway
      */
     private function signedPost(WarehouseOpenApiConnection $connection, string $path, array $data): array
     {
-        if (! in_array($path, ['outboundOrder/detail', 'outboundOrder/create', 'warehouse/options', 'logistics/channel/list', 'product/pagelist'], true)) {
+        if (! in_array($path, ['outboundOrder/detail', 'outboundOrder/pageList', 'outboundOrder/create', 'warehouse/options', 'logistics/channel/list', 'product/pagelist'], true)) {
             throw new RuntimeException('OMS operation not allowlisted.');
         }
         $appKey = (string) $connection->app_key_encrypted;
@@ -56,23 +56,90 @@ final class XlwmsOrderGateway
         return array_values(array_filter($data['data'], 'is_array'));
     }
 
-    /** @return list<array<string,mixed>> */
-    public function findExisting(WarehouseOpenApiConnection $connection, string $thirdOrderNo, ?string $platformOrderNo = null): array
-    {
-        $query = ['thirdOrderNoList' => [$thirdOrderNo]];
-        if ($platformOrderNo !== null && $platformOrderNo !== '') {
-            $query['platformOrderNoList'] = [$platformOrderNo];
+    /**
+     * Check both API-origin and MANUALLY created OMS orders. A manual record
+     * may have no thirdOrderNo / platformOrderNo and only referOrderNo.
+     *
+     * Never treat an incomplete page scan as "no duplicate". Keep the
+     * read-only scan bounded: a warehouse with >5,000 rows needs an
+     * independently verified exact-search provider contract before creating.
+     *
+     * @param list<string> $referenceNos Exact confirmed ERP/Woo references only.
+     * @return list<array<string,mixed>>
+     */
+    public function findExisting(
+        WarehouseOpenApiConnection $connection,
+        string $thirdOrderNo,
+        ?string $platformOrderNo = null,
+        array $referenceNos = []
+    ): array {
+        $refs = array_values(array_unique(array_filter(array_map(
+            static fn ($r): string => trim((string) $r),
+            [$thirdOrderNo, $platformOrderNo, ...$referenceNos],
+        ), static fn (string $s): bool => $s !== '')));
+        if ($thirdOrderNo === '' || count($refs) > 8) {
+            throw new RuntimeException('OMS_DUPLICATE_LOOKUP_INPUT_INVALID');
         }
-        $data = $this->signedPost($connection, 'outboundOrder/detail', $query);
-        if (! is_array($data['data'] ?? null)) throw new RuntimeException('OMS_DETAIL_RESPONSE_INVALID');
-        $rows = array_values(array_filter($data['data'], 'is_array'));
-        // A Woo-imported OMS record can have a DIFFERENT thirdOrderNo.
-        // Either exact reference blocks duplicate creation; never fuzzy match.
-        return array_values(array_filter($rows, static fn (array $row): bool =>
-            (string) ($row['thirdOrderNo'] ?? '') === $thirdOrderNo
-            || ($platformOrderNo !== null && $platformOrderNo !== ''
-                && (string) ($row['platformOrderNo'] ?? '') === $platformOrderNo)
-        ));
+
+        // One identifier per detail request. Some providers implement multiple
+        // list fields as AND rather than OR, silently missing old manual rows.
+        foreach ([
+            ['thirdOrderNoList' => [$thirdOrderNo]],
+            ...($platformOrderNo ? [['platformOrderNoList' => [$platformOrderNo]]] : []),
+        ] as $query) {
+            $detail = $this->signedPost($connection, 'outboundOrder/detail', $query);
+            $records = $detail['data'] ?? null;
+            if (! is_array($records)) throw new RuntimeException('OMS_DETAIL_RESPONSE_INVALID');
+            $found = $this->exactMatches($records, $refs);
+            if ($found !== []) return $found;
+        }
+
+        // Historical/manual warehouse orders are only discoverable by
+        // referOrderNo in the paginated outbound order list.
+        $pageSize = 100;
+        for ($page = 1; $page <= 50; $page++) {
+            $response = $this->signedPost($connection, 'outboundOrder/pageList', [
+                'page' => $page, 'pageSize' => $pageSize,
+            ]);
+            $data = $response['data'] ?? null;
+            if (! is_array($data)) throw new RuntimeException('OMS_PAGE_RESPONSE_INVALID');
+            $rows = $data['records'] ?? $data['list'] ?? $data['rows'] ?? (array_is_list($data) ? $data : null);
+            if (! is_array($rows)) throw new RuntimeException('OMS_PAGE_RESPONSE_INVALID');
+            $matched = $this->exactMatches($rows, $refs);
+            if ($matched !== []) return $matched;
+            $total = $data['total'] ?? $data['totalCount'] ?? null;
+            if (count($rows) < $pageSize) return [];
+            if (is_numeric($total) && $page * $pageSize >= (int) $total) return [];
+        }
+        throw new RuntimeException('OMS_DUPLICATE_SCAN_INCOMPLETE');
+    }
+
+    /**
+     * Strict exact identifier match only. Never fuzzy match recipient/address.
+     * Read-only vendor result may use multiple reference field aliases.
+     *
+     * @param array<mixed> $rows
+     * @param list<string> $refs
+     * @return list<array<string,mixed>>
+     */
+    private function exactMatches(array $rows, array $refs): array
+    {
+        $matched = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) continue;
+            foreach ([
+                'thirdOrderNo', 'platformOrderNo', 'referOrderNo',
+                'referenceOrderNo', 'referenceNo',
+            ] as $field) {
+                $value = trim((string) ($row[$field] ?? ''));
+                if ($value !== '' && in_array($value, $refs, true)) {
+                    $row['_erp_match_field'] = $field;
+                    $matched[] = $row;
+                    break;
+                }
+            }
+        }
+        return $matched;
     }
 
     /** Verify exact OMS native channel and every requested SKU without writes. */

@@ -133,6 +133,90 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $this->assertSame('pending', $o->shipment()->first()->shipment_status);
     }
 
+    public function test_existing_manually_created_oms_order_by_reference_blocks_real_create(): void
+    {
+        $o=$this->orderFixture();
+        $o->external_order_number='C41704-007';
+        $o->save();
+        config()->set('xlwms.live_dispatch_enabled',true);
+        config()->set('xlwms.live_order_id',$o->id);
+        Http::fake(function($req) {
+            if(str_contains($req->url(),'outboundOrder/detail')) {
+                return Http::response(['code'=>200,'data'=>[]]);
+            }
+            if(str_contains($req->url(),'outboundOrder/pageList')) {
+                return Http::response(['code'=>200,'data'=>['records'=>[[
+                    'referOrderNo'=>'C41704-007','outboundOrderNo'=>'OBS0272610230RS',
+                    'sku'=>'DIFFERENT-SKU',
+                ]],'total'=>1]]);
+            }
+            return Http::response(['code'=>500]);
+        });
+        $s=app(SingleOrderDispatch::class);
+        $p=$s->preview($o->id);
+        $result=$s->dispatch($o->id,$p['payload_hash'],3);
+        $this->assertSame('blocked_existing_oms_order',$result['state']);
+        $this->assertSame('OMS_DUPLICATE_ORDER',$result['failure_code']);
+        $this->assertSame('referOrderNo',$result['duplicate_match_field']);
+        $this->assertSame('OBS0272610230RS',$result['oms_order_no']);
+        $this->assertNotNull($result['last_checked_at']);
+        Http::assertSentCount(3);
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+        $this->assertSame('pending_shipment',$o->fresh()->order_status->value);
+        $this->assertFalse($s->preview($o->id)['ready_for_remote_check']);
+    }
+
+    public function test_paginated_manual_reference_is_checked_beyond_first_page(): void
+    {
+        $o=$this->orderFixture();
+        $o->external_order_number='C41705-007';
+        $o->save();
+        config()->set('xlwms.live_dispatch_enabled',true);
+        config()->set('xlwms.live_order_id',$o->id);
+        Http::fake(function($req) {
+            if(str_contains($req->url(),'outboundOrder/detail')) {
+                return Http::response(['code'=>200,'data'=>[]]);
+            }
+            if(str_contains($req->url(),'outboundOrder/pageList')) {
+                $page=(int) (is_object($req['data']) ? $req['data']->page : $req['data']['page']);
+                return Http::response(['code'=>200,'data'=>[
+                    'records'=>$page===1
+                        ? array_fill(0,100,['referOrderNo'=>'OTHER'])
+                        : [['referOrderNo'=>'C41705-007','outboundOrderNo'=>'OMS-SECOND-PAGE']],
+                    'total'=>101,
+                ]]);
+            }
+            return Http::response(['code'=>500]);
+        });
+        $p=app(SingleOrderDispatch::class)->preview($o->id);
+        $r=app(SingleOrderDispatch::class)->dispatch($o->id,$p['payload_hash'],3);
+        $this->assertSame('blocked_existing_oms_order',$r['state'],json_encode($r));
+        $this->assertSame('OMS-SECOND-PAGE',$r['oms_order_no']);
+        Http::assertSentCount(4);
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+    }
+
+    public function test_unreadable_oms_list_blocks_submit_instead_of_falsely_claiming_no_duplicate(): void
+    {
+        $o=$this->orderFixture();
+        config()->set('xlwms.live_dispatch_enabled',true);
+        config()->set('xlwms.live_order_id',$o->id);
+        Http::fake(function($req) {
+            if(str_contains($req->url(),'outboundOrder/detail')) {
+                return Http::response(['code'=>200,'data'=>[]]);
+            }
+            if(str_contains($req->url(),'outboundOrder/pageList')) {
+                return Http::response(['code'=>200,'data'=>['unrecognized'=>'shape']]);
+            }
+            return Http::response(['code'=>500]);
+        });
+        $p=app(SingleOrderDispatch::class)->preview($o->id);
+        $r=app(SingleOrderDispatch::class)->dispatch($o->id,$p['payload_hash'],3);
+        $this->assertSame('blocked_preflight_error',$r['state']);
+        $this->assertSame('OMS_PAGE_RESPONSE_INVALID',$r['failure_code']);
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+    }
+
     public function test_single_order_success_calls_detail_then_create_once_and_blocks_retry(): void
     {
         $o=$this->orderFixture();
@@ -140,6 +224,9 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         config()->set('xlwms.live_order_id',$o->id);
         Http::fake(function($req) use ($o) {
             if(str_contains($req->url(),'outboundOrder/detail'))return Http::response(['code'=>200,'data'=>[]]);
+            if(str_contains($req->url(),'outboundOrder/pageList'))return Http::response([
+                'code'=>200,'data'=>['records'=>[],'total'=>0],
+            ]);
             if(str_contains($req->url(),'logistics/channel/list'))return Http::response(['code'=>200,'data'=>[
                 ['channelCode'=>'OMS-STANDARD','whCodes'=>['OMS-US-SM']],
             ]]);
@@ -155,7 +242,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $r=$s->dispatch($o->id,$p['payload_hash'],3);
         $this->assertSame('submitted_oms',$r['state']);
         $this->assertSame('OMS-FIRST',$r['oms_order_no']);
-        Http::assertSentCount(4);
+        Http::assertSentCount(6);
         Http::assertSent(fn($req)=>str_contains($req->url(),'outboundOrder/create')
             && (int) (is_object($req['data'][0]) ? $req['data'][0]->isSubmit : $req['data'][0]['isSubmit']) === 1
             && (is_object($req['data'][0]) ? $req['data'][0]->thirdOrderNo : $req['data'][0]['thirdOrderNo']) === 'BYL-ERP-'.$o->id);
@@ -173,6 +260,9 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         config()->set('xlwms.live_order_id',$o->id);
         Http::fake(function($req){
             if(str_contains($req->url(),'outboundOrder/create'))throw new \RuntimeException('simulated timeout');
+            if(str_contains($req->url(),'outboundOrder/pageList'))return Http::response([
+                'code'=>200,'data'=>['records'=>[],'total'=>0],
+            ]);
             if(str_contains($req->url(),'logistics/channel/list'))return Http::response(['code'=>200,'data'=>[
                 ['channelCode'=>'OMS-STANDARD','whCodes'=>['OMS-US-SM']],
             ]]);
@@ -188,7 +278,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $this->assertSame('uncertain_manual_reconcile',XlwmsDispatchAttempt::query()->sole()->state);
         // Faked HTTP exceptions are not recorded as completed sends; the durable
         // state nevertheless stays uncertain and no retry is attempted.
-        Http::assertSentCount(3);
+        Http::assertSentCount(5);
         $this->assertSame('pending',$o->shipment()->first()->shipment_status);
     }
 
