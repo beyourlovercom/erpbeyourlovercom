@@ -163,6 +163,10 @@ final class XlwmsInventorySyncService
                     $allMismatches[] = ['reason' => 'OMS_MULTIPLE_SKUS_ONE_ERP_PRODUCT', 'product_id' => (int) $productId,
                         'skus' => $duplicates->pluck('sku')->values()->all()];
                 }
+                if ($apply && $allMismatches === []) {
+                    $allMismatches = [...$allMismatches,
+                        ...app(XlwmsInventoryApplyGuard::class)->blockers($warehouse, $plan, $rows, $checksum)];
+                }
                 $v2Status = $allMismatches === [] ? 'read_only' : 'blocked';
                 $snapshot = XlwmsInventorySnapshot::query()->where('warehouse_id', $warehouse->id)->where('checksum', $checksum)->lockForUpdate()->first();
                 if ($snapshot?->status === 'applied' || ($snapshot !== null && ! $apply)) {
@@ -170,6 +174,10 @@ final class XlwmsInventorySyncService
                     return $snapshot->fresh();
                 }
                 if ($snapshot === null) $snapshot = $this->storeSnapshot($warehouse, $whCode, $checksum, $providerSkus, $normalized, $rows, $allMismatches, $mapped, $unmatched, count($allMismatches), $v2Status, false, [], $plan['summary']);
+                if ($allMismatches !== [] && $apply) {
+                    $snapshot->update(['status' => 'blocked', 'blocked_sku_count' => count($allMismatches),
+                        'mismatches' => $allMismatches]);
+                }
                 if ($allMismatches !== [] || ! $apply) return $snapshot->fresh();
                 $this->lotReconciliation->apply($warehouse, $plan, (int) $snapshot->id, $checksum);
                 $snapshot->update(['status' => 'applied', 'applied_at' => now(), 'summary' => [...($snapshot->summary ?? []), 'v2_applied' => true]]);
