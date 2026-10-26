@@ -74,6 +74,7 @@ final class WarehouseInboundProjection
                     'note' => $batch->note,
                     'items' => $batch->items->map(fn ($item): array => [
                         'id' => $item->id,
+                        'updated_at' => $item->updated_at?->toIso8601String(),
                         'product_id' => $item->product_id,
                         'source_sku' => $item->source_sku,
                         'canonical_sku' => $item->canonical_sku,
