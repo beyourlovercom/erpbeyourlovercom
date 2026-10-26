@@ -61,7 +61,7 @@ final class XlwmsOrderGateway
      * may have no thirdOrderNo / platformOrderNo and only referOrderNo.
      *
      * Never treat an incomplete page scan as "no duplicate". Keep the
-     * read-only scan bounded: a warehouse with >5,000 rows needs an
+     * read-only scan bounded: a warehouse with >500 rows needs an
      * independently verified exact-search provider contract before creating.
      *
      * @param list<string> $referenceNos Exact confirmed ERP/Woo references only.
@@ -96,7 +96,7 @@ final class XlwmsOrderGateway
 
         // Historical/manual warehouse orders are only discoverable by
         // referOrderNo in the paginated outbound order list.
-        $pageSize = 100;
+        $pageSize = 10;
         for ($page = 1; $page <= 50; $page++) {
             $response = $this->signedPost($connection, 'outboundOrder/pageList', [
                 'page' => $page, 'pageSize' => $pageSize,
@@ -153,7 +153,7 @@ final class XlwmsOrderGateway
         if (! is_array($channelRecords)
             || ! collect($channelRecords)->contains(static fn($r): bool =>
                 is_array($r) && ($r['channelCode'] ?? null) === $channel
-                && (! isset($r['whCodes']) || in_array($whCode, (array) $r['whCodes'], true)))) {
+                && (! isset($r['whCodes']) || (array) $r['whCodes'] === [] || in_array($whCode, (array) $r['whCodes'], true)))) {
             throw new RuntimeException('OMS_CHANNEL_NOT_AVAILABLE');
         }
         $products = $this->signedPost($connection, 'product/pagelist', [

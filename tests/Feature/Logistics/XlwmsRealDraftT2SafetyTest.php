@@ -82,7 +82,7 @@ final class XlwmsRealDraftT2SafetyTest extends TestCase
                 return Http::response(['code'=>200,'data'=>['records'=>[],'total'=>0]]);
             if(str_contains($request->url(),'logistics/channel/list'))
                 return Http::response(['code'=>200,'data'=>[[
-                    'channelCode'=>'OMS-TEST-CHANNEL','whCodes'=>['OMS-TEST-WH'],
+                    'channelCode'=>'OMS-TEST-CHANNEL','whCodes'=>[], // OMS global channel has no restricted warehouses
                 ]]]);
             if(str_contains($request->url(),'product/pagelist'))
                 return Http::response(['code'=>200,'data'=>[
@@ -174,7 +174,7 @@ final class XlwmsRealDraftT2SafetyTest extends TestCase
                 return Http::response(['code'=>200,'data'=>['records'=>[],'total'=>0]]);
             if(str_contains($r->url(),'logistics/channel/list'))
                 return Http::response(['code'=>200,'data'=>[[
-                    'channelCode'=>'OMS-TEST-CHANNEL','whCodes'=>['OMS-TEST-WH'],
+                    'channelCode'=>'OMS-TEST-CHANNEL','whCodes'=>[], // OMS global channel has no restricted warehouses
                 ]]]);
             return Http::response(['code'=>200,'data'=>[
                 'records'=>[['sku'=>'VP676A','approveStatus'=>2]],
