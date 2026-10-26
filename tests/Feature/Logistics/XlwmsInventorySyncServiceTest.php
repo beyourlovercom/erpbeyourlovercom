@@ -112,7 +112,7 @@ final class XlwmsInventorySyncServiceTest extends TestCase
             ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
     }
 
-    public function test_existing_documented_shimai_pi_alias_can_reconcile_sku_identity(): void
+    public function test_historical_shimai_pi_alias_is_not_automatically_approved_for_oms(): void
     {
         [$warehouse, , $products] = $this->fixture(['VM467A']);
         ProductSkuAlias::query()->create([
@@ -125,9 +125,10 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         $service = $this->service($products, ['VM467'], null, ['VM467']);
         config()->set('xlwms.inventory_apply_enabled', true);
         $result = $service->sync(true);
-        self::assertSame('applied', $result['status']);
-        self::assertSame(10, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)
-            ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+        self::assertSame('blocked', $result['status']);
+        self::assertSame(1, $result['unmatched_sku_count']);
+        self::assertSame(0, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)
+            ->where('product_id', $products[0]->id)->count());
     }
 
     public function test_vendor_locked_quantity_blocks_local_overstatement(): void
@@ -143,6 +144,94 @@ final class XlwmsInventorySyncServiceTest extends TestCase
             ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
     }
 
+    public function test_v2_first_apply_requires_exact_reviewed_checksum_without_mutating_inventory(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A']);
+        WarehouseInventory::query()->create(['warehouse_id' => $warehouse->id,
+            'product_id' => $products[0]->id, 'quantity_on_hand' => 3, 'quantity_reserved' => 0]);
+        $service = $this->service($products, ['SKU-A'], null, ['SKU-A'], 0, ['SKU-A' => 10]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+
+        $readOnly = $service->sync(false);
+        self::assertSame('read_only', $readOnly['status']);
+        self::assertSame('blocked', $service->sync(true)['status']);
+        self::assertSame(3, WarehouseInventory::query()->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+        self::assertSame(0, XlwmsInventoryLotReconciliation::query()->count());
+
+        config()->set('xlwms.inventory_first_apply_approved_checksum', str_repeat('f', 64));
+        self::assertSame('blocked', $service->sync(true)['status']);
+        config()->set('xlwms.inventory_first_apply_approved_checksum', $readOnly['checksum']);
+        self::assertSame('applied', $service->sync(true)['status']);
+        self::assertSame(10, WarehouseInventory::query()->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+    }
+
+    public function test_v2_recurring_large_delta_blocks_entire_batch_after_approved_initial_write(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A', 'SKU-B']);
+        foreach ($products as $p) {
+            WarehouseInventory::query()->create(['warehouse_id'=>$warehouse->id,
+                'product_id'=>$p->id,'quantity_on_hand'=>10,'quantity_reserved'=>0]);
+        }
+        $service = $this->service($products, ['SKU-A','SKU-B'], null,
+            ['SKU-A','SKU-B'],0,['SKU-A'=>10,'SKU-B'=>10]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        config()->set('xlwms.inventory_first_apply_approved_checksum', $service->sync(false)['checksum']);
+        self::assertSame('applied', $service->sync(true)['status']);
+
+        $anomalous = $this->service($products, ['SKU-A','SKU-B'], null,
+            ['SKU-A','SKU-B'],0,['SKU-A'=>11,'SKU-B'=>25]);
+        $result = $anomalous->sync(true);
+        self::assertSame('blocked', $result['status']);
+        self::assertSame(10, WarehouseInventory::where('warehouse_id', $warehouse->id)
+            ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+        self::assertSame(10, WarehouseInventory::where('warehouse_id', $warehouse->id)
+            ->where('product_id', $products[1]->id)->value('quantity_on_hand'));
+        self::assertSame(2, XlwmsInventoryLotReconciliation::query()->count());
+        self::assertContains('OMS_SKU_DELTA_EXCEEDS_AUTO_LIMIT',
+            collect($result['mismatches'])->pluck('reason')->all());
+    }
+
+    public function test_v2_recurring_small_confirmed_delta_can_apply_with_automatic_limits(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A']);
+        WarehouseInventory::query()->create(['warehouse_id'=>$warehouse->id,
+            'product_id'=>$products[0]->id,'quantity_on_hand'=>10,'quantity_reserved'=>0]);
+        $initial = $this->service($products,['SKU-A'],null,['SKU-A'],0,['SKU-A'=>10]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        config()->set('xlwms.inventory_first_apply_approved_checksum', $initial->sync(false)['checksum']);
+        self::assertSame('applied', $initial->sync(true)['status']);
+
+        $next = $this->service($products,['SKU-A'],null,['SKU-A'],0,['SKU-A'=>12]);
+        self::assertSame('applied', $next->sync(true)['status']);
+        self::assertSame(12, WarehouseInventory::query()->where('warehouse_id',$warehouse->id)
+            ->where('product_id',$products[0]->id)->value('quantity_on_hand'));
+    }
+
+    public function test_v2_auto_sync_blocks_changed_provider_sku_coverage_even_if_delta_is_small(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A', 'SKU-B']);
+        foreach ($products as $p) {
+            WarehouseInventory::query()->create(['warehouse_id'=>$warehouse->id,
+                'product_id'=>$p->id,'quantity_on_hand'=>5,'quantity_reserved'=>0]);
+        }
+        $baseline = $this->service($products,['SKU-A','SKU-B'],null,['SKU-A'],0,['SKU-A'=>5]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        config()->set('xlwms.inventory_first_apply_approved_checksum', $baseline->sync(false)['checksum']);
+        self::assertSame('applied', $baseline->sync(true)['status']);
+
+        $changed = $this->service($products,['SKU-A','SKU-B'],null,['SKU-A','SKU-B'],0,['SKU-A'=>5,'SKU-B'=>5]);
+        $result = $changed->sync(true);
+        self::assertSame('blocked', $result['status']);
+        self::assertContains('OMS_STOCK_SKU_COVERAGE_OR_IDENTITY_CHANGED',
+            collect($result['mismatches'])->pluck('reason')->all());
+        self::assertSame(5, WarehouseInventory::query()->where('warehouse_id',$warehouse->id)
+            ->where('product_id',$products[1]->id)->value('quantity_on_hand'));
+    }
+
     public function test_v2_unobserved_erp_stock_is_preserved_but_not_allocatable(): void
     {
         [$warehouse, , $products] = $this->fixture(['SKU-A', 'ERP-ONLY']);
@@ -154,6 +243,7 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         $service = $this->service($products, ['SKU-A'], null, ['SKU-A'], 0, ['SKU-A' => 10]);
         config()->set('xlwms.lot_reconciliation_v2_enabled', true);
         config()->set('xlwms.inventory_apply_enabled', true);
+        config()->set('xlwms.inventory_first_apply_approved_checksum', $service->sync(false)['checksum']);
         self::assertSame('applied', $service->sync(true)['status']);
 
         $available = app(EloquentInventoryAvailabilityReader::class)->forProductIds([$products[0]->id, $products[1]->id]);
@@ -194,6 +284,7 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         $service = $this->service($products, ['SKU-A', 'SKU-B', 'SKU-C', 'SKU-D'], null, ['SKU-A', 'SKU-B', 'SKU-C', 'SKU-D'], 0, ['SKU-A' => 5, 'SKU-B' => 3, 'SKU-C' => 8, 'SKU-D' => 10]);
         config()->set('xlwms.lot_reconciliation_v2_enabled', true);
         config()->set('xlwms.inventory_apply_enabled', true);
+        config()->set('xlwms.inventory_first_apply_approved_checksum', $service->sync(false)['checksum']);
 
         $result = $service->sync(true);
 
