@@ -112,7 +112,7 @@ final class XlwmsInventorySyncServiceTest extends TestCase
             ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
     }
 
-    public function test_existing_documented_shimai_pi_alias_can_reconcile_sku_identity(): void
+    public function test_historical_shimai_pi_alias_is_not_automatically_approved_for_oms(): void
     {
         [$warehouse, , $products] = $this->fixture(['VM467A']);
         ProductSkuAlias::query()->create([
@@ -125,9 +125,10 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         $service = $this->service($products, ['VM467'], null, ['VM467']);
         config()->set('xlwms.inventory_apply_enabled', true);
         $result = $service->sync(true);
-        self::assertSame('applied', $result['status']);
-        self::assertSame(10, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)
-            ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+        self::assertSame('blocked', $result['status']);
+        self::assertSame(1, $result['unmatched_sku_count']);
+        self::assertSame(0, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)
+            ->where('product_id', $products[0]->id)->count());
     }
 
     public function test_vendor_locked_quantity_blocks_local_overstatement(): void

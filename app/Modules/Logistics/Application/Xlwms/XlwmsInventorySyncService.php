@@ -17,6 +17,7 @@ use App\Modules\Products\Application\SkuResolveResult;
 use App\Modules\Products\Application\SkuMatchKey;
 use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 final class XlwmsInventorySyncService
@@ -237,14 +238,24 @@ final class XlwmsInventorySyncService
         return $snapshot;
     }
 
-    /** Only reuse existing, source-verified Shimai PI aliases; never fuzzy-match model suffixes. */
+    /**
+     * Physical identity approval belongs to Product OS unified SKU Alias.
+     * A legacy smgj_pi import proves lineage but not same-product identity.
+     * Before the Product OS verification migration, all aliases fail closed.
+     */
     private function hasShimaiAliasEvidence(string $providerSku): bool
     {
+        if (! Schema::hasColumn('product_sku_aliases', 'oms_verified_at')
+            || ! Schema::hasColumn('product_sku_aliases', 'is_active')
+            || ! Schema::hasColumn('product_sku_aliases', 'oms_identity_evidence')) return false;
+
         $key = SkuMatchKey::compute($providerSku);
         return $key !== null && ProductSkuAlias::query()
             ->where('match_key', $key)
-            ->where('source_type', 'smgj_pi')
-            ->where('source_reference', 'like', '%世迈仓%')
+            ->where('is_active', true)
+            ->whereNotNull('oms_verified_at')
+            ->whereNotNull('oms_identity_evidence')
+            ->whereRaw("TRIM(oms_identity_evidence) <> ''")
             ->exists();
     }
 
