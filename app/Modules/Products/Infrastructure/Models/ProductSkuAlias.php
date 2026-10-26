@@ -19,6 +19,11 @@ final class ProductSkuAlias extends Model
         'created_by_user_id',
     ];
 
+    protected $casts = [
+        'is_active' => 'boolean',
+        'oms_verified_at' => 'datetime',
+    ];
+
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
