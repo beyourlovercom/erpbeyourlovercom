@@ -8,6 +8,7 @@ use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLot;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventoryUnverifiedAge;
+use App\Modules\Logistics\Application\Xlwms\XlwmsInventoryCoverage;
 use Illuminate\Support\Facades\Schema;
 
 final class EloquentInventoryAvailabilityReader implements InventoryAvailabilityReader
@@ -73,6 +74,7 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
             ->get(['product_id', 'warehouse_id', 'quantity_on_hand', 'quantity_reserved', 'expected_restock_qty'])
             ->keyBy(fn (WarehouseInventory $row): string => $row->product_id.':'.$row->warehouse_id);
         $usSm = $warehouses->firstWhere('code', 'US-SM');
+        $coverage = $usSm !== null ? app(XlwmsInventoryCoverage::class)->coveredProductIds((int) $usSm['id']) : null;
         $unknown = collect();
         $dated = collect();
         if ($usSm !== null && Schema::hasTable('xlwms_inventory_unverified_ages')) {
@@ -82,7 +84,7 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
 
         $result = [];
         foreach ($ids as $productId) {
-            $result[$productId] = $warehouses->map(function (array $warehouse) use ($rows, $productId, $usSm, $unknown, $dated): array {
+            $result[$productId] = $warehouses->map(function (array $warehouse) use ($rows, $productId, $usSm, $unknown, $dated, $coverage): array {
                 /** @var WarehouseInventory|null $row */
                 $row = $rows->get($productId.':'.$warehouse['id']);
                 $state = (string) $warehouse['inventory_state'];
@@ -91,6 +93,8 @@ final class EloquentInventoryAvailabilityReader implements InventoryAvailability
                 $reserved = $knownForProduct ? (int) ($row?->quantity_reserved ?? 0) : null;
 
                 $available = $knownForProduct ? max($onHand - $reserved, 0) : null;
+                if ($available !== null && $usSm !== null && (int) $warehouse['id'] === (int) $usSm['id']
+                    && $coverage !== null && ! in_array((int) $productId, $coverage, true)) $available = 0;
                 if ($available !== null && $usSm !== null && (int) $warehouse['id'] === (int) $usSm['id'] && $unknown->has($productId)) {
                     $available = min($available, max((int) $dated->get($productId, 0) - $reserved, 0));
                     $unverified = (int) $unknown->get($productId, 0);

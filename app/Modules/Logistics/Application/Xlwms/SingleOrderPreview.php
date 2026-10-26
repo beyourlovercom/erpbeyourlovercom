@@ -6,6 +6,7 @@ use App\Modules\Logistics\Infrastructure\Xlwms\WarehouseOpenApiConnection;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLot;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Logistics\Application\Xlwms\XlwmsInventoryCoverage;
 use Illuminate\Support\Facades\Schema;
 
 final class SingleOrderPreview
@@ -47,8 +48,14 @@ final class SingleOrderPreview
         $add($channel === '', 'native_logistics_channel_missing');
         $add($shipment?->carrierService && ! $shipment->carrierService->is_active, 'logistics_channel_inactive');
 
+        $xlwmsCoverage = $shipment?->warehouse?->code === 'US-SM'
+            ? app(XlwmsInventoryCoverage::class)->coveredProductIds((int) $shipment->warehouse_id) : null;
         $items = [];
         foreach ($order->items as $item) {
+            if ($xlwmsCoverage !== null && (! $item->product_id
+                || ! in_array((int) $item->product_id, $xlwmsCoverage, true))) {
+                $blocking[] = 'oms_inventory_sku_unconfirmed:'.trim((string) ($item->resolved_fulfillment_sku ?: $item->sku));
+            }
             $sku = trim((string) ($item->resolved_fulfillment_sku ?: $item->sku));
             $qty = (int) $item->quantity;
             if ($sku === '' || $qty <= 0) {

@@ -4,6 +4,7 @@ namespace Tests\Feature\Logistics;
 
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Inventory\Infrastructure\EloquentInventoryAvailabilityReader;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLot;
 use App\Modules\Logistics\Application\Xlwms\XlwmsInventoryPageParser;
@@ -140,6 +141,27 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         self::assertSame('blocked', $result['status']);
         self::assertSame(3, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)
             ->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+    }
+
+    public function test_v2_unobserved_erp_stock_is_preserved_but_not_allocatable(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A', 'ERP-ONLY']);
+        WarehouseInventory::query()->create(['warehouse_id' => $warehouse->id, 'product_id' => $products[0]->id, 'quantity_on_hand' => 10, 'quantity_reserved' => 0]);
+        WarehouseInventory::query()->create(['warehouse_id' => $warehouse->id, 'product_id' => $products[1]->id, 'quantity_on_hand' => 20, 'quantity_reserved' => 0]);
+        WarehouseInventoryLot::query()->create(['warehouse_id' => $warehouse->id, 'product_id' => $products[0]->id, 'stock_status' => 'sellable', 'putaway_date' => '2026-10-01', 'quantity' => 10]);
+        $service = $this->service($products, ['SKU-A'], null, ['SKU-A'], 0, ['SKU-A' => 10]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        self::assertSame('applied', $service->sync(true)['status']);
+
+        $available = app(EloquentInventoryAvailabilityReader::class)->forProductIds([$products[0]->id, $products[1]->id]);
+        $covered = collect($available[$products[0]->id])->firstWhere('warehouse_id', $warehouse->id);
+        $missing = collect($available[$products[1]->id])->firstWhere('warehouse_id', $warehouse->id);
+        self::assertSame(10, $covered['quantity_available']);
+        self::assertSame(20, $missing['quantity_on_hand']);
+        self::assertSame(0, $missing['quantity_available']);
+        self::assertSame(20, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)
+            ->where('product_id', $products[1]->id)->value('quantity_on_hand'));
     }
 
     public function test_v2_unmatched_provider_sku_prevents_partial_apply(): void

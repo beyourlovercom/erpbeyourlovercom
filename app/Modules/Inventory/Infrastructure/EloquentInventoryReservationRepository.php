@@ -10,6 +10,7 @@ use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLot;
+use App\Modules\Logistics\Application\Xlwms\XlwmsInventoryCoverage;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use DateTimeInterface;
 use DomainException;
@@ -96,7 +97,12 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
             ->get()
             ->keyBy('product_id');
 
+        $xlwmsCoverage = $warehouse->code === 'US-SM'
+            ? app(XlwmsInventoryCoverage::class)->coveredProductIds((int) $warehouseId) : null;
         foreach ($required as $productId => $quantity) {
+            if ($xlwmsCoverage !== null && ! in_array((int) $productId, $xlwmsCoverage, true)) {
+                throw new DomainException('OMS inventory SKU not confirmed for US-SM.');
+            }
             $inventory = $lockedInventory->get($productId);
             if (! $inventory) {
                 throw new DomainException("Inventory row is missing for product {$productId}.");
