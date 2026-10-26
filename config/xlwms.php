@@ -33,4 +33,7 @@ return [
     'manual_probe_enabled' => filter_var(env('XLWMS_MANUAL_PROBE_ENABLED', false), FILTER_VALIDATE_BOOL),
     // Local-only, one-shot T2 draft exercise. Never available in Production.
     't2_test_draft_enabled' => filter_var(env('XLWMS_T2_TEST_DRAFT_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'inventory_sync_schedule_enabled' => filter_var(env('XLWMS_INVENTORY_SYNC_SCHEDULE_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'inventory_sync_schedule_minutes' => in_array((int) env('XLWMS_INVENTORY_SYNC_SCHEDULE_MINUTES', 30), [10, 30], true) ? (int) env('XLWMS_INVENTORY_SYNC_SCHEDULE_MINUTES', 30) : 30,
+    'inventory_apply_enabled' => filter_var(env('XLWMS_INVENTORY_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
 ];

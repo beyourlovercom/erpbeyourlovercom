@@ -2,6 +2,7 @@
 
 namespace App\Modules\Logistics\Infrastructure\Xlwms;
 
+use App\Modules\Logistics\Application\Xlwms\XlwmsInventoryGateway;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -9,14 +10,14 @@ use RuntimeException;
  * Fixed OMS v1 endpoint allowlist. Writes are independently gated in the
  * application service. No dynamic URL, redirect or middleware queue retries.
  */
-final class XlwmsOrderGateway
+final class XlwmsOrderGateway implements XlwmsInventoryGateway
 {
     /** @param array<string,mixed> $data
      * @return array<string,mixed>
      */
     private function signedPost(WarehouseOpenApiConnection $connection, string $path, array $data): array
     {
-        if (! in_array($path, ['outboundOrder/detail', 'outboundOrder/pageList', 'outboundOrder/create', 'warehouse/options', 'logistics/channel/list', 'product/pagelist'], true)) {
+        if (! in_array($path, ['outboundOrder/detail', 'outboundOrder/pageList', 'outboundOrder/create', 'warehouse/options', 'logistics/channel/list', 'product/pagelist', 'integratedInventory/pageOpen'], true)) {
             throw new RuntimeException('OMS operation not allowlisted.');
         }
         $appKey = (string) $connection->app_key_encrypted;
@@ -46,6 +47,18 @@ final class XlwmsOrderGateway
             throw new RuntimeException('OMS_BUSINESS_REJECTED');
         }
         return $json;
+    }
+
+    /** Read-only OMS product page. Kept separate from outbound-order operations. */
+    public function productPage(WarehouseOpenApiConnection $connection, array $data): array
+    {
+        return $this->signedPost($connection, 'product/pagelist', $data);
+    }
+
+    /** Read-only OMS integrated inventory page. */
+    public function integratedInventoryPage(WarehouseOpenApiConnection $connection, array $data): array
+    {
+        return $this->signedPost($connection, 'integratedInventory/pageOpen', $data);
     }
 
     /** @return list<array<string,mixed>> */
