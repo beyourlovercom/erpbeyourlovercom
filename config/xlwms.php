@@ -29,4 +29,6 @@ return [
     // Separate opt-in for privileged one-shot read-only credential verification.
     // Entered keys are never stored or used for outbound-order creation.
     'manual_probe_enabled' => filter_var(env('XLWMS_MANUAL_PROBE_ENABLED', false), FILTER_VALIDATE_BOOL),
+    // Local-only, one-shot T2 draft exercise. Never available in Production.
+    't2_test_draft_enabled' => filter_var(env('XLWMS_T2_TEST_DRAFT_ENABLED', false), FILTER_VALIDATE_BOOL),
 ];
