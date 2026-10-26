@@ -59,6 +59,10 @@ Route::middleware(['web', 'auth'])->group(function (): void {
         [XlwmsSingleOrderController::class, 'show'])
         ->middleware('can:logistics.view')->whereNumber('order')
         ->name('logistics.xlwms.order.preview');
+    Route::get('/logistics/oversea/us-3sm/orders/{order}/xlwms/preflight',
+        [XlwmsSingleOrderController::class, 'inlinePreflight'])
+        ->middleware(['can:logistics.view','throttle:10,1'])
+        ->whereNumber('order')->name('logistics.xlwms.order.inline-preflight');
     Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/send',
         [XlwmsSingleOrderController::class, 'send'])
         ->middleware(['can:logistics.operate', RequireLogisticsExecution::class,'throttle:2,1'])

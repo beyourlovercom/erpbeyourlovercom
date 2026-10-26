@@ -6,6 +6,9 @@ on:
       - 'app/Modules/Logistics/Application/Xlwms/**'
       - 'app/Modules/Logistics/Infrastructure/Xlwms/**'
       - 'app/Modules/Logistics/Experience/Controllers/XlwmsSingleOrderController.php'
+      - 'app/Modules/Logistics/Experience/Controllers/OverseaWarehouseController.php'
+      - 'app/Modules/Logistics/Application/OverseaManualShipmentService.php'
+      - 'tests/Feature/Logistics/OverseaWarehouseWorkbenchTest.php'
       - 'app/Modules/Logistics/Experience/Controllers/XlwmsWarehouseBindingController.php'
       - 'app/Modules/Logistics/Experience/Routes/web.php'
       - 'app/Modules/Inventory/Experience/Controllers/WarehouseController.php'
@@ -49,11 +52,11 @@ jobs:
           SESSION_DRIVER: array
           QUEUE_CONNECTION: sync
           XLWMS_LIVE_DISPATCH_ENABLED: 'false'
-        run: php artisan test tests/Feature/Logistics/XlwmsRealDraftT2SafetyTest.php tests/Feature/Logistics/XlwmsVirtualOrderT1T2Test.php tests/Feature/Orders/OrderLineVerifiedSkuCorrectionTest.php tests/Feature/Logistics/XlwmsSingleOrderDispatchTest.php tests/Feature/Logistics/XlwmsWarehouseBindingTest.php tests/Feature/Logistics/XlwmsReadOnlyConnectorTest.php
+        run: php artisan test tests/Feature/Logistics/XlwmsRealDraftT2SafetyTest.php tests/Feature/Logistics/XlwmsVirtualOrderT1T2Test.php tests/Feature/Orders/OrderLineVerifiedSkuCorrectionTest.php tests/Feature/Logistics/XlwmsSingleOrderDispatchTest.php tests/Feature/Logistics/XlwmsWarehouseBindingTest.php tests/Feature/Logistics/XlwmsReadOnlyConnectorTest.php tests/Feature/Logistics/OverseaWarehouseWorkbenchTest.php
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm ci
       - run: npm run typecheck && npm run build
-      - run: npx vitest run resources/js/Pages/Logistics/Oversea/XlwmsOrder.test.ts
+      - run: npx vitest run resources/js/Pages/Logistics/Oversea/Show.test.ts resources/js/Pages/Logistics/Oversea/XlwmsOrder.test.ts
       - run: git diff --check

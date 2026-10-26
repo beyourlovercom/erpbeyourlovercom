@@ -6,6 +6,8 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
+use Illuminate\Support\Facades\Http;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxWriter;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -53,6 +55,71 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $this->actingAs($user)->get('/logistics/oversea/us-sm')->assertOk()->assertInertia(fn (Assert $page) => $page
             ->where('warehouseKey', 'us-3sm')
             ->where('warehouse.code', 'US-SM'));
+    }
+
+    public function test_existing_us_sm_workbench_shows_verified_oms_row_without_network_or_production_send(): void
+    {
+        $user=$this->userWith(['logistics.view', 'logistics.operate']);
+        $warehouses=$this->warehouses();
+        $order=$this->orderAt($warehouses['US-SM'],'007-OMS-INLINE-TEST');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        XlwmsDispatchAttempt::query()->create([
+            'order_id'=>$order->id,'warehouse_id'=>$warehouses['US-SM']->id,
+            'third_order_no'=>'BYL-ERP-'.$order->id,'state'=>'submitted_oms',
+            'request_fingerprint'=>str_repeat('f',64),
+            'oms_order_no'=>'OBS-CANCELLED-1','oms_status_code'=>'4',
+            'oms_status_checked_at'=>now(),'oms_tracking_no'=>null,
+        ]);
+        Http::preventStrayRequests();
+        Http::fake();
+        $this->actingAs($user)->get('/logistics/oversea/us-3sm?view=pending')
+            ->assertOk()->assertInertia(fn(Assert $page)=>$page
+                ->component('Logistics/Oversea/Show')
+                ->where('xlwmsAuthorizedOrderId',0)
+                ->where('rows.data.0.order_id',$order->id)
+                ->where('rows.data.0.xlwms.oms_order_no','OBS-CANCELLED-1')
+                ->where('rows.data.0.xlwms.oms_status_code','4'));
+        Http::assertNothingSent();
+    }
+
+    public function test_exact_allowlist_exposed_only_to_real_logistics_operator_and_other_warehouses_unchanged(): void
+    {
+        $operator=$this->userWith(['logistics.view', 'logistics.operate']);
+        $viewer=$this->userWith(['logistics.view']);
+        $warehouses=$this->warehouses();
+        $order=$this->orderAt($warehouses['US-SM'],'007-OMS-SEND-ALLOWLIST');
+        config()->set('xlwms.live_dispatch_enabled',true);
+        config()->set('xlwms.live_order_id',$order->id);
+        $this->actingAs($operator)->get('/logistics/oversea/us-3sm?view=review')
+            ->assertInertia(fn(Assert $page)=>$page->where('xlwmsAuthorizedOrderId',$order->id));
+        $this->actingAs($viewer)->get('/logistics/oversea/us-3sm?view=review')
+            ->assertInertia(fn(Assert $page)=>$page->where('xlwmsAuthorizedOrderId',0));
+        $this->actingAs($operator)->get('/logistics/oversea/us-moreplus?view=review')
+            ->assertInertia(fn(Assert $page)=>$page->where('xlwmsAuthorizedOrderId',0));
+    }
+
+    public function test_cancelled_oms_attempt_blocks_manual_tracking_which_would_write_woo(): void
+    {
+        $operator=$this->userWith(['logistics.view','logistics.operate']);
+        $warehouses=$this->warehouses();
+        $order=$this->orderAt($warehouses['US-SM'],'007-OMS-CANCELLED-NO-MANUAL');
+        $this->actingAs($operator)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        XlwmsDispatchAttempt::query()->create([
+            'order_id'=>$order->id,'warehouse_id'=>$warehouses['US-SM']->id,
+            'third_order_no'=>'BYL-ERP-'.$order->id,'state'=>'draft_cancelled_confirmed',
+            'request_fingerprint'=>str_repeat('e',64),
+            'oms_order_no'=>'OBS-CANCELLED-2','oms_status_code'=>'4',
+        ]);
+        $this->actingAs($operator)->post(
+            "/logistics/oversea/us-3sm/orders/{$order->id}/manual-ship",
+            ['tracking_number'=>'9400111899223856928501']
+        )->assertStatus(409);
+        $this->assertDatabaseHas('shipments',[
+            'order_id'=>$order->id,'shipment_status'=>'pending','tracking_number'=>null,
+        ]);
+        $this->assertDatabaseMissing('sync_outbox',[
+            'operation'=>'woocommerce.tracking_outbound',
+        ]);
     }
 
     public function test_legacy_lowercase_us_la_code_is_normalized_across_page_approval_and_reopen(): void
