@@ -9,10 +9,13 @@ use App\Modules\Inventory\Infrastructure\Models\InventoryReservationItem;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
+use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLot;
+use App\Modules\Logistics\Application\Xlwms\XlwmsInventoryCoverage;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use DateTimeInterface;
 use DomainException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 final class EloquentInventoryReservationRepository implements InventoryReservationRepository
 {
@@ -94,12 +97,23 @@ final class EloquentInventoryReservationRepository implements InventoryReservati
             ->get()
             ->keyBy('product_id');
 
+        $xlwmsCoverage = $warehouse->code === 'US-SM'
+            ? app(XlwmsInventoryCoverage::class)->coveredProductIds((int) $warehouseId) : null;
         foreach ($required as $productId => $quantity) {
+            if ($xlwmsCoverage !== null && ! in_array((int) $productId, $xlwmsCoverage, true)) {
+                throw new DomainException('OMS inventory SKU not confirmed for US-SM.');
+            }
             $inventory = $lockedInventory->get($productId);
             if (! $inventory) {
                 throw new DomainException("Inventory row is missing for product {$productId}.");
             }
-            if ((int) $inventory->quantity_available < $quantity) {
+            $effectiveAvailable = (int) $inventory->quantity_available;
+            if ($warehouse->code === 'US-SM' && Schema::hasTable('xlwms_inventory_unverified_ages') && \DB::table('xlwms_inventory_unverified_ages')->where('warehouse_id', $warehouseId)->where('product_id', $productId)->exists()) {
+                $dated = (int) WarehouseInventoryLot::query()->where('warehouse_id', $warehouseId)->where('product_id', $productId)->where('stock_status', 'sellable')->whereNotNull('putaway_date')->where('quantity', '>=', 0)->sum('quantity');
+                $unknown = (int) \DB::table('xlwms_inventory_unverified_ages')->where('warehouse_id', $warehouseId)->where('product_id', $productId)->value('unknown_age_quantity');
+                $effectiveAvailable = min($effectiveAvailable, max($dated - (int) $inventory->quantity_reserved, 0), max((int) $inventory->quantity_on_hand - $unknown - (int) $inventory->quantity_reserved, 0));
+            }
+            if ($effectiveAvailable < $quantity) {
                 throw new DomainException("Insufficient available inventory for product {$productId}.");
             }
         }
