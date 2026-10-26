@@ -110,6 +110,87 @@ final class SkuAliasService
         });
     }
 
+    /**
+     * Manual physical-identity attestation: an alias can identify a Product
+     * before it is safe to use for any OMS. Approval is never inferred from
+     * import/source tags and never authorizes a warehouse dispatch by itself.
+     */
+    public function verifyForOms(Model $alias, string $physicalEvidence, Authenticatable $actor): void
+    {
+        if (! method_exists($actor, 'can') || ! $actor->can('products.operate')) {
+            throw new RuntimeException('SKU_ALIAS_VERIFICATION_FORBIDDEN');
+        }
+        $evidence = trim($physicalEvidence);
+        if (mb_strlen($evidence) < 20) {
+            throw new RuntimeException('SKU_ALIAS_IDENTITY_EVIDENCE_REQUIRED');
+        }
+
+        DB::transaction(function () use ($alias, $evidence, $actor): void {
+            $alias->refresh();
+            if (! (bool) $alias->getAttribute('is_active')) {
+                throw new RuntimeException('SKU_ALIAS_INACTIVE');
+            }
+            $before = ['oms_verified_at' => $alias->getAttribute('oms_verified_at')];
+            $alias->forceFill([
+                'oms_verified_at' => now(),
+                'oms_verified_by_user_id' => $actor->getAuthIdentifier(),
+                'oms_identity_evidence' => $evidence,
+            ])->save();
+            $this->audit->record(
+                AuditActor::user($actor, AuditSource::Web),
+                'product.sku_alias.oms_verified',
+                $alias::class,
+                $alias->getKey(),
+                before: $before,
+                after: ['product_id' => $alias->getAttribute('product_id'),
+                    'alias_sku' => $alias->getAttribute('alias_sku'),
+                    'oms_verified_by_user_id' => $actor->getAuthIdentifier(),
+                    'oms_identity_evidence' => $evidence],
+                reason: 'manual_physical_identity_attestation',
+            );
+        });
+    }
+
+    /** An inactive alias reserves its key but never resolves or ships. */
+    public function setActive(Model $alias, bool $active, Authenticatable $actor): void
+    {
+        if (! method_exists($actor, 'can') || ! $actor->can('products.operate')) {
+            throw new RuntimeException('SKU_ALIAS_STATUS_FORBIDDEN');
+        }
+        DB::transaction(function () use ($alias, $active, $actor): void {
+            $alias->refresh();
+            $wasActive = (bool) $alias->getAttribute('is_active');
+            if ($wasActive === $active) return;
+            $alias->forceFill([
+                'is_active' => $active,
+                // An off/on cycle never restores historic OMS approval.
+                'oms_verified_at' => null,
+                'oms_verified_by_user_id' => null,
+                'oms_identity_evidence' => null,
+            ])->save();
+            $this->audit->record(
+                AuditActor::user($actor, AuditSource::Web),
+                $active ? 'product.sku_alias.activated' : 'product.sku_alias.deactivated',
+                $alias::class,
+                $alias->getKey(),
+                before: ['is_active' => $wasActive],
+                after: ['is_active' => $active, 'oms_verified_at' => null],
+                reason: 'manual_sku_alias_status_change',
+            );
+        });
+    }
+
+    /** @return list<array<string,mixed>> */
+    public function approvedAliasesForOms(int $productId): array
+    {
+        return array_values(array_filter(
+            $this->aliases->listForProduct($productId),
+            static fn (array $alias): bool => ($alias['is_active'] ?? false) === true
+                && ! empty($alias['oms_verified_at'])
+                && trim((string) ($alias['oms_identity_evidence'] ?? '')) !== ''
+        ));
+    }
+
     public function listForProduct(int $productId): array
     {
         return $this->aliases->listForProduct($productId);
