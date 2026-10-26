@@ -45,7 +45,7 @@ final class XlwmsInventorySyncService
 
         $inventoryRows = $this->allPages(fn (int $page) => $this->gateway->integratedInventoryPage($connection, ['page' => $page, 'pageSize' => $pageSize, 'whCode' => $whCode, 'stockType' => 0]), fn (array $response, int $page) => $this->parser->inventoryPage($response, $whCode, $page, $pageSize), true);
         if ($inventoryRows === []) {
-            $checksum = hash('sha256', json_encode(['wh_code' => $whCode, 'products' => array_keys($providerSkus), 'inventory' => []], JSON_THROW_ON_ERROR));
+            $checksum = hash('sha256', json_encode(['snapshot_schema' => 2, 'wh_code' => $whCode, 'products' => array_keys($providerSkus), 'inventory' => []], JSON_THROW_ON_ERROR));
             return $this->result($this->persistAndMaybeApply($warehouse, $whCode, $checksum, $providerSkus, [], [], [], [], 0, 0, 0, 'not_ready', false));
         }
 
@@ -113,7 +113,7 @@ final class XlwmsInventorySyncService
                 'reason' => $row['reason'] ?? null,
             ];
         }
-        $checksum = hash('sha256', json_encode(['wh_code' => $whCode, 'catalog_skus' => array_keys($providerSkus), 'inventory' => $normalized, 'local_baseline' => $localBaseline], JSON_THROW_ON_ERROR));
+        $checksum = hash('sha256', json_encode(['snapshot_schema' => 2, 'wh_code' => $whCode, 'catalog_skus' => array_keys($providerSkus), 'inventory' => $normalized, 'local_baseline' => $localBaseline], JSON_THROW_ON_ERROR));
         $status = ($unmatched > 0 || $blocked > 0) ? 'blocked' : 'read_only';
         $snapshot = $this->persistAndMaybeApply($warehouse, $whCode, $checksum, $providerSkus, $normalized, $rows, $mismatches, $mapped, $unmatched, $blocked, $status, $apply);
         $this->audit->record(AuditActor::system(AuditSource::InternalSystem), 'inventory.xlwms_snapshot_'.$snapshot->status, $snapshot::class, $snapshot->id, after: $this->result($snapshot), reason: 'xlwms_inventory_sync');
