@@ -299,4 +299,191 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $this->assertContains('oms_warehouse_not_bound',$p['blockers']);
         $this->assertFalse($p['ready_for_remote_check']);
     }
+
+    private function statusAttempt(Order $order, string $omsNo = 'OBS-SAFE-123'): XlwmsDispatchAttempt
+    {
+        return XlwmsDispatchAttempt::query()->create([
+            'order_id'=>$order->id,
+            'warehouse_id'=>$order->shipment->warehouse_id,
+            'third_order_no'=>'BYL-ERP-'.$order->id,
+            'request_fingerprint'=>str_repeat('a',64),
+            'state'=>'submitted_oms',
+            'oms_order_no'=>$omsNo,
+        ]);
+    }
+
+    public function test_readonly_status_refresh_of_shipped_oms_order_keeps_erp_pending(): void
+    {
+        $o=$this->orderFixture();
+        $attempt=$this->statusAttempt($o);
+        Http::preventStrayRequests();
+        Http::fake(fn($request)=>Http::response(['code'=>200,'data'=>[
+            'records'=>[[
+                'outboundOrderNo'=>'OBS-SAFE-123',
+                'thirdOrderNo'=>'BYL-ERP-'.$o->id,
+                'whCode'=>'OMS-US-SM','status'=>3,
+                'logisticsTrackNo'=>'TESTTRACK123',
+            ]],
+            'total'=>1,'page'=>1,'pageSize'=>10,'pages'=>1,
+        ]]));
+        $r=app(SingleOrderDispatch::class)->checkStatus($o->id);
+        $this->assertTrue($r['read_only']);
+        $this->assertTrue($r['fresh']);
+        $this->assertSame('3',$r['oms_status_code']);
+        $this->assertSame('已出库',$r['oms_status_label']);
+        $this->assertSame('TESTTRACK123',$r['oms_tracking_no']);
+        $this->assertNotNull($r['oms_status_checked_at']);
+        $this->assertSame('pending_shipment',$o->fresh()->order_status->value);
+        $this->assertSame('pending',$o->shipment()->first()->shipment_status);
+        $this->assertSame('submitted_oms',$attempt->fresh()->state);
+        Http::assertSentCount(1);
+        Http::assertSent(fn($r)=>str_contains($r->url(),'outboundOrder/pageList')
+            && (is_object($r['data'])
+                ? ($r['data']->outboundOrderNos==='OBS-SAFE-123' && $r['data']->pageSize===10)
+                : ($r['data']['outboundOrderNos']==='OBS-SAFE-123' && $r['data']['pageSize']===10)));
+        Http::assertNotSent(fn($r)=>str_contains($r->url(),'outboundOrder/create'));
+    }
+
+    public function test_cancelled_order_status_is_recorded_without_canceling_erp_or_woo(): void
+    {
+        $o=$this->orderFixture();
+        $this->statusAttempt($o);
+        Http::preventStrayRequests();
+        Http::fake(fn()=>Http::response(['code'=>200,'data'=>[
+            'records'=>[[
+                'outboundOrderNo'=>'OBS-SAFE-123',
+                'thirdOrderNo'=>'BYL-ERP-'.$o->id,
+                'whCode'=>'OMS-US-SM','status'=>4,
+            ]],'total'=>1,
+        ]]));
+        $r=app(SingleOrderDispatch::class)->checkStatus($o->id);
+        $this->assertSame('4',$r['oms_status_code']);
+        $this->assertSame('已取消',$r['oms_status_label']);
+        $this->assertSame('pending_shipment',$o->fresh()->order_status->value);
+    }
+
+    public function test_unknown_vendor_status_stays_unknown_and_never_auto_completes(): void
+    {
+        $o=$this->orderFixture();
+        $this->statusAttempt($o);
+        Http::fake(fn()=>Http::response(['code'=>200,'data'=>[
+            'records'=>[[
+                'outboundOrderNo'=>'OBS-SAFE-123',
+                'thirdOrderNo'=>'BYL-ERP-'.$o->id,
+                'whCode'=>'OMS-US-SM','status'=>8,
+            ]],'total'=>1,
+        ]]));
+        $r=app(SingleOrderDispatch::class)->checkStatus($o->id);
+        $this->assertSame('OMS 状态 8（待核实）',$r['oms_status_label']);
+        $this->assertSame('pending_shipment',$o->fresh()->order_status->value);
+    }
+
+    public function test_wrong_oms_warehouse_does_not_overwrite_last_confirmed_status(): void
+    {
+        $o=$this->orderFixture();
+        $a=$this->statusAttempt($o);
+        $a->forceFill(['oms_status_code'=>'3','oms_status_checked_at'=>now()->subDay()])->save();
+        Http::preventStrayRequests();
+        Http::fake(fn()=>Http::response(['code'=>200,'data'=>[
+            'records'=>[[
+                'outboundOrderNo'=>'OBS-SAFE-123','thirdOrderNo'=>'BYL-ERP-'.$o->id,
+                'whCode'=>'OTHER-WAREHOUSE','status'=>4,
+            ]],'total'=>1,
+        ]]));
+        $r=app(SingleOrderDispatch::class)->checkStatus($o->id);
+        $this->assertFalse($r['fresh']);
+        $this->assertSame('3',$r['oms_status_code']);
+        $this->assertSame('OMS_STATUS_IDENTITY_MISMATCH',$r['oms_status_failure_code']);
+        $this->assertSame('submitted_oms',$a->fresh()->state);
+    }
+
+    public function test_manual_order_reference_must_match_if_oms_third_number_differs(): void
+    {
+        $o=$this->orderFixture();
+        $a=$this->statusAttempt($o);
+        Http::preventStrayRequests();
+        Http::fake(fn()=>Http::response(['code'=>200,'data'=>[
+            'records'=>[[
+                'outboundOrderNo'=>'OBS-SAFE-123',
+                'thirdOrderNo'=>'MANUAL-OTHER',
+                'platformOrderNo'=>'UNKNOWN-OTHER',
+                'referOrderNo'=>'UNKNOWN-OTHER',
+                'whCode'=>'OMS-US-SM','status'=>3,
+            ]],'total'=>1,
+        ]]));
+        $r=app(SingleOrderDispatch::class)->checkStatus($o->id);
+        $this->assertFalse($r['fresh']);
+        $this->assertNull($a->fresh()->oms_status_code);
+        $this->assertSame('OMS_STATUS_IDENTITY_MISMATCH',$r['oms_status_failure_code']);
+    }
+
+    public function test_view_only_logistics_user_can_query_oms_status_without_dispatch_permission(): void
+    {
+        $o=$this->orderFixture();
+        $this->statusAttempt($o);
+        $viewer=\App\Models\User::factory()->create(['is_active'=>true]);
+        $role=\App\Models\Role::query()->firstOrCreate(
+            ['key'=>'xlwms_readonly_status_viewer'],['label'=>'XLWMS Viewer']
+        );
+        $viewPermission=\App\Models\Permission::query()->firstOrCreate(
+            ['key'=>'logistics.view'],['label'=>'View Logistics']
+        );
+        $role->permissions()->syncWithoutDetaching([$viewPermission->id]);
+        $viewer->roles()->attach($role);
+        Http::preventStrayRequests();
+        Http::fake(fn()=>Http::response(['code'=>200,'data'=>[
+            'records'=>[[
+                'outboundOrderNo'=>'OBS-SAFE-123',
+                'thirdOrderNo'=>'BYL-ERP-'.$o->id,
+                'whCode'=>'OMS-US-SM','status'=>4,
+            ]],'total'=>1,
+        ]]));
+
+        $this->actingAs($viewer)->postJson(
+            '/logistics/oversea/us-3sm/orders/'.$o->id.'/xlwms/status'
+        )->assertOk()->assertJsonPath('read_only',true)
+            ->assertJsonPath('oms_status_label','已取消');
+        $this->assertSame('pending_shipment',$o->fresh()->order_status->value);
+        Http::assertNotSent(fn($r)=>str_contains($r->url(),'outboundOrder/create'));
+    }
+
+    public function test_user_without_logistics_view_cannot_query_oms_status(): void
+    {
+        $o=$this->orderFixture();
+        $this->statusAttempt($o);
+        $viewer=\App\Models\User::factory()->create(['is_active'=>true]);
+        Http::preventStrayRequests();
+        Http::fake();
+
+        $this->actingAs($viewer)->postJson(
+            '/logistics/oversea/us-3sm/orders/'.$o->id.'/xlwms/status'
+        )->assertForbidden();
+        Http::assertNothingSent();
+    }
+
+    public function test_status_request_without_prior_dispatch_is_rejected_without_network(): void
+    {
+        $o=$this->orderFixture();
+        Http::preventStrayRequests();
+        Http::fake();
+        $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+        app(SingleOrderDispatch::class)->checkStatus($o->id);
+    }
+
+    public function test_empty_exact_status_result_preserves_previous_state_and_does_not_retry(): void
+    {
+        $o=$this->orderFixture();
+        $a=$this->statusAttempt($o);
+        Http::preventStrayRequests();
+        Http::fake(fn()=>Http::response(['code'=>200,'data'=>[
+            'records'=>[],'total'=>0,
+        ]]));
+        $r=app(SingleOrderDispatch::class)->checkStatus($o->id);
+        $this->assertFalse($r['fresh']);
+        $this->assertSame('OMS_STATUS_NOT_FOUND',$r['oms_status_failure_code']);
+        $this->assertSame('submitted_oms',$a->fresh()->state);
+        Http::assertSentCount(1);
+        Http::assertNotSent(fn($r)=>str_contains($r->url(),'outboundOrder/create'));
+    }
+
 }

@@ -22,6 +22,7 @@ final class SingleOrderDispatch
             'address','items','shipment.warehouse','shipment.carrierService','shipment.overseaReview'
         ])->findOrFail($orderId);
         $data=$this->preview->forOrder($order);
+        $data['erp_order_status']=$order->order_status?->value;
         $attempt=XlwmsDispatchAttempt::query()->where('order_id',$orderId)->first();
         $data['attempt']=$attempt ? [
             'state'=>$attempt->state,
@@ -29,6 +30,10 @@ final class SingleOrderDispatch
             'failure_code'=>$attempt->failure_code,
             'duplicate_match_field'=>$attempt->duplicate_match_field,
             'last_checked_at'=>$attempt->last_checked_at,
+            'oms_status_code'=>$attempt->oms_status_code,
+            'oms_status_checked_at'=>$attempt->oms_status_checked_at,
+            'oms_status_failure_code'=>$attempt->oms_status_failure_code,
+            'oms_tracking_no'=>$attempt->oms_tracking_no,
         ]:null;
         if($attempt) {
             $data['ready_for_remote_check']=false;
@@ -147,6 +152,91 @@ final class SingleOrderDispatch
             $attempt->forceFill(['last_checked_at'=>now()])->save();
         }
         return $this->report($attempt) + ['remote_found'=>$existing!==[]];
+    }
+
+    /**
+     * Manual, read-only OMS status refresh for a SINGLE previously identified
+     * OMS order. Neither Shipment, Order nor Woo status is modified.
+     * Unknown provider status codes are shown literally, never auto-shipped.
+     *
+     * @return array<string,mixed>
+     */
+    public function checkStatus(int $orderId): array
+    {
+        $attempt = XlwmsDispatchAttempt::query()->where('order_id', $orderId)->firstOrFail();
+        $order = Order::query()->with('shipment')->findOrFail($orderId);
+        $omsNo = trim((string)$attempt->oms_order_no);
+        if ($omsNo === '' || ! $order->shipment
+            || (int) $attempt->warehouse_id !== (int)$order->shipment->warehouse_id) {
+            throw new \RuntimeException('OMS_STATUS_NOT_READY');
+        }
+        $connection = WarehouseOpenApiConnection::query()
+            ->where('warehouse_id', $attempt->warehouse_id)
+            ->where('provider', 'xlwms')->firstOrFail();
+
+        try {
+            $remote = $this->oms->readExactOrderStatus($connection, $omsNo);
+            if ($remote === null) {
+                throw new \RuntimeException('OMS_STATUS_NOT_FOUND');
+            }
+            // A linked OMS order must still carry the exact ERP identifiers.
+            // Previously manually-created OMS orders can have a different
+            // thirdOrderNo, but must match an ERP reference/platform number.
+            $refs = array_values(array_unique(array_filter([
+                (string)$order->erp_order_id,
+                (string)$order->external_order_number,
+            ], fn($s) => trim($s) !== '')));
+            $identityMatches =
+                $remote['third_order_no'] === $attempt->third_order_no
+                || in_array($remote['refer_order_no'], $refs, true)
+                || in_array($remote['platform_order_no'], $refs, true);
+            if (! $identityMatches) {
+                throw new \RuntimeException('OMS_STATUS_IDENTITY_MISMATCH');
+            }
+            $attempt->forceFill([
+                'oms_status_code' => $remote['status_code'],
+                'oms_status_checked_at' => now(),
+                'oms_tracking_no' => $remote['tracking_no'],
+                'oms_status_failure_code' => null,
+                'last_checked_at' => now(),
+            ])->save();
+            return $this->statusReport($attempt, true);
+        } catch (\Throwable $e) {
+            // Preserve the last confirmed status instead of replacing it
+            // with potentially invalid or ambiguous data. Never retry create.
+            $safeCodes = [
+                'OMS_STATUS_QUERY_INVALID','OMS_STATUS_NOT_FOUND',
+                'OMS_STATUS_RESPONSE_INVALID','OMS_STATUS_IDENTITY_MISMATCH',
+                'OMS_TRANSPORT_UNCERTAIN','OMS_HTTP_REJECTED',
+                'OMS_SERVER_UNCERTAIN','OMS_BUSINESS_REJECTED',
+            ];
+            $code = in_array($e->getMessage(), $safeCodes, true)
+                ? $e->getMessage() : 'OMS_STATUS_UNEXPECTED_ERROR';
+            $attempt->forceFill(['oms_status_failure_code'=>$code])->save();
+            return $this->statusReport($attempt, false);
+        }
+    }
+
+    /** @return array<string,mixed> */
+    private function statusReport(XlwmsDispatchAttempt $attempt, bool $fresh): array
+    {
+        // Only 3 and 4 are verified against the real OMS account:
+        // 3 = 已出库, 4 = 已取消. Never guess the other codes.
+        $labels = ['3'=>'已出库','4'=>'已取消'];
+        $status = $attempt->oms_status_code;
+        return [
+            'read_only' => true,
+            'fresh' => $fresh,
+            'oms_order_no' => $attempt->oms_order_no,
+            'oms_status_code' => $status,
+            'oms_status_label' => $status === null ? '尚未查询'
+                : ($labels[$status] ?? ('OMS 状态 '.$status.'（待核实）')),
+            'oms_tracking_no' => $attempt->oms_tracking_no,
+            'oms_status_checked_at' => $attempt->oms_status_checked_at,
+            'oms_status_failure_code' => $attempt->oms_status_failure_code,
+            'erp_status_unchanged' => true,
+            'woo_status_unchanged' => true,
+        ];
     }
 
     /** Stable, redacted response for ERP status feedback; never log addresses/keys. */
