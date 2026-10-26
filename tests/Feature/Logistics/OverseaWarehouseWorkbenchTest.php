@@ -25,6 +25,14 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // These tests assert Inertia props and authorization, not static Vite
+        // build output. The Vue app is independently built/tested in CI.
+        $this->withoutVite();
+    }
+
     public function test_warehouse_page_is_isolated_and_uses_frozen_carrier_mapping(): void
     {
         $user = $this->userWith(['logistics.view', 'logistics.operate']);
