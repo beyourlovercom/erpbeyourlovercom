@@ -17,6 +17,7 @@ use App\Modules\Products\Application\Contracts\ProductRepository;
 use App\Modules\Products\Application\Contracts\SkuAliasRepository;
 use App\Modules\Products\Application\Contracts\SkuReconciliationRepository;
 use App\Modules\Products\Application\SkuIdentityResolver;
+use App\Modules\Products\Application\VerifiedOmsProductIdentityResolver;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
 use App\Modules\Products\Application\SkuMatchKey;
@@ -129,6 +130,53 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         self::assertSame(1, $result['unmatched_sku_count']);
         self::assertSame(0, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)
             ->where('product_id', $products[0]->id)->count());
+    }
+
+    public function test_verified_alias_is_matched_in_stock_and_catalog_using_product_os(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['CANONICAL-WHITE']);
+        $alias = ProductSkuAlias::query()->create([
+            'product_id' => $products[0]->id,
+            'alias_sku' => 'XLWMS-WHITE',
+            'match_key' => SkuMatchKey::compute('XLWMS-WHITE'),
+            'source_type' => 'xlwms',
+        ]);
+        $alias->forceFill(['is_active'=>true,'oms_verified_at'=>now(),'oms_identity_evidence'=>'Same physical model, white color, packaging and barcode.'])->save();
+        $service = $this->service($products, ['XLWMS-WHITE', 'CANONICAL-WHITE'], null, ['XLWMS-WHITE']);
+        $result = $service->sync(false);
+        self::assertSame('read_only', $result['status'], json_encode($result));
+        $snapshot = XlwmsInventorySnapshot::query()->findOrFail($result['snapshot_id']);
+        self::assertSame($products[0]->id, $snapshot->rows()->where('provider_sku', 'XLWMS-WHITE')->value('product_id'));
+        self::assertSame('matched', $snapshot->rows()->where('provider_sku', 'XLWMS-WHITE')->value('resolution_status'));
+        self::assertSame($products[0]->id, $snapshot->rows()->where('provider_sku', 'CANONICAL-WHITE')->value('product_id'));
+
+        $alias->forceFill(['is_active' => false])->save();
+        $blocked = $service->sync(false);
+        self::assertSame('blocked', $blocked['status']);
+        self::assertSame(1, $blocked['unmatched_sku_count']);
+        self::assertNull(XlwmsInventorySnapshot::query()->findOrFail($blocked['snapshot_id'])->rows()->where('provider_sku', 'XLWMS-WHITE')->value('product_id'));
+    }
+
+    public function test_duplicate_provider_skus_for_one_canonical_product_block_v2_apply_atomically(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['CANONICAL-WHITE']);
+        ProductSkuAlias::query()->create([
+            'product_id' => $products[0]->id, 'alias_sku' => 'XLWMS-WHITE',
+            'match_key' => SkuMatchKey::compute('XLWMS-WHITE'),
+            'source_type' => 'xlwms',
+        ]);
+        ProductSkuAlias::query()->where('alias_sku','XLWMS-WHITE')->firstOrFail()->forceFill(['is_active'=>true,'oms_verified_at'=>now(),'oms_identity_evidence'=>'Same physical product.'])->save();
+        WarehouseInventory::query()->create([
+            'warehouse_id' => $warehouse->id, 'product_id' => $products[0]->id,
+            'quantity_on_hand' => 20, 'quantity_reserved' => 0,
+        ]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        $service = $this->service($products, ['CANONICAL-WHITE', 'XLWMS-WHITE']);
+        $result = $service->sync(true);
+        self::assertSame('blocked', $result['status']);
+        self::assertSame(20, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)->where('product_id', $products[0]->id)->value('quantity_on_hand'));
+        self::assertSame(0, XlwmsInventoryLotReconciliation::query()->count());
     }
 
     public function test_normal_outbound_oms_lock_does_not_require_matching_local_erp_reservation(): void
@@ -415,7 +463,7 @@ final class XlwmsInventorySyncServiceTest extends TestCase
             foreach (($inventorySkus ?? $catalogSkus) as $index => $sku) { $total = $totals[$sku] ?? ($index === 0 ? 10 : 5); $records[] = ['sku' => $sku, 'whCode' => 'US-SM', 'stockType' => 0, 'productTotalAmount' => $total, 'productStockDtl' => ['availableAmount' => $total - $locked, 'lockAmount' => $locked, 'transportAmount' => 0]]; }
             return ['code' => 200, 'data' => ['records' => $records, 'total' => count($records), 'page' => 1, 'pageSize' => 10, 'pages' => 1], 'msg' => 'OK'];
         });
-        $resolver = new SkuIdentityResolver($this->app->make(ProductRepository::class), $this->app->make(SkuAliasRepository::class), $this->app->make(SkuReconciliationRepository::class));
+        $resolver = $this->app->make(VerifiedOmsProductIdentityResolver::class);
         $audit = Mockery::mock(AuditRecorder::class);
         $audit->shouldReceive('record')->zeroOrMoreTimes();
         $this->app->instance(AuditRecorder::class, $audit);

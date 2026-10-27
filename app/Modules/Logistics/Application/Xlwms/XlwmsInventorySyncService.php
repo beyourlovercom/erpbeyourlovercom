@@ -12,10 +12,7 @@ use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLotConsumption
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventorySnapshot;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventorySnapshotRow;
 use App\Modules\Logistics\Infrastructure\Xlwms\WarehouseOpenApiConnection;
-use App\Modules\Products\Application\SkuIdentityResolver;
-use App\Modules\Products\Application\SkuResolveResult;
-use App\Modules\Products\Application\SkuMatchKey;
-use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
+use App\Modules\Products\Application\VerifiedOmsProductIdentityResolver;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
@@ -24,7 +21,7 @@ final class XlwmsInventorySyncService
 {
     private readonly XlwmsLotReconciliationService $lotReconciliation;
 
-    public function __construct(private readonly XlwmsInventoryGateway $gateway, private readonly SkuIdentityResolver $resolver, private readonly XlwmsInventoryPageParser $parser, private readonly AuditRecorder $audit, ?XlwmsLotReconciliationService $lotReconciliation = null)
+    public function __construct(private readonly XlwmsInventoryGateway $gateway, private readonly VerifiedOmsProductIdentityResolver $resolver, private readonly XlwmsInventoryPageParser $parser, private readonly AuditRecorder $audit, ?XlwmsLotReconciliationService $lotReconciliation = null)
     {
         $this->lotReconciliation = $lotReconciliation ?? new XlwmsLotReconciliationService();
     }
@@ -76,7 +73,7 @@ final class XlwmsInventorySyncService
         // Only current, warehouse-scoped stock rows may drive inventory updates.
         foreach (array_keys($normalized) as $sku) {
             $resolution = $this->resolver->resolve($sku);
-            $resolved = ($resolution->type === SkuResolveResult::CANONICAL || ($resolution->type === SkuResolveResult::ALIAS && $this->hasShimaiAliasEvidence($sku))) ? $resolution->product?->getKey() : null;
+            $resolved = $resolution['status'] === 'resolved' ? $resolution['product_id'] : null;
             if ($resolved === null) {
                 $rows[] = ['sku' => $sku, 'status' => 'unmatched', 'stock' => $normalized[$sku] ?? null,
                     'reason' => 'OMS_SKU_NOT_VERIFIED_ERP_IDENTITY'];
@@ -102,9 +99,7 @@ final class XlwmsInventorySyncService
         foreach (array_keys($providerSkus) as $sku) {
             if (isset($normalized[$sku])) continue;
             $resolution = $this->resolver->resolve($sku);
-            $catalogProductId = ($resolution->type === SkuResolveResult::CANONICAL
-                || ($resolution->type === SkuResolveResult::ALIAS && $this->hasShimaiAliasEvidence($sku)))
-                ? $resolution->product?->getKey() : null;
+            $catalogProductId = $resolution['status'] === 'resolved' ? $resolution['product_id'] : null;
             $rows[] = ['sku' => $sku, 'status' => 'catalog_only',
                 'product_id' => $catalogProductId === null ? null : (int) $catalogProductId,
                 'reason' => 'ABSENT_WAREHOUSE_STOCK_LEDGER'];
@@ -245,22 +240,6 @@ final class XlwmsInventorySyncService
      * A legacy smgj_pi import proves lineage but not same-product identity.
      * Before the Product OS verification migration, all aliases fail closed.
      */
-    private function hasShimaiAliasEvidence(string $providerSku): bool
-    {
-        if (! Schema::hasColumn('product_sku_aliases', 'oms_verified_at')
-            || ! Schema::hasColumn('product_sku_aliases', 'is_active')
-            || ! Schema::hasColumn('product_sku_aliases', 'oms_identity_evidence')) return false;
-
-        $key = SkuMatchKey::compute($providerSku);
-        return $key !== null && ProductSkuAlias::query()
-            ->where('match_key', $key)
-            ->where('is_active', true)
-            ->whereNotNull('oms_verified_at')
-            ->whereNotNull('oms_identity_evidence')
-            ->whereRaw("TRIM(oms_identity_evidence) <> ''")
-            ->exists();
-    }
-
     private function hasProtectedState(int $warehouseId, int $productId): bool
     {
         return WarehouseInventory::query()->where('warehouse_id', $warehouseId)->where('product_id', $productId)->whereNotNull('inbound_at')->exists() || WarehouseInventoryLot::query()->where('warehouse_id', $warehouseId)->where('product_id', $productId)->exists() || WarehouseInventoryLotConsumption::query()->where('warehouse_id', $warehouseId)->where('product_id', $productId)->exists();
