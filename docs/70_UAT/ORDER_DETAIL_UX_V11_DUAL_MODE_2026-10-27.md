@@ -35,6 +35,10 @@ This is a planning estimate, not a promise of background delivery.
 - Vite build retains an existing large-chunk warning (not a build failure).
 - Live production `current` was still `order-trash-pr523-preserved-20261027-680f0def` when development began. It has not been changed.
 
+## V1.2 approved follow-on
+
+Owner added WordPress-style top-right collapse/drag and moved packaging immediately above notes. See ORDER_DETAIL_UX_V12_COLLAPSIBLE_SORTABLE_2026-10-27.md for code/readback/remaining gates.
+
 ## Remaining gates (DO NOT CLAIM CLOSED)
 
 - Full authenticated 1440px Chromium/employee-browser visual UAT using the real isolated Dev app: visible compact summary, original actions, all anchors and no overlap; edit/save/cancel, SKU fields, form errors, stock and logistics modals; no JS errors. Earlier automated browser login was blocked by the connector safety policy; scoped DOM tests and PHP role tests **do not replace** real browser UAT.

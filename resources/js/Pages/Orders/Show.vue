@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, router, useForm } from '@inertiajs/vue3'
+import { Head, router, useForm, usePage } from '@inertiajs/vue3'
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import axios from 'axios'
 import { publishGlobalFeedback } from '../../lib/globalFeedback'
@@ -443,6 +443,18 @@ const submit = () => {
     preserveScroll: true,
     onSuccess: () => { editMode.value = false },
     onError: errors => {
+      const invalidFields = Object.keys(errors)
+      const reveal = new Set<SectionId>()
+      for (const field of invalidFields) {
+        if (field === 'currency' || field === 'order_date') reveal.add('order-section-order-info')
+        else if (field === 'order_note') reveal.add('order-section-notes')
+        else if (field === 'items' || field.startsWith('items.') || field === 'amendment_reason') reveal.add('order-section-items')
+        else reveal.add('order-section-address')
+      }
+      if (reveal.size) {
+        collapsedSections.value = collapsedSections.value.filter(id => !reveal.has(id))
+        savePanelLayout()
+      }
       const reason = errors.items || Object.values(errors).find(Boolean)
       if (reason) publishGlobalFeedback({
         state:'BLOCKED', title:'订单修改未保存', message:String(reason),
@@ -718,21 +730,96 @@ const submitReplacement = () => {
 }
 
 const orderDetailRoot = ref<HTMLElement | null>(null)
+// The identity header is always fixed; business panels can be moved/collapsed per staff browser.
 const orderSections = [
   { id:'order-section-overview', label:'概览' },
   { id:'order-section-fulfillment', label:'履约状态' },
   { id:'order-section-flags', label:'辅助标记' },
   { id:'order-section-inventory', label:'库存分布' },
-  { id:'order-section-packaging', label:'包装与重量' },
   { id:'order-section-order-info', label:'订单信息' },
   { id:'order-section-address', label:'收件与地址' },
   { id:'order-section-items', label:'订单商品' },
+  { id:'order-section-packaging', label:'包装与重量' },
   { id:'order-section-notes', label:'内部备注' },
   { id:'order-section-audit', label:'操作审计' },
 ] as const
+type SectionId = (typeof orderSections)[number]['id']
+const defaultPanelOrder: SectionId[] = orderSections.slice(1).map(section => section.id)
+const page = usePage()
+const staffKey = String((page.props.auth as {user?:{id?:number|string}} | undefined)?.user?.id ?? 'local')
+const layoutStorageKey = 'byl:erp:order-detail:v1.1:panels:' + staffKey
+const panelOrder = ref<SectionId[]>([...defaultPanelOrder])
+const collapsedSections = ref<SectionId[]>(['order-section-packaging'])
+const draggingSection = ref<SectionId | null>(null)
 const visibleOrderSections = ref<Array<(typeof orderSections)[number]>>([])
-const activeOrderSection = ref<string>('order-section-overview')
+const activeOrderSection = ref<SectionId>('order-section-overview')
+const sectionIndex = (id: SectionId):number => panelOrder.value.indexOf(id)
+const sectionVisualOrder = (id: SectionId):number => sectionIndex(id) * 10 + 10
+const isSectionCollapsed = (id: SectionId):boolean => collapsedSections.value.includes(id)
 const lookupOrderSection = (id: string) => orderDetailRoot.value?.querySelector<HTMLElement>(`[id="${id}"]`)
+const sortVisibleOrderSections = () => {
+  visibleOrderSections.value = orderSections
+    .filter(section => Boolean(lookupOrderSection(section.id)))
+    .sort((a,b) => (a.id === 'order-section-overview' ? -1 : b.id === 'order-section-overview' ? 1 : sectionIndex(a.id) - sectionIndex(b.id)))
+}
+const savePanelLayout = () => {
+  try {
+    window.localStorage.setItem(layoutStorageKey, JSON.stringify({order:panelOrder.value,collapsed:collapsedSections.value}))
+  } catch { /* Private browsing or blocked storage: controls still work for this visit. */ }
+}
+const restorePanelLayout = () => {
+  try {
+    const raw = window.localStorage.getItem(layoutStorageKey)
+    if (!raw) return
+    const stored:unknown = JSON.parse(raw)
+    if (!stored || typeof stored !== 'object') return
+    const layout = stored as {order?:unknown,collapsed?:unknown}
+    if (Array.isArray(layout.order)) {
+      const valid = layout.order.filter((id:unknown):id is SectionId => typeof id === 'string' && defaultPanelOrder.includes(id as SectionId))
+      panelOrder.value = [...new Set(valid),...defaultPanelOrder.filter(id => !valid.includes(id))]
+    }
+    if (Array.isArray(layout.collapsed)) {
+      collapsedSections.value = layout.collapsed.filter((id:unknown):id is SectionId =>
+        typeof id === 'string' && defaultPanelOrder.includes(id as SectionId))
+    }
+  } catch { /* Ignore invalid/blocked local preferences, keep safe defaults. */ }
+}
+const toggleSection = (id: SectionId) => {
+  collapsedSections.value = isSectionCollapsed(id)
+    ? collapsedSections.value.filter(value => value !== id)
+    : [...collapsedSections.value,id]
+  savePanelLayout()
+}
+const reorderSection = (source: SectionId, target: SectionId) => {
+  if (source === target || source === 'order-section-overview' || target === 'order-section-overview') return
+  if (!panelOrder.value.includes(source) || !panelOrder.value.includes(target)) return
+  const next = panelOrder.value.filter(id => id !== source)
+  next.splice(next.indexOf(target),0,source)
+  panelOrder.value = next
+  sortVisibleOrderSections()
+  savePanelLayout()
+}
+const moveSection = (id: SectionId, direction: -1|1) => {
+  const index = sectionIndex(id)
+  const other = panelOrder.value[index+direction]
+  if (!other) return
+  const next = [...panelOrder.value]
+  next[index] = other
+  next[index+direction] = id
+  panelOrder.value = next
+  sortVisibleOrderSections()
+  savePanelLayout()
+}
+const startPanelDrag = (event:DragEvent,id:SectionId) => {
+  draggingSection.value = id
+  event.dataTransfer?.setData('text/plain',id)
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+}
+const dropPanel = (target:SectionId) => {
+  if (draggingSection.value) reorderSection(draggingSection.value,target)
+  draggingSection.value = null
+}
+const endPanelDrag = () => { draggingSection.value = null }
 const updateActiveOrderSection = () => {
   if (!visibleOrderSections.value.length) return
   const scrollHeight = document.scrollingElement?.scrollHeight ?? document.documentElement.scrollHeight
@@ -740,7 +827,7 @@ const updateActiveOrderSection = () => {
     activeOrderSection.value = visibleOrderSections.value[visibleOrderSections.value.length - 1].id
     return
   }
-  let current: string = visibleOrderSections.value[0].id
+  let current: SectionId = visibleOrderSections.value[0].id
   for (const section of visibleOrderSections.value) {
     const target = lookupOrderSection(section.id)
     if (target && target.getBoundingClientRect().top <= 148) current = section.id
@@ -748,22 +835,31 @@ const updateActiveOrderSection = () => {
   activeOrderSection.value = current
 }
 const syncOrderSections = () => {
-  visibleOrderSections.value = orderSections.filter(section => Boolean(lookupOrderSection(section.id)))
+  sortVisibleOrderSections()
   updateActiveOrderSection()
 }
-const jumpToOrderSection = (id: string) => {
+const jumpToOrderSection = async (id: SectionId) => {
+  if (id !== 'order-section-overview' && isSectionCollapsed(id)) {
+    toggleSection(id)
+    await nextTick()
+  }
   const target = lookupOrderSection(id)
   if (!target) return
   activeOrderSection.value = id
   target.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 onMounted(async () => {
+  restorePanelLayout()
   await nextTick()
   syncOrderSections()
   window.addEventListener('scroll', updateActiveOrderSection, { passive: true })
   window.addEventListener('resize', updateActiveOrderSection)
 })
 watch(() => props.order.items.length, async () => {
+  await nextTick()
+  syncOrderSections()
+})
+watch(showAllocationInventory, async () => {
   await nextTick()
   syncOrderSections()
 })
@@ -834,13 +930,20 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Card 1: 履约状态 (always read-only) -->
-        <div id="order-section-fulfillment" class="erp-form-card">
+        <div id="order-section-fulfillment" class="erp-form-card ord-sortable-panel" :style="{ order: sectionVisualOrder('order-section-fulfillment') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-fulfillment'), 'ord-panel-dragging': draggingSection === 'order-section-fulfillment' }" @dragover.prevent @drop.prevent="dropPanel('order-section-fulfillment')">
 
           <div class="ord-fulfillment-heading">
 
-            <div class="ord-fulfillment-title-row">
+            <div class="ord-fulfillment-title-row ord-section-header">
               <h2 class="erp-form-card-title">履约状态</h2>
               <span v-if="hasFulfillmentTable" class="ord-split-badge">{{ fulfillmentBadgeLabel }}</span>
+              <div class="ord-section-controls">
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动履约状态排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+              @dragstart="startPanelDrag($event,'order-section-fulfillment')" @dragend="endPanelDrag"
+              @keydown.alt.up.prevent="moveSection('order-section-fulfillment',-1)" @keydown.alt.down.prevent="moveSection('order-section-fulfillment',1)">⠿</button>
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-fulfillment') ? '展开履约状态' : '折叠履约状态'"
+              :aria-expanded="!isSectionCollapsed('order-section-fulfillment')" @click="toggleSection('order-section-fulfillment')">{{ isSectionCollapsed('order-section-fulfillment') ? '▸' : '▾' }}</button>
+          </div>
             </div>
             <div class="ord-fulfillment-actions" data-testid="fulfillment-actions">
               <template v-if="hasFulfillmentTable">
@@ -950,15 +1053,24 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Operational markers: explicit human marks, not a second Order status -->
-        <div id="order-section-flags" class="erp-form-card">
+        <div id="order-section-flags" class="erp-form-card ord-sortable-panel" :style="{ order: sectionVisualOrder('order-section-flags') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-flags'), 'ord-panel-dragging': draggingSection === 'order-section-flags' }" @dragover.prevent @drop.prevent="dropPanel('order-section-flags')">
+          <div class="ord-section-header">
           <h2 class="erp-form-card-title">辅助标记</h2>
+          <div class="ord-section-controls">
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动辅助标记排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+              @dragstart="startPanelDrag($event,'order-section-flags')" @dragend="endPanelDrag"
+              @keydown.alt.up.prevent="moveSection('order-section-flags',-1)" @keydown.alt.down.prevent="moveSection('order-section-flags',1)">⠿</button>
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-flags') ? '展开辅助标记' : '折叠辅助标记'"
+              :aria-expanded="!isSectionCollapsed('order-section-flags')" @click="toggleSection('order-section-flags')">{{ isSectionCollapsed('order-section-flags') ? '▸' : '▾' }}</button>
+          </div>
+          </div>
           <p class="ord-inventory-help">用于异常、运输中、退货、缺货等辅助业务视图，不是发货入口。所有发货、重发、补发操作统一在上方“履约状态”处理；这里仅保留辅助业务标记。</p>
           <div class="ord-marker-row">
             <button v-for="marker in operationalMarkerOptions" :key="marker.key" type="button" class="erp-btn erp-btn-secondary ord-marker" :class="{ active: markerActive(marker.key) }" :disabled="!canMarkOperational" @click="toggleMarker(marker.key)">{{ markerActive(marker.key) ? '✓ ' : '' }}{{ marker.label }}</button>
           </div>
         </div>
 
-        <div v-if="allocationUi?.status === 'submitted' && allocationUi.can_reallocate && !reallocationOpen" class="ord-allocation-reopen-bar">
+        <div v-if="allocationUi?.status === 'submitted' && allocationUi.can_reallocate && !reallocationOpen" class="ord-allocation-reopen-bar" :style="{ order: sectionVisualOrder('order-section-inventory') - 1 }">
           <div>
             <strong>分仓已提交 · 尚未进入实际物流</strong>
             <span>当前方案仍可调整；重新分仓会重建尚未发货的履约单，不会新增商业订单。</span>
@@ -967,8 +1079,21 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Inventory distribution: planning or explicitly reopened re-allocation only. -->
-        <template v-if="showAllocationInventory">
-        <div v-for="(item, inventoryIndex) in order.items" :id="inventoryIndex === 0 ? 'order-section-inventory' : undefined" :key="`inventory-${item.id}`" class="erp-form-card ord-inventory-card">
+        <section v-if="showAllocationInventory" id="order-section-inventory" class="ord-section-group ord-sortable-panel ord-inventory-group"
+          :style="{ order: sectionVisualOrder('order-section-inventory') }"
+          :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-inventory'), 'ord-panel-dragging': draggingSection === 'order-section-inventory' }"
+          @dragover.prevent @drop.prevent="dropPanel('order-section-inventory')">
+          <div class="ord-section-header">
+            <h2 class="erp-form-card-title">库存分布</h2>
+            <div class="ord-section-controls">
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动库存分布排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+              @dragstart="startPanelDrag($event,'order-section-inventory')" @dragend="endPanelDrag"
+              @keydown.alt.up.prevent="moveSection('order-section-inventory',-1)" @keydown.alt.down.prevent="moveSection('order-section-inventory',1)">⠿</button>
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-inventory') ? '展开库存分布' : '折叠库存分布'"
+              :aria-expanded="!isSectionCollapsed('order-section-inventory')" @click="toggleSection('order-section-inventory')">{{ isSectionCollapsed('order-section-inventory') ? '▸' : '▾' }}</button>
+          </div>
+          </div>
+        <div v-for="item in order.items" :key="`inventory-${item.id}`" class="erp-form-card ord-inventory-card">
           <h2 class="erp-form-card-title">{{ item.sku || '未绑定 SKU' }} 库存分布</h2>
           <div class="ord-inventory-table-wrap">
             <table class="ord-inventory-table">
@@ -1030,35 +1155,20 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        </template>
-
-        <!-- Product packaging standard / fulfillment snapshot -->
-        <div id="order-section-packaging" class="erp-form-card">
-          <h2 class="erp-form-card-title">包装与重量参考</h2>
-          <p class="ord-inventory-help">待发货订单读取产品当前包装标准；进入履约后保存为订单商品履约快照，后续产品标准变化不会改写已冻结的发货参考。</p>
-          <div v-for="item in order.items" :key="`packaging-${item.id}`" class="ord-packaging-row">
-            <div class="ord-packaging-identity">
-              <strong>{{ item.sku || '—' }}</strong>
-              <small>{{ item.product_summary }} · 数量 {{ item.quantity }}</small>
-              <a v-if="canManageProductPackaging && item.product_id" class="ord-packaging-link" :href="`/products/${item.product_id}/packaging`">包装方案 →</a>
-            </div>
-            <template v-if="packagingReferences?.[item.id]">
-              <div class="ord-packaging-metric"><small>包装方式</small><strong>{{ packagingReferences[item.id].packaging_method_label || '未指定' }}</strong></div>
-              <div class="ord-packaging-metric"><small>包装尺寸</small><strong>{{ packagingReferences[item.id].packaging_length_cm }} × {{ packagingReferences[item.id].packaging_width_cm }} × {{ packagingReferences[item.id].packaging_height_cm }} cm</strong></div>
-              <div class="ord-packaging-metric"><small>打包后重量</small><strong>{{ packagingReferences[item.id].packaged_weight_kg }} kg</strong></div>
-              <div class="ord-packaging-source">
-                <span>{{ packagingReferences[item.id].source_label }}</span>
-                <a v-if="canViewPackagingEvidence && packagingReferences[item.id].measurement_record_id" class="ord-packaging-link" :href="`/inventory/packaging/${packagingReferences[item.id].measurement_record_id}`">查看包装记录 #{{ packagingReferences[item.id].measurement_record_id }} →</a>
-                <small v-else>测量记录 #{{ packagingReferences[item.id].measurement_record_id }}</small>
-              </div>
-            </template>
-            <div v-else class="ord-packaging-empty">该产品尚未设定“当前包装标准”</div>
-          </div>
-        </div>
+        </section>
 
         <!-- Card 2: 订单信息 -->
-        <div id="order-section-order-info" class="erp-form-card">
+        <div id="order-section-order-info" class="erp-form-card ord-sortable-panel" :style="{ order: sectionVisualOrder('order-section-order-info') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-order-info'), 'ord-panel-dragging': draggingSection === 'order-section-order-info' }" @dragover.prevent @drop.prevent="dropPanel('order-section-order-info')">
+          <div class="ord-section-header">
           <h2 class="erp-form-card-title">订单信息</h2>
+          <div class="ord-section-controls">
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动订单信息排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+              @dragstart="startPanelDrag($event,'order-section-order-info')" @dragend="endPanelDrag"
+              @keydown.alt.up.prevent="moveSection('order-section-order-info',-1)" @keydown.alt.down.prevent="moveSection('order-section-order-info',1)">⠿</button>
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-order-info') ? '展开订单信息' : '折叠订单信息'"
+              :aria-expanded="!isSectionCollapsed('order-section-order-info')" @click="toggleSection('order-section-order-info')">{{ isSectionCollapsed('order-section-order-info') ? '▸' : '▾' }}</button>
+          </div>
+          </div>
           <dl v-if="!editMode" class="ord-summary-grid ord-summary-grid-order" aria-label="订单信息摘要">
             <div class="ord-summary-field"><dt>订单号</dt><dd>{{ order.erp_order_id ?? '—' }}</dd></div>
             <div class="ord-summary-field"><dt>订单类型</dt><dd>{{ order.order_kind_label }}</dd></div>
@@ -1104,8 +1214,17 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Card 3: 收件与地址 -->
-        <div id="order-section-address" class="erp-form-card">
+        <div id="order-section-address" class="erp-form-card ord-sortable-panel" :style="{ order: sectionVisualOrder('order-section-address') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-address'), 'ord-panel-dragging': draggingSection === 'order-section-address' }" @dragover.prevent @drop.prevent="dropPanel('order-section-address')">
+          <div class="ord-section-header">
           <h2 class="erp-form-card-title">收件与地址</h2>
+          <div class="ord-section-controls">
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动收件与地址排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+              @dragstart="startPanelDrag($event,'order-section-address')" @dragend="endPanelDrag"
+              @keydown.alt.up.prevent="moveSection('order-section-address',-1)" @keydown.alt.down.prevent="moveSection('order-section-address',1)">⠿</button>
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-address') ? '展开收件与地址' : '折叠收件与地址'"
+              :aria-expanded="!isSectionCollapsed('order-section-address')" @click="toggleSection('order-section-address')">{{ isSectionCollapsed('order-section-address') ? '▸' : '▾' }}</button>
+          </div>
+          </div>
           <dl v-if="!editMode" class="ord-summary-grid ord-summary-grid-address" aria-label="收件地址摘要">
             <div class="ord-summary-field"><dt>收件人</dt><dd>{{ order.address?.recipient_name || '—' }}</dd></div>
             <div class="ord-summary-field"><dt>联系电话</dt><dd>{{ order.address?.phone || '—' }}</dd></div>
@@ -1184,8 +1303,17 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Card 4: 订单商品 -->
-        <div id="order-section-items" class="erp-form-card">
+        <div id="order-section-items" class="erp-form-card ord-sortable-panel" :style="{ order: sectionVisualOrder('order-section-items') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-items'), 'ord-panel-dragging': draggingSection === 'order-section-items' }" @dragover.prevent @drop.prevent="dropPanel('order-section-items')">
+          <div class="ord-section-header">
           <h2 class="erp-form-card-title">订单商品</h2>
+          <div class="ord-section-controls">
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动订单商品排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+              @dragstart="startPanelDrag($event,'order-section-items')" @dragend="endPanelDrag"
+              @keydown.alt.up.prevent="moveSection('order-section-items',-1)" @keydown.alt.down.prevent="moveSection('order-section-items',1)">⠿</button>
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-items') ? '展开订单商品' : '折叠订单商品'"
+              :aria-expanded="!isSectionCollapsed('order-section-items')" @click="toggleSection('order-section-items')">{{ isSectionCollapsed('order-section-items') ? '▸' : '▾' }}</button>
+          </div>
+          </div>
           <!-- View mode: condensed, non-editable SKU table. Financial totals are not inferred from fulfillment lines. -->
           <div v-if="!editMode" class="ord-summary-table-wrap">
             <table class="ord-summary-table" aria-label="订单商品摘要">
@@ -1317,9 +1445,51 @@ onBeforeUnmount(() => {
           </template>
         </div>
 
+        <!-- Product packaging standard / fulfillment snapshot -->
+        <div id="order-section-packaging" class="erp-form-card ord-sortable-panel" :style="{ order: sectionVisualOrder('order-section-packaging') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-packaging'), 'ord-panel-dragging': draggingSection === 'order-section-packaging' }" @dragover.prevent @drop.prevent="dropPanel('order-section-packaging')">
+          <div class="ord-section-header">
+          <h2 class="erp-form-card-title">包装与重量参考</h2>
+          <div class="ord-section-controls">
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动包装与重量参考排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+              @dragstart="startPanelDrag($event,'order-section-packaging')" @dragend="endPanelDrag"
+              @keydown.alt.up.prevent="moveSection('order-section-packaging',-1)" @keydown.alt.down.prevent="moveSection('order-section-packaging',1)">⠿</button>
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-packaging') ? '展开包装与重量参考' : '折叠包装与重量参考'"
+              :aria-expanded="!isSectionCollapsed('order-section-packaging')" @click="toggleSection('order-section-packaging')">{{ isSectionCollapsed('order-section-packaging') ? '▸' : '▾' }}</button>
+          </div>
+          </div>
+          <p class="ord-inventory-help">待发货订单读取产品当前包装标准；进入履约后保存为订单商品履约快照，后续产品标准变化不会改写已冻结的发货参考。</p>
+          <div v-for="item in order.items" :key="`packaging-${item.id}`" class="ord-packaging-row">
+            <div class="ord-packaging-identity">
+              <strong>{{ item.sku || '—' }}</strong>
+              <small>{{ item.product_summary }} · 数量 {{ item.quantity }}</small>
+              <a v-if="canManageProductPackaging && item.product_id" class="ord-packaging-link" :href="`/products/${item.product_id}/packaging`">包装方案 →</a>
+            </div>
+            <template v-if="packagingReferences?.[item.id]">
+              <div class="ord-packaging-metric"><small>包装方式</small><strong>{{ packagingReferences[item.id].packaging_method_label || '未指定' }}</strong></div>
+              <div class="ord-packaging-metric"><small>包装尺寸</small><strong>{{ packagingReferences[item.id].packaging_length_cm }} × {{ packagingReferences[item.id].packaging_width_cm }} × {{ packagingReferences[item.id].packaging_height_cm }} cm</strong></div>
+              <div class="ord-packaging-metric"><small>打包后重量</small><strong>{{ packagingReferences[item.id].packaged_weight_kg }} kg</strong></div>
+              <div class="ord-packaging-source">
+                <span>{{ packagingReferences[item.id].source_label }}</span>
+                <a v-if="canViewPackagingEvidence && packagingReferences[item.id].measurement_record_id" class="ord-packaging-link" :href="`/inventory/packaging/${packagingReferences[item.id].measurement_record_id}`">查看包装记录 #{{ packagingReferences[item.id].measurement_record_id }} →</a>
+                <small v-else>测量记录 #{{ packagingReferences[item.id].measurement_record_id }}</small>
+              </div>
+            </template>
+            <div v-else class="ord-packaging-empty">该产品尚未设定“当前包装标准”</div>
+          </div>
+        </div>
+
         <!-- Card 5: 内部备注 -->
-        <div id="order-section-notes" class="erp-form-card">
+        <div id="order-section-notes" class="erp-form-card ord-sortable-panel" :style="{ order: sectionVisualOrder('order-section-notes') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-notes'), 'ord-panel-dragging': draggingSection === 'order-section-notes' }" @dragover.prevent @drop.prevent="dropPanel('order-section-notes')">
+          <div class="ord-section-header">
           <h2 class="erp-form-card-title">内部备注</h2>
+          <div class="ord-section-controls">
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动内部备注排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+              @dragstart="startPanelDrag($event,'order-section-notes')" @dragend="endPanelDrag"
+              @keydown.alt.up.prevent="moveSection('order-section-notes',-1)" @keydown.alt.down.prevent="moveSection('order-section-notes',1)">⠿</button>
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-notes') ? '展开内部备注' : '折叠内部备注'"
+              :aria-expanded="!isSectionCollapsed('order-section-notes')" @click="toggleSection('order-section-notes')">{{ isSectionCollapsed('order-section-notes') ? '▸' : '▾' }}</button>
+          </div>
+          </div>
           <div class="erp-form-field">
             <label v-if="editMode" class="erp-form-label">备注内容</label>
             <div v-if="!editMode" class="ord-summary-note">{{ order.order_note || '—' }}</div>
@@ -1331,8 +1501,17 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Audit log -->
-        <div id="order-section-audit" class="erp-form-card ord-audit-card">
+        <div id="order-section-audit" class="erp-form-card ord-sortable-panel ord-audit-card" :style="{ order: sectionVisualOrder('order-section-audit') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-audit'), 'ord-panel-dragging': draggingSection === 'order-section-audit' }" @dragover.prevent @drop.prevent="dropPanel('order-section-audit')">
+          <div class="ord-section-header">
           <h2 class="erp-form-card-title">操作审计</h2>
+          <div class="ord-section-controls">
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动操作审计排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+              @dragstart="startPanelDrag($event,'order-section-audit')" @dragend="endPanelDrag"
+              @keydown.alt.up.prevent="moveSection('order-section-audit',-1)" @keydown.alt.down.prevent="moveSection('order-section-audit',1)">⠿</button>
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-audit') ? '展开操作审计' : '折叠操作审计'"
+              :aria-expanded="!isSectionCollapsed('order-section-audit')" @click="toggleSection('order-section-audit')">{{ isSectionCollapsed('order-section-audit') ? '▸' : '▾' }}</button>
+          </div>
+          </div>
           <ul class="ord-audit-list">
             <li v-for="event in audit" :key="event.created_at + event.action" class="ord-audit-item">
               <span class="ord-audit-action">{{ event.action }}</span>
@@ -1460,7 +1639,7 @@ onBeforeUnmount(() => {
 /* Order Detail UX V1 page-local navigation and density; shared shell remains intact. */
 .ord-compact-v1 { padding: 20px 18px 32px; }
 .ord-detail-layout { max-width: 1250px; margin: 0 auto; display: grid; grid-template-columns: 142px minmax(0, 1fr); gap: 16px; align-items: start; }
-.ord-detail-layout > .erp-form-content { min-width: 0; width: 100%; max-width: 1080px; }
+.ord-detail-layout > .erp-form-content { min-width: 0; width: 100%; max-width: 1080px; display: flex; flex-direction: column; }
 .ord-detail-nav-rail { position: sticky; top: 88px; min-width: 0; }
 .ord-detail-nav { display: flex; flex-direction: column; padding: 12px 8px; border: 1px solid #e4eaed; border-radius: 12px; background: #fff; box-shadow: 0 2px 7px rgba(20,33,38,.035); max-height: calc(100vh - 110px); overflow-y: auto; }
 .ord-detail-nav-caption { color: #829198; font-size: 11px; font-weight: 600; padding: 2px 10px 8px; }
@@ -1480,6 +1659,37 @@ onBeforeUnmount(() => {
 .ord-compact-v1 .erp-form-grid { row-gap: 10px; column-gap: 12px; margin-top: 10px; }
 .ord-compact-v1 .erp-form-card-helper,.ord-compact-v1 .ord-inventory-help { margin-top: 3px; margin-bottom: 8px; font-size: 11px; line-height: 1.5; }
 .ord-compact-v1 .ord-audit-card { padding-bottom: 13px; }
+
+/* UX V1.2: WordPress-style per-panel collapse and drag sorting. */
+.ord-detail-layout > .erp-form-content > .erp-form-header-row { order: -30; }
+.ord-detail-layout > .erp-form-content > .ord-identity-strip { order: -20; }
+.ord-sortable-panel { min-width: 0; width: 100%; }
+.ord-section-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
+.ord-section-header .erp-form-card-title { margin: 0; }
+.ord-section-controls { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; flex-shrink: 0; }
+.ord-section-drag,.ord-section-toggle {
+  width: 25px; height: 25px; padding: 0; border: 1px solid transparent; border-radius: 5px;
+  background: transparent; color: #6c7e87; display: inline-grid; place-items: center;
+  font-size: 16px; line-height: 1; cursor: pointer; user-select: none;
+}
+.ord-section-drag { cursor: grab; font-size: 20px; }
+.ord-section-drag:active { cursor: grabbing; }
+.ord-section-drag:hover,.ord-section-toggle:hover { background: #edf3f5; border-color: #dce5e9; color: #334e58; }
+.ord-section-drag:focus-visible,.ord-section-toggle:focus-visible { outline: 2px solid #27796f; outline-offset: 1px; }
+.ord-panel-dragging { opacity: 0.45; }
+.ord-sortable-panel:not(.ord-panel-dragging) { transition: border-color 120ms ease; }
+.ord-sortable-panel:has(.ord-section-drag:hover) { border-color: #b3c9c5; }
+.ord-section-collapsed > :not(.ord-section-header):not(.ord-fulfillment-heading) { display: none !important; }
+.ord-section-collapsed .ord-fulfillment-heading .ord-fulfillment-actions { display: none !important; }
+.ord-section-collapsed .ord-fulfillment-heading { margin-bottom: 0; }
+.ord-section-collapsed .ord-section-toggle { color: #27796f; }
+.ord-inventory-group { padding: 12px 14px; border: 1px solid #e3e8eb; border-radius: 12px; margin-bottom: 10px; background: #fff; }
+.ord-inventory-group > .ord-section-header { margin-bottom: 10px; }
+.ord-inventory-group > .erp-form-card { margin: 0 0 9px; }
+.ord-inventory-group > .erp-form-card:last-of-type { margin-bottom: 0; }
+.ord-inventory-group.ord-section-collapsed > .ord-section-header { margin-bottom: 0; }
+.ord-section-collapsed { padding-top: 10px !important; padding-bottom: 10px !important; }
+
 
 /* UX V1.1: the default detail is a compact summary, not a disabled form. */
 .ord-view-mode .erp-form-card { padding: 12px 16px; margin-bottom: 10px; }
