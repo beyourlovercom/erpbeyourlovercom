@@ -16,7 +16,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/orders/trash', [OrderTrashController::class, 'index'])->middleware('can:system.permissions.manage')->name('orders.trash.index');
     Route::post('/orders/trash/{order}/restore', [OrderTrashController::class, 'restore'])->middleware('can:system.permissions.manage')->whereNumber('order')->name('orders.trash.restore');
     Route::delete('/orders/trash/{order}', [OrderTrashController::class, 'purge'])->middleware('can:system.permissions.manage')->whereNumber('order')->name('orders.trash.purge');
-    Route::delete('/orders/{order}/trash', [OrderTrashController::class, 'destroy'])->middleware('can:orders.edit')->whereNumber('order')->name('orders.trash.destroy');
+    Route::delete('/orders/{order}/trash', [OrderTrashController::class, 'destroy'])->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->name('orders.trash.destroy');
     Route::get('/orders', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.index')->defaults('order_kind', 'all');
     Route::get('/orders/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.all')->defaults('order_kind', 'all');
     Route::post('/orders/views', [OrderSavedViewController::class, 'store'])->middleware('can:orders.view')->name('orders.views.store');
