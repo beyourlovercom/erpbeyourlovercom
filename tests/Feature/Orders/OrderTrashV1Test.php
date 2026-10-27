@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class OrderTrashV1Test extends TestCase
@@ -61,10 +62,78 @@ final class OrderTrashV1Test extends TestCase
         $admin = $this->userWith(['orders.view', 'orders.edit', 'system.permissions.manage']);
         $order = $this->order($admin, 'customer', 'external');
         $order->externalReferences()->create(['provider' => 'test', 'reference' => 'TRASH-V1-REF']);
-        $this->actingAs($admin)->delete('/orders/'.$order->id.'/trash')->assertRedirect();
+        // Active Woo/integration references must not become hidden or orphaned.
+        $this->actingAs($admin)->delete('/orders/'.$order->id.'/trash')->assertStatus(409);
+        $this->assertNotSoftDeleted('orders', ['id' => $order->id]);
+
+        // Even a legacy trash row is not eligible for unsafe physical deletion.
+        $order->delete();
         $this->actingAs($admin)->delete('/orders/trash/'.$order->id)->assertStatus(409);
         $this->assertSoftDeleted('orders', ['id' => $order->id]);
         $this->assertDatabaseHas('order_external_references', ['order_id' => $order->id]);
+    }
+
+    public function test_shipment_and_financial_evidence_prevent_soft_delete(): void
+    {
+        $employee = $this->userWith(['orders.view', 'orders.edit']);
+        $shipmentOrder = $this->order($employee, 'customer', 'shipment');
+        $shipmentOrder->shipment()->create(['shipment_status' => 'pending']);
+        $this->actingAs($employee)->delete('/orders/'.$shipmentOrder->id.'/trash')->assertStatus(409);
+        $this->assertNotSoftDeleted('orders', ['id' => $shipmentOrder->id]);
+
+        $financialOrder = $this->order($employee, 'customer', 'finance');
+        $financialOrder->financials()->create(['currency' => 'USD']);
+        $this->actingAs($employee)->delete('/orders/'.$financialOrder->id.'/trash')->assertStatus(409);
+        $this->assertNotSoftDeleted('orders', ['id' => $financialOrder->id]);
+        $this->assertDatabaseHas('order_financials', ['order_id' => $financialOrder->id]);
+    }
+
+    public function test_reserved_inventory_and_fulfillment_children_prevent_soft_delete(): void
+    {
+        $employee = $this->userWith(['orders.view', 'orders.edit']);
+        $reserved = $this->order($employee, 'customer', 'reserved');
+        $warehouseId = DB::table('warehouses')->insertGetId([
+            'slug' => 'trash-uat-warehouse', 'code' => 'TRASH-UAT', 'name' => 'Trash UAT Warehouse',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('inventory_reservations')->insert([
+            'reservation_key' => 'trash-uat-'.$reserved->id,
+            'payload_hash' => str_repeat('a', 64),
+            'order_id' => $reserved->id,
+            'warehouse_id' => $warehouseId,
+            'status' => 'reserved',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->actingAs($employee)->delete('/orders/'.$reserved->id.'/trash')->assertStatus(409);
+        $this->assertNotSoftDeleted('orders', ['id' => $reserved->id]);
+        $this->assertDatabaseHas('inventory_reservations', ['order_id' => $reserved->id]);
+
+        $parent = $this->order($employee, 'customer', 'parent');
+        $child = $this->order($employee, 'customer', 'child');
+        $child->fulfillment_parent_id = $parent->id;
+        $child->save();
+        $this->actingAs($employee)->delete('/orders/'.$parent->id.'/trash')->assertStatus(409);
+        $this->actingAs($employee)->delete('/orders/'.$child->id.'/trash')->assertStatus(409);
+        $this->assertNotSoftDeleted('orders', ['id' => $parent->id]);
+        $this->assertNotSoftDeleted('orders', ['id' => $child->id]);
+    }
+
+    public function test_orders_view_permission_is_also_required_for_trash(): void
+    {
+        $editorWithoutRead = $this->userWith(['orders.edit']);
+        $order = $this->order($editorWithoutRead, 'customer', 'blind-edit');
+        $this->actingAs($editorWithoutRead)->delete('/orders/'.$order->id.'/trash')->assertForbidden();
+        $this->assertNotSoftDeleted('orders', ['id' => $order->id]);
+    }
+
+    public function test_fulfilled_orders_cannot_be_hidden_even_without_shipment_row(): void
+    {
+        $employee = $this->userWith(['orders.view', 'orders.edit']);
+        $order = $this->order($employee, 'customer', 'shipped');
+        $order->order_status = 'shipped';
+        $order->save();
+        $this->actingAs($employee)->delete('/orders/'.$order->id.'/trash')->assertStatus(409);
+        $this->assertNotSoftDeleted('orders', ['id' => $order->id]);
     }
 
     private function userWith(array $keys): User
