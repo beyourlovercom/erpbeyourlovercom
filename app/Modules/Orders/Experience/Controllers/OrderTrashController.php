@@ -3,7 +3,8 @@
 namespace App\Modules\Orders\Experience\Controllers;
 
 use App\Modules\Audit\Application\AuditService;
-use App\Modules\Audit\Domain\AuditActor;
+use App\Modules\Audit\Application\AuditActor;
+use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\RedirectResponse;
@@ -92,7 +93,7 @@ final class OrderTrashController
     private function record(Request $request, Order $order, string $action): void
     {
         $this->audit->record(
-            AuditActor::user($request->user()),
+            AuditActor::user($request->user(), AuditSource::Web),
             $action,
             Order::class,
             $order->id,
