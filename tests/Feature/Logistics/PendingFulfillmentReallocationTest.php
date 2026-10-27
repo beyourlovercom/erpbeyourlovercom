@@ -19,10 +19,15 @@ final class PendingFulfillmentReallocationTest extends TestCase
         $user = $this->userWith(['orders.view', 'orders.edit', 'logistics.operate']);
         [$parent, $a, $b, $target] = $this->splitScenario();
         $aBefore = $a->shipment()->firstOrFail()->only(['warehouse_id', 'shipment_status', 'tracking_number', 'shipped_at']);
+        $url = '/logistics/orders/'.$b->id.'/reallocate-pending-fulfillment';
+        $this->actingAs($user)->postJson($url, ['warehouse_id' => $target->id])
+            ->assertStatus(422);
+        $this->assertNotSame($target->id, $b->shipment()->value('warehouse_id'));
 
-        $this->actingAs($user)->postJson('/logistics/orders/'.$b->id.'/reallocate-pending-fulfillment', [
+        $this->actingAs($user)->postJson($url, [
             'warehouse_id' => $target->id,
             'note' => 'A already shipped; move only B.',
+            'stock_exception_acknowledged' => true,
         ])->assertOk()
             ->assertJsonPath('status', 'reallocated')
             ->assertJsonPath('suffix', 'B')
@@ -44,6 +49,8 @@ final class PendingFulfillmentReallocationTest extends TestCase
         $this->assertSame('B', $snapshot['derived_orders'][1]['suffix']);
         $this->assertSame($target->id, $snapshot['derived_orders'][1]['warehouse_id']);
         $this->assertSame('partial_pending_fulfillment_reallocated', $snapshot['execution_status']);
+        $this->assertSame('unknown', $snapshot['stock_exception_reallocations'][0]['warnings'][0]['reason']);
+        $this->assertSame($user->id, $snapshot['stock_exception_reallocations'][0]['actor_id']);
         $this->assertStringStartsWith('partial:', $allocation->selected_plan_key);
     }
 

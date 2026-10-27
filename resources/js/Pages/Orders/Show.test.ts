@@ -637,6 +637,7 @@ describe('Orders/Show V2', () => {
     await confirm!.trigger('click')
     expect(router.post).toHaveBeenCalledWith('/logistics/orders/1/fulfillment-allocation/quick', {
       assignments: [{ order_item_id: 10, warehouse_id: 2 }],
+      stock_exception_acknowledged: false,
     }, expect.any(Object))
     const submitOptions = vi.mocked(router.post).mock.lastCall?.[2] as { onError: (errors: Record<string, string>) => void }
     submitOptions.onError({ assignments: '发货仓 US-LA 尚未启用' })
@@ -644,6 +645,33 @@ describe('Orders/Show V2', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain('发货仓 US-LA 尚未启用')
     await choices[0].trigger('change')
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
+
+  it('requires explicit confirmation before allocating an out-of-stock warehouse', async () => {
+    const availability = { 5: [{
+      warehouse_id: 2, warehouse_slug: 'us-ny', warehouse_name: '美东纽约仓',
+      inventory_state: 'confirmed', can_auto_allocate: true,
+      quantity_on_hand: 0, quantity_reserved: 0, quantity_available: 0,
+    }] }
+    const allocationUi = {
+      status: 'pending' as const, can_operate: true, requires_full_flow: false,
+      selectable_warehouse_ids: [2], recommended_warehouse_ids: { 10: null }, selected_warehouse_ids: { 10: null },
+      recommended_plan_key: null, can_use_recommendation: false, full_allocation_url: '/logistics/wait-stock',
+    }
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, inventoryAvailability: availability, allocationUi, warehouses: [{ id: 2, slug: 'us-ny', name: '美东纽约仓', code: 'US-NY', country_code: 'US' }] }, attachTo: document.body })
+    await wrapper.get('input[type="radio"][name="allocation-10"]').trigger('change')
+    const submit = wrapper.findAll('button').find(button => button.text() === '确认分仓')
+    const callsBefore = vi.mocked(router.post).mock.calls.length
+    await submit!.trigger('click')
+    expect(document.body.textContent).toContain('所选仓库库存不足或未知')
+    expect(router.post).toHaveBeenCalledTimes(callsBefore)
+    ;(document.body.querySelector('.stock-exception-confirm') as HTMLButtonElement).click()
+    await nextTick()
+    expect(router.post).toHaveBeenCalledWith('/logistics/orders/1/fulfillment-allocation/quick', {
+      assignments: [{ order_item_id: 10, warehouse_id: 2 }],
+      stock_exception_acknowledged: true,
+    }, expect.any(Object))
+    wrapper.unmount()
   })
 
   it('closes inventory allocation UI once warehouse allocation is committed', () => {

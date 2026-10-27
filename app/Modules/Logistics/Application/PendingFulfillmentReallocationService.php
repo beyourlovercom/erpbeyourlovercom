@@ -17,11 +17,12 @@ final class PendingFulfillmentReallocationService
         private readonly ShipmentService $shipments,
         private readonly CarrierRoutingPolicy $carrierRouting,
         private readonly AuditRecorder $audit,
+        private readonly FulfillmentAllocationStockGate $stockGate,
     ) {}
 
-    public function reallocate(Order $fulfillment, int $warehouseId, Authenticatable $actor, ?string $note = null): Order
+    public function reallocate(Order $fulfillment, int $warehouseId, Authenticatable $actor, ?string $note = null, bool $stockExceptionAcknowledged = false): Order
     {
-        return DB::transaction(function () use ($fulfillment, $warehouseId, $actor, $note): Order {
+        return DB::transaction(function () use ($fulfillment, $warehouseId, $actor, $note, $stockExceptionAcknowledged): Order {
             $child = Order::query()
                 ->with(['shipment.warehouse', 'items', 'fulfillmentParent.address', 'fulfillmentParent.fulfillmentAllocation', 'fulfillmentParent.originalFulfillmentChildren.shipment'])
                 ->whereKey($fulfillment->getKey())
@@ -50,6 +51,14 @@ final class PendingFulfillmentReallocationService
             ];
             abort_if((int) ($child->shipment?->warehouse_id ?? 0) === (int) $warehouse->getKey(), 422, '请选择不同的目标仓库');
 
+            $stockWarnings = $this->stockGate->assertAcknowledged(
+                $child,
+                $child->items->map(fn ($item): array => [
+                    'order_item_id' => (int) $item->id,
+                    'source_code' => (string) $warehouse->code,
+                ])->all(),
+                $stockExceptionAcknowledged,
+            );
             $route = $this->carrierRouting->warehouseRoute($parent->address?->country, (string) $warehouse->code);
             $carrier = trim((string) ($route['carrier'] ?? ''));
             $service = trim((string) ($route['service'] ?? ''));
@@ -63,7 +72,7 @@ final class PendingFulfillmentReallocationService
                 'logistics_note' => trim((string) $note) !== '' ? trim((string) $note) : $child->shipment?->logistics_note,
             ], $actor);
 
-            $this->updateAllocationSnapshot($parent, $child, $warehouse, $carrier !== '' ? $carrier : null, $service !== '' ? $service : null, $actor, $note);
+            $this->updateAllocationSnapshot($parent, $child, $warehouse, $carrier !== '' ? $carrier : null, $service !== '' ? $service : null, $actor, $note, $stockWarnings);
 
             $fresh = $updated->fresh(['items', 'shipment.warehouse', 'fulfillmentParent']);
             $this->audit->record(
@@ -80,6 +89,8 @@ final class PendingFulfillmentReallocationService
                     'parent_order_id' => (int) $parent->getKey(),
                     'suffix' => $child->fulfillment_suffix,
                     'operator_note' => trim((string) $note) !== '' ? trim((string) $note) : null,
+                    'stock_exception_acknowledged' => $stockWarnings !== [],
+                    'stock_exception_warnings' => $stockWarnings,
                 ],
                 reason: 'partial_pending_fulfillment_reallocation',
             );
@@ -109,6 +120,7 @@ final class PendingFulfillmentReallocationService
         ?string $service,
         Authenticatable $actor,
         ?string $note,
+        array $stockWarnings,
     ): void {
         $allocation = FulfillmentAllocation::query()->where('order_id', $parent->getKey())->lockForUpdate()->first();
         if (! $allocation) return;
@@ -140,6 +152,16 @@ final class PendingFulfillmentReallocationService
         unset($row);
         $snapshot['derived_orders'] = $derived;
         $snapshot['execution_status'] = 'partial_pending_fulfillment_reallocated';
+        if ($stockWarnings !== []) {
+            $history = (array) ($snapshot['stock_exception_reallocations'] ?? []);
+            $history[] = [
+                'suffix' => $child->fulfillment_suffix,
+                'actor_id' => $actor->getAuthIdentifier(),
+                'acknowledged_at' => now()->toIso8601String(),
+                'warnings' => $stockWarnings,
+            ];
+            $snapshot['stock_exception_reallocations'] = $history;
+        }
         $signature = json_encode($segments, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         $snapshot['plan_key'] = 'partial:'.substr(hash('sha256', (string) $signature), 0, 16);
 

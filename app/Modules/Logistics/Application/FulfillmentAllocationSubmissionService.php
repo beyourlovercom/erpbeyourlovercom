@@ -24,6 +24,7 @@ final class FulfillmentAllocationSubmissionService
         private readonly WarehouseRoutingPolicy $warehouseRouting,
         private readonly CarrierRoutingPolicy $carrierRouting,
         private readonly FulfillmentPaymentGate $paymentGate,
+        private readonly FulfillmentAllocationStockGate $stockGate,
     ) {}
 
     public function submitRecommended(Order $order, string $planKey, ?string $note, Authenticatable $actor): FulfillmentAllocation
@@ -49,9 +50,9 @@ final class FulfillmentAllocationSubmissionService
     }
 
     /** @param list<array{order_item_id:int,source_code:string,gift_mapping_id?:int|null,carrier?:string|null,service?:string|null}> $assignments */
-    public function submitManual(Order $order, array $assignments, ?string $note, Authenticatable $actor): FulfillmentAllocation
+    public function submitManual(Order $order, array $assignments, ?string $note, Authenticatable $actor, bool $stockExceptionAcknowledged = false): FulfillmentAllocation
     {
-        return DB::transaction(function () use ($order, $assignments, $note, $actor): FulfillmentAllocation {
+        return DB::transaction(function () use ($order, $assignments, $note, $actor, $stockExceptionAcknowledged): FulfillmentAllocation {
             $locked = Order::query()->with(['address', 'items.product', 'fulfillmentAllocation'])->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->paymentGate->assertAllowed($locked);
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以提交分仓');
@@ -69,6 +70,8 @@ final class FulfillmentAllocationSubmissionService
 
             $orderItemIds = $locked->items->pluck('id')->map(fn ($id) => (int) $id)->sort()->values();
             abort_unless($normalized->pluck('order_item_id')->sort()->values()->all() === $orderItemIds->all(), 422, '必须为订单中的每个 SKU 完成分仓');
+
+            $stockWarnings = $this->stockGate->assertAcknowledged($locked, $normalized->all(), $stockExceptionAcknowledged);
 
             $resolvedAssignments = $normalized->map(function (array $row) use ($locked): array {
                 $item = $locked->items->firstWhere('id', $row['order_item_id']);
@@ -161,6 +164,12 @@ final class FulfillmentAllocationSubmissionService
                 'cost' => ['status' => 'not_evaluated', 'amount' => null, 'currency' => null, 'source' => null],
                 'label' => count($segments) > 1 ? '人工拆分发货' : ($segments[0]['source_type'] === 'factory' ? '人工整单中国工厂发货' : '人工整单海外仓发货'),
                 'human_review_required' => true,
+                'stock_exception_acknowledgement' => $stockWarnings === [] ? null : [
+                    'acknowledged' => true,
+                    'actor_id' => $actor->getAuthIdentifier(),
+                    'acknowledged_at' => now()->toIso8601String(),
+                    'warnings' => $stockWarnings,
+                ],
                 'execution_status' => count($segments) > 1 ? 'pending_multi_leg_execution_gate' : 'pending_single_leg_bridge',
                 'destination_zone' => strtoupper((string) $locked->address?->country) === 'US'
                     ? $this->usZones->resolve($locked->address?->postal_code, [
