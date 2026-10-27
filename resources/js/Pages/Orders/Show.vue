@@ -1647,9 +1647,26 @@ onBeforeUnmount(() => {
 
 /* Order Detail UX V1 page-local navigation and density; shared shell remains intact. */
 .ord-compact-v1 { padding: 20px 18px 32px; }
-.ord-detail-layout { max-width: 1250px; margin: 0 auto; display: grid; grid-template-columns: 142px minmax(0, 1fr); gap: 16px; align-items: start; }
-.ord-detail-layout > .erp-form-content { min-width: 0; width: 100%; max-width: 1080px; display: flex; flex-direction: column; }
-.ord-detail-nav-rail { position: sticky; top: 88px; min-width: 0; }
+/* V1.3: anchor the menu to the ACTUAL centered card edge, not shell/sidebar width.
+   Both rail and content share one CSS grid cell: the rail overlays only the LEFT gutter.
+   Margin is the distance from the grid's RIGHT edge to content's LEFT edge + 5px. */
+.ord-detail-layout { width: 100%; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.ord-detail-layout > .erp-form-content {
+  grid-area: 1 / 1;
+  min-width: 0; width: 100%; max-width: 1080px; margin: 0 auto;
+  display: flex; flex-direction: column;
+}
+.ord-detail-nav-rail {
+  grid-area: 1 / 1;
+  position: sticky;
+  top: 108px;
+  justify-self: end;
+  align-self: start;
+  width: 126px;
+  min-width: 0;
+  margin-right: calc(50% + min(540px, 50%) + 5px);
+  z-index: 5;
+}
 .ord-detail-nav { display: flex; flex-direction: column; padding: 12px 8px; border: 1px solid #e4eaed; border-radius: 12px; background: #fff; box-shadow: 0 2px 7px rgba(20,33,38,.035); max-height: calc(100vh - 110px); overflow-y: auto; }
 .ord-detail-nav-caption { color: #829198; font-size: 11px; font-weight: 600; padding: 2px 10px 8px; }
 .ord-detail-nav-item,.ord-detail-nav-top { text-align: left; border: 0; border-radius: 7px; background: transparent; color: #556a73; font-size: 12px; padding: 8px 10px; line-height: 1.35; cursor: pointer; }
@@ -1725,8 +1742,29 @@ onBeforeUnmount(() => {
 .ord-summary-note { white-space: pre-wrap; overflow-wrap: anywhere; color: #364d56; font-size: 13px; line-height: 1.5; min-height: 18px; }
 @media (max-width: 1199px) { .ord-summary-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 
-@media (max-width: 1199px) { .ord-detail-layout { grid-template-columns: 120px minmax(0,1fr); gap: 12px; } .ord-detail-nav-item { padding: 7px 6px; } }
-@media (max-width: 1023px) { .ord-detail-layout { display: block; } .ord-detail-nav-rail { display: none; } }
+/* Compact the rail only where a full 126px menu would collide with expanded sidebar. */
+@media (max-width: 1579px) {
+  .ord-detail-layout > .erp-form-content { width: min(1080px, calc(100% - 50px)); }
+  /* Match the exact left edge of the narrower centered content, then subtract 5px. */
+  .ord-detail-nav-rail {
+    width: 52px;
+    margin-right: calc(50% + min(540px, calc(50% - 25px)) + 5px);
+  }
+  .ord-detail-nav { padding: 9px 3px; }
+  .ord-detail-nav-caption { display: none; }
+  .ord-detail-nav-item,.ord-detail-nav-top {
+    text-align: center;
+    padding: 8px 2px;
+    font-size: 11px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.3;
+  }
+}
+@media (max-width: 1023px) {
+  .ord-detail-nav-rail { display: none; }
+  .ord-detail-layout > .erp-form-content { width: 100%; }
+}
 
 .erp-form-header-actions {
   display: flex;
