@@ -1,6 +1,6 @@
 # ERP Order Trash V1 — R5 Release Gate (2026-10-27)
 
-Status: **NO-GO until exact-head safety CI, production read-only preflight, isolated MySQL migration/rollback exercise, and final owner release authorization.** This document is a release runbook, not permission to deploy.
+Status: **CONDITIONAL NO-GO — code CI and disposable MySQL 8.4 rollback test PASS; still require production read-only preflight / verified backup, exact-current-SHA Dev negative-path smoke and explicit Owner production release authorization.** This is a release runbook, not deployment permission.
 
 GitHub source: `beyourlovercom/erpbeyourlovercom`, Issue #520, Draft PR #523; record exact candidate HEAD and all CI run IDs immediately before approval. Main / production remains untouched by this work.
 
@@ -24,6 +24,13 @@ GitHub source: `beyourlovercom/erpbeyourlovercom`, Issue #520, Draft PR #523; re
 | KOL | `kol_affiliate_referrals`, `kol_collaborations` contain order_id | Commissions/collaboration lookup could lose canonical order | Block direct table links even when not mapped as Eloquent relation |
 
 A global assertion that every raw SQL consumer honors SoftDeletes is **not** established. The V1 safety strategy deliberately forbids archiving financially or operationally linked orders rather than silently changing the meaning of historical reports. Follow-on support for archiving financialized orders requires a separately approved lifecycle and accounting contract.
+
+## R5 CI evidence (2026-10-27)
+
+- Safety branch implementation HEAD (before this documentation-only update): `b079d1c1b62f470ee68387d27fb165a919ec0c06`.
+- **Order Trash V1 Gate run 40445033513: PASS**. Backend 8 tests / 75 assertions; Vue 108 tests; dedicated MySQL 8.4 container job `mysql8-rollback` PASS for migrate-up, fail-closed down with trash rows, clean down and re-up.
+- **Orders/KOL run 40445033373, KOL Scoped Logistics run 40445033284, Production Stability run 40445033262: PASS.**
+- Prior US Mac Chrome Employee/Admin and Owner visual UAT PASS on `2dc6f63...`, **before the R5 linked-business safety guard**. Do not present this as an exact-current-SHA live-browser pass. Rerun negative-path HTTP/Chrome against latest merged candidate before Production.
 
 ## Production read-only preflight — before deploying code or running migration
 
@@ -77,9 +84,9 @@ Any positive linkage above blocks production release until reconciled. Ordinary 
 
 ## Signoff checklist
 
-- [ ] Latest exact SHA, merge conflicts and required GitHub CI confirmed
-- [ ] Operational/finance raw query audit captured, direct-link guards reviewed
-- [ ] Isolated MySQL 8 up/down and fail-closed rollback tested
+- [x] R5 safety code SHA and required GitHub CI confirmed (rerun on final merge candidate if commits or main change)
+- [x] Targeted financial/inventory/logistics/sync raw query audit and direct-link guards reviewed (not a claim of exhaustive repository-wide SQL coverage)
+- [x] Isolated MySQL 8.4 up/down, fail-closed rollback and re-up tested in dedicated CI
 - [ ] Production read-only schema/counters and backup **restore test** verified
 - [ ] Current candidate's linked-order negative browser/API cases verified
 - [ ] Owner explicitly approves Production release
