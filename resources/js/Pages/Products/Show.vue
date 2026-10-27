@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3'
+import { Head, Link, router, useForm } from '@inertiajs/vue3'
 import { computed, nextTick, reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
@@ -27,11 +27,12 @@ const orderGrid = reactive(useAccountGridPreferences<OrderColumn>({ namespace: '
 const shipmentGrid = reactive(useAccountGridPreferences<ShipmentColumn>({ namespace: 'grid.products.show.shipments.v1', definitions: shipmentDefinitions, requiredKeys: ['order_number'] }))
 const relationGrid = reactive(useAccountGridPreferences<RelationColumn>({ namespace: 'grid.products.show.relations.v1', definitions: relationDefinitions, requiredKeys: ['order_number'] }))
 type ProductMedia = { id: number; url: string; alt_text: string | null; position: number; is_primary: boolean }
+type SkuAlias = { id: number; alias_sku: string; source_type: string; source_reference: string | null; notes: string | null; is_active: boolean; oms_verified_at: string | null; oms_identity_evidence: string | null; updated_by: string | null; updated_at: string | null }
 
 const props = defineProps<{
   product: Record<string, any>
   externalReferences: ExternalReference[]
-  skuAliases: { alias_sku: string; source_type: string; source_reference: string | null }[]
+  skuAliases: SkuAlias[]
   sales: { units_30d: number; order_count_30d: number; units_90d: number; order_count_90d: number; lifetime_units: number; lifetime_order_count: number; revenue_by_currency: { currency: string; revenue: number }[]; recent_orders: Order[] }
   kolShipping: { units_30d: number; shipment_count_30d: number; units_90d: number; shipment_count_90d: number; lifetime_units: number; lifetime_shipment_count: number }
   inventory: Inventory[]
@@ -68,8 +69,9 @@ const subTabs: Record<Tab, readonly string[]> = {
   '库存与物流': ['库存明细', '物流记录'],
   '关联与记录': ['业务关联', '操作记录'],
 }
-const activeTab = ref<Tab>('概览')
-const activeSubTab = ref('')
+const aliasLinked = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tab') === 'aliases'
+const activeTab = ref<Tab>(aliasLinked ? '产品参数' : '概览')
+const activeSubTab = ref(aliasLinked ? '渠道与 SKU' : '')
 const navigateTab = (tab: Tab) => {
   activeTab.value = tab
   activeSubTab.value = subTabs[tab][0] ?? ''
@@ -102,6 +104,50 @@ const wooGroups = computed(() => Object.values(props.externalReferences.reduce((
   return groups
 }, {} as Record<string, { connectionKey: string; products: string[]; variations: string[] }>)))
 const mediaItems = computed(() => props.media ?? [])
+const aliasCreate = useForm({ alias_sku: '', source_type: 'manual', source_reference: '', notes: '', same_identity_confirmed: false })
+const aliasVerify = useForm({ physical_evidence: '', same_identity_confirmed: false })
+const aliasError = ref('')
+const verifyingAliasId = ref<number | null>(null)
+const aliasesPath = (id?: number) => `/products/${props.product.id}/aliases${id ? '/'+id : ''}`
+const setAliasTab = () => {
+  activeTab.value = '产品参数'
+  activeSubTab.value = '渠道与 SKU'
+  if (typeof window !== 'undefined') {
+    const url = new URL(window.location.href)
+    url.searchParams.set('tab', 'aliases')
+    window.history.replaceState(window.history.state, '', url)
+  }
+}
+const submitAlias = () => {
+  aliasError.value = ''
+  aliasCreate.post(aliasesPath(), {
+    preserveScroll: true, preserveState: true,
+    onSuccess: () => { aliasCreate.reset(); setAliasTab() },
+  })
+}
+const toggleAlias = (alias: SkuAlias) => {
+  aliasError.value = ''
+  if (alias.is_active && !window.confirm(`停用别名 ${alias.alias_sku}？停用后无法用于身份识别或 OMS 发货。`)) return
+  router.patch(aliasesPath(alias.id) + '/status', { is_active: !alias.is_active }, {
+    preserveScroll: true, preserveState: true,
+    onError: errors => { aliasError.value = Object.values(errors).join('；') },
+  })
+}
+const deleteAlias = (alias: SkuAlias) => {
+  aliasError.value = ''
+  if (!window.confirm(`确定删除 SKU 别名 ${alias.alias_sku}？此操作会被审计。`)) return
+  router.delete(aliasesPath(alias.id), {
+    data: { confirm_delete: true }, preserveScroll: true, preserveState: true,
+    onError: errors => { aliasError.value = Object.values(errors).join('；') },
+  })
+}
+const submitVerify = (alias: SkuAlias) => {
+  aliasError.value = ''
+  aliasVerify.post(aliasesPath(alias.id) + '/verify', {
+    preserveScroll: true, preserveState: true,
+    onSuccess: () => { verifyingAliasId.value = null; aliasVerify.reset(); setAliasTab() },
+  })
+}
 const factoryTask = reactive({
   enabled: props.parameterTask?.enabled ?? false,
   is_required: props.parameterTask?.is_required ?? false,
@@ -270,7 +316,53 @@ const selectRelative = async (tab: Tab, delta: number) => {
       <article v-else-if="activeTab === '产品参数' && activeSubTab === '成本与海关'" id="product360-4" class="erp-form-card" role="tabpanel" tabindex="0"><h3>成本与海关</h3><div class="product360-detail-grid"><p>生产成本：{{ cost(product.standard_production_cost) }}</p><p>包材成本：{{ cost(product.standard_packaging_cost) }}</p><p>采购参考成本：{{ cost(product.standard_purchase_cost) }}</p><p>原产国：{{ display(product.country_of_origin) }}</p><p>HS Code：{{ display(product.hs_code) }}</p><p>成本备注：{{ display(product.cost_note) }}</p></div></article>
       <div v-else-if="activeTab === '产品参数' && activeSubTab === '渠道与 SKU'" class="product360-channel-panels">
       <article id="product360-5" class="erp-form-card" role="tabpanel" tabindex="0"><h3>Woo 信息</h3><div v-if="wooGroups.length" class="product360-woo-groups"><section v-for="group in wooGroups" :key="group.connectionKey" class="product360-woo-group"><div class="product360-woo-group-head"><strong>{{ group.connectionKey }}</strong><span>WooCommerce</span></div><div class="product360-woo-group-refs"><span v-for="reference in group.products" :key="group.connectionKey + '-product-' + reference">Product {{ reference }}</span><span v-for="reference in group.variations" :key="group.connectionKey + '-variation-' + reference">Variation {{ reference }}</span></div></section></div><div v-if="woo" class="product360-detail-grid"><p>状态：{{ display(woo.provider_status) }}</p><p>分类：{{ woo.categories.join('、') || '—' }}</p><p>变体数：{{ woo.variation_count ?? '—' }}</p><p>创建：{{ date(woo.provider_created_at) }}</p><p>修改：{{ date(woo.provider_modified_at) }}</p><p>最近同步：{{ date(woo.last_synced_at) }}</p></div><p v-if="woo?.description" class="product360-woo-description">{{ woo.description }}</p><p v-else-if="!woo" class="mvp-empty">暂无 Woo 外部引用</p><div v-if="wooSyncHistory?.length" class="product360-sync-history"><h4>最近同步历史</h4><p v-for="entry in wooSyncHistory" :key="entry.run_id">{{ entry.result_code || entry.status }} · {{ date(entry.completed_at) }}<span v-if="entry.error_message"> · {{ entry.error_message }}</span></p></div><p class="product360-compat-note">Legacy Woo ID（兼容证据）：{{ product.woocommerce_product_id ?? '—' }}</p></article>
-      <article id="product360-6" class="erp-form-card product360-alias-panel" role="tabpanel" tabindex="0"><div class="product360-alias-canonical"><span>Canonical SKU</span><strong>{{ display(product.sku) }}</strong></div><table v-if="skuAliases.length" class="mvp-table product360-alias-table"><thead><tr><th>Alias SKU</th><th>来源</th><th>来源引用</th></tr></thead><tbody><tr v-for="alias in skuAliases" :key="alias.alias_sku"><td><strong>{{ alias.alias_sku }}</strong></td><td>{{ aliasSource(alias.source_type) }}</td><td>{{ display(alias.source_reference) }}</td></tr></tbody></table><p v-else class="mvp-empty">暂无 SKU 别名</p></article>
+      <article id="product360-6" class="erp-form-card product360-alias-panel" role="tabpanel" tabindex="0">
+        <h3>产品 SKU 身份</h3>
+        <div class="product360-alias-hero"><span>ERP 主 SKU · 只读</span><strong>{{ display(product.sku) }}</strong><small>一个型号 / 颜色 / 规格对应一个产品，别名不会拆分库存。</small></div>
+        <div class="product360-alias-bar"><h3>已登记 SKU 别名（{{ skuAliases.length }}）</h3><span>OMS 发货仍需逐仓核对商品目录、实物和库存</span></div>
+        <p v-if="aliasError" class="product360-alias-error" role="alert">{{ aliasError }}</p>
+        <div class="product360-alias-overflow">
+          <table v-if="skuAliases.length" class="mvp-table product360-alias-table">
+            <thead><tr><th>SKU 别名</th><th>来源 / 备注</th><th>身份状态</th><th>OMS 核实</th><th>最后修改</th><th v-if="canOperate">操作</th></tr></thead>
+            <tbody><template v-for="alias in skuAliases" :key="alias.id">
+              <tr>
+                <td><strong>{{ alias.alias_sku }}</strong></td>
+                <td><span>{{ aliasSource(alias.source_type) }}</span><small v-if="alias.source_reference">{{ alias.source_reference }}</small><small v-if="alias.notes">{{ alias.notes }}</small></td>
+                <td><span :class="alias.is_active ? 'product360-alias-good' : 'product360-alias-muted'">{{ alias.is_active ? '启用' : '已停用' }}</span></td>
+                <td><span :class="alias.is_active && alias.oms_verified_at ? 'product360-alias-good' : 'product360-alias-muted'">{{ alias.is_active && alias.oms_verified_at ? '已核实' : '待核实' }}</span><small v-if="alias.oms_verified_at">{{ date(alias.oms_verified_at) }}</small></td>
+                <td>{{ alias.updated_by || '—' }}<small>{{ date(alias.updated_at) }}</small></td>
+                <td v-if="canOperate" class="product360-alias-actions">
+                  <button type="button" class="mvp-button mvp-button-secondary" @click="toggleAlias(alias)">{{ alias.is_active ? '停用' : '启用' }}</button>
+                  <button v-if="alias.is_active && !alias.oms_verified_at" type="button" class="mvp-button mvp-button-secondary" @click="verifyingAliasId = verifyingAliasId === alias.id ? null : alias.id; aliasVerify.reset()">核实</button>
+                  <button type="button" class="mvp-button mvp-button-secondary" @click="deleteAlias(alias)">删除</button>
+                </td>
+              </tr>
+              <tr v-if="verifyingAliasId === alias.id && canOperate"><td colspan="6"><form class="product360-alias-verify" @submit.prevent="submitVerify(alias)">
+                <strong>确认该别名与主 SKU 完全属于同款、同颜色、同规格、同包装版本</strong>
+                <textarea v-model="aliasVerify.physical_evidence" rows="2" maxlength="1000" placeholder="填写现场实物、产品标签、供应商文件等核实证据（至少20字）" />
+                <p v-if="aliasVerify.errors.physical_evidence" class="product360-alias-error" role="alert">{{ aliasVerify.errors.physical_evidence }}</p>
+                <label><input v-model="aliasVerify.same_identity_confirmed" type="checkbox" /> 已核实实物一致；我理解仍需 OMS 目标仓库库存校验</label>
+                <p v-if="aliasVerify.errors.same_identity_confirmed" class="product360-alias-error" role="alert">{{ aliasVerify.errors.same_identity_confirmed }}</p>
+                <div class="product360-alias-form-actions"><button type="submit" class="mvp-button mvp-button-primary" :disabled="aliasVerify.processing">保存核实证据</button><button type="button" class="mvp-button mvp-button-secondary" @click="verifyingAliasId = null">取消</button></div>
+              </form></td></tr>
+            </template></tbody>
+          </table>
+          <p v-else class="mvp-empty">暂无 SKU 别名。此产品目前只有 ERP 主 SKU。</p>
+        </div>
+        <form v-if="canOperate" class="product360-alias-create" @submit.prevent="submitAlias">
+          <h3>添加 SKU 别名</h3>
+          <div class="product360-alias-fields">
+            <label>别名 SKU <input v-model.trim="aliasCreate.alias_sku" required maxlength="128" placeholder="输入新别名" /><small v-if="aliasCreate.errors.alias_sku" class="product360-alias-error" role="alert">{{ aliasCreate.errors.alias_sku }}</small></label>
+            <label>来源 <select v-model="aliasCreate.source_type"><option value="manual">手动</option><option value="domestic_warehouse">国内仓</option><option value="xlwms">世迈仓</option><option value="overseas_warehouse">海外仓</option><option value="operations">运营</option><option value="supplier">供应商</option></select></label>
+            <label>来源引用 <input v-model.trim="aliasCreate.source_reference" maxlength="255" placeholder="如仓库单据编号" /></label>
+          </div>
+          <label>备注 / 核实依据 <textarea v-model.trim="aliasCreate.notes" rows="2" maxlength="1000" placeholder="说明来源或产品一致性依据" /></label>
+          <label class="product360-alias-check"><input v-model="aliasCreate.same_identity_confirmed" type="checkbox" /> 确认是相同型号、颜色、规格与包装的同一个实物产品</label>
+          <p v-if="aliasCreate.errors.same_identity_confirmed" class="product360-alias-error" role="alert">{{ aliasCreate.errors.same_identity_confirmed }}</p>
+          <div class="product360-alias-form-actions"><span>不同型号、颜色、赠品须使用订单商品替换流程，不得用别名合并。</span><button type="submit" class="mvp-button mvp-button-primary" :disabled="aliasCreate.processing">＋ 添加别名</button></div>
+        </form>
+        <p v-else class="product360-compat-note">当前账户仅可查看别名；维护需产品操作权限。</p>
+      </article>
       </div>
       <article v-else-if="activeTab === '关联与记录' && activeSubTab === '业务关联'" id="product360-7" class="erp-form-card product360-relations" role="tabpanel" tabindex="0"><h3>业务关联</h3><table v-if="sales.recent_orders.length || shipments.length || collaborations.length" class="mvp-table product360-compact-table product360-relations-table"><thead><tr><th v-for="column in relationGrid.visibleColumns" :key="column.key">{{ column.label }}</th><ColumnSettingsHeader :columns="relationGrid.columns" :required-keys="['order_number']" :sync-state="relationGrid.syncState" @toggle="relationGrid.toggle" @start-drag="relationGrid.startDrag" @drop="relationGrid.drop" @reset="relationGrid.reset" /></tr></thead><tbody><tr v-for="order in sales.recent_orders" :key="'rel-order-' + order.id"><td v-for="column in relationGrid.visibleColumns" :key="column.key"><template v-if="column.key === 'type'">订单</template><template v-else-if="column.key === 'order_number'"><Link :href="'/customers/orders/' + order.id" class="mvp-link">{{ display(order.erp_order_id) }}</Link></template><template v-else-if="column.key === 'details'">{{ display(order.order_date) }} · 数量 {{ order.quantity }}</template><template v-else>{{ order.status }}</template></td></tr><tr v-for="shipment in shipments" :key="'rel-shipment-' + shipment.id"><td v-for="column in relationGrid.visibleColumns" :key="column.key"><template v-if="column.key === 'type'">发货</template><template v-else-if="column.key === 'order_number'"><Link v-if="shipment.erp_order_id" :href="'/customers/orders/' + shipment.order_id" class="mvp-link">{{ display(shipment.erp_order_id) }}</Link><span v-else>—</span></template><template v-else-if="column.key === 'details'">{{ display(shipment.tracking_number) }} · {{ display(shipment.carrier) }}</template><template v-else>{{ display(shipment.status) }}</template></td></tr><tr v-for="collaboration in collaborations" :key="'rel-kol-' + collaboration.id"><td v-for="column in relationGrid.visibleColumns" :key="column.key"><template v-if="column.key === 'type'">KOL</template><template v-else-if="column.key === 'order_number'"><Link :href="'/kol/library/' + collaboration.kol_id" class="mvp-link">{{ display(collaboration.kol_name) }}</Link></template><template v-else-if="column.key === 'details'">{{ display(collaboration.title) }}</template><template v-else>{{ collaboration.status }}</template></td></tr></tbody></table><p v-else class="mvp-empty">暂无业务关联</p></article>
       <article v-else-if="activeTab === '关联与记录' && activeSubTab === '操作记录'" id="product360-8" class="erp-form-card" role="tabpanel" tabindex="0"><h3>审计</h3><table v-if="audit.length" class="mvp-table"><thead><tr><th>动作</th><th>操作者</th><th>来源</th><th>时间</th></tr></thead><tbody><tr v-for="record in audit" :key="`${record.created_at}-${record.action}`"><td>{{ record.action_label }}</td><td>{{ record.actor_label ?? '—' }}</td><td>{{ auditSource(record.source) }}</td><td>{{ date(record.created_at) }}</td></tr></tbody></table><p v-else class="mvp-empty">暂无产品审计记录</p></article>
@@ -380,4 +472,31 @@ const selectRelative = async (tab: Tab, delta: number) => {
 .product360-compat-note { margin-top: 12px; color: #68737e; font-size: 12px; }
 @media (max-width: 900px) { .product360-hero { align-items: flex-start; flex-wrap: wrap; } .product360-hero-actions { width: 100%; justify-content: flex-start; margin-left: 124px; } }
 @media (max-width: 760px) { .product360-grid, .product360-detail-grid, .product360-overview-top, .product360-overview-bottom { grid-template-columns: 1fr; } .product360-kpis, .product360-stock-summary { grid-template-columns: 1fr; } .product360-comparison { grid-template-columns: 1fr; } .product360-comparison span { border-left: 0; padding-left: 0; text-align: left; } .product360-hero-actions { margin-left: 0; } }
+.product360-alias-panel { padding: 16px 20px; }
+.product360-alias-canonical { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+.product360-alias-canonical span { color: #68737e; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+.product360-alias-canonical strong { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px; }
+.product360-alias-table th, .product360-alias-table td { padding-top: 8px; padding-bottom: 8px; }
+.product360-alias-table td:first-child { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.product360-alias-hero { display: flex; flex-direction: column; gap: 5px; background: #f4f7f5; border: 1px solid #dde7df; padding: 14px 18px; border-radius: 8px; margin: 10px 0 22px; }
+.product360-alias-hero span, .product360-alias-hero small { color: #66736a; font-size: 12px; }
+.product360-alias-hero strong { font-family: ui-monospace, Menlo, monospace; font-size: 19px; }
+.product360-alias-bar { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.product360-alias-bar span { font-size: 12px; color: #69766e; }
+.product360-alias-overflow { overflow-x: auto; }
+.product360-alias-table { width: 100%; min-width: 820px; }
+.product360-alias-table small { display: block; font-size: 11px; margin-top: 4px; color: #66736a; overflow-wrap: anywhere; }
+.product360-alias-table td { vertical-align: middle; }
+.product360-alias-actions { white-space: nowrap; }
+.product360-alias-actions button { margin: 2px 3px 2px 0; font-size: 12px; }
+.product360-alias-good { color: #166534; font-weight: 600; }
+.product360-alias-muted { color: #9a6700; font-weight: 600; }
+.product360-alias-error { color: #b42318 !important; font-size: 12px; margin: 5px 0; }
+.product360-alias-create, .product360-alias-verify { border-top: 1px solid #e2e8e2; margin-top: 18px; padding-top: 17px; display: flex; flex-direction: column; gap: 10px; }
+.product360-alias-fields { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.product360-alias-create label, .product360-alias-verify label { font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+.product360-alias-create input:not([type=checkbox]), .product360-alias-create select, .product360-alias-create textarea, .product360-alias-verify textarea { width: 100%; border: 1px solid #cbd5ce; border-radius: 7px; padding: 8px 10px; font-size: 13px; color: #141b16; background: #fff; }
+.product360-alias-create label:has(input[type=checkbox]), .product360-alias-verify label:has(input[type=checkbox]) { flex-direction: row; align-items: center; }
+.product360-alias-form-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.product360-alias-form-actions span { font-size: 12px; color: #7b6140; margin-right: auto; }
 </style>

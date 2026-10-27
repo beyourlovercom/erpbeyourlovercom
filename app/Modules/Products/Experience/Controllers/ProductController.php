@@ -405,7 +405,22 @@ final class ProductController
             'woo' => $snapshot ? ['provider_status' => $snapshot->provider_status, 'categories' => $snapshot->category_names ?? [], 'description' => $snapshot->description_text, 'short_description' => $snapshot->short_description_text, 'variation_count' => $snapshot->variation_count, 'provider_created_at' => $snapshot->provider_created_at?->toIso8601String(), 'provider_modified_at' => $snapshot->provider_modified_at?->toIso8601String(), 'last_synced_at' => $snapshot->last_synced_at?->toIso8601String(), 'connection_key' => $snapshot->connection_key] : null,
             'media' => $media->map(fn (ProductMedia $item): array => ['id' => $item->id, 'url' => route('products.media.show', $item->id), 'alt_text' => $item->alt_text, 'position' => $item->position, 'is_primary' => $item->is_primary])->values()->all(),
             'wooSyncHistory' => $recentProductRuns,
-            'skuAliases' => $this->skuAliases->listForProduct($id),
+            'skuAliases' => collect($this->skuAliases->listForProduct($id))->map(function (array $alias): array {
+                $editorId = $alias['updated_by_user_id'] ?? $alias['created_by_user_id'] ?? null;
+                $editor = $editorId ? \App\Modules\Identity\Infrastructure\Models\User::find($editorId) : null;
+                return [
+                    'id' => $alias['id'],
+                    'alias_sku' => $alias['alias_sku'],
+                    'source_type' => $alias['source_type'],
+                    'source_reference' => $alias['source_reference'],
+                    'notes' => $alias['notes'],
+                    'is_active' => (bool) ($alias['is_active'] ?? true),
+                    'oms_verified_at' => $alias['oms_verified_at'] ?? null,
+                    'oms_identity_evidence' => $alias['oms_identity_evidence'] ?? null,
+                    'updated_by' => $editor?->name,
+                    'updated_at' => $alias['updated_at'] ?? null,
+                ];
+            })->values()->all(),
             'sales' => [
                 ...$orderData['summary'],
                 'revenue_by_currency' => $orderData['revenue_by_currency'],

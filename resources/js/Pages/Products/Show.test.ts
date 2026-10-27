@@ -5,6 +5,8 @@ import Show from './Show.vue'
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
   Link: { props: ['href'], template: '<a :href="href"><slot /></a>' },
+  useForm: (defaults: Record<string, unknown>) => ({ ...defaults, errors: {}, processing: false, post: vi.fn(), reset: vi.fn() }),
+  router: { patch: vi.fn(), delete: vi.fn() },
 }))
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({ default: { props: ['title', 'breadcrumbs'], template: '<div><slot /></div>' } }))
 
@@ -234,19 +236,28 @@ describe('Products/Show Product360', () => {
     expect(panel).toContain('体积重参考：—')
   })
 
-  it('renders SKU aliases as a compact read-only identity table with source evidence', async () => {
-    const wrapper = mount(Show, { props: { ...baseProps, skuAliases: [{ alias_sku: 'LEGACY-001', source_type: 'legacy_import', source_reference: 'legacy-sheet' }, { alias_sku: 'WOO-VAR-001', source_type: 'woocommerce', source_reference: 'shop-a:102' }] } })
+  it('preserves interactive SKU alias management under the new channel subtab', async () => {
+    const wrapper = mount(Show, { props: { ...baseProps, skuAliases: [{ id: 1, alias_sku: 'LEGACY-001', source_type: 'legacy_import', source_reference: 'legacy-sheet', notes: null, is_active: true, oms_verified_at: null, oms_identity_evidence: null, updated_by: null, updated_at: null }, { id: 2, alias_sku: 'WOO-VAR-001', source_type: 'woocommerce', source_reference: 'shop-a:102', notes: null, is_active: true, oms_verified_at: null, oms_identity_evidence: null, updated_by: null, updated_at: null }] } })
     await openPanel(wrapper, '产品参数', '渠道与 SKU')
     const panel = wrapper.find('#product360-6')
-    expect(panel.text()).toContain('Canonical SKU')
+    expect(panel.text()).toContain('ERP 主 SKU')
     expect(panel.text()).toContain('DEMO-1')
     expect(panel.text()).toContain('LEGACY-001')
     expect(panel.text()).toContain('历史导入')
     expect(panel.text()).toContain('legacy-sheet')
     expect(panel.text()).toContain('WOO-VAR-001')
     expect(panel.text()).toContain('WooCommerce')
+    expect(panel.text()).toContain('当前账户仅可查看别名')
     expect(panel.findAll('input')).toHaveLength(0)
-    expect(panel.findAll('button')).toHaveLength(0)
+    const manager = mount(Show, { props: { ...baseProps, canOperate: true, skuAliases: [
+      { id: 1, alias_sku: 'LEGACY-001', source_type: 'legacy_import', source_reference: 'legacy-sheet', notes: null, is_active: true, oms_verified_at: null, oms_identity_evidence: null, updated_by: null, updated_at: null },
+    ] } })
+    await openPanel(manager, '产品参数', '渠道与 SKU')
+    const managerPanel = manager.find('#product360-6')
+    expect(managerPanel.text()).toContain('添加 SKU 别名')
+    expect(managerPanel.text()).toContain('核实')
+    expect(managerPanel.findAll('input').length).toBeGreaterThan(0)
+    expect(managerPanel.findAll('button').length).toBeGreaterThan(0)
   })
 
   it('renders canonical Order, Shipment, and KOL relations as compact read-only tables', async () => {

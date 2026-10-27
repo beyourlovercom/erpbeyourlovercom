@@ -5,6 +5,8 @@ import Show from './Show.vue'
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<div data-head="product360" />' },
   Link: { props: ['href', 'method', 'as'], template: '<a :href="href"><slot /></a>' },
+  useForm: (defaults: Record<string, unknown>) => ({ ...defaults, errors: {}, processing: false, post: vi.fn(), reset: vi.fn() }),
+  router: { patch: vi.fn(), delete: vi.fn() },
 }))
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({
   default: { props: ['title', 'breadcrumbs'], template: '<main><slot /></main>' },
@@ -42,7 +44,7 @@ const fixture = () => ({
     { provider: 'woocommerce', connection_key: 'beyourlover.com', reference: '12345', reference_type: 'product' },
     { provider: 'woocommerce', connection_key: 'beyourlover.com', reference: '56789', reference_type: 'variation' },
   ],
-  skuAliases: [{ alias_sku: 'P360-ALT', source_type: 'manual', source_reference: 'WMS' }],
+  skuAliases: [{ id: 3, alias_sku: 'P360-ALT', source_type: 'manual', source_reference: 'WMS', notes: null, is_active: true, oms_verified_at: null, oms_identity_evidence: null, updated_by: null, updated_at: null }],
   sales: {
     units_30d: 3, order_count_30d: 2, units_90d: 10, order_count_90d: 8,
     lifetime_units: 21, lifetime_order_count: 19,
@@ -167,7 +169,7 @@ describe('Product 360 V2 P0 — old nine-tabs no-loss', () => {
   it('preserves both original Woo 信息 and SKU 别名 panels simultaneously', async () => {
     const w = make()
     await navigate(w, '产品参数', '渠道与 SKU')
-    for (const token of ['Woo 信息','Canonical SKU','P360-ALT','P360-123','Variation 56789','Canonical Woo summary','Legacy Woo ID']) {
+    for (const token of ['Woo 信息','ERP 主 SKU','P360-ALT','P360-123','Variation 56789','Canonical Woo summary','Legacy Woo ID']) {
       expect(w.text()).toContain(token)
     }
   })

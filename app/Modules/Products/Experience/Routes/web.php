@@ -65,6 +65,12 @@ Route::middleware(['web', 'auth', 'can:products.operate'])->group(function (): v
     Route::patch('/products/{id}', [ProductController::class, 'update'])->name('products.update');
     Route::delete('/products/{id}', [ProductController::class, 'destroy'])->name('products.destroy');
 
+    // Product360 scoped alias management; separate from legacy SKU reconciliation.
+    Route::post('/products/{productId}/aliases', [ProductSkuAliasController::class, 'storeForProduct'])->whereNumber('productId')->name('products.aliases.store');
+    Route::patch('/products/{productId}/aliases/{id}/status', [ProductSkuAliasController::class, 'statusForProduct'])->whereNumber('productId')->whereNumber('id')->name('products.aliases.status');
+    Route::post('/products/{productId}/aliases/{id}/verify', [ProductSkuAliasController::class, 'verifyForProduct'])->whereNumber('productId')->whereNumber('id')->name('products.aliases.verify');
+    Route::delete('/products/{productId}/aliases/{id}', [ProductSkuAliasController::class, 'destroyForProduct'])->whereNumber('productId')->whereNumber('id')->name('products.aliases.delete');
+
     // SKU Alias mutations
     Route::post('/products/sku-aliases/aliases', [ProductSkuAliasController::class, 'storeAlias'])->name('products.sku-aliases.store');
     Route::delete('/products/sku-aliases/aliases/{id}', [ProductSkuAliasController::class, 'destroyAlias'])->name('products.sku-aliases.destroy');
