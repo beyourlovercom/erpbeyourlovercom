@@ -5,6 +5,8 @@ use App\Modules\Products\Experience\Controllers\ProductPackagingProfileControlle
 use App\Modules\Products\Experience\Controllers\ProductSkuController;
 use App\Modules\Products\Experience\Controllers\ProductSkuAliasController;
 use App\Modules\Products\Experience\Controllers\ProductWeightEvidenceController;
+use App\Modules\Products\Experience\Controllers\ProductParameterFactoryController;
+use App\Modules\Products\Experience\Controllers\ProductParameterBatchController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'auth'])->get('/products/packaging/media/{media}', [ProductPackagingProfileController::class, 'media'])->whereNumber('media')->name('products.packaging.media');
@@ -12,6 +14,22 @@ Route::middleware(['web', 'auth'])->get('/products/packaging/media/{media}', [Pr
 // Order creators can select an SKU without full product-module access.
 // skuSearch() applies products.view OR orders.create to this endpoint only.
 Route::middleware(['web', 'auth'])->get('/products/sku-search', [ProductController::class, 'skuSearch'])->name('products.sku-search');
+
+// Dedicated factory routes do not grant products.view or products.operate.
+Route::middleware(['web', 'auth'])->group(function (): void {
+    Route::get('/products/factory-parameters', [ProductParameterFactoryController::class, 'inbox'])->name('products.parameter.inbox');
+    Route::get('/products/factory-parameters/{product}', [ProductParameterFactoryController::class, 'factory'])->whereNumber('product')->name('products.parameter.factory');
+    Route::post('/products/factory-parameters/{product}/draft', [ProductParameterFactoryController::class, 'saveDraft'])->whereNumber('product')->name('products.parameter.draft');
+    Route::post('/products/factory-parameters/{product}/submissions/{submission}/submit', [ProductParameterFactoryController::class, 'submit'])->whereNumber('product')->whereNumber('submission')->name('products.parameter.submit');
+    Route::post('/products/factory-parameters/{product}/submissions/{submission}/photo', [ProductParameterFactoryController::class, 'upload'])->whereNumber('product')->whereNumber('submission')->name('products.parameter.photo');
+    Route::get('/products/parameter-evidence/media/{media}', [ProductParameterFactoryController::class, 'media'])->whereNumber('media')->name('products.parameter.media');
+});
+
+Route::middleware(['web', 'auth', 'can:products.operate'])->group(function (): void {
+    Route::post('/products/parameter-tasks/bulk', [ProductParameterBatchController::class, 'update'])->name('products.parameter.tasks.bulk');
+    Route::post('/products/parameter-tasks/{product}', [ProductParameterFactoryController::class, 'assign'])->whereNumber('product')->name('products.parameter.task');
+    Route::post('/products/parameter-submissions/{product}/{submission}/review', [ProductParameterFactoryController::class, 'review'])->whereNumber('product')->whereNumber('submission')->name('products.parameter.review');
+});
 
 Route::middleware(['web', 'auth', 'can:products.view'])->group(function (): void {
     Route::get('/products', [ProductController::class, 'dashboard'])->name('products.dashboard');

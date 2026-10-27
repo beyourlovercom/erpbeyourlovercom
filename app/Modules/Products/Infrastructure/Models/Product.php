@@ -64,6 +64,21 @@ class Product extends Model
         return $this->hasMany(ProductMedia::class)->orderBy('position');
     }
 
+    public function parameterTask(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(ProductParameterTask::class);
+    }
+
+    public function parameterSubmissions(): HasMany
+    {
+        return $this->hasMany(ProductParameterSubmission::class);
+    }
+
+    public function parameterAccessories(): HasMany
+    {
+        return $this->hasMany(ProductParameterAccessory::class);
+    }
+
     public function packagingProfile(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
         return $this->hasOne(ProductPackagingProfile::class);

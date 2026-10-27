@@ -178,6 +178,21 @@ class AppShellNavigationTest extends TestCase
             ->has('shellNavigation.1.children', 1)
             ->where('shellNavigation.1.children.0.key', 'inventory-packaging')
             ->where('shellNavigation.1.children.0.path', '/inventory/packaging'));
+        $this->actingAs($user)->get('/products/factory-parameters')->assertForbidden();
+    }
+
+    public function test_factory_parameter_submit_permission_is_distinct_from_order_packaging_permission(): void
+    {
+        $factory = $this->userWith(['dashboard.view', 'products.parameters.submit'], 'factory-parameters-only');
+        $this->actingAs($factory)->get('/dashboard')->assertInertia(fn (Assert $page) => $page
+            ->has('shellNavigation', 2)
+            ->where('shellNavigation.1.key', 'inventory')
+            ->has('shellNavigation.1.children', 1)
+            ->where('shellNavigation.1.children.0.key', 'inventory-factory-parameters')
+            ->where('shellNavigation.1.children.0.path', '/products/factory-parameters'));
+        $this->actingAs($factory)->get('/products/factory-parameters')->assertOk();
+        $this->actingAs($factory)->get('/inventory/packaging')->assertForbidden();
+        $this->actingAs($factory)->get('/products/list')->assertForbidden();
     }
 
     public function test_accounting_navigation_closes_to_overview_and_order_profit(): void

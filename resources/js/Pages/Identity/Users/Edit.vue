@@ -147,6 +147,7 @@ const effectivePermissions = computed(() =>
           </label>
         </div>
         <p v-if="!isCustomMode" class="mvp-form-hint">当前使用角色默认权限，以下为只读展示。</p>
+        <p v-if="isCustomMode" class="mvp-form-hint">自定义权限只以保存后勾选的项目生效。可在下方先点击「取消全选」，再选所需权限。</p>
         <PermissionMatrix
           v-model="customPerms"
           :catalog="permissionCatalog"
@@ -164,3 +165,42 @@ const effectivePermissions = computed(() =>
     </section>
   </AuthenticatedLayout>
 </template>
+
+<style scoped>
+.permission-mode-selector {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.mvp-form .permission-mode-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--byl-border-control, #d6e2d9);
+  border-radius: 8px;
+  background: var(--byl-surface, #fff);
+  font-size: 12px;
+  cursor: pointer;
+}
+.mvp-form .permission-mode-option:has(input:checked) {
+  border-color: var(--byl-accent, #17694d);
+  background: #f4faf6;
+  color: var(--byl-text, #234631);
+}
+.mvp-form .permission-mode-option input[type=radio] {
+  width: 17px;
+  min-width: 17px;
+  height: 17px;
+  min-height: 17px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--byl-accent, #17694d);
+}
+@media(max-width:620px) {
+  .permission-mode-selector { gap: 7px; }
+  .mvp-form .permission-mode-option { flex: 1; min-width: 0; padding: 10px 8px; }
+}
+</style>
