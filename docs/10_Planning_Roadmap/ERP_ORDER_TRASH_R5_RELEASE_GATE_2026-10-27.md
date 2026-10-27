@@ -1,6 +1,6 @@
 # ERP Order Trash V1 — R5 Release Gate (2026-10-27)
 
-Status: **CONDITIONAL NO-GO — code CI and disposable MySQL 8.4 rollback test PASS; still require production read-only preflight / verified backup, exact-current-SHA Dev negative-path smoke and explicit Owner production release authorization.** This is a release runbook, not deployment permission.
+Status: **CONDITIONAL NO-GO — CI, disposable MySQL 8.4 up/down, production read-only schema preflight and exact-current-code Dev negative-path smoke PASS. Remaining blockers: independent restore drill for production backup, owner decision for linked real test orders #6098/#6111, and explicit Production release authorization.** This is a release runbook, not deployment permission.
 
 GitHub source: `beyourlovercom/erpbeyourlovercom`, Issue #520, Draft PR #523; record exact candidate HEAD and all CI run IDs immediately before approval. Main / production remains untouched by this work.
 
@@ -31,6 +31,18 @@ A global assertion that every raw SQL consumer honors SoftDeletes is **not** est
 - **Order Trash V1 Gate run 40445033513: PASS**. Backend 8 tests / 75 assertions; Vue 108 tests; dedicated MySQL 8.4 container job `mysql8-rollback` PASS for migrate-up, fail-closed down with trash rows, clean down and re-up.
 - **Orders/KOL run 40445033373, KOL Scoped Logistics run 40445033284, Production Stability run 40445033262: PASS.**
 - Prior US Mac Chrome Employee/Admin and Owner visual UAT PASS on `2dc6f63...`, **before the R5 linked-business safety guard**. Do not present this as an exact-current-SHA live-browser pass. Rerun negative-path HTTP/Chrome against latest merged candidate before Production.
+
+## Actual Production read-only preflight evidence (2026-10-27)
+
+Verified using the self-hosted `mcp.beyourlover.com` OAuth MCP on US Mac mini, against the current `erp.beyourlover.com` Production Laravel environment. **All database inspection was inside an explicit MySQL READ ONLY transaction and rolled back.** No migration, data change, worker restart or service downtime occurred.
+
+- Production MySQL 8.4.11; `orders` uses InnoDB; `orders.deleted_at` and `orders.deleted_by` do not yet exist.
+- Rows: `orders=7735`, `shipments=1870`, `order_financials=6845`, `order_cost_entries=21385`, `inventory_reservations=20`, `warehouse_inventory_lot_consumptions=6`, `order_external_references=7731`, `kol_affiliate_referrals=3351`.
+- Information-schema size estimate for `orders`: 1.52 MiB data / 2.39 MiB indexes, InnoDB.
+- Planned index `orders_deleted_at_order_kind_index` and FK `orders_deleted_by_foreign` name conflicts: both zero.
+- Backup inventory: 58 backup runs, 56 artifacts, daily schedule enabled. Database run #58 was `ready` at `2026-10-27 02:17:46`; full backup run #56 was `verified` at `2026-10-26 18:00:21`. These statuses are **not** proof of an independently restored production snapshot; restoration drill remains mandatory.
+- Exact code `a186023229750be625e8028d04b27512c66d2053` in dedicated US Mac clean worktree: `php artisan test tests/Feature/Orders/OrderTrashV1Test.php` = 8 passed / 75 assertions; `Show.test.ts` = 54 passed; Vite build PASS. Isolated Tailscale Dev :55244 real Chrome: synthetic staff login, 409 guard for linked Woo order, unlinked soft-delete, staff 403, admin login/trash/restore, original linked test row retained — PASS. **The two real production IDs were not touched.**
+- Real KOL orders, validated read-only: `6098 (007erp-1217-k82)` pending_shipment has 1 shipment attempt + 1 external reference; `6111 (007erp-1217-k101)` shipped has 1 shipment + 1 attempt + 1 lot consumption + 1 external reference. **Neither is V1 soft-delete eligible.** Their original cleanup objective requires explicit separate business-data treatment; do not force-delete, rewrite history or silently weaken guard.
 
 ## Production read-only preflight — before deploying code or running migration
 
@@ -87,8 +99,9 @@ Any positive linkage above blocks production release until reconciled. Ordinary 
 - [x] R5 safety code SHA and required GitHub CI confirmed (rerun on final merge candidate if commits or main change)
 - [x] Targeted financial/inventory/logistics/sync raw query audit and direct-link guards reviewed (not a claim of exhaustive repository-wide SQL coverage)
 - [x] Isolated MySQL 8.4 up/down, fail-closed rollback and re-up tested in dedicated CI
-- [ ] Production read-only schema/counters and backup **restore test** verified
-- [ ] Current candidate's linked-order negative browser/API cases verified
+- [x] Production read-only schema/counters and available backup metadata verified (MySQL transaction read only)
+- [ ] Independently verify a current encrypted production backup can be restored into an isolated, access-controlled test database; no production-data copy/restore performed during R5
+- [x] R5 candidate's linked-order negative browser/API cases and positive restore verified on isolated US Mac
 - [ ] Owner explicitly approves Production release
 - [ ] Post-release canary, finance/stock/logistics smoke and rollback watch complete
-- [ ] Only then handle the real KOL test orders #6098 and #6111 after checking they are unlinked; if linked, refuse and escalate, **never force-delete**
+- [ ] Owner approves a separate disposition for **linked** real KOL test orders #6098 / #6111. Both have operational evidence and cannot be soft-deleted by V1; **never force-delete or bypass this guard**
