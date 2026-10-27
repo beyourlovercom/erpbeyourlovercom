@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
 /**
  * Disposable MySQL 8 R5 gate ONLY. This file must never be executed against
  * production, staging, or a database populated with customer data.
@@ -15,10 +19,6 @@ if (getenv('BYL_ORDER_TRASH_ROLLBACK_CI') !== '1'
     fwrite(STDERR, "REFUSED_NON_DISPOSABLE_ENVIRONMENT\n");
     exit(30);
 }
-
-use Illuminate\Contracts\Console\Kernel;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 $root = dirname(__DIR__, 4);
 require $root.'/vendor/autoload.php';
@@ -60,7 +60,7 @@ try {
     $blocked = str_contains($e->getMessage(), 'Cannot drop order trash columns');
 }
 if (! $blocked || ! Schema::hasColumn('orders', 'deleted_at')
-    || DB::table('orders')->whereKey($id)->whereNull('deleted_at')->exists()
+    || DB::table('orders')->where('id', $id)->whereNull('deleted_at')->exists()
     || DB::table('orders')->count() !== $recordCount) {
     throw new RuntimeException('Rollback did not fail closed for a trashed order.');
 }
