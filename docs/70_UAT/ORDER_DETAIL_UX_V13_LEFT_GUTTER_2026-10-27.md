@@ -38,3 +38,11 @@ No horizontal overflow at any tested size.
 - New PR final-head CI/readback; merge after the Owner visual UAT PASS in accordance with AGENTS.md.
 - Separate Owner formal production deployment approval; re-read then-current production, build source-overlay release from current LIVE backend (do not deploy old main wholesale), preserve rollback, atomic swap and public smoke; Owner final production visual PASS.
 - No production changes or real order/inventory writes in this V1.3 development activity.
+
+## Owner PASS and current main compatibility gate
+
+- Owner explicitly returned PASS after the new screenshot-driven 5px left-nav Dev UAT, satisfying the post-development visual acceptance.
+- GitHub main meanwhile advanced to commit 1ef27dd12a77985f597416313af9fb029021a3fe in PR #530, modifying warehouse allocation error handling and the order detail page.
+- Rebased this V1.3 CSS-only change onto the newer main cleanly, preserving allocationError, readable 422 error text, and the associated regression tests.
+- Scoped Vue 67/67 PASS, TypeScript PASS, Vite build PASS, isolated Dev source/assets refreshed from rebased code.
+- Deployment caution: actual Production is still V1.2 without paired PR #530 OrderController updates. Do NOT overlay the entire newly rebased Show.vue onto an old Production backend. Overlay only the isolated V1.3 CSS diff onto the then-current Production Show.vue and rebuild its assets, preserving the Production backend, unless PR #530 has a separately approved complete production deployment.
