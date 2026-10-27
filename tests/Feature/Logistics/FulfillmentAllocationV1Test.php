@@ -50,6 +50,7 @@ final class FulfillmentAllocationV1Test extends TestCase
                 ['order_item_id' => $items[1]->id, 'source_code' => 'FACTORY'],
             ],
             'decision_note' => '人工确认拆分更适合本单',
+            'stock_exception_acknowledged' => true,
         ])->assertOk()->assertJsonPath('decision_source', 'manual');
 
         $allocation = FulfillmentAllocation::query()->where('order_id', $order->id)->firstOrFail();
@@ -87,6 +88,7 @@ final class FulfillmentAllocationV1Test extends TestCase
                 ['order_item_id' => $items[1]->id, 'source_code' => 'FACTORY'],
             ],
             'decision_note' => '验证 Woo line item identity 继承',
+            'stock_exception_acknowledged' => true,
         ])->assertOk();
 
         $children = $order->fresh()->fulfillmentChildren()->with('items')->orderBy('fulfillment_suffix')->get();
@@ -103,7 +105,7 @@ final class FulfillmentAllocationV1Test extends TestCase
             ['order_item_id' => $items[0]->id, 'source_code' => 'US-LA'],
             ['order_item_id' => $items[1]->id, 'source_code' => 'US-NY'],
             ['order_item_id' => $items[2]->id, 'source_code' => 'US-SM'],
-        ], 'ABC multi-warehouse fulfillment', $user);
+        ], 'ABC multi-warehouse fulfillment', $user, true);
 
         self::assertSame(3, $allocation->plan_snapshot['shipment_count']);
         self::assertTrue((bool) $allocation->plan_snapshot['is_split']);

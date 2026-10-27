@@ -108,7 +108,7 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
         app(FulfillmentAllocationSubmissionService::class)->submitManual($order, [
             ['order_item_id' => $giftItem->id, 'source_code' => 'US-SM', 'gift_mapping_id' => $mapping->id],
             ['order_item_id' => $regular->id, 'source_code' => 'FACTORY'],
-        ], 'gift resolved by Vita', $user);
+        ], 'gift resolved by Vita', $user, true);
 
         $parentGift = $giftItem->fresh();
         self::assertSame('gift', $parentGift->sku);
