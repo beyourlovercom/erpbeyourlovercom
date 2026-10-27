@@ -25,6 +25,7 @@ use App\Modules\Inventory\Experience\Console\BridgeMorePlusCostsCommand;
 use App\Modules\Inventory\Experience\Console\AccrueWarehouseStorageAgingCostCommand;
 use App\Modules\Inventory\Experience\Console\RunWarehouseStorageAgingMonthlyCommand;
 use App\Modules\Inventory\Experience\Console\SyncXlwmsInventoryCommand;
+use App\Modules\Inventory\Experience\Console\ConfigureXlwmsInventoryApiCommand;
 
 final class InventoryServiceProvider extends ServiceProvider
 {
@@ -43,6 +44,6 @@ final class InventoryServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadRoutesFrom(__DIR__.'/../Experience/Routes/web.php');
-        if ($this->app->runningInConsole()) $this->commands([PackagingScanPreviewCommand::class, ImportWarehouseStorageCostCommand::class, BridgeMorePlusCostsCommand::class, AccrueWarehouseStorageAgingCostCommand::class, RunWarehouseStorageAgingMonthlyCommand::class, SyncXlwmsInventoryCommand::class]);
+        if ($this->app->runningInConsole()) $this->commands([PackagingScanPreviewCommand::class, ImportWarehouseStorageCostCommand::class, BridgeMorePlusCostsCommand::class, AccrueWarehouseStorageAgingCostCommand::class, RunWarehouseStorageAgingMonthlyCommand::class, SyncXlwmsInventoryCommand::class, ConfigureXlwmsInventoryApiCommand::class]);
     }
 }
