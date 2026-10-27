@@ -33,7 +33,7 @@ const purge = (order: Row) => {
               <tr v-if="!orders.data.length"><td colspan="5" class="p-3">回收站为空</td></tr>
             </tbody>
           </table>
-          <div class="flex gap-2 mt-4"><a v-for="(link, index) in orders.links" :key="index" v-if="link.url" :href="link.url" class="erp-btn erp-btn-secondary" :aria-current="link.active ? 'page' : undefined" v-html="link.label" /></div>
+          <div class="flex gap-2 mt-4"><template v-for="(link, index) in orders.links" :key="index"><a v-if="link.url" :href="link.url" class="erp-btn erp-btn-secondary" :aria-current="link.active ? 'page' : undefined" v-html="link.label" /></template></div>
         </div>
       </div>
     </div>
