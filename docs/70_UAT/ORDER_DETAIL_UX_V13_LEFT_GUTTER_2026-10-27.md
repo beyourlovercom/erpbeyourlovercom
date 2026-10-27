@@ -9,25 +9,26 @@ Date: 2026-10-27. Owner design PASS: move floating section menu as far LEFT as p
 
 ## Implementation
 - No more two-column grid. Order body independently centered, max width 1080px.
-- Nav is fixed next to ERP global menu, 8px after the live sidebar width; respects expanded and collapsed global sidebar states. It remains visible when scrolling and does not reserve a full content grid column.
-- 1600px+ viewport: 126px full navigation. 1024–1599px: 52px compact text-wrapping navigation. Main content reserves only 50px to avoid overlap. Under 1024px: hide floating nav and give full width to content.
+- Nav and centered order content share one CSS grid cell as overlay siblings. The nav uses sticky positioning and computes its right edge relative to the ACTUAL centered content left edge: content left minus 5px. No hardcoded sidebar width or fixed left pixel value.
+- 1580px+ viewport: 126px full navigation. 1024–1579px: 52px compact text-wrapping navigation; content reserves 50px to protect the left gutter. Under 1024px the rail hides and content uses full width.
 - All ten anchors, click-to-scroll, page-local module fold/drag, inventory grouping and unsaved edit drafts remain unchanged.
 
 ## Verified checks
 - Scoped Vue 67/67 PASS; vue-tsc PASS; Vite production build PASS; git diff --check PASS.
-- Headless Chromium geometry smoke combined actual Show.vue CSS and ERP shell.css/tokens.css using a representative shell skeleton (NOT authenticated live ERP visual UAT):
+- Owner screenshot around 1586px showed overlap because previous implementation used sidebar width rather than the order content edge. This was corrected.
+- Headless Chromium geometry smoke combined actual Show.vue CSS and ERP shell.css/tokens.css using a representative shell skeleton (NOT authenticated real-app UAT): final revision tested 18 viewport/sidebar states. Each had an exact 5px content-to-nav gap, zero overlap with sidebar or content, no horizontal overflow, sticky nav top 108px after scrolling.
 
-| Width | Shell | Nav range x | Content range x | Overlap |
-|---|---|---|---|---|
-| 1024 | expanded | 228–280 | 289–955 | 0 |
-| 1280 | expanded | 228–280 | 289–1211 | 0 |
-| 1366 | expanded | 228–280 | 289–1297 | 0 |
-| 1440 | expanded | 228–280 | 290–1370 (1080px) | 0 |
-| 1440 | collapsed | 100–152 | 226–1306 (1080px) | 0 |
-| 1599 | expanded | 228–280 | 370–1450 | 0 |
-| 1600 | expanded | 228–354 | 370–1450 | 0 |
-| 1920 | expanded | 228–354 | 530–1610 | 0 |
-
+| Width | Sidebar mode | Navigator width | Gap | Sticky top | Result |
+|---|---|---:|---:|---:|---|
+| 1024 | expanded / collapsed | 52px | 5px | 108px | PASS |
+| 1280 | expanded / collapsed | 52px | 5px | 108px | PASS |
+| 1440 | expanded / collapsed | 52px | 5px | 108px | PASS |
+| 1579 | expanded / collapsed | 52px | 5px | 108px | PASS |
+| 1580 | expanded / collapsed | 126px | 5px | 108px | PASS |
+| 1586 (Owner screenshot width) | expanded / collapsed | 126px | 5px | 108px | PASS |
+| 1599 | expanded / collapsed | 126px | 5px | 108px | PASS |
+| 1600 | expanded / collapsed | 126px | 5px | 108px | PASS |
+| 1920 | expanded / collapsed | 126px | 5px | 108px | PASS |
 No horizontal overflow at any tested size.
 - Updated isolated synthetic-SQLite Dev at http://100.94.52.109:18687/customers/orders/1. Dev Vue source SHA matched local worktree, login HTTP 200 and unauthenticated order route redirected to login (302).
 - Isolated production-backend-parity PHP suite 38 tests / 399 assertions PASS.
