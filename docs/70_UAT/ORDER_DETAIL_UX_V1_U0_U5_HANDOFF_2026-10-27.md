@@ -158,6 +158,13 @@ Open isolated/synthetic order with staff role; test:
 - **U5 PARTIAL:** PR #528 opened as Draft; GitHub ERP Orders/KOL and Order Trash CI checks on initial implementation SHA both **SUCCESS**. Latest UX fix requires fresh push/check readback. No production symlink, database or Woo changes made.
 - **Hard gates remaining:** complete authenticated Dev browser/edit/modal UAT; Owner sees live Dev page and returns explicit `PASS`; required CI on final HEAD; latest live runtime source re-read and safe rollback plan; explicit production release authorization; atomic cutover/read-only smoke; Owner final production visual PASS.
 
+**U4 additional authenticated-app and modal evidence (2026-10-27; not equivalent to browser PASS):**
+- Isolated production-backend-parity Laravel feature test `OrderDetailUxV1U4GateTest` (not committed to GitHub or production) used staff roles with `orders.view` / `orders.edit` and a two-line synthetic order: authenticated real `/customers/orders/{id}` HTTP **200**, `Orders/Show` Inertia component and order props, `canEditOrder` and `canTrashOrder` true for editor and false for read-only viewer: **1 test / 30 assertions PASS**.
+- Added scoped Vue U4 tests for opening/closing shipment entry and partial-warehouse reallocation modals with **unsaved order notes preserved and no unexpected POST**; Vue suite now **60/60 PASS**. `vue-tsc --noEmit` and Vite build PASS.
+- Actual headless Chromium can reach Dev login page: HTTP 200, login form present, no login-page errors. **Authenticated-browser interactions on production-backend-parity Dev are still not verified** because login automation was safety-blocked. Do not infer a browser PASS from authenticated feature tests or simulated Vue DOM tests.
+- Prior GitHub CI at `5f2ce9ee`: **2/2 SUCCESS**. Re-run/re-read CI at the final source/test HEAD after these added checks.
+- Owner must still perform live on-screen Dev visual UAT and sign off; no production release occurred.
+
 **Release state: NOT DEPLOYED.** A passing test subset or Draft PR is never a substitute for the above Owner and Production gates.
 
 ## 9. Completion checklist

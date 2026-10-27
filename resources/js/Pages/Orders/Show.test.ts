@@ -646,6 +646,54 @@ describe('Orders/Show V2', () => {
     }
   })
 
+  it('preserves an unsaved order note while opening and closing a shipment editor', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true, canOperateLogistics: true } })
+    await flushPromises()
+    await wrapper.findAll('.page-header-actions button').find(button => button.text() === '编辑订单')!.trigger('click')
+    await wrapper.get('#order-section-notes textarea').setValue('本地未保存草稿 - U4 发货弹窗')
+    const before = vi.mocked(router.post).mock.calls.length
+    const open = wrapper.findAll('[data-testid="fulfillment-actions"] button').find(button => button.text().includes('履约发货'))
+    expect(open).toBeDefined()
+    await open!.trigger('click')
+    expect(wrapper.find('[role="dialog"][aria-label="填写物流并发货"]').exists()).toBe(true)
+    expect((wrapper.get('#order-section-notes textarea').element as HTMLTextAreaElement).value).toBe('本地未保存草稿 - U4 发货弹窗')
+    await wrapper.get('[role="dialog"][aria-label="填写物流并发货"] .ord-replacement-close').trigger('click')
+    expect(wrapper.find('[role="dialog"][aria-label="填写物流并发货"]').exists()).toBe(false)
+    expect((wrapper.get('#order-section-notes textarea').element as HTMLTextAreaElement).value).toBe('本地未保存草稿 - U4 发货弹窗')
+    expect(router.post).toHaveBeenCalledTimes(before)
+    wrapper.unmount()
+  })
+
+  it('preserves an unsaved order note while opening and canceling a partial warehouse reallocation', async () => {
+    const wrapper = mount(Show, { props: {
+      order: splitOrder, audit, canEditOrder: true, canOperateLogistics: true,
+      allocationUi: {
+        status: 'submitted', can_partial_reallocate: true, can_operate: false, can_reallocate: false,
+        requires_full_flow: false, selectable_warehouse_ids: [1, 2],
+        recommended_warehouse_ids: {}, selected_warehouse_ids: {},
+        recommended_plan_key: null, can_use_recommendation: false,
+        full_allocation_url: '/logistics/wait-stock',
+      },
+      warehouses: [
+        { id: 1, slug: 'us-la', name: '美西 MorePlus 仓', code: 'US-LA', country_code: 'US' },
+        { id: 2, slug: 'cn-factory', name: '国内工厂', code: 'CN', country_code: 'CN' },
+      ],
+    } })
+    await flushPromises()
+    await wrapper.findAll('.page-header-actions button').find(button => button.text() === '编辑订单')!.trigger('click')
+    await wrapper.get('#order-section-notes textarea').setValue('本地未保存草稿 - U4 调整分仓')
+    const before = vi.mocked(router.post).mock.calls.length
+    const open = wrapper.findAll('.ord-fulfillment-row-actions button').find(button => button.text() === '调整分仓')
+    expect(open).toBeDefined()
+    await open!.trigger('click')
+    expect(wrapper.get('[role="dialog"][aria-label="调整未发货履约分仓"]').text()).toContain('调整 B 分仓')
+    await wrapper.get('[role="dialog"][aria-label="调整未发货履约分仓"] .ord-replacement-close').trigger('click')
+    expect(wrapper.find('[role="dialog"][aria-label="调整未发货履约分仓"]').exists()).toBe(false)
+    expect((wrapper.get('#order-section-notes textarea').element as HTMLTextAreaElement).value).toBe('本地未保存草稿 - U4 调整分仓')
+    expect(router.post).toHaveBeenCalledTimes(before)
+    wrapper.unmount()
+  })
+
   it('scrolls within the document without route navigation or discarding an unsaved draft', async () => {
     const originalScroll = Element.prototype.scrollIntoView
     const scroll = vi.fn()
