@@ -309,6 +309,37 @@ describe('Orders/Show V2', () => {
     expect(wrapper.find('[role="dialog"][aria-label="调整未发货履约分仓"]').exists()).toBe(true)
   })
 
+  it('asks before changing an unshipped fulfillment segment to an inventory-unknown warehouse', async () => {
+    const allocationUi = {
+      status: 'submitted' as const, can_operate: false, can_reallocate: false,
+      can_partial_reallocate: true, logistics_started: true, requires_full_flow: false,
+      selectable_warehouse_ids: [1, 2, 3],
+      recommended_warehouse_ids: {}, selected_warehouse_ids: {},
+      recommended_plan_key: null, can_use_recommendation: false, full_allocation_url: '/logistics/wait-stock',
+    }
+    const wrapper = mount(Show, { props: {
+      order: splitOrder, audit, allocationUi,
+      warehouses: [
+        { id: 1, slug: 'us-la', name: '美西 MorePlus 仓', code: 'US-LA', country_code: 'US' },
+        { id: 2, slug: 'factory', name: '国内工厂', code: 'FACTORY', country_code: 'CN' },
+        { id: 3, slug: 'us-ny', name: '美东纽约仓', code: 'US-NY', country_code: 'US' },
+      ],
+    }, attachTo: document.body })
+    const adjust = wrapper.findAll('button').find(button => button.text() === '调整分仓')
+    await adjust!.trigger('click')
+    await wrapper.get('[aria-label="调整未发货履约分仓"] select').setValue(3)
+    const callsBefore = vi.mocked(router.post).mock.calls.length
+    await wrapper.findAll('button').find(button => button.text() === '确认调整分仓')!.trigger('click')
+    expect(document.body.textContent).toContain('所选仓库库存不足或未知')
+    expect(vi.mocked(router.post).mock.calls.length).toBe(callsBefore)
+    ;(document.body.querySelector('.stock-exception-confirm') as HTMLButtonElement).click()
+    await nextTick()
+    expect(router.post).toHaveBeenCalledWith('/logistics/orders/12/reallocate-pending-fulfillment', {
+      warehouse_id: 3, note: null, stock_exception_acknowledged: true,
+    }, expect.any(Object))
+    wrapper.unmount()
+  })
+
   it('renders split fulfillment aggregation from child shipments instead of the empty parent shipment', () => {
     const wrapper = mount(Show, { props: { order: splitOrder, audit } })
     expect(wrapper.text()).toContain('已拆分 · 2 个履约单')
