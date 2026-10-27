@@ -87,6 +87,72 @@ final class ProductSkuAliasController
         return back()->with('success', 'SKU 别名已删除');
     }
 
+
+    /** Product360 scoped mutations. Global legacy CRUD remains compatible. */
+    public function storeForProduct(Request $request, int $productId): RedirectResponse
+    {
+        $data = $request->validate([
+            'alias_sku' => ['required', 'string', 'max:128'],
+            'source_type' => ['required', 'in:manual,domestic_warehouse,xlwms,overseas_warehouse,operations,supplier'],
+            'source_reference' => ['nullable', 'string', 'max:255'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'same_identity_confirmed' => ['accepted'],
+        ]);
+        try {
+            $this->aliases->createAlias(
+                productId: $productId,
+                aliasSku: $data['alias_sku'],
+                sourceType: $data['source_type'],
+                sourceReference: $data['source_reference'] ?? null,
+                notes: $data['notes'] ?? null,
+                actor: Auth::user(),
+            );
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['alias_sku' => 'SKU 别名冲突或产品不存在：'.$e->getMessage()]);
+        }
+        return back()->with('success', 'SKU 别名已添加，OMS 发货仍需独立核实');
+    }
+
+    private function scopedAlias(int $productId, int $id): \App\Modules\Products\Infrastructure\Models\ProductSkuAlias
+    {
+        return \App\Modules\Products\Infrastructure\Models\ProductSkuAlias::query()
+            ->where('product_id', $productId)->findOrFail($id);
+    }
+
+    public function statusForProduct(Request $request, int $productId, int $id): RedirectResponse
+    {
+        $data = $request->validate(['is_active' => ['required', 'boolean']]);
+        $alias = $this->scopedAlias($productId, $id);
+        try {
+            $this->aliases->setActive($alias, (bool) $data['is_active'], Auth::user());
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['alias' => '别名状态操作失败：'.$e->getMessage()]);
+        }
+        return back()->with('success', (bool) $data['is_active'] ? 'SKU 别名已启用，需要重新核实 OMS 资格' : 'SKU 别名已停用');
+    }
+
+    public function verifyForProduct(Request $request, int $productId, int $id): RedirectResponse
+    {
+        $data = $request->validate([
+            'physical_evidence' => ['required', 'string', 'min:20', 'max:1000'],
+            'same_identity_confirmed' => ['accepted'],
+        ]);
+        $alias = $this->scopedAlias($productId, $id);
+        try {
+            $this->aliases->verifyForOms($alias, $data['physical_evidence'], Auth::user());
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['physical_evidence' => '核实失败：'.$e->getMessage()]);
+        }
+        return back()->with('success', '产品一致性已核实；仍须通过 OMS 目标仓库目录及库存预检');
+    }
+
+    public function destroyForProduct(Request $request, int $productId, int $id): RedirectResponse
+    {
+        $request->validate(['confirm_delete' => ['accepted']]);
+        $this->aliases->deleteAlias($this->scopedAlias($productId, $id), Auth::user());
+        return back()->with('success', 'SKU 别名已删除，已有商品、订单和库存不变');
+    }
+
     public function resolveReconciliation(Request $request, int $id): RedirectResponse
     {
         $item = \App\Modules\Products\Infrastructure\Models\ProductSkuReconciliation::find($id);

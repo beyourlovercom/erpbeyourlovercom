@@ -1,0 +1,74 @@
+name: ERP Unified SKU Alias V1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/Modules/Products/Experience/**'
+      - 'resources/js/Pages/Products/Show.vue'
+      - 'resources/js/Pages/Products/Show.test.ts'
+      - 'app/Modules/Products/Application/SkuAliasService.php'
+      - 'app/Modules/Products/Application/VerifiedOmsSkuSelector.php'
+      - 'app/Modules/Products/Application/VerifiedOmsSnapshotPreflight.php'
+      - 'app/Modules/Products/Application/VerifiedOmsCatalogApproval.php'
+      - 'app/Modules/Products/Application/VerifiedOmsProductIdentityResolver.php'
+      - 'app/Modules/Products/Infrastructure/EloquentSkuAliasRepository.php'
+      - 'app/Modules/Products/Infrastructure/Models/ProductSkuAlias.php'
+      - 'database/migrations/*oms_verification*'
+      - 'tests/Feature/Products/UnifiedSkuAliasVerificationTest.php'
+      - 'tests/Feature/Products/Product360SkuAliasManagementTest.php'
+      - 'tests/Unit/Products/VerifiedOmsSkuSelectorTest.php'
+      - 'tests/Unit/Products/VerifiedOmsSnapshotPreflightTest.php'
+      - 'tests/Unit/Products/VerifiedOmsCatalogApprovalTest.php'
+      - 'tests/Feature/Products/VerifiedOmsProductIdentityResolverTest.php'
+      - '.github/workflows/erp-unified-sku-alias-v1.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  sku-alias-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: PHP 8.3 with SQLite
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Node 22 for Inertia view tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Build frontend for existing Product360 Inertia tests
+        run: |
+          npm ci --no-audit --no-fund
+          ln -s Pages resources/js/pages
+          npm run build
+      - name: Product360 alias UI Vitest and typecheck
+        run: |
+          npm test -- resources/js/Pages/Products/Show.test.ts
+          npm run typecheck
+      - name: Configure isolated SQLite test database
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+          php artisan migrate:fresh --force
+      - name: Existing Product SKU plus Unified Alias V1 gates
+        run: php artisan test tests/Feature/Products/SkuAliasTest.php tests/Feature/Products/UnifiedSkuAliasVerificationTest.php tests/Feature/Products/Product360SkuAliasManagementTest.php tests/Unit/Products/VerifiedOmsSkuSelectorTest.php tests/Unit/Products/VerifiedOmsSnapshotPreflightTest.php tests/Unit/Products/VerifiedOmsCatalogApprovalTest.php tests/Feature/Products/VerifiedOmsProductIdentityResolverTest.php
+      - name: Whitespace and code syntax
+        run: |
+          php -l app/Modules/Products/Application/VerifiedOmsSkuSelector.php
+          php -l app/Modules/Products/Application/VerifiedOmsSnapshotPreflight.php
+          php -l app/Modules/Products/Application/VerifiedOmsCatalogApproval.php
+          php -l app/Modules/Products/Application/VerifiedOmsProductIdentityResolver.php
+          php -l app/Modules/Products/Application/SkuAliasService.php
+          git diff --check origin/main...HEAD
