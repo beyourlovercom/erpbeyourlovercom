@@ -630,6 +630,22 @@ describe('Orders/Show V2', () => {
     expect(wrapper.findAll('.ord-detail-nav-item').map(button => button.text())).not.toContain('库存分布')
   })
 
+  it('highlights the final audit section when scrolled to page bottom', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    await flushPromises()
+    const height = vi.spyOn(document.documentElement, 'scrollHeight', 'get').mockReturnValue(2400)
+    const scroll = vi.spyOn(window, 'scrollY', 'get').mockReturnValue(1600)
+    try {
+      window.dispatchEvent(new Event('scroll'))
+      await nextTick()
+      expect(wrapper.get('.ord-detail-nav-item[aria-current="location"]').text()).toBe('操作审计')
+    } finally {
+      height.mockRestore()
+      scroll.mockRestore()
+      wrapper.unmount()
+    }
+  })
+
   it('scrolls within the document without route navigation or discarding an unsaved draft', async () => {
     const originalScroll = Element.prototype.scrollIntoView
     const scroll = vi.fn()
@@ -637,7 +653,7 @@ describe('Orders/Show V2', () => {
     try {
       const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
       await flushPromises()
-    await nextTick()
+      await nextTick()
       const edit = wrapper.findAll('.page-header-actions button').find(button => button.text() === '编辑订单')
       await edit!.trigger('click')
       await wrapper.get('#order-section-notes textarea').setValue('未保存草稿须保留')

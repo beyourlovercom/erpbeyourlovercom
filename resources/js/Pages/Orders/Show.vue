@@ -735,6 +735,11 @@ const activeOrderSection = ref<string>('order-section-overview')
 const lookupOrderSection = (id: string) => orderDetailRoot.value?.querySelector<HTMLElement>(`[id="${id}"]`)
 const updateActiveOrderSection = () => {
   if (!visibleOrderSections.value.length) return
+  const scrollHeight = document.scrollingElement?.scrollHeight ?? document.documentElement.scrollHeight
+  if (scrollHeight > window.innerHeight && window.scrollY + window.innerHeight >= scrollHeight - 12) {
+    activeOrderSection.value = visibleOrderSections.value[visibleOrderSections.value.length - 1].id
+    return
+  }
   let current: string = visibleOrderSections.value[0].id
   for (const section of visibleOrderSections.value) {
     const target = lookupOrderSection(section.id)

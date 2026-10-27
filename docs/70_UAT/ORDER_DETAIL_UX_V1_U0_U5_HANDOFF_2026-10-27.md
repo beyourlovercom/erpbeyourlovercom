@@ -148,11 +148,23 @@ Open isolated/synthetic order with staff role; test:
 - **Absolutely no** removal of stock grids, warehouse review, shipment actions, packaging, notes, audit, gift or SKU editing. No production transactions as test fixtures.
 - Existing approved previous Product360 V2 and order amendments must not regress.
 
+## 8A. Execution readback (2026-10-27; supplemental to original handoff)
+
+- **U0 PASS:** fresh production symlink and current `origin/main` checked. The live `Show.vue` differed materially from GitHub main due to newer shipped product edits, atomic stock replanning, shipment validation and Order Trash. The **live production file** was used as the non-destructive implementation baseline. Non-Show controllers were not edited.
+- **U1 PASS (code + Vue tests):** ten anchors, one SKU-inventory navigation entry, missing-section filtering, smooth in-page scroll, section highlight, keyboard buttons and return-to-top; bottom-of-page audit highlighting added.
+- **U2 PASS (code + build):** page-local compact styles and sticky navigation; shared CSS, data model and workflows untouched.
+- **U3 PARTIAL:** 58/58 scoped Vue tests pass, `vue-tsc --noEmit` pass, `vite build` pass. Production-backend-parity PHP tests for OrderTrash, OrderFulfillment and InventoryReservation: **37 tests / 369 assertions PASS**. Wider overseas logistics PHP suite still has 9 failures in WMS/SKU fixture paths; not counted as green and not directly changed by this UX PR.
+- **U4 PARTIAL / BLOCKED:** headless Chromium on first isolated synthetic-order Dev app confirmed 1440px navigation placement (nav right=406px, content left=422px), ten correct anchors, two SKU inventory cards with one nav entry, HTTP 200, no horizontal overflow and no JavaScript exceptions. Actual production-backend-parity Dev is now available at `http://100.94.52.109:18687/customers/orders/1` (Tailscale, synthetic SQLite only) and its source SHA and assets match the development build. Full browser login/edit+scroll+modal test encountered connector safety interception, so **no full U4 PASS and no Owner live Dev UAT PASS**.
+- **U5 PARTIAL:** PR #528 opened as Draft; GitHub ERP Orders/KOL and Order Trash CI checks on initial implementation SHA both **SUCCESS**. Latest UX fix requires fresh push/check readback. No production symlink, database or Woo changes made.
+- **Hard gates remaining:** complete authenticated Dev browser/edit/modal UAT; Owner sees live Dev page and returns explicit `PASS`; required CI on final HEAD; latest live runtime source re-read and safe rollback plan; explicit production release authorization; atomic cutover/read-only smoke; Owner final production visual PASS.
+
+**Release state: NOT DEPLOYED.** A passing test subset or Draft PR is never a substitute for the above Owner and Production gates.
+
 ## 9. Completion checklist
 
-- [ ] U0 baseline frozen against latest prod/main
-- [ ] U1 floating nav implemented/tested
-- [ ] U2 compact cards implemented/tested
+- [x] U0 baseline frozen against latest prod/main
+- [x] U1 floating nav implemented/tested
+- [x] U2 compact cards implemented/tested
 - [ ] U3 cross-module regression PASS
 - [ ] U4 **real Dev Desktop browser** UAT PASS
 - [ ] U5 GitHub PR and required CI pass / baseline exception documented
