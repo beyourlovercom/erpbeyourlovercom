@@ -167,6 +167,10 @@ Open isolated/synthetic order with staff role; test:
 
 **Release state: NOT DEPLOYED.** A passing test subset or Draft PR is never a substitute for the above Owner and Production gates.
 
+## 8B. UX V1.1 approved follow-on (2026-10-27)
+
+Owner selected visual **Mode 2** for compact **default view** + original **edit form**. Implemented in the same isolated PR branch; see [ORDER_DETAIL_UX_V11_DUAL_MODE_2026-10-27.md](ORDER_DETAIL_UX_V11_DUAL_MODE_2026-10-27.md). Scope remains presentation-only, no invented payment editing. Vue 62/62, TypeScript, build and isolated PHP 38/399 PASS. Full authenticated U4 browser and Owner live UAT remain pending, so this is NOT a release approval.
+
 ## 9. Completion checklist
 
 - [x] U0 baseline frozen against latest prod/main

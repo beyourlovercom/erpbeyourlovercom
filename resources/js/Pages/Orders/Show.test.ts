@@ -366,7 +366,7 @@ describe('Orders/Show V2', () => {
   it('shows ISO currency beside every item unit price', () => {
     const eurOrder = { ...baseOrder, currency: 'EUR', items: [{ ...baseOrder.items[0], unit_price: '29.00' }] }
     const wrapper = mount(Show, { props: { order: eurOrder, audit, canEditOrder: true } })
-    expect(wrapper.text()).toContain('订单币种')
+    expect(wrapper.get('[aria-label="订单信息摘要"]').text()).toContain('币种EUR')
     expect(wrapper.text()).toContain('EUR 29.00')
   })
 
@@ -462,14 +462,14 @@ describe('Orders/Show V2', () => {
   })
 
   // Immutable identity always read-only
-  it('identity fields are immutable in View Mode (disabled inputs)', () => {
+  it('immutable identity fields are displayed as text, without disabled inputs in View Mode', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
-    const disabledInputs = wrapper.findAll('input[disabled]')
-    const values = disabledInputs.map(i => (i.element as HTMLInputElement).value)
-    expect(values).toContain('007-0908-c1')
-    expect(values).toContain('客户订单')
-    expect(values).toContain('手动创建')
-    expect(values).toContain('Test Owner')
+    const summary = wrapper.get('[aria-label="订单信息摘要"]')
+    expect(summary.findAll('input[disabled]')).toHaveLength(0)
+    expect(summary.text()).toContain('007-0908-c1')
+    expect(summary.text()).toContain('客户订单')
+    expect(summary.text()).toContain('手动创建')
+    expect(summary.text()).toContain('Test Owner')
   })
 
   it('identity fields remain immutable in Edit Mode (disabled inputs)', async () => {
@@ -496,8 +496,9 @@ describe('Orders/Show V2', () => {
     expect(cards.length).toBeGreaterThanOrEqual(5)
   })
 
-  it('uses erp-form-label — no mvp-label class', () => {
+  it('uses canonical erp-form-label only when entering the editable form', async () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
+    await wrapper.findAll('.page-header-actions button').find(b => b.text() === '编辑订单')!.trigger('click')
     expect(wrapper.find('.erp-form-label').exists()).toBe(true)
     expect(wrapper.find('.mvp-label').exists()).toBe(false)
   })
@@ -508,10 +509,17 @@ describe('Orders/Show V2', () => {
     expect(wrapper.find('.mvp-button').exists()).toBe(false)
   })
 
-  it('View Mode shows erp-readonly-input for mutable fields', () => {
+  it('View Mode uses plain text summaries, no faux input boxes or form controls', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
-    const readonlyDivs = wrapper.findAll('.erp-readonly-input')
-    expect(readonlyDivs.length).toBeGreaterThan(0)
+    expect(wrapper.get('.erp-form-page').classes()).toContain('ord-view-mode')
+    expect(wrapper.findAll('.erp-readonly-input')).toHaveLength(0)
+    for (const id of ['order-info', 'address', 'items', 'notes']) {
+      const card = wrapper.get('#order-section-' + id)
+      expect(card.findAll('input, textarea, select')).toHaveLength(0)
+    }
+    expect(wrapper.get('[aria-label="订单信息摘要"]').text()).toContain('USD')
+    expect(wrapper.get('[aria-label="收件地址摘要"]').text()).toContain('100 Main St')
+    expect(wrapper.get('[aria-label="订单商品摘要"]').text()).toContain('SKU-001')
   })
 
   it('Edit Mode shows erp-input controls — no mvp-input class', async () => {
@@ -520,6 +528,35 @@ describe('Orders/Show V2', () => {
     await editBtn!.trigger('click')
     expect(wrapper.find('.mvp-input').exists()).toBe(false)
     expect(wrapper.findAll('.erp-input').length).toBeGreaterThan(0)
+  })
+
+  it('switches between condensed summary and editable order fields with cancel restoring original values', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
+    const edit = wrapper.findAll('.page-header-actions button').find(b => b.text() === '编辑订单')
+    expect(wrapper.find('.ord-summary-table').exists()).toBe(true)
+    await edit!.trigger('click')
+    expect(wrapper.get('.erp-form-page').classes()).toContain('ord-edit-mode')
+    expect(wrapper.find('.ord-summary-table').exists()).toBe(false)
+    expect(wrapper.find('.ord-item-row').exists()).toBe(true)
+    const recipient = wrapper.get('#order-section-address input')
+    await recipient.setValue('Edited, not saved')
+    await wrapper.findAll('.page-header-actions button').find(b => b.text() === '取消编辑')!.trigger('click')
+    expect(wrapper.find('.ord-summary-table').exists()).toBe(true)
+    expect(wrapper.get('[aria-label="收件地址摘要"]').text()).toContain('Test Recipient')
+    expect(wrapper.get('[aria-label="收件地址摘要"]').text()).not.toContain('Edited, not saved')
+    await wrapper.findAll('.page-header-actions button').find(b => b.text() === '编辑订单')!.trigger('click')
+    expect((wrapper.get('#order-section-address input').element as HTMLInputElement).value).toBe('Test Recipient')
+    wrapper.unmount()
+  })
+
+  it('shows every order address attribute and item in View Mode without faking a payment total', () => {
+    const order = { ...baseOrder, address: { ...baseOrder.address, address_line_2: 'Unit 5' },
+      items: [baseOrder.items[0], { ...baseOrder.items[0], id: 11, sku: 'SKU-002', quantity: 1 }] }
+    const wrapper = mount(Show, { props: { order, audit } })
+    expect(wrapper.get('[aria-label="收件地址摘要"]').text()).toContain('100 Main St, Unit 5')
+    expect(wrapper.get('[aria-label="收件地址摘要"]').text()).toContain('90001')
+    expect(wrapper.get('[aria-label="订单商品摘要"]').findAll('tbody tr')).toHaveLength(2)
+    expect(wrapper.get('[aria-label="订单商品摘要"]').text()).not.toContain('已付款金额')
   })
 
   // Fulfillment and audit
@@ -552,7 +589,7 @@ describe('Orders/Show V2', () => {
 
   it('shows address fields labels', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
-    expect(wrapper.text()).toContain('收件人姓名')
+    expect(wrapper.text()).toContain('收件人')
     expect(wrapper.text()).toContain('联系电话')
   })
 

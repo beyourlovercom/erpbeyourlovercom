@@ -777,7 +777,7 @@ onBeforeUnmount(() => {
 <template>
   <Head :title="`${order.erp_order_id ?? '—'} · BYL ERP`" />
   <AuthenticatedLayout :title="`订单 ${order.erp_order_id ?? '—'}`" :breadcrumbs="breadcrumbs">
-    <div ref="orderDetailRoot" class="erp-form-page ord-compact-v1">
+    <div ref="orderDetailRoot" class="erp-form-page ord-compact-v1" :class="{ 'ord-view-mode': !editMode, 'ord-edit-mode': editMode }">
       <div class="ord-detail-layout">
         <aside class="ord-detail-nav-rail" aria-label="订单模块快捷导航">
           <nav class="ord-detail-nav" aria-label="订单模块">
@@ -796,7 +796,7 @@ onBeforeUnmount(() => {
           <div>
             <p class="ord-kicker">{{ order.order_kind_label }}</p>
             <h1 class="erp-form-title">{{ order.erp_order_id ?? '—' }}</h1>
-            <p class="erp-form-subtitle">查看订单事实；进入编辑模式后可维护允许修改的订单字段。</p>
+            <p v-if="editMode" class="erp-form-subtitle">仅修改允许编辑的字段；商品变更须通过库存与分仓影响预检。</p>
           </div>
           <div class="erp-form-header-actions page-header-actions">
             <button v-if="editMode" type="button" class="erp-btn erp-btn-secondary" @click="cancelEdit">取消编辑</button>
@@ -1059,7 +1059,15 @@ onBeforeUnmount(() => {
         <!-- Card 2: 订单信息 -->
         <div id="order-section-order-info" class="erp-form-card">
           <h2 class="erp-form-card-title">订单信息</h2>
-          <div class="erp-form-grid">
+          <dl v-if="!editMode" class="ord-summary-grid ord-summary-grid-order" aria-label="订单信息摘要">
+            <div class="ord-summary-field"><dt>订单号</dt><dd>{{ order.erp_order_id ?? '—' }}</dd></div>
+            <div class="ord-summary-field"><dt>订单类型</dt><dd>{{ order.order_kind_label }}</dd></div>
+            <div class="ord-summary-field"><dt>来源</dt><dd>{{ order.source_label }}</dd></div>
+            <div class="ord-summary-field"><dt>负责人</dt><dd>{{ order.owner?.name ?? '—' }}</dd></div>
+            <div class="ord-summary-field"><dt>币种</dt><dd>{{ order.currency }}</dd></div>
+            <div class="ord-summary-field"><dt>订单日期</dt><dd>{{ order.order_date }}</dd></div>
+          </dl>
+          <div v-else class="erp-form-grid">
             <div class="erp-form-field">
               <label class="erp-form-label">订单号</label>
               <input :value="order.erp_order_id ?? '—'" class="erp-input" disabled>
@@ -1098,7 +1106,16 @@ onBeforeUnmount(() => {
         <!-- Card 3: 收件与地址 -->
         <div id="order-section-address" class="erp-form-card">
           <h2 class="erp-form-card-title">收件与地址</h2>
-          <div class="erp-form-grid">
+          <dl v-if="!editMode" class="ord-summary-grid ord-summary-grid-address" aria-label="收件地址摘要">
+            <div class="ord-summary-field"><dt>收件人</dt><dd>{{ order.address?.recipient_name || '—' }}</dd></div>
+            <div class="ord-summary-field"><dt>联系电话</dt><dd>{{ order.address?.phone || '—' }}</dd></div>
+            <div class="ord-summary-field"><dt>国家</dt><dd>{{ order.address?.country || '—' }}</dd></div>
+            <div class="ord-summary-field"><dt>州 / 省</dt><dd>{{ order.address?.province_state || '—' }}</dd></div>
+            <div class="ord-summary-field"><dt>城市</dt><dd>{{ order.address?.city || '—' }}</dd></div>
+            <div class="ord-summary-field"><dt>邮政编码</dt><dd>{{ order.address?.postal_code || '—' }}</dd></div>
+            <div class="ord-summary-field ord-summary-field-wide"><dt>详细地址</dt><dd>{{ order.address?.address_line_1 || '—' }}<span v-if="order.address?.address_line_2">, {{ order.address.address_line_2 }}</span></dd></div>
+          </dl>
+          <div v-else class="erp-form-grid">
             <div class="erp-form-field">
               <label class="erp-form-label">收件人姓名</label>
               <div v-if="!editMode" class="erp-readonly-input">{{ order.address?.recipient_name || '—' }}</div>
@@ -1169,27 +1186,20 @@ onBeforeUnmount(() => {
         <!-- Card 4: 订单商品 -->
         <div id="order-section-items" class="erp-form-card">
           <h2 class="erp-form-card-title">订单商品</h2>
-          <!-- View mode: read-only item list -->
-          <template v-if="!editMode">
-            <div v-for="item in order.items" :key="item.id" class="ord-item-row-view">
-              <div class="erp-form-field">
-                <label class="erp-form-label">SKU / 产品</label>
-                <div class="erp-readonly-input">{{ item.sku || '—' }}</div>
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">产品摘要</label>
-                <div class="erp-readonly-input">{{ item.product_summary || '—' }}</div>
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">数量</label>
-                <div class="erp-readonly-input">{{ item.quantity }}</div>
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">单价</label>
-                <div class="erp-readonly-input">{{ order.currency }} {{ item.unit_price }}</div>
-              </div>
-            </div>
-          </template>
+          <!-- View mode: condensed, non-editable SKU table. Financial totals are not inferred from fulfillment lines. -->
+          <div v-if="!editMode" class="ord-summary-table-wrap">
+            <table class="ord-summary-table" aria-label="订单商品摘要">
+              <thead><tr><th scope="col">SKU</th><th scope="col">产品</th><th scope="col">数量</th><th scope="col">单价</th></tr></thead>
+              <tbody>
+                <tr v-for="item in order.items" :key="item.id">
+                  <td class="ord-summary-sku">{{ item.sku || '—' }}</td>
+                  <td>{{ item.product_summary || '—' }}</td>
+                  <td class="ord-summary-quantity">× {{ item.quantity }}</td>
+                  <td class="ord-summary-price">{{ order.currency }} {{ item.unit_price }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <!-- Edit mode: stable item IDs, SKU variant selection and explicit add/remove. -->
           <template v-else>
             <p class="ord-item-amendment-info">修改的是 ERP 实际发货方案。已经发货的商品不能覆盖历史；已预留的库存必须经过原子重规划。</p>
@@ -1311,8 +1321,8 @@ onBeforeUnmount(() => {
         <div id="order-section-notes" class="erp-form-card">
           <h2 class="erp-form-card-title">内部备注</h2>
           <div class="erp-form-field">
-            <label class="erp-form-label">备注内容</label>
-            <div v-if="!editMode" class="erp-readonly-input ord-readonly-textarea">{{ order.order_note || '—' }}</div>
+            <label v-if="editMode" class="erp-form-label">备注内容</label>
+            <div v-if="!editMode" class="ord-summary-note">{{ order.order_note || '—' }}</div>
             <template v-else>
               <textarea v-model="form.order_note" class="erp-textarea" placeholder="可选" />
               <p v-if="form.errors.order_note" class="erp-field-error">{{ form.errors.order_note }}</p>
@@ -1470,6 +1480,32 @@ onBeforeUnmount(() => {
 .ord-compact-v1 .erp-form-grid { row-gap: 10px; column-gap: 12px; margin-top: 10px; }
 .ord-compact-v1 .erp-form-card-helper,.ord-compact-v1 .ord-inventory-help { margin-top: 3px; margin-bottom: 8px; font-size: 11px; line-height: 1.5; }
 .ord-compact-v1 .ord-audit-card { padding-bottom: 13px; }
+
+/* UX V1.1: the default detail is a compact summary, not a disabled form. */
+.ord-view-mode .erp-form-card { padding: 12px 16px; margin-bottom: 10px; }
+.ord-view-mode .erp-form-card-title { margin-bottom: 9px; }
+.ord-view-mode .ord-inventory-card .erp-form-card-title { margin-bottom: 7px; }
+.ord-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 11px 18px;
+  margin: 0;
+}
+.ord-summary-field { display: flex; flex-direction: column; min-width: 0; gap: 3px; }
+.ord-summary-field dt { color: #77868d; font-size: 11px; line-height: 1.3; }
+.ord-summary-field dd { margin: 0; color: #213640; font-size: 13px; font-weight: 550; line-height: 1.4; overflow-wrap: anywhere; }
+.ord-summary-field-wide { grid-column: 1 / -1; }
+.ord-summary-field-wide dd { font-weight: 500; }
+.ord-summary-table-wrap { width: 100%; overflow-x: auto; }
+.ord-summary-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; }
+.ord-summary-table th { color: #70838b; background: #f7f9fa; font-size: 11px; font-weight: 600; }
+.ord-summary-table th,.ord-summary-table td { padding: 8px 10px; border-bottom: 1px solid #e9eef0; }
+.ord-summary-table tbody tr:last-child td { border-bottom: 0; }
+.ord-summary-sku { color: #254953; font-weight: 650; white-space: nowrap; }
+.ord-summary-quantity,.ord-summary-price { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ord-summary-note { white-space: pre-wrap; overflow-wrap: anywhere; color: #364d56; font-size: 13px; line-height: 1.5; min-height: 18px; }
+@media (max-width: 1199px) { .ord-summary-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+
 @media (max-width: 1199px) { .ord-detail-layout { grid-template-columns: 120px minmax(0,1fr); gap: 12px; } .ord-detail-nav-item { padding: 7px 6px; } }
 @media (max-width: 1023px) { .ord-detail-layout { display: block; } .ord-detail-nav-rail { display: none; } }
 
