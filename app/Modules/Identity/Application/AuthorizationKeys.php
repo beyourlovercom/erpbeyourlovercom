@@ -36,6 +36,7 @@ enum AuthorizationKeys: string
     case ProcurementCreate = 'procurement.create';
     case ProcurementOperate = 'procurement.operate';
     case ProductsView = 'products.view';
+    case ProductParametersSubmit = 'products.parameters.submit';
     case ProductsOperate = 'products.operate';
     case GuidesView = 'guides.view';
     case GuidesManage = 'guides.manage';

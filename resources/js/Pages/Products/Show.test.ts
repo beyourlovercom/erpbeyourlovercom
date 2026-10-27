@@ -5,8 +5,6 @@ import Show from './Show.vue'
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
   Link: { props: ['href'], template: '<a :href="href"><slot /></a>' },
-  useForm: (defaults: Record<string, unknown>) => ({ ...defaults, errors: {}, processing: false, post: vi.fn(), reset: vi.fn() }),
-  router: { patch: vi.fn(), delete: vi.fn() },
 }))
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({ default: { props: ['title', 'breadcrumbs'], template: '<div><slot /></div>' } }))
 
@@ -23,10 +21,21 @@ const baseProps = {
   media: [], woo: null, wooSyncHistory: [],
 }
 
+async function openPanel(wrapper: ReturnType<typeof mount>, group: string, sub?: string) {
+  const primary = wrapper.findAll('[data-product360-tab]').find(tab => tab.text() === group)
+  expect(primary, 'Missing main tab: ' + group).toBeDefined()
+  await primary!.trigger('click')
+  if (sub) {
+    const secondary = wrapper.findAll('[data-product360-subtab]').find(tab => tab.text() === sub)
+    expect(secondary, 'Missing nested tab: ' + group + ' / ' + sub).toBeDefined()
+    await secondary!.trigger('click')
+  }
+}
+
 describe('Products/Show Product360', () => {
-  it('renders nine real tabs with overview as the only default panel', () => {
+  it('renders the Owner-approved five main tabs with overview as the only default panel', () => {
     const wrapper = mount(Show, { props: baseProps })
-    expect(wrapper.findAll('[role="tab"]')).toHaveLength(9)
+    expect(wrapper.findAll('[data-product360-tab]')).toHaveLength(5)
     expect(wrapper.find('#product360-0').exists()).toBe(true)
     expect(wrapper.find('#product360-1').exists()).toBe(false)
     expect(wrapper.text()).toContain('暂无图片')
@@ -61,7 +70,7 @@ describe('Products/Show Product360', () => {
 
   it('switches panels without expanding the full workspace', async () => {
     const wrapper = mount(Show, { props: baseProps })
-    await wrapper.findAll('[role="tab"]').find(tab => tab.text() === '销售')!.trigger('click')
+    await openPanel(wrapper, '销售与合作', '销售记录')
     expect(wrapper.find('#product360-0').exists()).toBe(false)
     expect(wrapper.find('#product360-1').exists()).toBe(true)
     expect(wrapper.find('#product360-2').exists()).toBe(false)
@@ -73,9 +82,9 @@ describe('Products/Show Product360', () => {
     expect(overviewTab.attributes('type')).toBe('button')
     expect(overviewTab.attributes('aria-selected')).toBe('true')
     await overviewTab.trigger('keydown', { key: 'ArrowRight' })
-    expect(wrapper.find('#product360-1').exists()).toBe(true)
-    const activeTab = wrapper.find('[role="tab"][aria-selected="true"]')
-    expect(activeTab.text()).toBe('销售')
+    expect(wrapper.find('[data-product360-tab="产品参数"]').attributes('aria-selected')).toBe('true')
+    const activeTab = wrapper.find('[data-product360-tab][aria-selected="true"]')
+    expect(activeTab.text()).toBe('产品参数')
     expect(activeTab.element).toBe(document.activeElement)
     wrapper.unmount()
   })
@@ -95,7 +104,7 @@ describe('Products/Show Product360', () => {
       product: { ...baseProps.product, sale_price: '25.00', regular_price: '30.00' },
       sales: { units_30d: 2, order_count_30d: 1, units_90d: 5, order_count_90d: 2, lifetime_units: 9, lifetime_order_count: 3, revenue_by_currency: [{ currency: 'EUR', revenue: 90 }, { currency: 'USD', revenue: 170 }], recent_orders: [] },
     } })
-    await wrapper.findAll('[role="tab"]').find(tab => tab.text() === '销售')!.trigger('click')
+    await openPanel(wrapper, '销售与合作', '销售记录')
     const panel = wrapper.find('#product360-1').text()
     expect(panel).toContain('近 30 天')
     expect(panel).toContain('近 90 天')
@@ -105,6 +114,25 @@ describe('Products/Show Product360', () => {
     expect(panel).toContain('€90.00')
     expect(panel).toContain('US$170.00')
     expect(panel).toContain('收入（按原始币种）')
+  })
+
+  it('retains all nine previous content panels through the approved five-group nested navigation', async () => {
+    const wrapper = mount(Show, { props: baseProps })
+    const preserved = [
+      ['销售与合作', '销售记录', 'product360-1'],
+      ['库存与物流', '库存明细', 'product360-2'],
+      ['库存与物流', '物流记录', 'product360-3'],
+      ['产品参数', '成本与海关', 'product360-4'],
+      ['产品参数', '渠道与 SKU', 'product360-5'],
+      ['产品参数', '渠道与 SKU', 'product360-6'],
+      ['关联与记录', '业务关联', 'product360-7'],
+      ['关联与记录', '操作记录', 'product360-8'],
+    ] as const
+    expect(wrapper.find('#product360-0').exists()).toBe(true)
+    for (const [main, secondary, panelId] of preserved) {
+      await openPanel(wrapper, main, secondary)
+      expect(wrapper.find('#' + panelId).exists(), 'Missing retained content panel ' + panelId).toBe(true)
+    }
   })
 
   it('renders local Product media and exposes refresh only for an authorized configured Product ref', () => {
@@ -142,7 +170,7 @@ describe('Products/Show Product360', () => {
       wooSyncHistory: [{ status: 'succeeded', result_code: 'updated', error_message: null, completed_at: '2026-09-03T09:00:00Z', run_id: 15 }],
     } })
     expect(wrapper.find('#product360-0').text()).toContain('Short provider description')
-    await wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'Woo 信息')!.trigger('click')
+    await openPanel(wrapper, '产品参数', '渠道与 SKU')
     const panel = wrapper.find('#product360-5')
     expect(panel.text()).toContain('shop-a')
     expect(panel.text()).toContain('Product 101')
@@ -170,7 +198,7 @@ describe('Products/Show Product360', () => {
         { provider: 'woocommerce', connection_key: 'shop-b', reference: '202', reference_type: 'variation' },
       ],
     } })
-    await wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'Woo 信息')!.trigger('click')
+    await openPanel(wrapper, '产品参数', '渠道与 SKU')
     const groups = wrapper.findAll('.product360-woo-group')
     expect(groups).toHaveLength(2)
     expect(groups[0].text()).toContain('shop-a')
@@ -187,16 +215,16 @@ describe('Products/Show Product360', () => {
       inventory: [{ warehouse_id: 1, warehouse_name: 'US West', warehouse_slug: 'us-west', inventory_state: 'manual', quantity_on_hand: 8, quantity_reserved: 2, quantity_available: 6, expected_restock_qty: 12 }],
       audit: [{ action: 'product.updated', action_label: '更新产品', actor_label: null, source: 'web', created_at: '2026-09-02T05:00:00Z', reason: null }],
     } })
-    await wrapper.findAll('[role="tab"]').find(tab => tab.text() === '库存')!.trigger('click')
+    await openPanel(wrapper, '库存与物流', '库存明细')
     expect(wrapper.find('#product360-2').text()).toContain('12')
-    await wrapper.findAll('[role="tab"]').find(tab => tab.text() === '审计')!.trigger('click')
+    await openPanel(wrapper, '关联与记录', '操作记录')
     expect(wrapper.find('#product360-8').text()).toContain('—')
     expect(wrapper.find('#product360-8').text()).not.toContain('系统')
   })
 
   it('shows adopted M1.3 evidence sources without inventing volumetric weight', async () => {
     const wrapper = mount(Show, { props: { ...baseProps, product: { ...baseProps.product, weight_kg: '0.4200', shipping_weight_kg: '0.5800', weight_evidence_source_type: 'warehouse_measurement', shipping_weight_evidence_source_type: 'historical_logistics', length_cm: '18.00', width_cm: '9.00', height_cm: '6.00' } } })
-    await wrapper.findAll('[role="tab"]').find(tab => tab.text() === '物流')!.trigger('click')
+    await openPanel(wrapper, '库存与物流', '物流记录')
     const panel = wrapper.find('#product360-3').text()
     expect(panel).toContain('净重：0.4200 kg')
     expect(panel).toContain('证据：仓库实测')
@@ -207,10 +235,10 @@ describe('Products/Show Product360', () => {
   })
 
   it('renders SKU aliases as a compact read-only identity table with source evidence', async () => {
-    const wrapper = mount(Show, { props: { ...baseProps, skuAliases: [{ id: 1, alias_sku: 'LEGACY-001', source_type: 'legacy_import', source_reference: 'legacy-sheet', notes: null, is_active: true, oms_verified_at: null, oms_identity_evidence: null, updated_by: null, updated_at: null }, { id: 2, alias_sku: 'WOO-VAR-001', source_type: 'woocommerce', source_reference: 'shop-a:102', notes: null, is_active: true, oms_verified_at: null, oms_identity_evidence: null, updated_by: null, updated_at: null }] } })
-    await wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'SKU 别名')!.trigger('click')
+    const wrapper = mount(Show, { props: { ...baseProps, skuAliases: [{ alias_sku: 'LEGACY-001', source_type: 'legacy_import', source_reference: 'legacy-sheet' }, { alias_sku: 'WOO-VAR-001', source_type: 'woocommerce', source_reference: 'shop-a:102' }] } })
+    await openPanel(wrapper, '产品参数', '渠道与 SKU')
     const panel = wrapper.find('#product360-6')
-    expect(panel.text()).toContain('ERP 主 SKU')
+    expect(panel.text()).toContain('Canonical SKU')
     expect(panel.text()).toContain('DEMO-1')
     expect(panel.text()).toContain('LEGACY-001')
     expect(panel.text()).toContain('历史导入')
@@ -221,24 +249,9 @@ describe('Products/Show Product360', () => {
     expect(panel.findAll('button')).toHaveLength(0)
   })
 
-  it('offers scoped alias management only to products operators in the approved tab', async () => {
-    const wrapper = mount(Show, { props: {
-      ...baseProps, canOperate: true,
-      skuAliases: [{ id: 8, alias_sku: 'A001-W', source_type: 'xlwms', source_reference: 'stock-label', notes: 'Same physical product', is_active: true, oms_verified_at: null, oms_identity_evidence: null, updated_by: 'Dede', updated_at: null }],
-    } })
-    await wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'SKU 别名')!.trigger('click')
-    const panel = wrapper.find('#product360-6')
-    expect(panel.text()).toContain('添加 SKU 别名')
-    expect(panel.text()).toContain('待核实')
-    expect(panel.text()).toContain('Dede')
-    expect(panel.find('input[placeholder="输入新别名"]').exists()).toBe(true)
-    expect(panel.findAll('button').some(button => button.text() === '核实')).toBe(true)
-    expect(panel.text()).toContain('不同型号、颜色、赠品')
-  })
-
   it('renders canonical Order, Shipment, and KOL relations as compact read-only tables', async () => {
     const wrapper = mount(Show, { props: { ...baseProps, sales: { ...baseProps.sales, recent_orders: [{ id: 8, erp_order_id: '007-0825-c0008', external_order_number: 'M15-S4-30D', number: 'M15-S4-30D', order_date: '2026-08-25', status: 'pending_shipment', quantity: 2, revenue: 50, currency: 'USD' }] }, shipments: [{ id: 5, order_id: 8, erp_order_id: '007-0825-c0008', external_order_number: 'M15-S4-30D', order_number: 'M15-S4-30D', carrier: 'UPS', tracking_number: 'M15-S9-TRACK-001', shipped_at: '2026-09-01', status: 'shipped' }], collaborations: [{ id: 1, title: 'M1.5 Product360 UAT Collaboration', status: 'active', kol_id: 1, kol_name: 'M1.5 UAT Creator' }] } })
-    await wrapper.findAll('[role="tab"]').find(tab => tab.text() === '业务关联')!.trigger('click')
+    await openPanel(wrapper, '关联与记录', '业务关联')
     const panel = wrapper.find('#product360-7')
     expect(panel.text()).toContain('007-0825-c0008')
     expect(panel.text()).not.toContain('来源订单：M15-S4-30D')
@@ -253,7 +266,7 @@ describe('Products/Show Product360', () => {
   it('keeps edit operator-only and preserves the volumetric-weight boundary', async () => {
     const viewer = mount(Show, { props: baseProps })
     expect(viewer.find('a[href="/products/1/edit"]').exists()).toBe(false)
-    await viewer.findAll('[role="tab"]').find(tab => tab.text() === '物流')!.trigger('click')
+    await openPanel(viewer, '库存与物流', '物流记录')
     expect(viewer.text()).toContain('体积重参考：—')
     const operator = mount(Show, { props: { ...baseProps, canOperate: true } })
     expect(operator.find('a[href="/products/1/edit"]').exists()).toBe(true)

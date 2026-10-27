@@ -114,6 +114,28 @@ final class EloquentProductRepository implements ProductRepository
                     }
                 });
             })
+            ->when(($filters['view'] ?? 'standard') === 'measurements'
+                && in_array($filters['parameter_status'] ?? '', ['已填','待填','必填','其他'], true),
+                function ($q) use ($filters): void {
+                    $state = $filters['parameter_status'];
+                    if ($state === '已填') {
+                        $q->whereHas('parameterSubmissions', fn ($p) => $p->whereIn('status', ['submitted','approved']));
+                    } else {
+                        $q->whereDoesntHave('parameterSubmissions', fn ($p) => $p->whereIn('status', ['submitted','approved']));
+                        if ($state === '其他') {
+                            $q->whereDoesntHave('parameterTask', fn ($p) => $p->where('enabled', true));
+                        } else {
+                            $q->whereHas('parameterTask', fn ($p) => $p->where('enabled', true)
+                                ->where('is_required', $state === '必填'));
+                        }
+                    }
+                })
+            ->when(($filters['view'] ?? 'standard') === 'accessories'
+                && in_array($filters['parameter_status'] ?? '', ['有配件','待补充'], true),
+                function ($q) use ($filters): void {
+                    if ($filters['parameter_status'] === '有配件') $q->whereHas('parameterAccessories');
+                    else $q->whereDoesntHave('parameterAccessories');
+                })
             ->orderBy(in_array($filters['sort'] ?? 'name', ['name', 'sku', 'regular_price', 'sale_price', 'shipping_weight_kg', 'id'], true) ? $filters['sort'] ?? 'name' : 'name', ($filters['direction'] ?? 'asc') === 'desc' ? 'desc' : 'asc')
             ->orderBy('id')
             ->paginate(max(1, $perPage))

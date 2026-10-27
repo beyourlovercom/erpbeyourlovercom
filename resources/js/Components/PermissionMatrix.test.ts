@@ -24,6 +24,34 @@ describe('PermissionMatrix', () => {
     expect(wrapper.text()).toContain('管理系统权限')
   })
 
+  it('aligns Chinese name, English permission key, and checkbox in one labeled row', () => {
+    const wrapper = mount(PermissionMatrix, {
+      props: { modelValue: ['dashboard.view'], catalog, disabled: false },
+    })
+    const rows = wrapper.findAll('label.permission-item')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].find('.permission-item-cn').text()).toBe('查看仪表盘')
+    expect(rows[0].find('.permission-item-key').text()).toBe('dashboard.view')
+    expect(rows[0].find('input.permission-item-check[type=checkbox]').exists()).toBe(true)
+    expect(wrapper.find('.permission-matrix-column-head').text()).toContain('英文权限键')
+    expect(wrapper.find('.permission-matrix-column-head').text()).toContain('中文名称')
+    expect(wrapper.findAll('.permission-group-heading')).toHaveLength(2)
+    expect(wrapper.find('.permission-matrix-count').text()).toContain('已选择 1 / 2 项权限')
+  })
+
+  it('clear-all removes prior role keys and preserves only explicitly reselected keys', async () => {
+    const wrapper = mount(PermissionMatrix, {
+      props: { modelValue: ['dashboard.view', 'system.permissions.manage'], catalog, disabled: false },
+    })
+    await wrapper.findAll('button').find(b => b.text() === '取消全选')!.trigger('click')
+    expect(wrapper.emitted('update:modelValue')![0][0]).toEqual([])
+    await wrapper.setProps({ modelValue: [] })
+    expect(wrapper.find('.permission-matrix-count').text()).toContain('已选择 0 / 2 项权限')
+    await wrapper.findAll('.permission-item')[0].find('input[type=checkbox]').trigger('change')
+    const updates = wrapper.emitted('update:modelValue')!
+    expect(updates[updates.length - 1][0]).toEqual(['dashboard.view'])
+  })
+
   it('shows checked state for modelValue keys', () => {
     const wrapper = mount(PermissionMatrix, {
       props: { modelValue: ['dashboard.view'], catalog, disabled: false },

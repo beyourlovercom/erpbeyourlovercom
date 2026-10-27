@@ -20,7 +20,7 @@ use Inertia\Response;
 
 final class ProductPackagingProfileController
 {
-    public function __construct(private readonly AuditRecorder $audit, private readonly PackagingPresetCatalog $presets) {}
+    public function __construct(private readonly AuditRecorder $audit, private readonly PackagingPresetCatalog $presets, private readonly \App\Modules\Products\Application\ProductPackagingPresentation $presentation) {}
 
     public function edit(int $product): Response
     {
@@ -28,8 +28,8 @@ final class ProductPackagingProfileController
         $profile = ProductPackagingProfile::query()->with('media')->where('product_id', $item->id)->first();
         return Inertia::render('Products/Packaging', [
             'product'=>['id'=>$item->id,'sku'=>$item->sku,'name'=>$item->name],
-            'packagingProfile'=>$profile ? $this->serialize($profile) : null,
-            'presets'=>collect($this->presets->all())->map(fn(array $preset)=>['key'=>$preset['key'],'label'=>$preset['label'],'summary'=>$preset['summary']])->values()->all(),
+            'packagingProfile'=>$profile ? $this->presentation->serialize($profile) : null,
+            'presets'=>$this->presentation->presets(),
         ]);
     }
 
@@ -107,23 +107,5 @@ final class ProductPackagingProfileController
         return Storage::disk($media->disk)->response($media->path,$media->original_name,['Content-Type'=>$media->mime_type,'Cache-Control'=>'private, no-store'],'inline');
     }
 
-    private function serialize(ProductPackagingProfile $profile): array
-    {
-        $media=$profile->relationLoaded('media') ? $profile->media : $profile->media()->get();
-        $one=fn(string $kind)=>$media->firstWhere('kind',$kind);
-        $url=fn(?ProductPackagingProfileMedia $m)=>$m ? route('products.packaging.media',$m) : null;
-        $preset=$this->presets->get($profile->preset_key);
-        return [
-            'id'=>$profile->id,
-            'preset_key'=>$profile->preset_key,
-            'method'=>$preset['label'] ?? $profile->custom_method ?? '',
-            'scenario'=>$profile->scenario,
-            'version'=>$profile->version,
-            'units_per_carton'=>$profile->units_per_carton,
-            'inherits_global_template'=>$profile->preset_key !== null,
-            'default_image'=>($m=$one('default')) ? ['id'=>$m->id,'name'=>$m->original_name,'url'=>$url($m)] : null,
-            'rendered_image'=>($m=$one('rendered')) ? ['id'=>$m->id,'name'=>$m->original_name,'url'=>$url($m)] : null,
-            'examples'=>$media->where('kind','example')->values()->map(fn($m)=>['id'=>$m->id,'name'=>$m->original_name,'url'=>$url($m)])->all(),
-        ];
-    }
+
 }
