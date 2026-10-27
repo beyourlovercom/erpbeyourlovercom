@@ -71,6 +71,7 @@ final class OrderController
             'savedViews' => $this->views->forUser('orders', (int) $request->user()->getAuthIdentifier(), false),
             'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),
             'canExport' => $canExport,
+            'canManageTrash' => $request->user()?->can('system.permissions.manage') ?? false,
         ]);
     }
 
@@ -150,6 +151,8 @@ final class OrderController
             'canOperateLogistics' => $this->logisticsExecutionAccess->allows($request->user()),
             'canViewProfit' => $request->user()?->can('analysis.view') ?? false,
             'canMarkOperational' => $request->user()?->can('orders.edit') ?? false,
+            'canTrashOrder' => $request->user()?->can('orders.edit') ?? false,
+            'canManageTrash' => $request->user()?->can('system.permissions.manage') ?? false,
             'canCreateReplacement' => $this->logisticsExecutionAccess->allows($request->user()) && $this->originalLogisticsStarted($order),
             'canCreateProcurement' => ($request->user()?->can('procurement.create') ?? false) && $order->operationalMarkers->contains('marker', 'stockout'),
             'canManageProductPackaging' => $request->user()?->can('products.operate') ?? false,
