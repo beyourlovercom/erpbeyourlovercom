@@ -517,10 +517,11 @@ const showAllocationInventory = computed(() => {
 
 const allocationSelections = ref<Record<number, number | null>>(Object.fromEntries(props.order.items.map(item => [item.id, props.allocationUi?.selected_warehouse_ids?.[item.id] ?? props.allocationUi?.recommended_warehouse_ids?.[item.id] ?? null])))
 const allocationSubmitting = ref(false)
+const allocationError = ref<string | null>(null)
 const allocationSelectable = (warehouseId: number) => props.allocationUi?.selectable_warehouse_ids?.includes(warehouseId) ?? false
 const allocationSelected = (itemId: number) => allocationSelections.value[itemId] ?? null
 const allocationRecommended = (itemId: number, warehouseId: number) => props.allocationUi?.recommended_warehouse_ids?.[itemId] === warehouseId
-const selectAllocationWarehouse = (itemId: number, warehouseId: number) => { allocationSelections.value = { ...allocationSelections.value, [itemId]: warehouseId } }
+const selectAllocationWarehouse = (itemId: number, warehouseId: number) => { allocationError.value = null; allocationSelections.value = { ...allocationSelections.value, [itemId]: warehouseId } }
 const allocationSelectedCount = computed(() => props.order.items.filter(item => allocationSelected(item.id) !== null).length)
 const allocationReady = computed(() => props.order.items.length > 0 && allocationSelectedCount.value === props.order.items.length)
 const allocationMatchesRecommendation = computed(() => Boolean(props.allocationUi?.can_use_recommendation && props.allocationUi?.recommended_plan_key) && props.order.items.every(item => {
@@ -532,8 +533,15 @@ const submitAllocation = () => {
   if (!canSubmit || props.allocationUi?.requires_full_flow || !allocationReady.value || allocationSubmitting.value) return
   const allocationUi = props.allocationUi
   if (!allocationUi) return
+  allocationError.value = null
   allocationSubmitting.value = true
-  const options = { preserveScroll: true, onFinish: () => { allocationSubmitting.value = false } }
+  const options = {
+    preserveScroll: true,
+    onError: (errors: Record<string, string>) => {
+      allocationError.value = errors.assignments ?? errors.plan_key ?? Object.values(errors).find(Boolean) ?? '分仓未提交，请核实仓库或订单状态。'
+    },
+    onFinish: () => { allocationSubmitting.value = false },
+  }
   if (allocationMatchesRecommendation.value && allocationUi.recommended_plan_key) {
     router.post(`/logistics/orders/${props.order.id}/fulfillment-allocation/recommended`, { plan_key: allocationUi.recommended_plan_key, decision_note: null }, options)
     return
@@ -1154,6 +1162,7 @@ onBeforeUnmount(() => {
             <button v-if="!allocationUi.requires_full_flow" type="button" class="erp-btn erp-btn-primary" :disabled="!allocationReady || allocationSubmitting" @click="submitAllocation">{{ allocationSubmitting ? '提交中…' : allocationUi?.status === 'submitted' ? '确认重新分仓' : allocationMatchesRecommendation ? '采用推荐并提交分仓' : '确认分仓' }}</button>
           </div>
         </div>
+        <p v-if="allocationError" class="ord-allocation-error" role="alert">{{ allocationError }}</p>
 
         </section>
 
@@ -1912,6 +1921,7 @@ onBeforeUnmount(() => {
 .ord-allocation-action-bar > div:first-child { display: grid; gap: 3px; }
 .ord-allocation-action-bar span { color: #64748b; font-size: 12px; }
 .ord-allocation-actions { display: flex; align-items: center; gap: 8px; }
+.ord-allocation-error { margin: 8px 0 0; padding: 9px 12px; border: 1px solid #f2c4c4; border-radius: 8px; background: #fff7f7; color: #a32222; font-size: 13px; font-weight: 650; }
 
 .ord-packaging-row { display: grid; grid-template-columns: 1.2fr 1fr 1.35fr .8fr .9fr; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid #e4eaed; }
 .ord-packaging-row:last-child { border-bottom: 0; }

@@ -35,6 +35,7 @@ use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use PDOException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 final class LogisticsController
 {
@@ -97,7 +98,7 @@ final class LogisticsController
             'plan_key' => ['required', 'string', 'max:128'],
             'decision_note' => ['nullable', 'string', 'max:1000'],
         ]);
-        $allocation = $this->allocationSubmissions->submitRecommended($order, $data['plan_key'], $data['decision_note'] ?? null, $request->user());
+        $allocation = $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitRecommended($order, $data['plan_key'], $data['decision_note'] ?? null, $request->user()));
         if ($request->expectsJson()) {
             return response()->json(['status' => $allocation->status, 'decision_source' => $allocation->decision_source, 'submitted_at' => $allocation->submitted_at?->toIso8601String()]);
         }
@@ -116,7 +117,7 @@ final class LogisticsController
             'assignments.*.service' => ['nullable', 'string', 'max:191'],
             'decision_note' => ['nullable', 'string', 'max:1000'],
         ]);
-        $allocation = $this->allocationSubmissions->submitManual($order, $data['assignments'], $data['decision_note'] ?? null, $request->user());
+        $allocation = $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitManual($order, $data['assignments'], $data['decision_note'] ?? null, $request->user()));
         if ($request->expectsJson()) {
             return response()->json(['status' => $allocation->status, 'decision_source' => $allocation->decision_source, 'submitted_at' => $allocation->submitted_at?->toIso8601String()]);
         }
@@ -160,9 +161,29 @@ final class LogisticsController
             ];
         })->values()->all();
 
-        $this->allocationSubmissions->submitManual($order, $normalized, null, $request->user());
+        $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitManual($order, $normalized, null, $request->user()));
 
         return back()->with('success', '分仓已提交');
+    }
+
+    /**
+     * Inertia expects business validation failures as redirect errors, not a raw 422 HTML error page.
+     * JSON consumers retain their existing HTTP error status and payload.
+     */
+    private function submitAllocationForInertia(Request $request, callable $submit): mixed
+    {
+        try {
+            return $submit();
+        } catch (HttpException $exception) {
+            if (! $request->header('X-Inertia') || ! in_array($exception->getStatusCode(), [409, 422], true)) {
+                throw $exception;
+            }
+
+            $reason = trim($exception->getMessage());
+            throw ValidationException::withMessages([
+                'assignments' => $reason !== '' ? $reason : '分仓未提交，请核实仓库和订单状态。',
+            ]);
+        }
     }
 
     public function saveDraft(Request $request, Order $order): RedirectResponse

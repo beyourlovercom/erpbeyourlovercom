@@ -638,6 +638,12 @@ describe('Orders/Show V2', () => {
     expect(router.post).toHaveBeenCalledWith('/logistics/orders/1/fulfillment-allocation/quick', {
       assignments: [{ order_item_id: 10, warehouse_id: 2 }],
     }, expect.any(Object))
+    const submitOptions = vi.mocked(router.post).mock.lastCall?.[2] as { onError: (errors: Record<string, string>) => void }
+    submitOptions.onError({ assignments: '发货仓 US-LA 尚未启用' })
+    await nextTick()
+    expect(wrapper.get('[role="alert"]').text()).toContain('发货仓 US-LA 尚未启用')
+    await choices[0].trigger('change')
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
   })
 
   it('closes inventory allocation UI once warehouse allocation is committed', () => {

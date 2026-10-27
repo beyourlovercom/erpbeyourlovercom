@@ -112,7 +112,9 @@ final class FulfillmentAllocationSubmissionService
             );
             abort_if($carrierConflict, 422, '同一发货仓在同一履约组内必须使用同一承运商');
 
-            $warehouseByCode = Warehouse::query()->where('is_active', true)->whereIn('code', self::ALLOWED_SOURCE_CODES)->get()->keyBy('code');
+            $warehouseByCode = Warehouse::query()->where('is_active', true)
+                ->whereIn(DB::raw('UPPER(code)'), self::ALLOWED_SOURCE_CODES)
+                ->get()->keyBy(fn (Warehouse $warehouse): string => strtoupper(trim((string) $warehouse->code)));
             foreach ($sources as $sourceCode) {
                 abort_unless($warehouseByCode->has($sourceCode), 422, "发货仓 {$sourceCode} 尚未启用");
             }

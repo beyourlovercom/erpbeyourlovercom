@@ -207,6 +207,45 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         );
     }
 
+    public function test_quick_allocation_accepts_active_warehouse_code_with_legacy_lowercase(): void
+    {
+        [$user, $order, $product] = $this->scenario();
+        $item = $order->items()->firstOrFail();
+        $warehouse = Warehouse::query()->where('code', 'US-LA')->firstOrFail();
+        $warehouse->forceFill(['code' => 'us-la'])->save();
+        $this->makeReservable($warehouse, $product, 5, 0);
+
+        $this->actingAs($user)->post('/logistics/orders/'.$order->id.'/fulfillment-allocation/quick', [
+            'assignments' => [['order_item_id' => $item->id, 'warehouse_id' => $warehouse->id]],
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('fulfillment_allocations', [
+            'order_id' => $order->id,
+            'decision_source' => 'manual',
+            'status' => 'submitted',
+        ]);
+    }
+
+    public function test_inertia_quick_allocation_reports_business_422_as_readable_field_error(): void
+    {
+        [$user, $order] = $this->scenario();
+        $item = $order->items()->firstOrFail();
+        $warehouse = Warehouse::query()->where('code', 'US-LA')->firstOrFail();
+
+        $this->actingAs($user)->from('/customers/orders/'.$order->id)
+            ->withHeader('X-Inertia', 'true')
+            ->post('/logistics/orders/'.$order->id.'/fulfillment-allocation/quick', [
+                'assignments' => [
+                    ['order_item_id' => $item->id, 'warehouse_id' => $warehouse->id],
+                    ['order_item_id' => $item->id, 'warehouse_id' => $warehouse->id],
+                ],
+            ])
+            ->assertRedirect('/customers/orders/'.$order->id)
+            ->assertSessionHasErrors(['assignments' => '同一个订单商品不能拆数量到多个仓库']);
+
+        $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $order->id]);
+    }
+
     public function test_wait_stock_projects_inventory_context_without_persisting_a_shipment(): void
     {
         [$user, $order, $product, $warehouse] = $this->scenario();
