@@ -1647,9 +1647,20 @@ onBeforeUnmount(() => {
 
 /* Order Detail UX V1 page-local navigation and density; shared shell remains intact. */
 .ord-compact-v1 { padding: 20px 18px 32px; }
-.ord-detail-layout { max-width: 1250px; margin: 0 auto; display: grid; grid-template-columns: 142px minmax(0, 1fr); gap: 16px; align-items: start; }
-.ord-detail-layout > .erp-form-content { min-width: 0; width: 100%; max-width: 1080px; display: flex; flex-direction: column; }
-.ord-detail-nav-rail { position: sticky; top: 88px; min-width: 0; }
+/* V1.3: nav lives in the LEFT gutter, never as a grid column that squeezes cards. */
+.ord-detail-layout { width: 100%; margin: 0 auto; display: block; position: relative; }
+.ord-detail-layout > .erp-form-content { min-width: 0; width: 100%; max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; }
+.ord-detail-nav-rail {
+  position: fixed;
+  top: 108px;
+  left: calc(var(--byl-shell-sidebar-width) + 8px);
+  width: 126px;
+  min-width: 0;
+  z-index: 5;
+}
+:global(.authenticated-shell.sidebar-collapsed) .ord-detail-nav-rail {
+  left: calc(var(--byl-shell-rail-width) + 8px);
+}
 .ord-detail-nav { display: flex; flex-direction: column; padding: 12px 8px; border: 1px solid #e4eaed; border-radius: 12px; background: #fff; box-shadow: 0 2px 7px rgba(20,33,38,.035); max-height: calc(100vh - 110px); overflow-y: auto; }
 .ord-detail-nav-caption { color: #829198; font-size: 11px; font-weight: 600; padding: 2px 10px 8px; }
 .ord-detail-nav-item,.ord-detail-nav-top { text-align: left; border: 0; border-radius: 7px; background: transparent; color: #556a73; font-size: 12px; padding: 8px 10px; line-height: 1.35; cursor: pointer; }
@@ -1725,8 +1736,25 @@ onBeforeUnmount(() => {
 .ord-summary-note { white-space: pre-wrap; overflow-wrap: anywhere; color: #364d56; font-size: 13px; line-height: 1.5; min-height: 18px; }
 @media (max-width: 1199px) { .ord-summary-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 
-@media (max-width: 1199px) { .ord-detail-layout { grid-template-columns: 120px minmax(0,1fr); gap: 12px; } .ord-detail-nav-item { padding: 7px 6px; } }
-@media (max-width: 1023px) { .ord-detail-layout { display: block; } .ord-detail-nav-rail { display: none; } }
+/* At narrower desktop widths retain a 52px quick-jump rail and free up the old 158px grid slot. */
+@media (max-width: 1599px) {
+  .ord-detail-layout > .erp-form-content { width: min(1080px, calc(100% - 50px)); }
+  .ord-detail-nav-rail { width: 52px; }
+  .ord-detail-nav { padding: 9px 3px; }
+  .ord-detail-nav-caption { display: none; }
+  .ord-detail-nav-item,.ord-detail-nav-top {
+    text-align: center;
+    padding: 8px 2px;
+    font-size: 11px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.3;
+  }
+}
+@media (max-width: 1023px) {
+  .ord-detail-nav-rail { display: none; }
+  .ord-detail-layout > .erp-form-content { width: 100%; }
+}
 
 .erp-form-header-actions {
   display: flex;
