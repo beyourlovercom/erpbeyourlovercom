@@ -5,7 +5,7 @@ import { router } from '@inertiajs/vue3'
 
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
-  router: { post: vi.fn() },
+  router: { post: vi.fn(), delete: vi.fn() },
   useForm: (initial: Record<string, unknown>) => {
     const data = { ...initial }
     return {
@@ -116,6 +116,27 @@ const audit = [
 ]
 
 describe('Orders/Show V2', () => {
+
+  it('reveals trash only inside editable details and requires confirmation', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canTrashOrder: true } })
+    expect(wrapper.find('[data-testid="move-to-trash"]').exists()).toBe(false)
+    const edit = wrapper.findAll('.page-header-actions button').find(btn => btn.text().includes('编辑订单'))
+    expect(edit).toBeDefined()
+    await edit!.trigger('click')
+    expect(wrapper.get('[data-testid="move-to-trash"]').text()).toContain('移至回收站')
+    await wrapper.get('[data-testid="move-to-trash"]').trigger('click')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('007-0908-c1')
+    const confirm = wrapper.findAll('[role="dialog"] button').find(btn => btn.text().includes('确认移至回收站'))
+    await confirm!.trigger('click')
+    expect(router.delete).toHaveBeenCalledWith('/orders/1/trash', expect.any(Object))
+  })
+
+  it('never reveals trash to a read-only order viewer', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canTrashOrder: false } })
+    const edit = wrapper.findAll('.page-header-actions button').find(btn => btn.text().includes('编辑订单'))
+    await edit!.trigger('click')
+    expect(wrapper.find('[data-testid="move-to-trash"]').exists()).toBe(false)
+  })
   it('renders identity strip with order number', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit } })
     const strip = wrapper.find('.ord-identity-strip')

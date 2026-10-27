@@ -126,6 +126,8 @@ const props = withDefaults(defineProps<{
   carrierOptions?: CarrierOption[]
   allocationUi?: AllocationUi
   audit: { action: string; actor_id: number | null; created_at: string; reason?: string }[]
+  canTrashOrder?: boolean
+  canManageTrash?: boolean
   canMarkOperational?: boolean
   canManageProductPackaging?: boolean
   canViewPackagingEvidence?: boolean
@@ -206,6 +208,15 @@ const currencyOptions = computed(() => {
 })
 
 const editMode = ref(false)
+const trashConfirmOpen = ref(false)
+const trashSubmitting = ref(false)
+const submitTrash = () => {
+  if (!props.canTrashOrder || !editMode.value || trashSubmitting.value) return
+  trashSubmitting.value = true
+  router.delete(`/orders/${props.order.id}/trash`, {
+    onFinish: () => { trashSubmitting.value = false; trashConfirmOpen.value = false },
+  })
+}
 
 const enterEditMode = () => { editMode.value = true }
 
@@ -469,6 +480,18 @@ const submitReplacement = () => {
             <a v-if="order.procurement_order" :href="`/purchase/orders/${order.procurement_order.id}`" class="erp-btn erp-btn-secondary">查看采购订单 · {{ order.procurement_order.procurement_number }}</a>
             <button v-if="!editMode" type="button" class="erp-btn erp-btn-primary" @click="enterEditMode">编辑订单</button>
             <button v-else type="button" class="erp-btn erp-btn-primary" :disabled="form.processing" @click="submit">保存订单</button>
+            <button v-if="editMode && canTrashOrder" type="button" class="erp-btn erp-btn-secondary text-red-700" data-testid="move-to-trash" @click="trashConfirmOpen = true">移至回收站</button>
+          </div>
+        </div>
+
+        <div v-if="trashConfirmOpen && editMode && canTrashOrder" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" role="dialog" aria-modal="true" aria-label="确认移至回收站">
+          <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h2 class="text-lg font-semibold">移至回收站？</h2>
+            <p class="my-3">订单 {{ order.erp_order_id }} 将从普通订单列表隐藏，管理员可恢复。未保存的编辑不会自动保存。</p>
+            <div class="flex justify-end gap-3">
+              <button type="button" class="erp-btn erp-btn-secondary" :disabled="trashSubmitting" @click="trashConfirmOpen = false">取消</button>
+              <button type="button" class="erp-btn erp-btn-secondary text-red-700" :disabled="trashSubmitting" @click="submitTrash">确认移至回收站</button>
+            </div>
           </div>
         </div>
 

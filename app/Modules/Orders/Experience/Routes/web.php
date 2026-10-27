@@ -3,6 +3,7 @@
 use App\Modules\Orders\Experience\Controllers\KolLogisticsController;
 use App\Modules\Orders\Experience\Controllers\OrderController;
 use App\Modules\Orders\Experience\Controllers\OrderSavedViewController;
+use App\Modules\Orders\Experience\Controllers\OrderTrashController;
 use App\Modules\Orders\Experience\Controllers\WooCommerceInboundController;
 use Illuminate\Support\Facades\Route;
 
@@ -12,6 +13,10 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/sync/woocommerce/single', [WooCommerceInboundController::class, 'single'])->middleware('can:sync.operate')->name('woocommerce.inbound.single');
     Route::post('/sync/woocommerce/incremental', [WooCommerceInboundController::class, 'incremental'])->middleware('can:sync.operate')->name('woocommerce.inbound.incremental');
     Route::post('/sync/woocommerce/historical', [WooCommerceInboundController::class, 'historical'])->middleware('can:sync.operate')->name('woocommerce.inbound.historical');
+    Route::get('/orders/trash', [OrderTrashController::class, 'index'])->middleware('can:system.permissions.manage')->name('orders.trash.index');
+    Route::post('/orders/trash/{order}/restore', [OrderTrashController::class, 'restore'])->middleware('can:system.permissions.manage')->whereNumber('order')->name('orders.trash.restore');
+    Route::delete('/orders/trash/{order}', [OrderTrashController::class, 'purge'])->middleware('can:system.permissions.manage')->whereNumber('order')->name('orders.trash.purge');
+    Route::delete('/orders/{order}/trash', [OrderTrashController::class, 'destroy'])->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->name('orders.trash.destroy');
     Route::get('/orders', [OrderController::class, 'index'])->middleware('can:orders.view')->name('orders.index')->defaults('order_kind', 'all');
     Route::get('/orders/export', [OrderController::class, 'export'])->middleware('can:orders.view')->name('orders.export.all')->defaults('order_kind', 'all');
     Route::post('/orders/views', [OrderSavedViewController::class, 'store'])->middleware('can:orders.view')->name('orders.views.store');

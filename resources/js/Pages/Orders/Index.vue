@@ -18,6 +18,7 @@ const props = defineProps<{
   sourceTypes: { value: string; label: string }[]
   savedViews: SavedView[]
   canExport: boolean
+  canManageTrash?: boolean
 }>()
 
 const filters = reactive({
@@ -92,6 +93,7 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
       <div class="mvp-page-heading">
         <div><p class="mvp-kicker">订单核心</p><h2>{{ heading }}</h2><p>统一维护 Website、KOL 和 Manual Other 订单。</p></div>
         <div class="mvp-actions page-header-actions">
+          <Link v-if="canManageTrash" class="mvp-button" href="/orders/trash">回收站（管理员）</Link>
           <a v-if="canExport" class="mvp-button" :href="exportUrl()">导出 CSV</a>
           <template v-if="orderKind === 'all' && orderScope !== 'external_warehouse'">
             <Link class="mvp-button" href="/customers/orders/create">新建客户订单</Link>

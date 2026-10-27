@@ -6,12 +6,14 @@ use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderStatus;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Order extends Model
 {
+    use SoftDeletes;
     protected $fillable = [
         'customer_id', 'fulfillment_parent_id', 'fulfillment_suffix', 'fulfillment_role', 'fulfillment_origin_id', 'fulfillment_reason', 'fulfillment_note',
         'internal_order_number', 'erp_order_id', 'source_type', 'order_kind', 'external_order_number', 'order_date',
@@ -25,6 +27,8 @@ class Order extends Model
             'source_type' => OrderSourceType::class,
             'order_kind' => OrderKind::class,
             'order_status' => OrderStatus::class,
+            'deleted_at' => 'datetime',
+            'archived_at' => 'datetime',
         ];
     }
 
