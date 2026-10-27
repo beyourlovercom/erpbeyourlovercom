@@ -35,7 +35,8 @@ if ($pdoDatabase !== 'erp_order_trash_ci') {
     throw new RuntimeException('PDO connected to an unexpected database.');
 }
 if (DB::table('orders')->count() !== 0 || ! Schema::hasColumn('orders', 'deleted_at')
-    || ! Schema::hasColumn('orders', 'deleted_by')) {
+    || ! Schema::hasColumn('orders', 'deleted_by')
+    || ! Schema::hasColumn('orders', 'archived_at') || ! Schema::hasColumn('orders', 'archived_by')) {
     throw new RuntimeException('Expected a fresh migrated order-trash schema.');
 }
 
@@ -65,16 +66,29 @@ if (! $blocked || ! Schema::hasColumn('orders', 'deleted_at')
     throw new RuntimeException('Rollback did not fail closed for a trashed order.');
 }
 
-DB::table('orders')->where('id', $id)->update(['deleted_at' => null, 'deleted_by' => null]);
+DB::table('orders')->where('id', $id)->update(['deleted_at' => null, 'deleted_by' => null, 'archived_at' => now()]);
+$blockedForArchive = false;
+try {
+    $migration->down();
+} catch (RuntimeException $e) {
+    $blockedForArchive = str_contains($e->getMessage(), 'Cannot drop order trash columns');
+}
+if (! $blockedForArchive || ! Schema::hasColumn('orders', 'archived_at')
+    || DB::table('orders')->where('id', $id)->whereNull('archived_at')->exists()) {
+    throw new RuntimeException('Rollback must fail closed for business-preserving archived rows.');
+}
+DB::table('orders')->where('id', $id)->update(['archived_at' => null, 'archived_by' => null]);
 $migration->down();
 if (Schema::hasColumn('orders', 'deleted_at') || Schema::hasColumn('orders', 'deleted_by')
+    || Schema::hasColumn('orders', 'archived_at') || Schema::hasColumn('orders', 'archived_by')
     || DB::table('orders')->count() !== $recordCount) {
     throw new RuntimeException('Clean rollback changed records or left trash columns.');
 }
 $migration->up();
 if (! Schema::hasColumn('orders', 'deleted_at') || ! Schema::hasColumn('orders', 'deleted_by')
+    || ! Schema::hasColumn('orders', 'archived_at') || ! Schema::hasColumn('orders', 'archived_by')
     || DB::table('orders')->count() !== $recordCount) {
     throw new RuntimeException('Re-applying the migration after rollback failed.');
 }
 
-echo "MYSQL_ORDER_TRASH_UP_FAIL_CLOSED_DOWN_CLEAN_DOWN_REUP=PASS\n";
+echo "MYSQL_ORDER_TRASH_SOFT_DELETE_AND_PRESERVED_ARCHIVE_FAIL_CLOSED_ROLLBACK=PASS\n";

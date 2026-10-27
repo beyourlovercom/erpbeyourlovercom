@@ -28,6 +28,7 @@ class Order extends Model
             'order_kind' => OrderKind::class,
             'order_status' => OrderStatus::class,
             'deleted_at' => 'datetime',
+            'archived_at' => 'datetime',
         ];
     }
 

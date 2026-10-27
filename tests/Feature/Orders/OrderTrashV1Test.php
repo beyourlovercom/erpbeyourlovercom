@@ -63,13 +63,11 @@ final class OrderTrashV1Test extends TestCase
         $order = $this->order($admin, 'customer', 'external');
         $order->externalReferences()->create(['provider' => 'test', 'reference' => 'TRASH-V1-REF']);
         // Active Woo/integration references must not become hidden or orphaned.
-        $this->actingAs($admin)->delete('/orders/'.$order->id.'/trash')->assertStatus(409);
-        $this->assertNotSoftDeleted('orders', ['id' => $order->id]);
-
-        // Even a legacy trash row is not eligible for unsafe physical deletion.
-        $order->delete();
+        $this->actingAs($admin)->delete('/orders/'.$order->id.'/trash')->assertRedirect('/orders');
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'deleted_at' => null]);
+        $this->assertNotNull($order->fresh()->archived_at);
+        $this->assertNotNull(Order::query()->find($order->id));
         $this->actingAs($admin)->delete('/orders/trash/'.$order->id)->assertStatus(409);
-        $this->assertSoftDeleted('orders', ['id' => $order->id]);
         $this->assertDatabaseHas('order_external_references', ['order_id' => $order->id]);
     }
 
@@ -78,13 +76,15 @@ final class OrderTrashV1Test extends TestCase
         $employee = $this->userWith(['orders.view', 'orders.edit']);
         $shipmentOrder = $this->order($employee, 'customer', 'shipment');
         $shipmentOrder->shipment()->create(['shipment_status' => 'pending']);
-        $this->actingAs($employee)->delete('/orders/'.$shipmentOrder->id.'/trash')->assertStatus(409);
-        $this->assertNotSoftDeleted('orders', ['id' => $shipmentOrder->id]);
+        $this->actingAs($employee)->delete('/orders/'.$shipmentOrder->id.'/trash')->assertRedirect('/orders');
+        $this->assertNotNull($shipmentOrder->fresh()->archived_at);
+        $this->assertNotNull($shipmentOrder->shipment()->first());
 
         $financialOrder = $this->order($employee, 'customer', 'finance');
         $financialOrder->financials()->create(['currency' => 'USD']);
-        $this->actingAs($employee)->delete('/orders/'.$financialOrder->id.'/trash')->assertStatus(409);
-        $this->assertNotSoftDeleted('orders', ['id' => $financialOrder->id]);
+        $this->actingAs($employee)->delete('/orders/'.$financialOrder->id.'/trash')->assertRedirect('/orders');
+        $this->assertNotNull($financialOrder->fresh()->archived_at);
+        $this->assertNotNull($financialOrder->financials()->first());
         $this->assertDatabaseHas('order_financials', ['order_id' => $financialOrder->id]);
     }
 
@@ -104,18 +104,20 @@ final class OrderTrashV1Test extends TestCase
             'status' => 'reserved',
             'created_at' => now(), 'updated_at' => now(),
         ]);
-        $this->actingAs($employee)->delete('/orders/'.$reserved->id.'/trash')->assertStatus(409);
-        $this->assertNotSoftDeleted('orders', ['id' => $reserved->id]);
+        $this->actingAs($employee)->delete('/orders/'.$reserved->id.'/trash')->assertRedirect('/orders');
+        $this->assertNotNull($reserved->fresh()->archived_at);
+        $this->assertNotNull(Order::query()->find($reserved->id));
         $this->assertDatabaseHas('inventory_reservations', ['order_id' => $reserved->id]);
 
         $parent = $this->order($employee, 'customer', 'parent');
         $child = $this->order($employee, 'customer', 'child');
         $child->fulfillment_parent_id = $parent->id;
         $child->save();
-        $this->actingAs($employee)->delete('/orders/'.$parent->id.'/trash')->assertStatus(409);
-        $this->actingAs($employee)->delete('/orders/'.$child->id.'/trash')->assertStatus(409);
-        $this->assertNotSoftDeleted('orders', ['id' => $parent->id]);
-        $this->assertNotSoftDeleted('orders', ['id' => $child->id]);
+        $this->actingAs($employee)->delete('/orders/'.$parent->id.'/trash')->assertRedirect('/orders');
+        $this->actingAs($employee)->delete('/orders/'.$child->id.'/trash')->assertRedirect('/orders');
+        $this->assertNotNull($parent->fresh()->archived_at);
+        $this->assertNotNull($child->fresh()->archived_at);
+        $this->assertSame($parent->id, $child->fresh()->fulfillment_parent_id);
     }
 
     public function test_orders_view_permission_is_also_required_for_trash(): void
@@ -132,8 +134,39 @@ final class OrderTrashV1Test extends TestCase
         $order = $this->order($employee, 'customer', 'shipped');
         $order->order_status = 'shipped';
         $order->save();
-        $this->actingAs($employee)->delete('/orders/'.$order->id.'/trash')->assertStatus(409);
-        $this->assertNotSoftDeleted('orders', ['id' => $order->id]);
+        $this->actingAs($employee)->delete('/orders/'.$order->id.'/trash')->assertRedirect('/orders');
+        $this->assertNotNull($order->fresh()->archived_at);
+        $this->assertNotNull(Order::query()->find($order->id));
+    }
+
+    public function test_linked_kol_order_is_hidden_only_from_staff_orders_and_restored_without_losing_evidence(): void
+    {
+        $staff = $this->userWith(['orders.view', 'orders.edit', 'kol.view']);
+        $admin = $this->userWith(['orders.view', 'orders.edit', 'system.permissions.manage']);
+        $order = $this->order($staff, 'kol_fulfillment', 'linkedkol');
+        $order->externalReferences()->create(['provider' => 'test', 'reference' => 'ARCHIVE-LINKED-KOL-01']);
+
+        $this->actingAs($staff)->delete('/orders/'.$order->id.'/trash')->assertRedirect('/orders');
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'deleted_at' => null, 'archived_by' => $staff->id]);
+        $this->assertNotNull($order->fresh()->archived_at);
+        $this->actingAs($staff)->get('/kol/orders')->assertOk()
+            ->assertInertia(fn ($page) => $page->has('orders.data', 0));
+        $this->actingAs($staff)->get('/kol/orders/'.$order->id)->assertNotFound();
+        $this->actingAs($staff)->get('/orders/'.$order->id)->assertNotFound();
+        $this->actingAs($staff)->get('/orders/trash')->assertForbidden();
+
+        // Woo inbound and reconciliation must still see the canonical order and reference.
+        $this->assertNotNull(Order::query()->whereKey($order->id)->first());
+        $this->assertDatabaseHas('order_external_references', [
+            'order_id' => $order->id, 'reference' => 'ARCHIVE-LINKED-KOL-01',
+        ]);
+        $this->actingAs($admin)->get('/orders/trash')->assertOk()
+            ->assertInertia(fn ($page) => $page->has('orders.data', 1)
+                ->where('orders.data.0.archival_mode', 'preserved'));
+        $this->actingAs($admin)->delete('/orders/trash/'.$order->id)->assertStatus(409);
+        $this->actingAs($admin)->post('/orders/trash/'.$order->id.'/restore')->assertRedirect();
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'deleted_at' => null, 'archived_at' => null]);
+        $this->actingAs($staff)->get('/kol/orders/'.$order->id)->assertOk();
     }
 
     private function userWith(array $keys): User

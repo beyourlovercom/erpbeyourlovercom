@@ -43,14 +43,16 @@ final class OrderTrashController
     {
         $this->authorizeAdmin($request);
         return Inertia::render('Orders/Trash', [
-            'orders' => Order::onlyTrashed()->with('owner')
-                ->orderByDesc('deleted_at')->paginate(50)->through(fn (Order $order): array => [
+            'orders' => Order::withTrashed()->where(fn ($q) => $q->whereNotNull('deleted_at')->orWhereNotNull('archived_at'))
+                ->with('owner')->orderByRaw('COALESCE(archived_at, deleted_at) DESC')
+                ->paginate(50)->through(fn (Order $order): array => [
                     'id' => $order->id,
                     'number' => $order->erp_order_id ?: $order->internal_order_number,
                     'kind' => $order->order_kind?->value,
                     'owner' => $order->owner?->name,
-                    'deleted_at' => $order->deleted_at?->toDateTimeString(),
-                    'deleted_by' => $order->deleted_by,
+                    'deleted_at' => ($order->archived_at ?? $order->deleted_at)?->toDateTimeString(),
+                    'deleted_by' => $order->archived_by ?? $order->deleted_by,
+                    'archival_mode' => $order->archived_at !== null ? 'preserved' : 'soft_deleted',
                 ]),
         ]);
     }
@@ -61,12 +63,19 @@ final class OrderTrashController
         DB::transaction(function () use ($request, $order): void {
             $locked = Order::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
             KolOrderAccessScope::authorize($request->user(), $locked);
-            $this->assertSafeToRemove($locked);
-            // Deletion does not cancel inventory, fulfillment, payment or commission facts.
-            $locked->deleted_by = $request->user()->getAuthIdentifier();
-            $locked->save();
-            $locked->delete();
-            $this->record($request, $locked, 'order.trashed');
+            abort_if($locked->archived_at !== null, 409, '订单已在回收站。');
+            // Business evidence remains queryable for fulfillment, finance, stock and Woo sync.
+            if ($this->hasBusinessEvidence($locked)) {
+                $locked->archived_at = now();
+                $locked->archived_by = $request->user()->getAuthIdentifier();
+                $locked->save();
+                $this->record($request, $locked, 'order.archived_with_evidence');
+            } else {
+                $locked->deleted_by = $request->user()->getAuthIdentifier();
+                $locked->save();
+                $locked->delete();
+                $this->record($request, $locked, 'order.trashed');
+            }
         });
 
         return redirect()->route('orders.index')->with('success', '订单已移至回收站');
@@ -76,8 +85,17 @@ final class OrderTrashController
     {
         $this->authorizeAdmin($request);
         DB::transaction(function () use ($request, $order): void {
-            $locked = Order::onlyTrashed()->whereKey($order)->lockForUpdate()->firstOrFail();
-            $locked->restore();
+            $locked = Order::withTrashed()
+                ->where(fn ($q) => $q->whereNotNull('deleted_at')->orWhereNotNull('archived_at'))
+                ->whereKey($order)->lockForUpdate()->firstOrFail();
+            if ($locked->archived_at !== null) {
+                $locked->archived_at = null;
+                $locked->archived_by = null;
+                $locked->save();
+            }
+            if ($locked->trashed()) {
+                $locked->restore();
+            }
             $this->record($request, $locked, 'order.restored');
         });
 
@@ -88,9 +106,12 @@ final class OrderTrashController
     {
         $this->authorizeAdmin($request);
         DB::transaction(function () use ($request, $order): void {
-            $locked = Order::onlyTrashed()->whereKey($order)->lockForUpdate()->firstOrFail();
-            // The same safety gate applies even to legacy trashed orders.
-            $this->assertSafeToRemove($locked);
+            $locked = Order::withTrashed()->where(fn ($q) => $q->whereNotNull('deleted_at')->orWhereNotNull('archived_at'))
+                ->whereKey($order)->lockForUpdate()->firstOrFail();
+            abort_if($locked->archived_at !== null, 409, '保留业务证据的归档订单不能永久删除。');
+            // Protected business evidence can never be physically deleted.
+            abort_if($this->hasBusinessEvidence($locked), 409,
+                '订单存在业务关联，不能永久删除。请保留在回收站。');
             $this->record($request, $locked, 'order.purged');
             $locked->forceDelete();
         });
@@ -98,32 +119,38 @@ final class OrderTrashController
         return back()->with('success', '订单已永久删除');
     }
 
-    private function assertSafeToRemove(Order $order): void
+    private function hasBusinessEvidence(Order $order): bool
     {
         $status = $order->order_status instanceof \BackedEnum
             ? $order->order_status->value
             : (string) $order->order_status;
-        abort_unless(in_array($status, ['pending_shipment', 'cancelled'], true), 409,
-            '订单已进入业务履约状态，禁止直接移除。请先完成业务冲销。');
-
-        foreach (self::PROTECTED_RELATIONS as $relation) {
-            abort_if($order->{$relation}()->exists(), 409,
-                '订单存在物流、财务或外部同步记录，禁止直接移除，请先完成业务处理。');
+        if (! in_array($status, ['pending_shipment', 'cancelled'], true)) {
+            return true;
         }
-
-        // Eloquent SoftDeletes would hide a trashed parent/child from relation queries.
-        abort_if($order->fulfillment_parent_id !== null || $order->fulfillment_origin_id !== null, 409,
-            '拆分或补发订单存在父子履约关系，不能移除。');
-        abort_if(DB::table('orders')->where('fulfillment_parent_id', $order->id)
-            ->orWhere('fulfillment_origin_id', $order->id)->exists(), 409,
-            '订单存在拆分或补发履约记录，不能移除。');
-
-        foreach (self::PROTECTED_TABLES as $table => $column) {
-            if (Schema::hasTable($table) && Schema::hasColumn($table, $column)) {
-                abort_if(DB::table($table)->where($column, $order->id)->exists(), 409,
-                    '订单存在库存预留、历史成本或网红佣金关联，禁止移除。');
+        // Never make an imported/Woo order invisible to inbound reconciliation.
+        $source = $order->source_type instanceof \BackedEnum ? $order->source_type->value : (string) $order->source_type;
+        if ($source !== 'manual') {
+            return true;
+        }
+        foreach (self::PROTECTED_RELATIONS as $relation) {
+            if ($order->{$relation}()->exists()) {
+                return true;
             }
         }
+        if ($order->fulfillment_parent_id !== null || $order->fulfillment_origin_id !== null) {
+            return true;
+        }
+        if (DB::table('orders')->where('fulfillment_parent_id', $order->id)
+            ->orWhere('fulfillment_origin_id', $order->id)->exists()) {
+            return true;
+        }
+        foreach (self::PROTECTED_TABLES as $table => $column) {
+            if (Schema::hasTable($table) && Schema::hasColumn($table, $column)
+                && DB::table($table)->where($column, $order->id)->exists()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private function authorizeAdmin(Request $request): void
@@ -138,7 +165,7 @@ final class OrderTrashController
             $action,
             Order::class,
             $order->id,
-            before: ['erp_order_id' => $order->erp_order_id, 'deleted_at' => $order->deleted_at?->toIso8601String()],
+            before: ['erp_order_id' => $order->erp_order_id, 'deleted_at' => $order->deleted_at?->toIso8601String(), 'archived_at' => $order->archived_at?->toIso8601String()],
             after: ['actor_id' => $request->user()->getAuthIdentifier()],
             reason: 'order_trash_v1',
         );

@@ -107,6 +107,7 @@ final class OrderController
 
     public function showAny(Request $request, Order $order): RedirectResponse
     {
+        abort_if($order->archived_at !== null && ! $request->user()?->can('system.permissions.manage'), 404);
         $target = $order;
         if ($order->order_kind === OrderKind::FulfillmentDerived) {
             $target = $order->fulfillmentParent()->firstOrFail();
@@ -350,6 +351,7 @@ final class OrderController
     private function authorizeKind(Request $request, Order $order): void
     {
         abort_if($order->order_kind !== $this->kind($request), HttpResponse::HTTP_NOT_FOUND);
+        abort_if($order->archived_at !== null && ! $request->user()?->can('system.permissions.manage'), HttpResponse::HTTP_NOT_FOUND);
     }
 
     private function orderData(Order $order): array

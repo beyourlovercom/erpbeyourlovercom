@@ -284,6 +284,7 @@ final class OrderService
     {
         $orderClass = 'App\\Modules\\Orders\\Infrastructure\\Models\\Order';
         $query = $orderClass::query()
+            ->whereNull('archived_at')
             ->with(['items', 'owner', 'address', 'shipment.warehouse', 'operationalMarkers'])
             ->when($filters['order_kind'] ?? null, fn ($query, string $kind) => $query->where('order_kind', $kind))
             ->when($filters['owner_id'] ?? null, fn ($query, int $ownerId) => $query->where('owner_id', $ownerId))
