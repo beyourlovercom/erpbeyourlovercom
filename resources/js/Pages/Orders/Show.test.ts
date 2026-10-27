@@ -1,5 +1,6 @@
-import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import Show from './Show.vue'
 import { router } from '@inertiajs/vue3'
 
@@ -116,9 +117,22 @@ const audit = [
 ]
 
 describe('Orders/Show V2', () => {
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn()
+    const memory = new Map<string,string>()
+    Object.defineProperty(window,'localStorage', {
+      configurable:true,
+      value: {
+        getItem:(key:string) => memory.get(key) ?? null,
+        setItem:(key:string,value:string) => { memory.set(key,String(value)) },
+        removeItem:(key:string) => { memory.delete(key) },
+        clear:() => { memory.clear() },
+      },
+    })
+  })
 
   it('reveals trash only inside editable details and requires confirmation', async () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit, canTrashOrder: true } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true, canTrashOrder: true } })
     expect(wrapper.find('[data-testid="move-to-trash"]').exists()).toBe(false)
     const edit = wrapper.findAll('.page-header-actions button').find(btn => btn.text().includes('编辑订单'))
     expect(edit).toBeDefined()
@@ -132,13 +146,13 @@ describe('Orders/Show V2', () => {
   })
 
   it('never reveals trash to a read-only order viewer', async () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit, canTrashOrder: false } })
-    const edit = wrapper.findAll('.page-header-actions button').find(btn => btn.text().includes('编辑订单'))
-    await edit!.trigger('click')
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: false, canTrashOrder: false } })
+    expect(wrapper.findAll('.page-header-actions button').some(btn => btn.text().includes('编辑订单'))).toBe(false)
+    expect(wrapper.findAll('.page-header-actions button').some(btn => btn.text().includes('保存订单'))).toBe(false)
     expect(wrapper.find('[data-testid="move-to-trash"]').exists()).toBe(false)
   })
   it('renders identity strip with order number', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     const strip = wrapper.find('.ord-identity-strip')
     expect(strip.exists()).toBe(true)
     expect(strip.text()).toContain('007-0908-c1')
@@ -147,27 +161,27 @@ describe('Orders/Show V2', () => {
   })
 
   it('shows order kind label in identity strip', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     expect(wrapper.find('.ord-identity-strip').text()).toContain('客户订单')
   })
 
   it('shows source label in identity strip', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     expect(wrapper.find('.ord-identity-strip').text()).toContain('手动创建')
   })
 
   it('shows order status label in identity strip', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     expect(wrapper.find('.ord-identity-strip').text()).toContain('待发货')
   })
 
   it('shows owner in identity strip', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     expect(wrapper.find('.ord-identity-strip').text()).toContain('Test Owner')
   })
 
   it('does not expose source or technical order numbers in view mode', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     expect(wrapper.find('.ord-details-disclosure').exists()).toBe(false)
     expect(wrapper.text()).toContain('007-0908-c1')
     expect(wrapper.text()).not.toContain('BIZ-001')
@@ -175,7 +189,7 @@ describe('Orders/Show V2', () => {
   })
 
   it('renders five business cards: fulfillment, order info, address, items, note', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     expect(wrapper.text()).toContain('履约状态')
     expect(wrapper.text()).toContain('订单信息')
     expect(wrapper.text()).toContain('收件与地址')
@@ -313,13 +327,13 @@ describe('Orders/Show V2', () => {
   })
 
   it('does not introduce a delete action', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     expect(wrapper.text()).not.toContain('删除订单')
     expect(wrapper.text()).not.toContain('Danger Zone')
   })
 
   it('shows 返回列表 link for customers', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     expect(wrapper.find('a[href="/customers/orders"]').exists()).toBe(true)
   })
 
@@ -364,14 +378,14 @@ describe('Orders/Show V2', () => {
   // View Mode tests
   it('shows ISO currency beside every item unit price', () => {
     const eurOrder = { ...baseOrder, currency: 'EUR', items: [{ ...baseOrder.items[0], unit_price: '29.00' }] }
-    const wrapper = mount(Show, { props: { order: eurOrder, audit } })
-    expect(wrapper.text()).toContain('订单币种')
+    const wrapper = mount(Show, { props: { order: eurOrder, audit, canEditOrder: true } })
+    expect(wrapper.get('[aria-label="订单信息摘要"]').text()).toContain('币种EUR')
     expect(wrapper.text()).toContain('EUR 29.00')
   })
 
   it('Edit Mode exposes the canonical order currency selector', async () => {
     const eurOrder = { ...baseOrder, currency: 'EUR' }
-    const wrapper = mount(Show, { props: { order: eurOrder, audit } })
+    const wrapper = mount(Show, { props: { order: eurOrder, audit, canEditOrder: true } })
     const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
     await editBtn!.trigger('click')
     const selects = wrapper.findAll('select')
@@ -380,39 +394,39 @@ describe('Orders/Show V2', () => {
   })
 
   it('defaults to View Mode: no active submit button', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     expect(wrapper.find('button[type="submit"]').exists()).toBe(false)
   })
 
   it('defaults to View Mode: 编辑订单 button is visible', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
     expect(editBtn).toBeTruthy()
   })
 
   it('defaults to View Mode: no active date input', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     expect(wrapper.find('input[type="date"]').exists()).toBe(false)
   })
 
   it('defaults to View Mode: no active textarea for note', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     expect(wrapper.find('textarea').exists()).toBe(false)
   })
 
   it('defaults to View Mode: no SKU combobox visible', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     expect(wrapper.find('.sku-combobox-stub').exists()).toBe(false)
   })
 
   it('defaults to View Mode: 保存订单 action not shown', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     expect(wrapper.text()).not.toContain('保存订单')
   })
 
   // Edit Mode tests
   it('clicking 编辑订单 enters Edit Mode: shows 保存订单 and 取消编辑', async () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
     await editBtn!.trigger('click')
     expect(wrapper.text()).toContain('保存订单')
@@ -420,28 +434,28 @@ describe('Orders/Show V2', () => {
   })
 
   it('Edit Mode shows date input', async () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
     await editBtn!.trigger('click')
     expect(wrapper.find('input[type="date"]').exists()).toBe(true)
   })
 
   it('Edit Mode shows textarea for note', async () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
     await editBtn!.trigger('click')
     expect(wrapper.find('textarea').exists()).toBe(true)
   })
 
   it('Edit Mode shows SKU combobox for items', async () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
     await editBtn!.trigger('click')
     expect(wrapper.find('.sku-combobox-stub').exists()).toBe(true)
   })
 
   it('clicking 取消编辑 returns to View Mode', async () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
     await editBtn!.trigger('click')
     const cancelBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '取消编辑')
@@ -461,18 +475,18 @@ describe('Orders/Show V2', () => {
   })
 
   // Immutable identity always read-only
-  it('identity fields are immutable in View Mode (disabled inputs)', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
-    const disabledInputs = wrapper.findAll('input[disabled]')
-    const values = disabledInputs.map(i => (i.element as HTMLInputElement).value)
-    expect(values).toContain('007-0908-c1')
-    expect(values).toContain('客户订单')
-    expect(values).toContain('手动创建')
-    expect(values).toContain('Test Owner')
+  it('immutable identity fields are displayed as text, without disabled inputs in View Mode', () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
+    const summary = wrapper.get('[aria-label="订单信息摘要"]')
+    expect(summary.findAll('input[disabled]')).toHaveLength(0)
+    expect(summary.text()).toContain('007-0908-c1')
+    expect(summary.text()).toContain('客户订单')
+    expect(summary.text()).toContain('手动创建')
+    expect(summary.text()).toContain('Test Owner')
   })
 
   it('identity fields remain immutable in Edit Mode (disabled inputs)', async () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
     await editBtn!.trigger('click')
     const disabledInputs = wrapper.findAll('input[disabled]')
@@ -485,45 +499,82 @@ describe('Orders/Show V2', () => {
 
   // ERP V2 VI contract
   it('uses erp-form-page outer container', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     expect(wrapper.find('.erp-form-page').exists()).toBe(true)
   })
 
   it('uses erp-form-card for section cards', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     const cards = wrapper.findAll('.erp-form-card')
     expect(cards.length).toBeGreaterThanOrEqual(5)
   })
 
-  it('uses erp-form-label — no mvp-label class', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+  it('uses canonical erp-form-label only when entering the editable form', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
+    await wrapper.findAll('.page-header-actions button').find(b => b.text() === '编辑订单')!.trigger('click')
     expect(wrapper.find('.erp-form-label').exists()).toBe(true)
     expect(wrapper.find('.mvp-label').exists()).toBe(false)
   })
 
   it('uses erp-btn — no mvp-button class', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     expect(wrapper.find('.erp-btn').exists()).toBe(true)
     expect(wrapper.find('.mvp-button').exists()).toBe(false)
   })
 
-  it('View Mode shows erp-readonly-input for mutable fields', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
-    const readonlyDivs = wrapper.findAll('.erp-readonly-input')
-    expect(readonlyDivs.length).toBeGreaterThan(0)
+  it('View Mode uses plain text summaries, no faux input boxes or form controls', () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
+    expect(wrapper.get('.erp-form-page').classes()).toContain('ord-view-mode')
+    expect(wrapper.findAll('.erp-readonly-input')).toHaveLength(0)
+    for (const id of ['order-info', 'address', 'items', 'notes']) {
+      const card = wrapper.get('#order-section-' + id)
+      expect(card.findAll('input, textarea, select')).toHaveLength(0)
+    }
+    expect(wrapper.get('[aria-label="订单信息摘要"]').text()).toContain('USD')
+    expect(wrapper.get('[aria-label="收件地址摘要"]').text()).toContain('100 Main St')
+    expect(wrapper.get('[aria-label="订单商品摘要"]').text()).toContain('SKU-001')
   })
 
   it('Edit Mode shows erp-input controls — no mvp-input class', async () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
     await editBtn!.trigger('click')
     expect(wrapper.find('.mvp-input').exists()).toBe(false)
     expect(wrapper.findAll('.erp-input').length).toBeGreaterThan(0)
   })
 
+  it('switches between condensed summary and editable order fields with cancel restoring original values', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
+    const edit = wrapper.findAll('.page-header-actions button').find(b => b.text() === '编辑订单')
+    expect(wrapper.find('.ord-summary-table').exists()).toBe(true)
+    await edit!.trigger('click')
+    expect(wrapper.get('.erp-form-page').classes()).toContain('ord-edit-mode')
+    expect(wrapper.find('.ord-summary-table').exists()).toBe(false)
+    expect(wrapper.find('.ord-item-row').exists()).toBe(true)
+    const recipient = wrapper.get('#order-section-address input')
+    await recipient.setValue('Edited, not saved')
+    await wrapper.findAll('.page-header-actions button').find(b => b.text() === '取消编辑')!.trigger('click')
+    expect(wrapper.find('.ord-summary-table').exists()).toBe(true)
+    expect(wrapper.get('[aria-label="收件地址摘要"]').text()).toContain('Test Recipient')
+    expect(wrapper.get('[aria-label="收件地址摘要"]').text()).not.toContain('Edited, not saved')
+    await wrapper.findAll('.page-header-actions button').find(b => b.text() === '编辑订单')!.trigger('click')
+    expect((wrapper.get('#order-section-address input').element as HTMLInputElement).value).toBe('Test Recipient')
+    wrapper.unmount()
+  })
+
+  it('shows every order address attribute and item in View Mode without faking a payment total', () => {
+    const order = { ...baseOrder, address: { ...baseOrder.address, address_line_2: 'Unit 5' },
+      items: [baseOrder.items[0], { ...baseOrder.items[0], id: 11, sku: 'SKU-002', quantity: 1 }] }
+    const wrapper = mount(Show, { props: { order, audit } })
+    expect(wrapper.get('[aria-label="收件地址摘要"]').text()).toContain('100 Main St, Unit 5')
+    expect(wrapper.get('[aria-label="收件地址摘要"]').text()).toContain('90001')
+    expect(wrapper.get('[aria-label="订单商品摘要"]').findAll('tbody tr')).toHaveLength(2)
+    expect(wrapper.get('[aria-label="订单商品摘要"]').text()).not.toContain('已付款金额')
+  })
+
   // Fulfillment and audit
   it('shows fulfillment status in fulfillment card', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     expect(wrapper.text()).toContain('待发货')
   })
 
@@ -538,25 +589,25 @@ describe('Orders/Show V2', () => {
   })
 
   it('does not show reopen button without tracking number', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     const reopenBtn = wrapper.find('[data-testid="fulfillment-actions"]').findAll('button').find(b => b.text().includes('重开发货'))
     expect(reopenBtn).toBeFalsy()
   })
 
   it('shows audit log section', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     expect(wrapper.text()).toContain('操作审计')
     expect(wrapper.text()).toContain('created')
   })
 
   it('shows address fields labels', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
-    expect(wrapper.text()).toContain('收件人姓名')
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
+    expect(wrapper.text()).toContain('收件人')
     expect(wrapper.text()).toContain('联系电话')
   })
 
   it('existing item product_id preserved for existing order items', () => {
-    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     // item.product_id = 5 from baseOrder — shown in SKU field (view mode shows SKU text)
     expect(wrapper.text()).toContain('SKU-001')
   })
@@ -603,6 +654,205 @@ describe('Orders/Show V2', () => {
     expect(wrapper.text()).not.toContain('库存分布')
     expect(wrapper.find('input[type="radio"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('确认分仓')
+  })
+
+  it('shows ten ordered navigation links and only one inventory link for multiple SKUs', async () => {
+    const items = [baseOrder.items[0], { ...baseOrder.items[0], id: 11, sku: 'SKU-002' }]
+    const wrapper = mount(Show, { props: { order: { ...baseOrder, items }, audit, canEditOrder: true } })
+    await flushPromises()
+    await nextTick()
+    const buttons = wrapper.findAll('.ord-detail-nav-item')
+    expect(buttons.map(button => button.text())).toEqual([
+      '概览', '履约状态', '辅助标记', '库存分布',
+      '订单信息', '收件与地址', '订单商品', '包装与重量', '内部备注', '操作审计',
+    ])
+    expect(buttons.filter(button => button.text() === '库存分布')).toHaveLength(1)
+    expect(wrapper.findAll('.ord-inventory-card')).toHaveLength(2)
+    expect(wrapper.findAll('#order-section-inventory')).toHaveLength(1)
+    expect(wrapper.findAll('[aria-current="location"]')).toHaveLength(1)
+  })
+
+  it('hides navigation entries when the corresponding card does not exist', async () => {
+    const wrapper = mount(Show, { props: { order: splitOrder, audit } })
+    await flushPromises()
+    await nextTick()
+    expect(wrapper.find('#order-section-inventory').exists()).toBe(false)
+    expect(wrapper.findAll('.ord-detail-nav-item').map(button => button.text())).not.toContain('库存分布')
+  })
+
+  it('highlights the final audit section when scrolled to page bottom', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    await flushPromises()
+    const height = vi.spyOn(document.documentElement, 'scrollHeight', 'get').mockReturnValue(2400)
+    const scroll = vi.spyOn(window, 'scrollY', 'get').mockReturnValue(1600)
+    try {
+      window.dispatchEvent(new Event('scroll'))
+      await nextTick()
+      expect(wrapper.get('.ord-detail-nav-item[aria-current="location"]').text()).toBe('操作审计')
+    } finally {
+      height.mockRestore()
+      scroll.mockRestore()
+      wrapper.unmount()
+    }
+  })
+
+  it('preserves an unsaved order note while opening and closing a shipment editor', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true, canOperateLogistics: true } })
+    await flushPromises()
+    await wrapper.findAll('.page-header-actions button').find(button => button.text() === '编辑订单')!.trigger('click')
+    await wrapper.get('#order-section-notes textarea').setValue('本地未保存草稿 - U4 发货弹窗')
+    const before = vi.mocked(router.post).mock.calls.length
+    const open = wrapper.findAll('[data-testid="fulfillment-actions"] button').find(button => button.text().includes('履约发货'))
+    expect(open).toBeDefined()
+    await open!.trigger('click')
+    expect(wrapper.find('[role="dialog"][aria-label="填写物流并发货"]').exists()).toBe(true)
+    expect((wrapper.get('#order-section-notes textarea').element as HTMLTextAreaElement).value).toBe('本地未保存草稿 - U4 发货弹窗')
+    await wrapper.get('[role="dialog"][aria-label="填写物流并发货"] .ord-replacement-close').trigger('click')
+    expect(wrapper.find('[role="dialog"][aria-label="填写物流并发货"]').exists()).toBe(false)
+    expect((wrapper.get('#order-section-notes textarea').element as HTMLTextAreaElement).value).toBe('本地未保存草稿 - U4 发货弹窗')
+    expect(router.post).toHaveBeenCalledTimes(before)
+    wrapper.unmount()
+  })
+
+  it('preserves an unsaved order note while opening and canceling a partial warehouse reallocation', async () => {
+    const wrapper = mount(Show, { props: {
+      order: splitOrder, audit, canEditOrder: true, canOperateLogistics: true,
+      allocationUi: {
+        status: 'submitted', can_partial_reallocate: true, can_operate: false, can_reallocate: false,
+        requires_full_flow: false, selectable_warehouse_ids: [1, 2],
+        recommended_warehouse_ids: {}, selected_warehouse_ids: {},
+        recommended_plan_key: null, can_use_recommendation: false,
+        full_allocation_url: '/logistics/wait-stock',
+      },
+      warehouses: [
+        { id: 1, slug: 'us-la', name: '美西 MorePlus 仓', code: 'US-LA', country_code: 'US' },
+        { id: 2, slug: 'cn-factory', name: '国内工厂', code: 'CN', country_code: 'CN' },
+      ],
+    } })
+    await flushPromises()
+    await wrapper.findAll('.page-header-actions button').find(button => button.text() === '编辑订单')!.trigger('click')
+    await wrapper.get('#order-section-notes textarea').setValue('本地未保存草稿 - U4 调整分仓')
+    const before = vi.mocked(router.post).mock.calls.length
+    const open = wrapper.findAll('.ord-fulfillment-row-actions button').find(button => button.text() === '调整分仓')
+    expect(open).toBeDefined()
+    await open!.trigger('click')
+    expect(wrapper.get('[role="dialog"][aria-label="调整未发货履约分仓"]').text()).toContain('调整 B 分仓')
+    await wrapper.get('[role="dialog"][aria-label="调整未发货履约分仓"] .ord-replacement-close').trigger('click')
+    expect(wrapper.find('[role="dialog"][aria-label="调整未发货履约分仓"]').exists()).toBe(false)
+    expect((wrapper.get('#order-section-notes textarea').element as HTMLTextAreaElement).value).toBe('本地未保存草稿 - U4 调整分仓')
+    expect(router.post).toHaveBeenCalledTimes(before)
+    wrapper.unmount()
+  })
+
+  it('provides drag handles and collapsible top-right controls for each business panel', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
+    await flushPromises()
+    const panels = wrapper.findAll('.ord-sortable-panel')
+    expect(panels).toHaveLength(9)
+    for (const panel of panels) {
+      expect(panel.find('.ord-section-header .ord-section-drag').attributes('draggable')).toBe('true')
+      expect(panel.find('.ord-section-header .ord-section-toggle').exists()).toBe(true)
+    }
+    const packaging = wrapper.get('#order-section-packaging')
+    expect(packaging.classes()).toContain('ord-section-collapsed')
+    expect(packaging.get('.ord-section-toggle').attributes('aria-expanded')).toBe('false')
+    await packaging.get('.ord-section-toggle').trigger('click')
+    expect(packaging.classes()).not.toContain('ord-section-collapsed')
+    expect(packaging.get('.ord-section-toggle').attributes('aria-expanded')).toBe('true')
+    wrapper.unmount()
+  })
+
+  it('sorts packaging just before internal notes by default and moves all multi-SKU inventory together', async () => {
+    const items = [baseOrder.items[0], { ...baseOrder.items[0], id: 11, sku: 'SKU-002' }]
+    const wrapper = mount(Show, { props: { order: { ...baseOrder, items }, audit } })
+    await flushPromises()
+    expect(wrapper.findAll('.ord-inventory-card')).toHaveLength(2)
+    expect(wrapper.findAll('#order-section-inventory')).toHaveLength(1)
+    const nav = () => wrapper.findAll('.ord-detail-nav-item').map(item => item.text())
+    expect(nav().indexOf('包装与重量')).toBe(nav().indexOf('内部备注') - 1)
+    const inventory = wrapper.get('#order-section-inventory')
+    const initialOrder = Number(inventory.attributes('style')?.match(/order:\s*(\d+)/)?.[1])
+    expect(initialOrder).toBeGreaterThan(0)
+    await inventory.get('.ord-section-drag').trigger('keydown', { altKey: true, key: 'ArrowDown' })
+    await nextTick()
+    expect(Number(inventory.attributes('style')?.match(/order:\s*(\d+)/)?.[1])).toBe(initialOrder + 10)
+    expect(nav().indexOf('库存分布')).toBe(nav().indexOf('订单信息') + 1)
+    expect(wrapper.findAll('.ord-inventory-card')).toHaveLength(2)
+    wrapper.unmount()
+  })
+
+  it('drag-dropping a panel reorders navigation and stores per-employee preferences', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
+    await flushPromises()
+    const note = wrapper.get('#order-section-notes')
+    const address = wrapper.get('#order-section-address')
+    await note.get('.ord-section-drag').trigger('dragstart')
+    await address.trigger('drop')
+    const nav = wrapper.findAll('.ord-detail-nav-item').map(item => item.text())
+    expect(nav.indexOf('内部备注')).toBe(nav.indexOf('收件与地址') - 1)
+    const state = JSON.parse(window.localStorage.getItem('byl:erp:order-detail:v1.1:panels:1')!)
+    expect(state.order.indexOf('order-section-notes')).toBe(state.order.indexOf('order-section-address') - 1)
+    wrapper.unmount()
+    const restored = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
+    await flushPromises()
+    expect(restored.findAll('.ord-detail-nav-item').map(item => item.text()).indexOf('内部备注'))
+      .toBe(restored.findAll('.ord-detail-nav-item').map(item => item.text()).indexOf('收件与地址') - 1)
+    restored.unmount()
+  })
+
+  it('keeps unsaved edit fields mounted when a business section is collapsed and reordered', async () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
+    await flushPromises()
+    await wrapper.findAll('.page-header-actions button').find(button => button.text() === '编辑订单')!.trigger('click')
+    const textarea = wrapper.get('#order-section-notes textarea')
+    await textarea.setValue('UAT 还没有保存的内部备注')
+    const postCalls = vi.mocked(router.post).mock.calls.length
+    await wrapper.get('#order-section-notes .ord-section-toggle').trigger('click')
+    await wrapper.get('#order-section-notes .ord-section-drag').trigger('keydown', { altKey:true, key:'ArrowUp' })
+    expect(wrapper.get('#order-section-notes').classes()).toContain('ord-section-collapsed')
+    expect((wrapper.get('#order-section-notes textarea').element as HTMLTextAreaElement).value).toBe('UAT 还没有保存的内部备注')
+    const jump = wrapper.findAll('.ord-detail-nav-item').find(item => item.text() === '内部备注')
+    await jump!.trigger('click')
+    expect(wrapper.get('#order-section-notes').classes()).not.toContain('ord-section-collapsed')
+    expect((wrapper.get('#order-section-notes textarea').element as HTMLTextAreaElement).value).toBe('UAT 还没有保存的内部备注')
+    expect(router.post).toHaveBeenCalledTimes(postCalls)
+    wrapper.unmount()
+  })
+
+  it('ignores corrupted layout preferences and never allows dragging the fixed overview header', async () => {
+    window.localStorage.setItem('byl:erp:order-detail:v1.1:panels:1','{bad-json')
+    const wrapper = mount(Show, { props: { order: baseOrder, audit } })
+    await flushPromises()
+    expect(wrapper.findAll('.ord-detail-nav-item')).toHaveLength(10)
+    expect(wrapper.find('#order-section-overview .ord-section-drag').exists()).toBe(false)
+    expect(wrapper.get('#order-section-packaging').classes()).toContain('ord-section-collapsed')
+    wrapper.unmount()
+  })
+
+  it('scrolls within the document without route navigation or discarding an unsaved draft', async () => {
+    const originalScroll = Element.prototype.scrollIntoView
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    try {
+      const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
+      await flushPromises()
+      await nextTick()
+      const edit = wrapper.findAll('.page-header-actions button').find(button => button.text() === '编辑订单')
+      await edit!.trigger('click')
+      await wrapper.get('#order-section-notes textarea').setValue('未保存草稿须保留')
+      const postCalls = vi.mocked(router.post).mock.calls.length
+      const button = wrapper.findAll('.ord-detail-nav-item').find(item => item.text() === '订单商品')
+      await button!.trigger('click')
+      expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
+      expect((wrapper.get('#order-section-notes textarea').element as HTMLTextAreaElement).value).toBe('未保存草稿须保留')
+      expect(router.post).toHaveBeenCalledTimes(postCalls)
+      await wrapper.get('.ord-detail-nav-top').trigger('click')
+      expect(scroll).toHaveBeenCalledTimes(2)
+      wrapper.unmount()
+    } finally {
+      if (originalScroll) Element.prototype.scrollIntoView = originalScroll
+      else delete (Element.prototype as unknown as Record<string, unknown>).scrollIntoView
+    }
   })
 
 })

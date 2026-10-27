@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { Head, router, useForm } from '@inertiajs/vue3'
-import { ref, computed } from 'vue'
+import { Head, router, useForm, usePage } from '@inertiajs/vue3'
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import axios from 'axios'
+import { publishGlobalFeedback } from '../../lib/globalFeedback'
 
 const commonCurrencyOptions = [
   { value: 'USD', label: 'USD · 美元' },
@@ -126,9 +128,10 @@ const props = withDefaults(defineProps<{
   carrierOptions?: CarrierOption[]
   allocationUi?: AllocationUi
   audit: { action: string; actor_id: number | null; created_at: string; reason?: string }[]
+  canMarkOperational?: boolean
+  canEditOrder?: boolean
   canTrashOrder?: boolean
   canManageTrash?: boolean
-  canMarkOperational?: boolean
   canManageProductPackaging?: boolean
   canViewPackagingEvidence?: boolean
   canCreateProcurement?: boolean
@@ -136,7 +139,7 @@ const props = withDefaults(defineProps<{
   canOperateLogistics?: boolean
   canViewProfit?: boolean
 
-}>(), { canMarkOperational: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canViewProfit: false })
+}>(), { canMarkOperational: false, canEditOrder: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canViewProfit: false })
 
 
 const carrierOption = (name:string) => (props.carrierOptions ?? []).find(row => row.value === name)
@@ -168,7 +171,7 @@ const breadcrumbs = computed(() => isKol.value
 )
 
 type EditItem = {
-  id: number
+  id: number | null
   product_id: number | null
   sku: string
   product_summary: string
@@ -179,6 +182,7 @@ type EditItem = {
 const makeFormData = () => ({
   order_date: props.order.order_date ?? '',
   order_note: props.order.order_note ?? '',
+  amendment_reason: '',
   currency: props.order.currency ?? 'USD',
   recipient_name: props.order.address?.recipient_name ?? '',
   phone: props.order.address?.phone ?? '',
@@ -207,6 +211,172 @@ const currencyOptions = computed(() => {
     : [{ value: current, label: current }, ...commonCurrencyOptions]
 })
 
+type AmendmentPreview = {
+  changed:boolean; fulfillment_only?:boolean; can_save_direct:boolean; requires_replan:boolean; can_atomic_single_replan:boolean; can_atomic_multi_replan:boolean; expected_revision:string; no_writes:boolean;
+  old_items_gross:string; new_items_gross:string; gross_delta:string; currency:string;
+  rows:{order_item_id:number|null; operation:string; before:{sku:string|null;quantity:number}|null; after:{sku:string;quantity:number}|null}[];
+  issues:string[];
+  stock_by_warehouse:{warehouse_id:number; warehouse_name:string; warehouse_code:string; single_warehouse_candidate:boolean;
+    details:{product_id:number;required:number;available:number|null;enough:boolean}[]}[];
+  inventory_note:string;
+}
+const amendmentPreview = ref<AmendmentPreview|null>(null)
+const amendmentPreviewLoading = ref(false)
+const amendmentPreviewError = ref('')
+const amendmentReplanWarehouse = ref('')
+const amendmentReplanReason = ref('')
+const amendmentReplanApproved = ref(false)
+const amendmentReplanSaving = ref(false)
+const commitAtomicReplan = async () => {
+  const preview = amendmentPreview.value
+  if (!preview?.can_atomic_single_replan || amendmentReplanSaving.value) return
+  if (!amendmentReplanApproved.value || amendmentReplanReason.value.trim().length < 4 || !amendmentReplanWarehouse.value) {
+    amendmentPreviewError.value = '请选择目标仓库、填写客户变更原因并勾选确认。'
+    return
+  }
+  const target = preview.stock_by_warehouse.find(
+    wh => wh.warehouse_code === amendmentReplanWarehouse.value && wh.single_warehouse_candidate,
+  )
+  if (!target) {
+    amendmentPreviewError.value = '所选仓库没有可用库存或状态已失效，请重新预检。'
+    return
+  }
+  amendmentReplanSaving.value = true
+  amendmentPreviewError.value = ''
+  publishGlobalFeedback({state:'RUNNING',title:'正在更新订单与库存预留',
+    message:'订单商品、分仓与预留将作为一次事务提交；发生冲突会全部回滚。'})
+  try {
+    await axios.post(`${basePath.value}/${props.order.id}/items/replan`, {
+      items:form.items.map(item => ({
+        id:item.id, product_id:item.product_id, product_summary:item.product_summary,
+        quantity:item.quantity, unit_price:item.unit_price,
+      })),
+      assignments:form.items.map((_,index) => ({
+        item_index:index, source_code:target.warehouse_code,
+      })),
+      expected_revision:preview.expected_revision,
+      reason:amendmentReplanReason.value.trim(),
+    })
+    publishGlobalFeedback({state:'SUCCESS',title:'单仓商品及库存重规划完成',
+      message:'旧库存预留已释放、新库存预留已建立，物流仍待人工确认后发货。'})
+    amendmentPreview.value = null
+    amendmentReplanApproved.value = false
+    editMode.value = false
+    router.reload()
+  } catch (error) {
+    const payload = axios.isAxiosError(error)
+      ? error.response?.data as {message?:string;errors?:Record<string,string[]>}|undefined : undefined
+    amendmentPreviewError.value = Object.values(payload?.errors ?? {}).flat()[0]
+      || payload?.message || '事务未完成，订单和旧库存预留保持不变，请重新预检。'
+    publishGlobalFeedback({state:'BLOCKED',title:'库存重规划未成功',message:amendmentPreviewError.value,
+      next:'请重新检查订单、库存和发货仓库；未完成的事务不会产生部分发货。'})
+    amendmentPreview.value = null
+  } finally {
+    amendmentReplanSaving.value = false
+  }
+}
+const multiWarehouseByIndex = ref<Record<number,string>>({})
+const multiReplanReason = ref('')
+const multiReplanApproved = ref(false)
+const multiReplanSaving = ref(false)
+const multiRowStockAvailable = (index:number, code:string):boolean => {
+  const wh = amendmentPreview.value?.stock_by_warehouse.find(wh => wh.warehouse_code === code)
+  const item = form.items[index]
+  if (!wh || !item || !item.product_id) return false
+  const detail = wh.details.find(row => row.product_id === Number(item.product_id))
+  return detail?.available !== null && detail?.available !== undefined
+    && Number(detail.available) >= Number(item.quantity)
+}
+const multiAssignmentsReady = computed(() => {
+  const choices = form.items.map((_,index) => multiWarehouseByIndex.value[index] || '')
+  return choices.every((code,index) => code && multiRowStockAvailable(index,code))
+    && new Set(choices).size >= 2
+})
+const commitMultiWarehouseReplan = async () => {
+  const preview = amendmentPreview.value
+  if (!preview?.can_atomic_multi_replan || multiReplanSaving.value) return
+  if (!multiReplanApproved.value || multiReplanReason.value.trim().length < 4 || !multiAssignmentsReady.value) {
+    amendmentPreviewError.value = '请为每条商品选择有库存的仓库，至少使用两个仓库，并填写原因与确认授权。'
+    return
+  }
+  multiReplanSaving.value = true
+  amendmentPreviewError.value = ''
+  publishGlobalFeedback({state:'RUNNING',title:'正在原子重规划所有发货仓',
+    message:'旧子订单预留、商品与新分仓将在同一事务中更新，任一步失败都会回滚。'})
+  try {
+    await axios.post(`${basePath.value}/${props.order.id}/items/replan-multi`, {
+      items:form.items.map(item => ({
+        id:item.id, product_id:item.product_id, product_summary:item.product_summary,
+        quantity:item.quantity, unit_price:item.unit_price,
+      })),
+      assignments:form.items.map((_,index) => ({
+        item_index:index, source_code:multiWarehouseByIndex.value[index],
+      })),
+      expected_revision:preview.expected_revision,
+      reason:multiReplanReason.value.trim(),
+    })
+    publishGlobalFeedback({state:'SUCCESS',title:'多仓商品及库存预留重规划完成',
+      message:'全部子履约已更新并预留新库存，仍需按流程审核实际发货。'})
+    multiReplanApproved.value = false
+    amendmentPreview.value = null
+    editMode.value = false
+    router.reload()
+  } catch (error) {
+    const payload = axios.isAxiosError(error)
+      ? error.response?.data as {message?:string;errors?:Record<string,string[]>}|undefined : undefined
+    amendmentPreviewError.value = Object.values(payload?.errors ?? {}).flat()[0]
+      || payload?.message || '多仓事务失败，旧订单与各仓预留均保持不变。'
+    publishGlobalFeedback({state:'BLOCKED',title:'多仓重规划未完成',
+      message:amendmentPreviewError.value, next:'请重新预检各 SKU 的库存与仓库，确认后再提交。'})
+    amendmentPreview.value = null
+  } finally {
+    multiReplanSaving.value = false
+  }
+}
+
+const previewItemAmendment = async () => {
+  if (amendmentPreviewLoading.value) return
+  amendmentPreviewLoading.value = true
+  amendmentPreview.value = null
+  amendmentPreviewError.value = ''
+  amendmentReplanApproved.value = false
+  amendmentReplanWarehouse.value = ''
+  multiWarehouseByIndex.value = {}
+  multiReplanApproved.value = false
+  try {
+    const response = await axios.post<AmendmentPreview>(
+      `${basePath.value}/${props.order.id}/items/preview`,
+      { items:form.items.map(item => ({
+        id:item.id, product_id:item.product_id, product_summary:item.product_summary,
+        quantity:item.quantity, unit_price:item.unit_price,
+      })) },
+    )
+    amendmentPreview.value = response.data
+    if (!response.data.can_save_direct && response.data.changed) {
+      publishGlobalFeedback({
+        state:'BLOCKED',title:'商品变更需要重新规划',
+        message:response.data.issues[0] ?? '订单当前不允许直接修改商品。',
+        next:'先处理库存、仓库或履约冲突；本次预检没有修改任何订单。',
+      })
+    } else {
+      publishGlobalFeedback({
+        state:'SUCCESS',title:'商品变更预检完成',
+        message:response.data.changed ? '可按权限保存，然后重新确认发货仓库。' : '商品明细没有变化。',
+      })
+    }
+  } catch (error) {
+    const payload = axios.isAxiosError(error)
+      ? error.response?.data as {message?:string;errors?:Record<string,string[]>}|undefined : undefined
+    const problem = Object.values(payload?.errors ?? {}).flat()[0]
+    amendmentPreviewError.value = problem || payload?.message || '预检失败，请检查产品 SKU、数量及权限后重试。'
+    publishGlobalFeedback({
+      state:'ERROR',title:'商品修改预检失败',message:amendmentPreviewError.value,
+      next:'请在当前订单页修正错误，不需要重新打开页面。',
+    })
+  } finally {
+    amendmentPreviewLoading.value = false
+  }
+}
 const editMode = ref(false)
 const trashConfirmOpen = ref(false)
 const trashSubmitting = ref(false)
@@ -219,17 +389,80 @@ const submitTrash = () => {
 }
 
 const enterEditMode = () => { editMode.value = true }
+const addOrderItem = () => {
+  form.items.push({ id: null, product_id: null, sku: '', product_summary: '', quantity: 1, unit_price: '0.00' })
+  form.clearErrors('items')
+}
+const removeOrderItem = (index: number) => {
+  if (form.items.length <= 1) return
+  form.items.splice(index, 1)
+  form.clearErrors('items')
+}
+const initialItemSnapshot = () => props.order.items.map(item => ({
+  id: item.id, product_id: item.product_id, product_summary: item.product_summary ?? '',
+  quantity: Number(item.quantity), unit_price: Number(item.unit_price).toFixed(2),
+}))
+const hasItemChanges = () => JSON.stringify(form.items.map(item => ({
+  id: item.id, product_id: item.product_id, product_summary: item.product_summary ?? '',
+  quantity: Number(item.quantity), unit_price: Number(item.unit_price).toFixed(2),
+}))) !== JSON.stringify(initialItemSnapshot())
+
+watch(() => JSON.stringify(form.items.map(item => [
+  item.id,item.product_id,item.sku,item.product_summary,item.quantity,item.unit_price,
+])), () => { amendmentPreview.value = null; amendmentPreviewError.value = ''; multiReplanApproved.value = false; multiWarehouseByIndex.value = {} })
 
 const cancelEdit = () => {
   form.reset()
   Object.assign(form, makeFormData())
   form.clearErrors()
+  amendmentPreview.value = null
+  amendmentPreviewError.value = ''
+  amendmentReplanApproved.value = false
+  multiReplanApproved.value = false
+  multiWarehouseByIndex.value = {}
   editMode.value = false
 }
 
-const submit = () => form.patch(`${basePath.value}/${props.order.id}`, {
-  onSuccess: () => { editMode.value = false },
-})
+const submit = () => {
+  const itemsChanged = hasItemChanges()
+  if (itemsChanged && !amendmentPreview.value) {
+    publishGlobalFeedback({state:'BLOCKED',title:'请先检查商品变更',
+      message:'保存前请执行 SKU、库存和发货仓库影响预检。'})
+    return
+  }
+  if (itemsChanged && !amendmentPreview.value?.can_save_direct) {
+    publishGlobalFeedback({state:'BLOCKED',title:'订单尚不能直接变更',
+      message:amendmentPreview.value?.issues[0] ?? '当前商品关联的分仓或库存状态尚未完成审核。'})
+    return
+  }
+  form.transform(data => {
+    if (itemsChanged) return data
+    const { items: _unchangedItems, ...otherFields } = data
+    return otherFields
+  }).patch(`${basePath.value}/${props.order.id}`, {
+    preserveScroll: true,
+    onSuccess: () => { editMode.value = false },
+    onError: errors => {
+      const invalidFields = Object.keys(errors)
+      const reveal = new Set<SectionId>()
+      for (const field of invalidFields) {
+        if (field === 'currency' || field === 'order_date') reveal.add('order-section-order-info')
+        else if (field === 'order_note') reveal.add('order-section-notes')
+        else if (field === 'items' || field.startsWith('items.') || field === 'amendment_reason') reveal.add('order-section-items')
+        else reveal.add('order-section-address')
+      }
+      if (reveal.size) {
+        collapsedSections.value = collapsedSections.value.filter(id => !reveal.has(id))
+        savePanelLayout()
+      }
+      const reason = errors.items || Object.values(errors).find(Boolean)
+      if (reason) publishGlobalFeedback({
+        state:'BLOCKED', title:'订单修改未保存', message:String(reason),
+        next:'请根据订单商品区域的红色提示修正后重新提交，已填写内容不会丢失。',
+      })
+    },
+  })
+}
 
 const operationalMarkerOptions = [
   { key: 'exception', label: '异常' },
@@ -354,6 +587,40 @@ const shipmentEditorOrderId = ref<number | null>(null)
 const shipmentEditorLabel = ref('')
 const shipmentEditorSaving = ref(false)
 const shipmentEditorError = ref('')
+const shipmentFieldErrors = ref<Record<string,string>>({})
+const shipmentTrackingErrorText = 'Tracking 只能填写英文字母、数字及 . _ : / + -，不能包含中文、空格或备注。'
+const shipmentTrackingPattern = /^[A-Za-z0-9][A-Za-z0-9._:\/+\-]*$/
+const clearShipmentFieldError = (field:string) => {
+  if (!shipmentFieldErrors.value[field]) return
+  const next = { ...shipmentFieldErrors.value }
+  delete next[field]
+  shipmentFieldErrors.value = next
+  if (Object.keys(next).length === 0) shipmentEditorError.value = ''
+}
+const reportShipmentErrors = (errors:Record<string,string>, action:string) => {
+  shipmentFieldErrors.value = errors
+  const first = Object.values(errors).find(Boolean) || '请检查物流信息后重试。'
+  shipmentEditorError.value = errors.fulfillment || '请修正红色提示的字段后重试。'
+  publishGlobalFeedback({
+    state:'BLOCKED', title:`${action}未完成`, message:first,
+    next:'请在当前弹窗修正红色提示字段，已填写的内容不会丢失。',
+  })
+}
+const shipmentLocalErrors = (needsCompleteFields:boolean):Record<string,string> => {
+  const draft = shipmentEditor.value
+  const errors:Record<string,string> = {}
+  if (needsCompleteFields) {
+    if (!draft.warehouse_id) errors.warehouse_id = '请选择发货仓库。'
+    if (!draft.carrier.trim()) errors.carrier = '请选择物流商。'
+    if (!draft.service.trim()) errors.service = '请选择运输 / 服务类型。'
+    if (!draft.shipped_at) errors.shipped_at = '请选择发货时间。'
+  }
+  const tracking = draft.tracking_number.trim()
+  if (tracking.length > 128) errors.tracking_number = 'Tracking 最长 128 个字符。'
+  else if (tracking && !shipmentTrackingPattern.test(tracking)) errors.tracking_number = shipmentTrackingErrorText
+  if (draft.logistics_note.length > 5000) errors.logistics_note = '物流备注不能超过 5000 个字符。'
+  return errors
+}
 const localDateTimeNow = () => {
   const now = new Date()
   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
@@ -381,32 +648,36 @@ const openShipmentEditor = (target: {
     logistics_note: target.shipment?.logistics_note ?? '',
   }
   shipmentEditorError.value = ''
+  shipmentFieldErrors.value = {}
   shipmentEditorOpen.value = true
 }
 const closeShipmentEditor = () => { if (!shipmentEditorSaving.value) shipmentEditorOpen.value = false }
 const saveShipmentDraft = () => {
   if (!props.canOperateLogistics || !shipmentEditorOrderId.value || shipmentEditorSaving.value) return
+  const errors = shipmentLocalErrors(false)
+  if (Object.keys(errors).length) { reportShipmentErrors(errors, '保存草稿'); return }
   shipmentEditorSaving.value = true
   shipmentEditorError.value = ''
+  shipmentFieldErrors.value = {}
   router.post(`/logistics/orders/${shipmentEditorOrderId.value}/draft`, shipmentEditor.value, {
     preserveScroll: true,
-    onError: () => { shipmentEditorError.value = '保存草稿失败，请检查物流信息。' },
+    preserveState: true,
+    onError: (errors) => reportShipmentErrors(errors, '保存草稿'),
     onFinish: () => { shipmentEditorSaving.value = false },
   })
 }
 const confirmShipment = () => {
   if (!props.canOperateLogistics || !shipmentEditorOrderId.value || shipmentEditorSaving.value) return
-  const draft = shipmentEditor.value
-  if (!draft.warehouse_id) { shipmentEditorError.value = '请选择发货仓库'; return }
-  if (!draft.carrier.trim()) { shipmentEditorError.value = '请选择物流商'; return }
-  if (!draft.service.trim()) { shipmentEditorError.value = '请选择运输 / 服务类型'; return }
-  if (!draft.shipped_at) { shipmentEditorError.value = '请选择发货时间'; return }
+  const errors = shipmentLocalErrors(true)
+  if (Object.keys(errors).length) { reportShipmentErrors(errors, '确认发货'); return }
   shipmentEditorSaving.value = true
   shipmentEditorError.value = ''
-  router.post(`/logistics/orders/${shipmentEditorOrderId.value}/ship`, draft, {
+  shipmentFieldErrors.value = {}
+  router.post(`/logistics/orders/${shipmentEditorOrderId.value}/ship`, shipmentEditor.value, {
     preserveScroll: true,
+    preserveState: true,
     onSuccess: () => { shipmentEditorOpen.value = false },
-    onError: () => { shipmentEditorError.value = '确认发货失败，请检查物流信息。' },
+    onError: (errors) => reportShipmentErrors(errors, '确认发货'),
     onFinish: () => { shipmentEditorSaving.value = false },
   })
 }
@@ -458,19 +729,170 @@ const submitReplacement = () => {
   })
 }
 
+const orderDetailRoot = ref<HTMLElement | null>(null)
+// The identity header is always fixed; business panels can be moved/collapsed per staff browser.
+const orderSections = [
+  { id:'order-section-overview', label:'概览' },
+  { id:'order-section-fulfillment', label:'履约状态' },
+  { id:'order-section-flags', label:'辅助标记' },
+  { id:'order-section-inventory', label:'库存分布' },
+  { id:'order-section-order-info', label:'订单信息' },
+  { id:'order-section-address', label:'收件与地址' },
+  { id:'order-section-items', label:'订单商品' },
+  { id:'order-section-packaging', label:'包装与重量' },
+  { id:'order-section-notes', label:'内部备注' },
+  { id:'order-section-audit', label:'操作审计' },
+] as const
+type SectionId = (typeof orderSections)[number]['id']
+const defaultPanelOrder: SectionId[] = orderSections.slice(1).map(section => section.id)
+const page = usePage()
+const staffKey = String((page.props.auth as {user?:{id?:number|string}} | undefined)?.user?.id ?? 'local')
+const layoutStorageKey = 'byl:erp:order-detail:v1.1:panels:' + staffKey
+const panelOrder = ref<SectionId[]>([...defaultPanelOrder])
+const collapsedSections = ref<SectionId[]>(['order-section-packaging'])
+const draggingSection = ref<SectionId | null>(null)
+const visibleOrderSections = ref<Array<(typeof orderSections)[number]>>([])
+const activeOrderSection = ref<SectionId>('order-section-overview')
+const sectionIndex = (id: SectionId):number => panelOrder.value.indexOf(id)
+const sectionVisualOrder = (id: SectionId):number => sectionIndex(id) * 10 + 10
+const isSectionCollapsed = (id: SectionId):boolean => collapsedSections.value.includes(id)
+const lookupOrderSection = (id: string) => orderDetailRoot.value?.querySelector<HTMLElement>(`[id="${id}"]`)
+const sortVisibleOrderSections = () => {
+  visibleOrderSections.value = orderSections
+    .filter(section => Boolean(lookupOrderSection(section.id)))
+    .sort((a,b) => (a.id === 'order-section-overview' ? -1 : b.id === 'order-section-overview' ? 1 : sectionIndex(a.id) - sectionIndex(b.id)))
+}
+const savePanelLayout = () => {
+  try {
+    window.localStorage.setItem(layoutStorageKey, JSON.stringify({order:panelOrder.value,collapsed:collapsedSections.value}))
+  } catch { /* Private browsing or blocked storage: controls still work for this visit. */ }
+}
+const restorePanelLayout = () => {
+  try {
+    const raw = window.localStorage.getItem(layoutStorageKey)
+    if (!raw) return
+    const stored:unknown = JSON.parse(raw)
+    if (!stored || typeof stored !== 'object') return
+    const layout = stored as {order?:unknown,collapsed?:unknown}
+    if (Array.isArray(layout.order)) {
+      const valid = layout.order.filter((id:unknown):id is SectionId => typeof id === 'string' && defaultPanelOrder.includes(id as SectionId))
+      panelOrder.value = [...new Set(valid),...defaultPanelOrder.filter(id => !valid.includes(id))]
+    }
+    if (Array.isArray(layout.collapsed)) {
+      collapsedSections.value = layout.collapsed.filter((id:unknown):id is SectionId =>
+        typeof id === 'string' && defaultPanelOrder.includes(id as SectionId))
+    }
+  } catch { /* Ignore invalid/blocked local preferences, keep safe defaults. */ }
+}
+const toggleSection = (id: SectionId) => {
+  collapsedSections.value = isSectionCollapsed(id)
+    ? collapsedSections.value.filter(value => value !== id)
+    : [...collapsedSections.value,id]
+  savePanelLayout()
+}
+const reorderSection = (source: SectionId, target: SectionId) => {
+  if (source === target || source === 'order-section-overview' || target === 'order-section-overview') return
+  if (!panelOrder.value.includes(source) || !panelOrder.value.includes(target)) return
+  const next = panelOrder.value.filter(id => id !== source)
+  next.splice(next.indexOf(target),0,source)
+  panelOrder.value = next
+  sortVisibleOrderSections()
+  savePanelLayout()
+}
+const moveSection = (id: SectionId, direction: -1|1) => {
+  const index = sectionIndex(id)
+  const other = panelOrder.value[index+direction]
+  if (!other) return
+  const next = [...panelOrder.value]
+  next[index] = other
+  next[index+direction] = id
+  panelOrder.value = next
+  sortVisibleOrderSections()
+  savePanelLayout()
+}
+const startPanelDrag = (event:DragEvent,id:SectionId) => {
+  draggingSection.value = id
+  event.dataTransfer?.setData('text/plain',id)
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+}
+const dropPanel = (target:SectionId) => {
+  if (draggingSection.value) reorderSection(draggingSection.value,target)
+  draggingSection.value = null
+}
+const endPanelDrag = () => { draggingSection.value = null }
+const updateActiveOrderSection = () => {
+  if (!visibleOrderSections.value.length) return
+  const scrollHeight = document.scrollingElement?.scrollHeight ?? document.documentElement.scrollHeight
+  if (scrollHeight > window.innerHeight && window.scrollY + window.innerHeight >= scrollHeight - 12) {
+    activeOrderSection.value = visibleOrderSections.value[visibleOrderSections.value.length - 1].id
+    return
+  }
+  let current: SectionId = visibleOrderSections.value[0].id
+  for (const section of visibleOrderSections.value) {
+    const target = lookupOrderSection(section.id)
+    if (target && target.getBoundingClientRect().top <= 148) current = section.id
+  }
+  activeOrderSection.value = current
+}
+const syncOrderSections = () => {
+  sortVisibleOrderSections()
+  updateActiveOrderSection()
+}
+const jumpToOrderSection = async (id: SectionId) => {
+  if (id !== 'order-section-overview' && isSectionCollapsed(id)) {
+    toggleSection(id)
+    await nextTick()
+  }
+  const target = lookupOrderSection(id)
+  if (!target) return
+  activeOrderSection.value = id
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+onMounted(async () => {
+  restorePanelLayout()
+  await nextTick()
+  syncOrderSections()
+  window.addEventListener('scroll', updateActiveOrderSection, { passive: true })
+  window.addEventListener('resize', updateActiveOrderSection)
+})
+watch(() => props.order.items.length, async () => {
+  await nextTick()
+  syncOrderSections()
+})
+watch(showAllocationInventory, async () => {
+  await nextTick()
+  syncOrderSections()
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', updateActiveOrderSection)
+  window.removeEventListener('resize', updateActiveOrderSection)
+})
+
 </script>
 
 <template>
   <Head :title="`${order.erp_order_id ?? '—'} · BYL ERP`" />
   <AuthenticatedLayout :title="`订单 ${order.erp_order_id ?? '—'}`" :breadcrumbs="breadcrumbs">
-    <div class="erp-form-page">
+    <div ref="orderDetailRoot" class="erp-form-page ord-compact-v1" :class="{ 'ord-view-mode': !editMode, 'ord-edit-mode': editMode }">
+      <div class="ord-detail-layout">
+        <aside class="ord-detail-nav-rail" aria-label="订单模块快捷导航">
+          <nav class="ord-detail-nav" aria-label="订单模块">
+            <span class="ord-detail-nav-caption">快捷定位</span>
+            <button v-for="section in visibleOrderSections" :key="section.id" type="button"
+              class="ord-detail-nav-item" :class="{ 'is-active': activeOrderSection === section.id }"
+              :aria-current="activeOrderSection === section.id ? 'location' : undefined"
+              @click="jumpToOrderSection(section.id)">{{ section.label }}</button>
+            <button v-if="visibleOrderSections.length" type="button" class="ord-detail-nav-top"
+              aria-label="返回订单顶部" @click="jumpToOrderSection('order-section-overview')">↑ 返回顶部</button>
+          </nav>
+        </aside>
       <div class="erp-form-content">
 
-        <div class="erp-form-header-row">
+        <div id="order-section-overview" class="erp-form-header-row">
           <div>
             <p class="ord-kicker">{{ order.order_kind_label }}</p>
             <h1 class="erp-form-title">{{ order.erp_order_id ?? '—' }}</h1>
-            <p class="erp-form-subtitle">查看订单事实；进入编辑模式后可维护允许修改的订单字段。</p>
+            <p v-if="editMode" class="erp-form-subtitle">仅修改允许编辑的字段；商品变更须通过库存与分仓影响预检。</p>
           </div>
           <div class="erp-form-header-actions page-header-actions">
             <button v-if="editMode" type="button" class="erp-btn erp-btn-secondary" @click="cancelEdit">取消编辑</button>
@@ -478,8 +900,8 @@ const submitReplacement = () => {
             <a v-if="canViewProfit && !isKol" :href="`/accounting/order-costs?search=${encodeURIComponent(order.erp_order_id ?? '')}`" class="erp-btn erp-btn-secondary">查看订单利润</a>
             <a v-if="canCreateProcurement && !order.procurement_order" :href="`/purchase/orders/from-order/${order.id}/create`" class="erp-btn erp-btn-primary">创建采购订单</a>
             <a v-if="order.procurement_order" :href="`/purchase/orders/${order.procurement_order.id}`" class="erp-btn erp-btn-secondary">查看采购订单 · {{ order.procurement_order.procurement_number }}</a>
-            <button v-if="!editMode" type="button" class="erp-btn erp-btn-primary" @click="enterEditMode">编辑订单</button>
-            <button v-else type="button" class="erp-btn erp-btn-primary" :disabled="form.processing" @click="submit">保存订单</button>
+            <button v-if="!editMode && canEditOrder" type="button" class="erp-btn erp-btn-primary" @click="enterEditMode">编辑订单</button>
+            <button v-else-if="editMode && canEditOrder" type="button" class="erp-btn erp-btn-primary" :disabled="form.processing" @click="submit">保存订单</button>
             <button v-if="editMode && canTrashOrder" type="button" class="erp-btn erp-btn-secondary text-red-700" data-testid="move-to-trash" @click="trashConfirmOpen = true">移至回收站</button>
           </div>
         </div>
@@ -487,7 +909,7 @@ const submitReplacement = () => {
         <div v-if="trashConfirmOpen && editMode && canTrashOrder" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" role="dialog" aria-modal="true" aria-label="确认移至回收站">
           <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
             <h2 class="text-lg font-semibold">移至回收站？</h2>
-            <p class="my-3">订单 {{ order.erp_order_id }} 将从普通订单列表隐藏，管理员可恢复。未保存的编辑不会自动保存。</p>
+            <p class="my-3">订单 {{ order.erp_order_id }} 将从普通订单列表隐藏，管理员可恢复；物流、库存及财务记录不会清除。未保存的编辑不会自动保存。</p>
             <div class="flex justify-end gap-3">
               <button type="button" class="erp-btn erp-btn-secondary" :disabled="trashSubmitting" @click="trashConfirmOpen = false">取消</button>
               <button type="button" class="erp-btn erp-btn-secondary text-red-700" :disabled="trashSubmitting" @click="submitTrash">确认移至回收站</button>
@@ -508,13 +930,20 @@ const submitReplacement = () => {
         </div>
 
         <!-- Card 1: 履约状态 (always read-only) -->
-        <div class="erp-form-card">
+        <div id="order-section-fulfillment" class="erp-form-card ord-sortable-panel" :style="{ order: sectionVisualOrder('order-section-fulfillment') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-fulfillment'), 'ord-panel-dragging': draggingSection === 'order-section-fulfillment' }" @dragover.prevent @drop.prevent="dropPanel('order-section-fulfillment')">
 
           <div class="ord-fulfillment-heading">
 
-            <div class="ord-fulfillment-title-row">
+            <div class="ord-fulfillment-title-row ord-section-header">
               <h2 class="erp-form-card-title">履约状态</h2>
               <span v-if="hasFulfillmentTable" class="ord-split-badge">{{ fulfillmentBadgeLabel }}</span>
+              <div class="ord-section-controls">
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动履约状态排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+              @dragstart="startPanelDrag($event,'order-section-fulfillment')" @dragend="endPanelDrag"
+              @keydown.alt.up.prevent="moveSection('order-section-fulfillment',-1)" @keydown.alt.down.prevent="moveSection('order-section-fulfillment',1)">⠿</button>
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-fulfillment') ? '展开履约状态' : '折叠履约状态'"
+              :aria-expanded="!isSectionCollapsed('order-section-fulfillment')" @click="toggleSection('order-section-fulfillment')">{{ isSectionCollapsed('order-section-fulfillment') ? '▸' : '▾' }}</button>
+          </div>
             </div>
             <div class="ord-fulfillment-actions" data-testid="fulfillment-actions">
               <template v-if="hasFulfillmentTable">
@@ -624,15 +1053,24 @@ const submitReplacement = () => {
         </div>
 
         <!-- Operational markers: explicit human marks, not a second Order status -->
-        <div class="erp-form-card">
+        <div id="order-section-flags" class="erp-form-card ord-sortable-panel" :style="{ order: sectionVisualOrder('order-section-flags') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-flags'), 'ord-panel-dragging': draggingSection === 'order-section-flags' }" @dragover.prevent @drop.prevent="dropPanel('order-section-flags')">
+          <div class="ord-section-header">
           <h2 class="erp-form-card-title">辅助标记</h2>
+          <div class="ord-section-controls">
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动辅助标记排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+              @dragstart="startPanelDrag($event,'order-section-flags')" @dragend="endPanelDrag"
+              @keydown.alt.up.prevent="moveSection('order-section-flags',-1)" @keydown.alt.down.prevent="moveSection('order-section-flags',1)">⠿</button>
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-flags') ? '展开辅助标记' : '折叠辅助标记'"
+              :aria-expanded="!isSectionCollapsed('order-section-flags')" @click="toggleSection('order-section-flags')">{{ isSectionCollapsed('order-section-flags') ? '▸' : '▾' }}</button>
+          </div>
+          </div>
           <p class="ord-inventory-help">用于异常、运输中、退货、缺货等辅助业务视图，不是发货入口。所有发货、重发、补发操作统一在上方“履约状态”处理；这里仅保留辅助业务标记。</p>
           <div class="ord-marker-row">
             <button v-for="marker in operationalMarkerOptions" :key="marker.key" type="button" class="erp-btn erp-btn-secondary ord-marker" :class="{ active: markerActive(marker.key) }" :disabled="!canMarkOperational" @click="toggleMarker(marker.key)">{{ markerActive(marker.key) ? '✓ ' : '' }}{{ marker.label }}</button>
           </div>
         </div>
 
-        <div v-if="allocationUi?.status === 'submitted' && allocationUi.can_reallocate && !reallocationOpen" class="ord-allocation-reopen-bar">
+        <div v-if="allocationUi?.status === 'submitted' && allocationUi.can_reallocate && !reallocationOpen" class="ord-allocation-reopen-bar" :style="{ order: sectionVisualOrder('order-section-inventory') - 1 }">
           <div>
             <strong>分仓已提交 · 尚未进入实际物流</strong>
             <span>当前方案仍可调整；重新分仓会重建尚未发货的履约单，不会新增商业订单。</span>
@@ -641,7 +1079,20 @@ const submitReplacement = () => {
         </div>
 
         <!-- Inventory distribution: planning or explicitly reopened re-allocation only. -->
-        <template v-if="showAllocationInventory">
+        <section v-if="showAllocationInventory" id="order-section-inventory" class="ord-section-group ord-sortable-panel ord-inventory-group"
+          :style="{ order: sectionVisualOrder('order-section-inventory') }"
+          :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-inventory'), 'ord-panel-dragging': draggingSection === 'order-section-inventory' }"
+          @dragover.prevent @drop.prevent="dropPanel('order-section-inventory')">
+          <div class="ord-section-header">
+            <h2 class="erp-form-card-title">库存分布</h2>
+            <div class="ord-section-controls">
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动库存分布排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+              @dragstart="startPanelDrag($event,'order-section-inventory')" @dragend="endPanelDrag"
+              @keydown.alt.up.prevent="moveSection('order-section-inventory',-1)" @keydown.alt.down.prevent="moveSection('order-section-inventory',1)">⠿</button>
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-inventory') ? '展开库存分布' : '折叠库存分布'"
+              :aria-expanded="!isSectionCollapsed('order-section-inventory')" @click="toggleSection('order-section-inventory')">{{ isSectionCollapsed('order-section-inventory') ? '▸' : '▾' }}</button>
+          </div>
+          </div>
         <div v-for="item in order.items" :key="`inventory-${item.id}`" class="erp-form-card ord-inventory-card">
           <h2 class="erp-form-card-title">{{ item.sku || '未绑定 SKU' }} 库存分布</h2>
           <div class="ord-inventory-table-wrap">
@@ -704,36 +1155,29 @@ const submitReplacement = () => {
           </div>
         </div>
 
-        </template>
-
-        <!-- Product packaging standard / fulfillment snapshot -->
-        <div class="erp-form-card">
-          <h2 class="erp-form-card-title">包装与重量参考</h2>
-          <p class="ord-inventory-help">待发货订单读取产品当前包装标准；进入履约后保存为订单商品履约快照，后续产品标准变化不会改写已冻结的发货参考。</p>
-          <div v-for="item in order.items" :key="`packaging-${item.id}`" class="ord-packaging-row">
-            <div class="ord-packaging-identity">
-              <strong>{{ item.sku || '—' }}</strong>
-              <small>{{ item.product_summary }} · 数量 {{ item.quantity }}</small>
-              <a v-if="canManageProductPackaging && item.product_id" class="ord-packaging-link" :href="`/products/${item.product_id}/packaging`">包装方案 →</a>
-            </div>
-            <template v-if="packagingReferences?.[item.id]">
-              <div class="ord-packaging-metric"><small>包装方式</small><strong>{{ packagingReferences[item.id].packaging_method_label || '未指定' }}</strong></div>
-              <div class="ord-packaging-metric"><small>包装尺寸</small><strong>{{ packagingReferences[item.id].packaging_length_cm }} × {{ packagingReferences[item.id].packaging_width_cm }} × {{ packagingReferences[item.id].packaging_height_cm }} cm</strong></div>
-              <div class="ord-packaging-metric"><small>打包后重量</small><strong>{{ packagingReferences[item.id].packaged_weight_kg }} kg</strong></div>
-              <div class="ord-packaging-source">
-                <span>{{ packagingReferences[item.id].source_label }}</span>
-                <a v-if="canViewPackagingEvidence && packagingReferences[item.id].measurement_record_id" class="ord-packaging-link" :href="`/inventory/packaging/${packagingReferences[item.id].measurement_record_id}`">查看包装记录 #{{ packagingReferences[item.id].measurement_record_id }} →</a>
-                <small v-else>测量记录 #{{ packagingReferences[item.id].measurement_record_id }}</small>
-              </div>
-            </template>
-            <div v-else class="ord-packaging-empty">该产品尚未设定“当前包装标准”</div>
-          </div>
-        </div>
+        </section>
 
         <!-- Card 2: 订单信息 -->
-        <div class="erp-form-card">
+        <div id="order-section-order-info" class="erp-form-card ord-sortable-panel" :style="{ order: sectionVisualOrder('order-section-order-info') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-order-info'), 'ord-panel-dragging': draggingSection === 'order-section-order-info' }" @dragover.prevent @drop.prevent="dropPanel('order-section-order-info')">
+          <div class="ord-section-header">
           <h2 class="erp-form-card-title">订单信息</h2>
-          <div class="erp-form-grid">
+          <div class="ord-section-controls">
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动订单信息排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+              @dragstart="startPanelDrag($event,'order-section-order-info')" @dragend="endPanelDrag"
+              @keydown.alt.up.prevent="moveSection('order-section-order-info',-1)" @keydown.alt.down.prevent="moveSection('order-section-order-info',1)">⠿</button>
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-order-info') ? '展开订单信息' : '折叠订单信息'"
+              :aria-expanded="!isSectionCollapsed('order-section-order-info')" @click="toggleSection('order-section-order-info')">{{ isSectionCollapsed('order-section-order-info') ? '▸' : '▾' }}</button>
+          </div>
+          </div>
+          <dl v-if="!editMode" class="ord-summary-grid ord-summary-grid-order" aria-label="订单信息摘要">
+            <div class="ord-summary-field"><dt>订单号</dt><dd>{{ order.erp_order_id ?? '—' }}</dd></div>
+            <div class="ord-summary-field"><dt>订单类型</dt><dd>{{ order.order_kind_label }}</dd></div>
+            <div class="ord-summary-field"><dt>来源</dt><dd>{{ order.source_label }}</dd></div>
+            <div class="ord-summary-field"><dt>负责人</dt><dd>{{ order.owner?.name ?? '—' }}</dd></div>
+            <div class="ord-summary-field"><dt>币种</dt><dd>{{ order.currency }}</dd></div>
+            <div class="ord-summary-field"><dt>订单日期</dt><dd>{{ order.order_date }}</dd></div>
+          </dl>
+          <div v-else class="erp-form-grid">
             <div class="erp-form-field">
               <label class="erp-form-label">订单号</label>
               <input :value="order.erp_order_id ?? '—'" class="erp-input" disabled>
@@ -770,9 +1214,27 @@ const submitReplacement = () => {
         </div>
 
         <!-- Card 3: 收件与地址 -->
-        <div class="erp-form-card">
+        <div id="order-section-address" class="erp-form-card ord-sortable-panel" :style="{ order: sectionVisualOrder('order-section-address') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-address'), 'ord-panel-dragging': draggingSection === 'order-section-address' }" @dragover.prevent @drop.prevent="dropPanel('order-section-address')">
+          <div class="ord-section-header">
           <h2 class="erp-form-card-title">收件与地址</h2>
-          <div class="erp-form-grid">
+          <div class="ord-section-controls">
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动收件与地址排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+              @dragstart="startPanelDrag($event,'order-section-address')" @dragend="endPanelDrag"
+              @keydown.alt.up.prevent="moveSection('order-section-address',-1)" @keydown.alt.down.prevent="moveSection('order-section-address',1)">⠿</button>
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-address') ? '展开收件与地址' : '折叠收件与地址'"
+              :aria-expanded="!isSectionCollapsed('order-section-address')" @click="toggleSection('order-section-address')">{{ isSectionCollapsed('order-section-address') ? '▸' : '▾' }}</button>
+          </div>
+          </div>
+          <dl v-if="!editMode" class="ord-summary-grid ord-summary-grid-address" aria-label="收件地址摘要">
+            <div class="ord-summary-field"><dt>收件人</dt><dd>{{ order.address?.recipient_name || '—' }}</dd></div>
+            <div class="ord-summary-field"><dt>联系电话</dt><dd>{{ order.address?.phone || '—' }}</dd></div>
+            <div class="ord-summary-field"><dt>国家</dt><dd>{{ order.address?.country || '—' }}</dd></div>
+            <div class="ord-summary-field"><dt>州 / 省</dt><dd>{{ order.address?.province_state || '—' }}</dd></div>
+            <div class="ord-summary-field"><dt>城市</dt><dd>{{ order.address?.city || '—' }}</dd></div>
+            <div class="ord-summary-field"><dt>邮政编码</dt><dd>{{ order.address?.postal_code || '—' }}</dd></div>
+            <div class="ord-summary-field ord-summary-field-wide"><dt>详细地址</dt><dd>{{ order.address?.address_line_1 || '—' }}<span v-if="order.address?.address_line_2">, {{ order.address.address_line_2 }}</span></dd></div>
+          </dl>
+          <div v-else class="erp-form-grid">
             <div class="erp-form-field">
               <label class="erp-form-label">收件人姓名</label>
               <div v-if="!editMode" class="erp-readonly-input">{{ order.address?.recipient_name || '—' }}</div>
@@ -841,32 +1303,37 @@ const submitReplacement = () => {
         </div>
 
         <!-- Card 4: 订单商品 -->
-        <div class="erp-form-card">
+        <div id="order-section-items" class="erp-form-card ord-sortable-panel" :style="{ order: sectionVisualOrder('order-section-items') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-items'), 'ord-panel-dragging': draggingSection === 'order-section-items' }" @dragover.prevent @drop.prevent="dropPanel('order-section-items')">
+          <div class="ord-section-header">
           <h2 class="erp-form-card-title">订单商品</h2>
-          <!-- View mode: read-only item list -->
-          <template v-if="!editMode">
-            <div v-for="item in order.items" :key="item.id" class="ord-item-row-view">
-              <div class="erp-form-field">
-                <label class="erp-form-label">SKU / 产品</label>
-                <div class="erp-readonly-input">{{ item.sku || '—' }}</div>
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">产品摘要</label>
-                <div class="erp-readonly-input">{{ item.product_summary || '—' }}</div>
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">数量</label>
-                <div class="erp-readonly-input">{{ item.quantity }}</div>
-              </div>
-              <div class="erp-form-field">
-                <label class="erp-form-label">单价</label>
-                <div class="erp-readonly-input">{{ order.currency }} {{ item.unit_price }}</div>
-              </div>
-            </div>
-          </template>
-          <!-- Edit mode: editable item rows with SkuCombobox -->
+          <div class="ord-section-controls">
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动订单商品排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+              @dragstart="startPanelDrag($event,'order-section-items')" @dragend="endPanelDrag"
+              @keydown.alt.up.prevent="moveSection('order-section-items',-1)" @keydown.alt.down.prevent="moveSection('order-section-items',1)">⠿</button>
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-items') ? '展开订单商品' : '折叠订单商品'"
+              :aria-expanded="!isSectionCollapsed('order-section-items')" @click="toggleSection('order-section-items')">{{ isSectionCollapsed('order-section-items') ? '▸' : '▾' }}</button>
+          </div>
+          </div>
+          <!-- View mode: condensed, non-editable SKU table. Financial totals are not inferred from fulfillment lines. -->
+          <div v-if="!editMode" class="ord-summary-table-wrap">
+            <table class="ord-summary-table" aria-label="订单商品摘要">
+              <thead><tr><th scope="col">SKU</th><th scope="col">产品</th><th scope="col">数量</th><th scope="col">单价</th></tr></thead>
+              <tbody>
+                <tr v-for="item in order.items" :key="item.id">
+                  <td class="ord-summary-sku">{{ item.sku || '—' }}</td>
+                  <td>{{ item.product_summary || '—' }}</td>
+                  <td class="ord-summary-quantity">× {{ item.quantity }}</td>
+                  <td class="ord-summary-price">{{ order.currency }} {{ item.unit_price }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <!-- Edit mode: stable item IDs, SKU variant selection and explicit add/remove. -->
           <template v-else>
-            <div v-for="(item, index) in form.items" :key="item.id" class="ord-item-row">
+            <p class="ord-item-amendment-info">修改的是 ERP 实际发货方案。已经发货的商品不能覆盖历史；已预留的库存必须经过原子重规划。</p>
+            <p v-if="order.source_type === 'woocommerce'" class="ord-item-amendment-info">Woo 原订单付款及商品交易记录保持不变；仅 ERP 的 SKU、数量、颜色、赠品和发货仓库发生变化。</p>
+            <p v-if="(form.errors as Record<string,string>).items" class="erp-field-error" role="alert">{{ (form.errors as Record<string,string>).items }}</p>
+            <div v-for="(item, index) in form.items" :key="item.id ?? `new-${index}`" class="ord-item-row">
               <div class="ord-item-sku">
                 <label class="erp-form-label">SKU / 产品</label>
                 <SkuCombobox
@@ -888,18 +1355,144 @@ const submitReplacement = () => {
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">单价（{{ form.currency }}）</label>
-                <input v-model="item.unit_price" type="number" min="0" step="0.01" class="erp-input" required>
+                <input v-model="item.unit_price" type="number" min="0" step="0.01" class="erp-input" required
+                  :readonly="order.source_type === 'woocommerce' && item.id !== null">
+                <p v-if="order.source_type === 'woocommerce' && item.id === null" class="ord-item-gift-hint">新赠品必须保持 0 元，不改变官网付款金额。</p>
               </div>
+              <button type="button" class="erp-btn erp-btn-secondary" :disabled="form.items.length <= 1" @click="removeOrderItem(index)">删除商品</button>
             </div>
+            <button type="button" class="erp-btn erp-btn-secondary ord-add-product" @click="addOrderItem">+ 增加商品 / 赠品</button>
+            <p class="ord-item-gift-hint">赠品使用真实 SKU，数量需大于 0；Woo 来源订单新增赠品价格固定为 0。</p>
+            <label v-if="order.source_type === 'woocommerce'" class="erp-form-label">
+              客户协商后的履约修改原因
+              <textarea v-model="form.amendment_reason" class="erp-textarea" rows="2" placeholder="填写客户同意升级产品或赠品的具体依据"/>
+              <p v-if="form.errors.amendment_reason" class="erp-field-error">{{ form.errors.amendment_reason }}</p>
+            </label>
+            <div class="ord-amendment-actions">
+              <button type="button" class="erp-btn erp-btn-secondary" :disabled="amendmentPreviewLoading" @click="previewItemAmendment">
+                {{ amendmentPreviewLoading ? '正在核对…' : '检查 SKU、库存与分仓影响' }}
+              </button>
+              <small>只读预检，不会修改订单、库存或发货状态。</small>
+            </div>
+            <p v-if="amendmentPreviewError" class="erp-field-error" role="alert">{{ amendmentPreviewError }}</p>
+            <section v-if="amendmentPreview" class="ord-amendment-preview" aria-label="订单商品变更预检结果">
+              <strong>{{ amendmentPreview.can_save_direct ? '预检：可保存商品变更' : '预检：暂不能直接保存商品变更' }}</strong>
+              <p v-if="amendmentPreview.fulfillment_only">仅调整 ERP 实际发货，不修改官网订单、客户付款、退款或原销售收入。</p>
+              <p>商品金额（{{ amendmentPreview.currency }}）：{{ amendmentPreview.old_items_gross }} → {{ amendmentPreview.new_items_gross }}（差额 {{ amendmentPreview.gross_delta }}）。不代表最终应收/退款金额。</p>
+              <p v-for="(issue,i) in amendmentPreview.issues" :key="i" class="erp-field-error" role="alert">{{ issue }}</p>
+              <div v-for="(row,i) in amendmentPreview.rows.filter(row => row.operation !== 'unchanged')" :key="i" class="ord-amendment-diff">
+                {{ row.operation === 'add' ? '增加' : row.operation === 'remove' ? '移除' : '更换' }}：
+                {{ row.before?.sku || '—' }} × {{ row.before?.quantity ?? 0 }} → {{ row.after?.sku || '—' }} × {{ row.after?.quantity ?? 0 }}
+              </div>
+              <strong>单仓当前库存核对</strong>
+              <p v-for="wh in amendmentPreview.stock_by_warehouse" :key="wh.warehouse_id">
+                {{ wh.warehouse_name }}：{{ wh.single_warehouse_candidate ? '全部 SKU 当前库存满足' : '存在缺货、未确认库存或不支持自动分配' }}
+              </p>
+              <small>{{ amendmentPreview.inventory_note }}</small>
+              <div v-if="amendmentPreview.can_atomic_multi_replan && canEditOrder && canOperateLogistics" class="ord-replan-approval ord-multi-replan-approval">
+                <strong>A5-B 多仓库存原子重规划</strong>
+                <p>逐条重新指定仓库，全部子订单库存会在同一事务内释放并重新预留。已发货及已扣减商品不能走此流程。</p>
+                <label v-for="(item,index) in form.items" :key="item.id ?? `new-${index}`" class="erp-form-label">
+                  商品 {{ index + 1 }} · {{ item.sku }} × {{ item.quantity }} 发货仓
+                  <select v-model="multiWarehouseByIndex[index]" class="erp-select" :aria-label="`商品 ${index + 1} 发货仓`">
+                    <option value="">请选择新仓库</option>
+                    <option v-for="wh in amendmentPreview.stock_by_warehouse" :key="wh.warehouse_id"
+                      :value="wh.warehouse_code" :disabled="!multiRowStockAvailable(index, wh.warehouse_code)">
+                      {{ wh.warehouse_name }} — {{ multiRowStockAvailable(index, wh.warehouse_code) ? '当前库存可选' : '该 SKU 库存不足/未知' }}
+                    </option>
+                  </select>
+                </label>
+                <p v-if="!multiAssignmentsReady">请为所有商品选择仓库，且本次必须至少使用两个不同的仓库。</p>
+                <label class="erp-form-label">客户变更原因
+                  <textarea v-model="multiReplanReason" class="erp-textarea" rows="2"
+                    placeholder="填写与客户核实的 SKU、颜色、数量及赠品变更依据" />
+                </label>
+                <label class="ord-replan-consent">
+                  <input v-model="multiReplanApproved" type="checkbox">
+                  我已核对每条商品与发货仓，并授权整笔多仓库存重规划。
+                </label>
+                <button type="button" class="erp-btn erp-btn-primary"
+                  :disabled="multiReplanSaving || !multiReplanApproved || !multiAssignmentsReady || multiReplanReason.trim().length < 4"
+                  @click="commitMultiWarehouseReplan">
+                  {{ multiReplanSaving ? '正在原子提交所有仓库…' : '确认多仓修改并重新预留库存' }}
+                </button>
+              </div>
+              <div v-if="amendmentPreview.can_atomic_single_replan && canEditOrder && canOperateLogistics" class="ord-replan-approval">
+                <strong>A5 单仓库存原子重规划</strong>
+                <p>此操作只调整订单商品、待发货分仓和库存预留；不会发货，也不会自动修改 Woo 或收退款。</p>
+                <label class="erp-form-label">新的发货仓库
+                  <select v-model="amendmentReplanWarehouse" class="erp-select">
+                    <option value="">请明确选择目标仓库</option>
+                    <option v-for="wh in amendmentPreview.stock_by_warehouse.filter(w => w.single_warehouse_candidate)"
+                      :key="wh.warehouse_id" :value="wh.warehouse_code">{{ wh.warehouse_name }}</option>
+                  </select>
+                </label>
+                <label class="erp-form-label">商品变更原因
+                  <textarea v-model="amendmentReplanReason" class="erp-textarea" rows="2"
+                    placeholder="填写与客户沟通后的具体 SKU、颜色或数量调整原因" />
+                </label>
+                <label class="ord-replan-consent">
+                  <input v-model="amendmentReplanApproved" type="checkbox">
+                  我已确认客户修改要求，允许一次性释放旧预留并在所选仓库重新预留。
+                </label>
+                <button type="button" class="erp-btn erp-btn-primary"
+                  :disabled="amendmentReplanSaving || !amendmentReplanApproved || !amendmentReplanWarehouse || amendmentReplanReason.trim().length < 4"
+                  @click="commitAtomicReplan">
+                  {{ amendmentReplanSaving ? '正在原子提交…' : '确认商品变更并重新预留库存' }}
+                </button>
+              </div>
+            </section>
           </template>
         </div>
 
+        <!-- Product packaging standard / fulfillment snapshot -->
+        <div id="order-section-packaging" class="erp-form-card ord-sortable-panel" :style="{ order: sectionVisualOrder('order-section-packaging') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-packaging'), 'ord-panel-dragging': draggingSection === 'order-section-packaging' }" @dragover.prevent @drop.prevent="dropPanel('order-section-packaging')">
+          <div class="ord-section-header">
+          <h2 class="erp-form-card-title">包装与重量参考</h2>
+          <div class="ord-section-controls">
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动包装与重量参考排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+              @dragstart="startPanelDrag($event,'order-section-packaging')" @dragend="endPanelDrag"
+              @keydown.alt.up.prevent="moveSection('order-section-packaging',-1)" @keydown.alt.down.prevent="moveSection('order-section-packaging',1)">⠿</button>
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-packaging') ? '展开包装与重量参考' : '折叠包装与重量参考'"
+              :aria-expanded="!isSectionCollapsed('order-section-packaging')" @click="toggleSection('order-section-packaging')">{{ isSectionCollapsed('order-section-packaging') ? '▸' : '▾' }}</button>
+          </div>
+          </div>
+          <p class="ord-inventory-help">待发货订单读取产品当前包装标准；进入履约后保存为订单商品履约快照，后续产品标准变化不会改写已冻结的发货参考。</p>
+          <div v-for="item in order.items" :key="`packaging-${item.id}`" class="ord-packaging-row">
+            <div class="ord-packaging-identity">
+              <strong>{{ item.sku || '—' }}</strong>
+              <small>{{ item.product_summary }} · 数量 {{ item.quantity }}</small>
+              <a v-if="canManageProductPackaging && item.product_id" class="ord-packaging-link" :href="`/products/${item.product_id}/packaging`">包装方案 →</a>
+            </div>
+            <template v-if="packagingReferences?.[item.id]">
+              <div class="ord-packaging-metric"><small>包装方式</small><strong>{{ packagingReferences[item.id].packaging_method_label || '未指定' }}</strong></div>
+              <div class="ord-packaging-metric"><small>包装尺寸</small><strong>{{ packagingReferences[item.id].packaging_length_cm }} × {{ packagingReferences[item.id].packaging_width_cm }} × {{ packagingReferences[item.id].packaging_height_cm }} cm</strong></div>
+              <div class="ord-packaging-metric"><small>打包后重量</small><strong>{{ packagingReferences[item.id].packaged_weight_kg }} kg</strong></div>
+              <div class="ord-packaging-source">
+                <span>{{ packagingReferences[item.id].source_label }}</span>
+                <a v-if="canViewPackagingEvidence && packagingReferences[item.id].measurement_record_id" class="ord-packaging-link" :href="`/inventory/packaging/${packagingReferences[item.id].measurement_record_id}`">查看包装记录 #{{ packagingReferences[item.id].measurement_record_id }} →</a>
+                <small v-else>测量记录 #{{ packagingReferences[item.id].measurement_record_id }}</small>
+              </div>
+            </template>
+            <div v-else class="ord-packaging-empty">该产品尚未设定“当前包装标准”</div>
+          </div>
+        </div>
+
         <!-- Card 5: 内部备注 -->
-        <div class="erp-form-card">
+        <div id="order-section-notes" class="erp-form-card ord-sortable-panel" :style="{ order: sectionVisualOrder('order-section-notes') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-notes'), 'ord-panel-dragging': draggingSection === 'order-section-notes' }" @dragover.prevent @drop.prevent="dropPanel('order-section-notes')">
+          <div class="ord-section-header">
           <h2 class="erp-form-card-title">内部备注</h2>
+          <div class="ord-section-controls">
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动内部备注排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+              @dragstart="startPanelDrag($event,'order-section-notes')" @dragend="endPanelDrag"
+              @keydown.alt.up.prevent="moveSection('order-section-notes',-1)" @keydown.alt.down.prevent="moveSection('order-section-notes',1)">⠿</button>
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-notes') ? '展开内部备注' : '折叠内部备注'"
+              :aria-expanded="!isSectionCollapsed('order-section-notes')" @click="toggleSection('order-section-notes')">{{ isSectionCollapsed('order-section-notes') ? '▸' : '▾' }}</button>
+          </div>
+          </div>
           <div class="erp-form-field">
-            <label class="erp-form-label">备注内容</label>
-            <div v-if="!editMode" class="erp-readonly-input ord-readonly-textarea">{{ order.order_note || '—' }}</div>
+            <label v-if="editMode" class="erp-form-label">备注内容</label>
+            <div v-if="!editMode" class="ord-summary-note">{{ order.order_note || '—' }}</div>
             <template v-else>
               <textarea v-model="form.order_note" class="erp-textarea" placeholder="可选" />
               <p v-if="form.errors.order_note" class="erp-field-error">{{ form.errors.order_note }}</p>
@@ -908,8 +1501,17 @@ const submitReplacement = () => {
         </div>
 
         <!-- Audit log -->
-        <div class="erp-form-card ord-audit-card">
+        <div id="order-section-audit" class="erp-form-card ord-sortable-panel ord-audit-card" :style="{ order: sectionVisualOrder('order-section-audit') }" :class="{ 'ord-section-collapsed': isSectionCollapsed('order-section-audit'), 'ord-panel-dragging': draggingSection === 'order-section-audit' }" @dragover.prevent @drop.prevent="dropPanel('order-section-audit')">
+          <div class="ord-section-header">
           <h2 class="erp-form-card-title">操作审计</h2>
+          <div class="ord-section-controls">
+            <button type="button" class="ord-section-drag" draggable="true" aria-label="拖动操作审计排序" title="按住拖动调整顺序；键盘 Alt+↑/↓ 排序"
+              @dragstart="startPanelDrag($event,'order-section-audit')" @dragend="endPanelDrag"
+              @keydown.alt.up.prevent="moveSection('order-section-audit',-1)" @keydown.alt.down.prevent="moveSection('order-section-audit',1)">⠿</button>
+            <button type="button" class="ord-section-toggle" :aria-label="isSectionCollapsed('order-section-audit') ? '展开操作审计' : '折叠操作审计'"
+              :aria-expanded="!isSectionCollapsed('order-section-audit')" @click="toggleSection('order-section-audit')">{{ isSectionCollapsed('order-section-audit') ? '▸' : '▾' }}</button>
+          </div>
+          </div>
           <ul class="ord-audit-list">
             <li v-for="event in audit" :key="event.created_at + event.action" class="ord-audit-item">
               <span class="ord-audit-action">{{ event.action }}</span>
@@ -919,6 +1521,7 @@ const submitReplacement = () => {
         </div>
 
       </div>
+      </div><!-- /ord-detail-layout -->
     </div>
 
     <div v-if="partialReallocationOpen" class="ord-replacement-backdrop" @click.self="closePartialReallocation">
@@ -956,15 +1559,15 @@ const submitReplacement = () => {
         </header>
         <div class="ord-shipment-form">
           <label>发货仓库
-            <select v-model="shipmentEditor.warehouse_id" class="erp-select" :disabled="!canOperateLogistics" @change="applyShipmentWarehouseDefault"><option :value="null">请选择仓库</option><option v-for="warehouse in warehouses ?? []" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} · {{ warehouse.code }}</option></select>
+            <select v-model="shipmentEditor.warehouse_id" class="erp-select" :class="{ 'ord-field-invalid': shipmentFieldErrors.warehouse_id }" :aria-invalid="Boolean(shipmentFieldErrors.warehouse_id)" :disabled="!canOperateLogistics" @change="applyShipmentWarehouseDefault(); clearShipmentFieldError('warehouse_id')"><option :value="null">请选择仓库</option><option v-for="warehouse in warehouses ?? []" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }} · {{ warehouse.code }}</option></select><small v-if="shipmentFieldErrors.warehouse_id" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.warehouse_id }}</small>
           </label>
           <label>物流商
-            <select v-model="shipmentEditor.carrier" class="erp-select" :disabled="!canOperateLogistics" @change="applyShipmentCarrierDefault"><option value="">请选择承运商</option><option v-for="carrier in carrierOptions ?? []" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select>
+            <select v-model="shipmentEditor.carrier" class="erp-select" :class="{ 'ord-field-invalid': shipmentFieldErrors.carrier }" :aria-invalid="Boolean(shipmentFieldErrors.carrier)" :disabled="!canOperateLogistics" @change="applyShipmentCarrierDefault(); clearShipmentFieldError('carrier')"><option value="">请选择承运商</option><option v-for="carrier in carrierOptions ?? []" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select><small v-if="shipmentFieldErrors.carrier" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.carrier }}</small>
           </label>
-          <label>运输 / 服务类型<select v-model="shipmentEditor.service" class="erp-select" :disabled="!canOperateLogistics || !shipmentEditor.carrier"><option value="">请选择服务类型</option><option v-for="service in shipmentServiceOptions" :key="service.id" :value="service.value">{{ service.label }}</option></select></label>
-          <label>Tracking<input v-model="shipmentEditor.tracking_number" class="erp-input" :disabled="!canOperateLogistics" placeholder="追踪号，可稍后补录"></label>
-          <label>发货时间<input v-model="shipmentEditor.shipped_at" class="erp-input" :disabled="!canOperateLogistics" type="datetime-local"></label>
-          <label class="ord-shipment-note">物流备注<textarea v-model="shipmentEditor.logistics_note" rows="3" class="erp-textarea" :disabled="!canOperateLogistics" placeholder="可填写包裹、异常或操作备注"></textarea></label>
+          <label>运输 / 服务类型<select v-model="shipmentEditor.service" class="erp-select" :class="{ 'ord-field-invalid': shipmentFieldErrors.service }" :aria-invalid="Boolean(shipmentFieldErrors.service)" :disabled="!canOperateLogistics || !shipmentEditor.carrier" @change="clearShipmentFieldError('service')"><option value="">请选择服务类型</option><option v-for="service in shipmentServiceOptions" :key="service.id" :value="service.value">{{ service.label }}</option></select><small v-if="shipmentFieldErrors.service" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.service }}</small></label>
+          <label>Tracking<input v-model="shipmentEditor.tracking_number" class="erp-input" :class="{ 'ord-field-invalid': shipmentFieldErrors.tracking_number }" :aria-invalid="Boolean(shipmentFieldErrors.tracking_number)" :disabled="!canOperateLogistics" placeholder="追踪号，可稍后补录" @input="clearShipmentFieldError('tracking_number')"><small v-if="shipmentFieldErrors.tracking_number" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.tracking_number }}</small></label>
+          <label>发货时间<input v-model="shipmentEditor.shipped_at" class="erp-input" :class="{ 'ord-field-invalid': shipmentFieldErrors.shipped_at }" :aria-invalid="Boolean(shipmentFieldErrors.shipped_at)" :disabled="!canOperateLogistics" type="datetime-local" @change="clearShipmentFieldError('shipped_at')"><small v-if="shipmentFieldErrors.shipped_at" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.shipped_at }}</small></label>
+          <label class="ord-shipment-note">物流备注<textarea v-model="shipmentEditor.logistics_note" rows="3" class="erp-textarea" :class="{ 'ord-field-invalid': shipmentFieldErrors.logistics_note }" :aria-invalid="Boolean(shipmentFieldErrors.logistics_note)" :disabled="!canOperateLogistics" placeholder="可填写包裹、异常或操作备注" @input="clearShipmentFieldError('logistics_note')"></textarea><small v-if="shipmentFieldErrors.logistics_note" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.logistics_note }}</small></label>
         </div>
         <p v-if="shipmentEditorError" class="ord-shipment-error">{{ shipmentEditorError }}</p>
         <p v-if="!canOperateLogistics" class="ord-shipment-readonly">当前账号为物流执行只读模式；物流员可以在这里直接填写物流并确认发货。</p>
@@ -1032,6 +1635,90 @@ const submitReplacement = () => {
 </template>
 
 <style scoped>
+
+/* Order Detail UX V1 page-local navigation and density; shared shell remains intact. */
+.ord-compact-v1 { padding: 20px 18px 32px; }
+.ord-detail-layout { max-width: 1250px; margin: 0 auto; display: grid; grid-template-columns: 142px minmax(0, 1fr); gap: 16px; align-items: start; }
+.ord-detail-layout > .erp-form-content { min-width: 0; width: 100%; max-width: 1080px; display: flex; flex-direction: column; }
+.ord-detail-nav-rail { position: sticky; top: 88px; min-width: 0; }
+.ord-detail-nav { display: flex; flex-direction: column; padding: 12px 8px; border: 1px solid #e4eaed; border-radius: 12px; background: #fff; box-shadow: 0 2px 7px rgba(20,33,38,.035); max-height: calc(100vh - 110px); overflow-y: auto; }
+.ord-detail-nav-caption { color: #829198; font-size: 11px; font-weight: 600; padding: 2px 10px 8px; }
+.ord-detail-nav-item,.ord-detail-nav-top { text-align: left; border: 0; border-radius: 7px; background: transparent; color: #556a73; font-size: 12px; padding: 8px 10px; line-height: 1.35; cursor: pointer; }
+.ord-detail-nav-item:hover,.ord-detail-nav-top:hover { background: #f2f6f7; }
+.ord-detail-nav-item.is-active { color: #165d55; background: #eaf5f2; font-weight: 700; box-shadow: inset 2px 0 #27796f; }
+.ord-detail-nav-item:focus-visible,.ord-detail-nav-top:focus-visible { outline: 2px solid #27796f; outline-offset: -2px; }
+.ord-detail-nav-top { color: #607880; border-top: 1px solid #edf0f2; margin-top: 6px; padding-top: 11px; }
+.ord-compact-v1 [id^="order-section-"] { scroll-margin-top: 92px; }
+.ord-compact-v1 .erp-form-card { padding: 15px 18px; margin-bottom: 12px; border-radius: 12px; }
+.ord-compact-v1 .erp-form-card-title { font-size: 15px; line-height: 1.35; margin-bottom: 5px; }
+.ord-compact-v1 .erp-form-header-row { gap: 12px; margin-bottom: 12px; }
+.ord-compact-v1 .erp-form-title { font-size: 23px; }
+.ord-compact-v1 .erp-form-subtitle { font-size: 12px; }
+.ord-compact-v1 .ord-identity-strip { padding: 10px 15px; margin-bottom: 12px; border-radius: 12px; }
+.ord-compact-v1 .ord-identity-number { font-size: 16px; }
+.ord-compact-v1 .erp-form-grid { row-gap: 10px; column-gap: 12px; margin-top: 10px; }
+.ord-compact-v1 .erp-form-card-helper,.ord-compact-v1 .ord-inventory-help { margin-top: 3px; margin-bottom: 8px; font-size: 11px; line-height: 1.5; }
+.ord-compact-v1 .ord-audit-card { padding-bottom: 13px; }
+
+/* UX V1.2: WordPress-style per-panel collapse and drag sorting. */
+.ord-detail-layout > .erp-form-content > .erp-form-header-row { order: -30; }
+.ord-detail-layout > .erp-form-content > .ord-identity-strip { order: -20; }
+.ord-sortable-panel { min-width: 0; width: 100%; }
+.ord-section-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
+.ord-section-header .erp-form-card-title { margin: 0; }
+.ord-section-controls { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; flex-shrink: 0; }
+.ord-section-drag,.ord-section-toggle {
+  width: 25px; height: 25px; padding: 0; border: 1px solid transparent; border-radius: 5px;
+  background: transparent; color: #6c7e87; display: inline-grid; place-items: center;
+  font-size: 16px; line-height: 1; cursor: pointer; user-select: none;
+}
+.ord-section-drag { cursor: grab; font-size: 20px; }
+.ord-section-drag:active { cursor: grabbing; }
+.ord-section-drag:hover,.ord-section-toggle:hover { background: #edf3f5; border-color: #dce5e9; color: #334e58; }
+.ord-section-drag:focus-visible,.ord-section-toggle:focus-visible { outline: 2px solid #27796f; outline-offset: 1px; }
+.ord-panel-dragging { opacity: 0.45; }
+.ord-sortable-panel:not(.ord-panel-dragging) { transition: border-color 120ms ease; }
+.ord-sortable-panel:has(.ord-section-drag:hover) { border-color: #b3c9c5; }
+.ord-section-collapsed > :not(.ord-section-header):not(.ord-fulfillment-heading) { display: none !important; }
+.ord-section-collapsed .ord-fulfillment-heading .ord-fulfillment-actions { display: none !important; }
+.ord-section-collapsed .ord-fulfillment-heading { margin-bottom: 0; }
+.ord-section-collapsed .ord-section-toggle { color: #27796f; }
+.ord-inventory-group { padding: 12px 14px; border: 1px solid #e3e8eb; border-radius: 12px; margin-bottom: 10px; background: #fff; }
+.ord-inventory-group > .ord-section-header { margin-bottom: 10px; }
+.ord-inventory-group > .erp-form-card { margin: 0 0 9px; }
+.ord-inventory-group > .erp-form-card:last-of-type { margin-bottom: 0; }
+.ord-inventory-group.ord-section-collapsed > .ord-section-header { margin-bottom: 0; }
+.ord-section-collapsed { padding-top: 10px !important; padding-bottom: 10px !important; }
+
+
+/* UX V1.1: the default detail is a compact summary, not a disabled form. */
+.ord-view-mode .erp-form-card { padding: 12px 16px; margin-bottom: 10px; }
+.ord-view-mode .erp-form-card-title { margin-bottom: 9px; }
+.ord-view-mode .ord-inventory-card .erp-form-card-title { margin-bottom: 7px; }
+.ord-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 11px 18px;
+  margin: 0;
+}
+.ord-summary-field { display: flex; flex-direction: column; min-width: 0; gap: 3px; }
+.ord-summary-field dt { color: #77868d; font-size: 11px; line-height: 1.3; }
+.ord-summary-field dd { margin: 0; color: #213640; font-size: 13px; font-weight: 550; line-height: 1.4; overflow-wrap: anywhere; }
+.ord-summary-field-wide { grid-column: 1 / -1; }
+.ord-summary-field-wide dd { font-weight: 500; }
+.ord-summary-table-wrap { width: 100%; overflow-x: auto; }
+.ord-summary-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; }
+.ord-summary-table th { color: #70838b; background: #f7f9fa; font-size: 11px; font-weight: 600; }
+.ord-summary-table th,.ord-summary-table td { padding: 8px 10px; border-bottom: 1px solid #e9eef0; }
+.ord-summary-table tbody tr:last-child td { border-bottom: 0; }
+.ord-summary-sku { color: #254953; font-weight: 650; white-space: nowrap; }
+.ord-summary-quantity,.ord-summary-price { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ord-summary-note { white-space: pre-wrap; overflow-wrap: anywhere; color: #364d56; font-size: 13px; line-height: 1.5; min-height: 18px; }
+@media (max-width: 1199px) { .ord-summary-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+
+@media (max-width: 1199px) { .ord-detail-layout { grid-template-columns: 120px minmax(0,1fr); gap: 12px; } .ord-detail-nav-item { padding: 7px 6px; } }
+@media (max-width: 1023px) { .ord-detail-layout { display: block; } .ord-detail-nav-rail { display: none; } }
+
 .erp-form-header-actions {
   display: flex;
   gap: 8px;
@@ -1240,6 +1927,21 @@ const submitReplacement = () => {
 }
 
 /* Item rows — order-specific layout */
+.ord-item-amendment-info { margin: 0 0 12px; font-size: 12px; color: #72510f; background: #fff9e9; padding: 8px 10px; border-radius: 8px; }
+.ord-item-gift-hint { margin: 8px 0 0; font-size: 12px; color: #52656d; }
+.ord-add-product { margin-top: 10px; }
+.ord-amendment-actions { display:flex; align-items:center; gap:10px; margin-top:12px; }
+.ord-amendment-actions small { font-size:11px; color:#667781; }
+.ord-amendment-preview { margin-top:12px; padding:12px; border:1px solid #d1e3de; border-radius:8px; background:#f7fbfa; }
+.ord-amendment-preview p { margin:5px 0; font-size:12px; }
+.ord-amendment-preview strong { display:block; margin:8px 0; font-size:13px; }
+.ord-amendment-diff { font-size:12px; padding:5px 0; border-bottom:1px solid #e7e7e7; }
+.ord-replan-approval { margin-top:14px; padding-top:12px; border-top:1px solid #d1e3de; display:grid; gap:10px; }
+.ord-replan-approval label { display:grid; gap:6px; font-size:12px; }
+.ord-replan-approval .ord-replan-consent { display:flex; align-items:start; gap:8px; }
+.ord-replan-approval .ord-replan-consent input { margin-top:3px; }
+
+
 .ord-item-row {
   display: grid;
   grid-template-columns: 2fr 2fr 1fr 1fr;
@@ -1337,6 +2039,8 @@ const submitReplacement = () => {
 .ord-shipment-form label { display: grid; gap: 6px; color: #52656d; font-size: 11px; font-weight: 700; }
 .ord-shipment-note { grid-column: 1 / -1; }
 .ord-shipment-error { margin: 12px 0 0; color: #b44949; font-size: 12px; font-weight: 700; }
+.ord-shipment-form .ord-field-invalid { border-color: #cf303a; box-shadow: 0 0 0 1px rgba(207,48,58,.14); }
+.ord-shipment-form .ord-shipment-field-error { display: block; color: #cf303a; font-size: 11px; font-weight: 700; line-height: 1.45; }
 .ord-shipment-readonly { margin: 12px 0 0; padding: 9px 11px; border-radius: 9px; background: #f5f7f8; color: #66777e; font-size: 12px; }
 .ord-ship-action { white-space: nowrap; }
 .ord-fulfillment-row-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
