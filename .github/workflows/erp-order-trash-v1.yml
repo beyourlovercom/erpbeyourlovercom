@@ -1,0 +1,50 @@
+name: ERP Order Trash V1 Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/Modules/Orders/**'
+      - 'database/migrations/*order*'
+      - 'resources/js/Pages/Orders/**'
+      - 'tests/Feature/Orders/OrderTrashV1Test.php'
+      - '.github/workflows/erp-order-trash-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  order-trash:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          npm ci --no-audit --no-fund
+          ln -s Pages resources/js/pages
+      - name: Isolated migrations
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+          php artisan migrate:fresh --force
+      - name: Trash authorization and lifecycle tests
+        run: php artisan test tests/Feature/Orders/OrderTrashV1Test.php
+      - name: Vue editor visibility and confirmation tests
+        run: npx vitest run resources/js/Pages/Orders/Show.test.ts
+      - name: Frontend build
+        run: npm run build
+      - name: Diff check
+        run: git diff --check origin/main...HEAD
