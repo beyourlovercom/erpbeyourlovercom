@@ -8,6 +8,7 @@ on:
       - 'database/migrations/*order*'
       - 'resources/js/Pages/Orders/**'
       - 'tests/Feature/Orders/**'
+      - 'docs/10_Planning_Roadmap/ERP_ORDER_TRASH_R5_RELEASE_GATE_2026-10-27.md'
       - '.github/workflows/erp-order-trash-v1.yml'
   workflow_dispatch:
 
