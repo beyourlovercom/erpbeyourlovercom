@@ -23,3 +23,9 @@ S1 integration; S2 original-list UI and bounded safe sync trigger; S3 exact OMS 
 - US Mac scoped PHP feature tests: 69 warning-bearing cases, 579 assertions, zero failures. Vue Show.test.ts 14/14 PASS, vue-tsc PASS and Vite build PASS. PHP warnings are from test-time temp-file environment and need independent CI review.
 - No live OMS calls, real orders, production migrations, Woo writes, browser UAT, or external secret access.
 - Remaining release conditions: exact provider SKU quantity identity contract/real OMS lookup/readback evidence; independent CI, isolated Dev browser Owner UAT; Production launch plus real order sends require a separate Owner PASS. Production switches remain OFF.
+
+## S4 Safety hardening follow-up (2026-10-28, US Mac; no live writes)
+- Verified official provider `outboundOrder/detail` API schema: each `productList` row carries `sku` and integer `quantity`. Source: `https://apidoc-oms.xlwms.com/reference/getoutboundorderusingpost.md` (read-only documentation).
+- Before reusing an existing OMS order to mark ERP shipped, require the same ERP thirdOrderNo, Woo platformOrderNo, bound OMS warehouse, AND complete aggregated `(sku, quantity)` map. Missing quantity or mismatched quantities fail closed; multiple exact OMS matches fail closed.
+- Previously claimed attempts are read-only reconcilable when OMS matches but NEVER eligible for another automatic create even if dispatch flags change from OFF to ON. After ambiguous original create, later read-only lookup errors keep `batch_uncertain`, blocking automatic re-submit. Human resolution needs separate audited workflow.
+- CI/local regression uses mocked OMS HTTP only; no live OMS customer orders were queried/created during this patch. A real, sanitized read-only OMS response review and Owner browser acceptance are still pending.

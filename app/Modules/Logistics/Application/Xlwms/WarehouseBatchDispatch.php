@@ -63,7 +63,8 @@ final class WarehouseBatchDispatch
         if (! $connection || blank($connection->oms_warehouse_code)) return $finish('batch_blocked', 'blocked', 'OMS 仓库未绑定');
 
         $payload = (array) ($preview['payload'] ?? []);
-        $skus = array_values(array_filter(array_map('strval', array_column((array) ($payload['productList'] ?? []), 'sku'))));
+        $items = (array) ($payload['productList'] ?? []);
+        $skus = array_values(array_filter(array_map('strval', array_column($items, 'sku'))));
         $platform = (string) ($payload['platformOrderNo'] ?? '');
 
         // Every attempt, including an uncertain prior create, gets only an
@@ -71,8 +72,11 @@ final class WarehouseBatchDispatch
         // blind create after an ambiguous request.
         try {
             $existing = $this->oms->findExistingExact($connection, $third, $platform,
-                [(string) ($payload['referOrderNo'] ?? ''), (string) $order->external_order_number], $skus);
+                [(string) ($payload['referOrderNo'] ?? ''), (string) $order->external_order_number], $items);
         } catch (\Throwable $e) {
+            if ($attempt->oms_order_no || in_array($attempt->state, ['batch_uncertain', 'batch_request_in_flight', 'batch_created'], true)) {
+                return $finish('batch_uncertain', 'uncertain', '历史建单结果未确认，查重失败，禁止自动重发');
+            }
             return $finish('batch_error', $this->safeCode($e), 'OMS 只读查重失败，未重发');
         }
         $remoteNo = (string) ($existing[0]['outboundOrderNo'] ?? $existing[0]['orderNo'] ?? '');
@@ -89,6 +93,9 @@ final class WarehouseBatchDispatch
         // Creation-only switches and full V2 preflight are deliberately after
         // the safe exact OMS lookup so existing orders can be read back while
         // outbound creation is disabled.
+        if (! $claimed) {
+            return $finish('batch_blocked', 'blocked', '已存在同步记录，须人工核对后才能重新建单');
+        }
         if (! (bool) config('xlwms.warehouse_batch_dispatch_enabled', false)
             || ! (bool) config('xlwms.live_dispatch_enabled', false)) {
             return $finish('batch_blocked', 'create_disabled', '新建 OMS 出库已关闭');

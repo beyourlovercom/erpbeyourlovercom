@@ -114,34 +114,60 @@ final class XlwmsOrderGateway
         throw new RuntimeException('OMS_DUPLICATE_SCAN_INCOMPLETE');
     }
 
-    /** Strict batch lookup: identifiers, bound OMS warehouse and exact SKU set. */
+    /**
+     * Exact existing-order identity including SKU quantities. The official
+     * outboundOrder/detail response defines productList[].sku and
+     * productList[].quantity (integer). Missing/ambiguous quantities fail
+     * closed; matching only a SKU set could ship a wrong quantity.
+     *
+     * @param list<array{sku:string,quantity:int}> $expectedItems
+     */
     public function findExistingExact(
         WarehouseOpenApiConnection $connection,
         string $thirdOrderNo,
         string $platformOrderNo,
         array $referenceNos,
-        array $skus,
+        array $expectedItems,
     ): array {
+        $expected = $this->exactItemQuantities($expectedItems);
+        if ($expected === null || $expected === []) {
+            throw new RuntimeException('OMS_ITEM_QUANTITY_INVALID');
+        }
         $matches = $this->findExisting($connection, $thirdOrderNo, $platformOrderNo, $referenceNos);
-        $expected = array_values(array_unique(array_filter(array_map('strval', $skus))));
         $strict = array_values(array_filter($matches, function (array $row) use ($connection, $expected, $thirdOrderNo, $platformOrderNo): bool {
             if (($row['whCode'] ?? $row['warehouseCode'] ?? null) !== $connection->oms_warehouse_code) {
                 return false;
             }
-            if (trim((string) ($row['thirdOrderNo'] ?? '')) !== trim((string) ($thirdOrderNo ?? ''))
-                || trim((string) ($row['platformOrderNo'] ?? '')) !== trim((string) ($platformOrderNo ?? ''))) {
+            if (trim((string) ($row['thirdOrderNo'] ?? '')) !== trim($thirdOrderNo)
+                || trim((string) ($row['platformOrderNo'] ?? '')) !== trim($platformOrderNo)) {
                 return false;
             }
-            $actual = [];
-            foreach ((array) ($row['productList'] ?? $row['products'] ?? []) as $item) {
-                if (is_array($item) && filled($item['sku'] ?? null)) $actual[] = (string) $item['sku'];
-            }
-            if ($actual === [] && filled($row['sku'] ?? null)) $actual[] = (string) $row['sku'];
-            sort($actual); sort($expected);
-            return $actual === $expected;
+            $actual = $this->exactItemQuantities($row['productList'] ?? $row['products'] ?? null);
+            return $actual !== null && $actual === $expected;
         }));
         if ($matches !== [] && $strict === []) throw new RuntimeException('OMS_STATUS_IDENTITY_MISMATCH');
+        if (count($strict) > 1) throw new RuntimeException('OMS_DUPLICATE_AMBIGUOUS');
         return $strict;
+    }
+
+    /** @return array<string,int>|null */
+    private function exactItemQuantities(mixed $items): ?array
+    {
+        if (! is_array($items) || ! array_is_list($items) || $items === []) return null;
+        $quantities = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) return null;
+            $sku = $item['sku'] ?? null;
+            $qty = $item['quantity'] ?? null;
+            if (! is_string($sku) || trim($sku) === ''
+                || ! (is_int($qty) || (is_string($qty) && preg_match('/^[1-9][0-9]*$/D', $qty)))
+                || (int)$qty < 1 || (int)$qty > 1000000) return null;
+            $sku = trim($sku);
+            $quantities[$sku] = ($quantities[$sku] ?? 0) + (int)$qty;
+            if ($quantities[$sku] > 1000000) return null;
+        }
+        ksort($quantities);
+        return $quantities;
     }
 
     /**
