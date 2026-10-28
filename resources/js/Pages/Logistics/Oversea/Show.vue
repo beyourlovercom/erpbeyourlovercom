@@ -4,15 +4,30 @@ import { computed, reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 import ColumnSettingsHeader from '../../../Components/DataGrid/ColumnSettingsHeader.vue'
 import { useAccountGridPreferences, type GridColumnDefinition } from '../../../Composables/useAccountGridPreferences'
+import { publishGlobalFeedback } from '../../../lib/globalFeedback'
 
 type WarehouseOption = { key:string; id:number; code:string; label:string; carrier:string|null; url:string }
 type Item = { sku:string|null; quantity:number }
 type CarrierServiceOption = { id:number; key:string; value:string; label:string; name_en:string|null; name_zh:string|null }
 type CarrierOption = { value:string; label:string; default_service_id:number|null; default_service_value:string|null; services:CarrierServiceOption[] }
+type OmsSnapshot = {
+  state:string; oms_order_no:string|null; oms_status_code:string|null
+  oms_status_checked_at:string|null; oms_tracking_no:string|null
+  failure_code:string|null; oms_status_failure_code:string|null
+}
+type OmsPreflight = {
+  order_id:number; blockers:string[]; ready:boolean; payload_hash:string
+  oms_warehouse:string; items:Item[]; already_attempted:boolean
+}
+type OmsStatusResult = {
+  read_only:boolean; fresh:boolean; oms_order_no:string; oms_status_code:string|null
+  oms_status_label:string; oms_tracking_no:string|null; oms_status_checked_at:string|null
+  oms_status_failure_code:string|null; erp_status_unchanged:boolean; woo_status_unchanged:boolean
+}
 type Row = {
   line:number; order_id:number; erp_order_id:string|null; order_url:string|null; recipient_name:string|null; country:string|null
   warehouse_id:number; warehouse_name:string|null; carrier:string|null; service:string|null; carrier_selection_source:string|null; tracking_number:string|null
-  progress:string; note:string|null; review_status:'approved'|'pending'; shipment_status:string; items:Item[]
+  progress:string; note:string|null; xlwms?:OmsSnapshot|null; review_status:'approved'|'pending'; shipment_status:string; items:Item[]
 }
 type PageRows = { data:Row[]; current_page:number; last_page:number; per_page:number; total:number; from:number|null; to:number|null; links?:{url:string|null;label:string;active:boolean}[] }
 type ColumnKey = 'line'|'order'|'warehouse'|'carrier'|'service'|'tracking'|'note'|'recipient'|'country'|'items'
@@ -32,7 +47,7 @@ type TrackingImportRow = { row:number; order_id:number|null; order_number:string
 type TrackingImportPreview = { token:string; rows:TrackingImportRow[]; apply_count:number; noop_count:number; blocked_count:number }
 const props = defineProps<{
   warehouseKey:string; warehouse:WarehouseOption|null; warehouseOptions:WarehouseOption[]; view:string
-  rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canOperate:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null
+  rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canOperate:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number
 }>()
 
 const grid = reactive(useAccountGridPreferences<ColumnKey>({
@@ -45,9 +60,193 @@ const trackingFileInput = ref<HTMLInputElement|null>(null)
 const trackingPreviewRows = computed(() => props.trackingImportPreview?.rows.slice(0, 20) ?? [])
 const canUploadTrackingFile = computed(() => props.warehouseKey !== 'us-3sm')
 const trackingFileHint = computed(() => props.warehouseKey === 'us-3sm'
-  ? '世迈没有 Tracking 回传模板：仓库给出真实 Tracking 后，在订单行填写并点击“确认发货”。'
+  ? '世迈订单行直接审核、API 发货并查看 OMS 状态；手工 Tracking 确认仅用于经核实的备用流程。'
   : '上传当前仓库真实回传 XLSX；兼容旧 CSV。上传只生成预览，确认后才会标记已发货。')
 const rowErrors = reactive<Record<number,string>>({})
+const omsBlockerLabels:Record<string,string> = {
+  wrong_warehouse:'发货仓库不是世迈 US-SM',
+  order_not_pending_shipment:'ERP 订单并非待发货',
+  shipment_not_pending:'发货记录不是待发货',
+  warehouse_review_not_approved:'Dede 尚未通过当前仓库审核',
+  tracking_already_assigned:'已有 Tracking，禁止重复出库',
+  api_credentials_missing:'世迈 API 凭据未配置',
+  oms_warehouse_not_bound:'世迈 OMS 仓库未绑定',
+  recipient_missing:'缺收件人',address_missing:'缺收货地址',
+  city_missing:'缺城市',postal_code_missing:'缺邮编',
+  country_iso2_missing:'国家代码不正确',
+  province_missing:'缺州/省',province_code_not_confirmed:'州/省代码未核实',
+  native_logistics_channel_missing:'未选择 OMS 物流渠道',
+  logistics_channel_inactive:'物流渠道已停用',
+  no_valid_order_items:'没有有效订单商品',
+  invalid_item:'SKU 或商品数量不正确',
+  inventory_unverified:'库存未核实',
+  insufficient_warehouse_stock:'世迈仓库存不足',
+  existing_dispatch_attempt:'已存在 API 发货尝试，禁止重复',
+}
+const omsBlockerText=(v:string)=> {
+  const [key,detail]=v.split(':')
+  return (omsBlockerLabels[key]||key)+(detail?' · '+detail:'')
+}
+const omsErrors = reactive<Record<number,string>>({})
+const omsBusy = reactive<Record<number,boolean>>({})
+const omsSnapshots = reactive<Record<number,OmsSnapshot>>({})
+const omsPreflight = reactive<Record<number,OmsPreflight>>({})
+const omsFinishedThisPage = reactive<Record<number,boolean>>({})
+const batchBusy = ref(false)
+const batchResult = ref<{count:number; results:{order_id:number; code:string; reason?:string}[]}|null>(null)
+const batchError = ref('')
+const batchCodeText:Record<string,string> = {
+  created:'已创建', existing:'已存在', status_updated:'已更新发货状态', canceled:'OMS 已取消', unknown_status:'状态待核实',
+  in_progress:'已有同步处理中', create_disabled:'未创建（开关关闭）', not_found:'OMS 暂未找到',
+  identity_mismatch:'身份不匹配', preflight_blocked:'创建前检查阻断', blocked:'已阻断', uncertain:'结果待核实', error:'失败',
+}
+const syncWarehouse = async () => {
+  if (batchBusy.value || props.warehouseKey !== 'us-3sm' || !props.canOperate) return
+  const token=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
+  batchBusy.value=true; batchError.value=''; batchResult.value=null
+  try {
+    const response=await fetch('/logistics/oversea/us-3sm/xlwms/sync',{method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',headers:{Accept:'application/json','Content-Type':'application/json',...(token?{'X-CSRF-TOKEN':token}:{})},body:'{}'})
+    if (!response.ok) throw Error(response.status===403?'当前账号没有此操作权限':response.status===429?'操作过于频繁，请稍后再试':'同步失败（HTTP '+response.status+'）')
+    batchResult.value=await response.json()
+    notifyOms('INFO','同步仓库结果',`已处理 ${batchResult.value?.count ?? 0} 单`)
+  } catch (e) { batchError.value=e instanceof Error?e.message:'同步失败，请稍后重试'; notifyOms('ERROR','同步仓库失败',batchError.value) }
+  finally { batchBusy.value=false }
+}
+const omsRow = (row:Row): OmsSnapshot|null => omsSnapshots[row.order_id] ?? row.xlwms ?? null
+const omsLabel = (row:Row) => {
+  const record=omsRow(row)
+  if (!record) return '尚未下发'
+  if (record.oms_status_code==='3') return '已出库（未同步 ERP）'
+  if (record.oms_status_code==='4') return '已取消'
+  if (record.oms_status_code) return 'OMS 状态 '+record.oms_status_code+'（待核实）'
+  if (record.state==='submitted_oms'||record.state==='found_in_oms') return 'OMS 已接单（未出库）'
+  if (record.state==='draft_cancelled_confirmed') return '已取消'
+  if (record.state.includes('uncertain')||record.state.includes('in_flight')) return '结果待核实'
+  return '需处理：'+record.state
+}
+const omsFailureText = (code:string|null|undefined) => ({
+  OMS_STATUS_IDENTITY_MISMATCH:'OMS 返回的订单或仓库不匹配，已保留原状态',
+  OMS_STATUS_RESPONSE_INVALID:'OMS 查询结果不完整，已保留原状态',
+  OMS_STATUS_NOT_FOUND:'OMS 尚未找到该出库单',
+  OMS_BUSINESS_REJECTED:'OMS 拒绝操作，请核查仓库渠道或库存',
+  OMS_TRANSPORT_UNCERTAIN:'OMS 网络结果不明，请只读核对，不要重发',
+  OMS_STATUS_UNEXPECTED_ERROR:'OMS 查询失败，已保留原状态',
+  OMS_STATUS_NOT_READY:'缺少 OMS 出库单号',
+  OMS_STATUS_QUERY_INVALID:'OMS 出库单号无效',
+}[code||''] || (code ? 'OMS 操作未完成，请核对后处理' : ''))
+const notifyOms = (state:'SUCCESS'|'ERROR'|'INFO', title:string, message:string) =>
+  publishGlobalFeedback({ state, title, message, copyable:state==='ERROR' })
+const omsEndpoint = (row:Row, action:string) =>
+  '/logistics/oversea/us-3sm/orders/'+row.order_id+'/xlwms/'+action
+async function omsRequest(row:Row,action:string,payload:Record<string,string>={}) {
+  const token=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
+  if (!token && action!=='preflight') throw Error('CSRF_MISSING')
+  const res=await fetch(omsEndpoint(row,action),{
+    method:action==='preflight'?'GET':'POST',
+    credentials:'same-origin',cache:'no-store',redirect:'error',
+    headers:{Accept:'application/json',...(token?{'X-CSRF-TOKEN':token}:{}),
+      ...(action!=='preflight'?{'Content-Type':'application/json'}:{})},
+    ...(action==='preflight'?{}:{body:JSON.stringify(payload)}),
+  })
+  if (!res.ok) throw Error(res.status===423?'此订单没有单笔 API 发货授权'
+    :res.status===429?'操作过于频繁，请稍后再试'
+    :res.status===403?'当前账号没有此操作权限'
+    :'请求失败（HTTP '+res.status+'）')
+  return res.json()
+}
+const omsReadyToSend = (row:Row) => props.canOperate
+  && props.warehouseKey==='us-3sm' && row.review_status==='approved'
+  && row.shipment_status==='pending' && !omsRow(row)
+  && !omsFinishedThisPage[row.order_id] && props.xlwmsAuthorizedOrderId===row.order_id
+const omsPreflightStart = async (row:Row) => {
+  if (omsBusy[row.order_id] || omsRow(row)) return
+  omsBusy[row.order_id]=true;omsErrors[row.order_id]=''
+  try {
+    const result=await omsRequest(row,'preflight') as OmsPreflight
+    if (result.order_id!==row.order_id || result.already_attempted)
+      throw Error('订单已存在下发记录，禁止重复发货')
+    if (!result.ready||result.blockers.length) {
+      omsErrors[row.order_id]='发货前检查未通过：'+(result.blockers.map(omsBlockerText).join('；')||'存在未解决问题')
+      notifyOms('ERROR','API 发货预检阻断',omsErrors[row.order_id])
+      return
+    }
+    omsPreflight[row.order_id]=result
+    if (!omsReadyToSend(row)) {
+      omsErrors[row.order_id]='预检通过，但当前订单未获得单笔真实发货授权，不能提交'
+      notifyOms('INFO','等待逐单授权',omsErrors[row.order_id])
+    }
+  } catch(e) {
+    omsErrors[row.order_id]=e instanceof Error?e.message:'预检失败，请核查订单'
+    notifyOms('ERROR','API 预检失败',omsErrors[row.order_id])
+  } finally {omsBusy[row.order_id]=false}
+}
+const omsSend = async (row:Row) => {
+  const plan=omsPreflight[row.order_id]
+  if (!plan?.ready||!omsReadyToSend(row)||omsBusy[row.order_id]) return
+  omsBusy[row.order_id]=true;omsErrors[row.order_id]=''
+  delete omsPreflight[row.order_id]
+  // Local double-click guard. The server also imposes exact-order auth,
+  // a unique dispatch attempt and no blind retry on timeout.
+  omsFinishedThisPage[row.order_id]=true
+  try {
+    const result=await omsRequest(row,'send',{
+      payload_hash:plan.payload_hash,confirmation:'SUBMIT_US_SM_ORDER_'+row.order_id,
+    }) as {state:string;status_label?:string;oms_order_no?:string|null;failure_code?:string|null}
+    omsSnapshots[row.order_id]={
+      state:result.state,oms_order_no:result.oms_order_no??null,
+      oms_status_code:null,oms_status_checked_at:null,oms_tracking_no:null,
+      failure_code:result.failure_code??null,oms_status_failure_code:null,
+    }
+    if (result.state==='submitted_oms'||result.state==='found_in_oms') {
+      notifyOms('SUCCESS','OMS 接收结果',result.status_label||'OMS 已接单，不代表已出库')
+    } else {
+      omsErrors[row.order_id]=result.status_label||'OMS 下发结果需核对，不能再次点击发货'
+      notifyOms('ERROR','请核对 OMS 结果',omsErrors[row.order_id])
+    }
+  } catch(e) {
+    omsErrors[row.order_id]=(e instanceof Error?e.message:'请求结果未知')+'。严禁直接重新发货，请刷新订单并查重。'
+    notifyOms('ERROR','API 发货结果未知',omsErrors[row.order_id])
+  } finally {omsBusy[row.order_id]=false}
+}
+const omsRefresh = async (row:Row) => {
+  const old=omsRow(row)
+  if (!old?.oms_order_no||omsBusy[row.order_id]) return
+  omsBusy[row.order_id]=true;omsErrors[row.order_id]=''
+  try {
+    const result=await omsRequest(row,'status') as OmsStatusResult
+    if (!result.read_only||!result.erp_status_unchanged||!result.woo_status_unchanged
+      ||result.oms_order_no!==old.oms_order_no) throw Error('OMS 订单身份校验失败，未覆盖已有状态')
+    if (!result.fresh) throw Error(omsFailureText(result.oms_status_failure_code)||'OMS 状态更新失败')
+    omsSnapshots[row.order_id]={
+      ...old,oms_status_code:result.oms_status_code,
+      oms_status_checked_at:result.oms_status_checked_at,
+      oms_tracking_no:result.oms_tracking_no,oms_status_failure_code:null,
+    }
+    notifyOms('SUCCESS','OMS 状态已更新',result.oms_status_label+' · 不修改 ERP/Woo')
+  } catch(e) {
+    omsErrors[row.order_id]=e instanceof Error?e.message:'OMS 查询失败，已保留上次状态'
+    notifyOms('ERROR','OMS 状态查询失败',omsErrors[row.order_id])
+  } finally {omsBusy[row.order_id]=false}
+}
+const omsReconcile = async (row:Row) => {
+  if (!props.canOperate||omsBusy[row.order_id]) return
+  omsBusy[row.order_id]=true;omsErrors[row.order_id]=''
+  try {
+    const result=await omsRequest(row,'reconcile') as {state:string;oms_order_no?:string|null;status_label?:string}
+    const old=omsRow(row)
+    omsSnapshots[row.order_id]={
+      state:result.state,oms_order_no:result.oms_order_no??old?.oms_order_no??null,
+      oms_status_code:old?.oms_status_code??null,oms_status_checked_at:old?.oms_status_checked_at??null,
+      oms_tracking_no:old?.oms_tracking_no??null,
+      failure_code:old?.failure_code??null,oms_status_failure_code:old?.oms_status_failure_code??null,
+    }
+    notifyOms('INFO','OMS 查重结果',result.status_label||'已完成只读查重，不会重发')
+  } catch(e) {
+    omsErrors[row.order_id]=e instanceof Error?e.message:'查重失败，不能重新发货'
+    notifyOms('ERROR','OMS 查重失败',omsErrors[row.order_id])
+  } finally {omsBusy[row.order_id]=false}
+}
+
 const carrierOption = (name:string) => props.carrierOptions.find(row => row.value === name)
 const serviceOptionsFor = (name:string) => carrierOption(name)?.services ?? []
 const defaultServiceFor = (name:string, country?:string|null) => {
@@ -76,6 +275,12 @@ const saveCarrier = (row:Row) => { const d=draft(row); d.service=defaultServiceF
 const saveService = (row:Row) => saveDraft(row, { carrier:draft(row).carrier, service:draft(row).service || null })
 const saveTracking = (row:Row) => saveDraft(row, { tracking_number:draft(row).tracking_number.trim() || null })
 const manualShipUsSm = (row:Row) => {
+  const oms=omsRow(row)
+  if (oms && (oms.oms_status_code!=='3' || !oms.oms_tracking_no
+    || oms.oms_tracking_no!==draft(row).tracking_number.trim())) {
+    rowErrors[row.order_id]='OMS 已有出库记录：必须先查到“已出库”且 Tracking 完全匹配，才能手动确认'
+    return
+  }
   const tracking = draft(row).tracking_number.trim()
   if (!tracking) { rowErrors[row.order_id] = '请先填写真实 Tracking'; return }
   rowErrors[row.order_id] = ''
@@ -154,13 +359,20 @@ const compactPages = computed<(number|string)[]>(() => {
       <header class="oversea-heading">
         <div><h1>{{ pageTitle }}</h1><p>审核 Vita 分仓结果；通过后进入真实下单，驳回则退回运营重新分配。</p></div>
         <div class="oversea-file-actions" v-if="warehouse && view === 'pending'">
+          <button v-if="warehouseKey === 'us-3sm' && canOperate" type="button" class="file-button primary xlwms-batch-button" :disabled="batchBusy" @click="syncWarehouse">{{ batchBusy ? '同步中…' : '同步仓库' }}</button>
           <a class="file-button file-link" :href="`${basePath}/export`">⇩ 下载仓库下单表</a>
           <input ref="trackingFileInput" class="hidden-file" type="file" accept=".xlsx,.csv,.txt" @change="previewTrackingFile" />
           <button v-if="canOperate && canUploadTrackingFile" type="button" class="file-button primary" @click="chooseTrackingFile">⇧ 上传物流回传表</button>
         </div>
       </header>
+      <div v-if="warehouseKey === 'us-3sm' && (batchResult || batchError)" class="xlwms-batch-result" role="status">
+        <strong v-if="batchResult">本次处理 {{ batchResult.count }} 单：</strong>
+        <span v-if="batchResult" v-for="item in batchResult.results" :key="item.order_id">订单 {{ item.order_id }} · {{ batchCodeText[item.code] || item.code }}<small v-if="item.reason">（{{ item.reason }}）</small></span>
+        <span v-if="batchError" class="xlwms-error">{{ batchError }}</span>
+      </div>
       <div v-if="warehouse && view === 'pending'" class="oversea-file-flow">
-        <span>① 审核通过</span><b>→</b><span>② 下载仓库下单表</span><b>→</b><span>③ 上传仓库 / WMS</span><b>→</b><span>④ 仓库回传 Tracking</span><b>→</b><span>⑤ 上传 ERP 并确认发货</span>
+        <template v-if="warehouseKey==='us-3sm'"><span>① Dede 审核</span><b>→</b><span>② 订单行 API 发货</span><b>→</b><span>③ OMS 状态查询</span><b>→</b><span>④ Tracking 核实与回写</span></template>
+        <template v-else><span>① 审核通过</span><b>→</b><span>② 下载仓库下单表</span><b>→</b><span>③ 上传仓库 / WMS</span><b>→</b><span>④ 仓库回传 Tracking</span><b>→</b><span>⑤ 上传 ERP 并确认发货</span></template>
         <small>{{ trackingFileHint }}</small>
       </div>
 
@@ -192,6 +404,7 @@ const compactPages = computed<(number|string)[]>(() => {
         <table class="oversea-table">
           <thead><tr>
             <th class="decision-col sticky-decision">审核</th>
+            <th v-if="warehouseKey === 'us-3sm'" class="xlwms-header">世迈 OMS · API 发货 / 状态</th>
             <th v-for="column in grid.visibleColumns" :key="column.key" :class="{ 'line-col':column.key === 'line' }">{{ column.label }}</th>
             <ColumnSettingsHeader :columns="grid.columns" :sync-state="grid.syncState" @toggle="grid.toggle" @start-drag="grid.startDrag" @drop="grid.drop" @reset="grid.reset" />
           </tr></thead>
@@ -204,6 +417,29 @@ const compactPages = computed<(number|string)[]>(() => {
                 </template>
                 <div v-else-if="row.review_status === 'approved'" class="decision-approved"><span class="decision-state approved">已通过</span><button v-if="canOperate" type="button" class="reopen-review" @click="reopenReview(row)">重新审核</button></div>
                 <span v-else class="decision-state">待审核</span>
+              </td>
+              <td v-if="warehouseKey === 'us-3sm'" class="xlwms-cell">
+                <div class="xlwms-inline" :data-oms-order-id="row.order_id">
+                  <template v-if="omsRow(row)">
+                    <div class="xlwms-state">{{ omsLabel(row) }}</div>
+                    <small v-if="omsRow(row)?.oms_order_no" class="xlwms-number">OMS {{ omsRow(row)?.oms_order_no }}</small>
+                    <small v-if="omsRow(row)?.oms_tracking_no" class="xlwms-track">Tracking {{ omsRow(row)?.oms_tracking_no }}（未同步）</small>
+                    <button v-if="omsRow(row)?.oms_order_no" type="button" class="xlwms-action" :disabled="omsBusy[row.order_id]" @click="omsRefresh(row)">{{omsBusy[row.order_id]?'查询中…':'更新 OMS 状态'}}</button>
+                    <button v-else-if="canOperate" type="button" class="xlwms-action" :disabled="omsBusy[row.order_id]" @click="omsReconcile(row)">核对 OMS（不重发）</button>
+                    <small v-if="omsRow(row)?.oms_status_failure_code" class="xlwms-error" role="alert">{{ omsFailureText(omsRow(row)?.oms_status_failure_code) }}</small>
+                  </template>
+                  <template v-else-if="row.review_status === 'approved' && row.shipment_status === 'pending'">
+                    <span class="xlwms-state">尚未下发</span>
+                    <button v-if="canOperate && !omsPreflight[row.order_id]" type="button" class="xlwms-action" :disabled="omsBusy[row.order_id] || omsFinishedThisPage[row.order_id]" @click="omsPreflightStart(row)">{{ omsBusy[row.order_id]?'预检中…':'API 发货' }}</button>
+                    <div v-if="omsPreflight[row.order_id]" class="xlwms-confirm">
+                      <small>校验：{{omsPreflight[row.order_id].oms_warehouse}} · {{omsPreflight[row.order_id].items.map(i=>i.sku+' × '+i.quantity).join(' / ')}}</small>
+                      <button v-if="omsReadyToSend(row)" type="button" class="xlwms-action primary" :disabled="omsBusy[row.order_id]" @click="omsSend(row)">确认 API 发货</button>
+                      <small v-else>尚未获得此订单的实际发货授权</small>
+                    </div>
+                  </template>
+                  <span v-else class="xlwms-note">{{ row.review_status !== 'approved' ? '待 Dede 审核' : '不允许重复发货' }}</span>
+                  <small v-if="omsErrors[row.order_id]" role="alert" class="xlwms-error">{{omsErrors[row.order_id]}}</small>
+                </div>
               </td>
               <td v-for="column in grid.visibleColumns" :key="column.key" :class="{ 'line-col':column.key === 'line', 'tracking-cell':column.key === 'tracking', 'items-cell':column.key === 'items' }">
                 <template v-if="column.key === 'line'">{{ row.line }}</template>
@@ -219,7 +455,7 @@ const compactPages = computed<(number|string)[]>(() => {
               </td>
               <td class="settings-spacer" aria-hidden="true"></td>
             </tr>
-            <tr v-if="!rows.data.length"><td :colspan="grid.visibleColumns.length + 2" class="empty-cell">当前视图暂无订单</td></tr>
+            <tr v-if="!rows.data.length"><td :colspan="grid.visibleColumns.length + (warehouseKey === 'us-3sm' ? 3 : 2)" class="empty-cell">当前视图暂无订单</td></tr>
           </tbody>
         </table>
       </div>
@@ -267,4 +503,17 @@ const compactPages = computed<(number|string)[]>(() => {
 .cell-select,.note-input{width:100%;min-height:30px;border:1px solid #d7e0e5;border-radius:6px;background:white;color:#334155;padding:3px 7px}.cell-select:disabled,.note-input:disabled{background:#f8fafc;color:#64748b}.cell-select.warehouse{min-width:135px}.carrier-cell{display:flex;flex-direction:column;gap:3px;min-width:150px}.carrier-cell small{color:#94a3b8;font-size:11px}.cell-select.carrier{min-width:145px}.tracking-cell{min-width:240px}.tracking-entry{display:flex;align-items:center;gap:6px}.tracking-input{width:100%;min-width:220px;min-height:30px;border:1px solid #d7e0e5;border-radius:6px;background:#fff;color:#334155;padding:3px 7px}.tracking-input:disabled{background:#f8fafc;color:#64748b}.manual-ship-button{min-height:30px;white-space:nowrap;border:1px solid #0f766e;border-radius:6px;background:#0f766e;color:#fff;font-weight:700;padding:3px 9px;cursor:pointer}.note-cell{display:flex;flex-direction:column;gap:4px}.note-input{min-width:260px}.note-input.error{border-color:#dc2626}.note-error{color:#dc2626;font-size:11px}.order-link{display:inline-block;min-width:180px;color:#0f766e;font-weight:700;text-decoration:none;white-space:nowrap}.order-link:hover{text-decoration:underline}.items-cell{min-width:180px;color:#475569}.empty-cell{text-align:center!important;color:#94a3b8;padding:30px!important}
 .oversea-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;max-width:100%;padding:14px 2px;color:#64748b}.pagination-summary{display:flex;gap:10px;flex-wrap:wrap;font-size:12px}.pagination-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;min-width:0;max-width:100%}.page-size,.page-jump{display:flex;align-items:center;gap:5px;white-space:nowrap;font-size:12px}.page-size select,.page-jump input{height:32px;border:1px solid #d7e0e5;border-radius:6px;background:#fff;color:#475569;padding:0 7px}.page-jump input{width:58px}.page-jump button,.pagination button{border:1px solid #d7e0e5;background:white;border-radius:6px;min-width:32px;height:32px;padding:0 8px;color:#475569;white-space:nowrap}.pagination{display:flex;align-items:center;gap:5px;flex-wrap:wrap;min-width:0}.pagination button:disabled,.page-jump button:disabled{opacity:.45;cursor:not-allowed}.pagination button.active{background:#0f766e;border-color:#0f766e;color:white}.page-ellipsis{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:32px;color:#94a3b8}
 @media (max-width:900px){.oversea-workbench{grid-template-columns:1fr}.warehouse-rail{position:static;display:flex;gap:6px;overflow-x:auto}.warehouse-rail-title{display:none}.warehouse-link{width:auto;flex:0 0 auto}.oversea-heading{flex-direction:column}.oversea-file-actions{align-self:stretch}.file-button{flex:1}.oversea-page{padding:14px}}
+</style>
+
+<style scoped>
+.xlwms-header{min-width:270px}.xlwms-cell{min-width:270px!important;max-width:340px;white-space:normal!important}
+.xlwms-inline{display:flex;align-items:flex-start;flex-direction:column;gap:4px;padding:5px 2px}
+.xlwms-state{font-weight:700;color:#184c3e}.xlwms-number,.xlwms-track,.xlwms-note{font-size:11px;color:#5a6762;overflow-wrap:anywhere}
+.xlwms-action{font-size:11px;border:1px solid #adc7be;border-radius:6px;padding:4px 9px;min-height:28px;cursor:pointer;color:#185647;background:#fff;white-space:nowrap}
+.xlwms-action.primary{color:#fff;background:#12644d;border-color:#12644d}
+.xlwms-action:disabled{opacity:.55;cursor:not-allowed}
+.xlwms-error{color:#c02d2d!important;font-size:11px!important;font-weight:600;line-height:1.4;white-space:normal}
+.xlwms-confirm{display:flex;flex-direction:column;gap:5px;margin-top:4px;padding:7px;border:1px solid #cfe2da;border-radius:6px;background:#f6faf7;white-space:normal}
+.xlwms-confirm small{font-size:11px;color:#496b5b;overflow-wrap:anywhere}
+.xlwms-batch-button{min-width:112px}.xlwms-batch-result{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-4px 0 12px;padding:7px 10px;border:1px solid #cfe2da;border-radius:7px;background:#f6faf7;color:#35564d;font-size:12px}.xlwms-batch-result span{padding-right:8px;border-right:1px solid #dbe7e5}.xlwms-batch-result span:last-child{border-right:0}
 </style>

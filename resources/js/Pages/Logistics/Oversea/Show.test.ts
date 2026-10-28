@@ -56,7 +56,7 @@ describe('Oversea Dede file exchange workbench', () => {
   it('keeps 3SM file return disabled and exposes manual confirm after tracking entry', async () => {
     const wrapper = mountPage({ warehouseKey: 'us-3sm', warehouse: warehouseOptions[1], trackingImportPreview: null, rows: usSmPendingRows })
     expect(wrapper.text()).not.toContain('上传物流回传表')
-    expect(wrapper.text()).toContain('世迈没有 Tracking 回传模板')
+    expect(wrapper.text()).toContain('世迈订单行直接审核、API 发货')
     expect(wrapper.text()).toContain('确认发货')
     expect(wrapper.find('a[href="/logistics/oversea/us-3sm/export"]').exists()).toBe(true)
 
@@ -72,6 +72,27 @@ describe('Oversea Dede file exchange workbench', () => {
     )
   })
 
+  it('shows the top-right warehouse sync action only for an operator on US-SM and renders real row outcomes', async () => {
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="TEST-CSRFTOKEN">')
+    const request=vi.fn().mockResolvedValue({ok:true,json:async()=>({count:2,results:[{order_id:99,code:'existing'},{order_id:100,code:'blocked'}]})})
+    vi.stubGlobal('fetch',request)
+    try {
+      const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],trackingImportPreview:null,rows:usSmPendingRows})
+      const button=wrapper.find('button.xlwms-batch-button')
+      expect(button.exists()).toBe(true)
+      await button.trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('本次处理 2 单'))
+      expect(wrapper.text()).toContain('订单 99 · 已存在')
+      expect(wrapper.text()).toContain('订单 100 · 已阻断')
+      expect(request).toHaveBeenCalledWith('/logistics/oversea/us-3sm/xlwms/sync',expect.objectContaining({method:'POST',credentials:'same-origin'}))
+    } finally { vi.unstubAllGlobals(); document.head.querySelector('meta[name="csrf-token"]')?.remove() }
+  })
+
+  it('does not expose warehouse sync to a non-US-SM page or unauthorized operator', () => {
+    expect(mountPage({warehouseKey:'us-moreplus'}).find('button.xlwms-batch-button').exists()).toBe(false)
+    expect(mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],canOperate:false}).find('button.xlwms-batch-button').exists()).toBe(false)
+  })
+
   it('blocks 3SM manual confirm in the browser until tracking exists', async () => {
     const wrapper = mountPage({ warehouseKey: 'us-3sm', warehouse: warehouseOptions[1], trackingImportPreview: null, rows: usSmPendingRows })
     const button = wrapper.findAll('button').find(button => button.text() === '确认发货')
@@ -83,6 +104,137 @@ describe('Oversea Dede file exchange workbench', () => {
       expect.anything(),
     )
     expect(wrapper.text()).toContain('请先填写真实 Tracking')
+  })
+
+
+  it('shows OMS tracking/state inline for an existing approved single OMS attempt and never links to a debug page', async () => {
+    const row = {
+      ...usSmPendingRows.data[0],
+      xlwms: {state:'draft_cancelled_confirmed', oms_order_no:'OBS0272610260RS',
+        oms_status_code:'4', oms_status_checked_at:null, oms_tracking_no:null,
+        failure_code:null, oms_status_failure_code:null},
+    }
+    const wrapper=mountPage({
+      warehouseKey:'us-3sm', warehouse:warehouseOptions[1], trackingImportPreview:null,
+      rows:{...usSmPendingRows,data:[row]},xlwmsAuthorizedOrderId:0,
+    })
+    expect(wrapper.text()).toContain('世迈 OMS · API 发货 / 状态')
+    expect(wrapper.text()).toContain('OBS0272610260RS')
+    expect(wrapper.text()).toContain('已取消')
+    expect(wrapper.findAll('a').some(a=>a.attributes('href')?.endsWith('/xlwms'))).toBe(false)
+    expect(wrapper.text()).not.toContain('确认 API 发货')
+    expect(wrapper.find('button.xlwms-action').text()).toContain('更新 OMS 状态')
+  })
+
+  it('provides local preflight but never enables sending when the exact order is not authorized', async () => {
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="TEST-CSRFTOKEN">')
+    const request=vi.fn().mockResolvedValue({
+      ok:true,json:async()=>({
+        order_id:99,blockers:[],ready:true,payload_hash:'a'.repeat(64),
+        oms_warehouse:'Yangfan',items:[{sku:'REVIEW-SKU',quantity:1}],
+        already_attempted:false,
+      }),
+    })
+    vi.stubGlobal('fetch',request)
+    try {
+      const wrapper=mountPage({
+        warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+        trackingImportPreview:null,rows:usSmPendingRows,xlwmsAuthorizedOrderId:0,
+      })
+      await wrapper.find('button.xlwms-action').trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('未获得单笔真实发货授权'))
+      expect(wrapper.text()).not.toContain('确认 API 发货')
+      expect(request).toHaveBeenCalledTimes(1)
+      expect(request.mock.calls[0][0]).toBe('/logistics/oversea/us-3sm/orders/99/xlwms/preflight')
+      expect(request.mock.calls[0][1].method).toBe('GET')
+    } finally {
+      vi.unstubAllGlobals()
+      document.head.querySelector('meta[name="csrf-token"]')?.remove()
+    }
+  })
+
+  it('allows exactly one confirmed per-order API send only after the authorized preflight', async () => {
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="TEST-CSRFTOKEN">')
+    const fetchMock=vi.fn()
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        order_id:99,blockers:[],ready:true,payload_hash:'a'.repeat(64),
+        oms_warehouse:'Yangfan',items:[{sku:'REVIEW-SKU',quantity:1}],already_attempted:false,
+      })})
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        state:'submitted_oms',status_label:'OMS 已接单（未出库）',oms_order_no:'OBS-TEST-123',
+      })})
+    vi.stubGlobal('fetch',fetchMock)
+    try {
+      const wrapper=mountPage({
+        warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+        trackingImportPreview:null,rows:usSmPendingRows,xlwmsAuthorizedOrderId:99,
+      })
+      await wrapper.find('button.xlwms-action').trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('确认 API 发货'))
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      await wrapper.find('button.xlwms-action.primary').trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('OBS-TEST-123'))
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      const [url,options]=fetchMock.mock.calls[1]
+      expect(url).toBe('/logistics/oversea/us-3sm/orders/99/xlwms/send')
+      expect(JSON.parse(options.body)).toEqual({
+        payload_hash:'a'.repeat(64),confirmation:'SUBMIT_US_SM_ORDER_99',
+      })
+      expect(wrapper.text()).not.toContain('确认 API 发货')
+      expect(wrapper.text()).toContain('OMS 已接单（未出库）')
+    } finally {
+      vi.unstubAllGlobals()
+      document.head.querySelector('meta[name="csrf-token"]')?.remove()
+    }
+  })
+
+  it('queries existing OMS state inline, preserves ERP workflow and does not navigate', async () => {
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="TEST-CSRFTOKEN">')
+    const row={...usSmPendingRows.data[0],xlwms:{
+      state:'submitted_oms',oms_order_no:'OBS-TEST-123',oms_status_code:null,
+      oms_status_checked_at:null,oms_tracking_no:null,
+      failure_code:null,oms_status_failure_code:null,
+    }}
+    const fetchMock=vi.fn().mockResolvedValue({
+      ok:true,json:async()=>({
+        read_only:true,fresh:true,oms_order_no:'OBS-TEST-123',
+        oms_status_code:'4',oms_status_label:'已取消',oms_tracking_no:null,
+        oms_status_checked_at:'2026-10-26T08:00:00Z',oms_status_failure_code:null,
+        erp_status_unchanged:true,woo_status_unchanged:true,
+      }),
+    })
+    vi.stubGlobal('fetch',fetchMock)
+    try {
+      const wrapper=mountPage({
+        warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+        trackingImportPreview:null,rows:{...usSmPendingRows,data:[row]},xlwmsAuthorizedOrderId:0,
+      })
+      await wrapper.find('button.xlwms-action').trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('已取消'))
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock.mock.calls[0][0]).toContain('/xlwms/status')
+      expect(routerPost).not.toHaveBeenCalled()
+      expect(routerVisit).not.toHaveBeenCalled()
+      expect(wrapper.text()).not.toContain('确认 API 发货')
+    } finally {
+      vi.unstubAllGlobals()
+      document.head.querySelector('meta[name="csrf-token"]')?.remove()
+    }
+  })
+
+  it('keeps the operator on the same order row and shows red failure with no OMS outbound creation', async () => {
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:false,status:403}))
+    try {
+      const wrapper=mountPage({
+        warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+        trackingImportPreview:null,rows:usSmPendingRows,xlwmsAuthorizedOrderId:0,
+      })
+      await wrapper.find('button.xlwms-action').trigger('click')
+      await vi.waitFor(()=>expect(wrapper.find('small.xlwms-error').exists()).toBe(true))
+      expect(wrapper.find('small.xlwms-error').text()).toContain('没有此操作权限')
+      expect(wrapper.find('table.oversea-table').exists()).toBe(true)
+      expect(routerPost).not.toHaveBeenCalled()
+    } finally {vi.unstubAllGlobals()}
   })
 
   it('allows unified review actions from all overseas warehouses', async () => {

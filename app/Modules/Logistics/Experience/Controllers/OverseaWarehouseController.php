@@ -10,6 +10,7 @@ use App\Modules\Logistics\Application\OverseaFiles\OverseaOutboundFileService;
 use App\Modules\Logistics\Application\OverseaTrackingReturnService;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
+use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -66,13 +67,25 @@ final class OverseaWarehouseController
 
         $shipments = $base->latest('id')->paginate($perPage)->withQueryString();
         $start = ($shipments->currentPage() - 1) * $shipments->perPage();
+        // One indexed batch read of OMS audit snapshots; no per-row network
+        // queries. Nothing from the provider is fetched just to render a list.
+        $xlwmsAttempts = $warehouseKey === 'us-3sm'
+            ? XlwmsDispatchAttempt::query()
+                ->whereIn('order_id', $shipments->getCollection()->pluck('order_id')->all())
+                ->get()->keyBy('order_id')
+            : collect();
+        $canRunXlwms = $warehouseKey === 'us-3sm'
+            && $this->executionAccess->allows($request->user())
+            && (bool) config('xlwms.live_dispatch_enabled', false);
+
 
         return Inertia::render('Logistics/Oversea/Show', [
             'warehouseKey' => $warehouseKey,
             'warehouse' => $selectedWarehouse,
             'warehouseOptions' => array_values($warehouseMap),
             'view' => $view,
-            'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => $this->row($shipment, $start + $index + 1))->toArray(),
+            'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => $this->row($shipment, $start + $index + 1, $xlwmsAttempts->get($shipment->order_id)))->toArray(),
+            'xlwmsAuthorizedOrderId' => $canRunXlwms ? (int) config('xlwms.live_order_id', 0) : 0,
             'viewCounts' => $this->viewCounts($warehouseMap, $selectedWarehouse),
             'canReview' => $this->reviewAccess->allows($request->user()),
             'canOperate' => $warehouseKey !== 'all' && $this->executionAccess->allows($request->user()),
@@ -251,7 +264,7 @@ final class OverseaWarehouseController
         return $counts;
     }
 
-    private function row(Shipment $shipment, int $line): array
+    private function row(Shipment $shipment, int $line, ?XlwmsDispatchAttempt $xlwms = null): array
     {
         $order = $shipment->order;
         $review = $shipment->overseaReview;
@@ -275,6 +288,16 @@ final class OverseaWarehouseController
             'note' => $review?->note,
             'review_status' => $effectiveApproved ? 'approved' : 'pending',
             'shipment_status' => $shipment->shipment_status,
+            'xlwms' => $xlwms ? [
+                'state' => $xlwms->state,
+                'oms_order_no' => $xlwms->oms_order_no,
+                'oms_status_code' => $xlwms->oms_status_code,
+                'oms_status_checked_at' => $xlwms->oms_status_checked_at,
+                'oms_tracking_no' => $xlwms->oms_tracking_no,
+                'failure_code' => $xlwms->failure_code,
+                'oms_status_failure_code' => $xlwms->oms_status_failure_code,
+            ] : null,
+
             'items' => $order?->items->map(fn ($item): array => [
                 'sku' => $item->resolved_fulfillment_sku ?: $item->sku,
                 'source_sku' => $item->source_sku ?: $item->sku,
