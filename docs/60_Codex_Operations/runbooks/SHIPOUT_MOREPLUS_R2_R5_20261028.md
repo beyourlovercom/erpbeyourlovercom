@@ -3,9 +3,9 @@ Canonical ERP warehouse: US-LA (legacy slug us-moreplus). US-SM is distinct ShiM
 Owner authorization: isolated development/testing only, NO Production release or real writes.
 
 ## Observed R1 (2026-10-28)
-- Signed warehouse GET HTTP 200 result OK, records=1.
+- Signed warehouse GET HTTP 200 result OK, records=1.\n- OWNER R2 live: warehouseId 1531580902677626882, warehouseName ShipOut-Warehouse-Test-OpenAPI.
 - Signed stock GET HTTP 200 result OK, records=0 total=0.
-- Signature and sandbox Bearer accepted. No verified real provider SKU quantities or warehouse ID.
+- Signature and sandbox Bearer accepted. No verified real provider SKU quantities.
 - Do not share/commit Bearer, AppSecret, order recipient details.
 
 ## R5 backend foundation
@@ -16,9 +16,9 @@ Owner authorization: isolated development/testing only, NO Production release or
 - No scheduler, live Dede workbench, WarehouseInventory mutation, or outbound dispatch.
 - Production release is a separate Owner PASS gate.
 
-## R2 pending live warehouse identity
+## R2 warehouse identified; product list not yet verified
 - China Mac operator reruns local script (copy sandbox Bearer LAST, press up/Enter).
-- Capture only nonsecret warehouse ID/name and SKU counts. Never print JWT.
+- Capture only nonsecret warehouse ID/name and SKU counts. Never print JWT.\n- Product GET endpoint: /open-api/oms/product/queryList per vendor public Swagger. PHP adapter now supports an allowlisted read-only first page; China Mac script prepared to check actual sandbox catalog.\n- Warehouse ID is sandbox only and MUST NOT be adopted as US-LA Production warehouse ID.
 - Need confirmed product listing endpoint/spec before product API calls.
 
 ## R3 pending warehouse-assisted inventory acceptance

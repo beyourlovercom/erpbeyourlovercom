@@ -50,6 +50,34 @@ final class ShipOutReadOnlyGatewayTest extends TestCase
         });
     }
 
+    public function test_product_list_is_read_only_and_duplicates_fail_closed(): void
+    {
+        config()->set('shipout.sandbox_read_enabled', true);
+        Http::fake(['https://opendev.shipout.com/api/*' =>
+            Http::response(['result' => 'OK', 'data' => [
+                'records' => [['omsSku' => 'UAT-SHIPOUT', 'skuId' => '123', 'skuNameEN' => 'Sandbox Sample', 'warehouseIds' => ['W']]],
+                'total' => '1',
+            ]], 200),
+        ]);
+        $result = $this->client()->productPage();
+        $this->assertSame('UAT-SHIPOUT', $result['records'][0]['omsSku']);
+        Http::assertSent(fn ($request): bool => $request->method() === 'GET'
+            && str_contains($request->url(), '/open-api/oms/product/queryList?'));
+    }
+
+    public function test_product_rows_must_be_unique(): void
+    {
+        config()->set('shipout.sandbox_read_enabled', true);
+        Http::fake(['https://opendev.shipout.com/api/*' =>
+            Http::response(['result' => 'OK', 'data' => [
+                'records' => [['omsSku' => 'A'], ['omsSku' => 'A']],
+                'total' => 2,
+            ]], 200),
+        ]);
+        $this->expectExceptionMessage('SHIPOUT_PRODUCT_DUPLICATE_SKU');
+        $this->client()->productPage();
+    }
+
     public function test_stock_uses_available_not_total_and_enforces_warehouse_identity(): void
     {
         config()->set('shipout.sandbox_read_enabled', true);

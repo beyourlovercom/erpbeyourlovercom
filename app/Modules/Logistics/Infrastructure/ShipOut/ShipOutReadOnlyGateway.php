@@ -15,6 +15,7 @@ final class ShipOutReadOnlyGateway
     private const BASE = 'https://opendev.shipout.com/api';
     private const WAREHOUSES = '/open-api/oms/info/warehouse/list';
     private const STOCK = '/open-api/oms/stock/list';
+    private const PRODUCTS = '/open-api/oms/product/queryList';
 
     public function __construct(
         private readonly string $appKey,
@@ -32,6 +33,47 @@ final class ShipOutReadOnlyGateway
         }
 
         return $rows;
+    }
+
+    /** @return array{records:list<array<string,mixed>>,total:int} */
+    public function productPage(int $page = 1, int $size = 50): array
+    {
+        if ($page < 1 || $size < 1 || $size > 100) {
+            throw new RuntimeException('SHIPOUT_PRODUCT_QUERY_INVALID');
+        }
+        $response = $this->get(self::PRODUCTS, ['curPageNo' => $page, 'pageSize' => $size]);
+        $data = $response['data'] ?? null;
+        if (! is_array($data) || ! isset($data['records'], $data['total'])
+            || ! is_array($data['records']) || ! array_is_list($data['records'])
+            || ! (is_int($data['total']) && $data['total'] >= 0
+                || is_string($data['total']) && preg_match('/^(0|[1-9][0-9]*)$/', $data['total']) === 1)) {
+            throw new RuntimeException('SHIPOUT_PRODUCT_RESPONSE_INCOMPLETE');
+        }
+        $total = (int) $data['total'];
+        if (count($data['records']) > $size || count($data['records']) > $total
+            || ($total > 0 && $page <= (int) ceil($total / $size) && $data['records'] === [])) {
+            throw new RuntimeException('SHIPOUT_PRODUCT_PAGE_INCOMPLETE');
+        }
+        $seen = [];
+        $rows = [];
+        foreach ($data['records'] as $row) {
+            if (! is_array($row) || trim((string) ($row['omsSku'] ?? '')) === '') {
+                throw new RuntimeException('SHIPOUT_PRODUCT_ROW_UNTRUSTED');
+            }
+            $sku = trim((string) $row['omsSku']);
+            if (isset($seen[$sku])) {
+                throw new RuntimeException('SHIPOUT_PRODUCT_DUPLICATE_SKU');
+            }
+            $seen[$sku] = true;
+            $rows[] = [
+                'omsSku' => $sku,
+                'skuId' => (string) ($row['skuId'] ?? ''),
+                'skuNameEN' => (string) ($row['skuNameEN'] ?? ''),
+                'status' => $row['status'] ?? null,
+                'warehouseIds' => $row['warehouseIds'] ?? [],
+            ];
+        }
+        return ['records' => $rows, 'total' => $total];
     }
 
     /** @return array{records:list<array<string,mixed>>,total:int} */
@@ -92,7 +134,7 @@ final class ShipOutReadOnlyGateway
         if (! (bool) config('shipout.sandbox_read_enabled', false)) {
             throw new RuntimeException('SHIPOUT_SANDBOX_READ_DISABLED');
         }
-        if (! in_array($path, [self::WAREHOUSES, self::STOCK], true)) {
+        if (! in_array($path, [self::WAREHOUSES, self::STOCK, self::PRODUCTS], true)) {
             throw new RuntimeException('SHIPOUT_PATH_NOT_ALLOWED');
         }
 
