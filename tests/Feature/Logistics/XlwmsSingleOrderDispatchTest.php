@@ -715,6 +715,73 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         Http::assertNotSent(fn($x)=>str_contains($x->url(), 'outboundOrder/create'));
     }
 
+    public function test_readonly_oms_verifier_returns_only_sanitized_status_without_writes(): void
+    {
+        $o = $this->orderFixture();
+        Http::preventStrayRequests();
+        Http::fake(function ($request) use ($o) {
+            if (str_contains($request->url(), 'outboundOrder/detail')) {
+                return Http::response(['code'=>200, 'data'=>[[
+                    'thirdOrderNo'=>'BYL-ERP-'.$o->id,
+                    'platformOrderNo'=>$o->external_order_number,
+                    'whCode'=>'OMS-US-SM',
+                    'productList'=>[['sku'=>'SAME-SKU', 'quantity'=>1]],
+                    'outboundOrderNo'=>'OMS-READ-535',
+                ]]]);
+            }
+            if (str_contains($request->url(), 'outboundOrder/pageList')) {
+                return Http::response(['code'=>200, 'data'=>['records'=>[[
+                    'outboundOrderNo'=>'OMS-READ-535', 'thirdOrderNo'=>'BYL-ERP-'.$o->id,
+                    'platformOrderNo'=>$o->external_order_number, 'whCode'=>'OMS-US-SM',
+                    'status'=>3, 'logisticsTrackNo'=>'TRACK-PRIVATE-123',
+                ]], 'total'=>1]]);
+            }
+            return Http::response(['code'=>500]);
+        });
+        $result = \Illuminate\Support\Facades\Artisan::call('xlwms:verify-outbound-readonly', ['order'=>$o->erp_order_id]);
+        $output = \Illuminate\Support\Facades\Artisan::output();
+        $this->assertSame(0, $result);
+        $this->assertStringContainsString('RESULT=SHIPPED_TRACKING_PRESENT; OMS_STATUS_CODE=3; WRITE_PERFORMED=NO', $output);
+        $this->assertStringNotContainsString('TRACK-PRIVATE-123', $output);
+        $this->assertStringNotContainsString('Test Buyer', $output);
+        $this->assertSame('pending', $o->fresh()->shipment->shipment_status);
+        $this->assertNull($o->fresh()->shipment->tracking_number);
+        $this->assertDatabaseCount('xlwms_dispatch_attempts', 0);
+        Http::assertNotSent(fn($request)=>str_contains($request->url(), 'outboundOrder/create'));
+    }
+
+    public function test_readonly_oms_verifier_fails_closed_when_quantity_differs(): void
+    {
+        $o = $this->orderFixture();
+        Http::preventStrayRequests();
+        Http::fake(function ($request) use ($o) {
+            return Http::response(['code'=>200, 'data'=>[[
+                'thirdOrderNo'=>'BYL-ERP-'.$o->id,
+                'platformOrderNo'=>$o->external_order_number, 'whCode'=>'OMS-US-SM',
+                'productList'=>[['sku'=>'SAME-SKU', 'quantity'=>5]],
+                'outboundOrderNo'=>'OMS-BAD-535',
+            ]]]);
+        });
+        $result = \Illuminate\Support\Facades\Artisan::call('xlwms:verify-outbound-readonly', ['order'=>$o->erp_order_id]);
+        $this->assertSame(1, $result);
+        $this->assertStringContainsString('BLOCKED=OMS_STATUS_IDENTITY_MISMATCH; WRITE_PERFORMED=NO', \Illuminate\Support\Facades\Artisan::output());
+        $this->assertSame('pending', $o->fresh()->shipment->shipment_status);
+        Http::assertNotSent(fn($request)=>str_contains($request->url(), 'outboundOrder/create'));
+    }
+
+    public function test_readonly_oms_verifier_denies_absent_credentials_without_network(): void
+    {
+        $o = $this->orderFixture();
+        WarehouseOpenApiConnection::query()->where('warehouse_id', $o->shipment->warehouse_id)->delete();
+        Http::preventStrayRequests();
+        Http::fake();
+        $result = \Illuminate\Support\Facades\Artisan::call('xlwms:verify-outbound-readonly', ['order'=>$o->erp_order_id]);
+        $this->assertSame(1, $result);
+        $this->assertStringContainsString('BLOCKED=US_SM_OMS_CONNECTION_MISSING', \Illuminate\Support\Facades\Artisan::output());
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('xlwms_dispatch_attempts', 0);
+    }
+
     public function test_warehouse_batch_route_requires_logistics_operation_permission(): void
     {
         $this->postJson('/logistics/oversea/us-3sm/xlwms/sync')->assertRedirect();

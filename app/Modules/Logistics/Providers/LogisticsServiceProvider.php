@@ -18,6 +18,7 @@ use App\Modules\Logistics\Experience\Console\Commands\BackfillHistoricalFulfillm
 use App\Modules\Logistics\Experience\Console\Commands\ImportCarrierBillCommand;
 use App\Modules\Logistics\Experience\Console\Commands\RepairProductionUatFulfillmentCommand;
 use App\Modules\Logistics\Experience\Console\Commands\SyncDeliveryEvidenceCommand;
+use App\Modules\Logistics\Experience\Console\Commands\VerifyXlwmsOutboundReadOnlyCommand;
 use App\Modules\Logistics\Infrastructure\AfterShipBrandedPageDeliveryEvidenceGateway;
 use App\Modules\Logistics\Infrastructure\EloquentCarrierBillingEvidenceReader;
 use App\Modules\Logistics\Infrastructure\EloquentFulfillmentOriginEvidenceReader;
@@ -38,6 +39,7 @@ final class LogisticsServiceProvider extends ServiceProvider
                 ImportCarrierBillCommand::class,
                 RepairProductionUatFulfillmentCommand::class,
                 SyncDeliveryEvidenceCommand::class,
+                VerifyXlwmsOutboundReadOnlyCommand::class,
             ]);
         }
     }
