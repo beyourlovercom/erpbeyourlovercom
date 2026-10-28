@@ -101,6 +101,27 @@ final class SyncWorkspaceTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->component('Sync/Exports')->has('exports', 3));
     }
 
+    public function test_woo_health_uses_start_time_when_mysql_completed_timestamp_is_seven_hours_behind(): void
+    {
+        config(['services.woocommerce.order_sync_enabled' => true]);
+        $user = $this->userWithSyncView();
+        $startedAt = now()->subMinutes(12);
+        SyncRun::create([
+            'run_type' => 'woocommerce_order_incremental',
+            'provider_key' => 'woocommerce',
+            'connection_key' => 'beyourlover.com',
+            'status' => 'completed',
+            'failed_items' => 0,
+            'initiated_by' => null,
+            'started_at' => $startedAt,
+            'completed_at' => $startedAt->copy()->subHours(7)->addSecond(),
+        ]);
+        $this->actingAs($user)->get('/sync')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('wooOrderSync.health', 'ok')
+            ->where('wooOrderSync.last_success_at', $startedAt->toIso8601String())
+        );
+    }
+
     public function test_woo_health_reports_failed_run_even_when_other_sync_tasks_are_newer(): void
     {
         config(['services.woocommerce.order_sync_enabled' => true]);

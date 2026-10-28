@@ -9,3 +9,6 @@ Owner approved 30-minute cadence, single-click manual today Woo import, narrow V
 - Source backlog only from operator-requested bounded, read-only Woo REST comparison against ERP external references. Unknown if API fails or >1000 source rows; admin empty shells and Dev sandbox excluded.
 - UI in general/customer order list and Sync; no Woo or Production writes during code tests.
 - After isolated CI and role UAT, separate Owner PASS required for Production. Read-only latest SyncRun, missed tick/failed jobs and source comparison first; inspect scheduler every :00/:30 after approved rollout. Roll back on failure.
+
+## Discovered production timezone anomaly (read only)
+On 2026-10-28 production APP timezone=UTC, MySQL session/system timezone=SYSTEM/PDT. SyncRun #4152 started_at=07:00:13 (consistent with scheduler), completed_at=00:00:14, updated_at=00:00:14. All are TIMESTAMP columns. Do not change MySQL session timezone globally or rewrite historical run timestamps in this release. Display last verified-successful task started_at rather than unreliable completed_at; 75-minute stale detection uses started_at + terminal status. Separate DB timezone remediation requires standalone scope and safety review.

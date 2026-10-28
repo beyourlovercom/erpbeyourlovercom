@@ -24,7 +24,9 @@ final class WooOrderSyncHealthReader
             $q->whereIn('status', ['partial', 'failed'])->orWhere('failed_items', '>', 0);
         })->latest('id')->first();
         $failedLatest = $latest && ($latest->failed_items > 0 || in_array($latest->status->value, ['partial', 'failed'], true));
-        $stale = ! $successful?->completed_at || $successful->completed_at->lt(now()->subMinutes(75));
+        // Production MySQL TIMESTAMP is read through a PDT session while Laravel runs UTC.
+        // started_at is corroborated by the scheduler log and is authoritative for freshness.
+        $stale = ! $successful?->started_at || $successful->started_at->lt(now()->subMinutes(75));
         $enabled = (bool) config('services.woocommerce.order_sync_enabled', false);
         $health = ! $enabled ? 'disabled' : ($failedLatest ? 'failed' : ($stale ? 'stale' : 'ok'));
         $failedItem = $failure?->items()->whereNotNull('error_code')->latest('id')->first();
@@ -34,10 +36,10 @@ final class WooOrderSyncHealthReader
             'frequency' => '每 30 分钟',
             'health' => $health,
             'latest_run' => $latest,
-            'last_success_at' => $successful?->completed_at?->toIso8601String(),
+            'last_success_at' => $successful?->started_at?->toIso8601String(),
             'last_failure' => $failure ? [
                 'run_id' => $failure->id,
-                'at' => ($failure->completed_at ?? $failure->started_at)?->toIso8601String(),
+                'at' => $failure->started_at?->toIso8601String(),
                 'error_code' => $failedItem?->error_code,
                 'message' => $failedItem?->error_message ? mb_substr($failedItem->error_message, 0, 180) : null,
             ] : null,

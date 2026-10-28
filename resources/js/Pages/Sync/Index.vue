@@ -95,8 +95,8 @@ const healthText = (health: WooOrderSync['health']) => ({ ok: '正常', failed: 
         <div class="sync-metrics woo-order-sync-metrics">
           <div><strong>{{ healthText(props.wooOrderSync.health) }}</strong><span>自动同步健康状态</span></div>
           <div><strong>{{ props.wooOrderSync.frequency }}</strong><span>执行频率</span></div>
-          <div><strong>{{ formatTime(props.wooOrderSync.latest_run?.completed_at ?? props.wooOrderSync.latest_run?.started_at ?? null) }}</strong><span>上次自动同步</span></div>
-          <div><strong>{{ formatTime(props.wooOrderSync.last_success_at) }}</strong><span>最后成功同步</span></div>
+          <div><strong>{{ formatTime(props.wooOrderSync.latest_run?.started_at ?? null) }}</strong><span>最近自动任务启动</span></div>
+          <div><strong>{{ formatTime(props.wooOrderSync.last_success_at) }}</strong><span>最近成功任务启动</span></div>
           <div><strong>{{ props.wooOrderSync.latest_run ? props.wooOrderSync.latest_run.succeeded_items + ' 成功 / ' + props.wooOrderSync.latest_run.failed_items + ' 失败' : '—' }}</strong><span>最近结果</span></div>
         </div>
         <p v-if="props.wooOrderSync.last_failure" role="status">

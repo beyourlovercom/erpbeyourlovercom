@@ -134,7 +134,7 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
       </div>
       <p v-if="showWooSync" class="mvp-empty" role="status">
         网站订单同步：{{ wooOrderSync.health === 'ok' ? '正常' : wooOrderSync.health === 'failed' ? '最近执行失败' : wooOrderSync.health === 'stale' ? '超时或无成功记录' : '未启用' }}
-        · 最后成功 {{ wooOrderSync.last_success_at ? new Date(wooOrderSync.last_success_at).toLocaleString('zh-CN', { hour12: false }) : '尚无记录' }}
+        · 最近成功任务启动 {{ wooOrderSync.last_success_at ? new Date(wooOrderSync.last_success_at).toLocaleString('zh-CN', { hour12: false }) : '尚无记录' }}
         <a v-if="wooOrderSync.last_failure" :href="'/sync/runs/' + wooOrderSync.last_failure.run_id">查看最近失败原因</a>
         <span v-if="wooReconcile"> · 今日未同步 {{ wooReconcile.unimported_count === null ? (wooReconcile.message || '无法核对') : wooReconcile.unimported_count + ' 单' }}</span>
         <span v-else> · 今日未同步量待核对</span>
