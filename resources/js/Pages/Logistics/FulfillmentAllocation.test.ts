@@ -305,6 +305,39 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     expect(document.body.textContent).not.toContain('确认人工分配并提交')
   })
 
+  it('requires a visible acknowledgement before manual allocation to an out-of-stock warehouse', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ decision_source: 'manual', submitted_at: '2026-09-11T09:00:00+08:00' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mountPage()
+    const viewButtons = wrapper.findAll('button').filter(button => button.text() === '查看方案')
+    await viewButtons[1].trigger('click')
+    await flushPromises()
+    const rows = Array.from(document.body.querySelectorAll('.manual-table-wrap tbody tr'))
+    expect(rows).toHaveLength(2)
+    for (const row of rows) {
+      const input = row.querySelector('select') as HTMLSelectElement
+      input.value = 'US-LA'
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+    await flushPromises()
+    const submit = Array.from(document.body.querySelectorAll('button')).find(button => button.textContent === '确认人工分配并提交') as HTMLButtonElement
+    submit.click()
+    await flushPromises()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(document.body.textContent).toContain('所选仓库库存不足或未知')
+    expect(document.body.textContent).toContain('SV205')
+    const confirm = document.body.querySelector('.stock-exception-confirm') as HTMLButtonElement
+    confirm.click()
+    await flushPromises()
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const payload = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(payload.stock_exception_acknowledged).toBe(true)
+    expect(payload.assignments).toHaveLength(2)
+    wrapper.unmount()
+  })
+
   it('submits a system recommendation by JSON without Inertia navigation', async () => {
     const csrf = document.createElement('meta')
     csrf.name = 'csrf-token'

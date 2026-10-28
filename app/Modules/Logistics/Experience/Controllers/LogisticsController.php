@@ -116,8 +116,9 @@ final class LogisticsController
             'assignments.*.carrier' => ['nullable', 'string', 'max:128', Rule::exists('logistics_carriers', 'name')->where('is_active', true)],
             'assignments.*.service' => ['nullable', 'string', 'max:191'],
             'decision_note' => ['nullable', 'string', 'max:1000'],
+            'stock_exception_acknowledged' => ['sometimes', 'boolean'],
         ]);
-        $allocation = $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitManual($order, $data['assignments'], $data['decision_note'] ?? null, $request->user()));
+        $allocation = $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitManual($order, $data['assignments'], $data['decision_note'] ?? null, $request->user(), (bool) ($data['stock_exception_acknowledged'] ?? false)));
         if ($request->expectsJson()) {
             return response()->json(['status' => $allocation->status, 'decision_source' => $allocation->decision_source, 'submitted_at' => $allocation->submitted_at?->toIso8601String()]);
         }
@@ -131,6 +132,7 @@ final class LogisticsController
             'assignments' => ['required', 'array', 'min:1'],
             'assignments.*.order_item_id' => ['required', 'integer'],
             'assignments.*.warehouse_id' => ['required', 'integer', Rule::exists('warehouses', 'id')->where('is_active', true)],
+            'stock_exception_acknowledged' => ['sometimes', 'boolean'],
         ]);
 
         $order->loadMissing(['address', 'items']);
@@ -161,7 +163,7 @@ final class LogisticsController
             ];
         })->values()->all();
 
-        $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitManual($order, $normalized, null, $request->user()));
+        $this->submitAllocationForInertia($request, fn () => $this->allocationSubmissions->submitManual($order, $normalized, null, $request->user(), (bool) ($data['stock_exception_acknowledged'] ?? false)));
 
         return back()->with('success', '分仓已提交');
     }
@@ -394,13 +396,15 @@ final class LogisticsController
         $data = $request->validate([
             'warehouse_id' => ['required', 'integer', Rule::exists('warehouses', 'id')->where('is_active', true)],
             'note' => ['nullable', 'string', 'max:1000'],
+            'stock_exception_acknowledged' => ['sometimes', 'boolean'],
         ]);
-        $updated = $this->pendingReallocation->reallocate(
+        $updated = $this->submitAllocationForInertia($request, fn () => $this->pendingReallocation->reallocate(
             $order,
             (int) $data['warehouse_id'],
             $request->user(),
             $data['note'] ?? null,
-        );
+            (bool) ($data['stock_exception_acknowledged'] ?? false),
+        ));
 
         if ($request->expectsJson()) {
             return response()->json([

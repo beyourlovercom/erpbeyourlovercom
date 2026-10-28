@@ -16,6 +16,8 @@ const commonCurrencyOptions = [
   { value: 'SGD', label: 'SGD · 新加坡元' },
 ]
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+import StockExceptionConfirmDialog from '../../Components/Logistics/StockExceptionConfirmDialog.vue'
+import { allocationStockWarnings } from '../../lib/allocationStockWarning'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
 
 type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; inventory_state: string; can_auto_allocate: boolean; quantity_on_hand: number | null; quantity_reserved: number | null; quantity_available: number | null }
@@ -518,10 +520,27 @@ const showAllocationInventory = computed(() => {
 const allocationSelections = ref<Record<number, number | null>>(Object.fromEntries(props.order.items.map(item => [item.id, props.allocationUi?.selected_warehouse_ids?.[item.id] ?? props.allocationUi?.recommended_warehouse_ids?.[item.id] ?? null])))
 const allocationSubmitting = ref(false)
 const allocationError = ref<string | null>(null)
+const allocationStockConfirmOpen = ref(false)
+const allocationServerWarning = ref('')
+const selectedAllocationStockWarnings = computed(() => allocationStockWarnings(props.order.items.map(item => {
+  const warehouseId = allocationSelected(item.id)
+  const warehouse = props.warehouses?.find(row => row.id === warehouseId)
+  const stock = props.inventoryAvailability?.[item.product_id ?? 0]?.find(row => row.warehouse_id === warehouseId)
+  return {
+    productId: item.product_id,
+    sku: item.sku ?? '未绑定 SKU',
+    quantity: item.quantity,
+    warehouseCode: warehouse?.code ?? '',
+    warehouseName: warehouse?.name ?? '未知仓库',
+    availableQuantity: stock?.quantity_available ?? null,
+    isGift: (item.sku ?? '').toLowerCase() === 'gift',
+  }
+})))
+
 const allocationSelectable = (warehouseId: number) => props.allocationUi?.selectable_warehouse_ids?.includes(warehouseId) ?? false
 const allocationSelected = (itemId: number) => allocationSelections.value[itemId] ?? null
 const allocationRecommended = (itemId: number, warehouseId: number) => props.allocationUi?.recommended_warehouse_ids?.[itemId] === warehouseId
-const selectAllocationWarehouse = (itemId: number, warehouseId: number) => { allocationError.value = null; allocationSelections.value = { ...allocationSelections.value, [itemId]: warehouseId } }
+const selectAllocationWarehouse = (itemId: number, warehouseId: number) => { allocationError.value = null; allocationStockConfirmOpen.value = false; allocationSelections.value = { ...allocationSelections.value, [itemId]: warehouseId } }
 const allocationSelectedCount = computed(() => props.order.items.filter(item => allocationSelected(item.id) !== null).length)
 const allocationReady = computed(() => props.order.items.length > 0 && allocationSelectedCount.value === props.order.items.length)
 const allocationMatchesRecommendation = computed(() => Boolean(props.allocationUi?.can_use_recommendation && props.allocationUi?.recommended_plan_key) && props.order.items.every(item => {
@@ -529,6 +548,18 @@ const allocationMatchesRecommendation = computed(() => Boolean(props.allocationU
   return recommended !== null && allocationSelected(item.id) === recommended
 }))
 const submitAllocation = () => {
+  if (selectedAllocationStockWarnings.value.length) {
+    allocationServerWarning.value = ''
+    allocationStockConfirmOpen.value = true
+    return
+  }
+  postAllocation(false)
+}
+const confirmAllocationStockException = () => {
+  allocationStockConfirmOpen.value = false
+  postAllocation(true)
+}
+const postAllocation = (stockExceptionAcknowledged: boolean) => {
   const canSubmit = Boolean(props.allocationUi?.can_operate || (props.allocationUi?.can_reallocate && reallocationOpen.value))
   if (!canSubmit || props.allocationUi?.requires_full_flow || !allocationReady.value || allocationSubmitting.value) return
   const allocationUi = props.allocationUi
@@ -538,15 +569,19 @@ const submitAllocation = () => {
   const options = {
     preserveScroll: true,
     onError: (errors: Record<string, string>) => {
-      allocationError.value = errors.assignments ?? errors.plan_key ?? Object.values(errors).find(Boolean) ?? '分仓未提交，请核实仓库或订单状态。'
+      allocationError.value = errors.assignments ?? errors.stock_exception_acknowledged ?? errors.plan_key ?? Object.values(errors).find(Boolean) ?? '分仓未提交，请核实仓库或订单状态。'
+      if (errors.stock_exception_acknowledged) {
+        allocationServerWarning.value = errors.stock_exception_acknowledged
+        allocationStockConfirmOpen.value = true
+      }
     },
     onFinish: () => { allocationSubmitting.value = false },
   }
-  if (allocationMatchesRecommendation.value && allocationUi.recommended_plan_key) {
+  if (!stockExceptionAcknowledged && allocationMatchesRecommendation.value && allocationUi.recommended_plan_key) {
     router.post(`/logistics/orders/${props.order.id}/fulfillment-allocation/recommended`, { plan_key: allocationUi.recommended_plan_key, decision_note: null }, options)
     return
   }
-  router.post(`/logistics/orders/${props.order.id}/fulfillment-allocation/quick`, { assignments: props.order.items.map(item => ({ order_item_id: item.id, warehouse_id: allocationSelected(item.id) })) }, options)
+  router.post(`/logistics/orders/${props.order.id}/fulfillment-allocation/quick`, { assignments: props.order.items.map(item => ({ order_item_id: item.id, warehouse_id: allocationSelected(item.id) })), stock_exception_acknowledged: stockExceptionAcknowledged }, options)
 }
 
 
@@ -555,11 +590,36 @@ const partialReallocationSegment = ref<FulfillmentSegment | null>(null)
 const partialReallocationWarehouseId = ref<number | null>(null)
 const partialReallocationNote = ref('')
 const partialReallocationSaving = ref(false)
+const partialStockConfirmOpen = ref(false)
+const partialStockServerWarning = ref('')
+const partialReallocationError = ref('')
+const partialStockWarnings = computed(() => {
+  const segment = partialReallocationSegment.value
+  const warehouse = props.warehouses?.find(row => row.id === partialReallocationWarehouseId.value)
+  if (!segment || !warehouse) return []
+  return allocationStockWarnings(segment.items.map(item => {
+    const original = props.order.items.find(source => source.sku === item.sku)
+    const productId = original?.product_id ?? null
+    const stock = props.inventoryAvailability?.[productId ?? 0]?.find(row => row.warehouse_id === warehouse.id)
+    return {
+      productId,
+      sku: item.sku ?? '未绑定 SKU',
+      quantity: item.quantity,
+      warehouseCode: warehouse.code,
+      warehouseName: warehouse.name,
+      availableQuantity: stock?.quantity_available ?? null,
+      isGift: (item.sku ?? '').toLowerCase() === 'gift',
+    }
+  }))
+})
+
 const partialReallocationWarehouses = computed(() => (props.warehouses ?? []).filter(warehouse => props.allocationUi?.selectable_warehouse_ids?.includes(warehouse.id)))
 const openPartialReallocation = (segment: FulfillmentSegment) => {
   partialReallocationSegment.value = segment
   partialReallocationWarehouseId.value = segment.shipment.warehouse_id
   partialReallocationNote.value = ''
+  partialReallocationError.value = ''
+  partialStockConfirmOpen.value = false
   partialReallocationOpen.value = true
 }
 const closePartialReallocation = () => {
@@ -568,6 +628,18 @@ const closePartialReallocation = () => {
   partialReallocationSegment.value = null
 }
 const submitPartialReallocation = () => {
+  if (partialStockWarnings.value.length) {
+    partialStockServerWarning.value = ''
+    partialStockConfirmOpen.value = true
+    return
+  }
+  postPartialReallocation(false)
+}
+const confirmPartialStockException = () => {
+  partialStockConfirmOpen.value = false
+  postPartialReallocation(true)
+}
+const postPartialReallocation = (stockExceptionAcknowledged: boolean) => {
   const segment = partialReallocationSegment.value
   const warehouseId = partialReallocationWarehouseId.value
   if (!segment || !warehouseId || warehouseId === segment.shipment.warehouse_id || partialReallocationSaving.value) return
@@ -575,9 +647,17 @@ const submitPartialReallocation = () => {
   router.post(`/logistics/orders/${segment.order_id}/reallocate-pending-fulfillment`, {
     warehouse_id: warehouseId,
     note: partialReallocationNote.value || null,
+    stock_exception_acknowledged: stockExceptionAcknowledged,
   }, {
     preserveScroll: true,
     onSuccess: () => { partialReallocationOpen.value = false; partialReallocationSegment.value = null },
+    onError: (errors: Record<string, string>) => {
+      partialReallocationError.value = errors.stock_exception_acknowledged ?? Object.values(errors).find(Boolean) ?? '调整分仓失败，请检查订单状态。'
+      if (errors.stock_exception_acknowledged) {
+        partialStockServerWarning.value = errors.stock_exception_acknowledged
+        partialStockConfirmOpen.value = true
+      }
+    },
     onFinish: () => { partialReallocationSaving.value = false },
   })
 }
@@ -1553,6 +1633,7 @@ onBeforeUnmount(() => {
           <textarea v-model="partialReallocationNote" rows="3" class="erp-textarea" placeholder="例如：B 尚未发货，改由美东纽约仓履约"></textarea>
         </label>
         <div class="ord-partial-reallocation-warning">已进入真实物流的兄弟履约会继续保持锁定；本次只更新 {{ partialReallocationSegment?.suffix }} 的仓库与自动路由。</div>
+        <p v-if="partialReallocationError" class="ord-allocation-error" role="alert">{{ partialReallocationError }}</p>
         <footer class="ord-replacement-actions">
           <button type="button" class="erp-btn erp-btn-secondary" :disabled="partialReallocationSaving" @click="closePartialReallocation">取消</button>
           <button type="button" class="erp-btn erp-btn-primary" :disabled="partialReallocationSaving || !partialReallocationWarehouseId || partialReallocationWarehouseId === partialReallocationSegment?.shipment.warehouse_id" @click="submitPartialReallocation">{{ partialReallocationSaving ? '调整中…' : '确认调整分仓' }}</button>
@@ -1641,6 +1722,20 @@ onBeforeUnmount(() => {
       </section>
     </div>
   </AuthenticatedLayout>
+  <StockExceptionConfirmDialog v-if="partialStockConfirmOpen && partialReallocationSegment"
+    :order-number="partialReallocationSegment.erp_order_id ?? String(partialReallocationSegment.order_id)"
+    :warnings="partialStockWarnings"
+    :submitting="partialReallocationSaving"
+    :server-warning="partialStockServerWarning"
+    @cancel="partialStockConfirmOpen = false"
+    @confirm="confirmPartialStockException" />
+  <StockExceptionConfirmDialog v-if="allocationStockConfirmOpen"
+    :order-number="order.erp_order_id ?? String(order.id)"
+    :warnings="selectedAllocationStockWarnings"
+    :submitting="allocationSubmitting"
+    :server-warning="allocationServerWarning"
+    @cancel="allocationStockConfirmOpen = false"
+    @confirm="confirmAllocationStockException" />
 </template>
 
 <style scoped>

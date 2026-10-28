@@ -2,6 +2,8 @@
 import { Head, Link } from '@inertiajs/vue3'
 import { computed, reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+import StockExceptionConfirmDialog from '../../Components/Logistics/StockExceptionConfirmDialog.vue'
+import { allocationStockWarnings } from '../../lib/allocationStockWarning'
 
 type Availability = { warehouse_id:number; warehouse_slug:string; warehouse_name:string; inventory_state:string; can_auto_allocate:boolean; quantity_on_hand:number|null; quantity_reserved:number|null; quantity_available:number|null }
 type GiftOption = { mapping_id:number; warehouse_id:number; warehouse_code:string; warehouse_name:string; fulfillment_product_id:number; fulfillment_sku:string; fulfillment_name:string; quantity_available:number|null; can_fulfill:boolean; priority:number }
@@ -27,12 +29,34 @@ const selectedOrderId = ref<number|null>(null)
 const decisionNote = ref('')
 const submitError = ref('')
 const submitting = ref(false)
+const stockConfirmOpen = ref(false)
+const stockServerWarning = ref('')
+
 const localSubmitted = reactive<Record<number,{source:'system_recommendation'|'manual';submittedAt:string}>>({})
 const manualAssignments = reactive<Record<number,Record<number,string>>>({})
 const manualGiftMappings = reactive<Record<number,Record<number,string>>>({})
 const manualCarriers = reactive<Record<number,Record<string,string>>>({})
 
 const selectedOrder = computed(() => props.orders.data.find(order => order.id === selectedOrderId.value) ?? null)
+const selectedStockWarnings = computed(() => {
+  const order = selectedOrder.value
+  if (!order) return []
+  return allocationStockWarnings(order.items.map(item => {
+    const code = canonicalWarehouseCode(manualAssignments[order.id]?.[item.id] ?? '')
+    const warehouse = props.warehouses.find(w => w.code.toUpperCase() === code.toUpperCase())
+    const availability = item.availability.find(stock => stock.warehouse_id === warehouse?.id)
+    return {
+      productId: item.product_id,
+      sku: item.sku ?? '未绑定 SKU',
+      quantity: item.quantity,
+      warehouseCode: code,
+      warehouseName: warehouse?.name ?? code,
+      availableQuantity: availability?.quantity_available ?? null,
+      isGift: item.is_gift,
+    }
+  }))
+})
+
 const processed = (order:Order) => Boolean(order.fulfillment_allocation || localSubmitted[order.id])
 const hasGift = (order:Order) => order.items.some(item => item.is_gift)
 const counts = computed(() => ({
@@ -50,9 +74,9 @@ const filteredOrders = computed(() => props.orders.data.filter(order => {
   if (activeTab.value === 'gift') return hasGift(order)
   return true
 }))
-const warehouseOptions = computed(() => props.warehouses.filter(w => ['FACTORY','US-NY','US-LA','US-SM','DE','CA'].includes(w.code)))
-const canonicalWarehouseCode = (code:string) => code === 'US-SJ' ? 'US-SM' : code
-const sourceLabel = (code:string) => { const canonical=canonicalWarehouseCode(code); return props.warehouses.find(w => w.code === canonical)?.name ?? canonical }
+const warehouseOptions = computed(() => props.warehouses.filter(w => ['FACTORY','US-NY','US-LA','US-SM','DE','CA'].includes(w.code.toUpperCase())))
+const canonicalWarehouseCode = (code:string) => { const upper = code.trim().toUpperCase(); return upper === 'US-SJ' ? 'US-SM' : upper }
+const sourceLabel = (code:string) => { const canonical=canonicalWarehouseCode(code); return props.warehouses.find(w => canonicalWarehouseCode(w.code) === canonical)?.name ?? canonical }
 const carrierLabel = (carrier:string|null|undefined) => props.carrierOptions.find(row => row.value === carrier)?.label ?? carrier ?? '—'
 const zonePriorityLabel = (zone:Zone|null) => !zone?.warehouse_priority?.length ? '—' : zone.warehouse_priority.map(sourceLabel).join(' → ')
 const zoneShort = (order:Order) => order.us_fulfillment_zone?.status === 'matched' ? order.us_fulfillment_zone.zone_label ?? '已识别' : (order.country === 'US' ? '需人工确认' : '—')
@@ -72,11 +96,11 @@ function ensureManual(order:Order){
   }
 }
 function openPlan(order:Order){ selectedOrderId.value=order.id; decisionNote.value=order.fulfillment_allocation?.decision_note??''; submitError.value=''; ensureManual(order) }
-function closePlan(){ selectedOrderId.value=null; submitError.value='' }
+function closePlan(){ selectedOrderId.value=null; submitError.value=''; stockConfirmOpen.value=false }
 function availabilityFor(item:Item,w:Warehouse){ return item.availability.find(r=>r.warehouse_id===w.id) }
 function availabilityLabel(item:Item,w:Warehouse){ if(w.code==='FACTORY') return '国内工厂'; const r=availabilityFor(item,w); if(!r||r.quantity_available==null)return '库存未知'; return r.quantity_available>=item.quantity?`有货 ${r.quantity_available}`:`不足 ${r.quantity_available}` }
 function availabilityClass(item:Item,w:Warehouse){ if(w.code==='FACTORY')return 'stock-neutral'; const r=availabilityFor(item,w); if(!r||r.quantity_available==null)return 'stock-unknown'; return r.quantity_available>=item.quantity?'stock-ok':'stock-short' }
-function giftOptions(item:Item,source:string){ return item.gift_options_by_warehouse?.[source] ?? [] }
+function giftOptions(item:Item,source:string){ return item.gift_options_by_warehouse?.[canonicalWarehouseCode(source)] ?? [] }
 function availableGiftOptions(item:Item,source:string){ return giftOptions(item,source).filter(o=>o.can_fulfill).sort((a,b)=>a.priority-b.priority) }
 function giftEmptyLabel(item:Item,source:string){ const opts=giftOptions(item,source); if(!opts.length)return '该仓当前没有可用清仓礼品'; if(!opts.some(o=>o.can_fulfill))return '礼品库存在，但当前全部缺货'; return '' }
 function chosenGift(item:Item,order:Order){ const id=Number(manualGiftMappings[order.id]?.[item.id]||0); return Object.values(item.gift_options_by_warehouse||{}).flat().find(o=>o.mapping_id===id) }
@@ -135,7 +159,57 @@ function matchesRecommendation(order:Order){
   })
 }
 async function submitRecommended(){ const order=selectedOrder.value,decision=order?.allocation_decision; if(!order||!decision?.recommended_plan_key||!decision.can_use_recommendation||!props.canOperate)return; submitting.value=true; submitError.value=''; try{ const r=await fetch(`/logistics/orders/${order.id}/fulfillment-allocation/recommended`,{method:'POST',credentials:'same-origin',headers:{Accept:'application/json','Content-Type':'application/json',...csrfHeaders()},body:JSON.stringify({plan_key:decision.recommended_plan_key,decision_note:decisionNote.value})}); const b=await r.json().catch(()=>({})) as {message?:string;submitted_at?:string}; if(!r.ok)throw new Error(b.message??`提交失败（${r.status}）`); localSubmitted[order.id]={source:'system_recommendation',submittedAt:b.submitted_at??new Date().toISOString()}; closePlan() }catch(e){ submitError.value=e instanceof Error?e.message:'提交失败，请重试' }finally{submitting.value=false} }
-async function submitManual(){ const order=selectedOrder.value; if(!order||!props.canOperate)return; const validation=splitConstraintError(order); if(validation){submitError.value=validation;return} const assignments=order.items.map(item=>{ const source=manualAssignments[order.id][item.id]; const carrier=manualCarriers[order.id]?.[source] || defaultCarrier(order,source); const route=order.carrier_routes?.[source]; return {order_item_id:item.id,source_code:source,gift_mapping_id:item.is_gift?Number(manualGiftMappings[order.id][item.id]):null,carrier,service:carrier===route?.carrier?route?.service??null:null} }); submitting.value=true; submitError.value=''; try{ const r=await fetch(`/logistics/orders/${order.id}/fulfillment-allocation/manual`,{method:'POST',credentials:'same-origin',headers:{Accept:'application/json','Content-Type':'application/json',...csrfHeaders()},body:JSON.stringify({assignments,decision_note:decisionNote.value})}); const b=await r.json().catch(()=>({})) as {message?:string;submitted_at?:string}; if(!r.ok)throw new Error(b.message??`提交失败（${r.status}）`); localSubmitted[order.id]={source:'manual',submittedAt:b.submitted_at??new Date().toISOString()}; closePlan() }catch(e){ submitError.value=e instanceof Error?e.message:'提交失败，请重试' }finally{submitting.value=false} }
+async function submitManual(stockExceptionAcknowledged = false) {
+  const order = selectedOrder.value
+  if (!order || !props.canOperate) return
+  const validation = splitConstraintError(order)
+  if (validation) { submitError.value = validation; return }
+  if (selectedStockWarnings.value.length && !stockExceptionAcknowledged) {
+    stockServerWarning.value = ''
+    stockConfirmOpen.value = true
+    return
+  }
+  const assignments = order.items.map(item => {
+    const source = manualAssignments[order.id][item.id]
+    const carrier = manualCarriers[order.id]?.[source] || defaultCarrier(order, source)
+    const route = order.carrier_routes?.[source]
+    return {
+      order_item_id: item.id, source_code: source,
+      gift_mapping_id: item.is_gift ? Number(manualGiftMappings[order.id][item.id]) : null,
+      carrier, service: carrier === route?.carrier ? route?.service ?? null : null,
+    }
+  })
+  submitting.value = true
+  submitError.value = ''
+  try {
+    const response = await fetch('/logistics/orders/' + order.id + '/fulfillment-allocation/manual', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...csrfHeaders() },
+      body: JSON.stringify({
+        assignments, decision_note: decisionNote.value,
+        stock_exception_acknowledged: stockExceptionAcknowledged,
+      }),
+    })
+    const body = await response.json().catch(() => ({})) as { message?: string; submitted_at?: string; errors?: Record<string,string[]> }
+    if (!response.ok) {
+      if (body.errors?.stock_exception_acknowledged) {
+        stockServerWarning.value = body.errors.stock_exception_acknowledged[0] ?? ''
+        stockConfirmOpen.value = true
+      }
+      throw new Error(body.errors?.stock_exception_acknowledged?.[0] ?? body.message ?? '提交失败（' + response.status + '）')
+    }
+    localSubmitted[order.id] = { source: 'manual', submittedAt: body.submitted_at ?? new Date().toISOString() }
+    closePlan()
+  } catch (error) {
+    submitError.value = error instanceof Error ? error.message : '提交失败，请重试'
+  } finally {
+    submitting.value = false
+  }
+}
+function confirmStockException() {
+  stockConfirmOpen.value = false
+  void submitManual(true)
+}
 async function submitPrimary(){ const order=selectedOrder.value; if(!order)return; if(matchesRecommendation(order)) await submitRecommended(); else await submitManual() }
 </script>
 
@@ -181,7 +255,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
             <td>{{ item.quantity }}</td>
             <td><div class="stock-list"><span v-for="warehouse in warehouseOptions" :key="warehouse.code" :class="item.is_gift?giftStockClass(item,warehouse):availabilityClass(item,warehouse)">{{ warehouse.name }}：{{ item.is_gift?giftStockLabel(item,warehouse):availabilityLabel(item,warehouse) }}</span></div></td>
             <td><span class="recommend-warehouse">{{ recommendedSegment(selectedOrder,item)?.warehouse_name ?? (selectedOrder.us_fulfillment_zone?.warehouse_priority?.[0] ? sourceLabel(selectedOrder.us_fulfillment_zone.warehouse_priority[0]) : '—') }}</span></td>
-            <td><select v-model="manualAssignments[selectedOrder.id][item.id]" @change="onWarehouseChanged(selectedOrder,item)"><option value="">请选择</option><option v-for="warehouse in warehouseOptions" :key="warehouse.code" :value="warehouse.code">{{ warehouse.name }}</option></select></td>
+            <td><select v-model="manualAssignments[selectedOrder.id][item.id]" @change="onWarehouseChanged(selectedOrder,item)"><option value="">请选择</option><option v-for="warehouse in warehouseOptions" :key="warehouse.code" :value="canonicalWarehouseCode(warehouse.code)">{{ warehouse.name }}</option></select></td>
             <td><div class="carrier-cell"><select :value="carrierForItem(selectedOrder,item)" :disabled="!manualAssignments[selectedOrder.id][item.id]" @change="onCarrierChanged(selectedOrder,item,$event)"><option value="">请选择承运商</option><option v-for="carrier in props.carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select><small v-if="manualAssignments[selectedOrder.id][item.id] && carrierForItem(selectedOrder,item)" :class="carrierIsDefault(selectedOrder,item)?'auto-route':'manual-route'">{{ carrierIsDefault(selectedOrder,item)?'系统默认':'人工覆盖' }}</small></div></td>
             <td><template v-if="item.is_gift"><select v-model="manualGiftMappings[selectedOrder.id][item.id]" :disabled="!manualAssignments[selectedOrder.id][item.id]"><option value="">请选择实际礼品</option><option v-for="option in availableGiftOptions(item,manualAssignments[selectedOrder.id][item.id])" :key="option.mapping_id" :value="String(option.mapping_id)">{{ option.fulfillment_sku }} · {{ option.fulfillment_name }} · 有货 {{option.quantity_available}}</option></select><small v-if="chosenGift(item,selectedOrder)" class="resolved-note">{{ chosenGift(item,selectedOrder)?.fulfillment_sku }} · {{ sourceLabel(manualAssignments[selectedOrder.id][item.id]) }}</small><small v-else-if="manualAssignments[selectedOrder.id][item.id]&&giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])" class="mapping-missing">{{giftEmptyLabel(item,manualAssignments[selectedOrder.id][item.id])}}</small></template><span v-else>—</span></td>
           </tr>
@@ -204,6 +278,13 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
       <p v-if="submitError" class="submit-error">{{ submitError }}</p>
       <footer class="modal-actions"><button class="secondary" :disabled="submitting" @click="closePlan">关闭</button><button v-if="!processed(selectedOrder)&&props.canOperate" class="primary green" :disabled="submitting" @click="submitPrimary">{{ submitting?'提交中…':(matchesRecommendation(selectedOrder)?'采用推荐并提交分仓':'确认人工分配并提交') }}</button><span v-else-if="processed(selectedOrder)" class="submitted-note">该订单分仓决策已提交</span></footer>
     </section></div></Teleport>
+    <StockExceptionConfirmDialog v-if="stockConfirmOpen && selectedOrder"
+      :order-number="selectedOrder.erp_order_id ?? String(selectedOrder.id)"
+      :warnings="selectedStockWarnings"
+      :submitting="submitting"
+      :server-warning="stockServerWarning"
+      @cancel="stockConfirmOpen = false"
+      @confirm="confirmStockException" />
   </AuthenticatedLayout>
 </template>
 

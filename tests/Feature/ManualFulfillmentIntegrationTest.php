@@ -246,6 +246,56 @@ final class ManualFulfillmentIntegrationTest extends TestCase
         $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $order->id]);
     }
 
+    public function test_short_stock_quick_allocation_requires_confirmation_then_records_real_pending_allocation(): void
+    {
+        [$user, $order, $product] = $this->scenario();
+        $item = $order->items()->firstOrFail();
+        $warehouse = Warehouse::query()->where('code', 'US-LA')->firstOrFail();
+        $this->makeReservable($warehouse, $product, 1, 0);
+        $url = '/logistics/orders/'.$order->id.'/fulfillment-allocation/quick';
+        $payload = ['assignments' => [['order_item_id' => $item->id, 'warehouse_id' => $warehouse->id]]];
+
+        $this->actingAs($user)->from('/customers/orders/'.$order->id)->post($url, $payload)
+            ->assertRedirect('/customers/orders/'.$order->id)
+            ->assertSessionHasErrors('stock_exception_acknowledged');
+        $this->assertDatabaseMissing('fulfillment_allocations', ['order_id' => $order->id]);
+
+        $this->actingAs($user)->post($url, [...$payload, 'stock_exception_acknowledged' => true])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $allocation = \App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation::query()
+            ->where('order_id', $order->id)->firstOrFail();
+        $ack = $allocation->plan_snapshot['stock_exception_acknowledgement'];
+        $this->assertTrue($ack['acknowledged']);
+        $this->assertSame($user->id, $ack['actor_id']);
+        $this->assertSame('insufficient', $ack['warnings'][0]['reason']);
+        $this->assertSame(1, $ack['warnings'][0]['available_quantity']);
+        $this->assertSame(2, $ack['warnings'][0]['required_quantity']);
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'shipment_status' => 'pending', 'warehouse_id' => $warehouse->id]);
+        $this->assertSame(1, WarehouseInventory::query()->where('warehouse_id', $warehouse->id)
+            ->where('product_id', $product->id)->value('quantity_on_hand'));
+        $this->assertSame('pending_shipment', $order->fresh()->order_status->value);
+    }
+
+    public function test_unknown_warehouse_inventory_can_be_allocated_only_after_confirmation(): void
+    {
+        [$user, $order] = $this->scenario();
+        $item = $order->items()->firstOrFail();
+        $warehouse = Warehouse::query()->where('code', 'US-LA')->firstOrFail();
+        $url = '/logistics/orders/'.$order->id.'/fulfillment-allocation/quick';
+        $payload = ['assignments' => [['order_item_id' => $item->id, 'warehouse_id' => $warehouse->id]]];
+
+        $this->actingAs($user)->from('/customers/orders/'.$order->id)->post($url, $payload)
+            ->assertRedirect()->assertSessionHasErrors('stock_exception_acknowledged');
+        $this->actingAs($user)->post($url, [...$payload, 'stock_exception_acknowledged' => true])
+            ->assertRedirect()->assertSessionHasNoErrors();
+
+        $allocation = \App\Modules\Logistics\Infrastructure\Models\FulfillmentAllocation::query()
+            ->where('order_id', $order->id)->firstOrFail();
+        $this->assertSame('unknown', $allocation->plan_snapshot['stock_exception_acknowledgement']['warnings'][0]['reason']);
+        $this->assertNull($allocation->plan_snapshot['stock_exception_acknowledgement']['warnings'][0]['available_quantity']);
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'shipment_status' => 'pending']);
+    }
+
     public function test_wait_stock_projects_inventory_context_without_persisting_a_shipment(): void
     {
         [$user, $order, $product, $warehouse] = $this->scenario();
