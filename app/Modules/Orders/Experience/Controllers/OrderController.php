@@ -19,6 +19,8 @@ use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Orders\Application\Inbound\WooOrderManualSyncAccess;
+use App\Modules\Sync\Application\WooOrderSyncHealthReader;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -72,6 +74,15 @@ final class OrderController
             'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),
             'canExport' => $canExport,
             'canManageTrash' => $request->user()?->can('system.permissions.manage') ?? false,
+            'wooOrderSync' => $request->user()->can('sync.view') ? [
+                ...app(WooOrderSyncHealthReader::class)->snapshot(),
+                'can_import_today' => app(WooOrderManualSyncAccess::class)->allows($request->user()),
+            ] : [
+                'health' => 'disabled',
+                'last_success_at' => null,
+                'last_failure' => null,
+                'can_import_today' => false,
+            ],
         ]);
     }
 

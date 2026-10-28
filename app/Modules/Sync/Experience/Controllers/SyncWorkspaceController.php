@@ -3,6 +3,7 @@
 namespace App\Modules\Sync\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Orders\Application\Inbound\WooOrderManualSyncAccess;
 use App\Modules\Kol\Application\AffiliateWp\AffiliateSnapshotSyncService;
 use App\Modules\Kol\Application\AffiliateWp\CouponSnapshotSyncService;
 use App\Modules\Kol\Application\AffiliateWp\PayoutSnapshotSyncService;
@@ -13,6 +14,7 @@ use App\Modules\Sync\Application\EmailTemplateSnapshotReader;
 use App\Modules\Sync\Application\SyncOrchestrationService;
 use App\Modules\Sync\Application\SyncRunItemStatus;
 use App\Modules\Sync\Application\SyncRunService;
+use App\Modules\Sync\Application\WooOrderSyncHealthReader;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -48,19 +50,20 @@ final class SyncWorkspaceController
         $connectorRuns = $runs->filter(fn (Model $run): bool => $this->isWordPressConnectorRun($run));
         $domains[] = $this->domainCard('wordpress', 'WordPress Connector', '连接、健康检查与 WordPress / AffiliateWP 数据同步', '/sync/wpapi', $connectorRuns);
 
-        $latestWooOrderAutomatic = $runs->first(fn (Model $run): bool =>
-            $run->initiated_by === null
-            && $run->provider_key === 'woocommerce'
-            && $run->run_type === 'woocommerce_order_incremental'
-        );
+        $wooHealth = app(WooOrderSyncHealthReader::class)->snapshot();
+        $latestWooOrderAutomatic = $wooHealth['latest_run'];
 
         return Inertia::render('Sync/Index', [
             'domains' => $domains,
             'queueSummary' => $this->orchestration->queueSummary(),
             'wooOrderSync' => [
-                'enabled' => (bool) config('services.woocommerce.order_sync_enabled', false),
-                'frequency' => '每 1 小时',
-                'can_operate' => (bool) $request->user()?->can('sync.operate'),
+                'enabled' => $wooHealth['enabled'],
+                'frequency' => $wooHealth['frequency'],
+                'health' => $wooHealth['health'],
+                'last_success_at' => $wooHealth['last_success_at'],
+                'last_failure' => $wooHealth['last_failure'],
+                'unimported_count' => $wooHealth['unimported_count'],
+                'can_operate' => app(WooOrderManualSyncAccess::class)->allows($request->user()),
                 'manual_action' => '/sync/woocommerce/incremental',
                 'advanced_href' => '/sync/woocommerce',
                 'latest_run' => $latestWooOrderAutomatic ? $this->runData($latestWooOrderAutomatic) : null,

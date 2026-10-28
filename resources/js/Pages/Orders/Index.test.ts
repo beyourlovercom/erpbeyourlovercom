@@ -18,10 +18,20 @@ const props = {
   sourceTypes: [{ value: 'manual', label: '手动创建' }],
   savedViews: [{ id: 7, name: '我的待发', filters_json: { view: 'pending', source_type: 'manual' }, is_pinned: true, created_by: 1 }],
   canExport: true,
+  wooOrderSync: { health: 'ok' as const, last_success_at: '2026-10-28T02:00:00Z', last_failure: null, can_import_today: true },
 }
 
 describe('Orders Saved Views', () => {
   beforeEach(() => { get.mockClear(); post.mockClear(); del.mockClear() })
+
+  it('shows manual Woo import on general orders but not procurement list', async () => {
+    const wrapper = mount(Index, { props })
+    expect(wrapper.text()).toContain('同步网站订单')
+    await wrapper.findAll('button').find(b => b.text() === '同步网站订单')!.trigger('click')
+    expect(post).toHaveBeenCalledWith('/sync/woocommerce/incremental', {}, expect.objectContaining({ preserveScroll: true, onFinish: expect.any(Function) }))
+    const procurement = mount(Index, { props: { ...props, orderScope: 'external_warehouse' } })
+    expect(procurement.text()).not.toContain('同步网站订单')
+  })
 
   it('renders the nine frozen business views plus custom view creation', () => {
     const wrapper = mount(Index, { props })
