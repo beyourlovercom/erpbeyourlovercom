@@ -5,7 +5,7 @@ import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
 type Connection = { configured: boolean; url: string; connection_key: string; last_import_at: string | null }
 type Summary = { seen: number; created: number; updated: number; skipped?: number; failed: number; pages: number; errors: Array<{ reference: string; message: string }> }
-const props = defineProps<{ connection: Connection; summary: Summary | null }>()
+const props = defineProps<{ connection: Connection; summary: Summary | null; canImportToday: boolean; canManage: boolean }>()
 const single = reactive({ woo_order_id: '' })
 const historical = reactive({ from: '', to: '' })
 const post = (path: string, data: any = {}) => router.post(path, data, { preserveScroll: true })
@@ -31,19 +31,19 @@ const post = (path: string, data: any = {}) => router.post(path, data, { preserv
           <p>{{ props.connection.url || '请设置 WOO_BASE_URL' }}</p>
           <p>Connection: {{ props.connection.connection_key }}</p>
           <p>最后观察：{{ props.connection.last_import_at ?? '—' }}</p>
-          <button class="mvp-button mvp-button-primary" :disabled="!props.connection.configured" @click="post('/sync/woocommerce/probe')">测试连接</button>
+          <button class="mvp-button mvp-button-primary" :disabled="!props.connection.configured || !props.canManage" @click="post('/sync/woocommerce/probe')">测试连接</button>
         </article>
 
         <article class="mvp-card">
           <p class="mvp-kicker">单笔</p><h3>按 Woo Order ID 导入</h3>
           <input v-model="single.woo_order_id" inputmode="numeric" placeholder="例如 12345" aria-label="Woo Order ID">
-          <button class="mvp-button mvp-button-primary" :disabled="!props.connection.configured || !single.woo_order_id" @click="post('/sync/woocommerce/single', single)">导入单笔</button>
+          <button class="mvp-button mvp-button-primary" :disabled="!props.connection.configured || !props.canManage || !single.woo_order_id" @click="post('/sync/woocommerce/single', single)">导入单笔</button>
         </article>
 
         <article class="mvp-card">
           <p class="mvp-kicker">手动同步</p><h3>同步今天订单</h3>
-          <p>自动同步每 1 小时执行一次。手动同步仅处理今天 00:00 至当前创建的 Woo 订单，昨天及更早订单不会回补。</p>
-          <button class="mvp-button mvp-button-primary" :disabled="!props.connection.configured" @click="post('/sync/woocommerce/incremental')">手动同步今日订单</button>
+          <p>自动同步每 30 分钟执行一次。手动同步仅处理今天 00:00 UTC 至当前创建的 Woo 订单，昨天及更早订单不会回补。</p>
+          <button class="mvp-button mvp-button-primary" :disabled="!props.connection.configured || !props.canImportToday" @click="post('/sync/woocommerce/incremental')">手动同步今日订单</button>
         </article>
       </div>
 
@@ -52,7 +52,7 @@ const post = (path: string, data: any = {}) => router.post(path, data, { preserv
         <div class="mvp-toolbar">
           <label>开始日期 <input v-model="historical.from" type="date"></label>
           <label>结束日期 <input v-model="historical.to" type="date"></label>
-          <button class="mvp-button mvp-button-primary" :disabled="!props.connection.configured || !historical.from || !historical.to" @click="post('/sync/woocommerce/historical', historical)">历史导入</button>
+          <button class="mvp-button mvp-button-primary" :disabled="!props.connection.configured || !props.canManage || !historical.from || !historical.to" @click="post('/sync/woocommerce/historical', historical)">历史导入</button>
         </div>
       </article>
 

@@ -349,6 +349,65 @@ final class WooCommerceInboundTest extends TestCase
         ];
     }
 
+    public function test_operations_preset_can_import_today_but_cannot_probe_or_import_historical_orders(): void
+    {
+        $role = Role::create(['key' => \App\Modules\Identity\Application\RolePreset::Operations->roleKey(), 'label' => '运营']);
+        foreach (['sync.view', 'orders.view'] as $key) {
+            $role->permissions()->firstOrCreate(['key' => $key], ['label' => $key]);
+        }
+        $user = User::factory()->create(['permission_mode' => 'role']);
+        $user->roles()->attach($role);
+        Http::fake(['https://shop.test/wp-json/wc/v3/orders*' => Http::response([], 200, ['X-WP-TotalPages' => '1'])]);
+
+        $this->actingAs($user)->get('/orders')->assertOk()->assertInertia(fn ($page) => $page
+            ->where('wooOrderSync.can_import_today', true)->etc()
+        );
+        $this->actingAs($user)->post('/sync/woocommerce/incremental')->assertSessionHas('success');
+        $this->assertDatabaseHas('sync_runs', ['run_type' => 'woocommerce_order_manual_today', 'initiated_by' => $user->id]);
+        $this->actingAs($user)->post('/sync/woocommerce/probe')->assertForbidden();
+        $this->actingAs($user)->post('/sync/woocommerce/historical', ['from' => '2026-10-01', 'to' => '2026-10-02'])->assertForbidden();
+        $this->assertFalse($user->can('sync.operate'));
+    }
+
+    public function test_view_only_and_custom_permission_users_cannot_import_today_or_reconcile(): void
+    {
+        $viewer = $this->userWith(['sync.view', 'orders.view']);
+        $this->actingAs($viewer)->post('/sync/woocommerce/incremental')->assertForbidden();
+        $this->actingAs($viewer)->getJson('/sync/woocommerce/reconcile-today')->assertForbidden();
+        $role = Role::create(['key' => \App\Modules\Identity\Application\RolePreset::Operations->roleKey(), 'label' => '运营']);
+        foreach (['sync.view', 'orders.view'] as $key) {
+            $role->permissions()->firstOrCreate(['key' => $key], ['label' => $key]);
+        }
+        $custom = User::factory()->create(['permission_mode' => 'custom']);
+        $custom->roles()->attach($role);
+        $this->actingAs($custom)->post('/sync/woocommerce/incremental')->assertForbidden();
+    }
+
+    public function test_reconcile_today_reads_woo_source_without_writing_orders_or_checkpoints(): void
+    {
+        $user = $this->userWith(['sync.view', 'sync.operate']);
+        $start = now('UTC')->startOfDay()->toIso8601String();
+        $source = [
+            ['id' => 98211, 'created_via' => 'checkout', 'line_items' => [['id' => 1]]],
+            ['id' => 98212, 'created_via' => 'checkout', 'line_items' => [['id' => 2]]],
+            ['id' => 98213, 'created_via' => 'admin', 'line_items' => []],
+        ];
+        Http::fake(function (Request $request) use ($source, $start) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+            $this->assertSame($start, $query['after']);
+            $this->assertArrayNotHasKey('modified_after', $query);
+            return Http::response($source, 200, ['X-WP-TotalPages' => '1']);
+        });
+
+        $this->actingAs($user)->getJson('/sync/woocommerce/reconcile-today')->assertOk()
+            ->assertJsonPath('status', 'complete')
+            ->assertJsonPath('source_count', 2)
+            ->assertJsonPath('excluded_count', 1)
+            ->assertJsonPath('unimported_count', 2);
+        $this->assertDatabaseCount('orders', 0);
+        $this->assertDatabaseCount('sync_runs', 0);
+    }
+
     private function userWith(array $permissions): User
     {
         $role = Role::create(['key' => 'woo-inbound-'.uniqid(), 'label' => 'Woo Inbound']);

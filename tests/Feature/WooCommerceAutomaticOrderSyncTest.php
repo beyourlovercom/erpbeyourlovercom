@@ -225,10 +225,10 @@ final class WooCommerceAutomaticOrderSyncTest extends TestCase
         require base_path('routes/console.php');
 
         $events = collect(app(Schedule::class)->events())
-            ->filter(fn ($event): bool => $event->description === 'orders.woocommerce.inbound.hourly');
+            ->filter(fn ($event): bool => $event->description === 'orders.woocommerce.inbound.half-hourly');
         $this->assertCount(1, $events);
         $event = $events->first();
-        $this->assertSame('0 * * * *', $event->expression);
+        $this->assertSame('*/30 * * * *', $event->expression);
         $this->assertTrue($event->withoutOverlapping);
         $this->assertSame(55, $event->expiresAt);
         $this->assertTrue($event->onOneServer);

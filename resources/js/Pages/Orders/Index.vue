@@ -19,6 +19,12 @@ const props = defineProps<{
   savedViews: SavedView[]
   canExport: boolean
   canManageTrash?: boolean
+  wooOrderSync: {
+    health: 'ok' | 'stale' | 'failed' | 'disabled'
+    last_success_at: string | null
+    last_failure: { run_id: number; at: string | null; error_code: string | null; message: string | null } | null
+    can_import_today: boolean
+  }
 }>()
 
 const filters = reactive({
@@ -27,6 +33,26 @@ const filters = reactive({
   order_status: props.filters.order_status ?? '',
   view: props.filters.view ?? 'all',
 })
+const syncingWoo = ref(false)
+const wooReconcileLoading = ref(false)
+const wooReconcile = ref<{ unimported_count: number | null; message?: string } | null>(null)
+const showWooSync = computed(() => props.orderScope !== 'external_warehouse' && (props.orderKind === 'all' || props.orderKind === 'customer'))
+const syncWooToday = () => {
+  if (syncingWoo.value || !props.wooOrderSync.can_import_today) return
+  syncingWoo.value = true
+  router.post('/sync/woocommerce/incremental', {}, { preserveScroll: true, onFinish: () => { syncingWoo.value = false } })
+}
+const checkWooBacklog = async () => {
+  if (wooReconcileLoading.value || !props.wooOrderSync.can_import_today) return
+  wooReconcileLoading.value = true
+  try {
+    const response = await fetch('/sync/woocommerce/reconcile-today', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+    const data = await response.json()
+    wooReconcile.value = { ...data, message: response.ok ? data.message : (data.message || '核对失败') }
+  } catch {
+    wooReconcile.value = { unimported_count: null, message: '网络异常，无法核对' }
+  } finally { wooReconcileLoading.value = false }
+}
 const showNewView = ref(false)
 const newViewName = ref('')
 
@@ -93,6 +119,10 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
       <div class="mvp-page-heading">
         <div><p class="mvp-kicker">订单核心</p><h2>{{ heading }}</h2><p>统一维护 Website、KOL 和 Manual Other 订单。</p></div>
         <div class="mvp-actions page-header-actions">
+          <template v-if="showWooSync && wooOrderSync.can_import_today">
+            <button class="mvp-button" type="button" :disabled="wooReconcileLoading" @click="checkWooBacklog">{{ wooReconcileLoading ? '核对中…' : '核对网站未同步' }}</button>
+            <button class="mvp-button mvp-button-primary" type="button" :disabled="syncingWoo" @click="syncWooToday">{{ syncingWoo ? '同步中…' : '同步网站订单' }}</button>
+          </template>
           <Link v-if="canManageTrash" class="mvp-button" href="/orders/trash">回收站（管理员）</Link>
           <a v-if="canExport" class="mvp-button" :href="exportUrl()">导出 CSV</a>
           <template v-if="orderKind === 'all' && orderScope !== 'external_warehouse'">
@@ -102,6 +132,13 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
           <Link v-else-if="orderKind !== 'all'" class="mvp-button mvp-button-primary" :href="`${basePath}/create`">新建订单</Link>
         </div>
       </div>
+      <p v-if="showWooSync" class="mvp-empty" role="status">
+        网站订单同步：{{ wooOrderSync.health === 'ok' ? '正常' : wooOrderSync.health === 'failed' ? '最近执行失败' : wooOrderSync.health === 'stale' ? '超时或无成功记录' : '未启用' }}
+        · 最近成功任务启动 {{ wooOrderSync.last_success_at ? new Date(wooOrderSync.last_success_at).toLocaleString('zh-CN', { hour12: false }) : '尚无记录' }}
+        <a v-if="wooOrderSync.last_failure" :href="'/sync/runs/' + wooOrderSync.last_failure.run_id">查看最近失败原因</a>
+        <span v-if="wooReconcile"> · 今日未同步 {{ wooReconcile.unimported_count === null ? (wooReconcile.message || '无法核对') : wooReconcile.unimported_count + ' 单' }}</span>
+        <span v-else> · 今日未同步量待核对</span>
+      </p>
 
       <div class="order-views-bar" aria-label="订单视图">
         <button v-for="view in systemViews" :key="view.key" type="button" class="view-tab" :class="{ active: filters.view === view.key }" @click="applySystemView(view.key)">{{ view.label }}</button>
@@ -126,12 +163,13 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
         <button class="mvp-button" type="submit">筛选</button>
       </form>
 
-      <div class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" /></tr></thead><tbody><tr v-for="order in orders.data" :key="order.id"><td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link :href="orderPath(order)">{{ order.erp_order_id ?? '—' }}</Link></template><template v-else-if="column.key === 'source'">{{ order.source_label }}</template><template v-else-if="column.key === 'date'">{{ order.order_date }}</template><template v-else-if="column.key === 'recipient'">{{ order.address?.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'country'">{{ order.address?.country ?? '—' }}</template><template v-else-if="column.key === 'status'"><span class="mvp-status">{{ order.order_status_label }}</span></template><template v-else>{{ order.owner_label ?? '—' }}</template></td><td><Link :href="orderPath(order)">查看</Link></td></tr><tr v-if="orders.data.length === 0"><td :colspan="visibleColumns.length + 2" class="mvp-empty">暂无符合条件的订单</td></tr></tbody></table></div>
+      <div class="mvp-table-wrap"><table class="mvp-table"><thead><tr><th v-for="column in visibleColumns" :key="column.key">{{ column.label }}</th><th>操作</th><ColumnSettingsHeader :columns="columns" :required-keys="['order_number']" :sync-state="syncState" @toggle="toggle" @start-drag="startDrag" @drop="drop" @reset="reset" /></tr></thead><tbody><tr v-for="order in orders.data" :key="order.id"><td v-for="column in visibleColumns" :key="column.key"><template v-if="column.key === 'order_number'"><Link :href="orderPath(order)">{{ order.erp_order_id ?? '—' }}</Link><small v-if="order.source_label === 'WooCommerce' && order.external_order_number" class="order-source-reference">来源订单：{{ order.external_order_number }}</small></template><template v-else-if="column.key === 'source'">{{ order.source_label }}</template><template v-else-if="column.key === 'date'">{{ order.order_date }}</template><template v-else-if="column.key === 'recipient'">{{ order.address?.recipient_name ?? '—' }}</template><template v-else-if="column.key === 'country'">{{ order.address?.country ?? '—' }}</template><template v-else-if="column.key === 'status'"><span class="mvp-status">{{ order.order_status_label }}</span></template><template v-else>{{ order.owner_label ?? '—' }}</template></td><td><Link :href="orderPath(order)">查看</Link></td></tr><tr v-if="orders.data.length === 0"><td :colspan="visibleColumns.length + 2" class="mvp-empty">暂无符合条件的订单</td></tr></tbody></table></div>
       <div v-if="orders.last_page > 1" class="mvp-pagination"><button class="mvp-button" type="button" :disabled="orders.current_page <= 1" @click="goToPage(orders.current_page - 1)">上一页</button><span>第 {{ orders.current_page }} / {{ orders.last_page }} 页 · 共 {{ orders.total }} 条</span><button class="mvp-button" type="button" :disabled="orders.current_page >= orders.last_page" @click="goToPage(orders.current_page + 1)">下一页</button></div>
     </section>
   </AuthenticatedLayout>
 </template>
 
 <style scoped>
+.order-source-reference{display:block;font-size:11px;color:var(--byl-text-muted);margin-top:2px}
 .order-views-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:0 0 14px}.view-tab{border:1px solid var(--byl-color-border,#d9e1e5);background:var(--byl-color-surface,#fff);border-radius:999px;padding:7px 12px;cursor:pointer;font-size:13px}.view-tab.active{background:var(--byl-status-bg);color:var(--byl-status-ink);font-weight:700}.view-tab.saved{border-radius:999px 0 0 999px}.saved-view-chip{display:inline-flex}.saved-view-delete{border:1px solid var(--byl-color-border,#d9e1e5);border-left:0;background:var(--byl-color-surface,#fff);border-radius:0 999px 999px 0;padding:0 9px;cursor:pointer}.views-divider{width:1px;height:24px;background:var(--byl-color-border,#d9e1e5);margin:0 2px}.add-view{border-style:dashed}.new-view-panel{display:flex;align-items:end;gap:14px;flex-wrap:wrap;padding:12px 14px;margin-bottom:14px;border:1px solid var(--byl-color-border,#d9e1e5);border-radius:10px;background:var(--byl-color-surface,#fff)}.new-view-panel label{display:flex;flex-direction:column;gap:5px;font-size:12px}.new-view-panel input{min-width:240px;padding:8px 10px;border:1px solid var(--byl-color-border,#d9e1e5);border-radius:8px}.new-view-panel>span{font-size:12px;opacity:.7;padding-bottom:9px}
 </style>

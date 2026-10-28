@@ -19,7 +19,7 @@ const domains = [
 ]
 const queueSummary = { retry_due: 1, retry_waiting: 2, processing: 3, failed: 4, conflicts: 5 }
 const wooOrderRun = { id: 20, domain: 'orders', run_type: 'woocommerce_order_incremental', provider_key: 'woocommerce', status: 'completed', initiator: null, started_at: '2026-09-06T03:00:00Z', completed_at: '2026-09-06T03:00:02Z', requested_items: 2, succeeded_items: 2, failed_items: 0, conflict_items: 0 }
-const wooOrderSync = { enabled: true, frequency: '每 1 小时', can_operate: true, manual_action: '/sync/woocommerce/incremental', advanced_href: '/sync/woocommerce', latest_run: wooOrderRun }
+const wooOrderSync = { enabled: true, frequency: '每 30 分钟', can_operate: true, health: 'ok' as const, last_success_at: '2026-10-28T02:00:00Z', last_failure: null, unimported_count: null, manual_action: '/sync/woocommerce/incremental', advanced_href: '/sync/woocommerce', latest_run: wooOrderRun }
 describe('Sync overview', () => {
   it('renders the four frozen second-level workspaces', () => {
     const wrapper = mount(Index, { props: { domains, queueSummary, manualRuns: [], automaticRuns: [], wooOrderSync } })
@@ -46,10 +46,10 @@ describe('Sync overview', () => {
     routerPost.mockClear()
     const wrapper = mount(Index, { props: { domains, queueSummary, manualRuns: [], automaticRuns: [wooOrderRun], wooOrderSync } })
     expect(wrapper.text()).toContain('WooCommerce 订单同步')
-    expect(wrapper.text()).toContain('每 1 小时')
+    expect(wrapper.text()).toContain('每 30 分钟')
     expect(wrapper.text()).toContain('2 成功 / 0 失败')
     expect(wrapper.find('a[href="/sync/woocommerce"]').exists()).toBe(true)
-    await wrapper.get('button').trigger('click')
-    expect(routerPost).toHaveBeenCalledWith('/sync/woocommerce/incremental', {}, { preserveScroll: true })
+    await wrapper.findAll('button').find(b => b.text().includes('手动同步今日订单'))!.trigger('click')
+    expect(routerPost).toHaveBeenCalledWith('/sync/woocommerce/incremental', {}, expect.objectContaining({ preserveScroll: true, onFinish: expect.any(Function) }))
   })
 })

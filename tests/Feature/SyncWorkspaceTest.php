@@ -24,7 +24,7 @@ final class SyncWorkspaceTest extends TestCase
             'started_at' => now()->subMinute(), 'completed_at' => now(),
         ]);
         SyncRun::create([
-            'run_type' => 'woocommerce_order_incremental', 'provider_key' => 'woocommerce',
+            'run_type' => 'woocommerce_order_incremental', 'provider_key' => 'woocommerce', 'connection_key' => 'beyourlover.com',
             'status' => 'completed', 'requested_items' => 2, 'processed_items' => 2,
             'succeeded_items' => 2, 'initiated_by' => null,
             'started_at' => now()->subMinutes(2), 'completed_at' => now()->subMinute(),
@@ -41,7 +41,7 @@ final class SyncWorkspaceTest extends TestCase
             ->where('manualRuns.0.id', $manual->id)
             ->where('manualRuns.0.initiator', $user->name)
             ->where('automaticRuns.0.run_type', 'woocommerce_order_incremental')
-            ->where('wooOrderSync.frequency', '每 1 小时')
+            ->where('wooOrderSync.frequency', '每 30 分钟')
             ->where('wooOrderSync.can_operate', false)
             ->where('wooOrderSync.manual_action', '/sync/woocommerce/incremental')
             ->where('wooOrderSync.advanced_href', '/sync/woocommerce')
@@ -65,7 +65,7 @@ final class SyncWorkspaceTest extends TestCase
         $this->actingAs($user)->get('/sync')->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Sync/Index')
             ->where('wooOrderSync.enabled', true)
-            ->where('wooOrderSync.frequency', '每 1 小时')
+            ->where('wooOrderSync.frequency', '每 30 分钟')
             ->where('wooOrderSync.can_operate', true)
             ->where('wooOrderSync.manual_action', '/sync/woocommerce/incremental')
         );
@@ -99,6 +99,49 @@ final class SyncWorkspaceTest extends TestCase
         $admin = $this->userWithPermissions(['sync.view', 'customers.export', 'system.permissions.manage']);
         $this->actingAs($admin)->get('/sync/exports')->assertOk()
             ->assertInertia(fn (Assert $page) => $page->component('Sync/Exports')->has('exports', 3));
+    }
+
+    public function test_woo_health_uses_start_time_when_mysql_completed_timestamp_is_seven_hours_behind(): void
+    {
+        config(['services.woocommerce.order_sync_enabled' => true]);
+        $user = $this->userWithSyncView();
+        $startedAt = now()->subMinutes(12);
+        SyncRun::create([
+            'run_type' => 'woocommerce_order_incremental',
+            'provider_key' => 'woocommerce',
+            'connection_key' => 'beyourlover.com',
+            'status' => 'completed',
+            'failed_items' => 0,
+            'initiated_by' => null,
+            'started_at' => $startedAt,
+            'completed_at' => $startedAt->copy()->subHours(7)->addSecond(),
+        ]);
+        $this->actingAs($user)->get('/sync')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('wooOrderSync.health', 'ok')
+            ->where('wooOrderSync.last_success_at', $startedAt->toIso8601String())
+        );
+    }
+
+    public function test_woo_health_reports_failed_run_even_when_other_sync_tasks_are_newer(): void
+    {
+        config(['services.woocommerce.order_sync_enabled' => true]);
+        $user = $this->userWithSyncView();
+        SyncRun::create([
+            'run_type' => 'woocommerce_order_incremental', 'provider_key' => 'woocommerce', 'connection_key' => 'beyourlover.com',
+            'status' => 'failed', 'failed_items' => 1, 'initiated_by' => null,
+            'started_at' => now()->subMinutes(10), 'completed_at' => now()->subMinutes(9),
+        ]);
+        for ($i = 0; $i < 60; $i++) {
+            SyncRun::create([
+                'run_type' => 'tracking_selected', 'provider_key' => 'woocommerce', 'status' => 'completed',
+                'started_at' => now(), 'completed_at' => now(),
+            ]);
+        }
+        $this->actingAs($user)->get('/sync')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('wooOrderSync.health', 'failed')
+            ->where('wooOrderSync.latest_run.run_type', 'woocommerce_order_incremental')
+            ->where('wooOrderSync.last_success_at', null)
+        );
     }
 
     private function userWithSyncView(): User

@@ -478,9 +478,9 @@ final class AccountingContinuousDeltaTest extends TestCase
         self::assertTrue($financeEvent->onOneServer);
         self::assertStringContainsString('finance:materialize-continuous-delta --apply --limit=10000 --no-interaction', $financeEvent->command);
 
-        $woo = $events->where('description', 'orders.woocommerce.inbound.hourly');
+        $woo = $events->where('description', 'orders.woocommerce.inbound.half-hourly');
         self::assertCount(1, $woo);
-        self::assertSame('0 * * * *', $woo->first()->expression);
+        self::assertSame('*/30 * * * *', $woo->first()->expression);
     }
 
     private function service(): AccountingContinuousDeltaService

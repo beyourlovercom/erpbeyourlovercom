@@ -3,6 +3,9 @@
 namespace App\Modules\Orders\Experience\Controllers;
 
 use App\Modules\Orders\Application\Inbound\WooCommerceInboundService;
+use App\Modules\Orders\Application\Inbound\WooOrderManualSyncAccess;
+use App\Modules\Orders\Application\Inbound\WooOrderReconciliationService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -11,13 +14,19 @@ use Throwable;
 
 final class WooCommerceInboundController
 {
-    public function __construct(private readonly WooCommerceInboundService $inbound) {}
+    public function __construct(
+        private readonly WooCommerceInboundService $inbound,
+        private readonly WooOrderManualSyncAccess $manualAccess,
+        private readonly WooOrderReconciliationService $reconciliation,
+    ) {}
 
     public function index(Request $request): Response
     {
         return Inertia::render('Sync/WooCommerceInbound', [
             'connection' => $this->inbound->descriptor(),
             'summary' => $request->session()->get('woocommerce_import_summary'),
+            'canImportToday' => $this->manualAccess->allows($request->user()),
+            'canManage' => (bool) $request->user()?->can('sync.operate'),
         ]);
     }
 
@@ -39,7 +48,20 @@ final class WooCommerceInboundController
 
     public function incremental(Request $request): RedirectResponse
     {
+        abort_unless($this->manualAccess->allows($request->user()), 403);
+
         return $this->run(fn () => $this->inbound->importToday($request->user()));
+    }
+
+    public function reconcileToday(Request $request): JsonResponse
+    {
+        abort_unless($this->manualAccess->allows($request->user()), 403);
+
+        try {
+            return response()->json($this->reconciliation->today())->header('Cache-Control', 'no-store');
+        } catch (Throwable) {
+            return response()->json(['status' => 'unavailable', 'unimported_count' => null, 'message' => 'WooCommerce 对账暂不可用，请检查连接或查看同步记录'], 503);
+        }
     }
 
     public function historical(Request $request): RedirectResponse
