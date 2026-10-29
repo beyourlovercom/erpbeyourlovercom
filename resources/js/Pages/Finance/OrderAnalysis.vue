@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3'
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
 import {
@@ -238,6 +238,13 @@ const edit = (row: Row) => {
     saved.value = false
     for (const field of props.fields) editValues[field] = row.values[field] ?? ''
 }
+
+onMounted(() => {
+    const orderId = Number(props.filters.edit_order)
+    if (!Number.isSafeInteger(orderId) || orderId <= 0) return
+    const row = props.orders.find(candidate => candidate.id === orderId)
+    if (row) edit(row)
+})
 
 const decimalCents = (value: string | undefined): number | null => {
     const normalized = (value ?? '').trim()
