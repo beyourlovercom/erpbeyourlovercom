@@ -35,3 +35,13 @@ Scope: ERP customer order detail only; no order, shipment, or WordPress writes.
 - China Mac authenticated ERP page /customers/orders/1574 reported source_type=woocommerce, erp_order_id=007-0918-c28518, external_order_number=28518-MF414A. That display number cannot safely be equated with the numeric Woo ID.
 - Production WooCommerce screenshot shows Order #41906 at the HPOS URL with id=41906. This proves the editor route format and that specific ID, not every order ID.
 - Actual order 1574 provider reference remains unverified; do not infer its value from either displayed number. No production change or real-order mutation has been performed.
+
+## 2026-10-29 R4 production read-only verification (US Mac mini)
+- Confirmed production runtime: /Users/a/AI/production/erp.beyourlover.com/current, APP_ENV=production.
+- Executed a parametrized SELECT of orders JOIN order_external_references for ERP order 1574 within a MySQL READ ONLY transaction, followed by ROLLBACK. Returned one reference row: provider=woocommerce, connection_key=beyourlover.com, reference=28518.
+- ERP display number is 28518-MF414A; Woo original numeric ID is 28518.
+- Verified effective production config via read-only Laravel configuration bootstrap: WOO_BASE_URL host=beyourlover.com, scheme=https, connection_key=beyourlover.com.
+- The confirmed exact target is https://beyourlover.com/wp-admin/admin.php?page=wc-orders&action=edit&id=28518.
+- Negative case regression tests still guard against wrong store, malformed or multiple references, archived and manual orders.
+- New regression specifically covers the real suffixed display number != numeric reference.
+- Production PR not merged and no live browser click on order #28518 has yet been performed. Requires Owner-approved deployment and user-visible real click acceptance after deployment; do not claim live UI acceptance yet.

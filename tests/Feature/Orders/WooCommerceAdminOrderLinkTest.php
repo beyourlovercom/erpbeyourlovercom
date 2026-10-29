@@ -33,6 +33,26 @@ final class WooCommerceAdminOrderLinkTest extends TestCase
                 ->where('wooAdminEditUrl', 'https://beyourlover.com/wp-admin/admin.php?page=wc-orders&action=edit&id=28518'));
     }
 
+    public function test_real_production_identity_shape_does_not_use_suffixed_display_number(): void
+    {
+        // Read-only production evidence: ERP #1574 has display number 28518-MF414A,
+        // but its canonical Woo external reference is numeric ID 28518.
+        $order = $this->order('woocommerce', 'SUFFIX');
+        $order->external_order_number = '28518-MF414A';
+        $order->save();
+        $order->externalReferences()->create([
+            'provider' => 'woocommerce',
+            'connection_key' => 'beyourlover.com',
+            'reference' => '28518',
+        ]);
+
+        $this->actingAs($this->viewer())->get('/customers/orders/'.$order->id)->assertOk()
+            ->assertInertia(fn ($page) => $page->where(
+                'wooAdminEditUrl',
+                'https://beyourlover.com/wp-admin/admin.php?page=wc-orders&action=edit&id=28518',
+            ));
+    }
+
     public function test_legacy_mode_uses_legacy_editor_url(): void
     {
         config()->set('services.woocommerce.admin_order_editor_mode', 'legacy');
