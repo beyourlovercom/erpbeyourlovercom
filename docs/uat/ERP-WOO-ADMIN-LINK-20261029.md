@@ -45,3 +45,10 @@ Scope: ERP customer order detail only; no order, shipment, or WordPress writes.
 - Negative case regression tests still guard against wrong store, malformed or multiple references, archived and manual orders.
 - New regression specifically covers the real suffixed display number != numeric reference.
 - Production PR not merged and no live browser click on order #28518 has yet been performed. Requires Owner-approved deployment and user-visible real click acceptance after deployment; do not claim live UI acceptance yet.
+
+## Follow-up login redirect regression / www domain (2026-10-29)
+- Root cause reproduced in owner's existing China Mac Chrome: ERP direct link used https://beyourlover.com/wp-admin/ while already-authenticated WordPress admin tab was https://www.beyourlover.com/wp-admin/.
+- In an existing authenticated www WP admin tab, same-origin read-only XHR GET for /wp-admin/admin.php?page=wc-orders&action=edit&id=28518 returned HTTP 200, title Edit order #28518, with the order header present and no login form.
+- An existing login tab showed www.beyourlover.com/wp-login.php?redirect_to=https%3A%2F%2Fbeyourlover.com%2Fwp-admin...&reauth=1, demonstrating that the old apex destination caused a fresh login.
+- Corrective change: keep main deep-link action but switch its HPOS and legacy target to the verified www admin domain, while allowing apex Woo API configuration for backend integration. Added secondary copy URL action with clipboard fallback.
+- Production release requires a separate approval and post-deployment authenticated browser canary; no runtime or order modifications were made by this follow-up.
