@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Products\Experience\Controllers\ProductController;
+use App\Modules\Products\Experience\Controllers\ProductBarcode69ImportController;
 use App\Modules\Products\Experience\Controllers\ProductPackagingProfileController;
 use App\Modules\Products\Experience\Controllers\ProductSkuController;
 use App\Modules\Products\Experience\Controllers\ProductSkuAliasController;
@@ -52,6 +53,9 @@ Route::middleware(['web', 'auth', 'can:products.operate'])->group(function (): v
     Route::post('/products/weight-evidence/import/preview', [ProductWeightEvidenceController::class, 'importPreview'])->name('products.weight-evidence.import.preview');
     Route::post('/products/weight-evidence/import/confirm', [ProductWeightEvidenceController::class, 'importConfirm'])->name('products.weight-evidence.import.confirm');
 
+    Route::get('/products/barcode-69/import', [ProductBarcode69ImportController::class, 'index'])->name('products.barcode-69.import');
+    Route::post('/products/barcode-69/import/preview', [ProductBarcode69ImportController::class, 'preview'])->name('products.barcode-69.preview');
+    Route::post('/products/barcode-69/import/confirm', [ProductBarcode69ImportController::class, 'confirm'])->name('products.barcode-69.confirm');
     Route::get('/products/create', [ProductController::class, 'create'])->name('products.create');
     Route::post('/products', [ProductController::class, 'store'])->name('products.store');
     Route::get('/products/import', [ProductController::class, 'importPage'])->name('products.import');
