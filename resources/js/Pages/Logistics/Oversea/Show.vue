@@ -10,6 +10,7 @@ type WarehouseOption = { key:string; id:number; code:string; label:string; carri
 type Item = { sku:string|null; quantity:number }
 type CarrierServiceOption = { id:number; key:string; value:string; label:string; name_en:string|null; name_zh:string|null }
 type CarrierOption = { value:string; label:string; default_service_id:number|null; default_service_value:string|null; services:CarrierServiceOption[] }
+type DispatchProjection = {status:string;label:string;detail:string;oms_order_no:string|null;last_checked_at:string|null;failure_code:string|null;can_retry_local_block:boolean}
 type OmsSnapshot = {
   state:string; oms_order_no:string|null; oms_status_code:string|null
   oms_status_checked_at:string|null; oms_tracking_no:string|null
@@ -27,7 +28,7 @@ type OmsStatusResult = {
 type Row = {
   line:number; order_id:number; erp_order_id:string|null; order_url:string|null; recipient_name:string|null; country:string|null
   warehouse_id:number; warehouse_name:string|null; carrier:string|null; service:string|null; carrier_selection_source:string|null; tracking_number:string|null
-  progress:string; note:string|null; xlwms?:OmsSnapshot|null; review_status:'approved'|'pending'; shipment_status:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; shipped_at?:string|null; items:Item[]
+  progress:string; note:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; review_status:'approved'|'pending'; shipment_status:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; shipped_at?:string|null; items:Item[]
 }
 type PageRows = { data:Row[]; current_page:number; last_page:number; per_page:number; total:number; from:number|null; to:number|null; links?:{url:string|null;label:string;active:boolean}[] }
 type ColumnKey = 'line'|'order'|'warehouse'|'carrier'|'service'|'tracking'|'note'|'recipient'|'country'|'items'
@@ -47,7 +48,7 @@ type TrackingImportRow = { row:number; order_id:number|null; order_number:string
 type TrackingImportPreview = { token:string; rows:TrackingImportRow[]; apply_count:number; noop_count:number; blocked_count:number }
 const props = defineProps<{
   warehouseKey:string; warehouse:WarehouseOption|null; warehouseOptions:WarehouseOption[]; view:string
-  rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canOperate:boolean; canTrackingSync?:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number
+  rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canOperate:boolean; canTrackingSync?:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number; xlwmsBatchEnabled?:boolean
 }>()
 
 const grid = reactive(useAccountGridPreferences<ColumnKey>({
@@ -110,7 +111,9 @@ const omsSnapshots = reactive<Record<number,OmsSnapshot>>({})
 const omsPreflight = reactive<Record<number,OmsPreflight>>({})
 const omsFinishedThisPage = reactive<Record<number,boolean>>({})
 const batchBusy = ref(false)
-const batchResult = ref<{count:number; results:{order_id:number; code:string; reason?:string}[]}|null>(null)
+const batchResult = ref<{count:number; results:{order_id:number; code:string; reason?:string}[];summary?:{created:number;existing:number;blocked:number;uncertain:number;other:number};blocked_reason?:string}|null>(null)
+const refreshResult = ref<{count:number;refreshed:number;failed:number}|null>(null)
+const refreshBusy = ref(false)
 const batchError = ref('')
 const batchCodeText:Record<string,string> = {
   created:'已创建', existing:'已存在', status_updated:'已更新发货状态', canceled:'OMS 已取消', unknown_status:'状态待核实',
@@ -126,22 +129,45 @@ const syncWarehouse = async () => {
     const response=await fetch('/logistics/oversea/us-3sm/xlwms/sync',{method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',headers:{Accept:'application/json','Content-Type':'application/json',...(token?{'X-CSRF-TOKEN':token}:{})},body:'{}'})
     if (!response.ok) throw Error(response.status===403?'当前账号没有此操作权限':response.status===429?'操作过于频繁，请稍后再试':'同步失败（HTTP '+response.status+'）')
     batchResult.value=await response.json()
-    notifyOms('INFO','同步仓库结果',`已处理 ${batchResult.value?.count ?? 0} 单`)
+    const created=batchResult.value?.summary?.created ?? 0
+    const blocked=batchResult.value?.summary?.blocked ?? 0
+    notifyOms(batchResult.value?.blocked_reason?'ERROR':'INFO','同步仓库结果',batchResult.value?.blocked_reason?'未下发：正式建单权限关闭':`成功新建 ${created} 单 · 阻断 ${blocked} 单`)
+    router.reload({only:['rows','viewCounts']})
   } catch (e) { batchError.value=e instanceof Error?e.message:'同步失败，请稍后重试'; notifyOms('ERROR','同步仓库失败',batchError.value) }
   finally { batchBusy.value=false }
+}
+const refreshOmsStatuses = async () => {
+  if(refreshBusy.value||props.warehouseKey!=='us-3sm'||!props.canOperate)return
+  const token=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
+  refreshBusy.value=true;refreshResult.value=null
+  try{
+    const res=await fetch('/logistics/oversea/us-3sm/xlwms/refresh-statuses',{
+      method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
+      headers:{Accept:'application/json',...(token?{'X-CSRF-TOKEN':token}:{})},
+    })
+    if(!res.ok)throw Error('更新状态失败（HTTP '+res.status+'）')
+    refreshResult.value=await res.json()
+    notifyOms('INFO','OMS 状态更新',`成功 ${refreshResult.value?.refreshed??0} · 失败 ${refreshResult.value?.failed??0}（单次最多 10 条）`)
+    router.reload({only:['rows','viewCounts']})
+  }catch(e){notifyOms('ERROR','OMS 状态更新失败',e instanceof Error?e.message:'查询失败')}
+  finally{refreshBusy.value=false}
 }
 const omsRow = (row:Row): OmsSnapshot|null => omsSnapshots[row.order_id] ?? row.xlwms ?? null
 const omsLabel = (row:Row) => {
   const record=omsRow(row)
-  if (!record) return '尚未下发'
-  if (record.oms_status_code==='3') return '已出库（未同步 ERP）'
-  if (record.oms_status_code==='4') return '已取消'
-  if (record.oms_status_code) return 'OMS 状态 '+record.oms_status_code+'（待核实）'
-  if (record.state==='submitted_oms'||record.state==='found_in_oms') return 'OMS 已接单（未出库）'
-  if (record.state==='draft_cancelled_confirmed') return '已取消'
-  if (record.state.includes('uncertain')||record.state.includes('in_flight')) return '结果待核实'
-  return '需处理：'+record.state
+  if(row.shipment_status==='shipped')return '已发货'
+  if(!record?.oms_order_no)return row.warehouse_dispatch?.label ?? '待下发'
+  if(record.oms_status_code==='3')return '已出库 · 待回写'
+  if(record.oms_status_code==='4')return '仓库已取消 · 待处理'
+  if(record.state==='blocked_existing_oms_order'||record.state==='batch_identity_blocked')return 'OMS 身份冲突 · 待核实'
+  return '已下发 OMS'
 }
+const omsDetail=(row:Row)=> {
+  const record=omsRow(row)
+  if(record?.oms_order_no && record.oms_status_code && !['3','4'].includes(record.oms_status_code))return `OMS 状态 ${record.oms_status_code} · 待核实`
+  return row.warehouse_dispatch?.detail ?? ''
+}
+
 const omsFailureText = (code:string|null|undefined) => ({
   OMS_STATUS_IDENTITY_MISMATCH:'OMS 返回的订单或仓库不匹配，已保留原状态',
   OMS_STATUS_RESPONSE_INVALID:'OMS 查询结果不完整，已保留原状态',
@@ -174,10 +200,11 @@ async function omsRequest(row:Row,action:string,payload:Record<string,string>={}
 }
 const omsReadyToSend = (row:Row) => props.canOperate
   && props.warehouseKey==='us-3sm' && row.review_status==='approved'
-  && row.shipment_status==='pending' && !omsRow(row)
+  && row.shipment_status==='pending' && !omsRow(row)?.oms_order_no
+  && (!omsRow(row) || row.warehouse_dispatch?.can_retry_local_block)
   && !omsFinishedThisPage[row.order_id] && props.xlwmsAuthorizedOrderId===row.order_id
 const omsPreflightStart = async (row:Row) => {
-  if (omsBusy[row.order_id] || omsRow(row)) return
+  if (omsBusy[row.order_id] || (omsRow(row) && !row.warehouse_dispatch?.can_retry_local_block)) return
   omsBusy[row.order_id]=true;omsErrors[row.order_id]=''
   try {
     const result=await omsRequest(row,'preflight') as OmsPreflight
@@ -277,7 +304,7 @@ const defaultServiceFor = (name:string, country?:string|null) => {
 }
 const draft = (row:Row) => drafts[row.order_id] ??= { note:row.note ?? '', carrier:row.carrier ?? '', service:row.service ?? defaultServiceFor(row.carrier ?? '', row.country), tracking_number:row.tracking_number ?? '' }
 const viewTabs = [
-  ['review','待审核'], ['pending','待发货'], ['shipped','已发货'], ['exceptions','异常订单'], ['all','全部订单'],
+  ['review','待审核'], ['pending','待发货'], ['pending_dispatch','待下发'], ['dispatched','已下发'], ['shipped','已发货'], ['exceptions','异常订单'], ['all','全部订单'],
 ] as const
 
 
@@ -381,7 +408,8 @@ const compactPages = computed<(number|string)[]>(() => {
             :disabled="!trackingSelection.length || trackingBusy" @click="pushTracking(trackingSelection)">
             {{ trackingBusy?'同步中…':'同步官网物流' }}</button>
           <template v-if="warehouse && view === 'pending'">
-          <button v-if="warehouseKey === 'us-3sm' && canOperate" type="button" class="file-button primary xlwms-batch-button" :disabled="batchBusy" @click="syncWarehouse">{{ batchBusy ? '同步中…' : '同步仓库' }}</button>
+          <button v-if="warehouseKey === 'us-3sm' && canOperate" type="button" class="file-button" :disabled="refreshBusy" @click="refreshOmsStatuses">{{refreshBusy?'查询中…':'更新 OMS 状态'}}</button>
+          <button v-if="warehouseKey === 'us-3sm' && canOperate" type="button" class="file-button primary xlwms-batch-button" :disabled="batchBusy||!xlwmsBatchEnabled" :title="!xlwmsBatchEnabled?'真实下发权限关闭，请先获得受控单笔授权':'只处理当前授权订单'" @click="syncWarehouse">{{ batchBusy ? '同步中…' : '同步待发货订单' }}</button>
           <a class="file-button file-link" :href="`${basePath}/export`">⇩ 下载仓库下单表</a>
           <input ref="trackingFileInput" class="hidden-file" type="file" accept=".xlsx,.csv,.txt" @change="previewTrackingFile" />
           <button v-if="canOperate && canUploadTrackingFile" type="button" class="file-button primary" @click="chooseTrackingFile">⇧ 上传物流回传表</button>
@@ -389,7 +417,8 @@ const compactPages = computed<(number|string)[]>(() => {
         </div>
       </header>
       <div v-if="warehouseKey === 'us-3sm' && (batchResult || batchError)" class="xlwms-batch-result" role="status">
-        <strong v-if="batchResult">本次处理 {{ batchResult.count }} 单：</strong>
+        <strong v-if="batchResult">本次处理 {{ batchResult.count }} 单 · 新建 {{batchResult.summary?.created??0}} · 已存在 {{batchResult.summary?.existing??0}} · 阻断 {{batchResult.summary?.blocked??0}} · 待核实 {{batchResult.summary?.uncertain??0}}</strong>
+        <small v-if="batchResult?.blocked_reason">正式建单权限关闭，本次没有发出任何新订单</small>
         <span v-if="batchResult" v-for="item in batchResult.results" :key="item.order_id">订单 {{ item.order_id }} · {{ batchCodeText[item.code] || item.code }}<small v-if="item.reason">（{{ item.reason }}）</small></span>
         <span v-if="batchError" class="xlwms-error">{{ batchError }}</span>
       </div>
@@ -453,8 +482,10 @@ const compactPages = computed<(number|string)[]>(() => {
               </td>
               <td v-if="warehouseKey === 'us-3sm'" class="xlwms-cell">
                 <div class="xlwms-inline" :data-oms-order-id="row.order_id">
-                  <template v-if="omsRow(row)">
-                    <div class="xlwms-state">{{ omsLabel(row) }}</div>
+                  <template v-if="omsRow(row)?.oms_order_no">
+                    <div class="xlwms-state" :class="'dispatch-'+(row.warehouse_dispatch?.status??'pending_dispatch')">{{ omsLabel(row) }}</div>
+                    <small v-if="omsDetail(row)" class="xlwms-note">{{ omsDetail(row) }}</small>
+                    <small v-if="row.warehouse_dispatch?.last_checked_at" class="xlwms-note">核对 {{row.warehouse_dispatch.last_checked_at}}</small>
                     <small v-if="omsRow(row)?.oms_order_no" class="xlwms-number">OMS {{ omsRow(row)?.oms_order_no }}</small>
                     <small v-if="omsRow(row)?.oms_tracking_no" class="xlwms-track">Tracking {{ omsRow(row)?.oms_tracking_no }}（未同步）</small>
                     <button v-if="omsRow(row)?.oms_order_no" type="button" class="xlwms-action" :disabled="omsBusy[row.order_id]" @click="omsRefresh(row)">{{omsBusy[row.order_id]?'查询中…':'更新 OMS 状态'}}</button>
@@ -462,7 +493,8 @@ const compactPages = computed<(number|string)[]>(() => {
                     <small v-if="omsRow(row)?.oms_status_failure_code" class="xlwms-error" role="alert">{{ omsFailureText(omsRow(row)?.oms_status_failure_code) }}</small>
                   </template>
                   <template v-else-if="row.review_status === 'approved' && row.shipment_status === 'pending'">
-                    <span class="xlwms-state">尚未下发</span>
+                    <span class="xlwms-state">待下发</span>
+                    <small v-if="row.warehouse_dispatch?.detail" class="xlwms-note">{{row.warehouse_dispatch.detail}}</small>
                     <button v-if="canOperate && !omsPreflight[row.order_id]" type="button" class="xlwms-action" :disabled="omsBusy[row.order_id] || omsFinishedThisPage[row.order_id]" @click="omsPreflightStart(row)">{{ omsBusy[row.order_id]?'预检中…':'API 发货' }}</button>
                     <div v-if="omsPreflight[row.order_id]" class="xlwms-confirm">
                       <small>校验：{{omsPreflight[row.order_id].oms_warehouse}} · {{omsPreflight[row.order_id].items.map(i=>i.sku+' × '+i.quantity).join(' / ')}}</small>

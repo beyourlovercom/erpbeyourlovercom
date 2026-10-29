@@ -20,7 +20,7 @@ final class XlwmsSingleOrderController
             'payload_hash' => $preview['payload_hash'],
             'oms_warehouse' => $preview['payload']['whCode'],
             'items' => $preview['payload']['productList'],
-            'already_attempted' => $preview['attempt'] !== null,
+            'already_attempted' => $preview['attempt'] !== null && !($preview['retryable_local_block'] ?? false),
         ])->header('Cache-Control','no-store, private');
     }
 
