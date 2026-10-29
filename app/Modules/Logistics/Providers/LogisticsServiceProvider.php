@@ -19,6 +19,8 @@ use App\Modules\Logistics\Experience\Console\Commands\ImportCarrierBillCommand;
 use App\Modules\Logistics\Experience\Console\Commands\RepairProductionUatFulfillmentCommand;
 use App\Modules\Logistics\Experience\Console\Commands\SyncDeliveryEvidenceCommand;
 use App\Modules\Logistics\Infrastructure\AfterShipBrandedPageDeliveryEvidenceGateway;
+use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutReadOnlyGateway;
+use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutSandboxOutboundTransport;
 use App\Modules\Logistics\Infrastructure\EloquentCarrierBillingEvidenceReader;
 use App\Modules\Logistics\Infrastructure\EloquentFulfillmentOriginEvidenceReader;
 use App\Modules\Logistics\Infrastructure\EloquentLastMileEstimateEvidenceReader;
@@ -44,6 +46,18 @@ final class LogisticsServiceProvider extends ServiceProvider
 
     public function register(): void
     {
+        // Sandbox connectors have no default credentials, and all network
+        // operations remain explicitly disabled in config/shipout.php.
+        $this->app->bind(ShipOutReadOnlyGateway::class, fn (): ShipOutReadOnlyGateway => new ShipOutReadOnlyGateway(
+            (string) config('shipout.sandbox_app_key', ''),
+            (string) config('shipout.sandbox_app_secret', ''),
+            (string) config('shipout.sandbox_bearer', ''),
+        ));
+        $this->app->bind(ShipOutSandboxOutboundTransport::class, fn (): ShipOutSandboxOutboundTransport => new ShipOutSandboxOutboundTransport(
+            (string) config('shipout.sandbox_app_key', ''),
+            (string) config('shipout.sandbox_app_secret', ''),
+            (string) config('shipout.sandbox_bearer', ''),
+        ));
         $this->app->bind(CarrierBillingEvidenceReader::class, EloquentCarrierBillingEvidenceReader::class);
         $this->app->bind(DeliveryEvidenceGateway::class, AfterShipBrandedPageDeliveryEvidenceGateway::class);
         $this->app->bind(FulfillmentOriginEvidenceReader::class, EloquentFulfillmentOriginEvidenceReader::class);

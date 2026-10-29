@@ -90,3 +90,63 @@ that real MorePlus inventory/order fulfillment has been verified.
   to signed polling. No Woo updates until shipment state actually confirmed.
 - Existing OMS inbound status GET was REMOVED from ERP bridge per owner correction.
 - No automatic order POST or production host currently exists in the PR.
+
+## R4/R5 continued, 2026-10-29 — outbound and tracking only
+
+### Official schema (ShipOut /portal/JSON/order.json)
+- POST /open-api/oms/order/batchSubmitAsync: array of OpenCreateOrderRequest
+  with sid, orderNo, orderSummary, shipmentForms, warehouseId, toAddress.
+  Each shipment requires outboundInfo.sysServiceId, shippingInfo.carrierId,
+  shipDate, shipmentSid, signatureType, and productList[].omsSku / qty.
+- For U.S. MorePlus default, use warehouse-selected outbound service
+  sysServiceId=9, USPS carrierId=1, signatureType=4.
+- GET /open-api/oms/order/queryListV2 and /query support order status,
+  outboundStatus, labelStatus, carrierId, trackingNumber, shippedTime.
+- Async acceptance is never shipped; completed order is not sufficient alone
+  without outboundStatus=4, tracking and shippedTime. Unknown/multiple
+  shipments, label exception, cancelled/aborted must block auto completion.
+
+### Real sandbox POST
+- Local China Mac sandbox-only script sandbox_outbound_once.py issued ONE
+  signed POST of a SYNTHETIC order with synthetic address/SKU in the
+  isolated ShipOut sandbox. Intent/one-shot sentinel created BEFORE network.
+- Synthetic ref BYL-SANDBOX-API-ORDER-20261029-001.
+- POST /open-api/oms/order/batchSubmitAsync returned HTTP=200 but the JSON
+  was a DICT rather than expected list (per Swagger). The first script did not
+  preserve safe business result fields, so provider business outcome is
+  UNKNOWN. Do not claim the order was accepted or shipped.
+- Two signed GET /open-api/oms/order/queryListV2 readbacks for that exact
+  synthetic ref returned HTTP=200, result OK, total=0. No tracking number.
+- No automatic retry and NO second POST of that order. No stock available.
+- No production API, ERP DB, Woo, WMS or physical shipment modified.
+
+### R5 committed engineering foundation (OFF by default)
+- ShipOutOutboundPayloadFactory builds one deterministic OpenCreateOrderRequest
+  from ERP authoritative Order + Dede-approved US-LA shipment, source address,
+  Product OS verified SKU identity and warehouse order reference.
+- ShipOutSandboxOutboundTransport: fixed signed HTTPS sandbox async endpoint,
+  single request, exact order/warehouse allowlist, no generic URL, no auto
+  retry, no raw credentials or PII emitted.
+- ShipOutSandboxDispatchService: provider read-before-write and atomic
+  unique local attempt BEFORE POST; refused duplicate or unapproved order.
+  Unknown transport result permanently retains uncertain status; manual
+  signed OMS reconciliation required before any new attempt decision.
+- shipout_dispatch_attempts migration stores non-PII hashes/results only,
+  unique ERP order ID and provider order reference. Migration not deployed.
+- ShipOutTrackingDecision pure status gate; outputs human-reviewed candidate,
+  not a Woo update. Carrier/tracking and actual shipped time required.
+- Runtime binds the connector classes using EMPTY-BY-DEFAULT env config.
+  All sandbox toggles OFF, allowlist EMPTY; production and UI untouched.
+- Tests (US Mac isolated): 27 tests / 59 assertions ShipOut PASS.
+  Existing overseas workbench + architecture tests: 45 / 457 PASS after
+  linking a test-only Vite build directory (not committed).
+
+### Not yet complete — explicit gates
+- Real provider successful outbound creation: NOT ACCEPTED (empty sandbox
+  stock and unexpected provider response format, no successful readback).
+- Actual tracking number, shippedTime, callback/polling readback: NOT ACCEPTED.
+- No API-triggering Dede workbench UI (Owner visual PASS required before
+  UI implementation). No production credential provisioning.
+- Do not merge this draft into main or deploy until remaining gates and
+  separate Production PASS. Production rollout will require a distinct
+  credential/config design and application authorization security review.

@@ -100,7 +100,8 @@ final class ShipOutReadOnlyGateway
             throw new RuntimeException('SHIPOUT_ORDER_RESPONSE_INCOMPLETE');
         }
         $total = (int) $data['total'];
-        if (count($data['records']) > $size || count($data['records']) > $total) {
+        if (count($data['records']) > $size || count($data['records']) > $total
+            || ($total > 0 && $page === 1 && $data['records'] === [])) {
             throw new RuntimeException('SHIPOUT_ORDER_PAGE_INCOMPLETE');
         }
 
