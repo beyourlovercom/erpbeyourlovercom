@@ -16,6 +16,7 @@ class Product extends Model
         'label_sku',
         'label_description',
         'gtin',
+        'barcode_69',
         'name',
         'unit',
         'is_active',
