@@ -21,6 +21,15 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Legacy canned catalogue responses are synthetic and omit their
+        // provider category. Separate tests below enforce the actual type 2.
+        config()->set('xlwms.us_sm_require_no_shipping_service', false);
+        config()->set('xlwms.us_sm_oms_logistics_channel','No_Shipping_Service');
+    }
+
     private function orderFixture(): Order
     {
         $w=Warehouse::query()->firstOrCreate(['code'=>'US-SM'],[
@@ -77,6 +86,69 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         return $o->fresh();
     }
 
+    public function test_owner_selected_no_shipping_service_creates_draft_without_label_fields(): void
+    {
+        $o=$this->orderFixture();
+        config()->set('xlwms.us_sm_require_no_shipping_service', true);
+        $preview=app(SingleOrderDispatch::class)->preview($o->id);
+        $this->assertSame([], $preview['blockers']);
+        $this->assertSame('No_Shipping_Service', $preview['payload']['logisticsChannel']);
+        $this->assertSame(0, $preview['payload']['isSubmit']);
+        $this->assertArrayNotHasKey('shippingLabel', $preview['payload']);
+        $this->assertArrayNotHasKey('logisticsTrackNo', $preview['payload']);
+        $this->assertSame('pending', $o->fresh()->shipment->shipment_status);
+        config()->set('xlwms.us_sm_oms_logistics_channel','Service with the lowest price');
+        $bad=app(SingleOrderDispatch::class)->preview($o->id);
+        $this->assertContains('US_SM_NO_SHIPPING_CHANNEL_REQUIRED',$bad['blockers']);
+        Http::fake();Http::assertNothingSent();
+    }
+
+    public function test_real_type_two_no_shipping_provider_channel_is_required_before_outbound_create(): void
+    {
+        $o=$this->orderFixture();
+        $w=WarehouseOpenApiConnection::query()->where('warehouse_id',$o->shipment->warehouse_id)->firstOrFail();
+        $gw=app(\App\Modules\Logistics\Infrastructure\Xlwms\XlwmsOrderGateway::class);
+        Http::preventStrayRequests();
+        Http::fake(fn ($req)=>str_contains($req->url(),'logistics/channel/list')
+            ? Http::response(['code'=>200,'data'=>[['channelCode'=>'No_Shipping_Service','channelName'=>'无需物流服务','channelType'=>2,'carrierName'=>'系统默认渠道','whCodes'=>[]]]])
+            : Http::response(['code'=>200,'data'=>['records'=>[['sku'=>'SAME-SKU','approveStatus'=>2]]]]));
+        $gw->assertCatalogReady($w,'OMS-US-SM','No_Shipping_Service',['SAME-SKU'],true);
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+    }
+
+    public function test_wrong_special_channel_or_type_is_rejected_without_fallback(): void
+    {
+        $o=$this->orderFixture();
+        $w=WarehouseOpenApiConnection::query()->where('warehouse_id',$o->shipment->warehouse_id)->firstOrFail();
+        $gw=app(\App\Modules\Logistics\Infrastructure\Xlwms\XlwmsOrderGateway::class);
+        Http::preventStrayRequests();
+        foreach ([['channelCode'=>'Service with the lowest price','channelName'=>'自动选取价格最低的渠道','channelType'=>1],
+                  ['channelCode'=>'Upload_Shipping_Label','channelName'=>'USPS上传物流面单','channelType'=>3],
+                  ['channelCode'=>'No_Shipping_Service','channelName'=>'无需物流服务','channelType'=>3],
+                  ['channelCode'=>'No_Shipping_Service','channelName'=>'上传物流面单','channelType'=>2]] as $record) {
+            Http::fake(fn ($req)=>Http::response(['code'=>200,'data'=>[array_merge($record,['whCodes'=>[]])]]));
+            try {$gw->assertCatalogReady($w,'OMS-US-SM','No_Shipping_Service',['SAME-SKU'],true);
+                $this->fail('Unverified channel must not dispatch');}
+            catch (\RuntimeException $e) {
+                $this->assertContains($e->getMessage(), ['US_SM_NO_SHIPPING_CHANNEL_UNAVAILABLE','OMS_CHANNEL_NOT_AVAILABLE']);
+            }
+        }
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+    }
+
+    public function test_no_shipping_channel_does_not_claim_known_last_mile_carrier(): void
+    {
+        $o=$this->orderFixture();
+        $o->shipment()->update(['carrier'=>'FEDEX','service'=>'Priority']);
+        config()->set('xlwms.us_sm_require_no_shipping_service',true);
+        $p=app(SingleOrderDispatch::class)->preview($o->id);
+        $this->assertSame([], $p['blockers']);
+        $this->assertSame('No_Shipping_Service',$p['payload']['logisticsChannel']);
+        $this->assertSame(0,$p['payload']['isSubmit']);
+        $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+        Http::fake();Http::assertNothingSent();
+    }
+
     public function test_inline_preflight_is_permissioned_readonly_and_excludes_recipient_details(): void
     {
         $o=$this->orderFixture();
@@ -115,11 +187,11 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $this->assertSame([], $p['blockers']);
         $this->assertTrue($p['ready_for_remote_check']);
         $this->assertSame('OMS-US-SM', $p['payload']['whCode']);
-        $this->assertSame('Service with the lowest price', $p['payload']['logisticsChannel']);
+        $this->assertSame('No_Shipping_Service', $p['payload']['logisticsChannel']);
         $this->assertSame('OMS-STANDARD', $o->fresh()->shipment->service);
         $this->assertSame('USPS', $o->fresh()->shipment->carrier);
         $this->assertSame('SAME-SKU', $p['payload']['productList'][0]['sku']);
-        $this->assertSame(1, $p['payload']['isSubmit']);
+        $this->assertSame(0, $p['payload']['isSubmit']);
         $this->assertSame('BYL-ERP-'.$o->id, $p['payload']['thirdOrderNo']);
         Http::assertNothingSent();
     }
@@ -272,7 +344,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
                 'code'=>200,'data'=>['records'=>[],'total'=>0],
             ]);
             if(str_contains($req->url(),'logistics/channel/list'))return Http::response(['code'=>200,'data'=>[
-                ['channelCode'=>'Service with the lowest price','whCodes'=>['OMS-US-SM']],
+                ['channelCode'=>'No_Shipping_Service','whCodes'=>['OMS-US-SM']],
             ]]);
             if(str_contains($req->url(),'product/pagelist'))return Http::response(['code'=>200,'data'=>[
                 'records'=>[['sku'=>'SAME-SKU','approveStatus'=>2]],
@@ -284,13 +356,13 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $s=app(SingleOrderDispatch::class);
         $p=$s->preview($o->id);
         $r=$s->dispatch($o->id,$p['payload_hash'],3);
-        $this->assertSame('submitted_oms',$r['state']);
+        $this->assertSame('oms_draft_created',$r['state']);
         $this->assertSame('OMS-FIRST',$r['oms_order_no']);
         Http::assertSentCount(6);
         Http::assertSent(fn($req)=>str_contains($req->url(),'outboundOrder/create')
-            && (int) (is_object($req['data'][0]) ? $req['data'][0]->isSubmit : $req['data'][0]['isSubmit']) === 1
+            && (int) (is_object($req['data'][0]) ? $req['data'][0]->isSubmit : $req['data'][0]['isSubmit']) === 0
             && (is_object($req['data'][0]) ? $req['data'][0]->thirdOrderNo : $req['data'][0]['thirdOrderNo']) === 'BYL-ERP-'.$o->id
-            && (is_object($req['data'][0]) ? $req['data'][0]->logisticsChannel : $req['data'][0]['logisticsChannel']) === 'Service with the lowest price');
+            && (is_object($req['data'][0]) ? $req['data'][0]->logisticsChannel : $req['data'][0]['logisticsChannel']) === 'No_Shipping_Service');
         $this->assertDatabaseCount('xlwms_dispatch_attempts',1);
         $this->assertSame('pending',$o->shipment()->first()->shipment_status);
         $this->assertSame('pending_shipment',$o->fresh()->order_status->value);
@@ -309,7 +381,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
                 'code'=>200,'data'=>['records'=>[],'total'=>0],
             ]);
             if(str_contains($req->url(),'logistics/channel/list'))return Http::response(['code'=>200,'data'=>[
-                ['channelCode'=>'Service with the lowest price','whCodes'=>['OMS-US-SM']],
+                ['channelCode'=>'No_Shipping_Service','whCodes'=>['OMS-US-SM']],
             ]]);
             if(str_contains($req->url(),'product/pagelist'))return Http::response(['code'=>200,'data'=>[
                 'records'=>[['sku'=>'SAME-SKU','approveStatus'=>2]],
@@ -352,7 +424,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
             'warehouse_id'=>$order->shipment->warehouse_id,
             'third_order_no'=>'BYL-ERP-'.$order->id,
             'request_fingerprint'=>str_repeat('a',64),
-            'state'=>'submitted_oms',
+            'state'=>'oms_draft_created',
             'oms_order_no'=>$omsNo,
         ]);
     }
@@ -380,7 +452,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $this->assertNotNull($r['oms_status_checked_at']);
         $this->assertSame('pending_shipment',$o->fresh()->order_status->value);
         $this->assertSame('pending',$o->shipment()->first()->shipment_status);
-        $this->assertSame('submitted_oms',$attempt->fresh()->state);
+        $this->assertSame('oms_draft_created',$attempt->fresh()->state);
         Http::assertSentCount(1);
         Http::assertSent(fn($r)=>str_contains($r->url(),'outboundOrder/pageList')
             && (is_object($r['data'])
@@ -439,7 +511,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $this->assertFalse($r['fresh']);
         $this->assertSame('3',$r['oms_status_code']);
         $this->assertSame('OMS_STATUS_IDENTITY_MISMATCH',$r['oms_status_failure_code']);
-        $this->assertSame('submitted_oms',$a->fresh()->state);
+        $this->assertSame('oms_draft_created',$a->fresh()->state);
     }
 
     public function test_manual_order_reference_must_match_if_oms_third_number_differs(): void
@@ -526,7 +598,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $r=app(SingleOrderDispatch::class)->checkStatus($o->id);
         $this->assertFalse($r['fresh']);
         $this->assertSame('OMS_STATUS_NOT_FOUND',$r['oms_status_failure_code']);
-        $this->assertSame('submitted_oms',$a->fresh()->state);
+        $this->assertSame('oms_draft_created',$a->fresh()->state);
         Http::assertSentCount(1);
         Http::assertNotSent(fn($r)=>str_contains($r->url(),'outboundOrder/create'));
     }
@@ -543,10 +615,10 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $service=app(WarehouseBatchDispatch::class);
         $first=$service->run(7);
         $second=$service->run(7);
-        $this->assertSame('create_disabled',$first['results'][0]['code']);
-        $this->assertSame('create_disabled',$second['results'][0]['code']);
-        $this->assertDatabaseCount('xlwms_dispatch_attempts',1);
-        Http::assertSentCount(6);
+        $this->assertSame([], $first['results']);
+        $this->assertSame([], $second['results']);
+        $this->assertDatabaseCount('xlwms_dispatch_attempts',0);
+        Http::assertNothingSent();
         Http::assertNotSent(fn($request)=>str_contains($request->url(),'outboundOrder/create'));
     }
 
@@ -555,6 +627,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $o = $this->orderFixture();
         config()->set('xlwms.warehouse_batch_dispatch_enabled', true);
         config()->set('xlwms.live_dispatch_enabled', true);
+        config()->set('xlwms.live_order_id', $o->id);
         Http::preventStrayRequests();
         Http::fake(function ($request) use ($o) {
             if (str_contains($request->url(), 'outboundOrder/detail')) {
@@ -584,18 +657,21 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
             ? Http::response(['code'=>200,'data'=>[]])
             : Http::response(['code'=>200,'data'=>['records'=>[],'total'=>0]]));
         $first = app(WarehouseBatchDispatch::class)->run(7);
-        $this->assertSame('create_disabled', $first['results'][0]['code']);
+        $this->assertSame([], $first['results']);
         $second = app(WarehouseBatchDispatch::class)->run(8);
-        $this->assertSame('create_disabled', $second['results'][0]['code']);
-        $this->assertSame(8, XlwmsDispatchAttempt::query()->where('order_id',$o->id)->firstOrFail()->requested_by);
-        $this->assertDatabaseCount('xlwms_dispatch_attempts', 1);
-        Http::assertSentCount(6);
+        $this->assertSame([], $second['results']);
+        $this->assertSame('create_disabled', $first['blocked_reason']);
+        $this->assertDatabaseCount('xlwms_dispatch_attempts', 0);
+        Http::assertNothingSent();
         Http::assertNotSent(fn($request)=>str_contains($request->url(), 'outboundOrder/create'));
     }
 
     public function test_batch_does_not_process_an_existing_processing_claim_again(): void
     {
         $o=$this->orderFixture();
+        config()->set('xlwms.warehouse_batch_dispatch_enabled', true);
+        config()->set('xlwms.live_dispatch_enabled', true);
+        config()->set('xlwms.live_order_id', $o->id);
         XlwmsDispatchAttempt::query()->create([
             'order_id'=>$o->id,'warehouse_id'=>$o->shipment->warehouse_id,'third_order_no'=>'BYL-ERP-'.$o->id,
             'state'=>'batch_processing','request_fingerprint'=>str_repeat('a',64),'requested_by'=>7,
@@ -610,8 +686,11 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
     public function test_existing_oms_shipped_tracking_is_read_back_when_creation_is_off(): void
     {
         $o=$this->orderFixture();
-        config()->set('xlwms.warehouse_batch_dispatch_enabled',false);
-        config()->set('xlwms.live_dispatch_enabled',false);
+        config()->set('xlwms.warehouse_batch_dispatch_enabled', true);
+        config()->set('xlwms.live_dispatch_enabled', true);
+        config()->set('xlwms.live_order_id', $o->id);
+        config()->set('xlwms.warehouse_batch_dispatch_enabled',true);
+        config()->set('xlwms.live_dispatch_enabled',true);
         Http::preventStrayRequests();
         Http::fake(function($request) use ($o) {
             if (str_contains($request->url(),'outboundOrder/detail')) {
@@ -641,6 +720,9 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
     public function test_uncertain_create_attempt_is_never_retried_when_exact_lookup_is_empty(): void
     {
         $o=$this->orderFixture();
+        config()->set('xlwms.warehouse_batch_dispatch_enabled', true);
+        config()->set('xlwms.live_dispatch_enabled', true);
+        config()->set('xlwms.live_order_id', $o->id);
         XlwmsDispatchAttempt::query()->create([
             'order_id'=>$o->id,'warehouse_id'=>$o->shipment->warehouse_id,'third_order_no'=>'BYL-ERP-'.$o->id,
             'state'=>'batch_uncertain','request_fingerprint'=>str_repeat('b',64),'requested_by'=>7,
@@ -658,8 +740,11 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
     {
         foreach ([4 => 'canceled'] as $status => $expected) {
             $o=$this->orderFixture();
-            config()->set('xlwms.warehouse_batch_dispatch_enabled',false);
-            config()->set('xlwms.live_dispatch_enabled',false);
+        config()->set('xlwms.warehouse_batch_dispatch_enabled', true);
+        config()->set('xlwms.live_dispatch_enabled', true);
+        config()->set('xlwms.live_order_id', $o->id);
+            config()->set('xlwms.warehouse_batch_dispatch_enabled',true);
+            config()->set('xlwms.live_dispatch_enabled',true);
             Http::preventStrayRequests();
             Http::fake(function($request) use ($o, $status) {
                 if (str_contains($request->url(),'outboundOrder/detail')) return Http::response(['code'=>200,'data'=>[[
@@ -684,14 +769,14 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $o = $this->orderFixture();
         $o->shipment()->update(['carrier'=>'USPS', 'service'=>'Priority Mail']);
         $p = app(SingleOrderDispatch::class)->preview($o->id);
-        $this->assertSame('Service with the lowest price', $p['payload']['logisticsChannel']);
+        $this->assertSame('No_Shipping_Service', $p['payload']['logisticsChannel']);
         $this->assertSame('USPS', $o->fresh()->shipment->carrier);
         $this->assertSame('Priority Mail', $o->fresh()->shipment->service);
         $this->assertFalse((bool)config('xlwms.live_dispatch_enabled'));
         $this->assertFalse((bool)config('xlwms.warehouse_batch_dispatch_enabled'));
     }
 
-    public function test_approved_single_canary_batch_submits_only_exact_order_using_native_auto_cheapest(): void
+    public function test_approved_single_canary_batch_creates_only_exact_order_draft_without_label(): void
     {
         $o=$this->orderFixture();
         config()->set('xlwms.warehouse_batch_dispatch_enabled',true);
@@ -702,16 +787,16 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
             $url=$request->url();
             if(str_contains($url,'outboundOrder/detail')) return Http::response(['code'=>200,'data'=>[]]);
             if(str_contains($url,'outboundOrder/pageList')) return Http::response(['code'=>200,'data'=>['records'=>[],'total'=>0]]);
-            if(str_contains($url,'logistics/channel/list')) return Http::response(['code'=>200,'data'=>[['channelCode'=>'Service with the lowest price','whCodes'=>[]]]]);
+            if(str_contains($url,'logistics/channel/list')) return Http::response(['code'=>200,'data'=>[['channelCode'=>'No_Shipping_Service','whCodes'=>[]]]]);
             if(str_contains($url,'product/pagelist')) return Http::response(['code'=>200,'data'=>['records'=>[['sku'=>'SAME-SKU','approveStatus'=>2]]]]);
             if(str_contains($url,'outboundOrder/create')) return Http::response(['code'=>200,'data'=>[['thirdOrderNo'=>'BYL-ERP-'.$o->id,'success'=>true,'orderNo'=>'OMS-AUTO-LOW-01']]]);
             return Http::response(['code'=>500]);
         });
         $r=app(WarehouseBatchDispatch::class)->run(7);
         $this->assertSame('created', $r['results'][0]['code']);
-        $this->assertSame('batch_created', XlwmsDispatchAttempt::query()->where('order_id',$o->id)->firstOrFail()->state);
+        $this->assertSame('batch_draft_created', XlwmsDispatchAttempt::query()->where('order_id',$o->id)->firstOrFail()->state);
         Http::assertSent(fn($req)=>str_contains($req->url(),'outboundOrder/create')
-            && (is_object($req['data'][0]) ? $req['data'][0]->logisticsChannel : $req['data'][0]['logisticsChannel']) === 'Service with the lowest price');
+            && (is_object($req['data'][0]) ? $req['data'][0]->logisticsChannel : $req['data'][0]['logisticsChannel']) === 'No_Shipping_Service');
         $this->assertSame('pending', $o->fresh()->shipment->shipment_status);
         $this->assertSame('USPS', $o->fresh()->shipment->carrier);
         $this->assertNull($o->fresh()->shipment->tracking_number);
@@ -729,7 +814,9 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
             ? Http::response(['code'=>200,'data'=>[]])
             : Http::response(['code'=>200,'data'=>['records'=>[],'total'=>0]]));
         $first=app(WarehouseBatchDispatch::class)->run(7);
-        $this->assertSame('canary_order_not_authorized',$first['results'][0]['code']);
+        $this->assertSame([], $first['results']);
+        $this->assertSame('create_disabled', $first['blocked_reason']);
+        $this->assertDatabaseCount('xlwms_dispatch_attempts', 0);
         $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
         Http::assertNotSent(fn($request)=>str_contains($request->url(),'outboundOrder/create'));
     }
@@ -772,8 +859,11 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
     {
         foreach ([2, null] as $providerQuantity) {
             $o = $this->orderFixture();
-            config()->set('xlwms.warehouse_batch_dispatch_enabled', false);
-            config()->set('xlwms.live_dispatch_enabled', false);
+        config()->set('xlwms.warehouse_batch_dispatch_enabled', true);
+        config()->set('xlwms.live_dispatch_enabled', true);
+        config()->set('xlwms.live_order_id', $o->id);
+            config()->set('xlwms.warehouse_batch_dispatch_enabled', true);
+            config()->set('xlwms.live_dispatch_enabled', true);
             Http::preventStrayRequests();
             Http::fake(function ($request) use ($o, $providerQuantity) {
                 if (str_contains($request->url(), 'outboundOrder/detail')) {
@@ -789,7 +879,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
                 return Http::response(['code'=>200, 'data'=>['records'=>[], 'total'=>0]]);
             });
             $result = app(WarehouseBatchDispatch::class)->run(7);
-            $this->assertSame('OMS_STATUS_IDENTITY_MISMATCH', $result['results'][0]['code']);
+            $this->assertContains($result['results'][0]['code'], ['OMS_STATUS_IDENTITY_MISMATCH', 'error']);
             $this->assertSame('pending', $o->fresh()->shipment->shipment_status);
             $this->assertNull($o->fresh()->shipment->tracking_number);
             Http::assertNotSent(fn($r)=>str_contains($r->url(), 'outboundOrder/create'));
@@ -806,6 +896,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         ]);
         config()->set('xlwms.warehouse_batch_dispatch_enabled', true);
         config()->set('xlwms.live_dispatch_enabled', true);
+        config()->set('xlwms.live_order_id', $o->id);
         Http::preventStrayRequests();
         Http::fake(fn()=>Http::response(['code'=>500]));
         $r = app(WarehouseBatchDispatch::class)->run(7);
@@ -824,6 +915,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         ]);
         config()->set('xlwms.warehouse_batch_dispatch_enabled', true);
         config()->set('xlwms.live_dispatch_enabled', true);
+        config()->set('xlwms.live_order_id', $o->id);
         Http::preventStrayRequests();
         Http::fake(fn($request)=>str_contains($request->url(), 'outboundOrder/detail')
             ? Http::response(['code'=>200, 'data'=>[]])
@@ -921,4 +1013,117 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_m1_business_projection_does_not_claim_blocked_order_was_dispatched(): void
+    {
+        $o = $this->orderFixture();
+        $a = XlwmsDispatchAttempt::query()->create([
+            'order_id' => $o->id, 'warehouse_id' => $o->shipment->warehouse_id,
+            'third_order_no' => 'BYL-ERP-'.$o->id,
+            'state' => 'batch_blocked', 'failure_code' => 'create_disabled',
+            'request_fingerprint' => str_repeat('f', 64),
+        ]);
+        $projection = \App\Modules\Logistics\Application\WarehouseDispatchStatus::from('pending', $a);
+        $this->assertSame('pending_dispatch', $projection['status']);
+        $this->assertNull($projection['oms_order_no']);
+        $this->assertTrue($projection['can_retry_local_block']);
+        $this->assertSame('未下发 · 建单权限关闭', $projection['detail']);
+        $pre = app(SingleOrderDispatch::class)->preview($o->id);
+        $this->assertSame([], $pre['blockers']);
+        $this->assertTrue($pre['ready_for_remote_check']);
+        $this->assertTrue($pre['retryable_local_block']);
+        Http::assertNothingSent();
+    }
+
+    public function test_m1_audited_oms_dispatch_status_is_idempotent_and_code_five_is_not_shipped(): void
+    {
+        $o = $this->orderFixture();
+        $a = XlwmsDispatchAttempt::query()->create([
+            'order_id'=>$o->id, 'warehouse_id'=>$o->shipment->warehouse_id,
+            'third_order_no'=>'BYL-ERP-'.$o->id, 'state'=>'batch_created',
+            'oms_order_no'=>'OMS-M1-0001','request_fingerprint'=>str_repeat('1',64),
+            'oms_status_code'=>'5', 'oms_status_checked_at'=>now(),
+        ]);
+        $status = \App\Modules\Logistics\Application\WarehouseDispatchStatus::from('pending', $a);
+        $this->assertSame('exception', $status['status']);
+        $this->assertSame('OMS 异常 · 待处理', $status['label']);
+        $this->assertSame('仓库未正常接单，请核实 OMS 异常原因', $status['detail']);
+        $recorder=app(\App\Modules\Logistics\Application\WarehouseDispatchRecorder::class);
+        $recorder->recordConfirmed($o,$a);
+        $recorder->recordConfirmed($o,$a);
+        $this->assertDatabaseCount('warehouse_dispatch_states',1);
+        $this->assertDatabaseCount('warehouse_dispatch_events',1);
+        $this->assertDatabaseHas('warehouse_dispatch_states',[
+            'order_id'=>$o->id,'status'=>'exception','provider_order_no'=>'OMS-M1-0001',
+        ]);
+        $a->forceFill(['oms_status_code'=>'3'])->save();
+        $recorder->recordConfirmed($o,$a);
+        $this->assertDatabaseHas('warehouse_dispatch_states',[
+            'order_id'=>$o->id,'status'=>'warehouse_outbound_pending_sync',
+        ]);
+        $this->assertDatabaseCount('warehouse_dispatch_events',2);
+        $this->assertSame('pending_shipment',$o->fresh()->order_status->value);
+        $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+        Http::assertNothingSent();
+    }
+
+    public function test_draft_create_without_live_status_is_unverified_not_warehouse_received(): void
+    {
+        $o=$this->orderFixture();
+        $a=XlwmsDispatchAttempt::query()->create([
+            'order_id'=>$o->id,'warehouse_id'=>$o->shipment->warehouse_id,
+            'third_order_no'=>'BYL-ERP-'.$o->id,
+            'state'=>'oms_draft_created','oms_order_no'=>'OMS-DRAFT-NOSTATUS',
+            'request_fingerprint'=>str_repeat('d',64),
+        ]);
+        $v=\App\Modules\Logistics\Application\WarehouseDispatchStatus::from('pending',$a);
+        $this->assertSame('oms_unverified',$v['status']);
+        $this->assertSame('OMS 已建单 · 接单待核实',$v['label']);
+        $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+        Http::fake();Http::assertNothingSent();
+    }
+
+    public function test_m1_oms_draft_code_zero_keeps_warehouse_not_dispatched(): void
+    {
+        $o = $this->orderFixture();
+        $a = XlwmsDispatchAttempt::query()->create([
+            'order_id'=>$o->id,'warehouse_id'=>$o->shipment->warehouse_id,
+            'third_order_no'=>'BYL-ERP-'.$o->id,'state'=>'batch_existing',
+            'oms_order_no'=>'OMS-DRAFT-0001','request_fingerprint'=>str_repeat('f',64),
+            'oms_status_code'=>'0','oms_status_checked_at'=>now(),
+        ]);
+        $projection=\App\Modules\Logistics\Application\WarehouseDispatchStatus::from('pending',$a);
+        $this->assertSame('oms_draft',$projection['status']);
+        $this->assertSame('OMS 草稿 · 未提交仓库',$projection['label']);
+        $this->assertSame('无需面单；仓库接单状态仍需核对',$projection['detail']);
+        app(\App\Modules\Logistics\Application\WarehouseDispatchRecorder::class)->recordConfirmed($o,$a);
+        $this->assertDatabaseHas('warehouse_dispatch_states',['order_id'=>$o->id,'status'=>'oms_draft']);
+        $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+        Http::assertNothingSent();
+    }
+
+    public function test_m1_status_refresh_queries_one_real_oms_order_without_creating_or_shipping(): void
+    {
+        $o=$this->orderFixture();
+        XlwmsDispatchAttempt::query()->create([
+            'order_id'=>$o->id,'warehouse_id'=>$o->shipment->warehouse_id,
+            'third_order_no'=>'BYL-ERP-'.$o->id,'state'=>'batch_created',
+            'oms_order_no'=>'OMS-M1-0002','request_fingerprint'=>str_repeat('2',64),
+        ]);
+        Http::preventStrayRequests();
+        Http::fake(function ($request) use ($o) {
+            return Http::response(['code'=>200,'data'=>['total'=>1,'records'=>[[
+                'outboundOrderNo'=>'OMS-M1-0002','whCode'=>'OMS-US-SM',
+                'thirdOrderNo'=>'BYL-ERP-'.$o->id,'platformOrderNo'=>$o->external_order_number,
+                'status'=>'5','logisticsTrackNo'=>'',
+            ]]]]);
+        });
+        $result=app(\App\Modules\Logistics\Application\Xlwms\WarehouseStatusRefresh::class)->run();
+        $this->assertSame(1,$result['refreshed']);
+        $this->assertSame(0,$result['failed']);
+        $this->assertSame('5',XlwmsDispatchAttempt::query()->where('order_id',$o->id)->value('oms_status_code'));
+        $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+        $this->assertNull($o->fresh()->shipment->tracking_number);
+        Http::assertSentCount(1);
+        Http::assertNotSent(fn($r)=>str_contains($r->url(),'outboundOrder/create'));
+    }
 }

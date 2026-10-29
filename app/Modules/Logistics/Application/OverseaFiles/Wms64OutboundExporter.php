@@ -83,7 +83,7 @@ final class Wms64OutboundExporter
     {
         return match ($warehouseKey) {
             'us-ny' => ['US01', 'USPS-NJ', null],
-            'us-3sm' => ['Yangfan', 'Service with the lowest price', 'USPS'],
+            'us-3sm' => ['Yangfan', 'No_Shipping_Service', ''], // No label; actual carrier/Tracking verified after outbound
             'de-tianyun' => ['Hannover', $country === 'DE' ? 'DHL PAKET DOMESTIC' : 'DHL PAKET International N', null],
             default => abort(422, '该仓库不属于 WMS-64 导出家族。'),
         };

@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
+use App\Modules\Logistics\Application\WarehouseDispatchStatus;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\LogisticsReviewAccess;
 use App\Modules\Logistics\Application\OverseaFiles\OverseaOutboundFileService;
@@ -27,7 +28,7 @@ final class OverseaWarehouseController
 
     private const PER_PAGE_OPTIONS = [20, 50, 100];
 
-    private const VIEWS = ['review', 'pending', 'shipped', 'exceptions', 'all'];
+    private const VIEWS = ['review', 'pending', 'pending_dispatch', 'dispatched', 'shipped', 'exceptions', 'all'];
 
     public function __construct(
         private readonly OverseaWarehouseReviewService $reviews,
@@ -112,6 +113,7 @@ final class OverseaWarehouseController
             'shipoutSandboxAuthorizedOrderNo' => $warehouseKey === 'us-moreplus'
                 ? trim((string) config('shipout.sandbox_order_allowlist', '')) : '',
 
+            'xlwmsBatchEnabled' => $canRunXlwms && (bool) config('xlwms.warehouse_batch_dispatch_enabled', false) && (int)config('xlwms.live_order_id', 0) > 0,
             'viewCounts' => $this->viewCounts($warehouseMap, $selectedWarehouse),
             'canReview' => $this->reviewAccess->allows($request->user()),
             'canOperate' => $warehouseKey !== 'all' && $this->executionAccess->allows($request->user()),
@@ -267,6 +269,17 @@ final class OverseaWarehouseController
                 ->whereHas('overseaReview', fn ($r) => $r
                     ->where('status', 'approved')
                     ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'));
+        } elseif (in_array($view, ['pending_dispatch', 'dispatched'], true)) {
+            $query->where('shipment_status', 'pending')
+                ->whereHas('warehouse', fn ($w) => $w->where('code', 'US-SM'))
+                ->whereHas('overseaReview', fn ($r) => $r
+                    ->where('status', 'approved')
+                    ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'));
+            $matching = fn($sub) => $sub->select('order_id')->from('xlwms_dispatch_attempts')
+                ->whereNotNull('oms_order_no')->where('oms_order_no', '!=', '')
+                ->whereIn('state', ['batch_created', 'batch_draft_created', 'oms_draft_created', 'batch_existing', 'batch_status_updated', 'submitted_oms', 'found_in_oms']);
+            if ($view === 'dispatched') $query->whereIn('order_id', $matching);
+            else $query->whereNotIn('order_id', $matching);
         } elseif ($view === 'shipped') {
             $query->where('shipment_status', 'shipped');
         } elseif ($view === 'exceptions') {
@@ -317,6 +330,7 @@ final class OverseaWarehouseController
             'note' => $review?->note,
             'review_status' => $effectiveApproved ? 'approved' : 'pending',
             'shipment_status' => $shipment->shipment_status,
+            'warehouse_dispatch' => WarehouseDispatchStatus::from((string)$shipment->shipment_status, $xlwms),
             'source_type' => ($order?->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order?->source_type) instanceof \BackedEnum
                 ? ($order?->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order?->source_type)->value
                 : (string) ($order?->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order?->source_type),
