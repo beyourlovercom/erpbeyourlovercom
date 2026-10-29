@@ -132,6 +132,49 @@ final class HttpWooCommerceTrackingGatewayTest extends TestCase
             && ($request->data()['status'] ?? null) === 'completed');
     }
 
+    public function test_refunded_order_blocks_tracking_before_remote_put(): void
+    {
+        Http::fake([
+            'https://shop.test/wp-json/wc/v3/orders/7001' =>
+                Http::response($this->remoteOrder(status: 'refunded'), 200),
+        ]);
+        $this->expectException(WooCommerceTrackingConflictException::class);
+        try {
+            app(HttpWooCommerceTrackingGateway::class)->syncTracking(
+                7001, 'usps', 'TEST-TRACK', '2026-10-29', [['id' => 1001, 'quantity' => 1]]
+            );
+        } finally {
+            Http::assertNotSent(fn (Request $request): bool => $request->method() === 'PUT');
+        }
+    }
+
+    public function test_terminal_statuses_are_never_overwritten_by_tracking_sync(): void
+    {
+        foreach (['refunded', 'cancelled', 'failed', 'on-hold'] as $terminal) {
+            Http::fake([
+                'https://shop.test/wp-json/wc/v3/orders/7001' => Http::response(
+                    $this->remoteOrder(status: $terminal), 200
+                ),
+            ]);
+            try {
+                app(HttpWooCommerceTrackingGateway::class)->syncOrderStatus(7001, 'completed');
+                $this->fail('Terminal Woo status was not protected: '.$terminal);
+            } catch (WooCommerceOrderStatusUnsupportedException) {
+                Http::assertNotSent(fn (Request $request): bool => $request->method() === 'PUT');
+            }
+        }
+    }
+
+    public function test_inspect_status_reads_current_woo_order_without_writing(): void
+    {
+        Http::fake([
+            'https://shop.test/wp-json/wc/v3/orders/7001' =>
+                Http::response($this->remoteOrder(status: 'processing'), 200),
+        ]);
+        $this->assertSame('processing', app(HttpWooCommerceTrackingGateway::class)->inspectOrderStatus(7001));
+        Http::assertNotSent(fn (Request $request): bool => $request->method() === 'PUT');
+    }
+
     public function test_unregistered_custom_order_status_fails_closed_before_write(): void
     {
         Http::fake([

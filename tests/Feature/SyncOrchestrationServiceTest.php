@@ -190,6 +190,11 @@ final class OrchestrationFakeGateway implements WooCommerceTrackingGateway
         ];
     }
 
+    public function inspectOrderStatus(int $providerOrderId): string
+    {
+        return 'processing';
+    }
+
     public function inspectTracking(int $providerOrderId): array
     {
         $this->inspectCalls++;

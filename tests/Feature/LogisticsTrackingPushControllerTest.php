@@ -64,6 +64,34 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         $this->assertDatabaseHas('manual_syncs', ['order_id' => $order->id, 'website_sync_status' => 'completed']);
     }
 
+    public function test_corrected_tracking_remains_pending_when_woo_line_conflicts(): void
+    {
+        $user = $this->userWith('role_preset_operations', ['logistics.view', 'sync.view']);
+        $order = $this->order(1021);
+        $this->actingAs($user)->post('/logistics/tracking-outbound/selected', [
+            'order_ids' => [$order->id],
+        ])->assertSessionHas('success');
+
+        app(\App\Modules\Logistics\Application\ShipmentService::class)
+            ->updateTracking($order, 'TRACK-1021-CORRECTED', $user);
+        $this->assertDatabaseHas('manual_syncs', [
+            'order_id' => $order->id, 'website_sync_status' => 'pending',
+        ]);
+
+        $this->gateway->conflict = true;
+        $this->actingAs($user)->post('/logistics/tracking-outbound/selected', [
+            'order_ids' => [$order->id],
+        ])->assertSessionHas('warning');
+        $this->assertSame(1, $this->gateway->writes);
+        $this->assertDatabaseHas('manual_syncs', [
+            'order_id' => $order->id, 'website_sync_status' => 'pending',
+        ]);
+        $this->assertDatabaseHas('sync_outbox', [
+            'aggregate_type' => 'shipment', 'aggregate_id' => (string) $order->shipment->id,
+            'status' => 'failed', 'last_error_code' => 'remote_tracking_conflict',
+        ]);
+    }
+
     public function test_repeated_explicit_sync_is_idempotent_and_does_not_duplicate_woo_tracking(): void
     {
         $user = $this->userWith('role_preset_logistics', ['logistics.view', 'logistics.operate', 'sync.view', 'sync.operate']);
@@ -74,7 +102,8 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         $this->actingAs($user)->post('/logistics/tracking-outbound/selected', ['order_ids' => [$order->id]])
             ->assertSessionHas('success');
 
-        self::assertSame(1, $this->gateway->calls);
+        self::assertSame(2, $this->gateway->calls);
+        self::assertSame(1, $this->gateway->writes);
     }
 
     public function test_custom_permission_mode_operations_account_cannot_inherit_scoped_authority(): void
@@ -338,11 +367,19 @@ final class LogisticsTrackingPushControllerTest extends TestCase
 final class TrackingPushFakeGateway implements WooCommerceTrackingGateway
 {
     public int $calls = 0;
+    public int $writes = 0;
+    private array $seen = [];
     public bool $fail = false;
+    public bool $conflict = false;
 
     public function descriptor(): array
     {
         return ['configured' => true, 'url' => 'https://shop.test', 'connection_key' => 'shop-a'];
+    }
+
+    public function inspectOrderStatus(int $providerOrderId): string
+    {
+        return 'processing';
     }
 
     public function inspectTracking(int $providerOrderId): array
@@ -354,7 +391,12 @@ final class TrackingPushFakeGateway implements WooCommerceTrackingGateway
     {
         $this->calls++;
         if ($this->fail) { throw new \RuntimeException('Test-only transient Woo tracking gateway failure'); }
-        return ['written' => true, 'verified' => true];
+        if ($this->conflict) { throw new \App\Modules\Sync\Application\WooCommerceTrackingConflictException('Existing Woo line belongs to another package'); }
+        $key = $providerOrderId.'|'.$providerSlug.'|'.$trackingNumber;
+        $written = !isset($this->seen[$key]);
+        $this->seen[$key] = true;
+        if ($written) $this->writes++;
+        return ['written' => $written, 'verified' => true];
     }
 
     public function syncOrderStatus(int $providerOrderId, string $status): array

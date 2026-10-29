@@ -7,6 +7,9 @@ interface WooCommerceTrackingGateway
     /** @return array{configured:bool,url:string,connection_key:string} */
     public function descriptor(): array;
 
+    /** Return the CURRENT remote order status, not a cached local Outbox value. */
+    public function inspectOrderStatus(int $providerOrderId): string;
+
     /** @return array{tracking_number:string,provider:string,ship_date?:?string,has_tracking:bool} */
     public function inspectTracking(int $providerOrderId): array;
 
