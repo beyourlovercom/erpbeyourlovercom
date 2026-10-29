@@ -199,3 +199,30 @@ that real MorePlus inventory/order fulfillment has been verified.
   outbound/shipped tracking evidence: R4 real provider E2E remains OPEN.
 - No Dev deployment or human Dede visual UAT yet. Owner Production PASS
   required before merge/deploy and separate release of real credentials.
+
+## Isolated Dede Dev browser UAT launched (2026-10-29)
+- US Mac mini ONLY: standalone Laravel built frontend, independent migrated
+  sqlite file shipout-dede-uat.sqlite and local/testing UAT seed (synthetic data).
+  No production database connection, orders, or customer information.
+- Server listens only on Tailscale 100.94.52.109:18841; external public
+  publishing NOT performed. Temporary employee UAT credentials are stored
+  OUTSIDE Git and never committed to this repository.
+- Synthetic Dede user: logistics@example.test, role logistics.operate.
+- Synthetic approved US-LA order: 007-UAT-MOREPLUS-001; separate from live ERP.
+- APP_ENV=local, debug OFF, strict local sqlite DB, no Woo credentials.
+- All ShipOut READ, DISPATCH, and TRACKING_APPLY toggles OFF and allowlist EMPTY.
+  Tracking Sync V2 and XLWMS live dispatch stay disabled.
+- Browser automation verified login redirects /dashboard, authenticated
+  US-LA pending view HTTP 200, displays MorePlus ShipOut column,
+  API preflight and read-only status entry, synthetic pending order.
+- Clicking preflight displayed sandbox disabled and NO submit confirmation.
+- China Mac Tailnet connectivity: login HTTP 200, unauthorized protected
+  MorePlus view HTTP 302 to login. No public UAT domain deployed.
+- Local UAT database dispatch attempt count = 0.
+- Live sandbox GET: one product SKU approved, stock list total 0.
+- Vendor docs: OMS product CRUD and stock GET do not provide an exposed
+  OMS stock-set API. WMS manual inventory adjustment is a distinct
+  warehouse-permission operation, not part of ERP outbound integration.
+- R5 isolated Dev browser function smoke PASS; **human Dede visual UAT
+  remains NOT signed off**. R4 successful sandbox fulfillment/tracking also
+  remains NOT signed off. Do not merge or release to Production.
