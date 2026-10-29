@@ -9,8 +9,6 @@ type PackagingProfile = {
 }
 type Preset = { key:string; label:string }
 const props = defineProps<{product:{id:number;sku:string|null;name:string;barcode_69?:string|null};packagingProfile:PackagingProfile|null;presets:Preset[];embedded?:boolean}>()
-const barcodeForm = useForm({ barcode_69: props.product.barcode_69 ?? '' })
-function saveBarcode69() { barcodeForm.put('/products/' + props.product.id + '/barcode-69', { preserveScroll: true }) }
 const initialPresetKey:string|null = props.packagingProfile?.preset_key ?? props.presets[0]?.key ?? null
 const form = useForm<{preset_key:string|null;method:string;scenario:string;version:string;units_per_carton:number|null}>({
   preset_key: initialPresetKey,
@@ -44,13 +42,6 @@ function removeImage(image:ImageRef){if(image.id===null)return;if(!confirm(`删�
         </div>
       </div>
 
-      <article class="mvp-card admin-card">
-        <div class="card-head"><div><h3>69条形码</h3><p>欧洲国内小包物流识别字段；独立于 GTIN 和产品 SKU。</p></div><a href="/products/barcode-69/import" class="mvp-button">批量导入</a></div>
-        <form class="meta-grid" @submit.prevent="saveBarcode69">
-          <label><span>69条形码</span><input v-model="barcodeForm.barcode_69" inputmode="numeric" maxlength="14" placeholder="8–14位数字" /><small v-if="barcodeForm.errors.barcode_69" class="error">{{ barcodeForm.errors.barcode_69 }}</small></label>
-          <div><button class="mvp-button mvp-button-primary" type="submit" :disabled="barcodeForm.processing">保存条码</button></div>
-        </form>
-      </article>
       <article class="mvp-card admin-card">
         <div class="card-head"><div><span class="num">1</span><div><h3>包装方式</h3><p>4 套预设来自全局公共模板；产品只保存模板引用和自己的差异，工厂端只读。</p></div></div><span class="status-chip">工厂可见</span></div>
         <div class="template-note"><strong>全局模板复用</strong><span>无论 10 个还是 1000 个产品，这 4 套教程只维护一次；本产品不会复制模板步骤和图片。</span></div>

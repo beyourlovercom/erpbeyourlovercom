@@ -60,6 +60,14 @@ const props = defineProps<{
   wooSyncHistory?: { status: string; result_code: string | null; error_message: string | null; completed_at: string | null; run_id: number }[]
 }>()
 
+const barcode69Editing = ref(false)
+const barcode69Form = useForm({barcode_69: String(props.product.barcode_69 ?? '')})
+function saveBarcode69Inline() {
+  barcode69Form.put('/products/' + props.product.id + '/barcode-69', {
+    preserveScroll:true,
+    onSuccess:()=>{barcode69Editing.value=false},
+  })
+}
 const tabs = ['概览', '产品参数', '销售与合作', '库存与物流', '关联与记录'] as const
 type Tab = typeof tabs[number]
 const subTabs: Record<Tab, readonly string[]> = {
@@ -244,6 +252,19 @@ const selectRelative = async (tab: Tab, delta: number) => {
           <p>运输参考重量：{{ weight(product.shipping_weight_kg) }}</p>
           <p>产品尺寸：{{ [product.length_cm, product.width_cm, product.height_cm].every(v => v !== null && v !== undefined) ? [product.length_cm, product.width_cm, product.height_cm].join(' × ') + ' cm' : '待填写' }}</p>
           <p>单件包装尺寸：{{ measured('package_length_cm') && measured('package_width_cm') && measured('package_height_cm') ? [measured('package_length_cm'),measured('package_width_cm'),measured('package_height_cm')].join(' × ') + ' cm' : '待填写' }}</p><p>外箱尺寸：{{ measured('carton_length_cm') && measured('carton_width_cm') && measured('carton_height_cm') ? [measured('carton_length_cm'),measured('carton_width_cm'),measured('carton_height_cm')].join(' × ') + ' cm' : '待填写' }} · 装箱：{{ approvedMeasure('units_per_carton',' pcs') }} · 整箱毛重：{{ approvedMeasure('carton_gross_weight_kg',' kg') }}</p>
+          <div class="product360-barcode69">
+            <template v-if="!barcode69Editing">
+              <span>69条形码：{{ display(product.barcode_69) }}</span>
+              <button v-if="canOperate" type="button" @click="barcode69Editing=true">编辑</button>
+            </template>
+            <form v-else @submit.prevent="saveBarcode69Inline">
+              <label for="product-barcode69">69条形码：</label>
+              <input id="product-barcode69" v-model="barcode69Form.barcode_69" type="text" inputmode="numeric" maxlength="14" />
+              <button type="submit" :disabled="barcode69Form.processing">保存</button>
+              <button type="button" @click="barcode69Editing=false;barcode69Form.reset()">取消</button>
+              <small v-if="barcode69Form.errors.barcode_69">{{ barcode69Form.errors.barcode_69 }}</small>
+            </form>
+          </div>
         </div>
         <p class="product360-meta-note">产品净重、运输参考重量、彩盒毛重和快递毛重不能互相替代。待核实资料不得伪装为已确认参数。</p>
         <div class="product360-v2-actions"><button type="button" class="mvp-button mvp-button-secondary" @click="activeSubTab='参数填报与审核'">工厂填报</button><button type="button" class="mvp-button mvp-button-secondary" @click="activeSubTab='包装与配件'">包装与配件</button></div>
