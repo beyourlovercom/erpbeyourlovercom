@@ -175,7 +175,7 @@ final class ShipOutSandboxDispatchServiceTest extends TestCase
                 'data' => [
                     'orderId' => 'OMS-123', 'orderNO' => 'C99999-007', 'status' => 4,
                     'toAddress' => ['name' => 'DO NOT LEAK'],
-                    'shipmentList' => [[
+                    'orderShipments' => [[
                         'warehouseId' => 'TEST-W', 'shipmentId' => 'SHIP-123',
                         'trackingNumber' => '9400READBACK', 'outboundStatus' => 4,
                         'labelStatus' => 3, 'shippedTime' => '2026-10-29 10:00:00',
@@ -215,6 +215,10 @@ final class ShipOutSandboxDispatchServiceTest extends TestCase
                     'labelStatus' => 1, 'trackingNumber' => null,
                 ]],
             ];
+            if (! str_contains($request->url(), '/queryListV2?')) {
+                $d['orderShipments'] = $d['shipmentList'];
+                unset($d['shipmentList']);
+            }
             return Http::response(['result' => 'OK', 'data' =>
                 str_contains($request->url(), '/queryListV2?')
                     ? ['total' => 1, 'records' => [$d]] : $d], 200);
@@ -243,7 +247,7 @@ final class ShipOutSandboxDispatchServiceTest extends TestCase
             ]]]], 200)
             : Http::response(['result' => 'OK', 'data' => [
                 'orderId' => 'OMS-123', 'orderNO' => 'C99999-007', 'status' => 4,
-                'shipmentList' => [[
+                'orderShipments' => [[
                     'warehouseId' => 'OTHER-WH', 'outboundStatus' => 4,
                     'trackingNumber' => '9400WRONG', 'shippedTime' => '2026-10-29 10:00:00',
                     'carrierId' => 1,
@@ -278,7 +282,7 @@ final class ShipOutSandboxDispatchServiceTest extends TestCase
             ]]]], 200)
             : Http::response(['result' => 'OK', 'data' => [
                 'orderId' => 'OMS-123', 'orderNO' => 'C99999-007', 'status' => $status,
-                'shipmentList' => [[
+                'orderShipments' => [[
                     'warehouseId' => 'TEST-W', 'shipmentId' => 'SHIP-123',
                     'outboundStatus' => $status === 4 ? 4 : 3, 'labelStatus' => 3,
                     'trackingNumber' => $tracking, 'shippedTime' => '2026-10-29 10:00:00',

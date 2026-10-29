@@ -144,8 +144,10 @@ final class ShipOutReadOnlyGateway
             'orderNO' => (string) $data['orderNO'],
             'status' => $data['status'] ?? null,
             'cancelReasonCode' => $this->safeCancelReasonCode($data['cancelReason'] ?? null),
+            // Verified on real ShipOut Sandbox: queryListV2 => shipmentList,
+            // order/query => orderShipments (do NOT interchange).
             'shipments' => in_array((int) ($data['status'] ?? -1), [6, 11], true)
-                ? [] : $this->sanitizeShipments($data['shipmentList'] ?? [], $warehouseId),
+                ? [] : $this->sanitizeShipments($data['orderShipments'] ?? [], $warehouseId),
         ];
     }
 

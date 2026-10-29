@@ -86,7 +86,7 @@ final class ShipOutReadOnlyGatewayTest extends TestCase
             Http::response(['result' => 'OK', 'data' => [
                 'orderId' => '123', 'orderNO' => 'C99999-007', 'status' => 4,
                 'toAddress' => ['name' => 'PRIVATE RECIPIENT'],
-                'shipmentList' => [[
+                'orderShipments' => [[
                     'warehouseId' => 'TEST-W', 'shipmentId' => 'SHIP-1',
                     'outboundStatus' => 4, 'carrierId' => 1,
                     'trackingNumber' => '9400TESTING', 'shippedTime' => '2026-10-29 10:00:00',
@@ -121,6 +121,9 @@ final class ShipOutReadOnlyGatewayTest extends TestCase
             ];
             if (str_contains($request->url(), '/queryListV2?')) {
                 $response['data'] = ['total' => 1, 'records' => [$response['data']]];
+            } else {
+                $response['data']['orderShipments'] = $response['data']['shipmentList'];
+                unset($response['data']['shipmentList']);
             }
             return Http::response($response, 200);
         });
@@ -145,7 +148,7 @@ final class ShipOutReadOnlyGatewayTest extends TestCase
         Http::fake(['https://opendev.shipout.com/api/*' =>
             Http::response(['result' => 'OK', 'data' => [
                 'orderId' => '123', 'orderNO' => 'UAT-1', 'status' => 2,
-                'shipmentList' => [[
+                'orderShipments' => [[
                     'warehouseId' => 'OTHER', 'outboundStatus' => 2,
                 ]],
             ]], 200),

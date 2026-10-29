@@ -296,3 +296,70 @@ that real MorePlus inventory/order fulfillment has been verified.
   cancelled/aborted statuses, no shipment can be trusted as shipped.
   Do not expose free-text cancelReason or trace data to ERP/API browser.
   Added gateway, decision, controller test coverage; no Woo/Production writes.
+
+## R4 two outbound shipping modes, real ShipOut Sandbox UAT (2026-10-29)
+
+Owner approved two independent modes (sandbox only):
+1. Customer-provided shipping label: sysServiceId=6.
+2. Warehouse-selected shipping service / channel label: sysServiceId=9.
+   NOTE sysServiceId=10 means CLIENT SPECIFIES a preconfigured channel,
+   which needs a real serviceGroupId or serviceGroupCode and is NOT the same
+   as mode 9. Do not claim mode 10 accepted from these results.
+
+Both submissions were sent from China Mac with the stored local sandbox JWT.
+One unique order per mode, durable local one-shot attempt markers before POST.
+No production API, no real customer address, no ERP, Woo or billing writes.
+
+Mode 6: BYL-SANDBOX-API-ORDER-20261029-004
+- One test SKU, 1 unit, test PDF marked clearly VOID / SANDBOX;
+  labelSource=OWN_CHANNEL, embedded PDF base64, tracking=UATSHIPOUTVOID004.
+- HTTP 200, response array [0].result=OK,
+  provider orderId 2115713400097308673;
+  signed queryListV2 returned status 3 Processing,
+  outboundStatus 2, labelStatus 0, carrierId 1;
+  outboundId 2115713405838123009; outboundNO OB261029-2;
+  trackingNumber UATSHIPOUTVOID004, shippedTime null.
+- GET /open-api/oms/outbound/parcel/downloadShippingLabel with this
+  outboundId returned HTTP 200, PDF ~79914 bytes. The uploaded
+  PDF is NOT a valid carrier/paid postage label; do not physically ship.
+- PASS for API acceptance, order and outbound creation, tracking field
+  and readable PDF; NOT PASS for actual carrier transport or shipped state.
+
+Mode 9: BYL-SANDBOX-API-ORDER-20261029-005
+- Warehouse-selected service; sysServiceId=9 AND carrierId=9 on POST.
+- HTTP 200, response array [0].result=OK,
+  provider orderId 2115713496931205122;
+  signed queryListV2 returned status 3 Processing,
+  outboundStatus 2, labelStatus 2;
+  provider chose ACTUAL carrierId 2 (UPS) despite carrierId=9 for
+  selection request. Provider generated a synthetic mock_2_ tracking.
+  outboundId 2115713504353935361; outboundNO OB261029-3;
+  shippedTime null.
+- GET /open-api/oms/outbound/parcel/downloadShippingLabel returned
+  HTTP 200, PDF ~27642 bytes.
+- PASS for API acceptance, provider channel selection, label generation
+  and tracking readback; NOT PASS for physical shipment.
+- This demonstrates warehouse-selected channel is NOT guaranteed USPS.
+  Don't hardcode USPS or Priority when warehouse selects it.
+
+Stock GET after both: standardQuantity=5, availableQuantity=3,
+outboundingQuantity=2, consistent with one unit reserved for each order.
+Do not create duplicate orders or issue unrelated inventory operations.
+
+IMPORTANT LIVE-SCHEMA CORRECTION:
+- GET /open-api/oms/order/queryListV2 returns shipmentList.
+- GET /open-api/oms/order/query returns orderShipments.
+- Both endpoints verified with real orders 004/005. Older gateway read
+  shipmentList for BOTH and silently lost tracking from order/query.
+- Fixed orderDetail mapping to orderShipments; added/updated tests.
+
+All privacy and safety gates remain: no direct Woo updates,
+no Dede/ERP production mutation, no real shipping label used,
+and no automatic status=shipped based only on the provider's
+order acceptance, label generation or outboundStatus=2.
+
+Remaining: verify both actual finished status/outboundStatus=4 and
+shippedTime from vendor's test WMS. For the VOID label mode, only
+synthetic WMS state simulation is acceptable, never real postage.
+Mode 10 (operator-specified channel) remains separate and requires
+a verified serviceGroupId/serviceGroupCode; not tested by modes 6/9.
