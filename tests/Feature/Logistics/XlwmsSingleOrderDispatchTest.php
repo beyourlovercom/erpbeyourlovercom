@@ -1226,4 +1226,39 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         Http::assertSentCount(1);
         Http::assertNotSent(fn($r)=>str_contains($r->url(),'outboundOrder/create'));
     }
+    public function test_issue544_operator_intent_is_distinct_and_does_not_create_oms_or_modify_original(): void
+    {
+        $o=$this->orderFixture();
+        $o->update(['order_status'=>'shipped']);
+        $o->shipment()->update(['shipment_status'=>'shipped','tracking_number'=>'ORIGINAL-TRACK']);
+        Http::preventStrayRequests();
+        Http::fake();
+        $svc=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentIntentService::class);
+        $result=$svc->request($o->id,19,'原仓库误发，申请独立补发');
+        $this->assertSame('requested',$result['status']);
+        $this->assertFalse($result['can_create_oms']);
+        $this->assertSame('重发订单',$result['memo']);
+        $record=\App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment::query()
+            ->where('original_order_id',$o->id)->sole();
+        $this->assertStringStartsWith('BYL-RESHIP-',$record->third_order_no);
+        $this->assertDatabaseHas('xlwms_reshipment_events',[
+            'reshipment_id'=>$record->id,'event_code'=>'operator_requested'
+        ]);
+        $this->assertSame('shipped',$o->fresh()->order_status->value);
+        $this->assertSame('ORIGINAL-TRACK',$o->fresh()->shipment->tracking_number);
+        Http::assertNothingSent();
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('RESHIP_PREFLIGHT_BLOCKED');
+        $svc->request($o->id,19,'重复补发必须被拦截');
+    }
+
+    public function test_issue544_cannot_request_intent_for_pending_order(): void
+    {
+        $o=$this->orderFixture();
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('RESHIP_PREFLIGHT_BLOCKED');
+        app(\App\Modules\Logistics\Application\Xlwms\ReshipmentIntentService::class)
+            ->request($o->id,19,'不允许未发货补发');
+    }
+
 }

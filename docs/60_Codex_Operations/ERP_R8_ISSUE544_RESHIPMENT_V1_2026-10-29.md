@@ -21,3 +21,9 @@
 
 ## 严格门禁
 本提交只实现**只读预检**，没有给用户可点击的真实补发 CREATE 按钮。不可把预检通过误写成仓库建单成功。生产变更要求 Owner 单独 pass。
+
+## R8 API 重发货下一批：独立补发申请门禁（Dev only）
+- 新增受限 POST `/logistics/oversea/us-3sm/orders/{order}/xlwms/reship-intent`，仅 `logistics.operate` + logistics execution 权限、2/min；需填写 >=5 字的理由及明确确认原订单已经发货。
+- 从源订单加锁后再次预检，按每次请求生成独立 UUID、`BYL-RESHIP-` 第三方单号、payload fingerprint 和 `重发订单` memo，记录独立成本待核算、审计事件。
+- 已有活跃申请必须阻断第二次申请；该功能**不调用 OMS API，不修改原订单、原 Shipment、Woo 状态、收入或 Tracking**，仅供 Dede 未来两阶段确认流程的底层意图。
+- 真实 OMS 创建仍缺官方可核验的备注字段合同、审批后 CREATE 门禁、首次真实白名单；不得将这一段视作真实重发上线。
