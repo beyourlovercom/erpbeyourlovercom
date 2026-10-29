@@ -14,6 +14,7 @@ use App\Modules\Logistics\Application\FulfillmentAllocationSubmissionService;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\GiftSkuResolutionService;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
+use App\Modules\Logistics\Application\LogisticsTrackingImmediateDispatch;
 use App\Modules\Logistics\Application\LogisticsStatusSummary;
 use App\Modules\Logistics\Application\PendingFulfillmentReallocationService;
 use App\Modules\Logistics\Application\ReplacementFulfillmentService;
@@ -347,9 +348,12 @@ final class LogisticsController
     public function updateTracking(Request $request, Order $order): RedirectResponse
     {
         $data = $request->validate(['tracking_number' => ['required', 'string', 'max:128']]);
-        $this->shipments->updateTracking($order, $data['tracking_number'], $request->user());
+        $updated = $this->shipments->updateTracking($order, $data['tracking_number'], $request->user());
+        $sync = app(LogisticsTrackingImmediateDispatch::class)->afterShipmentSaved($updated, $request->user());
 
-        return back()->with('success', '追踪号已更新');
+        return back()->with('success', ($sync['status'] ?? null) === 'completed'
+            ? '追踪号已更新，官网物流写回已验证'
+            : '追踪号已更新，官网同步状态请在发货列表核对');
     }
 
     public function markException(Request $request, Order $order): RedirectResponse
@@ -377,8 +381,12 @@ final class LogisticsController
             'tracking_number' => ['nullable', 'string', 'max:128'],
             'logistics_note' => ['nullable', 'string', 'max:5000'],
         ]);
-        $this->assistedFulfillment->markShipped($order, $data, $request->user());
-        $msg = empty($data['tracking_number']) ? '已标记发货，追踪号待填入' : '已标记发货，已生成待同步任务';
+        $shipped = $this->assistedFulfillment->markShipped($order, $data, $request->user());
+        $sync = app(LogisticsTrackingImmediateDispatch::class)->afterShipmentSaved($shipped, $request->user());
+        $msg = empty($data['tracking_number']) ? '已标记发货，追踪号待填入'
+            : (($sync['status'] ?? null) === 'completed'
+                ? '已标记发货，官网物流写回已验证'
+                : '已标记发货，官网物流待同步或待核对');
 
         return back()->with('success', $msg);
     }

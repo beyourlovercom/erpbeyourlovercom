@@ -58,18 +58,18 @@ final class SyncOrchestrationService
         return $this->runs->complete($run, $actor);
     }
 
-    public function trackingAllPending(?Authenticatable $actor, int $limit = self::MaximumBatch): Model
+    public function trackingAllPending(?Authenticatable $actor, int $limit = self::MaximumBatch, ?int $minShipmentId = null): Model
     {
         $limit = $this->boundedLimit($limit);
         $connection = $this->connection();
-        $orders = $this->repository->eligibleTrackingOrders($limit);
+        $orders = $this->repository->eligibleTrackingOrders($limit, $minShipmentId);
         $run = $this->runs->start(
-            'tracking_all_pending',
+            $minShipmentId === null ? 'tracking_all_pending' : 'tracking_v2_auto_discovery',
             $orders->count(),
             $actor,
             'woocommerce',
             $connection,
-            ['selection' => 'all_pending', 'limit' => $limit],
+            ['selection' => 'all_pending', 'limit' => $limit, 'min_shipment_id_exclusive' => $minShipmentId],
         );
 
         foreach ($orders as $order) {
@@ -79,19 +79,19 @@ final class SyncOrchestrationService
         return $this->runs->complete($run, $actor);
     }
 
-    public function retryPending(?Authenticatable $actor, int $limit = self::MaximumBatch): Model
+    public function retryPending(?Authenticatable $actor, int $limit = self::MaximumBatch, ?int $minOutboxId = null): Model
     {
         $limit = $this->boundedLimit($limit);
         $connection = $this->connection();
-        $records = $this->repository->dueTrackingOutbox($limit);
+        $records = $this->repository->dueTrackingOutbox($limit, $minOutboxId);
 
         $run = $this->runs->start(
-            'retry_pending',
+            $minOutboxId === null ? 'retry_pending' : 'tracking_v2_auto_retry',
             $records->count(),
             $actor,
             'woocommerce',
             $connection,
-            ['limit' => $limit],
+            ['limit' => $limit, 'minimum_exclusive_outbox_id' => $minOutboxId],
         );
 
         foreach ($records as $record) {

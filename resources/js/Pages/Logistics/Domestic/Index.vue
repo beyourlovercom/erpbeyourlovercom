@@ -5,7 +5,7 @@ import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
 
 type Item = { sku:string|null; quantity:number }
 type Row = {
-  line:number; order_id:number; erp_order_id:string|null; provider_reference:string|null; order_url:string
+  line:number; order_id:number; erp_order_id:string|null; provider_reference:string|null; order_url:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null
   recipient_name:string|null; phone:string|null; country:string|null; state:string|null; city:string|null; postal_code:string|null
   carrier:string|null; service:string|null; tracking_number:string|null; shipment_status:string|null; shipped_at:string|null
   review_status:'approved'|'pending'; export_blockers:string[]; items:Item[]
@@ -16,10 +16,27 @@ type Preview = { token:string; rows:PreviewRow[]; apply_count:number; noop_count
 type ProviderStatus = Record<'4px'|'weship',{export_ready:boolean;return_ready:boolean;label:string;note?:string;reason?:string}>
 
 const props = defineProps<{
-  view:string; rows:PageRows; viewCounts:Record<string,number>; canOperate:boolean
+  view:string; rows:PageRows; viewCounts:Record<string,number>; canOperate:boolean; canTrackingSync?:boolean
   trackingImportProvider:'4px'|'weship'|'generic'|null; trackingImportPreview:Preview|null; providerStatus:ProviderStatus
 }>()
 
+const trackingSelection = ref<number[]>([])
+const trackingBusy = ref(false)
+const eligibleForTracking = (row:Row) => row.source_type === 'woocommerce'
+  && row.shipment_status === 'shipped' && !!row.tracking_number && !!row.carrier && !!row.shipped_at
+const chooseTracking = (id:number, checked:boolean) => {
+  trackingSelection.value = checked ? [...new Set([...trackingSelection.value, id])] : trackingSelection.value.filter(v=>v!==id)
+}
+const pushTracking = (ids:number[]) => {
+  if (!props.canTrackingSync || !ids.length || trackingBusy.value) return
+  trackingBusy.value = true
+  router.post('/logistics/tracking-outbound/selected', { order_ids:ids }, {
+    preserveScroll:true,
+    onSuccess:()=>{trackingSelection.value=[]},
+    onFinish:()=>{trackingBusy.value=false},
+  })
+}
+const trackingLabel = (status:string|null|undefined) => status==='completed'?'已同步':status==='failed'?'失败':status==='retry_wait'?'待重试':status==='processing'?'同步中':'待同步'
 const uploadInput = ref<HTMLInputElement|null>(null)
 const selectedProvider = ref<'4px'|'weship'|'generic'>('4px')
 const tabs = [
@@ -58,7 +75,11 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
           <h1>国内发货</h1>
           <p>Vita 分仓 → Liang / Kaven 审核 → 下载承运商文件 → 回传 Tracking → Preview → Apply。单个异常订单不会阻断其他正常订单。</p>
         </div>
-        <a class="secondary" href="/logistics/wait-stock">待分配 →</a>
+        <div class="domestic-head-actions">
+          <a class="secondary" href="/logistics/wait-stock">待分配 →</a>
+          <button v-if="canTrackingSync" class="primary" type="button" :disabled="trackingSelection.length===0 || trackingBusy"
+            @click="pushTracking(trackingSelection)">{{ trackingBusy ? '同步中…' : '同步官网物流' }}</button>
+        </div>
       </header>
 
       <section class="continuity">
@@ -116,11 +137,19 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         </div>
       </section>
 
+      <div v-if="canTrackingSync && trackingSelection.length" class="tracking-selection-bar">
+        已选 {{ trackingSelection.length }} 项
+        <button type="button" class="primary" :disabled="trackingBusy" @click="pushTracking(trackingSelection)">批量同步官网物流</button>
+        <button type="button" class="secondary" @click="trackingSelection=[]">清除选择</button>
+      </div>
       <div class="table-wrap orders">
         <table>
-          <thead><tr><th>#</th><th>审核</th><th>ERP 订单</th><th>导出状态</th><th>承运商单号</th><th>Carrier</th><th>服务</th><th>Tracking</th><th>收件人</th><th>电话</th><th>国家/地区</th><th>SKU / 数量</th></tr></thead>
+          <thead><tr><th v-if="canTrackingSync">选择</th><th>#</th><th>审核</th><th>ERP 订单</th><th>导出状态</th><th>承运商单号</th><th>Carrier</th><th>服务</th><th>Tracking</th><th>收件人</th><th>电话</th><th>国家/地区</th><th>SKU / 数量</th><th>官网同步</th><th v-if="canTrackingSync">操作</th></tr></thead>
           <tbody>
             <tr v-for="row in rows.data" :key="row.order_id">
+              <td v-if="canTrackingSync"><input v-if="eligibleForTracking(row)" type="checkbox"
+                :aria-label="'选择同步 '+(row.erp_order_id??row.order_id)" :checked="trackingSelection.includes(row.order_id)"
+                @change="chooseTracking(row.order_id, ($event.target as HTMLInputElement).checked)" /></td>
               <td>{{ row.line }}</td>
               <td>
                 <button v-if="canOperate && row.review_status==='pending' && row.shipment_status==='pending'" class="approve" type="button" @click="approve(row)">通过</button>
@@ -132,8 +161,11 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
               <td>{{ row.provider_reference ?? '—' }}</td><td>{{ row.carrier ?? '—' }}</td><td>{{ row.service ?? '—' }}</td><td>{{ row.tracking_number ?? '—' }}</td>
               <td>{{ row.recipient_name ?? '—' }}</td><td :class="{danger:!row.phone}">{{ row.phone || '缺电话' }}</td>
               <td>{{ [row.country,row.state,row.city].filter(Boolean).join(' / ') || '—' }}</td><td>{{ itemText(row) }}</td>
+              <td><span v-if="row.source_type==='woocommerce'" class="sync-status" :title="row.tracking_sync_reason??''" :class="row.tracking_sync_status??'pending'">{{ trackingLabel(row.tracking_sync_status) }}</span><span v-else>—</span><small v-if="row.tracking_sync_reason" class="sync-failure">{{ row.tracking_sync_reason }}</small></td>
+              <td v-if="canTrackingSync"><button v-if="eligibleForTracking(row)" type="button" class="secondary"
+                :disabled="trackingBusy" @click="pushTracking([row.order_id])">同步官网物流</button><span v-else>—</span></td>
             </tr>
-            <tr v-if="!rows.data.length"><td colspan="12" class="empty">当前视图暂无订单</td></tr>
+            <tr v-if="!rows.data.length"><td :colspan="13+(canTrackingSync?2:0)" class="empty">当前视图暂无订单</td></tr>
           </tbody>
         </table>
       </div>
@@ -144,6 +176,11 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
 
 <style scoped>
 .domestic-page{padding:20px;min-width:0;color:#111827}.domestic-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.eyebrow{margin:0;color:#0f766e;font-size:11px;font-weight:800;letter-spacing:.08em}.domestic-head h1{margin:4px 0;font-size:30px}.domestic-head p{margin:0;color:#64748b;font-size:13px}.continuity{display:flex;gap:12px;align-items:center;margin:14px 0;padding:10px 12px;border:1px solid #b7ded8;border-radius:9px;background:#f2fbf9;color:#315f59;font-size:12px}.continuity strong{color:#0f766e}.tabs{display:flex;gap:5px;overflow-x:auto;border-bottom:1px solid #e2e8f0;margin-bottom:12px}.tabs button{border:0;background:transparent;padding:9px 12px;color:#536174;font-weight:700;white-space:nowrap;border-bottom:2px solid transparent}.tabs button.active{color:#0f766e;border-bottom-color:#0f766e}.tabs span{color:#94a3b8;margin-left:3px}.pending-batch-card{display:flex;justify-content:space-between;gap:12px;margin-bottom:12px;padding:12px;border:1px solid #b7ded8;border-radius:10px;background:#f2fbf9}.pending-batch-card>div:first-child{display:flex;flex-direction:column;gap:4px}.pending-batch-card small{color:#64748b;max-width:760px}
+.domestic-head-actions{display:flex;gap:8px;align-items:center}
+.tracking-selection-bar{display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:#eef6ff;border:1px solid #c9dffc;border-radius:8px;font-size:12px}
+button:disabled{opacity:.5;cursor:not-allowed}
+.sync-status{font-size:11px;font-weight:700;padding:4px 7px;border-radius:5px;background:#fff1d6;color:#92400e}
+.sync-status.completed{background:#dcfce7;color:#166534}.sync-status.failed{background:#fee2e2;color:#991b1b}.sync-status.retry_wait{background:#fef3c7;color:#92400e}.sync-status.processing{background:#dbeafe;color:#1d4ed8}.sync-failure{display:block;max-width:240px;white-space:normal;color:#b91c1c;font-size:10px;margin-top:4px}
 .provider-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.provider-grid.single{grid-template-columns:1fr}.provider-card{display:flex;justify-content:space-between;gap:10px;padding:12px;border:1px solid #dbe4e8;border-radius:10px;background:#fff}.provider-card>div:first-child{display:flex;flex-direction:column;gap:4px}.provider-card small{color:#64748b}.actions{display:flex;gap:7px;align-items:center}.primary,.secondary,.approve,.approved button{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:0 11px;border-radius:7px;font-size:12px;font-weight:800;text-decoration:none}.primary,.approve{border:1px solid #0f8f82;background:#0f8f82;color:#fff}.secondary,.approved button{border:1px solid #b8c6cc;background:#fff;color:#334155}.hidden{display:none}.preview{margin-bottom:12px;padding:12px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc}.preview-head{display:flex;justify-content:space-between;gap:12px}.preview-head>div{display:flex;flex-direction:column}.preview p{color:#64748b;font-size:12px}.table-wrap{overflow:auto;border:1px solid #dfe6ea;border-radius:10px;background:#fff}.table-wrap table{width:max-content;min-width:100%;border-collapse:collapse;font-size:12px}.table-wrap th,.table-wrap td{padding:8px;border-bottom:1px solid #e9eef1;text-align:left;white-space:nowrap}.table-wrap th{background:#f8fafc;color:#475569}.orders table{min-width:1500px}.orders a{color:#0f766e;font-weight:800;text-decoration:none}.approved{display:flex;gap:6px;align-items:center;color:#047857;font-weight:800}.approved button{min-height:26px;padding:0 7px;font-size:10px}.danger{color:#b91c1c;font-weight:800}.ready{color:#047857;font-weight:800}.empty{text-align:center!important;padding:30px!important;color:#94a3b8}.status-apply{color:#047857}.status-noop{color:#64748b}.status-blocked{color:#b91c1c}footer{padding:10px 2px;color:#64748b;font-size:12px}
 @media(max-width:800px){.domestic-page{padding:14px}.domestic-head{flex-direction:column}.pending-batch-card{flex-direction:column}.provider-grid{grid-template-columns:1fr}.provider-card{flex-direction:column}.continuity{align-items:flex-start;flex-direction:column}.preview-head{flex-direction:column}}
 </style>

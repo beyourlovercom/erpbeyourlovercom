@@ -1,0 +1,115 @@
+---
+type: approved-work-package
+project: BYL ERP
+status: R0_complete_R1_to_R4_code_candidate_R5_pending
+issue: https://github.com/beyourlovercom/erpbeyourlovercom/issues/536
+owner_authorization: approved_2026_10_29
+baseline_main: ff11378f381f7a039c0ea06ea6c429bf396ec938
+execution_provider: GPT_WEB
+production_release: requires_separate_owner_pass
+---
+
+# Tracking Sync V2 Engineering Contract
+
+## Purpose
+Woo-origin ERP shipments: tracking immediate send after valid shipment/edits,
+single/bulk manual push from original domestic/oversea shipping lists,
+bounded 30-minute automatic retries, Woo/AfterShip real end-to-end proof.
+Preserve existing PR 533 Woo-to-ERP inbound half-hour scheduler.
+
+## R0 read-only production proof
+- Production current: woo-order-30m-pr533-on-pr534-20261029-ff11378f
+- Existing Tracking Gateway and SyncOutbox safely enqueue, claim, retry, verify.
+- Existing immediate writeback in DomesticTrackingReturnService,
+  OverseaTrackingReturnService and OverseaManualShipmentService.
+- Generic markShipped / updateTracking only persist Shipment + pending marker.
+- Existing all-pending / selected / retry endpoints require global sync.operate;
+  Vita Operations has only sync.view. Must add narrowly scoped permission.
+- No half-hour tracking retry schedule.
+- One historical tracking outbox PENDING (2/3 attempts, write failed),
+  one due retry and one eligible order at audit time. NEVER auto-drain legacy
+  rows at first scheduler enablement without approval.
+- Existing gateway uses AfterShip-related Woo meta and verifies Woo readback,
+  NOT proof that actual AfterShip plugin/UI ingested Tracking.
+
+## Estimated Roadmap 12 to 19 engineering hours
+- R0 (1–1.5h): Baseline, flags, backlog inspection; COMPLETE read-only
+- R1 (2–3h): Generic shipment completion & tracking edit immediate dispatch
+- R2 (2–3h): 30-minute bounded cron, atomic outbox claim and retry, legacy gate
+- R3 (2–3h): Domestic/oversea fulfillment list manual single/bulk CTA
+- R4 (1.5–2.5h): Status UX, reasons, scoped Vita/logistics authorization
+- R5 (2–4h): Genuine Dev Woo / AfterShip integration tests and UAT
+- R6 (1.5–2h): CI, Owner UAT, Production approval, canary and rollback
+- If Woo metadata is incompatible with installed AfterShip plugin,
+  additional scoped connector work estimated +2–4h (separate assessment).
+
+## Non-negotiable implementation constraints
+1. ONE_WORK_PACKAGE_ONE_BRANCH_ONE_PR. Only one provider edits worktree;
+   GitHub main is truth. Complex cross-module implementation by US Claude Code,
+   bounded exact fixes may be done by GPT + self-hosted DC.
+2. Only after successful DB commit enqueue and dispatch Tracking. Do not run
+   external HTTP inside transaction. Do not guess line items from SKUs.
+3. Shipment shipped, correct Woo origin, explicit carrier+slug, tracking number,
+   shipped_at and verified Woo line identities are required.
+4. Immediate and periodic retry each behind independently controllable
+   configuration; initial Production periodic flag OFF until legacy review.
+5. 30-minute cron with onOneServer/withoutOverlapping, bounded batch size,
+   per-order isolation, outbox idempotence; no duplicate Tracking or overwriting
+   conflicting Woo remote values.
+6. Manual action on existing domestic / overseas fulfillment tables, with scoped
+   role checks. Vita permission must not imply global sync.operate.
+7. Show pending, processing, verified, waiting retry, failed, conflict status
+   with precise reasons. Admin UI desktop only.
+8. Dev actual AfterShip plugin intake required; Woo meta readback alone is not
+   final acceptance. Include two natural 30-minute tick observations on release.
+9. PR merge permitted under repo governance after CI, but formal Production
+   deployment/write and real data migration require separate explicit Owner PASS.
+10. Preserve PR 534 and all later Production overlays; record exact rollback
+    release and never restart READY computers or Local ERP services.
+
+## Delivery gates
+R0 closed: baseline/issue/branch/spec.
+R1-R4 require code, tests and controlled UI; R5 true Dev integration.
+R6 requires owner visual PASS and independent Production authorization.
+
+## 2026-10-29 implementation readback (R1–R4 code candidate)
+- Dedicated feature branch and draft PR #537, updated from current main (includes PR #535).
+- Actual implementation provider: GPT_WEB + self-hosted US Mac DC. Claude Code
+  authentication was unavailable, so no Claude implementation was claimed.
+- R1: generic LogisticsController markShipped/updateTracking calls a post-transaction
+  Tracking dispatcher only when TRACKING_SYNC_V2_IMMEDIATE_ENABLED=true; default OFF.
+  Existing specialized Domestic/Oversea Tracking return paths stay intact.
+- R2: tracking:retry-woocommerce is preview-only by default; gated */30 scheduler
+  requires TRACKING_SYNC_V2_PERIODIC_ENABLED=true AND strictly positive
+  TRACKING_SYNC_V2_MIN_OUTBOX_ID. Only due Outbox IDs strictly greater than
+  activation baseline are retried. Old pending tasks excluded, max batch 50,
+  existing outbox claim and per-order isolation remain canonical.
+  Note: this stage retries **existing new outbox tasks**, not arbitrary old
+  shipments without an outbound intent. Dev UAT must verify both behaviors.
+- R3: existing Domestic/Index and Oversea/Show show right-side Sync button,
+  row checkbox, batch action and per-row action. No separate daily Sync page.
+- R4: scoped logistics/operations permission without general sync.operate,
+  API preflight for Woo root shipment, shipping truth and batch size (50 max).
+  Status projection uses one Outbox read for the page and masks raw failures.
+  Only current manually-confirmed completed outbound is shown as synced.
+- Initial targeted evidence: PHP 30 tests / 169 assertions PASS, frontend 22
+  tests PASS, TypeScript typecheck and Vite production build PASS.
+- Do not merge / claim AfterShip final verification before R5; do not deploy
+  to Production without Owner's separate Production PASS.
+
+## R5 read-only compatibility and blockers (2026-10-29)
+- Public Dev WP REST registers wc/aftership/v1; admin path responds 404, WC order REST responds HTTP 403 byl_dev_g5_provider_inbound_quarantine; AfterShip settings requires authentication (401). No bypass.
+- Inspected official WordPress.org AfterShip Tracking 1.18.5 source read-only: get_tracking_items reads _aftership_tracking_items on WC_Order, tracking_id is MD5 of slug-tracking_number; the plugin also stores _aftership_tracking_number and _aftership_tracking_provider_name. This matches the ERP HTTP gateway payload. Static compatibility only; AfterShip Cloud ingestion and actual Dev plugin version unverified.
+- Fixed correction state: changed Tracking reopens completed ManualSync with an audit trail; unchanged Tracking remains idempotent.
+- Enhanced gated half-hour task: both a post-activation Outbox retry scan and a post-activation new Shipment discovery scan, combined batch <= 50. Activation requires reviewed exclusive max Outbox ID and max Shipment ID. Historic records are never auto-drained.
+- R5 remains BLOCKED by Dev quarantine; do not disable it without dedicated security review. No customer emails or Production writes. R6 remains approval-gated.
+
+## R5 baseline regression isolation
+- In extended 85-case PHP regression, the legacy Mvp1WorkflowTest::test_repeated_fulfillment_and_sync_operations_are_idempotent_and_reopen_is_audited failed at its existing shipment.reopened audit count assertion (line 169). Exactly the same test, same line and same assertion failed when run in a detached read-only worktree of unmodified origin/main c68aa55f31a9600414b5d0bafab7e0d443e6d775. This is pre-existing test debt, not a Tracking V2 regression. No unrelated Logistics reopen code/test was altered to mask it.
+
+## R5 isolated live plugin integration
+- Independent local Woo REST test with real ERP gateway, official AfterShip 1.18.5 plugin and its customer template PASS; details in TRACKING-SYNC-V2-LOCAL-WP-AFTERSHIP-R5-EVIDENCE-20261029.md. Cloud ingestion not verified; Dev G5 unchanged. R6 Production still separately approval-gated.
+- Auto-discovery now excludes Shipments having already pending/processing/failed outbound Outbox; combined retry+discovery cannot attempt a package twice per tick.
+
+## R6 release-gate dry-run
+- Six Production overlay differences were isolated: five three-way clean; LogisticsController merge resolved in an isolated candidate preserving preexisting 422 validation behavior. Stage Composer, TypeScript, Vite, PHP lint, route/schedule checks PASS. New manual mode OFF by default, Canary exact ERP order ID allowlist required, General mode separate authorization. Details in docs/60_Codex_Operations/work-packages/TRACKING-SYNC-V2-R6-CONTROLLED-RELEASE-20261029.md.
