@@ -22,6 +22,7 @@ const props = defineProps<{
   orderKindLabel: string
   generatedExternalOrderNumber: string
   kolOptions?: { value: number; label: string }[]
+  selectedKolId?: number | null
 }>()
 
 type OrderItem = {
@@ -49,7 +50,7 @@ const form = useForm<{
   items: OrderItem[]
 }>({
   external_order_number: props.generatedExternalOrderNumber,
-  kol_id: null,
+  kol_id: props.defaultOrderKind === 'kol_fulfillment' ? (props.selectedKolId ?? null) : null,
   order_date: new Date().toISOString().slice(0, 10),
   order_note: '',
   currency: 'USD',
