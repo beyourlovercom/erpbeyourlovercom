@@ -150,3 +150,16 @@ that real MorePlus inventory/order fulfillment has been verified.
 - Do not merge this draft into main or deploy until remaining gates and
   separate Production PASS. Production rollout will require a distinct
   credential/config design and application authorization security review.
+
+### Additional safe provider error-shape probe
+- POST /oms/order/batchSubmitAsync with an EMPTY array: HTTP 200, JSON list [].
+  No business order included, no shipment created by payload.
+- POST with one INTENTIONALLY INVALID record missing required orderSummary and
+  shipmentForms: HTTP 200, top-level JSON object result ERR with validation
+  message identifying missing fields. No valid shipment payload submitted.
+- Transport now maps this confirmed ERR envelope to safe reason
+  PROVIDER_TOP_LEVEL_VALIDATION_REJECTED. Raw provider message (potential PII,
+  trace ID) is never persisted or exposed.
+- Earlier one-shot synthetic order remains NOT CONFIRMED: POST HTTP 200 dict
+  but exact business result was not captured; signed order query still empty.
+  Do not infer the result was the same as the invalid-field probe.

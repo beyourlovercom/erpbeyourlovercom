@@ -94,6 +94,20 @@ final class ShipOutSandboxOutboundTransportTest extends TestCase
         $this->assertStringNotContainsString('secret provider response', json_encode($r));
     }
 
+    public function test_top_level_err_envelope_is_business_rejection_despite_http_200(): void
+    {
+        config()->set('shipout.sandbox_dispatch_enabled', true);
+        config()->set('shipout.sandbox_order_allowlist', 'C41843-007');
+        config()->set('shipout.sandbox_warehouse_id', 'TEST-W');
+        Http::fake(['https://opendev.shipout.com/api/*' =>
+            Http::response(['result' => 'ERR', 'message' => 'request contains sensitive address'], 200)]);
+
+        $result = $this->client()->submitOne($this->order());
+        $this->assertSame('rejected', $result['status']);
+        $this->assertSame('PROVIDER_TOP_LEVEL_VALIDATION_REJECTED', $result['result_code']);
+        $this->assertStringNotContainsString('sensitive address', json_encode($result));
+    }
+
     public function test_uncertain_http_response_throws_without_inventing_success(): void
     {
         config()->set('shipout.sandbox_dispatch_enabled', true);

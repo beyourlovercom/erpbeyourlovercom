@@ -68,6 +68,17 @@ final class ShipOutSandboxOutboundTransport
             throw new RuntimeException('SHIPOUT_SUBMISSION_OUTCOME_UNKNOWN');
         }
         $json = $response->json();
+        // Official sandbox can return a top-level {result: ERR} validation
+        // envelope with HTTP 200 (confirmed with a deliberately invalid body).
+        // This is NOT an async acknowledgement, and no raw error text/PII is logged.
+        if (is_array($json) && ! array_is_list($json)
+            && in_array($json['result'] ?? null, ['ERR', 'ERROR'], true)) {
+            return [
+                'status' => 'rejected',
+                'provider_order_id' => null,
+                'result_code' => 'PROVIDER_TOP_LEVEL_VALIDATION_REJECTED',
+            ];
+        }
         if (! is_array($json) || ! array_is_list($json) || count($json) !== 1
             || ! is_array($json[0])) {
             throw new RuntimeException('SHIPOUT_SUBMISSION_OUTCOME_UNKNOWN');
