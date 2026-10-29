@@ -19,3 +19,12 @@ describe('KOL Show formal collaboration projection', () => {
   })
 
 })
+
+describe('KOL two-hop AffiliateWP account action', () => {
+  it('uses the server-validated affiliate account URL, not the WordPress user ID', () => {
+    expect(source).toContain('affiliateAdminUrl')
+    expect(source).toContain('data-testid="affiliatewp-edit-link"')
+    expect(source).toContain('data-testid="affiliatewp-copy-url"')
+    expect(source).toContain('target="_blank" rel="noopener noreferrer"')
+  })
+})

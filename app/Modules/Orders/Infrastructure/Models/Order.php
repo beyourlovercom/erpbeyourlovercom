@@ -2,22 +2,24 @@
 
 namespace App\Modules\Orders\Infrastructure\Models;
 
+use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderStatus;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Order extends Model
 {
     use SoftDeletes;
+
     protected $fillable = [
         'customer_id', 'fulfillment_parent_id', 'fulfillment_suffix', 'fulfillment_role', 'fulfillment_origin_id', 'fulfillment_reason', 'fulfillment_note',
         'internal_order_number', 'erp_order_id', 'source_type', 'order_kind', 'external_order_number', 'order_date',
-        'order_note', 'owner_id', 'order_status', 'currency',
+        'order_note', 'owner_id', 'kol_id', 'order_status', 'currency',
     ];
 
     protected function casts(): array
@@ -31,7 +33,6 @@ class Order extends Model
             'archived_at' => 'datetime',
         ];
     }
-
 
     public function fulfillmentParent(): BelongsTo
     {
@@ -57,6 +58,11 @@ class Order extends Model
     public function fulfillmentOrigin(): BelongsTo
     {
         return $this->belongsTo(self::class, 'fulfillment_origin_id');
+    }
+
+    public function kol(): BelongsTo
+    {
+        return $this->belongsTo(Kol::class, 'kol_id');
     }
 
     public function owner(): BelongsTo
@@ -123,5 +129,4 @@ class Order extends Model
     {
         return $this->hasMany('App\\Modules\\Logistics\\Infrastructure\\Models\\ShipmentAttempt');
     }
-
 }

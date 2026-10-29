@@ -5,17 +5,16 @@ namespace App\Modules\Kol\Experience\Controllers;
 use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
-use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Kol\Application\Approval\CollaborationApprovalService;
 use App\Modules\Kol\Application\KolScope;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolCollaboration;
 use App\Modules\Kol\Infrastructure\Models\KolOpportunity;
-use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Orders\Application\OrderIdentityService;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderService;
-use App\Modules\Orders\Application\OrderIdentityService;
 use App\Modules\Orders\Application\OrderSourceType;
+use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -80,6 +79,7 @@ final class KolCollaborationController
             $item = KolCollaboration::create($data);
             $this->replaceProducts($item, $products);
             $this->approvals->initialize($item, $request->user());
+
             return $item->refresh();
         });
         $this->recordAudit($request, 'kol.collaboration.created', $collaboration, null, $this->snapshot($collaboration));
@@ -144,6 +144,7 @@ final class KolCollaborationController
             $this->replaceProducts($item, $productRows);
             $this->approvals->initialize($item, $request->user());
             $opportunity->update(['stage' => 'confirmed', 'status' => 'completed']);
+
             return $item->refresh();
         });
         $this->recordAudit($request, 'kol.collaboration.created_from_opportunity', $collaboration, null, $this->snapshot($collaboration));
@@ -167,6 +168,7 @@ final class KolCollaborationController
             $order = $this->orders->create([
                 'source_type' => OrderSourceType::Kol->value,
                 'order_kind' => OrderKind::KolFulfillment->value,
+                'kol_id' => $kol->id,
                 'erp_order_id' => $this->identities->generate('k', $kol->id, now()->toDateString()),
                 'external_order_number' => $this->orders->generateExternalOrderNumber(OrderKind::KolFulfillment),
                 'order_date' => now()->toDateString(),
@@ -189,6 +191,7 @@ final class KolCollaborationController
             ])->all(), $request->user());
 
             $locked->update(['order_id' => $order->id]);
+
             return ['order' => $order->load(['shipment.warehouse', 'manualSync']), 'created' => true];
         });
 
@@ -225,6 +228,7 @@ final class KolCollaborationController
         if (($data['cooperation_type'] ?? null) === '付费发帖' && (float) ($data['agreement_amount'] ?? 0) <= 0) {
             throw ValidationException::withMessages(['agreement_amount' => '付费合作必须填写大于 0 的合作金额。']);
         }
+
         return $data;
     }
 
@@ -245,7 +249,9 @@ final class KolCollaborationController
 
     private function authorizeKol(Request $request, Kol $kol): void
     {
-        if (! KolScope::isAllScope($request->user()) && $kol->owner_id !== (int) $request->user()->getAuthIdentifier()) abort(403);
+        if (! KolScope::isAllScope($request->user()) && $kol->owner_id !== (int) $request->user()->getAuthIdentifier()) {
+            abort(403);
+        }
     }
 
     private function authorizeCollaboration(Request $request, Kol $kol, KolCollaboration $item): void

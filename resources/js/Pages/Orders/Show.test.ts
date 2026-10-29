@@ -964,3 +964,17 @@ describe('WooCommerce admin order link', () => {
     expect(kol.find('[data-testid="woo-admin-order-copy"]').exists()).toBe(false)
   })
 })
+
+describe('KOL profile detail navigation', () => {
+  it('shows only an explicit server-provided KOL profile on KOL orders', () => {
+    const wrapper = mount(Show, { props: {
+      order: { ...kolOrder, order_kind: 'kol_fulfillment' }, audit,
+      kolProfile: { id: 12, display_name: 'KOL 12', url: '/kol/library/12' },
+    } })
+    expect(wrapper.get('[data-testid="kol-profile-link"]').attributes('href')).toBe('/kol/library/12')
+    wrapper.unmount()
+    const unlinked = mount(Show, { props: { order: { ...kolOrder, order_kind: 'kol_fulfillment' }, audit, kolProfile: null } })
+    expect(unlinked.find('[data-testid="kol-profile-link"]').exists()).toBe(false)
+    unlinked.unmount()
+  })
+})
