@@ -107,7 +107,8 @@ final class SingleOrderDispatch
             $this->oms->assertCatalogReady($connection,
                 $preview['payload']['whCode'],
                 $preview['payload']['logisticsChannel'],
-                array_column($preview['payload']['productList'], 'sku')
+                array_column($preview['payload']['productList'], 'sku'),
+                (bool) config('xlwms.us_sm_require_verified_usps', true)
             );
             $attempt->forceFill(['state'=>'request_in_flight','last_checked_at'=>now()])->save();
             $created=$this->oms->createSingle($connection,$preview['payload']);

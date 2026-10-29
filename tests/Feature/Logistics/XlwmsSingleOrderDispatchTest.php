@@ -21,6 +21,15 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Legacy provider scenarios intentionally verify old behavior under
+        // explicit test-only override; production default is USPS-first.
+        config()->set('xlwms.us_sm_require_verified_usps', false);
+        config()->set('xlwms.us_sm_oms_logistics_channel','Service with the lowest price');
+    }
+
     private function orderFixture(): Order
     {
         $w=Warehouse::query()->firstOrCreate(['code'=>'US-SM'],[
@@ -75,6 +84,62 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
             'last_verified_at'=>now(),
         ]);
         return $o->fresh();
+    }
+
+    public function test_owner_selected_usps_upload_label_channel_is_exact_and_does_not_auto_buy_postage(): void
+    {
+        $o=$this->orderFixture();
+        config()->set('xlwms.us_sm_require_verified_usps',true);
+        config()->set('xlwms.us_sm_native_usps_channel_code','Upload_Shipping_Label');
+        $preview=app(SingleOrderDispatch::class)->preview($o->id);
+        $this->assertSame([], $preview['blockers']);
+        $this->assertSame('Upload_Shipping_Label', $preview['payload']['logisticsChannel']);
+        $this->assertSame('pending', $o->fresh()->shipment->shipment_status);
+        config()->set('xlwms.us_sm_native_usps_channel_code','Service with the lowest price');
+        $bad=app(SingleOrderDispatch::class)->preview($o->id);
+        $this->assertContains('US_SM_USPS_UPLOAD_LABEL_CHANNEL_REQUIRED',$bad['blockers']);
+        Http::fake();Http::assertNothingSent();
+    }
+
+    public function test_upload_label_channel_requires_verified_provider_type_three_usps_name(): void
+    {
+        $o=$this->orderFixture();
+        $w=WarehouseOpenApiConnection::query()->where('warehouse_id',$o->shipment->warehouse_id)->firstOrFail();
+        $gw=app(\App\Modules\Logistics\Infrastructure\Xlwms\XlwmsOrderGateway::class);
+        Http::preventStrayRequests();
+        Http::fake(fn ($req)=>str_contains($req->url(),'logistics/channel/list')
+            ? Http::response(['code'=>200,'data'=>[['channelCode'=>'Upload_Shipping_Label','channelName'=>'USPS上传物流面单','channelType'=>3,'carrierName'=>'系统默认渠道','whCodes'=>[]]]])
+            : Http::response(['code'=>200,'data'=>['records'=>[['sku'=>'SAME-SKU','approveStatus'=>2]]]]));
+        $gw->assertCatalogReady($w,'OMS-US-SM','Upload_Shipping_Label',['SAME-SKU'],true);
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+    }
+
+    public function test_wrong_or_missing_usps_upload_label_channel_blocks_before_create(): void
+    {
+        $o=$this->orderFixture();$w=WarehouseOpenApiConnection::query()->where('warehouse_id',$o->shipment->warehouse_id)->firstOrFail();
+        $gw=app(\App\Modules\Logistics\Infrastructure\Xlwms\XlwmsOrderGateway::class);
+        Http::preventStrayRequests();
+        foreach ([['channelCode'=>'Service with the lowest price','channelName'=>'自动选取价格最低的渠道','channelType'=>1],
+                  ['channelCode'=>'Upload_Shipping_Label','channelName'=>'other upload','channelType'=>3],
+                  ['channelCode'=>'Upload_Shipping_Label','channelName'=>'USPS上传物流面单','channelType'=>1]] as $record) {
+            Http::fake(fn ($req)=>Http::response(['code'=>200,'data'=>[array_merge($record,['whCodes'=>[]])]]));
+            try {$gw->assertCatalogReady($w,'OMS-US-SM','Upload_Shipping_Label',['SAME-SKU'],true);
+                $this->fail('Unverified channel must never dispatch');}
+            catch (\RuntimeException $e) {
+                $this->assertContains($e->getMessage(), ['US_SM_USPS_UPLOAD_LABEL_CHANNEL_UNAVAILABLE','OMS_CHANNEL_NOT_AVAILABLE']);
+            }
+        }
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+    }
+
+    public function test_non_usps_erp_carrier_requires_manual_review(): void
+    {
+        $o=$this->orderFixture();
+        $o->shipment()->update(['carrier'=>'FEDEX','service'=>'Priority']);
+        config()->set('xlwms.us_sm_require_verified_usps',true);
+        $p=app(SingleOrderDispatch::class)->preview($o->id);
+        $this->assertContains('US_SM_NON_USPS_REQUIRES_MANUAL_REVIEW',$p['blockers']);
+        Http::fake();Http::assertNothingSent();
     }
 
     public function test_inline_preflight_is_permissioned_readonly_and_excludes_recipient_details(): void

@@ -30,3 +30,13 @@
 - `OverseaWarehouseWorkbenchTest`：原有海外仓审核/物流流程兼容。
 - `Show.test.ts`：第一笔已有 OMS 单号且状态 5 显示已下发但未发货；第二笔本地 create_disabled 仍待下发且操作入口可见；两种按钮与批次统计呈现。
 - 生产 UAT 尚待后续单独审批；不能将 Dev 通过等同生产上线。
+
+## 5. Owner-selected provider channel (2026-10-29): Upload_Shipping_Label
+
+- Supersedes the earlier `Service with the lowest price` selection for NEW US-SM OMS outbound, without changing either existing OMS order or earlier Tracking.
+- Owner explicitly selected the provider-native `Upload_Shipping_Label` (channelCode exact). Real Production read-only `logistics/channel/list` returns the code with channelName `USPS上传物流面单`, channelType=3, carrierName=`系统默认渠道`. No other native code is auto-selected.
+- Provider official docs describe this as self-supplied/manual or supported-platform shipping label; it **does not guarantee USPS label purchase**, last-mile USPS carrier, or a Tracking number. Official WMS docs warn the standard upload channel may have carrier `other`. Dede/warehouse must verify that a real USPS label and tracking are supplied before fulfillment completion. A separate dedicated USPS carrier-specific upload channel configured by the warehouse may be required if the platform requires carrier=USPS rather than 'other'.
+- US-SM new outbound preview uses only `Upload_Shipping_Label`; the native OMS catalog gate additionally requires channelType=3 and a USPS channelName for the exact warehouse. Never fallback to lowest-price, FEDEX/GOFO or other channel. Non-USPS ERP carrier selections require manual change/review and are blocked from automatic CREATE.
+- US-SM legacy XLSX export uses `Upload_Shipping_Label`, marking USPS preference; it does not produce or transmit a shipping label itself.
+- OMS CREATE may accept the upload-label channel but actual warehouse fulfillment still depends on separately supplying and verifying the USPS label. The API CREATE spec does not confirm purchasing labels, and no separate label-upload endpoint is part of this release. `WarehouseBatchDispatch` will never mark ERP shipped or sync Woo based solely on status+Tracking without verified carrier.
+- The new channel does **not enable** real Production CREATE or lift strict one-order allowlisting. Production deployment and actual OMS sends require separate Owner authorization.

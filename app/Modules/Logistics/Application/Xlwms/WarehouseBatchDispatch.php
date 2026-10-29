@@ -148,7 +148,8 @@ final class WarehouseBatchDispatch
         $skus = array_values(array_filter(array_map('strval', array_column((array) ($payload['productList'] ?? []), 'sku'))));
 
         try {
-            $this->oms->assertCatalogReady($connection, (string) $payload['whCode'], (string) $payload['logisticsChannel'], $skus);
+            $this->oms->assertCatalogReady($connection, (string) $payload['whCode'], (string) $payload['logisticsChannel'], $skus,
+                (bool) config('xlwms.us_sm_require_verified_usps', true));
             // Final local transition immediately before the sole outbound write.
             $attempt->forceFill(['state' => 'batch_request_in_flight', 'last_checked_at' => now()])->save();
             $created = $this->oms->createSingle($connection, $payload);
@@ -199,16 +200,10 @@ final class WarehouseBatchDispatch
             if ($status['third_order_no'] !== $third || $status['platform_order_no'] !== $platform) return $finish('batch_blocked', 'identity_mismatch', 'OMS 订单身份不匹配，未更新 ERP');
             $attempt->forceFill(['oms_status_code' => $status['status_code'], 'oms_status_checked_at' => now(), 'oms_tracking_no' => $status['tracking_no'], 'oms_status_failure_code' => null])->save();
             if ($status['status_code'] === '3' && filled($status['tracking_no'])) {
-                // Auto-lowest-price may choose a carrier other than the ERP's
-                // preselected USPS. OMS status endpoint does NOT prove the
-                // actual last-mile carrier, so never write misleading carrier
-                // and Tracking to a shipped ERP/Woo record automatically.
-                if ((string) config('xlwms.us_sm_oms_logistics_channel', '') === 'Service with the lowest price') {
-                    return $this->result($orderId, 'carrier_verification_required', 'OMS 已出库并有单号，请核实实际承运商后再确认 ERP 发货');
-                }
-                $this->shipments->markShipped($order, ['tracking_number' => $status['tracking_no'], 'shipped_at' => now()], null);
-                $attempt->forceFill(['state' => 'batch_status_updated'])->save();
-                return $this->result($orderId, 'status_updated', 'OMS 已出库，Tracking 已安全回写 ERP');
+                // OMS status+tracking does NOT prove actual last-mile carrier,
+                // even if USPS was requested. Prevent premature ERP/Woo shipping.
+                return $this->result($orderId, 'carrier_verification_required',
+                    'OMS 已出库并有 Tracking，须核实 USPS / 真实承运商后人工确认发货');
             }
             if ($status['status_code'] === '4') return $this->result($orderId, 'canceled', 'OMS 已取消，未标记发货');
             return $this->result($orderId, 'unknown_status', 'OMS 状态未确认，未标记发货');

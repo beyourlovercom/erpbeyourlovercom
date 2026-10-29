@@ -256,7 +256,7 @@ final class XlwmsOrderGateway
     }
 
     /** Verify exact OMS native channel and every requested SKU without writes. */
-    public function assertCatalogReady(WarehouseOpenApiConnection $connection, string $whCode, string $channel, array $skuList): void
+    public function assertCatalogReady(WarehouseOpenApiConnection $connection, string $whCode, string $channel, array $skuList, bool $requireNativeUsps = false): void
     {
         if ($whCode === '' || $channel === '' || $skuList === [] || count($skuList) > 100) {
             throw new RuntimeException('OMS_CATALOG_INPUT_INVALID');
@@ -268,6 +268,20 @@ final class XlwmsOrderGateway
                 is_array($r) && ($r['channelCode'] ?? null) === $channel
                 && (! isset($r['whCodes']) || (array) $r['whCodes'] === [] || in_array($whCode, (array) $r['whCodes'], true)))) {
             throw new RuntimeException('OMS_CHANNEL_NOT_AVAILABLE');
+        }
+        if ($requireNativeUsps) {
+            $record = collect($channelRecords)->first(static fn ($r): bool => is_array($r)
+                && ($r['channelCode'] ?? null) === $channel);
+            // Provider actually lists this as type 3, not a type-1 carrier
+            // that can buy postage. Validate the EXACT Owner-selected code
+            // and USPS label purpose. carrierName may equal '系统默认渠道'/other:
+            // it is NOT proof of the last-mile USPS carrier.
+            if (! is_array($record)
+                || $channel !== 'Upload_Shipping_Label'
+                || (string)($record['channelType'] ?? '') !== '3'
+                || ! str_contains(strtoupper((string)($record['channelName'] ?? '')), 'USPS')) {
+                throw new RuntimeException('US_SM_USPS_UPLOAD_LABEL_CHANNEL_UNAVAILABLE');
+            }
         }
         $products = $this->signedPost($connection, 'product/pagelist', [
             'page' => 1, 'pageSize' => 100, 'skuList' => array_values(array_unique($skuList)),

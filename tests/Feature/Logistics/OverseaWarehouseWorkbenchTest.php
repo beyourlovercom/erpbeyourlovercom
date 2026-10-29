@@ -355,7 +355,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $warehouses = $this->warehouses();
         $cases = [
             ['US-NY', '007erp-0920-c40801', 'US', '/logistics/oversea/us-ny/export', ['US01', 'C40801-007', 'USPS-NJ', '']],
-            ['US-SM', '007erp-0920-c40802', 'US', '/logistics/oversea/us-3sm/export', ['Yangfan', 'C40802-007', 'Service with the lowest price', 'USPS']],
+            ['US-SM', '007erp-0920-c40802', 'US', '/logistics/oversea/us-3sm/export', ['Yangfan', 'C40802-007', 'Upload_Shipping_Label', 'USPS']],
             ['DE', '007erp-0920-c40803', 'NL', '/logistics/oversea/de-tianyun/export', ['Hannover', 'C40803-007', 'DHL PAKET International N', '']],
         ];
 

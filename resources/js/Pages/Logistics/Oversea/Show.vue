@@ -93,7 +93,10 @@ const omsBlockerLabels:Record<string,string> = {
   city_missing:'缺城市',postal_code_missing:'缺邮编',
   country_iso2_missing:'国家代码不正确',
   province_missing:'缺州/省',province_code_not_confirmed:'州/省代码未核实',
-  native_logistics_channel_missing:'未选择 OMS 物流渠道',
+  native_logistics_channel_missing:'未配置可用的 OMS 物流渠道',
+  US_SM_USPS_UPLOAD_LABEL_CHANNEL_REQUIRED:'世迈仓固定使用 USPS 上传面单渠道，不得自动切换其他承运商',
+  US_SM_USPS_UPLOAD_LABEL_CHANNEL_UNAVAILABLE:'OMS 未开放 USPS 上传面单渠道，请联系仓库核实',
+  US_SM_NON_USPS_REQUIRES_MANUAL_REVIEW:'非 USPS 承运商须由 Dede 人工核实，不可自动下发',
   logistics_channel_inactive:'物流渠道已停用',
   no_valid_order_items:'没有有效订单商品',
   invalid_item:'SKU 或商品数量不正确',
@@ -402,7 +405,7 @@ const compactPages = computed<(number|string)[]>(() => {
         </aside>
         <main class="oversea-main">
       <header class="oversea-heading">
-        <div><h1>{{ pageTitle }}</h1><p>审核 Vita 分仓结果；通过后进入真实下单，驳回则退回运营重新分配。</p><p v-if="warehouseKey === 'us-3sm'" class="xlwms-channel-hint">OMS 使用自动最低价渠道，不保证 USPS Priority。实际承运商必须在出库后核实。</p></div>
+        <div><h1>{{ pageTitle }}</h1><p>审核 Vita 分仓结果；通过后进入真实下单，驳回则退回运营重新分配。</p><p v-if="warehouseKey === 'us-3sm'" class="xlwms-channel-hint">世迈仓使用 USPS 上传面单渠道（Upload_Shipping_Label），需自行准备或上传真实面单；OMS 下发成功不等于购买面单或已发货，其他承运商须人工确认。</p></div>
         <div class="oversea-file-actions">
           <button v-if="canTrackingSync" type="button" class="file-button primary"
             :disabled="!trackingSelection.length || trackingBusy" @click="pushTracking(trackingSelection)">
