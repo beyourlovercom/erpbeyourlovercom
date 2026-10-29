@@ -168,7 +168,19 @@ final class XlwmsInventorySyncService
                 }
                 $v2Status = $allMismatches === [] ? 'read_only' : 'blocked';
                 $snapshot = XlwmsInventorySnapshot::query()->where('warehouse_id', $warehouse->id)->where('checksum', $checksum)->lockForUpdate()->first();
-                if ($snapshot?->status === 'applied' || ($snapshot !== null && ! $apply)) {
+                if ($snapshot?->status === 'applied') {
+                    // Each successful full OMS re-fetch, including unchanged
+                    // stock, is a NEW freshness observation. A simple touch()
+                    // only updates updated_at; the outbound preflight reads
+                    // fetched_at and would otherwise be stale indefinitely.
+                    // Never refresh an applied snapshot after a reconciliation
+                    // blocker is detected, even when checksum still matches.
+                    if ($allMismatches === []) {
+                        $snapshot->forceFill(['fetched_at' => now()])->save();
+                    }
+                    return $snapshot->fresh();
+                }
+                if ($snapshot !== null && ! $apply) {
                     $snapshot->touch();
                     return $snapshot->fresh();
                 }
