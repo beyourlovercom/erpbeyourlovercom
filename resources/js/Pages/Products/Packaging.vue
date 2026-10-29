@@ -22,7 +22,7 @@ function saveBarcode() {
   <Head :title="product.name+' · 包装方案'" />
   <AuthenticatedLayout title="产品包装方案" :breadcrumbs="[{label:'产品',href:'/products'},{label:'产品360',href:'/products/'+product.id},'包装方案']">
     <section class="mb-5 rounded-lg border border-slate-200 p-5">
-      <h2 class="mb-2 text-base font-semibold">物流条码 · 包装参数</h2>
+      <div class="mb-2 flex items-center justify-between gap-3"><h2 class="text-base font-semibold">物流条码 · 包装参数</h2><a href="/products/barcode-69/import" class="text-sm underline">批量导入 69条形码</a></div>
       <form class="flex items-end gap-3" @submit.prevent="saveBarcode">
         <label class="flex flex-col gap-1 text-sm">69条形码
           <input v-model="barcodeForm.barcode_69" type="text" inputmode="numeric" maxlength="14" placeholder="8–14位数字（留空表示未知）" class="rounded border px-3 py-2" />
