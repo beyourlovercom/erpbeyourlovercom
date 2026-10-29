@@ -32,6 +32,30 @@ final class ProfitDashboardTest extends TestCase
             ->where('pagination.total', 1));
     }
 
+    public function test_cost_formula_detail_supplies_same_order_facts_to_in_place_editor(): void
+    {
+        $user = $this->userWith(['analysis.view', 'orders.create']);
+        $order = $this->createOrder($user, '2026-10-29', 'DETAIL-FACTS', [['sku' => 'DETAIL-SKU', 'price' => '19.99']]);
+
+        $this->actingAs($user)->get('/accounting/order-costs/'.$order->id)->assertInertia(fn (Assert $page) => $page
+            ->component('Finance/OrderProfitShow')
+            ->where('financeFacts.id', $order->id)
+            ->where('financeFacts.erp_order_id', $order->erp_order_id)
+            ->where('financeFacts.currency', 'USD')
+            ->has('financeFacts.values')
+            ->where('financeFields', fn ($fields): bool => $fields->contains('amount_paid') && $fields->contains('product_cost')));
+
+        $this->actingAs($user)
+            ->from('/accounting/order-costs/'.$order->id)
+            ->put('/accounting/order-costs/'.$order->id, ['amount_paid' => '19.99', 'refund_amount' => '0.00'])
+            ->assertRedirect('/accounting/order-costs/'.$order->id);
+
+        $this->actingAs($user)->get('/accounting/order-costs/'.$order->id)->assertInertia(fn (Assert $page) => $page
+            ->component('Finance/OrderProfitShow')
+            ->where('financeFacts.values.amount_paid', '19.99')
+            ->where('financeFacts.id', $order->id));
+    }
+
     public function test_confirmed_usd_kpis_exclude_incomplete_estimated_historical_and_fx_pending_orders(): void
     {
         $user = $this->userWith(['accounting.view', 'analysis.view', 'orders.create']);
