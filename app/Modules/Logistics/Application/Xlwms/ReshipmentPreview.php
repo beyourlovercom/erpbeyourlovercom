@@ -19,6 +19,9 @@ final class ReshipmentPreview {
             fn($reason)=>!($shipped&&in_array($reason,$exceptions,true))));
         if(!$shipped)$blocked[]='source_order_not_shipped';
         if(!filled($ship?->tracking_number)&&!filled($old?->oms_order_no))$blocked[]='original_shipping_evidence_missing';
+        // A new provider draft requires a verifiable native original OMS identity.
+        // Tracking alone proves shipment, not that the old OMS order is safe.
+        if(!filled($old?->oms_order_no))$blocked[]='original_oms_identity_missing';
         if(($base['payload']['logisticsChannel']??null)!=='No_Shipping_Service'
             ||($base['payload']['isSubmit']??null)!==0)$blocked[]='reship_draft_contract_invalid';
         $prior=Schema::hasTable('xlwms_reshipments')
@@ -33,6 +36,7 @@ final class ReshipmentPreview {
             'status'=>$latest->status,
             'oms_order_no'=>$latest->oms_order_no,
             'oms_status_code'=>$latest->oms_status_code,
+            'oms_tracking_no'=>$latest->oms_tracking_no,
             'last_error_code'=>$latest->last_error_code,
             'can_create_oms'=>$latest->status==='approved_for_reissue'
                 && (bool)config('xlwms.reissue_create_enabled',false)

@@ -1119,6 +1119,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $o->shipment()->update(['shipment_status'=>'shipped','tracking_number'=>'TRACK-ORIGINAL']);
         $o=$o->fresh();
         $originalTracking=$o->shipment->tracking_number;
+        $this->statusAttempt($o);
         Http::preventStrayRequests();
         Http::fake();
         $p=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentPreview::class)->forOrder($o->id);
@@ -1135,6 +1136,20 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $this->assertSame($originalTracking,$o->fresh()->shipment->tracking_number);
         $this->assertDatabaseCount('xlwms_reshipments',0);
         Http::assertNothingSent();
+    }
+
+    public function test_reissue_preflight_requires_original_native_oms_identity_even_with_tracking(): void
+    {
+        $o=$this->orderFixture();
+        $o->update(['order_status'=>'shipped']);
+        $o->shipment()->update(['shipment_status'=>'shipped','tracking_number'=>'TRACK-ONLY']);
+        Http::preventStrayRequests();
+        Http::fake();
+        $p=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentPreview::class)->forOrder($o->id);
+        $this->assertContains('original_oms_identity_missing',$p['blockers']);
+        $this->assertFalse($p['ready_for_review']);
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('xlwms_reshipments',0);
     }
 
     public function test_issue544_reship_preflight_requires_logistics_operator_permission(): void
@@ -1160,6 +1175,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $this->assertFalse($pending['ready_for_review']);
         $o->update(['order_status'=>'shipped']);
         $o->shipment()->update(['shipment_status'=>'shipped','tracking_number'=>'ORIGINAL-TRACK']);
+        $this->statusAttempt($o);
         $ship=$o->fresh()->shipment;
         \App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment::query()->create([
             'original_order_id'=>$o->id,
@@ -1231,6 +1247,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $o=$this->orderFixture();
         $o->update(['order_status'=>'shipped']);
         $o->shipment()->update(['shipment_status'=>'shipped','tracking_number'=>'ORIGINAL-TRACK']);
+        $this->statusAttempt($o);
         Http::preventStrayRequests();
         Http::fake();
         $svc=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentIntentService::class);
@@ -1266,6 +1283,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $o = $this->orderFixture();
         $o->update(['order_status'=>'shipped']);
         $o->shipment()->update(['shipment_status'=>'shipped','tracking_number'=>'ORIGINAL-TRACK']);
+        $this->statusAttempt($o);
         Http::preventStrayRequests();
         Http::fake();
         $request=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentIntentService::class)

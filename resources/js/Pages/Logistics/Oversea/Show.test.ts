@@ -613,4 +613,33 @@ describe('Oversea Dede file exchange workbench', () => {
     } finally {vi.unstubAllGlobals()}
   })
 
+  it('restores the separate OMS status and tracking after reopening the shipped order preview', async () => {
+    const row={...usSmPendingRows.data[0],shipment_status:'shipped',tracking_number:'OLD-TRACK'}
+    const fake=vi.fn().mockResolvedValue({ok:true,json:async()=>({
+      order_id:99,erp_order_id:'007-OVERSEA-USSM-99',
+      original_oms_order_no:'OLD-OMS',original_tracking_present:true,
+      warehouse:'US-SM',channel:'No_Shipping_Service',draft_only:true,
+      items:[{sku:'REVIEW-SKU',quantity:1}],recipient:'Recipient',
+      address:{country:'US',province:'CA',city:'Los Angeles',postal_code:'90001',address_1:'1 Test Road'},
+      reason_default:'仓库订单出错',required_oms_memo:null,
+      existing_reshipment_count:1,blockers:['existing_reshipment_requires_review'],
+      ready_for_review:false,can_create_oms:false,memo_contract_verified:false,
+      existing_reissue:{request_id:'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+        status:'draft_created',oms_order_no:'NEW-OMS',
+        oms_status_code:'3',oms_tracking_no:'NEW-TRACK',last_error_code:null,can_create_oms:false},
+    })})
+    vi.stubGlobal('fetch',fake)
+    try {
+      const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+        view:'shipped',rows:{...usSmPendingRows,data:[row]}})
+      const button=wrapper.findAll('button').find(b=>b.text().trim()==='重新下发仓库')
+      await button!.trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('新 OMS Tracking：NEW-TRACK'))
+      expect(wrapper.text()).toContain('新 OMS 出库单：NEW-OMS')
+      expect(wrapper.text()).toContain('原运单保留')
+      expect(wrapper.text()).not.toContain('创建独立 OMS 草稿（单笔授权）')
+      expect(fake).toHaveBeenCalledTimes(1)
+    } finally {vi.unstubAllGlobals()}
+  })
+
 })

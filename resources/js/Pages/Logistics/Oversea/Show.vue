@@ -27,7 +27,7 @@ type ReshipPreview = {
   address:{country:string|null;province:string|null;city:string|null;postal_code:string|null;address_1:string|null}
   reason_default:string;required_oms_memo:string;existing_reshipment_count:number
   blockers:string[];ready_for_review:boolean;can_create_oms:boolean;memo_contract_verified:boolean
-  existing_reissue?:{request_id:string;status:string;oms_order_no:string|null;oms_status_code:string|null;last_error_code:string|null;can_create_oms:boolean}|null
+  existing_reissue?:{request_id:string;status:string;oms_order_no:string|null;oms_status_code:string|null;oms_tracking_no:string|null;last_error_code:string|null;can_create_oms:boolean}|null
 }
 type OmsStatusResult = {
   read_only:boolean; fresh:boolean; oms_order_no:string; oms_status_code:string|null
@@ -387,6 +387,7 @@ const reshipApproved=reactive<Record<number,boolean>>({})
 const reshipCanCreate=reactive<Record<number,boolean>>({})
 const reshipOmsNo=reactive<Record<number,string>>({})
 const reshipProviderStatus=reactive<Record<number,string>>({})
+const reshipProviderTracking=reactive<Record<number,string>>({})
 const reshipPost=async (row:Row, action:'reship-intent'|'reship-approve', body:Record<string,unknown>) => {
   if(!props.canOperate||props.warehouseKey!=='us-3sm'||row.shipment_status!=='shipped'||reshipBusy[row.order_id])return
   reshipBusy[row.order_id]=true;reshipError[row.order_id]=''
@@ -464,11 +465,12 @@ const refreshReshipStatus=async(row:Row)=>{
       headers:{Accept:'application/json'},
     })
     if(!r.ok)throw Error('OMS 状态查询失败（HTTP '+r.status+'）')
-    const v=await r.json() as {request_id:string;oms_order_no:string;oms_status_code:string;
+    const v=await r.json() as {request_id:string;oms_order_no:string;oms_status_code:string;oms_tracking_no:string|null;
       original_erp_unchanged:boolean}
     if(v.request_id!==intent.request_id||v.oms_order_no!==reshipOmsNo[row.order_id]
       ||v.original_erp_unchanged!==true)throw Error('OMS 状态身份核对失败')
     reshipProviderStatus[row.order_id]=v.oms_status_code
+    reshipProviderTracking[row.order_id]=v.oms_tracking_no??''
   }catch(e){reshipError[row.order_id]=e instanceof Error?e.message:'状态查询异常'}
   finally{reshipBusy[row.order_id]=false}
 }
@@ -493,6 +495,7 @@ const readReshipPreview=async (row:Row) => {
       reshipCanCreate[row.order_id]=old.can_create_oms
       if(old.oms_order_no)reshipOmsNo[row.order_id]=old.oms_order_no
       if(old.oms_status_code)reshipProviderStatus[row.order_id]=old.oms_status_code
+      if(old.oms_tracking_no)reshipProviderTracking[row.order_id]=old.oms_tracking_no
     }
   }catch(e){
     reshipError[row.order_id]=e instanceof Error?e.message:'补发预检失败'
@@ -864,7 +867,7 @@ const compactPages = computed<(number|string)[]>(() => {
                       <small>{{reshipPreview[row.order_id].items.map(i=>i.sku+' × '+i.quantity).join(' / ')}}</small>
                       <small>{{reshipPreview[row.order_id].recipient}} · {{reshipPreview[row.order_id].address.address_1}} · {{reshipPreview[row.order_id].address.city}}</small>
                       <small>渠道：无需物流服务 · 不自动提交仓库 · ERP 保留操作原因</small>
-                      <small v-if="reshipPreview[row.order_id].blockers.length && !reshipIntent[row.order_id]" class="xlwms-error">{{reshipPreview[row.order_id].blockers.join('；')}}</small>
+                      <small v-if="reshipPreview[row.order_id].blockers.length && !reshipIntent[row.order_id]" class="xlwms-error">{{reshipPreview[row.order_id].blockers.map(b=>b==='original_oms_identity_missing'?'原 OMS 单号未关联，无法安全创建新仓库单':b).join('；')}}</small>
                       <template v-if="reshipPreview[row.order_id].ready_for_review || !!reshipIntent[row.order_id]">
                         <template v-if="!reshipIntent[row.order_id]">
                           <input v-model="reshipReason[row.order_id]" type="text" maxlength="180"
@@ -887,6 +890,7 @@ const compactPages = computed<(number|string)[]>(() => {
                       <button v-if="reshipOmsNo[row.order_id]" type="button" class="xlwms-action"
                         :disabled="reshipBusy[row.order_id]" @click="refreshReshipStatus(row)">查询新 OMS 状态</button>
                       <small v-if="reshipProviderStatus[row.order_id]">新 OMS 原始状态码：{{reshipProviderStatus[row.order_id]}}（未自动同步官网）</small>
+                      <small v-if="reshipProviderTracking[row.order_id]">新 OMS Tracking：{{reshipProviderTracking[row.order_id]}}（原运单保留）</small>
                       <small>真实 CREATE 需要单笔订单及申请双重白名单；不会覆盖原发货记录</small>
                     </div>
                     <small v-if="reshipError[row.order_id]" role="alert" class="xlwms-error">{{reshipError[row.order_id]}}</small>
