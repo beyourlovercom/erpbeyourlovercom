@@ -50,6 +50,25 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         $this->actingAs($user)->get('/logistics/wait-stock')->assertInertia(fn ($page) => $page->component('Logistics/FulfillmentAllocation'));
     }
 
+    public function test_domestic_daily_views_render_rows_with_enum_manual_sync_status(): void
+    {
+        $this->withoutVite();
+        config()->set('inertia.testing.ensure_pages_exist', false);
+        $speeda = $this->domesticOrder('007-1029-C-ENUM-4PX', '4PX', true, '13800138001', 1);
+        $weship = $this->domesticOrder('007-1029-C-ENUM-WE', 'Weship', true, '13800138002', 1);
+        $speeda->manualSync()->create(['website_sync_status' => \App\Modules\Sync\Application\ManualSyncStatus::Completed]);
+        $weship->manualSync()->create(['website_sync_status' => \App\Modules\Sync\Application\ManualSyncStatus::Pending]);
+        $viewer = $this->logisticsViewer();
+
+        foreach (['today-4px' => 1, 'today-weship' => 1, 'today' => 2] as $view => $expected) {
+            $this->actingAs($viewer)->get('/logistics/china?view='.$view)
+                ->assertOk()->assertInertia(fn ($page) => $page
+                    ->component('Logistics/Domestic/Index')
+                    ->where('view', $view)
+                    ->where('rows.total', $expected));
+        }
+    }
+
     public function test_speeda_export_uses_real_24_column_contract_and_blocks_missing_phone(): void
     {
         $order = $this->domesticOrder('007-0923-c50001', '4PX', reviewed: true, phone: '13800138000', quantity: 2);

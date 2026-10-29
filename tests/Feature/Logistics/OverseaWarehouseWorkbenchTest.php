@@ -51,6 +51,21 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->where('rows.data.0.review_status', 'pending'));
     }
 
+    public function test_overseas_review_list_renders_row_with_enum_manual_sync_status(): void
+    {
+        $viewer = $this->userWith(['logistics.view']);
+        $warehouses = $this->warehouses();
+        $order = $this->orderAt($warehouses['US-NY'], '007-OVERSEA-ENUM-STATUS');
+        $order->manualSync()->create(['website_sync_status' => \App\Modules\Sync\Application\ManualSyncStatus::Failed]);
+
+        $this->actingAs($viewer)->get('/logistics/oversea/us-ny?view=review')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->component('Logistics/Oversea/Show')
+                ->where('rows.total', 1)
+                ->where('rows.data.0.order_id', $order->id)
+                ->where('rows.data.0.tracking_sync_status', 'pending'));
+    }
+
     public function test_three_sm_uses_canonical_us_3sm_url_and_legacy_keys_still_resolve(): void
     {
         $user = $this->userWith(['logistics.view']);
