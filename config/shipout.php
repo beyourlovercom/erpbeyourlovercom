@@ -20,6 +20,11 @@ return [
     // Legacy isolated fixtures may explicitly turn this check off.
     'sandbox_inventory_preflight_enabled' => filter_var(env('SHIPOUT_SANDBOX_INVENTORY_PREFLIGHT_ENABLED', true), FILTER_VALIDATE_BOOL),
     'sandbox_client_org_id' => (string) env('SHIPOUT_SANDBOX_CLIENT_ORG_ID',''),
+    // ShipOut query API returns 'YYYY-MM-DD HH:mm:ss' with NO offset.
+    // Must be independently confirmed with provider BEFORE live ERP apply.
+    // Default blank: fail closed; never assume UTC or Asia/Shanghai.
+    'sandbox_shipped_time_timezone' => (string) env('SHIPOUT_SANDBOX_SHIPPED_TIME_TIMEZONE', ''),
+
     'sandbox_enabled_modes' => (string) env('SHIPOUT_SANDBOX_ENABLED_MODES', '9'),
     'sandbox_service_group_id' => (string) env('SHIPOUT_SANDBOX_SERVICE_GROUP_ID', ''),
     'sandbox_service_group_label' => (string) env('SHIPOUT_SANDBOX_SERVICE_GROUP_LABEL', ''),

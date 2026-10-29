@@ -269,6 +269,7 @@ final class ShipOutMorePlusController
     private function failure(string $reason): JsonResponse
     {
         $known = [
+            'SHIPOUT_SANDBOX_FORBIDDEN_IN_PRODUCTION',
             'SHIPOUT_SANDBOX_DISPATCH_DISABLED',
             'SHIPOUT_SANDBOX_READ_DISABLED',
             'SHIPOUT_SANDBOX_WAREHOUSE_NOT_CONFIGURED',
@@ -295,6 +296,7 @@ final class ShipOutMorePlusController
             'SHIPOUT_NOT_CONFIRMED_SHIPPED',
             'SHIPOUT_TRACKING_CONFIRMATION_MISMATCH',
             'SHIPOUT_SHIPPED_TIME_UNTRUSTED',
+            'SHIPOUT_SHIPPED_TIME_TIMEZONE_UNVERIFIED',
             'SHIPOUT_APPLY_STATE_CHANGED',
             'SHIPOUT_CARRIER_NOT_APPROVED_FOR_AUTO_APPLY',
             'SHIPOUT_SYNTHETIC_TRACKING_NOT_PUBLISHABLE',
@@ -328,6 +330,7 @@ final class ShipOutMorePlusController
     private static function messageFor(string $code): string
     {
         return match ($code) {
+            'SHIPOUT_SANDBOX_FORBIDDEN_IN_PRODUCTION' => '正式 ERP 禁止调用 ShipOut 测试端点，须独立审批生产接入',
             'SHIPOUT_SANDBOX_DISPATCH_DISABLED' => 'ShipOut 沙盒发货开关未启用，未发送订单',
             'SHIPOUT_SANDBOX_READ_DISABLED' => 'ShipOut 沙盒查询未启用，未读取仓库',
             'SHIPOUT_SANDBOX_WAREHOUSE_NOT_CONFIGURED' => 'ShipOut 沙盒仓库 ID 尚未绑定',
@@ -346,6 +349,7 @@ final class ShipOutMorePlusController
             'SHIPOUT_NOT_CONFIRMED_SHIPPED' => '仓库尚未确认实际发货，不能回写',
             'SHIPOUT_TRACKING_CONFIRMATION_MISMATCH' => '确认的 Tracking 与仓库最新回传不一致',
             'SHIPOUT_SHIPPED_TIME_UNTRUSTED' => '仓库发货时间无法验证，禁止回写',
+            'SHIPOUT_SHIPPED_TIME_TIMEZONE_UNVERIFIED' => 'ShipOut 发货时间的时区尚未确认，禁止正式回写 ERP',
             'SHIPOUT_APPLY_STATE_CHANGED' => 'ERP 订单或审核状态已变化，禁止重复回写',
             'SHIPOUT_CARRIER_NOT_APPROVED_FOR_AUTO_APPLY' => '仓库实际承运商尚未建立可靠映射，须人工核对',
             'SHIPOUT_SYNTHETIC_TRACKING_NOT_PUBLISHABLE' => '仓库只返回沙盒 mock / VOID Tracking，不能回写成真实发货单号',

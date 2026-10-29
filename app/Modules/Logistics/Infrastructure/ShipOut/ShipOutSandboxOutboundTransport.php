@@ -57,6 +57,11 @@ final class ShipOutSandboxOutboundTransport
      */
     public function submitOne(array $payload): array
     {
+        // Explicit production transport/credentials are a separate release.
+        // Never send a real ERP order to the ShipOut SANDBOX endpoint.
+        if (app()->environment('production')) {
+            throw new RuntimeException('SHIPOUT_SANDBOX_FORBIDDEN_IN_PRODUCTION');
+        }
         if (! (bool) config('shipout.sandbox_dispatch_enabled', false)) {
             throw new RuntimeException('SHIPOUT_SANDBOX_DISPATCH_DISABLED');
         }

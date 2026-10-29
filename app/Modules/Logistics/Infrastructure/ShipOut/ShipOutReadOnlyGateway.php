@@ -245,6 +245,10 @@ final class ShipOutReadOnlyGateway
     /** @return array<string,mixed> */
     private function get(string $path, array $query): array
     {
+        // Production must use separately audited credentials/transport.
+        if (app()->environment('production')) {
+            throw new RuntimeException('SHIPOUT_SANDBOX_FORBIDDEN_IN_PRODUCTION');
+        }
         if (! (bool) config('shipout.sandbox_read_enabled', false)) {
             throw new RuntimeException('SHIPOUT_SANDBOX_READ_DISABLED');
         }

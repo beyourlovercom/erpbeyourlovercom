@@ -89,13 +89,17 @@ final class OverseaWarehouseController
             'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => $this->row($shipment, $start + $index + 1, $xlwmsAttempts->get($shipment->order_id), $trackingStatuses[(int) $shipment->id] ?? null))->toArray(),
             'xlwmsAuthorizedOrderId' => $canRunXlwms ? (int) config('xlwms.live_order_id', 0) : 0,
             'shipoutSandboxReadEnabled' => $warehouseKey === 'us-moreplus'
+                && ! app()->environment('production')
                 && (bool) config('shipout.sandbox_read_enabled', false),
             'shipoutSandboxDispatchEnabled' => $warehouseKey === 'us-moreplus'
+                && ! app()->environment('production')
                 && (bool) config('shipout.sandbox_dispatch_enabled', false),
             'shipoutSandboxOwnLabelEnabled' => $warehouseKey==='us-moreplus'
+                && ! app()->environment('production')
                 && in_array('6',array_map('trim',explode(',',(string)config('shipout.sandbox_enabled_modes','9'))),true)
                 && (bool)config('shipout.sandbox_dispatch_enabled',false),
             'shipoutSandboxSpecifiedChannel' => $warehouseKey === 'us-moreplus'
+                && ! app()->environment('production')
                 && in_array('10', array_map('trim', explode(',', (string) config('shipout.sandbox_enabled_modes', '9'))), true)
                 && trim((string) config('shipout.sandbox_service_group_id', '')) !== ''
                 ? [
@@ -103,6 +107,7 @@ final class OverseaWarehouseController
                     'label' => trim((string) config('shipout.sandbox_service_group_label', '指定仓库渠道')),
                 ] : null,
             'shipoutSandboxTrackingApplyEnabled' => $warehouseKey === 'us-moreplus'
+                && ! app()->environment('production')
                 && (bool) config('shipout.sandbox_tracking_apply_enabled', false),
             'shipoutSandboxAuthorizedOrderNo' => $warehouseKey === 'us-moreplus'
                 ? trim((string) config('shipout.sandbox_order_allowlist', '')) : '',

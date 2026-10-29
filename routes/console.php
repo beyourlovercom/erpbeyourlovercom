@@ -157,7 +157,8 @@ if ((bool) config('warehouse_storage_aging.monthly_enabled', false)) {
 
 // Expired encrypted ShipOut sandbox labels are disposable and must not be
 // retained indefinitely. Enabled only for an authorized mode 6 environment.
-if (in_array('6', explode(',', str_replace(' ', '', (string)config('shipout.sandbox_enabled_modes','9'))), true)) {
+if (! app()->environment('production')
+    && in_array('6', explode(',', str_replace(' ', '', (string)config('shipout.sandbox_enabled_modes','9'))), true)) {
     Artisan::command('shipout:prune-label-stages', function (): int {
         if (! \Illuminate\Support\Facades\Schema::hasTable('shipout_label_stages')) {
             return \Illuminate\Console\Command::SUCCESS;

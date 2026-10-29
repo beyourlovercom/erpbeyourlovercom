@@ -32,6 +32,9 @@ final class ShipOutSandboxDispatchService
         ?int $actorId = null
     ): array
     {
+        if (app()->environment('production')) {
+            throw new RuntimeException('SHIPOUT_SANDBOX_FORBIDDEN_IN_PRODUCTION');
+        }
         if (! (bool) config('shipout.sandbox_read_enabled', false)
             || ! (bool) config('shipout.sandbox_dispatch_enabled', false)) {
             throw new RuntimeException('SHIPOUT_SANDBOX_DISPATCH_DISABLED');

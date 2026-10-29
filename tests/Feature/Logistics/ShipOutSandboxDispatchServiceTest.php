@@ -36,6 +36,9 @@ final class ShipOutSandboxDispatchServiceTest extends TestCase
         config()->set('shipout.sandbox_enabled_modes','9');
         config()->set('shipout.sandbox_service_group_id','');
         config()->set('shipout.sandbox_client_org_id','');
+        // Only synthetic fake provider fixture has an explicit UTC contract.
+        // Production default remains empty and MUST fail closed.
+        config()->set('shipout.sandbox_shipped_time_timezone','UTC');
         // Isolate route behavior from other tests sharing the same test
         // rate-limit cache. Real web middleware remains enforced.
         $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
@@ -97,6 +100,50 @@ final class ShipOutSandboxDispatchServiceTest extends TestCase
         config()->set('shipout.sandbox_dispatch_enabled', true);
         config()->set('shipout.sandbox_order_allowlist', 'C99999-007');
         config()->set('shipout.sandbox_warehouse_id', 'TEST-W');
+    }
+
+    public function test_r8_production_never_calls_sandbox_even_if_someone_sets_all_flags_on(): void
+    {
+        $this->enable();
+        config()->set('shipout.sandbox_enabled_modes','6,9,10');
+        config()->set('shipout.sandbox_tracking_apply_enabled',true);
+        config()->set('shipout.sandbox_app_key','synthetic-r8-key');
+        config()->set('shipout.sandbox_app_secret','synthetic-r8-secret');
+        config()->set('shipout.sandbox_bearer','synthetic-r8-bearer');
+        $o=$this->order();
+        $this->acknowledgedAttempt($o);
+        Http::fake();
+        Http::preventStrayRequests();
+        $env=$this->app['env'];
+        $this->app->instance('env','production');
+        try {
+            $calls=[
+                fn()=>app(ShipOutSandboxLabelStage::class)->stage(
+                    $o->id,12345,$this->fakePdfLabel(),'9400PRODUCTIONBLOCKED12345',1
+                ),
+                fn()=>app(ShipOutReadOnlyGateway::class)->warehouses(),
+                fn()=>app(ShipOutSandboxDispatchService::class)
+                    ->dispatchApprovedOrder($o->id,'2026-10-30'),
+                fn()=>app(ShipOutTrackingApplyService::class)
+                    ->apply($o->id,'9400SHOULDNOTAPPLY',
+                        $this->warehouseUser(['logistics.operate'])),
+            ];
+            foreach ($calls as $call) {
+                $caught=false;
+                try{$call();}
+                catch(\RuntimeException $e){
+                    $caught=true;
+                    $this->assertSame('SHIPOUT_SANDBOX_FORBIDDEN_IN_PRODUCTION',$e->getMessage());
+                }
+                $this->assertTrue($caught,'Production sandbox egress must be hard denied');
+            }
+            Http::assertNothingSent();
+            $this->assertDatabaseCount('shipout_label_stages',0);
+            $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+            $this->assertNull($o->fresh()->shipment->tracking_number);
+        } finally {
+            $this->app->instance('env',$env);
+        }
     }
 
     public function test_approved_order_is_submitted_once_and_second_submission_is_blocked(): void
@@ -385,6 +432,9 @@ final class ShipOutSandboxDispatchServiceTest extends TestCase
         $this->enable();
         config()->set('shipout.sandbox_inventory_preflight_enabled',true);
         config()->set('shipout.sandbox_client_org_id','');
+        // Only synthetic fake provider fixture has an explicit UTC contract.
+        // Production default remains empty and MUST fail closed.
+        config()->set('shipout.sandbox_shipped_time_timezone','UTC');
         $o=$this->order();
         Http::fake();
         $this->expectExceptionMessage('SHIPOUT_STOCK_IDENTITY_UNAVAILABLE');
@@ -696,6 +746,48 @@ final class ShipOutSandboxDispatchServiceTest extends TestCase
         } finally {
             $this->assertSame('pending', $o->fresh()->shipment->shipment_status);
         }
+    }
+
+    public function test_tracking_apply_fails_closed_without_provider_time_zone_contract(): void
+    {
+        $o=$this->order();
+        $this->enable();
+        config()->set('shipout.sandbox_tracking_apply_enabled',true);
+        config()->set('shipout.sandbox_shipped_time_timezone','');
+        $this->acknowledgedAttempt($o);
+        $this->fakeShippedProvider();
+        Http::preventStrayRequests();
+        $this->expectExceptionMessage('SHIPOUT_SHIPPED_TIME_TIMEZONE_UNVERIFIED');
+        try {
+            app(ShipOutTrackingApplyService::class)->apply(
+                $o->id,'9400READBACK',$this->warehouseUser(['logistics.operate'])
+            );
+        } finally {
+            $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+            $this->assertNull($o->fresh()->shipment->tracking_number);
+            $this->assertDatabaseHas('shipout_dispatch_attempts',[
+                'order_id'=>$o->id,'status'=>'acknowledged',
+            ]);
+            Http::assertSentCount(2);
+        }
+    }
+
+    public function test_provider_wall_clock_conversion_uses_only_explicit_test_timezone(): void
+    {
+        $o=$this->order();
+        $this->enable();
+        config()->set('shipout.sandbox_tracking_apply_enabled',true);
+        config()->set('shipout.sandbox_shipped_time_timezone','Asia/Shanghai');
+        $this->acknowledgedAttempt($o);
+        $this->fakeShippedProvider();
+        Http::preventStrayRequests();
+        $result=app(ShipOutTrackingApplyService::class)->apply(
+            $o->id,'9400READBACK',$this->warehouseUser(['logistics.operate'])
+        );
+        $this->assertSame('pending_vita',$result['woo_sync']);
+        $this->assertSame('2026-10-29 02:00:00',
+            $o->fresh()->shipment->shipped_at->utc()->format('Y-m-d H:i:s'));
+        Http::assertSentCount(2);
     }
 
     public function test_confirmed_shipped_tracking_applies_to_erp_only_and_vita_sync_is_pending(): void

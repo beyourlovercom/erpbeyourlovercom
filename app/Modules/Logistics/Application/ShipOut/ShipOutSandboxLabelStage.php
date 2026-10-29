@@ -14,6 +14,9 @@ final class ShipOutSandboxLabelStage
 {
     public function stage(int $orderId, int $actorId, UploadedFile $file, string $tracking, int $carrierId): array
     {
+        if (app()->environment('production')) {
+            throw new RuntimeException('SHIPOUT_SANDBOX_FORBIDDEN_IN_PRODUCTION');
+        }
         if (! config('shipout.sandbox_dispatch_enabled')
             || ! in_array('6', explode(',', str_replace(' ', '', (string) config('shipout.sandbox_enabled_modes','9'))), true)) {
             throw new RuntimeException('SHIPOUT_SHIPPING_MODE_NOT_ENABLED');

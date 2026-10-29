@@ -29,6 +29,9 @@ final class ShipOutTrackingApplyService
     /** @return array{status:string,tracking_number:string,woo_sync:string} */
     public function apply(int $erpOrderId, string $expectedTracking, Authenticatable $actor): array
     {
+        if (app()->environment('production')) {
+            throw new RuntimeException('SHIPOUT_SANDBOX_FORBIDDEN_IN_PRODUCTION');
+        }
         if (! (bool) config('shipout.sandbox_tracking_apply_enabled', false)
             || ! (bool) config('shipout.sandbox_read_enabled', false)) {
             throw new RuntimeException('SHIPOUT_TRACKING_APPLY_DISABLED');
@@ -96,9 +99,15 @@ final class ShipOutTrackingApplyService
         if ($expectedTracking === '' || ! hash_equals($decision['tracking_number'], $expectedTracking)) {
             throw new RuntimeException('SHIPOUT_TRACKING_CONFIRMATION_MISMATCH');
         }
+        // ShipOut returns a naive wall clock without a timezone suffix.
+        // Refuse the ERP write unless a vendor-verified IANA timezone is set.
+        $timezone = trim((string) config('shipout.sandbox_shipped_time_timezone',''));
+        if ($timezone === '' || ! in_array($timezone, \DateTimeZone::listIdentifiers(), true)) {
+            throw new RuntimeException('SHIPOUT_SHIPPED_TIME_TIMEZONE_UNVERIFIED');
+        }
         try {
             $shippedAt = CarbonImmutable::createFromFormat(
-                '!Y-m-d H:i:s', $decision['shipped_time_utc'], 'UTC'
+                '!Y-m-d H:i:s', $decision['shipped_time_utc'], $timezone
             );
             if ($shippedAt === false || $shippedAt->format('Y-m-d H:i:s') !== $decision['shipped_time_utc']) {
                 throw new RuntimeException('SHIPOUT_SHIPPED_TIME_UNTRUSTED');
@@ -132,7 +141,9 @@ final class ShipOutTrackingApplyService
                 'service' => $actualCarrier === $shipment->carrier
                     ? $shipment->service : null,
                 'tracking_number' => $decision['tracking_number'],
-                'shipped_at' => $shippedAt->toIso8601String(),
+                // Normalize the verified provider wall-clock to UTC before
+                // Eloquent date casts (SQLite/MySQL store timestamps without TZ).
+                'shipped_at' => $shippedAt->utc()->toIso8601String(),
                 'logistics_note' => $shipment->logistics_note,
             ], $actor);
             OverseaWarehouseReview::query()->where('order_id', $erpOrderId)
