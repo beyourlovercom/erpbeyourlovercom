@@ -44,14 +44,16 @@ final class SingleOrderPreview
         $add(! $state, 'province_missing');
         $add(in_array($country, ['US', 'CA', 'AU'], true) && ! preg_match('/^[A-Z]{2,3}$/', $state), 'province_code_not_confirmed');
 
-        // US-SM Owner-approved 2026-10-29: the OMS provider chooses the
-        // lowest-priced available service. Do not pretend the ERP's existing
-        // USPS/Priority Mail selection is the resulting last-mile carrier.
-        // Only this warehouse is eligible for this fixed native OMS code.
-        $channel = $shipment?->warehouse?->code === 'US-SM'
+        // Owner 2026-10-29: US-SM needs NO shipping service / NO label.
+        // Always create a DRAFT; a draft is not a warehouse-received outbound.
+        $usSm = $shipment?->warehouse?->code === 'US-SM';
+        $channel = $usSm
             ? trim((string) config('xlwms.us_sm_oms_logistics_channel', ''))
             : trim((string) ($shipment?->carrierService?->service_value ?: $shipment?->service ?: ''));
         $add($channel === '', 'native_logistics_channel_missing');
+        $add($usSm && (bool) config('xlwms.us_sm_require_no_shipping_service', true)
+            && $channel !== 'No_Shipping_Service',
+            'US_SM_NO_SHIPPING_CHANNEL_REQUIRED');
         $add($shipment?->carrierService && ! $shipment->carrierService->is_active, 'logistics_channel_inactive');
 
         $items = [];
@@ -101,7 +103,7 @@ final class SingleOrderPreview
             'platformOrderNo' => substr((string) ($order->external_order_number ?: $order->erp_order_id ?: $order->id), 0, 50),
             'thirdOrderNo' => $thirdOrderNo,
             'subOrderType' => 1,
-            'isSubmit' => 1,
+            'isSubmit' => $usSm && (bool)config('xlwms.us_sm_create_draft_only', true) ? 0 : 1,
             'logisticsChannel' => $channel,
             'receiver' => trim((string) ($address?->recipient_name ?? '')),
             'telephone' => trim((string) ($address?->phone ?? '')),

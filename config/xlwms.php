@@ -24,11 +24,12 @@ return [
     'warehouse_batch_dispatch_enabled' => filter_var(env('XLWMS_WAREHOUSE_BATCH_DISPATCH_ENABLED', false), FILTER_VALIDATE_BOOL),
     // Explicit one-order Owner allowlist; no other order may dispatch even with the switch ON.
     'live_order_id' => (int) env('XLWMS_LIVE_ORDER_ID', 0),
-    // Owner business approval 2026-10-29, US-SM only: provider's EXACT native
-    // channel code. It chooses the lowest-priced service and is NOT USPS Priority.
-    // Preserve ERP's recorded carrier/service as historic selection data;
-    // the actual chosen last-mile carrier cannot be inferred from this value.
-    'us_sm_oms_logistics_channel' => 'Service with the lowest price',
+    // Owner 2026-10-29: all NEW US-SM outbound drafts use the provider's exact
+    // type-2 special channel. No bought/shipping label, no cheapest/USPS fallback.
+    // This does NOT assert that a carrier or Tracking exists.
+    'us_sm_require_no_shipping_service' => true,
+    'us_sm_oms_logistics_channel' => 'No_Shipping_Service',
+    'us_sm_create_draft_only' => true,
     // Existing inventory-only release controls remain authoritative and fail closed.
     'inventory_sync_schedule_enabled' => filter_var(env('XLWMS_INVENTORY_SYNC_SCHEDULE_ENABLED', false), FILTER_VALIDATE_BOOL),
     'inventory_sync_schedule_minutes' => in_array((int) env('XLWMS_INVENTORY_SYNC_SCHEDULE_MINUTES', 30), [10, 30], true)

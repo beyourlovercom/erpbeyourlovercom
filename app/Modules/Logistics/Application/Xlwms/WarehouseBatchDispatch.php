@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Application\Xlwms;
 
 use App\Modules\Logistics\Application\ShipmentService;
+use App\Modules\Logistics\Application\WarehouseDispatchRecorder;
 use App\Modules\Logistics\Infrastructure\Xlwms\WarehouseOpenApiConnection;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsOrderGateway;
@@ -18,13 +19,21 @@ final class WarehouseBatchDispatch
         private readonly SingleOrderPreview $preview,
         private readonly XlwmsOrderGateway $oms,
         private readonly ShipmentService $shipments,
+        private readonly WarehouseDispatchRecorder $dispatchRecorder,
     ) {}
 
     /** @return array{count:int,results:list<array{order_id:int,code:string,reason?:string}>} */
     public function run(int $actorId): array
     {
+        // OFF is a true no-op: never create an attempt that hides the per-order send action.
+        // A batch must also have exactly ONE explicitly allowlisted order during Canary.
+        if (! (bool)config('xlwms.live_dispatch_enabled', false)
+            || ! (bool)config('xlwms.warehouse_batch_dispatch_enabled', false)
+            || (int)config('xlwms.live_order_id', 0) < 1) {
+            return ['count' => 0, 'results' => [], 'summary' => $this->summary([]), 'blocked_reason' => 'create_disabled'];
+        }
         $warehouse = \App\Modules\Inventory\Infrastructure\Models\Warehouse::query()->where('code', self::WAREHOUSE_CODE)->first();
-        if (! $warehouse) return ['count' => 0, 'results' => []];
+        if (! $warehouse) return ['count' => 0, 'results' => [], 'summary' => $this->summary([])];
         $query = Order::query()->where('order_status', 'pending_shipment')
             ->whereHas('shipment', fn ($q) => $q->where('warehouse_id', $warehouse->id)->where('shipment_status', 'pending'))
             ->whereHas('shipment.overseaReview', fn ($q) => $q->where('status', 'approved')->where('reviewed_warehouse_id', $warehouse->id))
@@ -40,7 +49,7 @@ final class WarehouseBatchDispatch
         $orders = $query->limit(self::MAX_PER_CLICK)->get();
         $results = [];
         foreach ($orders as $order) $results[] = $this->one($order, (int) $warehouse->id, $actorId);
-        return ['count' => count($results), 'results' => $results];
+        return ['count' => count($results), 'results' => $results, 'summary' => $this->summary($results)];
     }
 
     /** @return array{order_id:int,code:string,reason:string} */
@@ -97,6 +106,7 @@ final class WarehouseBatchDispatch
             $attempt->forceFill(['state' => 'batch_existing', 'oms_order_no' => $remoteNo,
                 'duplicate_match_field' => $existing[0]['_erp_match_field'] ?? null,
                 'failure_code' => null, 'last_checked_at' => now()])->save();
+            $this->safeRecord($order, $attempt);
             return $this->reconcileExisting($order, $attempt, $connection, $remoteNo, $third, $platform, $orderId, $finish);
         }
         if ($attempt->oms_order_no || in_array($attempt->state, ['batch_uncertain', 'batch_request_in_flight'], true)) {
@@ -138,12 +148,14 @@ final class WarehouseBatchDispatch
         $skus = array_values(array_filter(array_map('strval', array_column((array) ($payload['productList'] ?? []), 'sku'))));
 
         try {
-            $this->oms->assertCatalogReady($connection, (string) $payload['whCode'], (string) $payload['logisticsChannel'], $skus);
+            $this->oms->assertCatalogReady($connection, (string) $payload['whCode'], (string) $payload['logisticsChannel'], $skus,
+                (bool) config('xlwms.us_sm_require_no_shipping_service', true));
             // Final local transition immediately before the sole outbound write.
             $attempt->forceFill(['state' => 'batch_request_in_flight', 'last_checked_at' => now()])->save();
-            $created = $this->oms->createSingle($connection, $payload);
-            $attempt->forceFill(['state' => 'batch_created', 'oms_order_no' => $created['order_no'], 'failure_code' => null, 'last_checked_at' => now()])->save();
-            return $this->result($orderId, 'created', '已创建 OMS 出库单');
+            $created = $this->oms->createDraftSingle($connection, $payload);
+            $attempt->forceFill(['state' => 'batch_draft_created', 'oms_order_no' => $created['order_no'], 'failure_code' => null, 'last_checked_at' => now()])->save();
+            $this->safeRecord($order, $attempt);
+            return $this->result($orderId, 'created', '已创建 OMS 草稿，尚未提交仓库');
         } catch (\Throwable $e) {
             $uncertain = $attempt->state === 'batch_request_in_flight';
             return $finish($uncertain ? 'batch_uncertain' : 'batch_error', $uncertain ? 'uncertain' : 'error', $uncertain ? 'OMS 创建结果待核实，禁止重发' : 'OMS 创建未完成');
@@ -188,16 +200,10 @@ final class WarehouseBatchDispatch
             if ($status['third_order_no'] !== $third || $status['platform_order_no'] !== $platform) return $finish('batch_blocked', 'identity_mismatch', 'OMS 订单身份不匹配，未更新 ERP');
             $attempt->forceFill(['oms_status_code' => $status['status_code'], 'oms_status_checked_at' => now(), 'oms_tracking_no' => $status['tracking_no'], 'oms_status_failure_code' => null])->save();
             if ($status['status_code'] === '3' && filled($status['tracking_no'])) {
-                // Auto-lowest-price may choose a carrier other than the ERP's
-                // preselected USPS. OMS status endpoint does NOT prove the
-                // actual last-mile carrier, so never write misleading carrier
-                // and Tracking to a shipped ERP/Woo record automatically.
-                if ((string) config('xlwms.us_sm_oms_logistics_channel', '') === 'Service with the lowest price') {
-                    return $this->result($orderId, 'carrier_verification_required', 'OMS 已出库并有单号，请核实实际承运商后再确认 ERP 发货');
-                }
-                $this->shipments->markShipped($order, ['tracking_number' => $status['tracking_no'], 'shipped_at' => now()], null);
-                $attempt->forceFill(['state' => 'batch_status_updated'])->save();
-                return $this->result($orderId, 'status_updated', 'OMS 已出库，Tracking 已安全回写 ERP');
+                // OMS status+tracking does NOT prove actual last-mile carrier,
+                // even if USPS was requested. Prevent premature ERP/Woo shipping.
+                return $this->result($orderId, 'carrier_verification_required',
+                    'OMS 已出库并有 Tracking，须核实 USPS / 真实承运商后人工确认发货');
             }
             if ($status['status_code'] === '4') return $this->result($orderId, 'canceled', 'OMS 已取消，未标记发货');
             return $this->result($orderId, 'unknown_status', 'OMS 状态未确认，未标记发货');
@@ -212,6 +218,31 @@ final class WarehouseBatchDispatch
     }
 
     /** @return array{order_id:int,code:string,reason:string} */
+    /** A failed derived audit cannot invalidate an already confirmed OMS submission. */
+    private function safeRecord(Order $order, XlwmsDispatchAttempt $attempt): void
+    {
+        try { $this->dispatchRecorder->recordConfirmed($order, $attempt); }
+        catch (\Throwable $e) { \Illuminate\Support\Facades\Log::warning('warehouse_dispatch_projection_failed', ['order_id' => $order->id]); }
+    }
+
+    /** @param list<array{order_id:int,code:string,reason?:string}> $results */
+    private function summary(array $results): array
+    {
+        $totals = ['created' => 0, 'existing' => 0, 'blocked' => 0, 'uncertain' => 0, 'other' => 0];
+        foreach ($results as $result) {
+            $code = $result['code'];
+            $group = match (true) {
+                $code === 'created' => 'created',
+                in_array($code, ['existing', 'status_updated', 'carrier_verification_required'], true) => 'existing',
+                in_array($code, ['uncertain', 'in_progress', 'unknown_status'], true) => 'uncertain',
+                in_array($code, ['blocked', 'create_disabled', 'preflight_blocked', 'canary_order_not_authorized', 'error'], true) => 'blocked',
+                default => 'other',
+            };
+            $totals[$group]++;
+        }
+        return $totals;
+    }
+
     private function result(int $orderId, string $code, string $reason): array
     {
         return ['order_id' => $orderId, 'code' => $code, 'reason' => $reason];

@@ -2,6 +2,8 @@
 
 namespace App\Modules\Logistics\Application\Xlwms;
 
+use App\Modules\Logistics\Application\WarehouseDispatchRecorder;
+use App\Modules\Logistics\Application\WarehouseDispatchStatus;
 use App\Modules\Logistics\Infrastructure\Xlwms\WarehouseOpenApiConnection;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsOrderGateway;
@@ -13,6 +15,7 @@ final class SingleOrderDispatch
     public function __construct(
         private readonly SingleOrderPreview $preview,
         private readonly XlwmsOrderGateway $oms,
+        private readonly WarehouseDispatchRecorder $recorder,
     ) {}
 
     /** @return array<string,mixed> */
@@ -35,7 +38,8 @@ final class SingleOrderDispatch
             'oms_status_failure_code'=>$attempt->oms_status_failure_code,
             'oms_tracking_no'=>$attempt->oms_tracking_no,
         ]:null;
-        if($attempt) {
+        $data['retryable_local_block']=WarehouseDispatchStatus::canRetryLocalBlock($attempt);
+        if($attempt && !WarehouseDispatchStatus::canRetryLocalBlock($attempt)) {
             $data['ready_for_remote_check']=false;
             $data['blockers'][]='existing_dispatch_attempt';
         }
@@ -59,7 +63,17 @@ final class SingleOrderDispatch
         // Unique(order_id) and unique(third_order_no) forbid a second dispatch
         // even when two simultaneous HTTP handlers race.
         $attempt=DB::transaction(function() use($order,$preview,$actorId): XlwmsDispatchAttempt {
-            abort_if(XlwmsDispatchAttempt::query()->where('order_id',$order->id)->lockForUpdate()->exists(),409);
+            $existing = XlwmsDispatchAttempt::query()->where('order_id',$order->id)->lockForUpdate()->first();
+            if ($existing) {
+                abort_unless(WarehouseDispatchStatus::canRetryLocalBlock($existing)
+                    && (int)$existing->warehouse_id === (int)$order->shipment->warehouse_id
+                    && $existing->third_order_no === $preview['oms_reference'],
+                    409, '已有实际发货尝试，禁止重复创建');
+                $existing->forceFill(['state'=>'checking_existing',
+                    'request_fingerprint'=>$preview['payload_hash'],
+                    'requested_by'=>$actorId, 'failure_code'=>null])->save();
+                return $existing;
+            }
             return XlwmsDispatchAttempt::query()->create([
                 'order_id'=>$order->id,
                 'warehouse_id'=>$order->shipment->warehouse_id,
@@ -93,16 +107,18 @@ final class SingleOrderDispatch
             $this->oms->assertCatalogReady($connection,
                 $preview['payload']['whCode'],
                 $preview['payload']['logisticsChannel'],
-                array_column($preview['payload']['productList'], 'sku')
+                array_column($preview['payload']['productList'], 'sku'),
+                (bool) config('xlwms.us_sm_require_no_shipping_service', true)
             );
             $attempt->forceFill(['state'=>'request_in_flight','last_checked_at'=>now()])->save();
-            $created=$this->oms->createSingle($connection,$preview['payload']);
+            $created=$this->oms->createDraftSingle($connection,$preview['payload']);
             $attempt->forceFill([
-                'state'=>'submitted_oms',
+                'state'=>'oms_draft_created',
                 'oms_order_no'=>$created['order_no'],
                 'last_checked_at'=>now(),
                 'failure_code'=>null,
             ])->save();
+            $this->safeRecord($order, $attempt);
             return $this->report($attempt);
         } catch (\Throwable $e) {
             // Never retry automatically. A timeout/500 can occur AFTER OMS
@@ -151,6 +167,7 @@ final class SingleOrderDispatch
         if ($existing === []) {
             $attempt->forceFill(['last_checked_at'=>now()])->save();
         }
+        if ($existing !== []) $this->safeRecord($order, $attempt);
         return $this->report($attempt) + ['remote_found'=>$existing!==[]];
     }
 
@@ -200,6 +217,7 @@ final class SingleOrderDispatch
                 'oms_status_failure_code' => null,
                 'last_checked_at' => now(),
             ])->save();
+            $this->safeRecord($order, $attempt);
             return $this->statusReport($attempt, true);
         } catch (\Throwable $e) {
             // Preserve the last confirmed status instead of replacing it
@@ -239,6 +257,14 @@ final class SingleOrderDispatch
         ];
     }
 
+    /** Write-through is supplementary: a failed audit projection must NEVER turn a
+     * confirmed remote CREATE into an ambiguous CREATE or authorize a retry. */
+    private function safeRecord(Order $order, XlwmsDispatchAttempt $attempt): void
+    {
+        try { $this->recorder->recordConfirmed($order, $attempt); }
+        catch (\Throwable $e) { \Illuminate\Support\Facades\Log::warning('warehouse_dispatch_projection_failed', ['order_id' => $order->id]); }
+    }
+
     /** Stable, redacted response for ERP status feedback; never log addresses/keys. */
     private function report(XlwmsDispatchAttempt $attempt): array
     {
@@ -247,7 +273,8 @@ final class SingleOrderDispatch
             'blocked_preflight_error'=>'发送前检查失败，禁止提交',
             'request_in_flight'=>'请求提交中，结果尚未确认',
             'uncertain_manual_reconcile'=>'OMS 请求结果未知，先查单，不可直接重发',
-            'submitted_oms'=>'OMS 已接收订单（不代表已出库）',
+            'submitted_oms'=>'OMS 已接收订单（历史：未验证仓库接单）',
+            'oms_draft_created'=>'已创建 OMS 草稿 · 未提交仓库',
             'found_in_oms'=>'已在 OMS 查到对应订单',
             'checking_existing'=>'正在检查 OMS 是否已有订单',
         ];
