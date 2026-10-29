@@ -115,7 +115,11 @@ final class ShipOutReadOnlyGateway
                 'orderNO' => $orderNo,
                 'orderId' => (string) $row['orderId'],
                 'status' => $row['status'] ?? null,
-                'shipments' => $this->sanitizeShipments($row['shipmentList'] ?? [], $warehouseId),
+                'cancelReasonCode' => $this->safeCancelReasonCode($row['cancelReason'] ?? null),
+                // Cancelled/aborted orders can have unassigned shipment.warehouseId.
+                // Do not mistake their incomplete shipment for a shipped parcel.
+                'shipments' => in_array((int) ($row['status'] ?? -1), [6, 11], true)
+                    ? [] : $this->sanitizeShipments($row['shipmentList'] ?? [], $warehouseId),
             ];
         }
         return ['records' => $rows, 'total' => $total];
@@ -139,8 +143,25 @@ final class ShipOutReadOnlyGateway
             'orderId' => $orderId,
             'orderNO' => (string) $data['orderNO'],
             'status' => $data['status'] ?? null,
-            'shipments' => $this->sanitizeShipments($data['shipmentList'] ?? [], $warehouseId),
+            'cancelReasonCode' => $this->safeCancelReasonCode($data['cancelReason'] ?? null),
+            'shipments' => in_array((int) ($data['status'] ?? -1), [6, 11], true)
+                ? [] : $this->sanitizeShipments($data['shipmentList'] ?? [], $warehouseId),
         ];
+    }
+
+    /** Project only known operational failure codes; never expose free-text
+     * provider reasons (which could include customer PII or trace content).
+     */
+    private function safeCancelReasonCode(mixed $reason): ?string
+    {
+        if (! is_string($reason) || $reason === '') {
+            return null;
+        }
+        if (stripos($reason, 'Account Balance or Credit insufficient') !== false
+            || str_contains($reason, '账户余额或信用额度不足')) {
+            return 'PROVIDER_ACCOUNT_BALANCE_INSUFFICIENT';
+        }
+        return 'PROVIDER_CANCELLED_OTHER';
     }
 
     /** Never return recipient/address/phone fields or trust another warehouse. */

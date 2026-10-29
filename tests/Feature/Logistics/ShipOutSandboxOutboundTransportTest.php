@@ -20,7 +20,7 @@ final class ShipOutSandboxOutboundTransportTest extends TestCase
             'orderSummary' => ['orderDate' => '2026-10-29 00:00:00'],
             'toAddress' => ['name' => 'Sandbox Test'],
             'shipmentForms' => [[
-                'shippingInfo' => ['carrierId' => 1, 'signatureType' => 4],
+                'shippingInfo' => ['carrierId' => 9, 'signatureType' => 4],
                 'outboundInfo' => ['sysServiceId' => '9'],
                 'productList' => [['omsSku' => 'UAT', 'qty' => 1]],
             ]],

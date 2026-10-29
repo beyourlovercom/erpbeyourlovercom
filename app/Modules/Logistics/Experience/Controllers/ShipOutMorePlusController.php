@@ -139,6 +139,10 @@ final class ShipOutMorePlusController
             if ($detail['orderNO'] !== $orderNo) {
                 throw new RuntimeException('SHIPOUT_ORDER_IDENTITY_MISMATCH');
             }
+            if (($detail['cancelReasonCode'] ?? null) === null
+                && ($record['cancelReasonCode'] ?? null) !== null) {
+                $detail['cancelReasonCode'] = $record['cancelReasonCode'];
+            }
             $evaluation = $tracking->evaluate($detail);
             return response()->json([
                 'order_no' => $orderNo,

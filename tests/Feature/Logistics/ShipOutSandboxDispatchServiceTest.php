@@ -98,6 +98,8 @@ final class ShipOutSandboxDispatchServiceTest extends TestCase
         $service = app(ShipOutSandboxDispatchService::class);
         $result = $service->dispatchApprovedOrder($o->id, '2026-10-30');
         $this->assertSame('acknowledged', $result['status']);
+        Http::assertSent(fn ($request) => $request->method() === 'POST'
+            && ($request->data()[0]['shipmentForms'][0]['shippingInfo']['carrierId'] ?? null) === 9);
         $this->assertDatabaseHas('shipout_dispatch_attempts', [
             'order_id' => $o->id, 'status' => 'acknowledged',
             'provider_order_id' => 'PROVIDER-TEST-123',
@@ -196,6 +198,38 @@ final class ShipOutSandboxDispatchServiceTest extends TestCase
         $this->assertNull($o->fresh()->shipment->tracking_number);
         $this->assertSame('pending', $o->fresh()->shipment->shipment_status);
         $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+    }
+
+    public function test_shipout_sandbox_cancelled_for_insufficient_credit_is_visible_without_sensitive_text(): void
+    {
+        $o = $this->order();
+        $this->enable();
+        $this->actingAs($this->warehouseUser(['logistics.view']));
+        Http::fake(function ($request) {
+            $d = [
+                'orderId' => 'OMS-CANCELED', 'orderNO' => 'C99999-007',
+                'status' => 6,
+                'cancelReason' => 'Account Balance or Credit insufficient, Please add balance before proceed TRACESECRET',
+                'shipmentList' => [[
+                    'warehouseId' => null, 'outboundStatus' => 0,
+                    'labelStatus' => 1, 'trackingNumber' => null,
+                ]],
+            ];
+            return Http::response(['result' => 'OK', 'data' =>
+                str_contains($request->url(), '/queryListV2?')
+                    ? ['total' => 1, 'records' => [$d]] : $d], 200);
+        });
+        Http::preventStrayRequests();
+        $this->postJson("/logistics/oversea/us-moreplus/orders/{$o->id}/shipout/status", [])
+            ->assertOk()
+            ->assertJsonPath('state', 'blocked')
+            ->assertJsonPath('reason', 'PROVIDER_ACCOUNT_BALANCE_INSUFFICIENT')
+            ->assertJsonPath('provider_order_status', 6)
+            ->assertJsonPath('erp_shipment_unchanged', true)
+            ->assertDontSee('TRACESECRET');
+        $this->assertSame('pending', $o->fresh()->shipment->shipment_status);
+        $this->assertNull($o->fresh()->shipment->tracking_number);
+        Http::assertSentCount(2);
     }
 
     public function test_shipout_status_readback_rejects_cross_warehouse_shipment(): void

@@ -255,3 +255,44 @@ that real MorePlus inventory/order fulfillment has been verified.
 - UAT is still preview-only. No real ShipOut stocked SKU / successful provider
   outbound / real Tracking readback. Production remains untouched, Draft PR
   is not authorized to merge.
+
+## R4 Real stocked sandbox outbound results (2026-10-29; verified China Mac signed API)
+- Warehouse staff received prior IB261028-1 in their test WMS.
+  OMS stock GET now returns SKU BYL-SHIPOUT-UAT-20261028-001,
+  warehouse 1531580902677626882, availableQuantity=5,
+  standardQuantity=5, outboundingQuantity=0, inboundingQuantity=0.
+  R3 physical receipt/usable-stock gate PASS; no new inbound API implementation.
+- First stocked outbound test: synthetic order
+  BYL-SANDBOX-API-ORDER-20261029-002, 1 item.
+  POST batchSubmitAsync returned HTTP 200 but business result ERR:
+  "When sysServiceId value is 9, the carrierId parameter can only be 9".
+  Provider order GET total 0; stock unchanged at 5.
+- Corrected outbound payload for warehouse-selected service to
+  sysServiceId="9" AND shippingInfo.carrierId=9, not USPS=1.
+  Carrier/actual shipping service will be determined by warehouse;
+  never promise USPS Priority from this request.
+- Second distinct one-shot synthetic order
+  BYL-SANDBOX-API-ORDER-20261029-003 (1 item), POST HTTP 200,
+  response list[0].result=OK, provider orderId 2115708339011026946.
+  Signed OMS queryListV2 confirmed exact orderNO and orderId (total=1).
+  Initial order status=10 (Submitting); outboundStatus=0,
+  no tracking. R4 API creation/identity readback PASS.
+- Shortly afterward OMS order queryListV2 status moved to 6 (Cancelled).
+  Read-only query/order detail returned exact cancellation reason:
+  "Account Balance or Credit insufficient, Please add balance before proceed".
+  shipment outboundStatus=0; no tracking/shipped time. Inventory still
+  available=5, outbounding=0.
+  R4 actual fulfillment/tracking still BLOCKED by sandbox OMS client
+  balance/credit, NOT lack of stock, authentication, or SKU approval.
+- Official ShipOut OMS Help Center documents this error and the need for
+  sufficient client balance or WMS credit limit to submit orders.
+  Do NOT attempt any real payment or self-authorize billing.
+  Request provider to seed sandbox-only credit/limit; once confirmed,
+  create a NEW unique sandbox order. Never replay or resurrect canceled
+  or uncertain order references.
+- Added safe known cancellation classification
+  PROVIDER_ACCOUNT_BALANCE_INSUFFICIENT to status GET and Dede workbench.
+  Real cancelled orders may have shipment.warehouseId=null. For
+  cancelled/aborted statuses, no shipment can be trusted as shipped.
+  Do not expose free-text cancelReason or trace data to ERP/API browser.
+  Added gateway, decision, controller test coverage; no Woo/Production writes.

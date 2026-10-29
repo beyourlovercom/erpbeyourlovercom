@@ -36,7 +36,8 @@ final class ShipOutSandboxOutboundTransport
             || (string) ($payload[0]['warehouseId'] ?? '') !== trim((string) config('shipout.sandbox_warehouse_id', ''))
             || trim((string) config('shipout.sandbox_warehouse_id', '')) === ''
             || count($payload[0]['shipmentForms'] ?? []) !== 1
-            || (string) ($payload[0]['shipmentForms'][0]['outboundInfo']['sysServiceId'] ?? '') !== '9') {
+            || (string) ($payload[0]['shipmentForms'][0]['outboundInfo']['sysServiceId'] ?? '') !== '9'
+            || (int) ($payload[0]['shipmentForms'][0]['shippingInfo']['carrierId'] ?? 0) !== 9) {
             throw new RuntimeException('SHIPOUT_SANDBOX_PAYLOAD_NOT_ALLOWLISTED');
         }
         $appKey = trim($this->appKey);

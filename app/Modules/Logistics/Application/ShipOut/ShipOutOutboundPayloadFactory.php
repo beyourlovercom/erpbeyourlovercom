@@ -99,7 +99,9 @@ final class ShipOutOutboundPayloadFactory
             ],
             'shipmentForms' => [[
                 'shippingInfo' => [
-                    'shipmentSid' => '1', 'carrierId' => 1,
+                    // sysServiceId=9 (warehouse selects service) requires
+                    // carrierId=9. Verified with real ShipOut Sandbox ERR.
+                    'shipmentSid' => '1', 'carrierId' => 9,
                     'shipDate' => $shipDate.' 00:00:00', 'signatureType' => 4,
                 ],
                 'outboundInfo' => ['sysServiceId' => '9'],

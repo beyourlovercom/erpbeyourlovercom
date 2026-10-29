@@ -41,6 +41,16 @@ final class ShipOutTrackingDecisionTest extends TestCase
         $this->assertSame('blocked', (new ShipOutTrackingDecision())->evaluate(['status'=>11])['status']);
     }
 
+    public function test_cancelled_due_to_sandbox_credit_returns_actionable_error(): void
+    {
+        $r = (new ShipOutTrackingDecision())->evaluate([
+            'status' => 6, 'cancelReasonCode' => 'PROVIDER_ACCOUNT_BALANCE_INSUFFICIENT',
+            'shipments' => [],
+        ]);
+        $this->assertSame('blocked', $r['status']);
+        $this->assertSame('PROVIDER_ACCOUNT_BALANCE_INSUFFICIENT', $r['reason']);
+    }
+
     public function test_multi_shipment_requires_manual_review(): void
     {
         $this->assertSame('blocked', (new ShipOutTrackingDecision())->evaluate([

@@ -111,6 +111,7 @@ const shipoutLabel:Record<string,string> = {
   PROVIDER_SHIPMENT_EVIDENCE_INCOMPLETE:'物流单号或出库时间不完整',
   PROVIDER_MULTISHIPMENT_MANUAL_REVIEW:'多包裹须人工核对',
   PROVIDER_CANCELLED_OR_ABORTED:'仓库订单已取消或中止',
+  PROVIDER_ACCOUNT_BALANCE_INSUFFICIENT:'测试账号余额或信用额度不足，ShipOut 已取消此单；请联系测试仓库配置沙盒额度，不要重发相同单号',
   PROVIDER_LABEL_EXCEPTION:'面单异常',
   WAREHOUSE_SHIPPED_WITH_TRACKING:'仓库已发货，有物流单号（尚未回写 ERP）',
   ERP_TRACKING_UPDATED_WOO_PENDING:'已写入 ERP，等待 Vita 同步 WooCommerce',
@@ -206,8 +207,8 @@ async function shipoutRefresh(row:Row) {
     if (result.order_no && !result.order_no.startsWith('C') && !result.order_no.startsWith('KOL'))
       throw Error('仓库订单号校验失败')
     shipoutStatus[row.order_id]=result
-    if (result.state==='blocked'||result.state==='not_found')
-      shipoutErrors[row.order_id]=shipoutMessage(result.reason)
+    // Provider state is already rendered once in the result row. Avoid
+    // duplicate red alerts for the same cancellation / not-found reason.
   } catch(e) {
     shipoutErrors[row.order_id]=e instanceof Error?e.message:'状态查询失败'
   } finally {shipoutBusy[row.order_id]=false}
@@ -618,7 +619,7 @@ const compactPages = computed<(number|string)[]>(() => {
                   <template v-else>
                     <span class="xlwms-state">{{ shipoutStatus[row.order_id]?.state === 'ready_for_erp_review' ? '仓库已发货 · 待人工回写' : shipoutStatus[row.order_id]?.state === 'pending' ? '仓库处理中' : shipoutStatus[row.order_id]?.state === 'not_found' ? 'OMS 未找到订单' : '待查询仓库状态' }}</span>
                     <small v-if="shipoutStatus[row.order_id]?.tracking_number" class="xlwms-track">Tracking {{shipoutStatus[row.order_id]?.tracking_number}}（未同步 Woo）</small>
-                    <small v-if="shipoutStatus[row.order_id]?.reason" class="xlwms-note">{{shipoutMessage(shipoutStatus[row.order_id].reason)}}</small>
+                    <small v-if="shipoutStatus[row.order_id]?.reason" :class="shipoutStatus[row.order_id]?.state === 'blocked' ? 'xlwms-error' : 'xlwms-note'">{{shipoutMessage(shipoutStatus[row.order_id].reason)}}</small>
                     <div class="xlwms-buttons">
                       <button v-if="shipoutSandboxDispatchEnabled && row.review_status === 'approved' && row.shipment_status === 'pending' && canOperate" type="button" class="xlwms-action" :disabled="shipoutBusy[row.order_id] || shipoutSentOnce[row.order_id]" @click="shipoutPreflight(row)">{{shipoutBusy[row.order_id]?'预检中…':'API 发货'}}</button>
                       <button v-if="shipoutSandboxReadEnabled" type="button" class="xlwms-action" :disabled="shipoutBusy[row.order_id]" @click="shipoutRefresh(row)">{{shipoutBusy[row.order_id]?'查询中…':'查询物流状态'}}</button>

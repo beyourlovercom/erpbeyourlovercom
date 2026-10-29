@@ -101,6 +101,44 @@ final class ShipOutReadOnlyGatewayTest extends TestCase
             && str_contains($request->url(), '/open-api/oms/order/query?'));
     }
 
+    public function test_cancelled_order_with_missing_warehouse_projects_balance_error_safely(): void
+    {
+        config()->set('shipout.sandbox_read_enabled', true);
+        Http::fake(function ($request) {
+            $response = [
+                'result' => 'OK',
+                'data' => [
+                    'orderId' => 'TEST-ORDER-ID',
+                    'orderNO' => 'TEST-ORDER-NO',
+                    'status' => 6,
+                    'cancelReason' => 'Account Balance or Credit insufficient, Please add balance before proceed TRACESECRET',
+                    'shipmentList' => [[
+                        'shipmentId' => 'S1', 'warehouseId' => null,
+                        'outboundStatus' => 0, 'trackingNumber' => null,
+                    ]],
+                    'toAddress' => ['phone' => 'SECRET_PHONE'],
+                ],
+            ];
+            if (str_contains($request->url(), '/queryListV2?')) {
+                $response['data'] = ['total' => 1, 'records' => [$response['data']]];
+            }
+            return Http::response($response, 200);
+        });
+        Http::preventStrayRequests();
+
+        $page = $this->client()->orderPage('WH1', 'TEST-ORDER-NO');
+        $this->assertSame('PROVIDER_ACCOUNT_BALANCE_INSUFFICIENT', $page['records'][0]['cancelReasonCode']);
+        $this->assertSame([], $page['records'][0]['shipments']);
+        $detail = $this->client()->orderDetail('WH1', 'TEST-ORDER-ID');
+        $this->assertSame(6, $detail['status']);
+        $this->assertSame('PROVIDER_ACCOUNT_BALANCE_INSUFFICIENT', $detail['cancelReasonCode']);
+        $this->assertSame([], $detail['shipments']);
+        $json = json_encode([$page, $detail]);
+        $this->assertStringNotContainsString('TRACESECRET', $json);
+        $this->assertStringNotContainsString('SECRET_PHONE', $json);
+        Http::assertSentCount(2);
+    }
+
     public function test_order_detail_warehouse_mismatch_is_rejected(): void
     {
         config()->set('shipout.sandbox_read_enabled', true);

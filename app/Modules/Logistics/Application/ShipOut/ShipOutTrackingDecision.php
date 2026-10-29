@@ -16,7 +16,10 @@ final class ShipOutTrackingDecision
     {
         $status = (int) ($detail['status'] ?? -1);
         if (in_array($status, [6, 11], true)) {
-            return ['status' => 'blocked', 'reason' => 'PROVIDER_CANCELLED_OR_ABORTED'];
+            return ['status' => 'blocked', 'reason' =>
+                ($detail['cancelReasonCode'] ?? null) === 'PROVIDER_ACCOUNT_BALANCE_INSUFFICIENT'
+                    ? 'PROVIDER_ACCOUNT_BALANCE_INSUFFICIENT'
+                    : 'PROVIDER_CANCELLED_OR_ABORTED'];
         }
         if (! in_array($status, [2, 3, 4, 10], true)) {
             return ['status' => 'blocked', 'reason' => 'PROVIDER_UNKNOWN_ORDER_STATE'];
