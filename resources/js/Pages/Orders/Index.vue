@@ -18,6 +18,7 @@ const props = defineProps<{
   sourceTypes: { value: string; label: string }[]
   savedViews: SavedView[]
   canExport: boolean
+  canPreviewKolLinks?: boolean
   canManageTrash?: boolean
   wooOrderSync: {
     health: 'ok' | 'stale' | 'failed' | 'disabled'
@@ -125,6 +126,7 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
           </template>
           <Link v-if="canManageTrash" class="mvp-button" href="/orders/trash">回收站（管理员）</Link>
           <a v-if="canExport" class="mvp-button" :href="exportUrl()">导出 CSV</a>
+          <Link v-if="orderKind === 'kol_fulfillment' && canPreviewKolLinks" class="mvp-button" href="/kol/orders/link-preview" data-testid="kol-order-link-preview">历史关联预览</Link>
           <template v-if="orderKind === 'all' && orderScope !== 'external_warehouse'">
             <Link class="mvp-button" href="/customers/orders/create">新建客户订单</Link>
             <Link class="mvp-button mvp-button-primary" href="/kol/orders/create">新建网红订单</Link>

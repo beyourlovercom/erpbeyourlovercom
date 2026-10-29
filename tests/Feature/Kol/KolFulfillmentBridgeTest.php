@@ -38,6 +38,7 @@ class KolFulfillmentBridgeTest extends TestCase
         $this->assertSame('kol', $order->source_type->value);
         $this->assertSame('007erp-'.$order->order_date->format('md').'-k'.$kol->id, $order->erp_order_id);
         $this->assertSame($order->id, $collaboration->fresh()->order_id);
+        $this->assertSame($kol->id, (int) $order->kol_id, 'new collaboration fulfillment must persist the authoritative KOL ID');
         $this->assertDatabaseHas('order_items', ['order_id' => $order->id, 'product_id' => $product->id, 'quantity' => 2]);
         $this->assertDatabaseHas('order_addresses', ['order_id' => $order->id, 'recipient_name' => 'Creator Name', 'country' => 'US', 'city' => 'Los Angeles']);
     }
@@ -83,6 +84,7 @@ class KolFulfillmentBridgeTest extends TestCase
             $product = Product::create(['source_type' => 'manual', 'sku' => 'FIXTURE-SKU-'.uniqid(), 'name' => 'Fixture Product', 'is_active' => true]);
             $collaboration->products()->create(['product_id' => $product->id, 'sku_snapshot' => $product->sku, 'product_name_snapshot' => $product->name, 'quantity' => 1]);
         }
+
         return [$user, $kol, $collaboration];
     }
 

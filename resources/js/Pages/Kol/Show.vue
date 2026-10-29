@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
 type SocialMetric = { followers: number | null; raw_followers_value: string | null; measured_at: string | null }
@@ -42,6 +42,8 @@ const props = defineProps<{
   canOperate: boolean
   canCreateOrders?: boolean
   canManageViews: boolean
+  affiliateAccount?: { affiliate_id: number | null; wordpress_user_id: number | null; connection_key: string } | null
+  affiliateAdminUrl?: string | null
 }>()
 
 const archive = () => {
@@ -50,6 +52,27 @@ const archive = () => {
   }
 }
 const reactivate = () => router.post(`/kol/library/${props.kol.id}/reactivate`)
+
+const affiliateCopyStatus = ref('')
+const copyAffiliateUrl = async () => {
+  if (!props.affiliateAdminUrl) return
+  let success = false
+  if (window.isSecureContext && navigator.clipboard?.writeText) {
+    try { await navigator.clipboard.writeText(props.affiliateAdminUrl); success = true } catch { /* fallback */ }
+  }
+  if (!success) {
+    const field = document.createElement('textarea')
+    field.value = props.affiliateAdminUrl
+    field.setAttribute('readonly', '')
+    field.style.position = 'fixed'
+    field.style.left = '-9999px'
+    document.body.appendChild(field)
+    field.select()
+    try { success = document.execCommand('copy') } catch { success = false }
+    document.body.removeChild(field)
+  }
+  affiliateCopyStatus.value = success ? '联盟账号地址已复制' : '复制失败，请使用跳转按钮'
+}
 
 const stageLabel = (s: string) => ({ prospect: '潜在', contacted: '已联系', negotiating: '谈判中', cooperating: '合作中', long_term: '长期合作', paused: '暂停', ended: '已结束' }[s] ?? s)
 const platformLabel = (p: string) => ({ instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', xiaohongshu: '小红书', weibo: '微博', wechat: '微信', twitter: 'X/Twitter', facebook: 'Facebook', other: '其他' }[p] ?? p)
@@ -105,6 +128,10 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
         <div class="kol-detail-toolbar__trail">KOL 资料库 / KOL 详情</div>
         <div class="kol-detail-toolbar__actions page-header-actions">
           <Link class="kol-action-button" href="/kol/library">返回列表</Link>
+          <a v-if="affiliateAdminUrl" class="kol-action-button" :href="affiliateAdminUrl" target="_blank" rel="noopener noreferrer" data-testid="affiliatewp-edit-link">AffiliateWP 账号 ↗</a>
+          <button v-if="affiliateAdminUrl" class="kol-action-button" type="button" data-testid="affiliatewp-copy-url" @click="copyAffiliateUrl">复制地址</button>
+          <span v-if="affiliateCopyStatus" role="status">{{ affiliateCopyStatus }}</span>
+
           <Link v-if="canOperate" class="kol-action-button" :href="`/kol/library/${kol.id}/edit`">编辑 KOL</Link>
           <button v-if="canOperate && !kol.archived_at" class="kol-action-button kol-action-button--danger" type="button" @click="archive">归档</button>
           <button v-else-if="canOperate" class="kol-action-button" type="button" @click="reactivate">重新激活</button>

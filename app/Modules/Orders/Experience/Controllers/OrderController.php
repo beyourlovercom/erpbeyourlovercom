@@ -5,7 +5,10 @@ namespace App\Modules\Orders\Experience\Controllers;
 use App\Modules\Audit\Infrastructure\Models\AuditRecord;
 use App\Modules\Finance\Application\OrderAnalysisService;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
+use App\Modules\Kol\Application\KolScope;
 use App\Modules\Kol\Application\SavedViewService;
+use App\Modules\Kol\Infrastructure\Models\Kol;
+use App\Modules\Kol\Infrastructure\Models\KolCollaboration;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
 use App\Modules\Logistics\Application\FulfillmentAllocationAccess;
@@ -75,6 +78,7 @@ final class OrderController
             'savedViews' => $this->views->forUser('orders', (int) $request->user()->getAuthIdentifier(), false),
             'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),
             'canExport' => $canExport,
+            'canPreviewKolLinks' => $kind === OrderKind::KolFulfillment && $request->user()->can('kol.views.manage'),
             'canManageTrash' => $request->user()?->can('system.permissions.manage') ?? false,
             'wooOrderSync' => $request->user()->can('sync.view') ? [
                 ...app(WooOrderSyncHealthReader::class)->snapshot(),
@@ -97,13 +101,36 @@ final class OrderController
             'defaultOrderKind' => $kind->value,
             'orderKindLabel' => $this->kindLabel($kind),
             'generatedExternalOrderNumber' => $this->orders->generateExternalOrderNumber($kind),
+            'kolOptions' => $kind === OrderKind::KolFulfillment && $request->user()->can('kol.view')
+                ? Kol::query()->whereNull('archived_at')
+                    ->when(! KolScope::isAllScope($request->user()),
+                        fn ($query) => $query->where('owner_id', $request->user()->getAuthIdentifier()))
+                    ->orderBy('display_name')->limit(1500)->get(['id', 'display_name'])
+                    ->map(fn (Kol $kol): array => ['value' => (int) $kol->id, 'label' => $kol->display_name])->all()
+                : [],
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
         KolOrderAccessScope::authorizeCreate($request->user(), $this->kind($request));
-        $data = $request->validate($this->rules());
+        $kind = $this->kind($request);
+        $data = $request->validate([
+            ...$this->rules(),
+            // Legacy KOL import/API creators without kol.view remain backward compatible.
+            // Staff using KOL library must supply an authoritative identity.
+            'kol_id' => $kind === OrderKind::KolFulfillment
+                ? [$request->user()->can('kol.view') ? 'required' : 'nullable', 'integer',
+                    Rule::exists('kols', 'id')->whereNull('archived_at')]
+                : ['prohibited'],
+        ]);
+        if ($kind === OrderKind::KolFulfillment && filled($data['kol_id'] ?? null)) {
+            abort_unless($request->user()->can('kol.view'), 403);
+            $kol = Kol::query()->findOrFail($data['kol_id']);
+            abort_unless(KolScope::isAllScope($request->user()) || (int) $kol->owner_id === (int) $request->user()->getAuthIdentifier(), 403);
+        } else {
+            unset($data['kol_id']);
+        }
         $items = $data['items'];
         unset($data['items']);
         // Route context is authority: order_kind/source_type/owner cannot be overridden by client input.
@@ -165,6 +192,7 @@ final class OrderController
             'carrierOptions' => $this->carrierServices->options(),
             'canOperateLogistics' => $this->logisticsExecutionAccess->allows($request->user()),
             'canViewProfit' => $request->user()?->can('analysis.view') ?? false,
+            'kolProfile' => $this->kolProfileForOrder($request, $order),
             'canMarkOperational' => $request->user()?->can('orders.edit') ?? false,
             'canTrashOrder' => $request->user()?->can('orders.edit') ?? false,
             'canManageTrash' => $request->user()?->can('system.permissions.manage') ?? false,
@@ -182,6 +210,34 @@ final class OrderController
                     'created_at' => $record->created_at?->toIso8601String(), 'reason' => $record->reason,
                 ])->all(),
         ]);
+    }
+
+    /** @return array{id:int,display_name:string,url:string}|null */
+    private function kolProfileForOrder(Request $request, Order $order): ?array
+    {
+        if ($order->order_kind !== OrderKind::KolFulfillment || ! $request->user()?->can('kol.view')) {
+            return null;
+        }
+
+        $kolId = $order->kol_id;
+        if (! $kolId) {
+            // Historical fallback is authoritative only when precisely one formal collaboration exists.
+            $ids = KolCollaboration::query()->where('order_id', $order->id)->distinct()
+                ->limit(2)->pluck('kol_id');
+            if ($ids->count() !== 1) {
+                return null;
+            }
+            $kolId = (int) $ids->first();
+        }
+
+        $kol = Kol::query()->find($kolId);
+        if (! $kol || (! KolScope::isAllScope($request->user())
+            && (int) $kol->owner_id !== (int) $request->user()->getAuthIdentifier())) {
+            return null;
+        }
+
+        return ['id' => (int) $kol->id, 'display_name' => $kol->display_name,
+            'url' => route('kol.library.show', $kol, false)];
     }
 
     /** @param array<int,int> $productIds @param array<int,array<string,mixed>> $warehouses @param array<int,array<int,array<string,mixed>>> $availability */

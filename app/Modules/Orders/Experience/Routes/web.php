@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Orders\Experience\Controllers\KolLogisticsController;
+use App\Modules\Orders\Experience\Controllers\KolOrderLinkPreviewController;
 use App\Modules\Orders\Experience\Controllers\OrderController;
 use App\Modules\Orders\Experience\Controllers\OrderSavedViewController;
 use App\Modules\Orders\Experience\Controllers\OrderTrashController;
@@ -35,6 +36,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::patch('/customers/orders/{order}', [OrderController::class, 'update'])->middleware('can:orders.edit')->where('order', '[A-Z]{3}-[0-9]{8}-[A-Z0-9]{6}|[0-9]+')->name('orders.update.customers')->defaults('order_kind', 'customer');
 
     Route::get('/kol/logistics', [KolLogisticsController::class, 'index'])->middleware('can:kol.view')->name('kol.logistics');
+    Route::get('/kol/orders/link-preview', KolOrderLinkPreviewController::class)->middleware(['can:orders.view', 'can:kol.views.manage'])->name('kol.orders.link-preview');
     Route::get('/kol/orders', [OrderController::class, 'index'])->middleware('can:orders.view')->name('kol.orders')->defaults('order_kind', 'kol_fulfillment');
     Route::get('/kol/orders/create', [OrderController::class, 'create'])->middleware('can:orders.create')->name('kol.orders.create')->defaults('order_kind', 'kol_fulfillment');
     Route::post('/kol/orders', [OrderController::class, 'store'])->middleware('can:orders.create')->name('orders.store')->defaults('order_kind', 'kol_fulfillment');

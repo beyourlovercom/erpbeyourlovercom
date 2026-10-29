@@ -6,6 +6,7 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -35,6 +36,14 @@ class ErpNavigationTest extends TestCase
         $this->actingAs($user);
     }
 
+    private function fixtureKolId(): int
+    {
+        return (int) Kol::create([
+            'display_name' => 'Synthetic Navigation KOL', 'status' => 'active',
+            'relationship_stage' => 'cooperating', 'owner_id' => auth()->id(),
+        ])->id;
+    }
+
     public function test_every_declared_navigation_path_is_available(): void
     {
         foreach ($this->paths(config('erp_navigation')) as $path) {
@@ -56,9 +65,10 @@ class ErpNavigationTest extends TestCase
 
     public function test_order_list_and_detail_render_the_phase_two_skeleton(): void
     {
+        $kolId = $this->fixtureKolId();
         $kolProduct = Product::firstOrCreate(['sku' => 'KOL-1'], ['name' => 'Synthetic KOL Product', 'product_type' => 'simple', 'woocommerce_product_id' => 6001]);
         $this->post('/kol/orders', [
-            'order_kind' => 'kol_fulfillment', 'source_type' => 'kol', 'external_order_number' => 'PHASE2-KOL-1',
+            'kol_id' => $kolId, 'order_kind' => 'kol_fulfillment', 'source_type' => 'kol', 'external_order_number' => 'PHASE2-KOL-1',
             'order_date' => '2026-08-05', 'recipient_name' => 'Synthetic KOL', 'phone' => '+1 555 0101',
             'country' => 'US', 'province_state' => 'CA', 'city' => 'Los Angeles', 'address_line_1' => 'Synthetic Street',
             'items' => [['product_id' => $kolProduct->id, 'product_summary' => 'Synthetic KOL Product', 'sku' => 'KOL-1', 'quantity' => 1, 'unit_price' => '10.00']],
@@ -77,7 +87,7 @@ class ErpNavigationTest extends TestCase
             'items' => [['product_id' => $product->id, 'product_summary' => 'All Orders Product', 'quantity' => 1, 'unit_price' => '10.00']],
         ];
         $this->post('/customers/orders', [...$base, 'external_order_number' => 'ALL-CUSTOMER-1'])->assertRedirect();
-        $this->post('/kol/orders', [...$base, 'external_order_number' => 'ALL-KOL-1'])->assertRedirect();
+        $this->post('/kol/orders', [...$base, 'kol_id' => $this->fixtureKolId(), 'external_order_number' => 'ALL-KOL-1'])->assertRedirect();
 
         $this->get('/orders')->assertInertia(fn (Assert $page) => $page
             ->component('Orders/Index')

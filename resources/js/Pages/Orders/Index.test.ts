@@ -24,6 +24,26 @@ const props = {
 describe('Orders Saved Views', () => {
   beforeEach(() => { get.mockClear(); post.mockClear(); del.mockClear() })
 
+  it('shows history identity preview only in the authorized KOL order list', () => {
+    const manager = mount(Index, { props: {
+      ...props, orderKind: 'kol_fulfillment', canPreviewKolLinks: true,
+    } })
+    expect(manager.get('[data-testid="kol-order-link-preview"]').attributes('href')).toBe('/kol/orders/link-preview')
+    manager.unmount()
+
+    const staff = mount(Index, { props: {
+      ...props, orderKind: 'kol_fulfillment', canPreviewKolLinks: false,
+    } })
+    expect(staff.find('[data-testid="kol-order-link-preview"]').exists()).toBe(false)
+    staff.unmount()
+
+    const customer = mount(Index, { props: {
+      ...props, orderKind: 'customer', canPreviewKolLinks: true,
+    } })
+    expect(customer.find('[data-testid="kol-order-link-preview"]').exists()).toBe(false)
+    customer.unmount()
+  })
+
   it('shows manual Woo import on general orders but not procurement list', async () => {
     const wrapper = mount(Index, { props })
     expect(wrapper.text()).toContain('同步网站订单')

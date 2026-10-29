@@ -21,6 +21,7 @@ const props = defineProps<{
   defaultOrderKind: string
   orderKindLabel: string
   generatedExternalOrderNumber: string
+  kolOptions?: { value: number; label: string }[]
 }>()
 
 type OrderItem = {
@@ -33,6 +34,7 @@ type OrderItem = {
 
 const form = useForm<{
   external_order_number: string
+  kol_id: number | null
   order_date: string
   order_note: string
   currency: string
@@ -47,6 +49,7 @@ const form = useForm<{
   items: OrderItem[]
 }>({
   external_order_number: props.generatedExternalOrderNumber,
+  kol_id: null,
   order_date: new Date().toISOString().slice(0, 10),
   order_note: '',
   currency: 'USD',
@@ -157,6 +160,14 @@ const submit = () => {
               <div class="erp-form-field">
                 <label class="erp-form-label">来源</label>
                 <div class="erp-readonly-input">手动创建</div>
+              </div>
+              <div v-if="isKol" class="erp-form-field ord-span-2">
+                <label for="linked_kol_id" class="erp-form-label">关联网红 <span class="erp-form-required">*</span></label>
+                <select id="linked_kol_id" v-model="form.kol_id" class="erp-input" :class="{ 'has-error': form.errors.kol_id }" required data-testid="kol-identity-select">
+                  <option :value="null">选择现有网红档案（不得使用收件人猜测）</option>
+                  <option v-for="item in kolOptions ?? []" :key="item.value" :value="item.value">{{ item.label }} · ID {{ item.value }}</option>
+                </select>
+                <p v-if="form.errors.kol_id" class="erp-field-error">{{ form.errors.kol_id }}</p>
               </div>
               <div class="erp-form-field">
                 <label class="erp-form-label">订单日期 <span class="erp-form-required">*</span></label>

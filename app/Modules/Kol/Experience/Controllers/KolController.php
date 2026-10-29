@@ -77,6 +77,7 @@ final class KolController
         }
 
         $canManageViews = KolScope::canManageViews($user);
+
         return Inertia::render('Kol/Create', [
             'ownerOptions' => $ownerOptions,
             'approvalManagerOptions' => $canManageViews ? $this->usersWithPermission('kol.approvals.manage') : [],
@@ -175,6 +176,7 @@ final class KolController
         unset($password);
 
         $redirect = redirect()->route('kol.library.show', $result['kol']);
+
         return $result['success']
             ? $redirect->with('success', 'KOL 已创建；WordPress / AffiliateWP / Coupon 自动开通完成。')
             : $redirect->with('warning', 'KOL 已创建，但自动开通未完整完成，系统已发送处理通知。');
@@ -204,8 +206,16 @@ final class KolController
         }
         $kol->load($relations);
 
+        $affiliateAccount = $this->affiliateAccountData($kol);
+        $affiliateId = (int) ($affiliateAccount['affiliate_id'] ?? 0);
+        $affiliateAdminUrl = $affiliateId > 0 && ($affiliateAccount['connection_key'] ?? null) === 'beyourlover.com'
+            ? 'https://www.beyourlover.com/wp-admin/admin.php?page=affiliate-wp-affiliates&affiliate_id='.$affiliateId.'&action=edit_affiliate'
+            : null;
+
         return Inertia::render('Kol/Show', [
             'kol' => $this->kolDetailData($kol),
+            'affiliateAccount' => $affiliateAccount,
+            'affiliateAdminUrl' => $affiliateAdminUrl,
             'canOperate' => KolScope::canOperate($request->user()),
             'canCreateOrders' => $request->user()->can('orders.create'),
             'canManageViews' => KolScope::canManageViews($request->user()),
@@ -244,6 +254,7 @@ final class KolController
         }
 
         $canManageViews = KolScope::canManageViews($user);
+
         return Inertia::render('Kol/Edit', [
             'kol' => $this->kolDetailData($kol),
             'affiliateAccount' => $this->affiliateAccountData($kol),
@@ -331,7 +342,6 @@ final class KolController
         return redirect()->route('kol.library.show', $kol)->with('success', 'KOL 已更新');
     }
 
-
     public function provisionAffiliateAccount(Request $request, Kol $kol): JsonResponse
     {
         $this->authorizeKolAccess($request, $kol);
@@ -351,6 +361,7 @@ final class KolController
         unset($password, $data['password'], $data['password_confirmation']);
 
         $kol->refresh();
+
         return response()->json([
             'message' => $result['success']
                 ? 'WordPress / AffiliateWP / Coupon 账号已创建并完成 read-back。'
@@ -417,7 +428,6 @@ final class KolController
 
         return redirect()->route('kol.library.show', $kol)->with('success', 'KOL 已重新激活');
     }
-
 
     /** @return array<string,mixed>|null */
     private function affiliateAccountData(Kol $kol): ?array
