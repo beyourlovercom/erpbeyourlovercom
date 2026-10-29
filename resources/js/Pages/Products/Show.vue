@@ -301,7 +301,7 @@ const selectRelative = async (tab: Tab, delta: number) => {
         <table v-if="approvedAccessories?.length" class="mvp-table"><thead><tr><th>配件名称</th><th>数量</th><th>单位</th><th>说明</th></tr></thead>
           <tbody><tr v-for="(part,i) in approvedAccessories" :key="i"><td>{{part.name}}</td><td>{{part.quantity}}</td><td>{{part.unit}}</td><td>{{part.notes||'—'}}</td></tr></tbody></table>
         <p v-else class="mvp-empty">尚未有经过审核的包装内配件清单</p>
-        <PackagingEditor v-if="canOperate" embedded :product="{id:Number(product.id),sku:product.sku ?? null,name:String(product.name)}" :packaging-profile="packagingProfile ?? null" :presets="packagingPresets ?? []" />
+        <PackagingEditor v-if="canOperate" embedded :product="{id:Number(product.id),sku:product.sku ?? null,name:String(product.name),barcode_69:product.barcode_69 ?? null}" :packaging-profile="packagingProfile ?? null" :presets="packagingPresets ?? []" />
         <p v-else class="product360-meta-note">包装方案维护需要产品操作权限；已审核配件仍可查阅。</p>
       </article>
       <article v-else-if="activeTab === '销售与合作' && activeSubTab === 'KOL 合作'" class="erp-form-card" role="tabpanel" tabindex="0">
