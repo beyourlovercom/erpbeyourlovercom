@@ -140,6 +140,7 @@ const props = withDefaults(defineProps<{
   canCreateReplacement?: boolean
   canOperateLogistics?: boolean
   canViewProfit?: boolean
+  wooAdminEditUrl?: string | null
 
 }>(), { canMarkOperational: false, canEditOrder: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canViewProfit: false })
 
@@ -986,6 +987,7 @@ onBeforeUnmount(() => {
             <button v-if="editMode" type="button" class="erp-btn erp-btn-secondary" @click="cancelEdit">取消编辑</button>
             <a :href="basePath" class="erp-btn erp-btn-secondary">返回列表</a>
             <a v-if="canViewProfit && !isKol" :href="`/accounting/order-costs?search=${encodeURIComponent(order.erp_order_id ?? '')}`" class="erp-btn erp-btn-secondary">查看订单利润</a>
+            <a v-if="wooAdminEditUrl && !isKol" :href="wooAdminEditUrl" target="_blank" rel="noopener noreferrer" class="erp-btn erp-btn-secondary" data-testid="woo-admin-order-link">网站编辑订单 ↗</a>
             <a v-if="canCreateProcurement && !order.procurement_order" :href="`/purchase/orders/from-order/${order.id}/create`" class="erp-btn erp-btn-primary">创建采购订单</a>
             <a v-if="order.procurement_order" :href="`/purchase/orders/${order.procurement_order.id}`" class="erp-btn erp-btn-secondary">查看采购订单 · {{ order.procurement_order.procurement_number }}</a>
             <button v-if="!editMode && canEditOrder" type="button" class="erp-btn erp-btn-primary" @click="enterEditMode">编辑订单</button>
