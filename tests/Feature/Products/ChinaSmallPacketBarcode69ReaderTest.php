@@ -20,7 +20,7 @@ final class ChinaSmallPacketBarcode69ReaderTest extends TestCase
             'sku' => 'VX357A', 'name' => 'Test', 'product_type' => 'simple',
             'source_type' => 'manual', 'barcode_69' => '6977291390537',
         ]);
-        $order = Order::factory()->create();
+        $order = Order::create(['internal_order_number' => 'BC69-'.uniqid(), 'erp_order_id' => '007-BC69-'.uniqid(), 'source_type' => 'manual', 'order_kind' => 'customer', 'order_date' => now()->toDateString(), 'order_status' => 'pending_shipment', 'currency' => 'USD']);
         OrderItem::query()->create([
             'order_id' => $order->id, 'product_id' => $product->id, 'sku' => 'VX357A',
             'quantity' => 2, 'unit_price' => 0, 'line_revenue' => 0,
@@ -36,7 +36,7 @@ final class ChinaSmallPacketBarcode69ReaderTest extends TestCase
             'sku' => 'VX357A', 'name' => 'Test', 'product_type' => 'simple',
             'source_type' => 'manual', 'barcode_69' => '6977291390537',
         ]);
-        $order = Order::factory()->create();
+        $order = Order::create(['internal_order_number' => 'BC69-'.uniqid(), 'erp_order_id' => '007-BC69-'.uniqid(), 'source_type' => 'manual', 'order_kind' => 'customer', 'order_date' => now()->toDateString(), 'order_status' => 'pending_shipment', 'currency' => 'USD']);
         OrderItem::query()->create([
             'order_id' => $order->id, 'product_id' => $product->id,
             'sku' => 'VX357A', 'resolved_fulfillment_sku' => 'VX357B',
