@@ -476,3 +476,16 @@ TOTAL remaining from this engineering baseline: 11-18 hours,
 excluding external warehouse lag, review/approval waiting,
 and any unrelated unified Logistics R8-P0 scope expansion.
 No Production merge, credential activation, Woo or ERP live writes.
+
+### Dede final read-only status UX refinements (same Draft branch)
+- The existing MorePlus table row displays the provider's actual carrier
+  (USPS/UPS/FedEx/DHL), confirmed tracking and raw shippedTime.
+- For synthetic test-only tracking prefixes mock_ or UATSHIPOUTVOID,
+  hide the ERP tracking-apply control entirely and display a clear
+  cannot-publish-to-real-ERP/Woo message. Backend independently
+  refuses those prefixes even if the UI is bypassed.
+- Provider shippedTime's timezone is not documented confidently in
+  the live response. Display as API raw time, not guaranteed UTC.
+  Production release requires a timezone contract verification to
+  avoid shifting customer-facing shipping dates.
+- Desktop-only Dede workbench; original manual file workflow preserved.

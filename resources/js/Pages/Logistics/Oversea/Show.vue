@@ -138,6 +138,11 @@ const shipoutLabel:Record<string,string> = {
   SHIPOUT_SERVICE_GROUP_NOT_VERIFIED:'指定渠道 ID 尚未与仓库绑定',
 }
 const shipoutMessage = (code:string) => shipoutLabel[code] || code
+const shipoutIsSyntheticTracking = (tracking?:string|null) => /^(mock_|UATSHIPOUTVOID)/i.test(tracking||'')
+const shipoutCarrierName = (carrier?:number|null) => ({
+  1:'USPS',2:'UPS',3:'FedEx',4:'DHL',9:'Other',
+} as Record<number,string>)[Number(carrier)] || '待核对'
+
 const shipoutCanSend = (row:Row) => !!props.canOperate && !!props.shipoutSandboxDispatchEnabled
   && row.review_status === 'approved' && row.shipment_status === 'pending'
   && !!shipoutPreview[row.order_id]?.ready
@@ -632,6 +637,9 @@ const compactPages = computed<(number|string)[]>(() => {
                   <template v-else>
                     <span class="xlwms-state">{{ shipoutStatus[row.order_id]?.state === 'ready_for_erp_review' ? '仓库已发货 · 待人工回写' : shipoutStatus[row.order_id]?.state === 'pending' ? '仓库处理中' : shipoutStatus[row.order_id]?.state === 'not_found' ? 'OMS 未找到订单' : '待查询仓库状态' }}</span>
                     <small v-if="shipoutStatus[row.order_id]?.tracking_number" class="xlwms-track">Tracking {{shipoutStatus[row.order_id]?.tracking_number}}（未同步 Woo）</small>
+                    <small v-if="shipoutStatus[row.order_id]?.carrier_id" class="xlwms-note">仓库实际物流商：{{shipoutCarrierName(shipoutStatus[row.order_id]?.carrier_id)}}</small>
+                    <small v-if="shipoutStatus[row.order_id]?.shipped_time_utc" class="xlwms-note">仓库发货时间：{{shipoutStatus[row.order_id]?.shipped_time_utc}}（API 原始时间，时区待核实）</small>
+                    <small v-if="shipoutStatus[row.order_id]?.state === 'ready_for_erp_review' && shipoutIsSyntheticTracking(shipoutStatus[row.order_id]?.tracking_number)" class="xlwms-note">沙盒模拟单号，仅验收 API 状态，不得写入真实 ERP / Woo</small>
                     <small v-if="shipoutStatus[row.order_id]?.reason" :class="shipoutStatus[row.order_id]?.state === 'blocked' ? 'xlwms-error' : 'xlwms-note'">{{shipoutMessage(shipoutStatus[row.order_id].reason)}}</small>
                     <div v-if="shipoutSandboxDispatchEnabled && row.review_status === 'approved' && row.shipment_status === 'pending' && canOperate && shipoutSandboxSpecifiedChannel" class="xlwms-confirm">
                       <small>API 运输方式</small>
@@ -645,7 +653,7 @@ const compactPages = computed<(number|string)[]>(() => {
                       <button v-if="shipoutSandboxReadEnabled" type="button" class="xlwms-action" :disabled="shipoutBusy[row.order_id]" @click="shipoutRefresh(row)">{{shipoutBusy[row.order_id]?'查询中…':'查询物流状态'}}</button>
                     </div>
                   </template>
-                  <button v-if="canOperate && shipoutSandboxTrackingApplyEnabled && shipoutStatus[row.order_id]?.state === 'ready_for_erp_review' && shipoutStatus[row.order_id]?.tracking_number" type="button" class="xlwms-action primary" :disabled="shipoutBusy[row.order_id]" @click="shipoutApply(row)">确认 Tracking 回写 ERP</button>
+                  <button v-if="canOperate && shipoutSandboxTrackingApplyEnabled && shipoutStatus[row.order_id]?.state === 'ready_for_erp_review' && shipoutStatus[row.order_id]?.tracking_number && !shipoutIsSyntheticTracking(shipoutStatus[row.order_id]?.tracking_number)" type="button" class="xlwms-action primary" :disabled="shipoutBusy[row.order_id]" @click="shipoutApply(row)">确认 Tracking 回写 ERP</button>
                   <small v-if="shipoutStatus[row.order_id]?.state === 'erp_shipment_updated'" class="xlwms-note">已写入 ERP · Vita 待同步官网</small>
                   <small v-if="shipoutSandboxDispatchEnabled && !shipoutSandboxReadEnabled" class="xlwms-note">发货功能尚未准备就绪：请先开启安全查询</small>
                   <div v-if="shipoutPreview[row.order_id]" class="xlwms-confirm">

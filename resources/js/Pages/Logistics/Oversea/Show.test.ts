@@ -483,4 +483,32 @@ describe('Oversea Dede file exchange workbench', () => {
     }
   })
 
+  it('shows warehouse actual carrier and time but suppresses ERP apply for synthetic mock tracking', async () => {
+    const rows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],
+      warehouse_id:1,warehouse_name:'美西 MorePlus 仓'}]}
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="SHIPOUT-TEST-CSRF">')
+    const mock=vi.fn().mockResolvedValueOnce({ok:true,json:async()=>({
+      state:'ready_for_erp_review',reason:'WAREHOUSE_SHIPPED_WITH_TRACKING',
+      order_no:'C99999-007',tracking_number:'mock_2_TEST',
+      carrier_id:2,shipped_time_utc:'2026-10-29 09:40:37',
+      read_only:true,erp_shipment_unchanged:true,woo_unchanged:true,
+    })})
+    vi.stubGlobal('fetch',mock)
+    try {
+      const wrapper=mountPage({rows,trackingImportPreview:null,
+        shipoutSandboxReadEnabled:true,shipoutSandboxTrackingApplyEnabled:true})
+      const b=wrapper.findAll('button').find(x=>x.text()==='查询物流状态')
+      await b!.trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('mock_2_TEST'))
+      expect(wrapper.text()).toContain('仓库实际物流商：UPS')
+      expect(wrapper.text()).toContain('2026-10-29 09:40:37')
+      expect(wrapper.text()).toContain('沙盒模拟单号，仅验收 API 状态')
+      expect(wrapper.findAll('button').some(b=>b.text()==='确认 Tracking 回写 ERP')).toBe(false)
+      expect(mock).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.unstubAllGlobals()
+      document.head.querySelector('meta[name="csrf-token"]')?.remove()
+    }
+  })
+
 })
