@@ -64,3 +64,29 @@ that real MorePlus inventory/order fulfillment has been verified.
 - R4 still BLOCKED on vendor sandbox receiving/fulfillment data.
 - Added read-only OMS inbound status GET to ShipOutReadOnlyGateway, no
   real ERP inventory writes, outbound dispatch or Production calls.
+
+## Owner scope correction (2026-10-29) — overrides prior R3/R4 dependency wording
+**ERP integration owns OUTBOUND + STATUS/TRACKING only.**
+- Inbound creation, physical receipt, putaway, warehouse inventory adjustment,
+  WMS access/role or workflow and warehouse billing are OUT OF SCOPE.
+- Historical sandbox inbound IB261028-1 may remain as isolated test data; no
+  further receipt testing or additional inbound API implementation is planned.
+- In-scope: ERP US-LA allocation -> Dede approval -> manual operator API submit
+  -> idempotent ShipOut order reference -> OMS order status/outbound status
+  -> carrier/tracking/shipped time polling or callback -> ERP -> Vita Woo sync.
+- Inventory read only may help availability checks; this is not inventory
+  management or warehouse inbound write authority.
+- Provider API confirmed for outbound: POST /open-api/oms/order/batchSubmitAsync.
+  Signed read-only tracking: GET /open-api/oms/order/queryListV2 and /query.
+  Read-only sandbox orderListV2 probe returned HTTP 200 OK, 0 matching records.
+- Async submit response and callback SUCCESS do NOT prove shipment dispatched.
+  Use orderShipments[].outboundStatus, labelStatus, trackingNumber and
+  shippedTime with state reconciliation; failures must be visible to Dede.
+- If a SUCCESSFUL sandbox dispatch requires stocked test SKU, ask provider to
+  furnish a testable pre-stocked SKU or seed fixture; NOT an ERP inbound feature.
+  Negative tests can run without provider stock, but may never be marked PASS
+  for successful dispatch or actual tracking data.
+- Callback authorization and replay checks required before any use; fallback
+  to signed polling. No Woo updates until shipment state actually confirmed.
+- Existing OMS inbound status GET was REMOVED from ERP bridge per owner correction.
+- No automatic order POST or production host currently exists in the PR.

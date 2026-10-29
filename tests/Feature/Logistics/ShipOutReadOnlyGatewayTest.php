@@ -50,35 +50,48 @@ final class ShipOutReadOnlyGatewayTest extends TestCase
         });
     }
 
-    public function test_oms_inbound_status_reads_only_pending_and_matches_warehouse(): void
+    public function test_order_page_projects_only_tracking_and_status(): void
     {
         config()->set('shipout.sandbox_read_enabled', true);
         Http::fake(['https://opendev.shipout.com/api/*' =>
-            Http::response(['result' => 'OK', 'data' => ['records' => [[
-                'warehouseId' => 'W', 'inboundingId' => '123', 'inboundOrderNO' => 'IB-001',
-                'inboundBizUniqueNO' => 'TEST-1', 'status' => '2',
-            ]], 'total' => 1]], 200),
+            Http::response(['result' => 'OK', 'data' => [
+                'records' => [[
+                    'orderNO' => 'UAT-1', 'orderId' => '123', 'status' => 3,
+                    'recipientName' => 'NEVER LEAK',
+                    'shipmentList' => [[
+                        'warehouseId' => 'W', 'shipmentId' => 'S1',
+                        'outboundStatus' => 3, 'labelStatus' => 2,
+                        'trackingNumber' => 'USPS-TEST-ONLY', 'carrierId' => 1,
+                        'recipientPhone' => 'NEVER LEAK',
+                    ]],
+                ]],
+                'total' => 1,
+            ]], 200),
         ]);
         Http::preventStrayRequests();
-        $page = $this->client()->inboundPage('W');
-        $this->assertSame('IB-001', $page['records'][0]['inboundOrderNO']);
-        $this->assertSame(2, $page['records'][0]['status']);
+        $page = $this->client()->orderPage('W', 'UAT-1');
+        $this->assertSame('USPS-TEST-ONLY', $page['records'][0]['shipments'][0]['trackingNumber']);
+        $this->assertSame(3, $page['records'][0]['shipments'][0]['outboundStatus']);
+        $this->assertStringNotContainsString('NEVER LEAK', json_encode($page));
         Http::assertSent(fn ($request): bool => $request->method() === 'GET'
-            && str_contains($request->url(), '/open-api/oms/inbound/list?'));
+            && str_contains($request->url(), '/open-api/oms/order/queryListV2?')
+            && str_contains($request->url(), 'version=v2'));
         Http::assertSentCount(1);
     }
 
-    public function test_inbound_wrong_warehouse_fails_closed(): void
+    public function test_order_detail_warehouse_mismatch_is_rejected(): void
     {
         config()->set('shipout.sandbox_read_enabled', true);
         Http::fake(['https://opendev.shipout.com/api/*' =>
-            Http::response(['result' => 'OK', 'data' => ['records' => [[
-                'warehouseId' => 'DIFFERENT', 'inboundingId' => '123',
-                'inboundOrderNO' => 'IB-001', 'status' => '2',
-            ]], 'total' => 1]], 200),
+            Http::response(['result' => 'OK', 'data' => [
+                'orderId' => '123', 'orderNO' => 'UAT-1', 'status' => 2,
+                'orderShipments' => [[
+                    'warehouseId' => 'OTHER', 'outboundStatus' => 2,
+                ]],
+            ]], 200),
         ]);
-        $this->expectExceptionMessage('SHIPOUT_INBOUND_ROW_UNTRUSTED');
-        $this->client()->inboundPage('W');
+        $this->expectExceptionMessage('SHIPOUT_SHIPMENT_WAREHOUSE_MISMATCH');
+        $this->client()->orderDetail('W', '123');
     }
 
     public function test_product_list_is_read_only_and_duplicates_fail_closed(): void

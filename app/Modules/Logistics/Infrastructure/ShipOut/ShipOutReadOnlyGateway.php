@@ -7,7 +7,7 @@ use RuntimeException;
 
 /**
  * R2/R5 bridge foundation. SANDBOX-only and GET-only until real sandbox
- * inbound/outbound acceptance, credential rotation, and Owner Production PASS.
+ * outbound acceptance, credential rotation, and Owner Production PASS.
  * No default credential, write method, arbitrary URL, or ERP stock mutation.
  */
 final class ShipOutReadOnlyGateway
@@ -16,7 +16,8 @@ final class ShipOutReadOnlyGateway
     private const WAREHOUSES = '/open-api/oms/info/warehouse/list';
     private const STOCK = '/open-api/oms/stock/list';
     private const PRODUCTS = '/open-api/oms/product/queryList';
-    private const INBOUND = '/open-api/oms/inbound/list';
+    private const ORDER_LIST = '/open-api/oms/order/queryListV2';
+    private const ORDER_DETAIL = '/open-api/oms/order/query';
 
     public function __construct(
         private readonly string $appKey,
@@ -77,46 +78,92 @@ final class ShipOutReadOnlyGateway
         return ['records' => $rows, 'total' => $total];
     }
 
-    /** Read provider inbound status without triggering receipt or stock writes.
+    /** Read-only order page: only whitelisted status and tracking metadata, not recipient PII.
      * @return array{records:list<array<string,mixed>>,total:int}
      */
-    public function inboundPage(string $warehouseId, int $page = 1, int $size = 50): array
+    public function orderPage(string $warehouseId, string $orderNo, int $page = 1, int $size = 50): array
     {
-        if (trim($warehouseId) === '' || $page < 1 || $size < 1 || $size > 100) {
-            throw new RuntimeException('SHIPOUT_INBOUND_QUERY_INVALID');
+        if (trim($warehouseId) === '' || trim($orderNo) === ''
+            || $page < 1 || $size < 1 || $size > 100) {
+            throw new RuntimeException('SHIPOUT_ORDER_QUERY_INVALID');
         }
-        $response = $this->get(self::INBOUND, [
-            'warehouseId' => $warehouseId, 'curPageNo' => $page, 'pageSize' => $size,
+
+        $response = $this->get(self::ORDER_LIST, [
+            'warehouseId' => $warehouseId, 'orderNO' => $orderNo,
+            'version' => 'v2', 'curPageNo' => $page, 'pageSize' => $size,
         ]);
         $data = $response['data'] ?? null;
         if (! is_array($data) || ! isset($data['records'], $data['total'])
             || ! is_array($data['records']) || ! array_is_list($data['records'])
             || ! (is_int($data['total']) && $data['total'] >= 0
                 || is_string($data['total']) && preg_match('/^(0|[1-9][0-9]*)$/', $data['total']) === 1)) {
-            throw new RuntimeException('SHIPOUT_INBOUND_RESPONSE_INCOMPLETE');
+            throw new RuntimeException('SHIPOUT_ORDER_RESPONSE_INCOMPLETE');
         }
         $total = (int) $data['total'];
-        if (count($data['records']) > $size || count($data['records']) > $total
-            || ($total > 0 && $page <= (int) ceil($total / $size) && $data['records'] === [])) {
-            throw new RuntimeException('SHIPOUT_INBOUND_PAGE_INCOMPLETE');
+        if (count($data['records']) > $size || count($data['records']) > $total) {
+            throw new RuntimeException('SHIPOUT_ORDER_PAGE_INCOMPLETE');
         }
+
         $rows = [];
         foreach ($data['records'] as $row) {
-            if (! is_array($row) || (string) ($row['warehouseId'] ?? '') !== $warehouseId
-                || trim((string) ($row['inboundingId'] ?? '')) === ''
-                || trim((string) ($row['inboundOrderNO'] ?? '')) === ''
-                || preg_match('/^[124567]$/', (string) ($row['status'] ?? '')) !== 1) {
-                throw new RuntimeException('SHIPOUT_INBOUND_ROW_UNTRUSTED');
+            if (! is_array($row) || trim((string) ($row['orderNO'] ?? '')) !== $orderNo
+                || trim((string) ($row['orderId'] ?? '')) === '') {
+                throw new RuntimeException('SHIPOUT_ORDER_ROW_UNTRUSTED');
             }
             $rows[] = [
-                'warehouseId' => $warehouseId,
-                'inboundingId' => (string) $row['inboundingId'],
-                'inboundOrderNO' => (string) $row['inboundOrderNO'],
-                'inboundBizUniqueNO' => (string) ($row['inboundBizUniqueNO'] ?? ''),
-                'status' => (int) $row['status'],
+                'orderNO' => $orderNo,
+                'orderId' => (string) $row['orderId'],
+                'status' => $row['status'] ?? null,
+                'shipments' => $this->sanitizeShipments($row['shipmentList'] ?? [], $warehouseId),
             ];
         }
         return ['records' => $rows, 'total' => $total];
+    }
+
+    /** Order detail: safely project actual carrier and provider tracking fields. */
+    public function orderDetail(string $warehouseId, string $orderId): array
+    {
+        if (trim($warehouseId) === '' || trim($orderId) === '') {
+            throw new RuntimeException('SHIPOUT_ORDER_QUERY_INVALID');
+        }
+        $response = $this->get(self::ORDER_DETAIL, [
+            'warehouseId' => $warehouseId, 'orderId' => $orderId, 'version' => 'v2',
+        ]);
+        $data = $response['data'] ?? null;
+        if (! is_array($data) || (string) ($data['orderId'] ?? '') !== $orderId
+            || trim((string) ($data['orderNO'] ?? '')) === '') {
+            throw new RuntimeException('SHIPOUT_ORDER_DETAIL_UNTRUSTED');
+        }
+        return [
+            'orderId' => $orderId,
+            'orderNO' => (string) $data['orderNO'],
+            'status' => $data['status'] ?? null,
+            'shipments' => $this->sanitizeShipments($data['orderShipments'] ?? [], $warehouseId),
+        ];
+    }
+
+    /** Never return recipient/address/phone fields or trust another warehouse. */
+    private function sanitizeShipments(mixed $shipments, string $warehouseId): array
+    {
+        if (! is_array($shipments) || ! array_is_list($shipments)) {
+            throw new RuntimeException('SHIPOUT_SHIPMENTS_UNTRUSTED');
+        }
+        $result = [];
+        foreach ($shipments as $row) {
+            if (! is_array($row) || (string) ($row['warehouseId'] ?? '') !== $warehouseId) {
+                throw new RuntimeException('SHIPOUT_SHIPMENT_WAREHOUSE_MISMATCH');
+            }
+            $result[] = [
+                'shipmentId' => (string) ($row['shipmentId'] ?? ''),
+                'outboundNO' => (string) ($row['outboundNO'] ?? ''),
+                'outboundStatus' => $row['outboundStatus'] ?? null,
+                'labelStatus' => $row['labelStatus'] ?? null,
+                'carrierId' => $row['carrierId'] ?? null,
+                'trackingNumber' => (string) ($row['trackingNumber'] ?? ''),
+                'shippedTime' => $row['shippedTime'] ?? null,
+            ];
+        }
+        return $result;
     }
 
     /** @return array{records:list<array<string,mixed>>,total:int} */
@@ -177,7 +224,7 @@ final class ShipOutReadOnlyGateway
         if (! (bool) config('shipout.sandbox_read_enabled', false)) {
             throw new RuntimeException('SHIPOUT_SANDBOX_READ_DISABLED');
         }
-        if (! in_array($path, [self::WAREHOUSES, self::STOCK, self::PRODUCTS, self::INBOUND], true)) {
+        if (! in_array($path, [self::WAREHOUSES, self::STOCK, self::PRODUCTS, self::ORDER_LIST, self::ORDER_DETAIL], true)) {
             throw new RuntimeException('SHIPOUT_PATH_NOT_ALLOWED');
         }
 
