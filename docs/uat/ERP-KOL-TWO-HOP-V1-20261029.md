@@ -29,3 +29,21 @@
 ## Deployment gate
 - Draft PR until Owner visual UAT; no Production change or migration authorized by R1–R4 Dev implementation.
 - Production will require pre-migration DB backup, separate release approval, exact SHA deployment, and order/readback verification.
+
+## 2026-10-29 R4 authenticated browser UAT (US Mac mini, isolated local only)
+
+- Real Chrome headless Playwright used the ordinary Laravel UAT login form at localhost:18280; the synthetic UAT admin authenticated and reached /dashboard. No Production credential or order was used.
+- All nine automated browser scenarios PASS:
+  1. Login -> /dashboard.
+  2. KOL order #2 displays profile link /kol/library/1.
+  3. Clicking profile link navigates to KOL detail #1.
+  4. KOL detail has www AffiliateWP edit target affiliate_id=91001, distinct from WP user 81001, in a secure new tab.
+  5. Copy-address button copies the exact editor URL into the browser clipboard and reports success.
+  6. KOL order list exposes the history preview toolbar action.
+  7. Clicking history preview navigates to /kol/orders/link-preview.
+  8. Unlinked KOL order #5 shows no profile link.
+  9. New KOL order page offers explicit KOL selector including synthetic KOL #1.
+- Controller readbacks: 200 for KOL order/profile/preview; preview has 3 synthetic orders, 1 linked, 2 unlinked; auto_match_enabled=false.
+- GitHub CI on HEAD 6aab6d33 passed 8/8; targeted Vue regression 108/108.
+- Screenshot collection for human visual QA was blocked by the tool safety check; it was not bypassed. Functional automated browser UAT PASS does not constitute Owner visual sign-off.
+- PR #553 remains Draft, no Production schema migration, historical data backfill or release without separate Owner explicit approval.
