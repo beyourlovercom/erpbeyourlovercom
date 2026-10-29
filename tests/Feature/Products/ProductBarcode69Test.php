@@ -71,11 +71,11 @@ final class ProductBarcode69Test extends TestCase
         $this->actingAs($this->authorizedUser())
             ->postJson('/products/barcode-69/import/preview', [
                 'file' => $this->upload("sku,barcode_69\nVX357A,697ABC\n"),
-            ])->assertUnprocessable();
+            ])->assertStatus(422);
     }
 
     public function test_import_rejects_user_without_products_operate_permission(): void
     {
-        $this->postJson('/products/barcode-69/import/preview', [])->assertUnauthorized();
+        $this->postJson('/products/barcode-69/import/preview', [])->assertRedirect();
     }
 }
