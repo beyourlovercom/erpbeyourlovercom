@@ -923,7 +923,7 @@ describe('Orders/Show V2', () => {
 })
 
 describe('WooCommerce admin order link', () => {
-  const url = 'https://www.beyourlover.com/wp-admin/admin.php?page=wc-orders&action=edit&id=28518'
+  const url = 'https://beyourlover.com/wp-admin/admin.php?page=wc-orders&action=edit&id=28518'
 
   it('opens the server-resolved Woo order in a separate safe tab', () => {
     const wrapper = mount(Show, { props: { order: { ...baseOrder, source_type: 'woocommerce' }, audit, wooAdminEditUrl: url } })

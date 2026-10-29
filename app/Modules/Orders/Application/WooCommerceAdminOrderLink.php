@@ -39,12 +39,12 @@ final class WooCommerceAdminOrderLink
             return null;
         }
 
-        $mode = (string) config('services.woocommerce.admin_order_editor_mode', 'disabled');
+        $mode = (string) config('services.woocommerce.admin_order_editor_mode', 'hpos');
         if ($mode === 'hpos') {
-            return 'https://www.beyourlover.com/wp-admin/admin.php?page=wc-orders&action=edit&id='.$reference;
+            return 'https://beyourlover.com/wp-admin/admin.php?page=wc-orders&action=edit&id='.$reference;
         }
         if ($mode === 'legacy') {
-            return 'https://www.beyourlover.com/wp-admin/post.php?post='.$reference.'&action=edit';
+            return 'https://beyourlover.com/wp-admin/post.php?post='.$reference.'&action=edit';
         }
 
         return null;
