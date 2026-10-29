@@ -18,6 +18,7 @@ final class ProductBarcode69Test extends TestCase
         $user = User::factory()->create(['is_active' => true]);
         $role = Role::create(['key' => 'barcode-test-'.uniqid(), 'label' => 'Barcode QA']);
         $role->permissions()->firstOrCreate(['key' => 'products.operate'], ['label' => 'products.operate']);
+        $role->permissions()->firstOrCreate(['key' => 'products.view'], ['label' => 'products.view']);
         $user->roles()->attach($role);
         return $user;
     }
@@ -76,6 +77,9 @@ final class ProductBarcode69Test extends TestCase
     {
         $product = $this->product('VX357A', '6977291390537');
         $user = $this->authorizedUser();
+        $this->actingAs($user)->get('/products/'.$product->id)->assertOk()
+            ->assertInertia(fn ($page) => $page->component('Products/Show')
+                ->where('product.barcode_69', '6977291390537'));
         $this->actingAs($user)
             ->get('/products/'.$product->id.'/packaging')
             ->assertOk()
