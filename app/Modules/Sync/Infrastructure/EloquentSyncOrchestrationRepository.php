@@ -33,6 +33,17 @@ final class EloquentSyncOrchestrationRepository implements SyncOrchestrationRepo
             ->whereHas('shipment', function (Builder $query) use ($minShipmentId): void {
                 if ($minShipmentId !== null) {
                     $query->where('id', '>', $minShipmentId);
+                    // Exclude active or terminal failed intents from new-discovery.
+                    // Otherwise an Outbox retried earlier in this same tick could be
+                    // sent a second time through the new-Shipment branch.
+                    $query->whereNotExists(function (\Illuminate\Database\Query\Builder $sub): void {
+                        $sub->selectRaw('1')
+                            ->from('sync_outbox')
+                            ->where('sync_outbox.aggregate_type', 'shipment')
+                            ->where('sync_outbox.operation', 'woocommerce.tracking_outbound')
+                            ->whereColumn('sync_outbox.aggregate_id', 'shipments.id')
+                            ->whereIn('sync_outbox.status', ['pending', 'processing', 'failed']);
+                    });
                 }
                 $query->where('shipment_status', 'shipped')
                     ->whereNotNull('tracking_number')->where('tracking_number', '<>', '')

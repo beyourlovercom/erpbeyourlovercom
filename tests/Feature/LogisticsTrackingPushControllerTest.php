@@ -234,6 +234,21 @@ final class LogisticsTrackingPushControllerTest extends TestCase
             ->where('action', 'manual_sync.reopened')->count());
     }
 
+    public function test_auto_discovery_does_not_retry_same_shipment_when_outbox_is_pending(): void
+    {
+        $baseOrder = $this->order(1015);
+        $baselineShipmentId = (int) $baseOrder->shipment->id;
+        $order = $this->order(1016);
+        $this->gateway->fail = true;
+        $result = app(\App\Modules\Sync\Application\WooCommerceTrackingOutboundService::class)
+            ->pushOne($order, null);
+        self::assertSame('retry_scheduled', $result['status']);
+        $due = app(\App\Modules\Sync\Application\Contracts\SyncOrchestrationRepository::class)
+            ->eligibleTrackingOrders(50, $baselineShipmentId);
+        self::assertFalse($due->contains('id', $order->id));
+        $this->assertDatabaseHas('manual_syncs', ['order_id' => $order->id, 'website_sync_status' => 'pending']);
+    }
+
     public function test_list_projection_never_marks_stale_completed_outbox_as_current_tracking_success(): void
     {
         $service = app(\App\Modules\Logistics\Application\LogisticsTrackingListStatus::class);

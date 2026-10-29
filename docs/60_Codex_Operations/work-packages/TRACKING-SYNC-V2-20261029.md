@@ -106,3 +106,7 @@ R6 requires owner visual PASS and independent Production authorization.
 
 ## R5 baseline regression isolation
 - In extended 85-case PHP regression, the legacy Mvp1WorkflowTest::test_repeated_fulfillment_and_sync_operations_are_idempotent_and_reopen_is_audited failed at its existing shipment.reopened audit count assertion (line 169). Exactly the same test, same line and same assertion failed when run in a detached read-only worktree of unmodified origin/main c68aa55f31a9600414b5d0bafab7e0d443e6d775. This is pre-existing test debt, not a Tracking V2 regression. No unrelated Logistics reopen code/test was altered to mask it.
+
+## R5 isolated live plugin integration
+- Independent local Woo REST test with real ERP gateway, official AfterShip 1.18.5 plugin and its customer template PASS; details in TRACKING-SYNC-V2-LOCAL-WP-AFTERSHIP-R5-EVIDENCE-20261029.md. Cloud ingestion not verified; Dev G5 unchanged. R6 Production still separately approval-gated.
+- Auto-discovery now excludes Shipments having already pending/processing/failed outbound Outbox; combined retry+discovery cannot attempt a package twice per tick.
