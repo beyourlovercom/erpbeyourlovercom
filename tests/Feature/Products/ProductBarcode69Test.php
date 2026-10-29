@@ -72,6 +72,25 @@ final class ProductBarcode69Test extends TestCase
             ])->assertStatus(422);
     }
 
+    public function test_barcode_field_visible_in_product360_and_packaging_and_saveable(): void
+    {
+        $product = $this->product('VX357A', '6977291390537');
+        $user = $this->authorizedUser();
+        $this->actingAs($user)
+            ->get('/products/'.$product->id.'/packaging')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->component('Products/Packaging')
+                ->where('product.barcode_69', '6977291390537'));
+
+        $this->put('/products/'.$product->id.'/barcode-69', ['barcode_69' => '6977291390001'])
+            ->assertRedirect();
+        $this->assertSame('6977291390001', $product->fresh()->barcode_69);
+
+        $this->put('/products/'.$product->id.'/barcode-69', ['barcode_69' => 'INVALID'])
+            ->assertSessionHasErrors('barcode_69');
+        $this->assertSame('6977291390001', $product->fresh()->barcode_69);
+    }
+
     public function test_import_rejects_user_without_products_operate_permission(): void
     {
         $this->postJson('/products/barcode-69/import/preview', [])->assertRedirect();
