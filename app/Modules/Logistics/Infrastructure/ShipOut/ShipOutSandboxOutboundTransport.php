@@ -28,6 +28,19 @@ final class ShipOutSandboxOutboundTransport
         $allowed = array_map('trim', explode(',', (string) config('shipout.sandbox_enabled_modes', '9')));
         if (! in_array($mode, $allowed, true)) return false;
         $carrierId = (int) ($form['shippingInfo']['carrierId'] ?? 0);
+        if ($mode === '6') {
+            $info=$form['outboundInfo'];
+            $pdf=$info['shipmentOutboundLabel']['base64'] ?? null;
+            $bytes=is_string($pdf) ? base64_decode($pdf,true) : false;
+            return in_array($carrierId,[1,2,3,4],true)
+                && is_string($bytes) && strlen($bytes)<=512*1024
+                && str_starts_with($bytes,'%PDF-')
+                && str_contains(substr($bytes,-2048),'%%EOF')
+                && ($info['shipmentOutboundLabel']['labelSource'] ?? null)==='OWN_CHANNEL'
+                && is_string($info['trackingNumber'] ?? null)
+                && preg_match('/\A[A-Za-z0-9][A-Za-z0-9._:\/+\-]{4,127}\z/',$info['trackingNumber'])===1
+                && ! preg_match('/^(mock_|UATSHIPOUTVOID)/i',$info['trackingNumber']);
+        }
         if ($mode === '9') {
             return $carrierId === 9
                 && ! isset($form['outboundInfo']['serviceGroupId']);

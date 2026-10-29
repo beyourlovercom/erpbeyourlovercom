@@ -54,6 +54,15 @@ Route::middleware(['web', 'auth'])->group(function (): void {
         ->whereNumber('order')->name('logistics.xlwms.order.reconcile');
     // MorePlus / ShipOut: sandbox-only preview/dispatch/readback, strictly
     // scoped to the existing US-LA overseas workbench and ERP order identity.
+    Route::post('/logistics/oversea/us-moreplus/orders/{order}/shipout/label-stage',
+        [ShipOutMorePlusController::class, 'stageLabel'])
+        ->middleware(['can:logistics.operate',RequireLogisticsExecution::class,'throttle:3,1'])
+        ->whereNumber('order')->name('logistics.shipout.label-stage');
+    // Mode 6 label tokens only travel in POST bodies, never GET URLs/logs.
+    Route::post('/logistics/oversea/us-moreplus/orders/{order}/shipout/preflight',
+        [ShipOutMorePlusController::class,'preflight'])
+        ->middleware(['can:logistics.operate',RequireLogisticsExecution::class,'throttle:8,1'])
+        ->whereNumber('order')->name('logistics.shipout.preflight.label');
     Route::get('/logistics/oversea/us-moreplus/orders/{order}/shipout/preflight',
         [ShipOutMorePlusController::class, 'preflight'])
         ->middleware(['can:logistics.view', 'throttle:10,1'])

@@ -21,12 +21,15 @@ final class ShipOutSandboxDispatchService
         private readonly ShipOutOutboundPayloadFactory $factory,
         private readonly ShipOutReadOnlyGateway $reader,
         private readonly ShipOutSandboxOutboundTransport $transport,
+        private readonly ShipOutSandboxLabelStage $labels,
+        private readonly ShipOutProviderSkuStockVerifier $stock,
     ) {}
 
     /** @return array{status:string,provider_order_id:?string,result_code:string} */
     public function dispatchApprovedOrder(
         int $orderId, string $shipDate, ?string $expectedPayloadHash = null,
-        string $shippingMode = '9'
+        string $shippingMode = '9', ?string $labelToken = null,
+        ?int $actorId = null
     ): array
     {
         if (! (bool) config('shipout.sandbox_read_enabled', false)
@@ -38,7 +41,14 @@ final class ShipOutSandboxDispatchService
 
         $order = Order::query()->with(['shipment.warehouse', 'shipment.overseaReview', 'address', 'items'])
             ->findOrFail($orderId);
-        $payload = $this->factory->fromApprovedOrder($order, $whId, $shipDate, $shippingMode);
+        $label=$shippingMode==='6'
+            ? $this->labels->resolve($orderId, (int)$actorId, (string)$labelToken)
+            : null;
+        if ($shippingMode!=='6' && $labelToken!==null) {
+            throw new RuntimeException('SHIPOUT_LABEL_TOKEN_INVALID');
+        }
+        $payload = $this->factory->fromApprovedOrder($order, $whId, $shipDate, $shippingMode, $label);
+        $payload = $this->stock->verify($order,$payload,$whId);
         $orderNo = (string) $payload[0]['orderNo'];
         if ($orderNo !== trim((string) config('shipout.sandbox_order_allowlist', ''))) {
             throw new RuntimeException('SHIPOUT_ORDER_NOT_APPROVED_IN_SANDBOX_ALLOWLIST');
@@ -67,6 +77,11 @@ final class ShipOutSandboxDispatchService
             throw new RuntimeException('SHIPOUT_ATTEMPT_LEDGER_UNAVAILABLE');
         }
         if ($inserted !== 1) throw new RuntimeException('SHIPOUT_DUPLICATE_ATTEMPT_BLOCKED');
+        if ($shippingMode === '6') {
+            // This is now committed to exactly one attempt: invalidate label
+            // token before POST, even if provider times out or returns ERR.
+            $this->labels->consume($orderId, (int)$actorId, (string)$labelToken);
+        }
 
         try {
             $result = $this->transport->submitOne($payload);

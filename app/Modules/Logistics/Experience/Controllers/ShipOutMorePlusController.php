@@ -4,6 +4,8 @@ namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Logistics\Application\ShipOut\ShipOutOutboundPayloadFactory;
+use App\Modules\Logistics\Application\ShipOut\ShipOutSandboxLabelStage;
+use App\Modules\Logistics\Application\ShipOut\ShipOutProviderSkuStockVerifier;
 use App\Modules\Logistics\Application\ShipOut\ShipOutSandboxDispatchService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutTrackingDecision;
 use App\Modules\Logistics\Application\ShipOut\ShipOutTrackingApplyService;
@@ -21,15 +23,67 @@ use RuntimeException;
  */
 final class ShipOutMorePlusController
 {
+    public function stageLabel(
+        Order $order, Request $request, ShipOutSandboxLabelStage $labels,
+    ): JsonResponse {
+        $this->guardWarehouse($order);
+        $params=$request->validate([
+            'label' => ['required','file','mimes:pdf','max:512'],
+            'tracking_number' => ['required','string','max:128'],
+            'carrier_id' => ['required','integer','in:1,2,3,4'],
+        ]);
+        try {
+            // Check the order is actually ready/approved for an allowed mode.
+            $warehouse=trim((string)config('shipout.sandbox_warehouse_id',''));
+            if ($warehouse==='' || !config('shipout.sandbox_read_enabled')
+                || !config('shipout.sandbox_dispatch_enabled')) {
+                throw new RuntimeException('SHIPOUT_SANDBOX_DISPATCH_DISABLED');
+            }
+            $orderNo=app(WarehouseOrderReference::class)->warehouse($order);
+            if ($orderNo!==trim((string)config('shipout.sandbox_order_allowlist',''))) {
+                throw new RuntimeException('SHIPOUT_ORDER_NOT_APPROVED_IN_SANDBOX_ALLOWLIST');
+            }
+            // Stage can be created only for approved orders, not after a prior POST.
+            if ($this->attempt($order)!==null) {
+                throw new RuntimeException('SHIPOUT_DUPLICATE_ATTEMPT_BLOCKED');
+            }
+            $order->loadMissing('shipment.warehouse','shipment.overseaReview');
+            if ($order->order_status?->value!=='pending_shipment'
+                || $order->shipment?->warehouse?->code!=='US-LA'
+                || $order->shipment?->overseaReview?->status!=='approved'
+                || (int)$order->shipment?->overseaReview?->reviewed_warehouse_id!==(int)$order->shipment?->warehouse_id
+                || $order->shipment?->shipment_status!=='pending') {
+                throw new RuntimeException('SHIPOUT_ERP_APPROVAL_OR_WAREHOUSE_BLOCKED');
+            }
+            // stage() returns the only copy of token. Do not log or echo PDF.
+            $result=$labels->stage((int)$order->id,(int)$request->user()->id,
+                $params['label'],trim($params['tracking_number']),
+                (int)$params['carrier_id']);
+        } catch (RuntimeException|DomainException $e) {
+            return $this->failure($e->getMessage());
+        }
+        return response()->json($result)->header('Cache-Control','no-store, private');
+    }
+
     public function preflight(
         Order $order,
         Request $request,
         ShipOutOutboundPayloadFactory $factory,
+        ShipOutSandboxLabelStage $labels,
+        ShipOutProviderSkuStockVerifier $stock,
     ): JsonResponse {
         $this->guardWarehouse($order);
-        $mode = (string) ($request->validate([
-            'mode' => ['sometimes', 'in:9,10'],
-        ])['mode'] ?? '9');
+        $params=$request->validate([
+            'mode' => ['sometimes','in:6,9,10'],
+            'label_token' => ['sometimes','string','regex:/^[a-f0-9]{64}$/'],
+        ]);
+        $mode=(string)($params['mode'] ?? '9');
+        // Credentials for an encrypted staged label must not appear in GET
+        // URLs or server access logs; mode 6 is POST-only.
+        abort_if($mode==='6' && ! $request->isMethod('POST'),405,
+            '上传面单预检必须使用受保护的 POST 请求');
+        abort_if($request->isMethod('GET') && isset($params['label_token']),405,
+            '面单预检凭证不得出现在 URL 中');
         $date = now('America/New_York')->addDay()->format('Y-m-d');
         $attempt = $this->attempt($order);
         $blockers = [];
@@ -53,7 +107,17 @@ final class ShipOutMorePlusController
         $items = [];
         $orderNo = null;
         try {
-            $payload = $factory->fromApprovedOrder($order, $whId, $date, $mode);
+            $label=$mode==='6'
+                ? $labels->resolve((int)$order->id, (int)$request->user()->id,
+                    (string)($params['label_token'] ?? ''))
+                : null;
+            if ($mode!=='6' && isset($params['label_token'])) {
+                throw new RuntimeException('SHIPOUT_LABEL_TOKEN_INVALID');
+            }
+            $payload = $factory->fromApprovedOrder($order, $whId, $date, $mode, $label);
+            if ($blockers===[]) {
+                $payload=$stock->verify($order,$payload,$whId);
+            }
             $orderNo = (string) $payload[0]['orderNo'];
             $items = $payload[0]['shipmentForms'][0]['productList'];
             $hash = hash('sha256', json_encode($payload, JSON_THROW_ON_ERROR));
@@ -84,7 +148,8 @@ final class ShipOutMorePlusController
         $this->guardWarehouse($order);
         $data = $request->validate([
             'ship_date' => ['required', 'date_format:Y-m-d'],
-            'shipping_mode' => ['required', 'in:9,10'],
+            'shipping_mode' => ['required', 'in:6,9,10'],
+            'label_token' => ['nullable','string','regex:/^[a-f0-9]{64}$/'],
             'payload_hash' => ['required', 'string', 'regex:/^[0-9a-f]{64}$/'],
             'confirmation' => ['required', 'string', 'max:90'],
         ]);
@@ -96,6 +161,8 @@ final class ShipOutMorePlusController
                 $data['ship_date'],
                 $data['payload_hash'],
                 $data['shipping_mode'],
+                $data['label_token'] ?? null,
+                (int)$request->user()->id,
             );
         } catch (RuntimeException|DomainException $e) {
             return $this->failure($e->getMessage());
@@ -233,6 +300,15 @@ final class ShipOutMorePlusController
             'SHIPOUT_SYNTHETIC_TRACKING_NOT_PUBLISHABLE',
             'SHIPOUT_SHIPPING_MODE_NOT_ENABLED',
             'SHIPOUT_SERVICE_GROUP_NOT_VERIFIED',
+            'SHIPOUT_LABEL_TOKEN_INVALID',
+            'SHIPOUT_LABEL_PDF_INVALID',
+            'SHIPOUT_LABEL_TRACKING_INVALID',
+            'SHIPOUT_STOCK_IDENTITY_UNAVAILABLE',
+            'SHIPOUT_PROVIDER_SKU_NOT_FOUND',
+            'SHIPOUT_PROVIDER_SKU_AMBIGUOUS',
+            'SHIPOUT_PROVIDER_SKU_OUT_OF_STOCK',
+            'SHIPOUT_PRODUCT_CATALOG_INCOMPLETE',
+            'SHIPOUT_STOCK_CATALOG_INCOMPLETE',
         ];
         $code = in_array($reason, $known, true) ? $reason : 'SHIPOUT_PRECHECK_BLOCKED';
         return response()->json([
@@ -275,6 +351,15 @@ final class ShipOutMorePlusController
             'SHIPOUT_SYNTHETIC_TRACKING_NOT_PUBLISHABLE' => '仓库只返回沙盒 mock / VOID Tracking，不能回写成真实发货单号',
             'SHIPOUT_SHIPPING_MODE_NOT_ENABLED' => '此运输方式没有独立的沙盒授权',
             'SHIPOUT_SERVICE_GROUP_NOT_VERIFIED' => '指定仓库渠道 ID 尚未通过验证，请使用自动渠道',
+            'SHIPOUT_LABEL_TOKEN_INVALID' => '面单暂存凭证无效或已过期，请重新上传 PDF 并预检',
+            'SHIPOUT_LABEL_PDF_INVALID' => '只支持大小不超过 512KB 的完整 PDF 面单',
+            'SHIPOUT_LABEL_TRACKING_INVALID' => '请填写有效的承运商单号，不能使用 mock/VOID 测试号码',
+            'SHIPOUT_STOCK_IDENTITY_UNAVAILABLE' => 'ShipOut 仓库或客户组织身份尚未绑定，无法核实真实库存',
+            'SHIPOUT_PROVIDER_SKU_NOT_FOUND' => 'ShipOut 尚未找到已验证的产品 SKU，禁止自动发货',
+            'SHIPOUT_PROVIDER_SKU_AMBIGUOUS' => '存在多个可匹配的 ShipOut SKU，需人工确认',
+            'SHIPOUT_PROVIDER_SKU_OUT_OF_STOCK' => '仓库可用库存不足，请人工确认补货或使用原人工流程',
+            'SHIPOUT_PRODUCT_CATALOG_INCOMPLETE' => 'ShipOut 产品清单不完整，无法安全下发',
+            'SHIPOUT_STOCK_CATALOG_INCOMPLETE' => 'ShipOut 库存清单不完整，无法安全下发',
             default => 'ShipOut 发货或状态校验未通过；未修改 ERP 发货记录',
         };
     }

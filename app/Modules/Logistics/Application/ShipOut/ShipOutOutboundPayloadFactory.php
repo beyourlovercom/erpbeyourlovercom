@@ -21,7 +21,7 @@ final class ShipOutOutboundPayloadFactory
     /** @return array<string,mixed> */
     public function fromApprovedOrder(
         Order $order, string $providerWarehouseId, string $shipDate,
-        string $mode = '9'
+        string $mode = '9', ?array $label = null
     ): array
     {
         $order->loadMissing(['shipment.warehouse', 'shipment.overseaReview', 'address', 'items']);
@@ -84,7 +84,7 @@ final class ShipOutOutboundPayloadFactory
         }
 
         $allowedModes = array_map('trim', explode(',', (string) config('shipout.sandbox_enabled_modes', '9')));
-        if (! in_array($mode, $allowedModes, true) || ! in_array($mode, ['9', '10'], true)) {
+        if (! in_array($mode, $allowedModes, true) || ! in_array($mode, ['6', '9', '10'], true)) {
             throw new RuntimeException('SHIPOUT_SHIPPING_MODE_NOT_ENABLED');
         }
         $group = trim((string) config('shipout.sandbox_service_group_id', ''));
@@ -94,9 +94,22 @@ final class ShipOutOutboundPayloadFactory
         // sysServiceId=10 represents selecting an existing warehouse channel.
         // Its serviceGroupId must come from a verified, bound warehouse lookup,
         // not arbitrary browser input or the carrierId from mode 9.
-        $outboundInfo = $mode === '10'
-            ? ['sysServiceId' => '10', 'serviceGroupId' => $group]
-            : ['sysServiceId' => '9'];
+        if ($mode === '6' && (! is_array($label)
+            || empty($label['pdf_b64']) || empty($label['tracking_number'])
+            || ! in_array((int)($label['carrier_id'] ?? 0), [1,2,3,4], true))) {
+            throw new RuntimeException('SHIPOUT_LABEL_TOKEN_INVALID');
+        }
+        $outboundInfo = match ($mode) {
+            '6' => [
+                'sysServiceId'=>'6',
+                'trackingNumber'=>$label['tracking_number'],
+                'shipmentOutboundLabel'=>[
+                    'base64'=>$label['pdf_b64'], 'labelSource'=>'OWN_CHANNEL',
+                ],
+            ],
+            '10' => ['sysServiceId'=>'10', 'serviceGroupId'=>$group],
+            default => ['sysServiceId'=>'9'],
+        };
 
         return [[
             'sid' => 1,
@@ -119,7 +132,7 @@ final class ShipOutOutboundPayloadFactory
                 'shippingInfo' => [
                     // sysServiceId=9 (warehouse selects service) requires
                     // carrierId=9. Verified with real ShipOut Sandbox ERR.
-                    'shipmentSid' => '1', 'carrierId' => $mode === '10' ? 1 : 9,
+                    'shipmentSid' => '1', 'carrierId' => $mode === '6' ? (int)$label['carrier_id'] : ($mode === '10' ? 1 : 9),
                     'shipDate' => $shipDate.' 00:00:00', 'signatureType' => 4,
                 ],
                 'outboundInfo' => $outboundInfo,

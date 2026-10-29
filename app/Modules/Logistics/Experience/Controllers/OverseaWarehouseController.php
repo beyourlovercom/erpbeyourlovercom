@@ -92,6 +92,9 @@ final class OverseaWarehouseController
                 && (bool) config('shipout.sandbox_read_enabled', false),
             'shipoutSandboxDispatchEnabled' => $warehouseKey === 'us-moreplus'
                 && (bool) config('shipout.sandbox_dispatch_enabled', false),
+            'shipoutSandboxOwnLabelEnabled' => $warehouseKey==='us-moreplus'
+                && in_array('6',array_map('trim',explode(',',(string)config('shipout.sandbox_enabled_modes','9'))),true)
+                && (bool)config('shipout.sandbox_dispatch_enabled',false),
             'shipoutSandboxSpecifiedChannel' => $warehouseKey === 'us-moreplus'
                 && in_array('10', array_map('trim', explode(',', (string) config('shipout.sandbox_enabled_modes', '9'))), true)
                 && trim((string) config('shipout.sandbox_service_group_id', '')) !== ''

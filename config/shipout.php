@@ -16,6 +16,10 @@ return [
     'sandbox_warehouse_id' => (string) env('SHIPOUT_SANDBOX_WAREHOUSE_ID', ''),
     // Operator-selected configured channel (sysServiceId=10): explicit
     // trusted warehouse service-group ID. Never infer IDs from carrier names.
+    // Fail closed on actual dispatch unless SKU & OMS available-stock match.
+    // Legacy isolated fixtures may explicitly turn this check off.
+    'sandbox_inventory_preflight_enabled' => filter_var(env('SHIPOUT_SANDBOX_INVENTORY_PREFLIGHT_ENABLED', true), FILTER_VALIDATE_BOOL),
+    'sandbox_client_org_id' => (string) env('SHIPOUT_SANDBOX_CLIENT_ORG_ID',''),
     'sandbox_enabled_modes' => (string) env('SHIPOUT_SANDBOX_ENABLED_MODES', '9'),
     'sandbox_service_group_id' => (string) env('SHIPOUT_SANDBOX_SERVICE_GROUP_ID', ''),
     'sandbox_service_group_label' => (string) env('SHIPOUT_SANDBOX_SERVICE_GROUP_LABEL', ''),

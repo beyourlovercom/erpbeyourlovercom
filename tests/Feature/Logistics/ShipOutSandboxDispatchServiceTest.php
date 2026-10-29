@@ -4,6 +4,11 @@ namespace Tests\Feature\Logistics;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\ShipOut\ShipOutSandboxDispatchService;
+use App\Modules\Logistics\Application\ShipOut\ShipOutProviderSkuStockVerifier;
+use App\Modules\Logistics\Application\ShipOut\ShipOutSandboxLabelStage;
+use App\Modules\Logistics\Application\ShipOut\ShipOutOutboundPayloadFactory;
+use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
+use App\Modules\Products\Application\SkuMatchKey;
 use App\Modules\Logistics\Application\ShipOut\ShipOutTrackingApplyService;
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutReadOnlyGateway;
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutSandboxOutboundTransport;
@@ -17,6 +22,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
 
 final class ShipOutSandboxDispatchServiceTest extends TestCase
@@ -26,6 +32,13 @@ final class ShipOutSandboxDispatchServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config()->set('shipout.sandbox_inventory_preflight_enabled',false);
+        config()->set('shipout.sandbox_enabled_modes','9');
+        config()->set('shipout.sandbox_service_group_id','');
+        config()->set('shipout.sandbox_client_org_id','');
+        // Isolate route behavior from other tests sharing the same test
+        // rate-limit cache. Real web middleware remains enforced.
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         // Deliberately synthetic credentials; connector isn't runtime-bound yet.
         $this->app->bind(ShipOutReadOnlyGateway::class,
             fn () => new ShipOutReadOnlyGateway('test-key', 'test-secret', 'test-token'));
@@ -198,6 +211,261 @@ final class ShipOutSandboxDispatchServiceTest extends TestCase
                 ->dispatchApprovedOrder($o->id, '2026-10-30', null, '10');
         } finally {
             Http::assertNothingSent();
+        }
+    }
+
+    private function fakePdfLabel(): UploadedFile
+    {
+        return UploadedFile::fake()->createWithContent('sandbox-label.pdf',
+            "%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n".str_repeat('X',120)."\n%%EOF\n");
+    }
+
+    public function test_mode6_stages_encrypted_pdf_then_preflights_and_submits_once(): void
+    {
+        $this->enable();
+        config()->set('shipout.sandbox_enabled_modes','6,9');
+        $o=$this->order();
+        $actor=$this->warehouseUser(['logistics.view','logistics.operate']);
+        $this->actingAs($actor);
+        $stage=$this->post("/logistics/oversea/us-moreplus/orders/{$o->id}/shipout/label-stage",[
+            'label'=>$this->fakePdfLabel(),
+            'tracking_number'=>'9400TESTLABEL1234',
+            'carrier_id'=>1,
+        ], ['Accept'=>'application/json'])
+            ->assertOk()->assertJsonPath('tracking_number','9400TESTLABEL1234')->json();
+        $token=$stage['label_token'];
+        $this->assertSame(64,strlen($token));
+        $encrypted=DB::table('shipout_label_stages')->where('order_id',$o->id)->first();
+        $this->assertNotNull($encrypted);
+        $this->assertStringNotContainsString('%PDF-', $encrypted->encrypted_pdf_b64);
+        $this->assertStringNotContainsString('9400TESTLABEL1234',$encrypted->encrypted_pdf_b64);
+        Http::fake(fn ($req)=> $req->method()==='GET'
+            ? Http::response(['result'=>'OK','data'=>['records'=>[],'total'=>0]],200)
+            : Http::response([['result'=>'OK','data'=>[
+                'sid'=>1,'orderNO'=>'C99999-007','orderId'=>'PROVIDER-MODE6-123',
+            ]]],200));
+        Http::preventStrayRequests();
+        $pre=$this->postJson("/logistics/oversea/us-moreplus/orders/{$o->id}/shipout/preflight",[
+            'mode'=>'6','label_token'=>$token,
+        ])
+            ->assertOk()->assertJsonPath('ready',true)->assertJsonPath('shipping_mode','6')->json();
+        $this->postJson("/logistics/oversea/us-moreplus/orders/{$o->id}/shipout/send",[
+            'ship_date'=>$pre['ship_date'],'shipping_mode'=>'6',
+            'label_token'=>$token,'payload_hash'=>$pre['payload_hash'],
+            'confirmation'=>'SUBMIT_US_LA_ORDER_'.$o->id,
+        ])->assertOk()->assertJsonPath('status','acknowledged');
+        Http::assertSent(fn($req)=>$req->method()==='POST'
+            && ($req->data()[0]['shipmentForms'][0]['outboundInfo']['sysServiceId']??null)==='6'
+            && ($req->data()[0]['shipmentForms'][0]['outboundInfo']['trackingNumber']??null)==='9400TESTLABEL1234'
+            && str_starts_with(base64_decode($req->data()[0]['shipmentForms'][0]['outboundInfo']['shipmentOutboundLabel']['base64']),'%PDF-'));
+        $this->assertNotNull(DB::table('shipout_label_stages')->where('order_id',$o->id)->value('used_at'));
+        $this->assertDatabaseHas('shipout_dispatch_attempts',['order_id'=>$o->id,'status'=>'acknowledged']);
+        $this->postJson("/logistics/oversea/us-moreplus/orders/{$o->id}/shipout/send",[
+            'ship_date'=>$pre['ship_date'],'shipping_mode'=>'6',
+            'label_token'=>$token,'payload_hash'=>$pre['payload_hash'],
+            'confirmation'=>'SUBMIT_US_LA_ORDER_'.$o->id,
+        ])->assertStatus(409);
+        Http::assertSentCount(2);
+    }
+
+    public function test_mode6_rejects_pdf_invalid_and_read_only_role_cannot_upload(): void
+    {
+        $this->enable();
+        config()->set('shipout.sandbox_enabled_modes','6,9');
+        $o=$this->order();
+        $this->actingAs($this->warehouseUser(['logistics.view','logistics.operate']));
+        $this->post("/logistics/oversea/us-moreplus/orders/{$o->id}/shipout/label-stage",[
+            'label'=>UploadedFile::fake()->createWithContent('wrong.pdf',"not pdf"),
+            'tracking_number'=>'9400TESTLABEL1234','carrier_id'=>1,
+        ],['Accept'=>'application/json'])->assertStatus(409)->assertJsonPath('error_code','SHIPOUT_LABEL_PDF_INVALID');
+        $this->assertDatabaseCount('shipout_label_stages',0);
+        $this->actingAs($this->warehouseUser(['logistics.view']));
+        $this->post("/logistics/oversea/us-moreplus/orders/{$o->id}/shipout/label-stage",[
+            'label'=>$this->fakePdfLabel(),'tracking_number'=>'9400TESTLABEL1234','carrier_id'=>1,
+        ],['Accept'=>'application/json'])->assertForbidden();
+        $this->assertDatabaseCount('shipout_label_stages',0);
+    }
+
+    public function test_label_token_get_query_is_never_accepted_or_logged_as_preflight(): void
+    {
+        $this->enable();
+        config()->set('shipout.sandbox_enabled_modes','6,9');
+        $o=$this->order();
+        $this->actingAs($this->warehouseUser(['logistics.view','logistics.operate']));
+        $this->getJson("/logistics/oversea/us-moreplus/orders/{$o->id}/shipout/preflight?mode=6&label_token=".str_repeat('a',64))
+            ->assertStatus(405);
+        $this->assertDatabaseCount('shipout_dispatch_attempts',0);
+    }
+
+    public function test_mode6_token_is_order_and_actor_bound(): void
+    {
+        $this->enable();
+        config()->set('shipout.sandbox_enabled_modes','6,9');
+        $o=$this->order();
+        $actor=$this->warehouseUser(['logistics.view','logistics.operate']);
+        $this->actingAs($actor);
+        $token=$this->post("/logistics/oversea/us-moreplus/orders/{$o->id}/shipout/label-stage",[
+            'label'=>$this->fakePdfLabel(),'tracking_number'=>'9400TESTLABEL1234','carrier_id'=>1,
+        ],['Accept'=>'application/json'])->assertOk()->json('label_token');
+        $this->actingAs($this->warehouseUser(['logistics.view','logistics.operate']));
+        $response=$this->postJson("/logistics/oversea/us-moreplus/orders/{$o->id}/shipout/preflight",[
+            'mode'=>'6','label_token'=>$token,
+        ])
+            ->assertOk();
+        $this->assertFalse($response->json('ready'));
+        $this->assertContains('SHIPOUT_LABEL_TOKEN_INVALID',$response->json('blockers'));
+        $this->assertDatabaseCount('shipout_dispatch_attempts',0);
+    }
+
+    public function test_stock_preflight_resolves_approved_provider_alias_and_sufficient_available_qty(): void
+    {
+        $this->enable();
+        config()->set('shipout.sandbox_inventory_preflight_enabled',true);
+        config()->set('shipout.sandbox_client_org_id','TEST-CLIENT');
+        $o=$this->order();
+        $product=$o->items->first()->product_id;
+        $alias=ProductSkuAlias::query()->create([
+            'product_id'=>$product,'alias_sku'=>'MOREPLUS-UAT-PHYSICAL',
+            'match_key'=>SkuMatchKey::compute('MOREPLUS-UAT-PHYSICAL'),
+            'source_type'=>'manual',
+        ]);
+        $alias->forceFill(['is_active'=>true,'oms_verified_at'=>now(),
+            'oms_identity_evidence'=>'SANDBOX VERIFIED'])->save();
+        Http::fake(fn ($req) =>
+            str_contains($req->url(),'/product/queryList')
+            ? Http::response(['result'=>'OK','data'=>[
+                'total'=>1,'records'=>[['omsSku'=>'MOREPLUS-UAT-PHYSICAL','skuId'=>'S1']],
+            ]],200)
+            : Http::response(['result'=>'OK','data'=>[
+                'total'=>1,'records'=>[[
+                    'warehouseId'=>'TEST-W','omsSku'=>'MOREPLUS-UAT-PHYSICAL',
+                    'availableQuantity'=>3,'standardQuantity'=>4,
+                ]],
+            ]],200));
+        Http::preventStrayRequests();
+        $payload=app(ShipOutOutboundPayloadFactory::class)
+            ->fromApprovedOrder($o,'TEST-W','2026-10-30','9');
+        $verified=app(ShipOutProviderSkuStockVerifier::class)->verify($o,$payload,'TEST-W');
+        $this->assertSame([['omsSku'=>'MOREPLUS-UAT-PHYSICAL','qty'=>1]],
+            $verified[0]['shipmentForms'][0]['productList']);
+        Http::assertSentCount(2);
+    }
+
+    public function test_stock_preflight_no_available_qty_fails_closed_without_dispatch(): void
+    {
+        $this->enable();
+        config()->set('shipout.sandbox_inventory_preflight_enabled',true);
+        config()->set('shipout.sandbox_client_org_id','TEST-CLIENT');
+        $o=$this->order();
+        Http::fake(fn ($req) =>
+            str_contains($req->url(),'/product/queryList')
+            ? Http::response(['result'=>'OK','data'=>[
+                'total'=>1,'records'=>[['omsSku'=>'SHIPOUT-LOCAL-TEST','skuId'=>'S1']],
+            ]],200)
+            : Http::response(['result'=>'OK','data'=>[
+                'total'=>1,'records'=>[[
+                    'warehouseId'=>'TEST-W','omsSku'=>'SHIPOUT-LOCAL-TEST',
+                    'availableQuantity'=>0,
+                ]],
+            ]],200));
+        Http::preventStrayRequests();
+        $this->expectExceptionMessage('SHIPOUT_PROVIDER_SKU_OUT_OF_STOCK');
+        try {
+            app(ShipOutSandboxDispatchService::class)->dispatchApprovedOrder(
+                $o->id,'2026-10-30'
+            );
+        } finally {
+            Http::assertSentCount(2);
+            $this->assertDatabaseCount('shipout_dispatch_attempts',0);
+        }
+    }
+
+    public function test_stock_preflight_missing_client_org_fails_before_provider_request(): void
+    {
+        $this->enable();
+        config()->set('shipout.sandbox_inventory_preflight_enabled',true);
+        config()->set('shipout.sandbox_client_org_id','');
+        $o=$this->order();
+        Http::fake();
+        $this->expectExceptionMessage('SHIPOUT_STOCK_IDENTITY_UNAVAILABLE');
+        try {
+            app(ShipOutSandboxDispatchService::class)->dispatchApprovedOrder($o->id,'2026-10-30');
+        } finally { Http::assertNothingSent(); }
+    }
+
+    public function test_mode6_expired_label_token_blocks_preflight_and_uses_no_api(): void
+    {
+        $this->enable();
+        config()->set('shipout.sandbox_enabled_modes','6,9');
+        $o=$this->order();
+        $this->actingAs($this->warehouseUser(['logistics.view','logistics.operate']));
+        $token=$this->post("/logistics/oversea/us-moreplus/orders/{$o->id}/shipout/label-stage",[
+            'label'=>$this->fakePdfLabel(),'tracking_number'=>'9400TESTLABEL1234','carrier_id'=>1,
+        ],['Accept'=>'application/json'])->assertOk()->json('label_token');
+        DB::table('shipout_label_stages')->where('order_id',$o->id)
+            ->update(['expires_at'=>now()->subMinute()]);
+        Http::fake();
+        $res=$this->postJson("/logistics/oversea/us-moreplus/orders/{$o->id}/shipout/preflight",[
+            'mode'=>'6','label_token'=>$token,
+        ])->assertOk()->assertJsonPath('ready',false);
+        $this->assertContains('SHIPOUT_LABEL_TOKEN_INVALID',$res->json('blockers'));
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('shipout_dispatch_attempts',0);
+    }
+
+    public function test_mode6_overlimit_pdf_is_rejected_without_storing_data(): void
+    {
+        $this->enable();
+        config()->set('shipout.sandbox_enabled_modes','6,9');
+        $o=$this->order();
+        $this->actingAs($this->warehouseUser(['logistics.view','logistics.operate']));
+        $large="%PDF-1.4\n".str_repeat('X',513*1024)."\n%%EOF\n";
+        $this->expectExceptionMessage('SHIPOUT_LABEL_PDF_INVALID');
+        try {
+            app(ShipOutSandboxLabelStage::class)->stage(
+                $o->id, 12345, UploadedFile::fake()->createWithContent('large.pdf',$large),
+                '9400TESTLABEL1234',1
+            );
+        } finally {
+            $this->assertDatabaseCount('shipout_label_stages',0);
+        }
+    }
+
+    public function test_stock_preflight_two_line_order_blocks_if_one_sku_has_insufficient_stock(): void
+    {
+        $this->enable();
+        config()->set('shipout.sandbox_inventory_preflight_enabled',true);
+        config()->set('shipout.sandbox_client_org_id','TEST-CLIENT');
+        $o=$this->order();
+        $second=Product::query()->create([
+            'sku'=>'SHIPOUT-SECOND-TEST','name'=>'Second Product',
+            'product_type'=>'simple','is_active'=>true,
+        ]);
+        $o->items()->create([
+            'product_id'=>$second->id,'sku'=>$second->sku,
+            'product_summary'=>'Second Product','quantity'=>2,
+            'unit_price'=>'1.00','line_revenue'=>'2.00',
+        ]);
+        Http::fake(fn($req)=>str_contains($req->url(),'/product/queryList')
+            ? Http::response(['result'=>'OK','data'=>[
+                'total'=>2,'records'=>[
+                    ['omsSku'=>'SHIPOUT-LOCAL-TEST','skuId'=>'S1'],
+                    ['omsSku'=>'SHIPOUT-SECOND-TEST','skuId'=>'S2'],
+                ],
+            ]],200)
+            : Http::response(['result'=>'OK','data'=>[
+                'total'=>2,'records'=>[
+                    ['warehouseId'=>'TEST-W','omsSku'=>'SHIPOUT-LOCAL-TEST','availableQuantity'=>5],
+                    ['warehouseId'=>'TEST-W','omsSku'=>'SHIPOUT-SECOND-TEST','availableQuantity'=>1],
+                ],
+            ]],200));
+        Http::preventStrayRequests();
+        $this->expectExceptionMessage('SHIPOUT_PROVIDER_SKU_OUT_OF_STOCK');
+        try {
+            app(ShipOutSandboxDispatchService::class)->dispatchApprovedOrder($o->id,'2026-10-30');
+        } finally {
+            Http::assertSentCount(2);
+            $this->assertDatabaseCount('shipout_dispatch_attempts',0);
         }
     }
 

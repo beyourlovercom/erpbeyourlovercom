@@ -489,3 +489,70 @@ No Production merge, credential activation, Woo or ERP live writes.
   Production release requires a timezone contract verification to
   avoid shifting customer-facing shipping dates.
 - Desktop-only Dede workbench; original manual file workflow preserved.
+
+## R5.1–R5.2–R6 isolated delivery (2026-10-29)
+- R5.1: Added signed-per-actor/order sandbox own-label stage route
+  POST /logistics/oversea/us-moreplus/orders/{order}/shipout/label-stage.
+  Strict PDF filename/content magic, max 512KB, carrier 1/2/3/4,
+  Tracking format validation rejects test/mock prefixes, user/order binding.
+  PDF base64 encrypted at rest in new shipout_label_stages table;
+  15-minute random token bound to actor+order; stage consumes exactly once
+  before any provider POST after the single dispatch attempt is durably logged.
+  Replacing a staged PDF invalidates earlier preview, expired/consumed
+  encrypted PDF rows are pruned on upload and through guarded daily command.
+  **Important:** label_token only accepted via CSRF-protected POST preflight,
+  not GET/access log/query parameters. Mode 6 payload matches real sandbox
+  validated OWN_CHANNEL/embedded base64/tracking.
+  Test mode 6 staged payload/identity/replay/expiry/mime/size checks PASS.
+- R5.2: Added optional raw provider product/stock read-only preflight
+  required by default (SHIPOUT_SANDBOX_INVENTORY_PREFLIGHT_ENABLED=true),
+  with required exact clientOrgId and warehouseId binding, bounded complete
+  pagination, verified canonical SKU/physically approved Alias matching,
+  unique single provider SKU per ERP order line, actual availableQuantity
+  >= requested quantity; no silent SKU fallback, no stock writes.
+  Unknown/missing org, ambiguous product, incomplete pages, missing SKU or
+  short stock block before provider POST; readable Dede blocker codes.
+  Test verified OMS alias mapping, insufficient single/two-line stock and
+  missing client org fail-closed PASS.
+- R6: Isolated SQLite Dev + original Dede logistics login on US Mac mini
+  and reachable via China Mac Tailnet.
+  Three modes (9 warehouse selected / 10 verified USPS GA group /
+  6 own PDF) render in row in existing Dede US-LA workbench.
+  Real Playwright: Dede login 200, exactly 1 synthetic order, manual XLSX
+  export 200 with XLSX content type, three-mode selection, stage real fake
+  PDF via Dev backend 200, mode-specific preflight 200 for all modes,
+  label token NOT present in URL, confirm button suppressed while
+  inventory identity is intentionally unbound on isolated Dev.
+  All feature flags were activated only inside the isolated SQLite Dev
+  for this UI UAT; no keys/secrets were present and no provider POST sent.
+  After R6, restore Dev dispatch/read/apply flags to OFF (see final evidence).
+- Existing live-provider sandbox 004/005/006 tests remain completed;
+  no new ShipOut orders needed for R5.1-6. CI covers unit/fake HTTP only.
+- No Production merge/deploy, no real ERP/Woo writes, no physical shipment.
+
+### R6 final isolated environment off/readback and negative gates
+- Real Playwright final browser UAT: three-mode option list 9/10/6;
+  label-stage POST succeeded using a sandbox-only fake PDF;
+  modes 9/10 preflight used GET without sensitive tokens; mode 6
+  used CSRF-protected POST with token in request BODY, never URL.
+  Three preflights were blocked intentionally with human-readable
+  SHIPOUT_STOCK_IDENTITY_UNAVAILABLE because this private SQLite
+  fixture has no ShipOut clientOrgId or real API credentials.
+  The send confirmation stayed hidden and no provider POST occurred.
+- Real manual XLSX export remained HTTP 200 with correct XLSX MIME.
+- Unit/feature negatives: alternate user cannot reuse label token,
+  read-only user cannot stage, non-PDF and >512KB PDF blocked,
+  expired token blocked, reused token blocked, stale preflight across
+  mode switch rejected, insufficient SKU stock or two-line shortage
+  blocks before ledger/provider POST, missing client Org ID blocks.
+- R6 local regression: 129 PHPUnit tests, 797 assertions,
+  1 environment-dependent skipped; 22 Vue PASS; typecheck PASS.
+- After browser UAT, private .env returned read OFF, dispatch OFF,
+  tracking-apply OFF, allowlist blank, warehouse ID blank, mode
+  default 9, group ID blank. Isolated PHP Dev process reloaded
+  (host Mac/Chrome NOT restarted). Final Playwright confirms
+  API controls absent, manual XLSX UX present, and no red errors.
+  All synthetic encrypted label stages removed from isolated
+  SQLite after evidence; dispatch attempts still 0.
+- No Production change or Git merge. R7 ERP/Woo readback and R8
+  controlled production release remain independently gated.
