@@ -64,44 +64,65 @@ if ((bool) config('services.woocommerce.order_sync_enabled', false)) {
 // enabling this never drains historical failed/pending Tracking intents.
 Artisan::command('tracking:retry-woocommerce {--apply}', function (): int {
     $baseline = (string) config('tracking_sync_v2.min_outbox_id', '');
+    $shipmentBaseline = (string) config('tracking_sync_v2.min_shipment_id', '');
     if (! (bool) config('tracking_sync_v2.periodic_enabled', false)
-        || ! ctype_digit($baseline) || (int) $baseline < 1) {
-        $this->warn('Tracking V2 periodic retry is disabled or has no reviewed outbox baseline.');
+        || ! ctype_digit($baseline) || (int) $baseline < 1
+        || ! ctype_digit($shipmentBaseline)) {
+        $this->warn('Tracking V2 is disabled or reviewed Outbox/Shipment activation baselines are missing.');
         return \Illuminate\Console\Command::SUCCESS;
     }
 
     $limit = min(50, max(1, (int) config('tracking_sync_v2.max_batch', 50)));
     $minimum = (int) $baseline;
-    $due = app(\App\Modules\Sync\Application\Contracts\SyncOrchestrationRepository::class)
-        ->dueTrackingOutbox($limit, $minimum)->count();
+    $minimumShipment = (int) $shipmentBaseline;
+    $repo = app(\App\Modules\Sync\Application\Contracts\SyncOrchestrationRepository::class);
+    $due = $repo->dueTrackingOutbox($limit, $minimum)->count();
+    $available = max(0, $limit - $due);
+    $newShipments = $available > 0 ? $repo->eligibleTrackingOrders($available, $minimumShipment)->count() : 0;
 
     if (! $this->option('apply')) {
-        $this->info(json_encode(['mode' => 'preview', 'eligible_due' => $due, 'min_outbox_id_exclusive' => $minimum]));
+        $this->info(json_encode([
+            'mode' => 'preview', 'due_retry' => $due, 'new_shipments' => $newShipments,
+            'min_outbox_id_exclusive' => $minimum, 'min_shipment_id_exclusive' => $minimumShipment,
+        ]));
         return \Illuminate\Console\Command::SUCCESS;
     }
 
-    if ($due === 0) {
-        $this->info(json_encode(['mode' => 'apply', 'eligible_due' => 0, 'status' => 'no_work']));
+    if ($due === 0 && $newShipments === 0) {
+        $this->info(json_encode(['mode' => 'apply', 'status' => 'no_work']));
         return \Illuminate\Console\Command::SUCCESS;
     }
 
-    $run = app(\App\Modules\Sync\Application\SyncOrchestrationService::class)
-        ->retryPending(null, $limit, $minimum);
-    $this->info(json_encode([
-        'mode' => 'apply',
-        'run_id' => (int) $run->id,
-        'status' => $run->status instanceof \BackedEnum ? $run->status->value : (string) $run->status,
-        'requested' => (int) $run->requested_items,
-        'succeeded' => (int) $run->succeeded_items,
-        'failed' => (int) $run->failed_items,
-    ]));
+    $sync = app(\App\Modules\Sync\Application\SyncOrchestrationService::class);
+    $runs = [];
+    if ($due > 0) {
+        $runs[] = $sync->retryPending(null, $due, $minimum);
+    }
+    if ($newShipments > 0) {
+        $runs[] = $sync->trackingAllPending(null, $newShipments, $minimumShipment);
+    }
 
-    return (int) $run->failed_items ? \Illuminate\Console\Command::FAILURE : \Illuminate\Console\Command::SUCCESS;
+    $failures = 0;
+    foreach ($runs as $run) {
+        $failures += (int) $run->failed_items;
+        $this->info(json_encode([
+            'mode' => 'apply',
+            'run_id' => (int) $run->id,
+            'status' => $run->status instanceof \BackedEnum ? $run->status->value : (string) $run->status,
+            'requested' => (int) $run->requested_items,
+            'succeeded' => (int) $run->succeeded_items,
+            'failed' => (int) $run->failed_items,
+        ]));
+    }
+
+    return $failures ? \Illuminate\Console\Command::FAILURE : \Illuminate\Console\Command::SUCCESS;
 })->purpose('Retry only post-activation Woo tracking outbox rows; preview by default.');
 
 $trackingOutboxBaseline = (string) config('tracking_sync_v2.min_outbox_id', '');
+$trackingShipmentBaseline = (string) config('tracking_sync_v2.min_shipment_id', '');
 if ((bool) config('tracking_sync_v2.periodic_enabled', false)
-    && ctype_digit($trackingOutboxBaseline) && (int) $trackingOutboxBaseline >= 1) {
+    && ctype_digit($trackingOutboxBaseline) && (int) $trackingOutboxBaseline >= 1
+    && ctype_digit($trackingShipmentBaseline)) {
     Schedule::command('tracking:retry-woocommerce --apply --no-interaction')
         ->everyThirtyMinutes()
         ->name('tracking.woocommerce.outbound.retry.half-hourly')

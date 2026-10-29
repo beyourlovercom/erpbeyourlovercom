@@ -168,9 +168,13 @@ final class ShipmentService
             $shipment->fill(['tracking_number' => $trackingNumber]);
             $changed = $shipment->isDirty();
             $shipment->save();
-            $this->manualSync->ensurePending($lockedOrder, $actor);
+            // A previously verified Woo Tracking number is no longer authoritative
+            // after the Shipment number changes; reopen only on an actual edit.
             if ($changed) {
+                $this->manualSync->reopen($lockedOrder, $actor, 'Tracking number changed; website verification required');
                 $this->record($actor, 'shipment.tracking_updated', $shipment, $before, $this->snapshot($shipment), 'tracking_update');
+            } else {
+                $this->manualSync->ensurePending($lockedOrder, $actor);
             }
             $this->aggregateStatus->reconcile($lockedOrder, $actor);
 

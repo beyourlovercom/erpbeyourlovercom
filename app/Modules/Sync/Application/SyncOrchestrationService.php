@@ -58,18 +58,18 @@ final class SyncOrchestrationService
         return $this->runs->complete($run, $actor);
     }
 
-    public function trackingAllPending(?Authenticatable $actor, int $limit = self::MaximumBatch): Model
+    public function trackingAllPending(?Authenticatable $actor, int $limit = self::MaximumBatch, ?int $minShipmentId = null): Model
     {
         $limit = $this->boundedLimit($limit);
         $connection = $this->connection();
-        $orders = $this->repository->eligibleTrackingOrders($limit);
+        $orders = $this->repository->eligibleTrackingOrders($limit, $minShipmentId);
         $run = $this->runs->start(
-            'tracking_all_pending',
+            $minShipmentId === null ? 'tracking_all_pending' : 'tracking_v2_auto_discovery',
             $orders->count(),
             $actor,
             'woocommerce',
             $connection,
-            ['selection' => 'all_pending', 'limit' => $limit],
+            ['selection' => 'all_pending', 'limit' => $limit, 'min_shipment_id_exclusive' => $minShipmentId],
         );
 
         foreach ($orders as $order) {

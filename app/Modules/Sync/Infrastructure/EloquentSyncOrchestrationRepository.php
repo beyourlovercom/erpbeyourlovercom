@@ -22,12 +22,18 @@ final class EloquentSyncOrchestrationRepository implements SyncOrchestrationRepo
             ->keyBy('id');
     }
 
-    public function eligibleTrackingOrders(int $limit): Collection
+    public function eligibleTrackingOrders(int $limit, ?int $minShipmentId = null): Collection
     {
         return Order::query()
             ->with(['shipment', 'externalReferences', 'manualSync'])
-            ->where('source_type', 'woocommerce')
-            ->whereHas('shipment', function (Builder $query): void {
+            ->where(function (Builder $query): void {
+                $query->where('source_type', 'woocommerce')
+                    ->orWhereHas('fulfillmentParent', fn (Builder $parent) => $parent->where('source_type', 'woocommerce'));
+            })
+            ->whereHas('shipment', function (Builder $query) use ($minShipmentId): void {
+                if ($minShipmentId !== null) {
+                    $query->where('id', '>', $minShipmentId);
+                }
                 $query->where('shipment_status', 'shipped')
                     ->whereNotNull('tracking_number')->where('tracking_number', '<>', '')
                     ->whereNotNull('carrier')->where('carrier', '<>', '')

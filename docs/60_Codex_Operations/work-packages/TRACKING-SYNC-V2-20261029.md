@@ -96,3 +96,13 @@ R6 requires owner visual PASS and independent Production authorization.
   tests PASS, TypeScript typecheck and Vite production build PASS.
 - Do not merge / claim AfterShip final verification before R5; do not deploy
   to Production without Owner's separate Production PASS.
+
+## R5 read-only compatibility and blockers (2026-10-29)
+- Public Dev WP REST registers wc/aftership/v1; admin path responds 404, WC order REST responds HTTP 403 byl_dev_g5_provider_inbound_quarantine; AfterShip settings requires authentication (401). No bypass.
+- Inspected official WordPress.org AfterShip Tracking 1.18.5 source read-only: get_tracking_items reads _aftership_tracking_items on WC_Order, tracking_id is MD5 of slug-tracking_number; the plugin also stores _aftership_tracking_number and _aftership_tracking_provider_name. This matches the ERP HTTP gateway payload. Static compatibility only; AfterShip Cloud ingestion and actual Dev plugin version unverified.
+- Fixed correction state: changed Tracking reopens completed ManualSync with an audit trail; unchanged Tracking remains idempotent.
+- Enhanced gated half-hour task: both a post-activation Outbox retry scan and a post-activation new Shipment discovery scan, combined batch <= 50. Activation requires reviewed exclusive max Outbox ID and max Shipment ID. Historic records are never auto-drained.
+- R5 remains BLOCKED by Dev quarantine; do not disable it without dedicated security review. No customer emails or Production writes. R6 remains approval-gated.
+
+## R5 baseline regression isolation
+- In extended 85-case PHP regression, the legacy Mvp1WorkflowTest::test_repeated_fulfillment_and_sync_operations_are_idempotent_and_reopen_is_audited failed at its existing shipment.reopened audit count assertion (line 169). Exactly the same test, same line and same assertion failed when run in a detached read-only worktree of unmodified origin/main c68aa55f31a9600414b5d0bafab7e0d443e6d775. This is pre-existing test debt, not a Tracking V2 regression. No unrelated Logistics reopen code/test was altered to mask it.

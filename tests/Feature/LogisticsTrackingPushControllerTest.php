@@ -161,6 +161,11 @@ final class LogisticsTrackingPushControllerTest extends TestCase
 
         config(['tracking_sync_v2.min_outbox_id' => '13']);
         require base_path('routes/console.php');
+        self::assertCount(0, collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events())
+            ->where('description', 'tracking.woocommerce.outbound.retry.half-hourly'));
+
+        config(['tracking_sync_v2.min_shipment_id' => '0']);
+        require base_path('routes/console.php');
         $tracking = collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events())
             ->where('description', 'tracking.woocommerce.outbound.retry.half-hourly');
         self::assertCount(1, $tracking);
@@ -168,6 +173,65 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         self::assertTrue($tracking->first()->onOneServer);
         self::assertTrue($tracking->first()->withoutOverlapping);
         self::assertSame(25, $tracking->first()->expiresAt);
+    }
+
+    public function test_auto_discovery_scans_only_new_shipment_ids_and_never_sends_legacy_shipments(): void
+    {
+        $old = $this->order(1011);
+        $oldShipmentId = (int) $old->shipment->id;
+        $new = $this->order(1012);
+
+        $run = app(\App\Modules\Sync\Application\SyncOrchestrationService::class)
+            ->trackingAllPending(null, 50, $oldShipmentId);
+
+        self::assertSame('tracking_v2_auto_discovery', $run->run_type);
+        self::assertSame(1, $run->requested_items);
+        self::assertSame(1, $run->succeeded_items);
+        self::assertSame(1, $this->gateway->calls);
+        $this->assertDatabaseHas('manual_syncs', [
+            'order_id' => $old->id, 'website_sync_status' => 'pending',
+        ]);
+        $this->assertDatabaseHas('manual_syncs', [
+            'order_id' => $new->id, 'website_sync_status' => 'completed',
+        ]);
+    }
+
+    public function test_auto_discovery_requires_both_baselines_even_if_flag_is_enabled(): void
+    {
+        $order = $this->order(1013);
+        config([
+            'tracking_sync_v2.periodic_enabled' => true,
+            'tracking_sync_v2.min_outbox_id' => '1',
+            'tracking_sync_v2.min_shipment_id' => null,
+        ]);
+        $this->artisan('tracking:retry-woocommerce --apply')->assertSuccessful();
+        self::assertSame(0, $this->gateway->calls);
+        $this->assertDatabaseHas('manual_syncs', [
+            'order_id' => $order->id, 'website_sync_status' => 'pending',
+        ]);
+    }
+
+    public function test_editing_verified_tracking_reopens_woo_sync_but_repeated_same_number_does_not(): void
+    {
+        $order = $this->order(1014);
+        app(\App\Modules\Sync\Application\ManualSyncService::class)->complete($order, null);
+        $this->assertDatabaseHas('manual_syncs', [
+            'order_id' => $order->id, 'website_sync_status' => 'completed',
+        ]);
+
+        $shipmentService = app(\App\Modules\Logistics\Application\ShipmentService::class);
+        $shipmentService->updateTracking($order, 'TRACK-1014', null);
+        $this->assertDatabaseHas('manual_syncs', [
+            'order_id' => $order->id, 'website_sync_status' => 'completed',
+        ]);
+
+        $shipmentService->updateTracking($order, 'TRACK-1014-CORRECTED', null);
+        $this->assertDatabaseHas('manual_syncs', [
+            'order_id' => $order->id, 'website_sync_status' => 'pending',
+            'synced_at' => null,
+        ]);
+        self::assertSame(1, \App\Modules\Audit\Infrastructure\Models\AuditRecord::query()
+            ->where('action', 'manual_sync.reopened')->count());
     }
 
     public function test_list_projection_never_marks_stale_completed_outbox_as_current_tracking_success(): void
