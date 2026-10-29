@@ -35,9 +35,7 @@ final class ProductBarcode69Test extends TestCase
 
     private function upload(string $csv): UploadedFile
     {
-        $path = tempnam(sys_get_temp_dir(), 'barcode69-test-');
-        file_put_contents($path, $csv);
-        return new UploadedFile($path, 'barcode69.csv', 'text/csv', null, true);
+        return UploadedFile::fake()->createWithContent('barcode69.csv', $csv);
     }
 
     public function test_preview_does_not_write_and_confirm_only_fills_empty_values(): void

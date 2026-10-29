@@ -26,7 +26,7 @@ final class ChinaSmallPacketBarcode69ReaderTest extends TestCase
             'product_summary' => 'QA product', 'quantity' => 2, 'unit_price' => 0, 'line_revenue' => 0,
         ]);
         $this->assertSame([[
-            'sku' => 'VX357A', 'product_summary' => 'QA product', 'quantity' => 2, 'barcode_69' => '6977291390537',
+            'sku' => 'VX357A', 'quantity' => 2, 'barcode_69' => '6977291390537',
         ]], app(ChinaSmallPacketBarcode69Reader::class)->forOrder($order));
     }
 

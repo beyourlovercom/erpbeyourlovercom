@@ -40,7 +40,7 @@ final class ProductBarcode69ImportController
             $barcode = trim($parts[1]);
             if ($sku === '' && $barcode === '') continue;
             if ($sku === '' || ! preg_match('/^\d{8,14}$/D', $barcode)) {
-                throw ValidationException::withMessages(['file' => 'SKU不能为空，69条形码必须是8至14位数字']);
+                return response()->json(['message' => 'Invalid barcode'], 422);
             }
             if (isset($source[$sku])) $duplicate[$sku] = true;
             $source[$sku] = $barcode;
