@@ -87,8 +87,7 @@ final class KolTwoHopNavigationV1Test extends TestCase
         $this->actingAs($outsider)->get('/kol/orders/create?kol_id='.$kol->id)->assertOk()
             ->assertInertia(fn ($page) => $page->where('selectedKolId', null));
 
-        $this->actingAs($staff)->get('/customers/orders/create?kol_id='.$kol->id)->assertOk()
-            ->assertInertia(fn ($page) => $page->where('selectedKolId', null));
+        $this->actingAs($staff)->get('/customers/orders/create?kol_id='.$kol->id)->assertForbidden();
 
         $kol->forceFill(['archived_at' => now()])->save();
         $this->actingAs($staff)->get('/kol/orders/create?kol_id='.$kol->id)->assertOk()
