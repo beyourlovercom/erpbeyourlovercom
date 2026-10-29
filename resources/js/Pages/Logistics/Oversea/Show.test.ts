@@ -212,6 +212,8 @@ describe('Oversea Dede file exchange workbench', () => {
       })
       await wrapper.find('button.xlwms-action').trigger('click')
       await vi.waitFor(()=>expect(wrapper.text()).toContain('已取消'))
+      expect(wrapper.text()).toContain('OMS 承运商原始值：ProviderCarrier-X')
+      expect(wrapper.text()).toContain('未核实，不自动回写')
       expect(fetchMock).toHaveBeenCalledTimes(1)
       expect(fetchMock.mock.calls[0][0]).toContain('/xlwms/status')
       expect(routerPost).not.toHaveBeenCalled()
