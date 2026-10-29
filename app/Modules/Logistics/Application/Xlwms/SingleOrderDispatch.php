@@ -38,6 +38,7 @@ final class SingleOrderDispatch
             'oms_status_failure_code'=>$attempt->oms_status_failure_code,
             'oms_tracking_no'=>$attempt->oms_tracking_no,
         ]:null;
+        $data['retryable_local_block']=WarehouseDispatchStatus::canRetryLocalBlock($attempt);
         if($attempt && !WarehouseDispatchStatus::canRetryLocalBlock($attempt)) {
             $data['ready_for_remote_check']=false;
             $data['blockers'][]='existing_dispatch_attempt';

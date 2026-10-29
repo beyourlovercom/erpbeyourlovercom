@@ -327,6 +327,29 @@ describe('Oversea Dede file exchange workbench', () => {
     expect(page.find('td.xlwms-cell').text()).not.toContain('已发货')
   })
 
+  it('allows safe local preflight after create_disabled without allowing OMS creation', async () => {
+    const row={...usSmPendingRows.data[0],warehouse_dispatch:{
+      status:'pending_dispatch',label:'待下发',detail:'未下发 · 建单权限关闭',
+      oms_order_no:null,last_checked_at:null,failure_code:'create_disabled',can_retry_local_block:true,
+    },xlwms:{state:'batch_blocked',oms_order_no:null,oms_status_code:null,
+      oms_status_checked_at:null,oms_tracking_no:null,failure_code:'create_disabled',oms_status_failure_code:null}}
+    const fake=vi.fn().mockResolvedValue({ok:true,json:async()=>({order_id:99,blockers:[],ready:true,
+      payload_hash:'a'.repeat(64),oms_warehouse:'OMS-US-SM',items:[{sku:'REVIEW-SKU',quantity:1}],already_attempted:false})})
+    vi.stubGlobal('fetch',fake)
+    try {
+      const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],trackingImportPreview:null,
+        rows:{...usSmPendingRows,data:[row]},xlwmsAuthorizedOrderId:0})
+      const btn=wrapper.findAll('button').find(b=>b.text().trim()==='API 发货')
+      expect(btn).toBeDefined()
+      await btn!.trigger('click')
+      await vi.waitFor(()=>expect(fake).toHaveBeenCalledTimes(1))
+      expect(fake.mock.calls[0][0]).toBe('/logistics/oversea/us-3sm/orders/99/xlwms/preflight')
+      expect(fake.mock.calls[0][1].method).toBe('GET')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('未获得此订单的实际发货授权'))
+      expect(wrapper.text()).not.toContain('确认 API 发货')
+    } finally {vi.unstubAllGlobals()}
+  })
+
   it('shows local create-disabled attempt as not dispatched and keeps per-order action visible', () => {
     const row={...usSmPendingRows.data[0],warehouse_dispatch:{
       status:'pending_dispatch',label:'待下发',detail:'未下发 · 建单权限关闭',

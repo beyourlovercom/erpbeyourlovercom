@@ -204,7 +204,7 @@ const omsReadyToSend = (row:Row) => props.canOperate
   && (!omsRow(row) || row.warehouse_dispatch?.can_retry_local_block)
   && !omsFinishedThisPage[row.order_id] && props.xlwmsAuthorizedOrderId===row.order_id
 const omsPreflightStart = async (row:Row) => {
-  if (omsBusy[row.order_id] || omsRow(row)) return
+  if (omsBusy[row.order_id] || (omsRow(row) && !row.warehouse_dispatch?.can_retry_local_block)) return
   omsBusy[row.order_id]=true;omsErrors[row.order_id]=''
   try {
     const result=await omsRequest(row,'preflight') as OmsPreflight

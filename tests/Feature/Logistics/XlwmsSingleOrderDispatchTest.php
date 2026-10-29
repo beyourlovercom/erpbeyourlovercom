@@ -958,6 +958,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $pre = app(SingleOrderDispatch::class)->preview($o->id);
         $this->assertSame([], $pre['blockers']);
         $this->assertTrue($pre['ready_for_remote_check']);
+        $this->assertTrue($pre['retryable_local_block']);
         Http::assertNothingSent();
     }
 
