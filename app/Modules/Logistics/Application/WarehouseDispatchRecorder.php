@@ -19,7 +19,7 @@ final class WarehouseDispatchRecorder
             throw new \DomainException('Warehouse fulfillment identity mismatch.');
         }
         $projection = WarehouseDispatchStatus::from((string)$shipment->shipment_status, $attempt);
-        if (!in_array($projection['status'], ['dispatched', 'warehouse_outbound_pending_sync', 'exception', 'shipped'], true)
+        if (!in_array($projection['status'], ['dispatched', 'oms_draft', 'oms_unverified', 'warehouse_outbound_pending_sync', 'exception', 'shipped'], true)
             || blank($projection['oms_order_no'])) return;
 
         DB::transaction(function () use ($order, $shipment, $attempt, $projection): void {

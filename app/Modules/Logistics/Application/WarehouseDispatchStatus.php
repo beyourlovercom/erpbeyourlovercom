@@ -37,8 +37,17 @@ final class WarehouseDispatchStatus
             $status = 'exception'; $label = '仓库已取消 · 待处理';
         } elseif ($accepted && $code === '3') {
             $status = 'warehouse_outbound_pending_sync'; $label = '已出库 · 待回写';
+        } elseif ($accepted && $code === '0') {
+            // Actual OMS readback: code 0 is a DRAFT, not warehouse receipt.
+            $status = 'oms_draft'; $label = 'OMS 草稿 · 未提交仓库';
+            $detail = '需补齐真实面单并在 OMS 提交';
+        } elseif ($accepted && $code === '5') {
+            // Verified by OMS's own 异常 workbench for OBS0272610290RS.
+            $status = 'exception'; $label = 'OMS 异常 · 待处理';
+            $detail = '仓库未正常接单，请核实 OMS 异常原因';
         } elseif ($accepted) {
-            $status = 'dispatched'; $label = '已下发 OMS';
+            // Unknown code / no status readback is not proof of warehouse receipt.
+            $status = 'oms_unverified'; $label = 'OMS 已建单 · 接单待核实';
             if ($code !== '') $detail = 'OMS 状态 '.$code.' · 待核实';
         } elseif ($attempt && (str_contains((string)$attempt->state, 'uncertain')
             || str_contains((string)$attempt->state, 'in_flight')

@@ -1037,16 +1037,16 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
             'oms_status_code'=>'5', 'oms_status_checked_at'=>now(),
         ]);
         $status = \App\Modules\Logistics\Application\WarehouseDispatchStatus::from('pending', $a);
-        $this->assertSame('dispatched', $status['status']);
-        $this->assertSame('已下发 OMS', $status['label']);
-        $this->assertSame('OMS 状态 5 · 待核实', $status['detail']);
+        $this->assertSame('exception', $status['status']);
+        $this->assertSame('OMS 异常 · 待处理', $status['label']);
+        $this->assertSame('仓库未正常接单，请核实 OMS 异常原因', $status['detail']);
         $recorder=app(\App\Modules\Logistics\Application\WarehouseDispatchRecorder::class);
         $recorder->recordConfirmed($o,$a);
         $recorder->recordConfirmed($o,$a);
         $this->assertDatabaseCount('warehouse_dispatch_states',1);
         $this->assertDatabaseCount('warehouse_dispatch_events',1);
         $this->assertDatabaseHas('warehouse_dispatch_states',[
-            'order_id'=>$o->id,'status'=>'dispatched','provider_order_no'=>'OMS-M1-0001',
+            'order_id'=>$o->id,'status'=>'exception','provider_order_no'=>'OMS-M1-0001',
         ]);
         $a->forceFill(['oms_status_code'=>'3'])->save();
         $recorder->recordConfirmed($o,$a);
@@ -1055,6 +1055,25 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         ]);
         $this->assertDatabaseCount('warehouse_dispatch_events',2);
         $this->assertSame('pending_shipment',$o->fresh()->order_status->value);
+        $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+        Http::assertNothingSent();
+    }
+
+    public function test_m1_oms_draft_code_zero_keeps_warehouse_not_dispatched(): void
+    {
+        $o = $this->orderFixture();
+        $a = XlwmsDispatchAttempt::query()->create([
+            'order_id'=>$o->id,'warehouse_id'=>$o->shipment->warehouse_id,
+            'third_order_no'=>'BYL-ERP-'.$o->id,'state'=>'batch_existing',
+            'oms_order_no'=>'OMS-DRAFT-0001','request_fingerprint'=>str_repeat('f',64),
+            'oms_status_code'=>'0','oms_status_checked_at'=>now(),
+        ]);
+        $projection=\App\Modules\Logistics\Application\WarehouseDispatchStatus::from('pending',$a);
+        $this->assertSame('oms_draft',$projection['status']);
+        $this->assertSame('OMS 草稿 · 未提交仓库',$projection['label']);
+        $this->assertSame('需补齐真实面单并在 OMS 提交',$projection['detail']);
+        app(\App\Modules\Logistics\Application\WarehouseDispatchRecorder::class)->recordConfirmed($o,$a);
+        $this->assertDatabaseHas('warehouse_dispatch_states',['order_id'=>$o->id,'status'=>'oms_draft']);
         $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
         Http::assertNothingSent();
     }

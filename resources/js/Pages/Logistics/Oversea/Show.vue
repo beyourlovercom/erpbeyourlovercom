@@ -160,13 +160,17 @@ const omsLabel = (row:Row) => {
   const record=omsRow(row)
   if(row.shipment_status==='shipped')return '已发货'
   if(!record?.oms_order_no)return row.warehouse_dispatch?.label ?? '待下发'
+  if(record.oms_status_code==='0')return 'OMS 草稿 · 未提交仓库'
+  if(record.oms_status_code==='5')return 'OMS 异常 · 待处理'
   if(record.oms_status_code==='3')return '已出库 · 待回写'
   if(record.oms_status_code==='4')return '仓库已取消 · 待处理'
   if(record.state==='blocked_existing_oms_order'||record.state==='batch_identity_blocked')return 'OMS 身份冲突 · 待核实'
-  return '已下发 OMS'
+  return 'OMS 已建单 · 接单待核实'
 }
 const omsDetail=(row:Row)=> {
   const record=omsRow(row)
+  if(record?.oms_order_no && record.oms_status_code==='0')return '需补齐真实面单并在 OMS 提交'
+  if(record?.oms_order_no && record.oms_status_code==='5')return 'OMS 异常 · 需处理后重新提交'
   if(record?.oms_order_no && record.oms_status_code && !['3','4'].includes(record.oms_status_code))return `OMS 状态 ${record.oms_status_code} · 待核实`
   return row.warehouse_dispatch?.detail ?? ''
 }
@@ -307,7 +311,7 @@ const defaultServiceFor = (name:string, country?:string|null) => {
 }
 const draft = (row:Row) => drafts[row.order_id] ??= { note:row.note ?? '', carrier:row.carrier ?? '', service:row.service ?? defaultServiceFor(row.carrier ?? '', row.country), tracking_number:row.tracking_number ?? '' }
 const viewTabs = [
-  ['review','待审核'], ['pending','待发货'], ['pending_dispatch','待下发'], ['dispatched','已下发'], ['shipped','已发货'], ['exceptions','异常订单'], ['all','全部订单'],
+  ['review','待审核'], ['pending','待发货'], ['pending_dispatch','待下发'], ['dispatched','OMS 已建单'], ['shipped','已发货'], ['exceptions','异常订单'], ['all','全部订单'],
 ] as const
 
 

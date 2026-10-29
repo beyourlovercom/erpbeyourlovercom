@@ -40,3 +40,10 @@
 - US-SM legacy XLSX export uses `Upload_Shipping_Label`, marking USPS preference; it does not produce or transmit a shipping label itself.
 - OMS CREATE may accept the upload-label channel but actual warehouse fulfillment still depends on separately supplying and verifying the USPS label. The API CREATE spec does not confirm purchasing labels, and no separate label-upload endpoint is part of this release. `WarehouseBatchDispatch` will never mark ERP shipped or sync Woo based solely on status+Tracking without verified carrier.
 - The new channel does **not enable** real Production CREATE or lift strict one-order allowlisting. Production deployment and actual OMS sends require separate Owner authorization.
+
+## 6. OMS draft and exception are NOT warehouse receipt
+
+- Exact OMS order OBS0272610290RS transitioned in live OMS from error code 5 to draft code 0, without a new outbound. Channel remained old because saving Upload_Shipping_Label required a genuine USPS label.
+- Status code 0 now maps to oms_draft / OMS 草稿 · 未提交仓库. Code 5 maps to exception / OMS 异常 · 待处理; code 3 continues to mean outgoing dispatch pending carrier review. Unknown codes do not prove warehouse receipt.
+- Overview tab previously named 已下发 is relabeled OMS 已建单 because it includes unsent drafts.
+- Owner required original channel save before Production release; do not mark this as done without provider readback.
