@@ -218,7 +218,7 @@ final class SingleOrderDispatch
                 'last_checked_at' => now(),
             ])->save();
             $this->safeRecord($order, $attempt);
-            return $this->statusReport($attempt, true);
+            return $this->statusReport($attempt, true, $remote['carrier_raw'] ?? null);
         } catch (\Throwable $e) {
             // Preserve the last confirmed status instead of replacing it
             // with potentially invalid or ambiguous data. Never retry create.
@@ -236,7 +236,7 @@ final class SingleOrderDispatch
     }
 
     /** @return array<string,mixed> */
-    private function statusReport(XlwmsDispatchAttempt $attempt, bool $fresh): array
+    private function statusReport(XlwmsDispatchAttempt $attempt, bool $fresh, ?string $carrierRaw = null): array
     {
         // Only 3 and 4 are verified against the real OMS account:
         // 3 = 已出库, 4 = 已取消. Never guess the other codes.
@@ -250,6 +250,8 @@ final class SingleOrderDispatch
             'oms_status_label' => $status === null ? '尚未查询'
                 : ($labels[$status] ?? ('OMS 状态 '.$status.'（待核实）')),
             'oms_tracking_no' => $attempt->oms_tracking_no,
+            'oms_carrier_raw' => $fresh ? $carrierRaw : null,
+            'carrier_verified' => false,
             'oms_status_checked_at' => $attempt->oms_status_checked_at,
             'oms_status_failure_code' => $attempt->oms_status_failure_code,
             'erp_status_unchanged' => true,

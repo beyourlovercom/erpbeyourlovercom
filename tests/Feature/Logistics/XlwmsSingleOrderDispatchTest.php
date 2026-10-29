@@ -440,6 +440,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
                 'thirdOrderNo'=>'BYL-ERP-'.$o->id,
                 'whCode'=>'OMS-US-SM','status'=>3,
                 'logisticsTrackNo'=>'TESTTRACK123',
+                'logisticsCarrier'=>'Provider-Unknown-Carrier',
             ]],
             'total'=>1,'page'=>1,'pageSize'=>10,'pages'=>1,
         ]]));
@@ -449,6 +450,8 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $this->assertSame('3',$r['oms_status_code']);
         $this->assertSame('已出库',$r['oms_status_label']);
         $this->assertSame('TESTTRACK123',$r['oms_tracking_no']);
+        $this->assertSame('Provider-Unknown-Carrier',$r['oms_carrier_raw']);
+        $this->assertFalse($r['carrier_verified']);
         $this->assertNotNull($r['oms_status_checked_at']);
         $this->assertSame('pending_shipment',$o->fresh()->order_status->value);
         $this->assertSame('pending',$o->shipment()->first()->shipment_status);

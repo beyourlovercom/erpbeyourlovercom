@@ -245,7 +245,16 @@ final class XlwmsOrderGateway
             throw new RuntimeException('OMS_STATUS_RESPONSE_INVALID');
         }
 
+        // Provider-native label only. It is not proof of the physical
+        // last-mile carrier, and must never trigger a shipment write.
+        $carrier = $item['logisticsCarrier'] ?? null;
+        if ($carrier !== null && (! is_string($carrier) || strlen($carrier) > 120)) {
+            throw new RuntimeException('OMS_STATUS_RESPONSE_INVALID');
+        }
+        $carrier = is_string($carrier) ? trim($carrier) : null;
+
         return [
+            'carrier_raw' => $carrier ?: null,
             'order_no' => $omsOrderNo,
             'third_order_no' => trim((string)($item['thirdOrderNo'] ?? '')),
             'refer_order_no' => trim((string)($item['referOrderNo'] ?? '')),
