@@ -49,7 +49,7 @@ final class OrderAnalysisController
             'fields' => $this->analysis->fields(),
             'filters' => $request->only([
                 'search', 'source_type', 'completeness', 'profit_status', 'date_from', 'date_to',
-                'country', 'sku', 'product', 'fx_status', 'country_missing', 'product_missing', 'sort', 'direction',
+                'country', 'sku', 'product', 'fx_status', 'country_missing', 'product_missing', 'sort', 'direction', 'edit_order',
             ]),
             'kpis' => $this->kpis($request),
             'gridPreferenceNamespace' => self::GRID_NAMESPACE,
@@ -66,6 +66,17 @@ final class OrderAnalysisController
 
         return Inertia::render('Finance/OrderProfitShow', [
             'explanation' => $this->explanations->explain($order),
+            'financeFacts' => [
+                'id' => $order->id,
+                'erp_order_id' => $order->erp_order_id,
+                'currency' => $order->currency,
+                'revenue_provenance' => $order->financials?->revenue_provenance,
+                'provider_order_status' => $order->financials?->provider_order_status,
+                'provider_reconciliation_status' => $order->financials?->reconciliation_status,
+                'paid_at' => $order->financials?->paid_at?->toIso8601String(),
+                'values' => $this->analysis->values($order),
+            ],
+            'financeFields' => $this->analysis->fields(),
         ]);
     }
 
@@ -134,6 +145,7 @@ final class OrderAnalysisController
                 'items:id,order_id,product_id,sku,product_summary',
             ])
             ->where('order_kind', 'customer')
+            ->when($request->integer('edit_order') > 0, fn (Builder $orders) => $orders->whereKey($request->integer('edit_order')))
             ->whereDoesntHave('externalReferences', fn (Builder $references) => $references->where('provider', 'historical_logistics'))
             ->when($request->input('source_type'), fn (Builder $orders, string $source) => $orders->where('source_type', $source))
             ->when($request->input('date_from'), fn (Builder $orders, string $date) => $orders->whereDate('order_date', '>=', $date))

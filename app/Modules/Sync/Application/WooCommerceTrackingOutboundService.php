@@ -19,12 +19,53 @@ final class WooCommerceTrackingOutboundService
     ) {}
 
     /** @return array<string,mixed> */
-    public function pushOne(Model $order, ?Authenticatable $actor): array
+    public function pushOne(Model $order, ?Authenticatable $actor, bool $verifyRemote = false): array
     {
         $prepared = $this->prepare($order);
         $record = $this->outbox->enqueue($prepared['intent']);
 
         if ($record->status === SyncOutboxStatus::Completed) {
+            if ($verifyRemote) {
+                // Only explicit manual selections take this readback path.
+                // Refuse to resurrect refunded/cancelled/failed Woo orders.
+                try {
+                    $remoteStatus = $this->gateway->inspectOrderStatus($prepared['provider_order_id']);
+                    if (in_array($remoteStatus, ['cancelled', 'refunded', 'failed', 'on-hold', 'trash'], true)) {
+                        return ['status' => 'conflict', 'outbox' => $record];
+                    }
+                    $remoteTracking = $this->gateway->syncTracking(
+                        $prepared['provider_order_id'],
+                        $prepared['provider_slug'],
+                        $prepared['tracking_number'],
+                        $prepared['ship_date'],
+                        $prepared['line_items'],
+                    );
+                    if (! ($remoteTracking['verified'] ?? false)) {
+                        return ['status' => 'failed', 'outbox' => $record];
+                    }
+                } catch (WooCommerceTrackingConflictException) {
+                    return ['status' => 'conflict', 'outbox' => $record];
+                } catch (Throwable) {
+                    return ['status' => 'failed', 'outbox' => $record];
+                }
+
+                $statusSync = $this->orderStatusOutbound->pushOne($order, verifyRemote: true);
+                if (($statusSync['status'] ?? '') !== 'completed') {
+                    return ['status' => ($statusSync['status'] ?? '') === 'conflict' ? 'conflict' : 'failed', 'outbox' => $record];
+                }
+                $this->manualSync->completeFromAutomaticTracking($order, $actor, 'WooCommerce tracking and status explicitly re-verified.');
+                return [
+                    'status' => 'completed',
+                    'written' => (bool) ($remoteTracking['written'] ?? false),
+                    'remote_tracking_verified' => true,
+                    'remote_status_verified' => true,
+                    'remote_status_written' => (bool) ($statusSync['written'] ?? false),
+                    'order_status_sync' => 'completed',
+                    'aggregate' => $statusSync['aggregate'] ?? null,
+                    'woo_status' => $statusSync['woo_status'] ?? null,
+                    'outbox' => $record,
+                ];
+            }
             $this->manualSync->completeFromAutomaticTracking($order, $actor, 'WooCommerce tracking outbound already verified.');
             $statusSync = $this->orderStatusOutbound->pushOne($order);
 
@@ -112,7 +153,15 @@ final class WooCommerceTrackingOutboundService
 
         $completed = $this->outbox->complete($claimed->id, $lockToken);
         $this->manualSync->completeFromAutomaticTracking($order, $actor, 'WooCommerce tracking outbound verified.');
-        $statusSync = $this->orderStatusOutbound->pushOne($order);
+        $statusSync = $this->orderStatusOutbound->pushOne($order, verifyRemote: $verifyRemote);
+        if ($verifyRemote && ($statusSync['status'] ?? '') !== 'completed') {
+            return [
+                'status' => ($statusSync['status'] ?? '') === 'conflict' ? 'conflict' : 'failed',
+                'outbox' => $completed,
+                'order_status_sync' => $statusSync['status'] ?? 'failed',
+                'written' => (bool) ($remote['written'] ?? false),
+            ];
+        }
 
         return [
             'status' => 'completed',

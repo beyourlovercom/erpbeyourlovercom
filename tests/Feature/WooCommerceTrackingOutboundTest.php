@@ -56,6 +56,68 @@ final class WooCommerceTrackingOutboundTest extends TestCase
         ]);
     }
 
+    public function test_explicit_manual_rechecks_completed_outbox_and_restores_remote_processing(): void
+    {
+        $gateway = new FakeWooCommerceTrackingGateway;
+        $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
+        [$user, $order] = $this->scenario();
+        app(WooCommerceTrackingOutboundService::class)->pushOne($order, $user);
+        $gateway->currentStatus = 'processing';
+
+        $verified = app(WooCommerceTrackingOutboundService::class)->pushOne($order->fresh(), $user, verifyRemote: true);
+        $this->assertSame('completed', $verified['status']);
+        $this->assertTrue($verified['remote_tracking_verified']);
+        $this->assertTrue($verified['remote_status_written']);
+        $this->assertSame('completed', $gateway->currentStatus);
+        $this->assertSame(2, $gateway->calls);
+        $this->assertSame(2, $gateway->statusCalls);
+        $this->assertDatabaseCount('sync_outbox', 2);
+
+        $again = app(WooCommerceTrackingOutboundService::class)->pushOne($order->fresh(), $user, verifyRemote: true);
+        $this->assertSame('completed', $again['status']);
+        $this->assertFalse($again['remote_status_written']);
+        $this->assertDatabaseCount('sync_outbox', 2);
+    }
+
+    public function test_explicit_manual_does_not_override_refunded_remote_order(): void
+    {
+        $gateway = new FakeWooCommerceTrackingGateway;
+        $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
+        [, $order] = $this->scenario();
+        app(WooCommerceTrackingOutboundService::class)->pushOne($order, null);
+        $gateway->currentStatus = 'refunded';
+        $result = app(WooCommerceTrackingOutboundService::class)->pushOne($order->fresh(), null, verifyRemote: true);
+        $this->assertSame('conflict', $result['status']);
+        $this->assertSame(1, $gateway->calls);
+        $this->assertSame(1, $gateway->statusCalls);
+        $this->assertSame('refunded', $gateway->currentStatus);
+    }
+
+    public function test_manual_reverify_reports_tracking_conflict_without_claiming_success(): void
+    {
+        $gateway = new FakeWooCommerceTrackingGateway;
+        $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
+        [, $order] = $this->scenario();
+        app(WooCommerceTrackingOutboundService::class)->pushOne($order, null);
+        $gateway->conflict = true;
+        $result = app(WooCommerceTrackingOutboundService::class)->pushOne($order->fresh(), null, verifyRemote: true);
+        $this->assertSame('conflict', $result['status']);
+        $this->assertSame(1, $gateway->statusCalls);
+    }
+
+    public function test_manual_reverify_reports_remote_status_failure_without_claiming_success(): void
+    {
+        $gateway = new FakeWooCommerceTrackingGateway;
+        $this->app->instance(WooCommerceTrackingGateway::class, $gateway);
+        [, $order] = $this->scenario();
+        app(WooCommerceTrackingOutboundService::class)->pushOne($order, null);
+        $gateway->currentStatus = 'processing';
+        $gateway->statusFail = true;
+        $result = app(WooCommerceTrackingOutboundService::class)->pushOne($order->fresh(), null, verifyRemote: true);
+        $this->assertSame('failed', $result['status']);
+        $this->assertDatabaseCount('sync_outbox', 2);
+    }
+
     public function test_remote_conflict_is_terminal_and_never_completes_manual_sync(): void
     {
         $gateway = new FakeWooCommerceTrackingGateway;
@@ -239,6 +301,8 @@ final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingGateway
     public bool $conflict = false;
 
     public bool $fail = false;
+    public bool $statusFail = false;
+    public string $currentStatus = 'processing';
 
     public function descriptor(): array
     {
@@ -247,6 +311,11 @@ final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingGateway
             'url' => 'https://shop.test',
             'connection_key' => 'shop-a',
         ];
+    }
+
+    public function inspectOrderStatus(int $providerOrderId): string
+    {
+        return $this->currentStatus;
     }
 
     public function inspectTracking(int $providerOrderId): array
@@ -276,7 +345,15 @@ final class FakeWooCommerceTrackingGateway implements WooCommerceTrackingGateway
     public function syncOrderStatus(int $providerOrderId, string $status): array
     {
         $this->statusCalls++;
+        if ($this->statusFail) {
+            throw new RuntimeException('temporary Woo status error');
+        }
+        if (in_array($this->currentStatus, ['cancelled', 'refunded', 'failed', 'on-hold', 'trash'], true)) {
+            throw new \App\Modules\Sync\Application\WooCommerceOrderStatusUnsupportedException('protected');
+        }
+        $written = $this->currentStatus !== $status;
+        $this->currentStatus = $status;
 
-        return ['written' => true, 'verified' => true, 'status' => $status];
+        return ['written' => $written, 'verified' => true, 'status' => $status];
     }
 }

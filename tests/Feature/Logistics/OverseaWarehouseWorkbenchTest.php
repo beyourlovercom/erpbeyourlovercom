@@ -1175,6 +1175,11 @@ final class TrackingReturnFakeWooGateway implements WooCommerceTrackingGateway
         return ['configured' => true, 'url' => 'https://shop.test', 'connection_key' => 'shop-a'];
     }
 
+    public function inspectOrderStatus(int $providerOrderId): string
+    {
+        return 'processing';
+    }
+
     public function inspectTracking(int $providerOrderId): array
     {
         return ['tracking_number' => $this->trackingNumber, 'provider' => 'usps', 'ship_date' => '2026-09-15', 'has_tracking' => $this->trackingNumber !== ''];
