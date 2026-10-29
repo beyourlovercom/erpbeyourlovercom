@@ -13,7 +13,7 @@ type CarrierOption = { value:string; label:string; default_service_id:number|nul
 type DispatchProjection = {status:string;label:string;detail:string;oms_order_no:string|null;last_checked_at:string|null;failure_code:string|null;can_retry_local_block:boolean}
 type OmsSnapshot = {
   state:string; oms_order_no:string|null; oms_status_code:string|null
-  oms_status_checked_at:string|null; oms_tracking_no:string|null
+  oms_status_checked_at:string|null; oms_tracking_no:string|null; oms_carrier_raw?:string|null
   failure_code:string|null; oms_status_failure_code:string|null
 }
 type OmsPreflight = {
@@ -23,6 +23,7 @@ type OmsPreflight = {
 type OmsStatusResult = {
   read_only:boolean; fresh:boolean; oms_order_no:string; oms_status_code:string|null
   oms_status_label:string; oms_tracking_no:string|null; oms_status_checked_at:string|null
+  oms_carrier_raw:string|null; carrier_verified:boolean
   oms_status_failure_code:string|null; erp_status_unchanged:boolean; woo_status_unchanged:boolean
 }
 type ShipOutPreflight = {
@@ -486,7 +487,7 @@ const omsRefresh = async (row:Row) => {
     omsSnapshots[row.order_id]={
       ...old,oms_status_code:result.oms_status_code,
       oms_status_checked_at:result.oms_status_checked_at,
-      oms_tracking_no:result.oms_tracking_no,oms_status_failure_code:null,
+      oms_tracking_no:result.oms_tracking_no,oms_carrier_raw:result.oms_carrier_raw,oms_status_failure_code:null,
     }
     notifyOms('SUCCESS','OMS 状态已更新',result.oms_status_label+' · 不修改 ERP/Woo')
   } catch(e) {
@@ -710,6 +711,7 @@ const compactPages = computed<(number|string)[]>(() => {
                     <small v-if="row.warehouse_dispatch?.last_checked_at" class="xlwms-note">核对 {{row.warehouse_dispatch.last_checked_at}}</small>
                     <small v-if="omsRow(row)?.oms_order_no" class="xlwms-number">OMS {{ omsRow(row)?.oms_order_no }}</small>
                     <small v-if="omsRow(row)?.oms_tracking_no" class="xlwms-track">Tracking {{ omsRow(row)?.oms_tracking_no }}（未同步）</small>
+                    <small v-if="omsRow(row)?.oms_carrier_raw" class="xlwms-note">OMS 承运商原始值：{{ omsRow(row)?.oms_carrier_raw }}（未核实，不自动回写）</small>
                     <button v-if="omsRow(row)?.oms_order_no" type="button" class="xlwms-action" :disabled="omsBusy[row.order_id]" @click="omsRefresh(row)">{{omsBusy[row.order_id]?'查询中…':'更新 OMS 状态'}}</button>
                     <button v-else-if="canOperate" type="button" class="xlwms-action" :disabled="omsBusy[row.order_id]" @click="omsReconcile(row)">核对 OMS（不重发）</button>
                     <small v-if="omsRow(row)?.oms_status_failure_code" class="xlwms-error" role="alert">{{ omsFailureText(omsRow(row)?.oms_status_failure_code) }}</small>
