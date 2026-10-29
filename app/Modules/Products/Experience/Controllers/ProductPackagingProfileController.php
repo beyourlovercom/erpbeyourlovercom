@@ -27,7 +27,7 @@ final class ProductPackagingProfileController
         $item = Product::query()->findOrFail($product);
         $profile = ProductPackagingProfile::query()->with('media')->where('product_id', $item->id)->first();
         return Inertia::render('Products/Packaging', [
-            'product'=>['id'=>$item->id,'sku'=>$item->sku,'name'=>$item->name],
+            'product'=>['id'=>$item->id,'sku'=>$item->sku,'name'=>$item->name,'barcode_69'=>$item->barcode_69],
             'packagingProfile'=>$profile ? $this->presentation->serialize($profile) : null,
             'presets'=>$this->presentation->presets(),
         ]);
@@ -53,6 +53,27 @@ final class ProductPackagingProfileController
         );
         $this->audit->record(AuditActor::user($request->user(), AuditSource::Web), 'product.packaging_profile.updated', $profile::class, $profile->id, after:['product_id'=>$item->id,'preset_key'=>$presetKey,'custom_method'=>$customMethod,'units_per_carton'=>$profile->units_per_carton], reason:'product_packaging_profile_updated');
         return back()->with('success', '产品包装引用已保存');
+    }
+
+    public function updateBarcode69(Request $request, int $product): RedirectResponse
+    {
+        $data = $request->validate([
+            'barcode_69' => ['nullable', 'string', 'regex:/^[0-9]{8,14}$/'],
+        ]);
+        $item = Product::query()->findOrFail($product);
+        $before = $item->barcode_69;
+        $item->barcode_69 = $data['barcode_69'] ?? null;
+        $item->save();
+        $this->audit->record(
+            AuditActor::user($request->user(), AuditSource::Web),
+            'product.barcode_69.updated',
+            Product::class,
+            $item->id,
+            before: ['barcode_69' => $before],
+            after: ['barcode_69' => $item->barcode_69],
+            reason: 'product_barcode_69_updated'
+        );
+        return back()->with('success', '69条形码已保存');
     }
 
     public function upload(Request $request, int $product): RedirectResponse
