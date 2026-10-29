@@ -5,6 +5,8 @@ use App\Modules\Logistics\Experience\Controllers\DomesticLogisticsController;
 use App\Modules\Logistics\Experience\Controllers\HistoricalImportController;
 use App\Modules\Logistics\Experience\Controllers\LogisticsController;
 use App\Modules\Logistics\Experience\Controllers\OverseaWarehouseController;
+use App\Modules\Logistics\Experience\Controllers\XlwmsSingleOrderController;
+use App\Modules\Logistics\Experience\Controllers\XlwmsWarehouseBatchController;
 use App\Modules\Logistics\Experience\Middleware\RequireFulfillmentAllocation;
 use App\Modules\Logistics\Experience\Middleware\RequireLogisticsExecution;
 use App\Modules\Logistics\Experience\Middleware\RequireLogisticsReview;
@@ -27,6 +29,25 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/china/orders/{order}/approve', [DomesticLogisticsController::class, 'approve'])->middleware($execution)->name('logistics.china.approve');
     Route::post('/logistics/china/orders/{order}/reopen-review', [DomesticLogisticsController::class, 'reopenReview'])->middleware($execution)->name('logistics.china.reopen-review');
     Route::get('/logistics/oversea/{warehouse?}', [OverseaWarehouseController::class, 'index'])->middleware('can:logistics.view')->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea');
+    Route::post('/logistics/oversea/us-3sm/xlwms/sync', [XlwmsWarehouseBatchController::class, 'sync'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:2,1'])
+        ->name('logistics.xlwms.warehouse.sync');
+    Route::get('/logistics/oversea/us-3sm/orders/{order}/xlwms/preflight',
+        [XlwmsSingleOrderController::class, 'inlinePreflight'])
+        ->middleware(['can:logistics.view','throttle:10,1'])
+        ->whereNumber('order')->name('logistics.xlwms.order.inline-preflight');
+    Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/send',
+        [XlwmsSingleOrderController::class, 'send'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class,'throttle:2,1'])
+        ->whereNumber('order')->name('logistics.xlwms.order.send');
+    Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/status',
+        [XlwmsSingleOrderController::class, 'status'])
+        ->middleware(['can:logistics.view','throttle:5,1'])
+        ->whereNumber('order')->name('logistics.xlwms.order.status');
+    Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/reconcile',
+        [XlwmsSingleOrderController::class, 'reconcile'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class,'throttle:5,1'])
+        ->whereNumber('order')->name('logistics.xlwms.order.reconcile');
     Route::get('/logistics/oversea/{warehouse}/export', [OverseaWarehouseController::class, 'export'])->middleware('can:logistics.view')->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea.export');
     Route::post('/logistics/oversea/{warehouse}/tracking-import/preview', [OverseaWarehouseController::class, 'previewTrackingReturn'])->middleware($execution)->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea.tracking-import.preview');
     Route::post('/logistics/oversea/{warehouse}/tracking-import/apply', [OverseaWarehouseController::class, 'applyTrackingReturn'])->middleware($execution)->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea.tracking-import.apply');

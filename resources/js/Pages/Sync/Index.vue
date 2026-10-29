@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+import { ref } from 'vue'
 
 type DomainCard = {
   key: string; title: string; subtitle: string; href: string; last_sync_at: string | null
@@ -15,6 +16,10 @@ type QueueSummary = { retry_due: number; retry_waiting: number; processing: numb
 type WooOrderSync = {
   enabled: boolean; frequency: string; can_operate: boolean; manual_action: string; advanced_href: string
   latest_run: SyncRun | null
+  health: 'ok' | 'stale' | 'failed' | 'disabled'
+  last_success_at: string | null
+  last_failure: { run_id: number; at: string | null; error_code: string | null; message: string | null } | null
+  unimported_count: number | null
 }
 
 const props = defineProps<{
@@ -28,7 +33,26 @@ const props = defineProps<{
 const formatTime = (value: string | null) => value
   ? new Date(value).toLocaleString('zh-CN', { hour12: false })
   : '尚未同步'
-const manualSyncToday = () => router.post(props.wooOrderSync.manual_action, {}, { preserveScroll: true })
+const syncing = ref(false)
+const checking = ref(false)
+const reconciliation = ref<{ unimported_count: number | null; checked_at?: string; message?: string } | null>(null)
+const manualSyncToday = () => {
+  if (syncing.value || !props.wooOrderSync.can_operate) return
+  syncing.value = true
+  router.post(props.wooOrderSync.manual_action, {}, { preserveScroll: true, onFinish: () => { syncing.value = false } })
+}
+const checkBacklog = async () => {
+  if (checking.value || !props.wooOrderSync.can_operate) return
+  checking.value = true
+  try {
+    const response = await fetch('/sync/woocommerce/reconcile-today', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+    const data = await response.json()
+    reconciliation.value = { ...data, message: response.ok ? data.message : (data.message || '核对失败') }
+  } catch {
+    reconciliation.value = { unimported_count: null, message: '网络异常，无法核对' }
+  } finally { checking.value = false }
+}
+const healthText = (health: WooOrderSync['health']) => ({ ok: '正常', failed: '最近同步失败', stale: '同步超时或无成功记录', disabled: '未启用' })[health]
 </script>
 <template>
   <Head title="同步总览 · BYL ERP" />
@@ -60,20 +84,29 @@ const manualSyncToday = () => router.post(props.wooOrderSync.manual_action, {}, 
           <div>
             <p class="mvp-kicker">WooCommerce Orders</p>
             <h3>WooCommerce 订单同步</h3>
-            <p>自动同步每 1 小时执行一次；需要立即拉取时，可手动同步今天 00:00 至当前创建的订单。</p>
+            <p>自动同步每 30 分钟执行一次；需要立即拉取时，可手动同步今天 00:00 UTC 至当前创建的订单。</p>
           </div>
           <div class="mvp-form-actions">
             <a class="mvp-button" :href="props.wooOrderSync.advanced_href">高级设置</a>
-            <button class="mvp-button mvp-button-primary" type="button" :disabled="!props.wooOrderSync.can_operate" @click="manualSyncToday">手动同步今日订单</button>
+            <button class="mvp-button" type="button" :disabled="!props.wooOrderSync.can_operate || checking" @click="checkBacklog">{{ checking ? '核对中…' : '只读核对今日未同步' }}</button>
+            <button class="mvp-button mvp-button-primary" type="button" :disabled="!props.wooOrderSync.can_operate || syncing" @click="manualSyncToday">{{ syncing ? '同步中…' : '手动同步今日订单' }}</button>
           </div>
         </div>
         <div class="sync-metrics woo-order-sync-metrics">
-          <div><strong>{{ props.wooOrderSync.enabled ? '正常' : '未启用' }}</strong><span>自动同步</span></div>
+          <div><strong>{{ healthText(props.wooOrderSync.health) }}</strong><span>自动同步健康状态</span></div>
           <div><strong>{{ props.wooOrderSync.frequency }}</strong><span>执行频率</span></div>
-          <div><strong>{{ formatTime(props.wooOrderSync.latest_run?.completed_at ?? props.wooOrderSync.latest_run?.started_at ?? null) }}</strong><span>上次自动同步</span></div>
-          <div><strong>{{ props.wooOrderSync.latest_run ? `${props.wooOrderSync.latest_run.succeeded_items} 成功 / ${props.wooOrderSync.latest_run.failed_items} 失败` : '—' }}</strong><span>最近结果</span></div>
+          <div><strong>{{ formatTime(props.wooOrderSync.latest_run?.started_at ?? null) }}</strong><span>最近自动任务启动</span></div>
+          <div><strong>{{ formatTime(props.wooOrderSync.last_success_at) }}</strong><span>最近成功任务启动</span></div>
+          <div><strong>{{ props.wooOrderSync.latest_run ? props.wooOrderSync.latest_run.succeeded_items + ' 成功 / ' + props.wooOrderSync.latest_run.failed_items + ' 失败' : '—' }}</strong><span>最近结果</span></div>
         </div>
-        <p v-if="!props.wooOrderSync.can_operate" class="mvp-empty">当前账号只有查看权限，不能执行手动同步。</p>
+        <p v-if="props.wooOrderSync.last_failure" role="status">
+          最近失败：{{ formatTime(props.wooOrderSync.last_failure.at) }} · {{ props.wooOrderSync.last_failure.error_code || '运行异常' }}
+          <span v-if="props.wooOrderSync.last_failure.message"> · {{ props.wooOrderSync.last_failure.message }}</span>
+          <a :href="'/sync/runs/' + props.wooOrderSync.last_failure.run_id">查看失败详情</a>
+        </p>
+        <p v-if="reconciliation" role="status">今日未同步：{{ reconciliation.unimported_count === null ? (reconciliation.message || '无法核对') : reconciliation.unimported_count + ' 单' }}</p>
+        <p v-else class="mvp-empty">今日未同步数量：尚未只读核对（不把上次导入数量当作待同步数量）。</p>
+        <p v-if="!props.wooOrderSync.can_operate" class="mvp-empty">当前账号无网站订单导入权限，不能执行手动同步。</p>
       </section>
 
       <section class="mvp-panel">

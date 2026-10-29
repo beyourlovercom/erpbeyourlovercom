@@ -11,7 +11,8 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/sync/woocommerce', [WooCommerceInboundController::class, 'index'])->middleware('can:sync.view')->name('woocommerce.inbound.index');
     Route::post('/sync/woocommerce/probe', [WooCommerceInboundController::class, 'probe'])->middleware('can:sync.operate')->name('woocommerce.inbound.probe');
     Route::post('/sync/woocommerce/single', [WooCommerceInboundController::class, 'single'])->middleware('can:sync.operate')->name('woocommerce.inbound.single');
-    Route::post('/sync/woocommerce/incremental', [WooCommerceInboundController::class, 'incremental'])->middleware('can:sync.operate')->name('woocommerce.inbound.incremental');
+    Route::post('/sync/woocommerce/incremental', [WooCommerceInboundController::class, 'incremental'])->name('woocommerce.inbound.incremental');
+    Route::get('/sync/woocommerce/reconcile-today', [WooCommerceInboundController::class, 'reconcileToday'])->name('woocommerce.inbound.reconcile-today');
     Route::post('/sync/woocommerce/historical', [WooCommerceInboundController::class, 'historical'])->middleware('can:sync.operate')->name('woocommerce.inbound.historical');
     Route::get('/orders/trash', [OrderTrashController::class, 'index'])->middleware('can:system.permissions.manage')->name('orders.trash.index');
     Route::post('/orders/trash/{order}/restore', [OrderTrashController::class, 'restore'])->middleware('can:system.permissions.manage')->whereNumber('order')->name('orders.trash.restore');

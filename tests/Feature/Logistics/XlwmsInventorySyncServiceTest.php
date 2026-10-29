@@ -294,6 +294,67 @@ final class XlwmsInventorySyncServiceTest extends TestCase
         self::assertSame(10, WarehouseInventory::query()->where('product_id', $products[0]->id)->value('quantity_on_hand'));
     }
 
+    public function test_v2_applied_unchanged_full_oms_refetch_refreshes_fetched_at_without_reapplying_stock(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A']);
+        WarehouseInventory::query()->create(['warehouse_id'=>$warehouse->id,
+            'product_id'=>$products[0]->id, 'quantity_on_hand'=>10, 'quantity_reserved'=>0]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled', true);
+        config()->set('xlwms.inventory_apply_enabled', true);
+        $service=$this->service($products,['SKU-A'],null,['SKU-A'],0,['SKU-A'=>10]);
+        $preview=$service->sync(false);
+        config()->set('xlwms.inventory_first_apply_approved_checksum',$preview['checksum']);
+        $applied=$service->sync(true);
+        self::assertSame('applied',$applied['status']);
+        // The first post-apply read uses the new local lot baseline and may
+        // create a second applied snapshot. The next full read is stable.
+        $stable=$service->sync(true);
+        self::assertSame('applied',$stable['status']);
+        $snapshot=XlwmsInventorySnapshot::query()->findOrFail($stable['snapshot_id']);
+        $originalAppliedAt=$snapshot->applied_at?->toIso8601String();
+        $snapshot->forceFill(['fetched_at'=>now()->subHours(48)])->save();
+        $beforeCount=XlwmsInventoryLotReconciliation::query()->count();
+        $rechecked=$service->sync(true); // fake OMS full catalog+inventory GET, same stock
+        $after=XlwmsInventorySnapshot::query()->findOrFail($rechecked['snapshot_id']);
+        self::assertSame('applied',$rechecked['status']);
+        self::assertSame((int)$snapshot->id,(int)$after->id);
+        self::assertTrue($after->fetched_at->greaterThan(now()->subSeconds(120)));
+        self::assertSame($originalAppliedAt,$after->applied_at?->toIso8601String());
+        self::assertSame($beforeCount,XlwmsInventoryLotReconciliation::query()->count());
+        self::assertSame(10,(int)WarehouseInventory::query()->where('warehouse_id',$warehouse->id)
+            ->where('product_id',$products[0]->id)->value('quantity_on_hand'));
+    }
+
+    public function test_v2_failed_remote_refetch_cannot_make_old_applied_snapshot_fresh(): void
+    {
+        [$warehouse, , $products] = $this->fixture(['SKU-A']);
+        WarehouseInventory::query()->create(['warehouse_id'=>$warehouse->id,
+            'product_id'=>$products[0]->id,'quantity_on_hand'=>10,'quantity_reserved'=>0]);
+        config()->set('xlwms.lot_reconciliation_v2_enabled',true);
+        config()->set('xlwms.inventory_apply_enabled',true);
+        $good=$this->service($products,['SKU-A'],null,['SKU-A'],0,['SKU-A'=>10]);
+        config()->set('xlwms.inventory_first_apply_approved_checksum',$good->sync(false)['checksum']);
+        self::assertSame('applied',$good->sync(true)['status']);
+        $stable=$good->sync(true);
+        $snapshot=XlwmsInventorySnapshot::query()->findOrFail($stable['snapshot_id']);
+        $old=now()->subHours(24)->startOfSecond();
+        $snapshot->forceFill(['fetched_at'=>$old])->save();
+        $gateway=Mockery::mock(XlwmsInventoryGateway::class);
+        $gateway->shouldReceive('productPage')->once()->andThrow(new \RuntimeException('OMS_TRANSPORT_UNCERTAIN'));
+        $failing=new XlwmsInventorySyncService($gateway,
+            $this->app->make(VerifiedOmsProductIdentityResolver::class),
+            new XlwmsInventoryPageParser(),$this->app->make(AuditRecorder::class));
+        try {
+            $failing->sync(true);
+            self::fail('Provider fetch failure must stop before DB freshness update');
+        } catch (\RuntimeException $e) {
+            self::assertSame('OMS_TRANSPORT_UNCERTAIN',$e->getMessage());
+        }
+        self::assertTrue(XlwmsInventorySnapshot::query()->findOrFail($stable['snapshot_id'])->fetched_at->equalTo($old));
+        self::assertSame(10,(int) WarehouseInventory::query()->where('warehouse_id',$warehouse->id)
+            ->where('product_id',$products[0]->id)->value('quantity_on_hand'));
+    }
+
     public function test_v2_recurring_large_delta_blocks_entire_batch_after_approved_initial_write(): void
     {
         [$warehouse, , $products] = $this->fixture(['SKU-A', 'SKU-B']);
