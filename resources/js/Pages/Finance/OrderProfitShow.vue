@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3'
+import { computed, ref } from 'vue'
+import FinanceFactsDrawer from './FinanceFactsDrawer.vue'
+import type { FinanceFactRow } from './financeFacts'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 
 type MoneyPart = {
@@ -98,9 +101,10 @@ type Explanation = {
     formula: CostLine[]
 }
 
-const props = defineProps<{ explanation: Explanation }>()
-const e = props.explanation
-const money = (amount: string | null | undefined, currency: string | null | undefined) => amount === null || amount === undefined ? '—' : `${currency ?? e.order.currency} ${amount}`
+const props = defineProps<{ explanation: Explanation; financeFacts: FinanceFactRow; financeFields: string[] }>()
+const drawerOpen = ref(false)
+const e = computed(() => props.explanation)
+const money = (amount: string | null | undefined, currency: string | null | undefined) => amount === null || amount === undefined ? '—' : `${currency ?? e.value.order.currency} ${amount}`
 const pct = (value: string | null | undefined) => value === null || value === undefined ? '—' : `${(Number(value) * 100).toFixed(1)}%`
 const stateLabel = (state: string) => ({ confirmed: '已确认', estimated: '估算中', incomplete: '不完整', missing: '缺失', blocked: '受阻', review: '待复核' }[state] ?? '待确认')
 const financeStatusLabel = (status: string | null | undefined) => ({ confirmed: '已确认', completed: '已完成', incomplete: '资料不完整', estimated: '含估算', unposted: '未核算', review: '待复核' }[String(status ?? 'unposted').toLowerCase()] ?? '待确认')
@@ -112,26 +116,26 @@ const provenanceLabel = (value: string | null | undefined) => ({ confirmed_manua
 const sourceTypeLabel = (value: string) => ({ woocommerce: 'WooCommerce', tiktok_shop: 'TikTok Shop', manual: '人工录入', historical_import: '历史导入' }[value] ?? value)
 const countryLabel = (value: string | null) => ({ US: '美国', CA: '加拿大', GB: '英国', UK: '英国', DE: '德国', FR: '法国', AU: '澳大利亚', MX: '墨西哥', CL: '智利', AR: '阿根廷', UA: '乌克兰', RU: '俄罗斯', TH: '泰国', ID: '印度尼西亚', VN: '越南', IN: '印度', PH: '菲律宾', SG: '新加坡', JP: '日本', KR: '韩国' }[String(value ?? '').toUpperCase()] ?? value ?? '—')
 const warehouseLabel = (value: string | null | undefined) => ({ FACTORY: '中国工厂', 'US-LA': '美西仓（US-LA）', 'US-NY': '美东纽约仓（US-NY）', 'US-MOREPLUS': '美西 MorePlus 仓', 'US-SM': '美西世迈仓', 'DE-TIANYUN': '德国天运仓', CA: '加拿大仓' }[String(value ?? '').toUpperCase()] ?? value ?? '—')
-const totalLogistics = e.formula.filter(line => ['first_mile_cost', 'overseas_handling_cost', 'last_mile_cost'].includes(line.cost_type))
+const totalLogistics = computed(() => e.value.formula.filter(line => ['first_mile_cost', 'overseas_handling_cost', 'last_mile_cost'].includes(line.cost_type)))
 const formulaSymbol = (index: number) => index === 0 ? '' : '+'
 
 // P8.2 maturity helpers
-const s = e.summary
-const ageDays: number | null = s.age_days ?? null
-const maturityState: string | null = s.maturity_state ?? null
-const reconciliationDue: boolean = s.reconciliation_due ?? false
-const estimateAllowed: boolean = s.estimate_allowed ?? true
-const costCompletionPct: number = s.cost_completion_percent ?? 0
-const unresolvedEstimateCount: number = s.unresolved_estimate_count ?? 0
-const hasEstimatedCosts: boolean = (s.estimated_cost_count ?? 0) > 0
-const show30dBanner: boolean = reconciliationDue && hasEstimatedCosts
-const show45dBanner: boolean = (ageDays ?? 0) > 45 && hasEstimatedCosts
-const isEstimatedProfit: boolean = s.canonical_final_ready !== true && (s.canonical_estimated_ready === true)
-const settlementStatus: string = s.revenue_status ?? 'incomplete'
+const s = computed(() => e.value.summary)
+const ageDays = computed<number | null>(() => s.value.age_days ?? null)
+const maturityState = computed<string | null>(() => s.value.maturity_state ?? null)
+const reconciliationDue = computed(() => s.value.reconciliation_due ?? false)
+const estimateAllowed = computed(() => s.value.estimate_allowed ?? true)
+const costCompletionPct = computed(() => s.value.cost_completion_percent ?? 0)
+const unresolvedEstimateCount = computed(() => s.value.unresolved_estimate_count ?? 0)
+const hasEstimatedCosts = computed(() => (s.value.estimated_cost_count ?? 0) > 0)
+const show30dBanner = computed(() => reconciliationDue.value && hasEstimatedCosts.value)
+const show45dBanner = computed(() => (ageDays.value ?? 0) > 45 && hasEstimatedCosts.value)
+const isEstimatedProfit = computed(() => s.value.canonical_final_ready !== true && s.value.canonical_estimated_ready === true)
+const settlementStatus = computed(() => s.value.revenue_status ?? 'incomplete')
 const maturityLabel = (state: string | null) => ({ fresh_estimate_allowed: '新订单 · 估算允许', estimate_allowed: '估算允许（30天内）', actual_reconciliation_due: '待真实成本结算（30–45天）', actual_cost_overdue: '成本已逾期（超过45天）' }[state ?? ''] ?? '—')
 const dataStatusLabel = () => {
-    if (s.canonical_final_ready) return '最终确认'
-    if (s.canonical_estimated_ready) return '含估算'
+    if (s.value.canonical_final_ready) return '最终确认'
+    if (s.value.canonical_estimated_ready) return '含估算'
     return '数据不完整'
 }
 const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomplete: '未完成', not_confirmed: '未确认' }[val] ?? val)
@@ -163,7 +167,7 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
                     <p class="submeta">{{ e.order.product_count }} 个商品 · {{ e.order.original_shipment_count }} 个原始履约<span v-if="e.order.replacement_shipment_count"> · {{ e.order.replacement_shipment_count }} 个售后补发</span> · {{ e.order.multi_shipment ? '多履约' : '单仓履约' }}</p>
                 </div>
                 <div class="order-header-actions">
-                    <Link class="edit-facts-link" :href="`/accounting/order-costs?edit_order=${e.order.id}`">编辑订单事实 ↗</Link>
+                    <button class="edit-facts-link" type="button" @click="drawerOpen = true">编辑订单事实</button>
                     <div class="finance-status" :class="[`state-${String(e.summary.finance_status ?? '').toLowerCase()}`, { 'finance-status-estimated': isEstimatedProfit }]">
                         <strong>{{ isEstimatedProfit ? '预估利润 · 非最终' : financeStatusLabel(e.summary.finance_status) }}</strong>
                         <span>{{ isEstimatedProfit ? `含 ${s.estimated_cost_count ?? 0} 项估算成本 · 等待真实账单替换` : (e.summary.canonical_final_ready ? '所有必要成本证据均已确认' : '必要成本证据仍不完整') }}</span>
@@ -316,6 +320,7 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
                 </aside>
             </section>
         </section>
+        <FinanceFactsDrawer :order="drawerOpen ? financeFacts : null" :fields="financeFields" @close="drawerOpen = false" />
     </AuthenticatedLayout>
 </template>
 
@@ -323,7 +328,7 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
 .profit-page { display:grid; gap:14px; color:#18282d; }
 .order-header { display:flex; justify-content:space-between; gap:24px; padding:6px 2px 2px; }
 .order-header-actions { display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
-.edit-facts-link { display:inline-flex; padding:9px 14px; border:1px solid #c9d4d7; border-radius:6px; background:#f7f9f9; color:#24383e; font-size:13px; font-weight:700; text-decoration:none; }
+.edit-facts-link { display:inline-flex; padding:9px 14px; border:1px solid #c9d4d7; border-radius:6px; background:#f7f9f9; color:#24383e; font-size:13px; font-weight:700; text-decoration:none; cursor:pointer; }
 .edit-facts-link:hover { background:#eaf1f3; border-color:#81969d; }
 .crumb { margin:0 0 8px; color:#78878c; font-size:12px; }.crumb a{color:#536a72;text-decoration:none}
 .title-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }.title-row h1{margin:0;font-size:30px;letter-spacing:-.025em}

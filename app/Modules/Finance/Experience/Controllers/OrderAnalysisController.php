@@ -66,6 +66,17 @@ final class OrderAnalysisController
 
         return Inertia::render('Finance/OrderProfitShow', [
             'explanation' => $this->explanations->explain($order),
+            'financeFacts' => [
+                'id' => $order->id,
+                'erp_order_id' => $order->erp_order_id,
+                'currency' => $order->currency,
+                'revenue_provenance' => $order->financials?->revenue_provenance,
+                'provider_order_status' => $order->financials?->provider_order_status,
+                'provider_reconciliation_status' => $order->financials?->reconciliation_status,
+                'paid_at' => $order->financials?->paid_at?->toIso8601String(),
+                'values' => $this->analysis->values($order),
+            ],
+            'financeFields' => $this->analysis->fields(),
         ]);
     }
 
