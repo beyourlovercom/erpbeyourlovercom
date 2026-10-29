@@ -11,10 +11,10 @@ interface SyncOrchestrationRepository
     public function ordersByIds(array $ids): Collection;
 
     /** @return Collection<int,Model> */
-    public function eligibleTrackingOrders(int $limit): Collection;
+    public function eligibleTrackingOrders(int $limit, ?int $minShipmentId = null): Collection;
 
     /** @return Collection<int,Model> */
-    public function dueTrackingOutbox(int $limit): Collection;
+    public function dueTrackingOutbox(int $limit, ?int $minOutboxId = null): Collection;
 
     public function shipmentWithOrder(int $shipmentId): ?Model;
 

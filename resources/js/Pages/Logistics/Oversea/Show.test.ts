@@ -430,4 +430,22 @@ describe('Oversea Dede file exchange workbench', () => {
     }
   })
 
+
+
+  it('places Woo tracking sync in the original overseas shipping header without disturbing OMS controls', async () => {
+    const shipped={...usSmPendingRows.data[0],source_type:'woocommerce',tracking_sync_status:'pending',
+      shipment_status:'shipped',tracking_number:'TRACK-USSM-1',shipped_at:'2026-10-29T00:00:00Z'}
+    const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+      canTrackingSync:true,trackingImportPreview:null,rows:{...usSmPendingRows,data:[shipped]}})
+    expect(wrapper.text()).toContain('同步官网物流')
+    expect(wrapper.find('button.xlwms-batch-button').exists()).toBe(true)
+    await wrapper.find('input[aria-label^="选择同步"]').setValue(true)
+    const batch=wrapper.findAll('button').find(b=>b.text()==='批量同步官网物流')
+    expect(batch).toBeTruthy()
+    await batch!.trigger('click')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/tracking-outbound/selected',
+      {order_ids:[99]},expect.objectContaining({preserveScroll:true}))
+    expect(mountPage({canTrackingSync:false}).text()).not.toContain('同步官网物流')
+  })
+
 })

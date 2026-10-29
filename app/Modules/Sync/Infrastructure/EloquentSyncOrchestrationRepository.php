@@ -22,12 +22,29 @@ final class EloquentSyncOrchestrationRepository implements SyncOrchestrationRepo
             ->keyBy('id');
     }
 
-    public function eligibleTrackingOrders(int $limit): Collection
+    public function eligibleTrackingOrders(int $limit, ?int $minShipmentId = null): Collection
     {
         return Order::query()
             ->with(['shipment', 'externalReferences', 'manualSync'])
-            ->where('source_type', 'woocommerce')
-            ->whereHas('shipment', function (Builder $query): void {
+            ->where(function (Builder $query): void {
+                $query->where('source_type', 'woocommerce')
+                    ->orWhereHas('fulfillmentParent', fn (Builder $parent) => $parent->where('source_type', 'woocommerce'));
+            })
+            ->whereHas('shipment', function (Builder $query) use ($minShipmentId): void {
+                if ($minShipmentId !== null) {
+                    $query->where('id', '>', $minShipmentId);
+                    // Exclude active or terminal failed intents from new-discovery.
+                    // Otherwise an Outbox retried earlier in this same tick could be
+                    // sent a second time through the new-Shipment branch.
+                    $query->whereNotExists(function (\Illuminate\Database\Query\Builder $sub): void {
+                        $sub->selectRaw('1')
+                            ->from('sync_outbox')
+                            ->where('sync_outbox.aggregate_type', 'shipment')
+                            ->where('sync_outbox.operation', 'woocommerce.tracking_outbound')
+                            ->whereColumn('sync_outbox.aggregate_id', 'shipments.id')
+                            ->whereIn('sync_outbox.status', ['pending', 'processing', 'failed']);
+                    });
+                }
                 $query->where('shipment_status', 'shipped')
                     ->whereNotNull('tracking_number')->where('tracking_number', '<>', '')
                     ->whereNotNull('carrier')->where('carrier', '<>', '')
@@ -39,10 +56,11 @@ final class EloquentSyncOrchestrationRepository implements SyncOrchestrationRepo
             ->get();
     }
 
-    public function dueTrackingOutbox(int $limit): Collection
+    public function dueTrackingOutbox(int $limit, ?int $minOutboxId = null): Collection
     {
         return SyncOutbox::query()
             ->where('operation', 'woocommerce.tracking_outbound')
+            ->when($minOutboxId !== null, fn ($q) => $q->where('id', '>', $minOutboxId))
             ->where('status', SyncOutboxStatus::Pending)
             ->where('available_at', '<=', now())
             ->whereColumn('attempts', '<', 'max_attempts')
