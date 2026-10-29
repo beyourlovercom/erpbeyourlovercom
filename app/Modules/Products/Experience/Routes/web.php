@@ -59,6 +59,7 @@ Route::middleware(['web', 'auth', 'can:products.operate'])->group(function (): v
     Route::post('/products/import', [ProductController::class, 'importStore'])->name('products.import.store');
     Route::get('/products/{id}/edit', [ProductController::class, 'edit'])->name('products.edit');
     Route::get('/products/{product}/packaging', [ProductPackagingProfileController::class, 'edit'])->whereNumber('product')->name('products.packaging.edit');
+    Route::put('/products/{product}/barcode-69', [ProductPackagingProfileController::class, 'updateBarcode69'])->whereNumber('product')->name('products.barcode-69.update');
     Route::put('/products/{product}/packaging', [ProductPackagingProfileController::class, 'update'])->whereNumber('product')->name('products.packaging.update');
     Route::post('/products/{product}/packaging/media', [ProductPackagingProfileController::class, 'upload'])->whereNumber('product')->name('products.packaging.media.store');
     Route::delete('/products/packaging/media/{media}', [ProductPackagingProfileController::class, 'destroyMedia'])->whereNumber('media')->name('products.packaging.media.destroy');
