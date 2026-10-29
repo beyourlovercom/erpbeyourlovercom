@@ -23,10 +23,10 @@ final class ChinaSmallPacketBarcode69ReaderTest extends TestCase
         $order = Order::create(['internal_order_number' => 'BC69-'.uniqid(), 'erp_order_id' => '007-BC69-'.uniqid(), 'source_type' => 'manual', 'order_kind' => 'customer', 'order_date' => now()->toDateString(), 'order_status' => 'pending_shipment', 'currency' => 'USD']);
         $order->items()->create([
             'product_id' => $product->id, 'sku' => 'VX357A',
-            'quantity' => 2, 'unit_price' => 0, 'line_revenue' => 0,
+            'product_summary' => 'QA product', 'quantity' => 2, 'unit_price' => 0, 'line_revenue' => 0,
         ]);
         $this->assertSame([[
-            'sku' => 'VX357A', 'quantity' => 2, 'barcode_69' => '6977291390537',
+            'sku' => 'VX357A', 'product_summary' => 'QA product', 'quantity' => 2, 'barcode_69' => '6977291390537',
         ]], app(ChinaSmallPacketBarcode69Reader::class)->forOrder($order));
     }
 
@@ -40,7 +40,7 @@ final class ChinaSmallPacketBarcode69ReaderTest extends TestCase
         $order->items()->create([
             'product_id' => $product->id,
             'sku' => 'VX357A', 'resolved_fulfillment_sku' => 'VX357B',
-            'quantity' => 1, 'unit_price' => 0, 'line_revenue' => 0,
+            'product_summary' => 'QA product', 'quantity' => 1, 'unit_price' => 0, 'line_revenue' => 0,
         ]);
         $this->expectException(ValidationException::class);
         app(ChinaSmallPacketBarcode69Reader::class)->forOrder($order);
