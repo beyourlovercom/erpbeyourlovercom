@@ -1,7 +1,7 @@
 ---
 type: approved-work-package
 project: BYL ERP
-status: R0_complete_R1_pending
+status: R0_complete_R1_to_R4_code_candidate_R5_pending
 issue: https://github.com/beyourlovercom/erpbeyourlovercom/issues/536
 owner_authorization: approved_2026_10_29
 baseline_main: ff11378f381f7a039c0ea06ea6c429bf396ec938
@@ -71,3 +71,26 @@ Preserve existing PR 533 Woo-to-ERP inbound half-hour scheduler.
 R0 closed: baseline/issue/branch/spec.
 R1-R4 require code, tests and controlled UI; R5 true Dev integration.
 R6 requires owner visual PASS and independent Production authorization.
+
+## 2026-10-29 implementation readback (R1–R4 code candidate)
+- Dedicated feature branch and draft PR #537, updated from current main (includes PR #535).
+- R1: generic LogisticsController markShipped/updateTracking calls a post-transaction
+  Tracking dispatcher only when TRACKING_SYNC_V2_IMMEDIATE_ENABLED=true; default OFF.
+  Existing specialized Domestic/Oversea Tracking return paths stay intact.
+- R2: tracking:retry-woocommerce is preview-only by default; gated */30 scheduler
+  requires TRACKING_SYNC_V2_PERIODIC_ENABLED=true AND strictly positive
+  TRACKING_SYNC_V2_MIN_OUTBOX_ID. Only due Outbox IDs strictly greater than
+  activation baseline are retried. Old pending tasks excluded, max batch 50,
+  existing outbox claim and per-order isolation remain canonical.
+  Note: this stage retries **existing new outbox tasks**, not arbitrary old
+  shipments without an outbound intent. Dev UAT must verify both behaviors.
+- R3: existing Domestic/Index and Oversea/Show show right-side Sync button,
+  row checkbox, batch action and per-row action. No separate daily Sync page.
+- R4: scoped logistics/operations permission without general sync.operate,
+  API preflight for Woo root shipment, shipping truth and batch size (50 max).
+  Status projection uses one Outbox read for the page and masks raw failures.
+  Only current manually-confirmed completed outbound is shown as synced.
+- Initial targeted evidence: PHP 30 tests / 169 assertions PASS, frontend 22
+  tests PASS, TypeScript typecheck and Vite production build PASS.
+- Do not merge / claim AfterShip final verification before R5; do not deploy
+  to Production without Owner's separate Production PASS.

@@ -5,6 +5,8 @@ namespace App\Modules\Logistics\Experience\Controllers;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
 use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
+use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
+use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Logistics\Application\Domestic\SpeedaOutboundExporter;
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -40,11 +42,15 @@ final class DomesticLogisticsController
             'items.product',
             'shipment.warehouse',
             'operationalMarkers',
+            'manualSync',
+            'fulfillmentParent',
         ]);
 
         $this->applyView($query, $view);
         $rows = $query->orderBy('order_date')->orderBy('id')->paginate(50)->withQueryString();
-        $rows->through(fn (Order $order, int $index): array => $this->row($order, (($rows->currentPage() - 1) * $rows->perPage()) + $index + 1));
+        $trackingStatuses = app(LogisticsTrackingListStatus::class)->forShipments($rows->getCollection()
+            ->map(fn (Order $order): int => (int) $order->shipment?->id)->all());
+        $rows->through(fn (Order $order, int $index): array => $this->row($order, (($rows->currentPage() - 1) * $rows->perPage()) + $index + 1, $trackingStatuses[(int) $order->shipment?->id] ?? null));
 
         $counts = [];
         foreach (self::VIEWS as $key) {
@@ -61,6 +67,7 @@ final class DomesticLogisticsController
             'rows' => $rows,
             'viewCounts' => $counts,
             'canOperate' => $request->user()?->can('logistics.operate') ?? false,
+            'canTrackingSync' => app(LogisticsTrackingPushAccess::class)->allows($request->user()),
             'trackingImportProvider' => $previewProvider,
             'trackingImportPreview' => $preview ? [
                 'token' => $preview['token'],
@@ -249,9 +256,10 @@ final class DomesticLogisticsController
         });
     }
 
-    private function row(Order $order, int $line): array
+    private function row(Order $order, int $line, ?array $tracking = null): array
     {
         $shipment = $order->shipment;
+        $trackingState = app(LogisticsTrackingListStatus::class)->currentStatus($tracking, $order->manualSync?->website_sync_status);
         $approved = $order->operationalMarkers->contains('marker', self::REVIEW_MARKER);
         $reference = null;
         try {
@@ -262,6 +270,11 @@ final class DomesticLogisticsController
         return [
             'line' => $line,
             'order_id' => (int) $order->id,
+            'source_type' => ($order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type) instanceof \BackedEnum
+                ? ($order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type)->value
+                : (string) ($order->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order->source_type),
+            'tracking_sync_status' => $trackingState['status'],
+            'tracking_sync_reason' => $trackingState['reason'],
             'erp_order_id' => $order->erp_order_id,
             'provider_reference' => $reference,
             'order_url' => '/customers/orders/'.$order->id,

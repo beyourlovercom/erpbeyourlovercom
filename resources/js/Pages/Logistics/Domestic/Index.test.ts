@@ -106,4 +106,22 @@ describe('Domestic logistics production workbench', () => {
     await wrapper.find('button.approve').trigger('click')
     expect(routerPost).toHaveBeenCalledWith('/logistics/china/orders/1/approve', {}, {preserveScroll:true,preserveState:true})
   })
+
+  it('offers scoped top-right and per-row Woo tracking sync only for shipped orders', async () => {
+    const shipped={...baseProps.rows.data[0],source_type:'woocommerce',tracking_sync_status:'pending',
+      shipment_status:'shipped',tracking_number:'4PX-TRACK-1',shipped_at:'2026-10-29T00:00:00Z'}
+    const wrapper=mount(Index,{props:{...baseProps,canTrackingSync:true,
+      rows:{...baseProps.rows,data:[shipped]}}})
+    expect(wrapper.text()).toContain('官网同步')
+    const checkbox=wrapper.find('input[aria-label^="选择同步"]')
+    expect(checkbox.exists()).toBe(true)
+    await checkbox.setValue(true)
+    const batch=wrapper.findAll('button').find(b=>b.text()==='批量同步官网物流')
+    expect(batch).toBeTruthy()
+    await batch!.trigger('click')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/tracking-outbound/selected',
+      {order_ids:[1]},expect.objectContaining({preserveScroll:true}))
+    expect(mount(Index,{props:{...baseProps,canTrackingSync:false}}).text()).not.toContain('同步官网物流')
+    expect(mount(Index,{props:{...baseProps,canTrackingSync:true}}).find('input[aria-label^="选择同步"]').exists()).toBe(false)
+  })
 })

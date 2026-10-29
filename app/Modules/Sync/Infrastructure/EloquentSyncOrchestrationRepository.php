@@ -39,10 +39,11 @@ final class EloquentSyncOrchestrationRepository implements SyncOrchestrationRepo
             ->get();
     }
 
-    public function dueTrackingOutbox(int $limit): Collection
+    public function dueTrackingOutbox(int $limit, ?int $minOutboxId = null): Collection
     {
         return SyncOutbox::query()
             ->where('operation', 'woocommerce.tracking_outbound')
+            ->when($minOutboxId !== null, fn ($q) => $q->where('id', '>', $minOutboxId))
             ->where('status', SyncOutboxStatus::Pending)
             ->where('available_at', '<=', now())
             ->whereColumn('attempts', '<', 'max_attempts')

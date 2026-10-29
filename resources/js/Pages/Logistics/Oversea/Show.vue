@@ -27,7 +27,7 @@ type OmsStatusResult = {
 type Row = {
   line:number; order_id:number; erp_order_id:string|null; order_url:string|null; recipient_name:string|null; country:string|null
   warehouse_id:number; warehouse_name:string|null; carrier:string|null; service:string|null; carrier_selection_source:string|null; tracking_number:string|null
-  progress:string; note:string|null; xlwms?:OmsSnapshot|null; review_status:'approved'|'pending'; shipment_status:string; items:Item[]
+  progress:string; note:string|null; xlwms?:OmsSnapshot|null; review_status:'approved'|'pending'; shipment_status:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; shipped_at?:string|null; items:Item[]
 }
 type PageRows = { data:Row[]; current_page:number; last_page:number; per_page:number; total:number; from:number|null; to:number|null; links?:{url:string|null;label:string;active:boolean}[] }
 type ColumnKey = 'line'|'order'|'warehouse'|'carrier'|'service'|'tracking'|'note'|'recipient'|'country'|'items'
@@ -47,7 +47,7 @@ type TrackingImportRow = { row:number; order_id:number|null; order_number:string
 type TrackingImportPreview = { token:string; rows:TrackingImportRow[]; apply_count:number; noop_count:number; blocked_count:number }
 const props = defineProps<{
   warehouseKey:string; warehouse:WarehouseOption|null; warehouseOptions:WarehouseOption[]; view:string
-  rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canOperate:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number
+  rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canOperate:boolean; canTrackingSync?:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number
 }>()
 
 const grid = reactive(useAccountGridPreferences<ColumnKey>({
@@ -55,6 +55,23 @@ const grid = reactive(useAccountGridPreferences<ColumnKey>({
   definitions:columnDefinitions,
 }))
 const canEditRow = computed(() => props.canOperate || (props.canReview && props.view === 'review'))
+const trackingSelection = ref<number[]>([])
+const trackingBusy = ref(false)
+const eligibleForTracking = (row:Row) => row.source_type === 'woocommerce'
+  && row.shipment_status === 'shipped' && !!row.tracking_number && !!row.carrier && !!row.shipped_at
+const chooseTracking = (id:number, checked:boolean) => {
+  trackingSelection.value=checked?[...new Set([...trackingSelection.value,id])]:trackingSelection.value.filter(v=>v!==id)
+}
+const pushTracking = (ids:number[]) => {
+  if(!props.canTrackingSync || !ids.length || trackingBusy.value)return
+  trackingBusy.value=true
+  router.post('/logistics/tracking-outbound/selected',{order_ids:ids},{
+    preserveScroll:true,
+    onSuccess:()=>{trackingSelection.value=[]},
+    onFinish:()=>{trackingBusy.value=false},
+  })
+}
+const trackingLabel=(status:string|null|undefined)=>status==='completed'?'已同步':status==='failed'?'失败':status==='retry_wait'?'待重试':status==='processing'?'同步中':'待同步'
 const drafts = reactive<Record<number,{ note:string; carrier:string; service:string; tracking_number:string }>>({})
 const trackingFileInput = ref<HTMLInputElement|null>(null)
 const trackingPreviewRows = computed(() => props.trackingImportPreview?.rows.slice(0, 20) ?? [])
@@ -359,11 +376,16 @@ const compactPages = computed<(number|string)[]>(() => {
         <main class="oversea-main">
       <header class="oversea-heading">
         <div><h1>{{ pageTitle }}</h1><p>审核 Vita 分仓结果；通过后进入真实下单，驳回则退回运营重新分配。</p><p v-if="warehouseKey === 'us-3sm'" class="xlwms-channel-hint">OMS 使用自动最低价渠道，不保证 USPS Priority。实际承运商必须在出库后核实。</p></div>
-        <div class="oversea-file-actions" v-if="warehouse && view === 'pending'">
+        <div class="oversea-file-actions">
+          <button v-if="canTrackingSync" type="button" class="file-button primary"
+            :disabled="!trackingSelection.length || trackingBusy" @click="pushTracking(trackingSelection)">
+            {{ trackingBusy?'同步中…':'同步官网物流' }}</button>
+          <template v-if="warehouse && view === 'pending'">
           <button v-if="warehouseKey === 'us-3sm' && canOperate" type="button" class="file-button primary xlwms-batch-button" :disabled="batchBusy" @click="syncWarehouse">{{ batchBusy ? '同步中…' : '同步仓库' }}</button>
           <a class="file-button file-link" :href="`${basePath}/export`">⇩ 下载仓库下单表</a>
           <input ref="trackingFileInput" class="hidden-file" type="file" accept=".xlsx,.csv,.txt" @change="previewTrackingFile" />
           <button v-if="canOperate && canUploadTrackingFile" type="button" class="file-button primary" @click="chooseTrackingFile">⇧ 上传物流回传表</button>
+          </template>
         </div>
       </header>
       <div v-if="warehouseKey === 'us-3sm' && (batchResult || batchError)" class="xlwms-batch-result" role="status">
@@ -401,16 +423,26 @@ const compactPages = computed<(number|string)[]>(() => {
         </button>
       </nav>
 
+      <div v-if="canTrackingSync && trackingSelection.length" class="tracking-selection-bar">
+        已选 {{ trackingSelection.length }} 项
+        <button type="button" class="file-button primary" :disabled="trackingBusy" @click="pushTracking(trackingSelection)">批量同步官网物流</button>
+        <button type="button" class="file-button" @click="trackingSelection=[]">清除选择</button>
+      </div>
       <div class="oversea-table-wrap">
         <table class="oversea-table">
           <thead><tr>
+            <th v-if="canTrackingSync">选择</th>
             <th class="decision-col sticky-decision">审核</th>
             <th v-if="warehouseKey === 'us-3sm'" class="xlwms-header">世迈 OMS · API 发货 / 状态</th>
             <th v-for="column in grid.visibleColumns" :key="column.key" :class="{ 'line-col':column.key === 'line' }">{{ column.label }}</th>
+            <th>官网同步</th><th v-if="canTrackingSync">操作</th>
             <ColumnSettingsHeader :columns="grid.columns" :sync-state="grid.syncState" @toggle="grid.toggle" @start-drag="grid.startDrag" @drop="grid.drop" @reset="grid.reset" />
           </tr></thead>
           <tbody>
             <tr v-for="row in rows.data" :key="row.order_id">
+              <td v-if="canTrackingSync"><input v-if="eligibleForTracking(row)" type="checkbox"
+                :aria-label="'选择同步 '+(row.erp_order_id??row.order_id)" :checked="trackingSelection.includes(row.order_id)"
+                @change="chooseTracking(row.order_id, ($event.target as HTMLInputElement).checked)" /></td>
               <td class="decision-cell sticky-decision">
                 <template v-if="canReview && view === 'review'">
                   <button type="button" class="decision approve" @mousedown.prevent @click="approve(row)">通过</button>
@@ -454,9 +486,12 @@ const compactPages = computed<(number|string)[]>(() => {
                 <template v-else-if="column.key === 'country'">{{ row.country ?? '—' }}</template>
                 <template v-else>{{ itemText(row) }}</template>
               </td>
+              <td><span v-if="row.source_type==='woocommerce'" class="tracking-sync-status" :title="row.tracking_sync_reason??''" :class="row.tracking_sync_status??'pending'">{{ trackingLabel(row.tracking_sync_status) }}</span><span v-else>—</span><small v-if="row.tracking_sync_reason" class="tracking-sync-failure">{{ row.tracking_sync_reason }}</small></td>
+              <td v-if="canTrackingSync"><button v-if="eligibleForTracking(row)" class="file-button"
+                type="button" :disabled="trackingBusy" @click="pushTracking([row.order_id])">同步官网物流</button><span v-else>—</span></td>
               <td class="settings-spacer" aria-hidden="true"></td>
             </tr>
-            <tr v-if="!rows.data.length"><td :colspan="grid.visibleColumns.length + (warehouseKey === 'us-3sm' ? 3 : 2)" class="empty-cell">当前视图暂无订单</td></tr>
+            <tr v-if="!rows.data.length"><td :colspan="grid.visibleColumns.length + (warehouseKey === 'us-3sm' ? 3 : 2) + 1 + (canTrackingSync?2:0)" class="empty-cell">当前视图暂无订单</td></tr>
           </tbody>
         </table>
       </div>
@@ -517,4 +552,9 @@ const compactPages = computed<(number|string)[]>(() => {
 .xlwms-confirm{display:flex;flex-direction:column;gap:5px;margin-top:4px;padding:7px;border:1px solid #cfe2da;border-radius:6px;background:#f6faf7;white-space:normal}
 .xlwms-confirm small{font-size:11px;color:#496b5b;overflow-wrap:anywhere}
 .xlwms-batch-button{min-width:112px}.xlwms-batch-result{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-4px 0 12px;padding:7px 10px;border:1px solid #cfe2da;border-radius:7px;background:#f6faf7;color:#35564d;font-size:12px}.xlwms-batch-result span{padding-right:8px;border-right:1px solid #dbe7e5}.xlwms-batch-result span:last-child{border-right:0}
+.tracking-selection-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;margin:9px 0;background:#eef6ff;border:1px solid #c9dffc;border-radius:8px;font-size:12px}
+.tracking-sync-status{display:inline-flex;padding:4px 7px;border-radius:5px;font-size:11px;font-weight:700;color:#92400e;background:#fff1d6}
+.tracking-sync-status.completed{color:#166534;background:#dcfce7}
+.tracking-sync-status.failed{color:#991b1b;background:#fee2e2}.tracking-sync-status.retry_wait{color:#92400e;background:#fef3c7}.tracking-sync-failure{display:block;max-width:240px;white-space:normal;font-size:10px;color:#b91c1c;margin-top:4px}
+.tracking-sync-status.processing{color:#1d4ed8;background:#dbeafe}
 </style>

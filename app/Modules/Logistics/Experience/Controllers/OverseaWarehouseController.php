@@ -55,7 +55,7 @@ final class OverseaWarehouseController
         }
 
         $base = Shipment::query()
-            ->with(['order.address', 'order.items.product', 'warehouse', 'overseaReview'])
+            ->with(['order.address', 'order.items.product', 'order.manualSync', 'order.fulfillmentParent', 'warehouse', 'overseaReview'])
             ->whereIn('warehouse_id', collect($warehouseMap)->pluck('id')->all())
             ->whereHas('order', fn ($q) => $q
                 ->where('order_status', '!=', 'cancelled')
@@ -66,6 +66,8 @@ final class OverseaWarehouseController
         $this->applyView($base, $view);
 
         $shipments = $base->latest('id')->paginate($perPage)->withQueryString();
+        $trackingStatuses = app(\App\Modules\Logistics\Application\LogisticsTrackingListStatus::class)
+            ->forShipments($shipments->getCollection()->pluck('id')->all());
         $start = ($shipments->currentPage() - 1) * $shipments->perPage();
         // One indexed batch read of OMS audit snapshots; no per-row network
         // queries. Nothing from the provider is fetched just to render a list.
@@ -84,11 +86,12 @@ final class OverseaWarehouseController
             'warehouse' => $selectedWarehouse,
             'warehouseOptions' => array_values($warehouseMap),
             'view' => $view,
-            'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => $this->row($shipment, $start + $index + 1, $xlwmsAttempts->get($shipment->order_id)))->toArray(),
+            'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => $this->row($shipment, $start + $index + 1, $xlwmsAttempts->get($shipment->order_id), $trackingStatuses[(int) $shipment->id] ?? null))->toArray(),
             'xlwmsAuthorizedOrderId' => $canRunXlwms ? (int) config('xlwms.live_order_id', 0) : 0,
             'viewCounts' => $this->viewCounts($warehouseMap, $selectedWarehouse),
             'canReview' => $this->reviewAccess->allows($request->user()),
             'canOperate' => $warehouseKey !== 'all' && $this->executionAccess->allows($request->user()),
+            'canTrackingSync' => app(\App\Modules\Logistics\Application\LogisticsTrackingPushAccess::class)->allows($request->user()),
             'carrierOptions' => $this->carrierServices->options(),
             'trackingImportPreview' => $warehouseKey === 'all' ? null : (collect((array) $request->session()->get($this->trackingSessionKey($warehouseKey), []))->except('normalized_rows')->all() ?: null),
         ]);
@@ -102,7 +105,7 @@ final class OverseaWarehouseController
         abort_unless($selectedWarehouse, 404, '仓库尚未建立');
 
         $shipments = Shipment::query()
-            ->with(['order.address', 'order.items.product', 'warehouse', 'overseaReview'])
+            ->with(['order.address', 'order.items.product', 'order.manualSync', 'order.fulfillmentParent', 'warehouse', 'overseaReview'])
             ->where('warehouse_id', $selectedWarehouse['id'])
             ->whereHas('order', fn ($q) => $q
                 ->where('order_status', '!=', 'cancelled')
@@ -264,9 +267,11 @@ final class OverseaWarehouseController
         return $counts;
     }
 
-    private function row(Shipment $shipment, int $line, ?XlwmsDispatchAttempt $xlwms = null): array
+    private function row(Shipment $shipment, int $line, ?XlwmsDispatchAttempt $xlwms = null, ?array $tracking = null): array
     {
         $order = $shipment->order;
+        $trackingState = app(\App\Modules\Logistics\Application\LogisticsTrackingListStatus::class)
+            ->currentStatus($tracking, $order?->manualSync?->website_sync_status);
         $review = $shipment->overseaReview;
         $effectiveApproved = $review?->status === 'approved'
             && (int) $review->reviewed_warehouse_id === (int) $shipment->warehouse_id;
@@ -288,6 +293,12 @@ final class OverseaWarehouseController
             'note' => $review?->note,
             'review_status' => $effectiveApproved ? 'approved' : 'pending',
             'shipment_status' => $shipment->shipment_status,
+            'source_type' => ($order?->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order?->source_type) instanceof \BackedEnum
+                ? ($order?->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order?->source_type)->value
+                : (string) ($order?->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order?->source_type),
+            'tracking_sync_status' => $trackingState['status'],
+            'tracking_sync_reason' => $trackingState['reason'],
+            'shipped_at' => $shipment->shipped_at?->toIso8601String(),
             'xlwms' => $xlwms ? [
                 'state' => $xlwms->state,
                 'oms_order_no' => $xlwms->oms_order_no,

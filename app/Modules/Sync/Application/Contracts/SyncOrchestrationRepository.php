@@ -14,7 +14,7 @@ interface SyncOrchestrationRepository
     public function eligibleTrackingOrders(int $limit): Collection;
 
     /** @return Collection<int,Model> */
-    public function dueTrackingOutbox(int $limit): Collection;
+    public function dueTrackingOutbox(int $limit, ?int $minOutboxId = null): Collection;
 
     public function shipmentWithOrder(int $shipmentId): ?Model;
 

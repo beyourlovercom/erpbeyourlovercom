@@ -59,6 +59,51 @@ if ((bool) config('services.woocommerce.order_sync_enabled', false)) {
         ->onOneServer();
 }
 
+
+// Tracking is an independent outbound channel. A cutover snapshot is mandatory;
+// enabling this never drains historical failed/pending Tracking intents.
+Artisan::command('tracking:retry-woocommerce {--apply}', function (): int {
+    $baseline = (string) config('tracking_sync_v2.min_outbox_id', '');
+    if (! (bool) config('tracking_sync_v2.periodic_enabled', false)
+        || ! ctype_digit($baseline) || (int) $baseline < 1) {
+        $this->warn('Tracking V2 periodic retry is disabled or has no reviewed outbox baseline.');
+        return \Illuminate\Console\Command::SUCCESS;
+    }
+
+    $limit = min(50, max(1, (int) config('tracking_sync_v2.max_batch', 50)));
+    $minimum = (int) $baseline;
+    $due = app(\App\Modules\Sync\Application\Contracts\SyncOrchestrationRepository::class)
+        ->dueTrackingOutbox($limit, $minimum)->count();
+
+    if (! $this->option('apply')) {
+        $this->info(json_encode(['mode' => 'preview', 'eligible_due' => $due, 'min_outbox_id_exclusive' => $minimum]));
+        return \Illuminate\Console\Command::SUCCESS;
+    }
+
+    $run = app(\App\Modules\Sync\Application\SyncOrchestrationService::class)
+        ->retryPending(null, $limit, $minimum);
+    $this->info(json_encode([
+        'mode' => 'apply',
+        'run_id' => (int) $run->id,
+        'status' => $run->status instanceof \BackedEnum ? $run->status->value : (string) $run->status,
+        'requested' => (int) $run->requested_items,
+        'succeeded' => (int) $run->succeeded_items,
+        'failed' => (int) $run->failed_items,
+    ]));
+
+    return (int) $run->failed_items ? \Illuminate\Console\Command::FAILURE : \Illuminate\Console\Command::SUCCESS;
+})->purpose('Retry only post-activation Woo tracking outbox rows; preview by default.');
+
+$trackingOutboxBaseline = (string) config('tracking_sync_v2.min_outbox_id', '');
+if ((bool) config('tracking_sync_v2.periodic_enabled', false)
+    && ctype_digit($trackingOutboxBaseline) && (int) $trackingOutboxBaseline >= 1) {
+    Schedule::command('tracking:retry-woocommerce --apply --no-interaction')
+        ->everyThirtyMinutes()
+        ->name('tracking.woocommerce.outbound.retry.half-hourly')
+        ->withoutOverlapping(25)
+        ->onOneServer();
+}
+
 if ((bool) config('erp_accounting.continuous_delta.enabled', false)) {
     Schedule::command('finance:materialize-continuous-delta --apply --limit=10000 --no-interaction')
         ->hourlyAt(10)
