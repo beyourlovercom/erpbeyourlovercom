@@ -9,7 +9,7 @@ type PackagingProfile = {
   inherits_global_template:boolean; default_image:ImageRef|null; rendered_image:ImageRef|null; examples:ImageRef[]
 }
 const props=defineProps<{
-  product:{id:number;sku:string|null;name:string}
+  product:{id:number;sku:string|null;name:string;barcode_69:string|null}
   packagingProfile:PackagingProfile|null
   presets:{key:string;label:string}[]
 }>()

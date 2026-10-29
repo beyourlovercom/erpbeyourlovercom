@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Logistics\Experience\Controllers\CarrierController;
+use App\Modules\Logistics\Experience\Controllers\ChinaSmallPacketBarcode69Controller;
 use App\Modules\Logistics\Experience\Controllers\DomesticLogisticsController;
 use App\Modules\Logistics\Experience\Controllers\HistoricalImportController;
 use App\Modules\Logistics\Experience\Controllers\LogisticsController;
@@ -22,6 +23,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics', fn () => redirect()->route('logistics.wait-stock'))->middleware('can:logistics.view')->name('shell.logistics');
     Route::get('/logistics/pending', fn () => redirect()->route('logistics.wait-stock'))->middleware('can:logistics.view')->name('logistics.pending');
     Route::get('/logistics/wait-stock', [LogisticsController::class, 'waitStock'])->middleware('can:logistics.view')->name('logistics.wait-stock');
+    Route::get('/logistics/china/orders/{order}/barcode-69', ChinaSmallPacketBarcode69Controller::class)->middleware('can:logistics.view')->whereNumber('order')->name('logistics.china.barcode-69');
     Route::get('/logistics/china', [DomesticLogisticsController::class, 'index'])->middleware('can:logistics.view')->name('logistics.china');
     Route::post('/logistics/tracking-outbound/selected', [LogisticsTrackingPushController::class, 'selected'])
         ->middleware(['can:logistics.view', 'throttle:10,1'])->name('logistics.tracking-outbound.selected');

@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Index from './Index.vue'
 
@@ -124,4 +124,27 @@ describe('Domestic logistics production workbench', () => {
     expect(mount(Index,{props:{...baseProps,canTrackingSync:false}}).text()).not.toContain('同步官网物流')
     expect(mount(Index,{props:{...baseProps,canTrackingSync:true}}).find('input[aria-label^="选择同步"]').exists()).toBe(false)
   })
+  it('looks up the exact EU parcel barcode inline without altering carrier exports', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok:true, json:async () => ({items:[{sku:'M2',quantity:1,barcode_69:'6977291390537'}]}),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    try {
+      const wrapper = mount(Index,{props:baseProps})
+      const button = wrapper.findAll('button').find(b=>b.text()==='69条码')
+      expect(button).toBeTruthy()
+      await button!.trigger('click')
+      await flushPromises()
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/logistics/china/orders/1/barcode-69',
+        expect.objectContaining({headers:{Accept:'application/json'}}),
+      )
+      expect(wrapper.text()).toContain('6977291390537')
+      expect(wrapper.find('a[href="/logistics/china/pending-batch/export"]').exists()).toBe(true)
+      const outside = mount(Index,{props:{...baseProps,rows:{...baseProps.rows,
+        data:[{...baseProps.rows.data[0],country:'US'}]}}})
+      expect(outside.findAll('button').some(b=>b.text()==='69条码')).toBe(false)
+    } finally {vi.unstubAllGlobals()}
+  })
+
 })

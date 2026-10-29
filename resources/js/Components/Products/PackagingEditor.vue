@@ -8,7 +8,7 @@ type PackagingProfile = {
   inherits_global_template:boolean; default_image:ImageRef|null; rendered_image:ImageRef|null; examples:ImageRef[]
 }
 type Preset = { key:string; label:string }
-const props = defineProps<{product:{id:number;sku:string|null;name:string};packagingProfile:PackagingProfile|null;presets:Preset[];embedded?:boolean}>()
+const props = defineProps<{product:{id:number;sku:string|null;name:string;barcode_69?:string|null};packagingProfile:PackagingProfile|null;presets:Preset[];embedded?:boolean}>()
 const initialPresetKey:string|null = props.packagingProfile?.preset_key ?? props.presets[0]?.key ?? null
 const form = useForm<{preset_key:string|null;method:string;scenario:string;version:string;units_per_carton:number|null}>({
   preset_key: initialPresetKey,

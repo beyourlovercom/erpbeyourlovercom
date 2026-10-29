@@ -375,6 +375,7 @@ final class ProductController
                 'id' => (int) $product->id,
                 'name' => $product->name,
                 'sku' => $product->sku,
+                'barcode_69' => $product->barcode_69,
                 'source_type' => $product->source_type,
                 'status' => $product->is_active ? 'active' : 'inactive',
                 'product_type' => $product->product_type,
