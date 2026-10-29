@@ -49,6 +49,22 @@ describe('Orders/Create V2', () => {
     expect(wrapper.text()).toContain('新建客户订单')
   })
 
+  it('preselects the server-approved KOL when launched from its profile', () => {
+    const wrapper = mount(Create, { props: {
+      ...kolProps,
+      selectedKolId: 42,
+      kolOptions: [{ value: 42, label: 'Synthetic KOL' }, { value: 43, label: 'Other KOL' }],
+    } })
+    const input = wrapper.get('[data-testid="kol-identity-select"]')
+    expect((input.element as HTMLSelectElement).value).toBe('42')
+    expect(input.text()).toContain('Synthetic KOL')
+    wrapper.unmount()
+
+    const customer = mount(Create, { props: { ...customerProps, selectedKolId: 42 } })
+    expect(customer.find('[data-testid="kol-identity-select"]').exists()).toBe(false)
+    customer.unmount()
+  })
+
   it('renders 新建网红履约订单 title for kol route', () => {
     const wrapper = mount(Create, { props: kolProps })
     expect(wrapper.text()).toContain('新建网红履约订单')
