@@ -363,3 +363,54 @@ shippedTime from vendor's test WMS. For the VOID label mode, only
 synthetic WMS state simulation is acceptable, never real postage.
 Mode 10 (operator-specified channel) remains separate and requires
 a verified serviceGroupId/serviceGroupCode; not tested by modes 6/9.
+
+## R4 specified shipping channel sysServiceId=10, LIVE sandbox UAT (2026-10-29)
+- Owner explicitly requested mode 10 as a third independent sandbox case;
+  its serviceGroupId is NOT to be invented or copied from a provider example.
+- Located OMS frontend's genuine READ-ONLY warehouse channel-list call:
+  GET /api/wms-business/oms/outbound/querySysService
+  with warehouseId=1531580902677626882 via omstest.shipout.com.
+  Sandbox bearer authenticated. HTTP 200 / result OK.
+- Six selectable OMS shipping entries were returned for this warehouse.
+  One actual named group: USPS GA, sysServiceId=1993981773496696833.
+  OMS frontend source maps a long sysServiceId to serviceGroupId.
+- NOTE the channel-list endpoint belongs to the OMS web application,
+  NOT a listed public OpenAPI resource. Do not silently rely on it for a
+  Production ERP auto-sync without a documented/stable contract from vendor.
+- Submitted ONE unique synthetic API order using
+  sysServiceId="10", serviceGroupId="1993981773496696833",
+  requested carrierId=1, SKU BYL-SHIPOUT-UAT-20261028-001 qty=1.
+  Local one-shot sentinel reserved before POST. No retry.
+- Order number BYL-SANDBOX-API-ORDER-20261029-006.
+  POST /open-api/oms/order/batchSubmitAsync -> HTTP 200, array result OK,
+  provider orderId 2115725000397127681. OMS queryListV2 readback
+  matched order number/ID and created outbound OB261029-4,
+  outboundId 2115725010151890945.
+- Signed POST to the documented READ-ONLY
+  /open-api/oms/outbound/parcel/queryByOutboundIds:
+  HTTP 200 result OK, selected shipmentInfo.sysServiceId=10 and
+  shipmentInfo.serviceGroupId=1993981773496696833 (confirmed retained).
+- The sandbox actually produced carrierId=2 (UPS), despite the OMS
+  selected service group being NAMED "USPS GA" (normally carrierId=1).
+  Provider mock tracking starts mock_2_. Thus the requested service group
+  ID was retained but carrier/channel mapping is NOT ACCEPTED as correct;
+  vendor should explain mock routing or inspect sandbox automation rules.
+  Never present that UPS mock shipment as USPS GA service.
+- Actual order status 3 (processing), outboundStatus 2, labelStatus 2,
+  tracking generated (mock only), shippedTime null at latest readback.
+- Signed GET /open-api/oms/outbound/parcel/downloadShippingLabel for
+  outboundId 2115725010151890945 returned HTTP 200, PDF header+EOF,
+  27,642 bytes. No real shipping/purchase and no data file committed.
+- Stock after three test submissions: 2 units available, 2 outbound-
+  reserved, 4 standard; the first two 004/005 have by then simulated
+  completed (one unit each deducted). Do not misstate all three as
+  reserved or all orders as physically shipped.
+- At the same read-only check, orders 004 and 005 had OMS status=4,
+  outboundStatus=4, and nonempty shippedTime.
+  This signs off provider's simulated shipped state for the first two
+  modes (still NOT physical carrier transport, because test labels/mock
+  tracking are non-postage).
+- Owner authorized no Production changes. No merge or real WMS writes;
+  only sandbox order 006 was created for this explicit mode 10 test.
+  Next accept mode 10 only after shippedTime status and carrier mapping
+  questions resolved.
