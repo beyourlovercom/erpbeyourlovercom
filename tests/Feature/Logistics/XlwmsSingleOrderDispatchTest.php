@@ -541,10 +541,53 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $first=$service->run(7);
         $second=$service->run(7);
         $this->assertSame('create_disabled',$first['results'][0]['code']);
-        $this->assertSame('blocked',$second['results'][0]['code']);
+        $this->assertSame('create_disabled',$second['results'][0]['code']);
         $this->assertDatabaseCount('xlwms_dispatch_attempts',1);
         Http::assertSentCount(6);
         Http::assertNotSent(fn($request)=>str_contains($request->url(),'outboundOrder/create'));
+    }
+
+    public function test_batch_missing_oms_native_order_number_never_creates_or_retries(): void
+    {
+        $o = $this->orderFixture();
+        config()->set('xlwms.warehouse_batch_dispatch_enabled', true);
+        config()->set('xlwms.live_dispatch_enabled', true);
+        Http::preventStrayRequests();
+        Http::fake(function ($request) use ($o) {
+            if (str_contains($request->url(), 'outboundOrder/detail')) {
+                return Http::response(['code'=>200, 'data'=>[[
+                    'thirdOrderNo'=>'BYL-ERP-'.$o->id,
+                    'platformOrderNo'=>$o->external_order_number,
+                    'whCode'=>'OMS-US-SM', 'productList'=>[['sku'=>'SAME-SKU','quantity'=>1]],
+                ]]]);
+            }
+            return Http::response(['code'=>200, 'data'=>['records'=>[], 'total'=>0]]);
+        });
+        $first = app(WarehouseBatchDispatch::class)->run(7);
+        $second = app(WarehouseBatchDispatch::class)->run(7);
+        $this->assertSame('missing_order_id', $first['results'][0]['code']);
+        $this->assertSame('missing_order_id', $second['results'][0]['code']);
+        $this->assertSame('batch_identity_blocked', XlwmsDispatchAttempt::query()->where('order_id',$o->id)->firstOrFail()->state);
+        Http::assertNotSent(fn($request)=>str_contains($request->url(), 'outboundOrder/create'));
+    }
+
+    public function test_batch_safe_precreate_block_is_reclaimable_without_duplicate_attempt(): void
+    {
+        $o = $this->orderFixture();
+        config()->set('xlwms.warehouse_batch_dispatch_enabled', false);
+        config()->set('xlwms.live_dispatch_enabled', false);
+        Http::preventStrayRequests();
+        Http::fake(fn($request) => str_contains($request->url(), 'outboundOrder/detail')
+            ? Http::response(['code'=>200,'data'=>[]])
+            : Http::response(['code'=>200,'data'=>['records'=>[],'total'=>0]]));
+        $first = app(WarehouseBatchDispatch::class)->run(7);
+        $this->assertSame('create_disabled', $first['results'][0]['code']);
+        $second = app(WarehouseBatchDispatch::class)->run(8);
+        $this->assertSame('create_disabled', $second['results'][0]['code']);
+        $this->assertSame(8, XlwmsDispatchAttempt::query()->where('order_id',$o->id)->firstOrFail()->requested_by);
+        $this->assertDatabaseCount('xlwms_dispatch_attempts', 1);
+        Http::assertSentCount(6);
+        Http::assertNotSent(fn($request)=>str_contains($request->url(), 'outboundOrder/create'));
     }
 
     public function test_batch_does_not_process_an_existing_processing_claim_again(): void

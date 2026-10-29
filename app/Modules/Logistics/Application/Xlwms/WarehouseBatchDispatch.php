@@ -80,6 +80,11 @@ final class WarehouseBatchDispatch
             return $finish('batch_error', $this->safeCode($e), 'OMS 只读查重失败，未重发');
         }
         $remoteNo = (string) ($existing[0]['outboundOrderNo'] ?? $existing[0]['orderNo'] ?? '');
+        // A positive OMS identity hit without its native order number is not
+        // absence. Never fall through to create a duplicate remote order.
+        if ($existing !== [] && $remoteNo === '') {
+            return $finish('batch_identity_blocked', 'missing_order_id', 'OMS 已有匹配订单但缺少出库单号，禁止重新创建');
+        }
         if ($existing !== [] && $remoteNo !== '') {
             $attempt->forceFill(['state' => 'batch_existing', 'oms_order_no' => $remoteNo,
                 'duplicate_match_field' => $existing[0]['_erp_match_field'] ?? null,
@@ -137,7 +142,26 @@ final class WarehouseBatchDispatch
     {
         return DB::transaction(function () use ($orderId, $warehouseId, $third, $fingerprint, $actorId): array {
             $existing = XlwmsDispatchAttempt::query()->where('order_id', $orderId)->lockForUpdate()->first();
-            if ($existing) return [$existing, false];
+            if ($existing) {
+                // Only a proven PRE-CREATE local block may be re-claimed.
+                // An uncertain create, OMS identity conflict or prior known
+                // OMS order must never be eligible for a second provider write.
+                $safeLocalBlock = $existing->state === 'batch_blocked'
+                    && ! filled($existing->oms_order_no)
+                    && in_array($existing->failure_code, ['blocked', 'create_disabled', 'preflight_blocked'], true)
+                    && (int) $existing->warehouse_id === $warehouseId
+                    && $existing->third_order_no === $third;
+                if ($safeLocalBlock) {
+                    $existing->forceFill([
+                        'state' => 'batch_processing',
+                        'request_fingerprint' => $fingerprint,
+                        'failure_code' => null,
+                        'requested_by' => $actorId,
+                    ])->save();
+                    return [$existing, true];
+                }
+                return [$existing, false];
+            }
             return [XlwmsDispatchAttempt::query()->create(['order_id' => $orderId, 'warehouse_id' => $warehouseId, 'third_order_no' => $third,
                 'state' => 'batch_processing', 'request_fingerprint' => $fingerprint, 'requested_by' => $actorId]), true];
         });
