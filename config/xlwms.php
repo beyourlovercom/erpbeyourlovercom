@@ -30,6 +30,11 @@ return [
     'us_sm_require_no_shipping_service' => true,
     'us_sm_oms_logistics_channel' => 'No_Shipping_Service',
     'us_sm_create_draft_only' => true,
+    // R8 R1-R4 independent reissue: enabled ONLY for one approved order and one
+    // UUID request. Defaults OFF; never reuses ordinary M1 dispatch allowlist.
+    'reissue_create_enabled' => filter_var(env('XLWMS_REISSUE_CREATE_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'reissue_order_id' => (int) env('XLWMS_REISSUE_ORDER_ID', 0),
+    'reissue_request_id' => (string) env('XLWMS_REISSUE_REQUEST_ID', ''),
     // Existing inventory-only release controls remain authoritative and fail closed.
     'inventory_sync_schedule_enabled' => filter_var(env('XLWMS_INVENTORY_SYNC_SCHEDULE_ENABLED', false), FILTER_VALIDATE_BOOL),
     'inventory_sync_schedule_minutes' => in_array((int) env('XLWMS_INVENTORY_SYNC_SCHEDULE_MINUTES', 30), [10, 30], true)

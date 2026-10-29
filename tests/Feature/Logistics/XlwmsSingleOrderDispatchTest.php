@@ -360,8 +360,8 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $this->assertSame('OMS-FIRST',$r['oms_order_no']);
         Http::assertSentCount(6);
         Http::assertSent(fn($req)=>str_contains($req->url(),'outboundOrder/create')
-            && (int) (is_object($req['data'][0]) ? $req['data'][0]->isSubmit : $req['data'][0]['isSubmit']) === 0
-            && (is_object($req['data'][0]) ? $req['data'][0]->thirdOrderNo : $req['data'][0]['thirdOrderNo']) === 'BYL-ERP-'.$o->id
+            && (int) (is_object($req['data'][0]) ? $req['data'][0]->isSubmit : json_decode(json_encode($req['data']),true)[0]['isSubmit']) === 0
+            && (is_object($req['data'][0]) ? $req['data'][0]->thirdOrderNo : json_decode(json_encode($req['data']),true)[0]['thirdOrderNo']) === 'BYL-ERP-'.$o->id
             && (is_object($req['data'][0]) ? $req['data'][0]->logisticsChannel : $req['data'][0]['logisticsChannel']) === 'No_Shipping_Service');
         $this->assertDatabaseCount('xlwms_dispatch_attempts',1);
         $this->assertSame('pending',$o->shipment()->first()->shipment_status);
@@ -1112,6 +1112,92 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         Http::fake();Http::assertNothingSent();
     }
 
+    public function test_issue544_reship_preview_is_readonly_and_preserves_original_shipped_order(): void
+    {
+        $o=$this->orderFixture();
+        $o->update(['order_status'=>'shipped']);
+        $o->shipment()->update(['shipment_status'=>'shipped','tracking_number'=>'TRACK-ORIGINAL']);
+        $o=$o->fresh();
+        $originalTracking=$o->shipment->tracking_number;
+        $this->statusAttempt($o);
+        Http::preventStrayRequests();
+        Http::fake();
+        $p=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentPreview::class)->forOrder($o->id);
+        $this->assertSame([], $p['blockers']);
+        $this->assertTrue($p['ready_for_review']);
+        $this->assertFalse($p['can_create_oms']);
+        $this->assertFalse($p['memo_contract_verified']);
+        $this->assertSame('No_Shipping_Service',$p['channel']);
+        $this->assertNull($p['required_oms_memo']);
+        $this->assertSame('仓库订单出错',$p['reason_default']);
+        $this->assertSame('SAME-SKU',$p['items'][0]['sku']);
+        $this->assertSame(1,$p['items'][0]['quantity']);
+        $this->assertSame('shipped',$o->fresh()->order_status->value);
+        $this->assertSame($originalTracking,$o->fresh()->shipment->tracking_number);
+        $this->assertDatabaseCount('xlwms_reshipments',0);
+        Http::assertNothingSent();
+    }
+
+    public function test_reissue_preflight_requires_original_native_oms_identity_even_with_tracking(): void
+    {
+        $o=$this->orderFixture();
+        $o->update(['order_status'=>'shipped']);
+        $o->shipment()->update(['shipment_status'=>'shipped','tracking_number'=>'TRACK-ONLY']);
+        Http::preventStrayRequests();
+        Http::fake();
+        $p=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentPreview::class)->forOrder($o->id);
+        $this->assertContains('original_oms_identity_missing',$p['blockers']);
+        $this->assertFalse($p['ready_for_review']);
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('xlwms_reshipments',0);
+    }
+
+    public function test_issue544_reship_preflight_requires_logistics_operator_permission(): void
+    {
+        $o=$this->orderFixture();
+        $o->update(['order_status'=>'shipped']);
+        $o->shipment()->update(['shipment_status'=>'shipped','tracking_number'=>'ORIGINAL-TRACK']);
+        $viewer=\App\Models\User::factory()->create(['is_active'=>true]);
+        Http::preventStrayRequests();Http::fake();
+        $this->actingAs($viewer)->getJson('/logistics/oversea/us-3sm/orders/'.$o->id.'/xlwms/reship-preflight')
+            ->assertForbidden();
+        $this->assertDatabaseCount('xlwms_reshipments',0);
+        Http::assertNothingSent();
+    }
+
+    public function test_issue544_reship_preview_blocks_unshipped_and_existing_reshipment(): void
+    {
+        $o=$this->orderFixture();
+        Http::fake();
+        $service=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentPreview::class);
+        $pending=$service->forOrder($o->id);
+        $this->assertContains('source_order_not_shipped',$pending['blockers']);
+        $this->assertFalse($pending['ready_for_review']);
+        $o->update(['order_status'=>'shipped']);
+        $o->shipment()->update(['shipment_status'=>'shipped','tracking_number'=>'ORIGINAL-TRACK']);
+        $this->statusAttempt($o);
+        $ship=$o->fresh()->shipment;
+        \App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment::query()->create([
+            'original_order_id'=>$o->id,
+            'original_shipment_id'=>$ship->id,
+            'warehouse_id'=>$ship->warehouse_id,
+            'request_id'=>'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+            'third_order_no'=>'BYL-RS-TEST-1',
+            'status'=>'create_uncertain',
+            'reason'=>'仓库订单出错',
+            'memo'=>'重新下发仓库',
+            'payload_fingerprint'=>str_repeat('f',64),
+            'sku_quantity_snapshot'=>[['sku'=>'SAME-SKU','quantity'=>1]],
+            'requested_by'=>1,
+        ]);
+        $existing=$service->forOrder($o->id);
+        $this->assertContains('existing_reshipment_requires_review',$existing['blockers']);
+        $this->assertSame(1,$existing['existing_reshipment_count']);
+        $this->assertFalse($existing['ready_for_review']);
+        $this->assertDatabaseCount('xlwms_reshipments',1);
+        Http::assertNothingSent();
+    }
+
     public function test_m1_oms_draft_code_zero_keeps_warehouse_not_dispatched(): void
     {
         $o = $this->orderFixture();
@@ -1156,4 +1242,189 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         Http::assertSentCount(1);
         Http::assertNotSent(fn($r)=>str_contains($r->url(),'outboundOrder/create'));
     }
+    public function test_issue544_operator_intent_is_distinct_and_does_not_create_oms_or_modify_original(): void
+    {
+        $o=$this->orderFixture();
+        $o->update(['order_status'=>'shipped']);
+        $o->shipment()->update(['shipment_status'=>'shipped','tracking_number'=>'ORIGINAL-TRACK']);
+        $this->statusAttempt($o);
+        Http::preventStrayRequests();
+        Http::fake();
+        $svc=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentIntentService::class);
+        $result=$svc->request($o->id,19,'原仓库误发，申请独立补发');
+        $this->assertSame('requested',$result['status']);
+        $this->assertFalse($result['can_create_oms']);
+        $this->assertSame('重新下发仓库',$result['memo']);
+        $record=\App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment::query()
+            ->where('original_order_id',$o->id)->sole();
+        $this->assertStringStartsWith('BYL-RESHIP-',$record->third_order_no);
+        $this->assertDatabaseHas('xlwms_reshipment_events',[
+            'reshipment_id'=>$record->id,'event_code'=>'operator_requested'
+        ]);
+        $this->assertSame('shipped',$o->fresh()->order_status->value);
+        $this->assertSame('ORIGINAL-TRACK',$o->fresh()->shipment->tracking_number);
+        Http::assertNothingSent();
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('RESHIP_PREFLIGHT_BLOCKED');
+        $svc->request($o->id,19,'重复补发必须被拦截');
+    }
+
+    public function test_issue544_cannot_request_intent_for_pending_order(): void
+    {
+        $o=$this->orderFixture();
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('RESHIP_PREFLIGHT_BLOCKED');
+        app(\App\Modules\Logistics\Application\Xlwms\ReshipmentIntentService::class)
+            ->request($o->id,19,'不允许未发货补发');
+    }
+
+    public function test_issue544_second_confirmation_is_audited_without_oms_create(): void
+    {
+        $o = $this->orderFixture();
+        $o->update(['order_status'=>'shipped']);
+        $o->shipment()->update(['shipment_status'=>'shipped','tracking_number'=>'ORIGINAL-TRACK']);
+        $this->statusAttempt($o);
+        Http::preventStrayRequests();
+        Http::fake();
+        $request=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentIntentService::class)
+            ->request($o->id,19,'原订单错发需补发');
+        $approval=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentApprovalService::class);
+        $result=$approval->approve($o->id,$request['request_id'],19,'APPROVE_RESHIP_'.$request['request_id']);
+        $this->assertSame('approved_for_reissue',$result['status']);
+        $this->assertFalse($result['can_create_oms']);
+        $this->assertDatabaseHas('xlwms_reshipment_events',['event_code'=>'operator_approved_reissue']);
+        $this->assertSame('ORIGINAL-TRACK',$o->fresh()->shipment->tracking_number);
+        Http::assertNothingSent();
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('RESHIP_APPROVAL_STATE_INVALID');
+        $approval->approve($o->id,$request['request_id'],19,'APPROVE_RESHIP_'.$request['request_id']);
+    }
+
+    public function test_issue544_approval_rejects_wrong_confirmation(): void
+    {
+        $o=$this->orderFixture();
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('RESHIP_APPROVAL_CONFIRMATION_INVALID');
+        app(\App\Modules\Logistics\Application\Xlwms\ReshipmentApprovalService::class)
+            ->approve($o->id,'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',19,'WRONG');
+    }
+
+    private function reissueFixture(): array
+    {
+        $o=$this->orderFixture();
+        $o->update(['order_status'=>'shipped']);
+        $o->shipment()->update(['shipment_status'=>'shipped','tracking_number'=>'TRACK-ORIG']);
+        $this->statusAttempt($o);
+        $request=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentIntentService::class)
+            ->request($o->id,19,'面单错误，重新下发');
+        app(\App\Modules\Logistics\Application\Xlwms\ReshipmentApprovalService::class)
+            ->approve($o->id,$request['request_id'],19,'APPROVE_RESHIP_'.$request['request_id']);
+        return [$o,$request['request_id']];
+    }
+
+    private function fakeReissueResponse($order, string $requestId, bool $timeout=false, string $originalStatus='3'): void
+    {
+        $third=\App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment::query()
+            ->where('request_id',$requestId)->firstOrFail()->third_order_no;
+        Http::preventStrayRequests();
+        Http::fake(function($req) use($order,$third,$timeout,$originalStatus) {
+            $url=$req->url();
+            if(str_contains($url,'outboundOrder/detail'))return Http::response(['code'=>200,'data'=>[]]);
+            if(str_contains($url,'outboundOrder/pageList')){
+                if((json_decode(json_encode($req['data']),true)['outboundOrderNos']??null)==='NEW-OMS-7788')
+                    return Http::response(['code'=>200,'data'=>['total'=>1,'records'=>[[
+                        'outboundOrderNo'=>'NEW-OMS-7788','whCode'=>'OMS-US-SM',
+                        'thirdOrderNo'=>$third,'platformOrderNo'=>$third,
+                        'status'=>0,'logisticsTrackNo'=>null]]]]);
+                if((json_decode(json_encode($req['data']),true)['outboundOrderNos']??null)==='OBS-SAFE-123')
+                    return Http::response(['code'=>200,'data'=>['total'=>1,'records'=>[[
+                        'outboundOrderNo'=>'OBS-SAFE-123','whCode'=>'OMS-US-SM',
+                        'thirdOrderNo'=>'BYL-ERP-'.$order->id,'status'=>$originalStatus]]]]);
+                return Http::response(['code'=>200,'data'=>['total'=>0,'records'=>[]]]);
+            }
+            if(str_contains($url,'logistics/channel/list'))return Http::response(['code'=>200,
+                'data'=>[['channelCode'=>'No_Shipping_Service','channelType'=>2,'channelName'=>'无需物流服务','whCodes'=>[]]]]);
+            if(str_contains($url,'product/pagelist'))return Http::response(['code'=>200,
+                'data'=>['records'=>[['sku'=>'SAME-SKU','approveStatus'=>2]]]]);
+            if(str_contains($url,'outboundOrder/create')){
+                if($timeout)throw new \RuntimeException('simulated_timeout');
+                return Http::response(['code'=>200,'data'=>[[
+                    'thirdOrderNo'=>$third,'success'=>true,'orderNo'=>'NEW-OMS-7788']]]);
+            }
+            return Http::response(['code'=>500]);
+        });
+    }
+
+    public function test_reissue_cannot_create_without_exact_allowlist(): void
+    {
+        [$o,$uuid]=$this->reissueFixture();
+        Http::preventStrayRequests();Http::fake();
+        $svc=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentDispatchService::class);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('REISSUE_CREATE_NOT_AUTHORIZED');
+        $svc->createDraft($o->id,$uuid,19,'CREATE_REISSUE_'.$uuid);
+    }
+
+    public function test_reissue_new_draft_is_distinct_and_original_order_unmodified(): void
+    {
+        [$o,$uuid]=$this->reissueFixture();
+        $this->fakeReissueResponse($o,$uuid);
+        config()->set('xlwms.reissue_create_enabled',true);
+        config()->set('xlwms.reissue_order_id',$o->id);
+        config()->set('xlwms.reissue_request_id',$uuid);
+        $svc=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentDispatchService::class);
+        $r=$svc->createDraft($o->id,$uuid,19,'CREATE_REISSUE_'.$uuid);
+        $this->assertSame('created',$r['result'],json_encode($r));
+        $this->assertSame('NEW-OMS-7788',$r['oms_order_no']);
+        $row=\App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment::query()
+            ->where('request_id',$uuid)->firstOrFail();
+        $this->assertSame('draft_created',$row->status);
+        $this->assertNotSame('BYL-ERP-'.$o->id,$row->third_order_no);
+        $this->assertSame('pending',$row->cost_status);
+        Http::assertSent(fn($req)=>str_contains($req->url(),'outboundOrder/create')
+            && (json_decode(json_encode($req['data']),true)[0]['isSubmit']??null)===0
+            && (json_decode(json_encode($req['data']),true)[0]['thirdOrderNo']??null)===$row->third_order_no);
+        $this->assertSame('TRACK-ORIG',$o->fresh()->shipment->tracking_number);
+        $this->assertSame('shipped',$o->fresh()->order_status->value);
+        $read=$svc->readStatus($o->id,$uuid,19);
+        $this->assertSame('0',$read['oms_status_code']);
+        $this->assertTrue($read['original_erp_unchanged']);
+        $this->assertSame('TRACK-ORIG',$o->fresh()->shipment->tracking_number);
+        $this->assertDatabaseHas('xlwms_reshipment_events',['event_code'=>'provider_status_readback']);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('REISSUE_CREATE_STATE_NOT_READY');
+        $svc->createDraft($o->id,$uuid,19,'CREATE_REISSUE_'.$uuid);
+    }
+
+    public function test_reissue_timeout_locks_request_and_never_blindly_retries(): void
+    {
+        [$o,$uuid]=$this->reissueFixture();
+        $this->fakeReissueResponse($o,$uuid,true);
+        config()->set('xlwms.reissue_create_enabled',true);
+        config()->set('xlwms.reissue_order_id',$o->id);
+        config()->set('xlwms.reissue_request_id',$uuid);
+        $svc=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentDispatchService::class);
+        $r=$svc->createDraft($o->id,$uuid,19,'CREATE_REISSUE_'.$uuid);
+        $this->assertSame('uncertain',$r['result']);
+        $this->assertFalse($r['can_retry_create']);
+        $this->assertDatabaseHas('xlwms_reshipments',['request_id'=>$uuid,'status'=>'create_uncertain']);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('REISSUE_CREATE_STATE_NOT_READY');
+        $svc->createDraft($o->id,$uuid,19,'CREATE_REISSUE_'.$uuid);
+    }
+
+    public function test_reissue_refuses_unresolved_original_oms_draft(): void
+    {
+        [$o,$uuid]=$this->reissueFixture();
+        $this->fakeReissueResponse($o,$uuid,false,'0');
+        config()->set('xlwms.reissue_create_enabled',true);
+        config()->set('xlwms.reissue_order_id',$o->id);
+        config()->set('xlwms.reissue_request_id',$uuid);
+        $r=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentDispatchService::class)
+            ->createDraft($o->id,$uuid,19,'CREATE_REISSUE_'.$uuid);
+        $this->assertSame('blocked',$r['result']);
+        $this->assertSame('REISSUE_ORIGINAL_NOT_SAFE',$r['code']);
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+    }
+
 }
