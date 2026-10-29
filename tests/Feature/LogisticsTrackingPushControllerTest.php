@@ -34,6 +34,33 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         self::assertSame(0, $this->gateway->calls);
     }
 
+    public function test_general_manual_sync_rejects_historical_uat_roles_even_with_broad_permissions(): void
+    {
+        foreach (['uat_owner_admin', 'uat_logistics_operator'] as $roleKey) {
+            $user = $this->userWith($roleKey, [
+                'logistics.view', 'logistics.operate', 'sync.view', 'sync.operate',
+            ]);
+            self::assertFalse(app(\App\Modules\Logistics\Application\LogisticsTrackingPushAccess::class)->allows($user));
+            $this->actingAs($user)->post('/logistics/tracking-outbound/selected', [
+                'order_ids' => [999],
+            ])->assertForbidden();
+        }
+        self::assertSame(0, $this->gateway->calls);
+    }
+
+    public function test_general_manual_sync_only_allows_formal_logistics_operations_and_administrator_roles(): void
+    {
+        foreach (['role_preset_logistics', 'role_preset_operations', 'role_preset_administrator'] as $roleKey) {
+            $user = $this->userWith($roleKey, ['logistics.view', 'sync.view']);
+            self::assertTrue(app(\App\Modules\Logistics\Application\LogisticsTrackingPushAccess::class)->allows($user));
+        }
+
+        $unrelated = $this->userWith('role_preset_kol_manager', [
+            'logistics.view', 'logistics.operate', 'sync.view', 'sync.operate',
+        ]);
+        self::assertFalse(app(\App\Modules\Logistics\Application\LogisticsTrackingPushAccess::class)->allows($unrelated));
+    }
+
     public function test_manual_canary_requires_explicit_exact_erp_order_allowlist(): void
     {
         config(['tracking_sync_v2.manual_mode' => 'canary', 'tracking_sync_v2.manual_canary_order_ids' => '']);
