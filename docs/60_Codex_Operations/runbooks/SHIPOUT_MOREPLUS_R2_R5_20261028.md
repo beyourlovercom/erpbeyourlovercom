@@ -163,3 +163,39 @@ that real MorePlus inventory/order fulfillment has been verified.
 - Earlier one-shot synthetic order remains NOT CONFIRMED: POST HTTP 200 dict
   but exact business result was not captured; signed order query still empty.
   Do not infer the result was the same as the invalid-field probe.
+
+## R5 Dede workbench controlled UAT integration (2026-10-29)
+- Integrated directly into EXISTING Logistics/Oversea/Show.vue when warehouse
+  key is us-moreplus, never a separate engineering/debug system.
+- New ShipOut column: preflight, sandbox-only single-order confirmation,
+  read-only OMS status/tracking, and gated operator-approved ERP tracking apply.
+- Existing review/approve/reopen/export/file-upload workflow is preserved.
+- For Production default-off view, it shows API disabled and retains manual
+  MorePlus file workflow. Does not permit shipping via new UI.
+- ShipOutMorePlusController has 4 explicit same-site guarded routes:
+    GET preflight: logistics.view, safe local preview, no network if disabled;
+    POST send: logistics.operate + execution gate + throttled, server-side
+      fingerprint+confirmation+unique attempt BEFORE provider request;
+    POST status: logistics.view, signed provider queryListV2 / query, read-only,
+      no PII emitted, no ERP/Woo shipment update;
+    POST apply: logistics.operate + execution gate + throttled, disabled by
+      default; fresh provider re-query, confirmed shipped+tracking, exact
+      matching OMS identity and local dispatch ledger mandatory.
+- Fixed provider detail response mapper: official shipmentList, not
+  orderShipments (important for real Tracking visibility).
+- Failures are returned with machine-readable error_code, safe Chinese text,
+  no raw provider response, retry_same_order=false and status 409/423.
+- Tracking apply uses existing ShipmentService to update ERP shipment and
+  OverseaWarehouseReview.progress only; writes pending manualSync for Vita
+  but DOES NOT push Woo directly, preserving Vita release chain.
+- Production mutations forbidden by config default. All 3 flags default false:
+  SHIPOUT_SANDBOX_READ_ENABLED
+  SHIPOUT_SANDBOX_DISPATCH_ENABLED
+  SHIPOUT_SANDBOX_TRACKING_APPLY_ENABLED
+  Strict per-order/warehouse allowlists remain required for sandbox dispatch.
+- No cron, auto-post, production API base URL, or browser calls without user
+  interaction. Sandbox tests use synthetic credentials and Http::fake.
+- Actual ShipOut sandbox still has no nonzero available stock or successful
+  outbound/shipped tracking evidence: R4 real provider E2E remains OPEN.
+- No Dev deployment or human Dede visual UAT yet. Owner Production PASS
+  required before merge/deploy and separate release of real credentials.

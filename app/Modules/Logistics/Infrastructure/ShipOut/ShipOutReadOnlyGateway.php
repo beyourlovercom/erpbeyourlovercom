@@ -139,7 +139,7 @@ final class ShipOutReadOnlyGateway
             'orderId' => $orderId,
             'orderNO' => (string) $data['orderNO'],
             'status' => $data['status'] ?? null,
-            'shipments' => $this->sanitizeShipments($data['orderShipments'] ?? [], $warehouseId),
+            'shipments' => $this->sanitizeShipments($data['shipmentList'] ?? [], $warehouseId),
         ];
     }
 

@@ -86,6 +86,15 @@ final class OverseaWarehouseController
             'view' => $view,
             'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => $this->row($shipment, $start + $index + 1, $xlwmsAttempts->get($shipment->order_id)))->toArray(),
             'xlwmsAuthorizedOrderId' => $canRunXlwms ? (int) config('xlwms.live_order_id', 0) : 0,
+            'shipoutSandboxReadEnabled' => $warehouseKey === 'us-moreplus'
+                && (bool) config('shipout.sandbox_read_enabled', false),
+            'shipoutSandboxDispatchEnabled' => $warehouseKey === 'us-moreplus'
+                && (bool) config('shipout.sandbox_dispatch_enabled', false),
+            'shipoutSandboxTrackingApplyEnabled' => $warehouseKey === 'us-moreplus'
+                && (bool) config('shipout.sandbox_tracking_apply_enabled', false),
+            'shipoutSandboxAuthorizedOrderNo' => $warehouseKey === 'us-moreplus'
+                ? trim((string) config('shipout.sandbox_order_allowlist', '')) : '',
+
             'viewCounts' => $this->viewCounts($warehouseMap, $selectedWarehouse),
             'canReview' => $this->reviewAccess->allows($request->user()),
             'canOperate' => $warehouseKey !== 'all' && $this->executionAccess->allows($request->user()),

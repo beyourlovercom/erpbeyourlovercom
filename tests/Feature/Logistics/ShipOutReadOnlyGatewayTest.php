@@ -79,13 +79,35 @@ final class ShipOutReadOnlyGatewayTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_order_detail_reads_official_shipment_list_and_excludes_address(): void
+    {
+        config()->set('shipout.sandbox_read_enabled', true);
+        Http::fake(['https://opendev.shipout.com/api/*' =>
+            Http::response(['result' => 'OK', 'data' => [
+                'orderId' => '123', 'orderNO' => 'C99999-007', 'status' => 4,
+                'toAddress' => ['name' => 'PRIVATE RECIPIENT'],
+                'shipmentList' => [[
+                    'warehouseId' => 'TEST-W', 'shipmentId' => 'SHIP-1',
+                    'outboundStatus' => 4, 'carrierId' => 1,
+                    'trackingNumber' => '9400TESTING', 'shippedTime' => '2026-10-29 10:00:00',
+                ]],
+            ]], 200),
+        ]);
+        $detail = $this->client()->orderDetail('TEST-W', '123');
+        $this->assertSame('9400TESTING', $detail['shipments'][0]['trackingNumber']);
+        $this->assertSame(4, $detail['shipments'][0]['outboundStatus']);
+        $this->assertStringNotContainsString('PRIVATE RECIPIENT', json_encode($detail));
+        Http::assertSent(fn ($request) => $request->method() === 'GET'
+            && str_contains($request->url(), '/open-api/oms/order/query?'));
+    }
+
     public function test_order_detail_warehouse_mismatch_is_rejected(): void
     {
         config()->set('shipout.sandbox_read_enabled', true);
         Http::fake(['https://opendev.shipout.com/api/*' =>
             Http::response(['result' => 'OK', 'data' => [
                 'orderId' => '123', 'orderNO' => 'UAT-1', 'status' => 2,
-                'orderShipments' => [[
+                'shipmentList' => [[
                     'warehouseId' => 'OTHER', 'outboundStatus' => 2,
                 ]],
             ]], 200),

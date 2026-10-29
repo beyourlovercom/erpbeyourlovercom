@@ -24,7 +24,7 @@ final class ShipOutSandboxDispatchService
     ) {}
 
     /** @return array{status:string,provider_order_id:?string,result_code:string} */
-    public function dispatchApprovedOrder(int $orderId, string $shipDate): array
+    public function dispatchApprovedOrder(int $orderId, string $shipDate, ?string $expectedPayloadHash = null): array
     {
         if (! (bool) config('shipout.sandbox_read_enabled', false)
             || ! (bool) config('shipout.sandbox_dispatch_enabled', false)) {
@@ -48,6 +48,9 @@ final class ShipOutSandboxDispatchService
             throw new RuntimeException('SHIPOUT_PROVIDER_ORDER_ALREADY_EXISTS');
         }
         $hash = hash('sha256', json_encode($payload, JSON_THROW_ON_ERROR));
+        if ($expectedPayloadHash !== null && ! hash_equals($hash, $expectedPayloadHash)) {
+            throw new RuntimeException('SHIPOUT_PREFLIGHT_STALE');
+        }
         try {
             $inserted = DB::table('shipout_dispatch_attempts')->insertOrIgnore([
                 'order_id' => $order->id,
