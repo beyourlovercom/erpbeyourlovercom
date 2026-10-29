@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Application\Domestic;
 
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -19,6 +20,12 @@ final class ChinaSmallPacketBarcode69Reader
         foreach ($order->items as $item) {
             $sku = trim((string) ($item->resolved_fulfillment_sku ?: $item->sku));
             $product = $item->product;
+            // Legacy order lines sometimes have no product_id. Resolve only a unique,
+            // exact SKU; never guess from a partial SKU or override a mismatched link.
+            if ($product === null && $item->product_id === null && $sku !== '') {
+                $matches = Product::query()->where('sku', $sku)->limit(2)->get();
+                $product = $matches->count() === 1 ? $matches->first() : null;
+            }
             if (! $product || ! $product->barcode_69 || trim((string) $product->sku) !== $sku) {
                 throw ValidationException::withMessages([
                     'barcode_69' => "订单 {$order->erp_order_id} 商品 {$sku} 缺少经过SKU核实的69条形码。",
