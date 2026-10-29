@@ -21,5 +21,10 @@ final class Barcode69EndpointTest extends TestCase {
         $o->shipment()->create(['warehouse_id'=>$w->id,'shipment_status'=>'pending']);
         $o->items()->create(['product_id'=>$p->id,'product_summary'=>'QA','sku'=>'VX357A','quantity'=>1,'unit_price'=>0,'line_revenue'=>0]);
         $this->actingAs($user)->getJson('/logistics/china/orders/'.$o->id.'/barcode-69')->assertOk()->assertJsonPath('items.0.barcode_69','6977291390537');
+        $o->address()->update(['country'=>'US']);
+        $this->actingAs($user)->getJson('/logistics/china/orders/'.$o->id.'/barcode-69')->assertStatus(422);
+        $o->address()->update(['country'=>'FR']);
+        $w->update(['is_domestic'=>false]);
+        $this->actingAs($user)->getJson('/logistics/china/orders/'.$o->id.'/barcode-69')->assertStatus(422);
     }
 }
