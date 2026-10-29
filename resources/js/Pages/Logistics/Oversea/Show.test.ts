@@ -2,12 +2,12 @@ import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Show from './Show.vue'
 
-const { routerPost, routerPatch, routerVisit } = vi.hoisted(() => ({
-  routerPost: vi.fn(), routerPatch: vi.fn(), routerVisit: vi.fn(),
+const { routerPost, routerPatch, routerVisit, routerReload } = vi.hoisted(() => ({
+  routerPost: vi.fn(), routerPatch: vi.fn(), routerVisit: vi.fn(), routerReload: vi.fn(),
 }))
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
-  router: { post: routerPost, patch: routerPatch, visit: routerVisit },
+  router: { post: routerPost, patch: routerPatch, visit: routerVisit, reload: routerReload },
 }))
 vi.mock('../../../Layouts/AuthenticatedLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
 
@@ -77,7 +77,7 @@ describe('Oversea Dede file exchange workbench', () => {
     const request=vi.fn().mockResolvedValue({ok:true,json:async()=>({count:2,results:[{order_id:99,code:'existing'},{order_id:100,code:'blocked'}]})})
     vi.stubGlobal('fetch',request)
     try {
-      const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],trackingImportPreview:null,rows:usSmPendingRows})
+      const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],trackingImportPreview:null,rows:usSmPendingRows,xlwmsBatchEnabled:true})
       const button=wrapper.find('button.xlwms-batch-button')
       expect(button.exists()).toBe(true)
       await button.trigger('click')
@@ -181,7 +181,7 @@ describe('Oversea Dede file exchange workbench', () => {
         payload_hash:'a'.repeat(64),confirmation:'SUBMIT_US_SM_ORDER_99',
       })
       expect(wrapper.text()).not.toContain('确认 API 发货')
-      expect(wrapper.text()).toContain('OMS 已接单（未出库）')
+      expect(wrapper.text()).toContain('已下发 OMS')
     } finally {
       vi.unstubAllGlobals()
       document.head.querySelector('meta[name="csrf-token"]')?.remove()
@@ -311,4 +311,35 @@ describe('Oversea Dede file exchange workbench', () => {
       {order_ids:[99]},expect.objectContaining({preserveScroll:true}))
     expect(mountPage({canTrackingSync:false}).text()).not.toContain('同步官网物流')
   })
+  it('separates verified OMS submission from shipping when provider returns unknown status 5', () => {
+    const row={...usSmPendingRows.data[0],warehouse_dispatch:{
+      status:'dispatched',label:'已下发 OMS',detail:'OMS 状态 5 · 待核实',
+      oms_order_no:'OBS0272610290RS',last_checked_at:'2026-10-29 13:33',
+      failure_code:null,can_retry_local_block:false,
+    },xlwms:{state:'batch_existing',oms_order_no:'OBS0272610290RS',oms_status_code:'5',
+      oms_status_checked_at:'2026-10-29 13:33',oms_tracking_no:null,failure_code:null,oms_status_failure_code:null}}
+    const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],trackingImportPreview:null,
+      rows:{...usSmPendingRows,data:[row]}})
+    expect(page.text()).toContain('已下发 OMS')
+    expect(page.text()).toContain('OMS 状态 5 · 待核实')
+    expect(page.text()).toContain('OBS0272610290RS')
+    expect(page.text()).not.toContain('需处理：batch_existing')
+    expect(page.find('td.xlwms-cell').text()).not.toContain('已发货')
+  })
+
+  it('shows local create-disabled attempt as not dispatched and keeps per-order action visible', () => {
+    const row={...usSmPendingRows.data[0],warehouse_dispatch:{
+      status:'pending_dispatch',label:'待下发',detail:'未下发 · 建单权限关闭',
+      oms_order_no:null,last_checked_at:null,failure_code:'create_disabled',can_retry_local_block:true,
+    },xlwms:{state:'batch_blocked',oms_order_no:null,oms_status_code:null,
+      oms_status_checked_at:null,oms_tracking_no:null,failure_code:'create_disabled',oms_status_failure_code:null}}
+    const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],trackingImportPreview:null,
+      rows:{...usSmPendingRows,data:[row]},xlwmsBatchEnabled:false})
+    expect(page.text()).toContain('待下发')
+    expect(page.text()).toContain('未下发 · 建单权限关闭')
+    expect(page.text()).toContain('API 发货')
+    expect(page.find('button.xlwms-batch-button').attributes('disabled')).toBeDefined()
+    expect(page.text()).not.toContain('batch_blocked')
+  })
+
 })

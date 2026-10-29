@@ -35,6 +35,9 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/oversea/us-3sm/xlwms/sync', [XlwmsWarehouseBatchController::class, 'sync'])
         ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:2,1'])
         ->name('logistics.xlwms.warehouse.sync');
+    Route::post('/logistics/oversea/us-3sm/xlwms/refresh-statuses', [XlwmsWarehouseBatchController::class, 'refresh'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:1,1'])
+        ->name('logistics.xlwms.warehouse.refresh-statuses');
     Route::get('/logistics/oversea/us-3sm/orders/{order}/xlwms/preflight',
         [XlwmsSingleOrderController::class, 'inlinePreflight'])
         ->middleware(['can:logistics.view','throttle:10,1'])
