@@ -31,3 +31,14 @@ No real Dev ERP browser deployment or live-order UAT was performed. No Productio
 - Validate authenticated Dev ERP browser usage of packaging editor, CSV preview/confirm, and EU domestic manifest endpoint.
 - Re-check real SKU matching at time of import and inspect each status; never override existing values automatically.
 - Owner must separately approve Production rollout and exact data import.
+
+## R3/R4 continuation (2026-10-29)
+- Product 360's embedded **Packaging & Accessories** tab and the legacy packaging page now share the same 69-barcode editor; field is passed directly from Product master, not Woo GTIN.
+- Domestic logistics queue now has an inline read-only "69条码" action for European destination orders, rendering the API's exact per-SKU values without changing the Speeda/Weship frozen XLSX template or creating a shipment.
+- EU scope and domestic warehouse gate checked in endpoint regressions (non-European and overseas warehouse reject with 422).
+- Legacy order lines with no product_id can resolve only through a **unique exact SKU**. A mismatched non-null product link must still be rejected.
+- Read-only Production Product OS inventory: 252 products, exact 55/59 candidate SKU matches. Unmatched 2200VA617A01010, RJ238-purple, TX218A, BV468A.
+- Latest isolated QA: PHP **11 tests / 141 assertions PASS** (barcode + Product 360 packaging regressions); Vue Domestic Index **8 tests PASS**; TypeScript check PASS; Vite production build PASS.
+- Real remote Dev ERP deploy and browser acceptance are **not complete**. Historical deverp.beyourlover.com is explicitly non-deployed / non-resolving per repo work package; do not deploy to WordPress dev.beyourlover.com as an ERP substitute.
+- PR remains Draft, no main merge, no Production migration, no Production import.
+- Operational follow-up: perform live ERP SKU preview and real carrier mapping only after an approved reachable ERP Dev runtime exists. Do not claim carrier 4PX/Weship label integration from read-only sidecar.
