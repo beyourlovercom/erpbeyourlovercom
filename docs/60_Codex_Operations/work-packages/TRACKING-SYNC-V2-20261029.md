@@ -5,7 +5,7 @@ status: R0_complete_R1_to_R4_code_candidate_R5_pending
 issue: https://github.com/beyourlovercom/erpbeyourlovercom/issues/536
 owner_authorization: approved_2026_10_29
 baseline_main: ff11378f381f7a039c0ea06ea6c429bf396ec938
-execution_provider: CLAUDE_CODE
+execution_provider: GPT_WEB
 production_release: requires_separate_owner_pass
 ---
 
@@ -74,6 +74,8 @@ R6 requires owner visual PASS and independent Production authorization.
 
 ## 2026-10-29 implementation readback (R1–R4 code candidate)
 - Dedicated feature branch and draft PR #537, updated from current main (includes PR #535).
+- Actual implementation provider: GPT_WEB + self-hosted US Mac DC. Claude Code
+  authentication was unavailable, so no Claude implementation was claimed.
 - R1: generic LogisticsController markShipped/updateTracking calls a post-transaction
   Tracking dispatcher only when TRACKING_SYNC_V2_IMMEDIATE_ENABLED=true; default OFF.
   Existing specialized Domestic/Oversea Tracking return paths stay intact.

@@ -80,6 +80,11 @@ Artisan::command('tracking:retry-woocommerce {--apply}', function (): int {
         return \Illuminate\Console\Command::SUCCESS;
     }
 
+    if ($due === 0) {
+        $this->info(json_encode(['mode' => 'apply', 'eligible_due' => 0, 'status' => 'no_work']));
+        return \Illuminate\Console\Command::SUCCESS;
+    }
+
     $run = app(\App\Modules\Sync\Application\SyncOrchestrationService::class)
         ->retryPending(null, $limit, $minimum);
     $this->info(json_encode([

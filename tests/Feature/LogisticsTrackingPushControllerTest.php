@@ -170,6 +170,14 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         self::assertSame(25, $tracking->first()->expiresAt);
     }
 
+    public function test_list_projection_never_marks_stale_completed_outbox_as_current_tracking_success(): void
+    {
+        $service = app(\App\Modules\Logistics\Application\LogisticsTrackingListStatus::class);
+        $completed = ['status' => 'completed', 'reason' => null];
+        self::assertSame('pending', $service->currentStatus($completed, 'pending')['status']);
+        self::assertSame('completed', $service->currentStatus($completed, 'completed')['status']);
+    }
+
     private function userWith(string $roleKey, array $permissions): User
     {
         $role = Role::create(['key' => $roleKey, 'label' => 'Tracking Operator']);
