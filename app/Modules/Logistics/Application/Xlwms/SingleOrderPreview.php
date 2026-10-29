@@ -44,7 +44,13 @@ final class SingleOrderPreview
         $add(! $state, 'province_missing');
         $add(in_array($country, ['US', 'CA', 'AU'], true) && ! preg_match('/^[A-Z]{2,3}$/', $state), 'province_code_not_confirmed');
 
-        $channel = trim((string) ($shipment?->carrierService?->service_value ?: $shipment?->service ?: ''));
+        // US-SM Owner-approved 2026-10-29: the OMS provider chooses the
+        // lowest-priced available service. Do not pretend the ERP's existing
+        // USPS/Priority Mail selection is the resulting last-mile carrier.
+        // Only this warehouse is eligible for this fixed native OMS code.
+        $channel = $shipment?->warehouse?->code === 'US-SM'
+            ? trim((string) config('xlwms.us_sm_oms_logistics_channel', ''))
+            : trim((string) ($shipment?->carrierService?->service_value ?: $shipment?->service ?: ''));
         $add($channel === '', 'native_logistics_channel_missing');
         $add($shipment?->carrierService && ! $shipment->carrierService->is_active, 'logistics_channel_inactive');
 

@@ -25,11 +25,19 @@ final class WarehouseBatchDispatch
     {
         $warehouse = \App\Modules\Inventory\Infrastructure\Models\Warehouse::query()->where('code', self::WAREHOUSE_CODE)->first();
         if (! $warehouse) return ['count' => 0, 'results' => []];
-        $orders = Order::query()->where('order_status', 'pending_shipment')
+        $query = Order::query()->where('order_status', 'pending_shipment')
             ->whereHas('shipment', fn ($q) => $q->where('warehouse_id', $warehouse->id)->where('shipment_status', 'pending'))
             ->whereHas('shipment.overseaReview', fn ($q) => $q->where('status', 'approved')->where('reviewed_warehouse_id', $warehouse->id))
             ->with(['address', 'items', 'shipment.warehouse', 'shipment.carrierService', 'shipment.overseaReview'])
-            ->orderBy('id')->limit(self::MAX_PER_CLICK)->get();
+            ->orderBy('id');
+        // In an approved single-order Canary, select ONLY that order. Without
+        // this filter, oldest-25 pagination can omit the authorized order.
+        $canaryId = (int) config('xlwms.live_order_id', 0);
+        if ((bool) config('xlwms.warehouse_batch_dispatch_enabled', false)
+            && (bool) config('xlwms.live_dispatch_enabled', false) && $canaryId > 0) {
+            $query->whereKey($canaryId);
+        }
+        $orders = $query->limit(self::MAX_PER_CLICK)->get();
         $results = [];
         foreach ($orders as $order) $results[] = $this->one($order, (int) $warehouse->id, $actorId);
         return ['count' => count($results), 'results' => $results];
@@ -106,6 +114,11 @@ final class WarehouseBatchDispatch
             return $finish('batch_blocked', 'create_disabled', '新建 OMS 出库已关闭');
         }
         if ((int) $order->shipment?->warehouse_id !== $warehouseId) return $finish('batch_blocked', 'blocked', '仓库身份不匹配');
+        // During Canary, enabling the two broad switches is insufficient.
+        // Every CREATE must match the exact independently Owner-approved order.
+        if ((int) config('xlwms.live_order_id', 0) < 1 || (int) config('xlwms.live_order_id', 0) !== $orderId) {
+            return $finish('batch_blocked', 'canary_order_not_authorized', '真实下发未获得当前单笔订单授权');
+        }
 
         // Recompute the complete CREATE preflight after read-only lookup.
         // The first preflight intentionally skipped stock-freshness checks so
@@ -148,7 +161,7 @@ final class WarehouseBatchDispatch
                 // OMS order must never be eligible for a second provider write.
                 $safeLocalBlock = $existing->state === 'batch_blocked'
                     && ! filled($existing->oms_order_no)
-                    && in_array($existing->failure_code, ['blocked', 'create_disabled', 'preflight_blocked'], true)
+                    && in_array($existing->failure_code, ['blocked', 'create_disabled', 'preflight_blocked', 'canary_order_not_authorized'], true)
                     && (int) $existing->warehouse_id === $warehouseId
                     && $existing->third_order_no === $third;
                 if ($safeLocalBlock) {
@@ -175,6 +188,13 @@ final class WarehouseBatchDispatch
             if ($status['third_order_no'] !== $third || $status['platform_order_no'] !== $platform) return $finish('batch_blocked', 'identity_mismatch', 'OMS 订单身份不匹配，未更新 ERP');
             $attempt->forceFill(['oms_status_code' => $status['status_code'], 'oms_status_checked_at' => now(), 'oms_tracking_no' => $status['tracking_no'], 'oms_status_failure_code' => null])->save();
             if ($status['status_code'] === '3' && filled($status['tracking_no'])) {
+                // Auto-lowest-price may choose a carrier other than the ERP's
+                // preselected USPS. OMS status endpoint does NOT prove the
+                // actual last-mile carrier, so never write misleading carrier
+                // and Tracking to a shipped ERP/Woo record automatically.
+                if ((string) config('xlwms.us_sm_oms_logistics_channel', '') === 'Service with the lowest price') {
+                    return $this->result($orderId, 'carrier_verification_required', 'OMS 已出库并有单号，请核实实际承运商后再确认 ERP 发货');
+                }
                 $this->shipments->markShipped($order, ['tracking_number' => $status['tracking_no'], 'shipped_at' => now()], null);
                 $attempt->forceFill(['state' => 'batch_status_updated'])->save();
                 return $this->result($orderId, 'status_updated', 'OMS 已出库，Tracking 已安全回写 ERP');
