@@ -295,6 +295,142 @@ describe('Oversea Dede file exchange workbench', () => {
     await button!.trigger('click')
     expect(routerPost).toHaveBeenCalledWith('/logistics/oversea/us-moreplus/tracking-import/apply', { token: 'a'.repeat(64) }, { preserveScroll: true })
   })
+  it('shows MorePlus ShipOut inline but does not enable any sandbox write by default', async () => {
+    const morePlusRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],
+      warehouse_id:1,warehouse_name:'美西 MorePlus 仓',erp_order_id:'007-1029-c99999'}]}
+    const wrapper=mountPage({rows:morePlusRows,trackingImportPreview:null,
+      shipoutSandboxReadEnabled:false,shipoutSandboxDispatchEnabled:false})
+    expect(wrapper.text()).toContain('MorePlus ShipOut · API / 物流')
+    expect(wrapper.text()).toContain('API 发货未开通')
+    expect(wrapper.find('[data-shipout-order-id="99"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('当前请继续使用')
+    expect(wrapper.findAll('button').some(b=>b.text()==='确认仅沙盒推送')).toBe(false)
+    expect(wrapper.find('[data-shipout-order-id="99"] button').exists()).toBe(false)
+  })
+
+  it('MorePlus preflight renders server blocker reasons and never submits a write', async () => {
+    const morePlusRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],warehouse_id:1,
+      warehouse_name:'美西 MorePlus 仓',erp_order_id:'007-1029-c99999'}]}
+    const fetchMock=vi.fn().mockResolvedValue({ok:true,json:async()=>({
+      order_id:99,ship_date:'2026-10-30',order_no:'C99999-007',items:[{omsSku:'UAT',qty:1}],
+      blockers:['SANDBOX_DISPATCH_DISABLED'],ready:false,payload_hash:null,already_attempted:false,
+    })})
+    vi.stubGlobal('fetch',fetchMock)
+    try {
+      const wrapper=mountPage({rows:morePlusRows,trackingImportPreview:null,shipoutSandboxDispatchEnabled:true})
+      await wrapper.find('[data-shipout-order-id="99"] button.xlwms-action').trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('沙盒推送未启用'))
+      expect(wrapper.text()).not.toContain('确认仅沙盒推送')
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock.mock.calls[0][0]).toContain('/us-moreplus/orders/99/shipout/preflight')
+      expect(fetchMock.mock.calls[0][1].method).toBe('GET')
+    } finally { vi.unstubAllGlobals() }
+  })
+
+  it('MorePlus allows a single sandbox send only for a matching whitelisted order after preflight', async () => {
+    const morePlusRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],warehouse_id:1,
+      warehouse_name:'美西 MorePlus 仓',erp_order_id:'007-1029-c99999'}]}
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="SHIPOUT-TEST-CSRF">')
+    const fetchMock=vi.fn()
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        order_id:99,ship_date:'2026-10-30',order_no:'C99999-007',
+        items:[{omsSku:'UAT',qty:1}],blockers:[],ready:true,payload_hash:'a'.repeat(64),
+        already_attempted:false,
+      })})
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        status:'acknowledged',result_code:'ASYNC_ACCEPTED_QUERY_REQUIRED',provider_order_id:'OMS-SANDBOX-1',
+      })})
+    vi.stubGlobal('fetch',fetchMock)
+    try {
+      const wrapper=mountPage({rows:morePlusRows,trackingImportPreview:null,
+        shipoutSandboxReadEnabled:true,shipoutSandboxDispatchEnabled:true,
+        shipoutSandboxAuthorizedOrderNo:'C99999-007'})
+      await wrapper.find('[data-shipout-order-id="99"] button.xlwms-action').trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('确认仅沙盒推送'))
+      await wrapper.find('button.xlwms-action.primary').trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('尚不能标记已发货'))
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      const [url,options]=fetchMock.mock.calls[1]
+      expect(url).toContain('/us-moreplus/orders/99/shipout/send')
+      expect(JSON.parse(options.body)).toEqual({
+        ship_date:'2026-10-30',shipping_mode:'9',payload_hash:'a'.repeat(64),confirmation:'SUBMIT_US_LA_ORDER_99',
+      })
+      expect(wrapper.text()).not.toContain('确认仅沙盒推送')
+    } finally {
+      vi.unstubAllGlobals()
+      document.head.querySelector('meta[name="csrf-token"]')?.remove()
+    }
+  })
+
+  it('MorePlus renders provider tracking as read-only and does not write ERP or Woo', async () => {
+    const morePlusRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],warehouse_id:1,
+      warehouse_name:'美西 MorePlus 仓',erp_order_id:'007-1029-c99999'}]}
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="SHIPOUT-TEST-CSRF">')
+    const request=vi.fn().mockResolvedValue({ok:true,json:async()=>({
+      state:'ready_for_erp_review',reason:'WAREHOUSE_SHIPPED_WITH_TRACKING',
+      order_no:'C99999-007',tracking_number:'9400TESTTRACK',
+      shipped_time_utc:'2026-10-29 10:00:00',carrier_id:1,read_only:true,
+      erp_shipment_unchanged:true,woo_unchanged:true,
+    })})
+    vi.stubGlobal('fetch',request)
+    try {
+      const wrapper=mountPage({rows:morePlusRows,trackingImportPreview:null,
+        shipoutSandboxReadEnabled:true})
+      const button=wrapper.findAll('button').find(b=>b.text()==='查询物流状态')
+      expect(button).toBeTruthy()
+      await button!.trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('9400TESTTRACK'))
+      expect(wrapper.text()).toContain('未同步 Woo')
+      expect(request).toHaveBeenCalledTimes(1)
+      expect(request.mock.calls[0][1].method).toBe('POST')
+      expect(routerPost).not.toHaveBeenCalled()
+      expect(routerVisit).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+      document.head.querySelector('meta[name="csrf-token"]')?.remove()
+    }
+  })
+
+  it('MorePlus tracking apply requires a new server-confirmed shipped state and explicit Dev flag', async () => {
+    const morePlusRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],
+      warehouse_id:1,warehouse_name:'美西 MorePlus 仓'}]}
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="SHIPOUT-TEST-CSRF">')
+    const signedReadback={
+      state:'ready_for_erp_review',reason:'WAREHOUSE_SHIPPED_WITH_TRACKING',
+      order_no:'C99999-007',tracking_number:'9400PROVIDERCONFIRMED',
+      shipped_time_utc:'2026-10-29 10:00:00',carrier_id:1,
+      read_only:true,erp_shipment_unchanged:true,woo_unchanged:true,
+    }
+    const api=vi.fn()
+      .mockResolvedValueOnce({ok:true,json:async()=>signedReadback})
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        status:'erp_shipment_updated',tracking_number:'9400PROVIDERCONFIRMED',woo_sync:'pending_vita',
+      })})
+    vi.stubGlobal('fetch',api)
+    try {
+      const wrapper=mountPage({rows:morePlusRows,trackingImportPreview:null,
+        shipoutSandboxReadEnabled:true,shipoutSandboxTrackingApplyEnabled:true})
+      const refresh=wrapper.findAll('button').find(b=>b.text()==='查询物流状态')
+      await refresh!.trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('9400PROVIDERCONFIRMED'))
+      const apply=wrapper.findAll('button').find(b=>b.text()==='确认 Tracking 回写 ERP')
+      expect(apply).toBeTruthy()
+      await apply!.trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('Vita 仍需同步 WooCommerce'))
+      expect(api).toHaveBeenCalledTimes(2)
+      expect(api.mock.calls[1][0]).toContain('/us-moreplus/orders/99/shipout/apply')
+      expect(JSON.parse(api.mock.calls[1][1].body)).toEqual({
+        tracking_number:'9400PROVIDERCONFIRMED',confirmation:'APPLY_US_LA_TRACKING_99',
+      })
+      expect(routerPost).not.toHaveBeenCalled()
+      expect(routerVisit).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+      document.head.querySelector('meta[name="csrf-token"]')?.remove()
+    }
+  })
+
+
 
   it('places Woo tracking sync in the original overseas shipping header without disturbing OMS controls', async () => {
     const shipped={...usSmPendingRows.data[0],source_type:'woocommerce',tracking_sync_status:'pending',
@@ -311,6 +447,70 @@ describe('Oversea Dede file exchange workbench', () => {
       {order_ids:[99]},expect.objectContaining({preserveScroll:true}))
     expect(mountPage({canTrackingSync:false}).text()).not.toContain('同步官网物流')
   })
+
+  it('MorePlus specified service group re-preflights mode 10 and binds send to it', async () => {
+    const rows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],
+      warehouse_id:1,warehouse_name:'美西 MorePlus 仓'}]}
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="SHIPOUT-TEST-CSRF">')
+    const mock=vi.fn()
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        order_id:99,ship_date:'2026-10-30',shipping_mode:'10',order_no:'C99999-007',
+        items:[{omsSku:'UAT',qty:1}],blockers:[],ready:true,payload_hash:'b'.repeat(64),
+      })})
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        status:'acknowledged',result_code:'ASYNC_ACCEPTED_QUERY_REQUIRED',
+      })})
+    vi.stubGlobal('fetch',mock)
+    try {
+      const wrapper=mountPage({rows,trackingImportPreview:null,
+        shipoutSandboxReadEnabled:true,shipoutSandboxDispatchEnabled:true,
+        shipoutSandboxAuthorizedOrderNo:'C99999-007',
+        shipoutSandboxSpecifiedChannel:{id:'1993981773496696833',label:'USPS GA'}})
+      const select=wrapper.find('[data-shipout-order-id="99"] select')
+      expect(select.exists()).toBe(true)
+      await select.setValue('10')
+      await wrapper.find('[data-shipout-order-id="99"] button.xlwms-action').trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('确认仅沙盒推送'))
+      expect(mock.mock.calls[0][0]).toContain('shipout/preflight?mode=10')
+      await wrapper.find('button.xlwms-action.primary').trigger('click')
+      await vi.waitFor(()=>expect(mock).toHaveBeenCalledTimes(2))
+      expect(JSON.parse(mock.mock.calls[1][1].body).shipping_mode).toBe('10')
+      expect(JSON.parse(mock.mock.calls[1][1].body).payload_hash).toBe('b'.repeat(64))
+      expect(wrapper.text()).not.toContain('确认仅沙盒推送')
+    } finally {
+      vi.unstubAllGlobals()
+      document.head.querySelector('meta[name="csrf-token"]')?.remove()
+    }
+  })
+
+  it('shows warehouse actual carrier and time but suppresses ERP apply for synthetic mock tracking', async () => {
+    const rows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],
+      warehouse_id:1,warehouse_name:'美西 MorePlus 仓'}]}
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="SHIPOUT-TEST-CSRF">')
+    const mock=vi.fn().mockResolvedValueOnce({ok:true,json:async()=>({
+      state:'ready_for_erp_review',reason:'WAREHOUSE_SHIPPED_WITH_TRACKING',
+      order_no:'C99999-007',tracking_number:'mock_2_TEST',
+      carrier_id:2,shipped_time_utc:'2026-10-29 09:40:37',
+      read_only:true,erp_shipment_unchanged:true,woo_unchanged:true,
+    })})
+    vi.stubGlobal('fetch',mock)
+    try {
+      const wrapper=mountPage({rows,trackingImportPreview:null,
+        shipoutSandboxReadEnabled:true,shipoutSandboxTrackingApplyEnabled:true})
+      const b=wrapper.findAll('button').find(x=>x.text()==='查询物流状态')
+      await b!.trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('mock_2_TEST'))
+      expect(wrapper.text()).toContain('仓库实际物流商：UPS')
+      expect(wrapper.text()).toContain('2026-10-29 09:40:37')
+      expect(wrapper.text()).toContain('沙盒模拟单号，仅验收 API 状态')
+      expect(wrapper.findAll('button').some(b=>b.text()==='确认 Tracking 回写 ERP')).toBe(false)
+      expect(mock).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.unstubAllGlobals()
+      document.head.querySelector('meta[name="csrf-token"]')?.remove()
+    }
+  })
+
   it('treats OMS exception status 5 as not yet accepted by the warehouse', () => {
     const row={...usSmPendingRows.data[0],warehouse_dispatch:{
       status:'exception',label:'OMS 异常 · 待处理',detail:'OMS 异常 · 需处理后重新提交',

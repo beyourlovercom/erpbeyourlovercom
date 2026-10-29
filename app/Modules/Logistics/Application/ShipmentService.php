@@ -110,8 +110,17 @@ final class ShipmentService
                 : (trim((string) $shipment->carrier) !== '' ? trim((string) $shipment->carrier) : trim((string) ($automaticRoute['carrier'] ?? '')));
             $selectedService = array_key_exists('service', $attributes) && trim((string) $attributes['service']) !== ''
                 ? $attributes['service']
-                : (($shipment->service && ! $explicitCarrier) ? $shipment->service : ($automaticRoute['service'] ?? null));
-            $normalizedService = $this->normalizeCarrierService($lockedOrder, $selectedCarrier, $selectedService, $shipment->carrier_service_id);
+                : (($shipment->service && ! $explicitCarrier)
+                    ? $shipment->service
+                    // A warehouse-confirmed UPS/FedEx carrier cannot inherit
+                    // a USPS Priority recommendation from the selected warehouse.
+                    : ((! $explicitCarrier || strcasecmp($selectedCarrier, trim((string) ($automaticRoute['carrier'] ?? ''))) === 0)
+                        ? ($automaticRoute['service'] ?? null) : null));
+            // Carrier service IDs are bound to a carrier. Never carry a stored
+            // USPS service ID into a provider-confirmed UPS/FedEx shipment.
+            $serviceId = strcasecmp($selectedCarrier, trim((string) $shipment->carrier)) === 0
+                ? $shipment->carrier_service_id : null;
+            $normalizedService = $this->normalizeCarrierService($lockedOrder, $selectedCarrier, $selectedService, $serviceId);
             $automaticSelection = $this->matchesAutomaticRoute($selectedCarrier, $normalizedService['service'], $automaticRoute);
             $preserveRecommendedSource = $shipment->warehouse_selection_source === 'recommended'
                 && (int) $shipment->warehouse_id === (int) $selectedWarehouseId;

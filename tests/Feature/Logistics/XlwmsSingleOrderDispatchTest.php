@@ -855,6 +855,36 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         Http::assertNotSent(fn ($request) => str_contains($request->url(), 'outboundOrder/create'));
     }
 
+    public function test_preflight_uses_latest_observation_time_not_highest_snapshot_id(): void
+    {
+        $o = $this->orderFixture();
+        $warehouseId = $o->shipment->warehouse_id;
+        $applied = XlwmsInventorySnapshot::query()->where('warehouse_id', $warehouseId)->firstOrFail();
+        $applied->update(['fetched_at' => now()->subMinutes(10)]);
+
+        $laterCandidate = $applied->replicate();
+        $laterCandidate->checksum = hash('sha256', 'stale-candidate-'.$o->id);
+        $laterCandidate->status = 'read_only';
+        $laterCandidate->fetched_at = now()->subMinutes(5);
+        $laterCandidate->save();
+
+        // Simulate a successful identical-checksum OMS refresh of the applied row.
+        $applied->update(['fetched_at' => now()->subSeconds(3)]);
+        $preview = app(\App\Modules\Logistics\Application\Xlwms\SingleOrderPreview::class)
+            ->forOrder($o->fresh(), true);
+        $this->assertNotContains('OMS_SNAPSHOT_NOT_FRESH', $preview['blockers']);
+        $this->assertNotContains('OMS_SNAPSHOT_NOT_RECONCILED', $preview['blockers']);
+        // This fixture has no provider inventory lots, so the remaining stock
+        // coverage gate must still refuse an actual outbound CREATE.
+        $this->assertContains('OMS_SNAPSHOT_STOCK_INVALID', $preview['blockers']);
+
+        // A newer un-applied observation must still fail closed.
+        $laterCandidate->update(['fetched_at' => now()]);
+        $blocked = app(\App\Modules\Logistics\Application\Xlwms\SingleOrderPreview::class)
+            ->forOrder($o->fresh(), true);
+        $this->assertContains('OMS_SNAPSHOT_NOT_RECONCILED', $blocked['blockers']);
+    }
+
     public function test_batch_existing_order_wrong_sku_quantity_blocks_tracking_write(): void
     {
         foreach ([2, null] as $providerQuantity) {

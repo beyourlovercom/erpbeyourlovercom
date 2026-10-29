@@ -145,7 +145,14 @@ final class SingleOrderPreview
             $blocking[] = 'OMS_SNAPSHOT_NOT_RECONCILED';
             return;
         }
-        $snapshot = XlwmsInventorySnapshot::query()->where('warehouse_id', $warehouseId)->latest('id')->first();
+        // A checksum-stable OMS refresh reuses an applied snapshot row, so its ID
+        // can be older than a read-only candidate. Use the actual observation
+        // timestamp, breaking ties by ID; the status/V2 gates below stay strict.
+        $snapshot = XlwmsInventorySnapshot::query()
+            ->where('warehouse_id', $warehouseId)
+            ->orderByDesc('fetched_at')
+            ->orderByDesc('id')
+            ->first();
         $summary = (array) ($snapshot?->summary ?? []);
         $fresh = $snapshot?->fetched_at
             && $snapshot->fetched_at->lte(now())

@@ -140,6 +140,7 @@ const props = withDefaults(defineProps<{
   canCreateReplacement?: boolean
   canOperateLogistics?: boolean
   canViewProfit?: boolean
+  wooAdminEditUrl?: string | null
 
 }>(), { canMarkOperational: false, canEditOrder: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canViewProfit: false })
 
@@ -165,6 +166,32 @@ const applyShipmentCarrierDefault = () => {
 }
 
 const isKol = computed(() => props.order.order_kind === 'kol_fulfillment')
+const copyWooAdminOrderUrl = async () => {
+  if (!props.wooAdminEditUrl || isKol.value) return
+  let copied = false
+  if (window.isSecureContext && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(props.wooAdminEditUrl)
+      copied = true
+    } catch { /* browser clipboard may be blocked; use local fallback */ }
+  }
+  if (!copied) {
+    const textarea = document.createElement('textarea')
+    textarea.value = props.wooAdminEditUrl
+    textarea.setAttribute('readonly', '')
+    textarea.style.position = 'fixed'
+    textarea.style.left = '-9999px'
+    document.body.appendChild(textarea)
+    textarea.select()
+    try { copied = document.execCommand('copy') } catch { copied = false }
+    document.body.removeChild(textarea)
+  }
+  publishGlobalFeedback(copied
+    ? { state: 'SUCCESS', title: '订单地址已复制', message: '请在已登录的 WordPress 后台标签页粘贴打开', copyable: false }
+    : { state: 'ERROR', title: '订单地址复制失败', message: '可以使用旁边的网站编辑订单按钮', copyable: false })
+}
+
+
 const basePath = computed(() => isKol.value ? '/kol/orders' : '/customers/orders')
 
 const breadcrumbs = computed(() => isKol.value
@@ -986,6 +1013,8 @@ onBeforeUnmount(() => {
             <button v-if="editMode" type="button" class="erp-btn erp-btn-secondary" @click="cancelEdit">取消编辑</button>
             <a :href="basePath" class="erp-btn erp-btn-secondary">返回列表</a>
             <a v-if="canViewProfit && !isKol" :href="`/accounting/order-costs?search=${encodeURIComponent(order.erp_order_id ?? '')}`" class="erp-btn erp-btn-secondary">查看订单利润</a>
+            <a v-if="wooAdminEditUrl && !isKol" :href="wooAdminEditUrl" target="_blank" rel="noopener noreferrer" class="erp-btn erp-btn-secondary" data-testid="woo-admin-order-link">网站编辑订单 ↗</a>
+            <button v-if="wooAdminEditUrl && !isKol" type="button" class="erp-btn erp-btn-secondary" data-testid="woo-admin-order-copy" @click="copyWooAdminOrderUrl">复制地址</button>
             <a v-if="canCreateProcurement && !order.procurement_order" :href="`/purchase/orders/from-order/${order.id}/create`" class="erp-btn erp-btn-primary">创建采购订单</a>
             <a v-if="order.procurement_order" :href="`/purchase/orders/${order.procurement_order.id}`" class="erp-btn erp-btn-secondary">查看采购订单 · {{ order.procurement_order.procurement_number }}</a>
             <button v-if="!editMode && canEditOrder" type="button" class="erp-btn erp-btn-primary" @click="enterEditMode">编辑订单</button>
