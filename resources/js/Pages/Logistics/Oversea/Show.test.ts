@@ -642,4 +642,44 @@ describe('Oversea Dede file exchange workbench', () => {
     } finally {vi.unstubAllGlobals()}
   })
 
+
+  it('Dede submits and approves one reship request with CREATE disabled', async () => {
+    const uuid='11111111-2222-4333-8444-555555555555'
+    const row={...usSmPendingRows.data[0],shipment_status:'shipped',tracking_number:'ORIGINAL-TRACK'}
+    const responses=[
+      {order_id:99,erp_order_id:'007-OVERSEA-USSM-99',original_oms_order_no:'OMS-OLD',
+       original_tracking_present:true,warehouse:'US-SM',channel:'No_Shipping_Service',draft_only:true,
+       items:[{sku:'REVIEW-SKU',quantity:1}],recipient:'Recipient',
+       address:{country:'US',province:'CA',city:'Los Angeles',postal_code:'90001',address_1:'1 Test Road'},
+       reason_default:'仓库订单出错',required_oms_memo:null,
+       existing_reshipment_count:0,blockers:[],ready_for_review:true,
+       can_create_oms:false,memo_contract_verified:false},
+      {request_id:uuid,status:'requested',can_create_oms:false},
+      {request_id:uuid,status:'approved_for_reissue',can_create_oms:false},
+    ]
+    const fake=vi.fn().mockImplementation(async()=>({ok:true,json:async()=>responses.shift()}))
+    vi.stubGlobal('fetch',fake)
+    try {
+      const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+        view:'shipped',rows:{...usSmPendingRows,data:[row]}})
+      await wrapper.findAll('button').find(b=>b.text().trim()==='重新下发仓库')!.trigger('click')
+      await vi.waitFor(()=>expect(wrapper.find('input.xlwms-reship-reason').exists()).toBe(true))
+      await wrapper.find('input.xlwms-reship-reason').setValue('面单填错需要重新下发仓库')
+      await wrapper.findAll('button').find(b=>b.text().includes('提交补发申请'))!.trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('待二次确认'))
+      expect(fake.mock.calls[1][0]).toContain('/xlwms/reship-intent')
+      expect(JSON.parse(fake.mock.calls[1][1].body)).toEqual({
+        reason:'面单填错需要重新下发仓库',confirm_original_shipped:true,
+      })
+      await wrapper.findAll('button').find(b=>b.text().includes('二次确认补发申请'))!.trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('申请审核已记录'))
+      expect(fake.mock.calls[2][0]).toContain('/xlwms/reship-approve')
+      expect(JSON.parse(fake.mock.calls[2][1].body)).toEqual({
+        request_id:uuid,confirmation:'APPROVE_RESHIP_'+uuid,
+      })
+      expect(wrapper.text()).not.toContain('创建独立 OMS 草稿（单笔授权）')
+      expect(fake).toHaveBeenCalledTimes(3)
+    } finally {vi.unstubAllGlobals()}
+  })
+
 })
