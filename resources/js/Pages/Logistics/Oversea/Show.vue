@@ -156,7 +156,7 @@ async function shipoutPreflight(row:Row) {
     const result=await shipoutRequest(row,'preflight') as ShipOutPreflight
     if (result.order_id!==row.order_id) throw Error('订单 ID 校验失败')
     shipoutPreview[row.order_id]=result
-    if (!result.ready) shipoutErrors[row.order_id]=result.blockers.map(shipoutMessage).join('；')
+    // Preflight blockers are rendered once inside the preview; avoid a second red error line.
   } catch(e) {
     shipoutErrors[row.order_id]=e instanceof Error?e.message:'API 预检失败'
   } finally {shipoutBusy[row.order_id]=false}
@@ -611,21 +611,27 @@ const compactPages = computed<(number|string)[]>(() => {
               </td>
               <td v-if="warehouseKey === 'us-moreplus'" class="xlwms-cell">
                 <div class="xlwms-inline" :data-shipout-order-id="row.order_id">
-                  <span class="xlwms-state">{{ shipoutStatus[row.order_id]?.state === 'ready_for_erp_review' ? '仓库已发货 · 待人工回写' : shipoutStatus[row.order_id]?.state === 'pending' ? '仓库处理中' : shipoutStatus[row.order_id]?.state === 'not_found' ? 'OMS 未找到订单' : 'ShipOut API · 独立沙盒' }}</span>
-                  <small v-if="shipoutStatus[row.order_id]?.tracking_number" class="xlwms-track">Tracking {{shipoutStatus[row.order_id]?.tracking_number}}（未同步 Woo）</small>
-                  <small v-if="shipoutStatus[row.order_id]?.reason" class="xlwms-note">{{shipoutMessage(shipoutStatus[row.order_id].reason)}}</small>
-                  <div class="xlwms-buttons">
-                    <button v-if="row.review_status === 'approved' && row.shipment_status === 'pending' && canOperate" type="button" class="xlwms-action" :disabled="shipoutBusy[row.order_id] || shipoutSentOnce[row.order_id]" @click="shipoutPreflight(row)">API 发货预检</button>
-                    <button type="button" class="xlwms-action" :disabled="!shipoutSandboxReadEnabled || shipoutBusy[row.order_id]" @click="shipoutRefresh(row)">{{shipoutBusy[row.order_id]?'查询中…':'查询仓库 / 物流'}}</button>
-                  </div>
+                  <template v-if="!shipoutSandboxReadEnabled && !shipoutSandboxDispatchEnabled">
+                    <span class="xlwms-state">API 发货未开通</span>
+                    <small class="xlwms-note">当前请继续使用「下载仓库下单表」和「上传物流回传表」。</small>
+                  </template>
+                  <template v-else>
+                    <span class="xlwms-state">{{ shipoutStatus[row.order_id]?.state === 'ready_for_erp_review' ? '仓库已发货 · 待人工回写' : shipoutStatus[row.order_id]?.state === 'pending' ? '仓库处理中' : shipoutStatus[row.order_id]?.state === 'not_found' ? 'OMS 未找到订单' : '待查询仓库状态' }}</span>
+                    <small v-if="shipoutStatus[row.order_id]?.tracking_number" class="xlwms-track">Tracking {{shipoutStatus[row.order_id]?.tracking_number}}（未同步 Woo）</small>
+                    <small v-if="shipoutStatus[row.order_id]?.reason" class="xlwms-note">{{shipoutMessage(shipoutStatus[row.order_id].reason)}}</small>
+                    <div class="xlwms-buttons">
+                      <button v-if="shipoutSandboxDispatchEnabled && row.review_status === 'approved' && row.shipment_status === 'pending' && canOperate" type="button" class="xlwms-action" :disabled="shipoutBusy[row.order_id] || shipoutSentOnce[row.order_id]" @click="shipoutPreflight(row)">{{shipoutBusy[row.order_id]?'预检中…':'API 发货'}}</button>
+                      <button v-if="shipoutSandboxReadEnabled" type="button" class="xlwms-action" :disabled="shipoutBusy[row.order_id]" @click="shipoutRefresh(row)">{{shipoutBusy[row.order_id]?'查询中…':'查询物流状态'}}</button>
+                    </div>
+                  </template>
                   <button v-if="canOperate && shipoutSandboxTrackingApplyEnabled && shipoutStatus[row.order_id]?.state === 'ready_for_erp_review' && shipoutStatus[row.order_id]?.tracking_number" type="button" class="xlwms-action primary" :disabled="shipoutBusy[row.order_id]" @click="shipoutApply(row)">确认 Tracking 回写 ERP</button>
                   <small v-if="shipoutStatus[row.order_id]?.state === 'erp_shipment_updated'" class="xlwms-note">已写入 ERP · Vita 待同步官网</small>
+                  <small v-if="shipoutSandboxDispatchEnabled && !shipoutSandboxReadEnabled" class="xlwms-note">发货功能尚未准备就绪：请先开启安全查询</small>
                   <div v-if="shipoutPreview[row.order_id]" class="xlwms-confirm">
                     <small>订单 {{shipoutPreview[row.order_id].order_no || '未核实'}} · {{shipoutPreview[row.order_id].items.map(i=>i.omsSku+' × '+i.qty).join(' / ')}}</small>
                     <button v-if="shipoutCanSend(row)" type="button" class="xlwms-action primary" @click="shipoutSend(row)">确认仅沙盒推送</button>
                     <small v-else>暂不可提交：{{shipoutPreview[row.order_id].blockers.map(shipoutMessage).join('；') || '等待授权'}}</small>
                   </div>
-                  <small v-if="!shipoutSandboxReadEnabled" class="xlwms-note">正式 API 未启用；原人工发货流程保留</small>
                   <small v-if="shipoutErrors[row.order_id]" role="alert" class="xlwms-error">{{shipoutErrors[row.order_id]}}</small>
                 </div>
               </td>

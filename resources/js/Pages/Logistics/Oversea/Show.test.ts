@@ -301,11 +301,11 @@ describe('Oversea Dede file exchange workbench', () => {
     const wrapper=mountPage({rows:morePlusRows,trackingImportPreview:null,
       shipoutSandboxReadEnabled:false,shipoutSandboxDispatchEnabled:false})
     expect(wrapper.text()).toContain('MorePlus ShipOut · API / 物流')
-    expect(wrapper.text()).toContain('正式 API 未启用；原人工发货流程保留')
+    expect(wrapper.text()).toContain('API 发货未开通')
     expect(wrapper.find('[data-shipout-order-id="99"]').exists()).toBe(true)
-    expect(wrapper.find('[data-shipout-order-id="99"] .xlwms-action').text()).toContain('API 发货预检')
+    expect(wrapper.text()).toContain('当前请继续使用')
     expect(wrapper.findAll('button').some(b=>b.text()==='确认仅沙盒推送')).toBe(false)
-    expect(wrapper.findAll('button').find(b=>b.text()==='查询仓库 / 物流')?.attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-shipout-order-id="99"] button').exists()).toBe(false)
   })
 
   it('MorePlus preflight renders server blocker reasons and never submits a write', async () => {
@@ -317,7 +317,7 @@ describe('Oversea Dede file exchange workbench', () => {
     })})
     vi.stubGlobal('fetch',fetchMock)
     try {
-      const wrapper=mountPage({rows:morePlusRows,trackingImportPreview:null,shipoutSandboxDispatchEnabled:false})
+      const wrapper=mountPage({rows:morePlusRows,trackingImportPreview:null,shipoutSandboxDispatchEnabled:true})
       await wrapper.find('[data-shipout-order-id="99"] button.xlwms-action').trigger('click')
       await vi.waitFor(()=>expect(wrapper.text()).toContain('沙盒推送未启用'))
       expect(wrapper.text()).not.toContain('确认仅沙盒推送')
@@ -376,7 +376,7 @@ describe('Oversea Dede file exchange workbench', () => {
     try {
       const wrapper=mountPage({rows:morePlusRows,trackingImportPreview:null,
         shipoutSandboxReadEnabled:true})
-      const button=wrapper.findAll('button').find(b=>b.text()==='查询仓库 / 物流')
+      const button=wrapper.findAll('button').find(b=>b.text()==='查询物流状态')
       expect(button).toBeTruthy()
       await button!.trigger('click')
       await vi.waitFor(()=>expect(wrapper.text()).toContain('9400TESTTRACK'))
@@ -410,7 +410,7 @@ describe('Oversea Dede file exchange workbench', () => {
     try {
       const wrapper=mountPage({rows:morePlusRows,trackingImportPreview:null,
         shipoutSandboxReadEnabled:true,shipoutSandboxTrackingApplyEnabled:true})
-      const refresh=wrapper.findAll('button').find(b=>b.text()==='查询仓库 / 物流')
+      const refresh=wrapper.findAll('button').find(b=>b.text()==='查询物流状态')
       await refresh!.trigger('click')
       await vi.waitFor(()=>expect(wrapper.text()).toContain('9400PROVIDERCONFIRMED'))
       const apply=wrapper.findAll('button').find(b=>b.text()==='确认 Tracking 回写 ERP')

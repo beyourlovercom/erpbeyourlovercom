@@ -226,3 +226,32 @@ that real MorePlus inventory/order fulfillment has been verified.
 - R5 isolated Dev browser function smoke PASS; **human Dede visual UAT
   remains NOT signed off**. R4 successful sandbox fulfillment/tracking also
   remains NOT signed off. Do not merge or release to Production.
+
+## Owner screenshot UAT review and fully autonomous Dev recheck (2026-10-29)
+- Owner opened the private Tailscale Dev instance and showed the Dede page;
+  asked assistant to complete UAT instead of requesting manual button checks.
+- The screenshot revealed a UX regression: disabled API still displayed a
+  clickable "API 发货预检" and duplicated preflight blocker text (preview plus
+  error alert), overwhelming the shipping row.
+- Corrected existing MorePlus column for full default-off configuration:
+  compact "API 发货未开通" and manual XLSX fallback instruction, NO API buttons,
+  NO duplicated red blocker. When authorized flags are enabled, retains single
+  preflight and read-only tracking controls; all API mutations remain gated.
+- Rebuilt isolation-only Vite assets and performed real Playwright browser
+  login as the synthetic Dede account: MorePlus page 200, synthetic order
+  visible, compact disabled message shown, no API action buttons and no
+  red alert; workbench stays usable. No production UI changes.
+- Browser negative test confirmed preflight/status read-only endpoints with
+  API disabled. Direct send/apply probes hit the endpoint's request throttle
+  (429 HTML response), while isolated dispatch attempt ledger stayed zero.
+  Unit and route tests independently establish disabled dispatch/apply gates.
+- Playwright confirmed manual MorePlus export link exists. Initial synthetic
+  fixture had INVALID ERP order reference format, so export correctly returned
+  422; fixed ONLY isolated SQLite test fixture to "007-UAT-c99999".
+  Then browser export returned HTTP 200 and XLSX download content type.
+  No changes to the original MorePlus export application.
+- Revalidated after UI fix: Vue 20/20 PASS, typecheck PASS, original ERP
+  overseas/tracking plus ShipOut backend 107 tests / 695 assertions PASS.
+- UAT is still preview-only. No real ShipOut stocked SKU / successful provider
+  outbound / real Tracking readback. Production remains untouched, Draft PR
+  is not authorized to merge.
