@@ -30,6 +30,24 @@ final class ChinaSmallPacketBarcode69ReaderTest extends TestCase
         ]], app(ChinaSmallPacketBarcode69Reader::class)->forOrder($order));
     }
 
+    public function test_legacy_order_item_can_resolve_unique_exact_sku_without_product_id(): void
+    {
+        Product::create([
+            'sku' => 'VX357A', 'name' => 'Test', 'product_type' => 'simple',
+            'source_type' => 'manual', 'barcode_69' => '6977291390537',
+        ]);
+        $order = Order::create(['internal_order_number' => 'BC69-'.uniqid(),
+            'erp_order_id' => '007-BC69-'.uniqid(), 'source_type' => 'manual',
+            'order_kind' => 'customer', 'order_date' => now()->toDateString(),
+            'order_status' => 'pending_shipment', 'currency' => 'USD']);
+        $order->items()->create([
+            'sku' => 'VX357A', 'product_summary' => 'QA product',
+            'quantity' => 1, 'unit_price' => 0, 'line_revenue' => 0,
+        ]);
+        $rows = app(ChinaSmallPacketBarcode69Reader::class)->forOrder($order);
+        $this->assertSame('6977291390537', $rows[0]['barcode_69']);
+    }
+
     public function test_refuses_product_id_with_different_fulfillment_sku(): void
     {
         $product = Product::create([
