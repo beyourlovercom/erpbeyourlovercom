@@ -199,6 +199,7 @@ describe('Oversea Dede file exchange workbench', () => {
       ok:true,json:async()=>({
         read_only:true,fresh:true,oms_order_no:'OBS-TEST-123',
         oms_status_code:'4',oms_status_label:'已取消',oms_tracking_no:null,
+        oms_carrier_raw:'ProviderCarrier-X',carrier_verified:false,
         oms_status_checked_at:'2026-10-26T08:00:00Z',oms_status_failure_code:null,
         erp_status_unchanged:true,woo_status_unchanged:true,
       }),
@@ -211,6 +212,8 @@ describe('Oversea Dede file exchange workbench', () => {
       })
       await wrapper.find('button.xlwms-action').trigger('click')
       await vi.waitFor(()=>expect(wrapper.text()).toContain('已取消'))
+      expect(wrapper.text()).toContain('OMS 承运商原始值：ProviderCarrier-X')
+      expect(wrapper.text()).toContain('未核实，不自动回写')
       expect(fetchMock).toHaveBeenCalledTimes(1)
       expect(fetchMock.mock.calls[0][0]).toContain('/xlwms/status')
       expect(routerPost).not.toHaveBeenCalled()

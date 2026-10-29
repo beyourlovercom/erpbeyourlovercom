@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Logistics\Application\Xlwms\SingleOrderDispatch;
+use App\Modules\Logistics\Application\Xlwms\OmsTrackingWritebackPreview;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -33,6 +34,12 @@ final class XlwmsSingleOrderController
         abort_unless(hash_equals('SUBMIT_US_SM_ORDER_'.$order,$data['confirmation']),422,'单笔下发确认不一致');
         $result = $service->dispatch($order,$data['payload_hash'],(int)$request->user()->id);
         return response()->json($result)->header('Cache-Control','no-store, private');
+    }
+
+    public function trackingWritebackPreview(int $order, OmsTrackingWritebackPreview $service): JsonResponse
+    {
+        return response()->json($service->forOrder($order))
+            ->header('Cache-Control', 'no-store, private');
     }
 
     public function status(int $order, SingleOrderDispatch $service): JsonResponse

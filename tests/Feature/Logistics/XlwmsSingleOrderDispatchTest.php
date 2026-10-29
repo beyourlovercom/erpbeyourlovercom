@@ -440,6 +440,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
                 'thirdOrderNo'=>'BYL-ERP-'.$o->id,
                 'whCode'=>'OMS-US-SM','status'=>3,
                 'logisticsTrackNo'=>'TESTTRACK123',
+                'logisticsCarrier'=>'Provider-Unknown-Carrier',
             ]],
             'total'=>1,'page'=>1,'pageSize'=>10,'pages'=>1,
         ]]));
@@ -449,6 +450,8 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $this->assertSame('3',$r['oms_status_code']);
         $this->assertSame('已出库',$r['oms_status_label']);
         $this->assertSame('TESTTRACK123',$r['oms_tracking_no']);
+        $this->assertSame('Provider-Unknown-Carrier',$r['oms_carrier_raw']);
+        $this->assertFalse($r['carrier_verified']);
         $this->assertNotNull($r['oms_status_checked_at']);
         $this->assertSame('pending_shipment',$o->fresh()->order_status->value);
         $this->assertSame('pending',$o->shipment()->first()->shipment_status);
@@ -459,6 +462,58 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
                 ? ($r['data']->outboundOrderNos==='OBS-SAFE-123' && $r['data']->pageSize===10)
                 : ($r['data']['outboundOrderNos']==='OBS-SAFE-123' && $r['data']['pageSize']===10)));
         Http::assertNotSent(fn($r)=>str_contains($r->url(),'outboundOrder/create'));
+    }
+
+    public function test_m2_preview_requires_real_carrier_verification_and_never_writes_shipping(): void
+    {
+        $o = $this->orderFixture();
+        $this->statusAttempt($o);
+        Http::preventStrayRequests();
+        Http::fake(fn () => Http::response(['code'=>200,'data'=>[
+            'records'=>[[
+                'outboundOrderNo'=>'OBS-SAFE-123',
+                'thirdOrderNo'=>'BYL-ERP-'.$o->id,
+                'whCode'=>'OMS-US-SM','status'=>3,
+                'logisticsTrackNo'=>'TESTTRACK123',
+                'logisticsCarrier'=>'UnknownProvider',
+            ]],
+            'total'=>1,
+        ]]));
+        $result=app(\App\Modules\Logistics\Application\Xlwms\OmsTrackingWritebackPreview::class)
+            ->forOrder($o->id);
+        $this->assertSame([],$result['blockers']);
+        $this->assertSame('TESTTRACK123',$result['tracking_candidate']);
+        $this->assertSame('UnknownProvider',$result['carrier_raw']);
+        $this->assertTrue($result['requires_manual_carrier_verification']);
+        $this->assertFalse($result['can_apply']);
+        $this->assertTrue($result['erp_unchanged']);
+        $this->assertTrue($result['woo_unchanged']);
+        $this->assertTrue($result['aftership_unchanged']);
+        $this->assertSame('pending_shipment',$o->fresh()->order_status->value);
+        $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+        Http::assertSentCount(1);
+        Http::assertNotSent(fn ($r)=>str_contains($r->url(),'outboundOrder/create'));
+    }
+
+    public function test_m2_preview_blocks_draft_missing_carrier_and_tracking(): void
+    {
+        $o=$this->orderFixture();
+        $this->statusAttempt($o);
+        Http::preventStrayRequests();
+        Http::fake(fn () => Http::response(['code'=>200,'data'=>[
+            'records'=>[[
+                'outboundOrderNo'=>'OBS-SAFE-123','thirdOrderNo'=>'BYL-ERP-'.$o->id,
+                'whCode'=>'OMS-US-SM','status'=>0,
+                'logisticsTrackNo'=>null,'logisticsCarrier'=>null,
+            ]],'total'=>1,
+        ]]));
+        $result=app(\App\Modules\Logistics\Application\Xlwms\OmsTrackingWritebackPreview::class)
+            ->forOrder($o->id);
+        $this->assertContains('OMS_NOT_CONFIRMED_SHIPPED',$result['blockers']);
+        $this->assertContains('OMS_TRACKING_MISSING',$result['blockers']);
+        $this->assertContains('OMS_CARRIER_MISSING',$result['blockers']);
+        $this->assertFalse($result['can_apply']);
+        Http::assertNotSent(fn ($r)=>str_contains($r->url(),'outboundOrder/create'));
     }
 
     public function test_cancelled_order_status_is_recorded_without_canceling_erp_or_woo(): void
