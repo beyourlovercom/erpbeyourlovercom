@@ -30,7 +30,7 @@ final class WooCommerceAdminOrderLinkTest extends TestCase
         ]);
         $this->actingAs($this->viewer())->get('/customers/orders/'.$order->id)->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->where('wooAdminEditUrl', 'https://beyourlover.com/wp-admin/admin.php?page=wc-orders&action=edit&id=28518'));
+                ->where('wooAdminEditUrl', 'https://www.beyourlover.com/wp-admin/admin.php?page=wc-orders&action=edit&id=28518'));
     }
 
     public function test_real_production_identity_shape_does_not_use_suffixed_display_number(): void
@@ -49,7 +49,7 @@ final class WooCommerceAdminOrderLinkTest extends TestCase
         $this->actingAs($this->viewer())->get('/customers/orders/'.$order->id)->assertOk()
             ->assertInertia(fn ($page) => $page->where(
                 'wooAdminEditUrl',
-                'https://beyourlover.com/wp-admin/admin.php?page=wc-orders&action=edit&id=28518',
+                'https://www.beyourlover.com/wp-admin/admin.php?page=wc-orders&action=edit&id=28518',
             ));
     }
 
@@ -62,7 +62,7 @@ final class WooCommerceAdminOrderLinkTest extends TestCase
         ]);
         $this->actingAs($this->viewer())->get('/customers/orders/'.$order->id)->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->where('wooAdminEditUrl', 'https://beyourlover.com/wp-admin/post.php?post=33333&action=edit'));
+                ->where('wooAdminEditUrl', 'https://www.beyourlover.com/wp-admin/post.php?post=33333&action=edit'));
     }
 
     public function test_missing_wrong_shop_ambiguous_or_bad_references_never_generate_a_link(): void

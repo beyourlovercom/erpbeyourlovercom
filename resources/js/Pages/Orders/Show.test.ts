@@ -923,7 +923,7 @@ describe('Orders/Show V2', () => {
 })
 
 describe('WooCommerce admin order link', () => {
-  const url = 'https://beyourlover.com/wp-admin/admin.php?page=wc-orders&action=edit&id=28518'
+  const url = 'https://www.beyourlover.com/wp-admin/admin.php?page=wc-orders&action=edit&id=28518'
 
   it('opens the server-resolved Woo order in a separate safe tab', () => {
     const wrapper = mount(Show, { props: { order: { ...baseOrder, source_type: 'woocommerce' }, audit, wooAdminEditUrl: url } })
@@ -934,10 +934,33 @@ describe('WooCommerce admin order link', () => {
     expect(link.attributes('rel')).toContain('noreferrer')
   })
 
+  it('copies the validated www address without navigating away', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+    const originalSecureContext = Object.getOwnPropertyDescriptor(window, 'isSecureContext')
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true })
+    try {
+      const wrapper = mount(Show, { props: { order: { ...baseOrder, source_type: 'woocommerce' }, audit, wooAdminEditUrl: url } })
+      await wrapper.get('[data-testid="woo-admin-order-copy"]').trigger('click')
+      await flushPromises()
+      expect(writeText).toHaveBeenCalledWith(url)
+      expect(wrapper.get('[data-testid="woo-admin-order-link"]').attributes('href')).toBe(url)
+      wrapper.unmount()
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard)
+      else delete (navigator as unknown as { clipboard?: Clipboard }).clipboard
+      if (originalSecureContext) Object.defineProperty(window, 'isSecureContext', originalSecureContext)
+      else delete (window as unknown as { isSecureContext?: boolean }).isSecureContext
+    }
+  })
+
   it('does not display a link without a validated URL or for KOL orders', () => {
     const withoutLink = mount(Show, { props: { order: baseOrder, audit, wooAdminEditUrl: null } })
     expect(withoutLink.find('[data-testid="woo-admin-order-link"]').exists()).toBe(false)
+    expect(withoutLink.find('[data-testid="woo-admin-order-copy"]').exists()).toBe(false)
     const kol = mount(Show, { props: { order: kolOrder, audit, wooAdminEditUrl: url } })
     expect(kol.find('[data-testid="woo-admin-order-link"]').exists()).toBe(false)
+    expect(kol.find('[data-testid="woo-admin-order-copy"]').exists()).toBe(false)
   })
 })
