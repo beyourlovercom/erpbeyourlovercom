@@ -16,11 +16,24 @@ final class LogisticsTrackingPushAccess
             return false;
         }
 
+        if ((string) config('tracking_sync_v2.manual_mode') === 'general') {
+            // Production manual rollout is limited to formal, role-inherited
+            // Operations, Logistics and Administrator. Historical UAT roles
+            // with broad permission keys must never gain live Woo write access.
+            return $user->is_active
+                && $user->permission_mode === 'role'
+                && $user->roles()->whereIn('key', [
+                    RolePreset::Operations->roleKey(),
+                    RolePreset::Logistics->roleKey(),
+                    RolePreset::Administrator->roleKey(),
+                ])->exists();
+        }
+
         if ($user->can('sync.operate') && $user->can('logistics.operate')) {
             return true;
         }
 
-        // Operations may push eligible shipped-order tracking, not control general Sync.
+        // Canary remains compatible with the original verified role rules.
         return $user->permission_mode !== 'custom'
             && $user->roles()->where('key', RolePreset::Operations->roleKey())->exists();
     }
