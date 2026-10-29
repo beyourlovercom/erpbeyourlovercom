@@ -26,6 +26,15 @@ final class LogisticsTrackingPushController
             'order_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
         ]);
         $ids = array_map('intval', $data['order_ids']);
+        if ((string) config('tracking_sync_v2.manual_mode') === 'canary') {
+            // Fail closed even if manual Canary mode was enabled without any IDs.
+            $allowed = array_values(array_unique(array_map(
+                'intval',
+                array_filter(explode(',', (string) config('tracking_sync_v2.manual_canary_order_ids', '')),
+                    fn (string $value) => ctype_digit(trim($value)) && (int) trim($value) > 0),
+            )));
+            abort_unless($allowed !== [] && array_diff($ids, $allowed) === [], 403);
+        }
         $orders = Order::query()->with(['shipment', 'fulfillmentParent'])
             ->whereIn('id', $ids)->get()->keyBy('id');
 

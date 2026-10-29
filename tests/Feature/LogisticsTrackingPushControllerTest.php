@@ -20,6 +20,35 @@ final class LogisticsTrackingPushControllerTest extends TestCase
         parent::setUp();
         $this->gateway = new TrackingPushFakeGateway;
         $this->app->instance(WooCommerceTrackingGateway::class, $this->gateway);
+        config(['tracking_sync_v2.manual_mode' => 'general']);
+    }
+
+    public function test_manual_tracking_is_closed_to_vita_and_logistics_by_default(): void
+    {
+        config(['tracking_sync_v2.manual_mode' => 'off']);
+        $operator = $this->userWith('role_preset_operations', ['logistics.view', 'orders.view', 'sync.view']);
+        $order = $this->order(1017);
+        self::assertFalse(app(\App\Modules\Logistics\Application\LogisticsTrackingPushAccess::class)->allows($operator));
+        $this->actingAs($operator)->post('/logistics/tracking-outbound/selected', ['order_ids'=>[$order->id]])
+            ->assertForbidden();
+        self::assertSame(0, $this->gateway->calls);
+    }
+
+    public function test_manual_canary_requires_explicit_exact_erp_order_allowlist(): void
+    {
+        config(['tracking_sync_v2.manual_mode' => 'canary', 'tracking_sync_v2.manual_canary_order_ids' => '']);
+        $user = $this->userWith('role_preset_operations', ['logistics.view', 'orders.view', 'sync.view']);
+        $allowed = $this->order(1018);
+        $other = $this->order(1019);
+        $this->actingAs($user)->post('/logistics/tracking-outbound/selected',
+            ['order_ids' => [$allowed->id]])->assertForbidden();
+        config(['tracking_sync_v2.manual_canary_order_ids' => (string) $allowed->id]);
+        $this->actingAs($user)->post('/logistics/tracking-outbound/selected',
+            ['order_ids' => [$allowed->id, $other->id]])->assertForbidden();
+        self::assertSame(0, $this->gateway->calls);
+        $this->actingAs($user)->post('/logistics/tracking-outbound/selected',
+            ['order_ids' => [$allowed->id]])->assertRedirect()->assertSessionHas('success');
+        self::assertSame(1, $this->gateway->calls);
     }
 
     public function test_vita_role_can_manually_push_shipped_woo_order_without_global_sync_operate(): void

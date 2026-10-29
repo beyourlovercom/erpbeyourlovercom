@@ -9,6 +9,9 @@ final class LogisticsTrackingPushAccess
 {
     public function allows(?User $user): bool
     {
+        if (! in_array((string) config('tracking_sync_v2.manual_mode', 'off'), ['canary', 'general'], true)) {
+            return false;
+        }
         if (! $user || ! $user->can('logistics.view') || ! $user->can('sync.view')) {
             return false;
         }

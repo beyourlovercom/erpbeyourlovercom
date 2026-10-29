@@ -2,6 +2,10 @@
 
 return [
     // Keep new behavior explicitly disabled until Dev AfterShip and Production Canary pass.
+    // off | canary | general. Manual buttons remain hidden when off.
+    'manual_mode' => env('TRACKING_SYNC_V2_MANUAL_MODE', 'off'),
+    // Explicit ERP order IDs, comma separated. Mandatory in canary mode.
+    'manual_canary_order_ids' => env('TRACKING_SYNC_V2_MANUAL_CANARY_ORDER_IDS', ''),
     'immediate_enabled' => env('TRACKING_SYNC_V2_IMMEDIATE_ENABLED', false),
     'periodic_enabled' => env('TRACKING_SYNC_V2_PERIODIC_ENABLED', false),
     // Exclusive outbox ID snapshot at controlled Production activation.

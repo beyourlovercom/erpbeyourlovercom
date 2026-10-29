@@ -110,3 +110,6 @@ R6 requires owner visual PASS and independent Production authorization.
 ## R5 isolated live plugin integration
 - Independent local Woo REST test with real ERP gateway, official AfterShip 1.18.5 plugin and its customer template PASS; details in TRACKING-SYNC-V2-LOCAL-WP-AFTERSHIP-R5-EVIDENCE-20261029.md. Cloud ingestion not verified; Dev G5 unchanged. R6 Production still separately approval-gated.
 - Auto-discovery now excludes Shipments having already pending/processing/failed outbound Outbox; combined retry+discovery cannot attempt a package twice per tick.
+
+## R6 release-gate dry-run
+- Six Production overlay differences were isolated: five three-way clean; LogisticsController merge resolved in an isolated candidate preserving preexisting 422 validation behavior. Stage Composer, TypeScript, Vite, PHP lint, route/schedule checks PASS. New manual mode OFF by default, Canary exact ERP order ID allowlist required, General mode separate authorization. Details in docs/60_Codex_Operations/work-packages/TRACKING-SYNC-V2-R6-CONTROLLED-RELEASE-20261029.md.
