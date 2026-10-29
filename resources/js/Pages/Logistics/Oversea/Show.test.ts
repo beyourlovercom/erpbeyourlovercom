@@ -122,7 +122,7 @@ describe('Oversea Dede file exchange workbench', () => {
     expect(wrapper.text()).toContain('OBS0272610260RS')
     expect(wrapper.text()).toContain('已取消')
     expect(wrapper.findAll('a').some(a=>a.attributes('href')?.endsWith('/xlwms'))).toBe(false)
-    expect(wrapper.text()).not.toContain('确认 API 发货')
+    expect(wrapper.text()).not.toContain('确认创建 OMS 草稿')
     expect(wrapper.find('button.xlwms-action').text()).toContain('更新 OMS 状态')
   })
 
@@ -143,7 +143,7 @@ describe('Oversea Dede file exchange workbench', () => {
       })
       await wrapper.find('button.xlwms-action').trigger('click')
       await vi.waitFor(()=>expect(wrapper.text()).toContain('未获得单笔真实发货授权'))
-      expect(wrapper.text()).not.toContain('确认 API 发货')
+      expect(wrapper.text()).not.toContain('确认创建 OMS 草稿')
       expect(request).toHaveBeenCalledTimes(1)
       expect(request.mock.calls[0][0]).toBe('/logistics/oversea/us-3sm/orders/99/xlwms/preflight')
       expect(request.mock.calls[0][1].method).toBe('GET')
@@ -161,7 +161,7 @@ describe('Oversea Dede file exchange workbench', () => {
         oms_warehouse:'Yangfan',items:[{sku:'REVIEW-SKU',quantity:1}],already_attempted:false,
       })})
       .mockResolvedValueOnce({ok:true,json:async()=>({
-        state:'submitted_oms',status_label:'OMS 已接单（未出库）',oms_order_no:'OBS-TEST-123',
+        state:'oms_draft_created',status_label:'OMS 已接单（未出库）',oms_order_no:'OBS-TEST-123',
       })})
     vi.stubGlobal('fetch',fetchMock)
     try {
@@ -170,7 +170,7 @@ describe('Oversea Dede file exchange workbench', () => {
         trackingImportPreview:null,rows:usSmPendingRows,xlwmsAuthorizedOrderId:99,
       })
       await wrapper.find('button.xlwms-action').trigger('click')
-      await vi.waitFor(()=>expect(wrapper.text()).toContain('确认 API 发货'))
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('确认创建 OMS 草稿'))
       expect(fetchMock).toHaveBeenCalledTimes(1)
       await wrapper.find('button.xlwms-action.primary').trigger('click')
       await vi.waitFor(()=>expect(wrapper.text()).toContain('OBS-TEST-123'))
@@ -180,7 +180,7 @@ describe('Oversea Dede file exchange workbench', () => {
       expect(JSON.parse(options.body)).toEqual({
         payload_hash:'a'.repeat(64),confirmation:'SUBMIT_US_SM_ORDER_99',
       })
-      expect(wrapper.text()).not.toContain('确认 API 发货')
+      expect(wrapper.text()).not.toContain('确认创建 OMS 草稿')
       expect(wrapper.text()).toContain('OMS 已建单 · 接单待核实')
     } finally {
       vi.unstubAllGlobals()
@@ -191,7 +191,7 @@ describe('Oversea Dede file exchange workbench', () => {
   it('queries existing OMS state inline, preserves ERP workflow and does not navigate', async () => {
     document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="TEST-CSRFTOKEN">')
     const row={...usSmPendingRows.data[0],xlwms:{
-      state:'submitted_oms',oms_order_no:'OBS-TEST-123',oms_status_code:null,
+      state:'oms_draft_created',oms_order_no:'OBS-TEST-123',oms_status_code:null,
       oms_status_checked_at:null,oms_tracking_no:null,
       failure_code:null,oms_status_failure_code:null,
     }}
@@ -215,7 +215,7 @@ describe('Oversea Dede file exchange workbench', () => {
       expect(fetchMock.mock.calls[0][0]).toContain('/xlwms/status')
       expect(routerPost).not.toHaveBeenCalled()
       expect(routerVisit).not.toHaveBeenCalled()
-      expect(wrapper.text()).not.toContain('确认 API 发货')
+      expect(wrapper.text()).not.toContain('确认创建 OMS 草稿')
     } finally {
       vi.unstubAllGlobals()
       document.head.querySelector('meta[name="csrf-token"]')?.remove()
@@ -329,7 +329,7 @@ describe('Oversea Dede file exchange workbench', () => {
 
   it('keeps real OMS code 0 in draft, not dispatched to warehouse', () => {
     const row={...usSmPendingRows.data[0],warehouse_dispatch:{
-      status:'oms_draft',label:'OMS 草稿 · 未提交仓库',detail:'需补齐真实面单并在 OMS 提交',
+      status:'oms_draft',label:'OMS 草稿 · 未提交仓库',detail:'无需面单；仓库接单状态仍需核对',
       oms_order_no:'OBS0272610290RS',last_checked_at:null,
       failure_code:null,can_retry_local_block:false,
     },xlwms:{state:'batch_existing',oms_order_no:'OBS0272610290RS',
@@ -339,7 +339,7 @@ describe('Oversea Dede file exchange workbench', () => {
       trackingImportPreview:null,rows:{...usSmPendingRows,data:[row]}})
     const cell=page.find('td.xlwms-cell').text()
     expect(cell).toContain('OMS 草稿 · 未提交仓库')
-    expect(cell).toContain('需补齐真实面单并在 OMS 提交')
+    expect(cell).toContain('无需面单；仓库接单状态仍需核对')
     expect(cell).not.toContain('已下发 OMS')
     expect(cell).not.toContain('已发货')
   })
@@ -363,7 +363,7 @@ describe('Oversea Dede file exchange workbench', () => {
       expect(fake.mock.calls[0][0]).toBe('/logistics/oversea/us-3sm/orders/99/xlwms/preflight')
       expect(fake.mock.calls[0][1].method).toBe('GET')
       await vi.waitFor(()=>expect(wrapper.text()).toContain('未获得此订单的实际发货授权'))
-      expect(wrapper.text()).not.toContain('确认 API 发货')
+      expect(wrapper.text()).not.toContain('确认创建 OMS 草稿')
     } finally {vi.unstubAllGlobals()}
   })
 

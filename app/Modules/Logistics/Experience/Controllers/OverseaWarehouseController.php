@@ -253,7 +253,7 @@ final class OverseaWarehouseController
                     ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'));
             $matching = fn($sub) => $sub->select('order_id')->from('xlwms_dispatch_attempts')
                 ->whereNotNull('oms_order_no')->where('oms_order_no', '!=', '')
-                ->whereIn('state', ['batch_created', 'batch_existing', 'batch_status_updated', 'submitted_oms', 'found_in_oms']);
+                ->whereIn('state', ['batch_created', 'batch_draft_created', 'oms_draft_created', 'batch_existing', 'batch_status_updated', 'submitted_oms', 'found_in_oms']);
             if ($view === 'dispatched') $query->whereIn('order_id', $matching);
             else $query->whereNotIn('order_id', $matching);
         } elseif ($view === 'shipped') {

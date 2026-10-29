@@ -94,9 +94,9 @@ const omsBlockerLabels:Record<string,string> = {
   country_iso2_missing:'国家代码不正确',
   province_missing:'缺州/省',province_code_not_confirmed:'州/省代码未核实',
   native_logistics_channel_missing:'未配置可用的 OMS 物流渠道',
-  US_SM_USPS_UPLOAD_LABEL_CHANNEL_REQUIRED:'世迈仓固定使用 USPS 上传面单渠道，不得自动切换其他承运商',
-  US_SM_USPS_UPLOAD_LABEL_CHANNEL_UNAVAILABLE:'OMS 未开放 USPS 上传面单渠道，请联系仓库核实',
-  US_SM_NON_USPS_REQUIRES_MANUAL_REVIEW:'非 USPS 承运商须由 Dede 人工核实，不可自动下发',
+  US_SM_NO_SHIPPING_CHANNEL_REQUIRED:'世迈仓仅允许无需物流服务渠道（No_Shipping_Service）',
+  US_SM_NO_SHIPPING_CHANNEL_UNAVAILABLE:'OMS 未开放无需物流服务渠道，请联系仓库核实',
+
   logistics_channel_inactive:'物流渠道已停用',
   no_valid_order_items:'没有有效订单商品',
   invalid_item:'SKU 或商品数量不正确',
@@ -169,7 +169,7 @@ const omsLabel = (row:Row) => {
 }
 const omsDetail=(row:Row)=> {
   const record=omsRow(row)
-  if(record?.oms_order_no && record.oms_status_code==='0')return '需补齐真实面单并在 OMS 提交'
+  if(record?.oms_order_no && record.oms_status_code==='0')return '无需面单；仓库接单状态仍需核对'
   if(record?.oms_order_no && record.oms_status_code==='5')return 'OMS 异常 · 需处理后重新提交'
   if(record?.oms_order_no && record.oms_status_code && !['3','4'].includes(record.oms_status_code))return `OMS 状态 ${record.oms_status_code} · 待核实`
   return row.warehouse_dispatch?.detail ?? ''
@@ -249,8 +249,8 @@ const omsSend = async (row:Row) => {
       oms_status_code:null,oms_status_checked_at:null,oms_tracking_no:null,
       failure_code:result.failure_code??null,oms_status_failure_code:null,
     }
-    if (result.state==='submitted_oms'||result.state==='found_in_oms') {
-      notifyOms('SUCCESS','OMS 接收结果',result.status_label||'OMS 已接单，不代表已出库')
+    if (result.state==='oms_draft_created'||result.state==='submitted_oms'||result.state==='found_in_oms') {
+      notifyOms('SUCCESS','OMS 建单成功',result.status_label||'已请求创建草稿，最终 OMS 状态待核实')
     } else {
       omsErrors[row.order_id]=result.status_label||'OMS 下发结果需核对，不能再次点击发货'
       notifyOms('ERROR','请核对 OMS 结果',omsErrors[row.order_id])
@@ -409,7 +409,7 @@ const compactPages = computed<(number|string)[]>(() => {
         </aside>
         <main class="oversea-main">
       <header class="oversea-heading">
-        <div><h1>{{ pageTitle }}</h1><p>审核 Vita 分仓结果；通过后进入真实下单，驳回则退回运营重新分配。</p><p v-if="warehouseKey === 'us-3sm'" class="xlwms-channel-hint">世迈仓使用 USPS 上传面单渠道（Upload_Shipping_Label），需自行准备或上传真实面单；OMS 下发成功不等于购买面单或已发货，其他承运商须人工确认。</p></div>
+        <div><h1>{{ pageTitle }}</h1><p>审核 Vita 分仓结果；通过后进入真实下单，驳回则退回运营重新分配。</p><p v-if="warehouseKey === 'us-3sm'" class="xlwms-channel-hint">世迈仓统一使用无需物流服务（No_Shipping_Service），不需上传面单；API 仅创建 OMS 草稿，仓库接单和真实发货状态需要后续核对。</p></div>
         <div class="oversea-file-actions">
           <button v-if="canTrackingSync" type="button" class="file-button primary"
             :disabled="!trackingSelection.length || trackingBusy" @click="pushTracking(trackingSelection)">
@@ -505,7 +505,7 @@ const compactPages = computed<(number|string)[]>(() => {
                     <button v-if="canOperate && !omsPreflight[row.order_id]" type="button" class="xlwms-action" :disabled="omsBusy[row.order_id] || omsFinishedThisPage[row.order_id]" @click="omsPreflightStart(row)">{{ omsBusy[row.order_id]?'预检中…':'API 发货' }}</button>
                     <div v-if="omsPreflight[row.order_id]" class="xlwms-confirm">
                       <small>校验：{{omsPreflight[row.order_id].oms_warehouse}} · {{omsPreflight[row.order_id].items.map(i=>i.sku+' × '+i.quantity).join(' / ')}}</small>
-                      <button v-if="omsReadyToSend(row)" type="button" class="xlwms-action primary" :disabled="omsBusy[row.order_id]" @click="omsSend(row)">确认 API 发货</button>
+                      <button v-if="omsReadyToSend(row)" type="button" class="xlwms-action primary" :disabled="omsBusy[row.order_id]" @click="omsSend(row)">确认创建 OMS 草稿</button>
                       <small v-else>尚未获得此订单的实际发货授权</small>
                     </div>
                   </template>

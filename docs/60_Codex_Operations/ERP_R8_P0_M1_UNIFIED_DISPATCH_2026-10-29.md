@@ -1,5 +1,15 @@
 # ERP R8-P0 M1 — 统一仓库下发状态（Dev）
 
+## 最新 Owner 规则（2026-10-29，优先于本文后面旧版段落）
+- **世迈 US-SM 新建订单唯一默认渠道**：无需物流服务，OMS channelCode = No_Shipping_Service，OMS 官方接口实际只读记录 channelType = 2、channelName = 无需物流服务。不需要上传面单；不自动选择最低价、不使用 USPS 上传面单。
+- **普通 API 发货只创建 OMS 草稿**：V1 outboundOrder/create 使用 isSubmit = 0。生产 Gateway::createDraftSingle 与原 createSingle 分离，应用层仅使用草稿创建。用户看见 OMS 单号不代表仓库已接单。
+- **状态必须按 OMS readback 判定**：码 0 = 草稿，码 5 = 异常，无状态 = OMS 已建单 · 接单待核实；无需面单可能被 OMS 后台自动提交设置推进，不能因为请求 isSubmit=0 就保证一直是草稿。必须在生产实发前核对该 OMS 设置。
+- **API 重发货**：Owner 另有需求 Issue #544，后续独立补发履约单也统一使用 No_Shipping_Service 和草稿模式，并附重发订单。该重发功能尚未实现，不得借普通重试或关闭幂等锁创建第二单。
+- **旧 OMS 原订单不自动改动**。真实 OBS0272610290RS 当前草稿保留原渠道，后续如需更改须按 OMS 正式流程核实。
+- **旧版章节状态**：下方 §5 对 Upload_Shipping_Label 的讨论仅保留审计历史，已废止；本节为最新有效规则。无新增真实 OMS CREATE、无 Production 写入授权。
+
+
+
 关联 Issue #538 / PR #535。基于 GitHub main（含 Tracking Sync V2）。本变更不触发生产发货、库存同步、Woo 或 AfterShip 写入。
 
 ## 1. 冻结模型

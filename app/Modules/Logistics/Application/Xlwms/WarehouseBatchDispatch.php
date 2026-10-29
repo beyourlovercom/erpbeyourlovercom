@@ -149,13 +149,13 @@ final class WarehouseBatchDispatch
 
         try {
             $this->oms->assertCatalogReady($connection, (string) $payload['whCode'], (string) $payload['logisticsChannel'], $skus,
-                (bool) config('xlwms.us_sm_require_verified_usps', true));
+                (bool) config('xlwms.us_sm_require_no_shipping_service', true));
             // Final local transition immediately before the sole outbound write.
             $attempt->forceFill(['state' => 'batch_request_in_flight', 'last_checked_at' => now()])->save();
-            $created = $this->oms->createSingle($connection, $payload);
-            $attempt->forceFill(['state' => 'batch_created', 'oms_order_no' => $created['order_no'], 'failure_code' => null, 'last_checked_at' => now()])->save();
+            $created = $this->oms->createDraftSingle($connection, $payload);
+            $attempt->forceFill(['state' => 'batch_draft_created', 'oms_order_no' => $created['order_no'], 'failure_code' => null, 'last_checked_at' => now()])->save();
             $this->safeRecord($order, $attempt);
-            return $this->result($orderId, 'created', '已创建 OMS 出库单');
+            return $this->result($orderId, 'created', '已创建 OMS 草稿，尚未提交仓库');
         } catch (\Throwable $e) {
             $uncertain = $attempt->state === 'batch_request_in_flight';
             return $finish($uncertain ? 'batch_uncertain' : 'batch_error', $uncertain ? 'uncertain' : 'error', $uncertain ? 'OMS 创建结果待核实，禁止重发' : 'OMS 创建未完成');

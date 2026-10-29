@@ -108,12 +108,12 @@ final class SingleOrderDispatch
                 $preview['payload']['whCode'],
                 $preview['payload']['logisticsChannel'],
                 array_column($preview['payload']['productList'], 'sku'),
-                (bool) config('xlwms.us_sm_require_verified_usps', true)
+                (bool) config('xlwms.us_sm_require_no_shipping_service', true)
             );
             $attempt->forceFill(['state'=>'request_in_flight','last_checked_at'=>now()])->save();
-            $created=$this->oms->createSingle($connection,$preview['payload']);
+            $created=$this->oms->createDraftSingle($connection,$preview['payload']);
             $attempt->forceFill([
-                'state'=>'submitted_oms',
+                'state'=>'oms_draft_created',
                 'oms_order_no'=>$created['order_no'],
                 'last_checked_at'=>now(),
                 'failure_code'=>null,
@@ -273,7 +273,8 @@ final class SingleOrderDispatch
             'blocked_preflight_error'=>'发送前检查失败，禁止提交',
             'request_in_flight'=>'请求提交中，结果尚未确认',
             'uncertain_manual_reconcile'=>'OMS 请求结果未知，先查单，不可直接重发',
-            'submitted_oms'=>'OMS 已接收订单（不代表已出库）',
+            'submitted_oms'=>'OMS 已接收订单（历史：未验证仓库接单）',
+            'oms_draft_created'=>'已创建 OMS 草稿 · 未提交仓库',
             'found_in_oms'=>'已在 OMS 查到对应订单',
             'checking_existing'=>'正在检查 OMS 是否已有订单',
         ];

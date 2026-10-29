@@ -256,7 +256,7 @@ final class XlwmsOrderGateway
     }
 
     /** Verify exact OMS native channel and every requested SKU without writes. */
-    public function assertCatalogReady(WarehouseOpenApiConnection $connection, string $whCode, string $channel, array $skuList, bool $requireNativeUsps = false): void
+    public function assertCatalogReady(WarehouseOpenApiConnection $connection, string $whCode, string $channel, array $skuList, bool $requireNoShipping = false): void
     {
         if ($whCode === '' || $channel === '' || $skuList === [] || count($skuList) > 100) {
             throw new RuntimeException('OMS_CATALOG_INPUT_INVALID');
@@ -269,18 +269,17 @@ final class XlwmsOrderGateway
                 && (! isset($r['whCodes']) || (array) $r['whCodes'] === [] || in_array($whCode, (array) $r['whCodes'], true)))) {
             throw new RuntimeException('OMS_CHANNEL_NOT_AVAILABLE');
         }
-        if ($requireNativeUsps) {
+        if ($requireNoShipping) {
             $record = collect($channelRecords)->first(static fn ($r): bool => is_array($r)
                 && ($r['channelCode'] ?? null) === $channel);
-            // Provider actually lists this as type 3, not a type-1 carrier
-            // that can buy postage. Validate the EXACT Owner-selected code
-            // and USPS label purpose. carrierName may equal '系统默认渠道'/other:
-            // it is NOT proof of the last-mile USPS carrier.
+            // Exact real provider catalogue: type 2, name 无需物流服务.
+            // Never treat special type 3 Upload_Shipping_Label or type 1
+            // cheapest-price as equivalent. This does not imply shipped.
             if (! is_array($record)
-                || $channel !== 'Upload_Shipping_Label'
-                || (string)($record['channelType'] ?? '') !== '3'
-                || ! str_contains(strtoupper((string)($record['channelName'] ?? '')), 'USPS')) {
-                throw new RuntimeException('US_SM_USPS_UPLOAD_LABEL_CHANNEL_UNAVAILABLE');
+                || $channel !== 'No_Shipping_Service'
+                || (string)($record['channelType'] ?? '') !== '2'
+                || trim((string)($record['channelName'] ?? '')) !== '无需物流服务') {
+                throw new RuntimeException('US_SM_NO_SHIPPING_CHANNEL_UNAVAILABLE');
             }
         }
         $products = $this->signedPost($connection, 'product/pagelist', [
@@ -330,6 +329,34 @@ final class XlwmsOrderGateway
         if (count($matches) !== 1 || ($matches[0]['success'] ?? null) !== true
             || empty($matches[0]['orderNo'])) {
             throw new RuntimeException('OMS_TEST_DRAFT_CREATE_UNCONFIRMED');
+        }
+        return ['confirmed'=>true,'order_no'=>(string)$matches[0]['orderNo']];
+    }
+
+    /** Production draft-only creation. Unlike submit, this does NOT send
+     * the order into the warehouse process. Idempotency/identity enforcement
+     * is performed by the calling application service before this endpoint.
+     * @param array<string,mixed> $draft
+     * @return array{confirmed:bool,order_no:string}
+     */
+    public function createDraftSingle(WarehouseOpenApiConnection $connection, array $draft): array
+    {
+        if (count($draft) < 1
+            || ($draft['isSubmit'] ?? null) !== 0
+            || blank($draft['thirdOrderNo'] ?? null)
+            || blank($draft['whCode'] ?? null)
+            || ($draft['logisticsChannel'] ?? null) !== 'No_Shipping_Service') {
+            throw new RuntimeException('OMS_DRAFT_CONTRACT_INVALID');
+        }
+        $data = $this->signedPost($connection, 'outboundOrder/create', [$draft]);
+        $matches = array_values(array_filter(
+            (array) ($data['data'] ?? []),
+            static fn (mixed $row): bool => is_array($row)
+                && ($row['thirdOrderNo'] ?? null) === ($draft['thirdOrderNo'] ?? null)
+        ));
+        if (count($matches) !== 1 || ($matches[0]['success'] ?? null) !== true
+            || blank($matches[0]['orderNo'] ?? null)) {
+            throw new RuntimeException('OMS_DRAFT_CREATE_NOT_CONFIRMED');
         }
         return ['confirmed'=>true,'order_no'=>(string)$matches[0]['orderNo']];
     }
