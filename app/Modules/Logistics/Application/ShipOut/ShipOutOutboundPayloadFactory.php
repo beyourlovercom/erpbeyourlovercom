@@ -19,7 +19,10 @@ final class ShipOutOutboundPayloadFactory
     ) {}
 
     /** @return array<string,mixed> */
-    public function fromApprovedOrder(Order $order, string $providerWarehouseId, string $shipDate): array
+    public function fromApprovedOrder(
+        Order $order, string $providerWarehouseId, string $shipDate,
+        string $mode = '9'
+    ): array
     {
         $order->loadMissing(['shipment.warehouse', 'shipment.overseaReview', 'address', 'items']);
         $shipment = $order->shipment;
@@ -80,6 +83,21 @@ final class ShipOutOutboundPayloadFactory
             throw new RuntimeException('SHIPOUT_ORDER_REFERENCE_INVALID');
         }
 
+        $allowedModes = array_map('trim', explode(',', (string) config('shipout.sandbox_enabled_modes', '9')));
+        if (! in_array($mode, $allowedModes, true) || ! in_array($mode, ['9', '10'], true)) {
+            throw new RuntimeException('SHIPOUT_SHIPPING_MODE_NOT_ENABLED');
+        }
+        $group = trim((string) config('shipout.sandbox_service_group_id', ''));
+        if ($mode === '10' && preg_match('/^[1-9][0-9]{8,24}$/', $group) !== 1) {
+            throw new RuntimeException('SHIPOUT_SERVICE_GROUP_NOT_VERIFIED');
+        }
+        // sysServiceId=10 represents selecting an existing warehouse channel.
+        // Its serviceGroupId must come from a verified, bound warehouse lookup,
+        // not arbitrary browser input or the carrierId from mode 9.
+        $outboundInfo = $mode === '10'
+            ? ['sysServiceId' => '10', 'serviceGroupId' => $group]
+            : ['sysServiceId' => '9'];
+
         return [[
             'sid' => 1,
             'orderNo' => $reference,
@@ -101,10 +119,10 @@ final class ShipOutOutboundPayloadFactory
                 'shippingInfo' => [
                     // sysServiceId=9 (warehouse selects service) requires
                     // carrierId=9. Verified with real ShipOut Sandbox ERR.
-                    'shipmentSid' => '1', 'carrierId' => 9,
+                    'shipmentSid' => '1', 'carrierId' => $mode === '10' ? 1 : 9,
                     'shipDate' => $shipDate.' 00:00:00', 'signatureType' => 4,
                 ],
-                'outboundInfo' => ['sysServiceId' => '9'],
+                'outboundInfo' => $outboundInfo,
                 'productList' => $productList,
             ]],
         ]];

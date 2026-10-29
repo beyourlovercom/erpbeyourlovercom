@@ -353,7 +353,7 @@ describe('Oversea Dede file exchange workbench', () => {
       const [url,options]=fetchMock.mock.calls[1]
       expect(url).toContain('/us-moreplus/orders/99/shipout/send')
       expect(JSON.parse(options.body)).toEqual({
-        ship_date:'2026-10-30',payload_hash:'a'.repeat(64),confirmation:'SUBMIT_US_LA_ORDER_99',
+        ship_date:'2026-10-30',shipping_mode:'9',payload_hash:'a'.repeat(64),confirmation:'SUBMIT_US_LA_ORDER_99',
       })
       expect(wrapper.text()).not.toContain('确认仅沙盒推送')
     } finally {
@@ -446,6 +446,41 @@ describe('Oversea Dede file exchange workbench', () => {
     expect(routerPost).toHaveBeenCalledWith('/logistics/tracking-outbound/selected',
       {order_ids:[99]},expect.objectContaining({preserveScroll:true}))
     expect(mountPage({canTrackingSync:false}).text()).not.toContain('同步官网物流')
+  })
+
+  it('MorePlus specified service group re-preflights mode 10 and binds send to it', async () => {
+    const rows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],
+      warehouse_id:1,warehouse_name:'美西 MorePlus 仓'}]}
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="SHIPOUT-TEST-CSRF">')
+    const mock=vi.fn()
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        order_id:99,ship_date:'2026-10-30',shipping_mode:'10',order_no:'C99999-007',
+        items:[{omsSku:'UAT',qty:1}],blockers:[],ready:true,payload_hash:'b'.repeat(64),
+      })})
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        status:'acknowledged',result_code:'ASYNC_ACCEPTED_QUERY_REQUIRED',
+      })})
+    vi.stubGlobal('fetch',mock)
+    try {
+      const wrapper=mountPage({rows,trackingImportPreview:null,
+        shipoutSandboxReadEnabled:true,shipoutSandboxDispatchEnabled:true,
+        shipoutSandboxAuthorizedOrderNo:'C99999-007',
+        shipoutSandboxSpecifiedChannel:{id:'1993981773496696833',label:'USPS GA'}})
+      const select=wrapper.find('[data-shipout-order-id="99"] select')
+      expect(select.exists()).toBe(true)
+      await select.setValue('10')
+      await wrapper.find('[data-shipout-order-id="99"] button.xlwms-action').trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('确认仅沙盒推送'))
+      expect(mock.mock.calls[0][0]).toContain('shipout/preflight?mode=10')
+      await wrapper.find('button.xlwms-action.primary').trigger('click')
+      await vi.waitFor(()=>expect(mock).toHaveBeenCalledTimes(2))
+      expect(JSON.parse(mock.mock.calls[1][1].body).shipping_mode).toBe('10')
+      expect(JSON.parse(mock.mock.calls[1][1].body).payload_hash).toBe('b'.repeat(64))
+      expect(wrapper.text()).not.toContain('确认仅沙盒推送')
+    } finally {
+      vi.unstubAllGlobals()
+      document.head.querySelector('meta[name="csrf-token"]')?.remove()
+    }
   })
 
 })

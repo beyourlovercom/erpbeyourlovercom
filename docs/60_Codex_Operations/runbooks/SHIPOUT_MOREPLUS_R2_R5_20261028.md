@@ -414,3 +414,65 @@ a verified serviceGroupId/serviceGroupCode; not tested by modes 6/9.
   only sandbox order 006 was created for this explicit mode 10 test.
   Next accept mode 10 only after shippedTime status and carrier mapping
   questions resolved.
+
+## R4 final closure and R5 mode 10 controlled integration (2026-10-29)
+- ShipOut signed real sandbox re-query of order
+  BYL-SANDBOX-API-ORDER-20261029-006 / outbound OB261029-4
+  confirmed order status 4, outboundStatus 4, tracking and
+  shippedTime "2026-10-29 09:40:37". No re-POST.
+- Earlier sandbox orders OB261029-2 (mode 6 uploaded VOID PDF) and
+  OB261029-3 (mode 9 warehouse-selected) also confirmed status 4,
+  outboundStatus 4, tracking and shippedTime. R4 provider-side
+  simulated outbound/status readback is now PASS for all 3 modes.
+  This does not mean real mail/physical carrier acceptance.
+- Owner explicitly de-scoped sandbox USPS GA -> UPS mock carrier
+  discrepancy. Preserve raw *actual* carrierId (2 = UPS), never
+  rewrite provider UPS to USPS GA for the sake of display.
+- Updated ShipOutTrackingApplyService to map actual carrierId
+  1 USPS / 2 UPS / 3 FedEx / 4 DHL, fail closed on unknown or
+  synthetic mock_/UATSHIPOUTVOID... tracking and leave Vita
+  WooCommerce sync pending. Updated ShipmentService so an
+  explicitly changed carrier cannot inherit a different carrier's
+  recommended service or carrier_service_id.
+- Added configurable exact service-group allowlist for sandbox
+  specified-channel sysServiceId=10:
+  SHIPOUT_SANDBOX_ENABLED_MODES (default 9 only),
+  SHIPOUT_SANDBOX_SERVICE_GROUP_ID (empty by default),
+  SHIPOUT_SANDBOX_SERVICE_GROUP_LABEL (empty by default).
+  The verified test-group 1993981773496696833 (USPS GA) is
+  deliberately NOT hardcoded in Production config.
+- Controlled Dede US-LA workbench now offers 9 vs 10 only when
+  configured/allowed; choosing a different mode invalidates the
+  preflight fingerprint. POST validates exact mode and group;
+  no arbitrary browser serviceGroupId accepted.
+  Dedicated route UAT verifies mode tampering rejects before POST.
+- Mode 6 remains proven in a one-shot sandbox harness only;
+  it still requires a safe per-order label-upload UI, signed,
+  validated PDF storage/expiry, tracking validation and guardrails
+  before a 3-mode ERP workbench can be accepted.
+- All provider sandbox mutating calls in this scope already
+  completed. No new provider orders sent by this commit.
+- Latest ERP main Finance Facts Drawer and Tracking Sync V2
+  merged into the isolated branch; no conflicting changes.
+
+### Remaining R5-R8 release roadmap (engineer-hour estimates)
+R5.1 - implement the missing Dede mode 6 own-label file upload:
+        preview, MIME/size/Tracking validation, expiring one-use
+        label token, server-side hash, sandbox-only transport:
+        3-5 hours.
+R5.2 - SKU Alias -> exact MorePlus provider SKU validation,
+        provider stock/warehouse identity, no-stock clear
+        explanation and safe manual override policy: 2-3 hours.
+R6 - all 3 modes local isolated Dev browser/UAT with Dede role,
+     approval/duplicate/422/timeout/partial/multi-item and
+     XLSX manual fallback, plus mode 10 label: 2-3 hours.
+R7 - provider tracking/actual carrier/ship time readback,
+     ERP-only write, Vita Tracking Sync V2 Woo state plus
+     rejected/mismatched/mock safeguards: 2-3 hours.
+R8 - production readiness: new credential boundary, MySQL
+     migrations & rollback, last CI, signed Owner PASS, one
+     explicitly whitelisted real-production canary; 2-4 hours.
+TOTAL remaining from this engineering baseline: 11-18 hours,
+excluding external warehouse lag, review/approval waiting,
+and any unrelated unified Logistics R8-P0 scope expansion.
+No Production merge, credential activation, Woo or ERP live writes.

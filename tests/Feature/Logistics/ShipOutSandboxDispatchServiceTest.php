@@ -8,6 +8,8 @@ use App\Modules\Logistics\Application\ShipOut\ShipOutTrackingApplyService;
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutReadOnlyGateway;
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutSandboxOutboundTransport;
 use App\Modules\Logistics\Infrastructure\Models\OverseaWarehouseReview;
+use App\Modules\Logistics\Infrastructure\Models\Carrier;
+use App\Modules\Logistics\Infrastructure\Models\CarrierService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Models\Role;
@@ -111,6 +113,91 @@ final class ShipOutSandboxDispatchServiceTest extends TestCase
             Http::assertSentCount(3);
             Http::assertSent(fn ($request): bool => $request->method() === 'POST'
                 && $request->url() === 'https://opendev.shipout.com/api/open-api/oms/order/batchSubmitAsync');
+        }
+    }
+
+    public function test_operator_selected_verified_service_group_10_uses_exact_id_and_is_single_submit(): void
+    {
+        $this->enable();
+        config()->set('shipout.sandbox_enabled_modes', '9,10');
+        config()->set('shipout.sandbox_service_group_id', '1993981773496696833');
+        $o = $this->order();
+        Http::fake(fn ($request) => $request->method() === 'GET'
+            ? Http::response(['result'=>'OK','data'=>['records'=>[],'total'=>0]],200)
+            : Http::response([['result'=>'OK','data'=>[
+                'sid'=>1,'orderNO'=>'C99999-007','orderId'=>'PROVIDER-MODE-10',
+            ]]],200));
+        Http::preventStrayRequests();
+        $result = app(ShipOutSandboxDispatchService::class)
+            ->dispatchApprovedOrder($o->id, '2026-10-30', null, '10');
+        $this->assertSame('acknowledged', $result['status']);
+        Http::assertSent(fn ($request) => $request->method() === 'POST'
+            && ($request->data()[0]['shipmentForms'][0]['outboundInfo']['sysServiceId'] ?? null) === '10'
+            && ($request->data()[0]['shipmentForms'][0]['outboundInfo']['serviceGroupId'] ?? null) === '1993981773496696833'
+            && ($request->data()[0]['shipmentForms'][0]['shippingInfo']['carrierId'] ?? null) === 1);
+        $this->assertDatabaseHas('shipout_dispatch_attempts', [
+            'order_id'=>$o->id,'status'=>'acknowledged'
+        ]);
+        $this->expectExceptionMessage('SHIPOUT_DUPLICATE_ATTEMPT_BLOCKED');
+        try {
+            app(ShipOutSandboxDispatchService::class)
+                ->dispatchApprovedOrder($o->id, '2026-10-30', null, '10');
+        } finally {
+            Http::assertSentCount(3);
+        }
+    }
+
+    public function test_mode_10_disabled_or_unconfigured_never_calls_provider(): void
+    {
+        $this->enable();
+        $o=$this->order();
+        Http::fake();
+        $this->expectExceptionMessage('SHIPOUT_SHIPPING_MODE_NOT_ENABLED');
+        try {
+            app(ShipOutSandboxDispatchService::class)
+                ->dispatchApprovedOrder($o->id, '2026-10-30', null, '10');
+        } finally {
+            Http::assertNothingSent();
+            $this->assertDatabaseCount('shipout_dispatch_attempts',0);
+        }
+    }
+
+    public function test_dede_preflight_mode_9_fingerprint_cannot_be_reused_for_mode_10(): void
+    {
+        $this->enable();
+        config()->set('shipout.sandbox_enabled_modes', '9,10');
+        config()->set('shipout.sandbox_service_group_id', '1993981773496696833');
+        $o = $this->order();
+        $this->actingAs($this->warehouseUser(['logistics.view','logistics.operate']));
+        $pre = $this->getJson("/logistics/oversea/us-moreplus/orders/{$o->id}/shipout/preflight?mode=9")
+            ->assertOk()->assertJsonPath('ready', true)
+            ->assertJsonPath('shipping_mode', '9')->json();
+        Http::fake(['https://opendev.shipout.com/api/*' =>
+            Http::response(['result'=>'OK','data'=>['total'=>0,'records'=>[]]],200)]);
+        Http::preventStrayRequests();
+        $this->postJson("/logistics/oversea/us-moreplus/orders/{$o->id}/shipout/send",[
+            'ship_date'=>$pre['ship_date'],
+            'shipping_mode'=>'10',
+            'payload_hash'=>$pre['payload_hash'],
+            'confirmation'=>'SUBMIT_US_LA_ORDER_'.$o->id,
+        ])->assertStatus(409)->assertJsonPath('error_code','SHIPOUT_PREFLIGHT_STALE');
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request) => $request->method()==='GET');
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+    }
+
+    public function test_mode_10_requires_verified_group_id_before_provider_call(): void
+    {
+        $this->enable();
+        config()->set('shipout.sandbox_enabled_modes','9,10');
+        $o=$this->order();
+        Http::fake();
+        $this->expectExceptionMessage('SHIPOUT_SERVICE_GROUP_NOT_VERIFIED');
+        try {
+            app(ShipOutSandboxDispatchService::class)
+                ->dispatchApprovedOrder($o->id, '2026-10-30', null, '10');
+        } finally {
+            Http::assertNothingSent();
         }
     }
 
@@ -273,7 +360,7 @@ final class ShipOutSandboxDispatchServiceTest extends TestCase
         ]);
     }
 
-    private function fakeShippedProvider(string $tracking = '9400READBACK', int $status = 4): void
+    private function fakeShippedProvider(string $tracking = '9400READBACK', int $status = 4, int $carrierId = 1): void
     {
         Http::fake(fn ($request) => str_contains($request->url(), '/queryListV2?')
             ? Http::response(['result' => 'OK', 'data' => ['total' => 1, 'records' => [[
@@ -286,7 +373,7 @@ final class ShipOutSandboxDispatchServiceTest extends TestCase
                     'warehouseId' => 'TEST-W', 'shipmentId' => 'SHIP-123',
                     'outboundStatus' => $status === 4 ? 4 : 3, 'labelStatus' => 3,
                     'trackingNumber' => $tracking, 'shippedTime' => '2026-10-29 10:00:00',
-                    'carrierId' => 1,
+                    'carrierId' => $carrierId,
                 ]],
             ]], 200));
     }
@@ -363,6 +450,55 @@ final class ShipOutSandboxDispatchServiceTest extends TestCase
         $this->assertSame('9400READBACK', $o->shipment->tracking_number);
         $this->assertSame('shipped', $o->order_status->value);
         Http::assertSentCount(2);
+    }
+
+    public function test_warehouse_selected_ups_tracking_preserves_actual_carrier_not_requested_usps(): void
+    {
+        $o = $this->order();
+        $this->enable();
+        config()->set('shipout.sandbox_tracking_apply_enabled', true);
+        $this->acknowledgedAttempt($o);
+        $this->fakeShippedProvider('1ZREADBACK123456', 4, 2);
+        // Carrier-specific service configuration must exist; never reuse USPS
+        // service when ShipOut actually selected UPS.
+        $ups = Carrier::query()->updateOrCreate(['name' => 'UPS'], [
+            'name_en' => 'UPS', 'name_zh' => 'UPS', 'is_active' => true,
+        ]);
+        CarrierService::query()->updateOrCreate(['carrier_id' => $ups->id, 'service_key' => 'ground'], [
+            'carrier_id' => $ups->id, 'service_key' => 'ground', 'service_value' => 'Ground',
+            'name_en' => 'UPS Ground', 'is_active' => true, 'sort_order' => 1,
+        ]);
+        Http::preventStrayRequests();
+        $r = app(ShipOutTrackingApplyService::class)->apply(
+            $o->id, '1ZREADBACK123456', $this->warehouseUser(['logistics.operate'])
+        );
+        $this->assertSame('pending_vita', $r['woo_sync']);
+        $this->assertSame('UPS', $o->fresh()->shipment->carrier);
+        $this->assertSame('1ZREADBACK123456', $o->fresh()->shipment->tracking_number);
+        $this->assertSame('shipped', $o->fresh()->shipment->shipment_status);
+        Http::assertSentCount(2);
+    }
+
+    public function test_mock_provider_tracking_is_never_promoted_to_real_erp_or_woo(): void
+    {
+        $o = $this->order();
+        $this->enable();
+        config()->set('shipout.sandbox_tracking_apply_enabled', true);
+        $this->acknowledgedAttempt($o);
+        $this->fakeShippedProvider('mock_2_UNSHIPPABLE', 4, 2);
+        Http::preventStrayRequests();
+        $this->expectExceptionMessage('SHIPOUT_SYNTHETIC_TRACKING_NOT_PUBLISHABLE');
+        try {
+            app(ShipOutTrackingApplyService::class)->apply(
+                $o->id, 'mock_2_UNSHIPPABLE', $this->warehouseUser(['logistics.operate'])
+            );
+        } finally {
+            $this->assertSame('pending', $o->fresh()->shipment->shipment_status);
+            $this->assertNull($o->fresh()->shipment->tracking_number);
+            $this->assertDatabaseHas('shipout_dispatch_attempts', [
+                'order_id'=>$o->id, 'status'=>'acknowledged',
+            ]);
+        }
     }
 
     public function test_dede_confirmed_tracking_apply_route_sets_erp_and_leaves_woo_pending(): void

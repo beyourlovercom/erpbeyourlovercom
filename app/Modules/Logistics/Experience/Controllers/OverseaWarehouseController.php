@@ -92,6 +92,13 @@ final class OverseaWarehouseController
                 && (bool) config('shipout.sandbox_read_enabled', false),
             'shipoutSandboxDispatchEnabled' => $warehouseKey === 'us-moreplus'
                 && (bool) config('shipout.sandbox_dispatch_enabled', false),
+            'shipoutSandboxSpecifiedChannel' => $warehouseKey === 'us-moreplus'
+                && in_array('10', array_map('trim', explode(',', (string) config('shipout.sandbox_enabled_modes', '9'))), true)
+                && trim((string) config('shipout.sandbox_service_group_id', '')) !== ''
+                ? [
+                    'id' => trim((string) config('shipout.sandbox_service_group_id')),
+                    'label' => trim((string) config('shipout.sandbox_service_group_label', '指定仓库渠道')),
+                ] : null,
             'shipoutSandboxTrackingApplyEnabled' => $warehouseKey === 'us-moreplus'
                 && (bool) config('shipout.sandbox_tracking_apply_enabled', false),
             'shipoutSandboxAuthorizedOrderNo' => $warehouseKey === 'us-moreplus'

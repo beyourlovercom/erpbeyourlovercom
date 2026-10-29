@@ -14,4 +14,10 @@ return [
     // Required explicit ONE order and ONE sandbox warehouse. Empty blocks all dispatch.
     'sandbox_order_allowlist' => (string) env('SHIPOUT_SANDBOX_ORDER_ALLOWLIST', ''),
     'sandbox_warehouse_id' => (string) env('SHIPOUT_SANDBOX_WAREHOUSE_ID', ''),
+    // Operator-selected configured channel (sysServiceId=10): explicit
+    // trusted warehouse service-group ID. Never infer IDs from carrier names.
+    'sandbox_enabled_modes' => (string) env('SHIPOUT_SANDBOX_ENABLED_MODES', '9'),
+    'sandbox_service_group_id' => (string) env('SHIPOUT_SANDBOX_SERVICE_GROUP_ID', ''),
+    'sandbox_service_group_label' => (string) env('SHIPOUT_SANDBOX_SERVICE_GROUP_LABEL', ''),
+
 ];

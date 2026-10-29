@@ -25,7 +25,7 @@ type OmsStatusResult = {
   oms_status_failure_code:string|null; erp_status_unchanged:boolean; woo_status_unchanged:boolean
 }
 type ShipOutPreflight = {
-  order_id:number; ship_date:string; order_no:string|null; items:{omsSku:string;qty:number}[]
+  order_id:number; ship_date:string; shipping_mode?:'9'|'10'; order_no:string|null; items:{omsSku:string;qty:number}[]
   blockers:string[]; ready:boolean; payload_hash:string|null; already_attempted:boolean
 }
 type ShipOutStatus = {
@@ -56,7 +56,7 @@ type TrackingImportRow = { row:number; order_id:number|null; order_number:string
 type TrackingImportPreview = { token:string; rows:TrackingImportRow[]; apply_count:number; noop_count:number; blocked_count:number }
 const props = defineProps<{
   warehouseKey:string; warehouse:WarehouseOption|null; warehouseOptions:WarehouseOption[]; view:string
-  rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canOperate:boolean; canTrackingSync?:boolean; shipoutSandboxReadEnabled?:boolean; shipoutSandboxDispatchEnabled?:boolean; shipoutSandboxTrackingApplyEnabled?:boolean; shipoutSandboxAuthorizedOrderNo?:string; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number
+  rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canOperate:boolean; canTrackingSync?:boolean; shipoutSandboxReadEnabled?:boolean; shipoutSandboxDispatchEnabled?:boolean; shipoutSandboxTrackingApplyEnabled?:boolean; shipoutSandboxAuthorizedOrderNo?:string; shipoutSandboxSpecifiedChannel?:{id:string;label:string}|null; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number
 
 }>()
 
@@ -91,6 +91,13 @@ const trackingFileHint = computed(() => props.warehouseKey === 'us-3sm'
   : '上传当前仓库真实回传 XLSX；兼容旧 CSV。上传只生成预览，确认后才会标记已发货。')
 const rowErrors = reactive<Record<number,string>>({})
 // MorePlus API is a separate sandbox-only provider, NEVER the 世迈 XLWMS route.
+const shipoutModes = reactive<Record<number,'9'|'10'>>({})
+const shipoutModeFor = (row:Row):'9'|'10' => shipoutModes[row.order_id] === '10' ? '10' : '9'
+const shipoutChangeMode = (row:Row,event:Event) => {
+  shipoutModes[row.order_id] = (event.target as HTMLSelectElement).value === '10' ? '10' : '9'
+  // A payload fingerprint is mode-specific and must not survive a UI change.
+  delete shipoutPreview[row.order_id]
+}
 const shipoutPreview = reactive<Record<number,ShipOutPreflight>>({})
 const shipoutStatus = reactive<Record<number,ShipOutStatus>>({})
 const shipoutErrors = reactive<Record<number,string>>({})
@@ -118,6 +125,7 @@ const shipoutLabel:Record<string,string> = {
   SHIPOUT_TRACKING_APPLY_DISABLED:'ERP 物流回写尚未获准启用',
   SHIPOUT_TRACKING_CONFIRMATION_MISMATCH:'Tracking 与仓库最新记录不一致',
   SHIPOUT_NOT_CONFIRMED_SHIPPED:'仓库尚未完成实际出库',
+  SHIPOUT_SYNTHETIC_TRACKING_NOT_PUBLISHABLE:'这是沙盒 mock / VOID Tracking，不能同步到真实 ERP 或 WooCommerce',
   ASYNC_ACCEPTED_QUERY_REQUIRED:'提交已受理，仍需查询仓库状态',
   SHIPOUT_DUPLICATE_ATTEMPT_BLOCKED:'已有 API 发货记录，禁止重复提交，请查询仓库状态',
   SHIPOUT_PROVIDER_ORDER_ALREADY_EXISTS:'仓库已存在订单，禁止重复提交',
@@ -126,17 +134,22 @@ const shipoutLabel:Record<string,string> = {
   SHIPOUT_ORDER_NOT_APPROVED_IN_SANDBOX_ALLOWLIST:'此订单未获得沙盒单笔发货授权',
   SHIPOUT_HTTP_REJECTED:'API 凭证或接口权限被拒绝',
   SHIPOUT_BUSINESS_REJECTED:'仓库业务校验未通过',
+  SHIPOUT_SHIPPING_MODE_NOT_ENABLED:'此运输方式没有获得沙盒授权',
+  SHIPOUT_SERVICE_GROUP_NOT_VERIFIED:'指定渠道 ID 尚未与仓库绑定',
 }
 const shipoutMessage = (code:string) => shipoutLabel[code] || code
 const shipoutCanSend = (row:Row) => !!props.canOperate && !!props.shipoutSandboxDispatchEnabled
   && row.review_status === 'approved' && row.shipment_status === 'pending'
   && !!shipoutPreview[row.order_id]?.ready
   && shipoutPreview[row.order_id]?.order_no === props.shipoutSandboxAuthorizedOrderNo
+  && (shipoutPreview[row.order_id]?.shipping_mode ?? '9') === shipoutModeFor(row)
   && !shipoutBusy[row.order_id] && !shipoutSentOnce[row.order_id]
 async function shipoutRequest(row:Row,action:'preflight'|'send'|'status'|'apply',payload:Record<string,string>={}) {
   const csrf=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
   if (action!=='preflight' && !csrf) throw Error('CSRF 校验信息缺失')
-  const response=await fetch('/logistics/oversea/us-moreplus/orders/'+row.order_id+'/shipout/'+action,{
+  const base='/logistics/oversea/us-moreplus/orders/'+row.order_id+'/shipout/'+action
+  const endpoint=action==='preflight'?base+'?mode='+encodeURIComponent(payload.mode||'9'):base
+  const response=await fetch(endpoint,{
     method:action==='preflight'?'GET':'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
     headers:{Accept:'application/json',...(action==='preflight'?{}:{'Content-Type':'application/json','X-CSRF-TOKEN':csrf||''})},
     ...(action==='preflight'?{}:{body:JSON.stringify(payload)}),
@@ -154,7 +167,7 @@ async function shipoutPreflight(row:Row) {
   if (shipoutBusy[row.order_id]) return
   shipoutBusy[row.order_id]=true;shipoutErrors[row.order_id]=''
   try {
-    const result=await shipoutRequest(row,'preflight') as ShipOutPreflight
+    const result=await shipoutRequest(row,'preflight',{mode:shipoutModeFor(row)}) as ShipOutPreflight
     if (result.order_id!==row.order_id) throw Error('订单 ID 校验失败')
     shipoutPreview[row.order_id]=result
     // Preflight blockers are rendered once inside the preview; avoid a second red error line.
@@ -169,7 +182,7 @@ async function shipoutSend(row:Row) {
   delete shipoutPreview[row.order_id]
   try {
     const result=await shipoutRequest(row,'send',{
-      ship_date:pre.ship_date,payload_hash:pre.payload_hash,
+      ship_date:pre.ship_date,shipping_mode:shipoutModeFor(row),payload_hash:pre.payload_hash,
       confirmation:'SUBMIT_US_LA_ORDER_'+row.order_id,
     })
     shipoutErrors[row.order_id]=result.status==='acknowledged'
@@ -620,6 +633,13 @@ const compactPages = computed<(number|string)[]>(() => {
                     <span class="xlwms-state">{{ shipoutStatus[row.order_id]?.state === 'ready_for_erp_review' ? '仓库已发货 · 待人工回写' : shipoutStatus[row.order_id]?.state === 'pending' ? '仓库处理中' : shipoutStatus[row.order_id]?.state === 'not_found' ? 'OMS 未找到订单' : '待查询仓库状态' }}</span>
                     <small v-if="shipoutStatus[row.order_id]?.tracking_number" class="xlwms-track">Tracking {{shipoutStatus[row.order_id]?.tracking_number}}（未同步 Woo）</small>
                     <small v-if="shipoutStatus[row.order_id]?.reason" :class="shipoutStatus[row.order_id]?.state === 'blocked' ? 'xlwms-error' : 'xlwms-note'">{{shipoutMessage(shipoutStatus[row.order_id].reason)}}</small>
+                    <div v-if="shipoutSandboxDispatchEnabled && row.review_status === 'approved' && row.shipment_status === 'pending' && canOperate && shipoutSandboxSpecifiedChannel" class="xlwms-confirm">
+                      <small>API 运输方式</small>
+                      <select :value="shipoutModeFor(row)" :disabled="shipoutBusy[row.order_id] || shipoutSentOnce[row.order_id]" :aria-label="'订单 '+row.order_id+' ShipOut 运输方式'" @change="shipoutChangeMode(row,$event)">
+                        <option value="9">由仓库选择渠道</option>
+                        <option value="10">指定渠道：{{shipoutSandboxSpecifiedChannel.label}}</option>
+                      </select>
+                    </div>
                     <div class="xlwms-buttons">
                       <button v-if="shipoutSandboxDispatchEnabled && row.review_status === 'approved' && row.shipment_status === 'pending' && canOperate" type="button" class="xlwms-action" :disabled="shipoutBusy[row.order_id] || shipoutSentOnce[row.order_id]" @click="shipoutPreflight(row)">{{shipoutBusy[row.order_id]?'预检中…':'API 发货'}}</button>
                       <button v-if="shipoutSandboxReadEnabled" type="button" class="xlwms-action" :disabled="shipoutBusy[row.order_id]" @click="shipoutRefresh(row)">{{shipoutBusy[row.order_id]?'查询中…':'查询物流状态'}}</button>
@@ -629,7 +649,7 @@ const compactPages = computed<(number|string)[]>(() => {
                   <small v-if="shipoutStatus[row.order_id]?.state === 'erp_shipment_updated'" class="xlwms-note">已写入 ERP · Vita 待同步官网</small>
                   <small v-if="shipoutSandboxDispatchEnabled && !shipoutSandboxReadEnabled" class="xlwms-note">发货功能尚未准备就绪：请先开启安全查询</small>
                   <div v-if="shipoutPreview[row.order_id]" class="xlwms-confirm">
-                    <small>订单 {{shipoutPreview[row.order_id].order_no || '未核实'}} · {{shipoutPreview[row.order_id].items.map(i=>i.omsSku+' × '+i.qty).join(' / ')}}</small>
+                    <small>订单 {{shipoutPreview[row.order_id].order_no || '未核实'}} · {{shipoutModeFor(row) === '10' ? '指定仓库渠道' : '仓库自动渠道'}} · {{shipoutPreview[row.order_id].items.map(i=>i.omsSku+' × '+i.qty).join(' / ')}}</small>
                     <button v-if="shipoutCanSend(row)" type="button" class="xlwms-action primary" @click="shipoutSend(row)">确认仅沙盒推送</button>
                     <small v-else>暂不可提交：{{shipoutPreview[row.order_id].blockers.map(shipoutMessage).join('；') || '等待授权'}}</small>
                   </div>

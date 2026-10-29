@@ -24,7 +24,10 @@ final class ShipOutSandboxDispatchService
     ) {}
 
     /** @return array{status:string,provider_order_id:?string,result_code:string} */
-    public function dispatchApprovedOrder(int $orderId, string $shipDate, ?string $expectedPayloadHash = null): array
+    public function dispatchApprovedOrder(
+        int $orderId, string $shipDate, ?string $expectedPayloadHash = null,
+        string $shippingMode = '9'
+    ): array
     {
         if (! (bool) config('shipout.sandbox_read_enabled', false)
             || ! (bool) config('shipout.sandbox_dispatch_enabled', false)) {
@@ -35,7 +38,7 @@ final class ShipOutSandboxDispatchService
 
         $order = Order::query()->with(['shipment.warehouse', 'shipment.overseaReview', 'address', 'items'])
             ->findOrFail($orderId);
-        $payload = $this->factory->fromApprovedOrder($order, $whId, $shipDate);
+        $payload = $this->factory->fromApprovedOrder($order, $whId, $shipDate, $shippingMode);
         $orderNo = (string) $payload[0]['orderNo'];
         if ($orderNo !== trim((string) config('shipout.sandbox_order_allowlist', ''))) {
             throw new RuntimeException('SHIPOUT_ORDER_NOT_APPROVED_IN_SANDBOX_ALLOWLIST');

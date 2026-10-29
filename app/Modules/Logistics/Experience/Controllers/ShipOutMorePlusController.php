@@ -23,9 +23,13 @@ final class ShipOutMorePlusController
 {
     public function preflight(
         Order $order,
+        Request $request,
         ShipOutOutboundPayloadFactory $factory,
     ): JsonResponse {
         $this->guardWarehouse($order);
+        $mode = (string) ($request->validate([
+            'mode' => ['sometimes', 'in:9,10'],
+        ])['mode'] ?? '9');
         $date = now('America/New_York')->addDay()->format('Y-m-d');
         $attempt = $this->attempt($order);
         $blockers = [];
@@ -49,7 +53,7 @@ final class ShipOutMorePlusController
         $items = [];
         $orderNo = null;
         try {
-            $payload = $factory->fromApprovedOrder($order, $whId, $date);
+            $payload = $factory->fromApprovedOrder($order, $whId, $date, $mode);
             $orderNo = (string) $payload[0]['orderNo'];
             $items = $payload[0]['shipmentForms'][0]['productList'];
             $hash = hash('sha256', json_encode($payload, JSON_THROW_ON_ERROR));
@@ -62,6 +66,7 @@ final class ShipOutMorePlusController
         return response()->json([
             'order_id' => (int) $order->id,
             'ship_date' => $date,
+            'shipping_mode' => $mode,
             'order_no' => $orderNo,
             'items' => $items,
             'blockers' => array_values(array_unique($blockers)),
@@ -79,6 +84,7 @@ final class ShipOutMorePlusController
         $this->guardWarehouse($order);
         $data = $request->validate([
             'ship_date' => ['required', 'date_format:Y-m-d'],
+            'shipping_mode' => ['required', 'in:9,10'],
             'payload_hash' => ['required', 'string', 'regex:/^[0-9a-f]{64}$/'],
             'confirmation' => ['required', 'string', 'max:90'],
         ]);
@@ -89,6 +95,7 @@ final class ShipOutMorePlusController
                 (int) $order->id,
                 $data['ship_date'],
                 $data['payload_hash'],
+                $data['shipping_mode'],
             );
         } catch (RuntimeException|DomainException $e) {
             return $this->failure($e->getMessage());
@@ -223,6 +230,9 @@ final class ShipOutMorePlusController
             'SHIPOUT_SHIPPED_TIME_UNTRUSTED',
             'SHIPOUT_APPLY_STATE_CHANGED',
             'SHIPOUT_CARRIER_NOT_APPROVED_FOR_AUTO_APPLY',
+            'SHIPOUT_SYNTHETIC_TRACKING_NOT_PUBLISHABLE',
+            'SHIPOUT_SHIPPING_MODE_NOT_ENABLED',
+            'SHIPOUT_SERVICE_GROUP_NOT_VERIFIED',
         ];
         $code = in_array($reason, $known, true) ? $reason : 'SHIPOUT_PRECHECK_BLOCKED';
         return response()->json([
@@ -261,7 +271,10 @@ final class ShipOutMorePlusController
             'SHIPOUT_TRACKING_CONFIRMATION_MISMATCH' => '确认的 Tracking 与仓库最新回传不一致',
             'SHIPOUT_SHIPPED_TIME_UNTRUSTED' => '仓库发货时间无法验证，禁止回写',
             'SHIPOUT_APPLY_STATE_CHANGED' => 'ERP 订单或审核状态已变化，禁止重复回写',
-            'SHIPOUT_CARRIER_NOT_APPROVED_FOR_AUTO_APPLY' => '实际承运商尚未通过自动映射验收',
+            'SHIPOUT_CARRIER_NOT_APPROVED_FOR_AUTO_APPLY' => '仓库实际承运商尚未建立可靠映射，须人工核对',
+            'SHIPOUT_SYNTHETIC_TRACKING_NOT_PUBLISHABLE' => '仓库只返回沙盒 mock / VOID Tracking，不能回写成真实发货单号',
+            'SHIPOUT_SHIPPING_MODE_NOT_ENABLED' => '此运输方式没有独立的沙盒授权',
+            'SHIPOUT_SERVICE_GROUP_NOT_VERIFIED' => '指定仓库渠道 ID 尚未通过验证，请使用自动渠道',
             default => 'ShipOut 发货或状态校验未通过；未修改 ERP 发货记录',
         };
     }

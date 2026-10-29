@@ -21,6 +21,24 @@ final class ShipOutSandboxOutboundTransport
         private readonly string $bearer,
     ) {}
 
+    /** @param array<string,mixed> $form */
+    private function modeIsAllowlisted(array $form): bool
+    {
+        $mode = (string) ($form['outboundInfo']['sysServiceId'] ?? '');
+        $allowed = array_map('trim', explode(',', (string) config('shipout.sandbox_enabled_modes', '9')));
+        if (! in_array($mode, $allowed, true)) return false;
+        $carrierId = (int) ($form['shippingInfo']['carrierId'] ?? 0);
+        if ($mode === '9') {
+            return $carrierId === 9
+                && ! isset($form['outboundInfo']['serviceGroupId']);
+        }
+        $configured = trim((string) config('shipout.sandbox_service_group_id', ''));
+        return $mode === '10'
+            && $carrierId === 1
+            && preg_match('/^[1-9][0-9]{8,24}$/', $configured) === 1
+            && hash_equals($configured, (string) ($form['outboundInfo']['serviceGroupId'] ?? ''));
+    }
+
     /** @param array<int,array<string,mixed>> $payload
      * @return array{status:string,provider_order_id:?string,result_code:string}
      */
@@ -36,8 +54,7 @@ final class ShipOutSandboxOutboundTransport
             || (string) ($payload[0]['warehouseId'] ?? '') !== trim((string) config('shipout.sandbox_warehouse_id', ''))
             || trim((string) config('shipout.sandbox_warehouse_id', '')) === ''
             || count($payload[0]['shipmentForms'] ?? []) !== 1
-            || (string) ($payload[0]['shipmentForms'][0]['outboundInfo']['sysServiceId'] ?? '') !== '9'
-            || (int) ($payload[0]['shipmentForms'][0]['shippingInfo']['carrierId'] ?? 0) !== 9) {
+            || ! $this->modeIsAllowlisted($payload[0]['shipmentForms'][0])) {
             throw new RuntimeException('SHIPOUT_SANDBOX_PAYLOAD_NOT_ALLOWLISTED');
         }
         $appKey = trim($this->appKey);

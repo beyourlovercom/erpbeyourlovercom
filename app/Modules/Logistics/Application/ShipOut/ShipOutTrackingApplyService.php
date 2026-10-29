@@ -77,8 +77,21 @@ final class ShipOutTrackingApplyService
         if ($decision['status'] !== 'ready_for_erp_review') {
             throw new RuntimeException('SHIPOUT_NOT_CONFIRMED_SHIPPED');
         }
-        if ((int) $decision['carrier_id'] !== 1) {
+        // The submitted carrierId (9 for warehouse-selected service) is NOT
+        // the actual shipped carrier. Always persist the provider's real ID.
+        // Unknown carrier IDs must remain manual review, never default USPS.
+        $actualCarrier = match ((int) $decision['carrier_id']) {
+            1 => 'USPS', 2 => 'UPS', 3 => 'FedEx', 4 => 'DHL',
+            default => null,
+        };
+        if ($actualCarrier === null) {
             throw new RuntimeException('SHIPOUT_CARRIER_NOT_APPROVED_FOR_AUTO_APPLY');
+        }
+        // Sandbox-generated mock labels and VOID placeholders are never
+        // publishable WooCommerce tracking numbers.
+        if (str_starts_with(strtolower((string) $decision['tracking_number']), 'mock_')
+            || str_starts_with(strtoupper((string) $decision['tracking_number']), 'UATSHIPOUTVOID')) {
+            throw new RuntimeException('SHIPOUT_SYNTHETIC_TRACKING_NOT_PUBLISHABLE');
         }
         if ($expectedTracking === '' || ! hash_equals($decision['tracking_number'], $expectedTracking)) {
             throw new RuntimeException('SHIPOUT_TRACKING_CONFIRMATION_MISMATCH');
@@ -94,7 +107,7 @@ final class ShipOutTrackingApplyService
             throw new RuntimeException('SHIPOUT_SHIPPED_TIME_UNTRUSTED');
         }
 
-        DB::transaction(function () use ($erpOrderId, $warehouseId, $orderNo, $shippedAt, $decision, $actor): void {
+        DB::transaction(function () use ($erpOrderId, $warehouseId, $orderNo, $shippedAt, $decision, $actualCarrier, $actor): void {
             $locked = Order::query()->with('shipment.warehouse', 'shipment.overseaReview')
                 ->whereKey($erpOrderId)->lockForUpdate()->firstOrFail();
             $shipment = $locked->shipment;
@@ -113,8 +126,11 @@ final class ShipOutTrackingApplyService
             }
             $this->shipments->markShipped($locked, [
                 'warehouse_id' => $shipment->warehouse_id,
-                'carrier' => 'USPS',
-                'service' => $shipment->service,
+                'carrier' => $actualCarrier,
+                // A stored USPS service may be invalid when provider picks UPS.
+                // Do not silently inherit a service belonging to another carrier.
+                'service' => $actualCarrier === $shipment->carrier
+                    ? $shipment->service : null,
                 'tracking_number' => $decision['tracking_number'],
                 'shipped_at' => $shippedAt->toIso8601String(),
                 'logistics_note' => $shipment->logistics_note,

@@ -58,6 +58,24 @@ final class ShipOutSandboxOutboundTransportTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_mode_10_transport_rejects_spoofed_channel_id_before_network(): void
+    {
+        config()->set('shipout.sandbox_dispatch_enabled',true);
+        config()->set('shipout.sandbox_order_allowlist','C41843-007');
+        config()->set('shipout.sandbox_warehouse_id','TEST-W');
+        config()->set('shipout.sandbox_enabled_modes','9,10');
+        config()->set('shipout.sandbox_service_group_id','1993981773496696833');
+        $payload=$this->order();
+        $payload[0]['shipmentForms'][0]['shippingInfo']['carrierId']=1;
+        $payload[0]['shipmentForms'][0]['outboundInfo']=[
+            'sysServiceId'=>'10', 'serviceGroupId'=>'1993981773496696834',
+        ];
+        Http::fake();
+        $this->expectExceptionMessage('SHIPOUT_SANDBOX_PAYLOAD_NOT_ALLOWLISTED');
+        try { $this->client()->submitOne($payload); }
+        finally { Http::assertNothingSent(); }
+    }
+
     public function test_signed_post_is_always_sandbox_and_async_result_never_marks_shipped(): void
     {
         config()->set('shipout.sandbox_dispatch_enabled', true);
