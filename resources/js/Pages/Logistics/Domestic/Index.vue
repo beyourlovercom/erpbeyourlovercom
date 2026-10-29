@@ -45,6 +45,24 @@ const tabs = [
 ] as const
 const previewRows = computed(() => props.trackingImportPreview?.rows.slice(0, 30) ?? [])
 const itemText = (row:Row) => row.items.map(item => (item.sku ?? '无SKU') + ' × ' + item.quantity).join(' / ') || '—'
+const europeanCountries = new Set(['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE','GB','UK','NO','CH','IS','LI','AD','MC','SM','VA','AL','BA','ME','MK','RS','MD','UA','TR'])
+const barcodePreview = ref<{orderId:number; items:{sku:string;quantity:number;barcode_69:string}[]}|null>(null)
+const barcodeError = ref('')
+const barcodeLoading = ref(false)
+const showBarcode = async (row:Row) => {
+  barcodePreview.value = null
+  barcodeError.value = ''
+  barcodeLoading.value = true
+  try {
+    const response = await fetch('/logistics/china/orders/' + row.order_id + '/barcode-69', { headers:{Accept:'application/json'} })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.message || '条码不存在或订单不符合条件')
+    barcodePreview.value = { orderId:row.order_id, items:data.items }
+  } catch (error) {
+    barcodeError.value = error instanceof Error ? error.message : '无法读取69条形码'
+  } finally { barcodeLoading.value = false }
+}
+
 const switchView = (view:string) => router.visit('/logistics/china?view=' + view, { preserveScroll:true, preserveState:true })
 const approve = (row:Row) => router.post('/logistics/china/orders/' + row.order_id + '/approve', {}, { preserveScroll:true, preserveState:true })
 const reopen = (row:Row) => router.post('/logistics/china/orders/' + row.order_id + '/reopen-review', {}, { preserveScroll:true, preserveState:true })
@@ -160,7 +178,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
               <td><span v-if="row.export_blockers.length" class="danger">{{ row.export_blockers.join(' / ') }}</span><span v-else class="ready">可导出</span></td>
               <td>{{ row.provider_reference ?? '—' }}</td><td>{{ row.carrier ?? '—' }}</td><td>{{ row.service ?? '—' }}</td><td>{{ row.tracking_number ?? '—' }}</td>
               <td>{{ row.recipient_name ?? '—' }}</td><td :class="{danger:!row.phone}">{{ row.phone || '缺电话' }}</td>
-              <td>{{ [row.country,row.state,row.city].filter(Boolean).join(' / ') || '—' }}</td><td>{{ itemText(row) }}</td>
+              <td>{{ [row.country,row.state,row.city].filter(Boolean).join(' / ') || '—' }}</td><td>{{ itemText(row) }} <button v-if="europeanCountries.has((row.country ?? '').toUpperCase())" type="button" class="secondary" :disabled="barcodeLoading" @click="showBarcode(row)">69条码</button><div v-if="barcodePreview?.orderId===row.order_id" class="barcode-preview"><div v-for="item in barcodePreview.items" :key="item.sku">{{ item.sku }} × {{ item.quantity }}：{{ item.barcode_69 }}</div></div><small v-if="barcodeError && !barcodeLoading" class="danger">{{ barcodeError }}</small></td>
               <td><span v-if="row.source_type==='woocommerce'" class="sync-status" :title="row.tracking_sync_reason??''" :class="row.tracking_sync_status??'pending'">{{ trackingLabel(row.tracking_sync_status) }}</span><span v-else>—</span><small v-if="row.tracking_sync_reason" class="sync-failure">{{ row.tracking_sync_reason }}</small></td>
               <td v-if="canTrackingSync"><button v-if="eligibleForTracking(row)" type="button" class="secondary"
                 :disabled="trackingBusy" @click="pushTracking([row.order_id])">同步官网物流</button><span v-else>—</span></td>
