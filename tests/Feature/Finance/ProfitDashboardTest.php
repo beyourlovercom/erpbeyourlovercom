@@ -18,6 +18,20 @@ final class ProfitDashboardTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_finance_fact_edit_link_targets_the_exact_order_without_pagination_search(): void
+    {
+        $user = $this->userWith(['analysis.view', 'orders.create']);
+        $target = $this->createOrder($user, '2026-09-01', 'FACT-TARGET', [['sku' => 'FACT-T', 'price' => '10.00']]);
+        $this->createOrder($user, '2026-09-02', 'FACT-OTHER', [['sku' => 'FACT-O', 'price' => '20.00']]);
+
+        $this->actingAs($user)->get('/accounting/order-costs?edit_order='.$target->id)->assertInertia(fn (Assert $page) => $page
+            ->component('Finance/OrderAnalysis')
+            ->has('orders', 1)
+            ->where('orders.0.id', $target->id)
+            ->where('filters.edit_order', (string) $target->id)
+            ->where('pagination.total', 1));
+    }
+
     public function test_confirmed_usd_kpis_exclude_incomplete_estimated_historical_and_fx_pending_orders(): void
     {
         $user = $this->userWith(['accounting.view', 'analysis.view', 'orders.create']);

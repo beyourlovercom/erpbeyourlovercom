@@ -162,9 +162,12 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
                     <p class="meta">创建日期：{{ e.order.order_date ?? '—' }} · 来源平台：{{ sourceTypeLabel(e.order.source_type) }} · 收货国家：{{ countryLabel(e.order.shipping_country) }}</p>
                     <p class="submeta">{{ e.order.product_count }} 个商品 · {{ e.order.original_shipment_count }} 个原始履约<span v-if="e.order.replacement_shipment_count"> · {{ e.order.replacement_shipment_count }} 个售后补发</span> · {{ e.order.multi_shipment ? '多履约' : '单仓履约' }}</p>
                 </div>
-                <div class="finance-status" :class="[`state-${String(e.summary.finance_status ?? '').toLowerCase()}`, { 'finance-status-estimated': isEstimatedProfit }]">
-                    <strong>{{ isEstimatedProfit ? '预估利润 · 非最终' : financeStatusLabel(e.summary.finance_status) }}</strong>
-                    <span>{{ isEstimatedProfit ? `含 ${s.estimated_cost_count ?? 0} 项估算成本 · 等待真实账单替换` : (e.summary.canonical_final_ready ? '所有必要成本证据均已确认' : '必要成本证据仍不完整') }}</span>
+                <div class="order-header-actions">
+                    <Link class="edit-facts-link" :href="`/accounting/order-costs?edit_order=${e.order.id}`">编辑订单事实 ↗</Link>
+                    <div class="finance-status" :class="[`state-${String(e.summary.finance_status ?? '').toLowerCase()}`, { 'finance-status-estimated': isEstimatedProfit }]">
+                        <strong>{{ isEstimatedProfit ? '预估利润 · 非最终' : financeStatusLabel(e.summary.finance_status) }}</strong>
+                        <span>{{ isEstimatedProfit ? `含 ${s.estimated_cost_count ?? 0} 项估算成本 · 等待真实账单替换` : (e.summary.canonical_final_ready ? '所有必要成本证据均已确认' : '必要成本证据仍不完整') }}</span>
+                    </div>
                 </div>
             </header>
 
@@ -319,6 +322,9 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
 <style scoped>
 .profit-page { display:grid; gap:14px; color:#18282d; }
 .order-header { display:flex; justify-content:space-between; gap:24px; padding:6px 2px 2px; }
+.order-header-actions { display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
+.edit-facts-link { display:inline-flex; padding:9px 14px; border:1px solid #c9d4d7; border-radius:6px; background:#f7f9f9; color:#24383e; font-size:13px; font-weight:700; text-decoration:none; }
+.edit-facts-link:hover { background:#eaf1f3; border-color:#81969d; }
 .crumb { margin:0 0 8px; color:#78878c; font-size:12px; }.crumb a{color:#536a72;text-decoration:none}
 .title-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }.title-row h1{margin:0;font-size:30px;letter-spacing:-.025em}
 .badge { padding:5px 9px; border-radius:6px; background:#e6f6ec; color:#1f7653; font-size:12px; font-weight:700; }.badge.blue{background:#e8f2ff;color:#2563b8}
