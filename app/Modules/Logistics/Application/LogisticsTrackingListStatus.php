@@ -2,6 +2,7 @@
 
 namespace App\Modules\Logistics\Application;
 
+use App\Modules\Sync\Application\ManualSyncStatus;
 use Illuminate\Support\Facades\DB;
 
 final class LogisticsTrackingListStatus
@@ -52,8 +53,14 @@ final class LogisticsTrackingListStatus
     }
 
     /** @param array{status:string,reason:?string}|null $outbox */
-    public function currentStatus(?array $outbox, ?string $manualSyncStatus): array
+    public function currentStatus(?array $outbox, ManualSyncStatus|string|null $manualSyncStatus): array
     {
+        // Eloquent casts the canonical status to a backed enum; list projections
+        // also accept serialized status strings from older callers.
+        if ($manualSyncStatus instanceof ManualSyncStatus) {
+            $manualSyncStatus = $manualSyncStatus->value;
+        }
+
         // Canonical manual-sync state must agree before a completed badge is shown.
         if ($manualSyncStatus !== 'completed' && ($outbox['status'] ?? '') === 'completed') {
             return ['status' => 'pending', 'reason' => null];
