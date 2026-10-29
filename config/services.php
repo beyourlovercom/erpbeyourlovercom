@@ -34,6 +34,7 @@ return [
         'consumer_key' => env('WOO_CONSUMER_KEY', ''),
         'consumer_secret' => env('WOO_CONSUMER_SECRET', ''),
         'connection_key' => env('WOO_CONNECTION_KEY', 'beyourlover.com'),
+        'admin_order_editor_mode' => env('WOO_ADMIN_ORDER_EDITOR_MODE', 'disabled'),
         'timeout' => (int) env('WOO_TIMEOUT_SECONDS', 15),
         'completed_delivered_status' => env('WOO_COMPLETED_DELIVERED_STATUS', 'completed-delivered'),
         'product_sync_enabled' => (bool) env('WOO_PRODUCT_SYNC_ENABLED', false),
