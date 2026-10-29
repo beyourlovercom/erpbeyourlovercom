@@ -1082,6 +1082,76 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         Http::fake();Http::assertNothingSent();
     }
 
+    public function test_issue544_reship_preview_is_readonly_and_preserves_original_shipped_order(): void
+    {
+        $o=$this->orderFixture();
+        $o->update(['order_status'=>'shipped']);
+        $o->shipment()->update(['shipment_status'=>'shipped','tracking_number'=>'TRACK-ORIGINAL']);
+        $o=$o->fresh();
+        $originalTracking=$o->shipment->tracking_number;
+        Http::preventStrayRequests();
+        Http::fake();
+        $p=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentPreview::class)->forOrder($o->id);
+        $this->assertSame([], $p['blockers']);
+        $this->assertTrue($p['ready_for_review']);
+        $this->assertFalse($p['can_create_oms']);
+        $this->assertFalse($p['memo_contract_verified']);
+        $this->assertSame('No_Shipping_Service',$p['channel']);
+        $this->assertSame('重发订单',$p['required_oms_memo']);
+        $this->assertSame('仓库订单出错',$p['reason_default']);
+        $this->assertSame('SAME-SKU',$p['items'][0]['sku']);
+        $this->assertSame(1,$p['items'][0]['quantity']);
+        $this->assertSame('shipped',$o->fresh()->order_status->value);
+        $this->assertSame($originalTracking,$o->fresh()->shipment->tracking_number);
+        $this->assertDatabaseCount('xlwms_reshipments',0);
+        Http::assertNothingSent();
+    }
+
+    public function test_issue544_reship_preflight_requires_logistics_operator_permission(): void
+    {
+        $o=$this->orderFixture();
+        $o->update(['order_status'=>'shipped']);
+        $o->shipment()->update(['shipment_status'=>'shipped','tracking_number'=>'ORIGINAL-TRACK']);
+        $viewer=\App\Models\User::factory()->create(['is_active'=>true]);
+        Http::preventStrayRequests();Http::fake();
+        $this->actingAs($viewer)->getJson('/logistics/oversea/us-3sm/orders/'.$o->id.'/xlwms/reship-preflight')
+            ->assertForbidden();
+        $this->assertDatabaseCount('xlwms_reshipments',0);
+        Http::assertNothingSent();
+    }
+
+    public function test_issue544_reship_preview_blocks_unshipped_and_existing_reshipment(): void
+    {
+        $o=$this->orderFixture();
+        Http::fake();
+        $service=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentPreview::class);
+        $pending=$service->forOrder($o->id);
+        $this->assertContains('source_order_not_shipped',$pending['blockers']);
+        $this->assertFalse($pending['ready_for_review']);
+        $o->update(['order_status'=>'shipped']);
+        $o->shipment()->update(['shipment_status'=>'shipped','tracking_number'=>'ORIGINAL-TRACK']);
+        $ship=$o->fresh()->shipment;
+        \App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment::query()->create([
+            'original_order_id'=>$o->id,
+            'original_shipment_id'=>$ship->id,
+            'warehouse_id'=>$ship->warehouse_id,
+            'request_id'=>'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+            'third_order_no'=>'BYL-RS-TEST-1',
+            'status'=>'create_uncertain',
+            'reason'=>'仓库订单出错',
+            'memo'=>'重发订单',
+            'payload_fingerprint'=>str_repeat('f',64),
+            'sku_quantity_snapshot'=>[['sku'=>'SAME-SKU','quantity'=>1]],
+            'requested_by'=>1,
+        ]);
+        $existing=$service->forOrder($o->id);
+        $this->assertContains('existing_reshipment_requires_review',$existing['blockers']);
+        $this->assertSame(1,$existing['existing_reshipment_count']);
+        $this->assertFalse($existing['ready_for_review']);
+        $this->assertDatabaseCount('xlwms_reshipments',1);
+        Http::assertNothingSent();
+    }
+
     public function test_m1_oms_draft_code_zero_keeps_warehouse_not_dispatched(): void
     {
         $o = $this->orderFixture();

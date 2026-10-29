@@ -382,4 +382,35 @@ describe('Oversea Dede file exchange workbench', () => {
     expect(page.text()).not.toContain('batch_blocked')
   })
 
+  it('shows API 重发货 preview on shipped US-SM orders, but cannot create OMS while disabled', async () => {
+    const row={...usSmPendingRows.data[0], shipment_status:'shipped',
+      tracking_number:'ORIGINAL-TRACK'}
+    const fake=vi.fn().mockResolvedValue({ok:true,json:async()=>({
+      order_id:99,erp_order_id:'007-OVERSEA-USSM-99',
+      original_oms_order_no:'OMS-ORIGINAL',original_tracking_present:true,
+      warehouse:'US-SM',channel:'No_Shipping_Service',draft_only:true,
+      items:[{sku:'REVIEW-SKU',quantity:1}],recipient:'Recipient',
+      address:{country:'US',province:'CA',city:'Los Angeles',postal_code:'90001',address_1:'1 Test Road'},
+      reason_default:'仓库订单出错',required_oms_memo:'重发订单',
+      existing_reshipment_count:0,blockers:[],ready_for_review:true,
+      can_create_oms:false,memo_contract_verified:false,
+    })})
+    vi.stubGlobal('fetch',fake)
+    try {
+      const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+        view:'shipped',rows:{...usSmPendingRows,data:[row]}})
+      const button=wrapper.findAll('button').find(b=>b.text().trim()==='API 重发货')
+      expect(button).toBeDefined()
+      await button!.trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('补发预览（未创建新单）'))
+      expect(wrapper.text()).toContain('OMS-ORIGINAL')
+      expect(wrapper.text()).toContain('No_Shipping_Service'.replace('No_Shipping_Service','无需物流服务'))
+      expect(wrapper.text()).toContain('重发订单')
+      expect(wrapper.text()).toContain('正式重发未开启')
+      expect(fake.mock.calls[0][0]).toBe('/logistics/oversea/us-3sm/orders/99/xlwms/reship-preflight')
+      expect(fake.mock.calls[0][1].method).toBe('GET')
+      expect(fake).toHaveBeenCalledTimes(1)
+    } finally {vi.unstubAllGlobals()}
+  })
+
 })

@@ -7,6 +7,7 @@ use App\Modules\Logistics\Experience\Controllers\LogisticsController;
 use App\Modules\Logistics\Experience\Controllers\LogisticsTrackingPushController;
 use App\Modules\Logistics\Experience\Controllers\OverseaWarehouseController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsSingleOrderController;
+use App\Modules\Logistics\Experience\Controllers\XlwmsReshipmentController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsWarehouseBatchController;
 use App\Modules\Logistics\Experience\Middleware\RequireFulfillmentAllocation;
 use App\Modules\Logistics\Experience\Middleware\RequireLogisticsExecution;
@@ -46,6 +47,10 @@ Route::middleware(['web', 'auth'])->group(function (): void {
         [XlwmsSingleOrderController::class, 'send'])
         ->middleware(['can:logistics.operate', RequireLogisticsExecution::class,'throttle:2,1'])
         ->whereNumber('order')->name('logistics.xlwms.order.send');
+    Route::get('/logistics/oversea/us-3sm/orders/{order}/xlwms/reship-preflight',
+        [XlwmsReshipmentController::class, 'preflight'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:8,1'])
+        ->whereNumber('order')->name('logistics.xlwms.order.reship-preflight');
     Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/status',
         [XlwmsSingleOrderController::class, 'status'])
         ->middleware(['can:logistics.view','throttle:5,1'])

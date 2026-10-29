@@ -20,6 +20,14 @@ type OmsPreflight = {
   order_id:number; blockers:string[]; ready:boolean; payload_hash:string
   oms_warehouse:string; items:Item[]; already_attempted:boolean
 }
+type ReshipPreview = {
+  order_id:number;erp_order_id:string;original_oms_order_no:string|null
+  original_tracking_present:boolean;warehouse:string;channel:string;draft_only:boolean
+  items:Item[];recipient:string|null
+  address:{country:string|null;province:string|null;city:string|null;postal_code:string|null;address_1:string|null}
+  reason_default:string;required_oms_memo:string;existing_reshipment_count:number
+  blockers:string[];ready_for_review:boolean;can_create_oms:boolean;memo_contract_verified:boolean
+}
 type OmsStatusResult = {
   read_only:boolean; fresh:boolean; oms_order_no:string; oms_status_code:string|null
   oms_status_label:string; oms_tracking_no:string|null; oms_status_checked_at:string|null
@@ -154,6 +162,28 @@ const refreshOmsStatuses = async () => {
     router.reload({only:['rows','viewCounts']})
   }catch(e){notifyOms('ERROR','OMS 状态更新失败',e instanceof Error?e.message:'查询失败')}
   finally{refreshBusy.value=false}
+}
+const reshipPreview=reactive<Record<number,ReshipPreview>>({})
+const reshipBusy=reactive<Record<number,boolean>>({})
+const reshipError=reactive<Record<number,string>>({})
+const readReshipPreview=async (row:Row) => {
+  if(!props.canOperate||props.warehouseKey!=='us-3sm'||row.shipment_status!=='shipped'||reshipBusy[row.order_id])return
+  reshipBusy[row.order_id]=true;reshipError[row.order_id]=''
+  try {
+    const token=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
+    const res=await fetch(omsEndpoint(row,'reship-preflight'),{
+      method:'GET',credentials:'same-origin',cache:'no-store',redirect:'error',
+      headers:{Accept:'application/json',...(token?{'X-CSRF-TOKEN':token}:{})},
+    })
+    if(!res.ok)throw Error('补发预检不可用（HTTP '+res.status+'）')
+    const result=await res.json() as ReshipPreview
+    if(result.order_id!==row.order_id||result.channel!=='No_Shipping_Service'
+      ||result.draft_only!==true||result.can_create_oms!==false)throw Error('补发预检安全校验失败')
+    reshipPreview[row.order_id]=result
+  }catch(e){
+    reshipError[row.order_id]=e instanceof Error?e.message:'补发预检失败'
+    notifyOms('ERROR','API 重发货预检失败',reshipError[row.order_id])
+  }finally{reshipBusy[row.order_id]=false}
 }
 const omsRow = (row:Row): OmsSnapshot|null => omsSnapshots[row.order_id] ?? row.xlwms ?? null
 const omsLabel = (row:Row) => {
@@ -510,6 +540,20 @@ const compactPages = computed<(number|string)[]>(() => {
                     </div>
                   </template>
                   <span v-else class="xlwms-note">{{ row.review_status !== 'approved' ? '待 Dede 审核' : '不允许重复发货' }}</span>
+                  <div v-if="canOperate && row.shipment_status==='shipped'" class="xlwms-reship-readonly">
+                    <button type="button" class="xlwms-action" :disabled="reshipBusy[row.order_id]"
+                      @click="readReshipPreview(row)">{{reshipBusy[row.order_id]?'预检中…':'API 重发货'}}</button>
+                    <div v-if="reshipPreview[row.order_id]" class="xlwms-confirm">
+                      <strong>补发预览（未创建新单）</strong>
+                      <small>原订单 {{reshipPreview[row.order_id].erp_order_id}} · 原 OMS {{reshipPreview[row.order_id].original_oms_order_no??'未关联'}}</small>
+                      <small>{{reshipPreview[row.order_id].items.map(i=>i.sku+' × '+i.quantity).join(' / ')}}</small>
+                      <small>{{reshipPreview[row.order_id].recipient}} · {{reshipPreview[row.order_id].address.address_1}} · {{reshipPreview[row.order_id].address.city}}</small>
+                      <small>渠道：无需物流服务 · 草稿 · 备注：重发订单</small>
+                      <small v-if="reshipPreview[row.order_id].blockers.length" class="xlwms-error">{{reshipPreview[row.order_id].blockers.join('；')}}</small>
+                      <small>正式重发未开启；此操作仅预检，不会向 OMS 创建订单</small>
+                    </div>
+                    <small v-if="reshipError[row.order_id]" role="alert" class="xlwms-error">{{reshipError[row.order_id]}}</small>
+                  </div>
                   <small v-if="omsErrors[row.order_id]" role="alert" class="xlwms-error">{{omsErrors[row.order_id]}}</small>
                 </div>
               </td>
