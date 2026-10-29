@@ -921,3 +921,23 @@ describe('Orders/Show V2', () => {
   })
 
 })
+
+describe('WooCommerce admin order link', () => {
+  const url = 'https://beyourlover.com/wp-admin/admin.php?page=wc-orders&action=edit&id=28518'
+
+  it('opens the server-resolved Woo order in a separate safe tab', () => {
+    const wrapper = mount(Show, { props: { order: { ...baseOrder, source_type: 'woocommerce' }, audit, wooAdminEditUrl: url } })
+    const link = wrapper.get('[data-testid="woo-admin-order-link"]')
+    expect(link.attributes('href')).toBe(url)
+    expect(link.attributes('target')).toBe('_blank')
+    expect(link.attributes('rel')).toContain('noopener')
+    expect(link.attributes('rel')).toContain('noreferrer')
+  })
+
+  it('does not display a link without a validated URL or for KOL orders', () => {
+    const withoutLink = mount(Show, { props: { order: baseOrder, audit, wooAdminEditUrl: null } })
+    expect(withoutLink.find('[data-testid="woo-admin-order-link"]').exists()).toBe(false)
+    const kol = mount(Show, { props: { order: kolOrder, audit, wooAdminEditUrl: url } })
+    expect(kol.find('[data-testid="woo-admin-order-link"]').exists()).toBe(false)
+  })
+})

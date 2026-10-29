@@ -13,13 +13,14 @@ use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
+use App\Modules\Orders\Application\Inbound\WooOrderManualSyncAccess;
 use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderSourceType;
+use App\Modules\Orders\Application\WooCommerceAdminOrderLink;
 use App\Modules\Orders\Infrastructure\Models\Order;
-use App\Modules\Orders\Application\Inbound\WooOrderManualSyncAccess;
 use App\Modules\Sync\Application\WooOrderSyncHealthReader;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -44,6 +45,7 @@ final class OrderController
         private readonly ShipmentCompletionSemantics $shipmentCompletion,
         private readonly CarrierServiceCatalog $carrierServices,
         private readonly CarrierRoutingPolicy $carrierRouting,
+        private readonly WooCommerceAdminOrderLink $wooAdminLink,
     ) {}
 
     public function index(Request $request): Response
@@ -145,6 +147,7 @@ final class OrderController
 
         return Inertia::render('Orders/Show', [
             'order' => $this->orderData($order),
+            'wooAdminEditUrl' => $this->wooAdminLink->forOrder($order),
             'inventoryAvailability' => $inventoryAvailability,
             'allocationUi' => $allocationUi,
             'packagingReferences' => $this->packagingReferences->forOrder($order),
