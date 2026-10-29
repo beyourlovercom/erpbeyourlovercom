@@ -27,3 +27,9 @@
 - 从源订单加锁后再次预检，按每次请求生成独立 UUID、`BYL-RESHIP-` 第三方单号、payload fingerprint 和 `重发订单` memo，记录独立成本待核算、审计事件。
 - 已有活跃申请必须阻断第二次申请；该功能**不调用 OMS API，不修改原订单、原 Shipment、Woo 状态、收入或 Tracking**，仅供 Dede 未来两阶段确认流程的底层意图。
 - 真实 OMS 创建仍缺官方可核验的备注字段合同、审批后 CREATE 门禁、首次真实白名单；不得将这一段视作真实重发上线。
+
+## 本轮本地开发：二次审批与跨仓契约
+- 已实现 POST `reship-approve`：要求指定 request UUID 和二次确认令牌，锁定原订单及补发申请，检验原发货状态、原 Shipment / 仓库、补发专属 thirdOrderNo 和备忘，不调用 OMS，记录审核事件。
+- 经审核后状态固定为 `approved_pending_provider_contract`，`can_create_oms=false`；正式 CREATE 依旧不开放，原订单和 Tracking 不改变。
+- 新增 `ReshipmentProviderAdapter` 和拒绝未知仓库的 registry 契约，未来 ShipOut / 其他 OMS 接入独立 provider 实现；当前 **没有任何生产 CREATE 适配器注册**，不代表其他仓库已可补发。
+- 备注字段的真实 OMS API 位置、提交和回读尚未验收；在验证之前绝不能把 `重发订单` 仅留在 ERP DB 后就声称 OMS 备注已写入。

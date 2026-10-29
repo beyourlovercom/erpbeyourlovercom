@@ -1261,4 +1261,34 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
             ->request($o->id,19,'不允许未发货补发');
     }
 
+    public function test_issue544_second_confirmation_is_audited_without_oms_create(): void
+    {
+        $o = $this->orderFixture();
+        $o->update(['order_status'=>'shipped']);
+        $o->shipment()->update(['shipment_status'=>'shipped','tracking_number'=>'ORIGINAL-TRACK']);
+        Http::preventStrayRequests();
+        Http::fake();
+        $request=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentIntentService::class)
+            ->request($o->id,19,'原订单错发需补发');
+        $approval=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentApprovalService::class);
+        $result=$approval->approve($o->id,$request['request_id'],19,'APPROVE_RESHIP_'.$request['request_id']);
+        $this->assertSame('approved_pending_provider_contract',$result['status']);
+        $this->assertFalse($result['can_create_oms']);
+        $this->assertDatabaseHas('xlwms_reshipment_events',['event_code'=>'operator_approved_no_create']);
+        $this->assertSame('ORIGINAL-TRACK',$o->fresh()->shipment->tracking_number);
+        Http::assertNothingSent();
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('RESHIP_APPROVAL_STATE_INVALID');
+        $approval->approve($o->id,$request['request_id'],19,'APPROVE_RESHIP_'.$request['request_id']);
+    }
+
+    public function test_issue544_approval_rejects_wrong_confirmation(): void
+    {
+        $o=$this->orderFixture();
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('RESHIP_APPROVAL_CONFIRMATION_INVALID');
+        app(\App\Modules\Logistics\Application\Xlwms\ReshipmentApprovalService::class)
+            ->approve($o->id,'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',19,'WRONG');
+    }
+
 }
