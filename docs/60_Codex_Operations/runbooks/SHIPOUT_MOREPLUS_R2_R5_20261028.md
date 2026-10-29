@@ -37,3 +37,30 @@ Owner authorization: isolated development/testing only, NO Production release or
 ## GATE
 No ERP Production data writes or scheduled sync, no automatic dispatch, no claim
 that real MorePlus inventory/order fulfillment has been verified.
+
+
+## R3 real sandbox acceptance, 2026-10-29
+- China Mac secure token file: ~/.config/byl/shipout/sandbox_bearer.token (chmod 600).
+  Secret stayed local; no value saved to GitHub.
+- Product POST batchCreate: HTTP 200, result OK:
+  - OMS SKU BYL-SHIPOUT-UAT-20261028-001
+  - SKU ID 2115631489013882881
+  - Warehouse ID 1531580902677626882
+  - Subsequent GET queryList: total 1; linked WMS auditStatus=2 (approved).
+- OMS inbound:
+  - Wrong /open-api/shipout/inbound/listInbound endpoint returned HTTP 200 with
+    gateway message "Can not find healthy upstream url" (not an authentication error).
+    Never use that API path for this sandbox.
+  - Correct OMS GET /open-api/oms/inbound/list: HTTP 200, result OK, total 0.
+  - Correct OMS POST /open-api/oms/inbound/saveOmsInboundOrder: HTTP 200,
+    item result OK; inboundBizUniqueNO BYL-SHIPOUT-UAT-IN-20261029-001;
+    inboundOrderNO IB261028-1; inboundingId 2115633184438902785;
+    SKU count 5, carton count 1.
+  - Post-create GET /open-api/oms/inbound/list: total 1, status=2 (pending inbound).
+  - Stock GET remains total 0. Vendor warehouse has NOT received goods.
+- Idempotency: local sandbox one-shot sentinel exists; no blind POST retry.
+- R3 is partially accepted: actual create/query PASS; physical receipt and
+  availableQuantity>0 NOT ACCEPTED.
+- R4 still BLOCKED on vendor sandbox receiving/fulfillment data.
+- Added read-only OMS inbound status GET to ShipOutReadOnlyGateway, no
+  real ERP inventory writes, outbound dispatch or Production calls.

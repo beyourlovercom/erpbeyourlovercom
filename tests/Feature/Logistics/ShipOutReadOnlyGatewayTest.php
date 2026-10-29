@@ -50,6 +50,37 @@ final class ShipOutReadOnlyGatewayTest extends TestCase
         });
     }
 
+    public function test_oms_inbound_status_reads_only_pending_and_matches_warehouse(): void
+    {
+        config()->set('shipout.sandbox_read_enabled', true);
+        Http::fake(['https://opendev.shipout.com/api/*' =>
+            Http::response(['result' => 'OK', 'data' => ['records' => [[
+                'warehouseId' => 'W', 'inboundingId' => '123', 'inboundOrderNO' => 'IB-001',
+                'inboundBizUniqueNO' => 'TEST-1', 'status' => '2',
+            ]], 'total' => 1]], 200),
+        ]);
+        Http::preventStrayRequests();
+        $page = $this->client()->inboundPage('W');
+        $this->assertSame('IB-001', $page['records'][0]['inboundOrderNO']);
+        $this->assertSame(2, $page['records'][0]['status']);
+        Http::assertSent(fn ($request): bool => $request->method() === 'GET'
+            && str_contains($request->url(), '/open-api/oms/inbound/list?'));
+        Http::assertSentCount(1);
+    }
+
+    public function test_inbound_wrong_warehouse_fails_closed(): void
+    {
+        config()->set('shipout.sandbox_read_enabled', true);
+        Http::fake(['https://opendev.shipout.com/api/*' =>
+            Http::response(['result' => 'OK', 'data' => ['records' => [[
+                'warehouseId' => 'DIFFERENT', 'inboundingId' => '123',
+                'inboundOrderNO' => 'IB-001', 'status' => '2',
+            ]], 'total' => 1]], 200),
+        ]);
+        $this->expectExceptionMessage('SHIPOUT_INBOUND_ROW_UNTRUSTED');
+        $this->client()->inboundPage('W');
+    }
+
     public function test_product_list_is_read_only_and_duplicates_fail_closed(): void
     {
         config()->set('shipout.sandbox_read_enabled', true);
