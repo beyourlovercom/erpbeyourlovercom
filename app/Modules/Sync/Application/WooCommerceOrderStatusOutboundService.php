@@ -16,7 +16,7 @@ final class WooCommerceOrderStatusOutboundService
     ) {}
 
     /** @return array<string,mixed> */
-    public function pushOne(Order $order): array
+    public function pushOne(Order $order, bool $verifyRemote = false): array
     {
         $aggregate = $this->aggregateStatus->reconcile($order);
         /** @var Order $root */
@@ -58,7 +58,27 @@ final class WooCommerceOrderStatusOutboundService
         ]);
 
         if ($record->status === SyncOutboxStatus::Completed) {
-            return ['status' => 'completed', 'aggregate' => $aggregate['aggregate'], 'woo_status' => $wooStatus, 'outbox' => $record];
+            if (! $verifyRemote) {
+                return ['status' => 'completed', 'aggregate' => $aggregate['aggregate'], 'woo_status' => $wooStatus, 'outbox' => $record];
+            }
+
+            // A completed Outbox proves the original write, not today's Woo
+            // status. Explicit manual reconciliation must read and verify.
+            try {
+                $remote = $this->gateway->syncOrderStatus($providerOrderId, $wooStatus);
+            } catch (WooCommerceOrderStatusUnsupportedException) {
+                return ['status' => 'conflict', 'aggregate' => $aggregate['aggregate'], 'woo_status' => $wooStatus, 'outbox' => $record];
+            } catch (Throwable) {
+                return ['status' => 'failed', 'aggregate' => $aggregate['aggregate'], 'woo_status' => $wooStatus, 'outbox' => $record];
+            }
+            if (! ($remote['verified'] ?? false)) {
+                return ['status' => 'failed', 'aggregate' => $aggregate['aggregate'], 'woo_status' => $wooStatus, 'outbox' => $record];
+            }
+            return [
+                'status' => 'completed', 'aggregate' => $aggregate['aggregate'],
+                'woo_status' => $wooStatus, 'outbox' => $record,
+                'verified_remote' => true, 'written' => (bool) ($remote['written'] ?? false),
+            ];
         }
         if ($record->status === SyncOutboxStatus::Failed) {
             return ['status' => 'failed', 'aggregate' => $aggregate['aggregate'], 'woo_status' => $wooStatus, 'outbox' => $record];

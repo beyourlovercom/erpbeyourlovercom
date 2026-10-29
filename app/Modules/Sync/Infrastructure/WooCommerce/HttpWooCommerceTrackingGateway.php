@@ -23,6 +23,11 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         ];
     }
 
+    public function inspectOrderStatus(int $providerOrderId): string
+    {
+        return strtolower(trim((string) ($this->readOrder($providerOrderId)['status'] ?? '')));
+    }
+
     public function inspectTracking(int $providerOrderId): array
     {
         if (! $this->configured()) {
@@ -55,6 +60,12 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         }
 
         $before = $this->readOrder($providerOrderId);
+        $currentStatus = strtolower(trim((string) ($before['status'] ?? '')));
+        if (in_array($currentStatus, ['cancelled', 'refunded', 'failed', 'on-hold', 'trash'], true)) {
+            throw new WooCommerceTrackingConflictException(
+                'WooCommerce order has a protected status; Tracking changes are blocked.'
+            );
+        }
         $state = $this->trackingState($before);
         $resolvedLineItems = $this->resolveRemoteLineItems($before, $lineItems);
         $trackingItem = $this->trackingItem($providerSlug, $trackingNumber, $shipDate, $resolvedLineItems);
@@ -146,8 +157,14 @@ final class HttpWooCommerceTrackingGateway implements WooCommerceTrackingGateway
         }
 
         $before = $this->readOrder($providerOrderId);
-        if (strtolower(trim((string) ($before['status'] ?? ''))) === $status) {
+        $current = strtolower(trim((string) ($before['status'] ?? '')));
+        if ($current === $status) {
             return ['written' => false, 'verified' => true, 'status' => $status];
+        }
+        if (in_array($current, ['cancelled', 'refunded', 'failed', 'on-hold', 'trash'], true)) {
+            throw new WooCommerceOrderStatusUnsupportedException(
+                'WooCommerce has a protected status; manual status reconciliation was blocked.'
+            );
         }
 
         $this->assertOrderStatusSupported($status);

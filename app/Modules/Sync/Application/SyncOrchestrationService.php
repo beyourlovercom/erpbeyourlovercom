@@ -52,7 +52,7 @@ final class SyncOrchestrationService
                 $this->runs->finishItem($item, SyncRunItemStatus::Skipped, 'order_missing');
                 continue;
             }
-            $this->executeTrackingOrder($run, $order, $actor, $connection);
+            $this->executeTrackingOrder($run, $order, $actor, $connection, verifyRemote: true);
         }
 
         return $this->runs->complete($run, $actor);
@@ -215,6 +215,7 @@ final class SyncOrchestrationService
         Model $order,
         ?Authenticatable $actor,
         string $connection,
+        bool $verifyRemote = false,
     ): void {
         $item = $this->runs->addItem($run, [
             'operation' => self::TrackingOperation,
@@ -225,7 +226,7 @@ final class SyncOrchestrationService
         $this->runs->markProcessing($item);
 
         try {
-            $result = $this->tracking->pushOne($order, $actor);
+            $result = $this->tracking->pushOne($order, $actor, verifyRemote: $verifyRemote);
             $this->finishFromTrackingResult($item, $result);
         } catch (DomainException $exception) {
             $this->runs->finishItem(
