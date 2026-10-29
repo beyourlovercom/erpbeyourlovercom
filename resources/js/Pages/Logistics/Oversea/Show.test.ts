@@ -599,14 +599,14 @@ describe('Oversea Dede file exchange workbench', () => {
     try {
       const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
         view:'shipped',rows:{...usSmPendingRows,data:[row]}})
-      const button=wrapper.findAll('button').find(b=>b.text().trim()==='API 重发货')
+      const button=wrapper.findAll('button').find(b=>b.text().trim()==='重新下发仓库')
       expect(button).toBeDefined()
       await button!.trigger('click')
-      await vi.waitFor(()=>expect(wrapper.text()).toContain('补发预览（未创建新单）'))
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('重新下发仓库 · 独立出库草稿'))
       expect(wrapper.text()).toContain('OMS-ORIGINAL')
       expect(wrapper.text()).toContain('No_Shipping_Service'.replace('No_Shipping_Service','无需物流服务'))
-      expect(wrapper.text()).toContain('重发订单')
-      expect(wrapper.text()).toContain('正式重发未开启')
+      expect(wrapper.text()).toContain('ERP 保留操作原因')
+      expect(wrapper.text()).toContain('真实 CREATE 需要单笔订单及申请双重白名单')
       expect(fake.mock.calls[0][0]).toBe('/logistics/oversea/us-3sm/orders/99/xlwms/reship-preflight')
       expect(fake.mock.calls[0][1].method).toBe('GET')
       expect(fake).toHaveBeenCalledTimes(1)

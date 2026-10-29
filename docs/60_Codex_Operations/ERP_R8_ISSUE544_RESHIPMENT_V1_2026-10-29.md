@@ -33,3 +33,13 @@
 - 经审核后状态固定为 `approved_pending_provider_contract`，`can_create_oms=false`；正式 CREATE 依旧不开放，原订单和 Tracking 不改变。
 - 新增 `ReshipmentProviderAdapter` 和拒绝未知仓库的 registry 契约，未来 ShipOut / 其他 OMS 接入独立 provider 实现；当前 **没有任何生产 CREATE 适配器注册**，不代表其他仓库已可补发。
 - 备注字段的真实 OMS API 位置、提交和回读尚未验收；在验证之前绝不能把 `重发订单` 仅留在 ERP DB 后就声称 OMS 备注已写入。
+
+## R1-R4 scope override (Owner pass, October 29)
+The new objective is **重新下发仓库** using a distinct independent OMS draft under the same ERP sales order. The former requirement to transmit an OMS "重发订单" remark is CANCELLED. ERP audit memo remains internal ("重新下发仓库").
+
+- R1: UUID request, distinct `BYL-RESHIP-{32hex}` thirdOrderNo, unique platform/referOrderNo, independent cost ledger pending; do not duplicate revenue.
+- R2: Dede original shipped evidence + written reason + second explicit approval, audit events, no changes to original Order/Shipment/Tracking.
+- R3: exact allowlist `XLWMS_REISSUE_CREATE_ENABLED`, `XLWMS_REISSUE_ORDER_ID`, `XLWMS_REISSUE_REQUEST_ID` all default OFF; fresh 120s applied OMS inventory, identical payload fingerprint, original OMS status 3 (shipped) or 4 (canceled), exact remote duplicate check, channel No_Shipping_Service, isSubmit=0 only. Original status 0/5/unknown fails closed. If external CREATE may have been sent but result unknown, lock as `create_uncertain` with no blind retry.
+- R4: strict independent OMS reference and status readback; record new Tracking/status without updating ERP original shipment, Woo or AfterShip.
+- Only XLWMS adapter registered; other warehouses require verified provider-specific adapters.
+- Release default flags OFF; explicit real Canary order + request UUID required separately. Do not drop audit tables during rollback.

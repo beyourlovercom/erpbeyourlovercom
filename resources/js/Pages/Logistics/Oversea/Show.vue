@@ -27,6 +27,7 @@ type ReshipPreview = {
   address:{country:string|null;province:string|null;city:string|null;postal_code:string|null;address_1:string|null}
   reason_default:string;required_oms_memo:string;existing_reshipment_count:number
   blockers:string[];ready_for_review:boolean;can_create_oms:boolean;memo_contract_verified:boolean
+  existing_reissue?:{request_id:string;status:string;oms_order_no:string|null;oms_status_code:string|null;last_error_code:string|null;can_create_oms:boolean}|null
 }
 type OmsStatusResult = {
   read_only:boolean; fresh:boolean; oms_order_no:string; oms_status_code:string|null
@@ -380,6 +381,97 @@ const refreshOmsStatuses = async () => {
 const reshipPreview=reactive<Record<number,ReshipPreview>>({})
 const reshipBusy=reactive<Record<number,boolean>>({})
 const reshipError=reactive<Record<number,string>>({})
+const reshipReason=reactive<Record<number,string>>({})
+const reshipIntent=reactive<Record<number,{request_id:string;status:string;can_create_oms:boolean}>>({})
+const reshipApproved=reactive<Record<number,boolean>>({})
+const reshipCanCreate=reactive<Record<number,boolean>>({})
+const reshipOmsNo=reactive<Record<number,string>>({})
+const reshipProviderStatus=reactive<Record<number,string>>({})
+const reshipPost=async (row:Row, action:'reship-intent'|'reship-approve', body:Record<string,unknown>) => {
+  if(!props.canOperate||props.warehouseKey!=='us-3sm'||row.shipment_status!=='shipped'||reshipBusy[row.order_id])return
+  reshipBusy[row.order_id]=true;reshipError[row.order_id]=''
+  try {
+    const token=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
+    const response=await fetch(omsEndpoint(row,action),{
+      method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
+      headers:{Accept:'application/json','Content-Type':'application/json',...(token?{'X-CSRF-TOKEN':token}:{})},
+      body:JSON.stringify(body),
+    })
+    if(!response.ok)throw Error('补发申请/审批失败（HTTP '+response.status+'）')
+    const result=await response.json() as {request_id:string;status:string;can_create_oms:boolean}
+    if(!result.request_id)throw Error('补发审核结果未通过安全校验')
+    if(action==='reship-intent'&&result.status==='requested'&&result.can_create_oms===false)reshipIntent[row.order_id]=result
+    else if(action==='reship-approve'&&result.status==='approved_for_reissue'
+      &&result.request_id===reshipIntent[row.order_id]?.request_id){
+        reshipApproved[row.order_id]=true
+        reshipCanCreate[row.order_id]=result.can_create_oms===true
+      }
+    else throw Error('补发审核状态不一致')
+    notifyOms('SUCCESS', '仓库重新下发申请已更新', result.status)
+  }catch(e){
+    reshipError[row.order_id]=e instanceof Error?e.message:'补发操作失败'
+    notifyOms('ERROR','补发申请/审批失败',reshipError[row.order_id])
+  }finally{reshipBusy[row.order_id]=false}
+}
+const requestReship=async(row:Row)=>{
+  const reason=(reshipReason[row.order_id]??'').trim()
+  if(reason.length<5){reshipError[row.order_id]='请先填写不少于 5 个字的补发原因';return}
+  await reshipPost(row,'reship-intent',{reason,confirm_original_shipped:true})
+}
+const approveReship=async(row:Row)=>{
+  const intent=reshipIntent[row.order_id]
+  if(!intent||intent.status!=='requested')return
+  await reshipPost(row,'reship-approve',{
+    request_id:intent.request_id,confirmation:'APPROVE_RESHIP_'+intent.request_id,
+  })
+}
+
+const createReshipDraft=async(row:Row)=>{
+  const intent=reshipIntent[row.order_id]
+  if(!intent||!reshipApproved[row.order_id]||!reshipCanCreate[row.order_id]
+    ||reshipBusy[row.order_id]||reshipOmsNo[row.order_id])return
+  reshipBusy[row.order_id]=true;reshipCanCreate[row.order_id]=false;reshipError[row.order_id]=''
+  try{
+    const token=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
+    const r=await fetch(omsEndpoint(row,'reship-create'),{
+      method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
+      headers:{Accept:'application/json','Content-Type':'application/json',
+        ...(token?{'X-CSRF-TOKEN':token}:{})},
+      body:JSON.stringify({request_id:intent.request_id,
+        confirmation:'CREATE_REISSUE_'+intent.request_id}),
+    })
+    if(!r.ok)throw Error('独立 OMS 草稿创建被拒绝（HTTP '+r.status+'）')
+    const result=await r.json() as {result:string;request_id:string;oms_order_no?:string;code?:string}
+    if(result.request_id!==intent.request_id)throw Error('重新下发身份不一致，禁止再次 CREATE')
+    if((result.result==='created'||result.result==='existing')&&result.oms_order_no){
+      reshipOmsNo[row.order_id]=result.oms_order_no
+      notifyOms('SUCCESS','独立 OMS 草稿已登记','OMS '+result.oms_order_no+' · 原订单未改变')
+    }else{
+      reshipError[row.order_id]='创建未确认：'+(result.code??result.result)+'。禁止重复下发，先查询仓库'
+      notifyOms('ERROR','OMS 结果需核实',reshipError[row.order_id])
+    }
+  }catch(e){
+    reshipError[row.order_id]=(e instanceof Error?e.message:'请求结果未知')+'；禁止直接重发，请核实 OMS'
+  }finally{reshipBusy[row.order_id]=false}
+}
+const refreshReshipStatus=async(row:Row)=>{
+  const intent=reshipIntent[row.order_id]
+  if(!intent||!reshipOmsNo[row.order_id]||reshipBusy[row.order_id])return
+  reshipBusy[row.order_id]=true;reshipError[row.order_id]=''
+  try{
+    const r=await fetch(omsEndpoint(row,'reship-status')+'/'+encodeURIComponent(intent.request_id),{
+      method:'GET',credentials:'same-origin',cache:'no-store',redirect:'error',
+      headers:{Accept:'application/json'},
+    })
+    if(!r.ok)throw Error('OMS 状态查询失败（HTTP '+r.status+'）')
+    const v=await r.json() as {request_id:string;oms_order_no:string;oms_status_code:string;
+      original_erp_unchanged:boolean}
+    if(v.request_id!==intent.request_id||v.oms_order_no!==reshipOmsNo[row.order_id]
+      ||v.original_erp_unchanged!==true)throw Error('OMS 状态身份核对失败')
+    reshipProviderStatus[row.order_id]=v.oms_status_code
+  }catch(e){reshipError[row.order_id]=e instanceof Error?e.message:'状态查询异常'}
+  finally{reshipBusy[row.order_id]=false}
+}
 const readReshipPreview=async (row:Row) => {
   if(!props.canOperate||props.warehouseKey!=='us-3sm'||row.shipment_status!=='shipped'||reshipBusy[row.order_id])return
   reshipBusy[row.order_id]=true;reshipError[row.order_id]=''
@@ -394,6 +486,14 @@ const readReshipPreview=async (row:Row) => {
     if(result.order_id!==row.order_id||result.channel!=='No_Shipping_Service'
       ||result.draft_only!==true||result.can_create_oms!==false)throw Error('补发预检安全校验失败')
     reshipPreview[row.order_id]=result
+    if(result.existing_reissue){
+      const old=result.existing_reissue
+      reshipIntent[row.order_id]={request_id:old.request_id,status:old.status,can_create_oms:old.can_create_oms}
+      reshipApproved[row.order_id]=!['requested','rejected','canceled'].includes(old.status)
+      reshipCanCreate[row.order_id]=old.can_create_oms
+      if(old.oms_order_no)reshipOmsNo[row.order_id]=old.oms_order_no
+      if(old.oms_status_code)reshipProviderStatus[row.order_id]=old.oms_status_code
+    }
   }catch(e){
     reshipError[row.order_id]=e instanceof Error?e.message:'补发预检失败'
     notifyOms('ERROR','API 重发货预检失败',reshipError[row.order_id])
@@ -757,15 +857,37 @@ const compactPages = computed<(number|string)[]>(() => {
                   <span v-else class="xlwms-note">{{ row.review_status !== 'approved' ? '待 Dede 审核' : '不允许重复发货' }}</span>
                   <div v-if="canOperate && row.shipment_status==='shipped'" class="xlwms-reship-readonly">
                     <button type="button" class="xlwms-action" :disabled="reshipBusy[row.order_id]"
-                      @click="readReshipPreview(row)">{{reshipBusy[row.order_id]?'预检中…':'API 重发货'}}</button>
+                      @click="readReshipPreview(row)">{{reshipBusy[row.order_id]?'预检中…':'重新下发仓库'}}</button>
                     <div v-if="reshipPreview[row.order_id]" class="xlwms-confirm">
-                      <strong>补发预览（未创建新单）</strong>
+                      <strong>重新下发仓库 · 独立出库草稿</strong>
                       <small>原订单 {{reshipPreview[row.order_id].erp_order_id}} · 原 OMS {{reshipPreview[row.order_id].original_oms_order_no??'未关联'}}</small>
                       <small>{{reshipPreview[row.order_id].items.map(i=>i.sku+' × '+i.quantity).join(' / ')}}</small>
                       <small>{{reshipPreview[row.order_id].recipient}} · {{reshipPreview[row.order_id].address.address_1}} · {{reshipPreview[row.order_id].address.city}}</small>
-                      <small>渠道：无需物流服务 · 草稿 · 备注：重发订单</small>
-                      <small v-if="reshipPreview[row.order_id].blockers.length" class="xlwms-error">{{reshipPreview[row.order_id].blockers.join('；')}}</small>
-                      <small>正式重发未开启；此操作仅预检，不会向 OMS 创建订单</small>
+                      <small>渠道：无需物流服务 · 不自动提交仓库 · ERP 保留操作原因</small>
+                      <small v-if="reshipPreview[row.order_id].blockers.length && !reshipIntent[row.order_id]" class="xlwms-error">{{reshipPreview[row.order_id].blockers.join('；')}}</small>
+                      <template v-if="reshipPreview[row.order_id].ready_for_review || !!reshipIntent[row.order_id]">
+                        <template v-if="!reshipIntent[row.order_id]">
+                          <input v-model="reshipReason[row.order_id]" type="text" maxlength="180"
+                            class="xlwms-reship-reason" placeholder="填写补发原因（至少 5 个字）" />
+                          <button type="button" class="xlwms-action"
+                            :disabled="reshipBusy[row.order_id] || (reshipReason[row.order_id]??'').trim().length<5"
+                            @click="requestReship(row)">确认原订单已发货 · 提交补发申请</button>
+                        </template>
+                        <template v-else-if="!reshipApproved[row.order_id]">
+                          <small>申请已保存：{{reshipIntent[row.order_id].request_id}}（待二次确认）</small>
+                          <button type="button" class="xlwms-action"
+                            :disabled="reshipBusy[row.order_id]" @click="approveReship(row)">二次确认补发申请（不创建 OMS）</button>
+                        </template>
+                        <small v-else>申请审核已记录；核对旧 OMS 状态后才允许创建新草稿</small>
+                      </template>
+                      <button v-if="reshipApproved[row.order_id] && reshipCanCreate[row.order_id] && !reshipOmsNo[row.order_id]"
+                        type="button" class="xlwms-action primary" :disabled="reshipBusy[row.order_id]"
+                        @click="createReshipDraft(row)">创建独立 OMS 草稿（单笔授权）</button>
+                      <small v-if="reshipOmsNo[row.order_id]">新 OMS 出库单：{{reshipOmsNo[row.order_id]}}（原单保留）</small>
+                      <button v-if="reshipOmsNo[row.order_id]" type="button" class="xlwms-action"
+                        :disabled="reshipBusy[row.order_id]" @click="refreshReshipStatus(row)">查询新 OMS 状态</button>
+                      <small v-if="reshipProviderStatus[row.order_id]">新 OMS 原始状态码：{{reshipProviderStatus[row.order_id]}}（未自动同步官网）</small>
+                      <small>真实 CREATE 需要单笔订单及申请双重白名单；不会覆盖原发货记录</small>
                     </div>
                     <small v-if="reshipError[row.order_id]" role="alert" class="xlwms-error">{{reshipError[row.order_id]}}</small>
                   </div>

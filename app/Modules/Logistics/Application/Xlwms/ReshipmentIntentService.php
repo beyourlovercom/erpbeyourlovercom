@@ -56,7 +56,7 @@ final class ReshipmentIntentService
                 'original_oms_order_no' => $preview['original_oms_order_no'],
                 'status' => 'requested',
                 'reason' => $reason,
-                'memo' => '重发订单',
+                'memo' => '重新下发仓库',
                 'payload_fingerprint' => $fingerprint,
                 'sku_quantity_snapshot' => $items,
                 'requested_by' => $actorId,
@@ -73,7 +73,7 @@ final class ReshipmentIntentService
                 'request_id' => $uuid,
                 'status' => 'requested',
                 'can_create_oms' => false,
-                'memo' => '重发订单',
+                'memo' => '重新下发仓库',
             ];
         });
     }

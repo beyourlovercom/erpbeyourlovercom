@@ -3,6 +3,8 @@
 namespace App\Modules\Logistics\Providers;
 
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
+use App\Modules\Logistics\Application\Reshipment\ReshipmentProviderRegistry;
+use App\Modules\Logistics\Application\Xlwms\XlwmsReissueAdapter;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\Contracts\CarrierBillingEvidenceReader;
 use App\Modules\Logistics\Application\Contracts\DeliveryEvidenceGateway;
@@ -48,6 +50,10 @@ final class LogisticsServiceProvider extends ServiceProvider
 
     public function register(): void
     {
+        // Explicit US-SM adapter only. Other warehouse APIs must be registered
+        // independently; no generic fallback capable of external creation.
+        $this->app->singleton(ReshipmentProviderRegistry::class,
+            fn($app)=>new ReshipmentProviderRegistry([$app->make(XlwmsReissueAdapter::class)]));
         // Sandbox connectors have no default credentials, and all network
         // operations remain explicitly disabled in config/shipout.php.
         $this->app->bind(ShipOutReadOnlyGateway::class, fn (): ShipOutReadOnlyGateway => new ShipOutReadOnlyGateway(

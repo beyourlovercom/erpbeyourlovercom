@@ -31,22 +31,25 @@ final class ReshipmentApprovalService
                 || (int) $shipment->warehouse_id !== (int) $record->warehouse_id
                 || $shipment->warehouse?->code !== 'US-SM'
                 || (! filled($shipment->tracking_number) && ! filled($record->original_oms_order_no))
-                || $record->memo !== '重发订单'
+                || $record->memo !== '重新下发仓库'
                 || ! str_starts_with($record->third_order_no, 'BYL-RESHIP-')
                 || filled($record->oms_order_no)) {
                 throw new RuntimeException('RESHIP_APPROVAL_SOURCE_CHANGED');
             }
-            $record->forceFill(['status' => 'approved_pending_provider_contract', 'approved_by' => $actorId])->save();
+            $record->forceFill(['status' => 'approved_for_reissue', 'approved_by' => $actorId])->save();
             DB::table('xlwms_reshipment_events')->insert([
                 'reshipment_id' => $record->id,
                 'previous_status' => 'requested',
-                'status' => 'approved_pending_provider_contract',
-                'event_code' => 'operator_approved_no_create',
+                'status' => 'approved_for_reissue',
+                'event_code' => 'operator_approved_reissue',
                 'actor_id' => $actorId,
                 'created_at' => now(),
             ]);
             return ['request_id' => $record->request_id,
-                'status' => 'approved_pending_provider_contract', 'can_create_oms' => false];
+                'status' => 'approved_for_reissue',
+                'can_create_oms' => (bool) config('xlwms.reissue_create_enabled',false)
+                    && (int) config('xlwms.reissue_order_id',0) === $orderId
+                    && hash_equals((string) config('xlwms.reissue_request_id',''),$requestId)];
         });
     }
 }

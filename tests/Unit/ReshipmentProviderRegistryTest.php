@@ -21,18 +21,15 @@ final class ReshipmentProviderRegistryTest extends TestCase
     {
         $adapter = new class implements ReshipmentProviderAdapter {
             public function providerKey(): string { return 'test-provider'; }
-            public function preflight(array $intent): array {
-                return ['ready'=>false,'blockers'=>['MEMO_CONTRACT_UNVERIFIED'],'memo_supported'=>false];
+            public function assertCatalogReady(array $context): void {}
+            public function createDraft(array $context): array {
+                return ['confirmed'=>false,'order_no'=>''];
             }
-            public function createDraft(array $intent): array {
-                return ['result'=>'blocked','provider_order_no'=>null];
-            }
-            public function findExistingExact(string $uniqueThirdOrderNo): array {
-                return ['result'=>'not_found','provider_order_no'=>null];
-            }
+            public function findExistingExact(array $context): ?array { return null; }
+            public function readStatus(array $context): ?array { return null; }
         };
         $registry = new ReshipmentProviderRegistry([$adapter]);
         self::assertSame($adapter,$registry->get('test-provider'));
-        self::assertFalse($registry->get('test-provider')->preflight([])['ready']);
+        self::assertNull($registry->get('test-provider')->findExistingExact([]));
     }
 }
