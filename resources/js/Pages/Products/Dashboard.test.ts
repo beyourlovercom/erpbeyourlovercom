@@ -74,7 +74,7 @@ describe('Products/Dashboard R1–R4', () => {
   })
 
   it('places the order-detail-style sticky navigation before the centered content', async () => {
-    const wrapper = mount(Dashboard, { props })
+    const wrapper = mount(Dashboard, { props, attachTo: document.body })
     const rail = wrapper.get('aside.product-home-nav-rail')
     expect(rail.attributes('aria-label')).toBe('产品模块快捷定位')
     expect(wrapper.get('.product-home-layout').element.firstElementChild).toBe(rail.element)
@@ -90,6 +90,7 @@ describe('Products/Dashboard R1–R4', () => {
     await wrapper.findAll('button.product-home-nav-item')[2].trigger('click')
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
     expect(wrapper.findAll('button.product-home-nav-item')[2].attributes('aria-current')).toBe('location')
+    wrapper.unmount()
   })
 
   it('renders honest empty state without fake product suggestions', () => {
