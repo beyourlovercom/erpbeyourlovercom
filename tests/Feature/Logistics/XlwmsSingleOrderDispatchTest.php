@@ -1673,4 +1673,123 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
     }
 
+
+    /**
+     * Reissue #2 must be a new UUID and a new native OMS order. The old reissue
+     * is preserved as a canceled audited event; its cached status alone is not
+     * sufficient because we recheck the provider immediately before CREATE.
+     */
+    private function canceledReissueChainFixture(string &$priorStatus, string &$newThird): array
+    {
+        $o=$this->orderFixture();
+        $this->statusAttempt($o);
+        $old=null;
+        $this->fakeSecondReissueProvider($o,$old,$priorStatus,$newThird);
+        $r1=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentIntentService::class)
+            ->request($o->id,19,'原 OMS 取消，需要第一次重发');
+        app(\App\Modules\Logistics\Application\Xlwms\ReshipmentApprovalService::class)
+            ->approve($o->id,$r1['request_id'],19,'APPROVE_RESHIP_'.$r1['request_id']);
+        $old=\App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment::where('request_id',$r1['request_id'])->sole();
+        $old->forceFill(['status'=>'draft_created','oms_order_no'=>'OMS-FIRST-RESEND'])->save();
+        return [$o,$old];
+    }
+
+    private function fakeSecondReissueProvider(Order $o, &$old, string &$priorStatus, string &$newThird): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(function($request) use($o,&$old,&$priorStatus,&$newThird) {
+            $url=$request->url();
+            $req=json_decode(json_encode($request['data']),true);
+            if(str_contains($url,'outboundOrder/detail'))return Http::response(['code'=>200,'data'=>[]]);
+            if(str_contains($url,'outboundOrder/pageList')) {
+                $no=$req['outboundOrderNos']??'';
+                $record=match($no) {
+                    'OBS-SAFE-123'=>['outboundOrderNo'=>$no,'thirdOrderNo'=>'BYL-ERP-'.$o->id,
+                        'platformOrderNo'=>'BYL-ERP-'.$o->id,'status'=>4],
+                    'OMS-FIRST-RESEND'=>['outboundOrderNo'=>$no,'thirdOrderNo'=>$old->third_order_no,
+                        'platformOrderNo'=>$old->third_order_no,'status'=>$priorStatus],
+                    'OMS-SECOND-RESEND'=>['outboundOrderNo'=>$no,'thirdOrderNo'=>$newThird,
+                        'platformOrderNo'=>$newThird,'status'=>0],
+                    default=>null,
+                };
+                if(!$record)return Http::response(['code'=>200,'data'=>['total'=>0,'records'=>[]]]);
+                return Http::response(['code'=>200,'data'=>['total'=>1,
+                    'records'=>[array_merge($record,['whCode'=>'OMS-US-SM','logisticsTrackNo'=>null])]]]);
+            }
+            if(str_contains($url,'logistics/channel/list'))return Http::response(['code'=>200,
+                'data'=>[['channelCode'=>'No_Shipping_Service','channelType'=>2,
+                    'channelName'=>'无需物流服务','whCodes'=>[]]]]);
+            if(str_contains($url,'product/pagelist'))return Http::response(['code'=>200,
+                'data'=>['records'=>[['sku'=>'SAME-SKU','approveStatus'=>2]]]]);
+            if(str_contains($url,'outboundOrder/create')) {
+                $draft=$req[0]??[];
+                return Http::response(['code'=>200,'data'=>[[
+                    'thirdOrderNo'=>$draft['thirdOrderNo']??null,'success'=>true,
+                    'orderNo'=>'OMS-SECOND-RESEND']]]);
+            }
+            return Http::response(['code'=>500]);
+        });
+    }
+
+    public function test_second_reissue_after_two_live_cancellations_creates_exactly_one_new_draft(): void
+    {
+        $priorStatus='4';
+        $newThird='';
+        [$o,$prior]=$this->canceledReissueChainFixture($priorStatus,$newThird);
+        $svc=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentDispatchService::class);
+        $read=$svc->readStatus($o->id,$prior->request_id,19);
+        $this->assertSame('4',$read['oms_status_code']);
+        $this->assertDatabaseHas('xlwms_reshipments',[
+            'request_id'=>$prior->request_id,'status'=>'canceled',
+            'oms_order_no'=>'OMS-FIRST-RESEND']);
+        $this->assertDatabaseHas('xlwms_reshipment_events',[
+            'reshipment_id'=>$prior->id,'event_code'=>'provider_canceled_confirmed']);
+        $request=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentIntentService::class)
+            ->request($o->id,19,'第一次重发 OMS 也已取消，独立新草稿第二次重发');
+        $this->assertNotSame($prior->request_id,$request['request_id']);
+        app(\App\Modules\Logistics\Application\Xlwms\ReshipmentApprovalService::class)
+            ->approve($o->id,$request['request_id'],19,'APPROVE_RESHIP_'.$request['request_id']);
+        $second=\App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment::where('request_id',$request['request_id'])->sole();
+        $newThird=$second->third_order_no;
+        config()->set('xlwms.reissue_create_enabled',true);
+        config()->set('xlwms.reissue_order_id',$o->id);
+        config()->set('xlwms.reissue_request_id',$request['request_id']);
+        $result=$svc->createDraft($o->id,$request['request_id'],19,'CREATE_REISSUE_'.$request['request_id']);
+        $this->assertSame('created',$result['result'],json_encode($result));
+        $this->assertSame('OMS-SECOND-RESEND',$result['oms_order_no']);
+        $this->assertDatabaseCount('xlwms_reshipments',2);
+        $this->assertSame('draft_created',$second->fresh()->status);
+        $this->assertSame('canceled',$prior->fresh()->status);
+        $this->assertSame('pending_shipment',$o->fresh()->order_status->value);
+        $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+        $this->assertNull($o->fresh()->shipment->tracking_number);
+        $this->assertSame(1,count(Http::recorded(fn($r)=>str_contains($r->url(),'outboundOrder/create'))));
+        Http::assertSent(fn($r)=>str_contains($r->url(),'outboundOrder/create')
+            && (json_decode(json_encode($r['data']),true)[0]['isSubmit']??null)===0);
+    }
+
+    public function test_second_reissue_stops_if_prior_canceled_oms_reactivates_before_create(): void
+    {
+        $priorStatus='4';
+        $newThird='';
+        [$o,$prior]=$this->canceledReissueChainFixture($priorStatus,$newThird);
+        $svc=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentDispatchService::class);
+        $svc->readStatus($o->id,$prior->request_id,19);
+        $new=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentIntentService::class)
+            ->request($o->id,19,'旧补发 OMS 被取消后申请下一次补发');
+        app(\App\Modules\Logistics\Application\Xlwms\ReshipmentApprovalService::class)
+            ->approve($o->id,$new['request_id'],19,'APPROVE_RESHIP_'.$new['request_id']);
+        $newThird=\App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment::where('request_id',$new['request_id'])->sole()->third_order_no;
+        $priorStatus='2'; // provider status changed after first confirmed cancellation
+        config()->set('xlwms.reissue_create_enabled',true);
+        config()->set('xlwms.reissue_order_id',$o->id);
+        config()->set('xlwms.reissue_request_id',$new['request_id']);
+        $result=$svc->createDraft($o->id,$new['request_id'],19,'CREATE_REISSUE_'.$new['request_id']);
+        $this->assertSame('blocked',$result['result']);
+        $this->assertSame('REISSUE_PREVIOUS_OMS_NOT_CANCELED',$result['code']);
+        Http::assertNotSent(fn($r)=>str_contains($r->url(),'outboundOrder/create'));
+        $this->assertSame('approved_for_reissue',
+            \App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment::where('request_id',$new['request_id'])->sole()->status);
+    }
+
 }
