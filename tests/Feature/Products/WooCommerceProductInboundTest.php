@@ -100,6 +100,39 @@ final class WooCommerceProductInboundTest extends TestCase
         $this->assertDatabaseCount('product_media', 1);
     }
 
+    public function test_wordpress_brand_meta_takes_priority_over_taxonomy_and_never_overwrites_battery(): void
+    {
+        $product = Product::create([
+            'source_type' => 'manual', 'sku' => 'BRAND-001',
+            'name' => 'Existing', 'has_battery' => false,
+        ]);
+        $first = $this->payload(13183, 'BRAND-001', [], [
+            'meta_data' => [['key' => 'brand', 'value' => 'BeYourLover']],
+            'brands' => [['id' => 802, 'name' => 'BEYOURLOVER']],
+        ]);
+        $fallback = $this->payload(13183, 'BRAND-001', [], [
+            'meta_data' => [['key' => 'brand', 'value' => '']],
+            'brands' => [['id' => 5, 'name' => 'Fallback Brand']],
+        ]);
+        $missing = $this->payload(13183, 'BRAND-001');
+        $responses = [$first, $fallback, $missing];
+        $calls = 0;
+        Http::fake(function (Request $request) use ($responses, &$calls) {
+            return Http::response($responses[min($calls++, count($responses) - 1)], 200);
+        });
+
+        app(WooCommerceProductInboundService::class)->sync(null, false, 13183);
+        $this->assertSame('BeYourLover', $product->fresh()->brand);
+        $this->assertFalse($product->fresh()->has_battery);
+
+        app(WooCommerceProductInboundService::class)->sync(null, false, 13183);
+        $this->assertSame('Fallback Brand', $product->fresh()->brand);
+
+        app(WooCommerceProductInboundService::class)->sync(null, false, 13183);
+        $this->assertSame('Fallback Brand', $product->fresh()->brand);
+        $this->assertFalse($product->fresh()->has_battery);
+    }
+
     public function test_media_failure_preserves_last_known_good_gallery(): void
     {
         $product = Product::create(['source_type' => 'manual', 'product_type' => 'simple', 'sku' => 'MEDIA-001', 'name' => 'Media']);
@@ -334,7 +367,7 @@ final class WooCommerceProductInboundTest extends TestCase
             ->where('hasWooProductReference', false));
     }
 
-    public function test_single_product_refresh_requires_sync_operate_without_products_operate(): void
+    public function test_single_product_refresh_requires_both_sync_and_product_operators(): void
     {
         $product = Product::create(['source_type' => 'manual', 'product_type' => 'simple', 'sku' => 'ROUTE-001', 'name' => 'Route']);
         ProductExternalReference::create(['product_id' => $product->id, 'provider' => 'woocommerce', 'connection_key' => 'shop.test', 'reference' => '601', 'reference_type' => 'product']);
@@ -345,9 +378,13 @@ final class WooCommerceProductInboundTest extends TestCase
         $this->actingAs($viewer)->post("/products/{$product->id}/sync-woocommerce")->assertForbidden();
         $this->actingAs($viewer)->get("/products/{$product->id}")->assertInertia(fn ($page) => $page->where('canSync', false));
 
-        $syncOperator = $this->userWith(['products.view', 'sync.operate']);
-        $this->fakeSingle($payload);
-        $this->actingAs($syncOperator)->post("/products/{$product->id}/sync-woocommerce")->assertRedirect();
-        $this->actingAs($syncOperator)->get("/products/{$product->id}")->assertInertia(fn ($page) => $page->where('canSync', true)->where('canOperate', false));
+        $syncOnly = $this->userWith(['products.view', 'sync.operate']);
+        $this->actingAs($syncOnly)->post("/products/{$product->id}/sync-woocommerce")->assertForbidden();
+        $this->actingAs($syncOnly)->get("/products/{$product->id}")->assertInertia(fn ($page) => $page->where('canSync', false)->where('canOperate', false));
+
+        $both = $this->userWith(['products.view', 'products.operate', 'sync.operate']);
+        $this->actingAs($both)->post("/products/{$product->id}/sync-woocommerce")->assertRedirect();
+        $this->actingAs($both)->get("/products/{$product->id}")->assertInertia(fn ($page) => $page->where('canSync', true)->where('canOperate', true));
     }
+
 }

@@ -14,6 +14,7 @@ use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderStatus;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
@@ -69,9 +70,10 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         }
     }
 
-    public function test_speeda_export_uses_real_24_column_contract_and_blocks_missing_phone(): void
+    public function test_speeda_export_uses_real_27_column_contract_and_blocks_missing_phone(): void
     {
         $order = $this->domesticOrder('007-0923-c50001', '4PX', reviewed: true, phone: '13800138000', quantity: 2);
+        $this->attachBarcode($order);
         $bytes = app(SpeedaOutboundExporter::class)->export(collect([$order->fresh()]));
         $path = tempnam(sys_get_temp_dir(), 'speeda-test-');
         file_put_contents($path, $bytes);
@@ -97,7 +99,13 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
             self::assertSame(2, (int) $sheet->getCell('Q2')->getValue());
             self::assertSame('', (string) $sheet->getCell('W2')->getValue());
             self::assertSame('', (string) $sheet->getCell('X2')->getValue());
-            self::assertSame(24, Coordinate::columnIndexFromString($sheet->getHighestDataColumn()));
+            self::assertSame('商家产品识别码', $sheet->getCell('Y1')->getValue());
+            self::assertSame('制造商产品识别码', $sheet->getCell('Z1')->getValue());
+            self::assertSame('国际标准商品编码', $sheet->getCell('AA1')->getValue());
+            self::assertSame('TEST-SKU', $sheet->getCell('Y2')->getValue());
+            self::assertSame('0697729139053', $sheet->getCell('Z2')->getValue());
+            self::assertSame('', (string) $sheet->getCell('AA2')->getValue());
+            self::assertSame(27, Coordinate::columnIndexFromString($sheet->getHighestDataColumn()));
             self::assertSame(2, $sheet->getHighestDataRow());
             $book->disconnectWorksheets();
         } finally {
@@ -105,9 +113,30 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         }
 
         $missingPhone = $this->domesticOrder('007-0923-c50002', '4PX', reviewed: true, phone: '', quantity: 1);
+        $this->attachBarcode($missingPhone);
         $this->expectException(\DomainException::class);
         $this->expectExceptionMessage('收件人电话');
         app(SpeedaOutboundExporter::class)->export(collect([$missingPhone]));
+    }
+
+    public function test_speeda_download_route_writes_europe_barcode_and_keeps_aa_blank(): void
+    {
+        $order = $this->domesticOrder('007-0923-c50999', '4PX', true, '13800138000', 2);
+        $this->attachBarcode($order);
+        $response = $this->actingAs($this->logisticsViewer())->get('/logistics/china/export/4px');
+        $response->assertOk();
+        self::assertSame('1', $response->headers->get('X-BYL-Exported-Orders'));
+        $path = tempnam(sys_get_temp_dir(), '4px-27col-');
+        file_put_contents($path, $response->getContent());
+        try {
+            $book = IOFactory::load($path);
+            $sheet = $book->getSheetByName('标准上传格式');
+            self::assertSame('TEST-SKU', $sheet->getCell('Y2')->getValue());
+            self::assertSame('0697729139053', $sheet->getCell('Z2')->getValue());
+            self::assertEmpty($sheet->getCell('AA2')->getValue());
+            self::assertSame('AA', $sheet->getHighestDataColumn());
+            $book->disconnectWorksheets();
+        } finally { @unlink($path); }
     }
 
     public function test_weship_export_reuses_the_24_column_contract_but_remains_provider_isolated(): void
@@ -149,6 +178,7 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         $ready = $this->domesticOrder('007-0923-c50006', '4PX', reviewed: true, phone: '13800138001', quantity: 1);
         $blocked = $this->domesticOrder('007-0923-c50007', '4PX', reviewed: true, phone: '', quantity: 1);
 
+        $this->attachBarcode($ready);
         $result = app(SpeedaOutboundExporter::class)->exportReady(collect([$ready, $blocked]));
 
         self::assertSame(1, $result['exported_count']);
@@ -297,6 +327,15 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         $user->roles()->attach($role);
 
         return $user;
+    }
+
+    private function attachBarcode(Order $order): void
+    {
+        $product = Product::query()->firstOrCreate(['sku' => 'TEST-SKU'], [
+            'name' => 'Closure Test SKU', 'source_type' => 'manual',
+            'product_type' => 'simple', 'barcode_69' => '0697729139053',
+        ]);
+        $order->items()->update(['product_id' => $product->id]);
     }
 
     private function domesticOrder(string $erpOrderId, string $carrier, bool $reviewed, string $phone, int $quantity): Order

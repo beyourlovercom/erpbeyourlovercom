@@ -13,6 +13,8 @@ class Product extends Model
         'source_type',
         'product_type',
         'sku',
+        'brand',
+        'has_battery',
         'label_sku',
         'label_description',
         'gtin',
@@ -103,6 +105,7 @@ class Product extends Model
     protected $casts = [
         'woocommerce_product_id' => 'integer',
         'is_active' => 'boolean',
+        'has_battery' => 'boolean',
         'weight_kg' => 'decimal:4',
         'weight_evidence_id' => 'integer',
         'shipping_weight_evidence_id' => 'integer',

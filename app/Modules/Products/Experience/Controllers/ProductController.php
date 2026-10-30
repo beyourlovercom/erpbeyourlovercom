@@ -252,7 +252,7 @@ final class ProductController
             'cnf' => null,
             'material_name' => null,
             'packaging_dimensions' => null,
-            'brand' => null,
+            'brand' => $p->brand,
         ];
     }
 
@@ -320,7 +320,7 @@ final class ProductController
             'image_url' => '图片链接', 'woo_url' => '官网链接',
             'units_per_carton' => '标准装箱数', 'packaging_dimensions' => '包装尺寸（待接入）',
             'weight_kg' => '商品重量 kg', 'regular_price' => '原价',
-            'sale_price' => '售价', 'brand' => '品牌（待接入）',
+            'sale_price' => '售价', 'brand' => '品牌',
             'available_stock' => '可用库存（已核实仓库）',
             'gtin' => 'GTIN', 'label_description' => '蓝标描述',
             'dimensions_cm' => '商品尺寸 cm', 'shipping_weight_kg' => '运重 kg',
@@ -350,6 +350,7 @@ final class ProductController
         $configuredProductReference = collect($this->externalRefs->forProduct($id))->first(fn (array $reference): bool => $reference['provider'] === 'woocommerce' && $reference['connection_key'] === $connection && $reference['reference_type'] === 'product');
         $snapshot = ProductProviderSnapshot::query()->where(['product_id' => $id, 'provider' => 'woocommerce', 'connection_key' => $connection])->first();
         $media = ProductMedia::query()->where(['product_id' => $id, 'provider' => 'woocommerce', 'connection_key' => $connection])->orderBy('position')->get();
+        $primaryMedia = $media->firstWhere('is_primary', true) ?? $media->first();
         $recentProductRuns = \App\Modules\Sync\Infrastructure\Models\SyncRunItem::query()->with('run')->where('product_id', $id)->where('operation', 'woocommerce.product_inbound')->latest('id')->limit(10)->get()->map(fn ($item): array => ['status' => $item->status?->value ?? $item->status, 'result_code' => $item->result_code, 'error_message' => $item->error_message, 'completed_at' => $item->completed_at?->toIso8601String(), 'run_id' => $item->sync_run_id])->all();
 
         $canManageProduct = Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false;
@@ -375,13 +376,15 @@ final class ProductController
                 'id' => (int) $product->id,
                 'name' => $product->name,
                 'sku' => $product->sku,
+                'brand' => $product->brand,
+                'has_battery' => (bool) $product->has_battery,
                 'barcode_69' => $product->barcode_69,
                 'source_type' => $product->source_type,
                 'status' => $product->is_active ? 'active' : 'inactive',
                 'product_type' => $product->product_type,
                 'woocommerce_product_id' => $product->woocommerce_product_id,
                 'woo_url' => $snapshot?->permalink,
-                'image_url' => $media->firstWhere('is_primary', true) ? route('products.media.show', $media->firstWhere('is_primary', true)->id) : null,
+                'image_url' => $this->gridImageUrl($primaryMedia),
                 'woo_sync_status' => $snapshot ? 'synced' : ($configuredProductReference ? 'not_synced' : 'not_configured'),
                 'sale_price' => $product->sale_price,
                 'regular_price' => $product->regular_price,
@@ -404,7 +407,7 @@ final class ProductController
             ],
             'externalReferences' => $this->externalRefs->forProduct($id),
             'woo' => $snapshot ? ['provider_status' => $snapshot->provider_status, 'categories' => $snapshot->category_names ?? [], 'description' => $snapshot->description_text, 'short_description' => $snapshot->short_description_text, 'variation_count' => $snapshot->variation_count, 'provider_created_at' => $snapshot->provider_created_at?->toIso8601String(), 'provider_modified_at' => $snapshot->provider_modified_at?->toIso8601String(), 'last_synced_at' => $snapshot->last_synced_at?->toIso8601String(), 'connection_key' => $snapshot->connection_key] : null,
-            'media' => $media->map(fn (ProductMedia $item): array => ['id' => $item->id, 'url' => route('products.media.show', $item->id), 'alt_text' => $item->alt_text, 'position' => $item->position, 'is_primary' => $item->is_primary])->values()->all(),
+            'media' => $media->map(fn (ProductMedia $item): array => ['id' => $item->id, 'url' => $this->gridImageUrl($item), 'alt_text' => $item->alt_text, 'position' => $item->position, 'is_primary' => $item->is_primary])->filter(fn (array $item): bool => $item['url'] !== null)->values()->all(),
             'wooSyncHistory' => $recentProductRuns,
             'skuAliases' => collect($this->skuAliases->listForProduct($id))->map(function (array $alias): array {
                 $editorId = $alias['updated_by_user_id'] ?? $alias['created_by_user_id'] ?? null;
@@ -465,7 +468,7 @@ final class ProductController
                     })->orderBy('name')->get(['id', 'name'])->toArray()
                 : [],
             'canOperate' => Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false,
-            'canSync' => Auth::user()?->can(AuthorizationKeys::SyncOperate->value) ?? false,
+            'canSync' => (Auth::user()?->can(AuthorizationKeys::SyncOperate->value) ?? false) && $canManageProduct,
             'hasWooProductReference' => $configuredProductReference !== null,
         ]);
     }

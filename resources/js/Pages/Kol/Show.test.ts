@@ -20,6 +20,14 @@ describe('KOL Show formal collaboration projection', () => {
 
 })
 
+describe('R6 profile-to-order entry contract', () => {
+  it('only shows the new order action for users with create access and a non-archived KOL', () => {
+    expect(source).toContain('data-testid="kol-create-order"')
+    expect(source).toContain('canCreateOrders && !kol.archived_at')
+    expect(source).toContain('/kol/orders/create?kol_id=')
+  })
+})
+
 describe('KOL two-hop AffiliateWP account action', () => {
   it('uses the server-validated affiliate account URL, not the WordPress user ID', () => {
     expect(source).toContain('affiliateAdminUrl')

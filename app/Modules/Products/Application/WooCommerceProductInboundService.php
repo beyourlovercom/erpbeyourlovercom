@@ -126,11 +126,28 @@ final class WooCommerceProductInboundService
         $previousHash = $this->store->snapshotHash('woocommerce', $connection, $id);
         $changed = $previousHash === null || $previousHash !== $hash;
         $attributes = ['source_type' => 'woocommerce', 'product_type' => (string) ($remote['type'] ?? 'simple'), 'name' => $this->text($remote['name'] ?? ''), 'sale_price' => $this->decimal($remote['sale_price'] ?? null), 'regular_price' => $this->decimal($remote['regular_price'] ?? null), 'is_active' => ($remote['status'] ?? '') === 'publish'];
+        $brand = $this->wooBrand($remote);
+        if ($brand !== null) $attributes['brand'] = $brand;
         DB::transaction(function () use ($product, $remote, $connection, $id, $hash, $attributes): void {
             $this->products->update($product, $attributes);
             $this->store->upsertSnapshot((int) $product->id, 'woocommerce', $connection, $id, ['permalink' => $this->safePermalink($remote['permalink'] ?? null), 'provider_status' => (string) ($remote['status'] ?? ''), 'description_text' => $this->text($remote['description'] ?? ''), 'short_description_text' => $this->text($remote['short_description'] ?? ''), 'category_names' => collect($remote['categories'] ?? [])->filter(fn ($c): bool => is_array($c))->map(fn ($c) => trim((string) ($c['name'] ?? '')))->filter()->values()->all(), 'variation_count' => is_array($remote['variations'] ?? null) ? count($remote['variations']) : (int) ($remote['variation_count'] ?? 0), 'provider_created_at' => $this->date($remote['date_created'] ?? null), 'provider_modified_at' => $this->date($remote['date_modified'] ?? null), 'last_synced_at' => now(), 'payload_hash' => $hash]);
         });
         return ['created' => $previousHash === null, 'changed' => $changed];
+    }
+
+    /** WordPress ACF brand meta is canonical; Woo brands taxonomy is fallback. */
+    private function wooBrand(array $remote): ?string
+    {
+        foreach (($remote['meta_data'] ?? []) as $meta) {
+            if (!is_array($meta) || strtolower(trim((string) ($meta['key'] ?? ''))) !== 'brand') continue;
+            $value = $meta['value'] ?? null;
+            if (is_string($value) && trim($value) !== '') return mb_substr(trim($value), 0, 255);
+        }
+        foreach (($remote['brands'] ?? []) as $brand) {
+            $value = is_array($brand) ? ($brand['name'] ?? null) : null;
+            if (is_string($value) && trim($value) !== '') return mb_substr(trim($value), 0, 255);
+        }
+        return null;
     }
 
     /** @return array{failed:bool,error:?string,items:list<array<string,mixed>>} */

@@ -17,8 +17,10 @@ use App\Modules\Orders\Application\ProductOrderProjection;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductExternalReference;
+use App\Modules\Products\Infrastructure\Models\ProductMedia;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 final class Product360Test extends TestCase
@@ -43,6 +45,54 @@ final class Product360Test extends TestCase
 
         $operator = $this->userWith(['products.view', 'products.operate']);
         $this->actingAs($operator)->get("/products/{$product->id}")->assertInertia(fn ($page) => $page->where('canOperate', true));
+    }
+
+    public function test_product360_uses_safe_woo_cdn_when_primary_local_image_is_missing(): void
+    {
+        config(['services.woocommerce.connection_key' => 'beyourlover.com']);
+        Storage::fake('local');
+        $product = Product::create(['source_type' => 'woocommerce', 'sku' => 'P360-MISSING', 'name' => 'Image recovery']);
+        $media = ProductMedia::create([
+            'product_id' => $product->id, 'provider' => 'woocommerce', 'connection_key' => 'beyourlover.com',
+            'provider_media_key' => 'woo-322',
+            'source_url' => 'https://img.beyourlover.com/products/首图.png',
+            'storage_path' => 'products/missing.png', 'mime_type' => 'image/png',
+            'size_bytes' => 111, 'sha256' => str_repeat('c', 64),
+            'position' => 0, 'is_primary' => true,
+        ]);
+        $viewer = $this->userWith(['products.view']);
+        $url = 'https://img.beyourlover.com/products/%E9%A6%96%E5%9B%BE.png';
+        $this->actingAs($viewer)->get("/products/{$product->id}")
+            ->assertOk()->assertInertia(fn ($page) => $page
+                ->where('product.image_url', $url)
+                ->where('media.0.url', $url));
+        Storage::disk('local')->put('products/missing.png', 'test-image');
+        $this->actingAs($viewer)->get("/products/{$product->id}")
+            ->assertInertia(fn ($page) => $page
+                ->where('product.image_url', route('products.media.show', $media->id)));
+    }
+
+    public function test_product360_avoids_broken_external_sources_and_uses_first_when_no_primary_flag(): void
+    {
+        config(['services.woocommerce.connection_key' => 'beyourlover.com']);
+        Storage::fake('local');
+        $product = Product::create(['source_type' => 'woocommerce', 'sku' => 'P360-FALLBACK', 'name' => 'Fallback']);
+        $media = ProductMedia::create([
+            'product_id' => $product->id, 'provider' => 'woocommerce', 'connection_key' => 'beyourlover.com',
+            'provider_media_key' => 'woo-no-primary', 'source_url' => 'https://img.beyourlover.com/valid.png',
+            'storage_path' => 'products/absent.png', 'mime_type' => 'image/png',
+            'size_bytes' => 10, 'sha256' => str_repeat('d', 64),
+            'position' => 0, 'is_primary' => false,
+        ]);
+        $viewer = $this->userWith(['products.view']);
+        $this->actingAs($viewer)->get("/products/{$product->id}")
+            ->assertInertia(fn ($page) => $page
+                ->where('product.image_url', 'https://img.beyourlover.com/valid.png'));
+        $media->update(['source_url' => 'https://untrusted.invalid/pixel.png']);
+        $this->actingAs($viewer)->get("/products/{$product->id}")
+            ->assertInertia(fn ($page) => $page
+                ->where('product.image_url', null)
+                ->has('media', 0));
     }
 
     public function test_product_order_projection_preserves_windows_and_currency_groups(): void

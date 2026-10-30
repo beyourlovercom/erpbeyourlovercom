@@ -518,6 +518,7 @@ final class ProductService
             'label_description' => $pick('label_description', $product->getAttribute('label_description')),
             'gtin' => $pick('gtin', $product->getAttribute('gtin')),
             'name' => $attributes['name'] ?? $product->getAttribute('name'),
+            'has_battery' => array_key_exists('has_battery', $attributes) ? (bool) $attributes['has_battery'] : $product->getAttribute('has_battery'),
             'unit' => $pick('unit', $product->getAttribute('unit')),
             'is_active' => array_key_exists('is_active', $attributes) ? (bool) $attributes['is_active'] : $product->getAttribute('is_active'),
             // Weight fields written only by evidence adopt/clear below; generic update always keeps current DB value.

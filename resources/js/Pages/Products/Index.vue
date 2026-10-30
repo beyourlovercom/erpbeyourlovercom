@@ -59,7 +59,7 @@ const definitions: GridColumnDefinition<ColumnKey>[] = [
   { key: 'weight_kg', label: '商品重量 kg' },
   { key: 'regular_price', label: '原价' },
   { key: 'sale_price', label: '售价' },
-  { key: 'brand', label: '品牌（待接入）', defaultVisible: false },
+  { key: 'brand', label: '品牌', defaultVisible: false },
   { key: 'available_stock', label: '可用库存' },
   { key: 'gtin', label: 'GTIN' },
   { key: 'label_description', label: '蓝标描述' },
