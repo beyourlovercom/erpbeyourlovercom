@@ -4,9 +4,49 @@ use App\Modules\Logistics\Application\Xlwms\ReshipmentPreview;
 use App\Modules\Logistics\Application\Xlwms\ReshipmentIntentService;
 use App\Modules\Logistics\Application\Xlwms\ReshipmentApprovalService;
 use App\Modules\Logistics\Application\Xlwms\ReshipmentDispatchService;
+use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment;
+use App\Modules\Logistics\Application\OverseaFiles\OverseaOutboundFileService;
+use App\Modules\Logistics\Application\Xlwms\XlwmsManualDraftBindingService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 final class XlwmsReshipmentController {
+    public function bindManualDraft(
+        int $order, string $requestId, Request $request,
+        XlwmsManualDraftBindingService $binding
+    ): JsonResponse {
+        $input=$request->validate([
+            'oms_order_no'=>['required','string','regex:/^[A-Za-z0-9_-]{6,100}$/D'],
+        ]);
+        try {
+            return response()->json($binding->bind($order,$requestId,
+                $input['oms_order_no'],(int)$request->user()->id))
+                ->header('Cache-Control','private, no-store');
+        } catch (\RuntimeException $e) {
+            return response()->json(['code'=>$e->getMessage()],409)
+                ->header('Cache-Control','private, no-store');
+        }
+    }
+
+    public function manualDraftExport(
+        int $order, string $requestId, OverseaOutboundFileService $files
+    ): \Symfony\Component\HttpFoundation\Response {
+        abort_unless(config('xlwms.us_sm_outbound_entry_mode')==='oms_manual_draft', 404);
+        $r=XlwmsReshipment::query()->where('original_order_id',$order)
+            ->where('request_id',$requestId)->firstOrFail();
+        abort_unless($r->status==='approved_for_reissue' && !filled($r->oms_order_no), 409,
+            '重发申请未批准，或已经创建 OMS 订单，禁止重复导入。');
+        $o=Order::with(['address','items','shipment.warehouse'])->findOrFail($order);
+        abort_unless($o->shipment && $o->shipment->warehouse?->code==='US-SM', 409);
+        $file=$files->exportReshipDraft($o->shipment,$r->third_order_no);
+        return response($file['bytes'],200,[
+            'Content-Type'=>'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition'=>'attachment; filename="'.$file['filename'].'"',
+            'Cache-Control'=>'private, no-store',
+        ]);
+    }
+
+
     public function createDraft(int $order, Request $request, ReshipmentDispatchService $service): JsonResponse {
         $input=$request->validate([
             'request_id'=>['required','uuid'],

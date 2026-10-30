@@ -175,8 +175,17 @@ final class ReshipmentDispatchService
         $conn=WarehouseOpenApiConnection::query()->where('warehouse_id',$record->warehouse_id)
             ->where('provider','xlwms')->firstOrFail();
         $remote=$this->providers->get('xlwms')->readStatus(['connection'=>$conn,'oms_order_no'=>$record->oms_order_no]);
+        // OMS UI/XLS drafts do not carry a native thirdOrderNo; the binder
+        // previously validated native platform/reference/warehouse/SKU/channel.
+        $manual=DB::table('xlwms_reshipment_events')
+            ->where('reshipment_id',$record->id)
+            ->where('event_code','manual_draft_bound')->exists();
+        $identityMatches=$manual
+            ? ($remote['refer_order_no']===$record->third_order_no
+                && in_array($remote['third_order_no'],['',$record->third_order_no],true))
+            : ($remote['third_order_no']===$record->third_order_no);
         if(!$remote || $remote['order_no']!==$record->oms_order_no
-            || $remote['third_order_no']!==$record->third_order_no
+            || !$identityMatches
             || $remote['platform_order_no']!==$record->third_order_no) {
             throw new RuntimeException('REISSUE_STATUS_IDENTITY_MISMATCH');
         }

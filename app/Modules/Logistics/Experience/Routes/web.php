@@ -62,6 +62,14 @@ Route::middleware(['web', 'auth'])->group(function (): void {
         [XlwmsReshipmentController::class, 'approveIntent'])
         ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:2,1'])
         ->whereNumber('order')->name('logistics.xlwms.order.reship-approve');
+    Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/reship-manual-bind/{requestId}',
+        [XlwmsReshipmentController::class,'bindManualDraft'])
+        ->middleware(['can:logistics.operate',RequireLogisticsExecution::class,'throttle:5,1'])
+        ->whereNumber('order')->whereUuid('requestId')->name('logistics.xlwms.order.reship-manual-bind');
+    Route::get('/logistics/oversea/us-3sm/orders/{order}/xlwms/reship-manual-draft/{requestId}',
+        [XlwmsReshipmentController::class,'manualDraftExport'])
+        ->middleware(['can:logistics.operate',RequireLogisticsExecution::class,'throttle:6,1'])
+        ->whereNumber('order')->whereUuid('requestId')->name('logistics.xlwms.order.reship-manual-draft');
     Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/reship-create',
         [XlwmsReshipmentController::class, 'createDraft'])
         ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:1,1'])

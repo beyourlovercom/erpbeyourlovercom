@@ -16,6 +16,11 @@ final class XlwmsOrderGateway
      */
     private function signedPost(WarehouseOpenApiConnection $connection, string $path, array $data): array
     {
+        if ($path === 'outboundOrder/create'
+            && (! app()->environment('testing')
+                || config('xlwms.us_sm_outbound_entry_mode') !== 'legacy_api_test')) {
+            throw new RuntimeException('XLWMS_OPENAPI_CREATE_BLOCKED_USE_OMS_DRAFT_IMPORT');
+        }
         if (! in_array($path, ['outboundOrder/detail', 'outboundOrder/pageList', 'outboundOrder/create', 'warehouse/options', 'logistics/channel/list', 'product/pagelist'], true)) {
             throw new RuntimeException('OMS operation not allowlisted.');
         }
@@ -253,6 +258,25 @@ final class XlwmsOrderGateway
             'status_code' => (string)$status,
             'tracking_no' => $tracking ?: null,
         ];
+    }
+
+    /** Read-only exact lookup for an OMS UI/XLS imported draft.
+     * External imports may have no thirdOrderNo at all; platformOrderNo must
+     * match the unique ERP reissue ID and native detail is revalidated later.
+     */
+    public function readManualDraftDetail(WarehouseOpenApiConnection $conn,string $platformNo): array
+    {
+        if (!preg_match('/^BYL-RESHIP-[0-9a-f]{32}$/D',$platformNo)) {
+            throw new RuntimeException('OMS_MANUAL_DRAFT_REFERENCE_INVALID');
+        }
+        $r=$this->signedPost($conn,'outboundOrder/detail',
+            ['platformOrderNoList'=>[$platformNo]]);
+        $rows=$r['data']??null;
+        if (!is_array($rows)) throw new RuntimeException('OMS_MANUAL_DRAFT_DETAIL_INVALID');
+        $matched=array_values(array_filter($rows,static fn($row): bool =>
+            is_array($row) && ($row['platformOrderNo']??null)===$platformNo));
+        if (count($matched)!==1) throw new RuntimeException('OMS_MANUAL_DRAFT_DETAIL_AMBIGUOUS');
+        return $matched[0];
     }
 
     /** Verify exact OMS native channel and every requested SKU without writes. */

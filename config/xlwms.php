@@ -17,6 +17,10 @@ return [
     'ca_bundle' => (string) env('XLWMS_CA_BUNDLE', ''),
     // No unattended dispatch or schedule without a separate approval.
     'auto_dispatch_enabled' => false,
+    // Production fail-closed: provider auto-submits outboundOrder/create regardless
+    // of isSubmit=0; only OMS UI Save Draft / official XLS import is safe.
+    'us_sm_outbound_entry_mode' => 'oms_manual_draft',
+
     // P1-P3: deliberate single-order send; off until explicit Owner live-order authorization.
     'live_dispatch_enabled' => filter_var(env('XLWMS_LIVE_DISPATCH_ENABLED', false), FILTER_VALIDATE_BOOL),
     // Separate warehouse-batch gate. Off unless explicitly enabled together

@@ -12,6 +12,16 @@ final class OverseaOutboundFileService
         private readonly CanadaOutboundExporter $canada,
     ) {}
 
+    /** Export only an explicitly approved independent reissue, with a fresh
+     * provider reference; do not duplicate the original commercial order. */
+    public function exportReshipDraft(Shipment $shipment, string $thirdOrderNo): array
+    {
+        return [
+            'filename' => sprintf('007-us-3sm-reship-%s.xlsx', substr($thirdOrderNo,-12)),
+            'bytes' => $this->wms->exportReshipDraft($shipment,$thirdOrderNo),
+        ];
+    }
+
     /** @param iterable<Shipment> $shipments @return array{filename:string,bytes:string} */
     public function export(string $warehouseKey, iterable $shipments): array
     {
