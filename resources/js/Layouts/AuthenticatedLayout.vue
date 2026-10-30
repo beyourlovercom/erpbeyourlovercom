@@ -15,7 +15,6 @@ import {
     scheduleGlobalFeedbackRestore,
 } from '../lib/globalFeedback'
 import type { ShellPageProps } from '../types/navigation'
-import { resolveWarehousePortal } from '../lib/warehousePortal'
 
 defineProps<{ title: string; breadcrumbs: (string | BreadcrumbItem)[] }>()
 const page = usePage<ShellPageProps>()
@@ -96,7 +95,6 @@ onMounted(() => {
 })
 onBeforeUnmount(() => narrowScreenQuery?.removeEventListener('change', updateNarrowScreen))
 const currentPath = computed(() => page.url.split('?')[0])
-const warehousePortal = computed(() => resolveWarehousePortal(page.url))
 </script>
 
 <template>
@@ -117,7 +115,6 @@ const warehousePortal = computed(() => resolveWarehousePortal(page.url))
         :breadcrumbs="breadcrumbs"
         :mobile-expanded="mobileOpen"
         :notification-center="page.props.notificationCenter"
-        :warehouse-portal="warehousePortal"
         @toggle-mobile="toggleMobile"
       />
       <main id="main-content" class="shell-content" tabindex="-1"><slot /></main>

@@ -108,27 +108,3 @@ describe('TopBar global search', () => {
     expect(wrapper.find('.shell-topbar-trailing [aria-label="全局搜索"]').exists()).toBe(true)
   })
 })
-
-
-describe('TopBar warehouse portal quick link', () => {
-  it('opens the selected external OMS in a new tab without transferring ERP session data', () => {
-    const wrapper = mount(TopBar, {
-      props: {
-        title: '物流', breadcrumbs: ['BYL ERP','物流','美国3世迈仓'], mobileExpanded: false,
-        warehousePortal: { href: 'https://oms.xlwms.com/login', label: '进入世迈仓库' },
-      },
-    })
-    const link = wrapper.find('.shell-topbar-trailing .shell-warehouse-portal')
-    expect(link.text()).toContain('进入世迈仓库')
-    expect(link.attributes('href')).toBe('https://oms.xlwms.com/login')
-    expect(link.attributes('target')).toBe('_blank')
-    expect(link.attributes('rel')).toBe('noopener noreferrer')
-  })
-
-  it('does not show a warehouse portal outside a selected supported warehouse', () => {
-    const wrapper = mount(TopBar, {
-      props: { title: '物流', breadcrumbs: ['BYL ERP','物流'], mobileExpanded: false },
-    })
-    expect(wrapper.find('.shell-warehouse-portal').exists()).toBe(false)
-  })
-})
