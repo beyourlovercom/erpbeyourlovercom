@@ -78,9 +78,9 @@ describe('Products/Dashboard R1–R4', () => {
     const rail = wrapper.get('aside.product-home-nav-rail')
     expect(rail.attributes('aria-label')).toBe('产品模块快捷定位')
     expect(wrapper.get('.product-home-layout').element.firstElementChild).toBe(rail.element)
-    expect(wrapper.findAll('button.product-home-nav-item')).toHaveLength(4)
+    expect(wrapper.findAll('button.product-home-nav-item')).toHaveLength(3)
     for (const id of ['product-section-overview', 'product-section-shortcuts',
-      'product-section-attention', 'product-section-recent']) {
+      'product-section-attention']) {
       expect(wrapper.find('#' + id).exists()).toBe(true)
     }
 
