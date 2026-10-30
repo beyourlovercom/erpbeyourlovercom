@@ -115,6 +115,15 @@ function cancelParametersEdit() {
   parametersEditing.value = false
   parametersForm.clearErrors()
 }
+// Keep exactly one checkbox selected. Re-check the selected option if clicked again.
+function selectBatteryOption(value: boolean, event: Event) {
+  const input = event.target as HTMLInputElement
+  if (!input.checked) {
+    input.checked = true
+    return
+  }
+  parametersForm.has_battery = value
+}
 function saveInlineParameters() {
   parametersForm.transform(data => {
     const { review_measurements, ...main } = data
@@ -322,8 +331,8 @@ const selectRelative = async (tab: Tab, delta: number) => {
             <fieldset class="product360-inline-field" style="border:0;padding:0;margin:0">
               <legend>是否带电</legend>
               <div style="display:flex;gap:16px;align-items:center;margin-top:8px">
-                <label><input type="checkbox" :checked="parametersForm.has_battery" @click.prevent="parametersForm.has_battery = true"> 带电</label>
-                <label><input type="checkbox" :checked="!parametersForm.has_battery" @click.prevent="parametersForm.has_battery = false"> 不带电</label>
+                <label><input type="checkbox" :checked="parametersForm.has_battery" @change="selectBatteryOption(true, $event)"> 带电</label>
+                <label><input type="checkbox" :checked="!parametersForm.has_battery" @change="selectBatteryOption(false, $event)"> 不带电</label>
               </div>
               <small v-if="parameterErrors.has_battery" class="product360-inline-error">{{ parameterErrors.has_battery }}</small>
             </fieldset>
