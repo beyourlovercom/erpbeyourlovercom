@@ -4,6 +4,7 @@ namespace App\Modules\Products\Infrastructure;
 
 use App\Modules\Products\Application\Contracts\ProductRepository;
 use App\Modules\Products\Application\SkuMatchKey;
+use App\Modules\Products\Application\ProductAttentionFilters;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
@@ -101,6 +102,11 @@ final class EloquentProductRepository implements ProductRepository
     public function list(array $filters = [], int $perPage = 50): LengthAwarePaginator
     {
         return Product::query()
+            ->when(in_array($filters['attention'] ?? '', ProductAttentionFilters::KINDS, true),
+                fn ($q) => ProductAttentionFilters::apply(
+                    $q, (string) $filters['attention'],
+                    (string) config('services.woocommerce.connection_key', 'beyourlover.com')
+                ))
             ->when(isset($filters['search']) && $filters['search'] !== '', function ($q) use ($filters): void {
                 $raw = trim((string) $filters['search']);
                 $search = '%'.$raw.'%';
@@ -108,6 +114,7 @@ final class EloquentProductRepository implements ProductRepository
                     $inner->where('sku', 'like', $search)
                         ->orWhere('name', 'like', $search)
                         ->orWhere('gtin', 'like', $search)
+                        ->orWhere('barcode_69', 'like', $search)
                         ->orWhereHas('skuAliases', fn ($a) => $a->where('alias_sku', 'like', $search));
                     if (ctype_digit($raw)) {
                         $inner->orWhere('woocommerce_product_id', (int) $raw);
