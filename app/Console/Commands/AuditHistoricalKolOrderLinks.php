@@ -51,8 +51,13 @@ final class AuditHistoricalKolOrderLinks extends Command
             // This is supporting evidence for a human-reviewed proposal, never authorization to backfill.
             $logisticsByReference = $db->table('logistics_historical_import_rows')
                 ->whereNotNull('kol_id')->whereNotNull('source_order_no')
-                ->get(['id', 'batch_id', 'source_order_no', 'kol_id', 'classification'])
+                ->get(['id', 'batch_id', 'source_order_no', 'kol_id', 'classification', 'evidence_hash'])
                 ->groupBy('source_order_no');
+            $evidenceKeys = $db->table('logistics_historical_evidences')
+                ->get(['historical_row_id', 'kol_id', 'evidence_hash'])
+                ->mapWithKeys(fn ($row): array => [
+                    $row->historical_row_id.':'.$row->kol_id.':'.$row->evidence_hash => true,
+                ])->all();
             $knownKolIds = $db->table('kols')->pluck('id')->mapWithKeys(
                 fn ($id): array => [(int) $id => true]
             )->all();
@@ -95,7 +100,10 @@ final class AuditHistoricalKolOrderLinks extends Command
                             && isset($knownKolIds[$historicalKolIds[0]])) {
                             $candidateId = $historicalKolIds[0];
                             $sourceRow = $historical->first();
-                            $sourceReady = $historical->count() === 1 && $sourceRow->classification === 'ready';
+                            $verifiedEvidenceKey = $sourceRow->id.':'.$candidateId.':'.$sourceRow->evidence_hash;
+                            $sourceReady = $historical->count() === 1
+                                && $sourceRow->classification === 'ready'
+                                && isset($evidenceKeys[$verifiedEvidenceKey]);
                             $status = $sourceReady ? 'logistics_ready_candidate' : 'logistics_review_candidate';
                             $evidence = 'logistics_historical_import_rows:row='.$sourceRow->id
                                 .';batch='.$sourceRow->batch_id.';classification='.$sourceRow->classification;
