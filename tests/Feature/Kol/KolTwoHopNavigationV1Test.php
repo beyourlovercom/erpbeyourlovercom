@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolAffiliateAccount;
+use App\Modules\Orders\Application\OrderIdentityService;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -115,6 +116,34 @@ final class KolTwoHopNavigationV1Test extends TestCase
         $this->assertDatabaseCount('orders', 0);
         $this->actingAs($staff)->post('/kol/orders', [...$payload, 'kol_id' => $kol->id])->assertRedirect();
         $this->assertDatabaseHas('orders', ['order_kind' => 'kol_fulfillment', 'kol_id' => $kol->id]);
+    }
+
+    public function test_manual_kol_erp_identity_uses_database_order_id_without_numeric_offset(): void
+    {
+        $staff = $this->viewer(['orders.view', 'orders.create', 'kol.view']);
+        $kol = $this->kol($staff);
+        $this->bindAffiliate($kol);
+        app(OrderIdentityService::class)->updatePrefix('007', $staff);
+
+        $product = Product::create(['source_type' => 'manual', 'sku' => 'APPROVED-ID-001', 'name' => 'Approved ID', 'is_active' => true]);
+        $payload = [
+            'external_order_number' => 'KOL-APPROVED-ID', 'order_date' => '2026-10-30',
+            'kol_id' => $kol->id, 'currency' => 'USD',
+            'recipient_name' => 'Synthetic', 'phone' => '123', 'country' => 'US',
+            'province_state' => 'CA', 'city' => 'Los Angeles', 'address_line_1' => 'Synthetic',
+            'items' => [['product_id' => $product->id, 'product_summary' => 'Approved ID', 'quantity' => 1, 'unit_price' => '0.00']],
+        ];
+
+        $this->actingAs($staff)->post('/kol/orders', $payload)->assertRedirect();
+        $first = Order::query()->firstOrFail();
+        $this->assertSame('007-1030-k'.$first->id, $first->erp_order_id);
+        $this->assertSame('KOL-APPROVED-ID', $first->external_order_number);
+        $this->assertSame($kol->id, (int) $first->kol_id);
+
+        $this->actingAs($staff)->post('/kol/orders', [...$payload, 'external_order_number' => 'KOL-APPROVED-ID-2'])->assertRedirect();
+        $second = Order::query()->latest('id')->firstOrFail();
+        $this->assertSame('007-1030-k'.$second->id, $second->erp_order_id);
+        $this->assertNotSame($first->erp_order_id, $second->erp_order_id);
     }
 
     public function test_r61_unbound_or_inactive_affiliate_blocks_all_manual_kol_orders(): void

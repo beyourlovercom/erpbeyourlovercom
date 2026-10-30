@@ -55,10 +55,10 @@ final class OrderService
                 'owner_id' => $orderAttributes['owner_id'] ?? $actor?->getAuthIdentifier(),
             ]);
             if ($isManualKol) {
-                // KOL master IDs use the ordinary kN namespace. Manual-only orders use
-                // a reserved high numeric range derived from the persisted order PK.
+                // Approved manual KOL ERP identity: {prefix}-{MMDD}-k{orders.id}.
+                // Preserve a uniqueness failure rather than silently changing the number.
                 $order->erp_order_id = $this->orderIdentities->generate(
-                    'k', (string) (900000000000 + $order->id), (string) $attributes['order_date']
+                    'k', (string) $order->id, (string) $attributes['order_date']
                 );
                 $order->save();
             }
