@@ -333,9 +333,10 @@ final class XlwmsOrderGateway
         return ['confirmed'=>true,'order_no'=>(string)$matches[0]['orderNo']];
     }
 
-    /** Production draft-only creation. Unlike submit, this does NOT send
-     * the order into the warehouse process. Idempotency/identity enforcement
-     * is performed by the calling application service before this endpoint.
+    /** Requests initial draft-only CREATE (isSubmit=0), but XLWMS OpenAPI
+     * may later AUTO-SUBMIT the order independently of this API request and
+     * the OMS UI checkbox. A status=0 readback is NOT a lasting draft guarantee.
+     * Idempotency/identity enforcement occurs in the application service.
      * @param array<string,mixed> $draft
      * @return array{confirmed:bool,order_no:string,draft_verified:bool,oms_status_code:?string,draft_verify_code:?string}
      */
