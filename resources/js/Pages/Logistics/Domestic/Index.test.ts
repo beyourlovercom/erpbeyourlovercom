@@ -29,7 +29,7 @@ const baseProps = {
   },
   providerStatus:{
     '4px':{export_ready:true,return_ready:true,label:'速达 / 4PX'},
-    weship:{export_ready:true,return_ready:true,label:'纬狮 / Weship',note:'与速达共用 24 列下单模板 · XLSX 下载 · XLS/XLSX 回传'},
+    weship:{export_ready:true,return_ready:true,label:'纬狮 / Weship',note:'纬狮独立保留原 24 列模板 · XLSX 下载 · XLS/XLSX 回传'},
   },
 }
 
@@ -57,7 +57,7 @@ describe('Domestic logistics production workbench', () => {
     const weship=mount(Index,{props:{...baseProps,view:'today-weship',trackingImportPreview:null,trackingImportProvider:null}})
     expect(weship.text()).toContain('纬狮 / Weship')
     expect(weship.text()).not.toContain('速达 / 4PX')
-    expect(weship.text()).toContain('与速达共用 24 列下单模板')
+    expect(weship.text()).toContain('纬狮独立保留原 24 列模板')
     expect(weship.text()).not.toContain('Fail Closed')
     expect(weship.text()).toContain('下载纬狮下单表')
     expect(weship.text()).toContain('上传纬狮单号表')
