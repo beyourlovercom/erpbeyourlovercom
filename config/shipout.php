@@ -19,7 +19,7 @@ return [
     // Fail closed on actual dispatch unless SKU & OMS available-stock match.
     // Legacy isolated fixtures may explicitly turn this check off.
     'sandbox_inventory_preflight_enabled' => filter_var(env('SHIPOUT_SANDBOX_INVENTORY_PREFLIGHT_ENABLED', true), FILTER_VALIDATE_BOOL),
-    'sandbox_client_org_id' => (string) env('SHIPOUT_SANDBOX_CLIENT_ORG_ID',''),
+    'sandbox_client_org_id' => (string) env('SHIPOUT_SANDBOX_CLIENT_ORG_ID', ''),
     // ShipOut query API returns 'YYYY-MM-DD HH:mm:ss' with NO offset.
     // Must be independently confirmed with provider BEFORE live ERP apply.
     // Default blank: fail closed; never assume UTC or Asia/Shanghai.
@@ -28,5 +28,20 @@ return [
     'sandbox_enabled_modes' => (string) env('SHIPOUT_SANDBOX_ENABLED_MODES', '9'),
     'sandbox_service_group_id' => (string) env('SHIPOUT_SANDBOX_SERVICE_GROUP_ID', ''),
     'sandbox_service_group_label' => (string) env('SHIPOUT_SANDBOX_SERVICE_GROUP_LABEL', ''),
+
+    // R9 independent production credential namespace; never loaded from sandbox.
+    // All production operations default OFF, including read, dispatch and apply.
+    'production_read_enabled' => filter_var(env('SHIPOUT_PRODUCTION_READ_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'production_dispatch_enabled' => filter_var(env('SHIPOUT_PRODUCTION_DISPATCH_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'production_tracking_apply_enabled' => filter_var(env('SHIPOUT_PRODUCTION_TRACKING_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'production_app_key' => (string) env('SHIPOUT_PRODUCTION_APP_KEY', ''),
+    'production_app_secret' => (string) env('SHIPOUT_PRODUCTION_APP_SECRET', ''),
+    'production_bearer' => (string) env('SHIPOUT_PRODUCTION_BEARER', ''),
+    'production_warehouse_id' => (string) env('SHIPOUT_PRODUCTION_WAREHOUSE_ID', ''),
+    'production_client_org_id' => (string) env('SHIPOUT_PRODUCTION_CLIENT_ORG_ID', ''),
+    // Owner provisional assumption ONLY. Do not interpret as provider-confirmed timezone.
+    // No production tracking apply implementation is authorized in R9.
+    'production_shipped_time_timezone_preview' => (string) env('SHIPOUT_PRODUCTION_SHIPPED_TIME_TIMEZONE_PREVIEW', 'Asia/Shanghai'),
+    'production_shipped_time_timezone_verified' => filter_var(env('SHIPOUT_PRODUCTION_SHIPPED_TIME_TIMEZONE_VERIFIED', false), FILTER_VALIDATE_BOOL),
 
 ];
