@@ -5,6 +5,7 @@ use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\WarehouseOpenApiConnection;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsOrderGateway;
+use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsInventorySnapshot;
 use Illuminate\Support\Facades\Schema;
 /** Deliberately read-only. Never retry original order's external CREATE. */
 final class ReshipmentPreview {
@@ -14,6 +15,15 @@ final class ReshipmentPreview {
         $ship=$order->shipment;
         $old=XlwmsDispatchAttempt::query()->where('order_id',$id)->first();
         $base=$this->regular->forOrder($order,$requireFreshStock);
+        // Only the one exact Owner-approved Canary may use fresh target SKU
+        // evidence when unrelated SKUs block full-warehouse reconciliation.
+        $targetedStockVerified=$requireFreshStock
+            && (in_array('OMS_SNAPSHOT_NOT_FRESH',$base['blockers'],true)
+                || in_array('OMS_SNAPSHOT_NOT_RECONCILED',$base['blockers'],true))
+            && $this->authorizedTargetSkuStock($order,$currentRequestId);
+        if ($targetedStockVerified) {
+            $base['blockers']=array_values(array_diff($base['blockers'],['OMS_SNAPSHOT_NOT_FRESH','OMS_SNAPSHOT_NOT_RECONCILED']));
+        }
         $shipped=in_array($order->order_status?->value, ['shipped','completed','completed_delivered'], true)
             && $ship?->shipment_status==='shipped';
         // The first OMS order was cancelled before real shipment. Confirm cancellation
@@ -75,6 +85,7 @@ final class ReshipmentPreview {
             'original_tracking_present'=>filled($ship?->tracking_number),
             'warehouse'=>$ship?->warehouse?->code,
             'channel'=>'No_Shipping_Service','draft_only'=>true,
+            'stock_evidence_mode'=>$targetedStockVerified?'scoped_fresh_oms_inventory':'standard_applied_snapshot',
             'items'=>$base['payload']['productList'],
             'recipient'=>$address?->recipient_name,
             'address'=>[
@@ -93,4 +104,53 @@ final class ReshipmentPreview {
             'memo_contract_verified'=>false,
         ];
     }
+
+    private function authorizedTargetSkuStock(Order $order, ?string $requestId): bool
+    {
+        if (! $requestId || ! (bool) config('xlwms.reissue_create_enabled', false)
+            || (int) config('xlwms.reissue_order_id', 0) !== (int) $order->id
+            || ! hash_equals((string)config('xlwms.reissue_request_id', ''), $requestId)) return false;
+        $ship=$order->shipment;
+        if (! $ship || $ship->warehouse?->code !== 'US-SM') return false;
+        $request=XlwmsReshipment::query()->where('original_order_id',$order->id)
+            ->where('request_id',$requestId)->first();
+        if (! $request || ! in_array($request->status,['approved_for_reissue','prechecking'],true)
+            || (int) $request->approved_by < 1 || filled($request->oms_order_no)) return false;
+        $conn=WarehouseOpenApiConnection::query()
+            ->where('warehouse_id',$ship->warehouse_id)->where('provider','xlwms')->first();
+        $snapshot=XlwmsInventorySnapshot::query()->where('warehouse_id',$ship->warehouse_id)
+            ->orderByDesc('id')->first();
+        if (! $conn || ! $snapshot || $snapshot->status !== 'blocked'
+            || ($snapshot->summary['v2'] ?? false) !== true
+            || $snapshot->wh_code !== $conn->oms_warehouse_code
+            || ! $snapshot->fetched_at || ! $snapshot->updated_at
+            || $snapshot->fetched_at->gt($snapshot->updated_at)
+            || $snapshot->updated_at->gt(now())
+            || $snapshot->updated_at->diffInSeconds(now()) > 120) return false;
+        $qtyBySku=[];
+        foreach ($order->items as $item) {
+            $sku=trim((string)($item->resolved_fulfillment_sku ?: $item->sku));
+            $product=(int)$item->product_id;
+            $qty=(int)$item->quantity;
+            if ($sku==='' || $product<1 || $qty<1) return false;
+            if (isset($qtyBySku[$sku]) && $qtyBySku[$sku]['product']!==$product) return false;
+            $qtyBySku[$sku]=['product'=>$product,'qty'=>($qtyBySku[$sku]['qty']??0)+$qty];
+        }
+        if ($qtyBySku===[]) return false;
+        foreach ($qtyBySku as $sku=>$expected) {
+            $rows=$snapshot->rows()->where('provider_sku',$sku)->limit(2)->get();
+            if ($rows->count()!==1) return false;
+            $row=$rows->first();
+            $free=$row->oms_available;
+            $locked=$row->oms_locked;
+            $total=$row->oms_total;
+            if ($row->resolution_status!=='matched'
+                || (int)$row->product_id!==$expected['product']
+                || $free===null || $locked===null || $total===null
+                || (int)$free<$expected['qty'] || (int)$locked<0
+                || (int)$total!==(int)$free+(int)$locked) return false;
+        }
+        return true;
+    }
+
 }
