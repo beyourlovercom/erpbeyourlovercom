@@ -36,22 +36,27 @@
 ## 4. Test evidence
 - PHP syntax lint: PASS. Latest main rebase base: f8fa4954; no overlap with new XLWMS files.
 - Laravel Pint: local candidate files formatted.
-- Targeted current-main sandbox + new production tests: 67 passed, 248 assertions (retained after rebasing to f8fa4954).
+- Targeted current-main sandbox + new production tests: **68 passed, 253 assertions** after Owner-provisional timezone preview regression (local UAT worktree, base f8fa4954).
 - Real production authentication: **PASS via Owner local GET**, HTTP 200 and warehouse identity 1265864414750314497 (MOREPLUS).
-- Real warehouse, products and `availableQuantity`: **read-only verified** as above. `clientOrgId=57893` is a JWT-derived candidate with successful stock query, but still requires independent provider identity confirmation. ERP Verified SKU Alias comparison remains PENDING.
+- Real warehouse, products and `availableQuantity`: **read-only verified** as above. `clientOrgId=57893` is Owner-confirmed and matched successful stock query. No vendor-agent statement was provided. ERP Verified SKU Alias comparison remains PENDING.
 - Initial pre-rebase full local suite: **NOT GREEN** (1,949 passed, 303 failed, 7 warnings, 8 skipped, 1 deprecated). Observed unrelated isolated-environment failures include missing SQLite logistics_carriers and missing frontend build; architecture frozen file set was already inconsistent with current checkout. Diagnose upstream CI separately; do not call release ready.
-- Exact HEAD GitHub CI: **NOT DONE**, since new files are still in the local worktree.
+- Partial Draft PR #580 head d8fd33a had a passing GitHub workflow, but that commit did NOT contain configuration or new test files, therefore it was NOT a complete R9 CI pass. Config was later committed on the same Draft PR. Tests remain missing from GitHub due to a safety gate; do not call the PR complete or mergeable by QA. Confirm exact-head CI only after all files are delivered and reviewed.
 - No new migration; no provider POST endpoint implemented in this candidate.
 
 ## 4A. Real production R9-A evidence (Owner local output, 2026-10-30)
 - Production gateway GET `/open-api/oms/info/warehouse/list`: `HTTP_STATUS=200`, `API_AUTH_PASS=True`.
 - One warehouse exactly: `warehouseId=1265864414750314497`, name `MOREPLUS`; list validity PASS.
 - Source: Owner-executed local-only signed request using protected AppKey, AppSecret and customer Bearer. No secret value recorded.
-- Identity confirmation applies to this ONE warehouse only. `clientOrgId` remains unconfirmed.
+- Identity confirmation applies to this ONE warehouse only. `clientOrgId` subsequently Owner-confirmed as 57893, no additional vendor-agent statement.
 - Production GET stock query with `clientOrgId=57893` from JWT `orgId` candidate returned `result=OK` (independent provider customer-ID confirmation still PENDING).
 - R9-C owner-only snapshot: product SKU 69 (69 unique, status 1 reported on all), stock SKU 45 (45 unique), all stock SKUs present in product catalog, all 45 stock SKUs have positive availableQuantity, total available 1,999 units.
 - Source: `/Users/a/AI/uat/shipout-r9/production-readonly-inventory-snapshot.json` (0600; local-only, no secrets).
 - ERP canonical SKU and verified aliases NOT yet compared to the Production ERP database; catalog match is NOT ERP SKU verification.
+- Owner explicitly confirms `clientOrgId=57893` for MOREPLUS. This is OWNER-CONFIRMED, independently accepted for the signed stock GET; not a ShipOut agent statement.
+- Owner sets `Asia/Shanghai` as a **PROVISIONAL shippedTime timezone preview** because warehouse personnel work in China. This is NOT vendor-confirmed. `production_shipped_time_timezone_verified=false`, all Tracking Apply/Dispatch toggles OFF; require separate timezone confirmation before any live timestamp apply.
+- Preview example: provider naive `2026-10-30 10:00:00` assumed Asia/Shanghai => `2026-10-30 02:00:00 UTC`; this is a conversion unit test, not real provider time evidence.
+- R9 configuration preview: `production_shipped_time_timezone_preview=Asia/Shanghai` (default), `production_shipped_time_timezone_verified=false`, `production_tracking_apply_enabled=false`. Preview must not be reused as an authoritative timezone for a real tracking record.
+- Production credential and identity config defaults remain blank, and all production API flags OFF. Owner has confirmed `clientOrgId=57893` for later binding; no Production env was changed.
 - R9-C local-only inventory helper available at `/Users/a/AI/uat/shipout-r9/verify_production_inventory.py`; fake-provider E2E PASS. Real product+stock GET verified by Owner local output; no outbound API POST.
 - No shipment API POST; no Production runtime config changes.
 
