@@ -53,6 +53,14 @@ const applySearch = () => {
         </div>
         <div class="product-home-actions">
           <a class="mvp-button mvp-button-secondary" href="/products/list">全部产品</a>
+          <details v-if="canOperate" class="product-home-tools">
+            <summary class="mvp-button mvp-button-secondary">管理工具 ▾</summary>
+            <nav aria-label="产品管理工具">
+              <a href="/products/import">导入 CSV</a>
+              <a href="/products/barcode-69/import">导入 69 条码</a>
+              <a href="/products/weight-evidence">重量证据管理</a>
+            </nav>
+          </details>
           <a v-if="canOperate" class="mvp-button mvp-button-primary" href="/products/create">+ 新增产品</a>
         </div>
       </div>
@@ -155,12 +163,7 @@ const applySearch = () => {
         </section>
       </div>
 
-      <div class="product-home-bottom-actions">
-        <a href="/products/sku-aliases">SKU 别名</a>
-        <a v-if="canOperate" href="/products/import">导入 CSV</a>
-        <a v-if="canOperate" href="/products/barcode-69/import">导入 69 条码</a>
-        <a v-if="canOperate" href="/products/weight-evidence">重量证据管理</a>
-      </div>
+      <a class="product-home-alias-link" href="/products/sku-aliases">SKU 别名管理 ›</a>
     </section>
   </AuthenticatedLayout>
 </template>
@@ -171,6 +174,13 @@ const applySearch = () => {
 .product-home-heading h2{font-size:24px;letter-spacing:-.4px;margin:3px 0 4px}
 .product-home-subtitle{color:#6d7781;font-size:13px;margin:0}
 .product-home-actions{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.product-home-tools{position:relative}
+.product-home-tools summary{cursor:pointer;list-style:none}
+.product-home-tools summary::-webkit-details-marker{display:none}
+.product-home-tools nav{position:absolute;z-index:30;right:0;top:calc(100% + 7px);min-width:174px;background:#fff;border:1px solid #e8dfe2;border-radius:9px;box-shadow:0 8px 26px #31252b20;padding:6px}
+.product-home-tools nav a{display:block;text-decoration:none;color:#4f3741;font-size:12px;padding:9px;border-radius:6px}
+.product-home-tools nav a:hover{background:#fff4f7}
+.product-home-alias-link{display:inline-block;margin:14px 5px 2px;font-size:12px;text-decoration:none;color:#81334e}
 .product-home-search{display:flex;align-items:center;gap:12px;width:100%;padding:7px 7px 7px 15px;background:#fff;border:1px solid #dfe3e7;border-radius:10px;box-shadow:0 2px 9px #25304406}
 .product-home-search:focus-within{border-color:#8e425c}
 .product-home-search-icon{font-size:24px;line-height:1;color:#86929a}
