@@ -1986,7 +1986,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
             $path=parse_url($req->url(),PHP_URL_PATH);
             if ($path==='/gateway/woms/outboundOrder/small/page') {
                 $rows=$draftVisible?[[
-                    'status'=>0,'referOrderNo'=>$order->erp_order_id,
+                    'status'=>0,'referOrderNo'=>$lastPayload['referOrderNo']??$order->erp_order_id,
                     'platformOrderNo'=>$lastPayload['platformOrderNo']??'BYL-ERP-'.$order->id,
                     'outboundOrderNo'=>'OMS-WEB-'.str_pad((string)$createCalls,4,'0',STR_PAD_LEFT),
                 ]]:[];
@@ -2008,7 +2008,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
                 return Http::response(['code'=>200,'data'=>[
                     'status'=>0,'outboundOrderNo'=>'OMS-WEB-'.str_pad((string)$createCalls,4,'0',STR_PAD_LEFT),
                     'platformOrderNo'=>$lastPayload['platformOrderNo'],
-                    'referOrderNo'=>$order->erp_order_id,
+                    'referOrderNo'=>$lastPayload['referOrderNo'],
                     'whCode'=>'OMS-US-SM',
                     'logisticsChannel'=>'Upload_Shipping_Label','logisticsCarrier'=>'usps',
                     'trackNo'=>'',
@@ -2038,7 +2038,8 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
             && $req->data()['logisticsChannel']==='Upload_Shipping_Label'
             && $req->data()['logisticsCarrier']==='usps'
             && isset($req->data()['appendixList'][0]['fileKey'])
-            && $req->data()['referOrderNo']===$o->erp_order_id);
+            && str_starts_with($req->data()['referOrderNo'],$o->erp_order_id.'-')
+            && strlen($req->data()['referOrderNo'])<=100);
     }
 
     public function test_native_web_repeat_ignores_historical_shipped_order_when_current_draft_absent(): void
@@ -2056,6 +2057,12 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $this->assertSame('oms_draft_created',$two['state']);
         $this->assertNotSame($one['attempt_ref'],$two['attempt_ref']);
         $this->assertSame(2,$count);
+        $nativeCreates=collect(Http::recorded())->map(fn($call)=>$call[0])
+            ->filter(fn($request)=>str_ends_with($request->url(),'/outboundOrder/create'))
+            ->values();
+        $this->assertCount(2,$nativeCreates);
+        $this->assertNotSame($nativeCreates[0]->data()['referOrderNo'],
+            $nativeCreates[1]->data()['referOrderNo']);
         // There is no max-2/max-3 historical order limit.
         for ($n=3;$n<=5;$n++) {
             $visible=false; // each preceding order has left the draft inbox

@@ -34,3 +34,13 @@ Existing status: PR #571 was merged and Production released manual XLS fallback.
 - The hard block on signed OpenAPI outbound CREATE remains in place on Production. Do not fallback if OMS web session is missing.
 - Operational secrets `XLWMS_OMS_WEB_ENABLED`, `XLWMS_OMS_WEB_TOKEN`, `XLWMS_OMS_WEB_HMAC_KEY` must be configured securely and session expiry handled. Do not copy token to source control.
 - HTTP-fake acceptance does not equal a real website create/UAT; standalone real OMS single-order Canary and Production deployment require explicit Owner pass.
+
+
+## 2026-10-30 repeat-reference correction (vendor WMS setting)
+Provider Help Center documents a configurable WMS setting: 禁止OMS提交重复参考单号的单据. This can reject a new warehouse submission if a previous canceled/shipped OMS order reused a reference. New OMS drafts must:
+- keep the ERP front order ID as the referOrderNo prefix for current status-0 draft deduplication;
+- append a fresh 14-hex attempt suffix to referOrderNo (total length <=100);
+- use a separate unique BYL-WEB attempt ID for platformOrderNo;
+- verify the full newly assigned referOrderNo after creation.
+Owner's duplicate gate is unchanged: only CURRENT draft inbox matters, never historic OMS counts or statuses. Legacy draft reference formats remain recognized.
+Official: https://help.xlwms.com/d458/dc94/25ac section 7.
