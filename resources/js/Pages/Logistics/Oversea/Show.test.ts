@@ -642,4 +642,33 @@ describe('Oversea Dede file exchange workbench', () => {
     } finally {vi.unstubAllGlobals()}
   })
 
+
+  it('shows reissue preflight for a pending ERP order only when an original OMS identity exists', async () => {
+    const row={...usSmPendingRows.data[0],shipment_status:'pending',
+      xlwms:{state:'draft_cancelled_confirmed',oms_order_no:'OMS-OLD',oms_status_code:'4',
+        oms_status_checked_at:null,oms_tracking_no:null,failure_code:null,oms_status_failure_code:null}}
+    const fake=vi.fn().mockResolvedValue({ok:true,json:async()=>({
+      order_id:99,erp_order_id:'007-OVERSEA-USSM-99',original_oms_order_no:'OMS-OLD',
+      original_tracking_present:false,source_scenario:'canceled_original_oms',
+      warehouse:'US-SM',channel:'No_Shipping_Service',draft_only:true,
+      items:[{sku:'REVIEW-SKU',quantity:1}],recipient:'Recipient',
+      address:{country:'US',province:'CA',city:'Los Angeles',postal_code:'90001',address_1:'1 Test Road'},
+      reason_default:'仓库订单出错',required_oms_memo:null,existing_reshipment_count:0,
+      blockers:[],ready_for_review:true,can_create_oms:false,memo_contract_verified:false,
+    })})
+    vi.stubGlobal('fetch',fake)
+    try {
+      const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+        view:'pending',rows:{...usSmPendingRows,data:[row]}})
+      await wrapper.findAll('button').find(b=>b.text().trim()==='重新下发仓库')!.trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('原 OMS 已实时确认取消'))
+      expect(wrapper.find('input.xlwms-reship-reason').exists()).toBe(true)
+      expect(fake.mock.calls[0][0]).toContain('/xlwms/reship-preflight')
+      expect(wrapper.text()).not.toContain('创建独立 OMS 草稿（单笔授权）')
+      const noOriginal=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+        view:'pending',rows:usSmPendingRows})
+      expect(noOriginal.findAll('button').some(b=>b.text().trim()==='重新下发仓库')).toBe(false)
+    } finally {vi.unstubAllGlobals()}
+   })
+
 })

@@ -10,6 +10,7 @@ use RuntimeException;
 /** Second operator confirmation, strictly without OMS CREATE. */
 final class ReshipmentApprovalService
 {
+    public function __construct(private readonly ReshipmentPreview $preview) {}
     public function approve(int $orderId, string $requestId, int $actorId, string $confirmation): array
     {
         if ($actorId < 1 || ! preg_match('/^[0-9a-f-]{36}$/i', $requestId)
@@ -25,8 +26,17 @@ final class ReshipmentApprovalService
                 throw new RuntimeException('RESHIP_APPROVAL_STATE_INVALID');
             }
             $shipment = $order->shipment;
-            if (! in_array($order->order_status?->value, ['shipped', 'completed', 'completed_delivered'], true)
-                || $shipment?->shipment_status !== 'shipped'
+            $shipped=in_array($order->order_status?->value,['shipped','completed','completed_delivered'],true)
+                && $shipment?->shipment_status==='shipped';
+            $cancelledOriginal=false;
+            if (!$shipped && $order->order_status?->value==='pending_shipment'
+                && $shipment?->shipment_status==='pending') {
+                $preview=$this->preview->forOrder($orderId,$requestId);
+                $cancelledOriginal=$preview['ready_for_review']===true
+                    && $preview['source_scenario']==='canceled_original_oms'
+                    && $preview['original_oms_order_no']===$record->original_oms_order_no;
+            }
+            if ((!$shipped && !$cancelledOriginal)
                 || (int) $shipment->id !== (int) $record->original_shipment_id
                 || (int) $shipment->warehouse_id !== (int) $record->warehouse_id
                 || $shipment->warehouse?->code !== 'US-SM'

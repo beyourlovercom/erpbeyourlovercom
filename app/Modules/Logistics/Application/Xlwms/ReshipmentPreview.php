@@ -3,10 +3,12 @@ namespace App\Modules\Logistics\Application\Xlwms;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment;
+use App\Modules\Logistics\Infrastructure\Xlwms\WarehouseOpenApiConnection;
+use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsOrderGateway;
 use Illuminate\Support\Facades\Schema;
 /** Deliberately read-only. Never retry original order's external CREATE. */
 final class ReshipmentPreview {
-    public function __construct(private readonly SingleOrderPreview $regular) {}
+    public function __construct(private readonly SingleOrderPreview $regular, private readonly XlwmsOrderGateway $gateway) {}
     public function forOrder(int $id, ?string $currentRequestId = null, bool $requireFreshStock = false): array {
         $order=Order::with(['shipment.warehouse','shipment.overseaReview','address','items'])->findOrFail($id);
         $ship=$order->shipment;
@@ -14,10 +16,32 @@ final class ReshipmentPreview {
         $base=$this->regular->forOrder($order,$requireFreshStock);
         $shipped=in_array($order->order_status?->value, ['shipped','completed','completed_delivered'], true)
             && $ship?->shipment_status==='shipped';
+        // The first OMS order was cancelled before real shipment. Confirm cancellation
+        // and native OMS identity LIVE, never from a potentially stale ERP status cache.
+        $cancelledOriginal=false;
+        if (!$shipped && $order->order_status?->value==='pending_shipment'
+            && $ship?->shipment_status==='pending' && $ship?->warehouse?->code==='US-SM'
+            && !filled($ship?->tracking_number) && filled($old?->oms_order_no)) {
+            $connection=WarehouseOpenApiConnection::query()
+                ->where('warehouse_id',$ship->warehouse_id)->where('provider','xlwms')->first();
+            if ($connection) {
+                try {
+                    $remote=$this->gateway->readExactOrderStatus($connection,$old->oms_order_no);
+                    $cancelledOriginal=($remote['status_code']??null)==='4'
+                        && ($remote['third_order_no']??null)==='BYL-ERP-'.$id
+                        && !filled($remote['tracking_no']??null);
+                } catch (\Throwable) {
+                    $cancelledOriginal=false;
+                }
+            }
+        }
         $exceptions=['order_not_pending_shipment','shipment_not_pending','tracking_already_assigned'];
         $blocked=array_values(array_filter($base['blockers'],
             fn($reason)=>!($shipped&&in_array($reason,$exceptions,true))));
-        if(!$shipped)$blocked[]='source_order_not_shipped';
+        if(!$shipped && !$cancelledOriginal) {
+            $blocked[]='source_order_not_shipped';
+            $blocked[]='source_order_not_shipped_or_original_oms_not_canceled';
+        }
         if(!filled($ship?->tracking_number)&&!filled($old?->oms_order_no))$blocked[]='original_shipping_evidence_missing';
         // A new provider draft requires a verifiable native original OMS identity.
         // Tracking alone proves shipment, not that the old OMS order is safe.
@@ -47,6 +71,7 @@ final class ReshipmentPreview {
         return [
             'order_id'=>$id,'erp_order_id'=>$order->erp_order_id,
             'original_oms_order_no'=>$old?->oms_order_no,
+            'source_scenario'=>$cancelledOriginal?'canceled_original_oms':($shipped?'shipped_original':'not_eligible'),
             'original_tracking_present'=>filled($ship?->tracking_number),
             'warehouse'=>$ship?->warehouse?->code,
             'channel'=>'No_Shipping_Service','draft_only'=>true,

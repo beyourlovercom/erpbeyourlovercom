@@ -21,7 +21,7 @@ type OmsPreflight = {
   oms_warehouse:string; items:Item[]; already_attempted:boolean
 }
 type ReshipPreview = {
-  order_id:number;erp_order_id:string;original_oms_order_no:string|null
+  order_id:number;erp_order_id:string;original_oms_order_no:string|null;source_scenario?:'shipped_original'|'canceled_original_oms'|'not_eligible'
   original_tracking_present:boolean;warehouse:string;channel:string;draft_only:boolean
   items:Item[];recipient:string|null
   address:{country:string|null;province:string|null;city:string|null;postal_code:string|null;address_1:string|null}
@@ -389,7 +389,7 @@ const reshipOmsNo=reactive<Record<number,string>>({})
 const reshipProviderStatus=reactive<Record<number,string>>({})
 const reshipProviderTracking=reactive<Record<number,string>>({})
 const reshipPost=async (row:Row, action:'reship-intent'|'reship-approve', body:Record<string,unknown>) => {
-  if(!props.canOperate||props.warehouseKey!=='us-3sm'||row.shipment_status!=='shipped'||reshipBusy[row.order_id])return
+  if(!props.canOperate||props.warehouseKey!=='us-3sm'||!['shipped','pending'].includes(row.shipment_status)||reshipBusy[row.order_id])return
   reshipBusy[row.order_id]=true;reshipError[row.order_id]=''
   try {
     const token=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
@@ -475,7 +475,7 @@ const refreshReshipStatus=async(row:Row)=>{
   finally{reshipBusy[row.order_id]=false}
 }
 const readReshipPreview=async (row:Row) => {
-  if(!props.canOperate||props.warehouseKey!=='us-3sm'||row.shipment_status!=='shipped'||reshipBusy[row.order_id])return
+  if(!props.canOperate||props.warehouseKey!=='us-3sm'||!['shipped','pending'].includes(row.shipment_status)||reshipBusy[row.order_id])return
   reshipBusy[row.order_id]=true;reshipError[row.order_id]=''
   try {
     const token=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
@@ -858,16 +858,17 @@ const compactPages = computed<(number|string)[]>(() => {
                     </div>
                   </template>
                   <span v-else class="xlwms-note">{{ row.review_status !== 'approved' ? '待 Dede 审核' : '不允许重复发货' }}</span>
-                  <div v-if="canOperate && row.shipment_status==='shipped'" class="xlwms-reship-readonly">
+                  <div v-if="canOperate && (row.shipment_status==='shipped' || (row.shipment_status==='pending' && !!omsRow(row)?.oms_order_no))" class="xlwms-reship-readonly">
                     <button type="button" class="xlwms-action" :disabled="reshipBusy[row.order_id]"
                       @click="readReshipPreview(row)">{{reshipBusy[row.order_id]?'预检中…':'重新下发仓库'}}</button>
                     <div v-if="reshipPreview[row.order_id]" class="xlwms-confirm">
                       <strong>重新下发仓库 · 独立出库草稿</strong>
+                      <small v-if="reshipPreview[row.order_id].source_scenario==='canceled_original_oms'">原 OMS 已实时确认取消；ERP 原订单保持待发货</small>
                       <small>原订单 {{reshipPreview[row.order_id].erp_order_id}} · 原 OMS {{reshipPreview[row.order_id].original_oms_order_no??'未关联'}}</small>
                       <small>{{reshipPreview[row.order_id].items.map(i=>i.sku+' × '+i.quantity).join(' / ')}}</small>
                       <small>{{reshipPreview[row.order_id].recipient}} · {{reshipPreview[row.order_id].address.address_1}} · {{reshipPreview[row.order_id].address.city}}</small>
                       <small>渠道：无需物流服务 · 不自动提交仓库 · ERP 保留操作原因</small>
-                      <small v-if="reshipPreview[row.order_id].blockers.length && !reshipIntent[row.order_id]" class="xlwms-error">{{reshipPreview[row.order_id].blockers.map(b=>b==='original_oms_identity_missing'?'原 OMS 单号未关联，无法安全创建新仓库单':b).join('；')}}</small>
+                      <small v-if="reshipPreview[row.order_id].blockers.length && !reshipIntent[row.order_id]" class="xlwms-error">{{reshipPreview[row.order_id].blockers.map(b=>b==='original_oms_identity_missing'?'原 OMS 单号未关联，无法安全创建新仓库单':b==='source_order_not_shipped_or_original_oms_not_canceled'?'原 OMS 尚未实时确认取消，或 ERP 发货事实不满足条件':b).join('；')}}</small>
                       <template v-if="reshipPreview[row.order_id].ready_for_review || !!reshipIntent[row.order_id]">
                         <template v-if="!reshipIntent[row.order_id]">
                           <input v-model="reshipReason[row.order_id]" type="text" maxlength="180"
