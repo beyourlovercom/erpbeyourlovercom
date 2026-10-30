@@ -11,15 +11,23 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use RuntimeException;
+use Illuminate\Validation\ValidationException;
 
 final class SpeedaOutboundExporter
 {
     private const TEMPLATE = 'resources/logistics/templates/speeda-outbound-v1.xlsx';
+    // Official 2026-10-26 4PX template: Y SKU, Z manufacturer barcode, AA blank.
+    private const EUROPE = ['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU',
+        'IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE',
+        'GB','UK','NO','CH','IS','LI','AD','MC','SM','VA','AL','BA','ME','MK','RS','MD','UA','TR'];
 
-    public function __construct(private readonly WarehouseOrderReference $references) {}
+    public function __construct(
+        private readonly WarehouseOrderReference $references,
+        private readonly ChinaSmallPacketBarcode69Reader $barcodes,
+    ) {}
 
     /** @return list<string> */
-    public function blockers(Order $order): array
+    public function blockers(Order $order, string $providerLabel = '速达'): array
     {
         $order->loadMissing(['address', 'items', 'externalReferences']);
         $address = $order->address;
@@ -53,6 +61,14 @@ final class SpeedaOutboundExporter
             $missing[] = '申报品数量1';
         }
 
+        if ($providerLabel === '速达' && $this->isEurope($address?->country)) {
+            try {
+                $this->oneBarcodeForOrder($order);
+            } catch (DomainException $e) {
+                $missing[] = $e->getMessage();
+            }
+        }
+
         return $missing;
     }
 
@@ -69,7 +85,7 @@ final class SpeedaOutboundExporter
         $blocked = [];
 
         foreach ($orders as $order) {
-            $reasons = $this->blockers($order);
+            $reasons = $this->blockers($order, $providerLabel);
             if ($reasons === []) {
                 $ready->push($order);
 
@@ -107,7 +123,7 @@ final class SpeedaOutboundExporter
 
         $path = base_path(self::TEMPLATE);
         if (! is_file($path)) {
-            throw new RuntimeException('4PX / 纬狮共享 24 列下单模板未安装。');
+            throw new RuntimeException('国内承运商 24 列基础模板未安装。');
         }
 
         $book = IOFactory::load($path);
@@ -116,6 +132,11 @@ final class SpeedaOutboundExporter
             throw new RuntimeException('4PX / 纬狮共享模板缺少“标准上传格式”工作表。');
         }
 
+        $speeda = $providerLabel === '速达';
+        if ($speeda) {
+            $this->enableSpeeda27Columns($sheet);
+        }
+        $lastColumn = $speeda ? 'AA' : 'X';
         $countryMap = $this->countryMap($book);
         $highest = $sheet->getHighestDataRow();
         if ($highest > 2) {
@@ -127,8 +148,9 @@ final class SpeedaOutboundExporter
             $row = $index + 2;
             if ($row > 2) {
                 $sheet->insertNewRowBefore($row, 1);
-                $sheet->duplicateStyle($sheet->getStyle('A2:X2'), "A{$row}:X{$row}");
-                foreach (range('A', 'X') as $column) {
+                $sheet->duplicateStyle($sheet->getStyle('A2:'.$lastColumn.'2'), "A{$row}:{$lastColumn}{$row}");
+                for ($colIndex = 1; $colIndex <= ($speeda ? 27 : 24); $colIndex++) {
+                    $column = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIndex);
                     $sheet->setCellValue("{$column}{$row}", $sheet->getCell("{$column}2")->getValue());
                 }
             }
@@ -140,7 +162,7 @@ final class SpeedaOutboundExporter
             $quantity = max(1, (int) $order->items->sum('quantity'));
             $taxId = $this->taxId($order);
 
-            // Owner-frozen provider contract: ERP fills only the green fields below.
+            // Preserve existing A:X mappings; 4PX-specific Y:AA fields are applied below.
             $sheet->setCellValueExplicit("A{$row}", $this->references->warehouse($order), DataType::TYPE_STRING);
             $sheet->setCellValue("B{$row}", '');
             $sheet->setCellValue("C{$row}", '');
@@ -168,6 +190,17 @@ final class SpeedaOutboundExporter
             } else {
                 $sheet->setCellValue("W{$row}", '');
                 $sheet->setCellValue("X{$row}", '');
+            }
+
+            if ($speeda) {
+                $sku = '';
+                $barcode = '';
+                if ($this->isEurope($countryCode)) {
+                    [$sku, $barcode] = $this->oneBarcodeForOrder($order);
+                }
+                $sheet->setCellValueExplicit("Y{$row}", $sku, DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit("Z{$row}", $barcode, DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit("AA{$row}", '', DataType::TYPE_STRING);
             }
 
             $this->assertRequired($order, $row, [
@@ -198,6 +231,43 @@ final class SpeedaOutboundExporter
         }
 
         return $bytes;
+    }
+
+    private function isEurope(?string $country): bool
+    {
+        return in_array(strtoupper(trim((string) $country)), self::EUROPE, true);
+    }
+
+    /** @return array{0:string,1:string} */
+    private function oneBarcodeForOrder(Order $order): array
+    {
+        try {
+            $rows = $this->barcodes->forOrder($order);
+        } catch (ValidationException $e) {
+            throw new DomainException('欧洲速达订单缺少经过SKU核实的69条形码', previous: $e);
+        }
+        if ($rows === []) {
+            throw new DomainException('欧洲速达订单缺少商品SKU');
+        }
+        // One 4PX Y/Z pair represents ONE SKU, not an arbitrary multi-SKU parcel.
+        $pairs = array_unique(array_map(fn (array $row) => $row['sku'].'|'.$row['barcode_69'], $rows));
+        if (count($pairs) !== 1) {
+            throw new DomainException('欧洲速达订单包含多个SKU，无法安全填写单组Y/Z条码');
+        }
+        return [(string) $rows[0]['sku'], (string) $rows[0]['barcode_69']];
+    }
+
+    private function enableSpeeda27Columns($sheet): void
+    {
+        $sheet->duplicateStyle($sheet->getStyle('X1'), 'Y1:AA1');
+        $sheet->duplicateStyle($sheet->getStyle('X2'), 'Y2:AA2');
+        foreach (['Y' => '商家产品识别码', 'Z' => '制造商产品识别码', 'AA' => '国际标准商品编码'] as $column => $title) {
+            $sheet->setCellValueExplicit($column.'1', $title, DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit($column.'2', '', DataType::TYPE_STRING);
+        }
+        $sheet->getColumnDimension('Y')->setWidth(22);
+        $sheet->getColumnDimension('Z')->setWidth(25);
+        $sheet->getColumnDimension('AA')->setWidth(24);
     }
 
     /** @return array<string,string> */

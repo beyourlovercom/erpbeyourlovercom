@@ -78,7 +78,7 @@ final class DomesticLogisticsController
             ] : null,
             'providerStatus' => [
                 '4px' => ['export_ready' => true, 'return_ready' => true, 'label' => '速达 / 4PX'],
-                'weship' => ['export_ready' => true, 'return_ready' => true, 'label' => '纬狮 / Weship', 'note' => '与速达共用 24 列下单模板 · XLSX 下载 · XLS/XLSX 回传'],
+                'weship' => ['export_ready' => true, 'return_ready' => true, 'label' => '纬狮 / Weship', 'note' => '纬狮独立保留原 24 列模板 · XLSX 下载 · XLS/XLSX 回传'],
             ],
         ]);
     }
@@ -291,7 +291,7 @@ final class DomesticLogisticsController
             'shipped_at' => $shipment?->shipped_at?->toIso8601String(),
             'review_status' => $approved ? 'approved' : 'pending',
             'export_blockers' => in_array(strtolower((string) $shipment?->carrier), ['4px', 'weship'], true)
-                ? $this->speeda->blockers($order)
+                ? $this->speeda->blockers($order, strtolower((string) $shipment?->carrier) === '4px' ? '速达' : '纬狮')
                 : [],
             'items' => $order->items->map(fn ($item) => [
                 'sku' => $item->sku,
