@@ -34,7 +34,7 @@ const preview = {
 
 const mountPage = (overrides: Record<string, unknown> = {}) => mount(Show, { props: {
   warehouseKey: 'us-moreplus', warehouse: warehouseOptions[0], warehouseOptions, view: 'pending', rows, viewCounts,
-  canReview: true, canOperate: true, carrierOptions: [], trackingImportPreview: preview, ...overrides,
+  canReview: true, canOperate: true, carrierOptions: [], trackingImportPreview: preview, xlwmsOmsWebEnabled:true, ...overrides,
 } })
 
 describe('warehouse OMS portal inside the overseas page heading', () => {
@@ -123,6 +123,17 @@ describe('Oversea Dede file exchange workbench', () => {
   })
 
 
+
+  it('disables US-SM one-click action when secure OMS connection has not been configured', () => {
+    const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+      xlwmsOmsWebEnabled:false,rows:usSmPendingRows,trackingImportPreview:null})
+    const cell=page.find('td.xlwms-cell')
+    expect(cell.text()).toContain('世迈仓尚未连接')
+    const button=cell.find('button.xlwms-action.primary')
+    expect(button.exists()).toBe(true)
+    expect(button.attributes('disabled')).toBeDefined()
+    expect(button.text()).toContain('请管理员连接世迈仓')
+  })
 
   it('makes the first click a single clear warehouse action without older API or approval panels', async () => {
     const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],

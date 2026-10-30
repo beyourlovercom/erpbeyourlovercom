@@ -94,6 +94,10 @@ final class OverseaWarehouseController
             'view' => $view,
             'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => $this->row($shipment, $start + $index + 1, $xlwmsAttempts->get($shipment->order_id), $trackingStatuses[(int) $shipment->id] ?? null, $webDraftAttempts->get($shipment->order_id)))->toArray(),
             'xlwmsAuthorizedOrderId' => $canRunXlwms ? (int) config('xlwms.live_order_id', 0) : 0,
+            'xlwmsOmsWebEnabled' => $warehouseKey === 'us-3sm'
+                && (bool) config('xlwms.oms_web_enabled', false)
+                && filled(config('xlwms.oms_web_token'))
+                && filled(config('xlwms.oms_web_hmac_key')),
             'shipoutSandboxReadEnabled' => $warehouseKey === 'us-moreplus'
                 && ! app()->environment('production')
                 && (bool) config('shipout.sandbox_read_enabled', false),

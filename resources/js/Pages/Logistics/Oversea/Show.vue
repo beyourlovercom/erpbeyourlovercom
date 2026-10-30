@@ -60,7 +60,7 @@ type TrackingImportRow = { row:number; order_id:number|null; order_number:string
 type TrackingImportPreview = { token:string; rows:TrackingImportRow[]; apply_count:number; noop_count:number; blocked_count:number }
 const props = defineProps<{
   warehouseKey:string; warehouse:WarehouseOption|null; warehouseOptions:WarehouseOption[]; view:string
-  rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canOperate:boolean; canTrackingSync?:boolean; shipoutSandboxReadEnabled?:boolean; shipoutSandboxDispatchEnabled?:boolean; shipoutSandboxTrackingApplyEnabled?:boolean; shipoutSandboxAuthorizedOrderNo?:string; shipoutSandboxSpecifiedChannel?:{id:string;label:string}|null; shipoutSandboxOwnLabelEnabled?:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number; xlwmsBatchEnabled?:boolean
+  rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canOperate:boolean; canTrackingSync?:boolean; shipoutSandboxReadEnabled?:boolean; shipoutSandboxDispatchEnabled?:boolean; shipoutSandboxTrackingApplyEnabled?:boolean; shipoutSandboxAuthorizedOrderNo?:string; shipoutSandboxSpecifiedChannel?:{id:string;label:string}|null; shipoutSandboxOwnLabelEnabled?:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number; xlwmsBatchEnabled?:boolean; xlwmsOmsWebEnabled?:boolean
 
 }>()
 
@@ -435,7 +435,7 @@ const webDraftReadableStatus = (row:Row):string => {
   return '待下发'
 }
 const createWebDraft = async (row:Row) => {
-  if (!webDraftEligible(row) || webDraftBusy[row.order_id]) return
+  if (!webDraftEligible(row) || !props.xlwmsOmsWebEnabled || webDraftBusy[row.order_id]) return
   webDraftBusy[row.order_id]=true; webDraftErrors[row.order_id]=''
   try {
     const csrf=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
@@ -766,7 +766,12 @@ const compactPages = computed<(number|string)[]>(() => {
               </td>
               <td v-if="warehouseKey === 'us-3sm'" class="xlwms-cell">
                 <div class="xlwms-inline" :data-oms-order-id="row.order_id">
-                  <template v-if="webDraftEligible(row)">
+                  <template v-if="webDraftEligible(row) && !xlwmsOmsWebEnabled">
+                    <strong class="xlwms-state">世迈仓尚未连接</strong>
+                    <button type="button" class="xlwms-action primary" disabled>请管理员连接世迈仓</button>
+                    <small class="xlwms-note">连接完成后即可一键下发，避免订单进入错误状态。</small>
+                  </template>
+                  <template v-else-if="webDraftEligible(row)">
                     <strong class="xlwms-state" :class="{ 'xlwms-draft-success': !!webDraftResult[row.order_id]?.oms_order_no }">{{ webDraftReadableStatus(row) }}</strong>
                     <button type="button" class="xlwms-action primary" :disabled="webDraftBusy[row.order_id]"
                       @click="createWebDraft(row)">{{ webDraftBusy[row.order_id] ? '正在检查草稿箱…' : webDraftActionLabel(row) }}</button>
