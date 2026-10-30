@@ -46,6 +46,14 @@ const inactiveProduct = {
 }
 
 describe('Products/Edit V2', () => {
+  it('uses the same left-side floating navigation as the order detail layout', () => {
+    const wrapper = mount(Edit, { props: { product: wooProduct } })
+    expect(wrapper.find('.product-editor-layout > .product-section-nav-rail').exists()).toBe(true)
+    expect(wrapper.find('.product-editor-layout > .erp-form-content').exists()).toBe(true)
+    expect(wrapper.findAll('.product-section-item').length).toBe(9)
+    expect(wrapper.find('.product-section-top').text()).toContain('返回顶部')
+  })
+
   it('renders page title and subtitle', () => {
     const wrapper = mount(Edit, { props: { product: wooProduct } })
     expect(wrapper.text()).toContain('编辑产品')

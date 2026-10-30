@@ -13,6 +13,14 @@ vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({
 }))
 
 describe('Products/Create V2', () => {
+  it('places the quick navigation in the left rail beside the centered content', () => {
+    const wrapper = mount(Create)
+    expect(wrapper.find('.product-editor-layout > .product-section-nav-rail').exists()).toBe(true)
+    expect(wrapper.find('.product-editor-layout > .erp-form-content').exists()).toBe(true)
+    expect(wrapper.find('.product-section-caption').text()).toBe('快捷定位')
+    expect(wrapper.find('.product-section-top').text()).toContain('返回顶部')
+  })
+
   it('renders page title and subtitle', () => {
     const wrapper = mount(Create)
     expect(wrapper.text()).toContain('新增产品')

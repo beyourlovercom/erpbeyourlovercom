@@ -193,9 +193,10 @@ const doDelete = () => {
 <template>
   <Head title="编辑产品 · BYL ERP" />
   <AuthenticatedLayout title="编辑产品" :breadcrumbs="breadcrumbs">
-    <ProductSectionRail :sections="[{ id: 'section-basic', label: '基本信息' }, { id: 'section-images', label: '图片' }, { id: 'section-parameters', label: '产品参数' }, { id: 'section-packaging', label: '包装与配件' }, { id: 'section-sales', label: '销售' }, { id: 'section-logistics', label: '物流' }, { id: 'section-customs', label: '海关' }, { id: 'section-cost', label: '成本' }, { id: 'section-notes', label: '备注' }]" />
-    <div class="erp-form-page">
-      <div class="erp-form-content">
+    <div class="erp-form-page product-editor-page">
+      <div class="product-editor-layout">
+        <ProductSectionRail :sections="[{ id: 'section-basic', label: '基本信息' }, { id: 'section-images', label: '图片' }, { id: 'section-parameters', label: '产品参数' }, { id: 'section-packaging', label: '包装与配件' }, { id: 'section-sales', label: '销售' }, { id: 'section-logistics', label: '物流' }, { id: 'section-customs', label: '海关' }, { id: 'section-cost', label: '成本' }, { id: 'section-notes', label: '备注' }] " />
+        <div class="erp-form-content">
 
         <!-- Page header -->
         <div class="erp-form-header-row">
@@ -695,12 +696,29 @@ const doDelete = () => {
           </div>
         </div>
 
+        </div>
       </div>
     </div>
   </AuthenticatedLayout>
 </template>
 
 <style scoped>
+.product-editor-layout {
+  width:100%;
+  margin:0 auto;
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  align-items:start;
+}
+.product-editor-layout > .erp-form-content {
+  grid-area:1 / 1;
+  min-width:0;
+  width:100%;
+  max-width:1080px;
+  margin:0 auto;
+}
+.product-editor-page [id^="section-"] { scroll-margin-top:92px; }
+
 .product-image-preview-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:12px; margin-top:16px; }
 .product-image-preview-grid img { width:100%; aspect-ratio:1; object-fit:cover; border:1px solid #E4EAED; border-radius:10px; }
 .product-image-preview-item { display:flex; flex-direction:column; gap:5px; }
