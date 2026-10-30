@@ -14,6 +14,7 @@ use App\Modules\Orders\Application\ProductOrderProjection;
 use App\Modules\Products\Application\Contracts\ProductExternalReferenceRepository;
 use App\Modules\Products\Application\Contracts\SkuAliasRepository;
 use App\Modules\Products\Application\ProductService;
+use App\Modules\Products\Application\ProductAttentionFilters;
 use App\Modules\Products\Application\ProductPackagingPresentation;
 use App\Modules\Products\Application\ProductWeightEvidenceService;
 use App\Modules\Products\Application\WooCommerceProductInboundService;
@@ -60,8 +61,35 @@ final class ProductController
 
     public function dashboard(): Response
     {
+        // Read-only Product OS home: no warehouse extrapolation, product writes
+        // or Woo requests. Snapshots are explicitly labelled as snapshots.
+        $connection = (string) config('services.woocommerce.connection_key', 'beyourlover.com');
+        $attentionCounts = ProductAttentionFilters::counts($connection);
+
+        $recent = Product::query()
+            ->orderByDesc('updated_at')->orderByDesc('id')->limit(8)
+            ->get(['id', 'sku', 'name', 'updated_at'])
+            ->map(fn (Product $p): array => [
+                'id' => (int) $p->id,
+                'sku' => $p->sku,
+                'name' => $p->name,
+                'updated_at' => $p->updated_at?->toDateTimeString(),
+            ])->all();
+
         return Inertia::render('Products/Dashboard', [
             'totalProducts' => $this->products->totalCount(),
+            'metrics' => [
+                'erpActive' => Product::query()->where('is_active', true)->count(),
+                'wooPublishedSnapshot' => Product::query()->whereHas('providerSnapshots',
+                    fn ($q) => $q->where('provider', 'woocommerce')
+                        ->where('connection_key', $connection)
+                        ->where('provider_status', 'publish'))->count(),
+                'needsData' => $attentionCounts['needs_data'],
+                'pendingReview' => $attentionCounts['pending_review'],
+            ],
+            'attentionCounts' => $attentionCounts,
+            'recentProducts' => $recent,
+            'canOperate' => Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false,
         ]);
     }
 
@@ -71,7 +99,7 @@ final class ProductController
      */
     public function index(Request $request): Response
     {
-        $filters = $request->only(['search', 'sort', 'direction']);
+        $filters = $request->only(['search', 'sort', 'direction', 'attention']);
         $view = in_array($request->query('view'), ['standard','measurements','accessories'], true)
             ? $request->query('view') : 'standard';
         $parameterStatus = (string) $request->query('parameter_status', '');
@@ -130,7 +158,7 @@ final class ProductController
                 ...$this->gridRow($p, $stock[(int) $p->id] ?? []),
                 ...($parameterRows[(int) $p->id] ?? []),
             ])->toArray(),
-            'filters' => [...$request->only(['search', 'per_page', 'sort', 'direction']),
+            'filters' => [...$request->only(['search', 'per_page', 'sort', 'direction', 'attention']),
                 'view' => $view, 'parameter_status' => $parameterStatus],
             'parameterCounts' => $view === 'measurements' ? $this->parameterCoverageCounts() : [],
             'parameterFactoryUsers' => $view === 'measurements' &&
@@ -151,7 +179,7 @@ final class ProductController
      */
     public function export(Request $request): StreamedResponse
     {
-        $filters = $request->only(['search', 'sort', 'direction']);
+        $filters = $request->only(['search', 'sort', 'direction', 'attention']);
         $products = $this->products->list($filters, max(1, $this->products->totalCount()));
         $this->loadGridRelations($products->getCollection());
         $stock = $this->inventory->forProductIds($products->getCollection()->pluck('id')->all());

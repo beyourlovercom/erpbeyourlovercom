@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Schema;
 final class SingleOrderPreview
 {
     /** @return array<string,mixed> */
-    public function forOrder(Order $order, bool $requireFreshSnapshot = true): array
+    public function forOrder(Order $order, bool $requireFreshSnapshot = true, bool $webDraft = false): array
     {
         $order->loadMissing(['address', 'items', 'shipment.warehouse', 'shipment.carrierService', 'shipment.overseaReview']);
         $shipment = $order->shipment;
@@ -26,13 +26,12 @@ final class SingleOrderPreview
             if ($condition) $blocking[] = $reason;
         };
         $add(! $shipment || $shipment->warehouse?->code !== 'US-SM', 'wrong_warehouse');
-        $add($order->order_status?->value !== 'pending_shipment', 'order_not_pending_shipment');
-        $add(! $shipment || $shipment->shipment_status !== 'pending', 'shipment_not_pending');
-        $add(! $review || $review->status !== 'approved'
-            || (int) $review->reviewed_warehouse_id !== (int) ($shipment?->warehouse_id ?? 0), 'warehouse_review_not_approved');
-        $add(filled($shipment?->tracking_number), 'tracking_already_assigned');
-        $add(! $connection || ! filled($connection->app_key_encrypted)
-            || ! filled($connection->app_secret_encrypted), 'api_credentials_missing');
+        $add(! $webDraft && $order->order_status?->value !== 'pending_shipment', 'order_not_pending_shipment');
+        $add(! $webDraft && (! $shipment || $shipment->shipment_status !== 'pending'), 'shipment_not_pending');
+        $add(! $webDraft && (! $review || $review->status !== 'approved'
+            || (int) $review->reviewed_warehouse_id !== (int) ($shipment?->warehouse_id ?? 0)), 'warehouse_review_not_approved');
+        $add(! $webDraft && filled($shipment?->tracking_number), 'tracking_already_assigned');
+        $add(! $webDraft && (! $connection || ! filled($connection->app_key_encrypted) || ! filled($connection->app_secret_encrypted)), 'api_credentials_missing');
         $add(! $connection || ! filled($connection->oms_warehouse_code), 'oms_warehouse_not_bound');
         $add(! $address || ! filled($address->recipient_name), 'recipient_missing');
         $add(! $address || ! filled($address->address_line_1), 'address_missing');
@@ -48,13 +47,13 @@ final class SingleOrderPreview
         // Always create a DRAFT; a draft is not a warehouse-received outbound.
         $usSm = $shipment?->warehouse?->code === 'US-SM';
         $channel = $usSm
-            ? trim((string) config('xlwms.us_sm_oms_logistics_channel', ''))
+            ? trim((string) ($webDraft ? 'Upload_Shipping_Label' : config('xlwms.us_sm_oms_logistics_channel', '')))
             : trim((string) ($shipment?->carrierService?->service_value ?: $shipment?->service ?: ''));
         $add($channel === '', 'native_logistics_channel_missing');
-        $add($usSm && (bool) config('xlwms.us_sm_require_no_shipping_service', true)
+        $add(! $webDraft && $usSm && (bool) config('xlwms.us_sm_require_no_shipping_service', true)
             && $channel !== 'No_Shipping_Service',
             'US_SM_NO_SHIPPING_CHANNEL_REQUIRED');
-        $add($shipment?->carrierService && ! $shipment->carrierService->is_active, 'logistics_channel_inactive');
+        $add(! $webDraft && $shipment?->carrierService && ! $shipment->carrierService->is_active, 'logistics_channel_inactive');
 
         $items = [];
         foreach ($order->items as $item) {
@@ -71,8 +70,8 @@ final class SingleOrderPreview
                     ->where('warehouse_id', $shipment->warehouse_id)
                     ->where('product_id', $item->product_id)->first()
                 : null;
-            if (! $inventory) $blocking[] = 'inventory_unverified:'.$sku;
-            elseif ((int) $inventory->quantity_available < $qty) {
+            if (! $webDraft && ! $inventory) $blocking[] = 'inventory_unverified:'.$sku;
+            elseif (! $webDraft && $inventory && (int) $inventory->quantity_available < $qty) {
                 $blocking[] = 'insufficient_warehouse_stock:'.$sku;
             }
             $items[] = ['sku' => $sku, 'quantity' => $qty];
@@ -82,14 +81,14 @@ final class SingleOrderPreview
         // Current main's Product OS and V2 inventory snapshot are required
         // before an outbound create can ever be reached. This is deliberately
         // local/read-only: it does not refresh OMS or mutate ERP stock.
-        foreach ($order->items as $item) {
+        foreach ($webDraft ? [] : $order->items as $item) {
             $sku = trim((string) ($item->resolved_fulfillment_sku ?: $item->sku));
             $identity = $this->identities->resolve($sku);
             if (($identity['status'] ?? null) !== 'resolved') {
                 $blocking[] = (string) ($identity['code'] ?? 'OMS_PRODUCT_IDENTITY_NOT_VERIFIED');
             }
         }
-        if ($requireFreshSnapshot) {
+        if ($requireFreshSnapshot && ! $webDraft) {
             $this->addFreshAppliedV2Blockers($shipment?->warehouse_id, $order->items, $blocking);
         }
 
@@ -103,7 +102,7 @@ final class SingleOrderPreview
             'platformOrderNo' => substr((string) ($order->external_order_number ?: $order->erp_order_id ?: $order->id), 0, 50),
             'thirdOrderNo' => $thirdOrderNo,
             'subOrderType' => 1,
-            'isSubmit' => $usSm && (bool)config('xlwms.us_sm_create_draft_only', true) ? 0 : 1,
+            'isSubmit' => $webDraft ? 0 : ($usSm && (bool)config('xlwms.us_sm_create_draft_only', true) ? 0 : 1),
             'logisticsChannel' => $channel,
             'receiver' => trim((string) ($address?->recipient_name ?? '')),
             'telephone' => trim((string) ($address?->phone ?? '')),

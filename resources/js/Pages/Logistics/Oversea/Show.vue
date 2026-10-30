@@ -17,18 +17,10 @@ type OmsSnapshot = {
   oms_status_checked_at:string|null; oms_tracking_no:string|null
   failure_code:string|null; oms_status_failure_code:string|null
 }
+type WebDraft = {state:string;oms_order_no:string|null;attempt_ref:string;failure_code:string|null}
 type OmsPreflight = {
   order_id:number; blockers:string[]; ready:boolean; payload_hash:string
   oms_warehouse:string; items:Item[]; already_attempted:boolean
-}
-type ReshipPreview = {
-  order_id:number;erp_order_id:string;original_oms_order_no:string|null;source_scenario?:'shipped_original'|'canceled_original_oms'|'not_eligible'
-  original_tracking_present:boolean;warehouse:string;channel:string;draft_only:boolean
-  items:Item[];recipient:string|null
-  address:{country:string|null;province:string|null;city:string|null;postal_code:string|null;address_1:string|null}
-  reason_default:string;required_oms_memo:string;existing_reshipment_count:number
-  blockers:string[];ready_for_review:boolean;can_create_oms:boolean;memo_contract_verified:boolean
-  existing_reissue?:{request_id:string;status:string;oms_order_no:string|null;oms_status_code:string|null;oms_tracking_no:string|null;last_error_code:string|null;can_create_oms:boolean}|null
 }
 type OmsStatusResult = {
   read_only:boolean; fresh:boolean; oms_order_no:string; oms_status_code:string|null
@@ -48,6 +40,7 @@ type Row = {
   line:number; order_id:number; erp_order_id:string|null; order_url:string|null; recipient_name:string|null; country:string|null
   warehouse_id:number; warehouse_name:string|null; carrier:string|null; service:string|null; carrier_selection_source:string|null; tracking_number:string|null
   progress:string; note:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; review_status:'approved'|'pending'; shipment_status:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; shipped_at?:string|null; items:Item[]
+  web_draft?:WebDraft|null
 }
 type PageRows = { data:Row[]; current_page:number; last_page:number; per_page:number; total:number; from:number|null; to:number|null; links?:{url:string|null;label:string;active:boolean}[] }
 type ColumnKey = 'line'|'order'|'warehouse'|'carrier'|'service'|'tracking'|'note'|'recipient'|'country'|'items'
@@ -67,7 +60,7 @@ type TrackingImportRow = { row:number; order_id:number|null; order_number:string
 type TrackingImportPreview = { token:string; rows:TrackingImportRow[]; apply_count:number; noop_count:number; blocked_count:number }
 const props = defineProps<{
   warehouseKey:string; warehouse:WarehouseOption|null; warehouseOptions:WarehouseOption[]; view:string
-  rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canOperate:boolean; canTrackingSync?:boolean; shipoutSandboxReadEnabled?:boolean; shipoutSandboxDispatchEnabled?:boolean; shipoutSandboxTrackingApplyEnabled?:boolean; shipoutSandboxAuthorizedOrderNo?:string; shipoutSandboxSpecifiedChannel?:{id:string;label:string}|null; shipoutSandboxOwnLabelEnabled?:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number; xlwmsBatchEnabled?:boolean
+  rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canOperate:boolean; canTrackingSync?:boolean; shipoutSandboxReadEnabled?:boolean; shipoutSandboxDispatchEnabled?:boolean; shipoutSandboxTrackingApplyEnabled?:boolean; shipoutSandboxAuthorizedOrderNo?:string; shipoutSandboxSpecifiedChannel?:{id:string;label:string}|null; shipoutSandboxOwnLabelEnabled?:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number; xlwmsBatchEnabled?:boolean; xlwmsOmsWebEnabled?:boolean
 
 }>()
 
@@ -98,7 +91,7 @@ const trackingFileInput = ref<HTMLInputElement|null>(null)
 const trackingPreviewRows = computed(() => props.trackingImportPreview?.rows.slice(0, 20) ?? [])
 const canUploadTrackingFile = computed(() => props.warehouseKey !== 'us-3sm')
 const trackingFileHint = computed(() => props.warehouseKey === 'us-3sm'
-  ? '世迈订单行直接审核、API 发货并查看 OMS 状态；手工 Tracking 确认仅用于经核实的备用流程。'
+  ? '审核通过后，点击订单上的「下发世迈仓」。仓库人员收到草稿后，再上传真实面单并提交发货。'
   : '上传当前仓库真实回传 XLSX；兼容旧 CSV。上传只生成预览，确认后才会标记已发货。')
 const rowErrors = reactive<Record<number,string>>({})
 // MorePlus API is a separate sandbox-only provider, NEVER the 世迈 XLWMS route.
@@ -379,158 +372,6 @@ const refreshOmsStatuses = async () => {
   }catch(e){notifyOms('ERROR','OMS 状态更新失败',e instanceof Error?e.message:'查询失败')}
   finally{refreshBusy.value=false}
 }
-const reshipPreview=reactive<Record<number,ReshipPreview>>({})
-const reshipBusy=reactive<Record<number,boolean>>({})
-const reshipError=reactive<Record<number,string>>({})
-const reshipReason=reactive<Record<number,string>>({})
-const reshipIntent=reactive<Record<number,{request_id:string;status:string;can_create_oms:boolean}>>({})
-const reshipApproved=reactive<Record<number,boolean>>({})
-const reshipCanCreate=reactive<Record<number,boolean>>({})
-const reshipOmsNo=reactive<Record<number,string>>({})
-const reshipManualOmsNo=reactive<Record<number,string>>({})
-const reshipProviderStatus=reactive<Record<number,string>>({})
-const reshipProviderTracking=reactive<Record<number,string>>({})
-const reshipPost=async (row:Row, action:'reship-intent'|'reship-approve', body:Record<string,unknown>) => {
-  if(!props.canOperate||props.warehouseKey!=='us-3sm'||!['shipped','pending'].includes(row.shipment_status)||reshipBusy[row.order_id])return
-  reshipBusy[row.order_id]=true;reshipError[row.order_id]=''
-  try {
-    const token=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
-    const response=await fetch(omsEndpoint(row,action),{
-      method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
-      headers:{Accept:'application/json','Content-Type':'application/json',...(token?{'X-CSRF-TOKEN':token}:{})},
-      body:JSON.stringify(body),
-    })
-    if(!response.ok)throw Error('补发申请/审批失败（HTTP '+response.status+'）')
-    const result=await response.json() as {request_id:string;status:string;can_create_oms:boolean}
-    if(!result.request_id)throw Error('补发审核结果未通过安全校验')
-    if(action==='reship-intent'&&result.status==='requested'&&result.can_create_oms===false)reshipIntent[row.order_id]=result
-    else if(action==='reship-approve'&&result.status==='approved_for_reissue'
-      &&result.request_id===reshipIntent[row.order_id]?.request_id){
-        reshipApproved[row.order_id]=true
-        reshipCanCreate[row.order_id]=result.can_create_oms===true
-      }
-    else throw Error('补发审核状态不一致')
-    notifyOms('SUCCESS', '仓库重新下发申请已更新', result.status)
-  }catch(e){
-    reshipError[row.order_id]=e instanceof Error?e.message:'补发操作失败'
-    notifyOms('ERROR','补发申请/审批失败',reshipError[row.order_id])
-  }finally{reshipBusy[row.order_id]=false}
-}
-const requestReship=async(row:Row)=>{
-  const reason=(reshipReason[row.order_id]??'').trim()
-  if(reason.length<5){reshipError[row.order_id]='请先填写不少于 5 个字的补发原因';return}
-  await reshipPost(row,'reship-intent',reshipPreview[row.order_id]?.source_scenario==='canceled_original_oms'
-    ? {reason,confirm_original_canceled:true} : {reason,confirm_original_shipped:true})
-}
-const approveReship=async(row:Row)=>{
-  const intent=reshipIntent[row.order_id]
-  if(!intent||intent.status!=='requested')return
-  await reshipPost(row,'reship-approve',{
-    request_id:intent.request_id,confirmation:'APPROVE_RESHIP_'+intent.request_id,
-  })
-}
-
-const createReshipDraft=async(row:Row)=>{
-  const intent=reshipIntent[row.order_id]
-  if(!intent||!reshipApproved[row.order_id]||!reshipCanCreate[row.order_id]
-    ||reshipBusy[row.order_id]||reshipOmsNo[row.order_id])return
-  reshipBusy[row.order_id]=true;reshipCanCreate[row.order_id]=false;reshipError[row.order_id]=''
-  try{
-    const token=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
-    const r=await fetch(omsEndpoint(row,'reship-create'),{
-      method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
-      headers:{Accept:'application/json','Content-Type':'application/json',
-        ...(token?{'X-CSRF-TOKEN':token}:{})},
-      body:JSON.stringify({request_id:intent.request_id,
-        confirmation:'CREATE_REISSUE_'+intent.request_id}),
-    })
-    if(!r.ok)throw Error('独立 OMS 草稿创建被拒绝（HTTP '+r.status+'）')
-    const result=await r.json() as {result:string;request_id:string;oms_order_no?:string;code?:string}
-    if(result.request_id!==intent.request_id)throw Error('重新下发身份不一致，禁止再次 CREATE')
-    if((result.result==='created'||result.result==='existing')&&result.oms_order_no){
-      reshipOmsNo[row.order_id]=result.oms_order_no
-      notifyOms('SUCCESS','独立 OMS 草稿已登记','OMS '+result.oms_order_no+' · 原订单未改变')
-    }else{
-      reshipError[row.order_id]='创建未确认：'+(result.code??result.result)+'。禁止重复下发，先查询仓库'
-      notifyOms('ERROR','OMS 结果需核实',reshipError[row.order_id])
-    }
-  }catch(e){
-    reshipError[row.order_id]=(e instanceof Error?e.message:'请求结果未知')+'；禁止直接重发，请核实 OMS'
-  }finally{reshipBusy[row.order_id]=false}
-}
-const bindManualReship=async(row:Row)=>{
-  const request=reshipIntent[row.order_id]
-  const omsNo=(reshipManualOmsNo[row.order_id]??'').trim()
-  if(!props.canOperate||!request||!reshipApproved[row.order_id]
-    || !/^[A-Za-z0-9_-]{6,100}$/.test(omsNo)||reshipBusy[row.order_id])return
-  reshipBusy[row.order_id]=true;reshipError[row.order_id]=''
-  try{
-    const token=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
-    if(!token)throw Error('CSRF 校验信息缺失')
-    const res=await fetch(`/logistics/oversea/us-3sm/orders/${row.order_id}/xlwms/reship-manual-bind/${encodeURIComponent(request.request_id)}`,{
-      method:'POST',credentials:'same-origin',
-      headers:{'Content-Type':'application/json','Accept':'application/json','X-CSRF-TOKEN':token},
-      body:JSON.stringify({oms_order_no:omsNo})
-    })
-    const payload=await res.json()
-    if(!res.ok)throw Error(payload.code??'OMS 草稿绑定失败')
-    if(payload.oms_order_no!==omsNo)throw Error('OMS 编号身份不符')
-    reshipOmsNo[row.order_id]=omsNo
-    reshipProviderStatus[row.order_id]='0'
-    reshipCanCreate[row.order_id]=false
-    notifyOms('SUCCESS','OMS 人工草稿已绑定',omsNo)
-  }catch(e){
-    reshipError[row.order_id]=e instanceof Error?e.message:'OMS 草稿绑定失败'
-    notifyOms('ERROR','人工草稿绑定失败',reshipError[row.order_id])
-  }finally{reshipBusy[row.order_id]=false}
-}
-const refreshReshipStatus=async(row:Row)=>{
-  const intent=reshipIntent[row.order_id]
-  if(!intent||!reshipOmsNo[row.order_id]||reshipBusy[row.order_id])return
-  reshipBusy[row.order_id]=true;reshipError[row.order_id]=''
-  try{
-    const r=await fetch(omsEndpoint(row,'reship-status')+'/'+encodeURIComponent(intent.request_id),{
-      method:'GET',credentials:'same-origin',cache:'no-store',redirect:'error',
-      headers:{Accept:'application/json'},
-    })
-    if(!r.ok)throw Error('OMS 状态查询失败（HTTP '+r.status+'）')
-    const v=await r.json() as {request_id:string;oms_order_no:string;oms_status_code:string;oms_tracking_no:string|null;
-      original_erp_unchanged:boolean}
-    if(v.request_id!==intent.request_id||v.oms_order_no!==reshipOmsNo[row.order_id]
-      ||v.original_erp_unchanged!==true)throw Error('OMS 状态身份核对失败')
-    reshipProviderStatus[row.order_id]=v.oms_status_code
-    reshipProviderTracking[row.order_id]=v.oms_tracking_no??''
-  }catch(e){reshipError[row.order_id]=e instanceof Error?e.message:'状态查询异常'}
-  finally{reshipBusy[row.order_id]=false}
-}
-const readReshipPreview=async (row:Row) => {
-  if(!props.canOperate||props.warehouseKey!=='us-3sm'||!['shipped','pending'].includes(row.shipment_status)||reshipBusy[row.order_id])return
-  reshipBusy[row.order_id]=true;reshipError[row.order_id]=''
-  try {
-    const token=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
-    const res=await fetch(omsEndpoint(row,'reship-preflight'),{
-      method:'GET',credentials:'same-origin',cache:'no-store',redirect:'error',
-      headers:{Accept:'application/json',...(token?{'X-CSRF-TOKEN':token}:{})},
-    })
-    if(!res.ok)throw Error('补发预检不可用（HTTP '+res.status+'）')
-    const result=await res.json() as ReshipPreview
-    if(result.order_id!==row.order_id||result.channel!=='No_Shipping_Service'
-      ||result.draft_only!==true||result.can_create_oms!==false)throw Error('补发预检安全校验失败')
-    reshipPreview[row.order_id]=result
-    if(result.existing_reissue){
-      const old=result.existing_reissue
-      reshipIntent[row.order_id]={request_id:old.request_id,status:old.status,can_create_oms:old.can_create_oms}
-      reshipApproved[row.order_id]=!['requested','rejected','canceled'].includes(old.status)
-      reshipCanCreate[row.order_id]=old.can_create_oms
-      if(old.oms_order_no)reshipOmsNo[row.order_id]=old.oms_order_no
-      if(old.oms_status_code)reshipProviderStatus[row.order_id]=old.oms_status_code
-      if(old.oms_tracking_no)reshipProviderTracking[row.order_id]=old.oms_tracking_no
-    }
-  }catch(e){
-    reshipError[row.order_id]=e instanceof Error?e.message:'补发预检失败'
-    notifyOms('ERROR','API 重发货预检失败',reshipError[row.order_id])
-  }finally{reshipBusy[row.order_id]=false}
-}
 const omsRow = (row:Row): OmsSnapshot|null => omsSnapshots[row.order_id] ?? row.xlwms ?? null
 const omsLabel = (row:Row) => {
   const record=omsRow(row)
@@ -539,7 +380,7 @@ const omsLabel = (row:Row) => {
   if(record.oms_status_code==='0')return 'OMS 草稿 · 未提交仓库'
   if(record.oms_status_code==='5')return 'OMS 异常 · 待处理'
   if(record.oms_status_code==='3')return '已出库 · 待回写'
-  if(record.oms_status_code==='4')return '仓库已取消 · 待处理'
+  if(record.oms_status_code==='4')return '上次仓库单已取消'
   if(record.state==='blocked_existing_oms_order'||record.state==='batch_identity_blocked')return 'OMS 身份冲突 · 待核实'
   return 'OMS 已建单 · 接单待核实'
 }
@@ -565,6 +406,55 @@ const notifyOms = (state:'SUCCESS'|'ERROR'|'INFO', title:string, message:string)
   publishGlobalFeedback({ state, title, message, copyable:state==='ERROR' })
 const omsEndpoint = (row:Row, action:string) =>
   '/logistics/oversea/us-3sm/orders/'+row.order_id+'/xlwms/'+action
+const webDraftBusy = reactive<Record<number,boolean>>({})
+const webDraftErrors = reactive<Record<number,string>>({})
+const webDraftResult = reactive<Record<number,WebDraft>>({})
+const webDraftEligible = (row:Row) => props.canOperate && props.warehouseKey==='us-3sm'
+  && row.review_status==='approved'
+const webDraftHasHistory = (row:Row) => !!(row.web_draft?.oms_order_no || omsRow(row)?.oms_order_no)
+const webDraftActionLabel = (row:Row) => webDraftHasHistory(row) ? '重新下发' : '下发世迈仓'
+const webDraftUserError = (message:string, status:number):string => {
+  if (status===403) return '当前账号没有下发权限，请联系管理员'
+  if (status===429 || message.includes('IN_FLIGHT')) return '这张订单正在处理，请稍后查看结果'
+  if (status===422) return '订单资料不完整，请检查收件地址及产品信息'
+  if (/DISABLED|TOKEN_MISSING|HMAC_KEY_MISSING|CREDENTIALS_MISSING/.test(message))
+    return '世迈仓连接尚未启用，请联系管理员'
+  if (message.includes('LOGIN_EXPIRED')) return '世迈仓登录已过期，请联系管理员重新连接'
+  if (/DRAFT_PAGE|DRAFT_LIST|DRAFT_INCOMPLETE/.test(message))
+    return '暂时无法确认仓库草稿箱，已停止新建订单，请稍后再试'
+  if (/UNCONFIRMED|UNCERTAIN|UNVERIFIED/.test(message))
+    return '仓库结果暂时无法确认，请先检查草稿箱，避免重复下单'
+  return '下发没有完成，请联系管理员检查仓库连接'
+}
+const webDraftReadableStatus = (row:Row):string => {
+  const done=webDraftResult[row.order_id]
+  if (done?.state==='existing_current_draft') return '草稿箱已有此订单，无需重复下发'
+  if (done?.state==='oms_draft_created') return '已保存到仓库草稿箱'
+  if (omsRow(row)?.oms_status_code==='4') return '上次仓库单已取消，可重新下发'
+  if (row.web_draft?.oms_order_no) return '已有下发记录，可再次检查草稿箱'
+  return '待下发'
+}
+const createWebDraft = async (row:Row) => {
+  if (!webDraftEligible(row) || !props.xlwmsOmsWebEnabled || webDraftBusy[row.order_id]) return
+  webDraftBusy[row.order_id]=true; webDraftErrors[row.order_id]=''
+  try {
+    const csrf=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
+    if (!csrf) throw Error('CSRF 校验信息缺失')
+    const response=await fetch(`/logistics/oversea/us-3sm/orders/${row.order_id}/xlwms/web-draft`,{
+      method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
+      headers:{Accept:'application/json','Content-Type':'application/json','X-CSRF-TOKEN':csrf},body:'{}',
+    })
+    const result=await response.json().catch(()=>null)
+    if (!response.ok) throw Error(webDraftUserError(String(result?.message||result?.error||''), response.status))
+    if (!result?.oms_order_no || !['existing_current_draft','oms_draft_created'].includes(result.state))
+      throw Error('仓库结果暂时无法确认，请先检查草稿箱，避免重复下单')
+    webDraftResult[row.order_id]=result as WebDraft
+    notifyOms('SUCCESS',result.state==='existing_current_draft'?'仓库已有此订单':'已保存仓库草稿',`仓库单号：${result.oms_order_no}。下一步：仓库上传真实面单。`)
+  } catch(e) {
+    webDraftErrors[row.order_id]=e instanceof Error?e.message:'下发没有完成，请联系管理员检查仓库连接'
+    notifyOms('ERROR','下发未完成',webDraftErrors[row.order_id])
+  } finally { webDraftBusy[row.order_id]=false }
+}
 async function omsRequest(row:Row,action:string,payload:Record<string,string>={}) {
   const token=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
   if (!token && action!=='preflight') throw Error('CSRF_MISSING')
@@ -786,7 +676,7 @@ const compactPages = computed<(number|string)[]>(() => {
         </aside>
         <main class="oversea-main">
       <header class="oversea-heading">
-        <div><h1>{{ pageTitle }}</h1><p>审核 Vita 分仓结果；通过后进入真实下单，驳回则退回运营重新分配。</p><p v-if="warehouseKey === 'us-3sm'" class="xlwms-channel-hint">世迈仓使用 USPS 上传面单（Upload_Shipping_Label）。ERP 下载现有导入表后由物流专员导入 OMS 草稿；真实面单未上传及 Tracking 未核实前禁止提交仓库。OpenAPI 创建会自动进入仓库处理中，已停用。</p><p v-if="warehouseKey === 'us-moreplus'" class="xlwms-channel-hint">ShipOut 自动渠道和指定渠道需核对仓库最终承运商，不能假定 USPS Priority。</p></div>
+        <div><h1>{{ pageTitle }}</h1><p v-if="warehouseKey === 'us-3sm'">审核通过后，点击「下发世迈仓」。当前草稿箱已有相同订单时不会重复创建。</p><p v-else>审核 Vita 分仓结果；通过后进入真实下单，驳回则退回运营重新分配。</p><p v-if="warehouseKey === 'us-moreplus'" class="xlwms-channel-hint">ShipOut 自动渠道和指定渠道需核对仓库最终承运商，不能假定 USPS Priority。</p></div>
         <div class="oversea-file-actions">
           <a v-if="warehousePortal" class="file-button file-link warehouse-portal-link"
             :href="warehousePortal.href" target="_blank" rel="noopener noreferrer">
@@ -796,10 +686,14 @@ const compactPages = computed<(number|string)[]>(() => {
             :disabled="!trackingSelection.length || trackingBusy" @click="pushTracking(trackingSelection)">
             {{ trackingBusy?'同步中…':'同步官网物流' }}</button>
           <template v-if="warehouse && view === 'pending'">
-          <button v-if="warehouseKey === 'us-3sm' && canOperate" type="button" class="file-button" :disabled="refreshBusy" @click="refreshOmsStatuses">{{refreshBusy?'查询中…':'更新 OMS 状态'}}</button>
-          <a v-if="warehouseKey === 'us-3sm'" class="file-button file-link" href="https://oms.xlwms.com/warehouse/packet" target="_blank" rel="noopener noreferrer">进入世迈 OMS 草稿箱</a>
-          <a class="file-button file-link" :href="`${basePath}/export`">{{warehouseKey==='us-3sm'?'⇩ 下载 USPS 草稿导入表':'⇩ 下载仓库下单表'}}</a>
-          <a v-if="warehouseKey==='us-3sm'" class="file-button file-link" href="/assets/xlwms-VOID-TEST-DO-NOT-SHIP.png" download="VOID_TEST_ONLY_NOT_USPS_DO_NOT_SHIP.png">⇩ 下载 VOID 测试占位图</a>
+          <button v-if="warehouseKey === 'us-3sm' && canOperate" type="button" class="file-button" :disabled="refreshBusy" @click="refreshOmsStatuses">{{refreshBusy?'查询中…':'刷新仓库状态'}}</button>
+          <a v-if="warehouseKey === 'us-3sm'" class="file-button file-link" href="https://oms.xlwms.com/warehouse/packet" target="_blank" rel="noopener noreferrer">查看仓库草稿箱</a>
+          <details v-if="warehouseKey==='us-3sm'" class="xlwms-tools">
+            <summary>备用工具</summary>
+            <a class="file-button file-link" :href="`${basePath}/export`">下载 Excel 导入表</a>
+            <a class="file-button file-link" href="/assets/xlwms-VOID-TEST-DO-NOT-SHIP.png" download="VOID_TEST_ONLY_NOT_USPS_DO_NOT_SHIP.png">下载测试占位图（禁止发货）</a>
+          </details>
+          <a v-else class="file-button file-link" :href="`${basePath}/export`">⇩ 下载仓库下单表</a>
           <input ref="trackingFileInput" class="hidden-file" type="file" accept=".xlsx,.csv,.txt" @change="previewTrackingFile" />
           <button v-if="canOperate && canUploadTrackingFile" type="button" class="file-button primary" @click="chooseTrackingFile">⇧ 上传物流回传表</button>
           </template>
@@ -812,9 +706,9 @@ const compactPages = computed<(number|string)[]>(() => {
         <span v-if="batchError" class="xlwms-error">{{ batchError }}</span>
       </div>
       <div v-if="warehouse && view === 'pending'" class="oversea-file-flow">
-        <template v-if="warehouseKey==='us-3sm'"><span>① Dede 审核</span><b>→</b><span>② 订单行 API 发货</span><b>→</b><span>③ OMS 状态查询</span><b>→</b><span>④ Tracking 核实与回写</span></template>
+        <template v-if="warehouseKey==='us-3sm'"><span>① 审核订单</span><b>→</b><span>② 一键下发草稿</span><b>→</b><span>③ 仓库更换面单</span><b>→</b><span>④ 人工确认发货</span></template>
         <template v-else><span>① 审核通过</span><b>→</b><span>② 下载 USPS 草稿导入表</span><b>→</b><span>③ OMS 草稿－待提交</span><b>→</b><span>④ 人工上传真实面单并提交</span><b>→</b><span>⑤ 仓库 Tracking 回写 ERP</span></template>
-        <small>{{ trackingFileHint }}</small>
+        <small v-if="warehouseKey!=='us-3sm'">{{ trackingFileHint }}</small>
       </div>
 
       <section v-if="warehouse && view === 'pending' && trackingImportPreview" class="tracking-preview">
@@ -851,7 +745,7 @@ const compactPages = computed<(number|string)[]>(() => {
           <thead><tr>
             <th v-if="canTrackingSync">选择</th>
             <th class="decision-col sticky-decision">审核</th>
-            <th v-if="warehouseKey === 'us-3sm'" class="xlwms-header">世迈 OMS · API 发货 / 状态</th>
+            <th v-if="warehouseKey === 'us-3sm'" class="xlwms-header">世迈仓下发</th>
             <th v-if="warehouseKey === 'us-moreplus'" class="xlwms-header">MorePlus ShipOut · API / 物流</th>
             <th v-for="column in grid.visibleColumns" :key="column.key" :class="{ 'line-col':column.key === 'line' }">{{ column.label }}</th>
             <th>官网同步</th><th v-if="canTrackingSync">操作</th>
@@ -872,68 +766,28 @@ const compactPages = computed<(number|string)[]>(() => {
               </td>
               <td v-if="warehouseKey === 'us-3sm'" class="xlwms-cell">
                 <div class="xlwms-inline" :data-oms-order-id="row.order_id">
-                  <template v-if="omsRow(row)?.oms_order_no">
-                    <div class="xlwms-state" :class="'dispatch-'+(row.warehouse_dispatch?.status??'pending_dispatch')">{{ omsLabel(row) }}</div>
-                    <small v-if="omsDetail(row)" class="xlwms-note">{{ omsDetail(row) }}</small>
-                    <small v-if="row.warehouse_dispatch?.last_checked_at" class="xlwms-note">核对 {{row.warehouse_dispatch.last_checked_at}}</small>
-                    <small v-if="omsRow(row)?.oms_order_no" class="xlwms-number">OMS {{ omsRow(row)?.oms_order_no }}</small>
-                    <small v-if="omsRow(row)?.oms_tracking_no" class="xlwms-track">Tracking {{ omsRow(row)?.oms_tracking_no }}（未同步）</small>
-                    <button v-if="omsRow(row)?.oms_order_no" type="button" class="xlwms-action" :disabled="omsBusy[row.order_id]" @click="omsRefresh(row)">{{omsBusy[row.order_id]?'查询中…':'更新 OMS 状态'}}</button>
-                    <button v-else-if="canOperate" type="button" class="xlwms-action" :disabled="omsBusy[row.order_id]" @click="omsReconcile(row)">核对 OMS（不重发）</button>
-                    <small v-if="omsRow(row)?.oms_status_failure_code" class="xlwms-error" role="alert">{{ omsFailureText(omsRow(row)?.oms_status_failure_code) }}</small>
+                  <template v-if="webDraftEligible(row) && !xlwmsOmsWebEnabled">
+                    <strong class="xlwms-state">世迈仓尚未连接</strong>
+                    <button type="button" class="xlwms-action primary" disabled>请管理员连接世迈仓</button>
+                    <small class="xlwms-note">连接完成后即可一键下发，避免订单进入错误状态。</small>
                   </template>
-                  <template v-else-if="row.review_status === 'approved' && row.shipment_status === 'pending'">
-                    <span class="xlwms-state">待导入 OMS 草稿</span>
-                    <small v-if="row.warehouse_dispatch?.detail" class="xlwms-note">{{row.warehouse_dispatch.detail}}</small>
-                    <small class="xlwms-note">仅支持 OMS 官方导入 / 网页保存草稿；旧 OpenAPI CREATE 已停用</small>
-                    <a class="xlwms-action" href="https://oms.xlwms.com/warehouse/packet/create" target="_blank" rel="noopener noreferrer">OMS 手动新建草稿</a>
+                  <template v-else-if="webDraftEligible(row)">
+                    <strong class="xlwms-state" :class="{ 'xlwms-draft-success': !!webDraftResult[row.order_id]?.oms_order_no }">{{ webDraftReadableStatus(row) }}</strong>
+                    <button type="button" class="xlwms-action primary" :disabled="webDraftBusy[row.order_id]"
+                      @click="createWebDraft(row)">{{ webDraftBusy[row.order_id] ? '正在检查草稿箱…' : webDraftActionLabel(row) }}</button>
+                    <small class="xlwms-note">自动使用 USPS 占位面单；仓库收到后更换真实面单。</small>
+                    <small v-if="webDraftResult[row.order_id]?.oms_order_no" class="xlwms-number">仓库单号：{{webDraftResult[row.order_id].oms_order_no}}</small>
+                    <small v-if="webDraftErrors[row.order_id]" class="xlwms-error" role="alert">{{webDraftErrors[row.order_id]}}</small>
                   </template>
-                  <span v-else class="xlwms-note">{{ row.review_status !== 'approved' ? '待 Dede 审核' : '不允许重复发货' }}</span>
-                  <div v-if="canOperate && (row.shipment_status==='shipped' || (row.shipment_status==='pending' && !!omsRow(row)?.oms_order_no))" class="xlwms-reship-readonly">
-                    <button type="button" class="xlwms-action" :disabled="reshipBusy[row.order_id]"
-                      @click="readReshipPreview(row)">{{reshipBusy[row.order_id]?'预检中…':'重新下发仓库'}}</button>
-                    <div v-if="reshipPreview[row.order_id]" class="xlwms-confirm">
-                      <strong>重新下发仓库 · 独立出库草稿</strong>
-                      <small v-if="reshipPreview[row.order_id].source_scenario==='canceled_original_oms'">原 OMS 已实时确认取消；ERP 原订单保持待发货</small>
-                      <small>原订单 {{reshipPreview[row.order_id].erp_order_id}} · 原 OMS {{reshipPreview[row.order_id].original_oms_order_no??'未关联'}}</small>
-                      <small>{{reshipPreview[row.order_id].items.map(i=>i.sku+' × '+i.quantity).join(' / ')}}</small>
-                      <small>{{reshipPreview[row.order_id].recipient}} · {{reshipPreview[row.order_id].address.address_1}} · {{reshipPreview[row.order_id].address.city}}</small>
-                      <small>渠道：USPS上传物流面单 · OMS 导入/网页保存草稿 · 实际面单由物流专员手动替换</small>
-                      <small v-if="reshipPreview[row.order_id].blockers.length && !reshipIntent[row.order_id]" class="xlwms-error">{{reshipPreview[row.order_id].blockers.map(b=>b==='original_oms_identity_missing'?'原 OMS 单号未关联，无法安全创建新仓库单':b==='source_order_not_shipped_or_original_oms_not_canceled'?'原 OMS 尚未实时确认取消，或 ERP 发货事实不满足条件':b).join('；')}}</small>
-                      <template v-if="reshipPreview[row.order_id].ready_for_review || !!reshipIntent[row.order_id]">
-                        <template v-if="!reshipIntent[row.order_id]">
-                          <input v-model="reshipReason[row.order_id]" type="text" maxlength="180"
-                            class="xlwms-reship-reason" placeholder="填写补发原因（至少 5 个字）" />
-                          <button type="button" class="xlwms-action"
-                            :disabled="reshipBusy[row.order_id] || (reshipReason[row.order_id]??'').trim().length<5"
-                            @click="requestReship(row)">{{reshipPreview[row.order_id].source_scenario==='canceled_original_oms'
-                              ?'确认原 OMS 已取消 · 提交重新下发申请':'确认原订单已发货 · 提交补发申请'}}</button>
-                        </template>
-                        <template v-else-if="!reshipApproved[row.order_id]">
-                          <small>申请已保存：{{reshipIntent[row.order_id].request_id}}（待二次确认）</small>
-                          <button type="button" class="xlwms-action"
-                            :disabled="reshipBusy[row.order_id]" @click="approveReship(row)">二次确认补发申请（不创建 OMS）</button>
-                        </template>
-                        <small v-else>申请审核已记录；核对旧 OMS 状态后才允许创建新草稿</small>
-                      </template>
-                      <a v-if="reshipApproved[row.order_id] && reshipIntent[row.order_id] && !reshipOmsNo[row.order_id]"
-                        class="xlwms-action primary"
-                        :href="`/logistics/oversea/us-3sm/orders/${row.order_id}/xlwms/reship-manual-draft/${encodeURIComponent(reshipIntent[row.order_id].request_id)}`">⇩ 下载独立 Reship 草稿导入表</a>
-                      <small v-if="reshipApproved[row.order_id] && !reshipOmsNo[row.order_id]">ERP 不会向世迈自动提交。请将导入表上传 OMS，人工核对草稿后再处理真实 USPS 面单</small>
-                      <div v-if="reshipApproved[row.order_id] && reshipIntent[row.order_id] && !reshipOmsNo[row.order_id]" class="xlwms-confirm">
-                        <small>OMS 导入后，填写新 OMS 出库单号；仅状态 0、渠道 USPS 上传面单、SKU/数量及唯一参考号全部匹配才可绑定</small>
-                        <input v-model="reshipManualOmsNo[row.order_id]" class="xlwms-reship-reason" placeholder="OMS 出库单号 OBS..." maxlength="100" />
-                        <button type="button" class="xlwms-action" :disabled="reshipBusy[row.order_id] || !(reshipManualOmsNo[row.order_id]??'').trim()" @click="bindManualReship(row)">核对 OMS 草稿并关联 ERP</button>
-                      </div>
-                      <small v-if="reshipOmsNo[row.order_id]">新 OMS 出库单：{{reshipOmsNo[row.order_id]}}（原单保留）</small>
-                      <button v-if="reshipOmsNo[row.order_id]" type="button" class="xlwms-action"
-                        :disabled="reshipBusy[row.order_id]" @click="refreshReshipStatus(row)">查询新 OMS 状态</button>
-                      <small v-if="reshipProviderStatus[row.order_id]">新 OMS 原始状态码：{{reshipProviderStatus[row.order_id]}}（未自动同步官网）</small>
-                      <small v-if="reshipProviderTracking[row.order_id]">新 OMS Tracking：{{reshipProviderTracking[row.order_id]}}（原运单保留）</small>
-                      <small>历史 OMS 与本次 Reship 编号均保留；严禁使用 VOID 测试面单发货</small>
-                    </div>
-                    <small v-if="reshipError[row.order_id]" role="alert" class="xlwms-error">{{reshipError[row.order_id]}}</small>
-                  </div>
+                  <span v-else class="xlwms-note">{{ row.review_status !== 'approved' ? '审核通过后可下发' : '请联系物流主管' }}</span>
+                  <details v-if="webDraftHasHistory(row)" class="xlwms-history">
+                    <summary>查看历史仓库记录</summary>
+                    <small v-if="omsRow(row)?.oms_order_no">之前的仓库单：{{omsRow(row)?.oms_order_no}} · {{omsLabel(row)}}</small>
+                    <small v-if="row.web_draft?.oms_order_no">最近一次下发：{{row.web_draft.oms_order_no}}</small>
+                    <button v-if="omsRow(row)?.oms_order_no" type="button" class="xlwms-action" :disabled="omsBusy[row.order_id]"
+                      @click="omsRefresh(row)">{{omsBusy[row.order_id]?'查询中…':'更新历史订单状态'}}</button>
+                    <small v-if="omsRow(row)?.oms_status_failure_code" class="xlwms-error">{{ omsFailureText(omsRow(row)?.oms_status_failure_code) }}</small>
+                  </details>
                   <small v-if="omsErrors[row.order_id]" role="alert" class="xlwms-error">{{omsErrors[row.order_id]}}</small>
                 </div>
               </td>
@@ -1062,6 +916,7 @@ const compactPages = computed<(number|string)[]>(() => {
 .xlwms-error{color:#c02d2d!important;font-size:11px!important;font-weight:600;line-height:1.4;white-space:normal}
 .xlwms-confirm{display:flex;flex-direction:column;gap:5px;margin-top:4px;padding:7px;border:1px solid #cfe2da;border-radius:6px;background:#f6faf7;white-space:normal}
 .xlwms-confirm small{font-size:11px;color:#496b5b;overflow-wrap:anywhere}
+.xlwms-tools{position:relative;align-self:center;font-size:12px;color:#607477}.xlwms-tools summary{cursor:pointer;white-space:nowrap}.xlwms-tools[open]{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.xlwms-tools .file-button{font-size:12px}.xlwms-history{width:100%;margin-top:4px;padding-top:6px;border-top:1px solid #dce6e7;font-size:12px;color:#5d7075}.xlwms-history summary{cursor:pointer;color:#42686b}.xlwms-history[open] small{display:block;margin-top:6px}.xlwms-draft-success{color:#167765}
 .xlwms-batch-button{min-width:112px}.xlwms-batch-result{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-4px 0 12px;padding:7px 10px;border:1px solid #cfe2da;border-radius:7px;background:#f6faf7;color:#35564d;font-size:12px}.xlwms-batch-result span{padding-right:8px;border-right:1px solid #dbe7e5}.xlwms-batch-result span:last-child{border-right:0}
 .tracking-selection-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;margin:9px 0;background:#eef6ff;border:1px solid #c9dffc;border-radius:8px;font-size:12px}
 .tracking-sync-status{display:inline-flex;padding:4px 7px;border-radius:5px;font-size:11px;font-weight:700;color:#92400e;background:#fff1d6}
