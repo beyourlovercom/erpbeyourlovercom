@@ -350,6 +350,7 @@ final class ProductController
         $configuredProductReference = collect($this->externalRefs->forProduct($id))->first(fn (array $reference): bool => $reference['provider'] === 'woocommerce' && $reference['connection_key'] === $connection && $reference['reference_type'] === 'product');
         $snapshot = ProductProviderSnapshot::query()->where(['product_id' => $id, 'provider' => 'woocommerce', 'connection_key' => $connection])->first();
         $media = ProductMedia::query()->where(['product_id' => $id, 'provider' => 'woocommerce', 'connection_key' => $connection])->orderBy('position')->get();
+        $primaryMedia = $media->firstWhere('is_primary', true) ?? $media->first();
         $recentProductRuns = \App\Modules\Sync\Infrastructure\Models\SyncRunItem::query()->with('run')->where('product_id', $id)->where('operation', 'woocommerce.product_inbound')->latest('id')->limit(10)->get()->map(fn ($item): array => ['status' => $item->status?->value ?? $item->status, 'result_code' => $item->result_code, 'error_message' => $item->error_message, 'completed_at' => $item->completed_at?->toIso8601String(), 'run_id' => $item->sync_run_id])->all();
 
         $canManageProduct = Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false;
@@ -381,7 +382,7 @@ final class ProductController
                 'product_type' => $product->product_type,
                 'woocommerce_product_id' => $product->woocommerce_product_id,
                 'woo_url' => $snapshot?->permalink,
-                'image_url' => $media->firstWhere('is_primary', true) ? route('products.media.show', $media->firstWhere('is_primary', true)->id) : null,
+                'image_url' => $this->gridImageUrl($primaryMedia),
                 'woo_sync_status' => $snapshot ? 'synced' : ($configuredProductReference ? 'not_synced' : 'not_configured'),
                 'sale_price' => $product->sale_price,
                 'regular_price' => $product->regular_price,
@@ -404,7 +405,7 @@ final class ProductController
             ],
             'externalReferences' => $this->externalRefs->forProduct($id),
             'woo' => $snapshot ? ['provider_status' => $snapshot->provider_status, 'categories' => $snapshot->category_names ?? [], 'description' => $snapshot->description_text, 'short_description' => $snapshot->short_description_text, 'variation_count' => $snapshot->variation_count, 'provider_created_at' => $snapshot->provider_created_at?->toIso8601String(), 'provider_modified_at' => $snapshot->provider_modified_at?->toIso8601String(), 'last_synced_at' => $snapshot->last_synced_at?->toIso8601String(), 'connection_key' => $snapshot->connection_key] : null,
-            'media' => $media->map(fn (ProductMedia $item): array => ['id' => $item->id, 'url' => route('products.media.show', $item->id), 'alt_text' => $item->alt_text, 'position' => $item->position, 'is_primary' => $item->is_primary])->values()->all(),
+            'media' => $media->map(fn (ProductMedia $item): array => ['id' => $item->id, 'url' => $this->gridImageUrl($item), 'alt_text' => $item->alt_text, 'position' => $item->position, 'is_primary' => $item->is_primary])->filter(fn (array $item): bool => $item['url'] !== null)->values()->all(),
             'wooSyncHistory' => $recentProductRuns,
             'skuAliases' => collect($this->skuAliases->listForProduct($id))->map(function (array $alias): array {
                 $editorId = $alias['updated_by_user_id'] ?? $alias['created_by_user_id'] ?? null;
