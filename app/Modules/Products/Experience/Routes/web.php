@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Products\Experience\Controllers\ProductController;
+use App\Modules\Products\Experience\Controllers\ProductInlineParameterController;
 use App\Modules\Products\Experience\Controllers\ProductBarcode69ImportController;
 use App\Modules\Products\Experience\Controllers\ProductPackagingProfileController;
 use App\Modules\Products\Experience\Controllers\ProductSkuController;
@@ -63,6 +64,7 @@ Route::middleware(['web', 'auth', 'can:products.operate'])->group(function (): v
     Route::post('/products/import', [ProductController::class, 'importStore'])->name('products.import.store');
     Route::get('/products/{id}/edit', [ProductController::class, 'edit'])->name('products.edit');
     Route::get('/products/{product}/packaging', [ProductPackagingProfileController::class, 'edit'])->whereNumber('product')->name('products.packaging.edit');
+    Route::put('/products/{product}/inline-parameters', [ProductInlineParameterController::class, 'update'])->whereNumber('product')->name('products.inline-parameters.update');
     Route::put('/products/{product}/barcode-69', [ProductPackagingProfileController::class, 'updateBarcode69'])->whereNumber('product')->name('products.barcode-69.update');
     Route::put('/products/{product}/packaging', [ProductPackagingProfileController::class, 'update'])->whereNumber('product')->name('products.packaging.update');
     Route::post('/products/{product}/packaging/media', [ProductPackagingProfileController::class, 'upload'])->whereNumber('product')->name('products.packaging.media.store');
