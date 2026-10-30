@@ -60,34 +60,36 @@ final class SpeedaV2EuropeanBarcodeTest extends TestCase
         $this->assertSame(['TEST-SKU-FR','0697729139053',null], array_slice($rows[2], 24, 3));
     }
 
-    public function test_non_europe_is_blank_and_new_columns_repeat_for_second_row(): void
+    public function test_non_europe_also_populates_sku_and_optional_barcode(): void
     {
         $fr = $this->order('TEST-SKU-FR', 'FR', '6977291390537', 902);
-        $us = $this->order('TEST-SKU-US', 'US', null, 903);
+        $us = $this->order('TEST-SKU-US', 'US', '6977291390285', 903);
         $rows = $this->rows([$fr, $us]);
         $this->assertSame('AA', $rows['highest']);
         $this->assertSame(['TEST-SKU-FR','6977291390537',null], array_slice($rows[2], 24, 3));
-        $this->assertSame([null,null,null], array_slice($rows[3], 24, 3));
+        $this->assertSame(['TEST-SKU-US','6977291390285',null], array_slice($rows[3], 24, 3));
     }
-    public function test_missing_europe_barcode_isolated_without_blocking_other_orders(): void
+    public function test_missing_barcode_leaves_z_blank_without_blocking_any_orders(): void
     {
         $good = $this->order('GOOD-DE', 'DE', '6977291390537', 904);
         $bad = $this->order('MISSING-DE', 'DE', null, 905);
         $result = app(SpeedaOutboundExporter::class)->exportReady(collect([$good, $bad]));
-        $this->assertSame(1, $result['exported_count']);
-        $this->assertCount(1, $result['blocked']);
-        $this->assertStringContainsString('69条形码', implode(' ', $result['blocked'][0]['reasons']));
+        $this->assertSame(2, $result['exported_count']);
+        $this->assertCount(0, $result['blocked']);
+        $rows = $this->rows([$good, $bad]);
+        $this->assertSame(['MISSING-DE', null, null], array_slice($rows[3], 24, 3));
     }
 
-    public function test_multiple_distinct_europe_skus_are_blocked(): void
+    public function test_multiple_distinct_skus_do_not_block_and_leave_ambiguous_identifiers_blank(): void
     {
         $mixed = $this->order('TEST-DE-A', 'DE', '6977291390537', 906);
         $other = Product::create(['sku'=>'TEST-DE-B','name'=>'Second synthetic','source_type'=>'manual',
             'product_type'=>'simple','barcode_69'=>'6977291390285']);
         $mixed->items()->create(['sku'=>'TEST-DE-B','product_id'=>$other->id,'product_summary'=>'Second synthetic',
             'quantity'=>1,'unit_price'=>1,'line_revenue'=>1]);
-        $reasons = app(SpeedaOutboundExporter::class)->blockers($mixed->fresh(), '速达');
-        $this->assertStringContainsString('多个SKU', implode(' ', $reasons));
+        $this->assertSame([], app(SpeedaOutboundExporter::class)->blockers($mixed->fresh(), '速达'));
+        $rows = $this->rows([$mixed->fresh()]);
+        $this->assertSame([null, null, null], array_slice($rows[2], 24, 3));
     }
 
     public function test_two_lines_of_same_sku_keep_one_barcode_and_total_quantity(): void
@@ -105,8 +107,26 @@ final class SpeedaV2EuropeanBarcodeTest extends TestCase
     {
         $order = $this->order('REAL-DE', 'DE', '6977291390537', 909);
         $order->items()->update(['resolved_fulfillment_sku' => 'OTHER-DE']);
-        $errors = app(SpeedaOutboundExporter::class)->blockers($order->fresh(), '速达');
-        $this->assertStringContainsString('69条形码', implode(' ', $errors));
+        $this->assertSame([], app(SpeedaOutboundExporter::class)->blockers($order->fresh(), '速达'));
+        $rows = $this->rows([$order->fresh()]);
+        $this->assertSame(['OTHER-DE', null, null], array_slice($rows[2], 24, 3));
+    }
+
+    public function test_unknown_sku_leaves_y_and_z_blank_without_blocking(): void
+    {
+        $order = $this->order('', 'JP', null, 910);
+        $this->assertSame([], app(SpeedaOutboundExporter::class)->blockers($order, '速达'));
+        $rows = $this->rows([$order]);
+        $this->assertSame([null, null, null], array_slice($rows[2], 24, 3));
+    }
+
+    public function test_product_record_with_blank_barcode_still_exports_sku(): void
+    {
+        $order = $this->order('NO-CODE-CA', 'CA', null, 911);
+        Product::create(['sku'=>'NO-CODE-CA','name'=>'Blank barcode product',
+            'source_type'=>'manual','product_type'=>'simple','barcode_69'=>null]);
+        $rows = $this->rows([$order]);
+        $this->assertSame(['NO-CODE-CA', null, null], array_slice($rows[2], 24, 3));
     }
 
     public function test_weship_keeps_24_column_contract_without_barcode_requirement(): void

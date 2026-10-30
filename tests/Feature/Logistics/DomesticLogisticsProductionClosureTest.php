@@ -139,6 +139,36 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         } finally { @unlink($path); }
     }
 
+    public function test_real_4px_download_exports_all_countries_and_ignores_missing_69_barcode(): void
+    {
+        $us = $this->domesticOrder('007-1030-c59901', '4PX', true, '13800138001', 1);
+        $us->address()->update(['country' => 'US', 'province_state' => 'CA', 'city' => 'Los Angeles']);
+        $this->attachBarcode($us);
+        $de = $this->domesticOrder('007-1030-c59902', '4PX', true, '13800138002', 1);
+        $de->items()->update(['sku' => 'NO-BARCODE-DE', 'product_id' => null]);
+
+        $response = $this->actingAs($this->logisticsViewer())->get('/logistics/china/export/4px');
+        $response->assertOk();
+        self::assertSame('2', $response->headers->get('X-BYL-Exported-Orders'));
+        self::assertSame('0', $response->headers->get('X-BYL-Blocked-Orders'));
+
+        $path = tempnam(sys_get_temp_dir(), 'speeda-optional-');
+        file_put_contents($path, $response->getContent());
+        try {
+            $book = IOFactory::load($path);
+            $sheet = $book->getSheetByName('标准上传格式');
+            self::assertSame('AA', $sheet->getHighestDataColumn());
+            self::assertSame(3, $sheet->getHighestDataRow());
+            self::assertSame('TEST-SKU', $sheet->getCell('Y2')->getValue());
+            self::assertSame('0697729139053', $sheet->getCell('Z2')->getValue());
+            self::assertSame('NO-BARCODE-DE', $sheet->getCell('Y3')->getValue());
+            self::assertEmpty($sheet->getCell('Z3')->getValue());
+            self::assertEmpty($sheet->getCell('AA2')->getValue());
+            self::assertEmpty($sheet->getCell('AA3')->getValue());
+            $book->disconnectWorksheets();
+        } finally { @unlink($path); }
+    }
+
     public function test_weship_export_reuses_the_24_column_contract_but_remains_provider_isolated(): void
     {
         $speeda = $this->domesticOrder('007-0923-c50008', '4PX', reviewed: true, phone: '13800138008', quantity: 1);

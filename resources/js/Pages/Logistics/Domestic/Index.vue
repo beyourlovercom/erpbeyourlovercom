@@ -126,7 +126,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
 
       <section v-if="view==='today' || view==='today-4px' || view==='today-weship'" class="provider-grid" :class="{single:view==='today-4px' || view==='today-weship'}">
         <article v-if="view!=='today-weship'" class="provider-card">
-          <div><strong>速达 / 4PX</strong><small>新版 27 列模板 · 欧洲订单自动填写 SKU / 69条码 · XLSX 下载 · XLS/XLSX 回传</small></div>
+          <div><strong>速达 / 4PX</strong><small>新版 27 列模板 · 所有订单按现有数据填写 SKU / 69条码（空缺留空） · XLSX 下载 · XLS/XLSX 回传</small></div>
           <div class="actions">
             <a class="primary" href="/logistics/china/export/4px">下载速达下单表</a>
             <button v-if="canOperate" type="button" class="secondary" @click="chooseUpload('4px')">上传速达单号表</button>

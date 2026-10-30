@@ -51,6 +51,7 @@ describe('Domestic logistics production workbench', () => {
   it('shows only the matching provider operation card on provider-specific daily tabs', () => {
     const speeda=mount(Index,{props:{...baseProps,view:'today-4px',trackingImportPreview:null,trackingImportProvider:null}})
     expect(speeda.text()).toContain('速达 / 4PX')
+    expect(speeda.text()).toContain('所有订单按现有数据填写 SKU / 69条码（空缺留空）')
     expect(speeda.text()).not.toContain('纬狮 / Weship')
     expect(speeda.find('a[href="/logistics/china/export/4px"]').exists()).toBe(true)
 

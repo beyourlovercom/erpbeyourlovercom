@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Application\Domestic;
 
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Products\Infrastructure\Models\Product;
 use DomainException;
 use Illuminate\Support\Collection;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
@@ -11,20 +12,13 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use RuntimeException;
-use Illuminate\Validation\ValidationException;
 
 final class SpeedaOutboundExporter
 {
     private const TEMPLATE = 'resources/logistics/templates/speeda-outbound-v1.xlsx';
     // Official 2026-10-26 4PX template: Y SKU, Z manufacturer barcode, AA blank.
-    private const EUROPE = ['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU',
-        'IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE',
-        'GB','UK','NO','CH','IS','LI','AD','MC','SM','VA','AL','BA','ME','MK','RS','MD','UA','TR'];
 
-    public function __construct(
-        private readonly WarehouseOrderReference $references,
-        private readonly ChinaSmallPacketBarcode69Reader $barcodes,
-    ) {}
+    public function __construct(private readonly WarehouseOrderReference $references) {}
 
     /** @return list<string> */
     public function blockers(Order $order, string $providerLabel = '速达'): array
@@ -61,13 +55,6 @@ final class SpeedaOutboundExporter
             $missing[] = '申报品数量1';
         }
 
-        if ($providerLabel === '速达' && $this->isEurope($address?->country)) {
-            try {
-                $this->oneBarcodeForOrder($order);
-            } catch (DomainException $e) {
-                $missing[] = $e->getMessage();
-            }
-        }
 
         return $missing;
     }
@@ -193,11 +180,7 @@ final class SpeedaOutboundExporter
             }
 
             if ($speeda) {
-                $sku = '';
-                $barcode = '';
-                if ($this->isEurope($countryCode)) {
-                    [$sku, $barcode] = $this->oneBarcodeForOrder($order);
-                }
+                [$sku, $barcode] = $this->optionalIdentifiersForOrder($order);
                 $sheet->setCellValueExplicit("Y{$row}", $sku, DataType::TYPE_STRING);
                 $sheet->setCellValueExplicit("Z{$row}", $barcode, DataType::TYPE_STRING);
                 $sheet->setCellValueExplicit("AA{$row}", '', DataType::TYPE_STRING);
@@ -233,28 +216,44 @@ final class SpeedaOutboundExporter
         return $bytes;
     }
 
-    private function isEurope(?string $country): bool
+    /**
+     * Optional 4PX identifiers for all destination countries.
+     * Y is a single unambiguous fulfillment SKU; Z is its verified product barcode.
+     * Missing or ambiguous data must NEVER block an otherwise valid order.
+     *
+     * @return array{0:string,1:string}
+     */
+    private function optionalIdentifiersForOrder(Order $order): array
     {
-        return in_array(strtoupper(trim((string) $country)), self::EUROPE, true);
-    }
+        $order->loadMissing(['items.product']);
+        $items = $order->items;
+        if ($items->isEmpty()) {
+            return ['', ''];
+        }
 
-    /** @return array{0:string,1:string} */
-    private function oneBarcodeForOrder(Order $order): array
-    {
-        try {
-            $rows = $this->barcodes->forOrder($order);
-        } catch (ValidationException $e) {
-            throw new DomainException('欧洲速达订单缺少经过SKU核实的69条形码', previous: $e);
+        $skuList = $items->map(fn ($item) => trim((string) ($item->resolved_fulfillment_sku ?: $item->sku)))->all();
+        $uniqueSkus = array_values(array_unique($skuList));
+        // One Y/Z pair cannot represent multiple different SKUs or an unknown item.
+        if (count($uniqueSkus) !== 1 || $uniqueSkus[0] === '') {
+            return ['', ''];
         }
-        if ($rows === []) {
-            throw new DomainException('欧洲速达订单缺少商品SKU');
+
+        $sku = $uniqueSkus[0];
+        $matches = Product::query()->where('sku', $sku)->limit(2)->get(['id', 'barcode_69']);
+        if ($matches->count() !== 1) {
+            return [$sku, ''];
         }
-        // One 4PX Y/Z pair represents ONE SKU, not an arbitrary multi-SKU parcel.
-        $pairs = array_unique(array_map(fn (array $row) => $row['sku'].'|'.$row['barcode_69'], $rows));
-        if (count($pairs) !== 1) {
-            throw new DomainException('欧洲速达订单包含多个SKU，无法安全填写单组Y/Z条码');
+
+        $product = $matches->first();
+        foreach ($items as $item) {
+            // Never use a different linked product's barcode for a fulfillment SKU.
+            if ($item->product_id !== null && (int) $item->product_id !== (int) $product->id) {
+                return [$sku, ''];
+            }
         }
-        return [(string) $rows[0]['sku'], (string) $rows[0]['barcode_69']];
+
+        $barcode = trim((string) $product->barcode_69);
+        return [$sku, preg_match('/^[0-9]{8,14}$/D', $barcode) === 1 ? $barcode : ''];
     }
 
     private function enableSpeeda27Columns($sheet): void
