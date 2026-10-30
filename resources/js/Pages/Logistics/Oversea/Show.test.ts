@@ -69,7 +69,7 @@ describe('Oversea Dede file exchange workbench', () => {
     expect(wrapper.find('a[href="/logistics/oversea/us-moreplus/export"]').text()).toContain('下载仓库下单表')
     expect(wrapper.find('input[type="file"]').attributes('accept')).toBe('.xlsx,.csv,.txt')
     expect(wrapper.text()).toContain('上传物流回传表')
-    expect(wrapper.text()).toContain('上传仓库 / WMS')
+    expect(wrapper.text()).toContain('上传当前仓库真实回传 XLSX')
     expect(wrapper.text()).toContain('USPS Ground Advantage')
     expect(wrapper.text()).toContain('Pending')
     expect(wrapper.text()).toContain('ERP确认时间')
@@ -80,7 +80,7 @@ describe('Oversea Dede file exchange workbench', () => {
   it('keeps 3SM file return disabled and exposes manual confirm after tracking entry', async () => {
     const wrapper = mountPage({ warehouseKey: 'us-3sm', warehouse: warehouseOptions[1], trackingImportPreview: null, rows: usSmPendingRows })
     expect(wrapper.text()).not.toContain('上传物流回传表')
-    expect(wrapper.text()).toContain('世迈订单行直接审核、API 发货')
+    expect(wrapper.text()).toContain('审核通过后，点击「下发世迈仓」')
     expect(wrapper.text()).toContain('确认发货')
     expect(wrapper.find('a[href="/logistics/oversea/us-3sm/export"]').exists()).toBe(true)
 
@@ -96,20 +96,12 @@ describe('Oversea Dede file exchange workbench', () => {
     )
   })
 
-  it('shows the top-right warehouse sync action only for an operator on US-SM and renders real row outcomes', async () => {
-    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="TEST-CSRFTOKEN">')
-    const request=vi.fn().mockResolvedValue({ok:true,json:async()=>({count:2,results:[{order_id:99,code:'existing'},{order_id:100,code:'blocked'}]})})
-    vi.stubGlobal('fetch',request)
-    try {
-      const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],trackingImportPreview:null,rows:usSmPendingRows,xlwmsBatchEnabled:true})
-      const button=wrapper.find('button.xlwms-batch-button')
-      expect(button.exists()).toBe(true)
-      await button.trigger('click')
-      await vi.waitFor(()=>expect(wrapper.text()).toContain('本次处理 2 单'))
-      expect(wrapper.text()).toContain('订单 99 · 已存在')
-      expect(wrapper.text()).toContain('订单 100 · 已阻断')
-      expect(request).toHaveBeenCalledWith('/logistics/oversea/us-3sm/xlwms/sync',expect.objectContaining({method:'POST',credentials:'same-origin'}))
-    } finally { vi.unstubAllGlobals(); document.head.querySelector('meta[name="csrf-token"]')?.remove() }
+  it('keeps older bulk OMS dispatch hidden while showing a single operator action', () => {
+    const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+      trackingImportPreview:null,rows:usSmPendingRows,xlwmsBatchEnabled:true})
+    expect(wrapper.find('button.xlwms-batch-button').exists()).toBe(false)
+    expect(wrapper.find('td.xlwms-cell button.xlwms-action.primary').text()).toBe('下发世迈仓')
+    expect(wrapper.text()).not.toContain('世迈 OMS · API 发货 / 状态')
   })
 
   it('does not expose warehouse sync to a non-US-SM page or unauthorized operator', () => {
@@ -131,136 +123,77 @@ describe('Oversea Dede file exchange workbench', () => {
   })
 
 
-  it('shows OMS tracking/state inline for an existing approved single OMS attempt and never links to a debug page', async () => {
-    const row = {
-      ...usSmPendingRows.data[0],
-      xlwms: {state:'draft_cancelled_confirmed', oms_order_no:'OBS0272610260RS',
-        oms_status_code:'4', oms_status_checked_at:null, oms_tracking_no:null,
-        failure_code:null, oms_status_failure_code:null},
-    }
-    const wrapper=mountPage({
-      warehouseKey:'us-3sm', warehouse:warehouseOptions[1], trackingImportPreview:null,
-      rows:{...usSmPendingRows,data:[row]},xlwmsAuthorizedOrderId:0,
-    })
-    expect(wrapper.text()).toContain('世迈 OMS · API 发货 / 状态')
-    expect(wrapper.text()).toContain('OBS0272610260RS')
-    expect(wrapper.text()).toContain('已取消')
-    expect(wrapper.findAll('a').some(a=>a.attributes('href')?.endsWith('/xlwms'))).toBe(false)
-    expect(wrapper.text()).not.toContain('确认创建 OMS 草稿')
-    expect(wrapper.find('button.xlwms-action').text()).toContain('更新 OMS 状态')
+
+  it('makes the first click a single clear warehouse action without older API or approval panels', async () => {
+    const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+      trackingImportPreview:null,rows:usSmPendingRows})
+    const cell=page.find('td.xlwms-cell')
+    expect(cell.text()).toContain('待下发')
+    expect(cell.find('button.xlwms-action.primary').text()).toBe('下发世迈仓')
+    expect(page.text()).toContain('一键下发草稿')
+    expect(cell.text()).not.toContain('申请审核已记录')
+    expect(cell.text()).not.toContain('状态码')
+    expect(page.text()).not.toContain('OpenAPI')
+    expect(cell.find('input.xlwms-reship-reason').exists()).toBe(false)
   })
 
-  it('provides local preflight but never enables sending when the exact order is not authorized', async () => {
-    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="TEST-CSRFTOKEN">')
-    const request=vi.fn().mockResolvedValue({
-      ok:true,json:async()=>({
-        order_id:99,blockers:[],ready:true,payload_hash:'a'.repeat(64),
-        oms_warehouse:'Yangfan',items:[{sku:'REVIEW-SKU',quantity:1}],
-        already_attempted:false,
-      }),
-    })
-    vi.stubGlobal('fetch',request)
+  it('sends the first OMS draft request directly and shows a human-readable result', async () => {
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="TEST-CSRF-UX">')
+    const fake=vi.fn().mockResolvedValue({ok:true,json:async()=>({
+      state:'oms_draft_created',oms_order_no:'OBS-NEW-1',attempt_ref:'BYL-WEB-1',failure_code:null,
+    })})
+    vi.stubGlobal('fetch',fake)
     try {
-      const wrapper=mountPage({
-        warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
-        trackingImportPreview:null,rows:usSmPendingRows,xlwmsAuthorizedOrderId:0,
-      })
-      await wrapper.find('button.xlwms-action').trigger('click')
-      await vi.waitFor(()=>expect(wrapper.text()).toContain('未获得单笔真实发货授权'))
-      expect(wrapper.text()).not.toContain('确认创建 OMS 草稿')
-      expect(request).toHaveBeenCalledTimes(1)
-      expect(request.mock.calls[0][0]).toBe('/logistics/oversea/us-3sm/orders/99/xlwms/preflight')
-      expect(request.mock.calls[0][1].method).toBe('GET')
-    } finally {
-      vi.unstubAllGlobals()
-      document.head.querySelector('meta[name="csrf-token"]')?.remove()
-    }
+      const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+        trackingImportPreview:null,rows:usSmPendingRows})
+      await page.find('td.xlwms-cell button.xlwms-action.primary').trigger('click')
+      await vi.waitFor(()=>expect(page.find('td.xlwms-cell').text()).toContain('已保存到仓库草稿箱'))
+      expect(page.find('td.xlwms-cell').text()).toContain('仓库单号：OBS-NEW-1')
+      expect(fake).toHaveBeenCalledTimes(1)
+      expect(fake.mock.calls[0][0]).toContain('/orders/99/xlwms/web-draft')
+      expect(fake.mock.calls[0][1].method).toBe('POST')
+    } finally {vi.unstubAllGlobals();document.head.querySelector('meta[name="csrf-token"]')?.remove()}
   })
 
-  it('allows exactly one confirmed per-order API send only after the authorized preflight', async () => {
-    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="TEST-CSRFTOKEN">')
-    const fetchMock=vi.fn()
-      .mockResolvedValueOnce({ok:true,json:async()=>({
-        order_id:99,blockers:[],ready:true,payload_hash:'a'.repeat(64),
-        oms_warehouse:'Yangfan',items:[{sku:'REVIEW-SKU',quantity:1}],already_attempted:false,
-      })})
-      .mockResolvedValueOnce({ok:true,json:async()=>({
-        state:'oms_draft_created',status_label:'OMS 已接单（未出库）',oms_order_no:'OBS-TEST-123',
-      })})
-    vi.stubGlobal('fetch',fetchMock)
-    try {
-      const wrapper=mountPage({
-        warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
-        trackingImportPreview:null,rows:usSmPendingRows,xlwmsAuthorizedOrderId:99,
-      })
-      await wrapper.find('button.xlwms-action').trigger('click')
-      await vi.waitFor(()=>expect(wrapper.text()).toContain('确认创建 OMS 草稿'))
-      expect(fetchMock).toHaveBeenCalledTimes(1)
-      await wrapper.find('button.xlwms-action.primary').trigger('click')
-      await vi.waitFor(()=>expect(wrapper.text()).toContain('OBS-TEST-123'))
-      expect(fetchMock).toHaveBeenCalledTimes(2)
-      const [url,options]=fetchMock.mock.calls[1]
-      expect(url).toBe('/logistics/oversea/us-3sm/orders/99/xlwms/send')
-      expect(JSON.parse(options.body)).toEqual({
-        payload_hash:'a'.repeat(64),confirmation:'SUBMIT_US_SM_ORDER_99',
-      })
-      expect(wrapper.text()).not.toContain('确认创建 OMS 草稿')
-      expect(wrapper.text()).toContain('OMS 已建单 · 接单待核实')
-    } finally {
-      vi.unstubAllGlobals()
-      document.head.querySelector('meta[name="csrf-token"]')?.remove()
-    }
-  })
-
-  it('queries existing OMS state inline, preserves ERP workflow and does not navigate', async () => {
-    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="TEST-CSRFTOKEN">')
+  it('shows old cancelled order as one concise sentence and uses the same one-click route', async () => {
     const row={...usSmPendingRows.data[0],xlwms:{
-      state:'oms_draft_created',oms_order_no:'OBS-TEST-123',oms_status_code:null,
-      oms_status_checked_at:null,oms_tracking_no:null,
-      failure_code:null,oms_status_failure_code:null,
+      state:'draft_cancelled_confirmed',oms_order_no:'OBS-OLD-1',oms_status_code:'4',
+      oms_status_checked_at:null,oms_tracking_no:null,failure_code:null,oms_status_failure_code:null,
     }}
-    const fetchMock=vi.fn().mockResolvedValue({
-      ok:true,json:async()=>({
-        read_only:true,fresh:true,oms_order_no:'OBS-TEST-123',
-        oms_status_code:'4',oms_status_label:'已取消',oms_tracking_no:null,
-        oms_status_checked_at:'2026-10-26T08:00:00Z',oms_status_failure_code:null,
-        erp_status_unchanged:true,woo_status_unchanged:true,
-      }),
-    })
-    vi.stubGlobal('fetch',fetchMock)
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="TEST-CSRF-UX">')
+    const fake=vi.fn().mockResolvedValue({ok:true,json:async()=>({
+      state:'existing_current_draft',oms_order_no:'OBS-NEW-2',attempt_ref:'BYL-WEB-2',failure_code:null,
+    })})
+    vi.stubGlobal('fetch',fake)
     try {
-      const wrapper=mountPage({
-        warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
-        trackingImportPreview:null,rows:{...usSmPendingRows,data:[row]},xlwmsAuthorizedOrderId:0,
-      })
-      await wrapper.find('button.xlwms-action').trigger('click')
-      await vi.waitFor(()=>expect(wrapper.text()).toContain('已取消'))
-      expect(fetchMock).toHaveBeenCalledTimes(1)
-      expect(fetchMock.mock.calls[0][0]).toContain('/xlwms/status')
-      expect(routerPost).not.toHaveBeenCalled()
-      expect(routerVisit).not.toHaveBeenCalled()
-      expect(wrapper.text()).not.toContain('确认创建 OMS 草稿')
-    } finally {
-      vi.unstubAllGlobals()
-      document.head.querySelector('meta[name="csrf-token"]')?.remove()
-    }
+      const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+        trackingImportPreview:null,rows:{...usSmPendingRows,data:[row]}})
+      const cell=page.find('td.xlwms-cell')
+      expect(cell.find('.xlwms-state').text()).toContain('上次仓库单已取消，可重新下发')
+      expect(cell.find('button.xlwms-action.primary').text()).toBe('重新下发')
+      expect(cell.find('details.xlwms-history').exists()).toBe(true)
+      expect(cell.find('details.xlwms-history summary').text()).toBe('查看历史仓库记录')
+      expect(cell.text()).not.toContain('申请审核')
+      await cell.find('button.xlwms-action.primary').trigger('click')
+      await vi.waitFor(()=>expect(cell.find('.xlwms-state').text()).toContain('草稿箱已有此订单'))
+      expect(fake.mock.calls[0][0]).toContain('/xlwms/web-draft')
+      expect(fake).toHaveBeenCalledTimes(1)
+    } finally {vi.unstubAllGlobals();document.head.querySelector('meta[name="csrf-token"]')?.remove()}
   })
 
-  it('keeps the operator on the same order row and shows red failure with no OMS outbound creation', async () => {
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:false,status:403}))
+  it('explains a missing OMS connection in ordinary language, not raw API codes', async () => {
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="TEST-CSRF-UX">')
+    const fake=vi.fn().mockResolvedValue({ok:false,status:500,json:async()=>({message:'OMS_WEB_TOKEN_MISSING'})})
+    vi.stubGlobal('fetch',fake)
     try {
-      const wrapper=mountPage({
-        warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
-        trackingImportPreview:null,rows:usSmPendingRows,xlwmsAuthorizedOrderId:0,
-      })
-      await wrapper.find('button.xlwms-action').trigger('click')
-      await vi.waitFor(()=>expect(wrapper.find('small.xlwms-error').exists()).toBe(true))
-      expect(wrapper.find('small.xlwms-error').text()).toContain('没有此操作权限')
-      expect(wrapper.find('table.oversea-table').exists()).toBe(true)
-      expect(routerPost).not.toHaveBeenCalled()
-    } finally {vi.unstubAllGlobals()}
+      const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+        trackingImportPreview:null,rows:usSmPendingRows})
+      await page.find('td.xlwms-cell button.xlwms-action.primary').trigger('click')
+      await vi.waitFor(()=>expect(page.find('td.xlwms-cell .xlwms-error').exists()).toBe(true))
+      expect(page.find('td.xlwms-cell .xlwms-error').text()).toContain('请联系管理员')
+      expect(page.find('td.xlwms-cell').text()).not.toContain('OMS_WEB_TOKEN_MISSING')
+    } finally {vi.unstubAllGlobals();document.head.querySelector('meta[name="csrf-token"]')?.remove()}
   })
-
   it('allows unified review actions from all overseas warehouses', async () => {
     const reviewRows = { data: [{
       line: 1, order_id: 77, erp_order_id: '007-OVERSEA-ALL-77', order_url: '/orders/77', recipient_name: 'Recipient', country: 'US',
@@ -462,7 +395,7 @@ describe('Oversea Dede file exchange workbench', () => {
     const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
       canTrackingSync:true,trackingImportPreview:null,rows:{...usSmPendingRows,data:[shipped]}})
     expect(wrapper.text()).toContain('同步官网物流')
-    expect(wrapper.find('button.xlwms-batch-button').exists()).toBe(true)
+    expect(wrapper.find('button.xlwms-batch-button').exists()).toBe(false)
     await wrapper.find('input[aria-label^="选择同步"]').setValue(true)
     const batch=wrapper.findAll('button').find(b=>b.text()==='批量同步官网物流')
     expect(batch).toBeTruthy()
@@ -535,265 +468,29 @@ describe('Oversea Dede file exchange workbench', () => {
     }
   })
 
-  it('treats OMS exception status 5 as not yet accepted by the warehouse', () => {
-    const row={...usSmPendingRows.data[0],warehouse_dispatch:{
-      status:'exception',label:'OMS 异常 · 待处理',detail:'OMS 异常 · 需处理后重新提交',
-      oms_order_no:'OBS0272610290RS',last_checked_at:'2026-10-29 13:33',
-      failure_code:null,can_retry_local_block:false,
-    },xlwms:{state:'batch_existing',oms_order_no:'OBS0272610290RS',oms_status_code:'5',
-      oms_status_checked_at:'2026-10-29 13:33',oms_tracking_no:null,failure_code:null,oms_status_failure_code:null}}
-    const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],trackingImportPreview:null,
-      rows:{...usSmPendingRows,data:[row]}})
-    expect(page.text()).toContain('OMS 异常 · 待处理')
-    expect(page.text()).toContain('OMS 异常 · 需处理后重新提交')
-    expect(page.text()).toContain('OBS0272610290RS')
-    expect(page.text()).not.toContain('需处理：batch_existing')
-    expect(page.find('td.xlwms-cell').text()).not.toContain('已发货')
-  })
 
-  it('keeps real OMS code 0 in draft, not dispatched to warehouse', () => {
-    const row={...usSmPendingRows.data[0],warehouse_dispatch:{
-      status:'oms_draft',label:'OMS 草稿 · 未提交仓库',detail:'无需面单；仓库接单状态仍需核对',
-      oms_order_no:'OBS0272610290RS',last_checked_at:null,
-      failure_code:null,can_retry_local_block:false,
-    },xlwms:{state:'batch_existing',oms_order_no:'OBS0272610290RS',
-      oms_status_code:'0',oms_status_checked_at:null,oms_tracking_no:null,
-      failure_code:null,oms_status_failure_code:null}}
+  it('keeps prior OMS records collapsed while the new single-click action remains available', () => {
+    const row={...usSmPendingRows.data[0],shipment_status:'shipped',xlwms:{
+      state:'batch_existing',oms_order_no:'OBS-OLD',oms_status_code:'5',
+      oms_status_checked_at:null,oms_tracking_no:null,failure_code:null,oms_status_failure_code:null,
+    },web_draft:{state:'oms_draft_created',oms_order_no:'OBS-LAST',attempt_ref:'BYL-1',failure_code:null}}
     const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
       trackingImportPreview:null,rows:{...usSmPendingRows,data:[row]}})
-    const cell=page.find('td.xlwms-cell').text()
-    expect(cell).toContain('OMS 草稿 · 未提交仓库')
-    expect(cell).toContain('无需面单；仓库接单状态仍需核对')
-    expect(cell).not.toContain('已下发 OMS')
-    expect(cell).not.toContain('已发货')
+    const cell=page.find('td.xlwms-cell')
+    expect(cell.find('button.xlwms-action.primary').text()).toBe('重新下发')
+    expect(cell.find('details.xlwms-history').exists()).toBe(true)
+    expect(cell.find('details.xlwms-history').attributes('open')).toBeUndefined()
+    expect(cell.find('input.xlwms-reship-reason').exists()).toBe(false)
+    expect(cell.text()).not.toContain('重新下发仓库 · 独立出库草稿')
   })
 
-  it('allows safe local preflight after create_disabled without allowing OMS creation', async () => {
-    const row={...usSmPendingRows.data[0],warehouse_dispatch:{
-      status:'pending_dispatch',label:'待下发',detail:'未下发 · 建单权限关闭',
-      oms_order_no:null,last_checked_at:null,failure_code:'create_disabled',can_retry_local_block:true,
-    },xlwms:{state:'batch_blocked',oms_order_no:null,oms_status_code:null,
-      oms_status_checked_at:null,oms_tracking_no:null,failure_code:'create_disabled',oms_status_failure_code:null}}
-    const fake=vi.fn().mockResolvedValue({ok:true,json:async()=>({order_id:99,blockers:[],ready:true,
-      payload_hash:'a'.repeat(64),oms_warehouse:'OMS-US-SM',items:[{sku:'REVIEW-SKU',quantity:1}],already_attempted:false})})
-    vi.stubGlobal('fetch',fake)
-    try {
-      const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],trackingImportPreview:null,
-        rows:{...usSmPendingRows,data:[row]},xlwmsAuthorizedOrderId:0})
-      const btn=wrapper.findAll('button').find(b=>b.text().trim()==='API 发货')
-      expect(btn).toBeDefined()
-      await btn!.trigger('click')
-      await vi.waitFor(()=>expect(fake).toHaveBeenCalledTimes(1))
-      expect(fake.mock.calls[0][0]).toBe('/logistics/oversea/us-3sm/orders/99/xlwms/preflight')
-      expect(fake.mock.calls[0][1].method).toBe('GET')
-      await vi.waitFor(()=>expect(wrapper.text()).toContain('未获得此订单的实际发货授权'))
-      expect(wrapper.text()).not.toContain('确认创建 OMS 草稿')
-    } finally {vi.unstubAllGlobals()}
-  })
-
-  it('shows local create-disabled attempt as not dispatched and keeps per-order action visible', () => {
-    const row={...usSmPendingRows.data[0],warehouse_dispatch:{
-      status:'pending_dispatch',label:'待下发',detail:'未下发 · 建单权限关闭',
-      oms_order_no:null,last_checked_at:null,failure_code:'create_disabled',can_retry_local_block:true,
-    },xlwms:{state:'batch_blocked',oms_order_no:null,oms_status_code:null,
-      oms_status_checked_at:null,oms_tracking_no:null,failure_code:'create_disabled',oms_status_failure_code:null}}
-    const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],trackingImportPreview:null,
-      rows:{...usSmPendingRows,data:[row]},xlwmsBatchEnabled:false})
-    expect(page.text()).toContain('待下发')
-    expect(page.text()).toContain('未下发 · 建单权限关闭')
-    expect(page.text()).toContain('API 发货')
-    expect(page.find('button.xlwms-batch-button').attributes('disabled')).toBeDefined()
-    expect(page.text()).not.toContain('batch_blocked')
-  })
-
-  it('shows API 重发货 preview on shipped US-SM orders, but cannot create OMS while disabled', async () => {
-    const row={...usSmPendingRows.data[0], shipment_status:'shipped',
-      tracking_number:'ORIGINAL-TRACK'}
-    const fake=vi.fn().mockResolvedValue({ok:true,json:async()=>({
-      order_id:99,erp_order_id:'007-OVERSEA-USSM-99',
-      original_oms_order_no:'OMS-ORIGINAL',original_tracking_present:true,
-      warehouse:'US-SM',channel:'No_Shipping_Service',draft_only:true,
-      items:[{sku:'REVIEW-SKU',quantity:1}],recipient:'Recipient',
-      address:{country:'US',province:'CA',city:'Los Angeles',postal_code:'90001',address_1:'1 Test Road'},
-      reason_default:'仓库订单出错',required_oms_memo:'重发订单',
-      existing_reshipment_count:0,blockers:[],ready_for_review:true,
-      can_create_oms:false,memo_contract_verified:false,
-    })})
-    vi.stubGlobal('fetch',fake)
-    try {
-      const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
-        view:'shipped',rows:{...usSmPendingRows,data:[row]}})
-      const button=wrapper.findAll('button').find(b=>b.text().trim()==='重新下发仓库')
-      expect(button).toBeDefined()
-      await button!.trigger('click')
-      await vi.waitFor(()=>expect(wrapper.text()).toContain('重新下发仓库 · 独立出库草稿'))
-      expect(wrapper.text()).toContain('OMS-ORIGINAL')
-      expect(wrapper.text()).toContain('No_Shipping_Service'.replace('No_Shipping_Service','无需物流服务'))
-      expect(wrapper.text()).toContain('ERP 保留操作原因')
-      expect(wrapper.text()).toContain('真实 CREATE 需要单笔订单及申请双重白名单')
-      expect(fake.mock.calls[0][0]).toBe('/logistics/oversea/us-3sm/orders/99/xlwms/reship-preflight')
-      expect(fake.mock.calls[0][1].method).toBe('GET')
-      expect(fake).toHaveBeenCalledTimes(1)
-    } finally {vi.unstubAllGlobals()}
-  })
-
-  it('restores the separate OMS status and tracking after reopening the shipped order preview', async () => {
-    const row={...usSmPendingRows.data[0],shipment_status:'shipped',tracking_number:'OLD-TRACK'}
-    const fake=vi.fn().mockResolvedValue({ok:true,json:async()=>({
-      order_id:99,erp_order_id:'007-OVERSEA-USSM-99',
-      original_oms_order_no:'OLD-OMS',original_tracking_present:true,
-      warehouse:'US-SM',channel:'No_Shipping_Service',draft_only:true,
-      items:[{sku:'REVIEW-SKU',quantity:1}],recipient:'Recipient',
-      address:{country:'US',province:'CA',city:'Los Angeles',postal_code:'90001',address_1:'1 Test Road'},
-      reason_default:'仓库订单出错',required_oms_memo:null,
-      existing_reshipment_count:1,blockers:['existing_reshipment_requires_review'],
-      ready_for_review:false,can_create_oms:false,memo_contract_verified:false,
-      existing_reissue:{request_id:'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
-        status:'draft_created',oms_order_no:'NEW-OMS',
-        oms_status_code:'3',oms_tracking_no:'NEW-TRACK',last_error_code:null,can_create_oms:false},
-    })})
-    vi.stubGlobal('fetch',fake)
-    try {
-      const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
-        view:'shipped',rows:{...usSmPendingRows,data:[row]}})
-      const button=wrapper.findAll('button').find(b=>b.text().trim()==='重新下发仓库')
-      await button!.trigger('click')
-      await vi.waitFor(()=>expect(wrapper.text()).toContain('新 OMS Tracking：NEW-TRACK'))
-      expect(wrapper.text()).toContain('新 OMS 出库单：NEW-OMS')
-      expect(wrapper.text()).toContain('原运单保留')
-      expect(wrapper.text()).not.toContain('创建独立 OMS 草稿（单笔授权）')
-      expect(fake).toHaveBeenCalledTimes(1)
-    } finally {vi.unstubAllGlobals()}
-  })
-
-
-  it('Dede submits and approves one reship request with CREATE disabled', async () => {
-    const uuid='11111111-2222-4333-8444-555555555555'
-    const row={...usSmPendingRows.data[0],shipment_status:'shipped',tracking_number:'ORIGINAL-TRACK'}
-    const responses=[
-      {order_id:99,erp_order_id:'007-OVERSEA-USSM-99',original_oms_order_no:'OMS-OLD',
-       original_tracking_present:true,warehouse:'US-SM',channel:'No_Shipping_Service',draft_only:true,
-       items:[{sku:'REVIEW-SKU',quantity:1}],recipient:'Recipient',
-       address:{country:'US',province:'CA',city:'Los Angeles',postal_code:'90001',address_1:'1 Test Road'},
-       reason_default:'仓库订单出错',required_oms_memo:null,
-       existing_reshipment_count:0,blockers:[],ready_for_review:true,
-       can_create_oms:false,memo_contract_verified:false},
-      {request_id:uuid,status:'requested',can_create_oms:false},
-      {request_id:uuid,status:'approved_for_reissue',can_create_oms:false},
-    ]
-    const fake=vi.fn().mockImplementation(async()=>({ok:true,json:async()=>responses.shift()}))
-    vi.stubGlobal('fetch',fake)
-    try {
-      const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
-        view:'shipped',rows:{...usSmPendingRows,data:[row]}})
-      await wrapper.findAll('button').find(b=>b.text().trim()==='重新下发仓库')!.trigger('click')
-      await vi.waitFor(()=>expect(wrapper.find('input.xlwms-reship-reason').exists()).toBe(true))
-      await wrapper.find('input.xlwms-reship-reason').setValue('面单填错需要重新下发仓库')
-      await wrapper.findAll('button').find(b=>b.text().includes('提交补发申请'))!.trigger('click')
-      await vi.waitFor(()=>expect(wrapper.text()).toContain('待二次确认'))
-      expect(fake.mock.calls[1][0]).toContain('/xlwms/reship-intent')
-      expect(JSON.parse(fake.mock.calls[1][1].body)).toEqual({
-        reason:'面单填错需要重新下发仓库',confirm_original_shipped:true,
-      })
-      await wrapper.findAll('button').find(b=>b.text().includes('二次确认补发申请'))!.trigger('click')
-      await vi.waitFor(()=>expect(wrapper.text()).toContain('申请审核已记录'))
-      expect(fake.mock.calls[2][0]).toContain('/xlwms/reship-approve')
-      expect(JSON.parse(fake.mock.calls[2][1].body)).toEqual({
-        request_id:uuid,confirmation:'APPROVE_RESHIP_'+uuid,
-      })
-      expect(wrapper.text()).not.toContain('创建独立 OMS 草稿（单笔授权）')
-      expect(fake).toHaveBeenCalledTimes(3)
-    } finally {vi.unstubAllGlobals()}
-  })
-  it('shows reissue preflight for a pending ERP order only when an original OMS identity exists', async () => {
-    const row={...usSmPendingRows.data[0],shipment_status:'pending',
-      xlwms:{state:'draft_cancelled_confirmed',oms_order_no:'OMS-OLD',oms_status_code:'4',
-        oms_status_checked_at:null,oms_tracking_no:null,failure_code:null,oms_status_failure_code:null}}
-    const fake=vi.fn().mockResolvedValue({ok:true,json:async()=>({
-      order_id:99,erp_order_id:'007-OVERSEA-USSM-99',original_oms_order_no:'OMS-OLD',
-      original_tracking_present:false,source_scenario:'canceled_original_oms',
-      warehouse:'US-SM',channel:'No_Shipping_Service',draft_only:true,
-      items:[{sku:'REVIEW-SKU',quantity:1}],recipient:'Recipient',
-      address:{country:'US',province:'CA',city:'Los Angeles',postal_code:'90001',address_1:'1 Test Road'},
-      reason_default:'仓库订单出错',required_oms_memo:null,existing_reshipment_count:0,
-      blockers:[],ready_for_review:true,can_create_oms:false,memo_contract_verified:false,
-    })})
-    vi.stubGlobal('fetch',fake)
-    try {
-      const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
-        view:'pending',rows:{...usSmPendingRows,data:[row]}})
-      await wrapper.findAll('button').find(b=>b.text().trim()==='重新下发仓库')!.trigger('click')
-      await vi.waitFor(()=>expect(wrapper.text()).toContain('原 OMS 已实时确认取消'))
-      expect(wrapper.find('input.xlwms-reship-reason').exists()).toBe(true)
-      expect(fake.mock.calls[0][0]).toContain('/xlwms/reship-preflight')
-      expect(wrapper.text()).not.toContain('创建独立 OMS 草稿（单笔授权）')
-      const noOriginal=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
-        view:'pending',rows:usSmPendingRows})
-      expect(noOriginal.findAll('button').some(b=>b.text().trim()==='重新下发仓库')).toBe(false)
-    } finally {vi.unstubAllGlobals()}
-   })
-
-
-  it('Dede confirms a cancelled original OMS without falsely confirming shipment', async () => {
-    const uuid='11111111-2222-4333-8444-555555555555'
-    const row={...usSmPendingRows.data[0],shipment_status:'pending',
-      xlwms:{oms_order_no:'OMS-OLD',oms_status_code:'4',state:'draft_cancelled_confirmed'}}
-    const replies=[
-      {order_id:99,erp_order_id:'007-OVERSEA-USSM-99',original_oms_order_no:'OMS-OLD',
-       original_tracking_present:false,source_scenario:'canceled_original_oms',warehouse:'US-SM',
-       channel:'No_Shipping_Service',draft_only:true,items:[{sku:'REVIEW-SKU',quantity:1}],
-       recipient:'Recipient',address:{country:'US',province:'CA',city:'Los Angeles',
-       postal_code:'90001',address_1:'1 Test Road'},reason_default:'仓库订单出错',
-       required_oms_memo:null,existing_reshipment_count:0,blockers:[],ready_for_review:true,
-       can_create_oms:false,memo_contract_verified:false},
-      {request_id:uuid,status:'requested',can_create_oms:false},
-    ]
-    const fake=vi.fn().mockImplementation(async()=>({ok:true,json:async()=>replies.shift()}))
-    vi.stubGlobal('fetch',fake)
-    try {
-      const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
-        view:'pending',rows:{...usSmPendingRows,data:[row]}})
-      await wrapper.findAll('button').find(b=>b.text().trim()==='重新下发仓库')!.trigger('click')
-      await vi.waitFor(()=>expect(wrapper.text()).toContain('确认原 OMS 已取消 · 提交重新下发申请'))
-      expect(wrapper.text()).not.toContain('确认原订单已发货 · 提交补发申请')
-      await wrapper.find('input.xlwms-reship-reason').setValue('原 OMS 已被仓库拦截取消')
-      await wrapper.findAll('button').find(b=>b.text().includes('提交重新下发申请'))!.trigger('click')
-      await vi.waitFor(()=>expect(wrapper.text()).toContain('待二次确认'))
-      expect(JSON.parse(fake.mock.calls[1][1].body)).toEqual({
-        reason:'原 OMS 已被仓库拦截取消',confirm_original_canceled:true,
-      })
-      expect(fake).toHaveBeenCalledTimes(2)
-      expect(wrapper.text()).not.toContain('创建独立 OMS 草稿（单笔授权）')
-    } finally {vi.unstubAllGlobals()}
-  })
-
-  it('Dede reopens a created OMS draft without a second request or CREATE', async () => {
-    const row={...usSmPendingRows.data[0],shipment_status:'pending',
-      xlwms:{oms_order_no:'OMS-OLD',oms_status_code:'4',state:'draft_cancelled_confirmed'}}
-    const fake=vi.fn().mockResolvedValue({ok:true,json:async()=>({
-      order_id:99,erp_order_id:'007-OVERSEA-USSM-99',source_scenario:'canceled_original_oms',
-      original_oms_order_no:'OMS-OLD',original_tracking_present:false,
-      warehouse:'US-SM',channel:'No_Shipping_Service',draft_only:true,
-      items:[{sku:'REVIEW-SKU',quantity:1}],recipient:'Recipient',
-      address:{country:'US',province:'CA',city:'Los Angeles',postal_code:'90001',address_1:'1 Test Road'},
-      reason_default:'仓库订单出错',required_oms_memo:null,
-      existing_reshipment_count:1,blockers:['existing_reshipment_requires_review'],
-      ready_for_review:false,can_create_oms:false,memo_contract_verified:false,
-      existing_reissue:{request_id:'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
-        status:'draft_created',oms_order_no:'NEW-OMS',oms_status_code:'0',
-        oms_tracking_no:null,last_error_code:null,can_create_oms:false},
-    })})
-    vi.stubGlobal('fetch',fake)
-    try {
-      const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
-        view:'pending',rows:{...usSmPendingRows,data:[row]}})
-      await wrapper.findAll('button').find(b=>b.text().trim()==='重新下发仓库')!.trigger('click')
-      await vi.waitFor(()=>expect(wrapper.text()).toContain('新 OMS 出库单：NEW-OMS'))
-      expect(wrapper.text()).toContain('新 OMS 原始状态码：0')
-      expect(wrapper.text()).not.toContain('提交重新下发申请')
-      expect(wrapper.text()).not.toContain('创建独立 OMS 草稿（单笔授权）')
-      expect(fake).toHaveBeenCalledTimes(1)
-    } finally {vi.unstubAllGlobals()}
+  it('does not offer warehouse dispatch until review is approved', () => {
+    const row={...usSmPendingRows.data[0],review_status:'pending' as const}
+    const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+      trackingImportPreview:null,rows:{...usSmPendingRows,data:[row]}})
+    const cell=page.find('td.xlwms-cell')
+    expect(cell.text()).toContain('审核通过后可下发')
+    expect(cell.find('button.xlwms-action.primary').exists()).toBe(false)
   })
 
 })
