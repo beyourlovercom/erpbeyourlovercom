@@ -16,12 +16,14 @@
 | 申请 UUID | `dd6751d9-2aac-4a0f-83ef-907c51b11969` |
 | 唯一新 OMS | **`OBS0272610300RS`**；`BYL-RESHIP-dd6751d92aac4a0f83ef907c51b11969` |
 | CREATE | 经 Owner 单笔授权，仅调用一次真实 CREATE；`isSubmit=0`，独立草稿 |
-| 新 OMS 读回 | 状态码 **0**，无 Tracking；按原生 OMS 身份及 SKU 数量精确验证仅一单 |
+| 新 OMS 读回 | 创建后首次状态码 **0**，无 Tracking；按原生 OMS 身份及 SKU 数量精确验证仅一单。**R9 再次实时查询时状态码已变为 2**，仍无 Tracking；未确认状态码 2 的官方语义，不得声称长期保持草稿 |
 | 审计 | 单笔 reship 记录 `draft_created`；6 个审计事件，从申请、二次确认到 CREATE、OMS 状态读回 |
 | 原单保护 | 原 OMS 仍为状态 4；ERP 原状态、Tracking 与 Woo 未被重发流程覆盖 |
 | 生产 CREATE 门禁 | `XLWMS_REISSUE_CREATE_ENABLED=false`、order ID 0、UUID 空；**持续关闭** |
 
 事件序列：`operator_requested` → `operator_approved_reissue` → `single_order_claimed` → `provider_create_started` → `provider_identity_confirmed` → `provider_status_readback`。
+
+**重要运营风险**：世迈官方帮助中心说明存在“自动提交已获取面单和无需面单的出库单”选项；即便我们的 CREATE 请求明确指定 `isSubmit=0`，后续 OMS 也可能按租户设置自动流转。官方说明：https://www.xlwms.com/help/d458/fcbb/aed1/0c14 。**新单在 R9 实时状态码已从 0 变为 2（无 Tracking），未核实数值 2 的意义或实际仓库接收情况**。优先在 M2 只读检查新 OMS 页面状态和自动提交设置；未获授权不再次提交或取消。
 
 **历史说明**：2026-10-29 曾记录“尚无真实可重发候选”，这条结论已被 2026-10-30 的已批准例外流程取代。原 OMS 状态 4 且 ERP 仍待发货，**不是**“ERP 已发货”；严禁人为修改原单发货状态。另一个受保护原 OMS `OBS0272610290RT`（ERP 7766）未用于此次 Canary。
 
@@ -49,6 +51,6 @@
 
 **API 重发货 V1 的工程目标已完成**：受控提交补发申请、二次审批、生成一个独立新 OMS 草稿、按原生身份/商品数量读回状态、全程审计、旧 ERP/Woo/Shipment/Tracking 不被覆盖。R5 自动化操作验收、R6 真实预检、R7 真实 CREATE、R8 真实新单读回均有证据。R9 整理 SOP 与正确提示文案。
 
-**剩余事项独立移交 M2（不阻塞 V1 的 CREATE 技术关闭）**：世迈新 OMS 草稿如何受控提交/出库、仓库实际拣货与面单、Tracking 获取/回写 ERP/Woo/AfterShip、重复收入防护和真实补发成本。当前 `OBS0272610300RS` 仍只是一张状态 0 的 OMS 草稿，没有授权出库。
+**剩余事项独立移交 M2（不阻塞 V1 的 CREATE 技术关闭）**：世迈新 OMS 草稿如何受控提交/出库、仓库实际拣货与面单、Tracking 获取/回写 ERP/Woo/AfterShip、重复收入防护和真实补发成本。当前 `OBS0272610300RS` **已经不能再简单称为状态 0 草稿**：创建后第一次读回为 0，R9 最终实时读回为 2；尚无 Tracking，尚未确认是否自动提交/被仓库接收。**没有执行第二次 CREATE，也没有从 ERP 调用提交或取消接口。**
 
 **GitHub**：PR #545 及 #557 已合并；PR #554 包含本 R9 SOP、Dede UX 回归与确认语义收尾。**生产界面确认文案与后端校验更新需单独受控发布及读回后才能宣称生产版完成该微调**；不能把代码合并与生产发布等同。
