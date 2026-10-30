@@ -214,6 +214,7 @@ final class OrderController
             'canViewProfit' => $request->user()?->can('analysis.view') ?? false,
             'kolProfile' => $this->kolProfileForOrder($request, $order),
             'canMarkOperational' => $request->user()?->can('orders.edit') ?? false,
+            'canEditOrder' => $request->user()?->can('orders.edit') ?? false,
             'canTrashOrder' => $request->user()?->can('orders.edit') ?? false,
             'canManageTrash' => $request->user()?->can('system.permissions.manage') ?? false,
             'canCreateReplacement' => $this->logisticsExecutionAccess->allows($request->user()) && $this->originalLogisticsStarted($order),

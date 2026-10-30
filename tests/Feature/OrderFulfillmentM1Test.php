@@ -48,6 +48,31 @@ final class OrderFulfillmentM1Test extends TestCase
         $this->assertSame('kol_fulfillment', $order->order_kind->value);
     }
 
+    public function test_detail_edit_permission_is_exposed_for_kol_and_customer_orders_without_leaking_to_read_only_roles(): void
+    {
+        $editor = $this->userWith(['orders.view', 'orders.create', 'orders.edit', 'customers.view', 'kol.view']);
+        $this->actingAs($editor)->post('/customers/orders', $this->payload('CAN-EDIT-CUSTOMER'))->assertRedirect();
+        $this->actingAs($editor)->post('/kol/orders', $this->kolPayload('CAN-EDIT-KOL'))->assertRedirect();
+
+        $customer = Order::query()->where('order_kind', 'customer')->firstOrFail();
+        $kol = Order::query()->where('order_kind', 'kol_fulfillment')->firstOrFail();
+
+        foreach (['/customers/orders/'.$customer->id, '/kol/orders/'.$kol->id] as $url) {
+            $this->actingAs($editor)->get($url)->assertOk()->assertInertia(
+                fn ($page) => $page->component('Orders/Show')
+                    ->where('canEditOrder', true)->where('canTrashOrder', true)
+            );
+        }
+
+        $reader = $this->userWith(['orders.view', 'customers.view', 'kol.view'], 'order-detail-reader-r61');
+        foreach (['/customers/orders/'.$customer->id, '/kol/orders/'.$kol->id] as $url) {
+            $this->actingAs($reader)->get($url)->assertOk()->assertInertia(
+                fn ($page) => $page->component('Orders/Show')
+                    ->where('canEditOrder', false)->where('canTrashOrder', false)
+            );
+        }
+    }
+
     public function test_duplicate_business_order_number_is_rejected(): void
     {
         $user = $this->userWith(['orders.view', 'orders.create']);
