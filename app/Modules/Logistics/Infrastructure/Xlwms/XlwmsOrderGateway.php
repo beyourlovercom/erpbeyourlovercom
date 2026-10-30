@@ -337,7 +337,7 @@ final class XlwmsOrderGateway
      * the order into the warehouse process. Idempotency/identity enforcement
      * is performed by the calling application service before this endpoint.
      * @param array<string,mixed> $draft
-     * @return array{confirmed:bool,order_no:string}
+     * @return array{confirmed:bool,order_no:string,draft_verified:bool,oms_status_code:?string,draft_verify_code:?string}
      */
     public function createDraftSingle(WarehouseOpenApiConnection $connection, array $draft): array
     {
@@ -358,7 +358,25 @@ final class XlwmsOrderGateway
             || blank($matches[0]['orderNo'] ?? null)) {
             throw new RuntimeException('OMS_DRAFT_CREATE_NOT_CONFIRMED');
         }
-        return ['confirmed'=>true,'order_no'=>(string)$matches[0]['orderNo']];
+        $omsNo=(string)$matches[0]['orderNo'];
+        // CREATE acceptance is not proof of arrival in the OMS draft inbox.
+        // Never trigger another CREATE to compensate for a failed readback.
+        try {
+            $remote=$this->readExactOrderStatus($connection,$omsNo);
+            if (!$remote || $remote['third_order_no']!==$draft['thirdOrderNo']
+                || $remote['platform_order_no']!==($draft['platformOrderNo']??null)) {
+                return ['confirmed'=>true,'order_no'=>$omsNo,'draft_verified'=>false,
+                    'oms_status_code'=>$remote['status_code']??null,
+                    'draft_verify_code'=>'OMS_DRAFT_IDENTITY_UNVERIFIED'];
+            }
+            return ['confirmed'=>true,'order_no'=>$omsNo,
+                'draft_verified'=>$remote['status_code']==='0',
+                'oms_status_code'=>$remote['status_code'],
+                'draft_verify_code'=>$remote['status_code']==='0'?null:'OMS_NOT_IN_DRAFT'];
+        } catch (\Throwable) {
+            return ['confirmed'=>true,'order_no'=>$omsNo,'draft_verified'=>false,
+                'oms_status_code'=>null,'draft_verify_code'=>'OMS_DRAFT_READBACK_UNAVAILABLE'];
+        }
     }
 
     /** @param array<string,mixed> $singleOrder

@@ -112,11 +112,14 @@ final class SingleOrderDispatch
             );
             $attempt->forceFill(['state'=>'request_in_flight','last_checked_at'=>now()])->save();
             $created=$this->oms->createDraftSingle($connection,$preview['payload']);
+            $draftVerified=($created['draft_verified']??false)===true;
             $attempt->forceFill([
-                'state'=>'oms_draft_created',
+                'state'=>$draftVerified?'oms_draft_created':'oms_draft_unverified',
                 'oms_order_no'=>$created['order_no'],
+                'oms_status_code'=>$created['oms_status_code']??null,
+                'oms_status_checked_at'=>isset($created['oms_status_code'])?now():null,
                 'last_checked_at'=>now(),
-                'failure_code'=>null,
+                'failure_code'=>$draftVerified?null:($created['draft_verify_code']??'OMS_DRAFT_READBACK_UNAVAILABLE'),
             ])->save();
             $this->safeRecord($order, $attempt);
             return $this->report($attempt);
@@ -240,7 +243,7 @@ final class SingleOrderDispatch
     {
         // Only 3 and 4 are verified against the real OMS account:
         // 3 = 已出库, 4 = 已取消. Never guess the other codes.
-        $labels = ['3'=>'已出库','4'=>'已取消'];
+        $labels = ['0'=>'草稿－待提交','2'=>'仓库处理中','3'=>'已出库','4'=>'已取消'];
         $status = $attempt->oms_status_code;
         return [
             'read_only' => true,
@@ -274,7 +277,8 @@ final class SingleOrderDispatch
             'request_in_flight'=>'请求提交中，结果尚未确认',
             'uncertain_manual_reconcile'=>'OMS 请求结果未知，先查单，不可直接重发',
             'submitted_oms'=>'OMS 已接收订单（历史：未验证仓库接单）',
-            'oms_draft_created'=>'已创建 OMS 草稿 · 未提交仓库',
+            'oms_draft_created'=>'已验证 OMS 草稿 · 未提交仓库',
+            'oms_draft_unverified'=>'OMS 已建单但未证实进入草稿箱 · 禁止重复下发',
             'found_in_oms'=>'已在 OMS 查到对应订单',
             'checking_existing'=>'正在检查 OMS 是否已有订单',
         ];

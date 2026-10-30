@@ -8,7 +8,7 @@ use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 final class WarehouseDispatchStatus
 {
     private const ACCEPTED = [
-        'batch_created', 'batch_draft_created', 'oms_draft_created', 'batch_existing', 'batch_status_updated',
+        'batch_created', 'batch_draft_created', 'batch_draft_unverified', 'oms_draft_created', 'oms_draft_unverified', 'batch_existing', 'batch_status_updated',
         'submitted_oms', 'found_in_oms',
     ];
     private const RETRYABLE_LOCAL_BLOCKS = [
@@ -33,6 +33,11 @@ final class WarehouseDispatchStatus
         $detail = '';
         if ($shipmentStatus === 'shipped' || $shipmentStatus === 'completed') {
             $status = 'shipped'; $label = '已发货';
+        } elseif ($accepted && in_array((string)$attempt?->state, ['oms_draft_unverified', 'batch_draft_unverified'], true)) {
+            $status = 'exception'; $label = 'OMS 已建单 · 未进入草稿箱确认';
+            $detail = $code === '2' ? 'OMS 已进入仓库处理中，非草稿；禁止重复下发'
+                : ($code === '4' ? 'OMS 已取消，禁止重复下发'
+                    : 'OMS 草稿状态未验证；禁止重复下发');
         } elseif ($accepted && $code === '4') {
             $status = 'exception'; $label = '仓库已取消 · 待处理';
         } elseif ($accepted && $code === '3') {
@@ -41,6 +46,9 @@ final class WarehouseDispatchStatus
             // Actual OMS readback: code 0 is a DRAFT, not warehouse receipt.
             $status = 'oms_draft'; $label = 'OMS 草稿 · 未提交仓库';
             $detail = '无需面单；仓库接单状态仍需核对';
+        } elseif ($accepted && $code === '2') {
+            $status = 'exception'; $label = 'OMS 仓库处理中 · 非草稿';
+            $detail = '仓库已接单，不能在草稿箱上传面单；禁止重复下发';
         } elseif ($accepted && $code === '5') {
             // Verified by OMS's own 异常 workbench for OBS0272610290RS.
             $status = 'exception'; $label = 'OMS 异常 · 待处理';

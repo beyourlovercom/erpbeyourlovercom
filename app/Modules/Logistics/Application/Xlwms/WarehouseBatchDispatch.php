@@ -153,9 +153,18 @@ final class WarehouseBatchDispatch
             // Final local transition immediately before the sole outbound write.
             $attempt->forceFill(['state' => 'batch_request_in_flight', 'last_checked_at' => now()])->save();
             $created = $this->oms->createDraftSingle($connection, $payload);
-            $attempt->forceFill(['state' => 'batch_draft_created', 'oms_order_no' => $created['order_no'], 'failure_code' => null, 'last_checked_at' => now()])->save();
+            $draftVerified=($created['draft_verified']??false)===true;
+            $attempt->forceFill([
+                'state'=>$draftVerified?'batch_draft_created':'batch_draft_unverified',
+                'oms_order_no'=>$created['order_no'],
+                'oms_status_code'=>$created['oms_status_code']??null,
+                'oms_status_checked_at'=>isset($created['oms_status_code'])?now():null,
+                'failure_code'=>$draftVerified?null:($created['draft_verify_code']??'OMS_DRAFT_READBACK_UNAVAILABLE'),
+                'last_checked_at'=>now(),
+            ])->save();
             $this->safeRecord($order, $attempt);
-            return $this->result($orderId, 'created', '已创建 OMS 草稿，尚未提交仓库');
+            return $this->result($orderId, $draftVerified?'created':'draft_unverified',
+                $draftVerified?'OMS 草稿已验证，尚未提交仓库':'OMS 已建单但未证实在草稿箱，禁止重复下发');
         } catch (\Throwable $e) {
             $uncertain = $attempt->state === 'batch_request_in_flight';
             return $finish($uncertain ? 'batch_uncertain' : 'batch_error', $uncertain ? 'uncertain' : 'error', $uncertain ? 'OMS 创建结果待核实，禁止重发' : 'OMS 创建未完成');

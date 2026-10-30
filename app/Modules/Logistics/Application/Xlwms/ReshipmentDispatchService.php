@@ -69,6 +69,15 @@ final class ReshipmentDispatchService
                 throw new RuntimeException('REISSUE_PROVIDER_RESULT_UNCERTAIN');
             }
             $omsNo=(string)$created['order_no'];
+            if (($created['draft_verified']??false)!==true) {
+                $this->finalize($record,'draft_unverified',$omsNo,$actorId);
+                $error=$created['draft_verify_code']??'OMS_DRAFT_READBACK_UNAVAILABLE';
+                $record->forceFill(['last_error_code'=>$error,
+                    'oms_status_code'=>$created['oms_status_code']??null])->save();
+                $this->event($record,'draft_unverified','draft_unverified','provider_draft_state_not_verified',$actorId);
+                return ['result'=>'draft_unverified','request_id'=>$requestId,
+                    'oms_order_no'=>$omsNo,'code'=>$error,'can_retry_create'=>false,'isSubmit'=>0];
+            }
             $this->finalize($record,'draft_created',$omsNo,$actorId);
             return ['result'=>'created','request_id'=>$requestId,'oms_order_no'=>$omsNo,'isSubmit'=>0];
         } catch (\Throwable $e) {
