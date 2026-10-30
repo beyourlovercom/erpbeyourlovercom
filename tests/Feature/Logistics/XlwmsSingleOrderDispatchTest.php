@@ -1792,4 +1792,47 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
             \App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment::where('request_id',$new['request_id'])->sole()->status);
     }
 
+
+    public function test_single_authorized_reship_can_use_fresh_matching_sku_from_blocked_whole_warehouse_snapshot(): void
+    {
+        [$o,$uuid]=$this->reissueFixture();
+        $snapshot=XlwmsInventorySnapshot::where('warehouse_id',$o->shipment->warehouse_id)->sole();
+        $summary=$snapshot->summary;
+        $snapshot->forceFill(['status'=>'blocked','blocked_sku_count'=>8,
+            'unmatched_sku_count'=>4,'summary'=>$summary,'updated_at'=>now()])->save();
+        config()->set('xlwms.reissue_create_enabled',true);
+        config()->set('xlwms.reissue_order_id',$o->id);
+        config()->set('xlwms.reissue_request_id',$uuid);
+        $service=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentPreview::class);
+        $ready=$service->forOrder($o->id,$uuid,true);
+        $this->assertSame([],$ready['blockers']);
+        $this->assertSame('scoped_fresh_oms_inventory',$ready['stock_evidence_mode']);
+        $this->assertTrue($ready['ready_for_review']);
+        // The same blocked source does not authorize other orders or callers.
+        config()->set('xlwms.reissue_request_id','wrong-uuid');
+        $notAuthorized=$service->forOrder($o->id,$uuid,true);
+        $this->assertContains('OMS_SNAPSHOT_NOT_RECONCILED',$notAuthorized['blockers']);
+    }
+
+    public function test_target_stock_gate_fails_on_stale_or_insufficient_or_mismatched_oms_sku(): void
+    {
+        [$o,$uuid]=$this->reissueFixture();
+        $snapshot=XlwmsInventorySnapshot::where('warehouse_id',$o->shipment->warehouse_id)->sole();
+        $snapshot->forceFill(['status'=>'blocked','blocked_sku_count'=>1,'updated_at'=>now()])->save();
+        config()->set('xlwms.reissue_create_enabled',true);
+        config()->set('xlwms.reissue_order_id',$o->id);
+        config()->set('xlwms.reissue_request_id',$uuid);
+        $service=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentPreview::class);
+        $row=$snapshot->rows()->where('provider_sku','SAME-SKU')->sole();
+        $row->forceFill(['oms_available'=>0,'oms_total'=>0,'oms_locked'=>0])->save();
+        $this->assertContains('OMS_SNAPSHOT_NOT_RECONCILED',$service->forOrder($o->id,$uuid,true)['blockers']);
+        $row->forceFill(['oms_available'=>10,'oms_total'=>10,'oms_locked'=>0,'resolution_status'=>'blocked'])->save();
+        $this->assertContains('OMS_SNAPSHOT_NOT_RECONCILED',$service->forOrder($o->id,$uuid,true)['blockers']);
+        $row->forceFill(['resolution_status'=>'matched'])->save();
+        $snapshot->forceFill(['updated_at'=>now()->subMinutes(5)])->save();
+        $this->assertContains('OMS_SNAPSHOT_NOT_RECONCILED',$service->forOrder($o->id,$uuid,true)['blockers']);
+        $this->assertSame('shipped',$o->fresh()->shipment->shipment_status);
+        Http::assertNotSent(fn($r)=>str_contains($r->url(),'outboundOrder/create'));
+    }
+
 }
