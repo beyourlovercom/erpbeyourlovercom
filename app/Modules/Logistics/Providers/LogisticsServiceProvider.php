@@ -29,6 +29,7 @@ use App\Modules\Logistics\Infrastructure\EloquentFulfillmentOriginEvidenceReader
 use App\Modules\Logistics\Infrastructure\EloquentLastMileEstimateEvidenceReader;
 use App\Modules\Logistics\Infrastructure\EloquentOverseasHandlingEvidenceReader;
 use Illuminate\Support\ServiceProvider;
+use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsOmsWebGateway;
 
 final class LogisticsServiceProvider extends ServiceProvider
 {
@@ -50,6 +51,11 @@ final class LogisticsServiceProvider extends ServiceProvider
 
     public function register(): void
     {
+        $this->app->singleton(XlwmsOmsWebGateway::class, fn (): XlwmsOmsWebGateway => new XlwmsOmsWebGateway(
+            (string) config('xlwms.oms_web_base_url'),
+            (string) config('xlwms.oms_web_token'),
+            (string) config('xlwms.oms_web_hmac_key'),
+        ));
         // Explicit US-SM adapter only. Other warehouse APIs must be registered
         // independently; no generic fallback capable of external creation.
         $this->app->singleton(ReshipmentProviderRegistry::class,

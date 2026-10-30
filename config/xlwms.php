@@ -12,6 +12,11 @@
 return [
     'enabled' => filter_var(env('XLWMS_ENABLED', false), FILTER_VALIDATE_BOOL),
     'base_url' => env('XLWMS_BASE_URL', 'https://api.xlwms.com/openapi/v1'),
+    'oms_web_base_url' => env('XLWMS_OMS_WEB_BASE_URL', 'https://oms.xlwms.com/gateway/woms'),
+    'oms_web_token' => (string) env('XLWMS_OMS_WEB_TOKEN', ''),
+    'oms_web_hmac_key' => (string) env('XLWMS_OMS_WEB_HMAC_KEY', ''),
+    'oms_web_timeout_seconds' => max(2, min(30, (int) env('XLWMS_OMS_WEB_TIMEOUT_SECONDS', 15))),
+    'oms_web_enabled' => filter_var(env('XLWMS_OMS_WEB_ENABLED', false), FILTER_VALIDATE_BOOL),
     'timeout_seconds' => max(2, min(30, (int) env('XLWMS_TIMEOUT_SECONDS', 15))),
     // Optional trusted CA bundle. TLS verification stays enabled.
     'ca_bundle' => (string) env('XLWMS_CA_BUNDLE', ''),
