@@ -4,7 +4,8 @@ import Edit from './Edit.vue'
 
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
-  router: { patch: vi.fn(), delete: vi.fn() },
+  router: { patch: vi.fn(), delete: vi.fn(), post: vi.fn() },
+  useForm: (values: Record<string, unknown>) => ({ ...values, errors: {}, processing: false, put: vi.fn() }),
   usePage: () => ({ url: '/products/1/edit', props: { auth: { user: { id: 1, name: 'Test', email: 't@t.com' } }, shellNavigation: [] } }),
 }))
 
@@ -144,9 +145,17 @@ describe('Products/Edit V2', () => {
     expect(statusButtons.length).toBeGreaterThanOrEqual(2)
   })
 
+  it('renders barcode and explicit local brand override controls', () => {
+    const wrapper = mount(Edit, { props: { product: wooProduct } })
+    expect(wrapper.text()).toContain('69条码/制造商产品识别码')
+    expect(wrapper.find('#edit-barcode-69').exists()).toBe(true)
+    expect(wrapper.find('#edit-brand').exists()).toBe(true)
+    expect(wrapper.text()).toContain('启用本地品牌覆盖 WooCommerce')
+  })
+
   it('active segmented option reflects product.is_active', () => {
     const wrapper = mount(Edit, { props: { product: wooProduct } })
-    const selectedBtn = wrapper.find('.erp-segmented-option.selected')
+    const selectedBtn = wrapper.find('[aria-label="产品状态"] .erp-segmented-option.selected')
     expect(selectedBtn.exists()).toBe(true)
     expect(selectedBtn.text()).toContain('启用')
   })

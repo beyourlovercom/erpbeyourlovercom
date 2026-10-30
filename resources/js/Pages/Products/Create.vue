@@ -2,6 +2,7 @@
 import { Head, router } from '@inertiajs/vue3'
 import { ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+import ProductSectionRail from '../../Components/Products/ProductSectionRail.vue'
 
 const breadcrumbs = [
   { label: 'BYL ERP', href: '/dashboard' },
@@ -17,6 +18,10 @@ const form = ref({
   name: '',
   product_type: 'simple',
   gtin: '',
+  barcode_69: '',
+  brand: '',
+  brand_local_override: false,
+  has_battery: true,
   unit: '',
   is_active: true,
   weight_kg: '',
@@ -37,11 +42,25 @@ const form = ref({
 })
 const errors = ref<Record<string, string>>({})
 const submitting = ref(false)
+const images = ref<File[]>([])
+const imagePreviews = ref<string[]>([])
+const primaryIndex = ref(0)
+
+const selectImages = (event: Event) => {
+  const files = Array.from((event.target as HTMLInputElement).files ?? [])
+  images.value = files.slice(0, 12)
+  imagePreviews.value = images.value.map(file => URL.createObjectURL(file))
+}
+const removeImage = (index: number) => { images.value.splice(index, 1); imagePreviews.value.splice(index, 1); if (primaryIndex.value >= images.value.length) primaryIndex.value = 0 }
 
 const submit = () => {
   submitting.value = true
   errors.value = {}
-  router.post('/products', form.value, {
+  const payload = new FormData()
+  Object.entries(form.value).forEach(([key, value]) => payload.append(key, typeof value === 'boolean' ? (value ? '1' : '0') : String(value ?? '')))
+  images.value.forEach(file => payload.append('images[]', file))
+  payload.append('primary_index', String(primaryIndex.value))
+  router.post('/products', payload, {
     onError: (e) => { errors.value = e },
     onFinish: () => { submitting.value = false },
   })
@@ -51,6 +70,7 @@ const submit = () => {
 <template>
   <Head title="新增产品 · BYL ERP" />
   <AuthenticatedLayout title="新增产品" :breadcrumbs="breadcrumbs">
+    <ProductSectionRail :sections="[{ id: 'section-basic', label: '基本信息' }, { id: 'section-images', label: '图片' }, { id: 'section-parameters', label: '产品参数' }, { id: 'section-packaging', label: '包装与配件' }, { id: 'section-sales', label: '销售' }, { id: 'section-logistics', label: '物流' }, { id: 'section-customs', label: '海关' }, { id: 'section-cost', label: '成本' }, { id: 'section-notes', label: '备注' }]" />
     <div class="erp-form-page">
       <div class="erp-form-content">
 
@@ -70,7 +90,7 @@ const submit = () => {
         <form id="product-create-form" @submit.prevent="submit">
 
           <!-- Card 1: 基本信息 -->
-          <div class="erp-form-card">
+          <div class="erp-form-card" id="section-basic">
             <h2 class="erp-form-card-title">基本信息</h2>
             <div class="erp-form-grid">
 
@@ -162,6 +182,25 @@ const submit = () => {
               </div>
 
               <div class="erp-form-field">
+                <label class="erp-form-label" for="create-barcode-69">69条码/制造商产品识别码</label>
+                <input id="create-barcode-69" v-model="form.barcode_69" class="erp-input" inputmode="numeric" maxlength="14">
+                <p v-if="errors.barcode_69" class="erp-field-error">{{ errors.barcode_69 }}</p>
+              </div>
+
+              <div class="erp-form-field">
+                <label class="erp-form-label" for="create-brand">品牌</label>
+                <input id="create-brand" v-model="form.brand" class="erp-input">
+              </div>
+
+              <div class="erp-form-field">
+                <label class="erp-form-label">电池属性</label>
+                <div class="erp-segmented" role="group" aria-label="电池属性">
+                  <button type="button" class="erp-segmented-option" :class="{ selected: form.has_battery }" @click="form.has_battery = true">含电池</button>
+                  <button type="button" class="erp-segmented-option" :class="{ selected: !form.has_battery }" @click="form.has_battery = false">不含电池</button>
+                </div>
+              </div>
+
+              <div class="erp-form-field">
                 <label class="erp-form-label" for="create-unit">单位</label>
                 <input
                   id="create-unit"
@@ -195,8 +234,30 @@ const submit = () => {
             </div>
           </div>
 
+          <div class="erp-form-card" id="section-images">
+            <h2 class="erp-form-card-title">产品图片</h2>
+            <p class="erp-form-card-helper">支持 JPG、PNG、WebP；每张不超过 10MB，最多 12 张。创建后图片会保留在本地 ERP。</p>
+            <input id="create-images" type="file" accept="image/jpeg,image/png,image/webp" multiple @change="selectImages">
+            <div v-if="imagePreviews.length" class="product-image-preview-grid">
+              <div v-for="(url, index) in imagePreviews" :key="url" class="product-image-preview-item">
+                <img :src="url" :alt="`预览 ${index + 1}`">
+                <button type="button" @click="primaryIndex = index">{{ primaryIndex === index ? '主图' : '设为主图' }}</button>
+                <button type="button" @click="removeImage(index)">移除</button>
+              </div>
+            </div>
+          </div>
+
+          <section class="erp-form-card" id="section-parameters">
+            <h2 class="erp-form-card-title">工厂产品参数</h2>
+            <p class="erp-form-card-helper">净重与尺寸已可在上方填写。材质、彩盒与外箱测量等需要审核的工厂参数，请先创建产品，然后在统一编辑页填写并提交审核。</p>
+          </section>
+          <section class="erp-form-card" id="section-packaging">
+            <h2 class="erp-form-card-title">包装与配件</h2>
+            <p class="erp-form-card-helper">创建产品后即可在编辑页设置四套包装方案、上传新版/旧版包装示范图，并维护装箱数量。</p>
+          </section>
+
           <!-- Card 2: 销售信息 -->
-          <div class="erp-form-card">
+          <div class="erp-form-card" id="section-sales">
             <h2 class="erp-form-card-title">销售信息</h2>
             <div class="erp-form-grid">
 
@@ -234,7 +295,7 @@ const submit = () => {
           </div>
 
           <!-- Card 3: 物流属性 -->
-          <div class="erp-form-card">
+          <div class="erp-form-card" id="section-logistics">
             <h2 class="erp-form-card-title">物流属性</h2>
             <div class="erp-form-grid">
 
@@ -323,7 +384,7 @@ const submit = () => {
           </div>
 
           <!-- Card 4: 海关与产地 -->
-          <div class="erp-form-card">
+          <div class="erp-form-card" id="section-customs">
             <h2 class="erp-form-card-title">海关与产地</h2>
             <div class="erp-form-grid">
 
@@ -358,7 +419,7 @@ const submit = () => {
           </div>
 
           <!-- Card 5: 成本参考 -->
-          <div class="erp-form-card">
+          <div class="erp-form-card" id="section-cost">
             <h2 class="erp-form-card-title">成本参考</h2>
             <p class="erp-form-card-helper">当前参考成本；历史会计成本由 Accounting 成本版本管理。</p>
             <div class="erp-form-grid">
@@ -438,7 +499,7 @@ const submit = () => {
           </div>
 
           <!-- Card 6: 内部备注 -->
-          <div class="erp-form-card">
+          <div class="erp-form-card" id="section-notes">
             <h2 class="erp-form-card-title">内部备注</h2>
             <div style="margin-top:16px;">
               <label class="erp-form-label" for="create-notes" style="margin-bottom:5px;display:block;">备注</label>
@@ -458,3 +519,10 @@ const submit = () => {
     </div>
   </AuthenticatedLayout>
 </template>
+
+<style scoped>
+.product-image-preview-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:12px; margin-top:16px; }
+.product-image-preview-grid img { width:100%; aspect-ratio:1; object-fit:cover; border:1px solid #E4EAED; border-radius:10px; }
+.product-image-preview-item { display:flex; flex-direction:column; gap:5px; }
+.product-image-preview-item button { border:0; background:transparent; color:#2D8C84; cursor:pointer; font-size:12px; }
+</style>

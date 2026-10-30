@@ -86,7 +86,7 @@ describe('Products/Create V2', () => {
 
   it('active segmented option is selected by default', () => {
     const wrapper = mount(Create)
-    const selectedBtn = wrapper.find('.erp-segmented-option.selected')
+    const selectedBtn = wrapper.find('[aria-label="产品状态"] .erp-segmented-option.selected')
     expect(selectedBtn.exists()).toBe(true)
     expect(selectedBtn.text()).toContain('启用')
   })
@@ -101,6 +101,14 @@ describe('Products/Create V2', () => {
     expect(wrapper.text()).toContain('成本币种')
     expect(wrapper.text()).toContain('原产国')
     expect(wrapper.text()).toContain('HS Code')
+  })
+
+  it('renders barcode, brand, and battery controls', () => {
+    const wrapper = mount(Create)
+    expect(wrapper.text()).toContain('69条码/制造商产品识别码')
+    expect(wrapper.find('#create-barcode-69').exists()).toBe(true)
+    expect(wrapper.find('#create-brand').exists()).toBe(true)
+    expect(wrapper.text()).toContain('含电池')
   })
 
   it('shows 体积重量参考 read-only field labeled as reference value', () => {

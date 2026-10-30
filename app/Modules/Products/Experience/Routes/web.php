@@ -65,11 +65,15 @@ Route::middleware(['web', 'auth', 'can:products.operate'])->group(function (): v
     Route::get('/products/{id}/edit', [ProductController::class, 'edit'])->name('products.edit');
     Route::get('/products/{product}/packaging', [ProductPackagingProfileController::class, 'edit'])->whereNumber('product')->name('products.packaging.edit');
     Route::put('/products/{product}/inline-parameters', [ProductInlineParameterController::class, 'update'])->whereNumber('product')->name('products.inline-parameters.update');
+    Route::post('/products/{product}/measurement-submissions', [ProductInlineParameterController::class, 'submitMeasurements'])->whereNumber('product')->name('products.measurement-submissions.store');
     Route::put('/products/{product}/barcode-69', [ProductPackagingProfileController::class, 'updateBarcode69'])->whereNumber('product')->name('products.barcode-69.update');
     Route::put('/products/{product}/packaging', [ProductPackagingProfileController::class, 'update'])->whereNumber('product')->name('products.packaging.update');
     Route::post('/products/{product}/packaging/media', [ProductPackagingProfileController::class, 'upload'])->whereNumber('product')->name('products.packaging.media.store');
     Route::delete('/products/packaging/media/{media}', [ProductPackagingProfileController::class, 'destroyMedia'])->whereNumber('media')->name('products.packaging.media.destroy');
     Route::patch('/products/{id}', [ProductController::class, 'update'])->name('products.update');
+    Route::post('/products/{id}/media', [ProductController::class, 'uploadMedia'])->whereNumber('id')->name('products.media.store');
+    Route::patch('/products/{id}/media', [ProductController::class, 'updateMedia'])->whereNumber('id')->name('products.media.update');
+    Route::delete('/products/{id}/media/{media}', [ProductController::class, 'destroyMedia'])->whereNumber('id')->whereNumber('media')->name('products.media.destroy');
     Route::delete('/products/{id}', [ProductController::class, 'destroy'])->name('products.destroy');
 
     // Product360 scoped alias management; separate from legacy SKU reconciliation.

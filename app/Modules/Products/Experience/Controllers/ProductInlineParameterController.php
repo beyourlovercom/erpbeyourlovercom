@@ -30,6 +30,45 @@ final class ProductInlineParameterController
         private readonly AuditRecorder $audit,
     ) {}
 
+    /**
+     * Only creates a pending factory measurement submission.
+     * Previously approved parameters remain immutable until a reviewer approves it.
+     */
+    public function submitMeasurements(Request $request, Product $product): RedirectResponse
+    {
+        $rules = ['measurements' => ['required', 'array:'.implode(',', self::REVIEW_FIELDS), 'min:1']];
+        foreach (self::REVIEW_FIELDS as $field) {
+            $rules['measurements.'.$field] = in_array($field, ['material', 'weight_composition'], true)
+                ? ['sometimes', 'required', 'string', 'max:1000']
+                : ($field === 'units_per_carton'
+                    ? ['sometimes', 'required', 'integer', 'min:1', 'max:1000000']
+                    : ['sometimes', 'required', 'numeric', 'gt:0', 'max:1000000']);
+        }
+        $data = $request->validate($rules);
+        $measurements = $data['measurements'];
+
+        DB::transaction(function () use ($request, $product, $measurements): void {
+            $submission = ProductParameterSubmission::query()->create([
+                'product_id' => $product->id,
+                'task_id' => null,
+                'created_by' => $request->user()->id,
+                'status' => 'submitted',
+                'measurements' => $measurements,
+                'accessories' => [],
+                'notes' => '产品编辑页提交变更，等待审核',
+                'submitted_at' => now(),
+            ]);
+            $this->audit->record(
+                AuditActor::user($request->user(), AuditSource::Web),
+                'product.parameter_submission.submitted', ProductParameterSubmission::class, $submission->id,
+                after: ['product_id' => $product->id, 'fields' => array_keys($measurements)],
+                reason: 'product_editor_v3_review_submission'
+            );
+        });
+
+        return back()->with('success', '新产品参数已提交审核，原值保持不变');
+    }
+
     public function update(Request $request, Product $product): RedirectResponse
     {
         // Only allow the exact fields displayed in the Product360 inline editor.
