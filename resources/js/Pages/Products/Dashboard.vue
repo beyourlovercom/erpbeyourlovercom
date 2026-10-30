@@ -33,13 +33,12 @@ const attentionItems: { key: AttentionKey; label: string; hint: string }[] = [
   { key: 'pending_review', label: '工厂资料待审核', hint: '存在已提交、尚未审核的资料记录' },
 ]
 const recentCount = computed(() => props.recentProducts.length)
-// Match the Order Detail V1.3 rail: sticky on the LEFT, aligned to the
-// real centered content edge, rather than fixed to the right viewport edge.
+// Order Detail-style sticky left navigation, with a reserved gutter so
+// it cannot overlap ERP's persistent module sidebar at desktop widths.
 const sections = [
   { id: 'product-section-overview', label: '产品概览' },
   { id: 'product-section-shortcuts', label: '快捷操作' },
-  { id: 'product-section-attention', label: '资料待办' },
-  { id: 'product-section-recent', label: '最近更新' },
+  { id: 'product-section-attention', label: '待办与更新' },
 ] as const
 type SectionId = typeof sections[number]['id']
 const activeSection = ref<SectionId>('product-section-overview')
@@ -224,9 +223,9 @@ const applySearch = () => {
 
 <style scoped>
 .product-home{max-width:none;color:#232c32;padding:20px 18px 32px}
-.product-home-layout{width:100%;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);align-items:start}
-.product-home-content{grid-area:1 / 1;min-width:0;width:100%;max-width:1080px;margin:0 auto}
-.product-home-nav-rail{grid-area:1 / 1;position:sticky;top:108px;align-self:start;justify-self:end;width:126px;min-width:0;margin-right:calc(50% + min(540px, 50%) + 5px);z-index:5}
+.product-home-layout{width:100%;margin:0 auto;display:grid;grid-template-columns:126px minmax(0,1080px);column-gap:5px;justify-content:center;align-items:start}
+.product-home-content{grid-column:2;grid-row:1;min-width:0;width:100%;max-width:1080px;margin:0 auto}
+.product-home-nav-rail{grid-column:1;grid-row:1;position:sticky;top:108px;align-self:start;justify-self:end;width:126px;min-width:0;z-index:5}
 .product-home-nav{display:flex;flex-direction:column;padding:12px 8px;border:1px solid #e4eaed;border-radius:12px;background:#fff;box-shadow:0 2px 7px #14212609;max-height:calc(100vh - 110px);overflow-y:auto}
 .product-home-nav-caption{color:#829198;font-size:11px;font-weight:600;padding:2px 10px 8px}
 .product-home-nav-item,.product-home-nav-top{text-align:left;border:0;border-radius:7px;background:transparent;color:#556a73;font-size:12px;padding:8px 10px;line-height:1.35;cursor:pointer}
@@ -235,7 +234,7 @@ const applySearch = () => {
 .product-home-nav-item:focus-visible,.product-home-nav-top:focus-visible{outline:2px solid #81334e;outline-offset:-2px}
 .product-home-nav-top{color:#607880;border-top:1px solid #edf0f2;margin-top:6px;padding-top:11px}
 .product-home [id^="product-section-"]{scroll-margin-top:92px}
-@media(max-width:1250px){.product-home-nav-rail{width:112px;margin-right:calc(50% + min(540px, 50%) + 4px)}}
+@media(max-width:1250px){.product-home-layout{grid-template-columns:112px minmax(0,1080px)}.product-home-nav-rail{width:112px}}
 
 .product-home-heading{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:18px}
 .product-home-heading h2{font-size:24px;letter-spacing:-.4px;margin:3px 0 4px}
