@@ -4,7 +4,8 @@ import Edit from './Edit.vue'
 
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
-  router: { patch: vi.fn(), delete: vi.fn() },
+  router: { patch: vi.fn(), delete: vi.fn(), post: vi.fn() },
+  useForm: (values: Record<string, unknown>) => ({ ...values, errors: {}, processing: false, put: vi.fn() }),
   usePage: () => ({ url: '/products/1/edit', props: { auth: { user: { id: 1, name: 'Test', email: 't@t.com' } }, shellNavigation: [] } }),
 }))
 
@@ -45,6 +46,14 @@ const inactiveProduct = {
 }
 
 describe('Products/Edit V2', () => {
+  it('uses the same left-side floating navigation as the order detail layout', () => {
+    const wrapper = mount(Edit, { props: { product: wooProduct } })
+    expect(wrapper.find('.product-editor-layout > .product-section-nav-rail').exists()).toBe(true)
+    expect(wrapper.find('.product-editor-layout > .erp-form-content').exists()).toBe(true)
+    expect(wrapper.findAll('.product-section-item').length).toBe(9)
+    expect(wrapper.find('.product-section-top').text()).toContain('返回顶部')
+  })
+
   it('renders page title and subtitle', () => {
     const wrapper = mount(Edit, { props: { product: wooProduct } })
     expect(wrapper.text()).toContain('编辑产品')
@@ -144,9 +153,17 @@ describe('Products/Edit V2', () => {
     expect(statusButtons.length).toBeGreaterThanOrEqual(2)
   })
 
+  it('renders barcode and explicit local brand override controls', () => {
+    const wrapper = mount(Edit, { props: { product: wooProduct } })
+    expect(wrapper.text()).toContain('69条码/制造商产品识别码')
+    expect(wrapper.find('#edit-barcode-69').exists()).toBe(true)
+    expect(wrapper.find('#edit-brand').exists()).toBe(true)
+    expect(wrapper.text()).toContain('启用本地品牌覆盖 WooCommerce')
+  })
+
   it('active segmented option reflects product.is_active', () => {
     const wrapper = mount(Edit, { props: { product: wooProduct } })
-    const selectedBtn = wrapper.find('.erp-segmented-option.selected')
+    const selectedBtn = wrapper.find('[aria-label="产品状态"] .erp-segmented-option.selected')
     expect(selectedBtn.exists()).toBe(true)
     expect(selectedBtn.text()).toContain('启用')
   })

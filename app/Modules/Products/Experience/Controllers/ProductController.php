@@ -3,6 +3,9 @@
 namespace App\Modules\Products\Experience\Controllers;
 
 use App\Modules\Identity\Application\AuthorizationKeys;
+use App\Modules\Audit\Application\AuditActor;
+use App\Modules\Audit\Application\AuditSource;
+use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Audit\Application\ProductActivityProjection;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
 use App\Modules\Kol\Application\ProductKolProjection;
@@ -27,6 +30,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -52,6 +56,7 @@ final class ProductController
         private readonly ProductActivityProjection $activityProjection,
         private readonly WooCommerceProductInboundService $wooInbound,
         private readonly ProductPackagingPresentation $packagingPresentation,
+        private readonly AuditRecorder $audit,
     ) {}
 
     public function dashboard(): Response
@@ -235,7 +240,10 @@ final class ProductController
         $products->load([
             'packagingProfile',
             'providerSnapshots' => fn ($query) => $query->where('provider', 'woocommerce')->where('connection_key', $connection),
-            'media' => fn ($query) => $query->where('provider', 'woocommerce')->where('connection_key', $connection)->where('is_primary', true),
+            'media' => fn ($query) => $query->where(function ($q) use ($connection): void {
+                $q->where(['provider' => 'erp_manual', 'connection_key' => 'local'])
+                    ->orWhere(fn ($woo) => $woo->where(['provider' => 'woocommerce', 'connection_key' => $connection]));
+            })->orderByDesc('is_primary')->orderBy('position'),
         ]);
     }
 
@@ -243,7 +251,7 @@ final class ProductController
     private function gridRow(Product $p, array $warehouses): array
     {
         $snapshot = $p->providerSnapshots->first();
-        $media = $p->media->first();
+        $media = $p->media->firstWhere('provider', 'erp_manual') ?? $p->media->first();
         // Partial or unverified warehouses must never be mistaken for zero stock.
         $stockKnown = $warehouses !== [] && collect($warehouses)->every(
             fn (array $row): bool => $row['quantity_available'] !== null
@@ -377,8 +385,14 @@ final class ProductController
         $connection = (string) config('services.woocommerce.connection_key', 'beyourlover.com');
         $configuredProductReference = collect($this->externalRefs->forProduct($id))->first(fn (array $reference): bool => $reference['provider'] === 'woocommerce' && $reference['connection_key'] === $connection && $reference['reference_type'] === 'product');
         $snapshot = ProductProviderSnapshot::query()->where(['product_id' => $id, 'provider' => 'woocommerce', 'connection_key' => $connection])->first();
-        $media = ProductMedia::query()->where(['product_id' => $id, 'provider' => 'woocommerce', 'connection_key' => $connection])->orderBy('position')->get();
-        $primaryMedia = $media->firstWhere('is_primary', true) ?? $media->first();
+        $media = ProductMedia::query()->where('product_id', $id)->where(function ($query) use ($connection): void {
+            $query->where(['provider' => 'erp_manual', 'connection_key' => 'local'])
+                ->orWhere(fn ($woo) => $woo->where(['provider' => 'woocommerce', 'connection_key' => $connection]));
+        })->orderByDesc('is_primary')->orderBy('position')->get();
+        $primaryMedia = $media->first(fn (ProductMedia $item): bool => $item->provider === 'erp_manual' && $item->is_primary)
+            ?? $media->firstWhere('provider', 'erp_manual')
+            ?? $media->firstWhere('is_primary', true)
+            ?? $media->first();
         $recentProductRuns = \App\Modules\Sync\Infrastructure\Models\SyncRunItem::query()->with('run')->where('product_id', $id)->where('operation', 'woocommerce.product_inbound')->latest('id')->limit(10)->get()->map(fn ($item): array => ['status' => $item->status?->value ?? $item->status, 'result_code' => $item->result_code, 'error_message' => $item->error_message, 'completed_at' => $item->completed_at?->toIso8601String(), 'run_id' => $item->sync_run_id])->all();
 
         $canManageProduct = Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false;
@@ -508,6 +522,116 @@ final class ProductController
         return Storage::disk('local')->response($item->storage_path, null, ['Content-Type' => $item->mime_type, 'Cache-Control' => 'private, no-store']);
     }
 
+    public function uploadMedia(Request $request, int $id): RedirectResponse
+    {
+        $product = $this->products->findById($id);
+        abort_if($product === null, 404);
+        $request->validate(['images' => ['required', 'array', 'max:12'], 'images.*' => ['required', 'file', 'mimes:jpg,jpeg,png,webp', 'max:10240']]);
+        $existing = ProductMedia::query()->where(['product_id' => $id, 'provider' => 'erp_manual'])->count();
+        abort_if($existing + count($request->file('images', [])) > 12, 422, '产品图片最多 12 张。');
+        $this->persistManualMedia($id, $request->file('images', []));
+        $this->audit->record(
+            AuditActor::user($request->user(), AuditSource::Web),
+            'product.media.uploaded', Product::class, $id,
+            after: ['source' => 'erp_manual', 'count' => count($request->file('images', []))],
+            reason: 'product_editor_v3_manual_media_upload'
+        );
+        return back()->with('success', '产品图片已上传');
+    }
+
+    /** @param array<int, \Illuminate\Http\UploadedFile> $files */
+    private function persistManualMedia(int $id, array $files, int $primaryIndex = 0): void
+    {
+        $position = (int) ProductMedia::query()->where('product_id', $id)->max('position') + 1;
+        $hasPrimary = ProductMedia::query()->where(['product_id' => $id, 'provider' => 'erp_manual', 'connection_key' => 'local'])->where('is_primary', true)->exists();
+        if ($primaryIndex < 0 || $primaryIndex >= count($files)) $primaryIndex = 0;
+        $paths = [];
+        try {
+            foreach ($files as $fileIndex => $file) {
+                $path = $file->store('products/'.$id, 'local');
+                $paths[] = $path;
+                $isPrimary = ! $hasPrimary && $fileIndex === $primaryIndex;
+                ProductMedia::query()->create([
+                    'product_id' => $id, 'provider' => 'erp_manual', 'connection_key' => 'local',
+                    'provider_media_key' => (string) Str::uuid(), 'source_url' => 'local://products/'.$id.'/'.$position,
+                    'storage_path' => $path, 'mime_type' => $file->getMimeType(), 'size_bytes' => $file->getSize(),
+                    'sha256' => hash_file('sha256', $file->getRealPath()), 'position' => $position++, 'is_primary' => $isPrimary,
+                ]);
+                $hasPrimary = $hasPrimary || $isPrimary;
+            }
+        } catch (\Throwable $e) {
+            Storage::disk('local')->delete($paths); throw $e;
+        }
+    }
+
+    public function updateMedia(Request $request, int $id): RedirectResponse
+    {
+        abort_if($this->products->findById($id) === null, 404);
+        $data = $request->validate([
+            'media' => ['required', 'array', 'min:1', 'max:12'],
+            'media.*.id' => ['required', 'integer', 'distinct'],
+            'media.*.position' => ['required', 'integer', 'min:0'],
+            'primary_id' => ['required', 'integer'],
+        ]);
+        $items = ProductMedia::query()->where([
+            'product_id' => $id, 'provider' => 'erp_manual', 'connection_key' => 'local',
+        ])->get()->keyBy('id');
+        $ids = collect($data['media'])->pluck('id')->map(fn ($value) => (int) $value)->sort()->values()->all();
+        $allowedIds = $items->keys()->map(fn ($value) => (int) $value)->sort()->values()->all();
+        $positions = collect($data['media'])->pluck('position')->map(fn ($value) => (int) $value)->sort()->values()->all();
+        if ($ids !== $allowedIds || ! in_array((int) $data['primary_id'], $ids, true)
+            || $positions !== range(0, count($data['media']) - 1)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'media' => '图片列表、顺序或主图不匹配，请刷新页面后重试。',
+            ]);
+        }
+        $before = $items->map(fn (ProductMedia $item) => [
+            'id' => (int) $item->id, 'position' => $item->position, 'is_primary' => (bool) $item->is_primary,
+        ])->values()->all();
+        DB::transaction(function () use ($data, $items): void {
+            foreach ($data['media'] as $row) {
+                $items[(int) $row['id']]->update([
+                    'position' => (int) $row['position'],
+                    'is_primary' => (int) $data['primary_id'] === (int) $row['id'],
+                ]);
+            }
+        });
+        $this->audit->record(
+            AuditActor::user($request->user(), AuditSource::Web),
+            'product.media.reordered', Product::class, $id,
+            before: ['media' => $before],
+            after: ['media' => $data['media'], 'primary_id' => (int) $data['primary_id']],
+            reason: 'product_editor_v3_manual_media_reorder'
+        );
+        return back()->with('success', '产品图片顺序已保存');
+    }
+
+    public function destroyMedia(Request $request, int $id, int $media): RedirectResponse
+    {
+        $item = ProductMedia::query()->where([
+            'id' => $media, 'product_id' => $id, 'provider' => 'erp_manual', 'connection_key' => 'local',
+        ])->firstOrFail();
+        $path = $item->storage_path;
+        DB::transaction(function () use ($item, $id): void {
+            $wasPrimary = (bool) $item->is_primary;
+            $item->delete();
+            if ($wasPrimary) {
+                $first = ProductMedia::query()->where([
+                    'product_id' => $id, 'provider' => 'erp_manual', 'connection_key' => 'local',
+                ])->orderBy('position')->first();
+                if ($first) $first->update(['is_primary' => true]);
+            }
+        });
+        Storage::disk('local')->delete($path);
+        $this->audit->record(
+            AuditActor::user($request->user(), AuditSource::Web),
+            'product.media.deleted', Product::class, $id,
+            before: ['media_id' => $media, 'source' => 'erp_manual'],
+            reason: 'product_editor_v3_manual_media_delete'
+        );
+        return back()->with('success', '产品图片已删除');
+    }
+
     public function syncWooCommerce(Request $request, int $id): RedirectResponse
     {
         $reference = \App\Modules\Products\Infrastructure\Models\ProductExternalReference::query()->where(['product_id' => $id, 'provider' => 'woocommerce', 'connection_key' => config('services.woocommerce.connection_key')])->where('reference_type', 'product')->first();
@@ -531,6 +655,10 @@ final class ProductController
             'name' => ['required', 'string', 'max:512'],
             'product_type' => ['sometimes', 'string', 'max:64'],
             'gtin' => ['nullable', 'string', 'max:128'],
+            'barcode_69' => ['nullable', 'regex:/^[0-9]{8,14}$/'],
+            'brand' => ['nullable', 'string', 'max:255'],
+            'brand_local_override' => ['sometimes', 'boolean'],
+            'has_battery' => ['sometimes', 'boolean'],
             'unit' => ['nullable', 'string', 'max:32'],
             'is_active' => ['sometimes', 'boolean'],
             'weight_kg' => ['nullable', 'numeric', 'min:0'],
@@ -548,15 +676,30 @@ final class ProductController
             'cost_currency' => ['nullable', 'string', 'size:3'],
             'cost_note' => ['nullable', 'string'],
             'notes' => ['nullable', 'string'],
+            'images' => ['sometimes', 'array', 'max:12'],
+            'images.*' => ['file', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+            'primary_index' => ['sometimes', 'integer', 'min:0', 'max:11'],
         ]);
 
         try {
-            $product = $this->products->createManual($data);
+            $product = DB::transaction(function () use ($data, $request) {
+                $product = $this->products->createManual($data);
+                $this->persistManualMedia((int) $product->id, $request->file('images', []), (int) $request->input('primary_index', 0));
+                return $product;
+            });
         } catch (\RuntimeException $e) {
             $field = str_contains($e->getMessage(), '蓝标') ? 'label_sku' : 'sku';
             return back()->withErrors([$field => $e->getMessage()])->withInput();
         }
 
+        if ($request->hasFile('images')) {
+            $this->audit->record(
+                AuditActor::user($request->user(), AuditSource::Web),
+                'product.media.uploaded', Product::class, $product->id,
+                after: ['source' => 'erp_manual', 'count' => count($request->file('images', []))],
+                reason: 'product_editor_v3_create_with_media'
+            );
+        }
         return redirect()->route('products.edit', $product->id)->with('success', '产品已创建');
     }
 
@@ -574,6 +717,25 @@ final class ProductController
             ? $this->weightEvidence->findById((int) $product->shipping_weight_evidence_id)
             : null;
 
+        $manualMedia = ProductMedia::query()->where(['product_id' => $id, 'provider' => 'erp_manual', 'connection_key' => 'local'])->orderBy('position')->get();
+
+        $approvedMeasurements = [];
+        ProductParameterSubmission::query()->where('product_id', $id)->where('status', 'approved')
+            ->orderByDesc('reviewed_at')->orderByDesc('id')->get(['measurements'])
+            ->each(function ($record) use (&$approvedMeasurements): void {
+                foreach ($record->measurements ?? [] as $key => $value) {
+                    if (!array_key_exists($key, $approvedMeasurements) && $value !== null && $value !== '') {
+                        $approvedMeasurements[$key] = $value;
+                    }
+                }
+            });
+        $packaging = ProductPackagingProfile::query()->with('media')->where('product_id', $id)->first();
+        $wooMedia = ProductMedia::query()->where([
+            'product_id' => $id,
+            'provider' => 'woocommerce',
+            'connection_key' => (string) config('services.woocommerce.connection_key', 'beyourlover.com'),
+        ])->orderByDesc('is_primary')->orderBy('position')->get();
+
         return Inertia::render('Products/Edit', [
             'product' => [
                 'id' => $product->id,
@@ -584,6 +746,11 @@ final class ProductController
                 'label_sku' => $product->label_sku,
                 'label_description' => $product->label_description,
                 'gtin' => $product->gtin,
+                'barcode_69' => $product->barcode_69,
+                'brand' => $product->brand,
+                'brand_local_override' => (bool) $product->brand_local_override,
+                'woocommerce_brand' => $product->woocommerce_brand,
+                'has_battery' => (bool) $product->has_battery,
                 'name' => $product->name,
                 'unit' => $product->unit,
                 'is_active' => $product->is_active,
@@ -607,7 +774,17 @@ final class ProductController
                 'cost_note' => $product->cost_note,
                 'notes' => $product->notes,
                 'external_references' => $this->externalRefs->forProduct((int) $product->id),
+                'media' => $manualMedia->map(fn (ProductMedia $item): array => ['id' => (int) $item->id, 'url' => route('products.media.show', $item->id), 'position' => (int) $item->position, 'is_primary' => (bool) $item->is_primary])->values()->all(),
+                'woo_media' => $wooMedia->map(fn (ProductMedia $item): array => [
+                    'id' => (int) $item->id, 'url' => $this->gridImageUrl($item),
+                    'is_primary' => (bool) $item->is_primary,
+                ])->filter(fn (array $item): bool => $item['url'] !== null)->values()->all(),
+
             ],
+            'approvedMeasurements' => $approvedMeasurements,
+            'pendingParameterReviewCount' => ProductParameterSubmission::query()->where('product_id', $id)->where('status', 'submitted')->count(),
+            'packagingProfile' => $packaging ? $this->packagingPresentation->serialize($packaging) : null,
+            'packagingPresets' => $this->packagingPresentation->presets(),
         ]);
     }
 
@@ -625,6 +802,10 @@ final class ProductController
             'name' => ['required', 'string', 'max:512'],
             'product_type' => ['sometimes', 'string', 'max:64'],
             'gtin' => ['nullable', 'string', 'max:128'],
+            'barcode_69' => ['nullable', 'regex:/^[0-9]{8,14}$/'],
+            'brand' => ['nullable', 'string', 'max:255'],
+            'brand_local_override' => ['sometimes', 'boolean'],
+            'has_battery' => ['sometimes', 'boolean'],
             'unit' => ['nullable', 'string', 'max:32'],
             'is_active' => ['sometimes', 'boolean'],
             'weight_kg' => ['nullable', 'numeric', 'min:0'],

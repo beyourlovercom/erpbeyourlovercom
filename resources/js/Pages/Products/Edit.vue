@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3'
-import { computed, ref } from 'vue'
+import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
+import ProductSectionRail from '../../Components/Products/ProductSectionRail.vue'
+import ProductParametersEditor from '../../Components/Products/ProductParametersEditor.vue'
+import PackagingEditor from '../../Components/Products/PackagingEditor.vue'
 
 type ExternalReference = {
   provider: string
@@ -19,6 +22,11 @@ type Product = {
   label_sku?: string | null
   label_description?: string | null
   gtin: string | null
+  barcode_69?: string | null
+  brand?: string | null
+  brand_local_override?: boolean
+  woocommerce_brand?: string | null
+  has_battery?: boolean
   name: string
   unit: string | null
   is_active: boolean
@@ -42,9 +50,23 @@ type Product = {
   cost_note: string | null
   notes: string | null
   external_references: ExternalReference[]
+  media?: Array<{ id: number; url: string; position: number; is_primary: boolean }>
+  woo_media?: Array<{ id: number; url: string; is_primary: boolean }>
 }
 
-const props = defineProps<{ product: Product }>()
+type ImageRef = { id: number | null; name: string | null; url: string }
+type PackagingProfile = {
+  id: number; preset_key: string | null; method: string; scenario: string | null; version: string | null;
+  units_per_carton: number | null; inherits_global_template: boolean;
+  default_image: ImageRef | null; rendered_image: ImageRef | null; examples: ImageRef[]
+}
+const props = withDefaults(defineProps<{
+  product: Product
+  approvedMeasurements?: Record<string, string | number | null>
+  pendingParameterReviewCount?: number
+  packagingProfile?: PackagingProfile | null
+  packagingPresets?: { key: string; label: string }[]
+}>(), { approvedMeasurements: () => ({}), pendingParameterReviewCount: 0, packagingProfile: null, packagingPresets: () => [] })
 
 const breadcrumbs = [
   { label: 'BYL ERP', href: '/dashboard' },
@@ -60,6 +82,10 @@ const form = ref({
   name: props.product.name,
   product_type: props.product.product_type,
   gtin: props.product.gtin ?? '',
+  barcode_69: props.product.barcode_69 ?? '',
+  brand: props.product.brand ?? '',
+  brand_local_override: props.product.brand_local_override ?? false,
+  has_battery: props.product.has_battery ?? true,
   unit: props.product.unit ?? '',
   is_active: props.product.is_active,
   weight_kg: props.product.weight_kg ?? '',
@@ -81,6 +107,52 @@ const form = ref({
 const errors = ref<Record<string, string>>({})
 const submitting = ref(false)
 const confirmingDelete = ref(false)
+const images = ref<File[]>([])
+const savedMedia = ref([...(props.product.media ?? [])])
+const pendingPreviewUrls = ref<string[]>([])
+const imagePreviews = computed(() => [...savedMedia.value.map(item => item.url), ...pendingPreviewUrls.value])
+const uploadingImages = ref(false)
+const clearPendingPreviews = () => {
+  pendingPreviewUrls.value.forEach(url => URL.revokeObjectURL(url))
+  pendingPreviewUrls.value = []
+}
+onBeforeUnmount(clearPendingPreviews)
+watch(() => props.product.media, next => { savedMedia.value = [...(next ?? [])] }, { deep: true })
+const selectImages = (event: Event) => {
+  clearPendingPreviews()
+  images.value = Array.from((event.target as HTMLInputElement).files ?? []).slice(0, 12)
+  pendingPreviewUrls.value = images.value.map(file => URL.createObjectURL(file))
+}
+const saveMediaOrder = (primaryId: number) => router.patch('/products/' + props.product.id + '/media', {
+  media: savedMedia.value.map((item, position) => ({ id: item.id, position })),
+  primary_id: primaryId,
+}, { preserveScroll: true })
+const setPrimary = (id: number) => saveMediaOrder(id)
+const moveMedia = (index: number, delta: number) => {
+  const other = index + delta
+  if (other < 0 || other >= savedMedia.value.length) return
+  const reordered = [...savedMedia.value]
+  const value = reordered[index]
+  reordered[index] = reordered[other]
+  reordered[other] = value
+  savedMedia.value = reordered
+  saveMediaOrder(reordered.find(item => item.is_primary)?.id ?? reordered[0]?.id)
+}
+const deleteMedia = (id: number) => {
+  if (!confirm('删除这张 ERP 本地图片？官网图片不会受影响。')) return
+  router.delete('/products/' + props.product.id + '/media/' + id, { preserveScroll: true })
+}
+const uploadImages = () => {
+  if (!images.value.length || uploadingImages.value) return
+  uploadingImages.value = true
+  const payload = new FormData()
+  images.value.forEach(file => payload.append('images[]', file))
+  router.post('/products/' + props.product.id + '/media', payload, {
+    preserveScroll: true,
+    onSuccess: () => { images.value = []; clearPendingPreviews() },
+    onFinish: () => { uploadingImages.value = false },
+  })
+}
 
 const externalReferenceSummary = computed(() => {
   if (props.product.external_references.length === 0) return '—'
@@ -121,8 +193,10 @@ const doDelete = () => {
 <template>
   <Head title="编辑产品 · BYL ERP" />
   <AuthenticatedLayout title="编辑产品" :breadcrumbs="breadcrumbs">
-    <div class="erp-form-page">
-      <div class="erp-form-content">
+    <div class="erp-form-page product-editor-page">
+      <div class="product-editor-layout">
+        <ProductSectionRail :sections="[{ id: 'section-basic', label: '基本信息' }, { id: 'section-images', label: '图片' }, { id: 'section-parameters', label: '产品参数' }, { id: 'section-packaging', label: '包装与配件' }, { id: 'section-sales', label: '销售' }, { id: 'section-logistics', label: '物流' }, { id: 'section-customs', label: '海关' }, { id: 'section-cost', label: '成本' }, { id: 'section-notes', label: '备注' }] " />
+        <div class="erp-form-content">
 
         <!-- Page header -->
         <div class="erp-form-header-row">
@@ -169,7 +243,7 @@ const doDelete = () => {
         <form id="product-edit-form" @submit.prevent="submit">
 
           <!-- Card 1: 基本信息 -->
-          <div class="erp-form-card">
+          <div class="erp-form-card" id="section-basic">
             <h2 class="erp-form-card-title">基本信息</h2>
             <div class="erp-form-grid">
 
@@ -256,6 +330,27 @@ const doDelete = () => {
               </div>
 
               <div class="erp-form-field">
+                <label class="erp-form-label" for="edit-barcode-69">69条码/制造商产品识别码</label>
+                <input id="edit-barcode-69" v-model="form.barcode_69" class="erp-input" inputmode="numeric" maxlength="14">
+                <p v-if="errors.barcode_69" class="erp-field-error">{{ errors.barcode_69 }}</p>
+              </div>
+
+              <div class="erp-form-field">
+                <label class="erp-form-label" for="edit-brand">品牌</label>
+                <input id="edit-brand" v-model="form.brand" class="erp-input">
+                <button type="button" class="erp-form-check" :class="{ selected: form.brand_local_override }" @click="form.brand_local_override = !form.brand_local_override">{{ form.brand_local_override ? '✓ 使用本地品牌覆盖 WooCommerce' : '启用本地品牌覆盖 WooCommerce' }}；关闭后下次同步可更新</button>
+                <p v-if="product.woocommerce_brand" class="erp-field-help">WordPress 原始品牌：{{ product.woocommerce_brand }}</p>
+              </div>
+
+              <div class="erp-form-field">
+                <label class="erp-form-label">电池属性</label>
+                <div class="erp-segmented" role="group" aria-label="电池属性">
+                  <button type="button" class="erp-segmented-option" :class="{ selected: form.has_battery }" @click="form.has_battery = true">含电池</button>
+                  <button type="button" class="erp-segmented-option" :class="{ selected: !form.has_battery }" @click="form.has_battery = false">不含电池</button>
+                </div>
+              </div>
+
+              <div class="erp-form-field">
                 <label class="erp-form-label" for="edit-unit">单位</label>
                 <input
                   id="edit-unit"
@@ -289,8 +384,49 @@ const doDelete = () => {
             </div>
           </div>
 
+          <div class="erp-form-card" id="section-images">
+            <h2 class="erp-form-card-title">产品图片</h2>
+            <p class="erp-form-card-helper">ERP 本地上传可编辑；WooCommerce 原图仅作只读来源。支持 JPG、PNG、WebP，每张不超过 10MB。</p>
+            <input id="edit-images" type="file" accept="image/jpeg,image/png,image/webp" multiple @change="selectImages">
+            <button type="button" class="erp-btn erp-btn-secondary" :disabled="!images.length || uploadingImages" @click="uploadImages">上传选中图片</button>
+            <div v-if="imagePreviews.length" class="product-image-preview-grid">
+              <div v-for="(item, index) in savedMedia" :key="item.id" class="product-image-preview-item">
+                <img :src="item.url" :alt="`产品图片 ${index + 1}`">
+                <button type="button" @click="setPrimary(item.id)">{{ item.is_primary ? '主图' : '设为主图' }}</button>
+                <div class="product-image-controls">
+                  <button type="button" :disabled="index === 0" @click="moveMedia(index,-1)">← 左移</button>
+                  <button type="button" :disabled="index === savedMedia.length - 1" @click="moveMedia(index,1)">右移 →</button>
+                  <button type="button" @click="deleteMedia(item.id)">删除</button>
+                </div>
+              </div>
+              <img v-for="(url, index) in imagePreviews.slice(savedMedia.length)" :key="`${url}-${index}`" :src="url" :alt="`待上传 ${index + 1}`">
+            </div>
+            <div v-if="product.woo_media?.length" class="product-woo-media">
+              <h3>WordPress 同步图片（只读）</h3>
+              <p>ERP 自行上传的主图优先显示；官网原图由 WooCommerce 同步维护，不在此处删除。</p>
+              <div class="product-image-preview-grid">
+                <div v-for="item in product.woo_media" :key="item.id" class="product-image-preview-item">
+                  <img :src="item.url" alt="官网产品图片">
+                  <small>{{ item.is_primary ? '官网主图' : '官网图片' }}</small>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <section class="erp-form-card" id="section-parameters">
+            <h2 class="erp-form-card-title">工厂产品参数</h2>
+            <p class="erp-form-card-helper">已确认值只读展示；修改进入审核队列，不会直接覆盖旧值。</p>
+            <ProductParametersEditor :product-id="product.id" :approved="approvedMeasurements" :pending-count="pendingParameterReviewCount" />
+          </section>
+
+          <section class="erp-form-card" id="section-packaging">
+            <h2 class="erp-form-card-title">包装与配件</h2>
+            <p class="erp-form-card-helper">在本页面直接编辑原有包装方案及示范图。包装方案与产品销售图片是不同的资料。</p>
+            <PackagingEditor :product="{ id: product.id, sku: product.sku, name: product.name, barcode_69: product.barcode_69 }" :packaging-profile="packagingProfile" :presets="packagingPresets" embedded />
+          </section>
+
           <!-- Card 2: 销售信息 -->
-          <div class="erp-form-card">
+          <div class="erp-form-card" id="section-sales">
             <h2 class="erp-form-card-title">销售信息</h2>
             <div class="erp-form-grid">
 
@@ -326,7 +462,7 @@ const doDelete = () => {
           </div>
 
           <!-- Card 3: 物流属性 -->
-          <div class="erp-form-card">
+          <div class="erp-form-card" id="section-logistics">
             <h2 class="erp-form-card-title">物流属性</h2>
             <div class="erp-form-grid">
 
@@ -422,7 +558,7 @@ const doDelete = () => {
           </div>
 
           <!-- Card 4: 海关与产地 -->
-          <div class="erp-form-card">
+          <div class="erp-form-card" id="section-customs">
             <h2 class="erp-form-card-title">海关与产地</h2>
             <div class="erp-form-grid">
 
@@ -456,7 +592,7 @@ const doDelete = () => {
           </div>
 
           <!-- Card 5: 成本参考 -->
-          <div class="erp-form-card">
+          <div class="erp-form-card" id="section-cost">
             <h2 class="erp-form-card-title">成本参考</h2>
             <p class="erp-form-card-helper">当前参考成本；历史会计成本由 Accounting 成本版本管理。</p>
             <div class="erp-form-grid">
@@ -532,7 +668,7 @@ const doDelete = () => {
           </div>
 
           <!-- Card 6: 内部备注 -->
-          <div class="erp-form-card">
+          <div class="erp-form-card" id="section-notes">
             <h2 class="erp-form-card-title">内部备注</h2>
             <div style="margin-top:16px;">
               <label class="erp-form-label" for="edit-notes" style="margin-bottom:5px;display:block;">备注</label>
@@ -560,10 +696,44 @@ const doDelete = () => {
           </div>
         </div>
 
+        </div>
       </div>
     </div>
   </AuthenticatedLayout>
 </template>
+
+<style scoped>
+.product-editor-layout {
+  width:100%;
+  margin:0 auto;
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  align-items:start;
+}
+.product-editor-layout > .erp-form-content {
+  grid-area:1 / 1;
+  min-width:0;
+  width:100%;
+  max-width:1080px;
+  margin:0 auto;
+}
+.product-editor-page [id^="section-"] { scroll-margin-top:92px; }
+/* Reserve the 126px left navigation gutter when the ERP sidebar reduces available width. */
+@media (max-width:1680px) {
+  .product-editor-page { padding-left:clamp(24px,calc(864px - 50vw),156px); }
+}
+
+.product-image-preview-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:12px; margin-top:16px; }
+.product-image-preview-grid img { width:100%; aspect-ratio:1; object-fit:cover; border:1px solid #E4EAED; border-radius:10px; }
+.product-image-preview-item { display:flex; flex-direction:column; gap:5px; }
+.product-image-preview-item button { border:0; background:transparent; color:#2D8C84; cursor:pointer; font-size:12px; }
+.erp-form-check { display:block; margin-top:8px; color:#53666d; font-size:12px; }
+.product-image-controls { display:flex; gap:6px; flex-wrap:wrap; }
+.product-image-controls button:disabled { opacity:.45; cursor:default; }
+.product-woo-media { margin-top:20px; padding-top:14px; border-top:1px solid #edf1f2; }
+.product-woo-media h3 { font-size:14px; font-weight:600; }
+.product-woo-media p,.product-woo-media small { font-size:12px; color:#71838b; }
+</style>
 
 <style scoped>
 .erp-external-ref-table-wrap {
