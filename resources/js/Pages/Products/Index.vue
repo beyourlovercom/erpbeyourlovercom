@@ -32,7 +32,7 @@ type PaginatedProducts = {
   from: number | null
   to: number | null
 }
-type Filters = { search?: string; per_page?: string; sort?: string; direction?: string; view?: string; parameter_status?: string }
+type Filters = { search?: string; per_page?: string; sort?: string; direction?: string; view?: string; parameter_status?: string; attention?: string }
 
 const props = defineProps<{
   products: PaginatedProducts
@@ -155,6 +155,12 @@ const applyBatch = () => {
     onFinish:()=>{bulkBusy.value=false},
   })
 }
+const attentionLabels: Record<string, string> = {
+  needs_data: '资料需补齐', missing_image: '未关联 Woo 主图', missing_brand: '缺少品牌',
+  missing_barcode_69: '缺少 69 条码', missing_shipping_weight: '缺少运重',
+  missing_dimensions: '缺少商品尺寸', pending_review: '工厂资料待审核',
+}
+const activeAttention = computed(() => attentionLabels[props.filters.attention ?? ''] || '')
 const activeStatus = computed(() => props.filters.parameter_status || '全部')
 const statuses = computed(() => currentView.value === 'measurements'
   ? ['全部','已填','待填','必填','其他']
@@ -171,6 +177,7 @@ const query = (extra: Record<string, string | number> = {}) => ({
   direction: props.filters.direction ?? 'asc',
   view: currentView.value ?? 'standard',
   parameter_status: props.filters.parameter_status ?? '',
+  attention: props.filters.attention ?? '',
   ...extra,
 })
 const go = (extra: Record<string, string | number>) => {
@@ -254,6 +261,11 @@ const doDelete = () => {
             <small v-if="currentView==='measurements'">{{parameterCounts?.[status]??0}}</small>
           </button>
         </nav>
+      </div>
+
+      <div v-if="activeAttention" class="product-grid-active-attention" role="status">
+        <span>筛选条件：{{ activeAttention }} · 共 {{ products.total }} 件产品</span>
+        <button type="button" @click="go({attention:'', page:1})">清除筛选</button>
       </div>
 
       <section v-if="canOperate && currentView==='measurements'" class="parameter-bulk-toolbar" aria-label="产品参数批量指定">
@@ -387,6 +399,8 @@ const doDelete = () => {
 </template>
 
 <style scoped>
+.product-grid-active-attention{display:flex;align-items:center;gap:14px;justify-content:space-between;margin:9px 0 12px;padding:10px 14px;border-radius:8px;background:#fff7f9;border:1px solid #ead8de;color:#78364e;font-size:12px}
+.product-grid-active-attention button{background:transparent;border:0;color:#81334e;font-size:12px;cursor:pointer;font-weight:650}
 .parameter-bulk-toolbar{display:grid;gap:11px;padding:14px;border:1px solid #cddfd2;border-radius:9px;background:#f8fbf8;margin:12px 0}
 .parameter-bulk-title{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .parameter-bulk-title strong{font-size:13px;color:#205d43}
