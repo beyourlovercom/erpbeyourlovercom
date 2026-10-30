@@ -66,7 +66,7 @@ final class KolOrderOwnerScopeTest extends TestCase
             'currency' => 'USD',
             'owner_id' => $actor->id,
         ], [], $actor, true);
-        self::assertMatchesRegularExpression('/^007erp-1008-k9[0-9]+$/', $order->erp_order_id);
+        self::assertSame('007erp-1008-k'.$order->id, $order->erp_order_id);
         self::assertSame($order->erp_order_id, $order->fresh()->erp_order_id);
         self::assertSame('KOLMANUAL-TEST-007', $order->external_order_number);
     }
