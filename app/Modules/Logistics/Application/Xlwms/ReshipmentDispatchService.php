@@ -53,6 +53,32 @@ final class ReshipmentDispatchService
                 && $original['third_order_no']!==$expectedOriginalThird) {
                 throw new RuntimeException('REISSUE_ORIGINAL_IDENTITY_MISMATCH');
             }
+            // A second reissue is permitted only after every earlier OMS reissue
+            // was conclusively cancelled. Never treat a cached cancellation as
+            // permission to create another live warehouse order.
+            $earlier=XlwmsReshipment::query()
+                ->where('original_order_id',$orderId)->where('id','!=',$record->id)->get();
+            foreach ($earlier as $prior) {
+                if (! filled($prior->oms_order_no)) {
+                    if (! in_array($prior->status,['rejected','canceled'],true)) {
+                        throw new RuntimeException('REISSUE_PREVIOUS_REQUEST_ACTIVE');
+                    }
+                    continue;
+                }
+                if ($prior->status!=='canceled') {
+                    throw new RuntimeException('REISSUE_PREVIOUS_REQUEST_ACTIVE');
+                }
+                $checked=$this->providers->get('xlwms')->readStatus([
+                    'connection'=>$context['connection'],'oms_order_no'=>$prior->oms_order_no,
+                ]);
+                if (! $checked || $checked['order_no']!==$prior->oms_order_no
+                    || $checked['third_order_no']!==$prior->third_order_no
+                    || $checked['platform_order_no']!==$prior->third_order_no
+                    || $checked['status_code']!=='4'
+                    || filled($checked['tracking_no'])) {
+                    throw new RuntimeException('REISSUE_PREVIOUS_OMS_NOT_CANCELED');
+                }
+            }
             $existing=$this->providers->get('xlwms')->findExistingExact($context);
             if ($existing!==null) {
                 $omsNo=trim((string)($existing['outboundOrderNo']??$existing['orderNo']??''));
@@ -154,11 +180,21 @@ final class ReshipmentDispatchService
             || $remote['platform_order_no']!==$record->third_order_no) {
             throw new RuntimeException('REISSUE_STATUS_IDENTITY_MISMATCH');
         }
-        // No mutation of original ERP Shipment, Woo or AfterShip.
-        $record->forceFill(['oms_status_code'=>$remote['status_code'],
-            'oms_tracking_no'=>$remote['tracking_no'],
-            'oms_status_checked_at'=>now(),'last_error_code'=>null])->save();
-        $this->event($record,$record->status,$record->status,'provider_status_readback',$actorId);
+        // A native cancelled reissue with no tracking is the *only* route
+        // to closing an earlier attempt and safely permitting a new request.
+        // Preserve the provider order ID and complete audit trail.
+        DB::transaction(function () use ($record,$remote,$actorId): void {
+            $locked=XlwmsReshipment::query()->whereKey($record->id)->lockForUpdate()->firstOrFail();
+            $before=$locked->status;
+            $canceled=$remote['status_code']==='4' && ! filled($remote['tracking_no'])
+                && in_array($before,['draft_created','draft_existing','draft_unverified'],true);
+            $after=$canceled?'canceled':$before;
+            $locked->forceFill(['status'=>$after,'oms_status_code'=>$remote['status_code'],
+                'oms_tracking_no'=>$remote['tracking_no'],
+                'oms_status_checked_at'=>now(),'last_error_code'=>null])->save();
+            $this->event($locked,$before,$after,
+                $canceled?'provider_canceled_confirmed':'provider_status_readback',$actorId);
+        });
         return ['request_id'=>$requestId,'oms_order_no'=>$record->oms_order_no,
             'oms_status_code'=>$remote['status_code'],'oms_tracking_no'=>$remote['tracking_no'],
             'read_only_shipping'=>true,'original_erp_unchanged'=>true];
