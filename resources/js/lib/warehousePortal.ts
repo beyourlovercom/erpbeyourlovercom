@@ -14,5 +14,9 @@ const warehousePortals: Record<string, WarehousePortal> = {
 
 export function resolveWarehousePortal(pageUrl: string): WarehousePortal | null {
   const path = pageUrl.split('?')[0].replace(/\/+$/, '') || '/'
-  return warehousePortals[path] ?? null
+  // Keep legacy overseas warehouse aliases consistent with Laravel's canonical US-SM mapping.
+  const canonicalPath = ['/logistics/oversea/us-sm', '/logistics/oversea/us-sj', '/logistics/oversea/usa-sj'].includes(path)
+    ? '/logistics/oversea/us-3sm'
+    : path
+  return warehousePortals[canonicalPath] ?? null
 }

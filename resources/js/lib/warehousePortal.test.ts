@@ -9,6 +9,12 @@ describe('warehouse portal links', () => {
     })
   })
 
+  it('supports historical 世迈 route aliases still accepted by the ERP', () => {
+    for (const alias of ['us-sm', 'us-sj', 'usa-sj']) {
+      expect(resolveWarehousePortal('/logistics/oversea/' + alias)?.href).toBe('https://oms.xlwms.com/login')
+    }
+  })
+
   it('shows the ShipOut production OMS portal for MorePlus', () => {
     expect(resolveWarehousePortal('/logistics/oversea/us-moreplus/')).toEqual({
       href: 'https://oms.shipout.com/z/#/login',
