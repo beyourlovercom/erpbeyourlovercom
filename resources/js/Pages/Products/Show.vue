@@ -322,8 +322,8 @@ const selectRelative = async (tab: Tab, delta: number) => {
             <fieldset class="product360-inline-field" style="border:0;padding:0;margin:0">
               <legend>是否带电</legend>
               <div style="display:flex;gap:16px;align-items:center;margin-top:8px">
-                <label><input v-model="parametersForm.has_battery" type="radio" :value="true" name="battery_state"> 带电</label>
-                <label><input v-model="parametersForm.has_battery" type="radio" :value="false" name="battery_state"> 不带电</label>
+                <label><input type="checkbox" :checked="parametersForm.has_battery" @click.prevent="parametersForm.has_battery = true"> 带电</label>
+                <label><input type="checkbox" :checked="!parametersForm.has_battery" @click.prevent="parametersForm.has_battery = false"> 不带电</label>
               </div>
               <small v-if="parameterErrors.has_battery" class="product360-inline-error">{{ parameterErrors.has_battery }}</small>
             </fieldset>
