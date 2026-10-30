@@ -67,6 +67,10 @@ final class ProductDashboardWorkbenchTest extends TestCase
             'product_id' => $good->id, 'provider' => 'woocommerce',
             'connection_key' => 'beyourlover.com', 'provider_media_key' => 'img-dashboard',
             'source_url' => 'https://img.beyourlover.com/products/dashboard.webp',
+            'storage_path' => 'products/nonexistent/dashboard.webp',
+            'mime_type' => 'image/webp',
+            'size_bytes' => 123,
+            'sha256' => str_repeat('c', 64),
             'is_primary' => true,
         ]);
         ProductProviderSnapshot::create([
