@@ -97,17 +97,23 @@ final class OrderController
         $kind = $this->kind($request);
         KolOrderAccessScope::authorizeCreate($request->user(), $kind);
 
+        $kolOptions = $kind === OrderKind::KolFulfillment && $request->user()->can('kol.view')
+            ? Kol::query()->whereNull('archived_at')
+                ->when(! KolScope::isAllScope($request->user()),
+                    fn ($query) => $query->where('owner_id', $request->user()->getAuthIdentifier()))
+                ->orderBy('display_name')->limit(1500)->get(['id', 'display_name'])
+                ->map(fn (Kol $kol): array => ['value' => (int) $kol->id, 'label' => $kol->display_name])->all()
+            : [];
+        $requestedKolId = $request->integer('kol_id');
+        $selectedKolId = $requestedKolId > 0 && collect($kolOptions)->contains('value', $requestedKolId)
+            ? $requestedKolId : null;
+
         return Inertia::render('Orders/Create', [
             'defaultOrderKind' => $kind->value,
             'orderKindLabel' => $this->kindLabel($kind),
             'generatedExternalOrderNumber' => $this->orders->generateExternalOrderNumber($kind),
-            'kolOptions' => $kind === OrderKind::KolFulfillment && $request->user()->can('kol.view')
-                ? Kol::query()->whereNull('archived_at')
-                    ->when(! KolScope::isAllScope($request->user()),
-                        fn ($query) => $query->where('owner_id', $request->user()->getAuthIdentifier()))
-                    ->orderBy('display_name')->limit(1500)->get(['id', 'display_name'])
-                    ->map(fn (Kol $kol): array => ['value' => (int) $kol->id, 'label' => $kol->display_name])->all()
-                : [],
+            'kolOptions' => $kolOptions,
+            'selectedKolId' => $selectedKolId,
         ]);
     }
 

@@ -74,6 +74,26 @@ final class KolTwoHopNavigationV1Test extends TestCase
         $this->actingAs($limited)->getJson('/kol/orders/link-preview')->assertForbidden();
     }
 
+    public function test_r6_profile_order_entry_preselects_only_permitted_kol(): void
+    {
+        $staff = $this->viewer(['orders.view', 'orders.create', 'kol.view']);
+        $outsider = $this->viewer(['orders.view', 'orders.create', 'kol.view']);
+        $kol = $this->kol($staff);
+
+        $this->actingAs($staff)->get('/kol/orders/create?kol_id='.$kol->id)->assertOk()
+            ->assertInertia(fn ($page) => $page->component('Orders/Create')
+                ->where('selectedKolId', $kol->id));
+
+        $this->actingAs($outsider)->get('/kol/orders/create?kol_id='.$kol->id)->assertOk()
+            ->assertInertia(fn ($page) => $page->where('selectedKolId', null));
+
+        $this->actingAs($staff)->get('/customers/orders/create?kol_id='.$kol->id)->assertForbidden();
+
+        $kol->forceFill(['archived_at' => now()])->save();
+        $this->actingAs($staff)->get('/kol/orders/create?kol_id='.$kol->id)->assertOk()
+            ->assertInertia(fn ($page) => $page->where('selectedKolId', null));
+    }
+
     public function test_kol_staff_must_select_an_authorized_kol_on_new_manual_order(): void
     {
         $staff = $this->viewer(['orders.view', 'orders.create', 'kol.view']);
