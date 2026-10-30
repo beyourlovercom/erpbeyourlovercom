@@ -26,6 +26,39 @@ final class KolHistoricalOrderEvidenceAuditTest extends TestCase
         $formal = $this->order($owner, 'AUDIT-FORMAL', null);
         $referral = $this->order($owner, 'AUDIT-REFERRAL', null);
         $explicit = $this->order($owner, 'AUDIT-EXPLICIT', $kol->id);
+        $ready = $this->order($owner, 'AUDIT-HIST-READY', null);
+        $review = $this->order($owner, 'AUDIT-HIST-REVIEW', null);
+        $hashMismatch = $this->order($owner, 'AUDIT-HIST-MISMATCH', null);
+        $batchId = DB::table('logistics_historical_import_batches')->insertGetId([
+            'original_filename' => 'synthetic-audit.csv',
+            'source_checksum' => str_repeat('a', 64), 'status' => 'committed',
+            'total_rows' => 3, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $makeImportRow = fn (int $rowNumber, Order $order, string $classification): int =>
+            DB::table('logistics_historical_import_rows')->insertGetId([
+                'batch_id' => $batchId, 'source_row_number' => $rowNumber,
+                'source_order_no' => $order->external_order_number,
+                'kol_id' => $kol->id, 'classification' => $classification,
+                'classification_reason' => $classification === 'ready'
+                    ? 'exact_tracking_and_kol_match' : 'multiple_tracking_candidates',
+                'evidence_hash' => str_repeat('b', 64),
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        $readyRowId = $makeImportRow(1, $ready, 'ready');
+        $makeImportRow(2, $review, 'review');
+        $mismatchRowId = $makeImportRow(3, $hashMismatch, 'ready');
+        foreach ([$readyRowId, $mismatchRowId] as $index => $rowId) {
+            DB::table('logistics_historical_evidences')->insert([
+                'batch_id' => $batchId, 'historical_row_id' => $rowId,
+                'source_row_number' => $index + 1, 'kol_id' => $kol->id,
+                'source_checksum' => str_repeat('a', 64),
+                'normalized_tracking_candidate' => 'SYNTHETIC-TRACK-'.$rowId,
+                'evidence_hash' => str_repeat($index === 0 ? 'b' : 'c', 64),
+                'evidence_snapshot' => '{}',
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+
 
         DB::table('kol_collaborations')->insert([
             'kol_id' => $kol->id, 'order_id' => $formal->id, 'owner_id' => $owner->id,
@@ -49,9 +82,11 @@ final class KolHistoricalOrderEvidenceAuditTest extends TestCase
         $this->assertStringContainsString('"mode":"READ_ONLY"', $output);
         $this->assertStringContainsString('"auto_match":false', $output);
         $this->assertStringContainsString('"database_updates":0', $output);
-        $this->assertStringContainsString('"total":4', $output);
+        $this->assertStringContainsString('"total":7', $output);
         $this->assertStringContainsString('"explicitly_linked":1', $output);
         $this->assertStringContainsString('"formal_collaboration_candidate":1', $output);
+        $this->assertStringContainsString('"logistics_ready_candidate":1', $output);
+        $this->assertStringContainsString('"logistics_review_candidate":2', $output);
         $this->assertStringContainsString('"referral_review_only":1', $output);
         $this->assertStringContainsString('"missing_evidence":1', $output);
 
@@ -59,6 +94,9 @@ final class KolHistoricalOrderEvidenceAuditTest extends TestCase
         $this->assertDatabaseHas('orders', ['id' => $formal->id, 'kol_id' => null]);
         $this->assertDatabaseHas('orders', ['id' => $referral->id, 'kol_id' => null]);
         $this->assertDatabaseHas('orders', ['id' => $explicit->id, 'kol_id' => $kol->id]);
+        $this->assertDatabaseHas('orders', ['id' => $ready->id, 'kol_id' => null]);
+        $this->assertDatabaseHas('orders', ['id' => $review->id, 'kol_id' => null]);
+        $this->assertDatabaseHas('orders', ['id' => $hashMismatch->id, 'kol_id' => null]);
     }
 
     private function order(User $owner, string $number, ?int $kolId): Order
