@@ -594,12 +594,7 @@ const saveCarrier = (row:Row) => { const d=draft(row); d.service=defaultServiceF
 const saveService = (row:Row) => saveDraft(row, { carrier:draft(row).carrier, service:draft(row).service || null })
 const saveTracking = (row:Row) => saveDraft(row, { tracking_number:draft(row).tracking_number.trim() || null })
 const manualShipUsSm = (row:Row) => {
-  const oms=omsRow(row)
-  if (oms && (oms.oms_status_code!=='3' || !oms.oms_tracking_no
-    || oms.oms_tracking_no!==draft(row).tracking_number.trim())) {
-    rowErrors[row.order_id]='OMS 已有出库记录：必须先查到“已出库”且 Tracking 完全匹配，才能手动确认'
-    return
-  }
+  // Manual ERP shipment and AfterShip writeback do not call or depend on OMS.
   const tracking = draft(row).tracking_number.trim()
   if (!tracking) { rowErrors[row.order_id] = '请先填写真实 Tracking'; return }
   rowErrors[row.order_id] = ''

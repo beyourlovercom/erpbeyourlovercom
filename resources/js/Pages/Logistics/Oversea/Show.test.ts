@@ -96,6 +96,22 @@ describe('Oversea Dede file exchange workbench', () => {
     )
   })
 
+  it('allows manual ERP + AfterShip confirmation even when old OMS was canceled', async () => {
+    const oldOms = { state:'draft_cancelled_confirmed', oms_order_no:'OBS-OLD',
+      oms_status_code:'4', oms_status_checked_at:null, oms_tracking_no:null,
+      failure_code:null, oms_status_failure_code:null }
+    const page = mountPage({ warehouseKey:'us-3sm', warehouse:warehouseOptions[1],
+      trackingImportPreview:null, rows:{ ...usSmPendingRows, data:[{ ...usSmPendingRows.data[0], xlwms:oldOms }] } })
+    await page.find('input.tracking-input').setValue('1Z4X98060309743276')
+    await page.find('button.manual-ship-button').trigger('click')
+    expect(routerPost).toHaveBeenCalledWith(
+      '/logistics/oversea/us-3sm/orders/99/manual-ship',
+      { tracking_number:'1Z4X98060309743276' },
+      { preserveScroll:true }
+    )
+    expect(page.text()).not.toContain('OMS 已有出库记录：必须先查到')
+  })
+
   it('keeps older bulk OMS dispatch hidden while showing a single operator action', () => {
     const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
       trackingImportPreview:null,rows:usSmPendingRows,xlwmsBatchEnabled:true})
