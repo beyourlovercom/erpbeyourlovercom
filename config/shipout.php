@@ -39,9 +39,11 @@ return [
     'production_bearer' => (string) env('SHIPOUT_PRODUCTION_BEARER', ''),
     'production_warehouse_id' => (string) env('SHIPOUT_PRODUCTION_WAREHOUSE_ID', ''),
     'production_client_org_id' => (string) env('SHIPOUT_PRODUCTION_CLIENT_ORG_ID', ''),
-    // Owner provisional assumption ONLY. Do not interpret as provider-confirmed timezone.
-    // No production tracking apply implementation is authorized in R9.
-    'production_shipped_time_timezone_preview' => (string) env('SHIPOUT_PRODUCTION_SHIPPED_TIME_TIMEZONE_PREVIEW', 'Asia/Shanghai'),
+    // Official ShipOut OpenAPI standard: time-type fields are UTC.
+    // Owner requests Asia/Shanghai only as a China-operator DISPLAY preview.
+    // Still require real shippedTime sample verification before ERP tracking apply.
+    'production_shipped_time_source_timezone' => (string) env('SHIPOUT_PRODUCTION_SHIPPED_TIME_SOURCE_TIMEZONE', 'UTC'),
+    'production_shipped_time_display_timezone_preview' => (string) env('SHIPOUT_PRODUCTION_SHIPPED_TIME_DISPLAY_TIMEZONE_PREVIEW', 'Asia/Shanghai'),
     'production_shipped_time_timezone_verified' => filter_var(env('SHIPOUT_PRODUCTION_SHIPPED_TIME_TIMEZONE_VERIFIED', false), FILTER_VALIDATE_BOOL),
 
 ];
