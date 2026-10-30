@@ -9,6 +9,7 @@ use App\Modules\Products\Infrastructure\Models\ProductMedia;
 use App\Modules\Products\Infrastructure\Models\ProductParameterSubmission;
 use App\Modules\Products\Infrastructure\Models\ProductParameterTask;
 use App\Modules\Products\Infrastructure\Models\ProductProviderSnapshot;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -149,5 +150,29 @@ final class ProductDashboardWorkbenchTest extends TestCase
         $user = $this->userWith(['products.view']);
         $this->actingAs($user)->get('/products/list?attention=unknown-injected-value')
             ->assertOk()->assertInertia(fn ($page) => $page->where('products.total', 1));
+    }
+
+    public function test_xlsx_export_preserves_dashboard_attention_selection(): void
+    {
+        $viewer = $this->userWith(['products.view']);
+        $this->product('DASH-EXPORT-KEEP', ['brand' => null]);
+        $this->product('DASH-EXPORT-EXCLUDE', ['brand' => 'BeYourLover']);
+
+        $response = $this->actingAs($viewer)->get(
+            '/products/list/export?attention=missing_brand&columns=sku,name'
+        );
+        $response->assertOk();
+        $tmp = tempnam(sys_get_temp_dir(), 'dashboard-export-');
+        try {
+            file_put_contents($tmp, $response->streamedContent());
+            $workbook = IOFactory::load($tmp);
+            $sheet = $workbook->getActiveSheet();
+            $this->assertSame('SKU', $sheet->getCell('A1')->getValue());
+            $this->assertSame('DASH-EXPORT-KEEP', $sheet->getCell('A2')->getValue());
+            $this->assertSame(2, $sheet->getHighestRow());
+            $workbook->disconnectWorksheets();
+        } finally {
+            @unlink($tmp);
+        }
     }
 }
