@@ -49,7 +49,10 @@ final class AuditHistoricalKolOrderLinks extends Command
             // Historical fulfillment imports contain a source-order ID plus a resolved KOL ID.
             // Preserve case-sensitive exact matching using PHP keys across MySQL and SQLite.
             // This is supporting evidence for a human-reviewed proposal, never authorization to backfill.
+            $committedBatches = $db->table('logistics_historical_import_batches')
+                ->where('status', 'committed')->pluck('id')->all();
             $logisticsByReference = $db->table('logistics_historical_import_rows')
+                ->whereIn('batch_id', $committedBatches)
                 ->whereNotNull('kol_id')->whereNotNull('source_order_no')
                 ->get(['id', 'batch_id', 'source_order_no', 'kol_id', 'classification', 'evidence_hash'])
                 ->groupBy('source_order_no');
@@ -61,8 +64,9 @@ final class AuditHistoricalKolOrderLinks extends Command
             $knownKolIds = $db->table('kols')->pluck('id')->mapWithKeys(
                 fn ($id): array => [(int) $id => true]
             )->all();
-            $orderReferenceCounts = $orders->whereNotNull('external_order_number')
-                ->countBy('external_order_number');
+            // Check uniqueness against every ERP order kind, not just KOL fulfillment.
+            $orderReferenceCounts = $db->table('orders')->whereNotNull('external_order_number')
+                ->get(['external_order_number'])->countBy('external_order_number');
 
             foreach ($orders as $order) {
                 ++$counts['total'];
