@@ -174,7 +174,7 @@ final class ProductController
      */
     public function export(Request $request): StreamedResponse
     {
-        $filters = $request->only(['search', 'sort', 'direction']);
+        $filters = $request->only(['search', 'sort', 'direction', 'attention']);
         $products = $this->products->list($filters, max(1, $this->products->totalCount()));
         $this->loadGridRelations($products->getCollection());
         $stock = $this->inventory->forProductIds($products->getCollection()->pluck('id')->all());
