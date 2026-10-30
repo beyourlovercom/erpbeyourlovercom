@@ -50,6 +50,10 @@ Route::middleware(['web', 'auth'])->group(function (): void {
         [XlwmsSingleOrderController::class, 'send'])
         ->middleware(['can:logistics.operate', RequireLogisticsExecution::class,'throttle:2,1'])
         ->whereNumber('order')->name('logistics.xlwms.order.send');
+    Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/web-draft',
+        [XlwmsSingleOrderController::class, 'webDraft'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:2,1'])
+        ->whereNumber('order')->name('logistics.xlwms.order.web-draft');
     Route::get('/logistics/oversea/us-3sm/orders/{order}/xlwms/reship-preflight',
         [XlwmsReshipmentController::class, 'preflight'])
         ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:8,1'])

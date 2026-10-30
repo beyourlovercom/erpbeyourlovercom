@@ -1973,4 +1973,144 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         Http::fake();Http::assertNothingSent();
     }
 
+
+    private function fakeNativeWebDraft(Order $order, bool &$draftVisible, int &$createCalls): void
+    {
+        config()->set('xlwms.oms_web_enabled',true);
+        config()->set('xlwms.oms_web_base_url','https://oms.xlwms.com/gateway/woms');
+        config()->set('xlwms.oms_web_token','TEST-WEB-SESSION');
+        config()->set('xlwms.oms_web_hmac_key','TEST-HMAC');
+        $lastPayload=[];
+        Http::preventStrayRequests();
+        Http::fake(function($req) use($order,&$draftVisible,&$createCalls,&$lastPayload) {
+            $path=parse_url($req->url(),PHP_URL_PATH);
+            if ($path==='/gateway/woms/outboundOrder/small/page') {
+                $rows=$draftVisible?[[
+                    'status'=>0,'referOrderNo'=>$order->erp_order_id,
+                    'platformOrderNo'=>$lastPayload['platformOrderNo']??'BYL-ERP-'.$order->id,
+                    'outboundOrderNo'=>'OMS-WEB-'.str_pad((string)$createCalls,4,'0',STR_PAD_LEFT),
+                ]]:[];
+                return Http::response(['code'=>200,'data'=>['records'=>$rows,'total'=>count($rows)]]);
+            }
+            if ($path==='/gateway/woms/appendix/upload') {
+                return Http::response(['code'=>200,'data'=>[
+                    'fileName'=>'VOID_TEST_ONLY_NOT_USPS_DO_NOT_SHIP.png',
+                    'fileKey'=>'TEST-FILE-KEY','bizAppendixType'=>1,'bizCode'=>'outbound'
+                ]]);
+            }
+            if ($path==='/gateway/woms/outboundOrder/create') {
+                $createCalls++;
+                $lastPayload=$req->data();
+                $draftVisible=true;
+                return Http::response(['code'=>200,'data'=>[]]);
+            }
+            if ($path==='/gateway/woms/outboundOrder/detail') {
+                return Http::response(['code'=>200,'data'=>[
+                    'status'=>0,'outboundOrderNo'=>'OMS-WEB-'.str_pad((string)$createCalls,4,'0',STR_PAD_LEFT),
+                    'platformOrderNo'=>$lastPayload['platformOrderNo'],
+                    'referOrderNo'=>$order->erp_order_id,
+                    'whCode'=>'OMS-US-SM',
+                    'logisticsChannel'=>'Upload_Shipping_Label','logisticsCarrier'=>'usps',
+                    'trackNo'=>'',
+                    'productList'=>[['sku'=>'SAME-SKU','quantity'=>1]],
+                ]]);
+            }
+            return Http::response(['code'=>404]);
+        });
+    }
+
+    public function test_native_web_first_click_creates_one_usps_void_draft_without_submitting(): void
+    {
+        $o=$this->orderFixture();
+        $visible=false;$count=0;
+        $this->fakeNativeWebDraft($o,$visible,$count);
+        $result=app(\App\Modules\Logistics\Application\Xlwms\XlwmsWebDraftService::class)
+            ->createOrReturn($o->id,19);
+        $this->assertSame('oms_draft_created',$result['state']);
+        $this->assertSame('OMS-WEB-0001',$result['oms_order_no']);
+        $this->assertSame(1,$count);
+        $this->assertDatabaseCount('xlwms_web_draft_attempts',1);
+        $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'/outboundOrder/createAndSubmit')
+            || str_contains($req->url(),'/openapi/') || str_contains($req->url(),'/outboundOrder/submit/'));
+        Http::assertSent(fn($req)=>str_contains($req->url(),'/outboundOrder/create')
+            && $req->data()['channelType']===3
+            && $req->data()['logisticsChannel']==='Upload_Shipping_Label'
+            && $req->data()['logisticsCarrier']==='usps'
+            && isset($req->data()['appendixList'][0]['fileKey'])
+            && $req->data()['referOrderNo']===$o->erp_order_id);
+    }
+
+    public function test_native_web_repeat_ignores_historical_shipped_order_when_current_draft_absent(): void
+    {
+        $o=$this->orderFixture();
+        $visible=false;$count=0;
+        $this->fakeNativeWebDraft($o,$visible,$count);
+        $svc=app(\App\Modules\Logistics\Application\Xlwms\XlwmsWebDraftService::class);
+        $one=$svc->createOrReturn($o->id,19);
+        $this->assertSame(1,$count);
+        $visible=false; // The earlier OMS order is no longer in DRAFT.
+        $o->forceFill(['order_status'=>'completed'])->save();
+        $o->shipment->forceFill(['shipment_status'=>'shipped','tracking_number'=>'USPS-OLD-TRACK'])->save();
+        $two=$svc->createOrReturn($o->id,19);
+        $this->assertSame('oms_draft_created',$two['state']);
+        $this->assertNotSame($one['attempt_ref'],$two['attempt_ref']);
+        $this->assertSame(2,$count);
+        // There is no max-2/max-3 historical order limit.
+        for ($n=3;$n<=5;$n++) {
+            $visible=false; // each preceding order has left the draft inbox
+            $next=$svc->createOrReturn($o->id,19);
+            $this->assertSame('oms_draft_created',$next['state']);
+            $this->assertSame($n,$count);
+        }
+        $this->assertDatabaseCount('xlwms_web_draft_attempts',5);
+        $this->assertSame('shipped',$o->fresh()->shipment->shipment_status);
+        $this->assertSame('USPS-OLD-TRACK',$o->fresh()->shipment->tracking_number);
+    }
+
+    public function test_native_web_same_erp_existing_draft_with_legacy_suffix_blocks_recreate(): void
+    {
+        $o=$this->orderFixture();
+        config()->set('xlwms.oms_web_enabled',true);
+        config()->set('xlwms.oms_web_token','TEST-TOKEN');
+        config()->set('xlwms.oms_web_hmac_key','TEST-HMAC');
+        $called=0;
+        Http::preventStrayRequests();
+        Http::fake(function($req) use($o,&$called) {
+            if (str_contains($req->url(),'/outboundOrder/small/page')) {
+                return Http::response(['code'=>200,'data'=>['records'=>[[
+                    'status'=>0,'referOrderNo'=>$o->erp_order_id.'-USPS-TEST4',
+                    'platformOrderNo'=>'BYL-OLD-TEST',
+                    'outboundOrderNo'=>'OMS-EXISTING-VOID',
+                ]],'total'=>1]]);
+            }
+            $called++;
+            return Http::response(['code'=>500]);
+        });
+        $result=app(\App\Modules\Logistics\Application\Xlwms\XlwmsWebDraftService::class)
+            ->createOrReturn($o->id,19);
+        $this->assertSame('existing_current_draft',$result['state']);
+        $this->assertSame('OMS-EXISTING-VOID',$result['oms_order_no']);
+        $this->assertSame(0,$called);
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'/appendix/upload')
+            || str_contains($req->url(),'/outboundOrder/create'));
+    }
+
+    public function test_native_web_in_flight_click_rejected_without_any_provider_call(): void
+    {
+        $o=$this->orderFixture();
+        config()->set('xlwms.oms_web_enabled',true);
+        \App\Modules\Logistics\Infrastructure\Xlwms\XlwmsWebDraftAttempt::query()->create([
+            'order_id'=>$o->id,'warehouse_id'=>$o->shipment->warehouse_id,
+            'attempt_ref'=>'BYL-WEB-OLD-INFLIGHT',
+            'request_fingerprint'=>str_repeat('1',64),
+            'state'=>'creating','requested_by'=>19,
+        ]);
+        Http::fake();
+        $this->expectExceptionMessage('OMS_WEB_DRAFT_REQUEST_IN_FLIGHT');
+        try {
+            app(\App\Modules\Logistics\Application\Xlwms\XlwmsWebDraftService::class)->createOrReturn($o->id,19);
+        } finally { Http::assertNothingSent(); }
+    }
+
 }

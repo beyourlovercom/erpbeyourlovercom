@@ -3,8 +3,10 @@
 namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Logistics\Application\Xlwms\SingleOrderDispatch;
+
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use App\Modules\Logistics\Application\Xlwms\XlwmsWebDraftService;
 
 final class XlwmsSingleOrderController
 {
@@ -46,5 +48,11 @@ final class XlwmsSingleOrderController
         // Detail check is safe and does not retry order creation.
         return response()->json($service->reconcile($order))
             ->header('Cache-Control','no-store, private');
+    }
+
+    public function webDraft(int $order, Request $request, XlwmsWebDraftService $service): JsonResponse
+    {
+        $result = $service->createOrReturn($order, (int) $request->user()->id);
+        return response()->json($result)->header('Cache-Control', 'no-store, private');
     }
 }

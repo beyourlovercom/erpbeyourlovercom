@@ -17,6 +17,7 @@ type OmsSnapshot = {
   oms_status_checked_at:string|null; oms_tracking_no:string|null
   failure_code:string|null; oms_status_failure_code:string|null
 }
+type WebDraft = {state:string;oms_order_no:string|null;attempt_ref:string;failure_code:string|null}
 type OmsPreflight = {
   order_id:number; blockers:string[]; ready:boolean; payload_hash:string
   oms_warehouse:string; items:Item[]; already_attempted:boolean
@@ -48,6 +49,7 @@ type Row = {
   line:number; order_id:number; erp_order_id:string|null; order_url:string|null; recipient_name:string|null; country:string|null
   warehouse_id:number; warehouse_name:string|null; carrier:string|null; service:string|null; carrier_selection_source:string|null; tracking_number:string|null
   progress:string; note:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; review_status:'approved'|'pending'; shipment_status:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; shipped_at?:string|null; items:Item[]
+  web_draft?:WebDraft|null
 }
 type PageRows = { data:Row[]; current_page:number; last_page:number; per_page:number; total:number; from:number|null; to:number|null; links?:{url:string|null;label:string;active:boolean}[] }
 type ColumnKey = 'line'|'order'|'warehouse'|'carrier'|'service'|'tracking'|'note'|'recipient'|'country'|'items'
@@ -565,6 +567,30 @@ const notifyOms = (state:'SUCCESS'|'ERROR'|'INFO', title:string, message:string)
   publishGlobalFeedback({ state, title, message, copyable:state==='ERROR' })
 const omsEndpoint = (row:Row, action:string) =>
   '/logistics/oversea/us-3sm/orders/'+row.order_id+'/xlwms/'+action
+const webDraftBusy = reactive<Record<number,boolean>>({})
+const webDraftErrors = reactive<Record<number,string>>({})
+const webDraftResult = reactive<Record<number,WebDraft>>({})
+const webDraftEligible = (_row:Row) => props.canOperate && props.warehouseKey==='us-3sm'
+const createWebDraft = async (row:Row) => {
+  if (!webDraftEligible(row) || webDraftBusy[row.order_id]) return
+  webDraftBusy[row.order_id]=true; webDraftErrors[row.order_id]=''
+  try {
+    const csrf=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
+    if (!csrf) throw Error('CSRF 校验信息缺失')
+    const response=await fetch(`/logistics/oversea/us-3sm/orders/${row.order_id}/xlwms/web-draft`,{
+      method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
+      headers:{Accept:'application/json','Content-Type':'application/json','X-CSRF-TOKEN':csrf},body:'{}',
+    })
+    const result=await response.json().catch(()=>null)
+    if (!response.ok) throw Error(result?.message||result?.error||`保存 OMS 草稿失败（HTTP ${response.status}）`)
+    if (!result?.state || result.oms_order_no===undefined) throw Error('OMS 草稿结果身份校验失败')
+    webDraftResult[row.order_id]=result as WebDraft
+    notifyOms('SUCCESS',result.state==='existing_current_draft'?'已找到当前 OMS 草稿':'OMS 草稿已创建',result.oms_order_no?`OMS ${result.oms_order_no} · 未提交仓库`:'请求已记录')
+  } catch(e) {
+    webDraftErrors[row.order_id]=e instanceof Error?e.message:'OMS 草稿请求失败'
+    notifyOms('ERROR','OMS 草稿未完成',webDraftErrors[row.order_id])
+  } finally { webDraftBusy[row.order_id]=false }
+}
 async function omsRequest(row:Row,action:string,payload:Record<string,string>={}) {
   const token=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
   if (!token && action!=='preflight') throw Error('CSRF_MISSING')
@@ -798,7 +824,7 @@ const compactPages = computed<(number|string)[]>(() => {
           <template v-if="warehouse && view === 'pending'">
           <button v-if="warehouseKey === 'us-3sm' && canOperate" type="button" class="file-button" :disabled="refreshBusy" @click="refreshOmsStatuses">{{refreshBusy?'查询中…':'更新 OMS 状态'}}</button>
           <a v-if="warehouseKey === 'us-3sm'" class="file-button file-link" href="https://oms.xlwms.com/warehouse/packet" target="_blank" rel="noopener noreferrer">进入世迈 OMS 草稿箱</a>
-          <a class="file-button file-link" :href="`${basePath}/export`">{{warehouseKey==='us-3sm'?'⇩ 下载 USPS 草稿导入表':'⇩ 下载仓库下单表'}}</a>
+          <a class="file-button file-link" :href="`${basePath}/export`">{{warehouseKey==='us-3sm'?'⇩ 下载 USPS 草稿导入表（备用）':'⇩ 下载仓库下单表'}}</a>
           <a v-if="warehouseKey==='us-3sm'" class="file-button file-link" href="/assets/xlwms-VOID-TEST-DO-NOT-SHIP.png" download="VOID_TEST_ONLY_NOT_USPS_DO_NOT_SHIP.png">⇩ 下载 VOID 测试占位图</a>
           <input ref="trackingFileInput" class="hidden-file" type="file" accept=".xlsx,.csv,.txt" @change="previewTrackingFile" />
           <button v-if="canOperate && canUploadTrackingFile" type="button" class="file-button primary" @click="chooseTrackingFile">⇧ 上传物流回传表</button>
@@ -872,7 +898,14 @@ const compactPages = computed<(number|string)[]>(() => {
               </td>
               <td v-if="warehouseKey === 'us-3sm'" class="xlwms-cell">
                 <div class="xlwms-inline" :data-oms-order-id="row.order_id">
-                  <template v-if="omsRow(row)?.oms_order_no">
+                  <template v-if="webDraftEligible(row)">
+                    <div class="xlwms-state">{{webDraftResult[row.order_id]?.oms_order_no ? '上次 OMS 单号已登记' : '点击后先查询当前草稿箱'}}</div>
+                    <small class="xlwms-note">USPS 上传面单 · 自动附带 VOID 测试占位图；仓库必须替换为真实面单后再提交</small>
+                    <button type="button" class="xlwms-action primary" :disabled="webDraftBusy[row.order_id]" @click="createWebDraft(row)">{{webDraftBusy[row.order_id]?'检查草稿并下发中…':'下发世迈草稿（支持重复下发）'}}</button>
+                    <small v-if="webDraftResult[row.order_id]?.oms_order_no" class="xlwms-number">OMS {{webDraftResult[row.order_id].oms_order_no}}</small>
+                    <small v-if="webDraftErrors[row.order_id]" class="xlwms-error" role="alert">{{webDraftErrors[row.order_id]}}</small>
+                  </template>
+                  <template v-else-if="omsRow(row)?.oms_order_no">
                     <div class="xlwms-state" :class="'dispatch-'+(row.warehouse_dispatch?.status??'pending_dispatch')">{{ omsLabel(row) }}</div>
                     <small v-if="omsDetail(row)" class="xlwms-note">{{ omsDetail(row) }}</small>
                     <small v-if="row.warehouse_dispatch?.last_checked_at" class="xlwms-note">核对 {{row.warehouse_dispatch.last_checked_at}}</small>

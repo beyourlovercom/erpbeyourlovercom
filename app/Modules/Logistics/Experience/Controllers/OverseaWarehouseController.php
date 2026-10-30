@@ -12,6 +12,7 @@ use App\Modules\Logistics\Application\OverseaTrackingReturnService;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
+use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsWebDraftAttempt;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -77,6 +78,10 @@ final class OverseaWarehouseController
                 ->whereIn('order_id', $shipments->getCollection()->pluck('order_id')->all())
                 ->get()->keyBy('order_id')
             : collect();
+        $webDraftAttempts = $warehouseKey === 'us-3sm'
+            ? XlwmsWebDraftAttempt::query()->whereIn('order_id', $shipments->getCollection()->pluck('order_id')->all())
+                ->latest('id')->get()->unique('order_id')->keyBy('order_id')
+            : collect();
         $canRunXlwms = $warehouseKey === 'us-3sm'
             && $this->executionAccess->allows($request->user())
             && (bool) config('xlwms.live_dispatch_enabled', false);
@@ -87,7 +92,7 @@ final class OverseaWarehouseController
             'warehouse' => $selectedWarehouse,
             'warehouseOptions' => array_values($warehouseMap),
             'view' => $view,
-            'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => $this->row($shipment, $start + $index + 1, $xlwmsAttempts->get($shipment->order_id), $trackingStatuses[(int) $shipment->id] ?? null))->toArray(),
+            'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => $this->row($shipment, $start + $index + 1, $xlwmsAttempts->get($shipment->order_id), $trackingStatuses[(int) $shipment->id] ?? null, $webDraftAttempts->get($shipment->order_id)))->toArray(),
             'xlwmsAuthorizedOrderId' => $canRunXlwms ? (int) config('xlwms.live_order_id', 0) : 0,
             'shipoutSandboxReadEnabled' => $warehouseKey === 'us-moreplus'
                 && ! app()->environment('production')
@@ -304,7 +309,7 @@ final class OverseaWarehouseController
         return $counts;
     }
 
-    private function row(Shipment $shipment, int $line, ?XlwmsDispatchAttempt $xlwms = null, ?array $tracking = null): array
+    private function row(Shipment $shipment, int $line, ?XlwmsDispatchAttempt $xlwms = null, ?array $tracking = null, ?XlwmsWebDraftAttempt $webDraft = null): array
     {
         $order = $shipment->order;
         $trackingState = app(\App\Modules\Logistics\Application\LogisticsTrackingListStatus::class)
@@ -345,6 +350,10 @@ final class OverseaWarehouseController
                 'oms_tracking_no' => $xlwms->oms_tracking_no,
                 'failure_code' => $xlwms->failure_code,
                 'oms_status_failure_code' => $xlwms->oms_status_failure_code,
+            ] : null,
+            'web_draft' => $webDraft ? [
+                'state' => $webDraft->state, 'oms_order_no' => $webDraft->oms_order_no,
+                'attempt_ref' => $webDraft->attempt_ref, 'failure_code' => $webDraft->failure_code,
             ] : null,
 
             'items' => $order?->items->map(fn ($item): array => [
