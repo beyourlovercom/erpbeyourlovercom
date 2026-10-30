@@ -60,12 +60,70 @@ const props = defineProps<{
   wooSyncHistory?: { status: string; result_code: string | null; error_message: string | null; completed_at: string | null; run_id: number }[]
 }>()
 
-const barcode69Editing = ref(false)
-const barcode69Form = useForm({barcode_69: String(props.product.barcode_69 ?? '')})
-function saveBarcode69Inline() {
-  barcode69Form.put('/products/' + props.product.id + '/barcode-69', {
-    preserveScroll:true,
-    onSuccess:()=>{barcode69Editing.value=false},
+// Product360 inline form: canonical product fields update immediately, while factory
+// measurements enter the existing review queue instead of overriding approved truth.
+const parametersEditing = ref(false)
+const parametersSaved = ref(false)
+const masterParameterFields = [
+  { key: 'weight_kg', label: 'ERP 产品重量（现行标准）', suffix: 'kg' },
+  { key: 'shipping_weight_kg', label: '运输参考重量', suffix: 'kg' },
+  { key: 'length_cm', label: '产品长度', suffix: 'cm' },
+  { key: 'width_cm', label: '产品宽度', suffix: 'cm' },
+  { key: 'height_cm', label: '产品高度', suffix: 'cm' },
+] as const
+const reviewParameterFields = [
+  { key: 'material', label: '产品材质', suffix: '' },
+  { key: 'weight_composition', label: '重量组成说明', suffix: '' },
+  { key: 'net_weight_kg', label: '已审核工厂净重', suffix: 'kg' },
+  { key: 'color_box_gross_kg', label: '彩盒毛重', suffix: 'kg' },
+  { key: 'courier_gross_kg', label: '快递毛重', suffix: 'kg' },
+  { key: 'package_length_cm', label: '单件包装长度', suffix: 'cm' },
+  { key: 'package_width_cm', label: '单件包装宽度', suffix: 'cm' },
+  { key: 'package_height_cm', label: '单件包装高度', suffix: 'cm' },
+  { key: 'carton_length_cm', label: '外箱长度', suffix: 'cm' },
+  { key: 'carton_width_cm', label: '外箱宽度', suffix: 'cm' },
+  { key: 'carton_height_cm', label: '外箱高度', suffix: 'cm' },
+  { key: 'units_per_carton', label: '每箱数量', suffix: 'pcs' },
+  { key: 'carton_gross_weight_kg', label: '整箱毛重', suffix: 'kg' },
+] as const
+const reviewInitial = () => Object.fromEntries(reviewParameterFields.map(
+  field => [field.key, String(props.approvedParameterMeasurements?.[field.key] ?? '')]
+)) as Record<string, string>
+const parametersForm = useForm({
+  barcode_69: String(props.product.barcode_69 ?? ''),
+  weight_kg: String(props.product.weight_kg ?? ''),
+  shipping_weight_kg: String(props.product.shipping_weight_kg ?? ''),
+  length_cm: String(props.product.length_cm ?? ''),
+  width_cm: String(props.product.width_cm ?? ''),
+  height_cm: String(props.product.height_cm ?? ''),
+  review_measurements: reviewInitial(),
+})
+const parameterErrors = computed(() => parametersForm.errors as Record<string, string>)
+function beginParametersEdit() {
+  parametersForm.barcode_69 = String(props.product.barcode_69 ?? '')
+  for (const field of masterParameterFields) {
+    parametersForm[field.key] = String(props.product[field.key] ?? '')
+  }
+  parametersForm.review_measurements = reviewInitial()
+  parametersForm.clearErrors()
+  parametersEditing.value = true
+  parametersSaved.value = false
+}
+function cancelParametersEdit() {
+  parametersEditing.value = false
+  parametersForm.clearErrors()
+}
+function saveInlineParameters() {
+  parametersForm.transform(data => {
+    const { review_measurements, ...main } = data
+    const initial = reviewInitial()
+    const measurements = Object.fromEntries(Object.entries(review_measurements).filter(
+      ([key, value]) => String(value).trim() !== String(initial[key] ?? '').trim()
+    ))
+    return { ...main, measurements }
+  }).put('/products/' + props.product.id + '/inline-parameters', {
+    preserveScroll: true, preserveState: true,
+    onSuccess: () => { parametersEditing.value = false; parametersSaved.value = true },
   })
 }
 const tabs = ['概览', '产品参数', '销售与合作', '库存与物流', '关联与记录'] as const
@@ -241,8 +299,44 @@ const selectRelative = async (tab: Tab, delta: number) => {
         <article class="erp-form-card product360-woo-overview"><div class="product360-summary-head"><span class="product360-summary-icon">W</span><h3>WooCommerce 摘要</h3></div><template v-if="woo"><p>{{ display(woo.short_description || woo.description) }}</p><p>状态：{{ display(woo.provider_status) }} · 分类：{{ woo.categories.join('、') || '—' }} · 最近同步：{{ date(woo.last_synced_at) }}</p></template><p v-else class="mvp-empty">暂无 WooCommerce 产品数据</p></article>
       </div>
       <article v-else-if="activeTab === '产品参数' && activeSubTab === '参数总览'" class="erp-form-card" role="tabpanel" tabindex="0">
-        <h3>产品参数总览</h3>
-        <div class="product360-detail-grid product360-parameters-grid">
+        <div class="product360-inline-head">
+          <h3>产品参数总览</h3>
+          <div v-if="canOperate" class="product360-inline-actions">
+            <template v-if="parametersEditing">
+              <button type="button" class="mvp-button mvp-button-secondary" :disabled="parametersForm.processing" @click="cancelParametersEdit">取消</button>
+              <button type="button" class="mvp-button mvp-button-primary" :disabled="parametersForm.processing" @click="saveInlineParameters">{{ parametersForm.processing ? '保存中…' : '保存参数' }}</button>
+            </template>
+            <button v-else type="button" class="mvp-button mvp-button-primary" @click="beginParametersEdit">编辑参数</button>
+          </div>
+        </div>
+        <p v-if="parametersSaved && !parametersEditing" class="product360-inline-success" role="status">已完成保存。需审核的工厂参数将在审核通过后更新显示。</p>
+        <div v-if="parametersEditing" class="product360-inline-editor">
+          <p class="product360-meta-note">直接编辑 ERP 主档；带“审核”的参数保存后进入待审核队列，不会覆盖现有已确认数据。</p>
+          <h4>ERP 主档 · 保存后生效</h4>
+          <div class="product360-inline-fields">
+            <label class="product360-inline-field" v-for="field in masterParameterFields" :key="field.key">
+              <span>{{ field.label }} <small>{{ field.suffix }}</small></span>
+              <input v-model="parametersForm[field.key]" type="number" step="any" min="0" inputmode="decimal" placeholder="待填写" :aria-invalid="!!parameterErrors[field.key]" />
+              <small v-if="parameterErrors[field.key]" class="product360-inline-error">{{ parameterErrors[field.key] }}</small>
+            </label>
+            <label class="product360-inline-field">
+              <span>69条形码 <small>8–14 位数字，作为文本保存</small></span>
+              <input v-model="parametersForm.barcode_69" type="text" inputmode="numeric" maxlength="14" placeholder="待填写" :aria-invalid="!!parameterErrors.barcode_69" />
+              <small v-if="parameterErrors.barcode_69" class="product360-inline-error">{{ parameterErrors.barcode_69 }}</small>
+            </label>
+          </div>
+          <h4>工厂测量 · 保存后待审核</h4>
+          <div class="product360-inline-fields">
+            <label class="product360-inline-field" v-for="field in reviewParameterFields" :key="field.key">
+              <span>{{ field.label }} <small>{{ field.suffix }}</small></span>
+              <input v-model="parametersForm.review_measurements[field.key]" :type="field.key === 'material' || field.key === 'weight_composition' ? 'text' : 'number'" :step="field.key === 'units_per_carton' ? '1' : 'any'" min="0" placeholder="待填写" :aria-invalid="!!parameterErrors['measurements.'+field.key]" />
+              <small v-if="parameterErrors['measurements.'+field.key]" class="product360-inline-error">{{ parameterErrors['measurements.'+field.key] }}</small>
+            </label>
+          </div>
+          <p class="product360-meta-note">SKU、名称和产品类型在这里保持只读。已审核工厂参数不能直接清空；如需更改，请填写新值并提交审核。</p>
+          <p v-if="Object.keys(parameterErrors).length" role="alert" class="product360-inline-error">请按提示修正输入后重新保存。</p>
+        </div>
+        <div v-else class="product360-detail-grid product360-parameters-grid">
           <p>产品名称：{{ display(product.name) }}</p><p>SKU：{{ display(product.sku) }}</p>
           <p>产品类型：{{ display(product.product_type) }}</p><p>产品材质：{{ approvedMeasure('material') }}</p>
           <p>重量组成说明：{{ approvedMeasure('weight_composition') }}</p>
@@ -252,19 +346,7 @@ const selectRelative = async (tab: Tab, delta: number) => {
           <p>运输参考重量：{{ weight(product.shipping_weight_kg) }}</p>
           <p>产品尺寸：{{ [product.length_cm, product.width_cm, product.height_cm].every(v => v !== null && v !== undefined) ? [product.length_cm, product.width_cm, product.height_cm].join(' × ') + ' cm' : '待填写' }}</p>
           <p>单件包装尺寸：{{ measured('package_length_cm') && measured('package_width_cm') && measured('package_height_cm') ? [measured('package_length_cm'),measured('package_width_cm'),measured('package_height_cm')].join(' × ') + ' cm' : '待填写' }}</p><p>外箱尺寸：{{ measured('carton_length_cm') && measured('carton_width_cm') && measured('carton_height_cm') ? [measured('carton_length_cm'),measured('carton_width_cm'),measured('carton_height_cm')].join(' × ') + ' cm' : '待填写' }} · 装箱：{{ approvedMeasure('units_per_carton',' pcs') }} · 整箱毛重：{{ approvedMeasure('carton_gross_weight_kg',' kg') }}</p>
-          <div class="product360-barcode69">
-            <template v-if="!barcode69Editing">
-              <span>69条形码：{{ display(product.barcode_69) }}</span>
-              <button v-if="canOperate" type="button" @click="barcode69Editing=true">编辑</button>
-            </template>
-            <form v-else @submit.prevent="saveBarcode69Inline">
-              <label for="product-barcode69">69条形码：</label>
-              <input id="product-barcode69" v-model="barcode69Form.barcode_69" type="text" inputmode="numeric" maxlength="14" />
-              <button type="submit" :disabled="barcode69Form.processing">保存</button>
-              <button type="button" @click="barcode69Editing=false;barcode69Form.reset()">取消</button>
-              <small v-if="barcode69Form.errors.barcode_69">{{ barcode69Form.errors.barcode_69 }}</small>
-            </form>
-          </div>
+          <p>69条形码：{{ display(product.barcode_69) }}</p>
         </div>
         <p class="product360-meta-note">产品净重、运输参考重量、彩盒毛重和快递毛重不能互相替代。待核实资料不得伪装为已确认参数。</p>
         <div class="product360-v2-actions"><button type="button" class="mvp-button mvp-button-secondary" @click="activeSubTab='参数填报与审核'">工厂填报</button><button type="button" class="mvp-button mvp-button-secondary" @click="activeSubTab='包装与配件'">包装与配件</button></div>
@@ -415,6 +497,22 @@ const selectRelative = async (tab: Tab, delta: number) => {
 .product360-v2-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
 .product360-meta-note{font-size:12px;color:#6b8073;line-height:1.65}
 .product360-parameters-grid{margin:14px 0}
+.product360-inline-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.product360-inline-head h3{margin:0}
+.product360-inline-actions{display:flex;gap:8px;justify-content:flex-end}
+.product360-inline-editor{margin-top:14px}
+.product360-inline-editor h4{font-size:13px;font-weight:700;margin:18px 0 10px;color:#30473c}
+.product360-inline-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.product360-inline-field{display:flex;flex-direction:column;gap:5px;font-size:13px;color:#334155}
+.product360-inline-field>span{font-weight:600}
+.product360-inline-field small{color:#718096;font-weight:400}
+.product360-inline-field input{width:100%;min-width:0;height:39px;background:#fff;border:1px solid #cad8d0;border-radius:7px;padding:7px 11px;font-size:13px}
+.product360-inline-field input:focus{outline:2px solid #cce9da;outline-offset:1px;border-color:#408c68}
+.product360-inline-field input[aria-invalid=true]{border-color:#b42318}
+.product360-inline-error{color:#b42318!important;font-size:12px}
+.product360-inline-success{background:#eef9f0;border-radius:6px;padding:9px 12px;color:#235b40;font-size:12px;margin-top:12px}
+@media(max-width:1000px){.product360-inline-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.product360-inline-fields{grid-template-columns:1fr}}
 @media(max-width:640px){.product360-tabs{overflow-x:auto;flex-wrap:nowrap}.product360-tabs button{white-space:nowrap;flex:0 0 auto}.product360-subtabs{flex-wrap:nowrap;overflow-x:auto}.product360-subtabs button{white-space:nowrap;flex:0 0 auto}}
 .product360-page { max-width: 1440px; }
 .product360-hero { display: flex; gap: 20px; align-items: center; margin-bottom: 12px; padding: 18px 20px; }
