@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
+use App\Modules\Kol\Infrastructure\Models\Kol;
+use App\Modules\Kol\Infrastructure\Models\KolAffiliateAccount;
 use App\Modules\Orders\Application\OrderKindBackfill;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
@@ -35,13 +37,13 @@ final class OrderFulfillmentM1Test extends TestCase
 
     public function test_kol_create_defaults_to_kol_fulfillment(): void
     {
-        $user = $this->userWith(['orders.view', 'orders.create']);
+        $user = $this->userWith(['orders.view', 'orders.create', 'kol.view']);
 
         $this->actingAs($user)->get('/kol/orders/create')->assertInertia(
             fn ($page) => $page->where('defaultOrderKind', 'kol_fulfillment')
         );
 
-        $this->actingAs($user)->post('/kol/orders', $this->payload('KOL-BIZ-0001', 'kol_fulfillment'))->assertRedirect('/kol/orders/1');
+        $this->actingAs($user)->post('/kol/orders', $this->kolPayload('KOL-BIZ-0001'))->assertRedirect('/kol/orders/1');
         $order = Order::query()->firstOrFail();
         $this->assertSame('kol_fulfillment', $order->order_kind->value);
     }
@@ -57,9 +59,9 @@ final class OrderFulfillmentM1Test extends TestCase
 
     public function test_generic_order_detail_url_redirects_to_canonical_customer_and_kol_surfaces(): void
     {
-        $user = $this->userWith(['orders.view', 'orders.create']);
+        $user = $this->userWith(['orders.view', 'orders.create', 'customers.view', 'kol.view']);
         $this->actingAs($user)->post('/customers/orders', $this->payload('CUS-GENERIC'))->assertRedirect();
-        $this->actingAs($user)->post('/kol/orders', $this->payload('KOL-GENERIC', 'kol_fulfillment'))->assertRedirect();
+        $this->actingAs($user)->post('/kol/orders', $this->kolPayload('KOL-GENERIC'))->assertRedirect();
 
         $customerOrder = Order::query()->where('order_kind', 'customer')->firstOrFail();
         $kolOrder = Order::query()->where('order_kind', 'kol_fulfillment')->firstOrFail();
@@ -95,9 +97,9 @@ final class OrderFulfillmentM1Test extends TestCase
 
     public function test_customer_and_kol_lists_are_scoped_server_side_with_no_cross_leak(): void
     {
-        $user = $this->userWith(['orders.view', 'orders.create']);
+        $user = $this->userWith(['orders.view', 'orders.create', 'customers.view', 'kol.view']);
         $this->actingAs($user)->post('/customers/orders', $this->payload('CUS-1'))->assertRedirect();
-        $this->actingAs($user)->post('/kol/orders', $this->payload('KOL-1', 'kol_fulfillment'))->assertRedirect();
+        $this->actingAs($user)->post('/kol/orders', $this->kolPayload('KOL-1'))->assertRedirect();
 
         $customerOrder = Order::query()->where('order_kind', 'customer')->firstOrFail();
         $kolOrder = Order::query()->where('order_kind', 'kol_fulfillment')->firstOrFail();
@@ -123,9 +125,9 @@ final class OrderFulfillmentM1Test extends TestCase
 
     public function test_wait_stock_queue_is_shared_across_both_order_kinds_and_labelled(): void
     {
-        $user = $this->userWith(['orders.view', 'orders.create', 'logistics.view', 'logistics.operate']);
+        $user = $this->userWith(['orders.view', 'orders.create', 'kol.view', 'logistics.view', 'logistics.operate']);
         $this->actingAs($user)->post('/customers/orders', $this->payload('CUS-2'))->assertRedirect();
-        $this->actingAs($user)->post('/kol/orders', $this->payload('KOL-2', 'kol_fulfillment'))->assertRedirect();
+        $this->actingAs($user)->post('/kol/orders', $this->kolPayload('KOL-2'))->assertRedirect();
 
         $this->actingAs($user)->get('/logistics/wait-stock')->assertInertia(
             fn ($page) => $page->where('orders.total', 2)
@@ -310,6 +312,25 @@ final class OrderFulfillmentM1Test extends TestCase
                 ->where('allocationUi.status', 'submitted')
                 ->where('allocationUi.can_operate', false)
         );
+    }
+
+    private function kolPayload(string $externalOrderNumber): array
+    {
+        $kol = Kol::create([
+            'display_name' => 'M1 Synthetic KOL',
+            'status' => 'active',
+            'relationship_stage' => 'cooperating',
+            'owner_id' => auth()->id(),
+        ]);
+        KolAffiliateAccount::create([
+            'connection_key' => 'beyourlover.com',
+            'affiliate_id' => 95000 + $kol->id,
+            'kol_id' => $kol->id,
+            'provider_status' => 'active',
+            'origin' => 'external_sync',
+        ]);
+
+        return [...$this->payload($externalOrderNumber, 'kol_fulfillment'), 'kol_id' => $kol->id];
     }
 
     private function payload(string $externalOrderNumber, string $orderKind = 'customer'): array
