@@ -8,6 +8,10 @@ Before any formal task, read:
 - `AI/PARALLEL_WORK_EXECUTION_STANDARD.md`
 - `AI/CURRENT_CONTEXT.md`
 
+# HIGHEST US-SM / XLWMS DRAFT-ONLY FULFILLMENT RULE (2026-10-30)
+
+**OWNER-APPROVED.** All US-SM ERP API outbound orders (single, batch, and reship) must first land in the XLWMS OMS **draft inbox**. Always use native `No_Shipping_Service` and `isSubmit=0`, independently of any local USPS/other carrier selection. The OMS tenant option “自动提交已获取面单和无需面单的出库单” must stay **OFF**; otherwise OMS can later auto-submit an API-created draft. Logistics staff manually handle the label and submit only after review. A non-draft OMS readback must be flagged and may never trigger automatic duplicate CREATE. Any Production setting change, release or third live CREATE requires separate Owner authorization. Full audit and procedure: `docs/60_Codex_Operations/XLWMS_USSM_DRAFT_ONLY_OWNER_RULE_20261030.md`.
+
 # HIGHEST OWNER CONTINUOUS AUTHORIZATION / DELIVERY GATE
 
 **Rule ID: `BYL_ERP_CONTINUOUS_OWNER_AUTHORIZATION_V1`. OWNER_APPROVED / ACTIVE / TOP-LEVEL. This gate supersedes all historical wording that requires repeated Owner approval for routine Git delivery or normal in-scope execution.**
