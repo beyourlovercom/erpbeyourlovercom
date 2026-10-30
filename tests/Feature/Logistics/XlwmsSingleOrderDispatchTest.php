@@ -1793,6 +1793,25 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
     }
 
 
+
+    public function test_scoped_blocked_snapshot_canary_reaches_exactly_one_draft_create(): void
+    {
+        [$o,$uuid]=$this->reissueFixture();
+        $snapshot=XlwmsInventorySnapshot::where('warehouse_id',$o->shipment->warehouse_id)->sole();
+        $snapshot->forceFill(['status'=>'blocked','blocked_sku_count'=>2,'updated_at'=>now()])->save();
+        $this->fakeReissueResponse($o,$uuid,false,'3','0');
+        config()->set('xlwms.reissue_create_enabled',true);
+        config()->set('xlwms.reissue_order_id',$o->id);
+        config()->set('xlwms.reissue_request_id',$uuid);
+        $result=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentDispatchService::class)
+            ->createDraft($o->id,$uuid,19,'CREATE_REISSUE_'.$uuid);
+        $this->assertSame('created',$result['result'],json_encode($result));
+        $this->assertSame('NEW-OMS-7788',$result['oms_order_no']);
+        $this->assertSame(1,count(Http::recorded(fn($r)=>str_contains($r->url(),'outboundOrder/create'))));
+        $this->assertSame('shipped',$o->fresh()->shipment->shipment_status);
+        $this->assertDatabaseHas('xlwms_reshipments',['request_id'=>$uuid,'status'=>'draft_created']);
+    }
+
     public function test_single_authorized_reship_can_use_fresh_matching_sku_from_blocked_whole_warehouse_snapshot(): void
     {
         [$o,$uuid]=$this->reissueFixture();
