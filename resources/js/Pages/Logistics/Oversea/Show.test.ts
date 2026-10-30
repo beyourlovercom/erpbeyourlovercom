@@ -37,6 +37,30 @@ const mountPage = (overrides: Record<string, unknown> = {}) => mount(Show, { pro
   canReview: true, canOperate: true, carrierOptions: [], trackingImportPreview: preview, ...overrides,
 } })
 
+describe('warehouse OMS portal inside the overseas page heading', () => {
+  it('renders the 世迈 OMS link within the page heading, not the global header', () => {
+    const wrapper=mountPage({ warehouseKey:'us-3sm', warehouse:warehouseOptions[1], view:'review' })
+    const link=wrapper.find('.oversea-heading .warehouse-portal-link')
+    expect(link.exists()).toBe(true)
+    expect(link.text()).toContain('进入世迈仓库')
+    expect(link.attributes('href')).toBe('https://oms.xlwms.com/login')
+    expect(link.attributes('target')).toBe('_blank')
+    expect(link.attributes('rel')).toBe('noopener noreferrer')
+  })
+
+  it('renders the ShipOut production portal for MorePlus in the same heading', () => {
+    const wrapper=mountPage({ warehouseKey:'us-moreplus', warehouse:warehouseOptions[0], view:'pending' })
+    const link=wrapper.find('.oversea-heading .warehouse-portal-link')
+    expect(link.text()).toContain('进入 ShipOut 正式仓库')
+    expect(link.attributes('href')).toBe('https://oms.shipout.com/z/#/login')
+  })
+
+  it('hides the portal on the all-warehouse page or unsupported warehouse', () => {
+    expect(mountPage({warehouseKey:'all',warehouse:null}).find('.warehouse-portal-link').exists()).toBe(false)
+    expect(mountPage({warehouseKey:'us-ny',warehouse:{key:'us-ny',id:3,code:'US-NY',label:'美东纽约仓',carrier:'USPS',url:'/logistics/oversea/us-ny'}}).find('.warehouse-portal-link').exists()).toBe(false)
+  })
+})
+
 describe('Oversea Dede file exchange workbench', () => {
   beforeEach(() => { routerPost.mockClear(); routerPatch.mockClear(); routerVisit.mockClear() })
 
