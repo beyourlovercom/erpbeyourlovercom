@@ -41,10 +41,23 @@ final class AuditHistoricalKolOrderLinks extends Command
             }
             $counts = [
                 'total' => 0, 'explicitly_linked' => 0, 'formal_collaboration_candidate' => 0,
-                'conflict' => 0, 'referral_review_only' => 0, 'missing_evidence' => 0,
+                'conflict' => 0, 'logistics_ready_candidate' => 0, 'logistics_review_candidate' => 0,
+                'referral_review_only' => 0, 'missing_evidence' => 0,
             ];
             $orders = $db->table('orders')->where('order_kind', 'kol_fulfillment')
-                ->orderBy('id')->get(['id', 'erp_order_id', 'kol_id']);
+                ->orderBy('id')->get(['id', 'erp_order_id', 'external_order_number', 'kol_id']);
+            // Historical fulfillment imports contain a source-order ID plus a resolved KOL ID.
+            // Preserve case-sensitive exact matching using PHP keys across MySQL and SQLite.
+            // This is supporting evidence for a human-reviewed proposal, never authorization to backfill.
+            $logisticsByReference = $db->table('logistics_historical_import_rows')
+                ->whereNotNull('kol_id')->whereNotNull('source_order_no')
+                ->get(['id', 'batch_id', 'source_order_no', 'kol_id', 'classification'])
+                ->groupBy('source_order_no');
+            $knownKolIds = $db->table('kols')->pluck('id')->mapWithKeys(
+                fn ($id): array => [(int) $id => true]
+            )->all();
+            $orderReferenceCounts = $orders->whereNotNull('external_order_number')
+                ->countBy('external_order_number');
 
             foreach ($orders as $order) {
                 ++$counts['total'];
@@ -67,8 +80,28 @@ final class AuditHistoricalKolOrderLinks extends Command
                         $candidateId = $formal[0];
                         $evidence = 'kol_collaborations.order_id';
                     } else {
-                        // Affiliate referrals represent SALES attribution, not proof of a fulfillment order.
-                        $referrals = $db->table('kol_affiliate_referrals')
+                        $externalReference = (string) ($order->external_order_number ?? '');
+                        $historical = $externalReference !== ''
+                            ? $logisticsByReference->get($externalReference, collect())
+                            : collect();
+                        $historicalKolIds = $historical->pluck('kol_id')->map(
+                            fn ($id): int => (int) $id
+                        )->unique()->values()->all();
+                        if (count($historicalKolIds) > 1
+                            || ($externalReference !== '' && $orderReferenceCounts->get($externalReference, 0) > 1)) {
+                            $status = 'conflict';
+                            $evidence = 'ambiguous_historical_source_reference';
+                        } elseif (count($historicalKolIds) === 1
+                            && isset($knownKolIds[$historicalKolIds[0]])) {
+                            $candidateId = $historicalKolIds[0];
+                            $sourceRow = $historical->first();
+                            $sourceReady = $historical->count() === 1 && $sourceRow->classification === 'ready';
+                            $status = $sourceReady ? 'logistics_ready_candidate' : 'logistics_review_candidate';
+                            $evidence = 'logistics_historical_import_rows:row='.$sourceRow->id
+                                .';batch='.$sourceRow->batch_id.';classification='.$sourceRow->classification;
+                        } else {
+                            // Affiliate referrals represent SALES attribution, not proof of a fulfillment order.
+                            $referrals = $db->table('kol_affiliate_referrals')
                             ->where('connection_key', 'beyourlover.com')
                             ->where('order_id', $order->id)->whereNotNull('kol_id')
                             ->distinct()->pluck('kol_id')->map(fn ($v) => (int) $v)->all();
@@ -79,6 +112,7 @@ final class AuditHistoricalKolOrderLinks extends Command
                             $status = 'referral_review_only';
                             $candidateId = $referrals[0];
                             $evidence = 'affiliate_sales_attribution_not_fulfillment_proof';
+                            }
                         }
                     }
                 }
