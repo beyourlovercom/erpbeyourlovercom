@@ -417,7 +417,8 @@ const reshipPost=async (row:Row, action:'reship-intent'|'reship-approve', body:R
 const requestReship=async(row:Row)=>{
   const reason=(reshipReason[row.order_id]??'').trim()
   if(reason.length<5){reshipError[row.order_id]='请先填写不少于 5 个字的补发原因';return}
-  await reshipPost(row,'reship-intent',{reason,confirm_original_shipped:true})
+  await reshipPost(row,'reship-intent',reshipPreview[row.order_id]?.source_scenario==='canceled_original_oms'
+    ? {reason,confirm_original_canceled:true} : {reason,confirm_original_shipped:true})
 }
 const approveReship=async(row:Row)=>{
   const intent=reshipIntent[row.order_id]
@@ -875,7 +876,8 @@ const compactPages = computed<(number|string)[]>(() => {
                             class="xlwms-reship-reason" placeholder="填写补发原因（至少 5 个字）" />
                           <button type="button" class="xlwms-action"
                             :disabled="reshipBusy[row.order_id] || (reshipReason[row.order_id]??'').trim().length<5"
-                            @click="requestReship(row)">确认原订单已发货 · 提交补发申请</button>
+                            @click="requestReship(row)">{{reshipPreview[row.order_id].source_scenario==='canceled_original_oms'
+                              ?'确认原 OMS 已取消 · 提交重新下发申请':'确认原订单已发货 · 提交补发申请'}}</button>
                         </template>
                         <template v-else-if="!reshipApproved[row.order_id]">
                           <small>申请已保存：{{reshipIntent[row.order_id].request_id}}（待二次确认）</small>

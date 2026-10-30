@@ -46,8 +46,24 @@ final class XlwmsReshipmentController {
     public function requestIntent(int $order, Request $request, ReshipmentIntentService $service): JsonResponse {
         $input = $request->validate([
             'reason' => ['required', 'string', 'min:5', 'max:180'],
-            'confirm_original_shipped' => ['required', 'accepted'],
+            'confirm_original_shipped' => ['sometimes', 'accepted'],
+            'confirm_original_canceled' => ['sometimes', 'accepted'],
         ]);
+        // Never ask Dede to attest to an untrue shipment. Cancelled OMS drafts
+        // and already-shipped source orders have distinct confirmations.
+        $preview = app(ReshipmentPreview::class)->forOrder($order);
+        $scenario = $preview['source_scenario'] ?? 'not_eligible';
+        $acknowledged = match ($scenario) {
+            'canceled_original_oms' => ($input['confirm_original_canceled'] ?? false) === true
+                && ! isset($input['confirm_original_shipped']),
+            'shipped_original' => ($input['confirm_original_shipped'] ?? false) === true
+                && ! isset($input['confirm_original_canceled']),
+            default => false,
+        };
+        if (! $acknowledged) {
+            return response()->json(['code' => 'RESHIP_SOURCE_CONFIRMATION_INVALID'], 409)
+                ->header('Cache-Control', 'no-store, private');
+        }
         try {
             $result = $service->request($order, (int) $request->user()->id, $input['reason']);
             return response()->json($result, 201)->header('Cache-Control', 'no-store, private');
