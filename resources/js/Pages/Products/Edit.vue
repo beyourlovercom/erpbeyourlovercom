@@ -718,6 +718,10 @@ const doDelete = () => {
   margin:0 auto;
 }
 .product-editor-page [id^="section-"] { scroll-margin-top:92px; }
+/* Reserve the 126px left navigation gutter when the ERP sidebar reduces available width. */
+@media (max-width:1680px) {
+  .product-editor-page { padding-left:clamp(24px,calc(864px - 50vw),156px); }
+}
 
 .product-image-preview-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:12px; margin-top:16px; }
 .product-image-preview-grid img { width:100%; aspect-ratio:1; object-fit:cover; border:1px solid #E4EAED; border-radius:10px; }
