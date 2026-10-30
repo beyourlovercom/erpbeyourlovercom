@@ -1481,4 +1481,33 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
     }
 
+
+    public function test_cancelled_original_confirmation_must_not_claim_original_shipped(): void
+    {
+        $o=$this->orderFixture();
+        $this->statusAttempt($o);
+        $this->fakeCancelledOriginalStatus($o);
+        $this->assertSame('canceled_original_oms',app(\App\Modules\Logistics\Application\Xlwms\ReshipmentPreview::class)->forOrder($o->id)['source_scenario']);
+        $role=\App\Models\Role::query()->firstOrCreate(
+            ['key'=>'warehouse_operator_test'],['label'=>'Warehouse Operator']);
+        $permission=\App\Models\Permission::query()->firstOrCreate(
+            ['key'=>'logistics.operate'],['label'=>'Operate Logistics']);
+        $role->permissions()->syncWithoutDetaching([$permission->id]);
+        $operator=\App\Models\User::factory()->create(['is_active'=>true]);
+        $operator->roles()->attach($role);
+        $route='/logistics/oversea/us-3sm/orders/'.$o->id.'/xlwms/reship-intent';
+        $reason='原 OMS 已取消，仓库人工拦截';
+        $this->actingAs($operator)->postJson($route, [
+            'reason'=>$reason,'confirm_original_shipped'=>true,
+        ])->assertStatus(409)->assertJsonPath('code','RESHIP_SOURCE_CONFIRMATION_INVALID');
+        $this->assertDatabaseCount('xlwms_reshipments',0);
+        $this->actingAs($operator)->postJson($route, [
+            'reason'=>$reason,'confirm_original_canceled'=>true,
+        ])->assertCreated()->assertJsonPath('status','requested')
+          ->assertJsonPath('can_create_oms',false);
+        $this->assertDatabaseCount('xlwms_reshipments',1);
+        $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+    }
+
 }
