@@ -80,7 +80,7 @@ final class XlwmsWebDraftService
             if ((string)($detail['status']??'')!=='0'
                 || ($detail['outboundOrderNo']??null)!==$omsNo
                 || ($detail['platformOrderNo']??null)!==$attempt->attempt_ref
-                || ($detail['referOrderNo']??null)!==$references[0]
+                || ($detail['referOrderNo']??null)!==$payload['referOrderNo']
                 || ($detail['logisticsChannel']??null)!=='Upload_Shipping_Label'
                 || strtolower((string)($detail['logisticsCarrier']??''))!=='usps'
                 || ($detail['whCode']??null)!==($payload['whCode']??null)
@@ -128,7 +128,11 @@ final class XlwmsWebDraftService
         $payload=$base;
         unset($payload['isSubmit'],$payload['thirdOrderNo']);
         $payload['platformOrderNo']=$attemptRef;
-        $payload['referOrderNo']=$stableReference;
+        // Keep the ERP order as the searchable prefix, but give each
+        // *new* OMS draft a distinct warehouse reference. Some warehouses
+        // reject historical duplicate reference numbers on later submission.
+        // This never changes the current-draft-only duplicate rule.
+        $payload['referOrderNo']=substr($stableReference,0,80).'-'.substr($attemptRef,-14);
         $payload['salesPlatform']='';
         $payload['logisticsChannel']='Upload_Shipping_Label';
         $payload['logisticsCarrier']='usps';
