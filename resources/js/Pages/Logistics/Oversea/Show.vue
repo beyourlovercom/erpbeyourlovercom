@@ -388,6 +388,64 @@ const reshipCanCreate=reactive<Record<number,boolean>>({})
 const reshipOmsNo=reactive<Record<number,string>>({})
 const reshipProviderStatus=reactive<Record<number,string>>({})
 const reshipProviderTracking=reactive<Record<number,string>>({})
+type M2Preflight = {
+  order_id:number;request_id:string;oms_order_no:string;status_code:string;status_name:string;
+  outbound_time_present:boolean;tracking_number:string|null;carrier:string|null;
+  blockers:string[];ready_for_erp_review:boolean;can_apply:boolean;review_token:string|null;
+  cost_status:string;provider_cost_present:boolean;website_sync:string
+}
+const m2BlockerText:Record<string,string> = {
+  M2_OMS_NOT_OUTBOUND:'世迈尚未确认出库',
+  M2_OUTBOUND_TIME_MISSING:'仓库缺少真实出库时间',
+  M2_TRACKING_NOT_VERIFIED:'实际 Tracking 尚未核实',
+  M2_CARRIER_NOT_VERIFIED:'实际承运商未获可信确认',
+  M2_SKU_QUANTITY_MISMATCH:'仓库 SKU / 数量与申请不一致',
+  M2_ERP_WAREHOUSE_CHANGED:'ERP 仓库或 Shipment 已发生变化',
+  M2_DEDE_REVIEW_REQUIRED:'Dede 审核尚未通过',
+  M2_SOURCE_ORDER_ALREADY_CHANGED:'原 ERP 发货事实已发生变化',
+  M2_ALREADY_APPLIED:'ERP 已确认发货，禁止重复回写',
+}
+const m2Preview=reactive<Record<number,M2Preflight>>({})
+const m2Busy=reactive<Record<number,boolean>>({})
+const m2Error=reactive<Record<number,string>>({})
+const readM2=async(row:Row)=>{
+  const requestId=reshipIntent[row.order_id]?.request_id
+  if(!props.canOperate||props.warehouseKey!=='us-3sm'||!requestId||!reshipOmsNo[row.order_id]||m2Busy[row.order_id])return
+  m2Busy[row.order_id]=true;m2Error[row.order_id]=''
+  try{
+    const url=omsEndpoint(row,'m2')+'/'+encodeURIComponent(requestId)+'/preflight'
+    const r=await fetch(url,{credentials:'same-origin',cache:'no-store',redirect:'error',
+      headers:{Accept:'application/json'}})
+    if(!r.ok)throw Error('履约预检失败（HTTP '+r.status+'）')
+    const value=await r.json() as M2Preflight
+    if(value.request_id!==requestId||value.oms_order_no!==reshipOmsNo[row.order_id])
+      throw Error('M2 新 OMS 身份不一致')
+    m2Preview[row.order_id]=value
+  }catch(e){m2Error[row.order_id]=e instanceof Error?e.message:'无法读取 OMS 履约'}
+  finally{m2Busy[row.order_id]=false}
+}
+const applyM2=async(row:Row)=>{
+  const value=m2Preview[row.order_id]
+  if(!value?.can_apply||!value.review_token||m2Busy[row.order_id])return
+  m2Busy[row.order_id]=true;m2Error[row.order_id]=''
+  try {
+    const token=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
+    const r=await fetch(omsEndpoint(row,'m2')+'/'+encodeURIComponent(value.request_id)+'/apply',{
+      method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
+      headers:{Accept:'application/json','Content-Type':'application/json',
+        ...(token?{'X-CSRF-TOKEN':token}:{})},
+      body:JSON.stringify({review_token:value.review_token}),
+    })
+    if(!r.ok)throw Error('ERP 发货回写被安全门禁拒绝（HTTP '+r.status+'）')
+    const result=await r.json()
+    if(result.status!=='erp_shipped_website_pending')throw Error('ERP 回写状态未确认')
+    delete m2Preview[row.order_id]
+    notifyOms('SUCCESS','ERP 发货已确认','网站 Tracking 待 Vita 使用原有同步流程处理')
+    router.reload({only:['rows','viewCounts']})
+  }catch(e){m2Error[row.order_id]=e instanceof Error?e.message:'ERP 回写失败'}
+  finally{m2Busy[row.order_id]=false}
+}
+
 const reshipPost=async (row:Row, action:'reship-intent'|'reship-approve', body:Record<string,unknown>) => {
   if(!props.canOperate||props.warehouseKey!=='us-3sm'||!['shipped','pending'].includes(row.shipment_status)||reshipBusy[row.order_id])return
   reshipBusy[row.order_id]=true;reshipError[row.order_id]=''
@@ -895,6 +953,22 @@ const compactPages = computed<(number|string)[]>(() => {
                       <small v-if="reshipProviderStatus[row.order_id]">新 OMS 原始状态码：{{reshipProviderStatus[row.order_id]}}（未自动同步官网）</small>
                       <small v-if="reshipProviderTracking[row.order_id]">新 OMS Tracking：{{reshipProviderTracking[row.order_id]}}（原运单保留）</small>
                       <small>真实 CREATE 需要单笔订单及申请双重白名单；不会覆盖原发货记录</small>
+
+                      <div v-if="reshipOmsNo[row.order_id]" class="xlwms-m2-readonly">
+                        <button type="button" class="xlwms-action" :disabled="m2Busy[row.order_id]"
+                          @click="readM2(row)">{{m2Busy[row.order_id]?'核对中…':'M2 核对仓库出库与 Tracking'}}</button>
+                        <template v-if="m2Preview[row.order_id]">
+                          <small>世迈实时履约：{{m2Preview[row.order_id].status_name || '未知状态'}}（{{m2Preview[row.order_id].status_code}}）</small>
+                          <small>实际承运商：{{m2Preview[row.order_id].carrier || '待核对'}} · Tracking：{{m2Preview[row.order_id].tracking_number || '尚未产生'}}</small>
+                          <small v-if="m2Preview[row.order_id].blockers.length" class="xlwms-note">尚不能回写 ERP：{{m2Preview[row.order_id].blockers.map(b=>m2BlockerText[b]||b).join('；')}}</small>
+                          <button v-if="m2Preview[row.order_id].can_apply && m2Preview[row.order_id].ready_for_erp_review"
+                            type="button" class="xlwms-action primary" :disabled="m2Busy[row.order_id]"
+                            @click="applyM2(row)">单笔确认 ERP 已发货（网站仍待 Vita 同步）</button>
+                          <small>新增成本：{{m2Preview[row.order_id].cost_status==='pending'?'等待仓库结算证据':m2Preview[row.order_id].cost_status}}</small>
+                        </template>
+                        <small v-if="m2Error[row.order_id]" role="alert" class="xlwms-error">{{m2Error[row.order_id]}}</small>
+                      </div>
+
                     </div>
                     <small v-if="reshipError[row.order_id]" role="alert" class="xlwms-error">{{reshipError[row.order_id]}}</small>
                   </div>

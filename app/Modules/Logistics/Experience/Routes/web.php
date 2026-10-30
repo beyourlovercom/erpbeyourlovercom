@@ -9,6 +9,7 @@ use App\Modules\Logistics\Experience\Controllers\LogisticsTrackingPushController
 use App\Modules\Logistics\Experience\Controllers\OverseaWarehouseController;
 use App\Modules\Logistics\Experience\Controllers\ShipOutMorePlusController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsSingleOrderController;
+use App\Modules\Logistics\Experience\Controllers\XlwmsReshipmentFulfillmentController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsReshipmentController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsWarehouseBatchController;
 use App\Modules\Logistics\Experience\Middleware\RequireFulfillmentAllocation;
@@ -70,6 +71,14 @@ Route::middleware(['web', 'auth'])->group(function (): void {
         [XlwmsReshipmentController::class, 'status'])
         ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:5,1'])
         ->whereNumber('order')->whereUuid('requestId')->name('logistics.xlwms.order.reship-status');
+    Route::get('/logistics/oversea/us-3sm/orders/{order}/xlwms/m2/{requestId}/preflight',
+        [XlwmsReshipmentFulfillmentController::class, 'preflight'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:8,1'])
+        ->whereNumber('order')->whereUuid('requestId')->name('logistics.xlwms.m2.preflight');
+    Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/m2/{requestId}/apply',
+        [XlwmsReshipmentFulfillmentController::class, 'apply'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:2,1'])
+        ->whereNumber('order')->whereUuid('requestId')->name('logistics.xlwms.m2.apply');
     Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/status',
         [XlwmsSingleOrderController::class, 'status'])
         ->middleware(['can:logistics.view','throttle:5,1'])

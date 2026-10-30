@@ -772,4 +772,80 @@ describe('Oversea Dede file exchange workbench', () => {
     } finally {vi.unstubAllGlobals()}
   })
 
+
+  it('M2 shows a live warehouse-processing OMS and forbids ERP shipment without tracking', async () => {
+    const uuid='11111111-2222-4333-8444-555555555555'
+    const row={...usSmPendingRows.data[0],shipment_status:'pending',
+      xlwms:{state:'draft_created',oms_order_no:'OMS-OLD',oms_status_code:'4'}}
+    const preview={
+      order_id:99,erp_order_id:'ERP-99',source_scenario:'canceled_original_oms',
+      original_oms_order_no:'OMS-OLD',original_tracking_present:false,
+      warehouse:'US-SM',channel:'No_Shipping_Service',draft_only:true,
+      items:[{sku:'REVIEW-SKU',quantity:1}],recipient:'Recipient',
+      address:{country:'US',province:'CA',city:'Los Angeles',postal_code:'90001',address_1:'1 Test Road'},
+      reason_default:'仓库订单出错',required_oms_memo:null,
+      existing_reshipment_count:1,blockers:['existing_reshipment_requires_review'],
+      ready_for_review:false,can_create_oms:false,memo_contract_verified:false,
+      existing_reissue:{request_id:uuid,status:'draft_created',oms_order_no:'OMS-NEW',
+        oms_status_code:'0',oms_tracking_no:null,last_error_code:null,can_create_oms:false},
+    }
+    const m2={
+      order_id:99,request_id:uuid,oms_order_no:'OMS-NEW',status_code:'2',
+      status_name:'仓库处理中',tracking_number:null,carrier:null,
+      blockers:['M2_OMS_NOT_OUTBOUND','M2_TRACKING_NOT_VERIFIED'],
+      ready_for_erp_review:false,can_apply:false,review_token:null,cost_status:'pending',
+      provider_cost_present:false,
+    }
+    const fake=vi.fn()
+      .mockResolvedValueOnce({ok:true,json:async()=>preview})
+      .mockResolvedValueOnce({ok:true,json:async()=>m2})
+    vi.stubGlobal('fetch',fake)
+    try {
+      const w=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+        view:'pending',rows:{...usSmPendingRows,data:[row]}})
+      await w.findAll('button').find(b=>b.text().trim()==='重新下发仓库')!.trigger('click')
+      await vi.waitFor(()=>expect(w.text()).toContain('新 OMS 出库单：OMS-NEW'))
+      await w.findAll('button').find(b=>b.text().includes('M2 核对仓库出库'))!.trigger('click')
+      await vi.waitFor(()=>expect(w.text()).toContain('世迈实时履约：仓库处理中（2）'))
+      expect(w.text()).toContain('Tracking：尚未产生')
+      expect(w.text()).toContain('等待仓库结算证据')
+      expect(w.findAll('button').some(b=>b.text().includes('单笔确认 ERP 已发货'))).toBe(false)
+      expect(fake).toHaveBeenCalledTimes(2)
+    } finally {vi.unstubAllGlobals()}
+  })
+
+  it('M2 verified outbound remains read-only when separate production apply gate is off', async () => {
+    const uuid='11111111-2222-4333-8444-555555555555'
+    const row={...usSmPendingRows.data[0],shipment_status:'pending',
+      xlwms:{state:'draft_created',oms_order_no:'OMS-OLD',oms_status_code:'4'}}
+    const fake=vi.fn().mockResolvedValueOnce({ok:true,json:async()=>({
+      order_id:99,erp_order_id:'ERP-99',source_scenario:'canceled_original_oms',
+      original_oms_order_no:'OMS-OLD',original_tracking_present:false,
+      warehouse:'US-SM',channel:'No_Shipping_Service',draft_only:true,
+      items:[{sku:'REVIEW-SKU',quantity:1}],recipient:'Recipient',
+      address:{country:'US',province:'CA',city:'Los Angeles',postal_code:'90001',address_1:'1 Test Road'},
+      reason_default:'仓库订单出错',required_oms_memo:null,existing_reshipment_count:1,
+      blockers:[],ready_for_review:false,can_create_oms:false,memo_contract_verified:false,
+      existing_reissue:{request_id:uuid,status:'draft_created',oms_order_no:'OMS-NEW',
+        oms_status_code:'0',oms_tracking_no:null,last_error_code:null,can_create_oms:false},
+    })}).mockResolvedValueOnce({ok:true,json:async()=>({
+      order_id:99,request_id:uuid,oms_order_no:'OMS-NEW',status_code:'3',
+      status_name:'已出库',tracking_number:'9400111899223856928599',carrier:'USPS',
+      blockers:[],ready_for_erp_review:true,can_apply:false,review_token:'a'.repeat(64),
+      cost_status:'pending',provider_cost_present:true,
+    })})
+    vi.stubGlobal('fetch',fake)
+    try {
+      const w=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+        view:'pending',rows:{...usSmPendingRows,data:[row]}})
+      await w.findAll('button').find(b=>b.text().trim()==='重新下发仓库')!.trigger('click')
+      await vi.waitFor(()=>expect(w.text()).toContain('新 OMS 出库单：OMS-NEW'))
+      await w.findAll('button').find(b=>b.text().includes('M2 核对仓库出库'))!.trigger('click')
+      await vi.waitFor(()=>expect(w.text()).toContain('世迈实时履约：已出库（3）'))
+      expect(w.text()).toContain('9400111899223856928599')
+      expect(w.findAll('button').some(b=>b.text().includes('单笔确认 ERP 已发货'))).toBe(false)
+      expect(fake).toHaveBeenCalledTimes(2)
+    } finally {vi.unstubAllGlobals()}
+  })
+
 })

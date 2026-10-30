@@ -255,6 +255,74 @@ final class XlwmsOrderGateway
         ];
     }
 
+
+    /**
+     * Read one exact OMS provider detail, without copying PII/credentials into callers.
+     * Unlike pageList, the detail response contains the vendor's own statusName.
+     */
+    public function readExactOrderDetail(
+        WarehouseOpenApiConnection $connection, string $omsOrderNo, string $thirdOrderNo
+    ): array {
+        if (! preg_match('/^[A-Za-z0-9_-]{6,100}$/D', $omsOrderNo)
+            || ! preg_match('/^BYL-RESHIP-[0-9a-f]{32}$/D', $thirdOrderNo)) {
+            throw new RuntimeException('OMS_M2_QUERY_IDENTITY_INVALID');
+        }
+        $data = $this->signedPost($connection, 'outboundOrder/detail', [
+            'thirdOrderNoList' => [$thirdOrderNo],
+        ]);
+        $rows = $data['data'] ?? null;
+        if (!is_array($rows) || !array_is_list($rows) || count($rows)!==1
+            || !is_array($rows[0])) {
+            throw new RuntimeException('OMS_M2_DETAIL_NOT_UNIQUE');
+        }
+        $item=$rows[0];
+        if (($item['outboundOrderNo']??null)!==$omsOrderNo
+            || ($item['whCode']??null)!==$connection->oms_warehouse_code
+            || ($item['thirdOrderNo']??null)!==$thirdOrderNo
+            || ($item['platformOrderNo']??null)!==$thirdOrderNo) {
+            throw new RuntimeException('OMS_M2_DETAIL_IDENTITY_MISMATCH');
+        }
+        if (!preg_match('/^[0-9]{1,2}$/D',(string)($item['status']??''))) {
+            throw new RuntimeException('OMS_M2_STATUS_INVALID');
+        }
+        $products=$item['productList']??null;
+        if (!is_array($products) || !array_is_list($products) || $products===[]) {
+            throw new RuntimeException('OMS_M2_PRODUCTS_INVALID');
+        }
+        $items=[];
+        foreach ($products as $product) {
+            if (!is_array($product) || !is_string($product['sku']??null)
+                || !preg_match('/^[1-9][0-9]*$/D',(string)($product['quantity']??''))
+                || (int)$product['quantity']>100000) {
+                throw new RuntimeException('OMS_M2_PRODUCTS_INVALID');
+            }
+            $sku=trim($product['sku']);
+            if ($sku==='') throw new RuntimeException('OMS_M2_PRODUCTS_INVALID');
+            $items[$sku]=($items[$sku]??0)+(int)$product['quantity'];
+        }
+        ksort($items);
+        $tracking=trim((string)($item['logisticsTrackNo']??''));
+        $carrier=trim((string)($item['logisticsCarrier']??''));
+        $statusName=trim((string)($item['statusName']??''));
+        $outboundTime=trim((string)($item['outboundTime']??''));
+        if (strlen($tracking)>120 || strlen($carrier)>120 || mb_strlen($statusName)>60
+            || strlen($outboundTime)>40) {
+            throw new RuntimeException('OMS_M2_DETAIL_FIELD_INVALID');
+        }
+        return [
+            'oms_order_no'=>$omsOrderNo,
+            'third_order_no'=>$thirdOrderNo,
+            'status_code'=>(string)$item['status'],
+            'status_name'=>$statusName,
+            'tracking_number'=>$tracking,
+            'carrier'=>$carrier,
+            'outbound_time'=>$outboundTime,
+            'items'=>$items,
+            'cost_present'=>filled($item['costTotal']??null),
+            'cost_currency'=>trim((string)($item['costCurrencyCode']??'')),
+        ];
+    }
+
     /** Verify exact OMS native channel and every requested SKU without writes. */
     public function assertCatalogReady(WarehouseOpenApiConnection $connection, string $whCode, string $channel, array $skuList, bool $requireNoShipping = false): void
     {

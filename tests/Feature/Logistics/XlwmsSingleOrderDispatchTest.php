@@ -1510,4 +1510,154 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
     }
 
+
+    private function m2PendingFixture(string $status='2', string $carrier='USPS',
+        string $tracking='', int $qty=1, string $outbound='', bool $identityMatches=true): array
+    {
+        $o=$this->orderFixture();
+        $r=\App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment::query()->create([
+            'original_order_id'=>$o->id,'original_shipment_id'=>$o->shipment->id,
+            'warehouse_id'=>$o->shipment->warehouse_id,
+            'request_id'=>'11111111-2222-4333-8444-555555555555',
+            'third_order_no'=>'BYL-RESHIP-11111111222243338444555555555555',
+            'original_oms_order_no'=>'OBS-ORIGINAL-TEST',
+            'oms_order_no'=>'OBS-M2-TEST123','status'=>'draft_created',
+            'reason'=>'原 OMS 面单错误，仓库拦截取消','memo'=>'重新下发仓库',
+            'payload_fingerprint'=>str_repeat('a',64),
+            'sku_quantity_snapshot'=>[['sku'=>'SAME-SKU','quantity'=>1]],
+            'requested_by'=>19,'approved_by'=>19,
+        ]);
+        Http::preventStrayRequests();
+        Http::fake(fn($req)=>Http::response(['code'=>200,'data'=>[[
+            'outboundOrderNo'=>$identityMatches?'OBS-M2-TEST123':'OTHER-OMS','thirdOrderNo'=>$r->third_order_no,
+            'platformOrderNo'=>$r->third_order_no,'whCode'=>'OMS-US-SM',
+            'status'=>(int)$status,'statusName'=>$status==='3'?'已出库':'仓库处理中',
+            'productList'=>[['sku'=>'SAME-SKU','quantity'=>$qty]],
+            'logisticsCarrier'=>$carrier,'logisticsTrackNo'=>$tracking,
+            'outboundTime'=>$outbound,'costTotal'=>null,'costCurrencyCode'=>'USD',
+        ]]]));
+        return [$o,$r];
+    }
+
+    public function test_m2_processing_oms_is_readonly_and_blocks_erp_shipment(): void
+    {
+        [$o,$r]=$this->m2PendingFixture();
+        $preview=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentFulfillmentService::class)
+            ->preview($o->id,$r->request_id);
+        $this->assertSame('2',$preview['status_code']);
+        $this->assertSame('仓库处理中',$preview['status_name']);
+        $this->assertContains('M2_OMS_NOT_OUTBOUND',$preview['blockers']);
+        $this->assertContains('M2_TRACKING_NOT_VERIFIED',$preview['blockers']);
+        $this->assertNull($preview['review_token']);
+        $this->assertFalse($preview['can_apply']);
+        $this->assertSame('pending_shipment',$o->fresh()->order_status->value);
+        $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+    }
+
+    public function test_m2_verified_outbound_previews_but_apply_is_default_off(): void
+    {
+        [$o,$r]=$this->m2PendingFixture('3','USPS','9400111899223856928599',1,'2026-10-30 14:10:00');
+        $service=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentFulfillmentService::class);
+        $p=$service->preview($o->id,$r->request_id);
+        $this->assertSame([], $p['blockers']);
+        $this->assertTrue($p['ready_for_erp_review']);
+        $this->assertFalse($p['can_apply']);
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/D',$p['review_token']);
+        try {
+            $service->apply($o->id,$r->request_id,$p['review_token'],
+                \App\Models\User::factory()->create(['is_active'=>true]));
+            $this->fail('Expected M2 disabled');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('M2_APPLY_NOT_AUTHORIZED',$e->getMessage());
+        }
+        $this->assertSame('pending_shipment',$o->fresh()->order_status->value);
+        $this->assertDatabaseHas('xlwms_reshipments',['request_id'=>$r->request_id,'cost_status'=>'pending']);
+    }
+
+    public function test_m2_wrong_sku_and_unknown_carrier_are_not_publishable(): void
+    {
+        [$o,$r]=$this->m2PendingFixture('3','Unknown Courier','9400111899223856928599',2,'2026-10-30 14:10:00');
+        $p=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentFulfillmentService::class)
+            ->preview($o->id,$r->request_id);
+        $this->assertContains('M2_SKU_QUANTITY_MISMATCH',$p['blockers']);
+        $this->assertContains('M2_CARRIER_NOT_VERIFIED',$p['blockers']);
+        $this->assertFalse($p['ready_for_erp_review']);
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+    }
+
+    public function test_m2_exact_identity_mismatch_fails_closed(): void
+    {
+        [$o,$r]=$this->m2PendingFixture('3','USPS','9400111899223856928599',1,'2026-10-30 14:10:00',false);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('OMS_M2_DETAIL_IDENTITY_MISMATCH');
+        app(\App\Modules\Logistics\Application\Xlwms\ReshipmentFulfillmentService::class)
+            ->preview($o->id,$r->request_id);
+    }
+
+    public function test_m2_apply_single_approved_erp_shipment_does_not_write_woo(): void
+    {
+        [$o,$r]=$this->m2PendingFixture('3','USPS','9400111899223856928599',1,'2026-10-30 14:10:00');
+        config()->set('xlwms.m2_apply_enabled',true);
+        config()->set('xlwms.m2_order_id',$o->id);
+        config()->set('xlwms.m2_request_id',$r->request_id);
+        $actor=\App\Models\User::factory()->create(['is_active'=>true]);
+        $s=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentFulfillmentService::class);
+        $p=$s->preview($o->id,$r->request_id);
+        $this->assertTrue($p['can_apply'],json_encode($p));
+        $result=$s->apply($o->id,$r->request_id,$p['review_token'],$actor);
+        $this->assertSame('erp_shipped_website_pending',$result['status']);
+        $this->assertSame('shipped',$o->fresh()->shipment->shipment_status);
+        $this->assertSame('9400111899223856928599',$o->fresh()->shipment->tracking_number);
+        $this->assertSame('shipped',$o->fresh()->order_status->value);
+        $this->assertDatabaseHas('xlwms_reshipments',[
+            'request_id'=>$r->request_id,'status'=>'shipped_applied','cost_status'=>'pending',
+        ]);
+        $this->assertDatabaseHas('xlwms_reshipment_events',['event_code'=>'m2_erp_shipment_applied']);
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'wp-json'));
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('M2_PREFLIGHT_CHANGED');
+        $s->apply($o->id,$r->request_id,$p['review_token'],$actor);
+    }
+
+
+    public function test_m2_outbound_without_provider_time_is_not_ready(): void
+    {
+        [$o,$r]=$this->m2PendingFixture('3','USPS','9400111899223856928599');
+        $p=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentFulfillmentService::class)
+            ->preview($o->id,$r->request_id);
+        $this->assertContains('M2_OUTBOUND_TIME_MISSING',$p['blockers']);
+        $this->assertFalse($p['ready_for_erp_review']);
+        $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+    }
+
+    public function test_m2_changed_review_token_does_not_mark_shipped(): void
+    {
+        [$o,$r]=$this->m2PendingFixture('3','USPS','9400111899223856928599',1,'2026-10-30 14:10:00');
+        config()->set('xlwms.m2_apply_enabled',true);
+        config()->set('xlwms.m2_order_id',$o->id);
+        config()->set('xlwms.m2_request_id',$r->request_id);
+        try {
+            app(\App\Modules\Logistics\Application\Xlwms\ReshipmentFulfillmentService::class)
+                ->apply($o->id,$r->request_id,str_repeat('b',64),
+                    \App\Models\User::factory()->create(['is_active'=>true]));
+            $this->fail('Mismatched review token must block');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('M2_PREFLIGHT_CHANGED',$e->getMessage());
+        }
+        $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+        $this->assertDatabaseMissing('xlwms_reshipment_events',['event_code'=>'m2_erp_shipment_applied']);
+    }
+
+    public function test_m2_preflight_route_denies_user_without_logistics_operation(): void
+    {
+        [$o,$r]=$this->m2PendingFixture();
+        $unauthorized=\App\Models\User::factory()->create(['is_active'=>true]);
+        $this->actingAs($unauthorized)->getJson(
+            '/logistics/oversea/us-3sm/orders/'.$o->id.'/xlwms/m2/'.$r->request_id.'/preflight'
+        )->assertForbidden();
+        $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+    }
+
 }

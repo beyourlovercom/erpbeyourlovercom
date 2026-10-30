@@ -35,6 +35,10 @@ return [
     'reissue_create_enabled' => filter_var(env('XLWMS_REISSUE_CREATE_ENABLED', false), FILTER_VALIDATE_BOOL),
     'reissue_order_id' => (int) env('XLWMS_REISSUE_ORDER_ID', 0),
     'reissue_request_id' => (string) env('XLWMS_REISSUE_REQUEST_ID', ''),
+    // M2: separate, single-order shipment fact write. No OMS submit/CREATE and no Woo write.
+    'm2_apply_enabled' => filter_var(env('XLWMS_M2_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'm2_order_id' => (int) env('XLWMS_M2_ORDER_ID', 0),
+    'm2_request_id' => (string) env('XLWMS_M2_REQUEST_ID', ''),
     // Existing inventory-only release controls remain authoritative and fail closed.
     'inventory_sync_schedule_enabled' => filter_var(env('XLWMS_INVENTORY_SYNC_SCHEDULE_ENABLED', false), FILTER_VALIDATE_BOOL),
     'inventory_sync_schedule_minutes' => in_array((int) env('XLWMS_INVENTORY_SYNC_SCHEDULE_MINUTES', 30), [10, 30], true)
