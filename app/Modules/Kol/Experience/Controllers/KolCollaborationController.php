@@ -6,6 +6,7 @@ use App\Modules\Audit\Application\AuditActor;
 use App\Modules\Audit\Application\AuditSource;
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Kol\Application\Approval\CollaborationApprovalService;
+use App\Modules\Kol\Application\KolAffiliateIdentity;
 use App\Modules\Kol\Application\KolScope;
 use App\Modules\Kol\Infrastructure\Models\Kol;
 use App\Modules\Kol\Infrastructure\Models\KolCollaboration;
@@ -161,6 +162,9 @@ final class KolCollaborationController
             if ($locked->order_id) {
                 return ['order' => $locked->order()->with(['shipment.warehouse', 'manualSync'])->firstOrFail(), 'created' => false];
             }
+            if (! KolAffiliateIdentity::isReady((int) $kol->id)) {
+                return ['blocked' => true];
+            }
             abort_unless((bool) $locked->fulfillment_required, 422, '该正式合作未标记需要寄样 / 发货');
             $locked->load('products');
             abort_if($locked->products->isEmpty(), 422, '创建履约订单前必须至少指定一个合作产品');
@@ -194,6 +198,10 @@ final class KolCollaborationController
 
             return ['order' => $order->load(['shipment.warehouse', 'manualSync']), 'created' => true];
         });
+
+        if ($result['blocked'] ?? false) {
+            return response()->json(['message' => KolAffiliateIdentity::MISSING_MESSAGE], 422);
+        }
 
         $fresh = $collaboration->fresh();
         $this->recordAudit($request, 'kol.collaboration.fulfillment_order_linked', $fresh, null, $this->snapshot($fresh));

@@ -5,6 +5,7 @@ namespace App\Modules\Orders\Experience\Controllers;
 use App\Modules\Audit\Infrastructure\Models\AuditRecord;
 use App\Modules\Finance\Application\OrderAnalysisService;
 use App\Modules\Inventory\Application\Contracts\InventoryAvailabilityReader;
+use App\Modules\Kol\Application\KolAffiliateIdentity;
 use App\Modules\Kol\Application\KolScope;
 use App\Modules\Kol\Application\SavedViewService;
 use App\Modules\Kol\Infrastructure\Models\Kol;
@@ -28,6 +29,7 @@ use App\Modules\Sync\Application\WooOrderSyncHealthReader;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\Response as HttpResponse;
@@ -101,12 +103,17 @@ final class OrderController
             ? Kol::query()->whereNull('archived_at')
                 ->when(! KolScope::isAllScope($request->user()),
                     fn ($query) => $query->where('owner_id', $request->user()->getAuthIdentifier()))
+                ->withExists(['affiliateAccounts as affiliate_ready' => fn ($query) => KolAffiliateIdentity::scopeActiveAffiliate($query)])
                 ->orderBy('display_name')->limit(1500)->get(['id', 'display_name'])
-                ->map(fn (Kol $kol): array => ['value' => (int) $kol->id, 'label' => $kol->display_name])->all()
+                ->map(fn (Kol $kol): array => [
+                    'value' => (int) $kol->id, 'label' => $kol->display_name,
+                    'hasAffiliate' => (bool) $kol->affiliate_ready,
+                ])->all()
             : [];
         $requestedKolId = $request->integer('kol_id');
-        $selectedKolId = $requestedKolId > 0 && collect($kolOptions)->contains('value', $requestedKolId)
-            ? $requestedKolId : null;
+        $requestedKol = collect($kolOptions)->firstWhere('value', $requestedKolId);
+        $selectedKolId = $requestedKol && $requestedKol['hasAffiliate'] ? $requestedKolId : null;
+        $requestedKolUnbound = $requestedKol && ! $requestedKol['hasAffiliate'];
 
         return Inertia::render('Orders/Create', [
             'defaultOrderKind' => $kind->value,
@@ -114,6 +121,7 @@ final class OrderController
             'generatedExternalOrderNumber' => $this->orders->generateExternalOrderNumber($kind),
             'kolOptions' => $kolOptions,
             'selectedKolId' => $selectedKolId,
+            'requestedKolUnbound' => (bool) $requestedKolUnbound,
         ]);
     }
 
@@ -121,19 +129,25 @@ final class OrderController
     {
         KolOrderAccessScope::authorizeCreate($request->user(), $this->kind($request));
         $kind = $this->kind($request);
+        // A new manually created KOL order must never use the legacy identity-less path.
+        if ($kind === OrderKind::KolFulfillment) {
+            abort_unless($request->user()->can('kol.view'), 403);
+        }
         $data = $request->validate([
             ...$this->rules(),
-            // Legacy KOL import/API creators without kol.view remain backward compatible.
-            // Staff using KOL library must supply an authoritative identity.
             'kol_id' => $kind === OrderKind::KolFulfillment
-                ? [$request->user()->can('kol.view') ? 'required' : 'nullable', 'integer',
-                    Rule::exists('kols', 'id')->whereNull('archived_at')]
+                ? ['required', 'integer', Rule::exists('kols', 'id')->whereNull('archived_at')]
                 : ['prohibited'],
         ]);
         if ($kind === OrderKind::KolFulfillment && filled($data['kol_id'] ?? null)) {
             abort_unless($request->user()->can('kol.view'), 403);
             $kol = Kol::query()->findOrFail($data['kol_id']);
             abort_unless(KolScope::isAllScope($request->user()) || (int) $kol->owner_id === (int) $request->user()->getAuthIdentifier(), 403);
+            if (! KolAffiliateIdentity::isReady((int) $kol->id)) {
+                throw ValidationException::withMessages([
+                    'kol_id' => KolAffiliateIdentity::MISSING_MESSAGE,
+                ]);
+            }
         } else {
             unset($data['kol_id']);
         }

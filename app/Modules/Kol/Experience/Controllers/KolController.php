@@ -3,6 +3,7 @@
 namespace App\Modules\Kol\Experience\Controllers;
 
 use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Kol\Application\KolAffiliateIdentity;
 use App\Modules\Kol\Application\KolCreateAutoProvisionService;
 use App\Modules\Kol\Application\KolEditAccountService;
 use App\Modules\Kol\Application\KolScope;
@@ -208,7 +209,8 @@ final class KolController
 
         $affiliateAccount = $this->affiliateAccountData($kol);
         $affiliateId = (int) ($affiliateAccount['affiliate_id'] ?? 0);
-        $affiliateAdminUrl = $affiliateId > 0 && ($affiliateAccount['connection_key'] ?? null) === 'beyourlover.com'
+        $affiliateAdminUrl = $affiliateId > 0 && ($affiliateAccount['connection_key'] ?? null) === KolAffiliateIdentity::CONNECTION_KEY
+            && ($affiliateAccount['provider_status'] ?? null) === 'active'
             ? 'https://www.beyourlover.com/wp-admin/admin.php?page=affiliate-wp-affiliates&affiliate_id='.$affiliateId.'&action=edit_affiliate'
             : null;
 

@@ -5,7 +5,9 @@ namespace Tests\Feature\Kol;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use App\Modules\Kol\Application\KolAffiliateIdentity;
 use App\Modules\Kol\Infrastructure\Models\Kol;
+use App\Modules\Kol\Infrastructure\Models\KolAffiliateAccount;
 use App\Modules\Kol\Infrastructure\Models\KolCollaboration;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
@@ -26,6 +28,7 @@ class KolFulfillmentBridgeTest extends TestCase
             'shipping_province_state' => 'CA', 'shipping_city' => 'Los Angeles', 'shipping_postal_code' => '90001',
             'shipping_address_line_1' => '123 Creator St',
         ]);
+        $this->bindAffiliate($kol);
         $product = Product::create(['source_type' => 'manual', 'sku' => 'KOL-SAMPLE-1', 'name' => 'Sample One', 'is_active' => true]);
         $collaboration = KolCollaboration::create(['kol_id' => $kol->id, 'owner_id' => $user->id, 'status' => 'confirmed', 'currency' => 'USD', 'fulfillment_required' => true]);
         $collaboration->products()->create(['product_id' => $product->id, 'sku_snapshot' => $product->sku, 'product_name_snapshot' => $product->name, 'quantity' => 2]);
@@ -74,11 +77,36 @@ class KolFulfillmentBridgeTest extends TestCase
         $this->assertDatabaseCount('orders', 0);
     }
 
+    public function test_r61_bridge_requires_active_affiliate_binding_for_new_fulfillment(): void
+    {
+        [$user, $kol, $collaboration] = $this->fixture(true, true);
+        KolAffiliateAccount::where('kol_id', $kol->id)->delete();
+        $this->actingAs($user)->postJson("/kol/library/{$kol->id}/collaborations/{$collaboration->id}/fulfillment-order")
+            ->assertStatus(422)->assertJsonPath('message', KolAffiliateIdentity::MISSING_MESSAGE);
+        $this->assertDatabaseCount('orders', 0);
+        $this->assertNull($collaboration->fresh()->order_id);
+
+        $this->bindAffiliate($kol);
+        $this->actingAs($user)->postJson("/kol/library/{$kol->id}/collaborations/{$collaboration->id}/fulfillment-order")
+            ->assertCreated()->assertJsonPath('created', true);
+        $this->assertDatabaseHas('orders', ['order_kind' => 'kol_fulfillment', 'kol_id' => $kol->id]);
+    }
+
+    private function bindAffiliate(Kol $kol): void
+    {
+        KolAffiliateAccount::create([
+            'connection_key' => 'beyourlover.com', 'affiliate_id' => 60000 + $kol->id,
+            'wordpress_user_id' => 70000 + $kol->id, 'kol_id' => $kol->id,
+            'provider_status' => 'active',
+        ]);
+    }
+
     private function fixture(bool $fulfillmentRequired, bool $withProduct): array
     {
         $user = User::factory()->create(['is_active' => true]);
         $this->grant($user, ['kol.view', 'kol.operate', 'orders.create', 'orders.view']);
         $kol = Kol::create(['display_name' => 'Fixture Creator', 'status' => 'active', 'relationship_stage' => 'cooperating', 'owner_id' => $user->id]);
+        $this->bindAffiliate($kol);
         $collaboration = KolCollaboration::create(['kol_id' => $kol->id, 'owner_id' => $user->id, 'status' => 'confirmed', 'currency' => 'USD', 'fulfillment_required' => $fulfillmentRequired]);
         if ($withProduct) {
             $product = Product::create(['source_type' => 'manual', 'sku' => 'FIXTURE-SKU-'.uniqid(), 'name' => 'Fixture Product', 'is_active' => true]);
