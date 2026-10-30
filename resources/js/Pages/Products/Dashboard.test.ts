@@ -73,6 +73,25 @@ describe('Products/Dashboard R1–R4', () => {
     expect(wrapper.find('a[href="/products/360"]').exists()).toBe(true)
   })
 
+  it('places the order-detail-style sticky navigation before the centered content', async () => {
+    const wrapper = mount(Dashboard, { props })
+    const rail = wrapper.get('aside.product-home-nav-rail')
+    expect(rail.attributes('aria-label')).toBe('产品模块快捷定位')
+    expect(wrapper.get('.product-home-layout').element.firstElementChild).toBe(rail.element)
+    expect(wrapper.findAll('button.product-home-nav-item')).toHaveLength(4)
+    for (const id of ['product-section-overview', 'product-section-shortcuts',
+      'product-section-attention', 'product-section-recent']) {
+      expect(wrapper.find('#' + id).exists()).toBe(true)
+    }
+
+    const scrollIntoView = vi.fn()
+    const el = wrapper.get('#product-section-attention').element
+    Object.defineProperty(el, 'scrollIntoView', { value: scrollIntoView, configurable: true })
+    await wrapper.findAll('button.product-home-nav-item')[2].trigger('click')
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
+    expect(wrapper.findAll('button.product-home-nav-item')[2].attributes('aria-current')).toBe('location')
+  })
+
   it('renders honest empty state without fake product suggestions', () => {
     const wrapper = mount(Dashboard, { props: {
       ...props, totalProducts: 0, recentProducts: [],
