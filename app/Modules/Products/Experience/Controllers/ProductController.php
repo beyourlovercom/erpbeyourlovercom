@@ -252,7 +252,7 @@ final class ProductController
             'cnf' => null,
             'material_name' => null,
             'packaging_dimensions' => null,
-            'brand' => null,
+            'brand' => $p->brand,
         ];
     }
 
@@ -320,7 +320,7 @@ final class ProductController
             'image_url' => '图片链接', 'woo_url' => '官网链接',
             'units_per_carton' => '标准装箱数', 'packaging_dimensions' => '包装尺寸（待接入）',
             'weight_kg' => '商品重量 kg', 'regular_price' => '原价',
-            'sale_price' => '售价', 'brand' => '品牌（待接入）',
+            'sale_price' => '售价', 'brand' => '品牌',
             'available_stock' => '可用库存（已核实仓库）',
             'gtin' => 'GTIN', 'label_description' => '蓝标描述',
             'dimensions_cm' => '商品尺寸 cm', 'shipping_weight_kg' => '运重 kg',
@@ -376,6 +376,8 @@ final class ProductController
                 'id' => (int) $product->id,
                 'name' => $product->name,
                 'sku' => $product->sku,
+                'brand' => $product->brand,
+                'has_battery' => (bool) $product->has_battery,
                 'barcode_69' => $product->barcode_69,
                 'source_type' => $product->source_type,
                 'status' => $product->is_active ? 'active' : 'inactive',
@@ -466,7 +468,7 @@ final class ProductController
                     })->orderBy('name')->get(['id', 'name'])->toArray()
                 : [],
             'canOperate' => Auth::user()?->can(AuthorizationKeys::ProductsOperate->value) ?? false,
-            'canSync' => Auth::user()?->can(AuthorizationKeys::SyncOperate->value) ?? false,
+            'canSync' => (Auth::user()?->can(AuthorizationKeys::SyncOperate->value) ?? false) && $canManageProduct,
             'hasWooProductReference' => $configuredProductReference !== null,
         ]);
     }

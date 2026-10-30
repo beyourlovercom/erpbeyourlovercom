@@ -91,6 +91,7 @@ const reviewInitial = () => Object.fromEntries(reviewParameterFields.map(
 )) as Record<string, string>
 const parametersForm = useForm({
   barcode_69: String(props.product.barcode_69 ?? ''),
+  has_battery: Boolean(props.product.has_battery ?? true),
   weight_kg: String(props.product.weight_kg ?? ''),
   shipping_weight_kg: String(props.product.shipping_weight_kg ?? ''),
   length_cm: String(props.product.length_cm ?? ''),
@@ -101,6 +102,7 @@ const parametersForm = useForm({
 const parameterErrors = computed(() => parametersForm.errors as Record<string, string>)
 function beginParametersEdit() {
   parametersForm.barcode_69 = String(props.product.barcode_69 ?? '')
+  parametersForm.has_battery = Boolean(props.product.has_battery ?? true)
   for (const field of masterParameterFields) {
     parametersForm[field.key] = String(props.product[field.key] ?? '')
   }
@@ -314,13 +316,24 @@ const selectRelative = async (tab: Tab, delta: number) => {
           <p class="product360-meta-note">直接编辑 ERP 主档；带“审核”的参数保存后进入待审核队列，不会覆盖现有已确认数据。</p>
           <h4>ERP 主档 · 保存后生效</h4>
           <div class="product360-inline-fields">
+            <div class="product360-inline-field"><span>产品名称</span><strong>{{ display(product.name) }}</strong></div>
+            <div class="product360-inline-field"><span>品牌 <small>来自 WordPress brand</small></span><strong>{{ display(product.brand) }}</strong></div>
+            <div class="product360-inline-field"><span>型号（SKU）</span><strong>{{ display(product.sku) }}</strong></div>
+            <fieldset class="product360-inline-field" style="border:0;padding:0;margin:0">
+              <legend>是否带电</legend>
+              <div style="display:flex;gap:16px;align-items:center;margin-top:8px">
+                <label><input v-model="parametersForm.has_battery" type="radio" :value="true" name="battery_state"> 带电</label>
+                <label><input v-model="parametersForm.has_battery" type="radio" :value="false" name="battery_state"> 不带电</label>
+              </div>
+              <small v-if="parameterErrors.has_battery" class="product360-inline-error">{{ parameterErrors.has_battery }}</small>
+            </fieldset>
             <label class="product360-inline-field" v-for="field in masterParameterFields" :key="field.key">
               <span>{{ field.label }} <small>{{ field.suffix }}</small></span>
               <input v-model="parametersForm[field.key]" type="number" step="any" min="0" inputmode="decimal" placeholder="待填写" :aria-invalid="!!parameterErrors[field.key]" />
               <small v-if="parameterErrors[field.key]" class="product360-inline-error">{{ parameterErrors[field.key] }}</small>
             </label>
             <label class="product360-inline-field">
-              <span>69条形码 <small>8–14 位数字，作为文本保存</small></span>
+              <span>69条码/制造商产品识别码 <small>8–14 位数字，作为文本保存</small></span>
               <input v-model="parametersForm.barcode_69" type="text" inputmode="numeric" maxlength="14" placeholder="待填写" :aria-invalid="!!parameterErrors.barcode_69" />
               <small v-if="parameterErrors.barcode_69" class="product360-inline-error">{{ parameterErrors.barcode_69 }}</small>
             </label>
@@ -337,7 +350,8 @@ const selectRelative = async (tab: Tab, delta: number) => {
           <p v-if="Object.keys(parameterErrors).length" role="alert" class="product360-inline-error">请按提示修正输入后重新保存。</p>
         </div>
         <div v-else class="product360-detail-grid product360-parameters-grid">
-          <p>产品名称：{{ display(product.name) }}</p><p>SKU：{{ display(product.sku) }}</p>
+          <p>产品名称：{{ display(product.name) }}</p><p>品牌：{{ display(product.brand) }}</p>
+          <p>型号（SKU）：{{ display(product.sku) }}</p><p>是否带电：{{ product.has_battery ? '带电' : '不带电' }}</p>
           <p>产品类型：{{ display(product.product_type) }}</p><p>产品材质：{{ approvedMeasure('material') }}</p>
           <p>重量组成说明：{{ approvedMeasure('weight_composition') }}</p>
           <p>已审核工厂净重：{{ approvedMeasure('net_weight_kg',' kg') }}</p>
@@ -346,7 +360,7 @@ const selectRelative = async (tab: Tab, delta: number) => {
           <p>运输参考重量：{{ weight(product.shipping_weight_kg) }}</p>
           <p>产品尺寸：{{ [product.length_cm, product.width_cm, product.height_cm].every(v => v !== null && v !== undefined) ? [product.length_cm, product.width_cm, product.height_cm].join(' × ') + ' cm' : '待填写' }}</p>
           <p>单件包装尺寸：{{ measured('package_length_cm') && measured('package_width_cm') && measured('package_height_cm') ? [measured('package_length_cm'),measured('package_width_cm'),measured('package_height_cm')].join(' × ') + ' cm' : '待填写' }}</p><p>外箱尺寸：{{ measured('carton_length_cm') && measured('carton_width_cm') && measured('carton_height_cm') ? [measured('carton_length_cm'),measured('carton_width_cm'),measured('carton_height_cm')].join(' × ') + ' cm' : '待填写' }} · 装箱：{{ approvedMeasure('units_per_carton',' pcs') }} · 整箱毛重：{{ approvedMeasure('carton_gross_weight_kg',' kg') }}</p>
-          <p>69条形码：{{ display(product.barcode_69) }}</p>
+          <p>69条码/制造商产品识别码：{{ display(product.barcode_69) }}</p>
         </div>
         <p class="product360-meta-note">产品净重、运输参考重量、彩盒毛重和快递毛重不能互相替代。待核实资料不得伪装为已确认参数。</p>
         <div class="product360-v2-actions"><button type="button" class="mvp-button mvp-button-secondary" @click="activeSubTab='参数填报与审核'">工厂填报</button><button type="button" class="mvp-button mvp-button-secondary" @click="activeSubTab='包装与配件'">包装与配件</button></div>
