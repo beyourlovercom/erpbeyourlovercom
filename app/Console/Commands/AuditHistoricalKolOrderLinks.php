@@ -69,7 +69,7 @@ final class AuditHistoricalKolOrderLinks extends Command
                 ->get(['external_order_number'])->countBy('external_order_number');
 
             foreach ($orders as $order) {
-                ++$counts['total'];
+                $counts['total']++;
                 $status = 'missing_evidence';
                 $candidateId = null;
                 $evidence = 'none';
@@ -114,21 +114,21 @@ final class AuditHistoricalKolOrderLinks extends Command
                         } else {
                             // Affiliate referrals represent SALES attribution, not proof of a fulfillment order.
                             $referrals = $db->table('kol_affiliate_referrals')
-                            ->where('connection_key', 'beyourlover.com')
-                            ->where('order_id', $order->id)->whereNotNull('kol_id')
-                            ->distinct()->pluck('kol_id')->map(fn ($v) => (int) $v)->all();
-                        if (count($referrals) > 1) {
-                            $status = 'conflict';
-                            $evidence = 'multiple_affiliate_referrals_review_only';
-                        } elseif (count($referrals) === 1) {
-                            $status = 'referral_review_only';
-                            $candidateId = $referrals[0];
-                            $evidence = 'affiliate_sales_attribution_not_fulfillment_proof';
+                                ->where('connection_key', 'beyourlover.com')
+                                ->where('order_id', $order->id)->whereNotNull('kol_id')
+                                ->distinct()->pluck('kol_id')->map(fn ($v) => (int) $v)->all();
+                            if (count($referrals) > 1) {
+                                $status = 'conflict';
+                                $evidence = 'multiple_affiliate_referrals_review_only';
+                            } elseif (count($referrals) === 1) {
+                                $status = 'referral_review_only';
+                                $candidateId = $referrals[0];
+                                $evidence = 'affiliate_sales_attribution_not_fulfillment_proof';
                             }
                         }
                     }
                 }
-                ++$counts[$status];
+                $counts[$status]++;
                 if ($handle !== null) {
                     fputcsv($handle, [$order->erp_order_id, $order->id, $status, $candidateId, $evidence]);
                 }

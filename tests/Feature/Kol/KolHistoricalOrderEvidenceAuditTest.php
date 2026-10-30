@@ -34,16 +34,15 @@ final class KolHistoricalOrderEvidenceAuditTest extends TestCase
             'source_checksum' => str_repeat('a', 64), 'status' => 'committed',
             'total_rows' => 3, 'created_at' => now(), 'updated_at' => now(),
         ]);
-        $makeImportRow = fn (int $rowNumber, Order $order, string $classification): int =>
-            DB::table('logistics_historical_import_rows')->insertGetId([
-                'batch_id' => $batchId, 'source_row_number' => $rowNumber,
-                'source_order_no' => $order->external_order_number,
-                'kol_id' => $kol->id, 'classification' => $classification,
-                'classification_reason' => $classification === 'ready'
-                    ? 'exact_tracking_and_kol_match' : 'multiple_tracking_candidates',
-                'evidence_hash' => str_repeat('b', 64),
-                'created_at' => now(), 'updated_at' => now(),
-            ]);
+        $makeImportRow = fn (int $rowNumber, Order $order, string $classification): int => DB::table('logistics_historical_import_rows')->insertGetId([
+            'batch_id' => $batchId, 'source_row_number' => $rowNumber,
+            'source_order_no' => $order->external_order_number,
+            'kol_id' => $kol->id, 'classification' => $classification,
+            'classification_reason' => $classification === 'ready'
+                ? 'exact_tracking_and_kol_match' : 'multiple_tracking_candidates',
+            'evidence_hash' => str_repeat('b', 64),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
         $readyRowId = $makeImportRow(1, $ready, 'ready');
         $makeImportRow(2, $review, 'review');
         $mismatchRowId = $makeImportRow(3, $hashMismatch, 'ready');
@@ -58,7 +57,6 @@ final class KolHistoricalOrderEvidenceAuditTest extends TestCase
                 'created_at' => now(), 'updated_at' => now(),
             ]);
         }
-
 
         DB::table('kol_collaborations')->insert([
             'kol_id' => $kol->id, 'order_id' => $formal->id, 'owner_id' => $owner->id,
