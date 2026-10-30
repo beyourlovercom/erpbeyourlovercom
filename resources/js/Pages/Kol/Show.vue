@@ -128,7 +128,8 @@ const breadcrumbs = [{ label: 'BYL ERP', href: '/dashboard' }, { label: '红人�
         <div class="kol-detail-toolbar__trail">KOL 资料库 / KOL 详情</div>
         <div class="kol-detail-toolbar__actions page-header-actions">
           <Link class="kol-action-button" href="/kol/library">返回列表</Link>
-          <Link v-if="canCreateOrders && !kol.archived_at" class="kol-action-button kol-action-button--primary" :href="`/kol/orders/create?kol_id=${kol.id}`" data-testid="kol-create-order">新建网红订单</Link>
+          <Link v-if="canCreateOrders && !kol.archived_at && affiliateAdminUrl" class="kol-action-button kol-action-button--primary" :href="`/kol/orders/create?kol_id=${kol.id}`" data-testid="kol-create-order">新建网红订单</Link>
+          <span v-if="!kol.archived_at && !affiliateAdminUrl" role="status" data-testid="affiliatewp-unbound-warning">AffiliateWP 未绑定或未激活：请先完成账号绑定，再创建新网红订单。</span>
           <a v-if="affiliateAdminUrl" class="kol-action-button" :href="affiliateAdminUrl" target="_blank" rel="noopener noreferrer" data-testid="affiliatewp-edit-link">AffiliateWP 账号 ↗</a>
           <button v-if="affiliateAdminUrl" class="kol-action-button" type="button" data-testid="affiliatewp-copy-url" @click="copyAffiliateUrl">复制地址</button>
           <span v-if="affiliateCopyStatus" role="status">{{ affiliateCopyStatus }}</span>

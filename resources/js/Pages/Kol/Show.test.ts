@@ -23,8 +23,9 @@ describe('KOL Show formal collaboration projection', () => {
 describe('R6 profile-to-order entry contract', () => {
   it('only shows the new order action for users with create access and a non-archived KOL', () => {
     expect(source).toContain('data-testid="kol-create-order"')
-    expect(source).toContain('canCreateOrders && !kol.archived_at')
+    expect(source).toContain('canCreateOrders && !kol.archived_at && affiliateAdminUrl')
     expect(source).toContain('/kol/orders/create?kol_id=')
+    expect(source).toContain('data-testid="affiliatewp-unbound-warning"')
   })
 })
 

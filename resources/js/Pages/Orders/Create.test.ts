@@ -53,7 +53,7 @@ describe('Orders/Create V2', () => {
     const wrapper = mount(Create, { props: {
       ...kolProps,
       selectedKolId: 42,
-      kolOptions: [{ value: 42, label: 'Synthetic KOL' }, { value: 43, label: 'Other KOL' }],
+      kolOptions: [{ value: 42, label: 'Synthetic KOL', hasAffiliate: true }, { value: 43, label: 'Other KOL', hasAffiliate: false }],
     } })
     const input = wrapper.get('[data-testid="kol-identity-select"]')
     expect((input.element as HTMLSelectElement).value).toBe('42')
@@ -63,6 +63,16 @@ describe('Orders/Create V2', () => {
     const customer = mount(Create, { props: { ...customerProps, selectedKolId: 42 } })
     expect(customer.find('[data-testid="kol-identity-select"]').exists()).toBe(false)
     customer.unmount()
+  })
+
+  it('disables unbound AffiliateWP options and explains a blocked requested KOL', () => {
+    const wrapper = mount(Create, { props: {
+      ...kolProps, selectedKolId: null, requestedKolUnbound: true,
+      kolOptions: [{ value: 5, label: 'Unbound', hasAffiliate: false }],
+    } })
+    expect((wrapper.get('option[value="5"]').element as HTMLOptionElement).disabled).toBe(true)
+    expect(wrapper.get('[data-testid="kol-affiliate-unbound"]').text()).toContain('AffiliateWP')
+    wrapper.unmount()
   })
 
   it('renders 新建网红履约订单 title for kol route', () => {

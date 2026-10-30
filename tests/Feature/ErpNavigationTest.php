@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Kol\Infrastructure\Models\Kol;
+use App\Modules\Kol\Infrastructure\Models\KolAffiliateAccount;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Infrastructure\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -38,10 +39,19 @@ class ErpNavigationTest extends TestCase
 
     private function fixtureKolId(): int
     {
-        return (int) Kol::create([
+        $kol = Kol::create([
             'display_name' => 'Synthetic Navigation KOL', 'status' => 'active',
             'relationship_stage' => 'cooperating', 'owner_id' => auth()->id(),
-        ])->id;
+        ]);
+        KolAffiliateAccount::create([
+            'connection_key' => 'beyourlover.com',
+            'kol_id' => $kol->id,
+            'affiliate_id' => 90000 + $kol->id,
+            'provider_status' => 'active',
+            'origin' => 'external_sync',
+        ]);
+
+        return (int) $kol->id;
     }
 
     public function test_every_declared_navigation_path_is_available(): void

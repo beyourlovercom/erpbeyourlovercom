@@ -79,6 +79,7 @@ final class KolTwoHopNavigationV1Test extends TestCase
         $staff = $this->viewer(['orders.view', 'orders.create', 'kol.view']);
         $outsider = $this->viewer(['orders.view', 'orders.create', 'kol.view']);
         $kol = $this->kol($staff);
+        $this->bindAffiliate($kol);
 
         $this->actingAs($staff)->get('/kol/orders/create?kol_id='.$kol->id)->assertOk()
             ->assertInertia(fn ($page) => $page->component('Orders/Create')
@@ -99,6 +100,7 @@ final class KolTwoHopNavigationV1Test extends TestCase
         $staff = $this->viewer(['orders.view', 'orders.create', 'kol.view']);
         $outsider = $this->viewer(['orders.view', 'orders.create', 'kol.view']);
         $kol = $this->kol($staff);
+        $this->bindAffiliate($kol);
         $product = Product::create(['source_type' => 'manual', 'sku' => 'TW-HOP-SKU', 'name' => 'Two Hop Product', 'is_active' => true]);
         $payload = [
             'external_order_number' => 'TW-HOP-ORDER', 'order_date' => '2026-10-29',
@@ -113,6 +115,53 @@ final class KolTwoHopNavigationV1Test extends TestCase
         $this->assertDatabaseCount('orders', 0);
         $this->actingAs($staff)->post('/kol/orders', [...$payload, 'kol_id' => $kol->id])->assertRedirect();
         $this->assertDatabaseHas('orders', ['order_kind' => 'kol_fulfillment', 'kol_id' => $kol->id]);
+    }
+
+    public function test_r61_unbound_or_inactive_affiliate_blocks_all_manual_kol_orders(): void
+    {
+        $staff = $this->viewer(['orders.view', 'orders.create', 'kol.view']);
+        $legacyRole = $this->viewer(['orders.view', 'orders.create']);
+        $kol = $this->kol($staff);
+        $product = Product::create(['source_type' => 'manual', 'sku' => 'R61-ITEM', 'name' => 'R61', 'is_active' => true]);
+        $payload = [
+            'external_order_number' => 'R61-MANUAL-ORDER', 'order_date' => '2026-10-30',
+            'currency' => 'USD', 'kol_id' => $kol->id,
+            'recipient_name' => 'Test', 'phone' => '123', 'country' => 'US',
+            'province_state' => 'CA', 'city' => 'Los Angeles', 'address_line_1' => 'Sample',
+            'items' => [['product_id' => $product->id, 'product_summary' => 'R61', 'quantity' => 1, 'unit_price' => '0.00']],
+        ];
+        $this->actingAs($staff)->get('/kol/library/'.$kol->id)->assertOk()
+            ->assertInertia(fn ($page) => $page->where('affiliateAdminUrl', null));
+        $this->actingAs($staff)->get('/kol/orders/create?kol_id='.$kol->id)->assertOk()
+            ->assertInertia(fn ($page) => $page->where('selectedKolId', null)
+                ->where('requestedKolUnbound', true)
+                ->where('kolOptions.0.hasAffiliate', false));
+        $this->actingAs($staff)->post('/kol/orders', $payload)->assertSessionHasErrors('kol_id');
+        $this->actingAs($legacyRole)->post('/kol/orders', $payload)->assertForbidden();
+        $this->assertDatabaseCount('orders', 0);
+
+        $this->bindAffiliate($kol, 'inactive');
+        $this->actingAs($staff)->post('/kol/orders', $payload)->assertSessionHasErrors('kol_id');
+        $this->actingAs($staff)->get('/kol/library/'.$kol->id)->assertOk()
+            ->assertInertia(fn ($page) => $page->where('affiliateAdminUrl', null));
+        $this->assertDatabaseCount('orders', 0);
+
+        KolAffiliateAccount::where('kol_id', $kol->id)->update(['provider_status' => 'active']);
+        $this->actingAs($staff)->get('/kol/orders/create?kol_id='.$kol->id)->assertOk()
+            ->assertInertia(fn ($page) => $page->where('selectedKolId', $kol->id)
+                ->where('requestedKolUnbound', false)
+                ->where('kolOptions.0.hasAffiliate', true));
+        $this->actingAs($staff)->post('/kol/orders', $payload)->assertRedirect();
+        $this->assertDatabaseHas('orders', ['order_kind' => 'kol_fulfillment', 'kol_id' => $kol->id]);
+    }
+
+    private function bindAffiliate(Kol $kol, string $status = 'active'): void
+    {
+        KolAffiliateAccount::create([
+            'connection_key' => 'beyourlover.com', 'affiliate_id' => 20000 + $kol->id,
+            'wordpress_user_id' => 30000 + $kol->id, 'kol_id' => $kol->id,
+            'provider_status' => $status, 'origin' => 'external_sync',
+        ]);
     }
 
     private function viewer(array $permissions): User
