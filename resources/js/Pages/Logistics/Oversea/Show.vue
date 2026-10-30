@@ -387,6 +387,7 @@ const reshipIntent=reactive<Record<number,{request_id:string;status:string;can_c
 const reshipApproved=reactive<Record<number,boolean>>({})
 const reshipCanCreate=reactive<Record<number,boolean>>({})
 const reshipOmsNo=reactive<Record<number,string>>({})
+const reshipManualOmsNo=reactive<Record<number,string>>({})
 const reshipProviderStatus=reactive<Record<number,string>>({})
 const reshipProviderTracking=reactive<Record<number,string>>({})
 const reshipPost=async (row:Row, action:'reship-intent'|'reship-approve', body:Record<string,unknown>) => {
@@ -455,6 +456,32 @@ const createReshipDraft=async(row:Row)=>{
     }
   }catch(e){
     reshipError[row.order_id]=(e instanceof Error?e.message:'请求结果未知')+'；禁止直接重发，请核实 OMS'
+  }finally{reshipBusy[row.order_id]=false}
+}
+const bindManualReship=async(row:Row)=>{
+  const request=reshipIntent[row.order_id]
+  const omsNo=(reshipManualOmsNo[row.order_id]??'').trim()
+  if(!props.canOperate||!request||!reshipApproved[row.order_id]
+    || !/^[A-Za-z0-9_-]{6,100}$/.test(omsNo)||reshipBusy[row.order_id])return
+  reshipBusy[row.order_id]=true;reshipError[row.order_id]=''
+  try{
+    const token=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
+    if(!token)throw Error('CSRF 校验信息缺失')
+    const res=await fetch(`/logistics/oversea/us-3sm/orders/${row.order_id}/xlwms/reship-manual-bind/${encodeURIComponent(request.request_id)}`,{
+      method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json','Accept':'application/json','X-CSRF-TOKEN':token},
+      body:JSON.stringify({oms_order_no:omsNo})
+    })
+    const payload=await res.json()
+    if(!res.ok)throw Error(payload.code??'OMS 草稿绑定失败')
+    if(payload.oms_order_no!==omsNo)throw Error('OMS 编号身份不符')
+    reshipOmsNo[row.order_id]=omsNo
+    reshipProviderStatus[row.order_id]='0'
+    reshipCanCreate[row.order_id]=false
+    notifyOms('SUCCESS','OMS 人工草稿已绑定',omsNo)
+  }catch(e){
+    reshipError[row.order_id]=e instanceof Error?e.message:'OMS 草稿绑定失败'
+    notifyOms('ERROR','人工草稿绑定失败',reshipError[row.order_id])
   }finally{reshipBusy[row.order_id]=false}
 }
 const refreshReshipStatus=async(row:Row)=>{
@@ -759,7 +786,7 @@ const compactPages = computed<(number|string)[]>(() => {
         </aside>
         <main class="oversea-main">
       <header class="oversea-heading">
-        <div><h1>{{ pageTitle }}</h1><p>审核 Vita 分仓结果；通过后进入真实下单，驳回则退回运营重新分配。</p><p v-if="warehouseKey === 'us-3sm'" class="xlwms-channel-hint">世迈仓统一使用无需物流服务（No_Shipping_Service），不需上传面单；API 仅创建 OMS 草稿，仓库接单和真实发货状态需要后续核对。</p><p v-if="warehouseKey === 'us-moreplus'" class="xlwms-channel-hint">ShipOut 自动渠道和指定渠道需核对仓库最终承运商，不能假定 USPS Priority。</p></div>
+        <div><h1>{{ pageTitle }}</h1><p>审核 Vita 分仓结果；通过后进入真实下单，驳回则退回运营重新分配。</p><p v-if="warehouseKey === 'us-3sm'" class="xlwms-channel-hint">世迈仓使用 USPS 上传面单（Upload_Shipping_Label）。ERP 下载现有导入表后由物流专员导入 OMS 草稿；真实面单未上传及 Tracking 未核实前禁止提交仓库。OpenAPI 创建会自动进入仓库处理中，已停用。</p><p v-if="warehouseKey === 'us-moreplus'" class="xlwms-channel-hint">ShipOut 自动渠道和指定渠道需核对仓库最终承运商，不能假定 USPS Priority。</p></div>
         <div class="oversea-file-actions">
           <a v-if="warehousePortal" class="file-button file-link warehouse-portal-link"
             :href="warehousePortal.href" target="_blank" rel="noopener noreferrer">
@@ -770,8 +797,9 @@ const compactPages = computed<(number|string)[]>(() => {
             {{ trackingBusy?'同步中…':'同步官网物流' }}</button>
           <template v-if="warehouse && view === 'pending'">
           <button v-if="warehouseKey === 'us-3sm' && canOperate" type="button" class="file-button" :disabled="refreshBusy" @click="refreshOmsStatuses">{{refreshBusy?'查询中…':'更新 OMS 状态'}}</button>
-          <button v-if="warehouseKey === 'us-3sm' && canOperate" type="button" class="file-button primary xlwms-batch-button" :disabled="batchBusy||!xlwmsBatchEnabled" :title="!xlwmsBatchEnabled?'真实下发权限关闭，请先获得受控单笔授权':'只处理当前授权订单'" @click="syncWarehouse">{{ batchBusy ? '同步中…' : '同步待发货订单' }}</button>
-          <a class="file-button file-link" :href="`${basePath}/export`">⇩ 下载仓库下单表</a>
+          <a v-if="warehouseKey === 'us-3sm'" class="file-button file-link" href="https://oms.xlwms.com/warehouse/packet" target="_blank" rel="noopener noreferrer">进入世迈 OMS 草稿箱</a>
+          <a class="file-button file-link" :href="`${basePath}/export`">{{warehouseKey==='us-3sm'?'⇩ 下载 USPS 草稿导入表':'⇩ 下载仓库下单表'}}</a>
+          <a v-if="warehouseKey==='us-3sm'" class="file-button file-link" href="/assets/xlwms-VOID-TEST-DO-NOT-SHIP.png" download="VOID_TEST_ONLY_NOT_USPS_DO_NOT_SHIP.png">⇩ 下载 VOID 测试占位图</a>
           <input ref="trackingFileInput" class="hidden-file" type="file" accept=".xlsx,.csv,.txt" @change="previewTrackingFile" />
           <button v-if="canOperate && canUploadTrackingFile" type="button" class="file-button primary" @click="chooseTrackingFile">⇧ 上传物流回传表</button>
           </template>
@@ -785,7 +813,7 @@ const compactPages = computed<(number|string)[]>(() => {
       </div>
       <div v-if="warehouse && view === 'pending'" class="oversea-file-flow">
         <template v-if="warehouseKey==='us-3sm'"><span>① Dede 审核</span><b>→</b><span>② 订单行 API 发货</span><b>→</b><span>③ OMS 状态查询</span><b>→</b><span>④ Tracking 核实与回写</span></template>
-        <template v-else><span>① 审核通过</span><b>→</b><span>② 下载仓库下单表</span><b>→</b><span>③ 上传仓库 / WMS</span><b>→</b><span>④ 仓库回传 Tracking</span><b>→</b><span>⑤ 上传 ERP 并确认发货</span></template>
+        <template v-else><span>① 审核通过</span><b>→</b><span>② 下载 USPS 草稿导入表</span><b>→</b><span>③ OMS 草稿－待提交</span><b>→</b><span>④ 人工上传真实面单并提交</span><b>→</b><span>⑤ 仓库 Tracking 回写 ERP</span></template>
         <small>{{ trackingFileHint }}</small>
       </div>
 
@@ -855,14 +883,10 @@ const compactPages = computed<(number|string)[]>(() => {
                     <small v-if="omsRow(row)?.oms_status_failure_code" class="xlwms-error" role="alert">{{ omsFailureText(omsRow(row)?.oms_status_failure_code) }}</small>
                   </template>
                   <template v-else-if="row.review_status === 'approved' && row.shipment_status === 'pending'">
-                    <span class="xlwms-state">待下发</span>
+                    <span class="xlwms-state">待导入 OMS 草稿</span>
                     <small v-if="row.warehouse_dispatch?.detail" class="xlwms-note">{{row.warehouse_dispatch.detail}}</small>
-                    <button v-if="canOperate && !omsPreflight[row.order_id]" type="button" class="xlwms-action" :disabled="omsBusy[row.order_id] || omsFinishedThisPage[row.order_id]" @click="omsPreflightStart(row)">{{ omsBusy[row.order_id]?'预检中…':'API 发货' }}</button>
-                    <div v-if="omsPreflight[row.order_id]" class="xlwms-confirm">
-                      <small>校验：{{omsPreflight[row.order_id].oms_warehouse}} · {{omsPreflight[row.order_id].items.map(i=>i.sku+' × '+i.quantity).join(' / ')}}</small>
-                      <button v-if="omsReadyToSend(row)" type="button" class="xlwms-action primary" :disabled="omsBusy[row.order_id]" @click="omsSend(row)">确认创建 OMS 草稿</button>
-                      <small v-else>尚未获得此订单的实际发货授权</small>
-                    </div>
+                    <small class="xlwms-note">仅支持 OMS 官方导入 / 网页保存草稿；旧 OpenAPI CREATE 已停用</small>
+                    <a class="xlwms-action" href="https://oms.xlwms.com/warehouse/packet/create" target="_blank" rel="noopener noreferrer">OMS 手动新建草稿</a>
                   </template>
                   <span v-else class="xlwms-note">{{ row.review_status !== 'approved' ? '待 Dede 审核' : '不允许重复发货' }}</span>
                   <div v-if="canOperate && (row.shipment_status==='shipped' || (row.shipment_status==='pending' && !!omsRow(row)?.oms_order_no))" class="xlwms-reship-readonly">
@@ -874,7 +898,7 @@ const compactPages = computed<(number|string)[]>(() => {
                       <small>原订单 {{reshipPreview[row.order_id].erp_order_id}} · 原 OMS {{reshipPreview[row.order_id].original_oms_order_no??'未关联'}}</small>
                       <small>{{reshipPreview[row.order_id].items.map(i=>i.sku+' × '+i.quantity).join(' / ')}}</small>
                       <small>{{reshipPreview[row.order_id].recipient}} · {{reshipPreview[row.order_id].address.address_1}} · {{reshipPreview[row.order_id].address.city}}</small>
-                      <small>渠道：无需物流服务 · 不自动提交仓库 · ERP 保留操作原因</small>
+                      <small>渠道：USPS上传物流面单 · OMS 导入/网页保存草稿 · 实际面单由物流专员手动替换</small>
                       <small v-if="reshipPreview[row.order_id].blockers.length && !reshipIntent[row.order_id]" class="xlwms-error">{{reshipPreview[row.order_id].blockers.map(b=>b==='original_oms_identity_missing'?'原 OMS 单号未关联，无法安全创建新仓库单':b==='source_order_not_shipped_or_original_oms_not_canceled'?'原 OMS 尚未实时确认取消，或 ERP 发货事实不满足条件':b).join('；')}}</small>
                       <template v-if="reshipPreview[row.order_id].ready_for_review || !!reshipIntent[row.order_id]">
                         <template v-if="!reshipIntent[row.order_id]">
@@ -892,15 +916,21 @@ const compactPages = computed<(number|string)[]>(() => {
                         </template>
                         <small v-else>申请审核已记录；核对旧 OMS 状态后才允许创建新草稿</small>
                       </template>
-                      <button v-if="reshipApproved[row.order_id] && reshipCanCreate[row.order_id] && !reshipOmsNo[row.order_id]"
-                        type="button" class="xlwms-action primary" :disabled="reshipBusy[row.order_id]"
-                        @click="createReshipDraft(row)">创建独立 OMS 草稿（单笔授权）</button>
+                      <a v-if="reshipApproved[row.order_id] && reshipIntent[row.order_id] && !reshipOmsNo[row.order_id]"
+                        class="xlwms-action primary"
+                        :href="`/logistics/oversea/us-3sm/orders/${row.order_id}/xlwms/reship-manual-draft/${encodeURIComponent(reshipIntent[row.order_id].request_id)}`">⇩ 下载独立 Reship 草稿导入表</a>
+                      <small v-if="reshipApproved[row.order_id] && !reshipOmsNo[row.order_id]">ERP 不会向世迈自动提交。请将导入表上传 OMS，人工核对草稿后再处理真实 USPS 面单</small>
+                      <div v-if="reshipApproved[row.order_id] && reshipIntent[row.order_id] && !reshipOmsNo[row.order_id]" class="xlwms-confirm">
+                        <small>OMS 导入后，填写新 OMS 出库单号；仅状态 0、渠道 USPS 上传面单、SKU/数量及唯一参考号全部匹配才可绑定</small>
+                        <input v-model="reshipManualOmsNo[row.order_id]" class="xlwms-reship-reason" placeholder="OMS 出库单号 OBS..." maxlength="100" />
+                        <button type="button" class="xlwms-action" :disabled="reshipBusy[row.order_id] || !(reshipManualOmsNo[row.order_id]??'').trim()" @click="bindManualReship(row)">核对 OMS 草稿并关联 ERP</button>
+                      </div>
                       <small v-if="reshipOmsNo[row.order_id]">新 OMS 出库单：{{reshipOmsNo[row.order_id]}}（原单保留）</small>
                       <button v-if="reshipOmsNo[row.order_id]" type="button" class="xlwms-action"
                         :disabled="reshipBusy[row.order_id]" @click="refreshReshipStatus(row)">查询新 OMS 状态</button>
                       <small v-if="reshipProviderStatus[row.order_id]">新 OMS 原始状态码：{{reshipProviderStatus[row.order_id]}}（未自动同步官网）</small>
                       <small v-if="reshipProviderTracking[row.order_id]">新 OMS Tracking：{{reshipProviderTracking[row.order_id]}}（原运单保留）</small>
-                      <small>真实 CREATE 需要单笔订单及申请双重白名单；不会覆盖原发货记录</small>
+                      <small>历史 OMS 与本次 Reship 编号均保留；严禁使用 VOID 测试面单发货</small>
                     </div>
                     <small v-if="reshipError[row.order_id]" role="alert" class="xlwms-error">{{reshipError[row.order_id]}}</small>
                   </div>

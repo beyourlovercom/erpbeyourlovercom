@@ -37,8 +37,21 @@ final class Wms64OutboundExporter
         return $this->xlsx->write('小包出库单', self::HEADERS, $rows);
     }
 
+    /** A single already-approved Reship exports a NEW uniquely traceable
+     * native OMS draft import row, never the original reference again. */
+    public function exportReshipDraft(Shipment $shipment, string $thirdOrderNo): string
+    {
+        abort_unless(preg_match('/^BYL-RESHIP-[0-9a-f]{32}$/D', $thirdOrderNo), 422,
+            '独立重发参考编号无效。');
+        $row=$this->row('us-3sm',$shipment,$thirdOrderNo);
+        $row[3]=$thirdOrderNo;
+        $row[4]=$thirdOrderNo;
+        $row[23]='RESEND DRAFT / VOID LABEL PLACEHOLDER - DO NOT SHIP. Replace with genuine USPS label + verify tracking BEFORE manual submission.';
+        return $this->xlsx->write('小包出库单', self::HEADERS, [$row]);
+    }
+
     /** @return list<mixed> */
-    private function row(string $warehouseKey, Shipment $shipment): array
+    private function row(string $warehouseKey, Shipment $shipment, ?string $referenceOverride=null): array
     {
         $order = $shipment->order;
         abort_unless($order && $order->address, 422, '海外仓订单缺少收件地址。');
@@ -52,7 +65,7 @@ final class Wms64OutboundExporter
         $country = $this->required(strtoupper((string) $a->country), '国家', $order->erp_order_id);
         $row[0] = $warehouseCode;
         $row[1] = $this->salesPlatform($order);
-        $row[3] = $this->references->warehouse($order);
+        $row[3] = $referenceOverride ?: $this->references->warehouse($order);
         $row[4] = $this->platformOrderNumber($order);
         $row[5] = $shippingService;
         $row[6] = $carrier;
@@ -66,7 +79,9 @@ final class Wms64OutboundExporter
         $row[19] = $this->required($a->postal_code, '邮编', $order->erp_order_id);
         $row[21] = $this->required($a->address_line_1, '地址1', $order->erp_order_id);
         $row[22] = $a->address_line_2;
-        $row[23] = $order->order_note ?: $shipment->logistics_note;
+        $row[23] = $warehouseKey === 'us-3sm'
+            ? 'DRAFT ONLY - DO NOT SUBMIT/SHIP until staff replaces test placeholder with a real USPS label and validates Tracking.'
+            : ($order->order_note ?: $shipment->logistics_note);
 
         foreach ($items as $index => $item) {
             $sku = trim((string) $item->sku);
@@ -83,7 +98,7 @@ final class Wms64OutboundExporter
     {
         return match ($warehouseKey) {
             'us-ny' => ['US01', 'USPS-NJ', null],
-            'us-3sm' => ['Yangfan', 'No_Shipping_Service', ''], // No label; actual carrier/Tracking verified after outbound
+            'us-3sm' => ['Yangfan', 'Upload_Shipping_Label', 'USPS'], // OMS import -> draft; human uploads valid label before submission
             'de-tianyun' => ['Hannover', $country === 'DE' ? 'DHL PAKET DOMESTIC' : 'DHL PAKET International N', null],
             default => abort(422, '该仓库不属于 WMS-64 导出家族。'),
         };

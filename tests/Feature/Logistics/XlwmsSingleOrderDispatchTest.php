@@ -27,6 +27,8 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         // Legacy canned catalogue responses are synthetic and omit their
         // provider category. Separate tests below enforce the actual type 2.
         config()->set('xlwms.us_sm_require_no_shipping_service', false);
+        // Legacy API contract is tested with HTTP fakes only.
+        config()->set('xlwms.us_sm_outbound_entry_mode','legacy_api_test');
         config()->set('xlwms.us_sm_oms_logistics_channel','No_Shipping_Service');
     }
 
@@ -1852,6 +1854,123 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         $this->assertContains('OMS_SNAPSHOT_NOT_RECONCILED',$service->forOrder($o->id,$uuid,true)['blockers']);
         $this->assertSame('shipped',$o->fresh()->shipment->shipment_status);
         Http::assertNotSent(fn($r)=>str_contains($r->url(),'outboundOrder/create'));
+    }
+
+
+    public function test_production_manual_draft_mode_blocks_openapi_create_before_any_network_write(): void
+    {
+        $o=$this->orderFixture();
+        $conn=WarehouseOpenApiConnection::where('warehouse_id',$o->shipment->warehouse_id)->sole();
+        config()->set('xlwms.us_sm_outbound_entry_mode','oms_manual_draft');
+        Http::preventStrayRequests();Http::fake();
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('XLWMS_OPENAPI_CREATE_BLOCKED_USE_OMS_DRAFT_IMPORT');
+        try {
+            app(\App\Modules\Logistics\Infrastructure\Xlwms\XlwmsOrderGateway::class)
+                ->createDraftSingle($conn,[
+                    'isSubmit'=>0,'whCode'=>'OMS-US-SM',
+                    'thirdOrderNo'=>'BYL-ERP-'.$o->id,
+                    'platformOrderNo'=>$o->external_order_number,
+                    'logisticsChannel'=>'No_Shipping_Service',
+                    'productList'=>[['sku'=>'SAME-SKU','quantity'=>1]],
+                ]);
+        } finally {
+            Http::assertNothingSent();
+        }
+    }
+
+    public function test_manual_draft_bind_requires_exact_usps_sku_reference_status_and_never_calls_create(): void
+    {
+        [$o,$uuid]=$this->reissueFixture();
+        $r=\App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment::where('request_id',$uuid)->sole();
+        config()->set('xlwms.us_sm_outbound_entry_mode','oms_manual_draft');
+        Http::preventStrayRequests();
+        Http::fake(function($req) use ($r) {
+            $path=$req->url();
+            if(str_contains($path,'outboundOrder/pageList'))return Http::response([
+                'code'=>200,'data'=>['total'=>1,'records'=>[[
+                    'outboundOrderNo'=>'OBS-MANUAL-TEST01','whCode'=>'OMS-US-SM',
+                    'status'=>0,'thirdOrderNo'=>'',
+                    'platformOrderNo'=>$r->third_order_no,'referOrderNo'=>$r->third_order_no,
+                    'logisticsTrackNo'=>null,
+                ]]],
+            ]);
+            if(str_contains($path,'outboundOrder/detail'))return Http::response([
+                'code'=>200,'data'=>[[
+                    'outboundOrderNo'=>'OBS-MANUAL-TEST01','whCode'=>'OMS-US-SM',
+                    'logisticsChannel'=>'Upload_Shipping_Label','status'=>0,
+                    'platformOrderNo'=>$r->third_order_no,
+                    'referOrderNo'=>$r->third_order_no,'thirdOrderNo'=>'',
+                    'productList'=>[['sku'=>'SAME-SKU','quantity'=>1]],
+                ]],
+            ]);
+            return Http::response(['code'=>500]);
+        });
+        $svc=app(\App\Modules\Logistics\Application\Xlwms\XlwmsManualDraftBindingService::class);
+        $result=$svc->bind($o->id,$uuid,'OBS-MANUAL-TEST01',19);
+        $this->assertSame('bound',$result['result']);
+        $this->assertSame('draft_created',$r->fresh()->status);
+        $this->assertSame('OBS-MANUAL-TEST01',$r->fresh()->oms_order_no);
+        $this->assertDatabaseHas('xlwms_reshipment_events',[
+            'reshipment_id'=>$r->id,'event_code'=>'manual_draft_bound']);
+        $read=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentDispatchService::class)
+            ->readStatus($o->id,$uuid,19);
+        $this->assertSame('0',$read['oms_status_code']);
+        $this->assertSame('TRACK-ORIG',$o->fresh()->shipment->tracking_number);
+        $this->assertSame('already_bound',
+            $svc->bind($o->id,$uuid,'OBS-MANUAL-TEST01',19)['result']);
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+    }
+
+    public function test_manual_draft_bind_rejects_provider_processing_state_without_mutating_order(): void
+    {
+        [$o,$uuid]=$this->reissueFixture();
+        $r=\App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment::where('request_id',$uuid)->sole();
+        config()->set('xlwms.us_sm_outbound_entry_mode','oms_manual_draft');
+        Http::preventStrayRequests();
+        Http::fake(function($req) use($r) {
+            if(str_contains($req->url(),'outboundOrder/pageList'))return Http::response([
+                'code'=>200,'data'=>['total'=>1,'records'=>[[
+                    'outboundOrderNo'=>'OBS-MANUAL-TEST02','whCode'=>'OMS-US-SM','status'=>2,
+                    'thirdOrderNo'=>'','platformOrderNo'=>$r->third_order_no,
+                    'referOrderNo'=>$r->third_order_no,'logisticsTrackNo'=>null,
+                ]]],
+            ]);
+            return Http::response(['code'=>500]);
+        });
+        $service=app(\App\Modules\Logistics\Application\Xlwms\XlwmsManualDraftBindingService::class);
+        try {
+            $service->bind($o->id,$uuid,'OBS-MANUAL-TEST02',19);
+            $this->fail('Processing OMS order should not be bound as a draft');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('OMS_MANUAL_DRAFT_IDENTITY_OR_STATE_MISMATCH',$e->getMessage());
+        }
+        $this->assertSame('approved_for_reissue',$r->fresh()->status);
+        $this->assertNull($r->fresh()->oms_order_no);
+        $this->assertSame('TRACK-ORIG',$o->fresh()->shipment->tracking_number);
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+    }
+
+    public function test_manual_reship_export_uses_unique_reference_without_change_original_erp(): void
+    {
+        [$o,$uuid]=$this->reissueFixture();
+        $r=\App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment::where('request_id',$uuid)->sole();
+        $file=app(\App\Modules\Logistics\Application\OverseaFiles\OverseaOutboundFileService::class)
+            ->exportReshipDraft($o->fresh()->shipment,$r->third_order_no);
+        $this->assertStringStartsWith('007-us-3sm-reship-',$file['filename']);
+        $temp=tempnam(sys_get_temp_dir(),'xlwms-reship-xlsx-');
+        file_put_contents($temp,$file['bytes']);
+        $zip=new \ZipArchive();
+        $this->assertTrue($zip->open($temp)===true);
+        $xml=$zip->getFromName('xl/worksheets/sheet1.xml');
+        $zip->close();@unlink($temp);
+        $this->assertIsString($xml);
+        $this->assertStringContainsString($r->third_order_no,$xml);
+        $this->assertStringContainsString('Upload_Shipping_Label',$xml);
+        $this->assertStringContainsString('USPS',$xml);
+        $this->assertStringContainsString('DO NOT SHIP',$xml);
+        $this->assertSame('TRACK-ORIG',$o->fresh()->shipment->tracking_number);
+        Http::fake();Http::assertNothingSent();
     }
 
 }
