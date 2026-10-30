@@ -36,6 +36,7 @@ final class ProductInlineParameterController
         // Approved factory measurements are never edited in place.
         $rules = [
             'barcode_69' => ['present', 'nullable', 'string', 'regex:/^[0-9]{8,14}$/'],
+            'has_battery' => ['sometimes', 'required', 'boolean'],
             'measurements' => ['sometimes', 'array:'.implode(',', self::REVIEW_FIELDS)],
         ];
         foreach (self::MASTER_FIELDS as $field) {
@@ -55,6 +56,9 @@ final class ProductInlineParameterController
             if ($incoming !== ($current === null ? null : (float) $current)) {
                 $masterChanges[$field] = $incoming;
             }
+        }
+        if (array_key_exists('has_battery', $data) && (bool) $data['has_battery'] !== (bool) $product->has_battery) {
+            $masterChanges['has_battery'] = (bool) $data['has_battery'];
         }
         $barcode = $data['barcode_69'] ?: null;
         $barcodeChanged = $barcode !== $product->barcode_69;

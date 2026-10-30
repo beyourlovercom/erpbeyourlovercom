@@ -82,6 +82,14 @@ final class ProductGridExportTest extends TestCase
             );
     }
 
+    public function test_grid_displays_canonical_wordpress_brand_after_sync(): void
+    {
+        $user = $this->viewer();
+        Product::create(['sku' => 'BRAND-VISIBLE-1', 'name' => 'Brand product', 'brand' => 'BeYourLover']);
+        $this->actingAs($user)->get('/products/list?search=BRAND-VISIBLE-1')
+            ->assertInertia(fn ($page) => $page->where('products.data.0.brand', 'BeYourLover'));
+    }
+
     public function test_view_only_role_can_download_real_xlsx_and_formula_like_titles_remain_plain_strings(): void
     {
         $user = $this->viewer();

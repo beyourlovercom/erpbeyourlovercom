@@ -61,6 +61,29 @@ final class Product360InlineParametersTest extends TestCase
         $this->assertDatabaseCount('product_parameter_submissions', 0);
     }
 
+    public function test_battery_defaults_to_yes_and_can_be_toggled_exclusively_by_operator(): void
+    {
+        $product = $this->product();
+        $operator = $this->userWith(['products.view', 'products.operate']);
+        $this->assertTrue($product->fresh()->has_battery);
+        $this->actingAs($operator)->put('/products/'.$product->id.'/inline-parameters',
+            $this->payload(['has_battery' => false]))->assertRedirect();
+        $this->assertFalse($product->fresh()->has_battery);
+        $this->get('/products/'.$product->id)->assertInertia(fn ($page) =>
+            $page->where('product.has_battery', false)
+                ->where('product.brand', null)
+                ->where('product.sku', $product->sku));
+
+        $this->actingAs($operator)->put('/products/'.$product->id.'/inline-parameters',
+            $this->payload(['has_battery' => true]))->assertRedirect();
+        $this->assertTrue($product->fresh()->has_battery);
+
+        $this->actingAs($operator)->put('/products/'.$product->id.'/inline-parameters',
+            $this->payload(['has_battery' => 'maybe', 'length_cm' => 26]))
+            ->assertSessionHasErrors('has_battery');
+        $this->assertEquals(10, $product->fresh()->length_cm);
+    }
+
     public function test_inline_weight_update_preserves_canonical_weight_evidence(): void
     {
         $product = $this->product();
