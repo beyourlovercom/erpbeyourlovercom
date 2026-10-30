@@ -101,8 +101,8 @@ const applySearch = () => {
         <a class="product-home-shortcut" href="/products/list?view=accessories">
           <span class="shortcut-icon">▧</span><span><strong>包装与配件</strong><small>查看已登记的包装配件</small></span>
         </a>
-        <a class="product-home-shortcut" href="/products/sku-aliases">
-          <span class="shortcut-icon">＃</span><span><strong>SKU 别名</strong><small>核对产品身份和别名</small></span>
+        <a class="product-home-shortcut" href="/products/list?attention=missing_barcode_69">
+          <span class="shortcut-icon">＃</span><span><strong>69 条码</strong><small>查看缺少制造商识别码的 SKU</small></span>
         </a>
       </div>
 
@@ -155,10 +155,11 @@ const applySearch = () => {
         </section>
       </div>
 
-      <div v-if="canOperate" class="product-home-bottom-actions">
-        <a href="/products/import">导入 CSV</a>
-        <a href="/products/barcode-69/import">导入 69 条码</a>
-        <a href="/products/weight-evidence">重量证据管理</a>
+      <div class="product-home-bottom-actions">
+        <a href="/products/sku-aliases">SKU 别名</a>
+        <a v-if="canOperate" href="/products/import">导入 CSV</a>
+        <a v-if="canOperate" href="/products/barcode-69/import">导入 69 条码</a>
+        <a v-if="canOperate" href="/products/weight-evidence">重量证据管理</a>
       </div>
     </section>
   </AuthenticatedLayout>
