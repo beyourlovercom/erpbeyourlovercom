@@ -43,7 +43,8 @@ final class ReshipmentFulfillmentService
         }
         ksort($expected);
         $block=[];
-        if ($d['items']!==$expected) $block[]='M2_SKU_QUANTITY_MISMATCH';
+        if ($d['status_code']==='4') $block[]='M2_OMS_CANCELED';
+        if ($d['status_code']!=='4' && $d['items']!==$expected) $block[]='M2_SKU_QUANTITY_MISMATCH';
         if ($s?->warehouse?->code!=='US-SM' || (int)$s->id!==(int)$r->original_shipment_id
             || (int)$s->warehouse_id!==(int)$r->warehouse_id) $block[]='M2_ERP_WAREHOUSE_CHANGED';
         if ($s?->overseaReview?->status!=='approved'

@@ -271,6 +271,24 @@ final class XlwmsOrderGateway
             'thirdOrderNoList' => [$thirdOrderNo],
         ]);
         $rows = $data['data'] ?? null;
+        // Some cancelled warehouse orders disappear from the detail endpoint
+        // while remaining visible by their exact provider native order number.
+        // Use pageList only to prove cancellation, NEVER as shipping evidence.
+        if (is_array($rows) && $rows===[]) {
+            $canceled=$this->readExactOrderStatus($connection,$omsOrderNo);
+            if ($canceled !== null
+                && $canceled['status_code']==='4'
+                && $canceled['third_order_no']===$thirdOrderNo
+                && $canceled['platform_order_no']===$thirdOrderNo
+                && blank($canceled['tracking_no'])) {
+                return [
+                    'oms_order_no'=>$omsOrderNo,'third_order_no'=>$thirdOrderNo,
+                    'status_code'=>'4','status_name'=>'已取消',
+                    'tracking_number'=>'','carrier'=>'','outbound_time'=>'',
+                    'items'=>[],'cost_present'=>false,'cost_currency'=>'',
+                ];
+            }
+        }
         if (!is_array($rows) || !array_is_list($rows) || count($rows)!==1
             || !is_array($rows[0])) {
             throw new RuntimeException('OMS_M2_DETAIL_NOT_UNIQUE');

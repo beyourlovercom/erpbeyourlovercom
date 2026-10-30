@@ -1512,7 +1512,7 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
 
 
     private function m2PendingFixture(string $status='2', string $carrier='USPS',
-        string $tracking='', int $qty=1, string $outbound='', bool $identityMatches=true): array
+        string $tracking='', int $qty=1, string $outbound='', bool $identityMatches=true, bool $canceled=false): array
     {
         $o=$this->orderFixture();
         $r=\App\Modules\Logistics\Infrastructure\Xlwms\XlwmsReshipment::query()->create([
@@ -1528,14 +1528,27 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
             'requested_by'=>19,'approved_by'=>19,
         ]);
         Http::preventStrayRequests();
-        Http::fake(fn($req)=>Http::response(['code'=>200,'data'=>[[
-            'outboundOrderNo'=>$identityMatches?'OBS-M2-TEST123':'OTHER-OMS','thirdOrderNo'=>$r->third_order_no,
-            'platformOrderNo'=>$r->third_order_no,'whCode'=>'OMS-US-SM',
-            'status'=>(int)$status,'statusName'=>$status==='3'?'已出库':'仓库处理中',
-            'productList'=>[['sku'=>'SAME-SKU','quantity'=>$qty]],
-            'logisticsCarrier'=>$carrier,'logisticsTrackNo'=>$tracking,
-            'outboundTime'=>$outbound,'costTotal'=>null,'costCurrencyCode'=>'USD',
-        ]]]));
+        Http::fake(function ($req) use($r,$status,$carrier,$tracking,$qty,$outbound,$identityMatches,$canceled) {
+            if($canceled && str_contains($req->url(),'outboundOrder/detail')) {
+                return Http::response(['code'=>200,'data'=>[]]);
+            }
+            if($canceled && str_contains($req->url(),'outboundOrder/pageList')) {
+                return Http::response(['code'=>200,'data'=>['total'=>1,'records'=>[[
+                    'outboundOrderNo'=>'OBS-M2-TEST123','whCode'=>'OMS-US-SM',
+                    'thirdOrderNo'=>$r->third_order_no,'platformOrderNo'=>$r->third_order_no,
+                    'status'=>4,'logisticsTrackNo'=>'',
+                ]]]]);
+            }
+            return Http::response(['code'=>200,'data'=>[[
+                'outboundOrderNo'=>$identityMatches?'OBS-M2-TEST123':'OTHER-OMS',
+                'thirdOrderNo'=>$r->third_order_no,
+                'platformOrderNo'=>$r->third_order_no,'whCode'=>'OMS-US-SM',
+                'status'=>(int)$status,'statusName'=>$status==='3'?'已出库':'仓库处理中',
+                'productList'=>[['sku'=>'SAME-SKU','quantity'=>$qty]],
+                'logisticsCarrier'=>$carrier,'logisticsTrackNo'=>$tracking,
+                'outboundTime'=>$outbound,'costTotal'=>null,'costCurrencyCode'=>'USD',
+            ]]]);
+        });
         return [$o,$r];
     }
 
@@ -1658,6 +1671,21 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
             '/logistics/oversea/us-3sm/orders/'.$o->id.'/xlwms/m2/'.$r->request_id.'/preflight'
         )->assertForbidden();
         $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+    }
+
+
+    public function test_m2_cancelled_new_oms_survives_missing_detail_with_safety_blocker(): void
+    {
+        [$o,$r]=$this->m2PendingFixture('4','','',1,'',true,true);
+        $p=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentFulfillmentService::class)
+            ->preview($o->id,$r->request_id);
+        $this->assertSame('4',$p['status_code']);
+        $this->assertSame('已取消',$p['status_name']);
+        $this->assertContains('M2_OMS_CANCELED',$p['blockers']);
+        $this->assertFalse($p['can_apply']);
+        $this->assertNull($p['review_token']);
+        $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
     }
 
 }

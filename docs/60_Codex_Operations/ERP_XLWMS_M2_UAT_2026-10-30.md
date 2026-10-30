@@ -8,15 +8,15 @@
 - ERP 订单：`007-1027-c41863`，ID 7753，US-SM 世迈。
 - 原 OMS：`OBS0272610290RS`，状态 4（取消），原 ERP Shipment 保持 pending。
 - 新 OMS：`OBS0272610300RS`，申请 UUID `dd6751d9-2aac-4a0f-83ef-907c51b11969`，实际 `productList: CL279B × 2`。
-- 新 OMS **outboundOrder/detail** 返回 `status=2` / `statusName=仓库处理中`，`outboundTime` 为空，`logisticsTrackNo` 为空；不能给 ERP 写 shipped、Woo/AfterShip Tracking。
-- 新 OMS 创建后状态曾为 0，现为 2；不能猜测是自动还是人工触发提交，仅可确认仓库已经处理。
+- **真实状态时间线**：新 OMS 首次创建后为 0；随后 **outboundOrder/detail** 返回 `status=2` / `statusName=仓库处理中`；**2026-10-30 最终复核发现已变为 `status=4`（已取消）**。精确 `outboundOrder/pageList` 通过 OMS/第三方身份校验，返回 `canceledTime=2026-10-30 14:10:45`（OMS 本地显示，不推定时区）、`outboundTime` 空、Tracking 空。同一时间的 `outboundOrder/detail` 返回零条记录。取消原因未核实，绝不自动补建/提交/取消。
+- 新 OMS 从 0→2→4，说明已出现真实取消事件；0→2 的原因以及后来由谁取消、为何取消均未核实。任何新的 OMS 创建均须重新独立审批，不得重试旧 UUID。
 - 未再次调用 OMS CREATE、SUBMIT、CANCEL；所有生产 CREATE 门禁仍关闭。
 
 ## 2. 研发内容
 
 ### M2-C 只读查询
 
-- **新增** `XlwmsOrderGateway::readExactOrderDetail()`，调用白名单的官方 `outboundOrder/detail`，校验出库单号、第三方订单标识、平台订单标识、仓库，必须唯一一条。仅向 ERP 操作层返回脱敏业务字段（状态码、`statusName`、SKU 数量、Tracking、实际承运商、是否存在出库时间/费用证据）。
+- **新增** `XlwmsOrderGateway::readExactOrderDetail()`，调用白名单的官方 `outboundOrder/detail`，校验出库单号、第三方订单标识、平台订单标识、仓库，必须唯一一条。仅向 ERP 操作层返回脱敏业务字段（状态码、`statusName`、SKU 数量、Tracking、实际承运商、是否存在出库时间/费用证据）。**当详情空但精确 pageList 返回同一新 OMS 状态 4 且身份完全一致时，只允许只读识别为已取消，不得将列表数据作为发货证据。**
 - **新增** `ReshipmentFulfillmentService::preview()`：原申请和新 OMS 必须存在，原 ERP Shipment / Dede 审核不变，SKU×数量精确一致；只有 `status=3` 且 `statusName=已出库`，有效 `outboundTime`、非测试 Tracking、可信且启用的实际承运商才允许进入 ERP 发货审核。对状态 0 / 2 / 4 / 身份不一致/空 Tracking/未知 carrier 全部 fail-closed。
 
 ### M2-D 受控 ERP 回写（默认 OFF）
@@ -39,6 +39,7 @@
 | 场景 | 预期/结果 |
 | --- | --- |
 | OMS `2` / 仓库处理中，Tracking 空 | 阻断 ERP 回写，**自动化通过** |
+| OMS `4` / 已取消，详情接口不再返回订单但列表精确匹配 | 展示已取消并阻断 ERP 回写，禁止自动重发，**自动化通过** |
 | OMS `3`、已出库、出库时间、真实 USPS Tracking、SKU 对齐 | 允许预览，但正式门禁 OFF 不应用，**自动化通过** |
 | OMS `3`，SKU 数量变化或承运商不认识 | 阻断，**自动化通过** |
 | OMS 详情身份不是申请的新 OMS | 拒绝，**自动化通过** |
@@ -59,7 +60,7 @@
 
 1. 在 Dede 海外仓 US-SM 待发货视图，找到 ERP 7753，点 **重新下发仓库**。
 2. 确认只有唯一新 OMS `OBS0272610300RS`，没有再次 CREATE 按钮。
-3. 点 **M2 核对仓库出库与 Tracking**，看见 **仓库处理中 (2)**、Tracking 尚未产生、新增成本待结算、无“确认 ERP 已发货”按钮。
+3. 点 **M2 核对仓库出库与 Tracking**，根据最新真实 OMS 证据应看见 **已取消 (4)**、Tracking 尚未产生、取消原因需人工核实、无“确认 ERP 已发货”按钮。历史状态 2 仅保留在自动化场景，不能作为当前生产结论。
 4. 如果仓库真实出库并有可信 Carrier+Tracking，重新核对 `outboundTime`、SKU 和 Dede 审核。需额外 Owner 单笔授权开启 M2 三重门禁才能按真实订单确认 ERP 发货。
 5. ERP 发货确认后，仍由 Vita 通过现有官网同步链路完成 Woo/AfterShip 读回，核对失败/重试；费用等待真实结算证据。
 
@@ -67,4 +68,4 @@
 
 此分支只能经 CI/UAT 之后申请受控发布审批；没有 Owner 明确 `pass`，不合并或写生产，不修改世迈仓库订单。即使部署只读部分，M2 APPLY 始终 OFF。真实 OMS 7753 当前为处理中，无法声称真实发货全链路 UAT 已完成。
 
-**下一现场依赖**：OMS `OBS0272610300RS` 出现 `已出库 (3)`、非空真实 `outboundTime`、可信承运商和 Tracking。若出库已到却没有 Tracking，应保留原单待审核，并让 Dede 人工核查仓库，不回写 Woo。
+**下一现场依赖**：先让世迈仓库人员核实 **新 OMS `OBS0272610300RS` 取消原因**、是否自动/人工取消、是否存在 WMS 作业/费用；原 OMS `OBS0272610290RS` 仍是取消状态。未经新授权不得自动创建第三张仓库单。未来只有受控、合法的新出库订单真正达到 `已出库 (3)`、可信承运商及真实 Tracking 后，才能在独立门禁下进行 ERP/Woo/AfterShip 真实验收。

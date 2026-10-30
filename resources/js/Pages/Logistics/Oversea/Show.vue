@@ -395,6 +395,7 @@ type M2Preflight = {
   cost_status:string;provider_cost_present:boolean;website_sync:string
 }
 const m2BlockerText:Record<string,string> = {
+  M2_OMS_CANCELED:'世迈已取消此新 OMS 单，禁止重复创建；请人工调查取消原因',
   M2_OMS_NOT_OUTBOUND:'世迈尚未确认出库',
   M2_OUTBOUND_TIME_MISSING:'仓库缺少真实出库时间',
   M2_TRACKING_NOT_VERIFIED:'实际 Tracking 尚未核实',
