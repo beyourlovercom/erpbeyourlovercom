@@ -208,6 +208,7 @@ const exportUrl = computed(() => {
     search: props.filters.search ?? '',
     sort: props.filters.sort ?? 'name',
     direction: props.filters.direction ?? 'asc',
+    attention: props.filters.attention ?? '',
     columns: visibleColumns.value.map(c => c.key).join(','),
   })
   return '/products/list/export?' + params.toString()
