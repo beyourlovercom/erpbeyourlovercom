@@ -122,7 +122,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             ->assertInertia(fn(Assert $page)=>$page->where('xlwmsAuthorizedOrderId',0));
     }
 
-    public function test_cancelled_oms_attempt_blocks_manual_tracking_which_would_write_woo(): void
+    public function test_historical_cancelled_oms_attempt_does_not_block_erp_manual_ship(): void
     {
         $operator=$this->userWith(['logistics.view','logistics.operate']);
         $warehouses=$this->warehouses();
@@ -134,13 +134,21 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             'request_fingerprint'=>str_repeat('e',64),
             'oms_order_no'=>'OBS-CANCELLED-2','oms_status_code'=>'4',
         ]);
+        Http::preventStrayRequests();
+        Http::fake();
         $this->actingAs($operator)->post(
             "/logistics/oversea/us-3sm/orders/{$order->id}/manual-ship",
             ['tracking_number'=>'9400111899223856928501']
-        )->assertStatus(409);
+        )->assertRedirect('/logistics/oversea/us-3sm?view=shipped')->assertSessionHas('warning');
         $this->assertDatabaseHas('shipments',[
-            'order_id'=>$order->id,'shipment_status'=>'pending','tracking_number'=>null,
+            'order_id'=>$order->id,'shipment_status'=>'shipped','tracking_number'=>'9400111899223856928501',
         ]);
+        $this->assertDatabaseHas('orders',[
+            'id'=>$order->id,'order_status'=>'shipped',
+        ]);
+        // No Woo reference: ERP still ships, AfterShip reports attention.
+        // Neither historical OMS state nor the confirmation makes any OMS request.
+        Http::assertNothingSent();
         $this->assertDatabaseMissing('sync_outbox',[
             'operation'=>'woocommerce.tracking_outbound',
         ]);
@@ -846,7 +854,7 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         $this->assertDatabaseHas('sync_outbox', ['operation' => 'woocommerce.tracking_outbound', 'status' => 'completed']);
     }
 
-    public function test_us_sm_manual_confirm_marks_shipped_and_immediately_pushes_woo_tracking(): void
+    public function test_us_sm_manual_confirm_marks_shipped_and_pushes_only_aftership_tracking(): void
     {
         config([
             'services.woocommerce.url' => 'https://shop.test',
@@ -899,6 +907,13 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         ]);
 
         $this->actingAs($user)->post("/logistics/oversea/orders/{$child->id}/approve")->assertRedirect();
+        // An older OMS attempt is historical evidence, not a gate for ERP shipment.
+        XlwmsDispatchAttempt::query()->create([
+            'order_id'=>$child->id,'warehouse_id'=>$warehouses['US-SM']->id,
+            'third_order_no'=>'BYL-ERP-'.$child->id,'state'=>'draft_cancelled_confirmed',
+            'request_fingerprint'=>str_repeat('c',64),
+            'oms_order_no'=>'OBS-HISTORICAL-CANCELLED','oms_status_code'=>'4',
+        ]);
         $this->actingAs($user)->post("/logistics/oversea/us-3sm/orders/{$child->id}/manual-ship", [
             'tracking_number' => '9400111899223856928599',
         ])->assertRedirect('/logistics/oversea/us-3sm?view=shipped');
@@ -916,11 +931,23 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         ]);
 
         $this->assertSame(1, $gateway->trackingCalls);
+        $this->assertSame(0, $gateway->orderStatusCalls, 'Only AfterShip Tracking may sync here; never Woo status.');
         $this->assertSame(99101, $gateway->providerOrderId);
         $this->assertSame('9400111899223856928599', $gateway->trackingNumber);
         $this->assertSame([['id' => 991011, 'quantity' => 1]], $gateway->lineItems);
         $this->assertDatabaseHas('manual_syncs', ['order_id' => $child->id, 'website_sync_status' => 'completed']);
         $this->assertDatabaseHas('sync_outbox', ['operation' => 'woocommerce.tracking_outbound', 'status' => 'completed']);
+
+        // Replaying only the verified tracking intent must not add a duplicate
+        // AfterShip package or update the WooCommerce order status.
+        $again = app(\App\Modules\Sync\Application\WooCommerceTrackingOutboundService::class)
+            ->pushOne($child->fresh(), $user, syncOrderStatus: false);
+        $this->assertSame('completed', $again['status']);
+        $this->assertSame(1, $gateway->trackingCalls);
+        $this->assertSame(0, $gateway->orderStatusCalls);
+        $this->actingAs($user)->post("/logistics/oversea/us-3sm/orders/{$child->id}/manual-ship", [
+            'tracking_number' => '9400111899223856928599',
+        ])->assertStatus(409);
     }
 
     public function test_us_sm_manual_confirm_is_fail_closed_for_other_warehouses(): void
@@ -1179,6 +1206,8 @@ final class TrackingReturnFakeWooGateway implements WooCommerceTrackingGateway
 {
     public int $trackingCalls = 0;
 
+    public int $orderStatusCalls = 0;
+
     public int $providerOrderId = 0;
 
     public string $trackingNumber = '';
@@ -1212,6 +1241,7 @@ final class TrackingReturnFakeWooGateway implements WooCommerceTrackingGateway
 
     public function syncOrderStatus(int $providerOrderId, string $status): array
     {
+        $this->orderStatusCalls++;
         return ['written' => true, 'verified' => true, 'status' => $status];
     }
 }
