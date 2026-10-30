@@ -1427,4 +1427,58 @@ final class XlwmsSingleOrderDispatchTest extends TestCase
         Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
     }
 
+
+    private function fakeCancelledOriginalStatus(Order $o, string $status='4', bool $identityMatches=true): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(fn($req)=>Http::response(['code'=>200,'data'=>[
+            'total'=>1,'records'=>[[
+                'outboundOrderNo'=>'OBS-SAFE-123','whCode'=>'OMS-US-SM',
+                'thirdOrderNo'=>$identityMatches?'BYL-ERP-'.$o->id:'BYL-ERP-OTHER',
+                'status'=>$status,'logisticsTrackNo'=>null,
+            ]],
+        ]]));
+    }
+
+    public function test_cancelled_original_oms_allows_pending_erp_reissue_request_and_approval_without_create(): void
+    {
+        $o=$this->orderFixture();
+        $this->statusAttempt($o);
+        $this->fakeCancelledOriginalStatus($o);
+        $preview=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentPreview::class)->forOrder($o->id);
+        $this->assertSame([], $preview['blockers']);
+        $this->assertSame('canceled_original_oms',$preview['source_scenario']);
+        $this->assertTrue($preview['ready_for_review']);
+        $request=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentIntentService::class)
+            ->request($o->id,19,'仓库面单错误，原 OMS 已取消，申请新仓库草稿');
+        $this->assertSame('requested',$request['status']);
+        $this->assertFalse($request['can_create_oms']);
+        $approved=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentApprovalService::class)
+            ->approve($o->id,$request['request_id'],19,'APPROVE_RESHIP_'.$request['request_id']);
+        $this->assertSame('approved_for_reissue',$approved['status']);
+        $this->assertFalse($approved['can_create_oms']);
+        $this->assertSame('pending_shipment',$o->fresh()->order_status->value);
+        $this->assertSame('pending',$o->fresh()->shipment->shipment_status);
+        $this->assertNull($o->fresh()->shipment->tracking_number);
+        $this->assertSame('OBS-SAFE-123',XlwmsDispatchAttempt::query()->where('order_id',$o->id)->value('oms_order_no'));
+        $this->assertDatabaseCount('xlwms_reshipments',1);
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+    }
+
+    public function test_pending_erp_with_active_uncertain_or_foreign_original_oms_fails_closed(): void
+    {
+        $o=$this->orderFixture();
+        $this->statusAttempt($o);
+        foreach (['0','3','5'] as $status) {
+            $this->fakeCancelledOriginalStatus($o,$status);
+            $preview=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentPreview::class)->forOrder($o->id);
+            $this->assertContains('source_order_not_shipped_or_original_oms_not_canceled',$preview['blockers']);
+        }
+        $this->fakeCancelledOriginalStatus($o,'4',false);
+        $preview=app(\App\Modules\Logistics\Application\Xlwms\ReshipmentPreview::class)->forOrder($o->id);
+        $this->assertContains('source_order_not_shipped_or_original_oms_not_canceled',$preview['blockers']);
+        $this->assertDatabaseCount('xlwms_reshipments',0);
+        Http::assertNotSent(fn($req)=>str_contains($req->url(),'outboundOrder/create'));
+    }
+
 }
