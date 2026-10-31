@@ -103,6 +103,16 @@
 - Preserve existing MorePlus XLSX manual flow and 3SM logic.
 - First real outbound Canary is **R10**, a separate exact-order Owner approval; no automatic retry.
 
+## 6A. Owner conditional dark Production deployment authorization — 2026-10-31
+- Owner stated: "完整候选版本通过验收后的 Production 发布". This is **conditional approval** of the R9 **dark (all production flags OFF) code release only after ALL mandatory gates pass**; it is NOT a release-now instruction and NEVER authorizes the first real production outbound.
+- **Gate 1: exact source**. Both dedicated R9 PHPUnit test files, production gateway, inventory audit, config and this Runbook must be present together in a reviewed GitHub PR at the exact immutable candidate SHA. No local-only source counts as PR-head tests.
+- **Gate 2: real checks**. Run dedicated ShipOut tests at exact PR SHA on U.S. implementation host and GitHub Actions (or approved equivalent first-party CI), Pint, static checks, and required regression gates. Green unrelated CI is insufficient. Record exact SHA, commands, exit status and results. Separate pre-existing architecture manifest drift as an independently attributable baseline finding, not a waived security test.
+- **Gate 3: peer review / no unsafe effects**. Code reviewed for hard-coded secrets (none), POST/PUT/PATCH/DELETE (none), redirect/retry disabled, full pagination and provider stock fail-closed behavior. No external Production runtime origin accessible to unapproved operators. Exclude 3 unverified OMS identities (`BY489A`, `BA561A`, `Logo Sign`) from eligible order preflight.
+- **Gate 4: latest main and deployment plan**. Reconcile latest `origin/main` against exact reviewed candidate without overwriting parallel PRs. Prepare immutable release artifact, prior Production release readback, rollback marker, and compatibility test. Any new conflict reopens Gate 2.
+- **Gate 5: dark Production code-only deployment**. Only after the preceding four pass may the Owner's conditional approval be applied to the exact reviewed candidate. Leave `SHIPOUT_PRODUCTION_READ_ENABLED=false`, `SHIPOUT_PRODUCTION_DISPATCH_ENABLED=false`, `SHIPOUT_PRODUCTION_TRACKING_APPLY_ENABLED=false`; do not inject local test keys or upload local `production.env`; no DB migrations or real order/stock writes. Confirm current version, `/up` healthy, current toggles OFF and rollback path; roll back if regression is observed.
+- **Separate authorization required** before any real production ShipOut dispatch POST or first real warehouse order; no batch, no automatic retry and no Woo/AfterShip apply from the dark release. Owner confirmation of `clientOrgId=57893` and Chinese display timezone does not change this.
+- **Current state on 2026-10-31: RELEASE_GATE=BLOCKED** because both PR PHPUnit test files remain absent and exact-head ShipOut CI has not run. GitHub API writing them was blocked by a safety check. Do not evade that block using another route; pursue permitted review/delivery instead.
+
 ## 7. Supporting upstream docs
 - https://open.shipout.com/portal/zh/documentation/introduction.html
 - https://open.shipout.com/portal/api/stock
