@@ -118,7 +118,21 @@ final class Wms64OutboundExporter
             $sku = trim((string) $item->sku);
             abort_if($sku === '', 422, "订单 {$order->erp_order_id} 存在空 SKU。");
             $row[24 + ($index * 2)] = $sku;
-            $row[25 + ($index * 2)] = (int) $item->quantity;
+            $quantity = (int) $item->quantity;
+            if ($warehouseKey === 'us-3sm') {
+                // OMS error workbook has shown numeric cells being re-serialized
+                // as text "1.0", which its strict integer validator rejects.
+                // Send canonical integer digits as *text*, without decimals.
+                abort_unless(
+                    (string) $item->quantity === (string) $quantity
+                    && $quantity >= 1 && $quantity <= 99999,
+                    422,
+                    "订单 {$order->erp_order_id} 的出库数量必须是 1–99999 的整数。"
+                );
+                $row[25 + ($index * 2)] = (string) $quantity;
+            } else {
+                $row[25 + ($index * 2)] = $quantity;
+            }
         }
 
         return $row;
