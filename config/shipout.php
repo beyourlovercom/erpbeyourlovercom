@@ -45,5 +45,12 @@ return [
     'production_shipped_time_source_timezone' => (string) env('SHIPOUT_PRODUCTION_SHIPPED_TIME_SOURCE_TIMEZONE', 'UTC'),
     'production_shipped_time_display_timezone_preview' => (string) env('SHIPOUT_PRODUCTION_SHIPPED_TIME_DISPLAY_TIMEZONE_PREVIEW', 'Asia/Shanghai'),
     'production_shipped_time_timezone_verified' => filter_var(env('SHIPOUT_PRODUCTION_SHIPPED_TIME_TIMEZONE_VERIFIED', false), FILTER_VALIDATE_BOOL),
+    // R10-B single-order Production Canary. ALL OFF until a separate exact-order Owner PASS.
+    // No outbound transport or route is activated by these settings.
+    'production_canary_execute_enabled' => filter_var(env('SHIPOUT_PRODUCTION_CANARY_EXECUTE_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'production_canary_owner_approved' => filter_var(env('SHIPOUT_PRODUCTION_CANARY_OWNER_APPROVED', false), FILTER_VALIDATE_BOOL),
+    'production_canary_order_id' => (string) env('SHIPOUT_PRODUCTION_CANARY_ORDER_ID', ''),
+    'production_canary_order_no' => (string) env('SHIPOUT_PRODUCTION_CANARY_ORDER_NO', ''),
+    'production_canary_expires_at_utc' => (string) env('SHIPOUT_PRODUCTION_CANARY_EXPIRES_AT_UTC', ''),
 
 ];

@@ -19,6 +19,8 @@ final class ShipOutProductionReadOnlyGateway
 
     private const STOCK = '/open-api/oms/stock/list';
 
+    private const ORDER_LIST = '/open-api/oms/order/queryListV2';
+
     /** @return list<array{warehouseId:string,warehouseName:string}> */
     public function warehouses(): array
     {
@@ -57,6 +59,45 @@ final class ShipOutProductionReadOnlyGateway
                 'skuId' => (string) ($row['skuId'] ?? ''),
                 'status' => $row['status'] ?? null,
                 'warehouseIds' => $row['warehouseIds'] ?? [],
+            ];
+        }
+
+        return ['records' => $rows, 'total' => $data['total']];
+    }
+
+    /**
+     * R10-B duplicate detection only. Never returns recipient or address data.
+     * All nonmatching or malformed order rows fail closed.
+     *
+     * @return array{records:list<array{orderNO:string,orderId:string,status:int|null}>,total:int}
+     */
+    public function orderPage(string $warehouseId, string $orderNo, int $page = 1, int $size = 10): array
+    {
+        $configured = trim((string) config('shipout.production_warehouse_id', ''));
+        $organization = trim((string) config('shipout.production_client_org_id', ''));
+        if ($configured === '' || $organization === '' || $warehouseId !== $configured
+            || preg_match('/^[A-Za-z0-9._\-]{1,60}$/D', $orderNo) !== 1) {
+            throw new RuntimeException('SHIPOUT_PROD_ORDER_IDENTITY_UNBOUND');
+        }
+        $data = $this->page(self::ORDER_LIST, [
+            'warehouseId' => $warehouseId, 'orderNO' => $orderNo,
+            'version' => 'v2', 'curPageNo' => $page, 'pageSize' => $size,
+        ], $page, $size);
+        $rows = [];
+        $seen = [];
+        foreach ($data['records'] as $record) {
+            $rowOrderNo = is_array($record) ? trim((string) ($record['orderNO'] ?? '')) : '';
+            $orderId = is_array($record) ? trim((string) ($record['orderId'] ?? '')) : '';
+            if ($rowOrderNo !== $orderNo || $orderId === '' || isset($seen[$orderId])
+                || (isset($record['warehouseId']) && (string) $record['warehouseId'] !== $warehouseId)) {
+                throw new RuntimeException('SHIPOUT_PROD_ORDER_ROW_UNTRUSTED');
+            }
+            $seen[$orderId] = true;
+            $status = $record['status'] ?? null;
+            $rows[] = [
+                'orderNO' => $orderNo,
+                'orderId' => $orderId,
+                'status' => is_int($status) ? $status : null,
             ];
         }
 
@@ -128,7 +169,7 @@ final class ShipOutProductionReadOnlyGateway
         if (! (bool) config('shipout.production_read_enabled', false)) {
             throw new RuntimeException('SHIPOUT_PROD_READ_DISABLED');
         }
-        if (! in_array($path, [self::WAREHOUSES, self::PRODUCTS, self::STOCK], true)) {
+        if (! in_array($path, [self::WAREHOUSES, self::PRODUCTS, self::STOCK, self::ORDER_LIST], true)) {
             throw new RuntimeException('SHIPOUT_PROD_PATH_DENIED');
         }
         $key = trim((string) config('shipout.production_app_key', ''));
