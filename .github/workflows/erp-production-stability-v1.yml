@@ -9,6 +9,7 @@ on:
       - 'tests/Architecture/MySqlProductionCompatibilityTest.php'
       - 'tests/Feature/ProductionStability/**'
       - 'tests/Feature/Finance/AccountingContinuousDeltaTest.php'
+      - 'tests/Feature/Logistics/ShipOut*Test.php'
       - '.github/workflows/erp-production-stability-v1.yml'
 
 permissions:
@@ -29,6 +30,11 @@ jobs:
         run: composer install --no-interaction --prefer-dist --no-progress
       - name: Static MySQL dialect gate
         run: php artisan test tests/Architecture/MySqlProductionCompatibilityTest.php
+      - name: ShipOut R9 exact-head tests and Pint gate
+        if: ${{ hashFiles('tests/Feature/Logistics/ShipOutProductionReadOnlyGatewayTest.php', 'tests/Feature/Logistics/ShipOutProductionInventoryAuditTest.php') != '' }}
+        run: |
+          php artisan test tests/Feature/Logistics/ShipOutReadOnlyGatewayTest.php tests/Feature/Logistics/ShipOutSandboxDispatchServiceTest.php tests/Feature/Logistics/ShipOutProductionReadOnlyGatewayTest.php tests/Feature/Logistics/ShipOutProductionInventoryAuditTest.php --no-ansi
+          vendor/bin/pint --test config/shipout.php app/Modules/Logistics/Infrastructure/ShipOut/ShipOutProductionInventoryAudit.php app/Modules/Logistics/Infrastructure/ShipOut/ShipOutProductionReadOnlyGateway.php tests/Feature/Logistics/ShipOutProductionReadOnlyGatewayTest.php tests/Feature/Logistics/ShipOutProductionInventoryAuditTest.php
       - name: Logistics HTTP query-budget regression gate
         run: php artisan test tests/Feature/ProductionStability/LogisticsWaitStockQueryBudgetTest.php
       - name: Shell permission query-budget regression gate
