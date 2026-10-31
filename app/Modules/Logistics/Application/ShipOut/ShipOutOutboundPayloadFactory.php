@@ -21,7 +21,7 @@ final class ShipOutOutboundPayloadFactory
     /** @return array<string,mixed> */
     public function fromApprovedOrder(
         Order $order, string $providerWarehouseId, string $shipDate,
-        string $mode = '9', ?array $label = null
+        string $mode = '9', ?array $label = null, ?array $allowedModesOverride = null
     ): array
     {
         $order->loadMissing(['shipment.warehouse', 'shipment.overseaReview', 'address', 'items']);
@@ -83,7 +83,8 @@ final class ShipOutOutboundPayloadFactory
             throw new RuntimeException('SHIPOUT_ORDER_REFERENCE_INVALID');
         }
 
-        $allowedModes = array_map('trim', explode(',', (string) config('shipout.sandbox_enabled_modes', '9')));
+        // Explicit Production mode policy never inherits Sandbox settings.
+        $allowedModes = $allowedModesOverride ?? array_map('trim', explode(',', (string) config('shipout.sandbox_enabled_modes', '9')));
         if (! in_array($mode, $allowedModes, true) || ! in_array($mode, ['6', '9', '10'], true)) {
             throw new RuntimeException('SHIPOUT_SHIPPING_MODE_NOT_ENABLED');
         }
