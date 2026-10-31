@@ -1,0 +1,142 @@
+# ShipOut / MorePlus R9 Production Read-only Candidate — 2026-10-30
+
+## 0. Non-negotiable boundary
+- Candidate is built only in US Mac isolated worktree: `/Users/a/AI/uat/shipout-r9/work/erp`.
+- Base main SHA: `f8fa4954e42756d27dcc901c85790c43bc34e1f4`.
+- GitHub branch exists: `feature/shipout-r9-production-readonly-20261030`; local changes are **NOT** pushed or merged.
+- No real ShipOut API credentials, personal data or production inventory snapshots in Git or this document.
+- No Production release, database migration, API POST, customer order change or Woo/AfterShip sync is authorized.
+- The existing ShipOut sandbox transport is unchanged and still forbidden in production.
+- All production READ / DISPATCH / APPLY flags remain OFF until separately authorized.
+
+## 1. Candidate files
+- `config/shipout.php` (production namespaced flags and blank-by-default credentials).
+- `app/Modules/Logistics/Infrastructure/ShipOut/ShipOutProductionReadOnlyGateway.php` (fixed production URL, GET-only warehouse/product/stock).
+- `app/Modules/Logistics/Infrastructure/ShipOut/ShipOutProductionInventoryAudit.php` (bounded snapshot, exact warehouse/organization, ERP verified SKU mapping).
+- `tests/Feature/Logistics/ShipOutProductionReadOnlyGatewayTest.php` (11 tests).
+- `tests/Feature/Logistics/ShipOutProductionInventoryAuditTest.php` (3 tests).
+
+## 2. Official API contract
+- Production prefix: `https://open.shipout.com/api/`; sandbox: `https://opendev.shipout.com/api/`.
+- Header: developer `appKey`, customer `Authorization: bearer ...`, `timestamp` (ms), `version=1.0.0`, uppercase MD5 `sign` of `path + timestamp + version + secret` as documented.
+- Read-only endpoints: `/open-api/oms/info/warehouse/list`, `/open-api/oms/product/queryList`, `/open-api/oms/stock/list`.
+- Stock authorization requires real `clientOrgId`; warehouse is explicitly pinned to `warehouseId`.
+- Actual dispatch preflight must use `availableQuantity` rather than total quantity.
+
+## 3. Security and regression
+- Production reader throws in nonproduction runtime, or when READ is OFF, or with missing credentials.
+- Only fixed GET paths; HTTPS verification ON; redirects OFF; no retry; 5s connect / 15s total timeout.
+- Provider error text, response body, credentials and customer PII are never returned in exceptions.
+- Warehouse must exist in an authenticated warehouse list before the inventory audit proceeds.
+- All product and stock pages are bounded to 10 pages x 100 records and must have complete, stable totals.
+- Duplicate SKUs, wrong-warehouse stock and absent available quantities fail closed.
+- All unmatched provider SKUs are flagged **unresolved**, never auto-approved.
+- Historical sandbox modes 6/9/10 and Dede/Vita flow remain independent.
+
+## 4. Test evidence
+- PHP syntax lint: PASS. Latest main rebase base: f8fa4954; no overlap with new XLWMS files.
+- Laravel Pint: local candidate files formatted.
+- Targeted current-main sandbox + new production tests: **68 passed, 254 assertions** after Owner-provisional timezone preview regression (local UAT worktree, base f8fa4954).
+- Real production authentication: **PASS via Owner local GET**, HTTP 200 and warehouse identity 1265864414750314497 (MOREPLUS).
+- Real warehouse, products and `availableQuantity`: **read-only verified** as above. `clientOrgId=57893` is Owner-confirmed and matched successful stock query. No vendor-agent statement was provided. ERP Verified SKU Alias comparison has been performed read-only: 42/45 accepted, 3 held pending identity evidence/classification.
+- Initial pre-rebase full local suite: **NOT GREEN** (1,949 passed, 303 failed, 7 warnings, 8 skipped, 1 deprecated). Observed unrelated isolated-environment failures include missing SQLite logistics_carriers and missing frontend build; architecture frozen file set was already inconsistent with current checkout. Diagnose upstream CI separately; do not call release ready.
+- Partial Draft PR #580 head d8fd33a had a passing GitHub workflow, but that commit did NOT contain configuration or new test files, therefore it was NOT a complete R9 CI pass. Config was later committed on the same Draft PR. Tests remain missing from GitHub due to a safety gate; do not call the PR complete or mergeable by QA. Confirm exact-head CI only after all files are delivered and reviewed.
+- No new migration; no provider POST endpoint implemented in this candidate.
+
+## 4A. Real production R9-A evidence (Owner local output, 2026-10-30)
+- Production gateway GET `/open-api/oms/info/warehouse/list`: `HTTP_STATUS=200`, `API_AUTH_PASS=True`.
+- One warehouse exactly: `warehouseId=1265864414750314497`, name `MOREPLUS`; list validity PASS.
+- Source: Owner-executed local-only signed request using protected AppKey, AppSecret and customer Bearer. No secret value recorded.
+- Identity confirmation applies to this ONE warehouse only. `clientOrgId` subsequently Owner-confirmed as 57893, no additional vendor-agent statement.
+- Production GET stock query with `clientOrgId=57893` from JWT `orgId` candidate returned `result=OK` (independent provider customer-ID confirmation still PENDING).
+- R9-C owner-only snapshot: product SKU 69 (69 unique, status 1 reported on all), stock SKU 45 (45 unique), all stock SKUs present in product catalog, all 45 stock SKUs have positive availableQuantity, total available 1,999 units.
+- Source: `/Users/a/AI/uat/shipout-r9/production-readonly-inventory-snapshot.json` (0600; local-only, no secrets).
+- ERP canonical SKU and verified aliases NOT yet compared to the Production ERP database; catalog match is NOT ERP SKU verification.
+- Owner explicitly confirms `clientOrgId=57893` for MOREPLUS. This is OWNER-CONFIRMED, independently accepted for the signed stock GET; not a ShipOut agent statement.
+- Official ShipOut API standard explicitly defines all **time-type fields as UTC**; date-only fields have no inherent timezone (https://open.shipout.com/portal/zh/documentation/standard.html). Owner asks to show the timestamp in `Asia/Shanghai` for Chinese staff; that is a DISPLAY preference, not the source timezone. Concrete `shippedTime` sample validation is pending. `production_shipped_time_timezone_verified=false`, all Tracking Apply/Dispatch flags OFF.
+- Preview example: provider naive `2026-10-30 10:00:00` parsed as documented UTC => China operator display `2026-10-30 18:00:00 Asia/Shanghai`; this is a conversion unit test, not proof of a real provider payload.
+- R9 configuration: `production_shipped_time_source_timezone=UTC`, `production_shipped_time_display_timezone_preview=Asia/Shanghai`, `production_shipped_time_timezone_verified=false`, `production_tracking_apply_enabled=false`. No real tracking time apply before a live sample verifies provider contract consistency.
+- Production credential and identity config defaults remain blank, and all production API flags OFF. Owner has confirmed `clientOrgId=57893` for later binding; no Production env was changed.
+- R9-C local-only inventory helper available at `/Users/a/AI/uat/shipout-r9/verify_production_inventory.py`; fake-provider E2E PASS. Real product+stock GET verified by Owner local output; no outbound API POST.
+- No shipment API POST; no Production runtime config changes.
+
+## 4B. Production ERP Verified SKU Alias independent read-only audit (2026-10-31)
+- Owner-approved clientOrgId `57893`; warehouse `1265864414750314497`; 45 live stock SKUs; read from protected 0600 ShipOut snapshot.
+- Independent inspection used current Production ERP `VerifiedOmsProductIdentityResolver` in a DB-server READ ONLY transaction, then ROLLBACK. No ORM save, stock import, POST or new order. The existing Production release was not modified.
+- Results: 42 canonical SKUs resolved, 3 unresolved; 0 duplicate ERP product IDs among 42 verified.
+- Blocked SKU 1: ShipOut `BY489A` (available 702) currently aliases ERP `BY489A-Lubes`; alias active but `oms_verified_at` and `oms_identity_evidence` absent. DO NOT auto-approve.
+- Blocked SKU 2: ShipOut `BA561A` (available 7) currently aliases ERP `VA561A`; alias active but `oms_verified_at` and `oms_identity_evidence` absent. DO NOT auto-approve.
+- Blocked SKU 3: ShipOut `Logo Sign` (available 1), no ERP canonical or alias identity. Determine if this is a non-shippable warehouse ancillary item; do not assume it is a product or create Product automatically.
+- Available stock counts are provider-reported, NOT yet accepted to overwrite ERP stock. No API order submission permitted for any unverified SKU.
+- Pending: separate physical goods/evidence/owner verification for the two Alias rows, and explicit classification of `Logo Sign`; do not silently upgrade mapping based on matching name alone.
+
+## 4C. R9 newest-main / product-name readback, 2026-10-31
+- GitHub main advanced from PR base f8fa4954 to e641791b (3 additional commits primarily US-SM/XLWMS). R9 candidate patch applied cleanly in separate US Mac latest-main QA worktree; 68/68 ShipOut-focused PHPUnit tests PASS with 254 assertions; Pint PASS and git diff --check PASS. This is independent **local candidate** validation, not PR-head CI that includes the missing tests.
+- Read-only Production ERP product name inspection: ShipOut BY489A maps to active ERP `BY489A-Lubes` / `BEYOURLOVER LUBRICANT 35ML`; ShipOut BA561A maps to active ERP `VA561A` / `TOYCOD CLOUD JOY`. Both already have active alias rows but lack required OMS physical verification time and evidence. SKU string resemblance is not approval, especially the BA vs VA prefix difference.
+- A read-only ERP SKU substring check found **zero SKUs containing `logo`**, but this is not proof that `Logo Sign` is not a sellable product. Warehouse/product classification still requires a human decision; do not create a Product by guess.
+- ShipOut public Order API marks order-level `shippedTime` as DEPRECATED. The actual shipment time is under the `orderShipments` node; see `https://open.shipout.com/portal/zh/api/order.html`. All time-type fields are documented UTC; do not use order-level deprecated timestamp or assume the operator display timezone is the source timezone.
+- **No ERP alias changes or inventory writes** were made, and no production shipment was submitted. The existing 42/45 validated identities remain the only proven provider-to-ERP mappings; the 3 exceptions fail closed.
+- The GitHub Draft PR still omits 2 new test files because the platform rejected their upload. No attempt to circumvent that refusal through another channel is authorized.
+
+## 4D. Independent clean-main test baseline and available-stock eligibility (2026-10-31)
+- Reproduced the architecture `test_frozen_module_and_support_boundaries` FAIL in a detached **clean main e641791b** worktree containing NO R9 candidate changes. Frozen manifest lists 408 module PHP files; clean main already has 792, with **384 files not yet represented by the frozen manifest**. This architecture failure predates R9 and must not be misattributed to the two new ShipOut classes. Do not silently expand frozen architecture baselines inside R9; track architecture governance separately if needed.
+- Sanitized ShipOut snapshot timestamp: `2026-10-30T23:46:14.807215+00:00`. At that time, 45 stock SKUs had total reported `availableQuantity=1,999`.
+- 42 ERP Verified Canonical SKUs comprised 1,289 reported available units; three fail-closed exceptions comprised 710 units (`BY489A=702`, `BA561A=7`, `Logo Sign=1`). These numbers are **historical snapshot values, not live promises or a dispatch inventory reservation**.
+- No ERP Alias approval, inventory update or outbound operation occurred. Production health `/up` read-only returned 200 during this audit.
+- GitHub PR-head CI's current workflow **does not execute the R9 tests**. Continue to require both missing test files and exact-version R9 test execution before merge readiness.
+
+## 5. Live R9-A/R9-C close gates
+1. Owner-only helper (not to be executed by remote MCP): `python3 /Users/a/AI/uat/shipout-r9/verify_production_readonly.py`. This prints no secret values and calls only production warehouse GET. An authorized local-only procedure must validate stored AppKey, AppSecret and customer Token against production using GET only; do not expose secrets in logs.
+2. Capture only redacted HTTP result, verified organization, warehouse ID and inventory counts.
+3. Bind verified production warehouse and organization IDs to an audited, protected runtime, without enabling dispatch/apply.
+4. Confirm real product status field behavior, SKU alias mapping, available quantity, and full pagination.
+5. ShipOut official standard states UTC for time fields; verify at least one real `orderShipments[].shippedTime` sample behaves as documented before any live Tracking Apply, otherwise stop and request provider clarification.
+6. Review all discrepancies with Owner; unresolved identity or missing SKU = hard stop.
+
+## 6. R9-E release and rollback conditions
+- GitHub connector file write previously hit an OpenAI safety check. Do not bypass it by using another channel to push the blocked change.
+- Require authorized GitHub branch file write, complete changed-file review and exact HEAD CI before requesting release.
+- Production deploy requires separate Owner **pass** with explicit release SHA, backup and rollback marker.
+- Deploy the reviewed version dark, all flags OFF; readback `/up`, version and production env boolean-only gates.
+- No data migration for this candidate. Roll back to the recorded prior release if health/regressions fail.
+- Do not drop existing shipment attempt or label tables.
+- Preserve existing MorePlus XLSX manual flow and 3SM logic.
+- First real outbound Canary is **R10**, a separate exact-order Owner approval; no automatic retry.
+
+## 6A. Owner conditional dark Production deployment authorization — 2026-10-31
+- Owner stated: "完整候选版本通过验收后的 Production 发布". This is **conditional approval** of the R9 **dark (all production flags OFF) code release only after ALL mandatory gates pass**; it is NOT a release-now instruction and NEVER authorizes the first real production outbound.
+- **Gate 1: exact source**. Both dedicated R9 PHPUnit test files, production gateway, inventory audit, config and this Runbook must be present together in a reviewed GitHub PR at the exact immutable candidate SHA. No local-only source counts as PR-head tests.
+- **Gate 2: real checks**. Run dedicated ShipOut tests at exact PR SHA on U.S. implementation host and GitHub Actions (or approved equivalent first-party CI), Pint, static checks, and required regression gates. Green unrelated CI is insufficient. Record exact SHA, commands, exit status and results. Separate pre-existing architecture manifest drift as an independently attributable baseline finding, not a waived security test.
+- **Gate 3: peer review / no unsafe effects**. Code reviewed for hard-coded secrets (none), POST/PUT/PATCH/DELETE (none), redirect/retry disabled, full pagination and provider stock fail-closed behavior. No external Production runtime origin accessible to unapproved operators. Exclude 3 unverified OMS identities (`BY489A`, `BA561A`, `Logo Sign`) from eligible order preflight.
+- **Gate 4: latest main and deployment plan**. Reconcile latest `origin/main` against exact reviewed candidate without overwriting parallel PRs. Prepare immutable release artifact, prior Production release readback, rollback marker, and compatibility test. Any new conflict reopens Gate 2.
+- **Gate 5: dark Production code-only deployment**. Only after the preceding four pass may the Owner's conditional approval be applied to the exact reviewed candidate. Leave `SHIPOUT_PRODUCTION_READ_ENABLED=false`, `SHIPOUT_PRODUCTION_DISPATCH_ENABLED=false`, `SHIPOUT_PRODUCTION_TRACKING_APPLY_ENABLED=false`; do not inject local test keys or upload local `production.env`; no DB migrations or real order/stock writes. Confirm current version, `/up` healthy, current toggles OFF and rollback path; roll back if regression is observed.
+- **Separate authorization required** before any real production ShipOut dispatch POST or first real warehouse order; no batch, no automatic retry and no Woo/AfterShip apply from the dark release. Owner confirmation of `clientOrgId=57893` and Chinese display timezone does not change this.
+- **Current state on 2026-10-31: RELEASE_GATE=BLOCKED** because both PR PHPUnit test files remain absent and exact-head ShipOut CI has not run. GitHub API writing them was blocked by a safety check. Do not evade that block using another route; pursue permitted review/delivery instead.
+
+## 6B. Automated fail-closed release gate and source parity (2026-10-31)
+- Owner's conditional dark-production release approval remains applicable only after **complete candidate** acceptance, not to an incomplete PR.
+- Created a **READ-ONLY** automated GitHub release gate on U.S. Mac: `python3 /Users/a/AI/uat/shipout-r9/r9_release_gate_readonly.py`. It reads GitHub PR #580 and main, does not read ShipOut credentials, does not push, merge or deploy. Current output is **R9_RELEASE_GATE=HOLD**.
+- Current GitHub PR head: `8bae65927ebff85085c5ac1c19d22eeb413e5ecd`. Latest inspected main: `db7b677817016f8b6c404e7eabbfe6d69159779b`.
+- Missing in GitHub PR: `tests/Feature/Logistics/ShipOutProductionReadOnlyGatewayTest.php` and `tests/Feature/Logistics/ShipOutProductionInventoryAuditTest.php`, both previously blocked by OpenAI tool safety check. Do not route around the block.
+- Local test file integrity SHA256 (not secrets): gateway test `b73905b12ac19ebdce2804667273ab97c4d0d67bc602143f4ce5d4745f18a216`, inventory audit test `c30a090ec88c15413fd06942b8f92d5fd9d18e4e59d49c52bdd39ab2c1ddc6fd`.
+- Compared GitHub PR HEAD with locally tested source **byte by byte**: production gateway, production inventory audit and config are **functionally identical** to the tested files, differing only by the final trailing newline (1 byte). No substantive source drift in those files.
+- Local full R9 candidate patched on latest main `db7b677`: focused tests **68/68 PASS, 254 assertions**; Pint PASS; PHP syntax PASS; Git diff check PASS.
+- Existing ERP Production Stability CI was green on PR head, but workflow does not include R9 tests; **exact-head ShipOut test CI is NOT PROVEN**.
+- Main has moved beyond the PR base (`f8fa4954`), requiring a final candidate rebase/merge-base check and renewed CI on the exact publishable SHA.
+- Any attempted R9 Production deployment without all gates passing is prohibited. First real outbound remains a separate Owner-only approval.
+
+## 7. Supporting upstream docs
+- https://open.shipout.com/portal/zh/documentation/introduction.html
+- https://open.shipout.com/portal/api/stock
+
+## 6C. R9 final complete-candidate acceptance after Owner manual upload — 2026-10-31
+- The Owner manually uploaded both PHPUnit test files to PR #580. GitHub tree verified both present and **SHA256 exactly identical** to the tested U.S. Mac files: Gateway `b73905b12ac19ebdce2804667273ab97c4d0d67bc602143f4ce5d4745f18a216`; Inventory `c30a090ec88c15413fd06942b8f92d5fd9d18e4e59d49c52bdd39ab2c1ddc6fd`.
+- Corrected precisely three missing final newlines in the GitHub production read-only gateway, inventory audit and config. No business logic changes. Exact PR HEAD at initial full check: `647a6c0f7b447765dc088f212dd66fd70edd7933`.
+- Added the **ShipOut R9 exact-head tests and Pint gate** to existing `.github/workflows/erp-production-stability-v1.yml`, conditionally executed when R9 tests exist, preserving other PR checks. GitHub Actions run `41157790507`: `sqlite-regression` and `mysql8-runtime` both SUCCESS; dedicated `ShipOut R9 exact-head tests and Pint gate` step SUCCESS.
+- U.S. Mac detached exact-head tests: **68/68 PASS, 254 assertions**, Pint **5/5 PASS**, `git diff --check` PASS. Base main at the time: `77ae625aaebe7ae7e8be02e114d7de58262bb2da`; merged with PR in independent no-commit worktree without conflict; merge-result focused tests 68/68 PASS, Pint PASS, diff check PASS.
+- Existing clean-main frozen architecture test fails without R9 changes due to older manifest drift (408 registered module files versus 792 on historical clean main). Not represented as an R9 failure and not silently modified in this work package.
+- No runtime API writes, no order dispatch, no inventory or ERP alias updates. Available stock audit remains 42 canonical verified SKUs / 3 held identities.
+- **Code release authorization scope**: Owner previously approved **dark Production code-only release after complete candidate acceptance**. Preserve current Production baseline release `xlwms-manual-v1-pr581-20261031-e641791b` as rollback. Since subsequent GitHub main commits include other modules, create a **minimal R9-only overlay** on the current Production release; do not deploy unrelated unpublished changes from main. Keep shared `.env.production` and shared `storage` symlinks intact, never copy local credential files or ShipOut stock snapshots.
+- Before switching `current`: confirm no new PR changes, exact tested code, rollback target, no migration, OFF booleans and `/up` healthy. After switch: read back release path, code hashes, `/up` and OFF booleans. On any failure, restore rollback symlink atomically and re-check `/up`.
+- **Independent first outbound remains prohibited** without an additional Owner PASS. `SHIPOUT_PRODUCTION_READ_ENABLED=false`, `SHIPOUT_PRODUCTION_DISPATCH_ENABLED=false`, `SHIPOUT_PRODUCTION_TRACKING_APPLY_ENABLED=false` must remain OFF.
+- Older sections of this runbook document prior HOLD states; this section supersedes those snapshots only after exact latest-HEAD CI is reconfirmed. Any subsequent source change reopens exact-HEAD CI gate.
