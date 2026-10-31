@@ -78,6 +78,13 @@
 - **No ERP alias changes or inventory writes** were made, and no production shipment was submitted. The existing 42/45 validated identities remain the only proven provider-to-ERP mappings; the 3 exceptions fail closed.
 - The GitHub Draft PR still omits 2 new test files because the platform rejected their upload. No attempt to circumvent that refusal through another channel is authorized.
 
+## 4D. Independent clean-main test baseline and available-stock eligibility (2026-10-31)
+- Reproduced the architecture `test_frozen_module_and_support_boundaries` FAIL in a detached **clean main e641791b** worktree containing NO R9 candidate changes. Frozen manifest lists 408 module PHP files; clean main already has 792, with **384 files not yet represented by the frozen manifest**. This architecture failure predates R9 and must not be misattributed to the two new ShipOut classes. Do not silently expand frozen architecture baselines inside R9; track architecture governance separately if needed.
+- Sanitized ShipOut snapshot timestamp: `2026-10-30T23:46:14.807215+00:00`. At that time, 45 stock SKUs had total reported `availableQuantity=1,999`.
+- 42 ERP Verified Canonical SKUs comprised 1,289 reported available units; three fail-closed exceptions comprised 710 units (`BY489A=702`, `BA561A=7`, `Logo Sign=1`). These numbers are **historical snapshot values, not live promises or a dispatch inventory reservation**.
+- No ERP Alias approval, inventory update or outbound operation occurred. Production health `/up` read-only returned 200 during this audit.
+- GitHub PR-head CI's current workflow **does not execute the R9 tests**. Continue to require both missing test files and exact-version R9 test execution before merge readiness.
+
 ## 5. Live R9-A/R9-C close gates
 1. Owner-only helper (not to be executed by remote MCP): `python3 /Users/a/AI/uat/shipout-r9/verify_production_readonly.py`. This prints no secret values and calls only production warehouse GET. An authorized local-only procedure must validate stored AppKey, AppSecret and customer Token against production using GET only; do not expose secrets in logs.
 2. Capture only redacted HTTP result, verified organization, warehouse ID and inventory counts.
