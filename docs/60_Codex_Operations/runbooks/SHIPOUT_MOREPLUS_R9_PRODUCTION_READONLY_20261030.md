@@ -128,3 +128,15 @@
 ## 7. Supporting upstream docs
 - https://open.shipout.com/portal/zh/documentation/introduction.html
 - https://open.shipout.com/portal/api/stock
+
+## 6C. R9 final complete-candidate acceptance after Owner manual upload — 2026-10-31
+- The Owner manually uploaded both PHPUnit test files to PR #580. GitHub tree verified both present and **SHA256 exactly identical** to the tested U.S. Mac files: Gateway `b73905b12ac19ebdce2804667273ab97c4d0d67bc602143f4ce5d4745f18a216`; Inventory `c30a090ec88c15413fd06942b8f92d5fd9d18e4e59d49c52bdd39ab2c1ddc6fd`.
+- Corrected precisely three missing final newlines in the GitHub production read-only gateway, inventory audit and config. No business logic changes. Exact PR HEAD at initial full check: `647a6c0f7b447765dc088f212dd66fd70edd7933`.
+- Added the **ShipOut R9 exact-head tests and Pint gate** to existing `.github/workflows/erp-production-stability-v1.yml`, conditionally executed when R9 tests exist, preserving other PR checks. GitHub Actions run `41157790507`: `sqlite-regression` and `mysql8-runtime` both SUCCESS; dedicated `ShipOut R9 exact-head tests and Pint gate` step SUCCESS.
+- U.S. Mac detached exact-head tests: **68/68 PASS, 254 assertions**, Pint **5/5 PASS**, `git diff --check` PASS. Base main at the time: `77ae625aaebe7ae7e8be02e114d7de58262bb2da`; merged with PR in independent no-commit worktree without conflict; merge-result focused tests 68/68 PASS, Pint PASS, diff check PASS.
+- Existing clean-main frozen architecture test fails without R9 changes due to older manifest drift (408 registered module files versus 792 on historical clean main). Not represented as an R9 failure and not silently modified in this work package.
+- No runtime API writes, no order dispatch, no inventory or ERP alias updates. Available stock audit remains 42 canonical verified SKUs / 3 held identities.
+- **Code release authorization scope**: Owner previously approved **dark Production code-only release after complete candidate acceptance**. Preserve current Production baseline release `xlwms-manual-v1-pr581-20261031-e641791b` as rollback. Since subsequent GitHub main commits include other modules, create a **minimal R9-only overlay** on the current Production release; do not deploy unrelated unpublished changes from main. Keep shared `.env.production` and shared `storage` symlinks intact, never copy local credential files or ShipOut stock snapshots.
+- Before switching `current`: confirm no new PR changes, exact tested code, rollback target, no migration, OFF booleans and `/up` healthy. After switch: read back release path, code hashes, `/up` and OFF booleans. On any failure, restore rollback symlink atomically and re-check `/up`.
+- **Independent first outbound remains prohibited** without an additional Owner PASS. `SHIPOUT_PRODUCTION_READ_ENABLED=false`, `SHIPOUT_PRODUCTION_DISPATCH_ENABLED=false`, `SHIPOUT_PRODUCTION_TRACKING_APPLY_ENABLED=false` must remain OFF.
+- Older sections of this runbook document prior HOLD states; this section supersedes those snapshots only after exact latest-HEAD CI is reconfirmed. Any subsequent source change reopens exact-HEAD CI gate.
