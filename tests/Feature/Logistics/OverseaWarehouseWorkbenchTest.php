@@ -391,8 +391,13 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
             $this->assertSame('Warehouse Code/仓库代码', $rows[0][0]);
             $this->assertSame($expected[0], $rows[1][0]);
             $this->assertSame('Woocommerce', $rows[1][1]);
-            $this->assertSame($expected[1], $rows[1][3]);
-            $this->assertSame('WC-'.$code, $rows[1][4]);
+            if ($code === 'US-SM') {
+                $this->assertStringStartsWith($expected[1].'-R', $rows[1][3]);
+                $this->assertSame($rows[1][3], $rows[1][4]);
+            } else {
+                $this->assertSame($expected[1], $rows[1][3]);
+                $this->assertSame('WC-'.$code, $rows[1][4]);
+            }
             $this->assertSame($expected[2], $rows[1][5]);
             $this->assertSame($expected[3], $rows[1][6] ?? '');
             $this->assertSame('+1 555 0100', $rows[1][11]);
@@ -1244,4 +1249,71 @@ final class TrackingReturnFakeWooGateway implements WooCommerceTrackingGateway
         $this->orderStatusCalls++;
         return ['written' => true, 'verified' => true, 'status' => $status];
     }
+
+    public function test_us_sm_single_manual_download_is_repeatable_with_unique_refs_and_no_oms_write(): void
+    {
+        $user=$this->userWith(['logistics.view','logistics.operate']);
+        $w=$this->warehouses();
+        $order=$this->orderAt($w['US-SM'],'007erp-1031-c41863');
+        $this->markAsPaidWooOrder($order,'WC-US-SM');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        Http::preventStrayRequests();
+        Http::fake();
+        $url="/logistics/oversea/us-3sm/orders/{$order->id}/manual-export";
+        $first=$this->actingAs($user)->get($url)->assertOk();
+        $second=$this->actingAs($user)->get($url)->assertOk();
+        $rows1=$this->xlsxRows($first->getContent());
+        $rows2=$this->xlsxRows($second->getContent());
+        $this->assertCount(2,$rows1);
+        $this->assertCount(2,$rows2);
+        $this->assertSame('Yangfan',$rows1[1][0]);
+        $this->assertSame('Upload_Shipping_Label',$rows1[1][5]);
+        $this->assertSame('USPS',$rows1[1][6]);
+        $this->assertSame('REVIEW-SKU',$rows1[1][24]);
+        $this->assertSame('2',$rows1[1][25]);
+        $this->assertSame($rows1[1][3],$rows1[1][4]);
+        $this->assertSame($rows2[1][3],$rows2[1][4]);
+        $this->assertNotSame($rows1[1][3],$rows2[1][3]);
+        $this->assertStringContainsString('DO NOT SHIP',$rows1[1][23]);
+        $this->assertStringContainsString('current drafts',$rows1[1][23]);
+        $this->assertStringContainsString('private',$first->headers->get('Cache-Control'));
+        $this->assertSame('pending',$order->fresh()->shipment->shipment_status);
+        Http::assertNothingSent();
+    }
+
+    public function test_us_sm_manual_download_needs_review_and_operator_role_and_is_warehouse_isolated(): void
+    {
+        $w=$this->warehouses();
+        $order=$this->orderAt($w['US-SM'],'007erp-1031-c41864');
+        $ny=$this->orderAt($w['US-NY'],'007erp-1031-c41865');
+        $operator=$this->userWith(['logistics.view','logistics.operate']);
+        $viewer=$this->userWith(['logistics.view']);
+        $this->actingAs($operator)->get("/logistics/oversea/us-3sm/orders/{$order->id}/manual-export")
+            ->assertStatus(422);
+        $this->actingAs($operator)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $this->actingAs($viewer)->get("/logistics/oversea/us-3sm/orders/{$order->id}/manual-export")
+            ->assertForbidden();
+        $this->actingAs($operator)->get("/logistics/oversea/us-3sm/orders/{$ny->id}/manual-export")
+            ->assertNotFound();
+    }
+
+    public function test_us_sm_previous_automatic_create_http_routes_permanently_disabled(): void
+    {
+        $operator=$this->userWith(['logistics.view','logistics.operate']);
+        $w=$this->warehouses();
+        $order=$this->orderAt($w['US-SM'],'007erp-1031-c41866');
+        Http::preventStrayRequests();Http::fake();
+        $paths=[
+            "/logistics/oversea/us-3sm/xlwms/sync",
+            "/logistics/oversea/us-3sm/orders/{$order->id}/xlwms/send",
+            "/logistics/oversea/us-3sm/orders/{$order->id}/xlwms/web-draft",
+            "/logistics/oversea/us-3sm/orders/{$order->id}/xlwms/reship-create",
+        ];
+        foreach($paths as $path) {
+            $response=$this->actingAs($operator)->postJson($path,[]);
+            $response->assertStatus(410)->assertJsonPath('code','XLWMS_MANUAL_ORDER_ONLY');
+        }
+        Http::assertNothingSent();
+    }
+
 }

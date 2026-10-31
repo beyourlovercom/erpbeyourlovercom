@@ -80,9 +80,10 @@ describe('Oversea Dede file exchange workbench', () => {
   it('keeps 3SM file return disabled and exposes manual confirm after tracking entry', async () => {
     const wrapper = mountPage({ warehouseKey: 'us-3sm', warehouse: warehouseOptions[1], trackingImportPreview: null, rows: usSmPendingRows })
     expect(wrapper.text()).not.toContain('上传物流回传表')
-    expect(wrapper.text()).toContain('审核通过后，点击「下发世迈仓」')
+    expect(wrapper.text()).toContain('审核通过后，下载订单文件')
     expect(wrapper.text()).toContain('确认发货')
-    expect(wrapper.find('a[href="/logistics/oversea/us-3sm/export"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/logistics/oversea/us-3sm/export"]').text()).toContain('批量下载订单文件')
+    expect(wrapper.find('a.xlwms-manual-download').attributes('href')).toBe('/logistics/oversea/us-3sm/orders/99/manual-export')
 
     const input = wrapper.find('input.tracking-input')
     await input.setValue('9400111899223856928599')
@@ -116,7 +117,7 @@ describe('Oversea Dede file exchange workbench', () => {
     const wrapper=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
       trackingImportPreview:null,rows:usSmPendingRows,xlwmsBatchEnabled:true})
     expect(wrapper.find('button.xlwms-batch-button').exists()).toBe(false)
-    expect(wrapper.find('td.xlwms-cell button.xlwms-action.primary').text()).toBe('下发世迈仓')
+    expect(wrapper.find('td.xlwms-cell a.xlwms-manual-download').text()).toBe('下载订单文件')
     expect(wrapper.text()).not.toContain('世迈 OMS · API 发货 / 状态')
   })
 
@@ -140,87 +141,57 @@ describe('Oversea Dede file exchange workbench', () => {
 
 
 
-  it('disables US-SM one-click action when secure OMS connection has not been configured', () => {
+  it('uses manual order download regardless of OMS session connection', () => {
     const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
       xlwmsOmsWebEnabled:false,rows:usSmPendingRows,trackingImportPreview:null})
     const cell=page.find('td.xlwms-cell')
-    expect(cell.text()).toContain('世迈仓尚未连接')
-    const button=cell.find('button.xlwms-action.primary')
-    expect(button.exists()).toBe(true)
-    expect(button.attributes('disabled')).toBeDefined()
-    expect(button.text()).toContain('请管理员连接世迈仓')
+    expect(cell.text()).toContain('人工导入 OMS')
+    const link=cell.find('a.xlwms-manual-download')
+    expect(link.exists()).toBe(true)
+    expect(link.attributes('href')).toBe('/logistics/oversea/us-3sm/orders/99/manual-export')
+    expect(link.text()).toBe('下载订单文件')
+    expect(page.text()).toContain('OMS 人工导入草稿')
+    expect(page.text()).not.toContain('一键下发草稿')
+    expect(page.find('button.xlwms-batch-button').exists()).toBe(false)
   })
 
-  it('makes the first click a single clear warehouse action without older API or approval panels', async () => {
-    const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
-      trackingImportPreview:null,rows:usSmPendingRows})
-    const cell=page.find('td.xlwms-cell')
-    expect(cell.text()).toContain('待下发')
-    expect(cell.find('button.xlwms-action.primary').text()).toBe('下发世迈仓')
-    expect(page.text()).toContain('一键下发草稿')
-    expect(cell.text()).not.toContain('申请审核已记录')
-    expect(cell.text()).not.toContain('状态码')
-    expect(page.text()).not.toContain('OpenAPI')
-    expect(cell.find('input.xlwms-reship-reason').exists()).toBe(false)
-  })
-
-  it('sends the first OMS draft request directly and shows a human-readable result', async () => {
-    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="TEST-CSRF-UX">')
-    const fake=vi.fn().mockResolvedValue({ok:true,json:async()=>({
-      state:'oms_draft_created',oms_order_no:'OBS-NEW-1',attempt_ref:'BYL-WEB-1',failure_code:null,
-    })})
-    vi.stubGlobal('fetch',fake)
-    try {
-      const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
-        trackingImportPreview:null,rows:usSmPendingRows})
-      await page.find('td.xlwms-cell button.xlwms-action.primary').trigger('click')
-      await vi.waitFor(()=>expect(page.find('td.xlwms-cell').text()).toContain('已保存到仓库草稿箱'))
-      expect(page.find('td.xlwms-cell').text()).toContain('仓库单号：OBS-NEW-1')
-      expect(fake).toHaveBeenCalledTimes(1)
-      expect(fake.mock.calls[0][0]).toContain('/orders/99/xlwms/web-draft')
-      expect(fake.mock.calls[0][1].method).toBe('POST')
-    } finally {vi.unstubAllGlobals();document.head.querySelector('meta[name="csrf-token"]')?.remove()}
-  })
-
-  it('shows old cancelled order as one concise sentence and uses the same one-click route', async () => {
+  it('keeps history collapsed and offers a new download even after earlier canceled OMS', () => {
     const row={...usSmPendingRows.data[0],xlwms:{
-      state:'draft_cancelled_confirmed',oms_order_no:'OBS-OLD-1',oms_status_code:'4',
+      state:'draft_cancelled_confirmed',oms_order_no:'OBS-CANCELLED',oms_status_code:'4',
       oms_status_checked_at:null,oms_tracking_no:null,failure_code:null,oms_status_failure_code:null,
     }}
-    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="TEST-CSRF-UX">')
-    const fake=vi.fn().mockResolvedValue({ok:true,json:async()=>({
-      state:'existing_current_draft',oms_order_no:'OBS-NEW-2',attempt_ref:'BYL-WEB-2',failure_code:null,
-    })})
-    vi.stubGlobal('fetch',fake)
-    try {
-      const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
-        trackingImportPreview:null,rows:{...usSmPendingRows,data:[row]}})
-      const cell=page.find('td.xlwms-cell')
-      expect(cell.find('.xlwms-state').text()).toContain('上次仓库单已取消，可重新下发')
-      expect(cell.find('button.xlwms-action.primary').text()).toBe('重新下发')
-      expect(cell.find('details.xlwms-history').exists()).toBe(true)
-      expect(cell.find('details.xlwms-history summary').text()).toBe('查看历史仓库记录')
-      expect(cell.text()).not.toContain('申请审核')
-      await cell.find('button.xlwms-action.primary').trigger('click')
-      await vi.waitFor(()=>expect(cell.find('.xlwms-state').text()).toContain('草稿箱已有此订单'))
-      expect(fake.mock.calls[0][0]).toContain('/xlwms/web-draft')
-      expect(fake).toHaveBeenCalledTimes(1)
-    } finally {vi.unstubAllGlobals();document.head.querySelector('meta[name="csrf-token"]')?.remove()}
+    const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+      trackingImportPreview:null,rows:{...usSmPendingRows,data:[row]}})
+    const cell=page.find('td.xlwms-cell')
+    expect(cell.find('a.xlwms-manual-download').text()).toBe('重新下载订单文件')
+    expect(cell.find('details.xlwms-history').exists()).toBe(true)
+    expect(cell.find('details.xlwms-history').attributes('open')).toBeUndefined()
+    expect(cell.text()).toContain('导入前先查看当前草稿箱')
+    expect(cell.text()).not.toContain('申请审核')
   })
 
-  it('explains a missing OMS connection in ordinary language, not raw API codes', async () => {
-    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="TEST-CSRF-UX">')
-    const fake=vi.fn().mockResolvedValue({ok:false,status:500,json:async()=>({message:'OMS_WEB_TOKEN_MISSING'})})
-    vi.stubGlobal('fetch',fake)
-    try {
-      const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
-        trackingImportPreview:null,rows:usSmPendingRows})
-      await page.find('td.xlwms-cell button.xlwms-action.primary').trigger('click')
-      await vi.waitFor(()=>expect(page.find('td.xlwms-cell .xlwms-error').exists()).toBe(true))
-      expect(page.find('td.xlwms-cell .xlwms-error').text()).toContain('请联系管理员')
-      expect(page.find('td.xlwms-cell').text()).not.toContain('OMS_WEB_TOKEN_MISSING')
-    } finally {vi.unstubAllGlobals();document.head.querySelector('meta[name="csrf-token"]')?.remove()}
+  it('uses the same manual export when historical ERP shipment was shipped', () => {
+    const row={...usSmPendingRows.data[0],shipment_status:'shipped',web_draft:{
+      state:'oms_draft_created',oms_order_no:'OBS-LAST',attempt_ref:'BYL-WEB-OLD',failure_code:null,
+    }}
+    const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+      trackingImportPreview:null,rows:{...usSmPendingRows,data:[row]}})
+    const cell=page.find('td.xlwms-cell')
+    expect(cell.find('a.xlwms-manual-download').text()).toBe('重新下载订单文件')
+    expect(cell.find('a.xlwms-manual-download').attributes('href')).toContain('/manual-export')
+    expect(page.text()).not.toContain('世迈仓尚未连接')
   })
+
+  it('does not use browser API and never exposes automatic dispatch control', () => {
+    const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
+      trackingImportPreview:null,rows:usSmPendingRows,xlwmsOmsWebEnabled:true})
+    const cell=page.find('td.xlwms-cell')
+    expect(cell.find('button.xlwms-action.primary').exists()).toBe(false)
+    expect(cell.find('a.xlwms-manual-download').exists()).toBe(true)
+    expect(page.text()).not.toContain('正在检查草稿箱…')
+    expect(page.text()).toContain('查看仓库草稿箱')
+  })
+
   it('allows unified review actions from all overseas warehouses', async () => {
     const reviewRows = { data: [{
       line: 1, order_id: 77, erp_order_id: '007-OVERSEA-ALL-77', order_url: '/orders/77', recipient_name: 'Recipient', country: 'US',
@@ -496,7 +467,7 @@ describe('Oversea Dede file exchange workbench', () => {
   })
 
 
-  it('keeps prior OMS records collapsed while the new single-click action remains available', () => {
+  it('keeps previous OMS records folded and provides repeat XLSX download', () => {
     const row={...usSmPendingRows.data[0],shipment_status:'shipped',xlwms:{
       state:'batch_existing',oms_order_no:'OBS-OLD',oms_status_code:'5',
       oms_status_checked_at:null,oms_tracking_no:null,failure_code:null,oms_status_failure_code:null,
@@ -504,20 +475,19 @@ describe('Oversea Dede file exchange workbench', () => {
     const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
       trackingImportPreview:null,rows:{...usSmPendingRows,data:[row]}})
     const cell=page.find('td.xlwms-cell')
-    expect(cell.find('button.xlwms-action.primary').text()).toBe('重新下发')
+    expect(cell.find('a.xlwms-manual-download').text()).toBe('重新下载订单文件')
     expect(cell.find('details.xlwms-history').exists()).toBe(true)
     expect(cell.find('details.xlwms-history').attributes('open')).toBeUndefined()
     expect(cell.find('input.xlwms-reship-reason').exists()).toBe(false)
-    expect(cell.text()).not.toContain('重新下发仓库 · 独立出库草稿')
   })
 
-  it('does not offer warehouse dispatch until review is approved', () => {
+  it('requires overseas review approval before downloading', () => {
     const row={...usSmPendingRows.data[0],review_status:'pending' as const}
     const page=mountPage({warehouseKey:'us-3sm',warehouse:warehouseOptions[1],
       trackingImportPreview:null,rows:{...usSmPendingRows,data:[row]}})
     const cell=page.find('td.xlwms-cell')
-    expect(cell.text()).toContain('审核通过后可下发')
-    expect(cell.find('button.xlwms-action.primary').exists()).toBe(false)
+    expect(cell.text()).toContain('审核通过后可下载')
+    expect(cell.find('a.xlwms-manual-download').exists()).toBe(false)
   })
 
 })

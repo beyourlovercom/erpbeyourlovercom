@@ -11,6 +11,7 @@ use App\Modules\Logistics\Experience\Controllers\ShipOutMorePlusController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsSingleOrderController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsReshipmentController;
 use App\Modules\Logistics\Experience\Controllers\XlwmsWarehouseBatchController;
+use App\Modules\Logistics\Experience\Middleware\RejectXlwmsAutomaticCreate;
 use App\Modules\Logistics\Experience\Middleware\RequireFulfillmentAllocation;
 use App\Modules\Logistics\Experience\Middleware\RequireLogisticsExecution;
 use App\Modules\Logistics\Experience\Middleware\RequireLogisticsReview;
@@ -36,8 +37,12 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/china/orders/{order}/approve', [DomesticLogisticsController::class, 'approve'])->middleware($execution)->name('logistics.china.approve');
     Route::post('/logistics/china/orders/{order}/reopen-review', [DomesticLogisticsController::class, 'reopenReview'])->middleware($execution)->name('logistics.china.reopen-review');
     Route::get('/logistics/oversea/{warehouse?}', [OverseaWarehouseController::class, 'index'])->middleware('can:logistics.view')->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea');
+    Route::get('/logistics/oversea/us-3sm/orders/{order}/manual-export',
+        [OverseaWarehouseController::class, 'exportManualUsSmOrder'])
+        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:30,1'])
+        ->whereNumber('order')->name('logistics.xlwms.manual.export');
     Route::post('/logistics/oversea/us-3sm/xlwms/sync', [XlwmsWarehouseBatchController::class, 'sync'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:2,1'])
+        ->middleware([RejectXlwmsAutomaticCreate::class, 'can:logistics.operate', RequireLogisticsExecution::class, 'throttle:2,1'])
         ->name('logistics.xlwms.warehouse.sync');
     Route::post('/logistics/oversea/us-3sm/xlwms/refresh-statuses', [XlwmsWarehouseBatchController::class, 'refresh'])
         ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:1,1'])
@@ -48,11 +53,11 @@ Route::middleware(['web', 'auth'])->group(function (): void {
         ->whereNumber('order')->name('logistics.xlwms.order.inline-preflight');
     Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/send',
         [XlwmsSingleOrderController::class, 'send'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class,'throttle:2,1'])
+        ->middleware([RejectXlwmsAutomaticCreate::class, 'can:logistics.operate', RequireLogisticsExecution::class,'throttle:2,1'])
         ->whereNumber('order')->name('logistics.xlwms.order.send');
     Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/web-draft',
         [XlwmsSingleOrderController::class, 'webDraft'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:2,1'])
+        ->middleware([RejectXlwmsAutomaticCreate::class, 'can:logistics.operate', RequireLogisticsExecution::class, 'throttle:2,1'])
         ->whereNumber('order')->name('logistics.xlwms.order.web-draft');
     Route::get('/logistics/oversea/us-3sm/orders/{order}/xlwms/reship-preflight',
         [XlwmsReshipmentController::class, 'preflight'])
@@ -76,7 +81,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
         ->whereNumber('order')->whereUuid('requestId')->name('logistics.xlwms.order.reship-manual-draft');
     Route::post('/logistics/oversea/us-3sm/orders/{order}/xlwms/reship-create',
         [XlwmsReshipmentController::class, 'createDraft'])
-        ->middleware(['can:logistics.operate', RequireLogisticsExecution::class, 'throttle:1,1'])
+        ->middleware([RejectXlwmsAutomaticCreate::class, 'can:logistics.operate', RequireLogisticsExecution::class, 'throttle:1,1'])
         ->whereNumber('order')->name('logistics.xlwms.order.reship-create');
     Route::get('/logistics/oversea/us-3sm/orders/{order}/xlwms/reship-status/{requestId}',
         [XlwmsReshipmentController::class, 'status'])

@@ -91,7 +91,7 @@ const trackingFileInput = ref<HTMLInputElement|null>(null)
 const trackingPreviewRows = computed(() => props.trackingImportPreview?.rows.slice(0, 20) ?? [])
 const canUploadTrackingFile = computed(() => props.warehouseKey !== 'us-3sm')
 const trackingFileHint = computed(() => props.warehouseKey === 'us-3sm'
-  ? '审核通过后，点击订单上的「下发世迈仓」。仓库人员收到草稿后，再上传真实面单并提交发货。'
+  ? '下载订单文件后，由物流人员在 OMS 人工导入；仓库补充真实 USPS 面单后再发货。'
   : '上传当前仓库真实回传 XLSX；兼容旧 CSV。上传只生成预览，确认后才会标记已发货。')
 const rowErrors = reactive<Record<number,string>>({})
 // MorePlus API is a separate sandbox-only provider, NEVER the 世迈 XLWMS route.
@@ -406,55 +406,12 @@ const notifyOms = (state:'SUCCESS'|'ERROR'|'INFO', title:string, message:string)
   publishGlobalFeedback({ state, title, message, copyable:state==='ERROR' })
 const omsEndpoint = (row:Row, action:string) =>
   '/logistics/oversea/us-3sm/orders/'+row.order_id+'/xlwms/'+action
-const webDraftBusy = reactive<Record<number,boolean>>({})
-const webDraftErrors = reactive<Record<number,string>>({})
-const webDraftResult = reactive<Record<number,WebDraft>>({})
-const webDraftEligible = (row:Row) => props.canOperate && props.warehouseKey==='us-3sm'
-  && row.review_status==='approved'
-const webDraftHasHistory = (row:Row) => !!(row.web_draft?.oms_order_no || omsRow(row)?.oms_order_no)
-const webDraftActionLabel = (row:Row) => webDraftHasHistory(row) ? '重新下发' : '下发世迈仓'
-const webDraftUserError = (message:string, status:number):string => {
-  if (status===403) return '当前账号没有下发权限，请联系管理员'
-  if (status===429 || message.includes('IN_FLIGHT')) return '这张订单正在处理，请稍后查看结果'
-  if (status===422) return '订单资料不完整，请检查收件地址及产品信息'
-  if (/DISABLED|TOKEN_MISSING|HMAC_KEY_MISSING|CREDENTIALS_MISSING/.test(message))
-    return '世迈仓连接尚未启用，请联系管理员'
-  if (message.includes('LOGIN_EXPIRED')) return '世迈仓登录已过期，请联系管理员重新连接'
-  if (/DRAFT_PAGE|DRAFT_LIST|DRAFT_INCOMPLETE/.test(message))
-    return '暂时无法确认仓库草稿箱，已停止新建订单，请稍后再试'
-  if (/UNCONFIRMED|UNCERTAIN|UNVERIFIED/.test(message))
-    return '仓库结果暂时无法确认，请先检查草稿箱，避免重复下单'
-  return '下发没有完成，请联系管理员检查仓库连接'
-}
-const webDraftReadableStatus = (row:Row):string => {
-  const done=webDraftResult[row.order_id]
-  if (done?.state==='existing_current_draft') return '草稿箱已有此订单，无需重复下发'
-  if (done?.state==='oms_draft_created') return '已保存到仓库草稿箱'
-  if (omsRow(row)?.oms_status_code==='4') return '上次仓库单已取消，可重新下发'
-  if (row.web_draft?.oms_order_no) return '已有下发记录，可再次检查草稿箱'
-  return '待下发'
-}
-const createWebDraft = async (row:Row) => {
-  if (!webDraftEligible(row) || !props.xlwmsOmsWebEnabled || webDraftBusy[row.order_id]) return
-  webDraftBusy[row.order_id]=true; webDraftErrors[row.order_id]=''
-  try {
-    const csrf=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
-    if (!csrf) throw Error('CSRF 校验信息缺失')
-    const response=await fetch(`/logistics/oversea/us-3sm/orders/${row.order_id}/xlwms/web-draft`,{
-      method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
-      headers:{Accept:'application/json','Content-Type':'application/json','X-CSRF-TOKEN':csrf},body:'{}',
-    })
-    const result=await response.json().catch(()=>null)
-    if (!response.ok) throw Error(webDraftUserError(String(result?.message||result?.error||''), response.status))
-    if (!result?.oms_order_no || !['existing_current_draft','oms_draft_created'].includes(result.state))
-      throw Error('仓库结果暂时无法确认，请先检查草稿箱，避免重复下单')
-    webDraftResult[row.order_id]=result as WebDraft
-    notifyOms('SUCCESS',result.state==='existing_current_draft'?'仓库已有此订单':'已保存仓库草稿',`仓库单号：${result.oms_order_no}。下一步：仓库上传真实面单。`)
-  } catch(e) {
-    webDraftErrors[row.order_id]=e instanceof Error?e.message:'下发没有完成，请联系管理员检查仓库连接'
-    notifyOms('ERROR','下发未完成',webDraftErrors[row.order_id])
-  } finally { webDraftBusy[row.order_id]=false }
-}
+// US-SM Final V1: staff downloads a one-order XLSX and manually imports in
+// OMS after checking its CURRENT draft inbox. No automatic browser/API CREATE.
+const hasOmsHistory = (row:Row) => !!(row.web_draft?.oms_order_no || omsRow(row)?.oms_order_no)
+const manualOrderDownload = (row:Row) =>
+  '/logistics/oversea/us-3sm/orders/'+row.order_id+'/manual-export'
+const manualDownloadText = (row:Row) => hasOmsHistory(row) ? '重新下载订单文件' : '下载订单文件'
 async function omsRequest(row:Row,action:string,payload:Record<string,string>={}) {
   const token=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
   if (!token && action!=='preflight') throw Error('CSRF_MISSING')
@@ -671,7 +628,7 @@ const compactPages = computed<(number|string)[]>(() => {
         </aside>
         <main class="oversea-main">
       <header class="oversea-heading">
-        <div><h1>{{ pageTitle }}</h1><p v-if="warehouseKey === 'us-3sm'">审核通过后，点击「下发世迈仓」。当前草稿箱已有相同订单时不会重复创建。</p><p v-else>审核 Vita 分仓结果；通过后进入真实下单，驳回则退回运营重新分配。</p><p v-if="warehouseKey === 'us-moreplus'" class="xlwms-channel-hint">ShipOut 自动渠道和指定渠道需核对仓库最终承运商，不能假定 USPS Priority。</p></div>
+        <div><h1>{{ pageTitle }}</h1><p v-if="warehouseKey === 'us-3sm'">审核通过后，下载订单文件，在世迈 OMS 人工导入。重复导入前先检查当前草稿箱，避免重复下单。</p><p v-else>审核 Vita 分仓结果；通过后进入真实下单，驳回则退回运营重新分配。</p><p v-if="warehouseKey === 'us-moreplus'" class="xlwms-channel-hint">ShipOut 自动渠道和指定渠道需核对仓库最终承运商，不能假定 USPS Priority。</p></div>
         <div class="oversea-file-actions">
           <a v-if="warehousePortal" class="file-button file-link warehouse-portal-link"
             :href="warehousePortal.href" target="_blank" rel="noopener noreferrer">
@@ -683,11 +640,8 @@ const compactPages = computed<(number|string)[]>(() => {
           <template v-if="warehouse && view === 'pending'">
           <button v-if="warehouseKey === 'us-3sm' && canOperate" type="button" class="file-button" :disabled="refreshBusy" @click="refreshOmsStatuses">{{refreshBusy?'查询中…':'刷新仓库状态'}}</button>
           <a v-if="warehouseKey === 'us-3sm'" class="file-button file-link" href="https://oms.xlwms.com/warehouse/packet" target="_blank" rel="noopener noreferrer">查看仓库草稿箱</a>
-          <details v-if="warehouseKey==='us-3sm'" class="xlwms-tools">
-            <summary>备用工具</summary>
-            <a class="file-button file-link" :href="`${basePath}/export`">下载 Excel 导入表</a>
-            <a class="file-button file-link" href="/assets/xlwms-VOID-TEST-DO-NOT-SHIP.png" download="VOID_TEST_ONLY_NOT_USPS_DO_NOT_SHIP.png">下载测试占位图（禁止发货）</a>
-          </details>
+          <a v-if="warehouseKey==='us-3sm' && canOperate" class="file-button file-link"
+            :href="`${basePath}/export`">⇩ 批量下载订单文件</a>
           <a v-else class="file-button file-link" :href="`${basePath}/export`">⇩ 下载仓库下单表</a>
           <input ref="trackingFileInput" class="hidden-file" type="file" accept=".xlsx,.csv,.txt" @change="previewTrackingFile" />
           <button v-if="canOperate && canUploadTrackingFile" type="button" class="file-button primary" @click="chooseTrackingFile">⇧ 上传物流回传表</button>
@@ -701,7 +655,7 @@ const compactPages = computed<(number|string)[]>(() => {
         <span v-if="batchError" class="xlwms-error">{{ batchError }}</span>
       </div>
       <div v-if="warehouse && view === 'pending'" class="oversea-file-flow">
-        <template v-if="warehouseKey==='us-3sm'"><span>① 审核订单</span><b>→</b><span>② 一键下发草稿</span><b>→</b><span>③ 仓库更换面单</span><b>→</b><span>④ 人工确认发货</span></template>
+        <template v-if="warehouseKey==='us-3sm'"><span>① 审核订单</span><b>→</b><span>② 下载订单文件</span><b>→</b><span>③ OMS 人工导入草稿</span><b>→</b><span>④ 仓库上传真实面单并发货</span></template>
         <template v-else><span>① 审核通过</span><b>→</b><span>② 下载 USPS 草稿导入表</span><b>→</b><span>③ OMS 草稿－待提交</span><b>→</b><span>④ 人工上传真实面单并提交</span><b>→</b><span>⑤ 仓库 Tracking 回写 ERP</span></template>
         <small v-if="warehouseKey!=='us-3sm'">{{ trackingFileHint }}</small>
       </div>
@@ -740,7 +694,7 @@ const compactPages = computed<(number|string)[]>(() => {
           <thead><tr>
             <th v-if="canTrackingSync">选择</th>
             <th class="decision-col sticky-decision">审核</th>
-            <th v-if="warehouseKey === 'us-3sm'" class="xlwms-header">世迈仓下发</th>
+            <th v-if="warehouseKey === 'us-3sm'" class="xlwms-header">世迈仓 · 人工下单</th>
             <th v-if="warehouseKey === 'us-moreplus'" class="xlwms-header">MorePlus ShipOut · API / 物流</th>
             <th v-for="column in grid.visibleColumns" :key="column.key" :class="{ 'line-col':column.key === 'line' }">{{ column.label }}</th>
             <th>官网同步</th><th v-if="canTrackingSync">操作</th>
@@ -761,27 +715,20 @@ const compactPages = computed<(number|string)[]>(() => {
               </td>
               <td v-if="warehouseKey === 'us-3sm'" class="xlwms-cell">
                 <div class="xlwms-inline" :data-oms-order-id="row.order_id">
-                  <template v-if="webDraftEligible(row) && !xlwmsOmsWebEnabled">
-                    <strong class="xlwms-state">世迈仓尚未连接</strong>
-                    <button type="button" class="xlwms-action primary" disabled>请管理员连接世迈仓</button>
-                    <small class="xlwms-note">连接完成后即可一键下发，避免订单进入错误状态。</small>
+                  <template v-if="canOperate && row.review_status === 'approved'">
+                    <strong class="xlwms-state">人工导入 OMS</strong>
+                    <a class="xlwms-action primary xlwms-manual-download" :href="manualOrderDownload(row)"
+                      >{{manualDownloadText(row)}}</a>
+                    <small class="xlwms-note">导入前先查看当前草稿箱；已有同一订单就不要重复导入。</small>
+                    <small class="xlwms-note">文件使用 USPS 上传面单渠道，仓库人员后续上传真实面单。</small>
                   </template>
-                  <template v-else-if="webDraftEligible(row)">
-                    <strong class="xlwms-state" :class="{ 'xlwms-draft-success': !!webDraftResult[row.order_id]?.oms_order_no }">{{ webDraftReadableStatus(row) }}</strong>
-                    <button type="button" class="xlwms-action primary" :disabled="webDraftBusy[row.order_id]"
-                      @click="createWebDraft(row)">{{ webDraftBusy[row.order_id] ? '正在检查草稿箱…' : webDraftActionLabel(row) }}</button>
-                    <small class="xlwms-note">自动使用 USPS 占位面单；仓库收到后更换真实面单。</small>
-                    <small v-if="webDraftResult[row.order_id]?.oms_order_no" class="xlwms-number">仓库单号：{{webDraftResult[row.order_id].oms_order_no}}</small>
-                    <small v-if="webDraftErrors[row.order_id]" class="xlwms-error" role="alert">{{webDraftErrors[row.order_id]}}</small>
-                  </template>
-                  <span v-else class="xlwms-note">{{ row.review_status !== 'approved' ? '审核通过后可下发' : '请联系物流主管' }}</span>
-                  <details v-if="webDraftHasHistory(row)" class="xlwms-history">
+                  <span v-else class="xlwms-note">{{row.review_status !== 'approved' ? '审核通过后可下载' : '请联系物流主管'}}</span>
+                  <details v-if="hasOmsHistory(row)" class="xlwms-history">
                     <summary>查看历史仓库记录</summary>
-                    <small v-if="omsRow(row)?.oms_order_no">之前的仓库单：{{omsRow(row)?.oms_order_no}} · {{omsLabel(row)}}</small>
-                    <small v-if="row.web_draft?.oms_order_no">最近一次下发：{{row.web_draft.oms_order_no}}</small>
+                    <small v-if="omsRow(row)?.oms_order_no">历史 OMS 单号：{{omsRow(row)?.oms_order_no}} · {{omsLabel(row)}}</small>
+                    <small v-if="row.web_draft?.oms_order_no">曾自动创建的 OMS 单号：{{row.web_draft.oms_order_no}}</small>
                     <button v-if="omsRow(row)?.oms_order_no" type="button" class="xlwms-action" :disabled="omsBusy[row.order_id]"
-                      @click="omsRefresh(row)">{{omsBusy[row.order_id]?'查询中…':'更新历史订单状态'}}</button>
-                    <small v-if="omsRow(row)?.oms_status_failure_code" class="xlwms-error">{{ omsFailureText(omsRow(row)?.oms_status_failure_code) }}</small>
+                      @click="omsRefresh(row)">{{omsBusy[row.order_id]?'查询中…':'查询历史状态'}}</button>
                   </details>
                   <small v-if="omsErrors[row.order_id]" role="alert" class="xlwms-error">{{omsErrors[row.order_id]}}</small>
                 </div>
@@ -911,7 +858,7 @@ const compactPages = computed<(number|string)[]>(() => {
 .xlwms-error{color:#c02d2d!important;font-size:11px!important;font-weight:600;line-height:1.4;white-space:normal}
 .xlwms-confirm{display:flex;flex-direction:column;gap:5px;margin-top:4px;padding:7px;border:1px solid #cfe2da;border-radius:6px;background:#f6faf7;white-space:normal}
 .xlwms-confirm small{font-size:11px;color:#496b5b;overflow-wrap:anywhere}
-.xlwms-tools{position:relative;align-self:center;font-size:12px;color:#607477}.xlwms-tools summary{cursor:pointer;white-space:nowrap}.xlwms-tools[open]{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.xlwms-tools .file-button{font-size:12px}.xlwms-history{width:100%;margin-top:4px;padding-top:6px;border-top:1px solid #dce6e7;font-size:12px;color:#5d7075}.xlwms-history summary{cursor:pointer;color:#42686b}.xlwms-history[open] small{display:block;margin-top:6px}.xlwms-draft-success{color:#167765}
+.xlwms-history{width:100%;margin-top:4px;padding-top:6px;border-top:1px solid #dce6e7;font-size:12px;color:#5d7075}.xlwms-history summary{cursor:pointer;color:#42686b}.xlwms-history[open] small{display:block;margin-top:6px}.xlwms-draft-success{color:#167765}
 .xlwms-batch-button{min-width:112px}.xlwms-batch-result{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-4px 0 12px;padding:7px 10px;border:1px solid #cfe2da;border-radius:7px;background:#f6faf7;color:#35564d;font-size:12px}.xlwms-batch-result span{padding-right:8px;border-right:1px solid #dbe7e5}.xlwms-batch-result span:last-child{border-right:0}
 .tracking-selection-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;margin:9px 0;background:#eef6ff;border:1px solid #c9dffc;border-radius:8px;font-size:12px}
 .tracking-sync-status{display:inline-flex;padding:4px 7px;border-radius:5px;font-size:11px;font-weight:700;color:#92400e;background:#fff1d6}

@@ -12,6 +12,34 @@ final class OverseaOutboundFileService
         private readonly CanadaOutboundExporter $canada,
     ) {}
 
+    /**
+     * One file per staff click; a new provider reference avoids historical
+     * reference collisions without creating any remote OMS order or ERP write.
+     * Operator must check the current OMS draft inbox before manual import.
+     *
+     * @return array{filename:string,bytes:string,reference:string}
+     */
+    public function exportManualUsSmOrder(Shipment $shipment): array
+    {
+        $order = $shipment->order;
+        abort_unless($order, 422, '找不到订单。');
+        $base = trim((string) $this->references()->warehouse($order));
+        abort_if($base === '', 422, '订单缺少仓库参考单号。');
+        $reference = $this->wms->uniqueUsSmReference($base);
+        $suffix = substr($reference, -13);
+
+        return [
+            'filename' => sprintf('007-us-3sm-%d-%s.xlsx', $order->id, $suffix),
+            'bytes' => $this->wms->exportManualUsSmOrder($shipment, $reference),
+            'reference' => $reference,
+        ];
+    }
+
+    private function references(): WarehouseOrderReference
+    {
+        return app(WarehouseOrderReference::class);
+    }
+
     /** Export only an explicitly approved independent reissue, with a fresh
      * provider reference; do not duplicate the original commercial order. */
     public function exportReshipDraft(Shipment $shipment, string $thirdOrderNo): array
