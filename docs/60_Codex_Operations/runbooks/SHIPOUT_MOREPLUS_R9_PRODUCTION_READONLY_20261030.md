@@ -113,6 +113,18 @@
 - **Separate authorization required** before any real production ShipOut dispatch POST or first real warehouse order; no batch, no automatic retry and no Woo/AfterShip apply from the dark release. Owner confirmation of `clientOrgId=57893` and Chinese display timezone does not change this.
 - **Current state on 2026-10-31: RELEASE_GATE=BLOCKED** because both PR PHPUnit test files remain absent and exact-head ShipOut CI has not run. GitHub API writing them was blocked by a safety check. Do not evade that block using another route; pursue permitted review/delivery instead.
 
+## 6B. Automated fail-closed release gate and source parity (2026-10-31)
+- Owner's conditional dark-production release approval remains applicable only after **complete candidate** acceptance, not to an incomplete PR.
+- Created a **READ-ONLY** automated GitHub release gate on U.S. Mac: `python3 /Users/a/AI/uat/shipout-r9/r9_release_gate_readonly.py`. It reads GitHub PR #580 and main, does not read ShipOut credentials, does not push, merge or deploy. Current output is **R9_RELEASE_GATE=HOLD**.
+- Current GitHub PR head: `8bae65927ebff85085c5ac1c19d22eeb413e5ecd`. Latest inspected main: `db7b677817016f8b6c404e7eabbfe6d69159779b`.
+- Missing in GitHub PR: `tests/Feature/Logistics/ShipOutProductionReadOnlyGatewayTest.php` and `tests/Feature/Logistics/ShipOutProductionInventoryAuditTest.php`, both previously blocked by OpenAI tool safety check. Do not route around the block.
+- Local test file integrity SHA256 (not secrets): gateway test `b73905b12ac19ebdce2804667273ab97c4d0d67bc602143f4ce5d4745f18a216`, inventory audit test `c30a090ec88c15413fd06942b8f92d5fd9d18e4e59d49c52bdd39ab2c1ddc6fd`.
+- Compared GitHub PR HEAD with locally tested source **byte by byte**: production gateway, production inventory audit and config are **functionally identical** to the tested files, differing only by the final trailing newline (1 byte). No substantive source drift in those files.
+- Local full R9 candidate patched on latest main `db7b677`: focused tests **68/68 PASS, 254 assertions**; Pint PASS; PHP syntax PASS; Git diff check PASS.
+- Existing ERP Production Stability CI was green on PR head, but workflow does not include R9 tests; **exact-head ShipOut test CI is NOT PROVEN**.
+- Main has moved beyond the PR base (`f8fa4954`), requiring a final candidate rebase/merge-base check and renewed CI on the exact publishable SHA.
+- Any attempted R9 Production deployment without all gates passing is prohibited. First real outbound remains a separate Owner-only approval.
+
 ## 7. Supporting upstream docs
 - https://open.shipout.com/portal/zh/documentation/introduction.html
 - https://open.shipout.com/portal/api/stock
