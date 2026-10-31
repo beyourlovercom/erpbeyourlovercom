@@ -70,6 +70,13 @@
 - Available stock counts are provider-reported, NOT yet accepted to overwrite ERP stock. No API order submission permitted for any unverified SKU.
 - Pending: separate physical goods/evidence/owner verification for the two Alias rows, and explicit classification of `Logo Sign`; do not silently upgrade mapping based on matching name alone.
 
+## 4C. R9 newest-main / product-name readback, 2026-10-31
+- GitHub main advanced from PR base f8fa4954 to e641791b (3 additional commits primarily US-SM/XLWMS). R9 candidate patch applied cleanly in separate US Mac latest-main QA worktree; 68/68 ShipOut-focused PHPUnit tests PASS with 254 assertions; Pint PASS and git diff --check PASS. This is independent **local candidate** validation, not PR-head CI that includes the missing tests.
+- Read-only Production ERP product name inspection: ShipOut BY489A maps to active ERP `BY489A-Lubes` / `BEYOURLOVER LUBRICANT 35ML`; ShipOut BA561A maps to active ERP `VA561A` / `TOYCOD CLOUD JOY`. Both already have active alias rows but lack required OMS physical verification time and evidence. SKU string resemblance is not approval, especially the BA vs VA prefix difference.
+- A read-only ERP SKU substring check found **zero SKUs containing `logo`**, but this is not proof that `Logo Sign` is not a sellable product. Warehouse/product classification still requires a human decision; do not create a Product by guess.
+- **No ERP alias changes or inventory writes** were made, and no production shipment was submitted. The existing 42/45 validated identities remain the only proven provider-to-ERP mappings; the 3 exceptions fail closed.
+- The GitHub Draft PR still omits 2 new test files because the platform rejected their upload. No attempt to circumvent that refusal through another channel is authorized.
+
 ## 5. Live R9-A/R9-C close gates
 1. Owner-only helper (not to be executed by remote MCP): `python3 /Users/a/AI/uat/shipout-r9/verify_production_readonly.py`. This prints no secret values and calls only production warehouse GET. An authorized local-only procedure must validate stored AppKey, AppSecret and customer Token against production using GET only; do not expose secrets in logs.
 2. Capture only redacted HTTP result, verified organization, warehouse ID and inventory counts.
