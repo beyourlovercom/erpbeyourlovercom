@@ -179,4 +179,62 @@ final class ShipOutProductionReadOnlyGatewayTest extends TestCase
         $this->assertSame('2026-10-30 18:00:00', $local->setTimezone(new \DateTimeZone('Asia/Shanghai'))->format('Y-m-d H:i:s'));
         Http::assertNothingSent();
     }
+
+    public function test_r10_production_order_page_uses_only_fixed_signed_get_and_redacts_pii(): void
+    {
+        config()->set('shipout.production_read_enabled', true);
+        Http::fake(['https://open.shipout.com/api/*' => Http::response([
+            'result' => 'OK', 'data' => ['total' => 1, 'records' => [[
+                'orderNO' => 'C99999-007', 'orderId' => 'ORDER-123',
+                'warehouseId' => 'PROD-W-1', 'status' => 2,
+                'recipientPhone' => 'NEVER_EXPOSE_PHONE', 'addressLine1' => 'NEVER_EXPOSE_ADDRESS',
+            ]],
+            ],
+        ], 200)]);
+        $orders = $this->gateway()->orderPage('PROD-W-1', 'C99999-007');
+        $this->assertSame(1, $orders['total']);
+        $this->assertSame([['orderNO' => 'C99999-007', 'orderId' => 'ORDER-123', 'status' => 2]], $orders['records']);
+        $this->assertStringNotContainsString('NEVER_EXPOSE', json_encode($orders));
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($req) => $req->method() === 'GET'
+            && str_contains($req->url(), '/open-api/oms/order/queryListV2')
+            && str_contains($req->url(), 'warehouseId=PROD-W-1')
+            && str_contains($req->url(), 'orderNO=C99999-007'));
+    }
+
+    public function test_r10_missing_or_cross_warehouse_order_identity_never_egresses(): void
+    {
+        config()->set('shipout.production_read_enabled', true);
+        foreach ([['WRONG-W', 'C99999-007'], ['PROD-W-1', ''], ['PROD-W-1', 'C 99999']] as [$wh, $ref]) {
+            try {
+                $this->gateway()->orderPage($wh, $ref);
+                $this->fail('Untrusted duplicate query identity must fail');
+            } catch (\RuntimeException $e) {
+                $this->assertSame('SHIPOUT_PROD_ORDER_IDENTITY_UNBOUND', $e->getMessage());
+            }
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_r10_provider_mismatched_order_ref_is_blocked(): void
+    {
+        config()->set('shipout.production_read_enabled', true);
+        Http::fake(['https://open.shipout.com/api/*' => Http::response([
+            'result' => 'OK', 'data' => ['total' => 1, 'records' => [[
+                'orderNO' => 'DIFFERENT-REFERENCE', 'orderId' => 'ORDER-X',
+            ]]],
+        ], 200)]);
+        $this->expectExceptionMessage('SHIPOUT_PROD_ORDER_ROW_UNTRUSTED');
+        $this->gateway()->orderPage('PROD-W-1', 'C99999-007');
+    }
+
+    public function test_r10_order_duplicate_get_is_disabled_by_default(): void
+    {
+        $this->expectExceptionMessage('SHIPOUT_PROD_READ_DISABLED');
+        try {
+            $this->gateway()->orderPage('PROD-W-1', 'C99999-007');
+        } finally {
+            Http::assertNothingSent();
+        }
+    }
 }

@@ -30,11 +30,11 @@ jobs:
         run: composer install --no-interaction --prefer-dist --no-progress
       - name: Static MySQL dialect gate
         run: php artisan test tests/Architecture/MySqlProductionCompatibilityTest.php
-      - name: ShipOut R9 exact-head tests and Pint gate
+      - name: ShipOut R9-R10 exact-head tests and Pint gate
         if: ${{ hashFiles('tests/Feature/Logistics/ShipOutProductionReadOnlyGatewayTest.php', 'tests/Feature/Logistics/ShipOutProductionInventoryAuditTest.php') != '' }}
         run: |
-          php artisan test tests/Feature/Logistics/ShipOutReadOnlyGatewayTest.php tests/Feature/Logistics/ShipOutSandboxDispatchServiceTest.php tests/Feature/Logistics/ShipOutProductionReadOnlyGatewayTest.php tests/Feature/Logistics/ShipOutProductionInventoryAuditTest.php --no-ansi
-          vendor/bin/pint --test config/shipout.php app/Modules/Logistics/Infrastructure/ShipOut/ShipOutProductionInventoryAudit.php app/Modules/Logistics/Infrastructure/ShipOut/ShipOutProductionReadOnlyGateway.php tests/Feature/Logistics/ShipOutProductionReadOnlyGatewayTest.php tests/Feature/Logistics/ShipOutProductionInventoryAuditTest.php
+          php artisan test tests/Feature/Logistics/ShipOutReadOnlyGatewayTest.php tests/Feature/Logistics/ShipOutSandboxDispatchServiceTest.php tests/Feature/Logistics/ShipOutProductionReadOnlyGatewayTest.php tests/Feature/Logistics/ShipOutProductionInventoryAuditTest.php tests/Feature/Logistics/ShipOutProductionCanaryGateTest.php --no-ansi
+          vendor/bin/pint --test config/shipout.php app/Modules/Logistics/Infrastructure/ShipOut/ShipOutProductionInventoryAudit.php app/Modules/Logistics/Infrastructure/ShipOut/ShipOutProductionReadOnlyGateway.php tests/Feature/Logistics/ShipOutProductionReadOnlyGatewayTest.php tests/Feature/Logistics/ShipOutProductionInventoryAuditTest.php app/Modules/Logistics/Application/ShipOut/ShipOutProductionCanaryGate.php tests/Feature/Logistics/ShipOutProductionCanaryGateTest.php
       - name: Logistics HTTP query-budget regression gate
         run: php artisan test tests/Feature/ProductionStability/LogisticsWaitStockQueryBudgetTest.php
       - name: Shell permission query-budget regression gate
