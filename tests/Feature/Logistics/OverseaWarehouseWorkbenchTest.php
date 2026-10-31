@@ -1313,6 +1313,10 @@ final class TrackingReturnFakeWooGateway implements WooCommerceTrackingGateway
             $response=$this->actingAs($operator)->postJson($path,[]);
             $response->assertStatus(410)->assertJsonPath('code','XLWMS_MANUAL_ORDER_ONLY');
         }
+        $viewer=$this->userWith(['logistics.view']);
+        $this->actingAs($viewer)->postJson(
+            "/logistics/oversea/us-3sm/orders/{$order->id}/xlwms/web-draft",[]
+        )->assertForbidden();
         Http::assertNothingSent();
     }
 
