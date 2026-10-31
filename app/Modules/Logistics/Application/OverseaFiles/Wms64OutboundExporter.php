@@ -31,10 +31,41 @@ final class Wms64OutboundExporter
     {
         $rows = [];
         foreach ($shipments as $shipment) {
-            $rows[] = $this->row($warehouseKey, $shipment);
+            if ($warehouseKey === 'us-3sm') {
+                $order = $shipment->order;
+                abort_unless($order, 422, '仓库导出找不到订单。');
+                $reference = $this->uniqueUsSmReference($this->references->warehouse($order));
+                $row = $this->row($warehouseKey, $shipment, $reference);
+                $row[4] = $reference;
+                $rows[] = $row;
+            } else {
+                $rows[] = $this->row($warehouseKey, $shipment);
+            }
         }
 
         return $this->xlsx->write('小包出库单', self::HEADERS, $rows);
+    }
+
+    /**
+     * Staff-controlled single-order manual OMS import. Each download has
+     * a new provider identity; all historical OMS orders remain untouched.
+     */
+    public function exportManualUsSmOrder(Shipment $shipment, string $providerReference): string
+    {
+        abort_unless(preg_match('/^[A-Za-z0-9_-]{6,100}$/D', $providerReference), 422,
+            '世迈订单参考号无效。');
+        $row = $this->row('us-3sm', $shipment, $providerReference);
+        $row[4] = $providerReference; // prevent OMS duplicate platform IDs
+        $row[23] = 'MANUAL DRAFT ONLY - Check OMS current drafts for this ERP order BEFORE import. Upload a genuine USPS label and verify Tracking BEFORE manual submit. DO NOT SHIP using a test placeholder.';
+        return $this->xlsx->write('小包出库单', self::HEADERS, [$row]);
+    }
+
+    /** Always traceable to the ERP original, but unique on each download. */
+    public function uniqueUsSmReference(string $base): string
+    {
+        $base=trim($base);
+        abort_if($base==='',422,'缺少世迈订单参考号。');
+        return substr($base,0,84).'-R'.strtoupper(bin2hex(random_bytes(6)));
     }
 
     /** A single already-approved Reship exports a NEW uniquely traceable
@@ -80,7 +111,7 @@ final class Wms64OutboundExporter
         $row[21] = $this->required($a->address_line_1, '地址1', $order->erp_order_id);
         $row[22] = $a->address_line_2;
         $row[23] = $warehouseKey === 'us-3sm'
-            ? 'DRAFT ONLY - DO NOT SUBMIT/SHIP until staff replaces test placeholder with a real USPS label and validates Tracking.'
+            ? 'DRAFT ONLY - Check current OMS drafts for this ERP order BEFORE import. Upload a genuine USPS label and validate Tracking BEFORE manual submit. Never use a test placeholder to ship.'
             : ($order->order_note ?: $shipment->logistics_note);
 
         foreach ($items as $index => $item) {

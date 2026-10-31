@@ -132,6 +132,32 @@ final class OverseaWarehouseController
         ]);
     }
 
+    /**
+     * Final US-SM V1: export a single manually-importable OMS file, never a
+     * provider CREATE. New reference per download, including repeat orders.
+     */
+    public function exportManualUsSmOrder(int $order): HttpResponse
+    {
+        $warehouseId = $this->warehouseMap()['us-3sm']['id'] ?? null;
+        abort_unless($warehouseId, 404, '世迈仓未配置');
+        $shipment = Shipment::query()
+            ->with(['order.address', 'order.items', 'warehouse', 'overseaReview'])
+            ->where('order_id', $order)->where('warehouse_id', $warehouseId)
+            ->firstOrFail();
+        $approved = $shipment->overseaReview?->status === 'approved'
+            && (int)$shipment->overseaReview->reviewed_warehouse_id === (int)$shipment->warehouse_id;
+        abort_unless($approved, 422, '订单尚未通过海外仓审核，请先审核。');
+        abort_unless($shipment->order && $shipment->order->order_status?->value !== 'cancelled',
+            422, '已取消的 ERP 订单不能导出。');
+        $file = $this->outboundFiles->exportManualUsSmOrder($shipment);
+        return response($file['bytes'], 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="'.$file['filename'].'"',
+            'Cache-Control' => 'private, no-store',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
     public function export(Request $request, string $warehouse): HttpResponse
     {
         $warehouse = in_array($warehouse, ['us-sm', 'us-sj', 'usa-sj'], true) ? 'us-3sm' : $warehouse;
@@ -155,6 +181,8 @@ final class OverseaWarehouseController
         return response($file['bytes'], 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="'.$file['filename'].'"',
+            'Cache-Control' => 'private, no-store',
+            'X-Content-Type-Options' => 'nosniff',
         ]);
     }
 
