@@ -49,7 +49,7 @@ final class ShipOutMorePlusController
             }
             $order->loadMissing('shipment.warehouse','shipment.overseaReview');
             if ($order->order_status?->value!=='pending_shipment'
-                || $order->shipment?->warehouse?->code!=='US-LA'
+                || strcasecmp(trim((string) ($order->shipment?->warehouse?->code ?? '')), 'US-LA') !== 0
                 || $order->shipment?->overseaReview?->status!=='approved'
                 || (int)$order->shipment?->overseaReview?->reviewed_warehouse_id!==(int)$order->shipment?->warehouse_id
                 || $order->shipment?->shipment_status!=='pending') {
@@ -371,7 +371,7 @@ final class ShipOutMorePlusController
     private function guardWarehouse(Order $order): void
     {
         $order->loadMissing('shipment.warehouse');
-        abort_unless($order->shipment?->warehouse?->code === 'US-LA', 404,
+        abort_unless(strcasecmp(trim((string) ($order->shipment?->warehouse?->code ?? '')), 'US-LA') === 0, 404,
             '只有 MorePlus US-LA 订单可以使用 ShipOut');
     }
 

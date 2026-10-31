@@ -146,6 +146,35 @@ final class ShipOutSandboxDispatchServiceTest extends TestCase
         }
     }
 
+    public function test_r10_lowercase_usla_is_accepted_for_preflight_without_provider_egress(): void
+    {
+        $this->enable();
+        $o = $this->order();
+        $o->shipment->warehouse->update(['code' => 'us-la']);
+        Http::fake();
+        Http::preventStrayRequests();
+        $this->actingAs($this->warehouseUser(['logistics.view', 'logistics.operate']));
+        $response = $this->getJson("/logistics/oversea/us-moreplus/orders/{$o->id}/shipout/preflight?mode=9");
+        $response->assertOk()->assertJsonPath('ready', true)
+            ->assertJsonPath('order_no', 'C99999-007');
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+    }
+
+    public function test_r10_non_usla_warehouse_remains_blocked(): void
+    {
+        $this->enable();
+        $o = $this->order();
+        $o->shipment->warehouse->update(['code' => 'us-ny']);
+        Http::fake();
+        Http::preventStrayRequests();
+        $this->actingAs($this->warehouseUser(['logistics.view', 'logistics.operate']));
+        $this->getJson("/logistics/oversea/us-moreplus/orders/{$o->id}/shipout/preflight?mode=9")
+            ->assertNotFound();
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+    }
+
     public function test_approved_order_is_submitted_once_and_second_submission_is_blocked(): void
     {
         $this->enable();

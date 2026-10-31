@@ -45,7 +45,7 @@ final class ShipOutTrackingApplyService
             ->findOrFail($erpOrderId);
         $shipment = $order->shipment;
         $review = $shipment?->overseaReview;
-        if ($shipment?->warehouse?->code !== 'US-LA'
+        if (strcasecmp(trim((string) ($shipment?->warehouse?->code ?? '')), 'US-LA') !== 0
             || $review?->status !== 'approved'
             || (int) $review->reviewed_warehouse_id !== (int) $shipment->warehouse_id
             || $order->order_status?->value !== 'pending_shipment'
@@ -126,7 +126,7 @@ final class ShipOutTrackingApplyService
             if (! $attempt || $attempt->status === 'shipped_applied'
                 || $attempt->provider_warehouse_id !== $warehouseId
                 || $attempt->order_no !== $orderNo
-                || $shipment?->warehouse?->code !== 'US-LA'
+                || strcasecmp(trim((string) ($shipment?->warehouse?->code ?? '')), 'US-LA') !== 0
                 || $shipment->shipment_status !== 'pending'
                 || $review?->status !== 'approved'
                 || (int) $review->reviewed_warehouse_id !== (int) $shipment->warehouse_id

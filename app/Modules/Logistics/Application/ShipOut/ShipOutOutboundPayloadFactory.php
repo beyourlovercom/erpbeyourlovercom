@@ -29,7 +29,7 @@ final class ShipOutOutboundPayloadFactory
         $review = $shipment?->overseaReview;
 
         if ($order->order_status?->value !== 'pending_shipment'
-            || $shipment?->warehouse?->code !== 'US-LA'
+            || strcasecmp(trim((string) ($shipment?->warehouse?->code ?? '')), 'US-LA') !== 0
             || $review?->status !== 'approved'
             || (int) $review->reviewed_warehouse_id !== (int) $shipment->warehouse_id
             || ! $review->reviewed_by || ! $review->reviewed_at
