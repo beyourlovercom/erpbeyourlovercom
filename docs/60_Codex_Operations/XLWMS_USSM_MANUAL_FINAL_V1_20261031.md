@@ -22,5 +22,7 @@ Owner 已批准的业务模式：人工 Excel 导入优先，取消 OMS Browser 
 - 禁止依据浏览器前台、Chrome 标签页或个人 OMS session token 自动化创建。
 - PR 合并不等于 Production 发布；受控正式发布需要 Owner 单独 pass。
 
-## 未闭环
-真实 OMS XLSX 导入验收尚未执行。此前 OBS0272610300RU 通过 OMS 网页人工 Save Draft 入草稿，是不同的创建路径，不可当作 Excel 导入已验收。首份真实 Excel 的 OMS 接收、状态 0、字段完整性和提交前真实面单处理仍需人工验收。确认导入成功后可关闭自动化开发支线。
+## Owner 真实人工导入验收（2026-10-31）
+Owner 已反馈 ERP 人工订单导出与世迈 OMS 人工 Excel 导入均成功，人工下单 V1 验收 PASS。本结论以 Owner 的现场确认作为验收依据，不重复导入 C41845B、不重复测试、不再次 CREATE。OMS 后续上传真实面单、人工发货及 ERP 人工确认沿用已验收的既有流程。
+
+**发布隔离：** PR #581 当前已正式发布。PR #582 已合并 GitHub main 但尚未正式发布，未来必须独立确认数量兼容变更及具体 release 文件，避免整包发布时未经签收带入。旧 M2 PR #562 不得合并自动 APPLY/OMS 驱动发货功能。详细交接见 `XLWMS_USSM_MANUAL_M2_CONSOLIDATION_20261031.md`。
