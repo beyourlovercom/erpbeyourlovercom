@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\InventorySyncBatch;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Logistics\Application\OverseaFiles\ProviderXlsxWriter;
@@ -1117,6 +1118,134 @@ final class OverseaWarehouseWorkbenchTest extends TestCase
         }
 
         return $index - 1;
+    }
+
+    private function storeSignedShipOutAttempt(Order $order, string $status = 'acknowledged', ?string $providerId = 'SYNTHETIC-OMS-ACK'): void
+    {
+        DB::table('shipout_dispatch_attempts')->insert([
+            'order_id' => $order->id,
+            'order_no' => 'C-SYNTH-'.$order->id,
+            'provider_warehouse_id' => '1265864414750314497',
+            'payload_hash' => str_repeat('a', 64),
+            'status' => $status,
+            'provider_order_id' => $providerId,
+            'result_code' => 'ASYNC_ACCEPTED_QUERY_REQUIRED',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    public function test_shipout_oms_ack_moves_moreplus_order_out_of_pending_into_oms_created_without_marking_shipped(): void
+    {
+        $user = $this->userWith(['logistics.view']);
+        $w = $this->warehouses();
+        $order = $this->orderAt($w['US-LA'], '007-1030-c41941');
+        $other = $this->orderAt($w['US-LA'], '007-1030-c41948');
+        $this->actingAs($this->userWith(['logistics.view', 'logistics.operate']))
+            ->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $this->post("/logistics/oversea/orders/{$other->id}/approve")->assertRedirect();
+        $this->storeSignedShipOutAttempt($order);
+        Http::preventStrayRequests();
+        Http::fake();
+
+        $this->actingAs($user)->get('/logistics/oversea/us-moreplus?view=pending')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('viewCounts.pending', 1)
+            ->where('viewCounts.dispatched', 1)
+            ->where('viewCounts.pending_dispatch', 1)
+            ->where('rows.total', 1)
+            ->where('rows.data.0.order_id', $other->id));
+
+        $this->get('/logistics/oversea/us-moreplus?view=dispatched')
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('rows.total', 1)
+            ->where('rows.data.0.order_id', $order->id)
+            ->where('rows.data.0.warehouse_dispatch.status', 'oms_created')
+            ->where('rows.data.0.warehouse_dispatch.label', 'OMS 已建单 · 待实际出库')
+            ->where('rows.data.0.shipout_production.attempted', true)
+            ->where('rows.data.0.shipout_production.is_oms_created', true)
+            ->where('rows.data.0.shipout_production.provider_order_id', 'SYNTHETIC-OMS-ACK')
+            ->where('rows.data.0.shipment_status', 'pending')
+            ->where('rows.data.0.tracking_number', null));
+
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id, 'shipment_status' => 'pending',
+            'tracking_number' => null, 'shipped_at' => null,
+        ]);
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id, 'order_status' => 'pending_shipment',
+        ]);
+        $this->assertDatabaseHas('shipout_dispatch_attempts', [
+            'order_id' => $order->id, 'status' => 'acknowledged',
+            'provider_order_id' => 'SYNTHETIC-OMS-ACK',
+        ]);
+        Http::assertNothingSent();
+    }
+
+    public function test_shipout_unknown_or_unconfirmed_attempt_appears_only_in_exception_workbench(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $w = $this->warehouses();
+        $order = $this->orderAt($w['US-LA'], '007-OMS-UNKNOWN');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $this->storeSignedShipOutAttempt($order, 'uncertain', null);
+        Http::preventStrayRequests();
+        Http::fake();
+
+        $this->get('/logistics/oversea/us-moreplus?view=pending')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('rows.total', 0)
+                ->where('viewCounts.dispatched', 0)
+                ->where('viewCounts.exceptions', 1));
+        $this->get('/logistics/oversea/us-moreplus?view=exceptions')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('rows.total', 1)
+                ->where('rows.data.0.shipout_production.attempted', true)
+                ->where('rows.data.0.shipout_production.is_oms_created', false)
+                ->where('rows.data.0.warehouse_dispatch.label', '提交结果待核对 · 禁止重发'));
+        Http::assertNothingSent();
+    }
+
+    public function test_shipout_ack_without_provider_order_id_cannot_enter_oms_created(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $w = $this->warehouses();
+        $order = $this->orderAt($w['US-LA'], '007-OMS-MISSING-ID');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$order->id}/approve")->assertRedirect();
+        $this->storeSignedShipOutAttempt($order, 'acknowledged', null);
+        $this->get('/logistics/oversea/us-moreplus?view=dispatched')
+            ->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->get('/logistics/oversea/us-moreplus?view=exceptions')
+            ->assertInertia(fn (Assert $page) => $page->where('rows.total', 1));
+    }
+
+    public function test_shipout_oms_ack_does_not_affect_other_warehouses_or_shipout_fulfillment_state(): void
+    {
+        $user = $this->userWith(['logistics.view', 'logistics.operate']);
+        $w = $this->warehouses();
+        $morePlus = $this->orderAt($w['US-LA'], '007-OMS-LA-ACK');
+        $usNy = $this->orderAt($w['US-NY'], '007-OMS-NY-PENDING');
+        $this->actingAs($user)->post("/logistics/oversea/orders/{$morePlus->id}/approve")->assertRedirect();
+        $this->post("/logistics/oversea/orders/{$usNy->id}/approve")->assertRedirect();
+        $this->storeSignedShipOutAttempt($morePlus);
+
+        $this->get('/logistics/oversea/us-ny?view=pending')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('rows.total', 1)
+                ->where('rows.data.0.order_id', $usNy->id));
+        $this->get('/logistics/oversea/us-ny?view=dispatched')
+            ->assertInertia(fn (Assert $page) => $page->where('rows.total', 0));
+        $this->get('/logistics/oversea?view=dispatched')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('rows.total', 1)
+                ->where('rows.data.0.order_id', $morePlus->id));
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $morePlus->id, 'shipment_status' => 'pending',
+            'tracking_number' => null,
+        ]);
+        $this->assertDatabaseMissing('sync_outbox', [
+            'operation' => 'woocommerce.tracking_outbound',
+        ]);
     }
 
     /** @return array<string,Warehouse> */

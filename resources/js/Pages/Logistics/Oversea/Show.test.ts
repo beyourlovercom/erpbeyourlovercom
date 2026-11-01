@@ -633,3 +633,78 @@ describe('ShipOut Production V1 three-account scoped UI', () => {
     expect(page.text()).toContain('查询正式 OMS')
   })
 })
+
+describe('MorePlus Production OMS-created lifecycle after one-shot ACK', () => {
+  const attempt={attempted:true,is_oms_created:true,status:'oms_created',
+    label:'OMS 已建单 · 待实际出库',provider_order_id:'2116863614032625665'}
+  const row={...usSmPendingRows.data[0],warehouse_id:1,
+    warehouse_name:'美西 MorePlus 仓',order_id:7791,
+    erp_order_id:'007-1030-c41941',shipout_production:attempt}
+
+  it('renders persisted OMS-created state after reload; never offers second send', () => {
+    const page=mountPage({
+      view:'dispatched',rows:{...usSmPendingRows,data:[row]},trackingImportPreview:null,
+      shipoutProductionUi:true,shipoutProductionReadEnabled:true,shipoutProductionDispatchEnabled:true,
+      shipoutProductionOperatorAllowed:true,shipoutProductionMinOrderId:7791,
+      viewCounts:{review:0,pending:2,pending_dispatch:2,dispatched:1,shipped:577,exceptions:0,all:580},
+    })
+    expect(page.text()).toContain('OMS 已建单')
+    expect(page.text()).toContain('2116863614032625665')
+    expect(page.text()).toContain('仓库待实际出库')
+    expect(page.text()).not.toContain('确认提交正式仓')
+    expect(page.text()).not.toContain('正式 API 预检')
+    expect(page.findAll('button').some(b=>b.text()==='查询正式 OMS')).toBe(true)
+    expect(page.text()).toContain('待发货 2')
+  })
+
+  it('marks unresolved one-shot dispatch for reconciliation, not resubmission', () => {
+    const page=mountPage({
+      view:'exceptions',rows:{...usSmPendingRows,data:[{
+        ...row,shipout_production:{attempted:true,is_oms_created:false,
+          status:'requires_reconciliation',label:'提交结果待核对 · 禁止重发',provider_order_id:null},
+      }]},trackingImportPreview:null,
+      shipoutProductionUi:true,shipoutProductionReadEnabled:true,
+      shipoutProductionDispatchEnabled:true,shipoutProductionOperatorAllowed:true,
+      shipoutProductionMinOrderId:7791,
+    })
+    expect(page.text()).toContain('提交结果待人工核对')
+    expect(page.text()).toContain('禁止再次下发')
+    expect(page.text()).not.toContain('正式 API 预检')
+    expect(page.text()).not.toContain('确认提交正式仓')
+  })
+
+  it('uses UI navigation only after ACK; no second API submission', async () => {
+    routerVisit.mockClear()
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="OMS-STATE-TEST">')
+    const mock=vi.fn()
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        order_id:7791,ship_date:'2026-11-02',order_no:'C41941-007',
+        items:[{omsSku:'TX218Y',qty:1}],shipping_mode:'9',
+        ready:true,payload_hash:'f'.repeat(64),
+      })})
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        status:'acknowledged',provider_order_id:'2116863614032625665',
+        result_code:'ASYNC_ACCEPTED_QUERY_REQUIRED',
+      })})
+    vi.stubGlobal('fetch',mock)
+    try {
+      const page=mountPage({
+        rows:{...usSmPendingRows,data:[{...row,shipout_production:null}]},
+        trackingImportPreview:null,shipoutProductionUi:true,shipoutProductionReadEnabled:true,
+        shipoutProductionDispatchEnabled:true,shipoutProductionOperatorAllowed:true,
+        shipoutProductionMinOrderId:7791,
+      })
+      await page.findAll('button').find(b=>b.text()==='正式 API 预检')!.trigger('click')
+      await vi.waitFor(()=>expect(page.text()).toContain('确认提交正式仓 · 仅一次'))
+      await page.findAll('button').find(b=>b.text().includes('确认提交正式仓'))!.trigger('click')
+      await vi.waitFor(()=>expect(routerVisit).toHaveBeenCalledWith(
+        '/logistics/oversea/us-moreplus?view=dispatched',expect.any(Object)))
+      expect(mock).toHaveBeenCalledTimes(2)
+      expect(mock.mock.calls[1][1].method).toBe('POST')
+      expect(page.text()).not.toContain('确认提交正式仓 · 仅一次')
+    } finally {
+      vi.unstubAllGlobals()
+      document.head.querySelector('meta[name="csrf-token"]')?.remove()
+    }
+  })
+})
