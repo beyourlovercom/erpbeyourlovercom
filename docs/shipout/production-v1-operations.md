@@ -68,3 +68,29 @@ in this first Production release.
 - Carrier or service-group inference from USPS labels.
 - Production Tracking writes on async ACK.
 - Customer PII, signed credentials or payload logs.
+
+
+## OMS-created list projection (2026-11-01 status bucket fix)
+
+MorePlus Production V1 reads only the immutable \`shipout_dispatch_attempts\`
+ledger to project the **warehouse dispatch stage**; it does not use the
+Shipment shipped-state or live provider calls when rendering the list.
+
+- Signed Production \`acknowledged\` attempt with a nonempty real provider
+  order ID and exact US-LA provider warehouse ID: show \`OMS 已建单 · 待实际出库\`
+  under \`OMS 已建单\` rather than \`待发货\`.
+- Not yet attempted: stay in \`待发货\` and, where applicable, \`待下发\`.
+- Attempt with uncertain/failed acknowledgment: move to \`异常订单\`;
+  explicitly no automatic retry, no new provider POST, manual OMS reconciliation.
+- Acknowledgment alone is not warehouse departure: \`shipments.shipment_status\`,
+  \`orders.order_status\`, shipped time, Tracking, Woo/AfterShip remain untouched.
+  Actual shipment still requires trustworthy warehouse outbound evidence.
+- MorePlus state is separate from US-3SM and every other warehouse. No live
+  API requests occur as a side effect of changing tabs or reading counts.
+- Browser navigates to \`OMS 已建单\` after a successful user-initiated submit
+  response containing a provider ID, without sending again. A refreshed page
+  reads the durable ledger, so state survives a new login or browser session.
+
+The first real acknowledged C41941-007 / ERP 7791 order has a provider OMS ID
+\`2116863614032625665\` but no Tracking or shipped-at evidence; this change
+corrects only its workbench classification.

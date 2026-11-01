@@ -18,6 +18,7 @@ type OmsSnapshot = {
   failure_code:string|null; oms_status_failure_code:string|null
 }
 type WebDraft = {state:string;oms_order_no:string|null;attempt_ref:string;failure_code:string|null}
+type ShipOutDispatchState = { attempted:boolean; is_oms_created:boolean; status:string; label:string; provider_order_id:string|null }
 type OmsPreflight = {
   order_id:number; blockers:string[]; ready:boolean; payload_hash:string
   oms_warehouse:string; items:Item[]; already_attempted:boolean
@@ -41,6 +42,7 @@ type Row = {
   warehouse_id:number; warehouse_name:string|null; carrier:string|null; service:string|null; carrier_selection_source:string|null; tracking_number:string|null
   progress:string; note:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; review_status:'approved'|'pending'; shipment_status:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; shipped_at?:string|null; items:Item[]
   web_draft?:WebDraft|null
+  shipout_production?:ShipOutDispatchState|null
 }
 type PageRows = { data:Row[]; current_page:number; last_page:number; per_page:number; total:number; from:number|null; to:number|null; links?:{url:string|null;label:string;active:boolean}[] }
 type ColumnKey = 'line'|'order'|'warehouse'|'carrier'|'service'|'tracking'|'note'|'recipient'|'country'|'items'
@@ -111,6 +113,7 @@ const shipoutProdCanSend = (row:Row) => !!props.shipoutProductionOperatorAllowed
   && (props.shipoutProductionMinOrderId??0)>0
   && row.order_id>=(props.shipoutProductionMinOrderId??0)
   && row.review_status==='approved' && row.shipment_status==='pending'
+  && !row.shipout_production?.attempted
   && !!shipoutProdPreview[row.order_id]?.ready
   && !!shipoutProdPreview[row.order_id]?.payload_hash
   && shipoutProdPreview[row.order_id]?.shipping_mode === '9'
@@ -142,7 +145,8 @@ async function shipoutProdRequest(row:Row, action:'preflight'|'send'|'status', p
   return response.json()
 }
 async function shipoutProdPreflight(row:Row) {
-  if(shipoutProdBusy[row.order_id] || !props.shipoutProductionReadEnabled) return
+  if(shipoutProdBusy[row.order_id] || !props.shipoutProductionReadEnabled
+    || row.shipout_production?.attempted) return
   shipoutProdBusy[row.order_id]=true;shipoutProdErrors[row.order_id]=''
   delete shipoutProdPreview[row.order_id]
   try {
@@ -168,6 +172,13 @@ async function shipoutProdSend(row:Row) {
     shipoutProdErrors[row.order_id]=result.status==='acknowledged'
       ? 'ShipOut 正式仓已接收；仅为接单确认，尚未发货，请查询 OMS'
       : '供应商未接单：'+(result.result_code||'请人工查询')
+    if(result.status==='acknowledged' && result.provider_order_id) {
+      // The server-side immutable ledger now controls the OMS-created tab.
+      // This navigation only reloads Inertia rows; never calls ShipOut POST.
+      router.visit('/logistics/oversea/us-moreplus?view=dispatched', {
+        preserveScroll:true,
+      })
+    }
   } catch(e) {
     shipoutProdErrors[row.order_id]=(e instanceof Error?e.message:'结果未知')
       +'。禁止重新发送，请人工核对正式 OMS。'
@@ -181,6 +192,12 @@ async function shipoutProdRefresh(row:Row) {
     if(result.order_id!==row.order_id || result.shipped!==false || result.tracking_apply!==false)
       throw Error('OMS 回读结果不可信')
     shipoutProdStatus[row.order_id]=result
+    if(result.reconciliation==='ORDER_VISIBLE_MANUAL_REVIEW_ONLY'
+      && row.shipout_production?.is_oms_created && props.view==='pending') {
+      router.visit('/logistics/oversea/us-moreplus?view=dispatched', {
+        preserveScroll:true,
+      })
+    }
   } catch(e){shipoutProdErrors[row.order_id]=e instanceof Error?e.message:'正式 OMS 查询失败'}
   finally {shipoutProdBusy[row.order_id]=false}
 }
@@ -826,7 +843,7 @@ const compactPages = computed<(number|string)[]>(() => {
               <td v-if="warehouseKey === 'us-moreplus'" class="xlwms-cell">
                 <div class="xlwms-inline" :data-shipout-order-id="row.order_id">
                   <template v-if="shipoutProductionUi">
-                    <strong class="xlwms-state">ShipOut Production V1 · 正式仓</strong>
+                    <strong class="xlwms-state">{{row.shipout_production?.is_oms_created?'ShipOut Production V1 · OMS 已建单':'ShipOut Production V1 · 正式仓'}}</strong>
                     <small class="xlwms-note">只支持美西 US-LA / 已通过 Dede 审核 / 美国地址 / 仓库自动渠道 Mode 9；接单不等于已发货。</small>
                     <template v-if="!shipoutProductionReadEnabled">
                       <small class="xlwms-note">正式 API 已部署，当前未开通；请继续使用人工下载与物流回传流程。</small>
@@ -834,7 +851,7 @@ const compactPages = computed<(number|string)[]>(() => {
                     <template v-else>
                       <small v-if="row.order_id<(shipoutProductionMinOrderId||0) || !(shipoutProductionMinOrderId||0)" class="xlwms-note">历史订单不纳入正式 API V1 自动化范围，沿用仓库人工发货流程。</small>
                       <div class="xlwms-buttons">
-                        <button v-if="row.review_status==='approved' && row.shipment_status==='pending' && shipoutProductionOperatorAllowed && row.order_id>=(shipoutProductionMinOrderId||0) && (shipoutProductionMinOrderId||0)>0"
+                        <button v-if="row.review_status==='approved' && row.shipment_status==='pending' && shipoutProductionOperatorAllowed && !row.shipout_production?.attempted && row.order_id>=(shipoutProductionMinOrderId||0) && (shipoutProductionMinOrderId||0)>0"
                           type="button" class="xlwms-action" :disabled="shipoutProdBusy[row.order_id] || shipoutProdSentOnce[row.order_id]"
                           @click="shipoutProdPreflight(row)">{{shipoutProdBusy[row.order_id]?'预检中…':'正式 API 预检'}}</button>
                         <button type="button" class="xlwms-action" :disabled="shipoutProdBusy[row.order_id]"
@@ -846,6 +863,12 @@ const compactPages = computed<(number|string)[]>(() => {
                           :disabled="shipoutProdBusy[row.order_id]" @click="shipoutProdSend(row)">确认提交正式仓 · 仅一次</button>
                         <small v-else>正式发货未授权；只能查询和预检，不会发送订单。</small>
                       </div>
+                      <small v-if="row.shipout_production?.is_oms_created && !shipoutProdStatus[row.order_id]" class="xlwms-note">
+                        OMS 已建单 · {{row.shipout_production.provider_order_id}} · 仓库待实际出库，尚无真实 Tracking。
+                      </small>
+                      <small v-else-if="row.shipout_production?.attempted && !shipoutProdStatus[row.order_id]" class="xlwms-note">
+                        提交结果待人工核对，禁止再次下发；请查询正式 OMS。
+                      </small>
                       <small v-if="shipoutProdStatus[row.order_id]" class="xlwms-note">
                         OMS：{{shipoutProdStatus[row.order_id].reconciliation==='ORDER_VISIBLE_MANUAL_REVIEW_ONLY'?'仓库订单可见':'待仓库确认'}} · {{shipoutProdStatus[row.order_id].provider_order_id||'暂无仓库订单 ID'}} · 仍待实际发货
                       </small>
