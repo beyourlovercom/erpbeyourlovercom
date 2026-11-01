@@ -47,6 +47,8 @@ return [
     'production_shipped_time_timezone_verified' => filter_var(env('SHIPOUT_PRODUCTION_SHIPPED_TIME_TIMEZONE_VERIFIED', false), FILTER_VALIDATE_BOOL),
     // R10-B single-order Production Canary. ALL OFF until a separate exact-order Owner PASS.
     // No outbound transport or route is activated by these settings.
+    // Separate manual operator surface gate, OFF for every normal deploy.
+    'production_operator_cli_enabled' => filter_var(env('SHIPOUT_PRODUCTION_OPERATOR_CLI_ENABLED', false), FILTER_VALIDATE_BOOL),
     'production_canary_execute_enabled' => filter_var(env('SHIPOUT_PRODUCTION_CANARY_EXECUTE_ENABLED', false), FILTER_VALIDATE_BOOL),
     'production_canary_owner_approved' => filter_var(env('SHIPOUT_PRODUCTION_CANARY_OWNER_APPROVED', false), FILTER_VALIDATE_BOOL),
     'production_canary_order_id' => (string) env('SHIPOUT_PRODUCTION_CANARY_ORDER_ID', ''),

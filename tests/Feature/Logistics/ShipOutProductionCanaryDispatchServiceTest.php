@@ -630,4 +630,133 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         Http::assertNotSent(fn ($r) => $r->method() === 'POST');
         $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
     }
+
+    public function test_operator_cli_apply_stays_disabled_without_its_own_release_gate(): void
+    {
+        $order = $this->order();
+        $this->fakeProvider();
+
+        $this->artisan('shipout:production-canary', [
+            'order-id' => (string) $order->id,
+            '--ship-date' => $this->shipDate(),
+            '--apply' => true,
+            '--payload-hash' => str_repeat('a', 64),
+            '--confirm' => 'SUBMIT_SHIPOUT_ORDER_'.$order->id,
+        ])->assertExitCode(1);
+
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_operator_cli_preview_is_get_only_and_does_not_reserve_an_attempt(): void
+    {
+        $order = $this->order();
+        $this->fakeProvider();
+
+        $this->artisan('shipout:production-canary', [
+            'order-id' => (string) $order->id,
+            '--ship-date' => $this->shipDate(),
+        ])->assertExitCode(0);
+
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertSentCount(4);
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+    }
+
+    public function test_operator_cli_apply_requires_exact_confirm_and_hash_before_network(): void
+    {
+        $order = $this->order();
+        $this->fakeProvider();
+        config()->set('shipout.production_operator_cli_enabled', true);
+
+        $this->artisan('shipout:production-canary', [
+            'order-id' => (string) $order->id,
+            '--ship-date' => $this->shipDate(),
+            '--apply' => true,
+            '--payload-hash' => str_repeat('a', 64),
+            '--confirm' => 'WRONG_CONFIRMATION',
+        ])->assertExitCode(1);
+
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_operator_cli_simulates_one_shot_acceptance_but_never_sets_shipped(): void
+    {
+        $order = $this->order();
+        $this->fakeProvider();
+        $preview = $this->preflight($order);
+        config()->set('shipout.production_operator_cli_enabled', true);
+
+        $args = [
+            'order-id' => (string) $order->id,
+            '--ship-date' => $this->shipDate(),
+            '--apply' => true,
+            '--payload-hash' => $preview['payload_hash'],
+            '--confirm' => 'SUBMIT_SHIPOUT_ORDER_'.$order->id,
+        ];
+        $this->artisan('shipout:production-canary', $args)->assertExitCode(0);
+
+        $this->assertDatabaseHas('shipout_dispatch_attempts', [
+            'order_id' => $order->id,
+            'status' => 'acknowledged',
+            'provider_order_id' => 'SYNTHETIC-PROVIDER-ORDER',
+        ]);
+        $this->assertSame('pending_shipment', $order->fresh()->order_status->value);
+        $this->assertSame('pending', $order->fresh()->shipment->shipment_status);
+        $this->assertNull($order->fresh()->shipment->tracking_number);
+        $this->assertSame(1, collect(Http::recorded())->filter(
+            fn ($pair) => $pair[0]->method() === 'POST'
+        )->count());
+
+        $this->artisan('shipout:production-canary', $args)->assertExitCode(1);
+        $this->assertSame(1, collect(Http::recorded())->filter(
+            fn ($pair) => $pair[0]->method() === 'POST'
+        )->count());
+    }
+
+    public function test_operator_cli_preview_is_blocked_if_production_read_is_off(): void
+    {
+        $order = $this->order();
+        $this->fakeProvider();
+        config()->set('shipout.production_read_enabled', false);
+
+        $this->artisan('shipout:production-canary', [
+            'order-id' => (string) $order->id,
+            '--ship-date' => $this->shipDate(),
+        ])->assertExitCode(1);
+
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_operator_cli_provider_rejection_is_failure_without_retry(): void
+    {
+        $order = $this->order();
+        $this->fakeProvider(3, self::SKU, false, false, 'err');
+        $preview = $this->preflight($order);
+        config()->set('shipout.production_operator_cli_enabled', true);
+
+        $args = [
+            'order-id' => (string) $order->id,
+            '--ship-date' => $this->shipDate(),
+            '--apply' => true,
+            '--payload-hash' => $preview['payload_hash'],
+            '--confirm' => 'SUBMIT_SHIPOUT_ORDER_'.$order->id,
+        ];
+        $this->artisan('shipout:production-canary', $args)->assertExitCode(1);
+        $this->assertDatabaseHas('shipout_dispatch_attempts', [
+            'order_id' => $order->id,
+            'status' => 'rejected',
+            'result_code' => 'PROVIDER_VALIDATION_REJECTED',
+        ]);
+        $this->assertSame(1, collect(Http::recorded())->filter(
+            fn ($pair) => $pair[0]->method() === 'POST'
+        )->count());
+
+        $this->artisan('shipout:production-canary', $args)->assertExitCode(1);
+        $this->assertSame(1, collect(Http::recorded())->filter(
+            fn ($pair) => $pair[0]->method() === 'POST'
+        )->count());
+    }
 }
