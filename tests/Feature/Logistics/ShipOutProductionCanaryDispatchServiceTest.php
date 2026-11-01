@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Logistics;
 
+use App\Models\Role;
 use App\Models\User;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryDispatchService;
@@ -13,6 +14,7 @@ use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Products\Application\SkuMatchKey;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
@@ -758,5 +760,334 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         $this->assertSame(1, collect(Http::recorded())->filter(
             fn ($pair) => $pair[0]->method() === 'POST'
         )->count());
+    }
+
+    private function enableProductionV1(): void
+    {
+        config()->set([
+            'shipout.production_v1_read_enabled' => true,
+            'shipout.production_v1_dispatch_enabled' => true,
+            'shipout.production_v1_owner_approved' => true,
+            'shipout.production_canary_order_id' => '',
+            'shipout.production_canary_order_no' => '',
+            'shipout.production_canary_execute_enabled' => false,
+            'shipout.production_canary_owner_approved' => false,
+        ]);
+    }
+
+    public function test_v1_new_order_read_gate_is_default_off_and_never_contacts_provider(): void
+    {
+        $order = $this->order();
+        $this->fakeProvider();
+        $this->assertFalse((bool) config('shipout.production_v1_read_enabled', false));
+
+        try {
+            app(ShipOutProductionCanaryDispatchService::class)->previewApproved(
+                $order->id, $this->shipDate()
+            );
+            $this->fail('V1 must be OFF without separate launch approval');
+        } catch (RuntimeException $e) {
+            $this->assertSame('SHIPOUT_V1_READ_DISABLED', $e->getMessage());
+        }
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+    }
+
+    public function test_v1_uses_fresh_signed_stock_preview_for_approved_order_without_canary_allowlist(): void
+    {
+        $order = $this->order();
+        $this->enableProductionV1();
+        $this->fakeProvider();
+        $preview = app(ShipOutProductionCanaryDispatchService::class)->previewApproved(
+            $order->id, $this->shipDate()
+        );
+        $this->assertTrue($preview['ready']);
+        $this->assertSame(self::REF, $preview['order_no']);
+        $this->assertSame([['omsSku' => self::SKU, 'qty' => 1]], $preview['items']);
+        $this->assertSame(64, strlen($preview['payload_hash']));
+        $this->assertStringNotContainsString('Example Way', json_encode($preview));
+        Http::assertSentCount(4);
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+    }
+
+    public function test_v1_real_transport_is_reused_in_fake_environment_and_never_marks_shipped(): void
+    {
+        $order = $this->order();
+        $this->enableProductionV1();
+        $this->fakeProvider();
+        $service = app(ShipOutProductionCanaryDispatchService::class);
+        $pre = $service->previewApproved($order->id, $this->shipDate());
+        $result = $service->dispatchApprovedOrder(
+            $order->id, $this->shipDate(), $pre['payload_hash'],
+            'SUBMIT_SHIPOUT_ORDER_'.$order->id,
+        );
+        $this->assertSame('acknowledged', $result['status']);
+        $this->assertSame('SYNTHETIC-PROVIDER-ORDER', $result['provider_order_id']);
+        $this->assertDatabaseHas('shipout_dispatch_attempts', [
+            'order_id' => $order->id, 'status' => 'acknowledged',
+        ]);
+        $this->assertSame('pending_shipment', $order->fresh()->order_status->value);
+        $this->assertSame('pending', $order->fresh()->shipment->shipment_status);
+        $this->assertNull($order->fresh()->shipment->tracking_number);
+        $this->assertSame(1, collect(Http::recorded())->filter(
+            fn ($pair) => $pair[0]->method() === 'POST'
+        )->count());
+        try {
+            $service->dispatchApprovedOrder(
+                $order->id, $this->shipDate(), $pre['payload_hash'],
+                'SUBMIT_SHIPOUT_ORDER_'.$order->id,
+            );
+            $this->fail('V1 must not send twice');
+        } catch (RuntimeException $error) {
+            $this->assertSame('SHIPOUT_R10_PRIOR_ATTEMPT_BLOCKED', $error->getMessage());
+        }
+        $this->assertSame(1, collect(Http::recorded())->filter(
+            fn ($pair) => $pair[0]->method() === 'POST'
+        )->count());
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'opendev.shipout.com'));
+    }
+
+    public function test_v1_write_gate_off_prevents_any_real_post(): void
+    {
+        $order = $this->order();
+        $this->enableProductionV1();
+        config()->set('shipout.production_v1_dispatch_enabled', false);
+        $this->fakeProvider();
+        $service = app(ShipOutProductionCanaryDispatchService::class);
+        $pre = $service->previewApproved($order->id, $this->shipDate());
+        try {
+            $service->dispatchApprovedOrder(
+                $order->id, $this->shipDate(), $pre['payload_hash'],
+                'SUBMIT_SHIPOUT_ORDER_'.$order->id,
+            );
+            $this->fail('V1 write must remain independently disabled');
+        } catch (RuntimeException $e) {
+            $this->assertSame('SHIPOUT_V1_DISPATCH_DISABLED', $e->getMessage());
+        }
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+    }
+
+    public function test_v1_stale_hash_never_reserves_an_attempt(): void
+    {
+        $order = $this->order();
+        $this->enableProductionV1();
+        $this->fakeProvider();
+        try {
+            app(ShipOutProductionCanaryDispatchService::class)->dispatchApprovedOrder(
+                $order->id, $this->shipDate(), str_repeat('b', 64),
+                'SUBMIT_SHIPOUT_ORDER_'.$order->id,
+            );
+            $this->fail('V1 must reject an outdated hash');
+        } catch (RuntimeException $e) {
+            $this->assertSame('SHIPOUT_R10_PREFLIGHT_STALE', $e->getMessage());
+        }
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+    }
+
+    public function test_v1_dede_review_and_exact_sku_and_stock_still_required(): void
+    {
+        $order = $this->order('us-ny');
+        $this->enableProductionV1();
+        $this->fakeProvider();
+        try {
+            app(ShipOutProductionCanaryDispatchService::class)->previewApproved(
+                $order->id, $this->shipDate()
+            );
+            $this->fail('Wrong warehouse must block');
+        } catch (RuntimeException $e) {
+            $this->assertSame('SHIPOUT_ERP_APPROVAL_OR_WAREHOUSE_BLOCKED', $e->getMessage());
+        }
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_v1_timeout_keeps_unique_attempt_and_forbids_retry(): void
+    {
+        $order = $this->order();
+        $this->enableProductionV1();
+        $this->fakeProvider(3, self::SKU, false, true);
+        $service = app(ShipOutProductionCanaryDispatchService::class);
+        $pre = $service->previewApproved($order->id, $this->shipDate());
+        try {
+            $service->dispatchApprovedOrder(
+                $order->id, $this->shipDate(), $pre['payload_hash'],
+                'SUBMIT_SHIPOUT_ORDER_'.$order->id,
+            );
+            $this->fail('Synthetic timeout must stay uncertain');
+        } catch (RuntimeException $e) {
+            $this->assertSame('SHIPOUT_R10_SUBMISSION_OUTCOME_UNKNOWN', $e->getMessage());
+        }
+        $this->assertDatabaseHas('shipout_dispatch_attempts', [
+            'order_id' => $order->id, 'status' => 'uncertain',
+        ]);
+        $this->assertSame(1, $this->postInvocations);
+        try {
+            $service->dispatchApprovedOrder(
+                $order->id, $this->shipDate(), $pre['payload_hash'],
+                'SUBMIT_SHIPOUT_ORDER_'.$order->id,
+            );
+            $this->fail('Unknown POST must not retry');
+        } catch (RuntimeException $e) {
+            $this->assertSame('SHIPOUT_R10_PRIOR_ATTEMPT_BLOCKED', $e->getMessage());
+        }
+        $this->assertSame(1, $this->postInvocations);
+    }
+
+    /** Testing Production environment sets CSRF checks ON; only the synthetic
+     * HTTP fixture opts out of CSRF to isolate route authorization logic.
+     * Production web middleware and browser CSRF remain fully enforced.
+     */
+    private function allowSyntheticHttpPost(): void
+    {
+        $this->withoutMiddleware(PreventRequestForgery::class);
+    }
+
+    private function productionWarehouseUser(array $keys): User
+    {
+        $role = Role::query()->create([
+            'key' => 'shipout-production-v1-'.uniqid(), 'label' => 'V1 Synthetic Logistics',
+        ]);
+        foreach ($keys as $key) {
+            $role->permissions()->firstOrCreate(['key' => $key], ['label' => $key]);
+        }
+        $user = User::factory()->create(['is_active' => true]);
+        $user->roles()->attach($role);
+
+        return $user;
+    }
+
+    public function test_v1_production_route_denies_preview_when_dark_and_leaks_no_customer_data(): void
+    {
+        $order = $this->order();
+        $this->actingAs($this->productionWarehouseUser(['logistics.view']));
+        Http::fake();
+
+        $this->getJson("/logistics/oversea/us-moreplus/orders/{$order->id}/shipout/production/preflight")
+            ->assertStatus(423)
+            ->assertJsonPath('error_code', 'SHIPOUT_V1_READ_DISABLED');
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+    }
+
+    public function test_v1_production_route_preflight_is_get_only_and_redacted(): void
+    {
+        $order = $this->order();
+        $this->enableProductionV1();
+        $this->fakeProvider();
+        $this->actingAs($this->productionWarehouseUser(['logistics.view']));
+
+        $response = $this->getJson("/logistics/oversea/us-moreplus/orders/{$order->id}/shipout/production/preflight")
+            ->assertOk()
+            ->assertJsonPath('ready', true)
+            ->assertJsonPath('production', true)
+            ->assertJsonPath('order_no', self::REF)
+            ->assertJsonPath('items.0.omsSku', self::SKU)
+            ->assertJsonPath('mutated', false);
+
+        $this->assertStringNotContainsString('Example Way', $response->getContent());
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+    }
+
+    public function test_v1_production_send_route_denies_non_operator(): void
+    {
+        $order = $this->order();
+        $this->allowSyntheticHttpPost();
+        $this->enableProductionV1();
+        $this->fakeProvider();
+        $this->actingAs($this->productionWarehouseUser(['logistics.view']));
+
+        $this->postJson("/logistics/oversea/us-moreplus/orders/{$order->id}/shipout/production/send", [
+            'ship_date' => $this->shipDate(),
+            'shipping_mode' => '9',
+            'payload_hash' => str_repeat('a', 64),
+            'confirmation' => 'SUBMIT_SHIPOUT_ORDER_'.$order->id,
+        ])->assertForbidden();
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+    }
+
+    public function test_v1_web_send_route_rejects_when_dispatch_off_even_for_operator(): void
+    {
+        $order = $this->order();
+        $this->allowSyntheticHttpPost();
+        $this->enableProductionV1();
+        config()->set('shipout.production_v1_dispatch_enabled', false);
+        $this->fakeProvider();
+        $this->actingAs($this->productionWarehouseUser(['logistics.view', 'logistics.operate']));
+
+        $this->postJson("/logistics/oversea/us-moreplus/orders/{$order->id}/shipout/production/send", [
+            'ship_date' => $this->shipDate(),
+            'shipping_mode' => '9',
+            'payload_hash' => str_repeat('a', 64),
+            'confirmation' => 'SUBMIT_SHIPOUT_ORDER_'.$order->id,
+        ])->assertStatus(423)
+            ->assertJsonPath('error_code', 'SHIPOUT_V1_DISPATCH_DISABLED');
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+    }
+
+    public function test_v1_web_status_without_provider_attempt_stays_read_only(): void
+    {
+        $order = $this->order();
+        $this->allowSyntheticHttpPost();
+        $this->enableProductionV1();
+        $this->fakeProvider();
+        $this->actingAs($this->productionWarehouseUser(['logistics.view']));
+
+        $this->postJson("/logistics/oversea/us-moreplus/orders/{$order->id}/shipout/production/status")
+            ->assertStatus(409)
+            ->assertJsonPath('error_code', 'SHIPOUT_R10_NO_VERIFIED_ATTEMPT');
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+    }
+
+    public function test_v1_web_manual_send_uses_signed_r10_transport_and_returns_ack_not_shipped(): void
+    {
+        $order = $this->order();
+        $this->allowSyntheticHttpPost();
+        $this->enableProductionV1();
+        $this->fakeProvider();
+        $preflight = app(ShipOutProductionCanaryDispatchService::class)->previewApproved(
+            $order->id, $this->shipDate()
+        );
+        $this->actingAs($this->productionWarehouseUser(['logistics.view', 'logistics.operate']));
+
+        $this->postJson("/logistics/oversea/us-moreplus/orders/{$order->id}/shipout/production/send", [
+            'ship_date' => $this->shipDate(),
+            'shipping_mode' => '9',
+            'payload_hash' => $preflight['payload_hash'],
+            'confirmation' => 'SUBMIT_SHIPOUT_ORDER_'.$order->id,
+        ])->assertOk()
+            ->assertJsonPath('status', 'acknowledged')
+            ->assertJsonPath('provider_order_id', 'SYNTHETIC-PROVIDER-ORDER')
+            ->assertJsonPath('erp_shipment_unchanged', true)
+            ->assertJsonPath('woo_unchanged', true)
+            ->assertJsonPath('tracking_apply', false);
+
+        $this->assertDatabaseHas('shipout_dispatch_attempts', [
+            'order_id' => $order->id,
+            'status' => 'acknowledged',
+            'provider_order_id' => 'SYNTHETIC-PROVIDER-ORDER',
+        ]);
+        $this->assertSame('pending_shipment', $order->fresh()->order_status->value);
+        $this->assertNull($order->fresh()->shipment->tracking_number);
+        $this->assertSame(1, $this->postInvocations);
+
+        $this->providerVisibleOrderId = 'SYNTHETIC-PROVIDER-ORDER';
+        $this->postJson("/logistics/oversea/us-moreplus/orders/{$order->id}/shipout/production/status")
+            ->assertOk()
+            ->assertJsonPath('reconciliation', 'ORDER_VISIBLE_MANUAL_REVIEW_ONLY')
+            ->assertJsonPath('provider_order_id', 'SYNTHETIC-PROVIDER-ORDER')
+            ->assertJsonPath('shipped', false)
+            ->assertJsonPath('tracking_apply', false);
+        $this->assertSame(1, $this->postInvocations);
     }
 }

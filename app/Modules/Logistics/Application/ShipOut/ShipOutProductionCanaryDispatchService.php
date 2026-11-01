@@ -18,6 +18,7 @@ final class ShipOutProductionCanaryDispatchService
     public function __construct(
         private readonly ShipOutProductionCanaryPreflight $preflight,
         private readonly ShipOutProductionCanaryGate $gate,
+        private readonly ShipOutProductionV1Gate $v1Gate,
         private readonly ShipOutProductionCanaryOutboundTransport $transport,
     ) {}
 
@@ -27,6 +28,22 @@ final class ShipOutProductionCanaryDispatchService
         return $this->preflight->preview($erpOrderId, $shipDate);
     }
 
+    /** Preview one standard Production V1 order after Dede approval. */
+    public function previewApproved(int $erpOrderId, string $shipDate): array
+    {
+        return $this->preflight->previewApproved($erpOrderId, $shipDate);
+    }
+
+    /** @return array{status:string,provider_order_id:?string,result_code:string} */
+    public function dispatchApprovedOrder(
+        int $erpOrderId,
+        string $shipDate,
+        string $expectedPayloadHash,
+        string $typedConfirmation,
+    ): array {
+        return $this->dispatchScoped($erpOrderId, $shipDate, $expectedPayloadHash, $typedConfirmation, true);
+    }
+
     /** @return array{status:string,provider_order_id:?string,result_code:string} */
     public function dispatchOne(
         int $erpOrderId,
@@ -34,12 +51,25 @@ final class ShipOutProductionCanaryDispatchService
         string $expectedPayloadHash,
         string $typedConfirmation,
     ): array {
-        // New signed real-stock and provider duplicate GETs on every attempt.
-        $preflight = $this->preflight->build($erpOrderId, $shipDate);
+        return $this->dispatchScoped($erpOrderId, $shipDate, $expectedPayloadHash, $typedConfirmation, false);
+    }
+
+    /** @return array{status:string,provider_order_id:?string,result_code:string} */
+    private function dispatchScoped(
+        int $erpOrderId,
+        string $shipDate,
+        string $expectedPayloadHash,
+        string $typedConfirmation,
+        bool $v1,
+    ): array {
+        // Fresh signed stock and provider duplicate GETs on every attempt.
+        $preflight = $v1
+            ? $this->preflight->buildApproved($erpOrderId, $shipDate)
+            : $this->preflight->build($erpOrderId, $shipDate);
         $summary = $preflight['summary'];
         $payload = $preflight['payload'];
 
-        $this->gate->assertExecutionAuthorized(
+        ($v1 ? $this->v1Gate : $this->gate)->assertExecutionAuthorized(
             $erpOrderId,
             $summary['order_no'],
             $summary['warehouse_id'],
@@ -68,9 +98,13 @@ final class ShipOutProductionCanaryDispatchService
         }
 
         try {
-            $result = $this->transport->submitOne(
-                $erpOrderId, $payload, $expectedPayloadHash, $typedConfirmation
-            );
+            $result = $v1
+                ? $this->transport->submitV1(
+                    $erpOrderId, $payload, $expectedPayloadHash, $typedConfirmation
+                )
+                : $this->transport->submitOne(
+                    $erpOrderId, $payload, $expectedPayloadHash, $typedConfirmation
+                );
         } catch (\Throwable) {
             // The request may have reached the provider even if timeout or
             // response parsing failed. Keep the unique attempt even if the DB

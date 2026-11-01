@@ -491,3 +491,72 @@ describe('Oversea Dede file exchange workbench', () => {
   })
 
 })
+
+
+describe('ShipOut Production V1 isolated from Sandbox', () => {
+  const morePlusRows={...usSmPendingRows,data:[{...usSmPendingRows.data[0],warehouse_id:1,
+    warehouse_name:'美西 MorePlus 仓',erp_order_id:'007-1031-c99999'}]}
+
+  it('shows the real API integration as safely disabled without emitting a send button', () => {
+    const wrapper=mountPage({rows:morePlusRows,trackingImportPreview:null,shipoutProductionUi:true,
+      shipoutProductionReadEnabled:false,shipoutProductionDispatchEnabled:false})
+    expect(wrapper.text()).toContain('ShipOut Production V1')
+    expect(wrapper.text()).toContain('当前未开通')
+    expect(wrapper.text()).not.toContain('确认提交正式仓')
+    expect(wrapper.find('[data-shipout-order-id="99"] button').exists()).toBe(false)
+  })
+
+  it('supports a real read-only preflight and blocks send when Production dispatch is off', async () => {
+    const fetchMock=vi.fn().mockResolvedValue({ok:true,json:async()=>({
+      order_id:99,ship_date:'2026-11-02',order_no:'C99999-007',items:[{omsSku:'TEST-SKU',qty:1}],
+      shipping_mode:'9',blockers:[],ready:true,payload_hash:'a'.repeat(64),already_attempted:false,
+    })})
+    vi.stubGlobal('fetch',fetchMock)
+    try {
+      const wrapper=mountPage({rows:morePlusRows,trackingImportPreview:null,shipoutProductionUi:true,
+        shipoutProductionReadEnabled:true,shipoutProductionDispatchEnabled:false})
+      const previewButton=wrapper.findAll('button').find(b=>b.text()==='正式 API 预检')
+      expect(previewButton).toBeTruthy()
+      await previewButton!.trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('TEST-SKU × 1'))
+      expect(wrapper.text()).toContain('正式发货未授权')
+      expect(wrapper.text()).not.toContain('确认提交正式仓')
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock.mock.calls[0][0]).toContain('/shipout/production/preflight')
+      expect(fetchMock.mock.calls[0][1].method).toBe('GET')
+    } finally { vi.unstubAllGlobals() }
+  })
+
+  it('sends a fake provider order once and does not mark shipped or retry', async () => {
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="V1-TEST-CSRF">')
+    const fetchMock=vi.fn()
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        order_id:99,ship_date:'2026-11-02',order_no:'C99999-007',items:[{omsSku:'TEST-SKU',qty:1}],
+        shipping_mode:'9',blockers:[],ready:true,payload_hash:'a'.repeat(64),already_attempted:false,
+      })})
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        status:'acknowledged',provider_order_id:'SYNTHETIC-ORDER',result_code:'ASYNC_ACCEPTED_QUERY_REQUIRED',
+      })})
+    vi.stubGlobal('fetch',fetchMock)
+    try {
+      const wrapper=mountPage({rows:morePlusRows,trackingImportPreview:null,shipoutProductionUi:true,
+        shipoutProductionReadEnabled:true,shipoutProductionDispatchEnabled:true})
+      await wrapper.findAll('button').find(b=>b.text()==='正式 API 预检')!.trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('确认提交正式仓 · 仅一次'))
+      await wrapper.findAll('button').find(b=>b.text().includes('确认提交正式仓'))!.trigger('click')
+      await vi.waitFor(()=>expect(wrapper.text()).toContain('尚未发货'))
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      const [url,opts]=fetchMock.mock.calls[1]
+      expect(url).toContain('/shipout/production/send')
+      expect(opts.method).toBe('POST')
+      expect(JSON.parse(opts.body)).toEqual({
+        ship_date:'2026-11-02',shipping_mode:'9',payload_hash:'a'.repeat(64),
+        confirmation:'SUBMIT_SHIPOUT_ORDER_99',
+      })
+      expect(wrapper.text()).not.toContain('确认提交正式仓 · 仅一次')
+    } finally {
+      vi.unstubAllGlobals()
+      document.head.querySelector('meta[name="csrf-token"]')?.remove()
+    }
+  })
+})

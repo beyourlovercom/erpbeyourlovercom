@@ -98,6 +98,21 @@ final class OverseaWarehouseController
                 && (bool) config('xlwms.oms_web_enabled', false)
                 && filled(config('xlwms.oms_web_token'))
                 && filled(config('xlwms.oms_web_hmac_key')),
+            // Production V1 is visible as a separate, default-OFF workbench;
+            // never make Sandbox flags active in Production.
+            'shipoutProductionUi' => $warehouseKey === 'us-moreplus'
+                && app()->environment('production'),
+            'shipoutProductionReadEnabled' => $warehouseKey === 'us-moreplus'
+                && app()->environment('production')
+                && (bool) config('shipout.production_read_enabled', false)
+                && (bool) config('shipout.production_v1_read_enabled', false),
+            'shipoutProductionDispatchEnabled' => $warehouseKey === 'us-moreplus'
+                && app()->environment('production')
+                && (bool) config('shipout.production_read_enabled', false)
+                && (bool) config('shipout.production_dispatch_enabled', false)
+                && (bool) config('shipout.production_v1_read_enabled', false)
+                && (bool) config('shipout.production_v1_dispatch_enabled', false)
+                && (bool) config('shipout.production_v1_owner_approved', false),
             'shipoutSandboxReadEnabled' => $warehouseKey === 'us-moreplus'
                 && ! app()->environment('production')
                 && (bool) config('shipout.sandbox_read_enabled', false),
