@@ -48,6 +48,11 @@ return [
     // R10-B single-order Production Canary. ALL OFF until a separate exact-order Owner PASS.
     // No outbound transport or route is activated by these settings.
     // Separate manual operator surface gate, OFF for every normal deploy.
+    // ShipOut Production V1 standard Dede-approved flow. All three OFF
+    // by default, independent from the frozen R10 single-order Canary.
+    'production_v1_read_enabled' => filter_var(env('SHIPOUT_PRODUCTION_V1_READ_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'production_v1_dispatch_enabled' => filter_var(env('SHIPOUT_PRODUCTION_V1_DISPATCH_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'production_v1_owner_approved' => filter_var(env('SHIPOUT_PRODUCTION_V1_OWNER_APPROVED', false), FILTER_VALIDATE_BOOL),
     'production_operator_cli_enabled' => filter_var(env('SHIPOUT_PRODUCTION_OPERATOR_CLI_ENABLED', false), FILTER_VALIDATE_BOOL),
     'production_canary_execute_enabled' => filter_var(env('SHIPOUT_PRODUCTION_CANARY_EXECUTE_ENABLED', false), FILTER_VALIDATE_BOOL),
     'production_canary_owner_approved' => filter_var(env('SHIPOUT_PRODUCTION_CANARY_OWNER_APPROVED', false), FILTER_VALIDATE_BOOL),

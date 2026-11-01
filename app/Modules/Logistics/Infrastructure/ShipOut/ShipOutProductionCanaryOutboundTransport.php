@@ -3,6 +3,7 @@
 namespace App\Modules\Logistics\Infrastructure\ShipOut;
 
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryGate;
+use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1Gate;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -18,7 +19,10 @@ final class ShipOutProductionCanaryOutboundTransport
 
     private const PATH = '/open-api/oms/order/batchSubmitAsync';
 
-    public function __construct(private readonly ShipOutProductionCanaryGate $gate) {}
+    public function __construct(
+        private readonly ShipOutProductionCanaryGate $gate,
+        private readonly ShipOutProductionV1Gate $v1Gate,
+    ) {}
 
     /** @param array<int,array<string,mixed>> $payload
      * @return array{status:string,provider_order_id:?string,result_code:string}
@@ -28,6 +32,27 @@ final class ShipOutProductionCanaryOutboundTransport
         array $payload,
         string $expectedPayloadHash,
         string $typedConfirmation,
+    ): array {
+        return $this->submitScoped($orderId, $payload, $expectedPayloadHash, $typedConfirmation, false);
+    }
+
+    /** Standard Production V1 flow, reusing the exact R10 signed transport. */
+    public function submitV1(
+        int $orderId,
+        array $payload,
+        string $expectedPayloadHash,
+        string $typedConfirmation,
+    ): array {
+        return $this->submitScoped($orderId, $payload, $expectedPayloadHash, $typedConfirmation, true);
+    }
+
+    /** @param array<int,array<string,mixed>> $payload */
+    private function submitScoped(
+        int $orderId,
+        array $payload,
+        string $expectedPayloadHash,
+        string $typedConfirmation,
+        bool $v1,
     ): array {
         $row = $payload[0] ?? null;
         if (count($payload) !== 1 || ! is_array($row)
@@ -53,7 +78,7 @@ final class ShipOutProductionCanaryOutboundTransport
 
         $ref = trim((string) ($row['orderNo'] ?? ''));
         $hash = hash('sha256', json_encode($payload, JSON_THROW_ON_ERROR));
-        $this->gate->assertExecutionAuthorized(
+        ($v1 ? $this->v1Gate : $this->gate)->assertExecutionAuthorized(
             $orderId, $ref, (string) $row['warehouseId'],
             $expectedPayloadHash, $hash, $typedConfirmation,
         );

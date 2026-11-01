@@ -60,6 +60,7 @@ type TrackingImportRow = { row:number; order_id:number|null; order_number:string
 type TrackingImportPreview = { token:string; rows:TrackingImportRow[]; apply_count:number; noop_count:number; blocked_count:number }
 const props = defineProps<{
   warehouseKey:string; warehouse:WarehouseOption|null; warehouseOptions:WarehouseOption[]; view:string
+  shipoutProductionUi?:boolean; shipoutProductionReadEnabled?:boolean; shipoutProductionDispatchEnabled?:boolean
   rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canOperate:boolean; canTrackingSync?:boolean; shipoutSandboxReadEnabled?:boolean; shipoutSandboxDispatchEnabled?:boolean; shipoutSandboxTrackingApplyEnabled?:boolean; shipoutSandboxAuthorizedOrderNo?:string; shipoutSandboxSpecifiedChannel?:{id:string;label:string}|null; shipoutSandboxOwnLabelEnabled?:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number; xlwmsBatchEnabled?:boolean; xlwmsOmsWebEnabled?:boolean
 
 }>()
@@ -94,7 +95,94 @@ const trackingFileHint = computed(() => props.warehouseKey === 'us-3sm'
   ? '下载订单文件后，由物流人员在 OMS 人工导入；仓库补充真实 USPS 面单后再发货。'
   : '上传当前仓库真实回传 XLSX；兼容旧 CSV。上传只生成预览，确认后才会标记已发货。')
 const rowErrors = reactive<Record<number,string>>({})
-// MorePlus API is a separate sandbox-only provider, NEVER the 世迈 XLWMS route.
+// MorePlus uses independent Sandbox and Production V1 providers; never the XLWMS route.
+type ShipOutProductionStatus = {
+  order_id:number; order_no:string; attempt_status:string; provider_order_id?:string|null
+  provider_status?:string|number|null; reconciliation:string; shipped:false
+  tracking_apply:false; read_only:true
+}
+const shipoutProdPreview = reactive<Record<number,ShipOutPreflight>>({})
+const shipoutProdStatus = reactive<Record<number,ShipOutProductionStatus>>({})
+const shipoutProdBusy = reactive<Record<number,boolean>>({})
+const shipoutProdSentOnce = reactive<Record<number,boolean>>({})
+const shipoutProdErrors = reactive<Record<number,string>>({})
+const shipoutProdCanSend = (row:Row) => !!props.canOperate
+  && !!props.shipoutProductionDispatchEnabled
+  && row.review_status==='approved' && row.shipment_status==='pending'
+  && !!shipoutProdPreview[row.order_id]?.ready
+  && !!shipoutProdPreview[row.order_id]?.payload_hash
+  && shipoutProdPreview[row.order_id]?.shipping_mode === '9'
+  && !shipoutProdBusy[row.order_id] && !shipoutProdSentOnce[row.order_id]
+async function shipoutProdRequest(row:Row, action:'preflight'|'send'|'status', payload:Record<string,string>={}) {
+  const isGet=action==='preflight'
+  const csrf=document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content
+  if(!isGet && !csrf) throw Error('CSRF 校验信息缺失')
+  const url='/logistics/oversea/us-moreplus/orders/'+row.order_id+'/shipout/production/'+action
+  const response=await fetch(url,{
+    method:isGet?'GET':'POST',credentials:'same-origin',cache:'no-store',redirect:'error',
+    headers:{Accept:'application/json',...(isGet?{}:{'Content-Type':'application/json','X-CSRF-TOKEN':csrf||''})},
+    ...(isGet?{}:{body:JSON.stringify(payload)}),
+  })
+  if(!response.ok) {
+    const result=await response.json().catch(()=>null)
+    const errors:Record<string,string>={
+      SHIPOUT_V1_READ_DISABLED:'正式 API 查询尚未授权启用',
+      SHIPOUT_V1_DISPATCH_DISABLED:'正式 API 下发尚未授权启用',
+      SHIPOUT_R10_NO_VERIFIED_ATTEMPT:'ERP 暂无本订单的 API 提交记录',
+      SHIPOUT_R10_PRIOR_ATTEMPT_BLOCKED:'已有提交记录，禁止再次发送，请核对正式 OMS',
+      SHIPOUT_R10_PREFLIGHT_STALE:'订单数据变化，请重新预检',
+      SHIPOUT_R10_PHYSICAL_SKU_NOT_AVAILABLE:'仓库缺少精确匹配 SKU 的可用库存',
+      SHIPOUT_R10_PROVIDER_ORDER_EXISTS:'ShipOut 正式 OMS 已有本单，禁止重复发送',
+    }
+    throw Error(errors[result?.error_code] ||
+      (response.status===403?'当前账号没有仓库操作权限':'正式 API 当前不可执行，请联系物流主管'))
+  }
+  return response.json()
+}
+async function shipoutProdPreflight(row:Row) {
+  if(shipoutProdBusy[row.order_id] || !props.shipoutProductionReadEnabled) return
+  shipoutProdBusy[row.order_id]=true;shipoutProdErrors[row.order_id]=''
+  delete shipoutProdPreview[row.order_id]
+  try {
+    const result=await shipoutProdRequest(row,'preflight') as ShipOutPreflight
+    if(result.order_id!==row.order_id||!result.ready||result.shipping_mode!=='9')
+      throw Error('正式预检未通过，请人工核对')
+    shipoutProdPreview[row.order_id]=result
+  } catch(e) {shipoutProdErrors[row.order_id]=e instanceof Error?e.message:'正式 API 预检失败'}
+  finally {shipoutProdBusy[row.order_id]=false}
+}
+async function shipoutProdSend(row:Row) {
+  const preview=shipoutProdPreview[row.order_id]
+  if(!preview?.payload_hash || !shipoutProdCanSend(row)) return
+  // Never auto retry, including when provider timed out but accepted.
+  shipoutProdSentOnce[row.order_id]=true;shipoutProdBusy[row.order_id]=true
+  shipoutProdErrors[row.order_id]=''
+  delete shipoutProdPreview[row.order_id]
+  try {
+    const result=await shipoutProdRequest(row,'send',{
+      ship_date:preview.ship_date,shipping_mode:'9',payload_hash:preview.payload_hash,
+      confirmation:'SUBMIT_SHIPOUT_ORDER_'+row.order_id,
+    })
+    shipoutProdErrors[row.order_id]=result.status==='acknowledged'
+      ? 'ShipOut 正式仓已接收；仅为接单确认，尚未发货，请查询 OMS'
+      : '供应商未接单：'+(result.result_code||'请人工查询')
+  } catch(e) {
+    shipoutProdErrors[row.order_id]=(e instanceof Error?e.message:'结果未知')
+      +'。禁止重新发送，请人工核对正式 OMS。'
+  } finally {shipoutProdBusy[row.order_id]=false}
+}
+async function shipoutProdRefresh(row:Row) {
+  if(!props.shipoutProductionReadEnabled || shipoutProdBusy[row.order_id]) return
+  shipoutProdBusy[row.order_id]=true;shipoutProdErrors[row.order_id]=''
+  try {
+    const result=await shipoutProdRequest(row,'status') as ShipOutProductionStatus
+    if(result.order_id!==row.order_id || result.shipped!==false || result.tracking_apply!==false)
+      throw Error('OMS 回读结果不可信')
+    shipoutProdStatus[row.order_id]=result
+  } catch(e){shipoutProdErrors[row.order_id]=e instanceof Error?e.message:'正式 OMS 查询失败'}
+  finally {shipoutProdBusy[row.order_id]=false}
+}
+
 const shipoutModes = reactive<Record<number,'6'|'9'|'10'>>({})
 const shipoutLabelFiles = reactive<Record<number,File|undefined>>({})
 const shipoutLabelTracking = reactive<Record<number,string>>({})
@@ -735,7 +823,33 @@ const compactPages = computed<(number|string)[]>(() => {
               </td>
               <td v-if="warehouseKey === 'us-moreplus'" class="xlwms-cell">
                 <div class="xlwms-inline" :data-shipout-order-id="row.order_id">
-                  <template v-if="!shipoutSandboxReadEnabled && !shipoutSandboxDispatchEnabled">
+                  <template v-if="shipoutProductionUi">
+                    <strong class="xlwms-state">ShipOut Production V1 · 正式仓</strong>
+                    <small class="xlwms-note">只支持美西 US-LA / 已通过 Dede 审核 / 美国地址 / 仓库自动渠道 Mode 9；接单不等于已发货。</small>
+                    <template v-if="!shipoutProductionReadEnabled">
+                      <small class="xlwms-note">正式 API 已部署，当前未开通；请继续使用人工下载与物流回传流程。</small>
+                    </template>
+                    <template v-else>
+                      <div class="xlwms-buttons">
+                        <button v-if="row.review_status==='approved' && row.shipment_status==='pending' && canOperate"
+                          type="button" class="xlwms-action" :disabled="shipoutProdBusy[row.order_id] || shipoutProdSentOnce[row.order_id]"
+                          @click="shipoutProdPreflight(row)">{{shipoutProdBusy[row.order_id]?'预检中…':'正式 API 预检'}}</button>
+                        <button type="button" class="xlwms-action" :disabled="shipoutProdBusy[row.order_id]"
+                          @click="shipoutProdRefresh(row)">{{shipoutProdBusy[row.order_id]?'查询中…':'查询正式 OMS'}}</button>
+                      </div>
+                      <div v-if="shipoutProdPreview[row.order_id]" class="xlwms-confirm">
+                        <small>订单 {{shipoutProdPreview[row.order_id].order_no}} · {{shipoutProdPreview[row.order_id].items.map(i=>i.omsSku+' × '+i.qty).join(' / ')}} · {{shipoutProdPreview[row.order_id].ship_date}}（LA）</small>
+                        <button v-if="shipoutProdCanSend(row)" type="button" class="xlwms-action primary"
+                          :disabled="shipoutProdBusy[row.order_id]" @click="shipoutProdSend(row)">确认提交正式仓 · 仅一次</button>
+                        <small v-else>正式发货未授权；只能查询和预检，不会发送订单。</small>
+                      </div>
+                      <small v-if="shipoutProdStatus[row.order_id]" class="xlwms-note">
+                        OMS：{{shipoutProdStatus[row.order_id].reconciliation==='ORDER_VISIBLE_MANUAL_REVIEW_ONLY'?'仓库订单可见':'待仓库确认'}} · {{shipoutProdStatus[row.order_id].provider_order_id||'暂无仓库订单 ID'}} · 仍待实际发货
+                      </small>
+                    </template>
+                    <small v-if="shipoutProdErrors[row.order_id]" role="alert" class="xlwms-error">{{shipoutProdErrors[row.order_id]}}</small>
+                  </template>
+                  <template v-else-if="!shipoutSandboxReadEnabled && !shipoutSandboxDispatchEnabled">
                     <span class="xlwms-state">API 发货未开通</span>
                     <small class="xlwms-note">当前请继续使用「下载仓库下单表」和「上传物流回传表」。</small>
                   </template>

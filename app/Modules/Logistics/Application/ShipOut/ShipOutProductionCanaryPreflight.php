@@ -35,6 +35,22 @@ final class ShipOutProductionCanaryPreflight
         return $result['summary'];
     }
 
+    /** Preview the ordinary, Dede-approved Production V1 order flow. */
+    public function previewApproved(int $orderId, string $shipDate): array
+    {
+        return $this->buildApproved($orderId, $shipDate)['summary'];
+    }
+
+    /** Return a guarded Production V1 payload, without exposing PII to web callers. */
+    public function buildApproved(int $orderId, string $shipDate): array
+    {
+        if (! (bool) config('shipout.production_v1_read_enabled', false)) {
+            throw new RuntimeException('SHIPOUT_V1_READ_DISABLED');
+        }
+
+        return $this->buildScoped($orderId, $shipDate, false);
+    }
+
     /**
      * For a privileged internal one-shot dispatcher only. The raw payload
      * contains customer address; never expose it via a web controller or log.
@@ -43,6 +59,12 @@ final class ShipOutProductionCanaryPreflight
      */
     public function build(int $orderId, string $shipDate): array
     {
+        return $this->buildScoped($orderId, $shipDate, true);
+    }
+
+    /** @return array{payload:array<int,array<string,mixed>>,summary:array<string,mixed>} */
+    private function buildScoped(int $orderId, string $shipDate, bool $canary): array
+    {
         if (! app()->environment('production')
             || ! (bool) config('shipout.production_read_enabled', false)) {
             throw new RuntimeException('SHIPOUT_R10_PRODUCTION_READ_DISABLED');
@@ -50,7 +72,7 @@ final class ShipOutProductionCanaryPreflight
         if (trim((string) config('shipout.production_warehouse_id', '')) !== self::WAREHOUSE
             || trim((string) config('shipout.production_client_org_id', '')) !== self::ORG
             || $orderId <= 0
-            || trim((string) config('shipout.production_canary_order_id', '')) !== (string) $orderId) {
+            || ($canary && trim((string) config('shipout.production_canary_order_id', '')) !== (string) $orderId)) {
             throw new RuntimeException('SHIPOUT_R10_PREFLIGHT_IDENTITY_DENIED');
         }
 
@@ -82,7 +104,7 @@ final class ShipOutProductionCanaryPreflight
         );
         $ref = (string) $payload[0]['orderNo'];
         $allowRef = trim((string) config('shipout.production_canary_order_no', ''));
-        if ($allowRef === '' || ! hash_equals($allowRef, $ref)) {
+        if ($canary && ($allowRef === '' || ! hash_equals($allowRef, $ref))) {
             throw new RuntimeException('SHIPOUT_R10_ORDER_NOT_ALLOWLISTED');
         }
 
