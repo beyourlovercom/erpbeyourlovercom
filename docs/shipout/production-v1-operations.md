@@ -27,6 +27,12 @@ in this first Production release.
 - Send: both READ gates above, plus SHIPOUT_PRODUCTION_DISPATCH_ENABLED,
   SHIPOUT_PRODUCTION_V1_DISPATCH_ENABLED, and
   SHIPOUT_PRODUCTION_V1_OWNER_APPROVED.
+- Production V1 exact-operator allowlist: SHIPOUT_PRODUCTION_V1_OPERATOR_USER_ID.
+  Set only to the Owner-verified Dede ERP account; default 0 denies all send.
+- First supported ERP order identity: SHIPOUT_PRODUCTION_V1_MIN_ORDER_ID.
+  Default 0 denies V1 preflight and send. Historical orders stay on manual flow.
+- Every operator POST is reauthorized inside both controller and signed V1 gate,
+  in addition to existing logistics.operate permissions. No automatic refresh/cron.
 - SHIPOUT_PRODUCTION_TRACKING_APPLY_ENABLED: stays **OFF**.
 - Original R10 SHIPOUT_PRODUCTION_CANARY_* flags stay **OFF**.
 - Original SHIPOUT_PRODUCTION_OPERATOR_CLI_ENABLED stays **OFF**.

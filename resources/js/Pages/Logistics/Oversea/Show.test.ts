@@ -34,7 +34,8 @@ const preview = {
 
 const mountPage = (overrides: Record<string, unknown> = {}) => mount(Show, { props: {
   warehouseKey: 'us-moreplus', warehouse: warehouseOptions[0], warehouseOptions, view: 'pending', rows, viewCounts,
-  canReview: true, canOperate: true, carrierOptions: [], trackingImportPreview: preview, xlwmsOmsWebEnabled:true, ...overrides,
+  canReview: true, canOperate: true, carrierOptions: [], trackingImportPreview: preview, xlwmsOmsWebEnabled:true,
+  shipoutProductionMinOrderId:1, ...overrides,
 } })
 
 describe('warehouse OMS portal inside the overseas page heading', () => {
@@ -558,5 +559,30 @@ describe('ShipOut Production V1 isolated from Sandbox', () => {
       vi.unstubAllGlobals()
       document.head.querySelector('meta[name="csrf-token"]')?.remove()
     }
+  })
+})
+
+
+describe('ShipOut Production V1 strict cutover and operator gate', () => {
+  const approvedRow={...usSmPendingRows.data[0],
+    warehouse_id:1,warehouse_name:'美西 MorePlus 仓',
+    erp_order_id:'007-1031-c99999',order_id:99}
+
+  it('excludes pre-cutover orders from API preview or send even when READ is ON', () => {
+    const wrapper=mountPage({rows:{...usSmPendingRows,data:[approvedRow]},
+      trackingImportPreview:null,shipoutProductionUi:true,shipoutProductionReadEnabled:true,
+      shipoutProductionDispatchEnabled:true,shipoutProductionMinOrderId:100})
+    expect(wrapper.text()).toContain('历史订单不纳入正式 API V1 自动化范围')
+    expect(wrapper.text()).not.toContain('正式 API 预检')
+    expect(wrapper.text()).not.toContain('确认提交正式仓')
+    expect(wrapper.text()).toContain('查询正式 OMS')
+  })
+
+  it('keeps send hidden from a non-approved logistics operator', () => {
+    const wrapper=mountPage({rows:{...usSmPendingRows,data:[approvedRow]},
+      trackingImportPreview:null,shipoutProductionUi:true,shipoutProductionReadEnabled:true,
+      shipoutProductionDispatchEnabled:false,shipoutProductionMinOrderId:1})
+    expect(wrapper.text()).toContain('正式 API 预检')
+    expect(wrapper.text()).not.toContain('确认提交正式仓')
   })
 })

@@ -47,6 +47,10 @@ final class ShipOutProductionCanaryPreflight
         if (! (bool) config('shipout.production_v1_read_enabled', false)) {
             throw new RuntimeException('SHIPOUT_V1_READ_DISABLED');
         }
+        $cutover = (int) config('shipout.production_v1_min_order_id', 0);
+        if ($cutover < 1 || $orderId < $cutover) {
+            throw new RuntimeException('SHIPOUT_V1_OLD_ORDER_EXCLUDED');
+        }
 
         return $this->buildScoped($orderId, $shipDate, false);
     }

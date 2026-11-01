@@ -55,6 +55,15 @@ final class ShipOutProductionV1Controller
         if (! $this->dispatchEnabled()) {
             return $this->blocked('SHIPOUT_V1_DISPATCH_DISABLED', 423);
         }
+        $operatorId = (int) config('shipout.production_v1_operator_user_id', 0);
+        if ($operatorId < 1 || ! $request->user()?->is_active
+            || (int) $request->user()?->id !== $operatorId) {
+            return $this->blocked('SHIPOUT_V1_OPERATOR_DENIED', 403);
+        }
+        $minOrderId = (int) config('shipout.production_v1_min_order_id', 0);
+        if ($minOrderId < 1 || (int) $order->id < $minOrderId) {
+            return $this->blocked('SHIPOUT_V1_OLD_ORDER_EXCLUDED', 409);
+        }
         $data = $request->validate([
             'ship_date' => ['required', 'date_format:Y-m-d'],
             'shipping_mode' => ['required', 'in:9'],
@@ -135,6 +144,8 @@ final class ShipOutProductionV1Controller
             'SHIPOUT_V1_READ_DISABLED',
             'SHIPOUT_V1_DISPATCH_DISABLED',
             'SHIPOUT_V1_CONFIRMATION_MISMATCH',
+            'SHIPOUT_V1_OPERATOR_DENIED',
+            'SHIPOUT_V1_OLD_ORDER_EXCLUDED',
             'SHIPOUT_R10_PRIOR_ATTEMPT_BLOCKED',
             'SHIPOUT_R10_PREFLIGHT_STALE',
             'SHIPOUT_R10_PHYSICAL_SKU_NOT_AVAILABLE',
