@@ -53,9 +53,13 @@ return [
     'production_v1_read_enabled' => filter_var(env('SHIPOUT_PRODUCTION_V1_READ_ENABLED', false), FILTER_VALIDATE_BOOL),
     'production_v1_dispatch_enabled' => filter_var(env('SHIPOUT_PRODUCTION_V1_DISPATCH_ENABLED', false), FILTER_VALIDATE_BOOL),
     'production_v1_owner_approved' => filter_var(env('SHIPOUT_PRODUCTION_V1_OWNER_APPROVED', false), FILTER_VALIDATE_BOOL),
-    // Fail closed until Dede's exact ERP user ID and first approved ERP
-    // order cutover ID are explicitly configured by the Owner.
+    // Legacy single-operator setting retained for safe rollback only.
+    // Three-account V1 sends use a separate exact-ID list; no global grants.
+    // New-order cutover ID is independently configured by the Owner.
     'production_v1_operator_user_id' => (int) env('SHIPOUT_PRODUCTION_V1_OPERATOR_USER_ID', 0),
+    // Explicit allowlist of three approved Production V1 operators only.
+    // Empty/malformed config denies dispatch; no global logistics grant.
+    'production_v1_operator_user_ids' => (string) env('SHIPOUT_PRODUCTION_V1_OPERATOR_USER_IDS', ''),
     'production_v1_min_order_id' => (int) env('SHIPOUT_PRODUCTION_V1_MIN_ORDER_ID', 0),
     'production_operator_cli_enabled' => filter_var(env('SHIPOUT_PRODUCTION_OPERATOR_CLI_ENABLED', false), FILTER_VALIDATE_BOOL),
     'production_canary_execute_enabled' => filter_var(env('SHIPOUT_PRODUCTION_CANARY_EXECUTE_ENABLED', false), FILTER_VALIDATE_BOOL),

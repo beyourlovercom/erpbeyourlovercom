@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryDispatchService;
 use App\Modules\Logistics\Application\ShipOut\ShipOutProductionCanaryReconcileService;
+use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1OperatorAccess;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -50,14 +51,13 @@ final class ShipOutProductionV1Controller
         Order $order,
         Request $request,
         ShipOutProductionCanaryDispatchService $dispatch,
+        ShipOutProductionV1OperatorAccess $operatorAccess,
     ): JsonResponse {
         $this->guardWarehouse($order);
         if (! $this->dispatchEnabled()) {
             return $this->blocked('SHIPOUT_V1_DISPATCH_DISABLED', 423);
         }
-        $operatorId = (int) config('shipout.production_v1_operator_user_id', 0);
-        if ($operatorId < 1 || ! $request->user()?->is_active
-            || (int) $request->user()?->id !== $operatorId) {
+        if (! $operatorAccess->allows($request->user())) {
             return $this->blocked('SHIPOUT_V1_OPERATOR_DENIED', 403);
         }
         $minOrderId = (int) config('shipout.production_v1_min_order_id', 0);
