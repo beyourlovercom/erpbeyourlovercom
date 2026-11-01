@@ -768,11 +768,15 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
             'shipout.production_v1_read_enabled' => true,
             'shipout.production_v1_dispatch_enabled' => true,
             'shipout.production_v1_owner_approved' => true,
+            'shipout.production_v1_min_order_id' => 1,
             'shipout.production_canary_order_id' => '',
             'shipout.production_canary_order_no' => '',
             'shipout.production_canary_execute_enabled' => false,
             'shipout.production_canary_owner_approved' => false,
         ]);
+        $operator = $this->productionWarehouseUser(['logistics.view', 'logistics.operate']);
+        $this->actingAs($operator);
+        config()->set('shipout.production_v1_operator_user_id', $operator->id);
     }
 
     public function test_v1_new_order_read_gate_is_default_off_and_never_contacts_provider(): void
@@ -1058,7 +1062,9 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         $preflight = app(ShipOutProductionCanaryDispatchService::class)->previewApproved(
             $order->id, $this->shipDate()
         );
-        $this->actingAs($this->productionWarehouseUser(['logistics.view', 'logistics.operate']));
+        $operator = $this->productionWarehouseUser(['logistics.view', 'logistics.operate']);
+        $this->actingAs($operator);
+        config()->set('shipout.production_v1_operator_user_id', $operator->id);
 
         $this->postJson("/logistics/oversea/us-moreplus/orders/{$order->id}/shipout/production/send", [
             'ship_date' => $this->shipDate(),
@@ -1089,5 +1095,69 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
             ->assertJsonPath('shipped', false)
             ->assertJsonPath('tracking_apply', false);
         $this->assertSame(1, $this->postInvocations);
+    }
+
+    public function test_v1_restricts_signed_submission_to_exact_authorized_operator(): void
+    {
+        $order = $this->order();
+        $this->enableProductionV1();
+        $this->fakeProvider();
+        $service = app(ShipOutProductionCanaryDispatchService::class);
+        $preview = $service->previewApproved($order->id, $this->shipDate());
+
+        $otherOperator = $this->productionWarehouseUser(['logistics.view', 'logistics.operate']);
+        $this->actingAs($otherOperator);
+        try {
+            $service->dispatchApprovedOrder(
+                $order->id, $this->shipDate(), $preview['payload_hash'],
+                'SUBMIT_SHIPOUT_ORDER_'.$order->id,
+            );
+            $this->fail('A different logistics operator must not submit');
+        } catch (RuntimeException $error) {
+            $this->assertSame('SHIPOUT_V1_OPERATOR_DENIED', $error->getMessage());
+        }
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+    }
+
+    public function test_v1_older_erp_order_cannot_be_previewed_or_submitted(): void
+    {
+        $order = $this->order();
+        $this->enableProductionV1();
+        config()->set('shipout.production_v1_min_order_id', $order->id + 1);
+        $this->fakeProvider();
+
+        try {
+            app(ShipOutProductionCanaryDispatchService::class)->previewApproved(
+                $order->id, $this->shipDate()
+            );
+            $this->fail('Pre-cutover orders require the existing manual process');
+        } catch (RuntimeException $error) {
+            $this->assertSame('SHIPOUT_V1_OLD_ORDER_EXCLUDED', $error->getMessage());
+        }
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+    }
+
+    public function test_v1_fails_closed_without_explicit_operator_user_id(): void
+    {
+        $order = $this->order();
+        $this->enableProductionV1();
+        config()->set('shipout.production_v1_operator_user_id', 0);
+        $this->fakeProvider();
+        $service = app(ShipOutProductionCanaryDispatchService::class);
+        $preview = $service->previewApproved($order->id, $this->shipDate());
+
+        try {
+            $service->dispatchApprovedOrder(
+                $order->id, $this->shipDate(), $preview['payload_hash'],
+                'SUBMIT_SHIPOUT_ORDER_'.$order->id,
+            );
+            $this->fail('No configured operator must mean no POST');
+        } catch (RuntimeException $error) {
+            $this->assertSame('SHIPOUT_V1_OPERATOR_DENIED', $error->getMessage());
+        }
+        $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
     }
 }

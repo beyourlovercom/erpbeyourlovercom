@@ -2,6 +2,8 @@
 
 namespace App\Modules\Logistics\Application\ShipOut;
 
+use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use RuntimeException;
 
 /**
@@ -11,6 +13,8 @@ use RuntimeException;
  */
 final class ShipOutProductionV1Gate
 {
+    public function __construct(private readonly LogisticsExecutionAccess $access) {}
+
     public function assertExecutionAuthorized(
         int $erpOrderId,
         string $providerOrderNo,
@@ -32,6 +36,16 @@ final class ShipOutProductionV1Gate
             if (! (bool) config('shipout.'.$flag, false)) {
                 throw new RuntimeException('SHIPOUT_V1_DISPATCH_DISABLED');
             }
+        }
+        $operatorId = (int) config('shipout.production_v1_operator_user_id', 0);
+        $minOrderId = (int) config('shipout.production_v1_min_order_id', 0);
+        $actor = auth()->user();
+        if ($operatorId < 1 || ! $actor instanceof User || ! $actor->is_active
+            || (int) $actor->id !== $operatorId || ! $this->access->allows($actor)) {
+            throw new RuntimeException('SHIPOUT_V1_OPERATOR_DENIED');
+        }
+        if ($minOrderId < 1 || $erpOrderId < $minOrderId) {
+            throw new RuntimeException('SHIPOUT_V1_OLD_ORDER_EXCLUDED');
         }
         if ($erpOrderId < 1 || $providerOrderNo === '' || strlen($providerOrderNo) > 60
             || $providerWarehouseId !== '1265864414750314497'

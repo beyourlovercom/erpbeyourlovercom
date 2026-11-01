@@ -4,12 +4,14 @@ namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
-use App\Modules\Logistics\Application\WarehouseDispatchStatus;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\LogisticsReviewAccess;
+use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
+use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
 use App\Modules\Logistics\Application\OverseaFiles\OverseaOutboundFileService;
 use App\Modules\Logistics\Application\OverseaTrackingReturnService;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
+use App\Modules\Logistics\Application\WarehouseDispatchStatus;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsWebDraftAttempt;
@@ -68,7 +70,7 @@ final class OverseaWarehouseController
         $this->applyView($base, $view);
 
         $shipments = $base->latest('id')->paginate($perPage)->withQueryString();
-        $trackingStatuses = app(\App\Modules\Logistics\Application\LogisticsTrackingListStatus::class)
+        $trackingStatuses = app(LogisticsTrackingListStatus::class)
             ->forShipments($shipments->getCollection()->pluck('id')->all());
         $start = ($shipments->currentPage() - 1) * $shipments->perPage();
         // One indexed batch read of OMS audit snapshots; no per-row network
@@ -85,7 +87,6 @@ final class OverseaWarehouseController
         $canRunXlwms = $warehouseKey === 'us-3sm'
             && $this->executionAccess->allows($request->user())
             && (bool) config('xlwms.live_dispatch_enabled', false);
-
 
         return Inertia::render('Logistics/Oversea/Show', [
             'warehouseKey' => $warehouseKey,
@@ -106,23 +107,28 @@ final class OverseaWarehouseController
                 && app()->environment('production')
                 && (bool) config('shipout.production_read_enabled', false)
                 && (bool) config('shipout.production_v1_read_enabled', false),
+            'shipoutProductionMinOrderId' => $warehouseKey === 'us-moreplus'
+                ? (int) config('shipout.production_v1_min_order_id', 0) : 0,
             'shipoutProductionDispatchEnabled' => $warehouseKey === 'us-moreplus'
                 && app()->environment('production')
                 && (bool) config('shipout.production_read_enabled', false)
                 && (bool) config('shipout.production_dispatch_enabled', false)
                 && (bool) config('shipout.production_v1_read_enabled', false)
                 && (bool) config('shipout.production_v1_dispatch_enabled', false)
-                && (bool) config('shipout.production_v1_owner_approved', false),
+                && (bool) config('shipout.production_v1_owner_approved', false)
+                && (int) config('shipout.production_v1_operator_user_id', 0) > 0
+                && (int) $request->user()?->id === (int) config('shipout.production_v1_operator_user_id', 0)
+                && (int) config('shipout.production_v1_min_order_id', 0) > 0,
             'shipoutSandboxReadEnabled' => $warehouseKey === 'us-moreplus'
                 && ! app()->environment('production')
                 && (bool) config('shipout.sandbox_read_enabled', false),
             'shipoutSandboxDispatchEnabled' => $warehouseKey === 'us-moreplus'
                 && ! app()->environment('production')
                 && (bool) config('shipout.sandbox_dispatch_enabled', false),
-            'shipoutSandboxOwnLabelEnabled' => $warehouseKey==='us-moreplus'
+            'shipoutSandboxOwnLabelEnabled' => $warehouseKey === 'us-moreplus'
                 && ! app()->environment('production')
-                && in_array('6',array_map('trim',explode(',',(string)config('shipout.sandbox_enabled_modes','9'))),true)
-                && (bool)config('shipout.sandbox_dispatch_enabled',false),
+                && in_array('6', array_map('trim', explode(',', (string) config('shipout.sandbox_enabled_modes', '9'))), true)
+                && (bool) config('shipout.sandbox_dispatch_enabled', false),
             'shipoutSandboxSpecifiedChannel' => $warehouseKey === 'us-moreplus'
                 && ! app()->environment('production')
                 && in_array('10', array_map('trim', explode(',', (string) config('shipout.sandbox_enabled_modes', '9'))), true)
@@ -137,11 +143,11 @@ final class OverseaWarehouseController
             'shipoutSandboxAuthorizedOrderNo' => $warehouseKey === 'us-moreplus'
                 ? trim((string) config('shipout.sandbox_order_allowlist', '')) : '',
 
-            'xlwmsBatchEnabled' => $canRunXlwms && (bool) config('xlwms.warehouse_batch_dispatch_enabled', false) && (int)config('xlwms.live_order_id', 0) > 0,
+            'xlwmsBatchEnabled' => $canRunXlwms && (bool) config('xlwms.warehouse_batch_dispatch_enabled', false) && (int) config('xlwms.live_order_id', 0) > 0,
             'viewCounts' => $this->viewCounts($warehouseMap, $selectedWarehouse),
             'canReview' => $this->reviewAccess->allows($request->user()),
             'canOperate' => $warehouseKey !== 'all' && $this->executionAccess->allows($request->user()),
-            'canTrackingSync' => app(\App\Modules\Logistics\Application\LogisticsTrackingPushAccess::class)->allows($request->user()),
+            'canTrackingSync' => app(LogisticsTrackingPushAccess::class)->allows($request->user()),
             'carrierOptions' => $this->carrierServices->options(),
             'trackingImportPreview' => $warehouseKey === 'all' ? null : (collect((array) $request->session()->get($this->trackingSessionKey($warehouseKey), []))->except('normalized_rows')->all() ?: null),
         ]);
@@ -160,11 +166,12 @@ final class OverseaWarehouseController
             ->where('order_id', $order)->where('warehouse_id', $warehouseId)
             ->firstOrFail();
         $approved = $shipment->overseaReview?->status === 'approved'
-            && (int)$shipment->overseaReview->reviewed_warehouse_id === (int)$shipment->warehouse_id;
+            && (int) $shipment->overseaReview->reviewed_warehouse_id === (int) $shipment->warehouse_id;
         abort_unless($approved, 422, '订单尚未通过海外仓审核，请先审核。');
         abort_unless($shipment->order && $shipment->order->order_status?->value !== 'cancelled',
             422, '已取消的 ERP 订单不能导出。');
         $file = $this->outboundFiles->exportManualUsSmOrder($shipment);
+
         return response($file['bytes'], 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="'.$file['filename'].'"',
@@ -327,11 +334,14 @@ final class OverseaWarehouseController
                 ->whereHas('overseaReview', fn ($r) => $r
                     ->where('status', 'approved')
                     ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'));
-            $matching = fn($sub) => $sub->select('order_id')->from('xlwms_dispatch_attempts')
+            $matching = fn ($sub) => $sub->select('order_id')->from('xlwms_dispatch_attempts')
                 ->whereNotNull('oms_order_no')->where('oms_order_no', '!=', '')
                 ->whereIn('state', ['batch_created', 'batch_draft_created', 'batch_draft_unverified', 'oms_draft_created', 'oms_draft_unverified', 'batch_existing', 'batch_status_updated', 'submitted_oms', 'found_in_oms']);
-            if ($view === 'dispatched') $query->whereIn('order_id', $matching);
-            else $query->whereNotIn('order_id', $matching);
+            if ($view === 'dispatched') {
+                $query->whereIn('order_id', $matching);
+            } else {
+                $query->whereNotIn('order_id', $matching);
+            }
         } elseif ($view === 'shipped') {
             $query->where('shipment_status', 'shipped');
         } elseif ($view === 'exceptions') {
@@ -359,7 +369,7 @@ final class OverseaWarehouseController
     private function row(Shipment $shipment, int $line, ?XlwmsDispatchAttempt $xlwms = null, ?array $tracking = null, ?XlwmsWebDraftAttempt $webDraft = null): array
     {
         $order = $shipment->order;
-        $trackingState = app(\App\Modules\Logistics\Application\LogisticsTrackingListStatus::class)
+        $trackingState = app(LogisticsTrackingListStatus::class)
             ->currentStatus($tracking, $order?->manualSync?->website_sync_status);
         $review = $shipment->overseaReview;
         $effectiveApproved = $review?->status === 'approved'
@@ -382,7 +392,7 @@ final class OverseaWarehouseController
             'note' => $review?->note,
             'review_status' => $effectiveApproved ? 'approved' : 'pending',
             'shipment_status' => $shipment->shipment_status,
-            'warehouse_dispatch' => WarehouseDispatchStatus::from((string)$shipment->shipment_status, $xlwms),
+            'warehouse_dispatch' => WarehouseDispatchStatus::from((string) $shipment->shipment_status, $xlwms),
             'source_type' => ($order?->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order?->source_type) instanceof \BackedEnum
                 ? ($order?->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order?->source_type)->value
                 : (string) ($order?->fulfillment_parent_id ? $order->fulfillmentParent?->source_type : $order?->source_type),
