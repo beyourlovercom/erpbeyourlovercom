@@ -3,6 +3,7 @@
 use App\Modules\Identity\Experience\Console\Commands\CreateErpUser;
 use App\Modules\Identity\Experience\Console\Commands\StaffAccessReadinessAuditCommand;
 use App\Modules\Logistics\Experience\Console\Commands\AutomaticAllocationCommand;
+use App\Modules\Logistics\Experience\Console\Commands\ShipOutProductionCanaryOperatorCommand;
 use App\Modules\Runtime\Experience\Console\Commands\RuntimeHealthCommand;
 use App\Modules\Identity\Experience\Middleware\ApplyLocalAdminBypass;
 use App\Modules\Identity\Experience\Middleware\EnsureActiveAuthenticatedUser;
@@ -27,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
         StaffAccessReadinessAuditCommand::class,
         RuntimeHealthCommand::class,
         AutomaticAllocationCommand::class,
+        ShipOutProductionCanaryOperatorCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
