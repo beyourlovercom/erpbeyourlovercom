@@ -94,3 +94,24 @@ Shipment shipped-state or live provider calls when rendering the list.
 The first real acknowledged C41941-007 / ERP 7791 order has a provider OMS ID
 \`2116863614032625665\` but no Tracking or shipped-at evidence; this change
 corrects only its workbench classification.
+
+### R11 Production OMS cancellation readback
+
+A successful \`acknowledged\` provider POST and real OMS order ID establish
+*order creation only*. Follow-up signed read-only status may reveal cancelled
+or aborted OMS order status codes \`6\` or \`11\`. R11 must show a prominent
+cancellation/abort alert after an operator clicks **查询正式 OMS**, preventing
+any mistaken assumption of imminent shipping. Do not infer the cancellation
+reason from the status number; the provider detail cancellation reason must be
+verified separately and must not be logged or exposed raw if it may contain PII.
+
+This readback never changes the immutable one-shot ledger, Shipment, Order,
+Tracking or Woo/AfterShip. Existing \`OMS 已建单\` tab is based on the durable
+original acceptance record; it should not be interpreted as current warehouse
+processing. A separate approved design is required for durable supplier status
+snapshots and moving cancelled orders into the Exception tab without turning
+read requests into writes.
+
+First real order C41941-007 / OMS 2116863614032625665: signed production GET
+returned status \`6\` (cancelled/aborted); Shipment is still pending with no
+Tracking. Hold R12/R13; do not resend.

@@ -869,7 +869,10 @@ const compactPages = computed<(number|string)[]>(() => {
                       <small v-else-if="row.shipout_production?.attempted && !shipoutProdStatus[row.order_id]" class="xlwms-note">
                         提交结果待人工核对，禁止再次下发；请查询正式 OMS。
                       </small>
-                      <small v-if="shipoutProdStatus[row.order_id]" class="xlwms-note">
+                      <small v-if="shipoutProdStatus[row.order_id]?.reconciliation==='PROVIDER_CANCELLED_OR_ABORTED_MANUAL_REVIEW'" class="xlwms-error" role="alert">
+                        OMS 已取消／中止 · {{shipoutProdStatus[row.order_id].provider_order_id||'仓库订单 ID 未返回'}}。禁止再次下发本单；请在 ShipOut 后台核对取消原因。未出库，不能同步 Tracking 或标记已发货。
+                      </small>
+                      <small v-else-if="shipoutProdStatus[row.order_id]" class="xlwms-note">
                         OMS：{{shipoutProdStatus[row.order_id].reconciliation==='ORDER_VISIBLE_MANUAL_REVIEW_ONLY'?'仓库订单可见':'待仓库确认'}} · {{shipoutProdStatus[row.order_id].provider_order_id||'暂无仓库订单 ID'}} · 仍待实际发货
                       </small>
                     </template>

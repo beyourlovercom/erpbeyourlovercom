@@ -72,13 +72,20 @@ final class ShipOutProductionCanaryReconcileService
             throw new RuntimeException('SHIPOUT_R10_PROVIDER_ORDER_IDENTITY_MISMATCH');
         }
 
+        // ShipOut statuses 6/11 are cancelled/aborted (not outbound-ready).
+        // An async API ACK records a created OMS order, not warehouse shipping.
+        // Keep this lookup strictly read-only, including cancellation cases.
+        $cancelled = in_array($provider['status'] ?? null, [6, 11], true);
+
         return [
             'order_id' => $erpOrderId,
             'order_no' => $reference,
             'attempt_status' => (string) $attempt->status,
             'provider_order_id' => (string) $provider['orderId'],
             'provider_status' => $provider['status'] ?? null,
-            'reconciliation' => 'ORDER_VISIBLE_MANUAL_REVIEW_ONLY',
+            'reconciliation' => $cancelled
+                ? 'PROVIDER_CANCELLED_OR_ABORTED_MANUAL_REVIEW'
+                : 'ORDER_VISIBLE_MANUAL_REVIEW_ONLY',
             'shipped' => false,
             'tracking_apply' => false,
         ];
