@@ -35,7 +35,7 @@ const preview = {
 const mountPage = (overrides: Record<string, unknown> = {}) => mount(Show, { props: {
   warehouseKey: 'us-moreplus', warehouse: warehouseOptions[0], warehouseOptions, view: 'pending', rows, viewCounts,
   canReview: true, canOperate: true, carrierOptions: [], trackingImportPreview: preview, xlwmsOmsWebEnabled:true,
-  shipoutProductionMinOrderId:1, ...overrides,
+  shipoutProductionMinOrderId:1, shipoutProductionOperatorAllowed:true, ...overrides,
 } })
 
 describe('warehouse OMS portal inside the overseas page heading', () => {
@@ -584,5 +584,52 @@ describe('ShipOut Production V1 strict cutover and operator gate', () => {
       shipoutProductionDispatchEnabled:false,shipoutProductionMinOrderId:1})
     expect(wrapper.text()).toContain('正式 API 预检')
     expect(wrapper.text()).not.toContain('确认提交正式仓')
+  })
+})
+
+describe('ShipOut Production V1 three-account scoped UI', () => {
+  const row={...usSmPendingRows.data[0],warehouse_id:1,
+    warehouse_name:'美西 MorePlus 仓',order_id:99}
+  const rows={...usSmPendingRows,data:[row]}
+
+  it('shows Vita preview and one-shot send without global logistics.operate', async () => {
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="V1-VITA-SYNTHETIC">')
+    const mock=vi.fn()
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        order_id:99,ship_date:'2026-11-02',order_no:'C99999-007',
+        items:[{omsSku:'TX218Y',qty:1}],shipping_mode:'9',
+        ready:true,payload_hash:'f'.repeat(64),
+      })})
+      .mockResolvedValueOnce({ok:true,json:async()=>({
+        status:'acknowledged',provider_order_id:'SYNTHETIC-ORDER',
+        result_code:'ASYNC_ACCEPTED_QUERY_REQUIRED',
+      })})
+    vi.stubGlobal('fetch',mock)
+    try {
+      const page=mountPage({rows,trackingImportPreview:null,
+        shipoutProductionUi:true,shipoutProductionReadEnabled:true,
+        shipoutProductionDispatchEnabled:true,shipoutProductionOperatorAllowed:true,
+        shipoutProductionMinOrderId:1,canOperate:false})
+      await page.findAll('button').find(b=>b.text()==='正式 API 预检')!.trigger('click')
+      await vi.waitFor(()=>expect(page.text()).toContain('确认提交正式仓 · 仅一次'))
+      await page.findAll('button').find(b=>b.text().includes('确认提交正式仓'))!.trigger('click')
+      await vi.waitFor(()=>expect(page.text()).toContain('尚未发货'))
+      expect(mock).toHaveBeenCalledTimes(2)
+      expect(mock.mock.calls[1][1].method).toBe('POST')
+      expect(page.text()).not.toContain('确认提交正式仓 · 仅一次')
+    } finally {
+      vi.unstubAllGlobals()
+      document.head.querySelector('meta[name="csrf-token"]')?.remove()
+    }
+  })
+
+  it('hides preflight/send from any staff outside three-account V1 allowlist', () => {
+    const page=mountPage({rows,trackingImportPreview:null,
+      shipoutProductionUi:true,shipoutProductionReadEnabled:true,
+      shipoutProductionDispatchEnabled:false,shipoutProductionOperatorAllowed:false,
+      shipoutProductionMinOrderId:1,canOperate:true})
+    expect(page.text()).not.toContain('正式 API 预检')
+    expect(page.text()).not.toContain('确认提交正式仓')
+    expect(page.text()).toContain('查询正式 OMS')
   })
 })

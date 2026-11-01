@@ -27,8 +27,14 @@ in this first Production release.
 - Send: both READ gates above, plus SHIPOUT_PRODUCTION_DISPATCH_ENABLED,
   SHIPOUT_PRODUCTION_V1_DISPATCH_ENABLED, and
   SHIPOUT_PRODUCTION_V1_OWNER_APPROVED.
-- Production V1 exact-operator allowlist: SHIPOUT_PRODUCTION_V1_OPERATOR_USER_ID.
-  Set only to the Owner-verified Dede ERP account; default 0 denies all send.
+- Production V1 exact operator allowlist: SHIPOUT_PRODUCTION_V1_OPERATOR_USER_IDS.
+  Supply three distinct approved ERP user IDs (Andy=1, Vita=18, Dede=19).
+  Missing or malformed lists deny all sends. Each operator must remain active
+  and retain logistics.view; Vita does not receive global logistics.operate.
+  The prior single-user SHIPOUT_PRODUCTION_V1_OPERATOR_USER_ID setting remains
+  legacy/inert, preserving rollback compatibility.
+- The V1 send route alone uses RequireShipOutProductionV1Operator; all other
+  overseas warehouse actions retain the existing logistics permissions.
 - First supported ERP order identity: SHIPOUT_PRODUCTION_V1_MIN_ORDER_ID.
   Default 0 denies V1 preflight and send. Historical orders stay on manual flow.
 - Every operator POST is reauthorized inside both controller and signed V1 gate,

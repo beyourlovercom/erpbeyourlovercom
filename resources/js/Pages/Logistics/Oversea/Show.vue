@@ -60,7 +60,7 @@ type TrackingImportRow = { row:number; order_id:number|null; order_number:string
 type TrackingImportPreview = { token:string; rows:TrackingImportRow[]; apply_count:number; noop_count:number; blocked_count:number }
 const props = defineProps<{
   warehouseKey:string; warehouse:WarehouseOption|null; warehouseOptions:WarehouseOption[]; view:string
-  shipoutProductionUi?:boolean; shipoutProductionReadEnabled?:boolean; shipoutProductionDispatchEnabled?:boolean; shipoutProductionMinOrderId?:number
+  shipoutProductionUi?:boolean; shipoutProductionReadEnabled?:boolean; shipoutProductionDispatchEnabled?:boolean; shipoutProductionMinOrderId?:number; shipoutProductionOperatorAllowed?:boolean
   rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canOperate:boolean; canTrackingSync?:boolean; shipoutSandboxReadEnabled?:boolean; shipoutSandboxDispatchEnabled?:boolean; shipoutSandboxTrackingApplyEnabled?:boolean; shipoutSandboxAuthorizedOrderNo?:string; shipoutSandboxSpecifiedChannel?:{id:string;label:string}|null; shipoutSandboxOwnLabelEnabled?:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number; xlwmsBatchEnabled?:boolean; xlwmsOmsWebEnabled?:boolean
 
 }>()
@@ -106,7 +106,7 @@ const shipoutProdStatus = reactive<Record<number,ShipOutProductionStatus>>({})
 const shipoutProdBusy = reactive<Record<number,boolean>>({})
 const shipoutProdSentOnce = reactive<Record<number,boolean>>({})
 const shipoutProdErrors = reactive<Record<number,string>>({})
-const shipoutProdCanSend = (row:Row) => !!props.canOperate
+const shipoutProdCanSend = (row:Row) => !!props.shipoutProductionOperatorAllowed
   && !!props.shipoutProductionDispatchEnabled
   && (props.shipoutProductionMinOrderId??0)>0
   && row.order_id>=(props.shipoutProductionMinOrderId??0)
@@ -834,7 +834,7 @@ const compactPages = computed<(number|string)[]>(() => {
                     <template v-else>
                       <small v-if="row.order_id<(shipoutProductionMinOrderId||0) || !(shipoutProductionMinOrderId||0)" class="xlwms-note">历史订单不纳入正式 API V1 自动化范围，沿用仓库人工发货流程。</small>
                       <div class="xlwms-buttons">
-                        <button v-if="row.review_status==='approved' && row.shipment_status==='pending' && canOperate && row.order_id>=(shipoutProductionMinOrderId||0) && (shipoutProductionMinOrderId||0)>0"
+                        <button v-if="row.review_status==='approved' && row.shipment_status==='pending' && shipoutProductionOperatorAllowed && row.order_id>=(shipoutProductionMinOrderId||0) && (shipoutProductionMinOrderId||0)>0"
                           type="button" class="xlwms-action" :disabled="shipoutProdBusy[row.order_id] || shipoutProdSentOnce[row.order_id]"
                           @click="shipoutProdPreflight(row)">{{shipoutProdBusy[row.order_id]?'预检中…':'正式 API 预检'}}</button>
                         <button type="button" class="xlwms-action" :disabled="shipoutProdBusy[row.order_id]"

@@ -11,6 +11,7 @@ use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
 use App\Modules\Logistics\Application\OverseaFiles\OverseaOutboundFileService;
 use App\Modules\Logistics\Application\OverseaTrackingReturnService;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
+use App\Modules\Logistics\Application\ShipOut\ShipOutProductionV1OperatorAccess;
 use App\Modules\Logistics\Application\WarehouseDispatchStatus;
 use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
@@ -37,6 +38,7 @@ final class OverseaWarehouseController
         private readonly OverseaWarehouseReviewService $reviews,
         private readonly OverseaTrackingReturnService $trackingReturns,
         private readonly LogisticsExecutionAccess $executionAccess,
+        private readonly ShipOutProductionV1OperatorAccess $shipOutV1Access,
         private readonly LogisticsReviewAccess $reviewAccess,
         private readonly CarrierServiceCatalog $carrierServices,
         private readonly OverseaOutboundFileService $outboundFiles,
@@ -109,6 +111,9 @@ final class OverseaWarehouseController
                 && (bool) config('shipout.production_v1_read_enabled', false),
             'shipoutProductionMinOrderId' => $warehouseKey === 'us-moreplus'
                 ? (int) config('shipout.production_v1_min_order_id', 0) : 0,
+            'shipoutProductionOperatorAllowed' => $warehouseKey === 'us-moreplus'
+                && app()->environment('production')
+                && $this->shipOutV1Access->allows($request->user()),
             'shipoutProductionDispatchEnabled' => $warehouseKey === 'us-moreplus'
                 && app()->environment('production')
                 && (bool) config('shipout.production_read_enabled', false)
@@ -116,8 +121,7 @@ final class OverseaWarehouseController
                 && (bool) config('shipout.production_v1_read_enabled', false)
                 && (bool) config('shipout.production_v1_dispatch_enabled', false)
                 && (bool) config('shipout.production_v1_owner_approved', false)
-                && (int) config('shipout.production_v1_operator_user_id', 0) > 0
-                && (int) $request->user()?->id === (int) config('shipout.production_v1_operator_user_id', 0)
+                && $this->shipOutV1Access->allows($request->user())
                 && (int) config('shipout.production_v1_min_order_id', 0) > 0,
             'shipoutSandboxReadEnabled' => $warehouseKey === 'us-moreplus'
                 && ! app()->environment('production')
