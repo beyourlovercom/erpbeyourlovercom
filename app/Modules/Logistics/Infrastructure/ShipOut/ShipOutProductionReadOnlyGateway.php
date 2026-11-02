@@ -21,6 +21,8 @@ final class ShipOutProductionReadOnlyGateway
 
     private const ORDER_LIST = '/open-api/oms/order/queryListV2';
 
+    private const ORDER_DETAIL = '/open-api/oms/order/query';
+
     /** @return list<array{warehouseId:string,warehouseName:string}> */
     public function warehouses(): array
     {
@@ -104,6 +106,66 @@ final class ShipOutProductionReadOnlyGateway
         return ['records' => $rows, 'total' => $data['total']];
     }
 
+
+    /**
+     * R12-A: production signed GET-only OMS detail, with a minimal PII-free
+     * projection. A created order is NOT evidence of physical shipment.
+     *
+     * @return array{orderId:string,orderNO:string,status:int,shipments:list<array<string,mixed>>}
+     */
+    public function orderDetail(string $warehouseId, string $orderId): array
+    {
+        $configured = trim((string) config('shipout.production_warehouse_id', ''));
+        $organization = trim((string) config('shipout.production_client_org_id', ''));
+        if ($configured === '' || $organization === '' || $warehouseId !== $configured
+            || preg_match('/^[A-Za-z0-9._-]{1,80}$/D', $orderId) !== 1) {
+            throw new RuntimeException('SHIPOUT_PROD_ORDER_DETAIL_IDENTITY_UNBOUND');
+        }
+
+        $data = $this->get(self::ORDER_DETAIL, [
+            'warehouseId' => $warehouseId, 'orderId' => $orderId, 'version' => 'v2',
+        ])['data'] ?? null;
+
+        if (! is_array($data)
+            || ! hash_equals($orderId, (string) ($data['orderId'] ?? ''))
+            || ! is_int($data['status'] ?? null)
+            || preg_match('/^[A-Za-z0-9._-]{1,60}$/D', (string) ($data['orderNO'] ?? '')) !== 1
+            || (isset($data['warehouseId']) && (string) $data['warehouseId'] !== $warehouseId)) {
+            throw new RuntimeException('SHIPOUT_PROD_ORDER_DETAIL_UNTRUSTED');
+        }
+
+        // A cancelled/aborted order can carry incomplete, unassigned shipment
+        // metadata. Do not mistake it for real fulfillment or leak raw reasons.
+        $cancelled = in_array($data['status'], [6, 11], true);
+        $rawShipments = $cancelled ? [] : ($data['orderShipments'] ?? []);
+        if (! is_array($rawShipments) || ! array_is_list($rawShipments)) {
+            throw new RuntimeException('SHIPOUT_PROD_SHIPMENTS_UNTRUSTED');
+        }
+
+        $shipments = [];
+        foreach ($rawShipments as $row) {
+            if (! is_array($row) || (string) ($row['warehouseId'] ?? '') !== $warehouseId) {
+                throw new RuntimeException('SHIPOUT_PROD_SHIPMENT_WAREHOUSE_MISMATCH');
+            }
+            $shipments[] = [
+                'shipmentId' => (string) ($row['shipmentId'] ?? ''),
+                'outboundNO' => (string) ($row['outboundNO'] ?? ''),
+                'outboundStatus' => is_int($row['outboundStatus'] ?? null) ? $row['outboundStatus'] : null,
+                'labelStatus' => is_int($row['labelStatus'] ?? null) ? $row['labelStatus'] : null,
+                'carrierId' => is_int($row['carrierId'] ?? null) ? $row['carrierId'] : null,
+                'trackingNumber' => (string) ($row['trackingNumber'] ?? ''),
+                'shippedTime' => is_string($row['shippedTime'] ?? null) ? $row['shippedTime'] : null,
+            ];
+        }
+
+        return [
+            'orderId' => $orderId,
+            'orderNO' => (string) $data['orderNO'],
+            'status' => $data['status'],
+            'shipments' => $shipments,
+        ];
+    }
+
     /** @return array{records:list<array<string,mixed>>,total:int} */
     public function stock(int $page = 1, int $size = 100): array
     {
@@ -169,7 +231,7 @@ final class ShipOutProductionReadOnlyGateway
         if (! (bool) config('shipout.production_read_enabled', false)) {
             throw new RuntimeException('SHIPOUT_PROD_READ_DISABLED');
         }
-        if (! in_array($path, [self::WAREHOUSES, self::PRODUCTS, self::STOCK, self::ORDER_LIST], true)) {
+        if (! in_array($path, [self::WAREHOUSES, self::PRODUCTS, self::STOCK, self::ORDER_LIST, self::ORDER_DETAIL], true)) {
             throw new RuntimeException('SHIPOUT_PROD_PATH_DENIED');
         }
         $key = trim((string) config('shipout.production_app_key', ''));
