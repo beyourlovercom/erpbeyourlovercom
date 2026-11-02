@@ -1301,4 +1301,63 @@ final class ShipOutProductionCanaryDispatchServiceTest extends TestCase
         $this->assertDatabaseCount('shipout_dispatch_attempts', 0);
         Http::assertNothingSent();
     }
+
+    public function test_v1_live_oms_cancelled_and_aborted_statuses_block_normal_shipping_claims(): void
+    {
+        $order = $this->order();
+        $this->enableProductionV1();
+        DB::table('shipout_dispatch_attempts')->insert([
+            'order_id' => $order->id,
+            'order_no' => self::REF,
+            'provider_warehouse_id' => self::WAREHOUSE,
+            'payload_hash' => str_repeat('b', 64),
+            'status' => 'acknowledged',
+            'provider_order_id' => 'OMS-CANCELLED-SYNTHETIC',
+            'result_code' => 'ASYNC_ACCEPTED_QUERY_REQUIRED',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $liveProviderStatus = 6;
+        Http::fake(function ($request) use (&$liveProviderStatus) {
+            return Http::response([
+                'result' => 'OK',
+                'data' => [
+                    'total' => 1,
+                    'records' => [[
+                        'orderNO' => self::REF,
+                        'orderId' => 'OMS-CANCELLED-SYNTHETIC',
+                        'warehouseId' => self::WAREHOUSE,
+                        'status' => $liveProviderStatus,
+                    ]],
+                ],
+            ], 200);
+        });
+
+        foreach ([6, 11, 4] as $status) {
+            $liveProviderStatus = $status;
+            $result = app(ShipOutProductionCanaryReconcileService::class)->inspect($order->id);
+            $this->assertSame($status, $result['provider_status']);
+            $this->assertSame($status === 4
+                ? 'ORDER_VISIBLE_MANUAL_REVIEW_ONLY'
+                : 'PROVIDER_CANCELLED_OR_ABORTED_MANUAL_REVIEW', $result['reconciliation']);
+            $this->assertFalse($result['shipped']);
+            $this->assertFalse($result['tracking_apply']);
+        }
+
+        $this->assertDatabaseHas('shipout_dispatch_attempts', [
+            'order_id' => $order->id, 'status' => 'acknowledged',
+            'provider_order_id' => 'OMS-CANCELLED-SYNTHETIC',
+        ]);
+        $this->assertDatabaseHas('shipments', [
+            'order_id' => $order->id,
+            'shipment_status' => 'pending',
+            'tracking_number' => null,
+            'shipped_at' => null,
+        ]);
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id, 'order_status' => 'pending_shipment',
+        ]);
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+    }
 }

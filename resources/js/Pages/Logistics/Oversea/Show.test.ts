@@ -732,3 +732,39 @@ describe('MorePlus Production OMS-created lifecycle after one-shot ACK', () => {
     }
   })
 })
+
+
+describe('Production ShipOut cancelled OMS readback is an explicit shipping blocker', () => {
+  it('shows cancellation alert and never offers resubmit or tracking sync after status 6', async () => {
+    document.head.insertAdjacentHTML('beforeend','<meta name="csrf-token" content="OMS-CANCELLED-READONLY-SYNTHETIC">')
+    const row={...usSmPendingRows.data[0],order_id:7791,warehouse_id:1,
+      warehouse_name:'美西 MorePlus 仓',
+      shipout_production:{attempted:true,is_oms_created:true,status:'oms_created',
+        label:'OMS 已建单 · 待实际出库',provider_order_id:'2116863614032625665'}}
+    const mock=vi.fn().mockResolvedValueOnce({ok:true,json:async()=>({
+      order_id:7791,order_no:'C41941-007',attempt_status:'acknowledged',
+      provider_order_id:'2116863614032625665',provider_status:6,
+      reconciliation:'PROVIDER_CANCELLED_OR_ABORTED_MANUAL_REVIEW',
+      shipped:false,tracking_apply:false,read_only:true,
+    })})
+    vi.stubGlobal('fetch',mock)
+    try {
+      const page=mountPage({view:'dispatched',rows:{...usSmPendingRows,data:[row]},
+        trackingImportPreview:null,shipoutProductionUi:true,shipoutProductionReadEnabled:true,
+        shipoutProductionDispatchEnabled:true,shipoutProductionOperatorAllowed:true,
+        shipoutProductionMinOrderId:7791})
+      await page.findAll('button').find(b=>b.text()==='查询正式 OMS')!.trigger('click')
+      await vi.waitFor(()=>expect(page.text()).toContain('OMS 已取消／中止'))
+      expect(page.text()).toContain('禁止再次下发本单')
+      expect(page.text()).toContain('不能同步 Tracking 或标记已发货')
+      expect(page.text()).not.toContain('OMS：仓库订单可见')
+      expect(page.text()).not.toContain('确认提交正式仓')
+      expect(mock).toHaveBeenCalledTimes(1)
+      expect(mock.mock.calls[0][0]).toContain('/shipout/production/status')
+      expect(routerPost).not.toHaveBeenCalledWith(expect.stringContaining('tracking-outbound'),expect.anything(),expect.anything())
+    } finally {
+      vi.unstubAllGlobals()
+      document.head.querySelector('meta[name="csrf-token"]')?.remove()
+    }
+  })
+})
