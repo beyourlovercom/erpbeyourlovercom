@@ -237,4 +237,120 @@ final class ShipOutProductionReadOnlyGatewayTest extends TestCase
             Http::assertNothingSent();
         }
     }
+
+    public function test_r12_production_detail_returns_only_read_only_shipment_evidence(): void
+    {
+        config()->set('shipout.production_read_enabled', true);
+        Http::fake(['https://open.shipout.com/api/*' => Http::response([
+            'result' => 'OK',
+            'data' => [
+                'orderId' => 'OMS-REAL-TEST', 'orderNO' => 'C41942-007',
+                'warehouseId' => 'PROD-W-1', 'status' => 4,
+                'cancelReason' => 'sensitive free-text is never returned',
+                'recipientName' => 'Never reveal',
+                'orderShipments' => [[
+                    'warehouseId' => 'PROD-W-1', 'shipmentId' => 'S1',
+                    'outboundNO' => 'O1', 'outboundStatus' => 4, 'labelStatus' => 3,
+                    'carrierId' => 1, 'trackingNumber' => '9400USPS123456',
+                    'shippedTime' => '2026-11-02 10:30:00',
+                    'phone' => 'NEVER_RETURN', 'address' => 'NEVER_RETURN',
+                ]],
+            ],
+        ], 200)]);
+        $result = $this->gateway()->orderDetail('PROD-W-1', 'OMS-REAL-TEST');
+        $this->assertSame('C41942-007', $result['orderNO']);
+        $this->assertSame(4, $result['status']);
+        $this->assertSame('9400USPS123456', $result['shipments'][0]['trackingNumber']);
+        $this->assertArrayNotHasKey('recipientName', $result);
+        $this->assertArrayNotHasKey('cancelReason', $result);
+        $this->assertArrayNotHasKey('phone', $result['shipments'][0]);
+        $this->assertArrayNotHasKey('address', $result['shipments'][0]);
+        $decision = (new \App\Modules\Logistics\Application\ShipOut\ShipOutTrackingDecision)->evaluate($result);
+        $this->assertSame('ready_for_erp_review', $decision['status']);
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request) => $request->method() === 'GET'
+            && str_starts_with($request->url(), 'https://open.shipout.com/api/open-api/oms/order/query?')
+            && $request->hasHeader('sign')
+            && $request->hasHeader('Authorization'));
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+    }
+
+    public function test_r12_cancelled_detail_does_not_expose_unassigned_shipments(): void
+    {
+        config()->set('shipout.production_read_enabled', true);
+        foreach ([6, 11] as $status) {
+            Http::fake(['https://open.shipout.com/api/*' => Http::response([
+                'result' => 'OK', 'data' => [
+                    'orderId' => 'OMS-CANCEL', 'orderNO' => 'C41941-007',
+                    'status' => $status, 'cancelReason' => 'PRIVATE',
+                    'orderShipments' => [[
+                        'warehouseId' => '', 'trackingNumber' => 'UNTRUSTED',
+                    ]],
+                ],
+            ], 200)]);
+            $result = $this->gateway()->orderDetail('PROD-W-1', 'OMS-CANCEL');
+            $this->assertSame([], $result['shipments']);
+            $this->assertArrayNotHasKey('cancelReason', $result);
+            $decision = (new \App\Modules\Logistics\Application\ShipOut\ShipOutTrackingDecision)->evaluate($result);
+            $this->assertSame('blocked', $decision['status']);
+        }
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+    }
+
+    public function test_r12_detail_denies_unbound_identity_without_network_request(): void
+    {
+        config()->set('shipout.production_read_enabled', true);
+        foreach ([
+            ['WRONG-WAREHOUSE', 'OMS-REAL'],
+            ['PROD-W-1', '../OMS-REAL'],
+            ['PROD-W-1', ''],
+        ] as [$warehouse, $orderId]) {
+            try {
+                $this->gateway()->orderDetail($warehouse, $orderId);
+                $this->fail('Expected identity rejection');
+            } catch (\RuntimeException $exception) {
+                $this->assertSame('SHIPOUT_PROD_ORDER_DETAIL_IDENTITY_UNBOUND', $exception->getMessage());
+            }
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_r12_detail_rejects_mismatched_provider_identity(): void
+    {
+        config()->set('shipout.production_read_enabled', true);
+        Http::fake(['https://open.shipout.com/api/*' => Http::response([
+            'result' => 'OK', 'data' => [
+                'orderId' => 'OMS-WRONG', 'orderNO' => 'C41942-007',
+                'status' => 4, 'orderShipments' => [],
+            ],
+        ], 200)]);
+        $this->expectExceptionMessage('SHIPOUT_PROD_ORDER_DETAIL_UNTRUSTED');
+        $this->gateway()->orderDetail('PROD-W-1', 'OMS-EXPECTED');
+    }
+
+    public function test_r12_detail_rejects_cross_warehouse_shipment(): void
+    {
+        config()->set('shipout.production_read_enabled', true);
+        Http::fake(['https://open.shipout.com/api/*' => Http::response([
+            'result' => 'OK', 'data' => [
+                'orderId' => 'OMS-REAL', 'orderNO' => 'C41942-007', 'status' => 4,
+                'orderShipments' => [[
+                    'warehouseId' => 'WRONG-WAREHOUSE', 'trackingNumber' => '9400',
+                ]],
+            ],
+        ], 200)]);
+        $this->expectExceptionMessage('SHIPOUT_PROD_SHIPMENT_WAREHOUSE_MISMATCH');
+        $this->gateway()->orderDetail('PROD-W-1', 'OMS-REAL');
+    }
+
+    public function test_r12_detail_keeps_production_read_disabled_by_default(): void
+    {
+        $this->expectExceptionMessage('SHIPOUT_PROD_READ_DISABLED');
+        try {
+            $this->gateway()->orderDetail('PROD-W-1', 'OMS-REAL');
+        } finally {
+            Http::assertNothingSent();
+        }
+    }
+
 }
