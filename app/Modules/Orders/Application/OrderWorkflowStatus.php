@@ -31,8 +31,8 @@ final class OrderWorkflowStatus
             'returned_follow_up' => ['en' => 'Returned', 'zh' => '退件需跟进', 'color' => 'amber', 'mutable' => true],
             'claims' => ['en' => 'Claims', 'zh' => '索赔需跟进', 'color' => 'red', 'mutable' => true],
             'renew' => ['en' => 'Renew', 'zh' => '问题订单', 'color' => 'amber', 'mutable' => true],
-            'freight_product_cost_follow_up' => ['en' => 'Cost follow-up', 'zh' => '需跟进运费和产品成本', 'color' => 'amber', 'mutable' => true],
-            'out_of_stock' => ['en' => 'Out of Stock', 'zh' => '缺货', 'color' => 'red', 'mutable' => true],
+            'freight_product_cost_follow_up' => ['en' => 'Cost', 'zh' => '需跟进成本', 'color' => 'amber', 'mutable' => true],
+            'out_of_stock' => ['en' => 'Out of stock', 'zh' => '缺货', 'color' => 'red', 'mutable' => true],
         ];
     }
 

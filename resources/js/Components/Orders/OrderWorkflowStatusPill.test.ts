@@ -3,6 +3,21 @@ import { describe, expect, it, vi } from 'vitest'
 import OrderWorkflowStatusPill from './OrderWorkflowStatusPill.vue'
 
 describe('OrderWorkflowStatusPill', () => {
+  it('uses compact approved 3.3–3.5 captions without changing workflow codes', () => {
+    const options = [
+      { code: 'freight_product_cost_follow_up', en: 'Cost', zh: '需跟进成本', color: 'amber', mutable: true },
+      { code: 'out_of_stock', en: 'Out of stock', zh: '缺货', color: 'red', mutable: true },
+      { code: 'renew', en: 'Renew', zh: '问题订单', color: 'amber', mutable: true },
+    ]
+    const wrapper = mount(OrderWorkflowStatusPill, {
+      props: { orderId: 7, canEdit: true, revision: 0,
+        projection: { code: 'renew', en: 'Renew', zh: '问题订单', color: 'amber', source: 'staff_workflow', mutable: true },
+        options },
+    })
+    const captions = wrapper.findAll('option').map(node => node.text())
+    expect(captions).toEqual(['3.3 Cost · 需跟进成本','3.4 Out of stock · 缺货','3.5 Renew · 问题订单'])
+  })
+
   it('keeps a read-only projection non-editable and explains its source', () => {
     const wrapper = mount(OrderWorkflowStatusPill, {
       props: {

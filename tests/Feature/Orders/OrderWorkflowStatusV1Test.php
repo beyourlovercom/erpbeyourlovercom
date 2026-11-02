@@ -18,6 +18,9 @@ final class OrderWorkflowStatusV1Test extends TestCase
     {
         self::assertSame('返回订单', OrderWorkflowStatus::registry()['returned']['zh']);
         self::assertSame('退件需跟进', OrderWorkflowStatus::registry()['returned_follow_up']['zh']);
+        self::assertSame('Cost', OrderWorkflowStatus::registry()['freight_product_cost_follow_up']['en']);
+        self::assertSame('需跟进成本', OrderWorkflowStatus::registry()['freight_product_cost_follow_up']['zh']);
+        self::assertSame('Out of stock', OrderWorkflowStatus::registry()['out_of_stock']['en']);
         self::assertFalse(OrderWorkflowStatus::registry()['shipping']['mutable']);
         self::assertFalse(OrderWorkflowStatus::registry()['paid']['mutable']);
         self::assertSame('shipped', OrderWorkflowStatus::effectiveCode('sent', 'shipped'));

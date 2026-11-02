@@ -20,6 +20,7 @@ const stageNumber: Record<string, string> = {
   shipping: '2.1', shared: '2.2', arrived: '2.3', creating: '2.4', published: '2.5',
   paying: '2.6', paid: '2.7', cancel: '2.8', refunded: '2.9', finished: '3.0',
   returned_follow_up: '3.1', claims: '3.2',
+  freight_product_cost_follow_up: '3.3', out_of_stock: '3.4', renew: '3.5',
 }
 const optionCaption = (option: Option) => `${stageNumber[option.code] ? stageNumber[option.code] + ' ' : ''}${option.en} · ${option.zh}`
 watch(() => props.projection, (next) => {
