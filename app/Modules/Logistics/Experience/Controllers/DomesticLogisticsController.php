@@ -10,6 +10,8 @@ use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Logistics\Application\Domestic\SpeedaOutboundExporter;
 use App\Modules\Logistics\Application\OverseaFiles\WarehouseOrderReference;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Orders\Application\OrderWorkflowStatus;
+use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -276,6 +278,7 @@ final class DomesticLogisticsController
             'tracking_sync_status' => $trackingState['status'],
             'tracking_sync_reason' => $trackingState['reason'],
             'erp_order_id' => $order->erp_order_id,
+            'workflow_status_projection' => $this->workflowProjection($order),
             'provider_reference' => $reference,
             'order_url' => '/customers/orders/'.$order->id,
             'recipient_name' => $order->address?->recipient_name,
@@ -298,6 +301,11 @@ final class DomesticLogisticsController
                 'quantity' => (int) $item->quantity,
             ])->values()->all(),
         ];
+    }
+
+    private function workflowProjection(Order $order): array
+    {
+        return app(OrderWorkflowStatusProjection::class)->for($order);
     }
 
     private function assertDomesticPending(Order $order): void

@@ -21,6 +21,7 @@ const usSmPendingRows = { data: [{
   warehouse_id: 2, warehouse_name: '美国3世迈仓', carrier: 'USPS', service: null, carrier_selection_source: 'automatic',
   tracking_number: null, progress: 'sending_pending', note: null, review_status: 'approved' as const, shipment_status: 'pending', items: [{ sku: 'REVIEW-SKU', quantity: 1 }],
 }], current_page: 1, last_page: 1, per_page: 50, total: 1, from: 1, to: 1 }
+const statusRow = { ...usSmPendingRows.data[0], workflow_status_projection: { code:'shipped', en:'Shipped', zh:'已发货', color:'green', source:'canonical_projection', mutable:false } }
 const viewCounts = { review: 0, pending: 0, shipped: 0, exceptions: 0, all: 0 }
 const preview = {
   token: 'a'.repeat(64), apply_count: 1, noop_count: 0, blocked_count: 0,
@@ -64,6 +65,13 @@ describe('warehouse OMS portal inside the overseas page heading', () => {
 
 describe('Oversea Dede file exchange workbench', () => {
   beforeEach(() => { routerPost.mockClear(); routerPatch.mockClear(); routerVisit.mockClear() })
+
+  it('renders the unified read-only status column in the warehouse table', () => {
+    const wrapper = mountPage({ rows: { ...usSmPendingRows, data:[statusRow] } })
+    expect(wrapper.findAll('th').some((header) => header.text().includes('统一状态'))).toBe(true)
+    expect(wrapper.find('.unified-status').text()).toBe('已发货')
+    expect(wrapper.find('.unified-status').attributes('title')).toContain('只读投影')
+  })
 
   it('exposes the real XLSX round-trip flow and provider evidence', () => {
     const wrapper = mountPage()

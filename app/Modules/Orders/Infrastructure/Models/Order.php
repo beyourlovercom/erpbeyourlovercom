@@ -20,6 +20,7 @@ class Order extends Model
         'customer_id', 'fulfillment_parent_id', 'fulfillment_suffix', 'fulfillment_role', 'fulfillment_origin_id', 'fulfillment_reason', 'fulfillment_note',
         'internal_order_number', 'erp_order_id', 'source_type', 'order_kind', 'external_order_number', 'order_date',
         'order_note', 'owner_id', 'kol_id', 'order_status', 'currency',
+        'workflow_status', 'workflow_revision',
     ];
 
     protected function casts(): array
@@ -29,6 +30,7 @@ class Order extends Model
             'source_type' => OrderSourceType::class,
             'order_kind' => OrderKind::class,
             'order_status' => OrderStatus::class,
+            'workflow_revision' => 'integer',
             'deleted_at' => 'datetime',
             'archived_at' => 'datetime',
         ];
@@ -128,5 +130,10 @@ class Order extends Model
     public function shipmentAttempts(): HasMany
     {
         return $this->hasMany('App\\Modules\\Logistics\\Infrastructure\\Models\\ShipmentAttempt');
+    }
+
+    public function workflowStatusHistory(): HasMany
+    {
+        return $this->hasMany(OrderWorkflowStatusHistory::class)->orderBy('revision');
     }
 }

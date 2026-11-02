@@ -2,10 +2,12 @@
 import { Head, router } from '@inertiajs/vue3'
 import { computed, ref } from 'vue'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
+import OrderWorkflowStatusPill from '../../../Components/Orders/OrderWorkflowStatusPill.vue'
 
 type Item = { sku:string|null; quantity:number }
 type Row = {
   line:number; order_id:number; erp_order_id:string|null; provider_reference:string|null; order_url:string; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null
+  workflow_status_projection?:{ code:string; zh:string; en:string; color:string; source:string; mutable?:boolean }
   recipient_name:string|null; phone:string|null; country:string|null; state:string|null; city:string|null; postal_code:string|null
   carrier:string|null; service:string|null; tracking_number:string|null; shipment_status:string|null; shipped_at:string|null
   review_status:'approved'|'pending'; export_blockers:string[]; items:Item[]
@@ -164,7 +166,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
       </div>
       <div class="table-wrap orders">
         <table>
-          <thead><tr><th v-if="canTrackingSync">选择</th><th>#</th><th>审核</th><th>ERP 订单</th><th>导出状态</th><th>承运商单号</th><th>Carrier</th><th>服务</th><th>Tracking</th><th>收件人</th><th>电话</th><th>国家/地区</th><th>SKU / 数量</th><th>官网同步</th><th v-if="canTrackingSync">操作</th></tr></thead>
+          <thead><tr><th v-if="canTrackingSync">选择</th><th>#</th><th>审核</th><th>ERP 订单</th><th>订单状态</th><th>导出状态</th><th>承运商单号</th><th>Carrier</th><th>服务</th><th>Tracking</th><th>收件人</th><th>电话</th><th>国家/地区</th><th>SKU / 数量</th><th>官网同步</th><th v-if="canTrackingSync">操作</th></tr></thead>
           <tbody>
             <tr v-for="row in rows.data" :key="row.order_id">
               <td v-if="canTrackingSync"><input v-if="eligibleForTracking(row)" type="checkbox"
@@ -176,7 +178,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
                 <div v-else-if="row.review_status==='approved'" class="approved">已通过 <button v-if="canOperate && row.shipment_status==='pending'" type="button" @click="reopen(row)">重新审核</button></div>
                 <span v-else>—</span>
               </td>
-              <td><a :href="row.order_url">{{ row.erp_order_id ?? '—' }}</a></td>
+              <td><a :href="row.order_url">{{ row.erp_order_id ?? '—' }}</a></td><td><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id" :projection="row.workflow_status_projection" :can-edit="false" /><span v-else>—</span></td>
               <td><span v-if="row.export_blockers.length" class="danger">{{ row.export_blockers.join(' / ') }}</span><span v-else class="ready">可导出</span></td>
               <td>{{ row.provider_reference ?? '—' }}</td><td>{{ row.carrier ?? '—' }}</td><td>{{ row.service ?? '—' }}</td><td>{{ row.tracking_number ?? '—' }}</td>
               <td>{{ row.recipient_name ?? '—' }}</td><td :class="{danger:!row.phone}">{{ row.phone || '缺电话' }}</td>
@@ -185,7 +187,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
               <td v-if="canTrackingSync"><button v-if="eligibleForTracking(row)" type="button" class="secondary"
                 :disabled="trackingBusy" @click="pushTracking([row.order_id])">同步官网物流</button><span v-else>—</span></td>
             </tr>
-            <tr v-if="!rows.data.length"><td :colspan="13+(canTrackingSync?2:0)" class="empty">当前视图暂无订单</td></tr>
+            <tr v-if="!rows.data.length"><td :colspan="14+(canTrackingSync?2:0)" class="empty">当前视图暂无订单</td></tr>
           </tbody>
         </table>
       </div>

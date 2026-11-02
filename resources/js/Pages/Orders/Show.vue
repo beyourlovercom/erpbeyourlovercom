@@ -19,6 +19,7 @@ import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import StockExceptionConfirmDialog from '../../Components/Logistics/StockExceptionConfirmDialog.vue'
 import { allocationStockWarnings } from '../../lib/allocationStockWarning'
 import SkuCombobox from '../../Components/Products/SkuCombobox.vue'
+import OrderWorkflowStatusPill from '../../Components/Orders/OrderWorkflowStatusPill.vue'
 
 type Availability = { warehouse_id: number; warehouse_slug: string; warehouse_name: string; inventory_state: string; can_auto_allocate: boolean; quantity_on_hand: number | null; quantity_reserved: number | null; quantity_available: number | null }
 type Warehouse = { id: number; slug: string; name: string; code: string; country_code: string | null; can_auto_allocate?: boolean }
@@ -97,6 +98,8 @@ type Order = {
   order_date: string
   order_status: string
   order_status_label: string
+  workflow_status_projection?: { code: string; en: string; zh: string; color: string; source: string; mutable?: boolean }
+  workflow_revision?: number
   order_note: string | null
   currency: string
   owner: { id: number; name: string } | null
@@ -140,6 +143,7 @@ const props = withDefaults(defineProps<{
   canCreateReplacement?: boolean
   canOperateLogistics?: boolean
   canViewProfit?: boolean
+  workflowStatusOptions?: { code: string; en: string; zh: string; color: string; mutable: boolean }[]
   wooAdminEditUrl?: string | null
   kolProfile?: { id: number; display_name: string; url: string } | null
 
@@ -1039,7 +1043,7 @@ onBeforeUnmount(() => {
         <!-- Identity strip -->
         <div class="ord-identity-strip">
           <div class="ord-identity-main">
-            <span class="ord-identity-number">{{ order.erp_order_id ?? '—' }}</span>
+            <span class="ord-identity-number">{{ order.erp_order_id ?? '—' }}</span><OrderWorkflowStatusPill v-if="order.workflow_status_projection" :order-id="order.id" :projection="order.workflow_status_projection" :revision="order.workflow_revision" :can-edit="canEditOrder" :options="workflowStatusOptions" />
             <span class="ord-identity-badge">{{ order.order_kind_label }}</span>
             <span class="ord-identity-badge ord-badge-muted">{{ order.source_label }}</span>
             <span class="ord-identity-badge ord-badge-status">{{ order.order_status_label }}</span>

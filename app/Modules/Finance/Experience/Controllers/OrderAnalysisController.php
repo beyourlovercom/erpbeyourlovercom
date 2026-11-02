@@ -7,6 +7,8 @@ use App\Modules\Finance\Application\EstimatedProfitProjectionService;
 use App\Modules\Finance\Application\OrderAnalysisService;
 use App\Modules\Finance\Application\OrderProfitExplanationService;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Orders\Application\OrderWorkflowStatus;
+use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Shell\Application\UserUiPreferenceService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -266,6 +268,7 @@ final class OrderAnalysisController
             'products' => $products,
             'revenue_provenance' => $order->financials?->revenue_provenance,
             'provider_order_status' => $order->financials?->provider_order_status,
+            'workflow_status_projection' => $this->workflowProjection($order),
             'provider_reconciliation_status' => $order->financials?->reconciliation_status,
             'paid_at' => $order->financials?->paid_at?->toIso8601String(),
             'summary' => array_merge($summary, [
@@ -283,6 +286,11 @@ final class OrderAnalysisController
             ]),
             'values' => $this->analysis->values($order),
         ];
+    }
+
+    private function workflowProjection(Order $order): array
+    {
+        return app(OrderWorkflowStatusProjection::class)->for($order);
     }
 
     private function kpis(Request $request): array

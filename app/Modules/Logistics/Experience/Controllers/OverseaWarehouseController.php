@@ -18,6 +18,7 @@ use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsWebDraftAttempt;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -44,6 +45,7 @@ final class OverseaWarehouseController
         private readonly LogisticsReviewAccess $reviewAccess,
         private readonly CarrierServiceCatalog $carrierServices,
         private readonly OverseaOutboundFileService $outboundFiles,
+        private readonly OrderWorkflowStatusProjection $workflowStatusProjection,
     ) {}
 
     public function index(Request $request, ?string $warehouse = null): Response
@@ -444,6 +446,7 @@ final class OverseaWarehouseController
             'note' => $review?->note,
             'review_status' => $effectiveApproved ? 'approved' : 'pending',
             'shipment_status' => $shipment->shipment_status,
+            'workflow_status_projection' => $order ? $this->workflowStatusProjection->for($order) : null,
             'warehouse_dispatch' => $shipment->warehouse?->code === 'US-LA'
                 ? ShipOutProductionDispatchState::warehouseDispatch($shipOutAttempt, (string) $shipment->shipment_status)
                 : WarehouseDispatchStatus::from((string) $shipment->shipment_status, $xlwms),
