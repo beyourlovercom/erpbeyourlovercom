@@ -26,11 +26,11 @@ R1–R6 implementation is limited to an additive staff workflow-progress classif
 - R3 service/security: remediated with required revision-only optimistic compare, archived/deleted recheck inside the row lock, KOL scope, idempotency, and AuditRecorder evidence.
 - R4 views: remediated in Orders, domestic, finance, and all overseas warehouse rows; overseas retains existing Dede/shipping controls and adds a read-only unified status column.
 - R5 UI: shared compact color-coded, accurately numbered (1.1/1.2/1.3/1.5/1.6/2.1...3.2) pill/dropdown uses revision-only PATCH, watches refreshed props, disables authoritative target choices, allows authorized post-shipment KOL workflow progression and restores actual DOM selection on rejection.
-- R6 tests/verification: focused PHPUnit 5/5 (25 assertions), focused Vitest 40/40, typecheck PASS, production build PASS with isolated `--configLoader runner`, PHP lint PASS, and diff-check PASS. Full Vitest is 678/683; same five Inventory failures reproduced on exact clean origin/main@1c9fc23e (baseline 675/680) in WarehouseClearanceGiftPool and WarehouseCostCenterP3. No new full-suite failures. No migration was executed against a real or project database.
+- R6 tests/verification: focused PHPUnit 7/7 (31 assertions), focused Vitest 40/40, typecheck PASS, production build PASS with isolated `--configLoader runner`, PHP lint PASS, and diff-check PASS. Full Vitest is 678/683; same five Inventory failures reproduced on exact clean origin/main@1c9fc23e (baseline 675/680) in WarehouseClearanceGiftPool and WarehouseCostCenterP3. No new full-suite failures. Migration and LocalUatSeeder executed successfully on a new isolated synthetic SQLite under /tmp on US Mac (2026-11-02); no production or canonical database touched. Dedicated local Laravel service responds on 127.0.0.1:8765, and unauthenticated orders routes correctly redirect to login. Owner authenticated live browser inspection remains pending.
 
 ## Risks and pending gates
 
-This is HIGH_RISK because it introduces a migration and authorization/concurrency behavior. Focused tests, typecheck, build, PHP lint and diff checks are complete; migration execution and architecture checks were not run. Post-development live Local/UAT inspection is pending and remains an Owner gate. Production gate is NOT AUTHORIZED.
+This is HIGH_RISK because it introduces a migration and authorization/concurrency behavior. Focused tests, typecheck, build, PHP lint and diff checks are complete; isolated SQLite migration PASS; production migration never run; architecture checks were not run. Post-development live Local/UAT inspection is pending and remains an Owner gate. Production gate is NOT AUTHORIZED.
 
 PROJECT POSITION
 PROGRAM_ROADMAP: Architecture Migration / Global Gate → MVP1 Existing Operations → ERP-INQUIRY-M1 → Inquiry Local UAT → milestone-gated remote release → WooCommerce Inbound → Tracking Outbound → Sync Orchestration → Product/Media → WordPress Product/Image Sync → Content/SEO → Posts/Pages → GA4/GSC/Cloudflare → Google Docs Publishing → Full Order Workspace → Logistics OS → KOL OS → Inventory/Procurement → Accounting/ROI → additional integrations → Production Hardening
@@ -45,7 +45,7 @@ GITHUB_STATE: dedicated feature worktree at main 1c9fc23e; Draft-PR delivery in 
 SOURCE_CONFLICTS: NONE WITH EVIDENCE for feature; 5 full-suite Inventory UI expectations fail identically on exact main baseline; repository governance loaded before mutation
 GLOBAL_GATE: PASS for Owner-authorized bounded implementation; visual design PASS recorded in Issue #595
 PRODUCTION_DEPLOYMENT_STATUS: NO WITH EVIDENCE; no production access, migration or deployment performed
-NEXT_DEPENDENCY: deliver Draft PR; prepare real Local/Dev UAT with isolated data; Owner inspect and PASS; no Production until separate release
+NEXT_DEPENDENCY: Draft PR #596 in GitHub; isolated Local/UAT DB and server ready, authenticated browser handoff / Owner live inspection pending; Production requires separate release
 EVIDENCE_AS_OF: 2026-11-02
 
 ROADMAP HOURS

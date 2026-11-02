@@ -83,6 +83,35 @@ final class OrderWorkflowStatusV1Test extends TestCase
         $this->actingAs($outsider)->patchJson('/orders/'.$kolOrder->id.'/workflow-status', ['workflow_status' => 'renew'])->assertForbidden();
     }
 
+    public function test_archived_orders_reject_state_changes_without_modifying_canonical_or_history(): void
+    {
+        $editor = $this->userWith(['orders.view', 'orders.edit']);
+        $order = $this->order($editor);
+        $order->forceFill(['archived_at' => now(), 'archived_by' => $editor->id])->save();
+
+        $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'renew', 'expected_workflow_revision' => 0,
+        ])->assertStatus(422);
+
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id, 'order_status' => 'pending_shipment',
+            'workflow_status' => null, 'workflow_revision' => 0,
+        ]);
+        $this->assertDatabaseCount('order_workflow_status_histories', 0);
+    }
+
+    public function test_authoritative_paid_label_cannot_be_written_without_payment_evidence(): void
+    {
+        $editor = $this->userWith(['orders.view', 'orders.edit']);
+        $order = $this->order($editor);
+        $response = $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', [
+            'workflow_status' => 'paid', 'expected_workflow_revision' => 0,
+        ]);
+        self::assertNotSame(200, $response->getStatusCode());
+        self::assertNull($order->fresh()->workflow_status);
+        $this->assertDatabaseCount('order_workflow_status_histories', 0);
+    }
+
     private function userWith(array $permissions): User
     {
         $user = User::factory()->create(['is_active' => true]);
