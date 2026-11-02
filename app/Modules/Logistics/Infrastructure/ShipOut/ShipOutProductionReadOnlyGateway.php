@@ -106,7 +106,6 @@ final class ShipOutProductionReadOnlyGateway
         return ['records' => $rows, 'total' => $data['total']];
     }
 
-
     /**
      * R12-A: production signed GET-only OMS detail, with a minimal PII-free
      * projection. A created order is NOT evidence of physical shipment.

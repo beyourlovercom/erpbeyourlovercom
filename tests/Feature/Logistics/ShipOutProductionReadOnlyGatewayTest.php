@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Logistics;
 
+use App\Modules\Logistics\Application\ShipOut\ShipOutTrackingDecision;
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutProductionReadOnlyGateway;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -265,7 +266,7 @@ final class ShipOutProductionReadOnlyGatewayTest extends TestCase
         $this->assertArrayNotHasKey('cancelReason', $result);
         $this->assertArrayNotHasKey('phone', $result['shipments'][0]);
         $this->assertArrayNotHasKey('address', $result['shipments'][0]);
-        $decision = (new \App\Modules\Logistics\Application\ShipOut\ShipOutTrackingDecision)->evaluate($result);
+        $decision = (new ShipOutTrackingDecision)->evaluate($result);
         $this->assertSame('ready_for_erp_review', $decision['status']);
         Http::assertSentCount(1);
         Http::assertSent(fn ($request) => $request->method() === 'GET'
@@ -291,7 +292,7 @@ final class ShipOutProductionReadOnlyGatewayTest extends TestCase
             $result = $this->gateway()->orderDetail('PROD-W-1', 'OMS-CANCEL');
             $this->assertSame([], $result['shipments']);
             $this->assertArrayNotHasKey('cancelReason', $result);
-            $decision = (new \App\Modules\Logistics\Application\ShipOut\ShipOutTrackingDecision)->evaluate($result);
+            $decision = (new ShipOutTrackingDecision)->evaluate($result);
             $this->assertSame('blocked', $decision['status']);
         }
         Http::assertNotSent(fn ($request) => $request->method() === 'POST');
@@ -352,5 +353,4 @@ final class ShipOutProductionReadOnlyGatewayTest extends TestCase
             Http::assertNothingSent();
         }
     }
-
 }
