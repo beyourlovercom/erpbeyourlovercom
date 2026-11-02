@@ -2,6 +2,7 @@
 import { Head, router } from '@inertiajs/vue3'
 import { computed, reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../../Layouts/AuthenticatedLayout.vue'
+import OrderWorkflowStatusPill from '../../../Components/Orders/OrderWorkflowStatusPill.vue'
 import ColumnSettingsHeader from '../../../Components/DataGrid/ColumnSettingsHeader.vue'
 import { useAccountGridPreferences, type GridColumnDefinition } from '../../../Composables/useAccountGridPreferences'
 import { publishGlobalFeedback } from '../../../lib/globalFeedback'
@@ -40,7 +41,7 @@ type ShipOutStatus = {
 type Row = {
   line:number; order_id:number; erp_order_id:string|null; order_url:string|null; recipient_name:string|null; country:string|null
   warehouse_id:number; warehouse_name:string|null; carrier:string|null; service:string|null; carrier_selection_source:string|null; tracking_number:string|null
-  progress:string; note:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; review_status:'approved'|'pending'; shipment_status:string; workflow_status_projection?:{code:string;zh:string;en:string;color:string;source:string;mutable:boolean}|null; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; shipped_at?:string|null; items:Item[]
+  progress:string; note:string|null; xlwms?:OmsSnapshot|null; warehouse_dispatch?:DispatchProjection; review_status:'approved'|'pending'; shipment_status:string; workflow_status_projection?:{code:string;zh:string;en:string;color:string;source:string;mutable:boolean}|null; workflow_revision?:number; can_edit_workflow_status?:boolean; source_type?:string; tracking_sync_status?:string|null; tracking_sync_reason?:string|null; shipped_at?:string|null; items:Item[]
   web_draft?:WebDraft|null
   shipout_production?:ShipOutDispatchState|null
 }
@@ -64,6 +65,7 @@ type TrackingImportPreview = { token:string; rows:TrackingImportRow[]; apply_cou
 const props = defineProps<{
   warehouseKey:string; warehouse:WarehouseOption|null; warehouseOptions:WarehouseOption[]; view:string
   shipoutProductionUi?:boolean; shipoutProductionReadEnabled?:boolean; shipoutProductionDispatchEnabled?:boolean; shipoutProductionMinOrderId?:number; shipoutProductionOperatorAllowed?:boolean
+  workflowStatusOptions?:{code:string;en:string;zh:string;color:string;mutable:boolean}[];
   rows:PageRows; viewCounts:Record<string,number>; canReview:boolean; canOperate:boolean; canTrackingSync?:boolean; shipoutSandboxReadEnabled?:boolean; shipoutSandboxDispatchEnabled?:boolean; shipoutSandboxTrackingApplyEnabled?:boolean; shipoutSandboxAuthorizedOrderNo?:string; shipoutSandboxSpecifiedChannel?:{id:string;label:string}|null; shipoutSandboxOwnLabelEnabled?:boolean; carrierOptions:CarrierOption[]; trackingImportPreview:TrackingImportPreview|null; xlwmsAuthorizedOrderId?:number; xlwmsBatchEnabled?:boolean; xlwmsOmsWebEnabled?:boolean
 
 }>()
@@ -924,7 +926,7 @@ const compactPages = computed<(number|string)[]>(() => {
               <td v-for="column in grid.visibleColumns" :key="column.key" :class="{ 'line-col':column.key === 'line', 'tracking-cell':column.key === 'tracking', 'items-cell':column.key === 'items' }">
                 <template v-if="column.key === 'line'">{{ row.line }}</template>
                 <template v-else-if="column.key === 'order'"><a class="order-link" :href="row.order_url ?? `/orders/${row.order_id}`">{{ row.erp_order_id ?? '—' }}</a></template>
-                <template v-else-if="column.key === 'status'"><span v-if="row.workflow_status_projection" class="unified-status" :class="`status-${row.workflow_status_projection.color}`" :title="row.workflow_status_projection.source === 'canonical_projection' ? '来自订单真实状态的只读投影' : '员工工作进度'">{{ row.workflow_status_projection.zh }}</span><span v-else>—</span></template>
+                <template v-else-if="column.key === 'status'"><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id" :projection="row.workflow_status_projection" :revision="row.workflow_revision" :can-edit="Boolean(row.can_edit_workflow_status)" :options="workflowStatusOptions ?? []" /><span v-else>—</span></template>
                 <template v-else-if="column.key === 'warehouse'"><select :value="row.warehouse_id" :disabled="!canReview || view !== 'review'" class="cell-select warehouse" @change="changeWarehouseFromEvent(row, $event)"><option v-for="option in warehouseOptions" :key="option.id" :value="option.id">{{ option.label }}</option></select></template>
                 <template v-else-if="column.key === 'carrier'"><select v-model="draft(row).carrier" :disabled="!canOperate || row.shipment_status === 'shipped'" class="cell-select carrier" @change="saveCarrier(row)"><option v-for="carrier in carrierOptions" :key="carrier.value" :value="carrier.value">{{ carrier.label }}</option></select></template>
                 <template v-else-if="column.key === 'service'"><select v-model="draft(row).service" :disabled="!canOperate || row.shipment_status === 'shipped' || !draft(row).carrier" class="cell-select service" @change="saveService(row)"><option value="">请选择服务类型</option><option v-for="service in serviceOptionsFor(draft(row).carrier)" :key="service.id" :value="service.value">{{ service.label }}</option></select></template>
