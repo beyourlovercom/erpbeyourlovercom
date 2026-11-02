@@ -3,6 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3'
 import { computed, onMounted, reactive, ref } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import FinanceFactsDrawer from './FinanceFactsDrawer.vue'
+import OrderWorkflowStatusPill from '../../Components/Orders/OrderWorkflowStatusPill.vue'
 import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
 import {
     useAccountGridPreferences,
@@ -75,6 +76,7 @@ type Row = {
     products: ProductRef[]
     revenue_provenance: string | null
     provider_order_status: string | null
+    workflow_status_projection: { code: string; zh: string; en: string; color: string; source: string; mutable?: boolean }
     provider_reconciliation_status: string | null
     paid_at: string | null
     summary: Summary
@@ -92,6 +94,7 @@ type ColumnKey =
     | 'order_number'
     | 'date'
     | 'source'
+    | 'order_workflow_status'
     | 'country'
     | 'products'
     | 'currency'
@@ -138,6 +141,7 @@ const definitions: GridColumnDefinition<ColumnKey>[] = [
     { key: 'order_number', label: 'ERP订单号' },
     { key: 'date', label: '日期' },
     { key: 'source', label: '来源' },
+    { key: 'order_workflow_status', label: '订单状态' },
     { key: 'country', label: '国家' },
     { key: 'products', label: 'SKU / 产品' },
     { key: 'currency', label: '币种' },
@@ -239,6 +243,7 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
     order_number: orderNumber(row),
     date: row.order_date ?? '—',
     source: row.source_type,
+    order_workflow_status: row.workflow_status_projection.zh,
     country: row.country ?? '—',
     currency: row.currency,
     revenue: money(row.summary.commercial_revenue_before_refund, row),
@@ -351,7 +356,8 @@ const cell = (row: Row, key: Exclude<ColumnKey, 'products'>) => ({
                             <tr>
                                 <td v-for="column in visibleColumns" :key="column.key">
                                     <template v-if="column.key === 'order_number'"><Link class="record-link" :href="orderPath(row)">{{ orderNumber(row) }}</Link></template>
-                                    <template v-if="column.key === 'products'">
+                                    <template v-else-if="column.key === 'order_workflow_status'"><OrderWorkflowStatusPill :order-id="row.id" :projection="row.workflow_status_projection" :can-edit="false" /></template>
+                                    <template v-else-if="column.key === 'products'">
                                         <div v-if="row.products.length" class="product-links">
                                             <template v-for="product in row.products" :key="`${product.product_id}-${product.sku}-${product.name}`">
                                                 <Link v-if="productPath(product)" class="record-link" :href="productPath(product) as string">

@@ -23,6 +23,9 @@ use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderSourceType;
+use App\Modules\Orders\Application\OrderWorkflowStatus;
+use App\Modules\Orders\Application\OrderWorkflowStatusService;
+use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Application\WooCommerceAdminOrderLink;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\WooOrderSyncHealthReader;
@@ -51,12 +54,14 @@ final class OrderController
         private readonly CarrierServiceCatalog $carrierServices,
         private readonly CarrierRoutingPolicy $carrierRouting,
         private readonly WooCommerceAdminOrderLink $wooAdminLink,
+        private readonly OrderWorkflowStatusService $workflowStatuses,
+        private readonly OrderWorkflowStatusProjection $workflowProjectionService,
     ) {}
 
     public function index(Request $request): Response
     {
         $kind = $this->kindOrNull($request);
-        $filters = $request->only(['search', 'source_type', 'order_status', 'view']);
+        $filters = $request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']);
         $scope = (string) $request->route('order_scope');
         if ($scope === 'external_warehouse') {
             $filters['warehouse_ownership'] = 'external';
@@ -76,10 +81,12 @@ final class OrderController
             'orderKind' => $kind?->value ?? 'all',
             'orderScope' => $scope === 'external_warehouse' ? 'external_warehouse' : 'all',
             'orders' => $orders->through(fn (Order $order): array => $this->orderData($order))->toArray(),
-            'filters' => $request->only(['search', 'source_type', 'order_status', 'view']),
+            'filters' => $request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']),
+            'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())->map(fn (array $definition, string $code): array => ['code' => $code, ...$definition])->values()->all(),
             'savedViews' => $this->views->forUser('orders', (int) $request->user()->getAuthIdentifier(), false),
             'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),
             'canExport' => $canExport,
+            'canEditWorkflowStatus' => $request->user()->can('orders.edit'),
             'canPreviewKolLinks' => $kind === OrderKind::KolFulfillment && $request->user()->can('kol.views.manage'),
             'canManageTrash' => $request->user()?->can('system.permissions.manage') ?? false,
             'wooOrderSync' => $request->user()->can('sync.view') ? [
@@ -214,6 +221,7 @@ final class OrderController
             'canViewProfit' => $request->user()?->can('analysis.view') ?? false,
             'kolProfile' => $this->kolProfileForOrder($request, $order),
             'canMarkOperational' => $request->user()?->can('orders.edit') ?? false,
+            'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())->map(fn (array $definition, string $code): array => ['code' => $code, ...$definition])->values()->all(),
             'canEditOrder' => $request->user()?->can('orders.edit') ?? false,
             'canTrashOrder' => $request->user()?->can('orders.edit') ?? false,
             'canManageTrash' => $request->user()?->can('system.permissions.manage') ?? false,
@@ -399,10 +407,22 @@ final class OrderController
         return back()->with('success', '订单业务标记已更新');
     }
 
+    public function updateWorkflowStatus(Request $request, Order $order): \Illuminate\Http\JsonResponse
+    {
+        KolOrderAccessScope::authorize($request->user(), $order);
+        $data = $request->validate([
+            'workflow_status' => ['required', 'string', Rule::in(array_keys(array_filter(OrderWorkflowStatus::registry(), fn (array $definition): bool => $definition['mutable'])))],
+            'expected_workflow_revision' => ['required', 'integer', 'min:0'],
+        ]);
+        $updated = $this->workflowStatuses->set($order, $data['workflow_status'], $data['expected_workflow_revision'], $request->user());
+
+        return response()->json(['order' => $this->orderData($updated), 'workflow_status' => $this->workflowProjection($updated)]);
+    }
+
     public function export(Request $request): StreamedResponse
     {
         $kind = $this->kindOrNull($request);
-        $filters = $request->only(['search', 'source_type', 'order_status', 'view']);
+        $filters = $request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']);
         $scope = (string) $request->route('order_scope');
         if ($scope === 'external_warehouse') {
             $filters['warehouse_ownership'] = 'external';
@@ -459,6 +479,9 @@ final class OrderController
             'order_date' => $order->order_date?->toDateString(),
             'order_status' => $order->order_status->value,
             'order_status_label' => $this->statusLabel($order->order_status->value),
+            'workflow_status' => $order->workflow_status,
+            'workflow_revision' => (int) ($order->workflow_revision ?? 0),
+            'workflow_status_projection' => $this->workflowProjection($order),
             'order_note' => $order->order_note,
             'currency' => $order->currency,
             'owner' => $order->owner ? ['id' => $order->owner->id, 'name' => $order->owner->name] : null,
@@ -479,6 +502,12 @@ final class OrderController
                 'sync_note' => $order->manualSync->sync_note,
             ] : null,
         ];
+    }
+
+    /** @return array{code:string,en:string,zh:string,color:string,source:string,mutable:bool} */
+    private function workflowProjection(Order $order): array
+    {
+        return $this->workflowProjectionService->for($order);
     }
 
     /** @return array<string,mixed> */

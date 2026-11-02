@@ -18,6 +18,8 @@ use App\Modules\Logistics\Infrastructure\Models\Shipment;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsDispatchAttempt;
 use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsWebDraftAttempt;
 use App\Modules\Orders\Infrastructure\Models\Order;
+use App\Modules\Orders\Application\OrderWorkflowStatus;
+use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -44,6 +46,7 @@ final class OverseaWarehouseController
         private readonly LogisticsReviewAccess $reviewAccess,
         private readonly CarrierServiceCatalog $carrierServices,
         private readonly OverseaOutboundFileService $outboundFiles,
+        private readonly OrderWorkflowStatusProjection $workflowStatusProjection,
     ) {}
 
     public function index(Request $request, ?string $warehouse = null): Response
@@ -106,7 +109,15 @@ final class OverseaWarehouseController
             'warehouse' => $selectedWarehouse,
             'warehouseOptions' => array_values($warehouseMap),
             'view' => $view,
-            'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => $this->row($shipment, $start + $index + 1, $xlwmsAttempts->get($shipment->order_id), $trackingStatuses[(int) $shipment->id] ?? null, $webDraftAttempts->get($shipment->order_id), $shipOutAttempts->get($shipment->order_id)))->toArray(),
+            'rows' => $shipments->through(fn (Shipment $shipment, int $index): array => [
+                ...$this->row($shipment, $start + $index + 1, $xlwmsAttempts->get($shipment->order_id), $trackingStatuses[(int) $shipment->id] ?? null, $webDraftAttempts->get($shipment->order_id), $shipOutAttempts->get($shipment->order_id)),
+                // Logistics access alone is not enough for editing an order's staff workflow progress.
+                'can_edit_workflow_status' => $request->user()->can('orders.view')
+                    && $request->user()->can('orders.edit')
+                    && $shipment->order !== null
+                    && $shipment->order->archived_at === null,
+            ])->toArray(),
+            'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())->map(fn (array $definition, string $code): array => ['code' => $code, ...$definition])->values()->all(),
             'xlwmsAuthorizedOrderId' => $canRunXlwms ? (int) config('xlwms.live_order_id', 0) : 0,
             'xlwmsOmsWebEnabled' => $warehouseKey === 'us-3sm'
                 && (bool) config('xlwms.oms_web_enabled', false)
@@ -444,6 +455,8 @@ final class OverseaWarehouseController
             'note' => $review?->note,
             'review_status' => $effectiveApproved ? 'approved' : 'pending',
             'shipment_status' => $shipment->shipment_status,
+            'workflow_status_projection' => $order ? $this->workflowStatusProjection->for($order) : null,
+            'workflow_revision' => (int) ($order?->workflow_revision ?? 0),
             'warehouse_dispatch' => $shipment->warehouse?->code === 'US-LA'
                 ? ShipOutProductionDispatchState::warehouseDispatch($shipOutAttempt, (string) $shipment->shipment_status)
                 : WarehouseDispatchStatus::from((string) $shipment->shipment_status, $xlwms),

@@ -21,6 +21,7 @@ const usSmPendingRows = { data: [{
   warehouse_id: 2, warehouse_name: '美国3世迈仓', carrier: 'USPS', service: null, carrier_selection_source: 'automatic',
   tracking_number: null, progress: 'sending_pending', note: null, review_status: 'approved' as const, shipment_status: 'pending', items: [{ sku: 'REVIEW-SKU', quantity: 1 }],
 }], current_page: 1, last_page: 1, per_page: 50, total: 1, from: 1, to: 1 }
+const statusRow = { ...usSmPendingRows.data[0], workflow_status_projection: { code:'shipped', en:'Shipped', zh:'已发货', color:'green', source:'canonical_projection', mutable:false } }
 const viewCounts = { review: 0, pending: 0, shipped: 0, exceptions: 0, all: 0 }
 const preview = {
   token: 'a'.repeat(64), apply_count: 1, noop_count: 0, blocked_count: 0,
@@ -64,6 +65,29 @@ describe('warehouse OMS portal inside the overseas page heading', () => {
 
 describe('Oversea Dede file exchange workbench', () => {
   beforeEach(() => { routerPost.mockClear(); routerPatch.mockClear(); routerVisit.mockClear() })
+
+  it('renders the unified read-only status column in the warehouse table', () => {
+    const wrapper = mountPage({ rows: { ...usSmPendingRows, data:[statusRow] } })
+    expect(wrapper.findAll('th').some((header) => header.text().includes('统一状态'))).toBe(true)
+    expect(wrapper.find('.order-workflow-status').text()).toContain('已发货')
+    expect(wrapper.find('.order-workflow-status .mvp-status').attributes('title')).toContain('只读投影')
+  })
+
+  it('enables inline progress editing only for rows granted orders edit scope, preserving logistics actions', () => {
+    const editable = { ...usSmPendingRows.data[0], workflow_revision: 0, can_edit_workflow_status: true,
+      workflow_status_projection: {code:'sending',en:'Sending',zh:'待发',color:'neutral',source:'canonical_projection',mutable:true} }
+    const options = [
+      {code:'sending',en:'Sending',zh:'待发',color:'neutral',mutable:true},
+      {code:'creating',en:'Creating',zh:'创作沟通',color:'neutral',mutable:true},
+    ]
+    const page = mountPage({ rows: {...usSmPendingRows,data:[editable]}, workflowStatusOptions: options })
+    expect(page.find('select[aria-label^="订单工作状态"]').exists()).toBe(true)
+    expect(page.find('select[aria-label^="订单工作状态"] option').text()).toContain('1.1 Sending')
+    expect(page.text()).toContain('下载仓库下单表')
+    const restricted = mountPage({ rows: {...usSmPendingRows,data:[{...editable,can_edit_workflow_status:false}]}, workflowStatusOptions: options })
+    expect(restricted.find('select[aria-label^="订单工作状态"]').exists()).toBe(false)
+    expect(restricted.find('.order-workflow-status').text()).toContain('待发')
+  })
 
   it('exposes the real XLSX round-trip flow and provider evidence', () => {
     const wrapper = mountPage()

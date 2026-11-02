@@ -320,6 +320,18 @@ final class OrderService
             ->when($filters['source_type'] ?? null, fn ($query, string $source) => $query->where('source_type', $source))
             ->when($filters['order_status'] ?? null, fn ($query, string $status) => $query->where('order_status', $status));
 
+        $query->when($filters['workflow_status'] ?? null, function ($query, string $status): void {
+            $canonicalFallbacks = ['sending' => ['pending_shipment'], 'sent' => ['shipped'], 'finished' => ['completed', 'completed_delivered'], 'cancel' => ['cancelled']][$status] ?? [];
+            $query->where(function ($nested) use ($status, $canonicalFallbacks): void {
+                $nested->where('workflow_status', $status);
+                if ($canonicalFallbacks !== []) {
+                    $nested->orWhere(function ($fallback) use ($canonicalFallbacks): void {
+                        $fallback->whereNull('workflow_status')->whereIn('order_status', $canonicalFallbacks);
+                    });
+                }
+            });
+        });
+
         $this->applyBusinessView($query, (string) ($filters['view'] ?? 'all'));
 
         return $query->latest('order_date')->latest('id');
