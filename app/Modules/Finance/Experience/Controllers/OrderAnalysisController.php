@@ -144,6 +144,7 @@ final class OrderAnalysisController
                 'financials',
                 'costEntries',
                 'owner',
+                'fulfillmentAllocation',
                 'items:id,order_id,product_id,sku,product_summary',
             ])
             ->where('order_kind', 'customer')
