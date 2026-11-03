@@ -6,7 +6,7 @@ import { router } from '@inertiajs/vue3'
 
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{ title }}</title>' },
-  router: { post: vi.fn(), delete: vi.fn() },
+  router: { post: vi.fn(), delete: vi.fn(), visit: vi.fn() },
   useForm: (initial: Record<string, unknown>) => {
     const data = { ...initial }
     return {
@@ -976,5 +976,41 @@ describe('KOL profile detail navigation', () => {
     const unlinked = mount(Show, { props: { order: { ...kolOrder, order_kind: 'kol_fulfillment' }, audit, kolProfile: null } })
     expect(unlinked.find('[data-testid="kol-profile-link"]').exists()).toBe(false)
     unlinked.unmount()
+  })
+})
+
+describe('Order adjacent navigation V1', () => {
+  beforeEach(() => { vi.mocked(router.visit).mockClear() })
+
+  it('navigates by the server-provided customer URLs without assuming numeric IDs', async () => {
+    const wrapper = mount(Show, { props: {
+      order: baseOrder, audit,
+      orderNavigation: { previous_url: '/customers/orders/901', next_url: '/customers/orders/712' },
+    } })
+    await wrapper.get('[data-testid="order-next"]').trigger('click')
+    expect(router.visit).toHaveBeenCalledWith('/customers/orders/712', expect.objectContaining({
+      preserveState: false, preserveScroll: false,
+    }))
+  })
+
+  it('disables unavailable boundaries and protects unsaved edits', async () => {
+    const wrapper = mount(Show, { props: {
+      order: baseOrder, audit, canEditOrder: true,
+      orderNavigation: { previous_url: null, next_url: '/customers/orders/712' },
+    } })
+    expect((wrapper.get('[data-testid="order-previous"]').element as HTMLButtonElement).disabled).toBe(true)
+    expect((wrapper.get('[data-testid="order-next"]').element as HTMLButtonElement).disabled).toBe(false)
+    await wrapper.findAll('.page-header-actions button').find(btn => btn.text().includes('编辑订单'))!.trigger('click')
+    expect((wrapper.get('[data-testid="order-next"]').element as HTMLButtonElement).disabled).toBe(true)
+    expect(router.visit).not.toHaveBeenCalled()
+  })
+
+  it('uses KOL URLs as supplied by the authorized backend scope', async () => {
+    const wrapper = mount(Show, { props: {
+      order: kolOrder, audit,
+      orderNavigation: { previous_url: '/kol/orders/703', next_url: '/kol/orders/701' },
+    } })
+    await wrapper.get('[data-testid="order-previous"]').trigger('click')
+    expect(router.visit).toHaveBeenCalledWith('/kol/orders/703', expect.any(Object))
   })
 })
