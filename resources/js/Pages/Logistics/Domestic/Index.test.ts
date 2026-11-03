@@ -37,6 +37,16 @@ const baseProps = {
 describe('Domestic logistics production workbench', () => {
   beforeEach(() => { routerPost.mockClear(); routerVisit.mockClear() })
 
+  it('shows the read-only 今日订单 XLSX download before the 4PX provider button only on the aggregate today tab', () => {
+    const today=mount(Index,{props:{...baseProps,view:'today'}})
+    const links=today.findAll('.provider-card:first-child .actions a').map(a=>a.attributes('href'))
+    expect(links.slice(0,2)).toEqual(['/logistics/china/today/export','/logistics/china/export/4px'])
+    expect(today.find('[data-testid="download-today-orders"]').text()).toBe('下载今日订单')
+    expect(mount(Index,{props:{...baseProps,view:'today-4px'}}).find('[data-testid="download-today-orders"]').exists()).toBe(false)
+    expect(mount(Index,{props:{...baseProps,view:'today-weship'}}).find('[data-testid="download-today-orders"]').exists()).toBe(false)
+  })
+
+
   it('shows the daily domestic flow with isolated 4PX and Weship outbound downloads', () => {
     const wrapper=mount(Index,{props:{...baseProps,view:'today-4px'}})
     expect(wrapper.text()).toContain('国内发货')
