@@ -139,6 +139,18 @@ final class DomesticBusinessReviewTest extends TestCase
             ->whereKey($parent->id)->count());
     }
 
+    public function test_super_admin_can_review_domestic_orders(): void
+    {
+        $order = $this->order();
+        $role = Role::query()->firstOrCreate(['key' => 'super_admin'], ['label' => 'Super Admin']);
+        $admin = User::factory()->create(['is_active' => true]);
+        $admin->roles()->attach($role);
+        $this->actingAs($admin)->post('/logistics/china/orders/'.$order->id.'/approve')->assertRedirect();
+        $this->assertDatabaseHas('order_operational_markers', [
+            'order_id' => $order->id, 'marker' => 'domestic_reviewed',
+        ]);
+    }
+
     private function userWith(array $permissions): User
     {
         $role = Role::query()->create(['key' => 'review-test-'.uniqid(), 'label' => 'Review Test']);
