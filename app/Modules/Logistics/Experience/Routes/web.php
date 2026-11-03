@@ -30,6 +30,7 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/logistics/china', [DomesticLogisticsController::class, 'index'])->middleware('can:logistics.view')->name('logistics.china');
     Route::post('/logistics/tracking-outbound/selected', [LogisticsTrackingPushController::class, 'selected'])
         ->middleware(['can:logistics.view', 'throttle:10,1'])->name('logistics.tracking-outbound.selected');
+    Route::get('/logistics/china/today/export', [DomesticLogisticsController::class, 'exportTodayOrders'])->middleware('can:logistics.view')->name('logistics.china.today.export');
     Route::get('/logistics/china/export/{provider}', [DomesticLogisticsController::class, 'export'])->middleware('can:logistics.view')->whereIn('provider', ['4px', 'weship'])->name('logistics.china.export');
     Route::get('/logistics/china/pending-batch/export', [DomesticLogisticsController::class, 'exportPendingBatch'])->middleware('can:logistics.view')->name('logistics.china.pending-batch.export');
     Route::post('/logistics/china/pending-batch/tracking-import/preview', [DomesticLogisticsController::class, 'previewPendingBatch'])->middleware($execution)->name('logistics.china.pending-batch.tracking-import.preview');

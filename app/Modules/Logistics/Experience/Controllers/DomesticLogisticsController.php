@@ -4,6 +4,7 @@ namespace App\Modules\Logistics\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
+use App\Modules\Logistics\Application\Domestic\DomesticTodayOrdersExporter;
 use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
 use App\Modules\Logistics\Application\Domestic\DomesticReviewAccess;
 use App\Modules\Logistics\Application\Domestic\DomesticReviewDecisionService;
@@ -30,6 +31,7 @@ final class DomesticLogisticsController
     public function __construct(
         private readonly SpeedaOutboundExporter $speeda,
         private readonly DomesticPendingBatchExporter $pendingBatch,
+        private readonly DomesticTodayOrdersExporter $todayOrders,
         private readonly DomesticTrackingReturnService $tracking,
         private readonly WarehouseOrderReference $references,
         private readonly DomesticReviewDecisionService $decisions,
@@ -154,6 +156,29 @@ final class DomesticLogisticsController
             'Cache-Control' => 'no-store, private',
             'X-BYL-Exported-Orders' => (string) $result['exported_count'],
             'X-BYL-Blocked-Orders' => (string) count($result['blocked']),
+        ]);
+    }
+
+    /**
+     * Read-only XLSX report: exactly the same unpaginated order population as
+     * the "今日订单" tab. Each order line item is a separate spreadsheet row.
+     */
+    public function exportTodayOrders(): HttpResponse
+    {
+        $factory = $this->factory();
+        $query = $this->baseQuery((int) $factory->id)
+            ->with(['items', 'address', 'shipment', 'fulfillmentParent', 'externalReferences']);
+        $this->applyView($query, 'today');
+        $orders = $query->orderBy('order_date')->orderBy('id')->get();
+
+        $bytes = $this->todayOrders->export($orders);
+
+        return response($bytes, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="007-domestic-today-'.now()->format('Ymd').'.xlsx"',
+            'Cache-Control' => 'no-store, private',
+            'X-BYL-Exported-Orders' => (string) $orders->count(),
+            'X-BYL-Exported-Lines' => (string) $orders->sum(fn (Order $order): int => max(1, $order->items->count())),
         ]);
     }
 
