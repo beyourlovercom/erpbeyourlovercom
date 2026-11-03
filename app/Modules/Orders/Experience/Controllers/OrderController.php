@@ -262,13 +262,13 @@ final class OrderController
         $id = (int) $order->id;
 
         $previous = (clone $query)
-            ->where(fn ($query) => $query->where('order_date', '>', $date)
-                ->orWhere(fn ($sameDate) => $sameDate->where('order_date', $date)->where('id', '>', $id)))
+            ->where(fn ($query) => $query->whereDate('order_date', '>', $date)
+                ->orWhere(fn ($sameDate) => $sameDate->whereDate('order_date', $date)->where('id', '>', $id)))
             ->orderBy('order_date')->orderBy('id')->value('id');
 
         $next = (clone $query)
-            ->where(fn ($query) => $query->where('order_date', '<', $date)
-                ->orWhere(fn ($sameDate) => $sameDate->where('order_date', $date)->where('id', '<', $id)))
+            ->where(fn ($query) => $query->whereDate('order_date', '<', $date)
+                ->orWhere(fn ($sameDate) => $sameDate->whereDate('order_date', $date)->where('id', '<', $id)))
             ->orderByDesc('order_date')->orderByDesc('id')->value('id');
 
         $routeName = $order->order_kind === OrderKind::KolFulfillment
