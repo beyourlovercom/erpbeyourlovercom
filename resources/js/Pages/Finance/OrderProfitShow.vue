@@ -318,7 +318,8 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
 </template>
 
 <style scoped>
-.profit-page { display:grid; gap:14px; color:#18282d; }
+.profit-page { display:grid; grid-template-columns:minmax(0,1fr); min-width:0; width:100%; gap:14px; color:#18282d; }
+.profit-page > *, .final-panel > div, .final-panel > aside { min-width:0; }
 .order-header { display:flex; justify-content:space-between; gap:24px; padding:6px 2px 2px; }
 .order-header-actions { display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
 .edit-facts-link { display:inline-flex; padding:9px 14px; border:1px solid #c9d4d7; border-radius:6px; background:#f7f9f9; color:#24383e; font-size:13px; font-weight:700; text-decoration:none; cursor:pointer; }
@@ -363,6 +364,6 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
 .overdue-amber{background:#fff8e6;border:1px solid #f0c040;color:#7d5300}
 .overdue-red{background:#fff0ef;border:1px solid #f5a5a2;color:#9a1f1a}
 
-@media(max-width:1180px){.summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.summary-grid em{display:none}.formula-card{grid-column:span 2}.final-panel{grid-template-columns:1fr}.finance-status{min-width:220px}}
+@media(max-width:1180px){.summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.summary-grid em{display:none}.formula-card{grid-column:span 2}.final-panel{grid-template-columns:minmax(0,1fr)}.finance-status{min-width:220px}}
 @media(max-width:760px){.order-header{display:grid}.finance-status{min-width:0}.tabs{overflow:auto;gap:18px}.summary-grid{grid-template-columns:1fr 1fr}.formula-card{grid-column:1/-1}.final-panel{padding:10px}.title-row h1{font-size:24px}.kpi-strip{gap:8px}.kpi-item{min-width:120px}}
 </style>
