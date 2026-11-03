@@ -107,7 +107,6 @@ const e = computed(() => props.explanation)
 const money = (amount: string | null | undefined, currency: string | null | undefined) => amount === null || amount === undefined ? '—' : `${currency ?? e.value.order.currency} ${amount}`
 const pct = (value: string | null | undefined) => value === null || value === undefined ? '—' : `${(Number(value) * 100).toFixed(1)}%`
 const stateLabel = (state: string) => ({ confirmed: '已确认', estimated: '估算中', incomplete: '不完整', missing: '缺失', blocked: '受阻', review: '待复核' }[state] ?? '待确认')
-const financeStatusLabel = (status: string | null | undefined) => ({ confirmed: '已确认', completed: '已完成', incomplete: '资料不完整', estimated: '含估算', unposted: '未核算', review: '待复核' }[String(status ?? 'unposted').toLowerCase()] ?? '待确认')
 const missingComponentLabel = (name: string) => ({ 'First Mile': '头程费', Handling: '操作费', 'Last Mile': '尾程费' }[name] ?? name)
 const costLabel = (type: string) => ({ product_cost: '产品成本', warehouse_cost: '仓储成本', first_mile_cost: '头程费', overseas_handling_cost: '海外仓操作费', last_mile_cost: '尾程物流费', payment_fee: '支付手续费', kol_commission: '网红佣金', refund_replacement_loss: '退款 / 补发损失', customs_tax: '关税', other_variable_cost: '其他变动成本' }[type] ?? '其他成本')
 const costFormula = (type: string) => ({ product_cost: 'Σ（单件货本成本 × 主订单商品数量）', warehouse_cost: 'Σ 适用于主订单的仓储成本分摊', first_mile_cost: 'Σ 海外仓发货数量 × USD 1；中国直发 = 0', overseas_handling_cost: 'Σ 海外仓发货数量 × USD 1；中国直发 = 0', last_mile_cost: 'Σ 每个发货单的实际承运商 / 国际小包账单', payment_fee: '平台订单总额 × 3.5%', kol_commission: 'Σ 符合条件的 AffiliateWP 网红佣金', refund_replacement_loss: 'Σ 售后补发新增货本 + 仓库费 + 头程/操作费 + 尾程费；不重复计入原始履约', customs_tax: '当前规则：关税 = 0（后续可扩展）', other_variable_cost: '已确认的其他变动成本' }[type] ?? '以已确认成本证据为准')
@@ -160,10 +159,6 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
                 </div>
                 <div class="order-header-actions">
                     <button class="edit-facts-link" type="button" @click="drawerOpen = true">编辑订单事实</button>
-                    <div class="finance-status" :class="[`state-${String(e.summary.finance_status ?? '').toLowerCase()}`, { 'finance-status-estimated': isEstimatedProfit }]">
-                        <strong>{{ isEstimatedProfit ? '预估利润 · 非最终' : financeStatusLabel(e.summary.finance_status) }}</strong>
-                        <span>{{ isEstimatedProfit ? `含 ${s.estimated_cost_count ?? 0} 项估算成本 · 等待真实账单替换` : (e.summary.canonical_final_ready ? '所有必要成本证据均已确认' : '必要成本证据仍不完整') }}</span>
-                    </div>
                 </div>
             </header>
 
@@ -187,12 +182,6 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
                     <strong v-if="e.summary.canonical_final_ready">{{ money(e.summary.canonical_contribution_profit, e.order.currency) }}</strong>
                     <strong v-else-if="isEstimatedProfit" class="estimated-profit">{{ money(e.summary.canonical_estimated_profit, e.order.currency) }}</strong>
                     <strong v-else>—</strong>
-                    <p v-if="e.summary.canonical_final_ready">{{ money(e.summary.net_revenue, e.order.currency) }} − {{ money(e.summary.canonical_known_cost, e.order.currency) }}</p>
-                    <p v-else-if="isEstimatedProfit">净收入 − 预估总成本（{{ s.confirmed_cost_count ?? 0 }} 项已确认 + {{ s.estimated_cost_count ?? 0 }} 项估算）</p>
-                    <b v-if="e.summary.canonical_final_ready">利润率 = {{ pct(e.summary.canonical_margin) }}</b>
-                    <b v-else-if="isEstimatedProfit">预估利润率 = {{ pct(e.summary.canonical_estimated_margin) }}</b>
-                    <small v-if="isEstimatedProfit">预估置信度：{{ s.projection_confidence ?? 'low' }}。真实成本到账后逐项替换，10/10 确认后自动升级为最终利润。</small>
-                    <small v-else-if="!e.summary.canonical_final_ready">必要成本证据不完整，最终利润暂不确认。</small>
                 </aside>
             </section>
 
@@ -321,7 +310,7 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
 .profit-page { display:grid; grid-template-columns:minmax(0,1fr); min-width:0; width:100%; gap:14px; color:#18282d; }
 .profit-page > *, .final-panel > div, .final-panel > aside { min-width:0; }
 .order-header { display:flex; justify-content:space-between; gap:24px; padding:6px 2px 2px; }
-.order-header-actions { display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
+.order-header-actions { display:flex; align-items:flex-start; justify-content:flex-end; }
 .edit-facts-link { display:inline-flex; padding:9px 14px; border:1px solid #c9d4d7; border-radius:6px; background:#f7f9f9; color:#24383e; font-size:13px; font-weight:700; text-decoration:none; cursor:pointer; }
 .edit-facts-link:hover { background:#eaf1f3; border-color:#81969d; }
 .crumb { margin:0 0 8px; color:#78878c; font-size:12px; }.crumb a{color:#536a72;text-decoration:none}
@@ -332,14 +321,13 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
 .order-detail-link span { font-size:.56em; font-weight:600; opacity:.75; }
 .badge { padding:5px 9px; border-radius:6px; background:#e6f6ec; color:#1f7653; font-size:12px; font-weight:700; }.badge.blue{background:#e8f2ff;color:#2563b8}
 .meta,.submeta { margin:7px 0 0; color:#718087; font-size:12px; }.submeta{font-style:italic}
-.finance-status { min-width:280px; align-self:center; padding:14px 16px; border:1px solid #cfe7d8; border-radius:8px; background:#effaf3; display:grid; gap:3px; }
-.finance-status strong{font-size:17px;color:#18744f}.finance-status span{font-size:11px;color:#61736a}.finance-status.state-incomplete,.finance-status.state-unposted{background:#fff8eb;border-color:#edd9ad}.finance-status.state-incomplete strong,.finance-status.state-unposted strong{color:#9a6500}
 .tabs { display:flex; gap:26px; align-items:center; border-bottom:1px solid #dfe6e8; padding:0 12px; color:#607078; font-size:12px; }.tabs>*{padding:11px 2px}.tabs b{color:#1b63d8;border-bottom:2px solid #1b63d8}
 .summary-panel { border:1px solid #cfe3f3; background:#eff7ff; border-radius:8px; padding:13px; }.summary-panel h2,.cost-section h2,.final-panel h2{margin:0;font-size:16px}.summary-grid{display:grid;grid-template-columns:1.1fr auto 1.1fr auto 1.1fr 1fr 1.7fr;gap:10px;align-items:center;margin-top:12px}
 .summary-grid article{min-height:78px;background:#fff;border:1px solid #dce6ea;border-radius:7px;padding:12px;display:grid;gap:4px;align-content:center}.summary-grid article span{font-size:11px;color:#6b7b82}.summary-grid article strong{font-size:19px}.summary-grid article.danger strong{color:#d12e2e}.summary-grid em{font-style:normal;font-weight:800;color:#64757a}.formula-card{border-color:#84b6f6!important}.formula-card strong{font-size:13px!important;color:#235fb3}.formula-card small{color:#60758a}
 .cost-section { border:1px solid #dfe6e8; border-radius:8px; padding:12px; background:#fff; }.replacement-loss-section{border-color:#efd9b8;background:#fffdfa}.replacement-empty{padding:14px;border:1px dashed #d8e0e3;border-radius:6px;color:#718087;background:#fafcfc}.replacement-empty.state-blocked{border-color:#edc7c3;background:#fff5f4;color:#9b3b34}.section-head{display:flex;justify-content:space-between;gap:18px;align-items:center}.section-head h2 small{font-weight:500;color:#596b72}.rule-note{margin:7px 0 10px;color:#c0392b;font-size:12px}.table-wrap{overflow:auto;border:1px solid #e1e7e9;border-radius:6px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:9px 10px;border-right:1px solid #e5eaec;border-bottom:1px solid #e5eaec;text-align:left;vertical-align:middle}th:last-child,td:last-child{border-right:0}thead th,tfoot th{background:#f4f7f8;font-weight:700;white-space:nowrap}tfoot th{border-bottom:0}td small,td span+small{display:block;color:#849198;margin-top:3px}.item-chip{display:block;white-space:nowrap}.empty{text-align:center;color:#87959a;padding:18px}.state{display:inline-flex;padding:3px 7px;border-radius:999px;font-weight:700;font-size:10px}.state-confirmed{background:#e5f6eb;color:#18734e}.state-estimated,.state-incomplete{background:#fff2cf;color:#956100}.state-missing,.state-blocked{background:#feeceb;color:#b83832}.state-review{background:#f3eafa;color:#7a3ea1}code{font-size:10px;color:#52656d;word-break:break-all}
 
-.final-panel{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:14px;border:1px solid #dfe6e8;border-radius:8px;padding:14px;background:#fff}.final-panel>div>p{margin:5px 0 12px;color:#6d7d84;font-size:11px}.formula-line{display:flex;align-items:stretch;gap:7px;overflow:auto}.formula-line article{min-width:108px;border:1px solid #dfe6e8;border-radius:7px;padding:9px;display:grid;gap:3px;background:#fafcfc}.formula-line article strong{font-size:14px}.formula-line article small{font-size:10px;color:#75868d}.formula-line article.incomplete{border-style:dashed;opacity:.65}.formula-line article.total{background:#fff1f1;border-color:#f2c7c7;color:#b42323}.operator{align-self:center;font-weight:800;color:#61747b}.profit-box{border:1px solid #bfe3ce;border-radius:8px;background:#eefaf3;padding:14px;display:grid;gap:7px;align-content:center}.profit-box>span{font-size:12px;color:#567467}.profit-box>strong{font-size:24px;color:#168052}.profit-box p{margin:0;color:#2d6e54}.profit-box b{color:#137248}.profit-box small{color:#8a6500}.profit-box.pending{background:#fff9eb;border-color:#ead7a8}.profit-box.pending>strong{color:#9a6500}.profit-box.estimated{background:#fff8e6;border-color:#f0c040}.profit-box.estimated>strong,.estimated-profit{color:#9a6000}.est-tag{background:#fff2cc;color:#806000;border:1px solid #e8c300;border-radius:4px;font-size:10px;padding:1px 5px;font-style:normal;vertical-align:middle}
+.final-panel{display:grid;grid-template-columns:minmax(0,1fr) 240px;gap:14px;border:1px solid #dfe6e8;border-radius:8px;padding:14px;background:#fff}.final-panel>div>p{margin:5px 0 12px;color:#6d7d84;font-size:11px}.formula-line{display:flex;align-items:stretch;gap:7px;overflow:auto}.formula-line article{min-width:108px;border:1px solid #dfe6e8;border-radius:7px;padding:9px;display:grid;gap:3px;background:#fafcfc}.formula-line article strong{font-size:14px}.formula-line article small{font-size:10px;color:#75868d}.formula-line article.incomplete{border-style:dashed;opacity:.65}.formula-line article.total{background:#fff1f1;border-color:#f2c7c7;color:#b42323}.operator{align-self:center;font-weight:800;color:#61747b}.profit-box{border:1px solid #bfe3ce;border-radius:8px;background:#eefaf3;padding:14px;display:grid;gap:7px;align-content:center}.profit-box>span{font-size:12px;color:#567467}.profit-box>strong{font-size:24px;color:#168052}
+.profit-box { align-self:start; gap:4px; padding:12px; }.profit-box p{margin:0;color:#2d6e54}.profit-box b{color:#137248}.profit-box small{color:#8a6500}.profit-box.pending{background:#fff9eb;border-color:#ead7a8}.profit-box.pending>strong{color:#9a6500}.profit-box.estimated{background:#fff8e6;border-color:#f0c040}.profit-box.estimated>strong,.estimated-profit{color:#9a6000}.est-tag{background:#fff2cc;color:#806000;border:1px solid #e8c300;border-radius:4px;font-size:10px;padding:1px 5px;font-style:normal;vertical-align:middle}
 
 /* P8.2 KPI strip */
 .kpi-strip{display:flex;gap:12px;flex-wrap:wrap;border:1px solid #dfe6e8;border-radius:8px;padding:10px 14px;background:#f8fafc}
@@ -351,19 +339,18 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
 
 /* P8.2 page-level estimated state */
 .order-header-estimated{border-left:4px solid #d9ad00;padding-left:14px}
-.finance-status-estimated{background:#fff3c7!important;border-color:#d9ad00!important;box-shadow:inset 4px 0 0 #d9ad00}.finance-status-estimated strong{color:#7a5200!important}.finance-status-estimated span{color:#795f1b!important}
 .kpi-estimated{background:#fff3c7;border:1px solid #dfb600;border-radius:8px;padding:8px 10px}.kpi-estimated .kpi-label,.kpi-estimated small{color:#80661b}.kpi-estimated .kpi-val{color:#7a5200}
 .summary-panel.summary-estimated{background:#fff9e8;border-color:#d9ad00;box-shadow:inset 4px 0 0 #d9ad00}.summary-estimated-tag{display:inline-flex;margin-left:8px;padding:3px 7px;border-radius:999px;background:#fff0ad;border:1px solid #d9ad00;color:#7a5200;font-size:10px;vertical-align:middle}
 .summary-grid article.estimated-summary-card{background:#fff3c7;border-color:#d9ad00;box-shadow:inset 0 0 0 1px rgba(217,173,0,.08)}.summary-grid article.estimated-summary-card span,.summary-grid article.estimated-summary-card small{color:#795f1b}.summary-grid article.estimated-summary-card strong{color:#7a5200;font-size:21px}
 .estimated-cell{background:#fff8df!important;box-shadow:inset 4px 0 0 #d9ad00}.inline-estimated-tag{display:inline-flex;margin-left:6px;padding:2px 5px;border-radius:4px;background:#fff0ad;border:1px solid #d9ad00;color:#7a5200;font-size:9px;font-weight:800}
 .formula-line article.estimated-cost-card{background:#fff8df;border-color:#d9ad00;box-shadow:inset 0 0 0 1px rgba(217,173,0,.08)}.formula-estimated-tag{font-style:normal;font-size:9px;font-weight:800;color:#7a5200;background:#fff0ad;border:1px solid #d9ad00;border-radius:4px;padding:2px 5px;width:max-content}
-.profit-box.estimated{background:#fff3c7;border:2px solid #d9ad00;box-shadow:0 10px 24px rgba(112,83,0,.12),inset 5px 0 0 #d9ad00;padding:16px}.profit-box.estimated>span{font-weight:800;color:#6f4e00}.profit-box.estimated>strong,.profit-box.estimated .estimated-profit{font-size:28px;color:#7a5200}.profit-box.estimated p,.profit-box.estimated b{color:#6f4e00}.profit-box.estimated small{color:#80661b}.profit-box.estimated .est-tag{background:#1f2937;border-color:#1f2937;color:#fff;letter-spacing:.05em}
+.profit-box.estimated{background:#fff3c7;border:2px solid #d9ad00;box-shadow:inset 4px 0 0 #d9ad00;padding:12px}.profit-box.estimated>span{font-weight:800;color:#6f4e00}.profit-box.estimated>strong,.profit-box.estimated .estimated-profit{font-size:28px;color:#7a5200}.profit-box.estimated p,.profit-box.estimated b{color:#6f4e00}.profit-box.estimated small{color:#80661b}.profit-box.estimated .est-tag{background:#1f2937;border-color:#1f2937;color:#fff;letter-spacing:.05em}
 
 /* P8.2 overdue banners */
 .overdue-banner{border-radius:8px;padding:10px 14px;font-size:12px;font-weight:600;margin:0}
 .overdue-amber{background:#fff8e6;border:1px solid #f0c040;color:#7d5300}
 .overdue-red{background:#fff0ef;border:1px solid #f5a5a2;color:#9a1f1a}
 
-@media(max-width:1180px){.summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.summary-grid em{display:none}.formula-card{grid-column:span 2}.final-panel{grid-template-columns:minmax(0,1fr)}.finance-status{min-width:220px}}
-@media(max-width:760px){.order-header{display:grid}.finance-status{min-width:0}.tabs{overflow:auto;gap:18px}.summary-grid{grid-template-columns:1fr 1fr}.formula-card{grid-column:1/-1}.final-panel{padding:10px}.title-row h1{font-size:24px}.kpi-strip{gap:8px}.kpi-item{min-width:120px}}
+@media(max-width:1180px){.summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.summary-grid em{display:none}.formula-card{grid-column:span 2}.final-panel{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:760px){.order-header{display:grid}.tabs{overflow:auto;gap:18px}.summary-grid{grid-template-columns:1fr 1fr}.formula-card{grid-column:1/-1}.final-panel{padding:10px}.title-row h1{font-size:24px}.kpi-strip{gap:8px}.kpi-item{min-width:120px}}
 </style>

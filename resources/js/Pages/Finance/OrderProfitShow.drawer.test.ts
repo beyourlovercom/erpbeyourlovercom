@@ -130,7 +130,37 @@ describe('Finance detail formula-first navigation UX', () => {
         expect(wrapper.find('.status-hero').exists()).toBe(false)
         expect(wrapper.get('.overdue-red').text()).toContain('超过 45 天')
         expect(wrapper.get('.final-panel .profit-box').text()).toContain('预估利润')
+        expect(wrapper.get('.final-panel .profit-box').find('p').exists()).toBe(false)
+        expect(wrapper.get('.final-panel .profit-box').find('b').exists()).toBe(false)
+        expect(wrapper.get('.final-panel .profit-box').find('small').exists()).toBe(false)
         expect(wrapper.get('[data-testid="finance-back-to-order"]').attributes('href')).toBe('/customers/orders/7396')
+        wrapper.unmount()
+    })
+})
+
+describe('Compact finance profit summary after screenshot feedback', () => {
+    it('removes redundant header status and descriptive lines, retaining profit state and amount', () => {
+        const estimated = {
+            ...explanation,
+            summary: { ...explanation.summary,
+                canonical_estimated_ready: true,
+                canonical_estimated_profit: '53.86',
+                canonical_estimated_margin: '0.6136',
+                estimated_cost_count: 8,
+                projection_confidence: 'low',
+            },
+        }
+        const wrapper = mount(Show, { props: { explanation: estimated, financeFacts, financeFields: fields } })
+        expect(wrapper.find('.finance-status').exists()).toBe(false)
+        const card = wrapper.get('.final-panel .profit-box')
+        expect(card.text()).toContain('预估利润')
+        expect(card.text()).toContain('USD 53.86')
+        expect(card.text()).not.toContain('预估利润率')
+        expect(card.text()).not.toContain('预估置信度')
+        expect(card.find('p').exists()).toBe(false)
+        expect(card.find('b').exists()).toBe(false)
+        expect(card.find('small').exists()).toBe(false)
+        expect(wrapper.get('.summary-panel').text()).toContain('预估利润率')
         wrapper.unmount()
     })
 })
