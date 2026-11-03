@@ -152,7 +152,10 @@ final class DomesticTrackingReturnService
                     $messages[] = '订单不属于中国工厂';
                 }
                 if (! $order->operationalMarkers->contains('marker', 'domestic_reviewed')) {
-                    $messages[] = '订单尚未完成国内物流审核';
+                    $messages[] = '订单尚未完成国内商务审核';
+                }
+                if ($order->workflow_status === 'out_of_stock' || $order->operationalMarkers->contains('marker', 'domestic_stockout')) {
+                    $messages[] = '订单已标记缺货，不得由 Tracking 回传确认发货';
                 }
                 $expectedCarrier = $provider === 'generic'
                     ? trim((string) ($source['carrier'] ?? ''))

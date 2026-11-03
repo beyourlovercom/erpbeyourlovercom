@@ -36,8 +36,10 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::post('/logistics/china/pending-batch/tracking-import/apply', [DomesticLogisticsController::class, 'applyPendingBatch'])->middleware($execution)->name('logistics.china.pending-batch.tracking-import.apply');
     Route::post('/logistics/china/{provider}/tracking-import/preview', [DomesticLogisticsController::class, 'previewTrackingReturn'])->middleware($execution)->whereIn('provider', ['4px', 'weship'])->name('logistics.china.tracking-import.preview');
     Route::post('/logistics/china/{provider}/tracking-import/apply', [DomesticLogisticsController::class, 'applyTrackingReturn'])->middleware($execution)->whereIn('provider', ['4px', 'weship'])->name('logistics.china.tracking-import.apply');
-    Route::post('/logistics/china/orders/{order}/approve', [DomesticLogisticsController::class, 'approve'])->middleware($execution)->name('logistics.china.approve');
-    Route::post('/logistics/china/orders/{order}/reopen-review', [DomesticLogisticsController::class, 'reopenReview'])->middleware($execution)->name('logistics.china.reopen-review');
+    Route::post('/logistics/china/orders/{order}/approve', [DomesticLogisticsController::class, 'approve'])->middleware('can:domestic.review')->name('logistics.china.approve');
+    Route::post('/logistics/china/orders/{order}/stockout', [DomesticLogisticsController::class, 'stockout'])->middleware('can:domestic.review')->name('logistics.china.stockout');
+    Route::post('/logistics/china/orders/{order}/reject', [DomesticLogisticsController::class, 'reject'])->middleware('can:domestic.review')->name('logistics.china.reject');
+    Route::post('/logistics/china/orders/{order}/reopen-review', [DomesticLogisticsController::class, 'reopenReview'])->middleware('can:domestic.review')->name('logistics.china.reopen-review');
     Route::get('/logistics/oversea/{warehouse?}', [OverseaWarehouseController::class, 'index'])->middleware('can:logistics.view')->where('warehouse', 'us-ny|us-moreplus|us-3sm|us-sm|us-sj|usa-sj|de-tianyun|ca')->name('logistics.oversea');
     Route::get('/logistics/oversea/us-3sm/orders/{order}/manual-export',
         [OverseaWarehouseController::class, 'exportManualUsSmOrder'])

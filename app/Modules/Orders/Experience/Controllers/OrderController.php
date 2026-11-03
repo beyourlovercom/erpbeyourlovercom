@@ -522,6 +522,8 @@ final class OrderController
             'workflow_revision' => (int) ($order->workflow_revision ?? 0),
             'workflow_status_projection' => $this->workflowProjection($order),
             'order_note' => $order->order_note,
+            'domestic_reject_reason' => $order->domestic_reject_reason,
+            'domestic_rejected_at' => $order->domestic_rejected_at?->toIso8601String(),
             'currency' => $order->currency,
             'owner' => $order->owner ? ['id' => $order->owner->id, 'name' => $order->owner->name] : null,
             'owner_label' => $order->owner ? 'Owner('.$order->owner->name.')' : null,

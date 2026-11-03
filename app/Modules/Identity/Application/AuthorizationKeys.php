@@ -14,6 +14,7 @@ enum AuthorizationKeys: string
     case AuditView = 'audit.view';
     case PermissionsManage = 'system.permissions.manage';
     case LogisticsView = 'logistics.view';
+    case DomesticReview = 'domestic.review';
     case SyncView = 'sync.view';
     case CustomersView = 'customers.view';
     case CustomersOperate = 'customers.operate';
