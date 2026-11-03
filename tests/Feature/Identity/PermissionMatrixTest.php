@@ -144,6 +144,14 @@ final class PermissionMatrixTest extends TestCase
     }
 
     // G: all eight presets display and are editable through roles-permissions
+    public function test_domestic_business_retains_every_logistics_permission(): void
+    {
+        $logistics = RolePreset::Logistics->permissions();
+        $domesticBusiness = RolePreset::DomesticBusiness->permissions();
+        self::assertEmpty(array_diff($logistics, $domesticBusiness));
+        self::assertContains('domestic.review', $domesticBusiness);
+    }
+
     public function test_all_role_presets_display_and_are_editable(): void
     {
         $admin = $this->adminUser();
