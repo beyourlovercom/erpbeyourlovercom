@@ -50,7 +50,7 @@ const update = async (next: string) => {
 
 <template>
   <span class="order-workflow-status" :class="`status-color-${current.color}`" :data-color="current.color">
-    <select v-if="canEdit && options.length && current.code !== 'cancelled'" ref="select" :value="code" :disabled="saving" :aria-label="`订单工作状态 ${current.zh}`" :title="`工作进度选项按编号显示；${current.zh}`" @change="update(($event.target as HTMLSelectElement).value)">
+    <select v-if="canEdit && options.length && current.code !== 'cancelled' && current.code !== 'allocated'" ref="select" :value="code" :disabled="saving" :aria-label="`订单工作状态 ${current.zh}`" :title="`工作进度选项按编号显示；${current.zh}`" @change="update(($event.target as HTMLSelectElement).value)">
       <option v-for="option in options" :key="option.code" :value="option.code" :disabled="!option.mutable">{{ optionCaption(option) }}</option>
     </select>
     <span v-else class="mvp-status" :title="`${current.en} · ${current.source === 'canonical_projection' ? '来自订单真实状态的只读投影' : '员工工作进度'}`" :aria-label="`订单状态 ${current.zh}`">{{ current.zh }}</span>
