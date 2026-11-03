@@ -221,6 +221,32 @@ describe('Orders/Show V2', () => {
     expect(rowActions).not.toContain('重新发货')
   })
 
+  it('allows authorized manager to reopen a shipped derived order without shipment execution access', () => {
+    const derived = {
+      ...baseOrder,
+      fulfillment_parent: { id: 10, erp_order_id: '007-0908-c1', url: '/customers/orders/10', order_kind: 'customer' },
+      fulfillment: null,
+      shipment: { shipment_status: 'shipped', warehouse_id: 2, warehouse_name: '中国工厂', carrier: '4PX', service: '普通', tracking_number: 'TRACK-OLD', shipped_at: '2026-11-03T08:00:00Z' },
+    }
+    const wrapper = mount(Show, { props: { order: derived, audit, canOperateLogistics: false, canReopenFulfillment: true } })
+    expect(wrapper.get('[data-testid="fulfillment-actions"]').text()).toContain('重新发货')
+    expect(wrapper.get('[data-testid="fulfillment-actions"]').text()).not.toContain('确认发货')
+  })
+
+  it('allows a logistics operator to edit a reopened derived fulfillment from its own detail', async () => {
+    const derived = {
+      ...baseOrder,
+      fulfillment_parent: { id: 10, erp_order_id: '007-0908-c1', url: '/customers/orders/10', order_kind: 'customer' },
+      fulfillment: null,
+      shipment: { shipment_status: 'pending', warehouse_id: 2, warehouse_name: '中国工厂', carrier: '4PX', service: '普通', tracking_number: null, shipped_at: null },
+    }
+    const wrapper = mount(Show, { props: { order: derived, audit, canOperateLogistics: true, canReopenFulfillment: true } })
+    const action = wrapper.get('[data-testid="fulfillment-actions"]').findAll('button').find(btn => btn.text().includes('履约发货'))
+    expect(action).toBeTruthy()
+    await action!.trigger('click')
+    expect(wrapper.find('.ord-shipment-form').exists()).toBe(true)
+  })
+
   it('auto-fills USPS Priority when the selected fulfillment warehouse is in the US', async () => {
     const order = { ...baseOrder, shipment: { ...baseOrder.shipment, warehouse_id: 1, warehouse_name: '美西 MorePlus 仓' } }
     const wrapper = mount(Show, { props: {
