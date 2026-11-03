@@ -506,6 +506,8 @@ final class OrderController
 
     private function orderData(Order $order): array
     {
+        $workflowProjection = $this->workflowProjection($order);
+
         return [
             'id' => $order->id,
             'internal_order_number' => $order->internal_order_number,
@@ -517,10 +519,10 @@ final class OrderController
             'order_kind_label' => $order->order_kind ? $this->kindLabel($order->order_kind) : null,
             'order_date' => $order->order_date?->toDateString(),
             'order_status' => $order->order_status->value,
-            'order_status_label' => $this->statusLabel($order->order_status->value),
+            'order_status_label' => $workflowProjection['code'] === 'allocated' ? '已分仓' : $this->statusLabel($order->order_status->value),
             'workflow_status' => $order->workflow_status,
             'workflow_revision' => (int) ($order->workflow_revision ?? 0),
-            'workflow_status_projection' => $this->workflowProjection($order),
+            'workflow_status_projection' => $workflowProjection,
             'order_note' => $order->order_note,
             'currency' => $order->currency,
             'owner' => $order->owner ? ['id' => $order->owner->id, 'name' => $order->owner->name] : null,
