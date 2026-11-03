@@ -16,6 +16,7 @@ use App\Modules\Logistics\Application\FulfillmentAllocationAccess;
 use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
+use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
 use App\Modules\Orders\Application\Inbound\WooOrderManualSyncAccess;
 use App\Modules\Orders\Application\KolOrderAccessScope;
@@ -605,6 +606,7 @@ final class OrderController
                 ])->values()->all(),
                 'shipment' => $segment->shipment ? [
                     ...$segment->shipment->only(['shipment_status', 'warehouse_id', 'carrier', 'service', 'tracking_number', 'shipped_at', 'logistics_note']),
+                    ...$this->warehouseReviewProjection($segment),
                     'status_label' => $this->fulfillmentSegmentStatusLabel(
                         $segment->shipment->shipment_status,
                         $segment->shipment->tracking_number,
@@ -623,6 +625,34 @@ final class OrderController
                 ],
             ])->all(),
         ];
+    }
+
+    /** @return array{review_required:bool,review_approved:bool,review_role:?string} */
+    private function warehouseReviewProjection(Order $segment): array
+    {
+        $shipment = $segment->shipment;
+        if (! $shipment || ! $shipment->warehouse_id) {
+            return ['review_required' => false, 'review_approved' => false, 'review_role' => null];
+        }
+
+        $code = strtoupper(trim((string) $shipment->warehouse?->code));
+        if (OverseaWarehouseReviewService::canonicalWarehouseCode($code) !== null) {
+            return [
+                'review_required' => true,
+                'review_approved' => $shipment->overseaReview()->where('status', 'approved')
+                    ->where('reviewed_warehouse_id', $shipment->warehouse_id)->exists(),
+                'review_role' => 'Dede',
+            ];
+        }
+        if ($code === 'FACTORY') {
+            return [
+                'review_required' => true,
+                'review_approved' => $segment->operationalMarkers()->where('marker', 'domestic_reviewed')->exists(),
+                'review_role' => '国内',
+            ];
+        }
+
+        return ['review_required' => false, 'review_approved' => false, 'review_role' => null];
     }
 
     private function originalLogisticsStarted(Order $order): bool
