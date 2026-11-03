@@ -10,7 +10,6 @@ final class DomesticReviewAccess
     public function allows(?Authenticatable $actor): bool
     {
         return $actor instanceof User
-            && $actor->hasPermission('domestic.review')
-            && ! $actor->roles()->where('key', 'super_admin')->exists();
+            && $actor->hasPermission('domestic.review');
     }
 }
