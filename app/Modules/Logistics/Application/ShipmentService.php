@@ -103,6 +103,7 @@ final class ShipmentService
             $before = $this->snapshot($shipment);
             $trackingNumber = $this->canonicalTrackingNumber($attributes['tracking_number'] ?? null);
             $selectedWarehouseId = $attributes['warehouse_id'] ?? $shipment->warehouse_id;
+            $this->assertWarehouseShippingApproval($lockedOrder, $shipment, $selectedWarehouseId);
             $automaticRoute = $this->automaticRoute($lockedOrder, $selectedWarehouseId);
             $explicitCarrier = array_key_exists('carrier', $attributes) && trim((string) $attributes['carrier']) !== '';
             $selectedCarrier = $explicitCarrier
@@ -555,6 +556,43 @@ final class ShipmentService
             after: $after,
             reason: $reason,
         );
+    }
+
+    /**
+     * Warehouse approval is a separate gate from ordinary logistics review.
+     * Only the warehouse currently assigned to this shipment can approve it.
+     */
+    private function assertWarehouseShippingApproval(Model $order, Model $shipment, ?int $warehouseId): void
+    {
+        $assignedCode = Warehouse::query()->whereKey($shipment->warehouse_id)->value('code');
+        $requestedCode = Warehouse::query()->whereKey($warehouseId)->value('code');
+        $assignedOversea = OverseaWarehouseReviewService::canonicalWarehouseCode($assignedCode) !== null;
+        $requestedOversea = OverseaWarehouseReviewService::canonicalWarehouseCode($requestedCode) !== null;
+
+        if ($assignedOversea || $requestedOversea) {
+            abort_unless((int) $shipment->warehouse_id === (int) $warehouseId, 409, '请先保存新的海外仓分配，再由 Dede 审核');
+            abort_unless(
+                $shipment->overseaReview()->where('status', 'approved')
+                    ->where('reviewed_warehouse_id', $warehouseId)->exists(),
+                409,
+                '当前海外仓订单尚未通过 Dede 审核，禁止确认发货',
+            );
+
+            return;
+        }
+
+        // Domestic derived fulfillment is owned by the existing domestic
+        // review queue; order details must not bypass its approval marker.
+        $isFactory = strtoupper(trim((string) $requestedCode)) === 'FACTORY'
+            || strtoupper(trim((string) $assignedCode)) === 'FACTORY';
+        if ($isFactory && $order->fulfillment_parent_id !== null) {
+            abort_unless((int) $shipment->warehouse_id === (int) $warehouseId, 409, '请先重新分仓并完成国内审核');
+            abort_unless(
+                $order->operationalMarkers()->where('marker', 'domestic_reviewed')->exists(),
+                409,
+                '中国工厂拆单尚未通过国内审核，禁止确认发货',
+            );
+        }
     }
 
     private function assertNoPendingReview(Model $order): void
