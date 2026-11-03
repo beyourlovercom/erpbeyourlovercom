@@ -39,6 +39,44 @@ const pushTracking = (ids:number[]) => {
   })
 }
 const trackingLabel = (status:string|null|undefined) => status==='completed'?'已同步':status==='failed'?'失败':status==='retry_wait'?'待重试':status==='processing'?'同步中':'待同步'
+// Saving a Tracking draft does not ship. Physical dispatch requires explicit confirmation.
+const inlineTracking = ref<Record<number,string>>({})
+const inlineBusy = ref<Record<number,boolean>>({})
+const inlineErrors = ref<Record<number,string>>({})
+const inlineSaved = ref<Record<number,string>>({})
+const trackingDraft = (row:Row):string => inlineTracking.value[row.order_id] ??= row.tracking_number ?? ''
+const canQuickShip = (row:Row):boolean => props.canOperate && row.review_status === 'approved'
+  && row.shipment_status === 'pending'
+const trackingTextChanged = (row:Row) => trackingDraft(row).trim() !== (row.tracking_number ?? '')
+const inlineTrackingInput = (row:Row, event:Event) => {
+  inlineTracking.value[row.order_id] = (event.target as HTMLInputElement).value
+  inlineErrors.value[row.order_id] = ''
+  inlineSaved.value[row.order_id] = ''
+}
+const saveInlineTracking = (row:Row) => {
+  if (!canQuickShip(row) || inlineBusy.value[row.order_id] || !trackingTextChanged(row)) return
+  inlineBusy.value[row.order_id] = true
+  inlineErrors.value[row.order_id] = ''
+  const tracking = trackingDraft(row).trim()
+  router.post('/logistics/china/orders/' + row.order_id + '/tracking-draft', {tracking_number:tracking || null}, {
+    preserveScroll:true, preserveState:true,
+    onSuccess:()=>{ inlineSaved.value[row.order_id] = tracking ? '已暂存' : '已清空' },
+    onError:(errors)=>{ inlineErrors.value[row.order_id] = errors.tracking_number ?? '保存失败，请核对单号和审核状态。' },
+    onFinish:()=>{ inlineBusy.value[row.order_id] = false },
+  })
+}
+const confirmInlineShip = (row:Row) => {
+  if (!canQuickShip(row) || inlineBusy.value[row.order_id]) return
+  const tracking = trackingDraft(row).trim()
+  if (!tracking) { inlineErrors.value[row.order_id] = '请先填写真实发货单号。'; return }
+  inlineBusy.value[row.order_id] = true
+  inlineErrors.value[row.order_id] = ''
+  router.post('/logistics/china/orders/' + row.order_id + '/quick-ship', {tracking_number:tracking}, {
+    preserveScroll:true, preserveState:true,
+    onError:(errors)=>{ inlineErrors.value[row.order_id] = errors.tracking_number ?? '确认发货失败，请核对审核状态。' },
+    onFinish:()=>{ inlineBusy.value[row.order_id] = false },
+  })
+}
 const uploadInput = ref<HTMLInputElement|null>(null)
 const selectedProvider = ref<'4px'|'weship'|'generic'>('4px')
 const tabs = [
@@ -208,7 +246,24 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
               </td>
               <td><a :href="row.order_url">{{ row.erp_order_id ?? '—' }}</a></td><td><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id" :projection="row.workflow_status_projection" :can-edit="false" /><span v-else>—</span></td>
               <td><span v-if="row.export_blockers.length" class="danger">{{ row.export_blockers.join(' / ') }}</span><span v-else class="ready">可导出</span></td>
-              <td>{{ row.provider_reference ?? '—' }}</td><td>{{ row.carrier ?? '—' }}</td><td>{{ row.service ?? '—' }}</td><td>{{ row.tracking_number ?? '—' }}</td>
+              <td>{{ row.provider_reference ?? '—' }}</td><td>{{ row.carrier ?? '—' }}</td><td>{{ row.service ?? '—' }}</td>
+              <td class="domestic-tracking-cell">
+                <div v-if="canQuickShip(row)" class="domestic-tracking-entry">
+                  <input :value="trackingDraft(row)" :aria-label="'填写发货单号 '+(row.erp_order_id ?? row.order_id)"
+                    type="text" maxlength="128" class="domestic-tracking-input" placeholder="填写发货单号"
+                    :disabled="!!inlineBusy[row.order_id]"
+                    @input="inlineTrackingInput(row,$event)"
+                    @blur="saveInlineTracking(row)" @keyup.enter="($event.target as HTMLInputElement).blur()" />
+                  <button type="button" class="secondary" :disabled="!!inlineBusy[row.order_id] || !trackingTextChanged(row)"
+                    @mousedown.prevent @click="saveInlineTracking(row)">暂存</button>
+                  <button type="button" class="primary" :disabled="!!inlineBusy[row.order_id] || !trackingDraft(row).trim()"
+                    @mousedown.prevent @click="confirmInlineShip(row)">确认发货</button>
+                </div>
+                <span v-else>{{ row.tracking_number || (row.review_status==='pending' ? '待审核' : row.review_status==='stockout' ? '缺货' : '—') }}</span>
+                <small v-if="inlineErrors[row.order_id]" class="domestic-tracking-error">{{ inlineErrors[row.order_id] }}</small>
+                <small v-else-if="inlineBusy[row.order_id]" class="domestic-tracking-note">处理中…</small>
+                <small v-else-if="inlineSaved[row.order_id]" class="domestic-tracking-note">{{ inlineSaved[row.order_id] }} · 尚未发货</small>
+              </td>
               <td>{{ row.recipient_name ?? '—' }}</td><td :class="{danger:!row.phone}">{{ row.phone || '缺电话' }}</td>
               <td>{{ [row.country,row.state,row.city].filter(Boolean).join(' / ') || '—' }}</td><td>{{ itemText(row) }} <button v-if="europeanCountries.has((row.country ?? '').toUpperCase())" type="button" class="secondary" :disabled="barcodeLoading" @click="showBarcode(row)">69条码</button><div v-if="barcodePreview?.orderId===row.order_id" class="barcode-preview"><div v-for="item in barcodePreview.items" :key="item.sku">{{ item.sku }} × {{ item.quantity }}：{{ item.barcode_69 }}</div></div><small v-if="barcodeError && barcodeErrorOrderId===row.order_id && !barcodeLoading" class="danger">{{ barcodeError }}</small></td>
               <td><span v-if="row.source_type==='woocommerce'" class="sync-status" :title="row.tracking_sync_reason??''" :class="row.tracking_sync_status??'pending'">{{ trackingLabel(row.tracking_sync_status) }}</span><span v-else>—</span><small v-if="row.tracking_sync_reason" class="sync-failure">{{ row.tracking_sync_reason }}</small></td>
@@ -243,6 +298,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
 <style scoped>
 .domestic-page{padding:20px;min-width:0;color:#111827}.domestic-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.eyebrow{margin:0;color:#0f766e;font-size:11px;font-weight:800;letter-spacing:.08em}.domestic-head h1{margin:4px 0;font-size:30px}.domestic-head p{margin:0;color:#64748b;font-size:13px}.continuity{display:flex;gap:12px;align-items:center;margin:14px 0;padding:10px 12px;border:1px solid #b7ded8;border-radius:9px;background:#f2fbf9;color:#315f59;font-size:12px}.continuity strong{color:#0f766e}.tabs{display:flex;gap:5px;overflow-x:auto;border-bottom:1px solid #e2e8f0;margin-bottom:12px}.tabs button{border:0;background:transparent;padding:9px 12px;color:#536174;font-weight:700;white-space:nowrap;border-bottom:2px solid transparent}.tabs button.active{color:#0f766e;border-bottom-color:#0f766e}.tabs span{color:#94a3b8;margin-left:3px}.pending-batch-card{display:flex;justify-content:space-between;gap:12px;margin-bottom:12px;padding:12px;border:1px solid #b7ded8;border-radius:10px;background:#f2fbf9}.pending-batch-card>div:first-child{display:flex;flex-direction:column;gap:4px}.pending-batch-card small{color:#64748b;max-width:760px}
 .domestic-head-actions{display:flex;gap:8px;align-items:center}
+.domestic-tracking-cell{min-width:355px}.domestic-tracking-entry{display:flex;gap:5px;align-items:center}.domestic-tracking-input{min-width:155px;width:175px;height:34px;padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:white;color:#1e293b}.domestic-tracking-entry button{white-space:nowrap;min-height:32px;padding:0 8px}.domestic-tracking-error,.domestic-tracking-note{display:block;font-size:11px;margin-top:4px;white-space:normal}.domestic-tracking-error{color:#b91c1c}.domestic-tracking-note{color:#0f766e}
 .tracking-selection-bar{display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:#eef6ff;border:1px solid #c9dffc;border-radius:8px;font-size:12px}
 button:disabled{opacity:.5;cursor:not-allowed}
 .sync-status{font-size:11px;font-weight:700;padding:4px 7px;border-radius:5px;background:#fff1d6;color:#92400e}

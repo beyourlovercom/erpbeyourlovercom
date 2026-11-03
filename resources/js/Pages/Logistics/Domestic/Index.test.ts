@@ -47,6 +47,41 @@ describe('Domestic logistics production workbench', () => {
   })
 
 
+  it('saves a reviewed domestic Tracking inline without accidentally confirming shipment', async () => {
+    const wrapper=mount(Index,{props:{...baseProps,view:'pending'}})
+    const input=wrapper.find('input[aria-label^="填写发货单号"]')
+    expect(input.exists()).toBe(true)
+    await input.setValue('4PX20261103')
+    await input.trigger('blur')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/china/orders/1/tracking-draft',
+      {tracking_number:'4PX20261103'},expect.objectContaining({preserveScroll:true}))
+    expect(routerPost).not.toHaveBeenCalledWith('/logistics/china/orders/1/quick-ship',expect.anything(),expect.anything())
+  })
+
+  it('confirms actual shipment only on explicit click and hides input for unreviewed, stockout or shipped rows', async () => {
+    const ready=mount(Index,{props:{...baseProps,view:'pending'}})
+    await ready.find('input[aria-label^="填写发货单号"]').setValue('4PX20261103')
+    const confirm=ready.findAll('button').find(b=>b.text()==='确认发货')
+    expect(confirm).toBeTruthy()
+    await confirm!.trigger('click')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/china/orders/1/quick-ship',
+      {tracking_number:'4PX20261103'},expect.objectContaining({preserveScroll:true}))
+
+    for(const review of ['pending','stockout'] as const) {
+      const blocked=mount(Index,{props:{...baseProps,rows:{...baseProps.rows,data:[{
+        ...baseProps.rows.data[0],review_status:review,
+      }]}}})
+      expect(blocked.find('input[aria-label^="填写发货单号"]').exists()).toBe(false)
+      expect(blocked.text()).not.toContain('确认发货')
+    }
+    const shipped=mount(Index,{props:{...baseProps,rows:{...baseProps.rows,data:[{
+      ...baseProps.rows.data[0],shipment_status:'shipped',tracking_number:'TRACKED',
+    }]}}})
+    expect(shipped.find('input[aria-label^="填写发货单号"]').exists()).toBe(false)
+    expect(shipped.text()).toContain('TRACKED')
+    expect(mount(Index,{props:{...baseProps,canOperate:false}}).find('input[aria-label^="填写发货单号"]').exists()).toBe(false)
+  })
+
   it('shows the daily domestic flow with isolated 4PX and Weship outbound downloads', () => {
     const wrapper=mount(Index,{props:{...baseProps,view:'today-4px'}})
     expect(wrapper.text()).toContain('国内发货')
