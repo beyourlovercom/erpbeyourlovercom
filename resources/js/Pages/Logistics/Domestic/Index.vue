@@ -10,7 +10,7 @@ type Row = {
   workflow_status_projection?:{ code:string; zh:string; en:string; color:string; source:string; mutable?:boolean }
   recipient_name:string|null; phone:string|null; country:string|null; state:string|null; city:string|null; postal_code:string|null
   carrier:string|null; service:string|null; tracking_number:string|null; shipment_status:string|null; shipped_at:string|null
-  review_status:'approved'|'pending'; export_blockers:string[]; items:Item[]
+  review_status:'approved'|'pending'|'stockout'; export_blockers:string[]; items:Item[]
 }
 type PageRows = { data:Row[]; current_page:number; last_page:number; total:number }
 type PreviewRow = { row:number; order_id:number|null; order_number:string; tracking_number:string; carrier:string; provider_status:string|null; status:string; message:string }
@@ -18,7 +18,7 @@ type Preview = { token:string; rows:PreviewRow[]; apply_count:number; noop_count
 type ProviderStatus = Record<'4px'|'weship',{export_ready:boolean;return_ready:boolean;label:string;note?:string;reason?:string}>
 
 const props = defineProps<{
-  view:string; rows:PageRows; viewCounts:Record<string,number>; canOperate:boolean; canTrackingSync?:boolean
+  view:string; rows:PageRows; viewCounts:Record<string,number>; canOperate:boolean; canReview:boolean; canTrackingSync?:boolean
   trackingImportProvider:'4px'|'weship'|'generic'|null; trackingImportPreview:Preview|null; providerStatus:ProviderStatus
 }>()
 
@@ -42,7 +42,7 @@ const trackingLabel = (status:string|null|undefined) => status==='completed'?'�
 const uploadInput = ref<HTMLInputElement|null>(null)
 const selectedProvider = ref<'4px'|'weship'|'generic'>('4px')
 const tabs = [
-  ['review','待审核'], ['pending','待发货'], ['today-4px','今日速达'], ['today-weship','今日纬狮'],
+  ['review','待审核'], ['stockout','缺货单'], ['pending','待发货'], ['today-4px','今日速达'], ['today-weship','今日纬狮'],
   ['exceptions','异常订单'], ['today','今日订单'], ['4px','速达订单'], ['weship','纬狮订单'],
 ] as const
 const previewRows = computed(() => props.trackingImportPreview?.rows.slice(0, 30) ?? [])
@@ -68,8 +68,31 @@ const showBarcode = async (row:Row) => {
 }
 
 const switchView = (view:string) => router.visit('/logistics/china?view=' + view, { preserveScroll:true, preserveState:true })
-const approve = (row:Row) => router.post('/logistics/china/orders/' + row.order_id + '/approve', {}, { preserveScroll:true, preserveState:true })
+const reviewBusy = ref(false)
+const reviewError = ref('')
+const rejectTarget = ref<Row|null>(null)
+const rejectReason = ref('')
+const decide = (row:Row, action:'approve'|'stockout') => {
+  if (reviewBusy.value || !props.canReview) return
+  reviewBusy.value = true
+  router.post('/logistics/china/orders/' + row.order_id + '/' + action, {}, {
+    preserveScroll:true, preserveState:true, onFinish:()=>{reviewBusy.value=false},
+  })
+}
 const reopen = (row:Row) => router.post('/logistics/china/orders/' + row.order_id + '/reopen-review', {}, { preserveScroll:true, preserveState:true })
+const openReject = (row:Row) => { rejectTarget.value=row; rejectReason.value=''; reviewError.value='' }
+const submitReject = () => {
+  if (!rejectTarget.value || reviewBusy.value || !props.canReview) return
+  if (rejectReason.value.trim().length<3) { reviewError.value='请填写至少 3 个字的驳回原因。'; return }
+  reviewBusy.value = true
+  router.post('/logistics/china/orders/' + rejectTarget.value.order_id + '/reject',
+    {reason:rejectReason.value.trim()}, {
+      preserveScroll:true, preserveState:true,
+      onSuccess:()=>{rejectTarget.value=null;rejectReason.value=''},
+      onError:(errors)=>{reviewError.value=errors.reason??'驳回失败，请核对订单状态。'},
+      onFinish:()=>{reviewBusy.value=false},
+    })
+}
 const chooseUpload = (provider:'4px'|'weship'|'generic') => { selectedProvider.value=provider; uploadInput.value?.click() }
 const previewFile = (event:Event) => {
   const input=event.target as HTMLInputElement
@@ -95,7 +118,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         <div>
           <p class="eyebrow">FACTORY · 中国工厂</p>
           <h1>国内发货</h1>
-          <p>Vita 分仓 → Liang / Kaven 审核 → 下载承运商文件 → 回传 Tracking → Preview → Apply。单个异常订单不会阻断其他正常订单。</p>
+          <p>Vita 分仓 → Kaven / 运营确认有货 → Liang 发货 → 下载承运商文件 → 回传 Tracking → Preview → Apply。单个异常订单不会阻断其他正常订单。</p>
         </div>
         <div class="domestic-head-actions">
           <a class="secondary" href="/logistics/wait-stock">待分配 →</a>
@@ -174,9 +197,13 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
                 @change="chooseTracking(row.order_id, ($event.target as HTMLInputElement).checked)" /></td>
               <td>{{ row.line }}</td>
               <td>
-                <button v-if="canOperate && row.review_status==='pending' && row.shipment_status==='pending'" class="approve" type="button" @click="approve(row)">通过</button>
-                <div v-else-if="row.review_status==='approved'" class="approved">已通过 <button v-if="canOperate && row.shipment_status==='pending'" type="button" @click="reopen(row)">重新审核</button></div>
-                <span v-else>—</span>
+                <div v-if="canReview && (view==='review' || view==='stockout') && row.shipment_status==='pending'" class="review-actions">
+                  <button class="approve" type="button" :disabled="reviewBusy" @click="decide(row,'approve')">通过</button>
+                  <button v-if="row.review_status!=='stockout'" class="stockout-btn" type="button" :disabled="reviewBusy" @click="decide(row,'stockout')">缺货</button>
+                  <button class="reject-btn" type="button" :disabled="reviewBusy" @click="openReject(row)">驳回</button>
+                </div>
+                <div v-else-if="row.review_status==='approved'" class="approved">已通过 <button v-if="canReview && row.shipment_status==='pending'" type="button" @click="reopen(row)">重新审核</button></div>
+                <span v-else>{{ row.review_status==='stockout' ? '缺货' : '待审核' }}</span>
               </td>
               <td><a :href="row.order_url">{{ row.erp_order_id ?? '—' }}</a></td><td><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id" :projection="row.workflow_status_projection" :can-edit="false" /><span v-else>—</span></td>
               <td><span v-if="row.export_blockers.length" class="danger">{{ row.export_blockers.join(' / ') }}</span><span v-else class="ready">可导出</span></td>
@@ -192,6 +219,22 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
         </table>
       </div>
       <footer>共 {{ rows.total }} 条</footer>
+      <div v-if="rejectTarget" class="review-reject-backdrop" @click.self="rejectTarget=null">
+        <section class="review-reject-dialog" role="dialog" aria-modal="true" aria-label="驳回国内订单">
+          <h2>驳回到 Vita 待分仓</h2>
+          <p>订单 {{ rejectTarget.erp_order_id }} 将撤销当前工厂分配。驳回原因会显示在订单详情及待分仓列表中。</p>
+          <div class="reason-shortcuts">
+            <button v-for="reason in ['缺少收件信息','收件人地址有误','税号不匹配','其他信息需核对']" :key="reason" type="button" class="secondary" @click="rejectReason=reason">{{ reason }}</button>
+          </div>
+          <label for="domestic-reject-reason">驳回原因（必填）</label>
+          <textarea id="domestic-reject-reason" v-model="rejectReason" rows="3" maxlength="500" placeholder="请写清需要 Vita 修改或重新确认的内容"></textarea>
+          <small v-if="reviewError" class="danger">{{ reviewError }}</small>
+          <div class="actions">
+            <button class="secondary" type="button" :disabled="reviewBusy" @click="rejectTarget=null">取消</button>
+            <button class="reject-btn" type="button" :disabled="reviewBusy || rejectReason.trim().length<3" @click="submitReject">{{ reviewBusy ? '处理中…' : '确认驳回' }}</button>
+          </div>
+        </section>
+      </div>
     </section>
   </AuthenticatedLayout>
 </template>
@@ -205,4 +248,6 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .sync-status.completed{background:#dcfce7;color:#166534}.sync-status.failed{background:#fee2e2;color:#991b1b}.sync-status.retry_wait{background:#fef3c7;color:#92400e}.sync-status.processing{background:#dbeafe;color:#1d4ed8}.sync-failure{display:block;max-width:240px;white-space:normal;color:#b91c1c;font-size:10px;margin-top:4px}
 .provider-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.provider-grid.single{grid-template-columns:1fr}.provider-card{display:flex;justify-content:space-between;gap:10px;padding:12px;border:1px solid #dbe4e8;border-radius:10px;background:#fff}.provider-card>div:first-child{display:flex;flex-direction:column;gap:4px}.provider-card small{color:#64748b}.actions{display:flex;gap:7px;align-items:center}.primary,.secondary,.approve,.approved button{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:0 11px;border-radius:7px;font-size:12px;font-weight:800;text-decoration:none}.primary,.approve{border:1px solid #0f8f82;background:#0f8f82;color:#fff}.secondary,.approved button{border:1px solid #b8c6cc;background:#fff;color:#334155}.hidden{display:none}.preview{margin-bottom:12px;padding:12px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc}.preview-head{display:flex;justify-content:space-between;gap:12px}.preview-head>div{display:flex;flex-direction:column}.preview p{color:#64748b;font-size:12px}.table-wrap{overflow:auto;border:1px solid #dfe6ea;border-radius:10px;background:#fff}.table-wrap table{width:max-content;min-width:100%;border-collapse:collapse;font-size:12px}.table-wrap th,.table-wrap td{padding:8px;border-bottom:1px solid #e9eef1;text-align:left;white-space:nowrap}.table-wrap th{background:#f8fafc;color:#475569}.orders table{min-width:1500px}.orders a{color:#0f766e;font-weight:800;text-decoration:none}.approved{display:flex;gap:6px;align-items:center;color:#047857;font-weight:800}.approved button{min-height:26px;padding:0 7px;font-size:10px}.danger{color:#b91c1c;font-weight:800}.ready{color:#047857;font-weight:800}.empty{text-align:center!important;padding:30px!important;color:#94a3b8}.status-apply{color:#047857}.status-noop{color:#64748b}.status-blocked{color:#b91c1c}footer{padding:10px 2px;color:#64748b;font-size:12px}
 @media(max-width:800px){.domestic-page{padding:14px}.domestic-head{flex-direction:column}.pending-batch-card{flex-direction:column}.provider-grid{grid-template-columns:1fr}.provider-card{flex-direction:column}.continuity{align-items:flex-start;flex-direction:column}.preview-head{flex-direction:column}}
+
+.review-actions{display:flex;align-items:center;gap:5px}.stockout-btn,.reject-btn{border:1px solid #e3ac78;background:#fff9f1;color:#9a3412;border-radius:6px;min-height:30px;padding:0 8px;font-size:12px;font-weight:800}.reject-btn{border-color:#efb2b2;background:#fff;color:#b42318}.review-reject-backdrop{position:fixed;inset:0;z-index:1000;background:rgba(16,24,40,.5);display:flex;align-items:center;justify-content:center;padding:16px}.review-reject-dialog{background:#fff;width:min(480px,100%);border-radius:12px;padding:20px;box-shadow:0 24px 80px rgba(16,24,40,.2);display:grid;gap:12px}.review-reject-dialog h2{margin:0;font-size:19px}.review-reject-dialog p{margin:0;font-size:13px;color:#64748b}.review-reject-dialog label{font-size:12px;font-weight:700}.review-reject-dialog textarea{width:100%;padding:10px;border:1px solid #d4dae1;border-radius:7px;font-size:13px}.review-reject-dialog .actions{justify-content:flex-end}.reason-shortcuts{display:flex;flex-wrap:wrap;gap:6px}
 </style>

@@ -5,6 +5,8 @@ namespace App\Modules\Logistics\Experience\Controllers;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Logistics\Application\Domestic\DomesticPendingBatchExporter;
 use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
+use App\Modules\Logistics\Application\Domestic\DomesticReviewAccess;
+use App\Modules\Logistics\Application\Domestic\DomesticReviewDecisionService;
 use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
 use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Logistics\Application\Domestic\SpeedaOutboundExporter;
@@ -23,13 +25,15 @@ final class DomesticLogisticsController
 {
     private const REVIEW_MARKER = 'domestic_reviewed';
 
-    private const VIEWS = ['review', 'pending', 'today-4px', 'today-weship', 'exceptions', 'today', '4px', 'weship'];
+    private const VIEWS = ['review', 'stockout', 'pending', 'today-4px', 'today-weship', 'exceptions', 'today', '4px', 'weship'];
 
     public function __construct(
         private readonly SpeedaOutboundExporter $speeda,
         private readonly DomesticPendingBatchExporter $pendingBatch,
         private readonly DomesticTrackingReturnService $tracking,
         private readonly WarehouseOrderReference $references,
+        private readonly DomesticReviewDecisionService $decisions,
+        private readonly DomesticReviewAccess $reviewAccess,
     ) {}
 
     public function index(Request $request): Response
@@ -69,6 +73,7 @@ final class DomesticLogisticsController
             'rows' => $rows,
             'viewCounts' => $counts,
             'canOperate' => $request->user()?->can('logistics.operate') ?? false,
+            'canReview' => $this->reviewAccess->allows($request->user()),
             'canTrackingSync' => app(LogisticsTrackingPushAccess::class)->allows($request->user()),
             'trackingImportProvider' => $previewProvider,
             'trackingImportPreview' => $preview ? [
@@ -87,17 +92,32 @@ final class DomesticLogisticsController
 
     public function approve(Request $request, Order $order): RedirectResponse
     {
-        $this->assertDomesticPending($order);
-        $order->operationalMarkers()->updateOrCreate(
-            ['marker' => self::REVIEW_MARKER],
-            ['marked_by' => $request->user()?->getAuthIdentifier(), 'marked_at' => now()],
-        );
+        abort_unless($this->reviewAccess->allows($request->user()), 403);
+        $this->decisions->decide($order, 'approve', null, $request->user());
 
-        return back()->with('success', '国内发货审核已通过。');
+        return back()->with('success', '有货确认通过，订单已进入待发货。');
     }
 
-    public function reopenReview(Order $order): RedirectResponse
+    public function stockout(Request $request, Order $order): RedirectResponse
     {
+        abort_unless($this->reviewAccess->allows($request->user()), 403);
+        $this->decisions->decide($order, 'stockout', null, $request->user());
+
+        return back()->with('success', '已标记缺货，发货流程已阻断。');
+    }
+
+    public function reject(Request $request, Order $order): RedirectResponse
+    {
+        abort_unless($this->reviewAccess->allows($request->user()), 403);
+        $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:500']]);
+        $this->decisions->decide($order, 'reject', $data['reason'], $request->user());
+
+        return redirect('/logistics/china?view=review')->with('success', '已驳回并退回 Vita 待分仓，原因已写入订单详情。');
+    }
+
+    public function reopenReview(Request $request, Order $order): RedirectResponse
+    {
+        abort_unless($this->reviewAccess->allows($request->user()), 403);
         $this->assertDomesticPending($order);
         $order->operationalMarkers()->where('marker', self::REVIEW_MARKER)->delete();
 
@@ -114,6 +134,8 @@ final class DomesticLogisticsController
         $orders = $this->baseQuery((int) $factory->id)
             ->with(['address', 'items.product', 'externalReferences', 'operationalMarkers'])
             ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER))
+            ->whereDoesntHave('operationalMarkers', fn ($q) => $q->where('marker', 'domestic_stockout'))
+            ->where(fn ($q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock'))
             ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending')->whereRaw('LOWER(carrier) = ?', [$carrier]))
             ->orderBy('order_date')
             ->orderBy('id')
@@ -140,6 +162,8 @@ final class DomesticLogisticsController
         $orders = $this->baseQuery((int) $factory->id)
             ->with(['address', 'items.product', 'shipment', 'externalReferences', 'operationalMarkers'])
             ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER))
+            ->whereDoesntHave('operationalMarkers', fn ($q) => $q->where('marker', 'domestic_stockout'))
+            ->where(fn ($q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock'))
             ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
             ->orderBy('order_date')
             ->orderBy('id')
@@ -218,10 +242,17 @@ final class DomesticLogisticsController
         match ($view) {
             'review' => $query
                 ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
-                ->whereDoesntHave('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER)),
+                ->whereDoesntHave('operationalMarkers', fn ($q) => $q->whereIn('marker', [self::REVIEW_MARKER, 'domestic_stockout']))
+                ->where(fn ($q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock')),
+            'stockout' => $query
+                ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
+                ->where(fn ($q) => $q->where('workflow_status', 'out_of_stock')
+                    ->orWhereHas('operationalMarkers', fn ($m) => $m->where('marker', 'domestic_stockout'))),
             'pending' => $query
                 ->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'pending'))
-                ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER)),
+                ->whereHas('operationalMarkers', fn ($q) => $q->where('marker', self::REVIEW_MARKER))
+                ->whereDoesntHave('operationalMarkers', fn ($q) => $q->where('marker', 'domestic_stockout'))
+                ->where(fn ($q) => $q->whereNull('workflow_status')->orWhere('workflow_status', '!=', 'out_of_stock')),
             'today-4px' => $this->applyTodayProviderView($query, '4px'),
             'today-weship' => $this->applyTodayProviderView($query, 'weship'),
             'exceptions' => $query->whereHas('shipment', fn ($q) => $q->where('shipment_status', 'exception')),
@@ -262,7 +293,8 @@ final class DomesticLogisticsController
     {
         $shipment = $order->shipment;
         $trackingState = app(LogisticsTrackingListStatus::class)->currentStatus($tracking, $order->manualSync?->website_sync_status);
-        $approved = $order->operationalMarkers->contains('marker', self::REVIEW_MARKER);
+        $stockout = $order->workflow_status === 'out_of_stock' || $order->operationalMarkers->contains('marker', 'domestic_stockout');
+        $approved = ! $stockout && $order->operationalMarkers->contains('marker', self::REVIEW_MARKER);
         $reference = null;
         try {
             $reference = $this->references->warehouse($order);
@@ -292,10 +324,10 @@ final class DomesticLogisticsController
             'tracking_number' => $shipment?->tracking_number,
             'shipment_status' => $shipment?->shipment_status,
             'shipped_at' => $shipment?->shipped_at?->toIso8601String(),
-            'review_status' => $approved ? 'approved' : 'pending',
-            'export_blockers' => in_array(strtolower((string) $shipment?->carrier), ['4px', 'weship'], true)
+            'review_status' => $stockout ? 'stockout' : ($approved ? 'approved' : 'pending'),
+            'export_blockers' => $stockout ? ['缺货，禁止导出'] : (in_array(strtolower((string) $shipment?->carrier), ['4px', 'weship'], true)
                 ? $this->speeda->blockers($order, strtolower((string) $shipment?->carrier) === '4px' ? '速达' : '纬狮')
-                : [],
+                : []),
             'items' => $order->items->map(fn ($item) => [
                 'sku' => $item->sku,
                 'quantity' => (int) $item->quantity,

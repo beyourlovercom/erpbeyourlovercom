@@ -101,6 +101,8 @@ type Order = {
   workflow_status_projection?: { code: string; en: string; zh: string; color: string; source: string; mutable?: boolean }
   workflow_revision?: number
   order_note: string | null
+  domestic_reject_reason?: string | null
+  domestic_rejected_at?: string | null
   currency: string
   owner: { id: number; name: string } | null
   owner_label: string | null
@@ -1020,6 +1022,12 @@ onBeforeUnmount(() => {
             <button v-if="editMode && canTrashOrder" type="button" class="erp-btn erp-btn-secondary text-red-700" data-testid="move-to-trash" @click="trashConfirmOpen = true">移至回收站</button>
           </div>
         </div>
+
+        <section v-if="order.domestic_reject_reason" class="ord-domestic-reject-alert" role="status">
+          <strong>国内商务驳回 · 待 Vita 重新分仓</strong>
+          <span>{{ order.domestic_reject_reason }}</span>
+          <small v-if="order.domestic_rejected_at">驳回时间：{{ order.domestic_rejected_at }}</small>
+        </section>
 
         <div v-if="trashConfirmOpen && editMode && canTrashOrder" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" role="dialog" aria-modal="true" aria-label="确认移至回收站">
           <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
@@ -2279,4 +2287,5 @@ onBeforeUnmount(() => {
 <style scoped>
 .ord-marker-row{display:flex;gap:8px;flex-wrap:wrap}.ord-marker.active{background:var(--byl-status-bg);color:var(--byl-status-ink);font-weight:700}.ord-marker:disabled{opacity:.55;cursor:not-allowed}
 .ord-packaging-link{display:inline-flex;width:max-content;color:#0f766e;text-decoration:none;font-size:12px;font-weight:700}.ord-packaging-link:hover{text-decoration:underline}.ord-packaging-link:focus-visible{outline:2px solid #0f766e;outline-offset:2px;border-radius:4px}
+.ord-domestic-reject-alert{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0;padding:10px 12px;border:1px solid #f2bc9d;border-radius:9px;background:#fff7ed;color:#9a3412;font-size:12px}.ord-domestic-reject-alert strong{font-weight:800}.ord-domestic-reject-alert span{flex:1;min-width:200px}.ord-domestic-reject-alert small{color:#9a3412;opacity:.8}
 </style>

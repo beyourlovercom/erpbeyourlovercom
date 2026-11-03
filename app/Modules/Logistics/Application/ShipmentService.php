@@ -103,6 +103,14 @@ final class ShipmentService
             $before = $this->snapshot($shipment);
             $trackingNumber = $this->canonicalTrackingNumber($attributes['tracking_number'] ?? null);
             $selectedWarehouseId = $attributes['warehouse_id'] ?? $shipment->warehouse_id;
+            if (! $alreadyShipped && $selectedWarehouseId !== null && Warehouse::query()
+                ->whereKey($selectedWarehouseId)->whereRaw('UPPER(code) = ?', ['FACTORY'])->exists()) {
+                $lockedOrder->loadMissing('operationalMarkers');
+                abort_unless($lockedOrder->operationalMarkers->contains('marker', 'domestic_reviewed')
+                    && ! $lockedOrder->operationalMarkers->contains('marker', 'domestic_stockout')
+                    && $lockedOrder->workflow_status !== 'out_of_stock',
+                    409, '国内订单未经商务确认有货，或已标记缺货，不允许确认发货。');
+            }
             $automaticRoute = $this->automaticRoute($lockedOrder, $selectedWarehouseId);
             $explicitCarrier = array_key_exists('carrier', $attributes) && trim((string) $attributes['carrier']) !== '';
             $selectedCarrier = $explicitCarrier
