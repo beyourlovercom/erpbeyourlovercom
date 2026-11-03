@@ -8,6 +8,7 @@ use App\Modules\Logistics\Application\Domestic\DomesticTodayOrdersExporter;
 use App\Modules\Logistics\Application\Domestic\DomesticTrackingReturnService;
 use App\Modules\Logistics\Application\Domestic\DomesticReviewAccess;
 use App\Modules\Logistics\Application\Domestic\DomesticReviewDecisionService;
+use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\LogisticsTrackingPushAccess;
 use App\Modules\Logistics\Application\LogisticsTrackingListStatus;
 use App\Modules\Logistics\Application\Domestic\SpeedaOutboundExporter;
@@ -75,7 +76,7 @@ final class DomesticLogisticsController
             'view' => $view,
             'rows' => $rows,
             'viewCounts' => $counts,
-            'canOperate' => $request->user()?->can('logistics.operate') ?? false,
+            'canOperate' => app(LogisticsExecutionAccess::class)->allows($request->user()),
             'canReview' => $this->reviewAccess->allows($request->user()),
             'canTrackingSync' => app(LogisticsTrackingPushAccess::class)->allows($request->user()),
             'trackingImportProvider' => $previewProvider,
