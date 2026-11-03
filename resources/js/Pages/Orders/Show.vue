@@ -98,6 +98,7 @@ type Order = {
   source_label: string
   order_kind: string | null
   order_kind_label: string | null
+  fulfillment_parent?: { id: number; erp_order_id: string | null; order_kind: string | null; url: string } | null
   order_date: string
   order_status: string
   order_status_label: string
@@ -176,7 +177,8 @@ const applyShipmentCarrierDefault = () => {
   shipmentEditor.value.service = contextualDefaultService(shipmentEditor.value.carrier, props.order.address?.country)
 }
 
-const isKol = computed(() => props.order.order_kind === 'kol_fulfillment')
+const isKol = computed(() => props.order.order_kind === 'kol_fulfillment'
+  || props.order.fulfillment_parent?.order_kind === 'kol_fulfillment')
 const adjacentNavigationPending = ref(false)
 const goToAdjacentOrder = (url: string | null | undefined) => {
   if (!url || editMode.value || adjacentNavigationPending.value) return
@@ -1016,6 +1018,9 @@ onBeforeUnmount(() => {
           <div>
             <p class="ord-kicker">{{ order.order_kind_label }}</p>
             <h1 class="erp-form-title">{{ order.erp_order_id ?? '—' }}</h1>
+            <p v-if="order.fulfillment_parent" class="erp-form-subtitle" data-testid="derived-order-context">
+              分仓子单 · 仅查看独立履约信息，审核及发货请在对应物流队列完成。
+            </p>
             <p v-if="editMode" class="erp-form-subtitle">仅修改允许编辑的字段；商品变更须通过库存与分仓影响预检。</p>
           </div>
           <div class="erp-form-header-actions page-header-actions">
@@ -1028,6 +1033,7 @@ onBeforeUnmount(() => {
                 title="下一单" aria-label="下一单" @click="goToAdjacentOrder(orderNavigation?.next_url)">↓</button>
             </div>
             <button v-if="editMode" type="button" class="erp-btn erp-btn-secondary" @click="cancelEdit">取消编辑</button>
+            <a v-if="order.fulfillment_parent" :href="order.fulfillment_parent.url" class="erp-btn erp-btn-secondary" data-testid="derived-parent-link" title="返回原始订单">原单 · {{ order.fulfillment_parent.erp_order_id }}</a>
             <a :href="basePath" class="erp-btn erp-btn-secondary" data-testid="order-list-link" title="返回订单列表">列表</a>
             <a v-if="canViewProfit && !isKol" :href="`/accounting/order-costs/${order.id}`" class="erp-btn erp-btn-secondary" data-testid="order-profit-link" title="查看订单成本利润公式">财务</a>
             <a v-if="isKol && kolProfile" :href="kolProfile.url" class="erp-btn erp-btn-secondary" data-testid="kol-profile-link">查看关联网红 ↗</a>

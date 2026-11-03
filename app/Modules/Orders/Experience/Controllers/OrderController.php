@@ -175,35 +175,36 @@ final class OrderController
 
     public function showAny(Request $request, Order $order): RedirectResponse
     {
-        abort_if($order->archived_at !== null && ! $request->user()?->can('system.permissions.manage'), 404);
-        $target = $order;
-        if ($order->order_kind === OrderKind::FulfillmentDerived) {
-            $target = $order->fulfillmentParent()->firstOrFail();
-        }
-
+        $target = $order->order_kind === OrderKind::FulfillmentDerived
+            ? $order->fulfillmentParent()->firstOrFail() : $order;
+        abort_if(($order->archived_at !== null || $target->archived_at !== null)
+            && ! $request->user()?->can('system.permissions.manage'), 404);
         KolOrderAccessScope::authorize($request->user(), $target);
 
+        // Keep the derived identity: routing to its source root loses the
+        // segment-specific warehouse, shipment, items and status details.
         return match ($target->order_kind) {
-            OrderKind::Customer => redirect()->route('customers.orders.show', $target),
-            OrderKind::KolFulfillment => redirect()->route('kol.orders.show', $target),
+            OrderKind::Customer => redirect()->route('customers.orders.show', $order),
+            OrderKind::KolFulfillment => redirect()->route('kol.orders.show', $order),
             default => abort(404),
         };
     }
 
     public function show(Request $request, Order $order): Response
     {
-        $this->authorizeKind($request, $order);
-        KolOrderAccessScope::authorize($request->user(), $order);
-        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync', 'operationalMarkers', 'procurementOrder', 'fulfillmentAllocation', 'fulfillmentChildren.items', 'fulfillmentChildren.shipment.warehouse', 'fulfillmentChildren.fulfillmentOrigin']);
+        $authority = $this->detailAuthority($request, $order);
+        KolOrderAccessScope::authorize($request->user(), $authority);
+        $isDerived = $order->order_kind === OrderKind::FulfillmentDerived;
+        $order->load(['items', 'owner', 'address', 'shipment.warehouse', 'manualSync', 'operationalMarkers', 'procurementOrder', 'fulfillmentAllocation', 'fulfillmentParent', 'fulfillmentChildren.items', 'fulfillmentChildren.shipment.warehouse', 'fulfillmentChildren.fulfillmentOrigin']);
         $productIds = $order->items->pluck('product_id')->filter()->unique()->values()->all();
         $inventoryAvailability = $this->availability->forProductIds($productIds);
         $warehouses = $this->availability->activeWarehouses();
-        $allocationUi = $this->allocationUi($request, $order, $productIds, $warehouses, $inventoryAvailability);
+        $allocationUi = $isDerived ? null : $this->allocationUi($request, $order, $productIds, $warehouses, $inventoryAvailability);
 
         return Inertia::render('Orders/Show', [
             'order' => $this->orderData($order),
             'orderNavigation' => $this->adjacentOrderNavigation($request, $order),
-            'wooAdminEditUrl' => $this->wooAdminLink->forOrder($order),
+            'wooAdminEditUrl' => $isDerived ? null : $this->wooAdminLink->forOrder($order),
             'inventoryAvailability' => $inventoryAvailability,
             'allocationUi' => $allocationUi,
             'packagingReferences' => $this->packagingReferences->forOrder($order),
@@ -219,18 +220,17 @@ final class OrderController
                 ]];
             })->all(),
             'carrierOptions' => $this->carrierServices->options(),
-            'canOperateLogistics' => $this->logisticsExecutionAccess->allows($request->user()),
-            'canViewProfit' => $request->user()?->can('analysis.view') ?? false,
+            'canViewProfit' => ! $isDerived && ($request->user()?->can('analysis.view') ?? false),
             'kolProfile' => $this->kolProfileForOrder($request, $order),
-            'canMarkOperational' => $request->user()?->can('orders.edit') ?? false,
+            'canMarkOperational' => ! $isDerived && ($request->user()?->can('orders.edit') ?? false),
             'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())->map(fn (array $definition, string $code): array => ['code' => $code, ...$definition])->values()->all(),
-            'canEditOrder' => $request->user()?->can('orders.edit') ?? false,
-            'canTrashOrder' => $request->user()?->can('orders.edit') ?? false,
+            'canEditOrder' => ! $isDerived && ($request->user()?->can('orders.edit') ?? false),
+            'canTrashOrder' => ! $isDerived && ($request->user()?->can('orders.edit') ?? false),
             'canManageTrash' => $request->user()?->can('system.permissions.manage') ?? false,
-            'canCreateReplacement' => $this->logisticsExecutionAccess->allows($request->user()) && $this->originalLogisticsStarted($order),
-            'canCreateProcurement' => ($request->user()?->can('procurement.create') ?? false) && $order->operationalMarkers->contains('marker', 'stockout'),
-            'canManageProductPackaging' => $request->user()?->can('products.operate') ?? false,
-            'canOperateLogistics' => $this->logisticsExecutionAccess->allows($request->user()),
+            'canCreateReplacement' => ! $isDerived && $this->logisticsExecutionAccess->allows($request->user()) && $this->originalLogisticsStarted($order),
+            'canCreateProcurement' => ! $isDerived && ($request->user()?->can('procurement.create') ?? false) && $order->operationalMarkers->contains('marker', 'stockout'),
+            'canManageProductPackaging' => ! $isDerived && ($request->user()?->can('products.operate') ?? false),
+            'canOperateLogistics' => ! $isDerived && $this->logisticsExecutionAccess->allows($request->user()),
             'canViewPackagingEvidence' => ($request->user()?->can('inventory.view') ?? false) || ($request->user()?->can('inventory.packaging.review') ?? false),
             'audit' => AuditRecord::query()
                 ->where('entity_type', Order::class)
@@ -251,6 +251,12 @@ final class OrderController
      */
     private function adjacentOrderNavigation(Request $request, Order $order): array
     {
+        // Derived segments can have different source owners (customer / KOL).
+        // Cross-order navigation must not expose unrelated segments.
+        if ($order->order_kind === OrderKind::FulfillmentDerived) {
+            return ['previous_url' => null, 'next_url' => null];
+        }
+
         $query = Order::query()
             ->where('order_kind', $order->order_kind->value)
             ->whereNull('archived_at');
@@ -499,6 +505,22 @@ final class OrderController
         return $value === '' || $value === 'all' ? null : OrderKind::from($value);
     }
 
+    /**
+     * Resolve the owning business order for a read-only derived detail.
+     * This is intentionally separate from authorizeKind: PATCH/edit routes
+     * must remain strict and must never mutate generated segment fields.
+     */
+    private function detailAuthority(Request $request, Order $order): Order
+    {
+        $authority = $order->order_kind === OrderKind::FulfillmentDerived
+            ? $order->fulfillmentParent()->firstOrFail() : $order;
+        abort_if($authority->order_kind !== $this->kind($request), HttpResponse::HTTP_NOT_FOUND);
+        abort_if(($order->archived_at !== null || $authority->archived_at !== null)
+            && ! $request->user()?->can('system.permissions.manage'), HttpResponse::HTTP_NOT_FOUND);
+
+        return $authority;
+    }
+
     private function authorizeKind(Request $request, Order $order): void
     {
         abort_if($order->order_kind !== $this->kind($request), HttpResponse::HTTP_NOT_FOUND);
@@ -518,6 +540,17 @@ final class OrderController
             'source_label' => $this->sourceLabel($order->source_type),
             'order_kind' => $order->order_kind?->value,
             'order_kind_label' => $order->order_kind ? $this->kindLabel($order->order_kind) : null,
+            'fulfillment_parent' => $order->fulfillmentParent ? [
+                'id' => (int) $order->fulfillmentParent->id,
+                'erp_order_id' => $order->fulfillmentParent->erp_order_id,
+                'order_kind' => $order->fulfillmentParent->order_kind?->value,
+                'url' => route(
+                    $order->fulfillmentParent->order_kind === OrderKind::KolFulfillment
+                        ? 'kol.orders.show' : 'customers.orders.show',
+                    $order->fulfillmentParent,
+                    false,
+                ),
+            ] : null,
             'order_date' => $order->order_date?->toDateString(),
             'order_status' => $order->order_status->value,
             'order_status_label' => $workflowProjection['code'] === 'allocated' ? '已分仓' : $this->statusLabel($order->order_status->value),
