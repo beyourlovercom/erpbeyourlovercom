@@ -10,9 +10,12 @@ final class OrderWorkflowStatus
     public static function registry(): array
     {
         return [
+            'pending_allocation' => ['en' => 'Pending Allocation', 'zh' => '待分仓', 'color' => 'neutral', 'mutable' => false],
+            'pending_review' => ['en' => 'Pending Review', 'zh' => '待审核', 'color' => 'amber', 'mutable' => false],
+            'progress_conflict' => ['en' => 'Reconciliation Required', 'zh' => '状态待对账', 'color' => 'red', 'mutable' => false],
             'sending' => ['en' => 'Sending', 'zh' => '待发', 'color' => 'neutral', 'mutable' => true],
             'allocated' => ['en' => 'Allocated', 'zh' => '已分仓', 'color' => 'blue', 'mutable' => false],
-            'sent' => ['en' => 'Sent', 'zh' => '已发等单号', 'color' => 'blue', 'mutable' => true],
+            'sent' => ['en' => 'Sent', 'zh' => '已发等单号', 'color' => 'blue', 'mutable' => false],
             'resent' => ['en' => 'Resent', 'zh' => '补发订单', 'color' => 'blue', 'mutable' => true],
             'missing_info' => ['en' => 'Missing Info', 'zh' => '信息缺失', 'color' => 'amber', 'mutable' => true],
             'returned' => ['en' => 'Returned', 'zh' => '返回订单', 'color' => 'amber', 'mutable' => true],

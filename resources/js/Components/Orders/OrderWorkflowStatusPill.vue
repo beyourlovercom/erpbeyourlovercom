@@ -16,7 +16,7 @@ const saving = ref(false)
 const error = ref('')
 const select = ref<HTMLSelectElement | null>(null)
 const stageNumber: Record<string, string> = {
-  sending: '1.1', sent: '1.2', resent: '1.3', missing_info: '1.5', returned: '1.6',
+  pending_allocation: '0.0', pending_review: '0.1', sending: '1.1', sent: '1.2', resent: '1.3', missing_info: '1.5', returned: '1.6',
   shipping: '2.1', shared: '2.2', arrived: '2.3', creating: '2.4', published: '2.5',
   paying: '2.6', paid: '2.7', cancel: '2.8', refunded: '2.9', finished: '3.0',
   returned_follow_up: '3.1', claims: '3.2',
@@ -29,7 +29,7 @@ watch(() => props.projection, (next) => {
 }, { deep: true })
 watch(() => props.revision, (next) => { revision.value = next })
 const current = computed(() => props.options.find(option => option.code === code.value) ?? props.projection)
-const visibleOptions = computed(() => props.options.filter(option => option.code !== 'allocated'))
+const visibleOptions = computed(() => props.options.filter(option => !['allocated'].includes(option.code)))
 const update = async (next: string) => {
   if (!props.canEdit || saving.value || next === code.value) return
   const previous = code.value
@@ -51,7 +51,7 @@ const update = async (next: string) => {
 
 <template>
   <span class="order-workflow-status" :class="`status-color-${current.color}`" :data-color="current.color">
-    <select v-if="canEdit && options.length && current.code !== 'cancelled' && current.code !== 'allocated'" ref="select" :value="code" :disabled="saving" :aria-label="`订单工作状态 ${current.zh}`" :title="`工作进度选项按编号显示；${current.zh}`" @change="update(($event.target as HTMLSelectElement).value)">
+    <select v-if="canEdit && options.length && current.code !== 'cancelled' && current.code !== 'allocated' && current.code !== 'progress_conflict'" ref="select" :value="code" :disabled="saving" :aria-label="`订单工作状态 ${current.zh}`" :title="`工作进度选项按编号显示；${current.zh}`" @change="update(($event.target as HTMLSelectElement).value)">
       <option v-for="option in visibleOptions" :key="option.code" :value="option.code" :disabled="!option.mutable">{{ optionCaption(option) }}</option>
     </select>
     <span v-else class="mvp-status" :title="`${current.en} · ${current.source === 'canonical_projection' ? '来自订单真实状态的只读投影' : '员工工作进度'}`" :aria-label="`订单状态 ${current.zh}`">{{ current.zh }}</span>

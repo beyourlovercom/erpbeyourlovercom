@@ -20,6 +20,7 @@ use App\Modules\Logistics\Infrastructure\Xlwms\XlwmsWebDraftAttempt;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Orders\Application\OrderWorkflowStatus;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
+use App\Modules\Orders\Application\OrderProgressQuery;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -47,6 +48,7 @@ final class OverseaWarehouseController
         private readonly CarrierServiceCatalog $carrierServices,
         private readonly OverseaOutboundFileService $outboundFiles,
         private readonly OrderWorkflowStatusProjection $workflowStatusProjection,
+        private readonly OrderProgressQuery $progressQueries,
     ) {}
 
     public function index(Request $request, ?string $warehouse = null): Response
@@ -342,18 +344,9 @@ final class OverseaWarehouseController
     private function applyView($query, string $view): void
     {
         if ($view === 'review') {
-            $query->where('shipment_status', 'pending')->where(function ($q): void {
-                $q->whereDoesntHave('overseaReview')
-                    ->orWhereHas('overseaReview', fn ($r) => $r->where('status', '!=', 'approved'))
-                    ->orWhereHas('overseaReview', fn ($r) => $r
-                        ->where('status', 'approved')
-                        ->whereColumn('reviewed_warehouse_id', '!=', 'shipments.warehouse_id'));
-            });
+            $this->progressQueries->overseasReview($query);
         } elseif ($view === 'pending') {
-            $query->where('shipment_status', 'pending')
-                ->whereHas('overseaReview', fn ($r) => $r
-                    ->where('status', 'approved')
-                    ->whereColumn('reviewed_warehouse_id', 'shipments.warehouse_id'))
+            $this->progressQueries->overseasReady($query)
                 ->where(function ($normalPending): void {
                     // A former US-LA API attempt does not redefine another
                     // warehouse's independent queue after manual reassignment.

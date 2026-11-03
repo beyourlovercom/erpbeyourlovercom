@@ -26,6 +26,7 @@ use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderWorkflowStatus;
 use App\Modules\Orders\Application\OrderWorkflowStatusService;
+use App\Modules\Orders\Application\OrderProgressTransitionService;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Application\WooCommerceAdminOrderLink;
 use App\Modules\Orders\Infrastructure\Models\Order;
@@ -56,6 +57,7 @@ final class OrderController
         private readonly CarrierRoutingPolicy $carrierRouting,
         private readonly WooCommerceAdminOrderLink $wooAdminLink,
         private readonly OrderWorkflowStatusService $workflowStatuses,
+        private readonly OrderProgressTransitionService $progressTransitions,
         private readonly OrderWorkflowStatusProjection $workflowProjectionService,
     ) {}
 
@@ -223,8 +225,16 @@ final class OrderController
             'canViewProfit' => ! $isDerived && ($request->user()?->can('analysis.view') ?? false),
             'kolProfile' => $this->kolProfileForOrder($request, $order),
             'canMarkOperational' => ! $isDerived && ($request->user()?->can('orders.edit') ?? false),
-            'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())->map(fn (array $definition, string $code): array => ['code' => $code, ...$definition])->values()->all(),
+            'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())
+                ->map(fn (array $definition, string $code): array => [
+                    'code' => $code, ...$definition,
+                    'mutable' => ($request->user()?->can('orders.edit') ?? false)
+                        ? $definition['mutable']
+                        : ($definition['mutable'] && in_array($code, ['sending', 'out_of_stock'], true)),
+                ])->values()->all(),
             'canEditOrder' => ! $isDerived && ($request->user()?->can('orders.edit') ?? false),
+            'canEditWorkflowStatus' => ($request->user()?->can('orders.edit') ?? false)
+                || ($request->user()?->can('domestic.review') && strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY'),
             'canTrashOrder' => ! $isDerived && ($request->user()?->can('orders.edit') ?? false),
             'canManageTrash' => $request->user()?->can('system.permissions.manage') ?? false,
             'canCreateReplacement' => ! $isDerived && $this->logisticsExecutionAccess->allows($request->user()) && $this->originalLogisticsStarted($order),
@@ -457,11 +467,17 @@ final class OrderController
     public function updateWorkflowStatus(Request $request, Order $order): \Illuminate\Http\JsonResponse
     {
         KolOrderAccessScope::authorize($request->user(), $order);
+        abort_unless($request->user()?->can('orders.edit') || $request->user()?->can('domestic.review'), 403);
         $data = $request->validate([
             'workflow_status' => ['required', 'string', Rule::in(array_keys(array_filter(OrderWorkflowStatus::registry(), fn (array $definition): bool => $definition['mutable'])))],
             'expected_workflow_revision' => ['required', 'integer', 'min:0'],
         ]);
-        $updated = $this->workflowStatuses->set($order, $data['workflow_status'], $data['expected_workflow_revision'], $request->user());
+        if (! $request->user()->can('orders.edit')) {
+            abort_unless(in_array($data['workflow_status'], ['sending', 'out_of_stock'], true), 403);
+            $order->loadMissing('shipment.warehouse');
+            abort_unless(strtoupper(trim((string) $order->shipment?->warehouse?->code)) === 'FACTORY', 403);
+        }
+        $updated = $this->progressTransitions->transition($order, $data['workflow_status'], $data['expected_workflow_revision'], $request->user());
 
         return response()->json(['order' => $this->orderData($updated), 'workflow_status' => $this->workflowProjection($updated)]);
     }

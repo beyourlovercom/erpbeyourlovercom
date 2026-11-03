@@ -6,6 +6,7 @@ use App\Modules\Orders\Infrastructure\Models\Order;
 
 final class OrderWorkflowStatusProjection
 {
+    public function __construct(private readonly OrderProgressResolver $progress) {}
     /** @return array{code:string,en:string,zh:string,color:string,source:string,mutable:bool} */
     public function for(Order $order): array
     {
@@ -19,7 +20,15 @@ final class OrderWorkflowStatusProjection
                 'color' => 'blue', 'source' => 'canonical_projection', 'mutable' => false];
         }
 
-        $code = OrderWorkflowStatus::effectiveCode($order->workflow_status, $order->order_status->value);
+        $phase = $this->progress->resolve($order);
+        // R0-R3 bridge: existing staff annotations are retained until R4
+        // migrates them to independent auxiliary badges.
+        $legacyAnnotation = $order->workflow_status !== null
+            && ! in_array($order->workflow_status, ['sending', 'sent', 'out_of_stock'], true)
+            && $phase !== 'progress_conflict';
+        $code = $legacyAnnotation
+            ? OrderWorkflowStatus::effectiveCode($order->workflow_status, $order->order_status->value)
+            : ($phase ?? OrderWorkflowStatus::effectiveCode($order->workflow_status, $order->order_status->value));
         $definition = OrderWorkflowStatus::definition($code) ?? OrderWorkflowStatus::registry()['sending'];
 
         return [
@@ -27,7 +36,8 @@ final class OrderWorkflowStatusProjection
             'en' => $definition['en'],
             'zh' => $definition['zh'],
             'color' => $definition['color'],
-            'source' => ($order->workflow_status === null || $code !== $order->workflow_status || OrderWorkflowStatus::isCanonicalCode($code)) ? 'canonical_projection' : 'staff_workflow',
+            'source' => $code === 'progress_conflict' ? 'reconciliation_required'
+                : ($legacyAnnotation ? 'staff_workflow' : 'canonical_projection'),
             'mutable' => $definition['mutable'],
         ];
     }

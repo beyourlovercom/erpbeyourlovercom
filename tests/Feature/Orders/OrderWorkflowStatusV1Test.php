@@ -66,8 +66,10 @@ final class OrderWorkflowStatusV1Test extends TestCase
         $order = $this->order($editor);
         $payload = ['workflow_status' => 'sending', 'expected_workflow_revision' => 0];
 
-        $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', $payload)->assertOk();
-        $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', $payload)->assertOk();
+        // V3: unallocated orders cannot be moved to real Sending by the old
+        // annotation-only dropdown. It must stay in Vita's allocation queue.
+        $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', $payload)->assertStatus(409);
+        $this->actingAs($editor)->patchJson('/orders/'.$order->id.'/workflow-status', $payload)->assertStatus(409);
         self::assertSame(0, $order->fresh()->workflow_revision);
         $this->assertDatabaseCount('order_workflow_status_histories', 0);
 

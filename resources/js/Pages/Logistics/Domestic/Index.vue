@@ -10,7 +10,7 @@ type Row = {
   workflow_status_projection?:{ code:string; zh:string; en:string; color:string; source:string; mutable?:boolean }
   recipient_name:string|null; phone:string|null; country:string|null; state:string|null; city:string|null; postal_code:string|null
   carrier:string|null; service:string|null; tracking_number:string|null; shipment_status:string|null; shipped_at:string|null
-  review_status:'approved'|'pending'|'stockout'; export_blockers:string[]; items:Item[]
+  review_status:'approved'|'pending'|'stockout'|'conflict'; export_blockers:string[]; items:Item[]
 }
 type PageRows = { data:Row[]; current_page:number; last_page:number; total:number }
 type PreviewRow = { row:number; order_id:number|null; order_number:string; tracking_number:string; carrier:string; provider_status:string|null; status:string; message:string }
@@ -242,7 +242,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
                   <button class="reject-btn" type="button" :disabled="reviewBusy" @click="openReject(row)">驳回</button>
                 </div>
                 <div v-else-if="row.review_status==='approved'" class="approved">已通过 <button v-if="canReview && row.shipment_status==='pending'" type="button" @click="reopen(row)">重新审核</button></div>
-                <span v-else>{{ row.review_status==='stockout' ? '缺货' : '待审核' }}</span>
+                <span v-else :class="row.review_status==='conflict' ? 'danger' : ''">{{ row.review_status==='conflict' ? '状态待对账' : row.review_status==='stockout' ? '缺货' : '待审核' }}</span>
               </td>
               <td><a :href="row.order_url">{{ row.erp_order_id ?? '—' }}</a></td><td><OrderWorkflowStatusPill v-if="row.workflow_status_projection" :order-id="row.order_id" :projection="row.workflow_status_projection" :can-edit="false" /><span v-else>—</span></td>
               <td><span v-if="row.export_blockers.length" class="danger">{{ row.export_blockers.join(' / ') }}</span><span v-else class="ready">可导出</span></td>
@@ -259,7 +259,7 @@ const previewLabel = computed(() => props.trackingImportProvider==='generic' ? '
                   <button type="button" class="primary" :disabled="!!inlineBusy[row.order_id] || !trackingDraft(row).trim()"
                     @mousedown.prevent @click="confirmInlineShip(row)">确认发货</button>
                 </div>
-                <span v-else>{{ row.tracking_number || (row.review_status==='pending' ? '待审核' : row.review_status==='stockout' ? '缺货' : '—') }}</span>
+                <span v-else>{{ row.tracking_number || (row.review_status==='pending' ? '待审核' : row.review_status==='stockout' ? '缺货' : row.review_status==='conflict' ? '状态待对账' : '—') }}</span>
                 <small v-if="inlineErrors[row.order_id]" class="domestic-tracking-error">{{ inlineErrors[row.order_id] }}</small>
                 <small v-else-if="inlineBusy[row.order_id]" class="domestic-tracking-note">处理中…</small>
                 <small v-else-if="inlineSaved[row.order_id]" class="domestic-tracking-note">{{ inlineSaved[row.order_id] }} · 尚未发货</small>

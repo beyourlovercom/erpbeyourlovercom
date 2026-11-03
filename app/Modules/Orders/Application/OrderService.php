@@ -34,6 +34,7 @@ final class OrderService
         private readonly OrderIdentityService $orderIdentities,
         private readonly ProductExternalReferenceRepository $productExternalRefs,
         private readonly ConfirmedLossReader $confirmedLosses,
+        private readonly OrderProgressQuery $progressQueries,
     ) {}
 
     public function create(array $attributes, array $items, ?Authenticatable $actor, bool $allowMissingAddress = false): Model
@@ -321,6 +322,10 @@ final class OrderService
             ->when($filters['order_status'] ?? null, fn ($query, string $status) => $query->where('order_status', $status));
 
         $query->when($filters['workflow_status'] ?? null, function ($query, string $status): void {
+            if (in_array($status, ['pending_allocation', 'pending_review', 'allocated', 'sending', 'sent', 'shipping', 'out_of_stock', 'progress_conflict', 'completed'], true)) {
+                $this->progressQueries->applyPhase($query, $status);
+                return;
+            }
             $canonicalFallbacks = ['sending' => ['pending_shipment'], 'sent' => ['shipped'], 'finished' => ['completed', 'completed_delivered'], 'cancel' => ['cancelled']][$status] ?? [];
             $query->where(function ($nested) use ($status, $canonicalFallbacks): void {
                 $nested->where('workflow_status', $status);
@@ -342,8 +347,14 @@ final class OrderService
         match ($view) {
             '', 'all' => null,
             // The split source is not an executable pending-shipment row.
-            'pending' => $query->where('order_status', OrderStatus::PendingShipment->value)
-                ->where(function (Builder $active): void {
+            'pending' => $query->where(function (Builder $progress): void {
+                    $progress->where(function (Builder $customer): void {
+                        $customer->where('order_kind', '!=', 'kol_fulfillment');
+                        $this->progressQueries->readyForShipment($customer);
+                    })->orWhere(function (Builder $kol): void {
+                        $kol->where('order_kind', 'kol_fulfillment')->where('order_status', 'pending_shipment');
+                    });
+                })->where(function (Builder $active): void {
                     $active->whereDoesntHave('originalFulfillmentChildren')
                         ->orWhereDoesntHave('fulfillmentAllocation', fn (Builder $allocation) => $allocation->where('status', 'submitted'));
                 }),
