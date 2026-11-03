@@ -624,6 +624,7 @@ final class LogisticsController
             'id' => $order->id,
             'external_order_number' => $order->external_order_number,
             'order_url' => $this->orderUrl($order),
+            'domestic_reject_reason' => $order->domestic_reject_reason,
             'erp_order_id' => $order->erp_order_id,
             'internal_order_number' => $order->internal_order_number,
             'order_kind' => $order->order_kind?->value,

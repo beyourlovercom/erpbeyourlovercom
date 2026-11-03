@@ -525,6 +525,8 @@ final class OrderController
             'workflow_revision' => (int) ($order->workflow_revision ?? 0),
             'workflow_status_projection' => $workflowProjection,
             'order_note' => $order->order_note,
+            'domestic_reject_reason' => $order->domestic_reject_reason,
+            'domestic_rejected_at' => $order->domestic_rejected_at?->toIso8601String(),
             'currency' => $order->currency,
             'owner' => $order->owner ? ['id' => $order->owner->id, 'name' => $order->owner->name] : null,
             'owner_label' => $order->owner ? 'Owner('.$order->owner->name.')' : null,
@@ -647,7 +649,9 @@ final class OrderController
         if ($code === 'FACTORY') {
             return [
                 'review_required' => true,
-                'review_approved' => $segment->operationalMarkers()->where('marker', 'domestic_reviewed')->exists(),
+                'review_approved' => $segment->operationalMarkers()->where('marker', 'domestic_reviewed')->exists()
+                    && ! $segment->operationalMarkers()->where('marker', 'domestic_stockout')->exists()
+                    && $segment->workflow_status !== 'out_of_stock',
                 'review_role' => '国内',
             ];
         }

@@ -21,6 +21,7 @@ class Order extends Model
         'internal_order_number', 'erp_order_id', 'source_type', 'order_kind', 'external_order_number', 'order_date',
         'order_note', 'owner_id', 'kol_id', 'order_status', 'currency',
         'workflow_status', 'workflow_revision',
+        'domestic_reject_reason', 'domestic_rejected_at', 'domestic_rejected_by',
     ];
 
     protected function casts(): array
@@ -31,6 +32,7 @@ class Order extends Model
             'order_kind' => OrderKind::class,
             'order_status' => OrderStatus::class,
             'workflow_revision' => 'integer',
+            'domestic_rejected_at' => 'datetime',
             'deleted_at' => 'datetime',
             'archived_at' => 'datetime',
         ];

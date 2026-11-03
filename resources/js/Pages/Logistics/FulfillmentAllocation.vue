@@ -17,7 +17,7 @@ type AllocationDecision = { status:'system_recommendation'|'manual_review'; stat
 type DerivedOrderRecord = { order_id:number; erp_order_id:string|null; derived:boolean; suffix:string|null; warehouse_id:number|null; warehouse_code:string|null; warehouse_name:string|null; carrier?:string|null; service?:string|null; carrier_selection_source?:string|null; items:Array<{ sku:string|null; source_sku?:string|null; resolved_fulfillment_sku?:string|null; product_summary:string|null; quantity:number }> }
 type ExistingAllocation = { status:string; decision_source:'system_recommendation'|'manual'; selected_plan_key:string|null; decision_note:string|null; plan_snapshot:(Plan & { derived_orders?:DerivedOrderRecord[] })|null; submitted_at:string|null }
 type CarrierRoute = { carrier:string|null; carrier_label:string|null; service:string|null; automatic:boolean }
-type Order = { id:number; erp_order_id:string|null; order_url:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null }
+type Order = { id:number; erp_order_id:string|null; order_url:string|null; recipient_name:string|null; phone:string|null; country:string|null; province_state:string|null; city:string|null; address_line_1:string|null; address_line_2:string|null; postal_code:string|null; us_fulfillment_zone:Zone|null; carrier_routes:Record<string,CarrierRoute>; item_count:number; items:Item[]; allocation_decision:AllocationDecision; fulfillment_allocation:ExistingAllocation|null; domestic_reject_reason?:string|null }
 type Warehouse = { id:number; slug:string; code:string; name:string; country_code:string|null; can_auto_allocate:boolean }
 type CarrierOption = { value:string; label:string }
 type Paginated<T> = { data:T[]; current_page:number; last_page:number; per_page:number; total:number }
@@ -57,7 +57,7 @@ const selectedStockWarnings = computed(() => {
   }))
 })
 
-const processed = (order:Order) => Boolean(order.fulfillment_allocation || localSubmitted[order.id])
+const processed = (order:Order) => Boolean(order.fulfillment_allocation?.status === 'submitted' || localSubmitted[order.id])
 const hasGift = (order:Order) => order.items.some(item => item.is_gift)
 const counts = computed(() => ({
   pending: props.orders.data.filter(order => !processed(order)).length,
@@ -272,12 +272,12 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
       <div class="table-wrap"><table class="allocation-table"><thead><tr><th>#</th><th>订单号</th><th>SKU 摘要</th><th>收件信息摘要</th><th>美国区域 / 推荐仓</th><th>系统建议</th><th>状态</th><th class="sticky-action">操作</th></tr></thead><tbody>
         <tr v-for="(order,index) in filteredOrders" :key="order.id">
           <td>{{ index+1 }}</td>
-          <td><Link v-if="order.order_url" class="order-link" :href="order.order_url">{{ order.erp_order_id ?? '—' }}</Link><span v-else>{{ order.erp_order_id ?? '—' }}</span></td>
+          <td><Link v-if="order.order_url" class="order-link" :href="order.order_url">{{ order.erp_order_id ?? '—' }}</Link><span v-else>{{ order.erp_order_id ?? '—' }}</span><small v-if="order.domestic_reject_reason" class="domestic-rejection">商务驳回：{{ order.domestic_reject_reason }}</small></td>
           <td class="sku-list"><div v-for="item in order.items" :key="item.id"><strong>{{ item.sku ?? item.product_summary ?? '无 SKU' }} × {{ item.quantity }}</strong><span v-if="item.is_gift" :class="item.resolved_fulfillment_sku?'gift-done':'gift-pending'">{{ item.resolved_fulfillment_sku ? `→ ${item.resolved_fulfillment_sku}` : '待解析' }}</span></div></td>
           <td class="address-summary"><strong>{{ order.recipient_name ?? '—' }}</strong><span>{{ addressLine(order) || '—' }}</span><small v-if="order.phone">{{ order.phone }}</small></td>
           <td><template v-if="order.country==='US'"><span :class="['zone-chip',order.us_fulfillment_zone?.zone??'unknown']">{{ zoneShort(order) }}</span><div class="zone-priority">{{ zonePriorityLabel(order.us_fulfillment_zone) }}</div></template><span v-else>{{ order.country ?? '—' }}</span></td>
           <td><span v-if="order.allocation_decision.status==='system_recommendation'" class="plan-chip good">{{ order.allocation_decision.recommended_plan?.label ?? '系统推荐' }}</span><span v-else class="plan-chip warn">需要人工判断</span></td>
-          <td><span v-if="processed(order)" class="status-chip done">已分仓</span><span v-else-if="hasGift(order)" class="status-chip gift">礼品待确认</span><span v-else-if="order.allocation_decision.status==='system_recommendation'" class="status-chip recommend">待确认</span><span v-else class="status-chip manual">数据不足</span></td>
+          <td><span v-if="order.domestic_reject_reason && !processed(order)" class="status-chip manual">驳回待重分仓</span><span v-else-if="processed(order)" class="status-chip done">已分仓</span><span v-else-if="hasGift(order)" class="status-chip gift">礼品待确认</span><span v-else-if="order.allocation_decision.status==='system_recommendation'" class="status-chip recommend">待确认</span><span v-else class="status-chip manual">数据不足</span></td>
           <td class="sticky-action"><button class="primary compact" @click="openPlan(order)">{{ processed(order)?'查看记录':'查看方案' }}</button></td>
         </tr>
         <tr v-if="!filteredOrders.length"><td colspan="8" class="empty">当前分类暂无订单</td></tr>

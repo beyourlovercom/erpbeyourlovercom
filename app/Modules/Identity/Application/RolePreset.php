@@ -5,6 +5,7 @@ namespace App\Modules\Identity\Application;
 enum RolePreset: string
 {
     case Logistics = 'logistics';
+    case DomesticBusiness = 'domestic_business';
     case SalesRepresentative = 'sales_representative';
     case KolSpecialist = 'kol_specialist';
     case KolManager = 'kol_manager';
@@ -22,6 +23,7 @@ enum RolePreset: string
     {
         return match ($this) {
             self::Logistics => '物流',
+            self::DomesticBusiness => '国内商务（Kaven）',
             self::SalesRepresentative => '业务员',
             self::KolSpecialist => '网红专员',
             self::KolManager => '网红经理',
@@ -37,11 +39,12 @@ enum RolePreset: string
     {
         return match ($this) {
             self::Logistics => ['dashboard.view', 'orders.view', 'logistics.view', 'logistics.operate', 'sync.view', 'sync.operate', 'products.view', 'inventory.view'],
+            self::DomesticBusiness => ['dashboard.view', 'orders.view', 'logistics.view', 'logistics.operate', 'domestic.review', 'sync.view', 'sync.operate', 'products.view', 'inventory.view'],
             self::SalesRepresentative => ['dashboard.view', 'customers.view', 'customers.operate', 'orders.view', 'orders.create', 'orders.edit', 'products.view', 'inventory.view'],
             self::KolSpecialist => ['dashboard.view', 'kol.view', 'kol.operate', 'kol.payouts.request', 'orders.view', 'orders.create', 'orders.edit', 'products.view', 'inventory.view'],
             self::KolManager => ['dashboard.view', 'kol.view', 'kol.operate', 'kol.views.manage', 'kol.approvals.manage', 'kol.affiliates.manage', 'kol.payouts.request', 'kol.payouts.approve', 'orders.view', 'orders.create', 'orders.edit', 'products.view', 'inventory.view'],
             self::Finance => ['dashboard.view', 'orders.view', 'accounting.view', 'analysis.view', 'kol.payouts.manage', 'products.view', 'inventory.view'],
-            self::Operations => ['dashboard.view', 'customers.view', 'customers.operate', 'orders.view', 'orders.create', 'orders.edit', 'logistics.view', 'sync.view', 'analysis.view', 'inventory.view', 'procurement.view', 'products.view', 'kol.view', 'kol.operate', 'kol.views.manage', 'marketing.view', 'marketing.operate'],
+            self::Operations => ['dashboard.view', 'customers.view', 'customers.operate', 'orders.view', 'orders.create', 'orders.edit', 'logistics.view', 'domestic.review', 'sync.view', 'analysis.view', 'inventory.view', 'procurement.view', 'products.view', 'kol.view', 'kol.operate', 'kol.views.manage', 'marketing.view', 'marketing.operate'],
             self::Writer => ['dashboard.view', 'guides.view', 'guides.manage', 'products.view', 'inventory.view'],
             self::Administrator => self::allPermissionKeys(),
         };

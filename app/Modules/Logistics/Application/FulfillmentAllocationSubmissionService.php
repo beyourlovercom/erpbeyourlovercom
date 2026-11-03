@@ -228,6 +228,13 @@ final class FulfillmentAllocationSubmissionService
     private function persistAndMaterialize(Order $order, array $attributes, Authenticatable $actor): FulfillmentAllocation
     {
         $allocation = $this->persist($order, $attributes, $actor);
+        if ($order->domestic_reject_reason !== null) {
+            $order->forceFill([
+                'domestic_reject_reason' => null,
+                'domestic_rejected_by' => null,
+                'domestic_rejected_at' => null,
+            ])->save();
+        }
         $plan = is_array($allocation->plan_snapshot) ? $allocation->plan_snapshot : [];
         $resultOrders = $this->derivedOrders->materialize(
             $order->fresh(['address', 'items.product', 'shipment.warehouse', 'fulfillmentChildren.shipment.warehouse']),

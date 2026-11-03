@@ -103,7 +103,9 @@ final class ShipmentService
             $before = $this->snapshot($shipment);
             $trackingNumber = $this->canonicalTrackingNumber($attributes['tracking_number'] ?? null);
             $selectedWarehouseId = $attributes['warehouse_id'] ?? $shipment->warehouse_id;
-            $this->assertWarehouseShippingApproval($lockedOrder, $shipment, $selectedWarehouseId);
+            if (! $alreadyShipped) {
+                $this->assertWarehouseShippingApproval($lockedOrder, $shipment, $selectedWarehouseId);
+            }
             $automaticRoute = $this->automaticRoute($lockedOrder, $selectedWarehouseId);
             $explicitCarrier = array_key_exists('carrier', $attributes) && trim((string) $attributes['carrier']) !== '';
             $selectedCarrier = $explicitCarrier
@@ -581,16 +583,19 @@ final class ShipmentService
             return;
         }
 
-        // Domestic derived fulfillment is owned by the existing domestic
-        // review queue; order details must not bypass its approval marker.
+        // Preserve the Domestic Business confirmation / stockout gate from
+        // current main. Allocation and order-detail actions share this rule.
         $isFactory = strtoupper(trim((string) $requestedCode)) === 'FACTORY'
             || strtoupper(trim((string) $assignedCode)) === 'FACTORY';
-        if ($isFactory && ($order->fulfillment_parent_id !== null || $shipment->warehouse_selection_source === 'allocation')) {
+        if ($isFactory) {
             abort_unless((int) $shipment->warehouse_id === (int) $warehouseId, 409, '请先重新分仓并完成国内审核');
+            $order->loadMissing('operationalMarkers');
             abort_unless(
-                $order->operationalMarkers()->where('marker', 'domestic_reviewed')->exists(),
+                $order->operationalMarkers->contains('marker', 'domestic_reviewed')
+                    && ! $order->operationalMarkers->contains('marker', 'domestic_stockout')
+                    && $order->workflow_status !== 'out_of_stock',
                 409,
-                '中国工厂拆单尚未通过国内审核，禁止确认发货',
+                '国内订单未经商务确认有货，或已标记缺货，不允许确认发货。',
             );
         }
     }

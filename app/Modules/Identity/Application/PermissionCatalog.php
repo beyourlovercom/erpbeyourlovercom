@@ -36,6 +36,7 @@ final class PermissionCatalog
                 'permissions' => [
                     ['key' => 'logistics.view', 'label' => '查看物流'],
                     ['key' => 'logistics.operate', 'label' => '操作物流'],
+                    ['key' => 'domestic.review', 'label' => '国内商务审核（通过/缺货/驳回）'],
                 ],
             ],
             '网红' => [

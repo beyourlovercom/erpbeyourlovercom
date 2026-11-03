@@ -343,7 +343,10 @@ final class OrderService
             '', 'all' => null,
             // The split source is not an executable pending-shipment row.
             'pending' => $query->where('order_status', OrderStatus::PendingShipment->value)
-                ->whereDoesntHave('originalFulfillmentChildren'),
+                ->where(function (Builder $active): void {
+                    $active->whereDoesntHave('originalFulfillmentChildren')
+                        ->orWhereDoesntHave('fulfillmentAllocation', fn (Builder $allocation) => $allocation->where('status', 'submitted'));
+                }),
             'exception' => $this->applyMarkerView($query, 'exception'),
             'in_transit' => $this->applyMarkerView($query, 'in_transit'),
             'shipped' => $query->where('order_status', OrderStatus::Shipped->value),

@@ -19,6 +19,7 @@ const baseProps = {
   }],current_page:1,last_page:1,total:1 },
   viewCounts:{review:0,pending:1,'today-4px':0,'today-weship':0,exceptions:0,today:0,'4px':1,weship:0},
   canOperate:true,
+  canReview:true,
   trackingImportProvider:'4px' as const,
   trackingImportPreview:{
     token:'a'.repeat(64),apply_count:1,noop_count:0,blocked_count:1,
@@ -105,7 +106,47 @@ describe('Domestic logistics production workbench', () => {
     const wrapper=mount(Index,{props:{...baseProps,view:'review',rows:{...baseProps.rows,data:[{...baseProps.rows.data[0],review_status:'pending' as const}]}}})
     expect(wrapper.find('a[href="/logistics/wait-stock"]').text()).toContain('待分配')
     await wrapper.find('button.approve').trigger('click')
-    expect(routerPost).toHaveBeenCalledWith('/logistics/china/orders/1/approve', {}, {preserveScroll:true,preserveState:true})
+    expect(routerPost).toHaveBeenCalledWith('/logistics/china/orders/1/approve', {}, expect.objectContaining({preserveScroll:true,preserveState:true}))
+  })
+
+  it('renders stockout tab adjacent to review and handles stockout or recovery', async () => {
+    const unreviewed={...baseProps.rows.data[0],review_status:'pending' as const}
+    const wrapper=mount(Index,{props:{...baseProps,view:'review',
+      rows:{...baseProps.rows,data:[unreviewed]}}})
+    const nav=wrapper.findAll('nav.tabs button').map(button=>button.text())
+    expect(nav[0]).toContain('待审核')
+    expect(nav[1]).toContain('缺货单')
+    expect(nav[2]).toContain('待发货')
+    await wrapper.find('button.stockout-btn').trigger('click')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/china/orders/1/stockout', {},
+      expect.objectContaining({preserveScroll:true,preserveState:true}))
+
+    const stockout=mount(Index,{props:{...baseProps,view:'stockout',
+      rows:{...baseProps.rows,data:[{...unreviewed,review_status:'stockout' as const}]}}})
+    expect(stockout.find('button.stockout-btn').exists()).toBe(false)
+    await stockout.find('button.approve').trigger('click')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/china/orders/1/approve', {},
+      expect.objectContaining({preserveScroll:true,preserveState:true}))
+  })
+
+  it('requires a rejection reason and hides business review from logistics-only accounts', async () => {
+    const pending={...baseProps.rows.data[0],review_status:'pending' as const}
+    const wrapper=mount(Index,{props:{...baseProps,view:'review',
+      rows:{...baseProps.rows,data:[pending]}}})
+    await wrapper.find('button.reject-btn').trigger('click')
+    expect(wrapper.text()).toContain('驳回到 Vita 待分仓')
+    const confirm=wrapper.findAll('button.reject-btn').at(-1)!
+    expect(confirm.attributes('disabled')).toBeDefined()
+    await wrapper.find('textarea').setValue('收件地址错误，需要 Vita 确认')
+    await confirm.trigger('click')
+    expect(routerPost).toHaveBeenCalledWith('/logistics/china/orders/1/reject',
+      {reason:'收件地址错误，需要 Vita 确认'}, expect.objectContaining({preserveScroll:true,preserveState:true}))
+
+    const logisticsOnly=mount(Index,{props:{...baseProps,view:'review',canReview:false,
+      rows:{...baseProps.rows,data:[pending]}}})
+    expect(logisticsOnly.find('button.approve').exists()).toBe(false)
+    expect(logisticsOnly.find('button.stockout-btn').exists()).toBe(false)
+    expect(logisticsOnly.find('button.reject-btn').exists()).toBe(false)
   })
 
   it('offers scoped top-right and per-row Woo tracking sync only for shipped orders', async () => {

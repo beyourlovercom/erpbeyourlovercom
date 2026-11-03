@@ -163,7 +163,7 @@ final class FulfillmentAllocationV1Test extends TestCase
                 self::fail('A split segment bypassed warehouse review.');
             } catch (HttpException $exception) {
                 self::assertSame(409, $exception->getStatusCode());
-                self::assertStringContainsString('审核', $exception->getMessage());
+                self::assertMatchesRegularExpression('/审核|商务确认/u', $exception->getMessage());
             }
             self::assertSame('pending_shipment', $child->fresh()->order_status->value);
             self::assertSame('pending', $child->fresh()->shipment->shipment_status);

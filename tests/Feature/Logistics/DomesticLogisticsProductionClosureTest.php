@@ -305,7 +305,7 @@ final class DomesticLogisticsProductionClosureTest extends TestCase
         self::assertSame(1, $preview['blocked_count']);
         self::assertSame('apply', $preview['rows'][0]['status']);
         self::assertSame('blocked', $preview['rows'][1]['status']);
-        self::assertStringContainsString('尚未完成国内物流审核', $preview['rows'][1]['message']);
+        self::assertStringContainsString('尚未完成国内商务审核', $preview['rows'][1]['message']);
 
         $actor = User::factory()->create(['is_active' => true]);
         $result = $service->apply('4px', $preview, $preview['token'], $actor);
