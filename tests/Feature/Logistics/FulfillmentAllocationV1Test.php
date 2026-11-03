@@ -5,6 +5,7 @@ namespace Tests\Feature\Logistics;
 use App\Models\Role;
 use App\Models\User;
 use App\Modules\Logistics\Application\FulfillmentAllocationSubmissionService;
+use App\Modules\Logistics\Application\LogisticsStatusSummary;
 use App\Modules\Logistics\Application\ShipmentService;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
@@ -143,6 +144,7 @@ final class FulfillmentAllocationV1Test extends TestCase
         $freshRoot = $root->fresh(['fulfillmentAllocation']);
         self::assertSame('pending_shipment', $freshRoot->order_status->value);
         self::assertSame('allocated', app(OrderWorkflowStatusProjection::class)->for($freshRoot)['code']);
+        self::assertFalse(app(LogisticsStatusSummary::class)->pendingAllocationQuery()->whereKey($root->id)->exists());
         self::assertNotContains($root->id, app(OrderService::class)->list(['view' => 'pending'])
             ->getCollection()->pluck('id')->all());
 
