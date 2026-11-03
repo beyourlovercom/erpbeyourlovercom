@@ -201,6 +201,7 @@ final class OrderController
 
         return Inertia::render('Orders/Show', [
             'order' => $this->orderData($order),
+            'orderNavigation' => $this->adjacentOrderNavigation($request, $order),
             'wooAdminEditUrl' => $this->wooAdminLink->forOrder($order),
             'inventoryAvailability' => $inventoryAvailability,
             'allocationUi' => $allocationUi,
@@ -239,6 +240,44 @@ final class OrderController
                     'created_at' => $record->created_at?->toIso8601String(), 'reason' => $record->reason,
                 ])->all(),
         ]);
+    }
+
+    /**
+     * Navigate in the same order as the default order list: order_date DESC, id DESC.
+     * Only discover orders of the same kind within the viewer's permitted scope.
+     *
+     * @return array{previous_url:?string,next_url:?string}
+     */
+    private function adjacentOrderNavigation(Request $request, Order $order): array
+    {
+        $query = Order::query()
+            ->where('order_kind', $order->order_kind->value)
+            ->whereNull('archived_at');
+
+        if (KolOrderAccessScope::isOwnerOnly($request->user())) {
+            $query->where('owner_id', (int) $request->user()->getAuthIdentifier());
+        }
+
+        $date = $order->order_date->toDateString();
+        $id = (int) $order->id;
+
+        $previous = (clone $query)
+            ->where(fn ($query) => $query->where('order_date', '>', $date)
+                ->orWhere(fn ($sameDate) => $sameDate->where('order_date', $date)->where('id', '>', $id)))
+            ->orderBy('order_date')->orderBy('id')->value('id');
+
+        $next = (clone $query)
+            ->where(fn ($query) => $query->where('order_date', '<', $date)
+                ->orWhere(fn ($sameDate) => $sameDate->where('order_date', $date)->where('id', '<', $id)))
+            ->orderByDesc('order_date')->orderByDesc('id')->value('id');
+
+        $routeName = $order->order_kind === OrderKind::KolFulfillment
+            ? 'kol.orders.show' : 'customers.orders.show';
+
+        return [
+            'previous_url' => $previous ? route($routeName, $previous, false) : null,
+            'next_url' => $next ? route($routeName, $next, false) : null,
+        ];
     }
 
     /** @return array{id:int,display_name:string,url:string}|null */

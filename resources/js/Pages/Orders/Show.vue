@@ -126,6 +126,7 @@ type Order = {
 
 const props = withDefaults(defineProps<{
   order: Order
+  orderNavigation?: { previous_url: string | null; next_url: string | null }
   inventoryAvailability?: Record<number, Availability[]>
   packagingReferences?: Record<number, PackagingReference>
   warehouses?: Warehouse[]
@@ -171,6 +172,16 @@ const applyShipmentCarrierDefault = () => {
 }
 
 const isKol = computed(() => props.order.order_kind === 'kol_fulfillment')
+const adjacentNavigationPending = ref(false)
+const goToAdjacentOrder = (url: string | null | undefined) => {
+  if (!url || editMode.value || adjacentNavigationPending.value) return
+  adjacentNavigationPending.value = true
+  router.visit(url, {
+    preserveState: false,
+    preserveScroll: false,
+    onFinish: () => { adjacentNavigationPending.value = false },
+  })
+}
 const copyWooAdminOrderUrl = async () => {
   if (!props.wooAdminEditUrl || isKol.value) return
   let copied = false
@@ -1015,6 +1026,14 @@ onBeforeUnmount(() => {
             <p v-if="editMode" class="erp-form-subtitle">仅修改允许编辑的字段；商品变更须通过库存与分仓影响预检。</p>
           </div>
           <div class="erp-form-header-actions page-header-actions">
+            <div class="ord-adjacent-navigation" role="group" aria-label="订单快速切换">
+              <button type="button" class="erp-btn erp-btn-secondary" data-testid="order-previous"
+                :disabled="!orderNavigation?.previous_url || editMode || adjacentNavigationPending"
+                @click="goToAdjacentOrder(orderNavigation?.previous_url)">‹ 上一单</button>
+              <button type="button" class="erp-btn erp-btn-secondary" data-testid="order-next"
+                :disabled="!orderNavigation?.next_url || editMode || adjacentNavigationPending"
+                @click="goToAdjacentOrder(orderNavigation?.next_url)">下一单 ›</button>
+            </div>
             <button v-if="editMode" type="button" class="erp-btn erp-btn-secondary" @click="cancelEdit">取消编辑</button>
             <a :href="basePath" class="erp-btn erp-btn-secondary">返回列表</a>
             <a v-if="canViewProfit && !isKol" :href="`/accounting/order-costs?search=${encodeURIComponent(order.erp_order_id ?? '')}`" class="erp-btn erp-btn-secondary">查看订单利润</a>
@@ -1776,6 +1795,9 @@ onBeforeUnmount(() => {
 <style scoped>
 
 /* Order Detail UX V1 page-local navigation and density; shared shell remains intact. */
+.ord-adjacent-navigation { display: inline-flex; gap: 6px; align-items: center; }
+.ord-adjacent-navigation .erp-btn { white-space: nowrap; }
+.ord-adjacent-navigation .erp-btn:disabled { cursor: not-allowed; opacity: .45; }
 .ord-compact-v1 { padding: 20px 18px 32px; }
 /* V1.3: anchor the menu to the ACTUAL centered card edge, not shell/sidebar width.
    Both rail and content share one CSS grid cell: the rail overlays only the LEFT gutter.
