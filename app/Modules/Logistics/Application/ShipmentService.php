@@ -381,12 +381,31 @@ final class ShipmentService
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
-            if ($shipment->shipment_status === 'pending') {
-                return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync', 'financials', 'costEntries']);
+            if ($shipment->shipment_status !== 'pending') {
+                $this->snapshotAndReset($lockedOrder, $shipment, $actor, $note);
             }
             $before = $this->snapshot($shipment);
-            $this->snapshotAndReset($lockedOrder, $shipment, $actor, $note);
-            $this->record($actor, 'shipment.reopened', $shipment, $before, $this->snapshot($shipment), 'shipment_correction');
+            $shipment->fill([
+                'shipment_status' => 'pending',
+                'warehouse_id' => null,
+                'warehouse_selection_source' => null,
+                'carrier' => null,
+                'service' => null,
+                'carrier_selection_source' => null,
+                'tracking_number' => null,
+                'shipped_at' => null,
+                'logistics_note' => null,
+                'handled_by' => null,
+            ]);
+            $changed = $shipment->isDirty() || $lockedOrder->order_status?->value !== 'pending_shipment';
+            $shipment->save();
+            if ($lockedOrder->order_status?->value !== 'pending_shipment') {
+                $lockedOrder->forceFill(['order_status' => 'pending_shipment'])->save();
+            }
+            $this->manualSync->reopen($lockedOrder, $actor, $note);
+            if ($changed) {
+                $this->record($actor, 'shipment.reopened', $shipment, $before, $this->snapshot($shipment), 'shipment_correction');
+            }
             $this->aggregateStatus->reconcile($lockedOrder, $actor);
 
             return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync', 'financials', 'costEntries']);
