@@ -182,32 +182,6 @@ const goToAdjacentOrder = (url: string | null | undefined) => {
     onFinish: () => { adjacentNavigationPending.value = false },
   })
 }
-const copyWooAdminOrderUrl = async () => {
-  if (!props.wooAdminEditUrl || isKol.value) return
-  let copied = false
-  if (window.isSecureContext && navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(props.wooAdminEditUrl)
-      copied = true
-    } catch { /* browser clipboard may be blocked; use local fallback */ }
-  }
-  if (!copied) {
-    const textarea = document.createElement('textarea')
-    textarea.value = props.wooAdminEditUrl
-    textarea.setAttribute('readonly', '')
-    textarea.style.position = 'fixed'
-    textarea.style.left = '-9999px'
-    document.body.appendChild(textarea)
-    textarea.select()
-    try { copied = document.execCommand('copy') } catch { copied = false }
-    document.body.removeChild(textarea)
-  }
-  publishGlobalFeedback(copied
-    ? { state: 'SUCCESS', title: '订单地址已复制', message: '请在已登录的 WordPress 后台标签页粘贴打开', copyable: false }
-    : { state: 'ERROR', title: '订单地址复制失败', message: '可以使用旁边的网站编辑订单按钮', copyable: false })
-}
-
-
 const basePath = computed(() => isKol.value ? '/kol/orders' : '/customers/orders')
 
 const breadcrumbs = computed(() => isKol.value
@@ -1027,22 +1001,21 @@ onBeforeUnmount(() => {
           </div>
           <div class="erp-form-header-actions page-header-actions">
             <div class="ord-adjacent-navigation" role="group" aria-label="订单快速切换">
-              <button type="button" class="erp-btn erp-btn-secondary" data-testid="order-previous"
+              <button type="button" class="erp-btn erp-btn-secondary ord-nav-icon-btn" data-testid="order-previous"
                 :disabled="!orderNavigation?.previous_url || editMode || adjacentNavigationPending"
-                @click="goToAdjacentOrder(orderNavigation?.previous_url)">‹ 上一单</button>
-              <button type="button" class="erp-btn erp-btn-secondary" data-testid="order-next"
+                title="上一单" aria-label="上一单" @click="goToAdjacentOrder(orderNavigation?.previous_url)">↑</button>
+              <button type="button" class="erp-btn erp-btn-secondary ord-nav-icon-btn" data-testid="order-next"
                 :disabled="!orderNavigation?.next_url || editMode || adjacentNavigationPending"
-                @click="goToAdjacentOrder(orderNavigation?.next_url)">下一单 ›</button>
+                title="下一单" aria-label="下一单" @click="goToAdjacentOrder(orderNavigation?.next_url)">↓</button>
             </div>
             <button v-if="editMode" type="button" class="erp-btn erp-btn-secondary" @click="cancelEdit">取消编辑</button>
-            <a :href="basePath" class="erp-btn erp-btn-secondary">返回列表</a>
-            <a v-if="canViewProfit && !isKol" :href="`/accounting/order-costs?search=${encodeURIComponent(order.erp_order_id ?? '')}`" class="erp-btn erp-btn-secondary">查看订单利润</a>
+            <a :href="basePath" class="erp-btn erp-btn-secondary" data-testid="order-list-link" title="返回订单列表">列表</a>
+            <a v-if="canViewProfit && !isKol" :href="`/accounting/order-costs/${order.id}`" class="erp-btn erp-btn-secondary" data-testid="order-profit-link" title="查看订单成本利润公式">财务</a>
             <a v-if="isKol && kolProfile" :href="kolProfile.url" class="erp-btn erp-btn-secondary" data-testid="kol-profile-link">查看关联网红 ↗</a>
-            <a v-if="wooAdminEditUrl && !isKol" :href="wooAdminEditUrl" target="_blank" rel="noopener noreferrer" class="erp-btn erp-btn-secondary" data-testid="woo-admin-order-link">网站编辑订单 ↗</a>
-            <button v-if="wooAdminEditUrl && !isKol" type="button" class="erp-btn erp-btn-secondary" data-testid="woo-admin-order-copy" @click="copyWooAdminOrderUrl">复制地址</button>
+            <a v-if="wooAdminEditUrl && !isKol" :href="wooAdminEditUrl" target="_blank" rel="noopener noreferrer" class="erp-btn erp-btn-secondary" data-testid="woo-admin-order-link">网站 →</a>
             <a v-if="canCreateProcurement && !order.procurement_order" :href="`/purchase/orders/from-order/${order.id}/create`" class="erp-btn erp-btn-primary">创建采购订单</a>
             <a v-if="order.procurement_order" :href="`/purchase/orders/${order.procurement_order.id}`" class="erp-btn erp-btn-secondary">查看采购订单 · {{ order.procurement_order.procurement_number }}</a>
-            <button v-if="!editMode && canEditOrder" type="button" class="erp-btn erp-btn-primary" @click="enterEditMode">编辑订单</button>
+            <button v-if="!editMode && canEditOrder" type="button" class="erp-btn erp-btn-primary" data-testid="order-edit" aria-label="编辑订单" @click="enterEditMode">✍️编辑</button>
             <button v-else-if="editMode && canEditOrder" type="button" class="erp-btn erp-btn-primary" :disabled="form.processing" @click="submit">保存订单</button>
             <button v-if="editMode && canTrashOrder" type="button" class="erp-btn erp-btn-secondary text-red-700" data-testid="move-to-trash" @click="trashConfirmOpen = true">移至回收站</button>
           </div>
@@ -1795,9 +1768,20 @@ onBeforeUnmount(() => {
 <style scoped>
 
 /* Order Detail UX V1 page-local navigation and density; shared shell remains intact. */
-.ord-adjacent-navigation { display: inline-flex; gap: 6px; align-items: center; }
-.ord-adjacent-navigation .erp-btn { white-space: nowrap; }
-.ord-adjacent-navigation .erp-btn:disabled { cursor: not-allowed; opacity: .45; }
+/* Compact, page-scoped toolbar. Preserve existing permissions and behavior. */
+.ord-compact-v1 .erp-form-header-actions { gap: 6px; }
+.ord-compact-v1 .erp-form-header-actions .erp-btn {
+  height: 34px; min-width: 0; padding: 0 10px; border-radius: 8px;
+  font-size: 12px; font-weight: 600; line-height: 1.2; flex: 0 0 auto;
+}
+.ord-compact-v1 .ord-adjacent-navigation { display: inline-flex; gap: 5px; align-items: center; flex: 0 0 auto; }
+.ord-compact-v1 .erp-form-header-actions .ord-adjacent-navigation .ord-nav-icon-btn {
+  width: 34px; min-width: 34px; padding: 0; font-size: 20px; font-weight: 700;
+}
+.ord-compact-v1 .ord-nav-icon-btn:disabled { cursor: not-allowed; opacity: .45; }
+.ord-compact-v1 .erp-form-header-actions .erp-btn:focus-visible {
+  outline: 2px solid #277d78; outline-offset: 2px;
+}
 .ord-compact-v1 { padding: 20px 18px 32px; }
 /* V1.3: anchor the menu to the ACTUAL centered card edge, not shell/sidebar width.
    Both rail and content share one CSS grid cell: the rail overlays only the LEFT gutter.

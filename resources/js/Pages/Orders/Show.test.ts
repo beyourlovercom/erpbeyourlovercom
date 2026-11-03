@@ -134,7 +134,7 @@ describe('Orders/Show V2', () => {
   it('reveals trash only inside editable details and requires confirmation', async () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true, canTrashOrder: true } })
     expect(wrapper.find('[data-testid="move-to-trash"]').exists()).toBe(false)
-    const edit = wrapper.findAll('.page-header-actions button').find(btn => btn.text().includes('编辑订单'))
+    const edit = wrapper.findAll('.page-header-actions button').find(btn => btn.text().includes('✍️编辑'))
     expect(edit).toBeDefined()
     await edit!.trigger('click')
     expect(wrapper.get('[data-testid="move-to-trash"]').text()).toContain('移至回收站')
@@ -147,7 +147,7 @@ describe('Orders/Show V2', () => {
 
   it('never reveals trash to a read-only order viewer', async () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: false, canTrashOrder: false } })
-    expect(wrapper.findAll('.page-header-actions button').some(btn => btn.text().includes('编辑订单'))).toBe(false)
+    expect(wrapper.findAll('.page-header-actions button').some(btn => btn.text().includes('✍️编辑'))).toBe(false)
     expect(wrapper.findAll('.page-header-actions button').some(btn => btn.text().includes('保存订单'))).toBe(false)
     expect(wrapper.find('[data-testid="move-to-trash"]').exists()).toBe(false)
   })
@@ -417,7 +417,7 @@ describe('Orders/Show V2', () => {
   it('Edit Mode exposes the canonical order currency selector', async () => {
     const eurOrder = { ...baseOrder, currency: 'EUR' }
     const wrapper = mount(Show, { props: { order: eurOrder, audit, canEditOrder: true } })
-    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '✍️编辑')
     await editBtn!.trigger('click')
     const selects = wrapper.findAll('select')
     expect(selects.some(select => (select.element as HTMLSelectElement).value === 'EUR')).toBe(true)
@@ -429,9 +429,9 @@ describe('Orders/Show V2', () => {
     expect(wrapper.find('button[type="submit"]').exists()).toBe(false)
   })
 
-  it('defaults to View Mode: 编辑订单 button is visible', () => {
+  it('defaults to View Mode: ✍️编辑 button is visible', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
-    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '✍️编辑')
     expect(editBtn).toBeTruthy()
   })
 
@@ -456,9 +456,9 @@ describe('Orders/Show V2', () => {
   })
 
   // Edit Mode tests
-  it('clicking 编辑订单 enters Edit Mode: shows 保存订单 and 取消编辑', async () => {
+  it('clicking ✍️编辑 enters Edit Mode: shows 保存订单 and 取消编辑', async () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
-    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '✍️编辑')
     await editBtn!.trigger('click')
     expect(wrapper.text()).toContain('保存订单')
     expect(wrapper.text()).toContain('取消编辑')
@@ -466,34 +466,34 @@ describe('Orders/Show V2', () => {
 
   it('Edit Mode shows date input', async () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
-    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '✍️编辑')
     await editBtn!.trigger('click')
     expect(wrapper.find('input[type="date"]').exists()).toBe(true)
   })
 
   it('Edit Mode shows textarea for note', async () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
-    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '✍️编辑')
     await editBtn!.trigger('click')
     expect(wrapper.find('textarea').exists()).toBe(true)
   })
 
   it('Edit Mode shows SKU combobox for items', async () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
-    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '✍️编辑')
     await editBtn!.trigger('click')
     expect(wrapper.find('.sku-combobox-stub').exists()).toBe(true)
   })
 
   it('clicking 取消编辑 returns to View Mode', async () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
-    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '✍️编辑')
     await editBtn!.trigger('click')
     const cancelBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '取消编辑')
     await cancelBtn!.trigger('click')
     expect(wrapper.find('input[type="date"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('保存订单')
-    const editBtnAgain = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    const editBtnAgain = wrapper.findAll('button[type="button"]').find(b => b.text() === '✍️编辑')
     expect(editBtnAgain).toBeTruthy()
   })
 
@@ -518,7 +518,7 @@ describe('Orders/Show V2', () => {
 
   it('identity fields remain immutable in Edit Mode (disabled inputs)', async () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
-    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '✍️编辑')
     await editBtn!.trigger('click')
     const disabledInputs = wrapper.findAll('input[disabled]')
     const values = disabledInputs.map(i => (i.element as HTMLInputElement).value)
@@ -542,7 +542,7 @@ describe('Orders/Show V2', () => {
 
   it('uses canonical erp-form-label only when entering the editable form', async () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
-    await wrapper.findAll('.page-header-actions button').find(b => b.text() === '编辑订单')!.trigger('click')
+    await wrapper.findAll('.page-header-actions button').find(b => b.text() === '✍️编辑')!.trigger('click')
     expect(wrapper.find('.erp-form-label').exists()).toBe(true)
     expect(wrapper.find('.mvp-label').exists()).toBe(false)
   })
@@ -568,7 +568,7 @@ describe('Orders/Show V2', () => {
 
   it('Edit Mode shows erp-input controls — no mvp-input class', async () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
-    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '编辑订单')
+    const editBtn = wrapper.findAll('button[type="button"]').find(b => b.text() === '✍️编辑')
     await editBtn!.trigger('click')
     expect(wrapper.find('.mvp-input').exists()).toBe(false)
     expect(wrapper.findAll('.erp-input').length).toBeGreaterThan(0)
@@ -576,7 +576,7 @@ describe('Orders/Show V2', () => {
 
   it('switches between condensed summary and editable order fields with cancel restoring original values', async () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
-    const edit = wrapper.findAll('.page-header-actions button').find(b => b.text() === '编辑订单')
+    const edit = wrapper.findAll('.page-header-actions button').find(b => b.text() === '✍️编辑')
     expect(wrapper.find('.ord-summary-table').exists()).toBe(true)
     await edit!.trigger('click')
     expect(wrapper.get('.erp-form-page').classes()).toContain('ord-edit-mode')
@@ -588,7 +588,7 @@ describe('Orders/Show V2', () => {
     expect(wrapper.find('.ord-summary-table').exists()).toBe(true)
     expect(wrapper.get('[aria-label="收件地址摘要"]').text()).toContain('Test Recipient')
     expect(wrapper.get('[aria-label="收件地址摘要"]').text()).not.toContain('Edited, not saved')
-    await wrapper.findAll('.page-header-actions button').find(b => b.text() === '编辑订单')!.trigger('click')
+    await wrapper.findAll('.page-header-actions button').find(b => b.text() === '✍️编辑')!.trigger('click')
     expect((wrapper.get('#order-section-address input').element as HTMLInputElement).value).toBe('Test Recipient')
     wrapper.unmount()
   })
@@ -764,7 +764,7 @@ describe('Orders/Show V2', () => {
   it('preserves an unsaved order note while opening and closing a shipment editor', async () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true, canOperateLogistics: true } })
     await flushPromises()
-    await wrapper.findAll('.page-header-actions button').find(button => button.text() === '编辑订单')!.trigger('click')
+    await wrapper.findAll('.page-header-actions button').find(button => button.text() === '✍️编辑')!.trigger('click')
     await wrapper.get('#order-section-notes textarea').setValue('本地未保存草稿 - U4 发货弹窗')
     const before = vi.mocked(router.post).mock.calls.length
     const open = wrapper.findAll('[data-testid="fulfillment-actions"] button').find(button => button.text().includes('履约发货'))
@@ -795,7 +795,7 @@ describe('Orders/Show V2', () => {
       ],
     } })
     await flushPromises()
-    await wrapper.findAll('.page-header-actions button').find(button => button.text() === '编辑订单')!.trigger('click')
+    await wrapper.findAll('.page-header-actions button').find(button => button.text() === '✍️编辑')!.trigger('click')
     await wrapper.get('#order-section-notes textarea').setValue('本地未保存草稿 - U4 调整分仓')
     const before = vi.mocked(router.post).mock.calls.length
     const open = wrapper.findAll('.ord-fulfillment-row-actions button').find(button => button.text() === '调整分仓')
@@ -868,7 +868,7 @@ describe('Orders/Show V2', () => {
   it('keeps unsaved edit fields mounted when a business section is collapsed and reordered', async () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
     await flushPromises()
-    await wrapper.findAll('.page-header-actions button').find(button => button.text() === '编辑订单')!.trigger('click')
+    await wrapper.findAll('.page-header-actions button').find(button => button.text() === '✍️编辑')!.trigger('click')
     const textarea = wrapper.get('#order-section-notes textarea')
     await textarea.setValue('UAT 还没有保存的内部备注')
     const postCalls = vi.mocked(router.post).mock.calls.length
@@ -902,7 +902,7 @@ describe('Orders/Show V2', () => {
       const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
       await flushPromises()
       await nextTick()
-      const edit = wrapper.findAll('.page-header-actions button').find(button => button.text() === '编辑订单')
+      const edit = wrapper.findAll('.page-header-actions button').find(button => button.text() === '✍️编辑')
       await edit!.trigger('click')
       await wrapper.get('#order-section-notes textarea').setValue('未保存草稿须保留')
       const postCalls = vi.mocked(router.post).mock.calls.length
@@ -934,34 +934,17 @@ describe('WooCommerce admin order link', () => {
     expect(link.attributes('rel')).toContain('noreferrer')
   })
 
-  it('copies the validated www address without navigating away', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
-    const originalSecureContext = Object.getOwnPropertyDescriptor(window, 'isSecureContext')
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
-    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true })
-    try {
-      const wrapper = mount(Show, { props: { order: { ...baseOrder, source_type: 'woocommerce' }, audit, wooAdminEditUrl: url } })
-      await wrapper.get('[data-testid="woo-admin-order-copy"]').trigger('click')
-      await flushPromises()
-      expect(writeText).toHaveBeenCalledWith(url)
-      expect(wrapper.get('[data-testid="woo-admin-order-link"]').attributes('href')).toBe(url)
-      wrapper.unmount()
-    } finally {
-      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard)
-      else delete (navigator as unknown as { clipboard?: Clipboard }).clipboard
-      if (originalSecureContext) Object.defineProperty(window, 'isSecureContext', originalSecureContext)
-      else delete (window as unknown as { isSecureContext?: boolean }).isSecureContext
-    }
+  it('removes copy address from the compact toolbar', () => {
+    const wrapper = mount(Show, { props: { order: baseOrder, audit, wooAdminEditUrl: url } })
+    expect(wrapper.find('[data-testid="woo-admin-order-copy"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="woo-admin-order-link"]').text()).toContain('网站')
   })
 
   it('does not display a link without a validated URL or for KOL orders', () => {
     const withoutLink = mount(Show, { props: { order: baseOrder, audit, wooAdminEditUrl: null } })
     expect(withoutLink.find('[data-testid="woo-admin-order-link"]').exists()).toBe(false)
-    expect(withoutLink.find('[data-testid="woo-admin-order-copy"]').exists()).toBe(false)
     const kol = mount(Show, { props: { order: kolOrder, audit, wooAdminEditUrl: url } })
     expect(kol.find('[data-testid="woo-admin-order-link"]').exists()).toBe(false)
-    expect(kol.find('[data-testid="woo-admin-order-copy"]').exists()).toBe(false)
   })
 })
 
@@ -1000,7 +983,7 @@ describe('Order adjacent navigation V1', () => {
     } })
     expect((wrapper.get('[data-testid="order-previous"]').element as HTMLButtonElement).disabled).toBe(true)
     expect((wrapper.get('[data-testid="order-next"]').element as HTMLButtonElement).disabled).toBe(false)
-    await wrapper.findAll('.page-header-actions button').find(btn => btn.text().includes('编辑订单'))!.trigger('click')
+    await wrapper.findAll('.page-header-actions button').find(btn => btn.text().includes('✍️编辑'))!.trigger('click')
     expect((wrapper.get('[data-testid="order-next"]').element as HTMLButtonElement).disabled).toBe(true)
     expect(router.visit).not.toHaveBeenCalled()
   })
@@ -1012,5 +995,39 @@ describe('Order adjacent navigation V1', () => {
     } })
     await wrapper.get('[data-testid="order-previous"]').trigger('click')
     expect(router.visit).toHaveBeenCalledWith('/kol/orders/703', expect.any(Object))
+  })
+})
+
+describe('Compact order toolbar V2', () => {
+  it('shows vertical arrows and the exact customer finance formula page', () => {
+    const wrapper = mount(Show, { props: {
+      order: { ...baseOrder, id: 7847 }, audit, canEditOrder: true, canViewProfit: true,
+      orderNavigation: { previous_url: '/customers/orders/7848', next_url: '/customers/orders/7846' },
+      wooAdminEditUrl: 'https://www.beyourlover.com/wp-admin/admin.php?page=wc-orders&action=edit&id=12',
+    } })
+    expect(wrapper.get('[data-testid="order-previous"]').text()).toBe('↑')
+    expect(wrapper.get('[data-testid="order-next"]').text()).toBe('↓')
+    expect(wrapper.get('[data-testid="order-previous"]').attributes('aria-label')).toBe('上一单')
+    expect(wrapper.get('[data-testid="order-next"]').attributes('aria-label')).toBe('下一单')
+    expect(wrapper.get('[data-testid="order-list-link"]').text()).toBe('列表')
+    expect(wrapper.get('[data-testid="order-profit-link"]').text()).toBe('财务')
+    expect(wrapper.get('[data-testid="order-profit-link"]').attributes('href')).toBe('/accounting/order-costs/7847')
+    expect(wrapper.get('[data-testid="woo-admin-order-link"]').text()).toContain('网站')
+    expect(wrapper.find('[data-testid="woo-admin-order-copy"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="order-edit"]').text()).toBe('✍️编辑')
+  })
+
+  it('keeps KOL navigation and editing without customer-only finance or website actions', () => {
+    const wrapper = mount(Show, { props: {
+      order: kolOrder, audit, canViewProfit: true, canEditOrder: true,
+      wooAdminEditUrl: 'https://www.beyourlover.com/wp-admin/',
+      orderNavigation: { previous_url: null, next_url: '/kol/orders/5' },
+    } })
+    expect(wrapper.get('[data-testid="order-previous"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="order-next"]').text()).toBe('↓')
+    expect(wrapper.get('[data-testid="order-list-link"]').attributes('href')).toBe('/kol/orders')
+    expect(wrapper.find('[data-testid="order-profit-link"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="woo-admin-order-link"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="order-edit"]').text()).toBe('✍️编辑')
   })
 })
