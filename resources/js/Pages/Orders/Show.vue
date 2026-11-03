@@ -51,6 +51,9 @@ type FulfillmentSegment = {
   shipment: {
     shipment_status: string
     status_label: string
+    review_required?: boolean
+    review_approved?: boolean
+    review_role?: string | null
     warehouse_id: number | null
     warehouse_name: string | null
     carrier: string | null
@@ -732,6 +735,20 @@ const localDateTimeNow = () => {
   return local.toISOString().slice(0, 16)
 }
 const shipmentEditor = ref<ShipmentEditorDraft>({ warehouse_id: null, carrier: '', service: '', tracking_number: '', shipped_at: localDateTimeNow(), logistics_note: '' })
+const shipmentEditorReviewGate = computed(() => {
+  const segment = props.order.fulfillment?.segments.find(row => row.order_id === shipmentEditorOrderId.value)
+  const saved = segment?.shipment
+  if (!saved) return ''
+  if (saved.review_required && shipmentEditor.value.warehouse_id !== saved.warehouse_id) {
+    return '发货仓库已变更，需先保存分仓并重新审核，不能直接确认发货。'
+  }
+  if (saved.review_required && !saved.review_approved) {
+    return saved.review_role === 'Dede'
+      ? '该订单尚未通过 Dede 海外仓审核，请先进入对应仓库的「待审核」列表。'
+      : '该订单尚未通过国内审核，请先进入中国工厂「待审核」列表。'
+  }
+  return ''
+})
 const openShipmentEditor = (target: {
   order_id: number
   suffix?: string | null
@@ -1686,11 +1703,12 @@ onBeforeUnmount(() => {
           <label>发货时间<input v-model="shipmentEditor.shipped_at" class="erp-input" :class="{ 'ord-field-invalid': shipmentFieldErrors.shipped_at }" :aria-invalid="Boolean(shipmentFieldErrors.shipped_at)" :disabled="!canOperateLogistics" type="datetime-local" @change="clearShipmentFieldError('shipped_at')"><small v-if="shipmentFieldErrors.shipped_at" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.shipped_at }}</small></label>
           <label class="ord-shipment-note">物流备注<textarea v-model="shipmentEditor.logistics_note" rows="3" class="erp-textarea" :class="{ 'ord-field-invalid': shipmentFieldErrors.logistics_note }" :aria-invalid="Boolean(shipmentFieldErrors.logistics_note)" :disabled="!canOperateLogistics" placeholder="可填写包裹、异常或操作备注" @input="clearShipmentFieldError('logistics_note')"></textarea><small v-if="shipmentFieldErrors.logistics_note" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.logistics_note }}</small></label>
         </div>
+        <p v-if="shipmentEditorReviewGate" class="ord-shipment-error" role="alert">{{ shipmentEditorReviewGate }}</p>
         <p v-if="shipmentEditorError" class="ord-shipment-error">{{ shipmentEditorError }}</p>
         <p v-if="!canOperateLogistics" class="ord-shipment-readonly">当前账号为物流执行只读模式；物流员可以在这里直接填写物流并确认发货。</p>
         <footer class="ord-replacement-actions">
           <button v-if="canOperateLogistics" type="button" class="erp-btn erp-btn-secondary" :disabled="shipmentEditorSaving" @click="saveShipmentDraft">保存草稿</button>
-          <button v-if="canOperateLogistics" type="button" class="erp-btn erp-btn-primary" :disabled="shipmentEditorSaving" @click="confirmShipment">{{ shipmentEditorSaving ? '处理中…' : '确认发货' }}</button>
+          <button v-if="canOperateLogistics" type="button" class="erp-btn erp-btn-primary" :disabled="shipmentEditorSaving || Boolean(shipmentEditorReviewGate)" @click="confirmShipment">{{ shipmentEditorSaving ? '处理中…' : '确认发货' }}</button>
           <button v-else type="button" class="erp-btn erp-btn-secondary" @click="closeShipmentEditor">关闭</button>
         </footer>
       </section>
