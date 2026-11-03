@@ -145,21 +145,13 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
     <Head :title="`${e.order.erp_order_id ?? '订单'} · 成本与利润`" />
     <AuthenticatedLayout title="订单利润" :breadcrumbs="['BYL ERP', '订单', '财务']">
         <section class="profit-page" :class="{ 'estimated-page': isEstimatedProfit, 'overdue-page': show45dBanner }">
-            <div v-if="isEstimatedProfit" class="status-hero" :class="show45dBanner ? 'status-hero-overdue' : 'status-hero-estimated'">
-                <div class="status-mark">{{ show45dBanner ? '!' : '≈' }}</div>
-                <div class="status-copy">
-                    <strong>{{ show45dBanner ? '预估利润 · 实际成本已逾期' : '预估利润 · 非最终数据' }}</strong>
-                    <span v-if="show45dBanner">订单已超过 45 天，当前利润仍包含估算成本，必须等待真实账单替换后才能成为最终利润。</span>
-                    <span v-else>当前利润包含 {{ s.estimated_cost_count ?? 0 }} 项估算成本，仅用于经营判断；真实账单到账后会自动替换。</span>
-                </div>
-                <span class="status-chip">ESTIMATED</span>
-            </div>
-
             <header class="order-header" :class="{ 'order-header-estimated': isEstimatedProfit }">
                 <div>
                     <p class="crumb"><Link href="/accounting/order-costs">订单</Link> / 订单详情 / 财务</p>
                     <div class="title-row">
-                        <h1>订单 #{{ e.order.erp_order_id ?? e.order.id }}</h1>
+                        <h1>订单 #<Link class="order-detail-link" data-testid="finance-back-to-order"
+                            :href="`/customers/orders/${e.order.id}`" title="返回客户订单详情页"
+                            aria-label="打开对应的客户订单详情">{{ e.order.erp_order_id ?? e.order.id }}<span aria-hidden="true">↗</span></Link></h1>
                         <span class="badge">客户订单</span>
                         <span class="badge blue">{{ e.order.shipment_count }} 个发货单</span>
                     </div>
@@ -174,6 +166,35 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
                     </div>
                 </div>
             </header>
+
+            <section class="final-panel">
+                <div>
+                    <h2>订单利润计算公式</h2>
+                    <p>最终计算公式直接来自系统已确认的成本证据与核算预览；证据不完整时不会确认最终利润。</p>
+                    <div class="formula-line">
+                        <template v-for="(line, index) in e.formula" :key="line.cost_type">
+                            <span class="operator">{{ formulaSymbol(index) }}</span>
+                            <article :class="{ incomplete: line.amount === null, 'estimated-cost-card': line.state === 'estimated' }"><strong>{{ money(line.amount, line.currency) }}</strong><small>{{ costLabel(line.cost_type) }}</small><em v-if="line.state === 'estimated'" class="formula-estimated-tag">估算</em></article>
+                        </template>
+                        <span class="operator">=</span>
+                        <article class="total"><strong>{{ money(isEstimatedProfit ? e.summary.canonical_estimated_total_cost : e.summary.canonical_known_cost, e.order.currency) }}</strong><small>{{ isEstimatedProfit ? '预估总成本' : '最终确认成本' }}</small></article>
+                    </div>
+                </div>
+                <aside class="profit-box" :class="{ pending: !e.summary.canonical_final_ready, estimated: isEstimatedProfit }">
+                    <span v-if="e.summary.canonical_final_ready">最终利润</span>
+                    <span v-else-if="isEstimatedProfit">预估利润 <em class="est-tag">估算</em></span>
+                    <span v-else>利润计算</span>
+                    <strong v-if="e.summary.canonical_final_ready">{{ money(e.summary.canonical_contribution_profit, e.order.currency) }}</strong>
+                    <strong v-else-if="isEstimatedProfit" class="estimated-profit">{{ money(e.summary.canonical_estimated_profit, e.order.currency) }}</strong>
+                    <strong v-else>—</strong>
+                    <p v-if="e.summary.canonical_final_ready">{{ money(e.summary.net_revenue, e.order.currency) }} − {{ money(e.summary.canonical_known_cost, e.order.currency) }}</p>
+                    <p v-else-if="isEstimatedProfit">净收入 − 预估总成本（{{ s.confirmed_cost_count ?? 0 }} 项已确认 + {{ s.estimated_cost_count ?? 0 }} 项估算）</p>
+                    <b v-if="e.summary.canonical_final_ready">利润率 = {{ pct(e.summary.canonical_margin) }}</b>
+                    <b v-else-if="isEstimatedProfit">预估利润率 = {{ pct(e.summary.canonical_estimated_margin) }}</b>
+                    <small v-if="isEstimatedProfit">预估置信度：{{ s.projection_confidence ?? 'low' }}。真实成本到账后逐项替换，10/10 确认后自动升级为最终利润。</small>
+                    <small v-else-if="!e.summary.canonical_final_ready">必要成本证据不完整，最终利润暂不确认。</small>
+                </aside>
+            </section>
 
             <nav class="tabs"><span>概览</span><span>商品（{{ e.order.product_count }}）</span><span>发货单（{{ e.order.shipment_count }}）</span><b>成本与利润</b><span>时间线</span><span>证据</span></nav>
 
@@ -291,47 +312,24 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
                 </table></div>
             </section>
 
-            <section class="final-panel">
-                <div>
-                    <h2>5. 最终计算</h2>
-                    <p>最终计算公式直接来自系统已确认的成本证据与核算预览；证据不完整时不会确认最终利润。</p>
-                    <div class="formula-line">
-                        <template v-for="(line, index) in e.formula" :key="line.cost_type">
-                            <span class="operator">{{ formulaSymbol(index) }}</span>
-                            <article :class="{ incomplete: line.amount === null, 'estimated-cost-card': line.state === 'estimated' }"><strong>{{ money(line.amount, line.currency) }}</strong><small>{{ costLabel(line.cost_type) }}</small><em v-if="line.state === 'estimated'" class="formula-estimated-tag">估算</em></article>
-                        </template>
-                        <span class="operator">=</span>
-                        <article class="total"><strong>{{ money(isEstimatedProfit ? e.summary.canonical_estimated_total_cost : e.summary.canonical_known_cost, e.order.currency) }}</strong><small>{{ isEstimatedProfit ? '预估总成本' : '最终确认成本' }}</small></article>
-                    </div>
-                </div>
-                <aside class="profit-box" :class="{ pending: !e.summary.canonical_final_ready, estimated: isEstimatedProfit }">
-                    <span v-if="e.summary.canonical_final_ready">最终利润</span>
-                    <span v-else-if="isEstimatedProfit">预估利润 <em class="est-tag">估算</em></span>
-                    <span v-else>利润计算</span>
-                    <strong v-if="e.summary.canonical_final_ready">{{ money(e.summary.canonical_contribution_profit, e.order.currency) }}</strong>
-                    <strong v-else-if="isEstimatedProfit" class="estimated-profit">{{ money(e.summary.canonical_estimated_profit, e.order.currency) }}</strong>
-                    <strong v-else>—</strong>
-                    <p v-if="e.summary.canonical_final_ready">{{ money(e.summary.net_revenue, e.order.currency) }} − {{ money(e.summary.canonical_known_cost, e.order.currency) }}</p>
-                    <p v-else-if="isEstimatedProfit">净收入 − 预估总成本（{{ s.confirmed_cost_count ?? 0 }} 项已确认 + {{ s.estimated_cost_count ?? 0 }} 项估算）</p>
-                    <b v-if="e.summary.canonical_final_ready">利润率 = {{ pct(e.summary.canonical_margin) }}</b>
-                    <b v-else-if="isEstimatedProfit">预估利润率 = {{ pct(e.summary.canonical_estimated_margin) }}</b>
-                    <small v-if="isEstimatedProfit">预估置信度：{{ s.projection_confidence ?? 'low' }}。真实成本到账后逐项替换，10/10 确认后自动升级为最终利润。</small>
-                    <small v-else-if="!e.summary.canonical_final_ready">必要成本证据不完整，最终利润暂不确认。</small>
-                </aside>
-            </section>
         </section>
         <FinanceFactsDrawer :order="drawerOpen ? financeFacts : null" :fields="financeFields" @close="drawerOpen = false" />
     </AuthenticatedLayout>
 </template>
 
 <style scoped>
-.profit-page { display:grid; gap:14px; color:#18282d; }
+.profit-page { display:grid; grid-template-columns:minmax(0,1fr); min-width:0; width:100%; gap:14px; color:#18282d; }
+.profit-page > *, .final-panel > div, .final-panel > aside { min-width:0; }
 .order-header { display:flex; justify-content:space-between; gap:24px; padding:6px 2px 2px; }
 .order-header-actions { display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
 .edit-facts-link { display:inline-flex; padding:9px 14px; border:1px solid #c9d4d7; border-radius:6px; background:#f7f9f9; color:#24383e; font-size:13px; font-weight:700; text-decoration:none; cursor:pointer; }
 .edit-facts-link:hover { background:#eaf1f3; border-color:#81969d; }
 .crumb { margin:0 0 8px; color:#78878c; font-size:12px; }.crumb a{color:#536a72;text-decoration:none}
 .title-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }.title-row h1{margin:0;font-size:30px;letter-spacing:-.025em}
+.order-detail-link { display:inline-flex; align-items:baseline; gap:5px; color:#206c68; text-decoration:none; border-bottom:1px solid transparent; }
+.order-detail-link:hover { color:#13564f; border-bottom-color:currentColor; }
+.order-detail-link:focus-visible { outline:2px solid #277d78; outline-offset:3px; border-radius:3px; }
+.order-detail-link span { font-size:.56em; font-weight:600; opacity:.75; }
 .badge { padding:5px 9px; border-radius:6px; background:#e6f6ec; color:#1f7653; font-size:12px; font-weight:700; }.badge.blue{background:#e8f2ff;color:#2563b8}
 .meta,.submeta { margin:7px 0 0; color:#718087; font-size:12px; }.submeta{font-style:italic}
 .finance-status { min-width:280px; align-self:center; padding:14px 16px; border:1px solid #cfe7d8; border-radius:8px; background:#effaf3; display:grid; gap:3px; }
@@ -352,12 +350,6 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
 .kpi-item small{font-size:10px;color:#8a9aa0}
 
 /* P8.2 page-level estimated state */
-.status-hero{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:14px;border-radius:10px;padding:14px 16px;border:1px solid;box-shadow:0 8px 22px rgba(112,83,0,.08)}
-.status-hero-estimated{background:#fff3c7;border-color:#d9ad00;color:#6f4e00}
-.status-hero-overdue{background:#fff0ef;border-color:#e38a85;color:#8d211c;box-shadow:0 8px 22px rgba(142,33,28,.08)}
-.status-mark{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font-size:24px;font-weight:900;background:rgba(255,255,255,.72);border:1px solid currentColor}
-.status-copy{display:grid;gap:3px}.status-copy strong{font-size:17px;letter-spacing:-.01em}.status-copy span{font-size:12px;line-height:1.55;opacity:.9}
-.status-chip{font-size:11px;font-weight:800;letter-spacing:.08em;padding:7px 10px;border-radius:999px;background:#1f2937;color:#fff}
 .order-header-estimated{border-left:4px solid #d9ad00;padding-left:14px}
 .finance-status-estimated{background:#fff3c7!important;border-color:#d9ad00!important;box-shadow:inset 4px 0 0 #d9ad00}.finance-status-estimated strong{color:#7a5200!important}.finance-status-estimated span{color:#795f1b!important}
 .kpi-estimated{background:#fff3c7;border:1px solid #dfb600;border-radius:8px;padding:8px 10px}.kpi-estimated .kpi-label,.kpi-estimated small{color:#80661b}.kpi-estimated .kpi-val{color:#7a5200}
@@ -372,6 +364,6 @@ const settlementStatusLabel = (val: string) => ({ confirmed: '已确认', incomp
 .overdue-amber{background:#fff8e6;border:1px solid #f0c040;color:#7d5300}
 .overdue-red{background:#fff0ef;border:1px solid #f5a5a2;color:#9a1f1a}
 
-@media(max-width:1180px){.summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.summary-grid em{display:none}.formula-card{grid-column:span 2}.final-panel{grid-template-columns:1fr}.finance-status{min-width:220px}}
-@media(max-width:760px){.status-hero{grid-template-columns:36px 1fr}.status-chip{grid-column:2;width:max-content}.order-header{display:grid}.finance-status{min-width:0}.tabs{overflow:auto;gap:18px}.summary-grid{grid-template-columns:1fr 1fr}.formula-card{grid-column:1/-1}.final-panel{padding:10px}.title-row h1{font-size:24px}.kpi-strip{gap:8px}.kpi-item{min-width:120px}}
+@media(max-width:1180px){.summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.summary-grid em{display:none}.formula-card{grid-column:span 2}.final-panel{grid-template-columns:minmax(0,1fr)}.finance-status{min-width:220px}}
+@media(max-width:760px){.order-header{display:grid}.finance-status{min-width:0}.tabs{overflow:auto;gap:18px}.summary-grid{grid-template-columns:1fr 1fr}.formula-card{grid-column:1/-1}.final-panel{padding:10px}.title-row h1{font-size:24px}.kpi-strip{gap:8px}.kpi-item{min-width:120px}}
 </style>

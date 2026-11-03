@@ -97,3 +97,40 @@ describe('Cost formula in-place finance facts drawer V1.1', () => {
         expect(drawer.textContent).toContain('已保存')
     })
 })
+
+describe('Finance detail formula-first navigation UX', () => {
+    it('puts the complete cost formula above tabs and returns by database ID to customer detail', () => {
+        const wrapper = mount(Show, { props: { explanation, financeFacts, financeFields: fields } })
+        const back = wrapper.get('[data-testid="finance-back-to-order"]')
+        expect(back.attributes('href')).toBe('/customers/orders/7396')
+        expect(back.text()).toContain('UAT-7396-TEST')
+        expect(wrapper.find('.status-hero').exists()).toBe(false)
+        const html = wrapper.html()
+        expect(html.indexOf('class="final-panel"')).toBeGreaterThan(-1)
+        expect(html.indexOf('class="final-panel"')).toBeLessThan(html.indexOf('class="tabs"'))
+        expect(html.indexOf('class="final-panel"')).toBeLessThan(html.indexOf('class="cost-section"'))
+        expect(wrapper.findAll('.final-panel')).toHaveLength(1)
+        expect(wrapper.get('.final-panel h2').text()).toBe('订单利润计算公式')
+        wrapper.unmount()
+    })
+
+    it('retains estimated-profit details and genuine overdue warning without the oversized hero', () => {
+        const estimated = {
+            ...explanation,
+            summary: {
+                ...explanation.summary,
+                canonical_estimated_ready: true,
+                estimated_cost_count: 2,
+                unresolved_estimate_count: 2,
+                age_days: 50,
+                reconciliation_due: true,
+            },
+        }
+        const wrapper = mount(Show, { props: { explanation: estimated, financeFacts, financeFields: fields } })
+        expect(wrapper.find('.status-hero').exists()).toBe(false)
+        expect(wrapper.get('.overdue-red').text()).toContain('超过 45 天')
+        expect(wrapper.get('.final-panel .profit-box').text()).toContain('预估利润')
+        expect(wrapper.get('[data-testid="finance-back-to-order"]').attributes('href')).toBe('/customers/orders/7396')
+        wrapper.unmount()
+    })
+})
