@@ -204,7 +204,7 @@ describe('Orders/Show V2', () => {
     }
     const wrapper = mount(Show, { props: { order: shippedOrder, audit, canOperateLogistics: true, canCreateReplacement: true } })
     const actions = wrapper.get('[data-testid="fulfillment-actions"]')
-    expect(actions.text()).toContain('重开发货')
+    expect(actions.text()).toContain('重新发货')
     expect(actions.text()).toContain('新增补发')
     expect(wrapper.get('.page-header-actions').text()).not.toContain('履约发货')
     expect(wrapper.find('.ord-fulfillment-action').exists()).toBe(false)
@@ -214,11 +214,11 @@ describe('Orders/Show V2', () => {
     const wrapper = mount(Show, { props: { order: splitOrder, audit, canOperateLogistics: true, canCreateReplacement: true } })
     const actions = wrapper.get('[data-testid="fulfillment-actions"]')
     expect(actions.text()).toContain('B · 履约发货')
-    expect(actions.text()).toContain('A · 重开发货')
+    expect(actions.text()).toContain('A · 重新发货')
     expect(actions.text()).toContain('新增补发')
     const rowActions = wrapper.findAll('.ord-fulfillment-row-actions').map(row => row.text()).join(' ')
     expect(rowActions).not.toContain('履约发货')
-    expect(rowActions).not.toContain('重开发货')
+    expect(rowActions).not.toContain('重新发货')
   })
 
   it('auto-fills USPS Priority when the selected fulfillment warehouse is in the US', async () => {
@@ -267,7 +267,7 @@ describe('Orders/Show V2', () => {
     } })
     const shipButtons = wrapper.find('[data-testid="fulfillment-actions"]').findAll('button').filter(btn => btn.text().includes('履约发货'))
     expect(shipButtons).toHaveLength(1)
-    expect(wrapper.findAll('button').some(btn => btn.text().includes('重开发货'))).toBe(true)
+    expect(wrapper.findAll('button').some(btn => btn.text().includes('重新发货'))).toBe(true)
     await shipButtons[0].trigger('click')
     expect(wrapper.text()).toContain('B · 007-0908-c1B')
     const carrier = wrapper.find('.ord-shipment-form select:nth-of-type(2)')
@@ -615,13 +615,13 @@ describe('Orders/Show V2', () => {
       shipment: { shipment_status: 'shipped', carrier: 'DHL', tracking_number: 'TRACK123', shipped_at: null },
     }
     const wrapper = mount(Show, { props: { order: orderWithTracking, audit, canOperateLogistics: true } })
-    const reopenBtn = wrapper.find('[data-testid="fulfillment-actions"]').findAll('button').find(b => b.text().includes('重开发货'))
+    const reopenBtn = wrapper.find('[data-testid="fulfillment-actions"]').findAll('button').find(b => b.text().includes('重新发货'))
     expect(reopenBtn).toBeTruthy()
   })
 
   it('does not show reopen button without tracking number', () => {
     const wrapper = mount(Show, { props: { order: baseOrder, audit, canEditOrder: true } })
-    const reopenBtn = wrapper.find('[data-testid="fulfillment-actions"]').findAll('button').find(b => b.text().includes('重开发货'))
+    const reopenBtn = wrapper.find('[data-testid="fulfillment-actions"]').findAll('button').find(b => b.text().includes('重新发货'))
     expect(reopenBtn).toBeFalsy()
   })
 
