@@ -15,12 +15,12 @@ final class LogisticsStatusSummary
             ->where('order_status', 'pending_shipment')
             ->whereNull('fulfillment_parent_id')
             ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))
-            ->where(function ($q): void {
-                $q->whereHas('fulfillmentAllocation', fn ($allocation) => $allocation->where('status', 'submitted'))
-                    ->orWhere(function ($pending): void {
-                        $pending->whereDoesntHave('shipment')
-                            ->orWhereHas('shipment', fn ($shipment) => $shipment->whereNull('warehouse_id'));
-                    });
+            // A submitted allocation has left Vita's allocation inbox, even if
+            // the source order remains pending while derived shipments proceed.
+            ->whereDoesntHave('fulfillmentAllocation', fn ($allocation) => $allocation->where('status', 'submitted'))
+            ->where(function ($pending): void {
+                $pending->whereDoesntHave('shipment')
+                    ->orWhereHas('shipment', fn ($shipment) => $shipment->whereNull('warehouse_id'));
             });
     }
 
