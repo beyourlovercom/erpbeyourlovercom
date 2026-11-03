@@ -585,7 +585,7 @@ final class ShipmentService
         // review queue; order details must not bypass its approval marker.
         $isFactory = strtoupper(trim((string) $requestedCode)) === 'FACTORY'
             || strtoupper(trim((string) $assignedCode)) === 'FACTORY';
-        if ($isFactory && $order->fulfillment_parent_id !== null) {
+        if ($isFactory && ($order->fulfillment_parent_id !== null || $shipment->warehouse_selection_source === 'allocation')) {
             abort_unless((int) $shipment->warehouse_id === (int) $warehouseId, 409, '请先重新分仓并完成国内审核');
             abort_unless(
                 $order->operationalMarkers()->where('marker', 'domestic_reviewed')->exists(),
