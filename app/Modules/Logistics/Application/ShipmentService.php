@@ -384,27 +384,7 @@ final class ShipmentService
             abort_unless(in_array($shipment->shipment_status, ['shipped', 'completed'], true), 409, '只有已发货订单可以重新发货');
             $before = $this->snapshot($shipment);
             $this->snapshotAndReset($lockedOrder, $shipment, $actor, $note);
-            $shipment->fill([
-                'shipment_status' => 'pending',
-                'warehouse_id' => null,
-                'warehouse_selection_source' => null,
-                'carrier' => null,
-                'service' => null,
-                'carrier_selection_source' => null,
-                'tracking_number' => null,
-                'shipped_at' => null,
-                'logistics_note' => null,
-                'handled_by' => null,
-            ]);
-            $changed = $shipment->isDirty() || $lockedOrder->order_status?->value !== 'pending_shipment';
-            $shipment->save();
-            if ($lockedOrder->order_status?->value !== 'pending_shipment') {
-                $lockedOrder->forceFill(['order_status' => 'pending_shipment'])->save();
-            }
-            $this->manualSync->reopen($lockedOrder, $actor, $note);
-            if ($changed) {
-                $this->record($actor, 'shipment.reopened', $shipment, $before, $this->snapshot($shipment), 'shipment_correction');
-            }
+            $this->record($actor, 'shipment.reopened', $shipment, $before, $this->snapshot($shipment), 'shipment_correction');
             $this->aggregateStatus->reconcile($lockedOrder, $actor);
 
             return $lockedOrder->fresh(['items', 'owner', 'shipment.warehouse', 'manualSync', 'financials', 'costEntries']);
