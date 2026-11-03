@@ -285,7 +285,7 @@ final class OrderService
         $orderClass = 'App\\Modules\\Orders\\Infrastructure\\Models\\Order';
         $query = $orderClass::query()
             ->whereNull('archived_at')
-            ->with(['items', 'owner', 'address', 'shipment.warehouse', 'operationalMarkers'])
+            ->with(['items', 'owner', 'address', 'shipment.warehouse', 'operationalMarkers', 'fulfillmentAllocation'])
             ->when($filters['order_kind'] ?? null, fn ($query, string $kind) => $query->where('order_kind', $kind))
             ->when($filters['owner_id'] ?? null, fn ($query, int $ownerId) => $query->where('owner_id', $ownerId))
             ->when($filters['warehouse_ownership'] ?? null, fn ($query, string $ownership) => $query->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('ownership_type', $ownership)))
@@ -341,7 +341,12 @@ final class OrderService
     {
         match ($view) {
             '', 'all' => null,
-            'pending' => $query->where('order_status', OrderStatus::PendingShipment->value),
+            // The split source is not an executable pending-shipment row.
+            'pending' => $query->where('order_status', OrderStatus::PendingShipment->value)
+                ->where(function (Builder $active): void {
+                    $active->whereDoesntHave('originalFulfillmentChildren')
+                        ->orWhereDoesntHave('fulfillmentAllocation', fn (Builder $allocation) => $allocation->where('status', 'submitted'));
+                }),
             'exception' => $this->applyMarkerView($query, 'exception'),
             'in_transit' => $this->applyMarkerView($query, 'in_transit'),
             'shipped' => $query->where('order_status', OrderStatus::Shipped->value),

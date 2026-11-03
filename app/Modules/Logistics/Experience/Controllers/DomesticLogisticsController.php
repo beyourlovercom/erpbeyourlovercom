@@ -50,6 +50,7 @@ final class DomesticLogisticsController
             'operationalMarkers',
             'manualSync',
             'fulfillmentParent',
+            'fulfillmentAllocation',
         ]);
 
         $this->applyView($query, $view);

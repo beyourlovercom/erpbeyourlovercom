@@ -11,6 +11,7 @@ final class OrderWorkflowStatus
     {
         return [
             'sending' => ['en' => 'Sending', 'zh' => '待发', 'color' => 'neutral', 'mutable' => true],
+            'allocated' => ['en' => 'Allocated', 'zh' => '已分仓', 'color' => 'blue', 'mutable' => false],
             'sent' => ['en' => 'Sent', 'zh' => '已发等单号', 'color' => 'blue', 'mutable' => true],
             'resent' => ['en' => 'Resent', 'zh' => '补发订单', 'color' => 'blue', 'mutable' => true],
             'missing_info' => ['en' => 'Missing Info', 'zh' => '信息缺失', 'color' => 'amber', 'mutable' => true],

@@ -16,6 +16,7 @@ use App\Modules\Logistics\Application\FulfillmentAllocationAccess;
 use App\Modules\Logistics\Application\FulfillmentAllocationDecisionService;
 use App\Modules\Logistics\Application\FulfillmentPlanPreviewService;
 use App\Modules\Logistics\Application\LogisticsExecutionAccess;
+use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
 use App\Modules\Orders\Application\Inbound\WooOrderManualSyncAccess;
 use App\Modules\Orders\Application\KolOrderAccessScope;
@@ -506,6 +507,8 @@ final class OrderController
 
     private function orderData(Order $order): array
     {
+        $workflowProjection = $this->workflowProjection($order);
+
         return [
             'id' => $order->id,
             'internal_order_number' => $order->internal_order_number,
@@ -517,10 +520,10 @@ final class OrderController
             'order_kind_label' => $order->order_kind ? $this->kindLabel($order->order_kind) : null,
             'order_date' => $order->order_date?->toDateString(),
             'order_status' => $order->order_status->value,
-            'order_status_label' => $this->statusLabel($order->order_status->value),
+            'order_status_label' => $workflowProjection['code'] === 'allocated' ? '已分仓' : $this->statusLabel($order->order_status->value),
             'workflow_status' => $order->workflow_status,
             'workflow_revision' => (int) ($order->workflow_revision ?? 0),
-            'workflow_status_projection' => $this->workflowProjection($order),
+            'workflow_status_projection' => $workflowProjection,
             'order_note' => $order->order_note,
             'domestic_reject_reason' => $order->domestic_reject_reason,
             'domestic_rejected_at' => $order->domestic_rejected_at?->toIso8601String(),
@@ -605,6 +608,7 @@ final class OrderController
                 ])->values()->all(),
                 'shipment' => $segment->shipment ? [
                     ...$segment->shipment->only(['shipment_status', 'warehouse_id', 'carrier', 'service', 'tracking_number', 'shipped_at', 'logistics_note']),
+                    ...$this->warehouseReviewProjection($segment),
                     'status_label' => $this->fulfillmentSegmentStatusLabel(
                         $segment->shipment->shipment_status,
                         $segment->shipment->tracking_number,
@@ -623,6 +627,36 @@ final class OrderController
                 ],
             ])->all(),
         ];
+    }
+
+    /** @return array{review_required:bool,review_approved:bool,review_role:?string} */
+    private function warehouseReviewProjection(Order $segment): array
+    {
+        $shipment = $segment->shipment;
+        if (! $shipment || ! $shipment->warehouse_id) {
+            return ['review_required' => false, 'review_approved' => false, 'review_role' => null];
+        }
+
+        $code = strtoupper(trim((string) $shipment->warehouse?->code));
+        if (OverseaWarehouseReviewService::canonicalWarehouseCode($code) !== null) {
+            return [
+                'review_required' => true,
+                'review_approved' => $shipment->overseaReview()->where('status', 'approved')
+                    ->where('reviewed_warehouse_id', $shipment->warehouse_id)->exists(),
+                'review_role' => 'Dede',
+            ];
+        }
+        if ($code === 'FACTORY') {
+            return [
+                'review_required' => true,
+                'review_approved' => $segment->operationalMarkers()->where('marker', 'domestic_reviewed')->exists()
+                    && ! $segment->operationalMarkers()->where('marker', 'domestic_stockout')->exists()
+                    && $segment->workflow_status !== 'out_of_stock',
+                'review_role' => '国内',
+            ];
+        }
+
+        return ['review_required' => false, 'review_approved' => false, 'review_role' => null];
     }
 
     private function originalLogisticsStarted(Order $order): bool

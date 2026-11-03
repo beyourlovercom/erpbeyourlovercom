@@ -9,6 +9,16 @@ final class OrderWorkflowStatusProjection
     /** @return array{code:string,en:string,zh:string,color:string,source:string,mutable:bool} */
     public function for(Order $order): array
     {
+        // Once Vita submits allocation the source order becomes a bookkeeping
+        // root. Never misrepresent that as a shipped fulfillment.
+        if ($order->fulfillment_parent_id === null
+            && $order->order_status->value === 'pending_shipment'
+            && in_array($order->workflow_status, [null, 'sending'], true)
+            && $order->fulfillmentAllocation?->status === 'submitted') {
+            return ['code' => 'allocated', 'en' => 'Allocated', 'zh' => '已分仓',
+                'color' => 'blue', 'source' => 'canonical_projection', 'mutable' => false];
+        }
+
         $code = OrderWorkflowStatus::effectiveCode($order->workflow_status, $order->order_status->value);
         $definition = OrderWorkflowStatus::definition($code) ?? OrderWorkflowStatus::registry()['sending'];
 
