@@ -39,7 +39,7 @@ enum RolePreset: string
     {
         return match ($this) {
             self::Logistics => ['dashboard.view', 'orders.view', 'logistics.view', 'logistics.operate', 'sync.view', 'sync.operate', 'products.view', 'inventory.view'],
-            self::DomesticBusiness => ['dashboard.view', 'orders.view', 'logistics.view', 'logistics.operate', 'domestic.review', 'products.view', 'inventory.view'],
+            self::DomesticBusiness => ['dashboard.view', 'orders.view', 'logistics.view', 'logistics.operate', 'domestic.review', 'sync.view', 'sync.operate', 'products.view', 'inventory.view'],
             self::SalesRepresentative => ['dashboard.view', 'customers.view', 'customers.operate', 'orders.view', 'orders.create', 'orders.edit', 'products.view', 'inventory.view'],
             self::KolSpecialist => ['dashboard.view', 'kol.view', 'kol.operate', 'kol.payouts.request', 'orders.view', 'orders.create', 'orders.edit', 'products.view', 'inventory.view'],
             self::KolManager => ['dashboard.view', 'kol.view', 'kol.operate', 'kol.views.manage', 'kol.approvals.manage', 'kol.affiliates.manage', 'kol.payouts.request', 'kol.payouts.approve', 'orders.view', 'orders.create', 'orders.edit', 'products.view', 'inventory.view'],
