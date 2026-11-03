@@ -286,7 +286,7 @@ final class LogisticsOsV1ClosureTest extends TestCase
         $this->assertDatabaseHas('orders', ['id' => $order->id, 'order_status' => 'pending_shipment']);
     }
 
-    public function test_pending_order_cannot_be_reopened_and_does_not_create_history(): void
+    public function test_pending_order_reopen_is_idempotent_and_does_not_create_history(): void
     {
         [$user, $order] = $this->scenario();
         $order->shipment()->create(['shipment_status' => 'pending']);
@@ -295,7 +295,7 @@ final class LogisticsOsV1ClosureTest extends TestCase
         $this->assertDatabaseCount('shipment_attempts', 0);
     }
 
-    public function test_reopening_already_shipped_order_twice_does_not_duplicate_history(): void
+    public function test_reopening_already_shipped_order_twice_keeps_one_history(): void
     {
         [$user, $order, $carrier] = $this->scenario();
         $this->dispatch($user, $order, $carrier, 'TRACK-OLD');
