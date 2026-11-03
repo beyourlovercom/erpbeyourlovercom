@@ -381,10 +381,9 @@ final class ShipmentService
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
-            if ($shipment->shipment_status !== 'pending') {
-                $this->snapshotAndReset($lockedOrder, $shipment, $actor, $note);
-            }
+            abort_unless(in_array($shipment->shipment_status, ['shipped', 'completed'], true), 409, '只有已发货订单可以重新发货');
             $before = $this->snapshot($shipment);
+            $this->snapshotAndReset($lockedOrder, $shipment, $actor, $note);
             $shipment->fill([
                 'shipment_status' => 'pending',
                 'warehouse_id' => null,

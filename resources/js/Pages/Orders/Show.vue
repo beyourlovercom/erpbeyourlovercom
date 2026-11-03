@@ -527,9 +527,12 @@ const fulfillmentProgressLabel = computed(() => {
 
 const fulfillmentSegments = computed(() => props.order.fulfillment?.segments ?? [])
 const pendingFulfillmentSegments = computed(() => fulfillmentSegments.value.filter(segment => segment.shipment.shipment_status === 'pending'))
-const reopenFulfillmentSegments = computed(() => fulfillmentSegments.value.filter(segment => segment.shipment.shipment_status !== 'pending'))
+const reopenFulfillmentSegments = computed(() => fulfillmentSegments.value.filter(segment => ['shipped', 'completed'].includes(segment.shipment.shipment_status)))
 const singleShipmentPending = computed(() => !['shipped', 'completed'].includes(props.order.shipment?.shipment_status ?? 'pending'))
-const reopenFulfillment = (orderId: number) => router.post(`/logistics/orders/${orderId}/reopen`, { logistics_note: '订单详情重开发货' }, { preserveScroll: true })
+const reopenFulfillment = (orderId: number) => {
+  if (!window.confirm('确认重新发货？订单将返回待发货，旧运单历史保留；此操作不会撤销仓库实际出库。')) return
+  router.post(`/logistics/orders/${orderId}/reopen`, { logistics_note: '订单详情重新发货' }, { preserveScroll: true })
+}
 
 const reallocationOpen = ref(false)
 const allocationEditing = computed(() => Boolean(
@@ -1094,11 +1097,11 @@ onBeforeUnmount(() => {
             <div class="ord-fulfillment-actions" data-testid="fulfillment-actions">
               <template v-if="hasFulfillmentTable">
                 <button v-for="segment in pendingFulfillmentSegments" :key="`ship-${segment.order_id}`" type="button" class="erp-btn erp-btn-primary ord-fulfillment-cta" @click="openShipmentEditor(segment)">{{ segment.suffix ? `${segment.suffix} · ` : '' }}{{ canOperateLogistics ? '履约发货' : '查看履约' }}</button>
-                <button v-for="segment in reopenFulfillmentSegments" v-if="canOperateLogistics" :key="`reopen-${segment.order_id}`" type="button" class="erp-btn erp-btn-secondary ord-fulfillment-cta" @click="reopenFulfillment(segment.order_id)">{{ segment.suffix ? `${segment.suffix} · ` : '' }}重开发货</button>
+                <button v-for="segment in reopenFulfillmentSegments" v-if="canOperateLogistics" :key="`reopen-${segment.order_id}`" type="button" class="erp-btn erp-btn-secondary ord-fulfillment-cta" @click="reopenFulfillment(segment.order_id)">{{ segment.suffix ? `${segment.suffix} · ` : '' }}重新发货</button>
               </template>
               <template v-else>
                 <button v-if="singleShipmentPending" type="button" class="erp-btn erp-btn-primary ord-fulfillment-cta" @click="openShipmentEditor({ order_id: order.id, erp_order_id: order.erp_order_id, shipment: order.shipment ?? undefined })">{{ canOperateLogistics ? '履约发货' : '查看履约' }}</button>
-                <button v-else-if="canOperateLogistics" type="button" class="erp-btn erp-btn-secondary ord-fulfillment-cta" @click="reopenFulfillment(order.id)">重开发货</button>
+                <button v-else-if="canOperateLogistics" type="button" class="erp-btn erp-btn-secondary ord-fulfillment-cta" @click="reopenFulfillment(order.id)">重新发货</button>
               </template>
               <button v-if="canCreateReplacement" type="button" class="erp-btn erp-btn-secondary ord-fulfillment-cta" @click="replacementOpen = true">+ 新增补发</button>
             </div>

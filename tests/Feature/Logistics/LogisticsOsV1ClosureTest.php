@@ -286,6 +286,26 @@ final class LogisticsOsV1ClosureTest extends TestCase
         $this->assertDatabaseHas('orders', ['id' => $order->id, 'order_status' => 'pending_shipment']);
     }
 
+    public function test_pending_order_cannot_be_reopened_and_does_not_create_history(): void
+    {
+        [$user, $order] = $this->scenario();
+        $order->shipment()->create(['shipment_status' => 'pending']);
+        $this->actingAs($user)->post("/logistics/orders/{$order->id}/reopen")->assertRedirect();
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'shipment_status' => 'pending']);
+        $this->assertDatabaseCount('shipment_attempts', 0);
+    }
+
+    public function test_reopening_already_shipped_order_twice_does_not_duplicate_history(): void
+    {
+        [$user, $order, $carrier] = $this->scenario();
+        $this->dispatch($user, $order, $carrier, 'TRACK-OLD');
+        $this->actingAs($user)->post("/logistics/orders/{$order->id}/reopen")->assertRedirect();
+        $this->actingAs($user)->post("/logistics/orders/{$order->id}/reopen")->assertRedirect();
+        $this->assertDatabaseHas('shipments', ['order_id' => $order->id, 'shipment_status' => 'pending', 'tracking_number' => null]);
+        $this->assertDatabaseHas('shipment_attempts', ['order_id' => $order->id, 'tracking_number' => 'TRACK-OLD']);
+        $this->assertSame(1, ShipmentAttempt::query()->where('order_id', $order->id)->count());
+    }
+
     // ── Acceptance criteria 10: authorization ─────────────────────────────────
 
     public function test_unauthenticated_cannot_access_queues(): void
