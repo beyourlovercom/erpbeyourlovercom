@@ -30,6 +30,8 @@
         "vue-tsc": "^3.3.8"
     },
     "dependencies": {
+        "ag-grid-community": "^36.3.0",
+        "ag-grid-vue3": "^36.3.0",
         "axios": "^1.19.0"
     }
 }
