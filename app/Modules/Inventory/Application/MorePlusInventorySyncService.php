@@ -119,6 +119,7 @@ final class MorePlusInventorySyncService
         return DB::transaction(function () use ($warehouse, $fresh, $actor): array {
             Warehouse::query()->whereKey($warehouse->id)->lockForUpdate()->firstOrFail();
             $updated = $created = 0;
+            $changes = [];
             foreach ($fresh['rows'] as $row) {
                 if ($row['status'] === 'blocked') {
                     continue;
@@ -137,6 +138,13 @@ final class MorePlusInventorySyncService
                 if ($local && $this->hasProtectedLots($warehouse, (int) $row['product_id'])) {
                     throw new RuntimeException('MOREPLUS_INVENTORY_LOT_CHANGED_PREVIEW_AGAIN');
                 }
+                $changes[] = [
+                    'sku' => $row['canonical_sku'], 'provider_sku' => $row['provider_sku'],
+                    'product_id' => $row['product_id'],
+                    'previous_on_hand' => $row['local_exists'] ? $row['local_qoh'] : null,
+                    'new_on_hand' => $row['provider_physical'],
+                    'preserved_reserved' => $row['local_reserved'],
+                ];
                 if ($local) {
                     $local->update(['quantity_on_hand' => $row['provider_physical']]);
                     $updated++;
@@ -154,6 +162,15 @@ final class MorePlusInventorySyncService
                 'updated' => $updated, 'created' => $created,
                 'unchanged' => $fresh['unchanged'], 'blocked' => $fresh['blocked'],
                 'checksum' => $fresh['checksum'],
+                'source_sku_count' => $fresh['source_sku_count'],
+                'changes' => $changes,
+                'blocked_details' => array_values(array_map(
+                    fn (array $row): array => [
+                        'provider_sku' => $row['provider_sku'],
+                        'reason' => $row['reason'],
+                    ],
+                    array_filter($fresh['rows'], fn (array $row): bool => $row['status'] === 'blocked')
+                )),
             ];
             $this->audit->record(
                 $actor ? AuditActor::user($actor, AuditSource::InternalSystem) : AuditActor::system(AuditSource::InternalSystem),

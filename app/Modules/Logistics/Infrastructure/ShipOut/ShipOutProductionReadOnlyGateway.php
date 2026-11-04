@@ -105,7 +105,7 @@ final class ShipOutProductionReadOnlyGateway
     }
 
     /** @return array{records:list<array<string,mixed>>,total:int} */
-    public function stock(int $page = 1, int $size = 100): array
+    public function stock(int $page = 1, int $size = 100, bool $includePhysical = false): array
     {
         $warehouse = trim((string) config('shipout.production_warehouse_id', ''));
         $organization = trim((string) config('shipout.production_client_org_id', ''));
@@ -127,14 +127,18 @@ final class ShipOutProductionReadOnlyGateway
                 throw new RuntimeException('SHIPOUT_PROD_STOCK_UNTRUSTED');
             }
             $seen[$sku] = true;
-            $rows[] = [
+            $record = [
                 'omsSku' => $sku,
                 'warehouseId' => $warehouse,
                 'availableQuantity' => $row['availableQuantity'],
-                // Provider physical good-stock and outbound hold are distinct from AVAILABLE.
-                'standardQuantity' => is_int($row['standardQuantity'] ?? null) && $row['standardQuantity'] >= 0 ? $row['standardQuantity'] : null,
-                'outboundingQuantity' => is_int($row['outboundingQuantity'] ?? null) && $row['outboundingQuantity'] >= 0 ? $row['outboundingQuantity'] : null,
             ];
+            // Preserve the original R9 public stock() projection by default.
+            // The warehouse inventory bridge explicitly opts into physical stock.
+            if ($includePhysical) {
+                $record['standardQuantity'] = is_int($row['standardQuantity'] ?? null) && $row['standardQuantity'] >= 0 ? $row['standardQuantity'] : null;
+                $record['outboundingQuantity'] = is_int($row['outboundingQuantity'] ?? null) && $row['outboundingQuantity'] >= 0 ? $row['outboundingQuantity'] : null;
+            }
+            $rows[] = $record;
         }
 
         return ['records' => $rows, 'total' => $data['total']];

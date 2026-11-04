@@ -2,6 +2,7 @@
 
 namespace App\Modules\Inventory\Experience\Controllers;
 
+use App\Modules\Audit\Infrastructure\Models\AuditRecord;
 use App\Modules\Inventory\Application\InventoryService;
 use App\Modules\Inventory\Application\InventoryStockStatus;
 use App\Modules\Inventory\Application\WarehouseClearanceService;
@@ -447,6 +448,18 @@ final class WarehouseController
             ->orderByDesc('confirmed_at')
             ->first();
 
+        $lastProviderSync = $code === 'US-LA'
+            ? AuditRecord::query()
+                ->where('action', 'inventory.moreplus_provider_stock_applied')
+                ->where('entity_type', \App\Modules\Inventory\Infrastructure\Models\Warehouse::class)
+                ->where('entity_id', (string) $w->id)
+                ->orderByDesc('created_at')->first()
+            : null;
+        $manualSyncAt = $lastConfirmedSync?->stock_count_at ?? $lastConfirmedSync?->confirmed_at;
+        $providerSyncAt = $lastProviderSync?->created_at;
+        $lastSyncAt = $providerSyncAt && (! $manualSyncAt || $providerSyncAt->greaterThan($manualSyncAt))
+            ? $providerSyncAt : $manualSyncAt;
+
         return [
             'id'=>$w->id,'slug'=>$w->slug,'public_slug'=>$this->inventory->warehousePublicSlug($w),
             'code'=>$w->code,'name'=>$w->name,'name_en'=>$canonical['name_en'] ?? null,'country_code'=>$w->country_code,
@@ -460,7 +473,9 @@ final class WarehouseController
             'fulfillment_state_label'=>$this->fulfillmentStateLabel($w),
             'replenishment_lead_time_days'=>$w->replenishment_lead_time_days,'replenishment_safety_stock_days'=>$w->replenishment_safety_stock_days,'replenishment_target_cover_days'=>$w->replenishment_target_cover_days,'billing_markdown'=>$w->billing_markdown,
             'service_regions'=>$w->serviceRegions->pluck('country_code')->all(),
-            'last_inventory_sync_at'=>($lastConfirmedSync?->stock_count_at ?? $lastConfirmedSync?->confirmed_at)?->toIso8601String(),
+            'last_inventory_sync_at'=>$lastSyncAt?->toIso8601String(),
+            'last_provider_inventory_sync_at'=>$providerSyncAt?->toIso8601String(),
+            'last_provider_inventory_sync_summary'=>$lastProviderSync?->after,
             'inventories'=>$w->inventories->map(fn($i)=>[
                 'id'=>$i->id,'product'=>['id'=>$i->product->id,'sku'=>$i->product->sku,'name'=>$i->product->name],
                 'quantity_on_hand'=>$i->quantity_on_hand,'quantity_reserved'=>$i->quantity_reserved,'quantity_available'=>$i->quantity_available,

@@ -43,7 +43,7 @@ final class ShipOutProductionInventoryAudit
             fn (int $p) => $this->gateway->products($p, 100), $maxPages
         );
         $stocks = $this->collectPages(
-            fn (int $p) => $this->gateway->stock($p, 100), $maxPages
+            fn (int $p) => $this->gateway->stock($p, 100, true), $maxPages
         );
         $catalog = [];
         foreach ($products as $product) {
