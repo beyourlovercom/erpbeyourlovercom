@@ -398,7 +398,12 @@ const previewItemAmendment = async () => {
     const payload = axios.isAxiosError(error)
       ? error.response?.data as {message?:string;errors?:Record<string,string[]>}|undefined : undefined
     const problem = Object.values(payload?.errors ?? {}).flat()[0]
-    amendmentPreviewError.value = problem || payload?.message || '预检失败，请检查产品 SKU、数量及权限后重试。'
+    const httpStatus = axios.isAxiosError(error) ? error.response?.status : undefined
+    amendmentPreviewError.value = problem || payload?.message || (httpStatus === 404
+      ? '预检接口不存在（404），请核查 ERP 后端部署版本。'
+      : httpStatus === 403 ? '当前账号缺少订单编辑权限（403）。'
+      : httpStatus === 409 ? '订单履约状态冲突（409），请重新加载并核对库存预留。'
+      : '预检请求失败，请检查网络与服务器日志。')
     publishGlobalFeedback({
       state:'ERROR',title:'商品修改预检失败',message:amendmentPreviewError.value,
       next:'请在当前订单页修正错误，不需要重新打开页面。',
@@ -466,7 +471,7 @@ const submit = () => {
     return
   }
   form.transform(data => {
-    if (itemsChanged) return data
+    if (itemsChanged) return { ...data, expected_revision: amendmentPreview.value?.expected_revision ?? null }
     const { items: _unchangedItems, ...otherFields } = data
     return otherFields
   }).patch(`${basePath.value}/${props.order.id}`, {
@@ -1520,7 +1525,7 @@ onBeforeUnmount(() => {
               <button type="button" class="erp-btn erp-btn-secondary" :disabled="form.items.length <= 1" @click="removeOrderItem(index)">删除商品</button>
             </div>
             <button type="button" class="erp-btn erp-btn-secondary ord-add-product" @click="addOrderItem">+ 增加商品 / 赠品</button>
-            <p class="ord-item-gift-hint">赠品使用真实 SKU，数量需大于 0；Woo 来源订单新增赠品价格固定为 0。</p>
+            <p class="ord-item-gift-hint">赠品使用真实 SKU，数量需大于 0；Woo 组合商品拆分须保持商品金额合计不变，纯赠品价格为 0。</p>
             <label v-if="order.source_type === 'woocommerce'" class="erp-form-label">
               客户协商后的履约修改原因
               <textarea v-model="form.amendment_reason" class="erp-textarea" rows="2" placeholder="填写客户同意升级产品或赠品的具体依据"/>
