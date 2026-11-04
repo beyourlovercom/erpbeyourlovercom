@@ -11,7 +11,7 @@ final class LogisticsStatusSummary
 {
     public function pendingAllocationQuery(): Builder
     {
-        return Order::query()
+        return app(PendingAllocationEntryPolicy::class)->constrain(Order::query())
             ->where('order_status', 'pending_shipment')
             ->whereNull('fulfillment_parent_id')
             ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))

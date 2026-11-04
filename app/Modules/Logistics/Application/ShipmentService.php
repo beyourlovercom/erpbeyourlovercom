@@ -13,6 +13,8 @@ use App\Modules\Logistics\Infrastructure\Models\LogisticsReviewHistory;
 use App\Modules\Logistics\Infrastructure\Models\ShipmentAttempt;
 use App\Modules\Logistics\Infrastructure\Models\ShipmentItemPackagingSnapshot;
 use App\Modules\Orders\Application\OrderStatus;
+use App\Modules\Orders\Application\OrderKind;
+use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\ManualSyncService;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
@@ -30,7 +32,22 @@ final class ShipmentService
         private readonly CarrierServiceCatalog $carrierServices,
         private readonly CarrierRoutingPolicy $carrierRouting,
         private readonly FulfillmentPaymentGate $paymentGate,
+        private readonly PendingAllocationEntryPolicy $entryPolicy,
     ) {}
+
+    private function assertKolFulfillmentApproved(Model $order): void
+    {
+        if (! $order instanceof Order || $order->order_kind !== OrderKind::KolFulfillment) {
+            return;
+        }
+        // Historical already-in-progress KOL fulfillment remains untouched.
+        if ($order->order_date?->lt(\Illuminate\Support\Carbon::parse(
+            (string) config('erp_fulfillment.allocation_eligible_from', '2026-11-04')
+        ))) {
+            return;
+        }
+        abort_unless($this->entryPolicy->allows($order), 409, '网红发货订单必须经网红主管或管理员审核后才能履约。');
+    }
 
     public function saveDraft(Model $order, array $attributes, ?Authenticatable $actor): Model
     {
@@ -39,6 +56,7 @@ final class ShipmentService
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
             $this->paymentGate->assertAllowed($lockedOrder);
+            $this->assertKolFulfillmentApproved($lockedOrder);
             abort_unless($lockedOrder->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以保存履约草稿');
 
             $shipment = $lockedOrder->shipment()->firstOrCreate(['order_id' => $lockedOrder->getKey()]);
@@ -98,6 +116,7 @@ final class ShipmentService
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
             $this->paymentGate->assertAllowed($lockedOrder);
+            $this->assertKolFulfillmentApproved($lockedOrder);
             $shipment = $lockedOrder->shipment()->firstOrCreate(['order_id' => $lockedOrder->getKey()]);
             $alreadyShipped = $lockedOrder->order_status?->value === 'shipped' && $shipment->shipment_status === 'shipped';
             $before = $this->snapshot($shipment);

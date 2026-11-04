@@ -143,7 +143,7 @@ final class FulfillmentAllocationV11GiftZoneTest extends TestCase
         $order = Order::query()->create([
             'internal_order_number' => 'GIFT-'.uniqid(), 'erp_order_id' => '007-0914-'.random_int(10000, 99999),
             'source_type' => 'manual', 'order_kind' => 'customer', 'external_order_number' => 'EXT-'.uniqid(),
-            'order_date' => '2026-09-14', 'order_status' => 'pending_shipment', 'currency' => 'USD',
+            'order_date' => '2026-11-04', 'order_status' => 'pending_shipment', 'currency' => 'USD',
         ]);
         $order->address()->create([
             'recipient_name' => 'George Gil-Machuca', 'phone' => '10000000000', 'country' => 'US',

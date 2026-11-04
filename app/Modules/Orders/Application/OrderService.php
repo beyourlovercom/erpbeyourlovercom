@@ -25,7 +25,7 @@ final class OrderService
         'address_line_1', 'address_line_2', 'postal_code',
     ];
 
-    private const OPERATIONAL_MARKERS = ['exception', 'in_transit', 'return', 'stockout'];
+    private const OPERATIONAL_MARKERS = ['exception', 'in_transit', 'return', 'stockout', 'kol_fulfillment_approved'];
 
     public function __construct(
         private readonly AuditRecorder $audit,

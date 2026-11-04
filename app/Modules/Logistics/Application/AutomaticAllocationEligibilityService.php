@@ -12,6 +12,7 @@ final class AutomaticAllocationEligibilityService
         private readonly WarehouseRoutingPolicy $routingPolicy,
         private readonly FulfillmentPlanPreviewService $fulfillmentPlans,
         private readonly FulfillmentPaymentGate $paymentGate,
+        private readonly PendingAllocationEntryPolicy $entryPolicy,
     ) {}
 
     /** @param iterable<Order> $orders @return array<int,array{allowed:bool,state:string,reason_code:string,reason_label:string}> */
@@ -36,6 +37,10 @@ final class AutomaticAllocationEligibilityService
         $payment = $paymentDecision ?? $this->paymentGate->evaluate($order);
         if (! $payment['allowed']) {
             return $this->blocked('PAYMENT_NOT_AUTHORIZED', $payment['reason_code'], $payment['reason_label']);
+        }
+
+        if (! $this->entryPolicy->allows($order)) {
+            return $this->blocked('BLOCKED_OTHER', 'allocation_entry_not_eligible', '订单未满足待分仓日期、付款或网红审核条件。');
         }
 
         if ($order->order_status?->value !== 'pending_shipment') {
