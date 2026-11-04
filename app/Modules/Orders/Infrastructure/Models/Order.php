@@ -7,6 +7,7 @@ use App\Modules\Orders\Application\OrderKind;
 use App\Modules\Orders\Application\OrderSourceType;
 use App\Modules\Orders\Application\OrderStatus;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -22,6 +23,7 @@ class Order extends Model
         'order_note', 'owner_id', 'kol_id', 'order_status', 'currency',
         'workflow_status', 'workflow_revision',
         'domestic_reject_reason', 'domestic_rejected_at', 'domestic_rejected_by',
+        'operational_archived_at', 'operational_archived_by',
     ];
 
     protected function casts(): array
@@ -35,6 +37,8 @@ class Order extends Model
             'domestic_rejected_at' => 'datetime',
             'deleted_at' => 'datetime',
             'archived_at' => 'datetime',
+            'operational_archived_at' => 'datetime',
+            'operational_archived_by' => 'integer',
         ];
     }
 
@@ -72,6 +76,11 @@ class Order extends Model
     public function owner(): BelongsTo
     {
         return $this->belongsTo('App\\Modules\\Identity\\Infrastructure\\Models\\User', 'owner_id');
+    }
+
+    public function operationalArchivedByUser(): BelongsTo
+    {
+        return $this->belongsTo('App\\Modules\\Identity\\Infrastructure\\Models\\User', 'operational_archived_by');
     }
 
     public function address(): HasOne
@@ -137,5 +146,29 @@ class Order extends Model
     public function workflowStatusHistory(): HasMany
     {
         return $this->hasMany(OrderWorkflowStatusHistory::class)->orderBy('revision');
+    }
+
+    public function scopeEligibleForOperations(Builder $query, bool $includeLegacyTrash = true): Builder
+    {
+        return $query
+            ->whereNull('operational_archived_at')
+            ->whereDoesntHave('fulfillmentParent', function (Builder $parent) use ($includeLegacyTrash): void {
+                $parent->withTrashed();
+                $parent->whereNotNull('operational_archived_at');
+                if ($includeLegacyTrash) {
+                    $parent->orWhereNotNull('archived_at')->orWhereNotNull('deleted_at');
+                }
+            })
+            ->when($includeLegacyTrash, fn (Builder $eligible): Builder => $eligible->whereNull('archived_at'));
+    }
+
+    public function isOperationallyArchived(): bool
+    {
+        $parent = $this->relationLoaded('fulfillmentParent')
+            ? $this->getRelation('fulfillmentParent')
+            : $this->fulfillmentParent()->withTrashed()->first();
+
+        return $this->operational_archived_at !== null
+            || $parent?->operational_archived_at !== null;
     }
 }

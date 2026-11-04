@@ -11,7 +11,10 @@ final class LogisticsStatusSummary
 {
     public function pendingAllocationQuery(): Builder
     {
-        return app(PendingAllocationEntryPolicy::class)->constrain(Order::query())
+        // Preserve the current Processing/KOL admission policy while excluding
+        // operationally archived roots and their fulfillment descendants.
+        return app(PendingAllocationEntryPolicy::class)
+            ->constrain(Order::query()->eligibleForOperations())
             ->where('order_status', 'pending_shipment')
             ->whereNull('fulfillment_parent_id')
             ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))
@@ -33,12 +36,12 @@ final class LogisticsStatusSummary
     {
         $review = LogisticsReview::query()
             ->where('status', 'pending')
-            ->whereHas('order', fn ($q) => $q->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
+            ->whereHas('order', fn ($q) => $q->eligibleForOperations()->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')))
             ->count();
 
         $active = fn ($q) => $q
             ->whereDoesntHave('order.logisticsReview', fn ($r) => $r->where('status', 'pending'))
-            ->whereHas('order', fn ($o) => $o
+            ->whereHas('order', fn ($o) => $o->eligibleForOperations()
                 ->where('order_status', '!=', 'cancelled')
                 ->whereDoesntHave('externalReferences', fn ($r) => $r->where('provider', 'historical_logistics')));
 
@@ -48,7 +51,7 @@ final class LogisticsStatusSummary
             ['key' => 'exception', 'label' => '异常单', 'url' => '/logistics/exceptions', 'count' => Shipment::query()->where('shipment_status', 'exception')->where($active)->count()],
             ['key' => 'review', 'label' => '复核单', 'url' => '/logistics/review', 'count' => $review],
             ['key' => 'completed', 'label' => '已完结', 'url' => '/logistics/completed', 'count' => Shipment::query()->where('shipment_status', 'completed')->where($active)->count()],
-            ['key' => 'cancelled', 'label' => '已取消', 'url' => '/logistics/cancelled', 'count' => Order::query()->where('order_status', 'cancelled')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->count()],
+            ['key' => 'cancelled', 'label' => '已取消', 'url' => '/logistics/cancelled', 'count' => Order::query()->eligibleForOperations()->where('order_status', 'cancelled')->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))->count()],
         ];
     }
 }

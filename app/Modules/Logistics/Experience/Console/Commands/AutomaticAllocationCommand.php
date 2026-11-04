@@ -38,6 +38,7 @@ final class AutomaticAllocationCommand extends Command
         }
         $limit = max(1, (int) ($this->option('limit') ?: config('inventory_auto_allocation.catch_up_limit', 100)));
         $query = Order::query()
+            ->eligibleForOperations()
             ->with(['address', 'items', 'shipment.warehouse', 'externalReferences'])
             ->orderBy('id');
 

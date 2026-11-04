@@ -143,6 +143,8 @@ const props = withDefaults(defineProps<{
   canMarkOperational?: boolean
   canEditOrder?: boolean
   canTrashOrder?: boolean
+  canArchiveOrder?: boolean
+  operationallyArchived?: boolean
   canManageTrash?: boolean
   canManageProductPackaging?: boolean
   canViewPackagingEvidence?: boolean
@@ -155,7 +157,7 @@ const props = withDefaults(defineProps<{
   wooAdminEditUrl?: string | null
   kolProfile?: { id: number; display_name: string; url: string } | null
 
-}>(), { canMarkOperational: false, canEditOrder: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
+}>(), { canMarkOperational: false, canEditOrder: false, canArchiveOrder: false, operationallyArchived: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
 
 
 const carrierOption = (name:string) => (props.carrierOptions ?? []).find(row => row.value === name)
@@ -499,6 +501,10 @@ const operationalMarkerOptions = [
 ]
 const markerActive = (key: string) => props.order.operational_markers?.includes(key) ?? false
 const toggleMarker = (key: string) => router.post(`/orders/${props.order.id}/operational-markers/${key}`, { active: !markerActive(key) }, { preserveScroll: true })
+const archiveOrder = () => {
+  if (!props.canArchiveOrder || !window.confirm('确认归档此订单？归档后订单将退出所有分配、发货和仓库操作序列，仅保留在归档清单；财务、物流、同步和历史记录不会删除。')) return
+  router.post('/orders/' + props.order.id + '/archive')
+}
 
 const shipmentStatusLabel = computed(() => {
   const s = props.order.shipment?.shipment_status
@@ -1212,10 +1218,12 @@ onBeforeUnmount(() => {
               :aria-expanded="!isSectionCollapsed('order-section-flags')" @click="toggleSection('order-section-flags')">{{ isSectionCollapsed('order-section-flags') ? '▸' : '▾' }}</button>
           </div>
           </div>
-          <p class="ord-inventory-help">用于异常、运输中、退货、缺货等辅助业务视图，不是发货入口。所有发货、重发、补发操作统一在上方“履约状态”处理；这里仅保留辅助业务标记。</p>
+          <p class="ord-inventory-help">异常、运输中、退货、缺货属于辅助标记；发货、重发、补发仍在上方“履约状态”处理。“归档订单”是独立操作，归档后只保留在归档清单，不再进入分仓和发货队列。</p>
           <div class="ord-marker-row">
             <button v-for="marker in operationalMarkerOptions" :key="marker.key" type="button" class="erp-btn erp-btn-secondary ord-marker" :class="{ active: markerActive(marker.key) }" :disabled="!canMarkOperational" @click="toggleMarker(marker.key)">{{ markerActive(marker.key) ? '✓ ' : '' }}{{ marker.label }}</button>
+            <button type="button" class="erp-btn erp-btn-secondary ord-marker" :disabled="!canArchiveOrder" :aria-label="operationallyArchived ? '订单已归档' : '归档订单'" @click="archiveOrder">{{ operationallyArchived ? '已归档' : '归档订单' }}</button>
           </div>
+          <p v-if="operationallyArchived" class="ord-operational-archive-warning" role="status">运营归档：已退出分配、发货和仓库操作序列。财务、物流、同步和历史记录仍予保留。</p>
         </div>
 
         <div v-if="allocationUi?.status === 'submitted' && allocationUi.can_reallocate && !reallocationOpen" class="ord-allocation-reopen-bar" :style="{ order: sectionVisualOrder('order-section-inventory') - 1 }">

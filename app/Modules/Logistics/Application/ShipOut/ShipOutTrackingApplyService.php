@@ -43,6 +43,7 @@ final class ShipOutTrackingApplyService
         }
         $order = Order::query()->with('shipment.warehouse', 'shipment.overseaReview')
             ->findOrFail($erpOrderId);
+        abort_if($order->isOperationallyArchived(), 409, '归档订单不能写入海外仓发货状态。');
         $shipment = $order->shipment;
         $review = $shipment?->overseaReview;
         if (strcasecmp(trim((string) ($shipment?->warehouse?->code ?? '')), 'US-LA') !== 0
@@ -119,6 +120,7 @@ final class ShipOutTrackingApplyService
         DB::transaction(function () use ($erpOrderId, $warehouseId, $orderNo, $shippedAt, $decision, $actualCarrier, $actor): void {
             $locked = Order::query()->with('shipment.warehouse', 'shipment.overseaReview')
                 ->whereKey($erpOrderId)->lockForUpdate()->firstOrFail();
+            abort_if($locked->isOperationallyArchived(), 409, '归档订单不能写入海外仓发货状态。');
             $shipment = $locked->shipment;
             $review = $shipment?->overseaReview;
             $attempt = DB::table('shipout_dispatch_attempts')

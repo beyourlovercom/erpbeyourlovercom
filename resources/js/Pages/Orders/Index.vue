@@ -131,6 +131,7 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
             <button class="mvp-button mvp-button-primary" type="button" :disabled="syncingWoo" @click="syncWooToday">{{ syncingWoo ? '同步中…' : '同步网站订单' }}</button>
           </template>
           <Link v-if="canManageTrash" class="mvp-button" href="/orders/trash">回收站（管理员）</Link>
+          <Link class="mvp-button" href="/orders/archive">归档清单</Link>
           <a v-if="canExport" class="mvp-button" :href="exportUrl()">导出 CSV</a>
           <Link v-if="orderKind === 'kol_fulfillment' && canPreviewKolLinks" class="mvp-button" href="/kol/orders/link-preview" data-testid="kol-order-link-preview">历史关联预览</Link>
           <template v-if="orderKind === 'all' && orderScope !== 'external_warehouse'">

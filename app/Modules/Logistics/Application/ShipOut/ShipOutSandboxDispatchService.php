@@ -44,6 +44,7 @@ final class ShipOutSandboxDispatchService
 
         $order = Order::query()->with(['shipment.warehouse', 'shipment.overseaReview', 'address', 'items'])
             ->findOrFail($orderId);
+        abort_if($order->isOperationallyArchived(), 409, '归档订单不能提交海外仓。');
         $label=$shippingMode==='6'
             ? $this->labels->resolve($orderId, (int)$actorId, (string)$labelToken)
             : null;
