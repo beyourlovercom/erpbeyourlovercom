@@ -31,6 +31,7 @@ final class FulfillmentAllocationSubmissionService
     {
         return DB::transaction(function () use ($order, $planKey, $note, $actor): FulfillmentAllocation {
             $locked = Order::query()->with(['address', 'items.product', 'fulfillmentAllocation'])->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            abort_if($locked->isOperationallyArchived(), 409, '运营归档订单不可分仓。');
             $this->paymentGate->assertAllowed($locked);
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以提交分仓');
 
@@ -54,6 +55,7 @@ final class FulfillmentAllocationSubmissionService
     {
         return DB::transaction(function () use ($order, $assignments, $note, $actor, $stockExceptionAcknowledged): FulfillmentAllocation {
             $locked = Order::query()->with(['address', 'items.product', 'fulfillmentAllocation'])->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            abort_if($locked->isOperationallyArchived(), 409, '运营归档订单不可分仓。');
             $this->paymentGate->assertAllowed($locked);
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以提交分仓');
 

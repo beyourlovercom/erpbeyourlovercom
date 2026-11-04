@@ -28,6 +28,7 @@ final class PendingFulfillmentReallocationService
                 ->whereKey($fulfillment->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
+            abort_if($child->isOperationallyArchived(), 409, '归档订单不能重新分仓。');
 
             abort_unless($child->fulfillment_parent_id !== null && (string) ($child->fulfillment_role ?? '') !== 'replacement', 422, '只有原始拆分履约可以单独调整分仓');
             abort_unless($child->fulfillment_suffix !== null, 422, '履约缺少拆分后缀');

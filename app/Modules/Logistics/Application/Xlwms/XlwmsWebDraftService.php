@@ -23,12 +23,14 @@ final class XlwmsWebDraftService
     public function createOrReturn(int $orderId, int $actorId): array
     {
         $order=Order::query()->with(['address','items','shipment.warehouse'])->findOrFail($orderId);
+        abort_if($order->isOperationallyArchived(), 409, '归档订单不能创建仓库草稿。');
         abort_unless($order->shipment?->warehouse?->code==='US-SM',422,'US_SM_ONLY');
         $plan=$this->preview->forOrder($order,false,true);
         abort_unless($plan['ready_for_remote_check'],422,'OMS_WEB_DRAFT_INPUT_INVALID:'.implode(',',$plan['blockers']));
 
         $attempt=DB::transaction(function () use ($order,$plan,$actorId): XlwmsWebDraftAttempt {
-            Order::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+            $lockedOrder = Order::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+            abort_if($lockedOrder->isOperationallyArchived(), 409, '归档订单不能创建仓库草稿。');
             // This lock covers concurrent in-flight clicks, NOT historical
             // drafts, canceled, shipped or previously completed OMS orders.
             $active=XlwmsWebDraftAttempt::query()->where('order_id',$order->id)

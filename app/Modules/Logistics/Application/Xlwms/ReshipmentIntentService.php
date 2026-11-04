@@ -27,6 +27,7 @@ final class ReshipmentIntentService
         return DB::transaction(function () use ($orderId, $actorId, $reason): array {
             // Serialize all intents for the same original order.
             $order = Order::query()->whereKey($orderId)->lockForUpdate()->firstOrFail();
+            abort_if($order->isOperationallyArchived(), 409, '归档订单不能进行仓库补发。');
             $preview = $this->preview->forOrder((int) $order->id);
             if (! $preview['ready_for_review']) {
                 throw new RuntimeException('RESHIP_PREFLIGHT_BLOCKED');

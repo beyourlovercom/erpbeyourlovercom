@@ -37,6 +37,7 @@ final class ShipmentService
         return $this->writeTransaction(function () use ($order, $attributes, $actor): Model {
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertOperationallyEligible($lockedOrder);
             $this->assertNoPendingReview($lockedOrder);
             $this->paymentGate->assertAllowed($lockedOrder);
             abort_unless($lockedOrder->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以保存履约草稿');
@@ -96,6 +97,7 @@ final class ShipmentService
         return $this->writeTransaction(function () use ($order, $attributes, $actor): Model {
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertOperationallyEligible($lockedOrder);
             $this->assertNoPendingReview($lockedOrder);
             $this->paymentGate->assertAllowed($lockedOrder);
             $shipment = $lockedOrder->shipment()->firstOrCreate(['order_id' => $lockedOrder->getKey()]);
@@ -173,6 +175,7 @@ final class ShipmentService
         return $this->writeTransaction(function () use ($order, $trackingNumber, $actor): Model {
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertOperationallyEligible($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
             abort_unless(in_array($shipment->shipment_status, ['shipped', 'exception'], true), 409, '只有已发货或异常状态的物流单可更新追踪号');
@@ -199,6 +202,7 @@ final class ShipmentService
         return $this->writeTransaction(function () use ($order, $note, $actor): Model {
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertOperationallyEligible($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
             if ($shipment->shipment_status === 'exception') {
@@ -220,6 +224,7 @@ final class ShipmentService
         return $this->writeTransaction(function () use ($order, $actor): Model {
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertOperationallyEligible($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
             if ($shipment->shipment_status === 'shipped') {
@@ -240,6 +245,7 @@ final class ShipmentService
     {
         return $this->writeTransaction(function () use ($order, $note, $actor): Model {
             $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertOperationallyEligible($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
             $this->assertNoPendingReview($lockedOrder);
             abort_unless($shipment->shipment_status === 'exception', 409, '只有异常订单可以暂停');
@@ -256,6 +262,7 @@ final class ShipmentService
     {
         return $this->writeTransaction(function () use ($order, $trigger, $reason, $actor): Model {
             $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertOperationallyEligible($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
             abort_unless($shipment->shipment_status === 'exception', 409, '只有异常订单可以提交复核');
             $review = LogisticsReview::query()->where('order_id', $lockedOrder->getKey())->lockForUpdate()->first();
@@ -278,6 +285,7 @@ final class ShipmentService
     {
         return $this->writeTransaction(function () use ($order, $destination, $note, $actor): Model {
             $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertOperationallyEligible($lockedOrder);
             $review = $lockedOrder->logisticsReview()->lockForUpdate()->firstOrFail();
             abort_unless($review->status === 'pending', 409, '复核已处理');
             abort_unless(in_array($destination, ['pending', 'awaiting_tracking', 'in_transit', 'exception', 'completed', 'cancelled'], true), 422, '无效复核去向');
@@ -316,6 +324,7 @@ final class ShipmentService
     {
         return $this->writeTransaction(function () use ($order, $attributes, $actor): Model {
             $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertOperationallyEligible($lockedOrder);
             $this->assertNoPendingReview($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
             abort_unless($shipment->shipment_status === 'exception', 409, '只有异常订单可以重新发货');
@@ -332,6 +341,7 @@ final class ShipmentService
     {
         return $this->writeTransaction(function () use ($order, $note, $actor): Model {
             $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertOperationallyEligible($lockedOrder);
             $this->assertNoPendingReview($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
             abort_unless($shipment->shipment_status === 'exception', 409, '只有异常订单可以联系用户');
@@ -345,6 +355,7 @@ final class ShipmentService
     {
         return $this->writeTransaction(function () use ($order, $note, $actor): Model {
             $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertOperationallyEligible($lockedOrder);
             $this->assertNoPendingReview($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
             abort_unless($shipment->shipment_status === 'exception', 409, '只有异常订单可以退款取消');
@@ -361,6 +372,7 @@ final class ShipmentService
     {
         return $this->writeTransaction(function () use ($order, $actor): Model {
             $lockedOrder = $order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertOperationallyEligible($lockedOrder);
             $this->assertNoPendingReview($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
             abort_unless($shipment->shipment_status === 'shipped', 409, '只有已实际发货的运输中订单可以完结');
@@ -379,6 +391,7 @@ final class ShipmentService
         return $this->writeTransaction(function () use ($order, $actor, $note): Model {
             $orderClass = get_class($order);
             $lockedOrder = $orderClass::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertOperationallyEligible($lockedOrder);
             $this->assertNoPendingReview($lockedOrder);
             $shipment = $lockedOrder->shipment()->lockForUpdate()->firstOrFail();
 
@@ -600,6 +613,13 @@ final class ShipmentService
                 409,
                 '国内订单未经商务确认有货，或已标记缺货，不允许确认发货。',
             );
+        }
+    }
+
+    private function assertOperationallyEligible(Model $order): void
+    {
+        if (method_exists($order, 'isOperationallyArchived') && $order->isOperationallyArchived()) {
+            abort(409, '运营归档订单不可进行物流操作。');
         }
     }
 

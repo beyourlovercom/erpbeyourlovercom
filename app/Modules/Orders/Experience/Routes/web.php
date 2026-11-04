@@ -5,6 +5,7 @@ use App\Modules\Orders\Experience\Controllers\KolOrderLinkPreviewController;
 use App\Modules\Orders\Experience\Controllers\OrderController;
 use App\Modules\Orders\Experience\Controllers\OrderSavedViewController;
 use App\Modules\Orders\Experience\Controllers\OrderTrashController;
+use App\Modules\Orders\Experience\Controllers\OrderOperationalArchiveController;
 use App\Modules\Orders\Experience\Controllers\WooCommerceInboundController;
 use Illuminate\Support\Facades\Route;
 
@@ -16,6 +17,9 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/sync/woocommerce/reconcile-today', [WooCommerceInboundController::class, 'reconcileToday'])->name('woocommerce.inbound.reconcile-today');
     Route::post('/sync/woocommerce/historical', [WooCommerceInboundController::class, 'historical'])->middleware('can:sync.operate')->name('woocommerce.inbound.historical');
     Route::get('/orders/trash', [OrderTrashController::class, 'index'])->middleware('can:system.permissions.manage')->name('orders.trash.index');
+    Route::get('/orders/archive', [OrderOperationalArchiveController::class, 'index'])->middleware('can:orders.view')->name('orders.archive.index');
+    Route::post('/orders/{order}/archive', [OrderOperationalArchiveController::class, 'archive'])->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->name('orders.archive');
+    Route::post('/orders/archive/{order}/restore', [OrderOperationalArchiveController::class, 'restore'])->middleware(['can:orders.view', 'can:system.permissions.manage'])->whereNumber('order')->name('orders.archive.restore');
     Route::post('/orders/trash/{order}/restore', [OrderTrashController::class, 'restore'])->middleware('can:system.permissions.manage')->whereNumber('order')->name('orders.trash.restore');
     Route::delete('/orders/trash/{order}', [OrderTrashController::class, 'purge'])->middleware('can:system.permissions.manage')->whereNumber('order')->name('orders.trash.purge');
     Route::delete('/orders/{order}/trash', [OrderTrashController::class, 'destroy'])->middleware(['can:orders.view', 'can:orders.edit'])->whereNumber('order')->name('orders.trash.destroy');

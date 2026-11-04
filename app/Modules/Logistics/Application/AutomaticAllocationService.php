@@ -35,6 +35,7 @@ final class AutomaticAllocationService
                 ->whereKey($order->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
+            abort_if($lockedOrder->isOperationallyArchived(), 409, '运营归档订单不可自动分配。');
 
             $eligibility = $this->eligibility->evaluate($lockedOrder);
             if (($eligibility['state'] ?? null) === 'ALREADY_RESERVED'

@@ -64,6 +64,7 @@ final class OrderTrashController
             $locked = Order::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
             KolOrderAccessScope::authorize($request->user(), $locked);
             abort_if($locked->archived_at !== null, 409, '订单已在回收站。');
+            abort_if($locked->isOperationallyArchived(), 409, '请先从运营归档清单恢复，不能直接移至回收站。');
             // Business evidence remains queryable for fulfillment, finance, stock and Woo sync.
             if ($this->hasBusinessEvidence($locked)) {
                 $locked->archived_at = now();

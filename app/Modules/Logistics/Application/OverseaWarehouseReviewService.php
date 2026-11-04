@@ -55,6 +55,7 @@ final class OverseaWarehouseReviewService
     {
         return DB::transaction(function () use ($order, $data, $actor): Order {
             $locked = Order::query()->with(['shipment.warehouse'])->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            abort_if($locked->isOperationallyArchived(), 409, '运营归档订单不可进行海外仓审核。');
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以进行海外仓审核');
             $shipment = $locked->shipment;
             abort_unless($shipment && $shipment->warehouse_id, 409, '订单尚未分配海外仓');

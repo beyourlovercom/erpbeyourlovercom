@@ -222,10 +222,12 @@ final class OrderController
             'carrierOptions' => $this->carrierServices->options(),
             'canViewProfit' => ! $isDerived && ($request->user()?->can('analysis.view') ?? false),
             'kolProfile' => $this->kolProfileForOrder($request, $order),
-            'canMarkOperational' => ! $isDerived && ($request->user()?->can('orders.edit') ?? false),
+            'canMarkOperational' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
             'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())->map(fn (array $definition, string $code): array => ['code' => $code, ...$definition])->values()->all(),
-            'canEditOrder' => ! $isDerived && ($request->user()?->can('orders.edit') ?? false),
-            'canTrashOrder' => ! $isDerived && ($request->user()?->can('orders.edit') ?? false),
+            'canEditOrder' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
+            'canTrashOrder' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
+            'canArchiveOrder' => ! $isDerived && ! $order->isOperationallyArchived() && ($request->user()?->can('orders.edit') ?? false),
+            'operationallyArchived' => $order->isOperationallyArchived(),
             'canManageTrash' => $request->user()?->can('system.permissions.manage') ?? false,
             'canCreateReplacement' => ! $isDerived && $this->logisticsExecutionAccess->allows($request->user()) && $this->originalLogisticsStarted($order),
             'canCreateProcurement' => ! $isDerived && ($request->user()?->can('procurement.create') ?? false) && $order->operationalMarkers->contains('marker', 'stockout'),
@@ -437,6 +439,7 @@ final class OrderController
     {
         $this->authorizeKind($request, $order);
         KolOrderAccessScope::authorize($request->user(), $order);
+        abort_if($order->isOperationallyArchived(), 409, '运营归档订单为只读，不能编辑。');
         $data = $request->validate($this->updateRules($order));
         $items = $data['items'] ?? null;
         unset($data['items']);
@@ -448,6 +451,7 @@ final class OrderController
     public function setOperationalMarker(Request $request, Order $order, string $marker): RedirectResponse
     {
         KolOrderAccessScope::authorize($request->user(), $order);
+        abort_if($order->isOperationallyArchived(), 409, '运营归档订单为只读，不能修改业务标记。');
         $data = $request->validate(['active' => ['required', 'boolean']]);
         $this->orders->setOperationalMarker($order, $marker, (bool) $data['active'], $request->user());
 
@@ -457,6 +461,7 @@ final class OrderController
     public function updateWorkflowStatus(Request $request, Order $order): \Illuminate\Http\JsonResponse
     {
         KolOrderAccessScope::authorize($request->user(), $order);
+        abort_if($order->isOperationallyArchived(), 409, '运营归档订单为只读，不能修改履约状态。');
         $data = $request->validate([
             'workflow_status' => ['required', 'string', Rule::in(array_keys(array_filter(OrderWorkflowStatus::registry(), fn (array $definition): bool => $definition['mutable'])))],
             'expected_workflow_revision' => ['required', 'integer', 'min:0'],
@@ -552,6 +557,7 @@ final class OrderController
                     false,
                 ),
             ] : null,
+            'operationally_archived' => $order->isOperationallyArchived(),
             'order_date' => $order->order_date?->toDateString(),
             'order_status' => $order->order_status->value,
             'order_status_label' => $workflowProjection['code'] === 'allocated' ? '已分仓' : $this->statusLabel($order->order_status->value),

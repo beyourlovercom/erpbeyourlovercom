@@ -33,7 +33,7 @@ final class DomesticReviewDecisionService
                 'shipment', 'operationalMarkers', 'externalReferences', 'fulfillmentParent',
             ])->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $factory = Warehouse::query()->whereRaw('UPPER(code) = ?', ['FACTORY'])->firstOrFail();
-            abort_if($locked->archived_at !== null || $locked->trashed(), 409, '归档订单不可审核。');
+            abort_if($locked->archived_at !== null || $locked->isOperationallyArchived() || $locked->trashed(), 409, '归档订单不可审核。');
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '订单状态不允许进行国内商务审核。');
             abort_unless($locked->shipment && (int) $locked->shipment->warehouse_id === (int) $factory->id, 409, '订单不属于中国工厂仓。');
             abort_unless($locked->shipment->shipment_status === 'pending'
