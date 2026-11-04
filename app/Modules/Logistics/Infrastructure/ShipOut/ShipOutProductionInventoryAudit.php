@@ -43,7 +43,7 @@ final class ShipOutProductionInventoryAudit
             fn (int $p) => $this->gateway->products($p, 100), $maxPages
         );
         $stocks = $this->collectPages(
-            fn (int $p) => $this->gateway->stock($p, 100), $maxPages
+            fn (int $p) => $this->gateway->stock($p, 100, true), $maxPages
         );
         $catalog = [];
         foreach ($products as $product) {
@@ -64,6 +64,8 @@ final class ShipOutProductionInventoryAudit
             $records[] = [
                 'provider_sku' => $sku,
                 'available_quantity' => $stock['availableQuantity'],
+                'standard_quantity' => $stock['standardQuantity'] ?? null,
+                'outbounding_quantity' => $stock['outboundingQuantity'] ?? null,
                 'in_product_catalog' => isset($catalog[$sku]),
                 'product_status' => $catalog[$sku]['status'] ?? null,
                 'sku_alias_status' => $mapped ? 'verified' : 'unresolved',
