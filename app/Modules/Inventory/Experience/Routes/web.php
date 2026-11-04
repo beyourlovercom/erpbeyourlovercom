@@ -2,6 +2,7 @@
 
 use App\Modules\Inventory\Experience\Controllers\InventoryController;
 use App\Modules\Inventory\Experience\Controllers\InventorySyncController;
+use App\Modules\Inventory\Experience\Controllers\WarehouseOverdueInventoryController;
 use App\Modules\Inventory\Experience\Controllers\MorePlusInventorySyncController;
 use App\Modules\Inventory\Experience\Controllers\WarehouseController;
 use App\Modules\Inventory\Experience\Controllers\PackagingMeasurementController;
@@ -36,8 +37,10 @@ Route::middleware(['web','auth','can:inventory.view'])->group(function (): void 
     Route::get('/inventory',[InventoryController::class,'dashboard'])->name('shell.inventory');
     Route::get('/inventory/list',[InventoryController::class,'warehouses'])->name('inventory.list');
     Route::get('/inventory/products',[InventoryController::class,'products'])->name('inventory.products');
+    Route::get('/inventory/overdue',[WarehouseOverdueInventoryController::class,'index'])->name('inventory.overdue');
+    Route::get('/inventory/overdue/export',[WarehouseOverdueInventoryController::class,'export'])->name('inventory.overdue.export');
     Route::get('/inventory/warehouses',fn()=>redirect()->route('inventory.list'))->name('inventory.warehouses');
-    Route::get('/inventory/{warehouse}',[WarehouseController::class,'show'])->where('warehouse','^(?!add$|list$|products$|product-search$|warehouses$|sync$)[^/]+$')->name('inventory.warehouse.show');
+    Route::get('/inventory/{warehouse}',[WarehouseController::class,'show'])->where('warehouse','^(?!add$|list$|overdue$|products$|product-search$|warehouses$|sync$)[^/]+$')->name('inventory.warehouse.show');
 });
 
 Route::middleware(['web','auth','can:inventory.warehouses.manage'])->group(function (): void {

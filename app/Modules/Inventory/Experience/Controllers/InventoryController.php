@@ -3,6 +3,7 @@
 namespace App\Modules\Inventory\Experience\Controllers;
 
 use App\Modules\Inventory\Application\InventoryService;
+use App\Modules\Inventory\Application\WarehouseOverdueInventoryService;
 use App\Modules\Inventory\Application\InventoryStockStatus;
 use App\Modules\Identity\Application\AuthorizationKeys;
 use Illuminate\Http\JsonResponse;
@@ -13,8 +14,8 @@ use Inertia\Response;
 
 final class InventoryController
 {
-    public function __construct(private readonly InventoryService $inventory) {}
-    public function dashboard(): Response { return Inertia::render('Inventory/Dashboard', ['summary'=>$this->inventory->dashboard(),'canManage'=>auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false]); }
+    public function __construct(private readonly InventoryService $inventory, private readonly WarehouseOverdueInventoryService $overdue) {}
+    public function dashboard(): Response { return Inertia::render('Inventory/Dashboard', ['summary'=>$this->inventory->dashboard(),'overdue'=>$this->overdue->report()['summary'],'canManage'=>auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false]); }
     public function warehouses(): Response { return Inertia::render('Inventory/WarehouseList', ['warehouses'=>$this->inventory->warehouses(),'canManage'=>auth()->user()?->can(AuthorizationKeys::InventoryWarehousesManage->value) ?? false]); }
     public function products(Request $request): Response|RedirectResponse
     {

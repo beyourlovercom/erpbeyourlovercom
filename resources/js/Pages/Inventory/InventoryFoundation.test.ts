@@ -28,6 +28,7 @@ describe('Inventory foundation UI', () => {
     expect(wrapper.text()).toContain('3')
     expect(wrapper.find('a[href="/inventory/de"]').exists()).toBe(true)
     expect(wrapper.find('a[href="/inventory/add"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/inventory/overdue"]').exists()).toBe(true)
   })
 
   it('dashboard hides warehouse create action from view-only users', () => {
