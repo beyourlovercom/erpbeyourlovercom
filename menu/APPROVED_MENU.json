@@ -84,6 +84,21 @@
       "sort": 30
     },
     {
+      "code": "orders-archive",
+      "parent_code": "orders",
+      "level": 2,
+      "label_zh": "归档清单",
+      "slug": "archive",
+      "url": "/orders/archive",
+      "route": "orders.archive.index",
+      "permission": "orders.view",
+      "emoji": null,
+      "function_zh": "仅查看和恢复已归档订单；运营归档订单不进入待分仓及发货序列。",
+      "status": "implemented",
+      "progress": 100,
+      "sort": 40
+    },
+    {
       "code": "logistics",
       "parent_code": null,
       "level": 1,

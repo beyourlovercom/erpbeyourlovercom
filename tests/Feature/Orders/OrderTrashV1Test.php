@@ -38,6 +38,18 @@ final class OrderTrashV1Test extends TestCase
         $this->actingAs($editor)->get('/customers/orders/'.$order->id)->assertOk();
     }
 
+    public function test_even_admin_cannot_permanently_delete_soft_trashed_order(): void
+    {
+        $admin = $this->userWith(['orders.view', 'orders.edit', 'system.permissions.manage']);
+        $order = $this->order($admin, 'customer', 'no-purge');
+        $this->actingAs($admin)->delete('/orders/'.$order->id.'/trash')->assertRedirect();
+        $this->assertSoftDeleted('orders', ['id' => $order->id]);
+        $this->actingAs($admin)->delete('/orders/trash/'.$order->id)->assertStatus(409);
+        $this->assertSoftDeleted('orders', ['id' => $order->id]);
+        $this->actingAs($admin)->post('/orders/trash/'.$order->id.'/restore')->assertRedirect();
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'deleted_at' => null]);
+    }
+
     public function test_only_users_with_order_edit_permission_can_trash(): void
     {
         $reader = $this->userWith(['orders.view']);

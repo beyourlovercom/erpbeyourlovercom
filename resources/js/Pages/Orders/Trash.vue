@@ -7,11 +7,6 @@ const restore = (order: Row) => {
   if (!window.confirm(`恢复订单 ${order.number}？`)) return
   router.post(`/orders/trash/${order.id}/restore`)
 }
-const purge = (order: Row) => {
-  if (!window.confirm(`永久删除订单 ${order.number}？此操作不可撤销。`)) return
-  if (!window.confirm(`请再次确认永久删除：${order.number}`)) return
-  router.delete(`/orders/trash/${order.id}`)
-}
 </script>
 <template>
   <Head title="订单回收站 · BYL ERP" />
@@ -19,7 +14,7 @@ const purge = (order: Row) => {
     <div class="erp-form-page">
       <div class="erp-form-content">
         <div class="erp-form-header-row">
-          <div><h1 class="erp-form-title">订单回收站</h1><p class="erp-form-subtitle">仅管理员可见。关联物流、财务或库存业务的订单禁止永久删除。</p></div>
+          <div><h1 class="erp-form-title">订单回收站</h1><p class="erp-form-subtitle">仅管理员可见。所有订单保留历史记录，不允许永久删除。</p></div>
           <a href="/orders" class="erp-btn erp-btn-secondary">返回订单</a>
         </div>
         <div class="erp-form-card">
@@ -28,7 +23,7 @@ const purge = (order: Row) => {
             <tbody>
               <tr v-for="order in orders.data" :key="order.id" class="border-t">
                 <td class="p-3">{{ order.number }}</td><td class="p-3">{{ order.kind }}</td><td class="p-3">{{ order.owner || '—' }}</td><td class="p-3">{{ order.archival_mode === 'preserved' ? '保留业务证据' : '软删除' }}</td><td class="p-3">{{ order.deleted_at }}</td>
-                <td class="p-3 flex gap-2"><button type="button" class="erp-btn erp-btn-secondary" @click="restore(order)">恢复</button><button v-if="order.archival_mode === 'soft_deleted'" type="button" class="erp-btn erp-btn-secondary text-red-700" @click="purge(order)">永久删除</button><span v-else class="text-slate-500 text-xs self-center">业务关联保留，不可永久删除</span></td>
+                <td class="p-3 flex gap-2"><button type="button" class="erp-btn erp-btn-secondary" @click="restore(order)">恢复</button><span class="text-slate-500 text-xs self-center">保留记录 · 不可永久删除</span></td>
               </tr>
               <tr v-if="!orders.data.length"><td colspan="6" class="p-3">回收站为空</td></tr>
             </tbody>
