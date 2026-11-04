@@ -198,9 +198,9 @@ final class OrderService
         });
     }
 
-    public function update(Model $order, array $attributes, ?array $items, ?Authenticatable $actor): Model
+    public function update(Model $order, array $attributes, ?array $items, ?Authenticatable $actor, ?string $reason = null): Model
     {
-        return DB::transaction(function () use ($order, $attributes, $items, $actor): Model {
+        return DB::transaction(function () use ($order, $attributes, $items, $actor, $reason): Model {
             $lockedOrder = $order->newQuery()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $before = $this->auditData($lockedOrder);
             $before['address'] = $lockedOrder->address?->toArray();
@@ -212,20 +212,33 @@ final class OrderService
                 $lockedOrder->address()->updateOrCreate(['order_id' => $lockedOrder->getKey()], $address);
             }
             if ($items !== null) {
-                $lockedOrder->items()->delete();
+                $retainedItemIds = [];
                 foreach ($items as $item) {
+                    $itemId = isset($item['id']) ? (int) $item['id'] : null;
+                    $existingItem = $itemId ? $lockedOrder->items()->whereKey($itemId)->firstOrFail() : null;
                     $resolved = $this->resolveProductFields($item);
-                    $lockedOrder->items()->create([
+                    unset($item['id']);
+                    $payload = [
                         ...$item,
                         'sku' => $resolved['sku'],
                         'product_summary' => $resolved['product_summary'],
                         'line_revenue' => $this->lineRevenue($item['unit_price'], (int) $item['quantity']),
-                    ]);
+                    ];
+                    if ($existingItem) {
+                        $existingItem->update($payload);
+                        $retainedItemIds[] = $existingItem->id;
+                    } else {
+                        $retainedItemIds[] = $lockedOrder->items()->create($payload)->id;
+                    }
                 }
+                $lockedOrder->items()->whereNotIn('id', $retainedItemIds)->delete();
             }
             $after = $this->auditData($lockedOrder);
             $after['address'] = $lockedOrder->address?->fresh()?->toArray();
             $after['items'] = $lockedOrder->items()->get()->toArray();
+            if ($reason) {
+                $after['amendment_reason'] = $reason;
+            }
             $this->record($actor, 'order.updated', $lockedOrder, before: $before, after: $after, reason: 'manual_correction');
 
             return $lockedOrder->fresh(['items', 'owner', 'address']);
