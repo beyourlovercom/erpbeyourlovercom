@@ -23,7 +23,7 @@ final class OrderOperationalArchiveController
         abort_unless($request->user()?->can('orders.view'), 403);
         // The root controls archive/restore; derived fulfillments inherit the
         // lockout but are not duplicate rows in the archive list.
-        $query = Order::query()->with('owner')
+        $query = Order::query()->with(['owner', 'operationalArchivedByUser'])
             ->whereNull('fulfillment_parent_id')
             ->whereNotNull('operational_archived_at')
             ->whereNull('archived_at');
@@ -43,7 +43,7 @@ final class OrderOperationalArchiveController
                 'order_kind' => $order->order_kind?->value,
                 'order_status' => $order->order_status?->value,
                 'operational_archived_at' => $order->operational_archived_at?->toIso8601String(),
-                'archived_by' => $order->operational_archived_by,
+                'archived_by' => $order->operationalArchivedByUser?->name ?? ($order->operational_archived_by ? '#'.$order->operational_archived_by : null),
                 'owner' => $order->owner?->name,
             ])->toArray(),
             'canRestore' => (bool) $request->user()?->can('system.permissions.manage'),

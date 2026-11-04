@@ -1218,7 +1218,7 @@ onBeforeUnmount(() => {
               :aria-expanded="!isSectionCollapsed('order-section-flags')" @click="toggleSection('order-section-flags')">{{ isSectionCollapsed('order-section-flags') ? '▸' : '▾' }}</button>
           </div>
           </div>
-          <p class="ord-inventory-help">用于异常、运输中、退货、缺货等辅助业务视图，不是发货入口。所有发货、重发、补发操作统一在上方“履约状态”处理；这里仅保留辅助业务标记。</p>
+          <p class="ord-inventory-help">异常、运输中、退货、缺货属于辅助标记；发货、重发、补发仍在上方“履约状态”处理。“归档订单”是独立操作，归档后只保留在归档清单，不再进入分仓和发货队列。</p>
           <div class="ord-marker-row">
             <button v-for="marker in operationalMarkerOptions" :key="marker.key" type="button" class="erp-btn erp-btn-secondary ord-marker" :class="{ active: markerActive(marker.key) }" :disabled="!canMarkOperational" @click="toggleMarker(marker.key)">{{ markerActive(marker.key) ? '✓ ' : '' }}{{ marker.label }}</button>
             <button type="button" class="erp-btn erp-btn-secondary ord-marker" :disabled="!canArchiveOrder" :aria-label="operationallyArchived ? '订单已归档' : '归档订单'" @click="archiveOrder">{{ operationallyArchived ? '已归档' : '归档订单' }}</button>

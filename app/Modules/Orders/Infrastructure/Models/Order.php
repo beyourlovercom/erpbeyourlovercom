@@ -78,6 +78,11 @@ class Order extends Model
         return $this->belongsTo('App\\Modules\\Identity\\Infrastructure\\Models\\User', 'owner_id');
     }
 
+    public function operationalArchivedByUser(): BelongsTo
+    {
+        return $this->belongsTo('App\\Modules\\Identity\\Infrastructure\\Models\\User', 'operational_archived_by');
+    }
+
     public function address(): HasOne
     {
         return $this->hasOne(OrderAddress::class);

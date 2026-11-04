@@ -43,7 +43,9 @@ final class OrderOperationalArchiveTest extends TestCase
         $this->actingAs($staff)->get('/orders')->assertOk()
             ->assertInertia(fn ($page) => $page->has('orders.data', 0));
         $this->actingAs($staff)->get('/orders/archive')->assertOk()
-            ->assertInertia(fn ($page) => $page->has('orders.data', 1)->where('orders.data.0.id', $order->id));
+            ->assertInertia(fn ($page) => $page->has('orders.data', 1)
+                ->where('orders.data.0.id', $order->id)
+                ->where('orders.data.0.archived_by', $staff->name));
         $this->actingAs($staff)->get('/orders/trash')->assertForbidden();
         $this->actingAs($staff)->post('/orders/archive/'.$order->id.'/restore')->assertForbidden();
         $this->actingAs($staff)->post('/orders/'.$order->id.'/archive')->assertStatus(409);

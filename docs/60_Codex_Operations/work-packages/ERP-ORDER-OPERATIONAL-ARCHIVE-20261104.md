@@ -45,10 +45,10 @@ Implemented exclusion from normal order list/export; wait-stock query; domestic 
 PROGRAM_ROADMAP: Architecture Migration → MVP1 Existing Operations → ERP-INQUIRY-M1 → WooCommerce Inbound → Tracking Outbound → Sync Orchestration → Product/Media → Content/SEO → Google Publishing → Full Order Workspace → Logistics OS → KOL OS → Inventory/Procurement → Accounting/ROI → Shopify/Additional Integrations → Production Hardening
 CURRENT_TRACK_PHASE_MAP: Order operational archive implementation and local static verification; Owner/controller review pending
 COMPLETED_PHASES: Preflight; model/migration/controller/routes/UI implementation; focused archive tests; Orders regression; baseline-compared Logistics regression; PHP and frontend static/build verification
-CURRENT_PHASE: Draft PR and Owner visual UAT gate
+CURRENT_PHASE: Browser UAT verified; waiting Owner visual PASS
 CURRENT_WORK_PACKAGE: ERP-ORDER-OPERATIONAL-ARCHIVE-20261104
-PACKAGE_STATUS: VERIFIED_LOCALLY_DRAFT_REVIEW_REQUIRED
-WAITING_PHASES: Owner visual UAT; production release approval; production migration execution
+PACKAGE_STATUS: UAT_BROWSER_PASS_OWNER_REVIEW_REQUIRED
+WAITING_PHASES: Owner visual PASS; production release approval; production migration execution
 BASELINE: db5ec404
 GITHUB_STATE: Dedicated branch; GitHub PR delivery pending
 SOURCE_CONFLICTS: NONE WITH EVIDENCE
@@ -90,3 +90,17 @@ MIGRATION_FILE_AUTHORING: INCLUDED
 MIGRATION_EXECUTION: EXCLUDED
 UAT: EXCLUDED
 DEPLOYMENT: EXCLUDED
+
+## UAT — 2026-11-04 / Synthetic browser session
+
+Environment: independent UAT SQLite database and loopback-only Laravel server on US Mac, http://127.0.0.1:18865. Five synthetic orders prefixed 007-UAT-1104; all real Woo/ERP production orders and third-party API calls were untouched.
+
+- Live browser round-trip: 15/15 checks PASS; archive confirmation, archive-list redirect, normal orders exclusion, wait-stock exclusion, MorePlus overseas-list exclusion, admin restore, no browser JavaScript errors, desktop/mobile render and no page-level mobile overflow.
+- Second round after fixing UAT visual issues: 15/15 PASS again; changed display from raw status code to Chinese, operator user ID to display name, and horizontal-scrolling mobile list to cards with visible restore buttons.
+- Derived fulfillment browser UAT: parent archived -> root only in archive list, derived child excluded from normal overseas queue -> parent restored; PASS.
+- China factory browser UAT: pending review row visible -> archived and hidden from China review -> restored and visible again; PASS.
+- Persisted audit records confirmed in local SQLite: archive and restore both recorded, with original order records restored unchanged after the test.
+- Isolated migration was run only against the new UAT SQLite file. No remote provider dispatch, Production DB migration or Production web deployment.
+- Screenshots preserved on US Mac: /tmp/byl-erp-archive-uat-flags-desktop.png, /tmp/byl-erp-archive-uat-flags-mobile.png, /tmp/byl-erp-archive-uat-mobile-list.png, /tmp/byl-erp-archive-uat-desktop-list.png.
+
+Review gate remains: Owner visual PASS and a separately authorized controlled Production release/migration. The private localhost UAT address is not a public URL; an externally accessible preview has not been deployed.
