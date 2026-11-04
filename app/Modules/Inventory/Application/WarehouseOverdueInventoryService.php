@@ -189,7 +189,9 @@ final class WarehouseOverdueInventoryService
             'warehouse_code' => (string) $warehouse->code,
             'warehouse_name' => (string) $warehouse->name,
             'product_id' => (int) $inventory->product_id,
-            'sku' => $providerSkus[(int) $inventory->product_id] ?? (string) $inventory->product->sku,
+            'sku' => strtoupper((string) $warehouse->code) === 'US-LA'
+                ? ($providerSkus[(int) $inventory->product_id] ?? (string) $inventory->product->sku)
+                : (string) $inventory->product->sku,
             'canonical_sku' => (string) $inventory->product->sku,
             'product_name' => (string) $inventory->product->name,
             'putaway_date' => $date->toDateString(),
