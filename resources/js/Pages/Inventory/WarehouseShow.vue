@@ -7,6 +7,7 @@ import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader
 import { useAccountGridPreferences } from '../../Composables/useAccountGridPreferences'
 
 type Item={id:number;product:{id:number;sku:string;name:string;updated_at?:string|null};quantity_on_hand:number;quantity_reserved:number;quantity_available:number;stock_status:'out_of_stock'|'low_stock'|'in_stock';stock_status_label:string;inbound_at:string|null;stay_days:number|null;location:string|null;standard_qoh:number|null;expected_restock_qty:number;updated_at?:string;product_updated_at?:string;replenishment:{policy_status:'unconfigured'|'no_demand'|'reorder'|'healthy';policy_label:string;shipped_90d_qty:number;days_of_cover:number|null;recommended_restock_qty:number|null}}
+type MorePlusStockPreview={checksum:string;source_sku_count:number;ready:number;unchanged:number;blocked:number;apply_enabled:boolean;rows:Array<{provider_sku:string;canonical_sku:string|null;provider_physical:number|null;provider_available:number;local_qoh:number;local_reserved:number;status:'ready'|'unchanged'|'blocked';reason:string|null}>}
 type BillImportCapability={provider:string;label:string;extension:string;format_label:string;accept:string;max_kb:number}
 type W={id:number;slug:string;public_slug?:string;code:string;name:string;name_en?:string|null;role_label?:string;bill_import?:BillImportCapability|null;bill_import_onboarding?:{status:string;label:string;provider:string|null;format_label:string;note:string}|null;is_fulfillment_warehouse?:boolean;is_inventory_only_warehouse?:boolean;country_code:string|null;address_line1:string|null;address_line2:string|null;city:string|null;state_region:string|null;postal_code:string|null;timezone:string|null;type:string;ownership_type:'owned'|'external';is_domestic:boolean;is_active:boolean;priority:number;fulfillment_available_on:string|null;fulfillment_state:'preparing'|'awaiting_inventory'|'ready';fulfillment_state_label:string;replenishment_lead_time_days:number|null;replenishment_safety_stock_days:number|null;replenishment_target_cover_days:number|null;billing_markdown:string|null;service_regions?:string[];last_inventory_sync_at:string|null;inventories:Item[]}
 type ClearanceProduct={id:number;product:{id:number;sku:string;name:string};priority:number;quantity_on_hand:number|null;quantity_reserved:number|null;quantity_available:number|null;status:'available'|'out_of_stock'|'unknown';status_label:string}
@@ -32,8 +33,30 @@ type RestockProjection={rule:{history_days:number;formula:string;final_formula:s
 type RestockColumnKey='final'|'formula'|'manual'|'sku'|'label_sku'|'name'|'units_per_carton'|'shipped120'|'available'|'on_hand'|'reserved'|'weight'|'weight_source'
 type LatestRestockPlan={id:number;reference:string;status:string;snapshot_checksum:string;summary:{final_units:number;products_to_restock:number;snapshot_products:number;cartons_known:number;products_missing_units_per_carton:number;label_sku_overrides:number};confirmed_at:string|null}
 type RestockLabelJob={id:number;reference:string;document_kind:string;status:string;status_label:string;status_detail:string;progress_percent:number;received_artifact_files:number;expected_artifact_files:number;last_heartbeat_at:string|null;attempt_count:number;next_attempt_at:string|null;is_retry_scheduled:boolean;requested_at:string|null;started_at:string|null;completed_at:string|null;failed_at:string|null;last_error_message:string|null;is_terminal:boolean;artifact_count:number;has_pi:boolean;has_package:boolean}
-const props=withDefaults(defineProps<{warehouse:W;clearanceProducts:ClearanceProduct[];clearanceCandidates:ClearanceCandidate[];costCenter?:WarehouseCostCenter;billImportPreview?:BillImportPreview|null;billReconciliationHistory?:BillHistory[];billReconciliationDashboard?:ReconciliationDashboard|null;billReconciliationPreview?:ReconciliationPreview|null;inboundProjection?:InboundProjection|null;restockProjection?:RestockProjection|null;latestRestockPlan?:LatestRestockPlan|null;latestRestockLabelJob?:RestockLabelJob|null;shipmentProjection?:ShipmentProjection|null;canOperate:boolean;canManage:boolean;canEditProducts?:boolean}>(),{costCenter:()=>({months:[]}),billImportPreview:null,billReconciliationHistory:()=>[],billReconciliationDashboard:null,billReconciliationPreview:null,inboundProjection:null,restockProjection:null,latestRestockPlan:null,latestRestockLabelJob:null,shipmentProjection:null,canEditProducts:false})
+const props=withDefaults(defineProps<{warehouse:W;clearanceProducts:ClearanceProduct[];clearanceCandidates:ClearanceCandidate[];costCenter?:WarehouseCostCenter;billImportPreview?:BillImportPreview|null;billReconciliationHistory?:BillHistory[];billReconciliationDashboard?:ReconciliationDashboard|null;billReconciliationPreview?:ReconciliationPreview|null;inboundProjection?:InboundProjection|null;restockProjection?:RestockProjection|null;latestRestockPlan?:LatestRestockPlan|null;latestRestockLabelJob?:RestockLabelJob|null;shipmentProjection?:ShipmentProjection|null;moreplusInventoryPreview?:MorePlusStockPreview|null;canOperate:boolean;canManage:boolean;canEditProducts?:boolean}>(),{costCenter:()=>({months:[]}),billImportPreview:null,billReconciliationHistory:()=>[],billReconciliationDashboard:null,billReconciliationPreview:null,inboundProjection:null,restockProjection:null,latestRestockPlan:null,latestRestockLabelJob:null,shipmentProjection:null,moreplusInventoryPreview:null,canEditProducts:false})
 const warehousePath=`/inventory/${props.warehouse.public_slug||props.warehouse.slug}`
+const isMorePlus=computed(()=>props.warehouse.code.toUpperCase()==='US-LA')
+const moreplusPreviewForm=useForm({})
+const moreplusApplyForm=useForm({expected_checksum:''})
+const moreplusError=computed(()=>String((moreplusPreviewForm.errors as Record<string,string>).moreplus_stock||(moreplusApplyForm.errors as Record<string,string>).moreplus_stock||''))
+const previewMorePlusStock=()=>moreplusPreviewForm.post(warehousePath+'/provider-stock/preview',{preserveScroll:true})
+const applyMorePlusStock=()=>{
+  const p=props.moreplusInventoryPreview
+  if(!p||!p.apply_enabled||!p.ready)return
+  if(!window.confirm(`确认将 ${p.ready} 个已通过校验的 SKU 库存写入 ERP？${p.blocked} 个异常 SKU 将保持不变。`))return
+  moreplusApplyForm.expected_checksum=p.checksum
+  moreplusApplyForm.post(warehousePath+'/provider-stock/apply',{preserveScroll:true})
+}
+const moreplusBlockLabel=(reason:string|null)=>({
+  SKU_IDENTITY_UNVERIFIED:'SKU 未验证',
+  SKU_MULTIPLE_PROVIDER_IDENTITIES:'多个仓库 SKU 对应同一商品',
+  ERP_REMOVED_INVENTORY_REVIEW_REQUIRED:'库存曾被移除，需人工确认',
+  PROVIDER_PHYSICAL_QUANTITY_UNVERIFIED:'仓库实物数量异常或缺失',
+  ERP_RESERVATION_EXCEEDS_PROVIDER_PHYSICAL:'ERP 预留超过仓库实物',
+  PROVIDER_AVAILABLE_BELOW_ERP_PROJECTED_AVAILABLE:'仓库占用与 ERP 预留不一致',
+  LOT_OR_AGING_RECONCILIATION_REQUIRED:'需先核对批次/库龄',
+}[reason||'']||'待复核')
+
 const breadcrumbs=[{label:'BYL ERP',href:'/dashboard'},{label:'库存',href:'/inventory'},{label:'仓库清单',href:'/inventory/list'},props.warehouse.name]
 const activeTab=ref<'overview'|'inventory'|'inbound'|'costs'|'shipping'|'exceptions'|'config'>('overview');const inventoryMode=ref<'stock'|'restock'|'clearance'>('stock');const query=ref('');const statusFilter=ref<'all'|'in_stock'|'low_stock'|'out_of_stock'>('all');const clearanceQuery=ref('');const clearanceAddingProductId=ref<number|null>(null);const selectedCostMonth=ref(props.costCenter.months[0]?.month||'');const shipmentQuery=ref(props.shipmentProjection?.filters.query||'');const shipmentStatus=ref<'all'|'shipped'|'exception'|'pending'|'completed'>(props.shipmentProjection?.filters.status||'all');const shipmentPerPage=ref<20|50|100>(props.shipmentProjection?.pagination.per_page||50)
 const meta=useForm({name:props.warehouse.name,code:props.warehouse.code,country_code:props.warehouse.country_code||'',address_line1:props.warehouse.address_line1||'',address_line2:props.warehouse.address_line2||'',city:props.warehouse.city||'',state_region:props.warehouse.state_region||'',postal_code:props.warehouse.postal_code||'',timezone:props.warehouse.timezone||'',type:props.warehouse.type,ownership_type:props.warehouse.ownership_type,is_domestic:props.warehouse.is_domestic,is_active:props.warehouse.is_active,priority:props.warehouse.priority,fulfillment_available_on:props.warehouse.fulfillment_available_on||'',replenishment_lead_time_days:props.warehouse.replenishment_lead_time_days,replenishment_safety_stock_days:props.warehouse.replenishment_safety_stock_days,replenishment_target_cover_days:props.warehouse.replenishment_target_cover_days})
@@ -153,7 +176,7 @@ const saveCost=()=>cost.transform(d=>({...d,currency:String(d.currency||'').trim
 <section class="warehouse-page">
 <header class="warehouse-hero">
   <div><p class="eyebrow">Inventory OS · Warehouse</p><div class="title-line"><h2>{{warehouse.name}}</h2><span class="warehouse-code">{{warehouse.code}}</span><span class="state-pill" :class="warehouse.fulfillment_state">{{warehouse.fulfillment_state_label}}</span></div><p class="subtitle">{{warehouse.name_en||warehouse.code}} · {{warehouse.role_label}} · {{warehouseAddress}}</p></div>
-  <div class="hero-actions page-header-actions"><Link class="button ghost" href="/inventory/list">仓库清单</Link><Link class="button primary" href="/inventory/sync">导入库存</Link></div>
+  <div class="hero-actions page-header-actions"><Link class="button ghost" href="/inventory/list">仓库清单</Link><button v-if="isMorePlus&&canOperate" type="button" class="button primary" :disabled="moreplusPreviewForm.processing||moreplusApplyForm.processing" @click="previewMorePlusStock">{{moreplusPreviewForm.processing?'读取仓库中…':'同步仓库库存'}}</button><Link class="button ghost" href="/inventory/sync">导入库存</Link></div>
 </header>
 <nav class="warehouse-tabs" aria-label="Warehouse 360">
   <button type="button" :class="{active:activeTab==='overview'}" @click="activeTab='overview'">总览</button>
@@ -164,6 +187,17 @@ const saveCost=()=>cost.transform(d=>({...d,currency:String(d.currency||'').trim
   <button type="button" :class="{active:activeTab==='exceptions'}" @click="activeTab='exceptions'">异常<span v-if="inventoryWarnings.length+reconciliationReviews.length" class="tab-count">{{inventoryWarnings.length+reconciliationReviews.length}}</span></button>
   <button type="button" :class="{active:activeTab==='config'}" @click="activeTab='config'">配置</button>
 </nav>
+<section v-if="isMorePlus&&canOperate" class="primary-panel" aria-label="MorePlus 库存同步">
+  <div v-if="moreplusError" class="inventory-add-error" role="alert">{{moreplusError}}</div>
+  <template v-if="moreplusInventoryPreview">
+    <div class="section-heading"><div><p class="section-kicker">MOREPLUS OPENAPI · PREVIEW</p><h3>仓库库存差异预览</h3><p>读取仓库实物与可用库存；仅更新安全通过校验的 SKU，不将未返回的 SKU 清零，也不修改预留库存、物流订单或 Woo。</p></div><div class="section-actions"><button type="button" class="button primary" :disabled="!moreplusInventoryPreview.apply_enabled||!moreplusInventoryPreview.ready||moreplusApplyForm.processing" @click="applyMorePlusStock">{{moreplusApplyForm.processing?'正在确认…':moreplusInventoryPreview.apply_enabled?'确认同步到 ERP':'正式写入待授权'}}</button></div></div>
+    <p>仓库 SKU {{moreplusInventoryPreview.source_sku_count}} · 可同步 {{moreplusInventoryPreview.ready}} · 无变化 {{moreplusInventoryPreview.unchanged}} · 待复核 {{moreplusInventoryPreview.blocked}}</p>
+    <div v-if="moreplusInventoryPreview.rows.length" class="table-shell" style="max-height:300px;overflow:auto">
+      <table><thead><tr><th>MorePlus SKU</th><th>ERP SKU</th><th>仓库实物</th><th>仓库可用</th><th>ERP 当前</th><th>ERP 预留</th><th>结论</th></tr></thead>
+      <tbody><tr v-for="r in moreplusInventoryPreview.rows" :key="r.provider_sku"><td>{{r.provider_sku}}</td><td>{{r.canonical_sku||'未匹配'}}</td><td>{{r.provider_physical??'—'}}</td><td>{{r.provider_available}}</td><td>{{r.local_qoh}}</td><td>{{r.local_reserved}}</td><td>{{r.status==='ready'?'可同步':r.status==='unchanged'?'一致':moreplusBlockLabel(r.reason)}}</td></tr></tbody></table>
+    </div>
+  </template>
+</section>
 <div v-if="activeTab==='overview'" class="kpi-grid">
   <article><span>库存 SKU</span><strong>{{kpis.skus}}</strong><small>当前仓库商品</small></article>
   <article><span>当前库存</span><strong>{{kpis.onHand}}</strong><small>仓库实物数量</small></article>

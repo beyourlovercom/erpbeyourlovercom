@@ -131,6 +131,9 @@ final class ShipOutProductionReadOnlyGateway
                 'omsSku' => $sku,
                 'warehouseId' => $warehouse,
                 'availableQuantity' => $row['availableQuantity'],
+                // Provider physical good-stock and outbound hold are distinct from AVAILABLE.
+                'standardQuantity' => is_int($row['standardQuantity'] ?? null) && $row['standardQuantity'] >= 0 ? $row['standardQuantity'] : null,
+                'outboundingQuantity' => is_int($row['outboundingQuantity'] ?? null) && $row['outboundingQuantity'] >= 0 ? $row['outboundingQuantity'] : null,
             ];
         }
 

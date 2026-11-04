@@ -64,6 +64,8 @@ final class ShipOutProductionInventoryAudit
             $records[] = [
                 'provider_sku' => $sku,
                 'available_quantity' => $stock['availableQuantity'],
+                'standard_quantity' => $stock['standardQuantity'] ?? null,
+                'outbounding_quantity' => $stock['outboundingQuantity'] ?? null,
                 'in_product_catalog' => isset($catalog[$sku]),
                 'product_status' => $catalog[$sku]['status'] ?? null,
                 'sku_alias_status' => $mapped ? 'verified' : 'unresolved',

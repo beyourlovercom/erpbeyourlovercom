@@ -58,6 +58,7 @@ final class WarehouseController
         $latestRestockPlan=$this->restockPlans->latestForWarehouse($w);
         return Inertia::render('Inventory/WarehouseShow',[
             'warehouse'=>$this->payload($w),
+            'moreplusInventoryPreview'=>strtoupper((string) $w->code)==='US-LA' ? session('inventory.moreplus_provider_preview.'.$w->id) : null,
             'clearanceProducts'=>$this->clearance->listForWarehouse($w),
             'clearanceCandidates'=>$this->clearance->candidatesForWarehouse($w),
             'costCenter'=>$this->inventory->warehouseCostCenter($w),

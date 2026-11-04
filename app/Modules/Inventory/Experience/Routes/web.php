@@ -2,6 +2,7 @@
 
 use App\Modules\Inventory\Experience\Controllers\InventoryController;
 use App\Modules\Inventory\Experience\Controllers\InventorySyncController;
+use App\Modules\Inventory\Experience\Controllers\MorePlusInventorySyncController;
 use App\Modules\Inventory\Experience\Controllers\WarehouseController;
 use App\Modules\Inventory\Experience\Controllers\PackagingMeasurementController;
 use App\Modules\Inventory\Experience\Controllers\BlueLabelWorkerController;
@@ -54,6 +55,8 @@ Route::middleware(['web','auth','can:inventory.warehouses.manage'])->group(funct
 });
 
 Route::middleware(['web','auth','can:inventory.operate'])->group(function (): void {
+    Route::post('/inventory/{warehouse}/provider-stock/preview',[MorePlusInventorySyncController::class,'preview'])->name('inventory.moreplus-stock.preview');
+    Route::post('/inventory/{warehouse}/provider-stock/apply',[MorePlusInventorySyncController::class,'apply'])->name('inventory.moreplus-stock.apply');
     Route::post('/inventory/{warehouse}/stock',[WarehouseController::class,'saveInventory'])->name('inventory.stock.store');
     Route::post('/inventory/{warehouse}/stock/add',[WarehouseController::class,'addInventory'])->name('inventory.stock.add');
     Route::patch('/inventory/{warehouse}/stock/{inventory}',[WarehouseController::class,'updateInventory'])->name('inventory.stock.update');
