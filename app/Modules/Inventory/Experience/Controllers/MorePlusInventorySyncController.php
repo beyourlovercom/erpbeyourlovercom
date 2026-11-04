@@ -30,6 +30,9 @@ final class MorePlusInventorySyncController
         }
         session([$this->key((int) $w->id) => $preview,
             $this->fifoKey((int) $w->id) => $fifo]);
+        // The next warehouse GET consumes this visibility marker once.
+        // Preserve the checksum separately for an independently authorized apply.
+        session()->put('inventory.moreplus_preview_visible.'.$w->id, true);
 
         return back()->with('success', 'MorePlus 库存差异预览已刷新；尚未更改 ERP 库存');
     }
@@ -49,7 +52,7 @@ final class MorePlusInventorySyncController
             return back()->withErrors(['moreplus_stock' => $error instanceof RuntimeException
                 ? $error->getMessage() : 'MOREPLUS_INVENTORY_APPLY_UNAVAILABLE']);
         }
-        session()->forget([$this->key((int) $w->id), $this->fifoKey((int) $w->id)]);
+        session()->forget([$this->key((int) $w->id), $this->fifoKey((int) $w->id), 'inventory.moreplus_preview_visible.'.$w->id]);
 
         return back()->with('success', sprintf(
             'MorePlus 同步完成：更新 %d 个、新增 %d 个、未变 %d 个，%d 个待复核（未覆盖）。',
