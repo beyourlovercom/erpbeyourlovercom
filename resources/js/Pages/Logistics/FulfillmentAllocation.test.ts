@@ -134,7 +134,7 @@ describe('Vita Fulfillment Allocation V1.1', () => {
   it('renders canonical table and opens 查看方案 as a modal with recommendation evidence', async () => {
     const wrapper = mountPage()
     expect(wrapper.text()).toContain('待分仓')
-    expect(wrapper.text()).toContain('V1.1')
+    expect(wrapper.text()).toContain('V1.2')
     expect(wrapper.text()).toContain('123 West Test Ave, Apt 2, Los Angeles, CA, 90001, US')
     expect(wrapper.text()).toContain('美西区')
     expect(wrapper.text()).toContain('美国3世迈仓 → 美西MorePlus')
@@ -412,4 +412,56 @@ describe('Vita Fulfillment Allocation V1.1', () => {
     expect(document.body.querySelector('.primary-allocation .warehouse-advice.recommended')).toBeNull()
   })
 
+})
+describe('V1.2 evidence-aware allocation list', () => {
+  it('shows verified warehouse candidates even if cost comparison is incomplete', async () => {
+    const candidate = {
+      ...manualOrder, id: 99, erp_order_id: '007-test-candidate', items: [itemA],
+      allocation_decision: {
+        ...manualOrder.allocation_decision,
+        plans: [{
+          plan_key: 'single:la', plan_type: 'single' as const, is_split: false, shipment_count: 1,
+          label: '整单美西MorePlus发货', execution_status: 'preview',
+          cost: {status:'missing_evidence',amount:null,currency:null},
+          segments: [{
+            source_type:'warehouse' as const,source_code:'US-LA',warehouse_id:1,
+            warehouse_name:'美西MorePlus',items:[{product_id:11,quantity:1,sku:'MF414A'}],
+          }],
+        }],
+      },
+    }
+    const wrapper = mountPage({ ...props, orders: { ...props.orders, data: [candidate], total: 1 } })
+    expect(wrapper.text()).toContain('V1.2')
+    expect(wrapper.text()).toContain('库存可履约：美西MorePlus')
+    expect(wrapper.text()).toContain('产品包装成本数据不足')
+    expect(wrapper.find('.allocation-table .status-chip').text()).not.toBe('数据不足')
+    expect(wrapper.text()).not.toContain('可确认分仓')
+    const tab = wrapper.findAll('.tabs button').find(button => button.text().includes('仓库建议'))
+    await tab!.trigger('click')
+    expect(wrapper.findAll('.allocation-table tbody tr')).toHaveLength(1)
+    await wrapper.find('.reason-link').trigger('click')
+    await flushPromises()
+    expect(document.body.textContent).toContain('产品包装成本数据不足')
+    expect(document.body.textContent).toContain('确认人工分配并提交')
+  })
+
+  it('keeps unverified inventory out of green status and provides specific action', async () => {
+    const pendingItem = {
+      ...itemA, availability: [{
+        warehouse_id:1, warehouse_slug:'us-la', warehouse_name:'美西MorePlus',
+        inventory_state:'pending', can_auto_allocate:false,
+        quantity_on_hand:5, quantity_reserved:0, quantity_available:5,
+      }],
+    }
+    const pendingOrder = {
+      ...manualOrder, id: 100, erp_order_id: '007-test-pending', items: [pendingItem],
+      allocation_decision: { ...manualOrder.allocation_decision, plans: [] },
+    }
+    const wrapper = mountPage({ ...props, orders: { ...props.orders, data: [pendingOrder], total: 1 } })
+    expect(wrapper.text()).toContain('库存待核实：美西MorePlus')
+    expect(wrapper.text()).not.toContain('可确认分仓')
+    const tab = wrapper.findAll('.tabs button').find(button => button.text().includes('库存待核实'))
+    await tab!.trigger('click')
+    expect(wrapper.findAll('.allocation-table tbody tr')).toHaveLength(1)
+  })
 })
