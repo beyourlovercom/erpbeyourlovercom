@@ -24,9 +24,32 @@ const props = defineProps<{
   warehouseUnits:Record<string,number>
   filters:{warehouse:string;search:string}
   filteredUnits:number;filteredRows:number;rows:Page
+  canManageExclusions?:boolean
+  excludedProducts?:Array<{product_id:number;sku:string;name:string;reason:string;updated_at:string|null}>
+  manageSearch?:string
+  productMatches?:Array<{product_id:number;sku:string;name:string;is_excluded:boolean}>
 }>()
 const activeWarehouse=ref(props.filters.warehouse)
 const search=ref(props.filters.search)
+const manageOpen=ref(Boolean(props.manageSearch))
+const manageSearch=ref(props.manageSearch||'')
+const excludeReason=ref('')
+const pendingProduct=ref<number|null>(null)
+const excludeCount=computed(()=>props.excludedProducts?.length||0)
+const manageQuery=()=>{
+  router.get('/inventory/overdue',{
+    warehouse:props.filters.warehouse,search:props.filters.search,
+    manage_search:manageSearch.value
+  },{preserveState:true,replace:true,preserveScroll:true})
+}
+const toggleExcluded=(productId:number, excluded:boolean)=>{
+  if(pendingProduct.value!==null)return
+  router.patch('/inventory/overdue/exclusions/'+productId,
+    {excluded,reason:excluded?excludeReason.value:null},
+    {preserveScroll:true,preserveState:false,
+      onStart:()=>{pendingProduct.value=productId},
+      onFinish:()=>{pendingProduct.value=null}})
+}
 const breadcrumbs=[{label:'BYL ERP',href:'/dashboard'},{label:'库存',href:'/inventory'},'超期库存']
 const number=(v:number)=>new Intl.NumberFormat('zh-CN').format(v)
 const filter=()=>router.get('/inventory/overdue',{warehouse:activeWarehouse.value,search:search.value},{
@@ -58,6 +81,7 @@ const origin=(row:OverdueRow)=>row.source==='dated_lot'?(row.lot_id?'批次 #'+r
     </div>
     <div class="mvp-actions">
       <Link class="mvp-button" href="/inventory">返回库存概览</Link>
+      <button v-if="canManageExclusions" class="mvp-button" type="button" @click="manageOpen=!manageOpen" data-testid="overdue-manage-exclusions">屏蔽设置 ({{excludeCount}})</button>
       <a class="mvp-button mvp-button-primary" :href="downloadHref" data-testid="overdue-export">导出 Excel</a>
     </div>
   </header>
@@ -69,6 +93,29 @@ const origin=(row:OverdueRow)=>row.source==='dated_lot'?(row.lot_id?'批次 #'+r
     <article class="mvp-card"><small>待核对</small><strong>{{number(summary.unknown_age_units)}} <em>件</em></strong><span>缺乏可确认日期；另有 {{summary.lot_mismatch_skus}} 个批次账差异</span></article>
   </div>
 
+  <section v-if="canManageExclusions&&manageOpen" class="mvp-card overdue-exclusions" aria-label="超期商品屏蔽设置">
+    <div class="overdue-exclusions-heading"><strong>屏蔽商品管理</strong><span>仅影响超期库存统计、网页清单与 Excel，不影响仓库库存和 P9 费用</span></div>
+    <form class="overdue-filter" @submit.prevent="manageQuery">
+      <input v-model.trim="manageSearch" aria-label="查找需要屏蔽的SKU" placeholder="搜索海外仓 SKU 或商品名称"/>
+      <input v-model.trim="excludeReason" aria-label="屏蔽原因" placeholder="原因（可选）：润滑油 / Logo / 礼品盒"/>
+      <button type="submit" class="mvp-button mvp-button-primary">查找商品</button>
+    </form>
+    <div v-if="productMatches?.length" class="overdue-manage-results">
+      <strong class="overdue-subheading">匹配商品（最多 30 个）</strong>
+      <div v-for="product in productMatches" :key="product.product_id" class="overdue-manage-item">
+        <span><strong>{{product.sku}}</strong> · {{product.name}}</span>
+        <label class="overdue-switch"><input type="checkbox" :checked="product.is_excluded" :disabled="pendingProduct!==null" :aria-label="'屏蔽 '+product.sku" @change="toggleExcluded(product.product_id,!product.is_excluded)"/><span>{{product.is_excluded?'已屏蔽':'参与统计'}}</span></label>
+      </div>
+    </div>
+    <div class="overdue-manage-results">
+      <strong class="overdue-subheading">已屏蔽商品 · {{excludeCount}}</strong>
+      <p v-if="!excludedProducts?.length" class="overdue-small">暂无屏蔽商品；可以在下方超期清单中直接关闭某个商品，或在上方搜索 SKU。</p>
+      <div v-for="product in excludedProducts" :key="'excluded-'+product.product_id" class="overdue-manage-item">
+        <span><strong>{{product.sku}}</strong> · {{product.name}}<small v-if="product.reason">{{product.reason}}</small></span>
+        <label class="overdue-switch"><input type="checkbox" checked :disabled="pendingProduct!==null" :aria-label="'恢复 '+product.sku" @change="toggleExcluded(product.product_id,false)"/><span>已屏蔽</span></label>
+      </div>
+    </div>
+  </section>
   <section class="mvp-card overdue-workspace">
     <div class="overdue-toolbar">
       <div class="toolbar-intro"><h3>超期库存明细</h3><span>按实际入库批次逐行显示，重复 SKU 不合并</span></div>
@@ -91,7 +138,7 @@ const origin=(row:OverdueRow)=>row.source==='dated_lot'?(row.lot_id?'批次 #'+r
         <thead><tr>
           <th>仓别</th><th>组别</th><th>责任人</th><th>入库时间</th>
           <th>FNSKU</th><th>物料名称</th><th class="number-col">数量</th>
-          <th>库龄</th><th>超期天数</th><th>批次 / 来源</th><th>核对状态</th>
+          <th>库龄</th><th>超期天数</th><th>批次 / 来源</th><th>核对状态</th><th v-if="canManageExclusions">超期统计</th>
         </tr></thead>
         <tbody>
           <tr v-for="(row,index) in rows.data" :key="row.warehouse_id+'-'+row.product_id+'-'+(row.lot_id||'summary')+'-'+index">
@@ -106,8 +153,9 @@ const origin=(row:OverdueRow)=>row.source==='dated_lot'?(row.lot_id?'批次 #'+r
             <td>{{row.overdue_days}} 天</td>
             <td>{{origin(row)}}</td>
             <td><span :class="['quality-pill',row.quality==='批次已核对'?'verified':'review']">{{row.quality==='批次已核对'?'已核对':'待复核'}}</span><small v-if="row.quality!=='批次已核对'">{{row.quality}}</small></td>
+            <td v-if="canManageExclusions"><label class="overdue-switch"><input type="checkbox" :disabled="pendingProduct!==null" :aria-label="'屏蔽 '+row.sku" @change="toggleExcluded(row.product_id,true)"/><span>参与</span></label></td>
           </tr>
-          <tr v-if="rows.data.length===0"><td colspan="11" class="empty-row">当前筛选没有满 90 天的在库批次。</td></tr>
+          <tr v-if="rows.data.length===0"><td :colspan="canManageExclusions?12:11" class="empty-row">当前筛选没有满 90 天的在库批次。</td></tr>
         </tbody>
       </table>
     </div>
@@ -134,6 +182,18 @@ const origin=(row:OverdueRow)=>row.source==='dated_lot'?(row.lot_id?'批次 #'+r
 .overdue-kpis strong{font-size:27px;font-weight:800;line-height:1.2;color:#172c39}
 .overdue-kpis em{font-style:normal;font-size:13px;font-weight:500;color:#64748b}
 .overdue-kpis span{font-size:11px;color:#64748b}
+.overdue-exclusions{padding:14px 18px;display:flex;flex-direction:column;gap:11px}
+.overdue-exclusions-heading{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.overdue-exclusions-heading strong{font-size:14px}
+.overdue-exclusions-heading span,.overdue-small{font-size:11px;color:#64748b}
+.overdue-manage-results{display:flex;flex-direction:column;gap:0}
+.overdue-subheading{font-size:12px;padding:5px 0;color:#566674}
+.overdue-manage-item{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:7px 0;border-bottom:1px solid #edf0f3;font-size:12px}
+.overdue-manage-item>span{min-width:0;overflow-wrap:anywhere}
+.overdue-manage-item small{display:block;color:#7a8693;margin-top:3px}
+.overdue-switch{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;cursor:pointer;font-size:11px;color:#64748b}
+.overdue-switch input{accent-color:#ad7b39;cursor:pointer;width:15px;height:15px}
+.overdue-switch input:disabled{opacity:.4;cursor:wait}
 .overdue-workspace{padding:0;overflow:hidden}
 .overdue-toolbar{display:flex;justify-content:space-between;gap:15px;align-items:center;padding:16px 18px}
 .toolbar-intro{display:flex;flex-direction:column;gap:4px}

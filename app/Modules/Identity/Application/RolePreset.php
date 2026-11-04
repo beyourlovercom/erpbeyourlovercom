@@ -44,7 +44,7 @@ enum RolePreset: string
             self::KolSpecialist => ['dashboard.view', 'kol.view', 'kol.operate', 'kol.payouts.request', 'orders.view', 'orders.create', 'orders.edit', 'products.view', 'inventory.view'],
             self::KolManager => ['dashboard.view', 'kol.view', 'kol.operate', 'kol.views.manage', 'kol.approvals.manage', 'kol.affiliates.manage', 'kol.payouts.request', 'kol.payouts.approve', 'orders.view', 'orders.create', 'orders.edit', 'products.view', 'inventory.view'],
             self::Finance => ['dashboard.view', 'orders.view', 'accounting.view', 'analysis.view', 'kol.payouts.manage', 'products.view', 'inventory.view'],
-            self::Operations => ['dashboard.view', 'customers.view', 'customers.operate', 'orders.view', 'orders.create', 'orders.edit', 'logistics.view', 'domestic.review', 'sync.view', 'analysis.view', 'inventory.view', 'procurement.view', 'products.view', 'kol.view', 'kol.operate', 'kol.views.manage', 'marketing.view', 'marketing.operate'],
+            self::Operations => ['dashboard.view', 'customers.view', 'customers.operate', 'orders.view', 'orders.create', 'orders.edit', 'logistics.view', 'domestic.review', 'sync.view', 'analysis.view', 'inventory.view', 'inventory.overdue.manage', 'procurement.view', 'products.view', 'kol.view', 'kol.operate', 'kol.views.manage', 'marketing.view', 'marketing.operate'],
             self::Writer => ['dashboard.view', 'guides.view', 'guides.manage', 'products.view', 'inventory.view'],
             self::Administrator => self::allPermissionKeys(),
         };

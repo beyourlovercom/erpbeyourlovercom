@@ -2,10 +2,15 @@
 
 namespace Tests\Feature\Inventory;
 
+use App\Modules\Audit\Application\Contracts\AuditRecorder;
+use App\Modules\Identity\Application\PermissionCatalog;
+use App\Modules\Identity\Application\RolePreset;
 use App\Modules\Identity\Infrastructure\Models\Permission;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Inventory\Application\OverdueInventoryExclusionService;
 use App\Modules\Inventory\Application\WarehouseOverdueInventoryService;
+use App\Modules\Inventory\Infrastructure\Models\OverdueInventoryExclusion;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLot;
@@ -269,5 +274,197 @@ final class WarehouseOverdueInventoryTest extends TestCase
         self::assertSame('BY489A', $byWarehouse['US-LA']);
         self::assertSame('BY489A-Lubes', $byWarehouse['US-NY']);
         self::assertSame(30, array_sum(array_column($rows, 'quantity')));
+    }
+
+    public function test_operator_can_exclude_global_product_and_restore_without_changing_stock_or_aging(): void
+    {
+        CarbonImmutable::setTestNow('2026-11-04 12:00:00');
+        [$la, $p] = $this->stock('US-LA', 'TEST-LUBRICANT', 12);
+        $this->lot($la, $p, 12, '2026-01-01');
+        $ny = Warehouse::query()->where('code', 'US-NY')->firstOrFail();
+        WarehouseInventory::query()->create([
+            'warehouse_id' => $ny->id, 'product_id' => $p->id,
+            'quantity_on_hand' => 8, 'quantity_reserved' => 0,
+        ]);
+        $this->lot($ny, $p, 8, '2026-01-02');
+        [$de, $other] = $this->stock('DE', 'KEEP-PRODUCT', 4);
+        $this->lot($de, $other, 4, '2026-01-01');
+
+        $operator = $this->userWith(['inventory.view', 'inventory.overdue.manage']);
+        $this->withoutVite();
+        $this->actingAs($operator)->patch("/inventory/overdue/exclusions/{$p->id}", [
+            'excluded' => true, 'reason' => '润滑油',
+        ])->assertRedirect();
+
+        $record = OverdueInventoryExclusion::query()
+            ->where('product_id', $p->id)->firstOrFail();
+        self::assertTrue($record->is_excluded);
+        self::assertSame('润滑油', $record->reason);
+
+        $report = app(WarehouseOverdueInventoryService::class)->report(CarbonImmutable::parse('2026-11-04'));
+        self::assertSame(4, $report['summary']['overdue_units']);
+        self::assertSame(1, $report['summary']['overdue_products']);
+        self::assertSame(1, $report['summary']['excluded_products']);
+        self::assertSame('KEEP-PRODUCT', $report['rows'][0]['sku']);
+        $this->get('/inventory')->assertOk()->assertInertia(
+            fn (Assert $page) => $page->component('Inventory/Dashboard')
+                ->where('overdue.overdue_units', 4)
+        );
+        $this->get('/inventory/overdue')->assertOk()->assertInertia(
+            fn (Assert $page) => $page->component('Inventory/Overdue')
+                ->where('rows.total', 1)
+                ->where('excludedProducts.0.sku', 'TEST-LUBRICANT')
+                ->where('excludedProducts.0.reason', '润滑油')
+                ->where('canManageExclusions', true)
+        );
+
+        // Same product across all overseas warehouses: visibility only.
+        self::assertSame(20, WarehouseInventory::query()->where('product_id', $p->id)->sum('quantity_on_hand'));
+        self::assertSame(20, WarehouseInventoryLot::query()->where('product_id', $p->id)->sum('quantity'));
+        $this->assertDatabaseHas('audit_records', ['action' => 'inventory.overdue.product_excluded']);
+
+        $this->patch("/inventory/overdue/exclusions/{$p->id}", [
+            'excluded' => false,
+        ])->assertRedirect();
+        self::assertSame(24, app(WarehouseOverdueInventoryService::class)
+            ->report(CarbonImmutable::parse('2026-11-04'))['summary']['overdue_units']);
+        $this->assertDatabaseHas('audit_records', ['action' => 'inventory.overdue.product_restored']);
+    }
+
+    public function test_view_only_user_can_see_exclusions_but_cannot_toggle_them(): void
+    {
+        [$wh, $p] = $this->stock('DE', 'LOGO-SIGN', 3);
+        $this->lot($wh, $p, 3, '2026-01-01');
+        $viewer = $this->userWith(['inventory.view']);
+        $this->withoutVite();
+        $this->actingAs($viewer)->get('/inventory/overdue')->assertOk()->assertInertia(
+            fn (Assert $page) => $page->component('Inventory/Overdue')
+                ->where('canManageExclusions', false)
+                ->where('productMatches', [])
+        );
+        $this->patch("/inventory/overdue/exclusions/{$p->id}", [
+            'excluded' => true,
+        ])->assertForbidden();
+        $this->assertDatabaseCount('overdue_inventory_exclusions', 0);
+    }
+
+    public function test_operator_searches_current_overseas_skus_and_can_find_excluded_for_restore(): void
+    {
+        CarbonImmutable::setTestNow('2026-11-04 12:00:00');
+        [$wh, $p] = $this->stock('DE', 'GIFT-BOX-01', 10);
+        $this->lot($wh, $p, 10, '2026-01-01');
+        $operator = $this->userWith(['inventory.view', 'inventory.overdue.manage']);
+        $this->withoutVite();
+        $this->actingAs($operator)->get('/inventory/overdue?manage_search=GIFT-BOX')->assertOk()->assertInertia(
+            fn (Assert $page) => $page->component('Inventory/Overdue')
+                ->where('productMatches.0.sku', 'GIFT-BOX-01')
+                ->where('productMatches.0.is_excluded', false)
+        );
+        $this->patch("/inventory/overdue/exclusions/{$p->id}", [
+            'excluded' => true, 'reason' => '礼品盒',
+        ])->assertRedirect();
+        $this->get('/inventory/overdue?manage_search=GIFT-BOX')->assertOk()->assertInertia(
+            fn (Assert $page) => $page->component('Inventory/Overdue')
+                ->where('productMatches.0.is_excluded', true)
+                ->where('excludedProducts.0.sku', 'GIFT-BOX-01')
+                ->where('rows.total', 0)
+        );
+    }
+
+    public function test_toggle_rejects_invalid_payload_and_does_not_double_audit(): void
+    {
+        [$wh, $p] = $this->stock('CA', 'TEST-LOGO-INVALID', 1);
+        $this->lot($wh, $p, 1, '2026-01-01');
+        $actor = $this->userWith(['inventory.view', 'inventory.overdue.manage']);
+        $this->actingAs($actor)->patch("/inventory/overdue/exclusions/{$p->id}", [
+            'excluded' => 'invalid',
+        ])->assertSessionHasErrors('excluded');
+        $this->assertDatabaseCount('overdue_inventory_exclusions', 0);
+        $this->patch("/inventory/overdue/exclusions/{$p->id}", ['excluded' => true])->assertRedirect();
+        $count = DB::table('audit_records')->where('action', 'inventory.overdue.product_excluded')->count();
+        $this->patch("/inventory/overdue/exclusions/{$p->id}", ['excluded' => true])->assertRedirect();
+        self::assertSame($count, DB::table('audit_records')->where('action', 'inventory.overdue.product_excluded')->count());
+    }
+
+    public function test_excel_excludes_suppressed_product_but_preserves_unaffected_sku(): void
+    {
+        CarbonImmutable::setTestNow('2026-11-04 12:00:00');
+        [$wh, $excluded] = $this->stock('US-LA', 'EXCLUDE-LOGO', 3);
+        $this->lot($wh, $excluded, 3, '2026-01-01');
+        [$wh2, $included] = $this->stock('US-LA', 'INCLUDE-DEVICE', 8);
+        $this->lot($wh2, $included, 8, '2026-01-02');
+        $operator = $this->userWith(['inventory.view', 'inventory.overdue.manage']);
+        $this->actingAs($operator)->patch("/inventory/overdue/exclusions/{$excluded->id}", [
+            'excluded' => true, 'reason' => 'Logo',
+        ])->assertRedirect();
+
+        $response = $this->get('/inventory/overdue/export?warehouse=US-LA');
+        $response->assertOk();
+        ob_start();
+        $response->baseResponse->sendContent();
+        $xlsx = ob_get_clean();
+        $file = tempnam(sys_get_temp_dir(), 'excluded-overdue');
+        file_put_contents($file, $xlsx);
+        try {
+            $book = IOFactory::load($file);
+            $sheet = $book->getSheetByName('超期库存');
+            self::assertNotNull($sheet);
+            self::assertSame(2, $sheet->getHighestRow());
+            self::assertSame('INCLUDE-DEVICE', $sheet->getCell('E2')->getValue());
+            self::assertSame(8, $sheet->getCell('G2')->getValue());
+            $book->disconnectWorksheets();
+        } finally {
+            unlink($file);
+        }
+    }
+
+    public function test_failed_audit_rolls_back_exclusion_without_mutating_product(): void
+    {
+        [$wh, $product] = $this->stock('US-NY', 'AUDIT-ROLLBACK-LOGO', 3);
+        $this->lot($wh, $product, 3, '2026-01-01');
+        $actor = $this->userWith(['inventory.view', 'inventory.overdue.manage']);
+        $audit = \Mockery::mock(AuditRecorder::class);
+        $audit->shouldReceive('record')->once()->andThrow(new \RuntimeException('AUDIT_WRITE_FAILED'));
+        $service = new OverdueInventoryExclusionService($audit);
+        try {
+            $service->set($product, true, 'Logo', $actor);
+            self::fail('Expected transactional rollback');
+        } catch (\RuntimeException $error) {
+            self::assertSame('AUDIT_WRITE_FAILED', $error->getMessage());
+        }
+        $this->assertDatabaseCount('overdue_inventory_exclusions', 0);
+        self::assertSame(3, WarehouseInventory::query()->where('product_id', $product->id)->value('quantity_on_hand'));
+        self::assertSame(3, WarehouseInventoryLot::query()->where('product_id', $product->id)->sum('quantity'));
+    }
+
+    public function test_operations_preset_can_manage_overdue_exclusions_without_real_stock_edit_permission(): void
+    {
+        $permissions = RolePreset::Operations->permissions();
+        self::assertContains('inventory.overdue.manage', $permissions);
+        self::assertNotContains('inventory.operate', $permissions);
+        self::assertTrue(PermissionCatalog::isValid('inventory.overdue.manage'));
+        $this->assertDatabaseHas('permissions', ['key' => 'inventory.overdue.manage']);
+    }
+
+    public function test_permission_migration_assigns_only_operations_and_administrators(): void
+    {
+        $ops = Role::firstOrCreate(
+            ['key' => 'role_preset_operations'], ['label' => '运营'],
+        );
+        $admin = Role::firstOrCreate(
+            ['key' => 'role_preset_administrator'], ['label' => '管理员'],
+        );
+        $logistics = Role::firstOrCreate(
+            ['key' => 'role_preset_logistics'], ['label' => '物流'],
+        );
+        $migration = require base_path('database/migrations/2026_11_04_210010_register_overdue_inventory_manage_permission.php');
+        $migration->up();
+        $permissionId = Permission::query()
+            ->where('key', 'inventory.overdue.manage')->value('id');
+        self::assertNotNull($permissionId);
+        self::assertTrue($ops->permissions()->whereKey($permissionId)->exists());
+        self::assertTrue($admin->permissions()->whereKey($permissionId)->exists());
+        self::assertFalse($logistics->permissions()->whereKey($permissionId)->exists());
+        self::assertFalse($ops->permissions()->where('key', 'inventory.operate')->exists());
     }
 }

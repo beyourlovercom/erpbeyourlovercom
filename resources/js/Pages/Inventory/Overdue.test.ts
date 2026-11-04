@@ -6,7 +6,7 @@ import Overdue from './Overdue.vue'
 vi.mock('@inertiajs/vue3', () => ({
   Head: { props: ['title'], template: '<title>{{title}}</title>' },
   Link: { props: ['href'], template: '<a :href="href"><slot /></a>' },
-  router: { get: vi.fn() },
+  router: { get: vi.fn(), patch: vi.fn() },
 }))
 vi.mock('../../Layouts/AuthenticatedLayout.vue', () => ({
   default: { props: ['title', 'breadcrumbs'], template: '<div><slot /></div>' },
@@ -61,5 +61,44 @@ describe('overdue warehouse inventory UI', () => {
     const wrapper = mount(Overdue,{props:{...props,rows:{...props.rows,data:[{...baseRow,quality:'批次数量与当前库存不符，已按当前库存封顶'}]}}})
     expect(wrapper.text()).toContain('待复核')
     expect(wrapper.findAll('button').some(b => b.text().includes('写入')||b.text().includes('核销'))).toBe(false)
+  })
+
+  it('shows compact product exclusion switches only to authorized inventory operators', async () => {
+    const base = mount(Overdue, { props })
+    expect(base.find('button[data-testid="overdue-manage-exclusions"]').exists()).toBe(false)
+    expect(base.find('input[aria-label="屏蔽 BY489A"]').exists()).toBe(false)
+
+    const wrapper = mount(Overdue, { props:{...props,canManageExclusions:true,
+      excludedProducts:[],manageSearch:'',productMatches:[]} })
+    expect(wrapper.find('button[data-testid="overdue-manage-exclusions"]').text()).toContain('(0)')
+    await wrapper.find('input[aria-label="屏蔽 BY489A"]').trigger('change')
+    expect(router.patch).toHaveBeenCalledWith('/inventory/overdue/exclusions/100',
+      {excluded:true,reason:''},expect.objectContaining({preserveScroll:true,preserveState:false}))
+  })
+
+  it('finds an excluded SKU and allows reversible restore from a durable management list', async () => {
+    const excluded = [{product_id:1346,sku:'BY489A-Lubes',name:'Lubricant 35ml',reason:'润滑油',updated_at:'2026-11-04 10:00:00'}]
+    const wrapper = mount(Overdue, {props:{...props,canManageExclusions:true,
+      excludedProducts:excluded,manageSearch:'lubes',
+      productMatches:[{product_id:1346,sku:'BY489A-Lubes',name:'Lubricant 35ml',is_excluded:true}]}})
+    expect(wrapper.find('button[data-testid="overdue-manage-exclusions"]').text()).toContain('(1)')
+    expect(wrapper.text()).toContain('已屏蔽商品 · 1')
+    expect(wrapper.text()).toContain('润滑油')
+    await wrapper.find('input[aria-label="恢复 BY489A-Lubes"]').trigger('change')
+    expect(router.patch).toHaveBeenCalledWith('/inventory/overdue/exclusions/1346',
+      {excluded:false,reason:null},expect.any(Object))
+  })
+
+  it('searches products for the exclusion panel without changing the report download filters', async () => {
+    const wrapper = mount(Overdue, {props:{...props,canManageExclusions:true,
+      excludedProducts:[],manageSearch:'',productMatches:[]}})
+    await wrapper.find('button[data-testid="overdue-manage-exclusions"]').trigger('click')
+    await wrapper.find('input[aria-label="查找需要屏蔽的SKU"]').setValue('LOGO')
+    await wrapper.find('input[aria-label="屏蔽原因"]').setValue('Logo')
+    await wrapper.find('.overdue-exclusions form').trigger('submit')
+    expect(router.get).toHaveBeenCalledWith('/inventory/overdue',
+      {warehouse:'',search:'',manage_search:'LOGO'},
+      {preserveState:true,replace:true,preserveScroll:true})
+    expect(wrapper.find('a[data-testid="overdue-export"]').attributes('href')).toBe('/inventory/overdue/export')
   })
 })
