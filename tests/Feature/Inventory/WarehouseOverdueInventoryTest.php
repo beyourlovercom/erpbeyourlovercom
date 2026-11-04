@@ -10,8 +10,10 @@ use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLot;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\TestCase;
@@ -231,5 +233,41 @@ final class WarehouseOverdueInventoryTest extends TestCase
                 ->where('rows.total', 1)
                 ->where('rows.data.0.sku', 'MATCH-SKU-GREEN')
         );
+    }
+
+    public function test_moreplus_verified_sku_is_only_displayed_for_us_la_not_other_warehouses(): void
+    {
+        [$la, $product] = $this->stock('US-LA', 'BY489A-Lubes', 10);
+        $this->lot($la, $product, 10, '2026-01-06');
+
+        $ny = Warehouse::query()->where('code', 'US-NY')->firstOrFail();
+        WarehouseInventory::query()->create([
+            'warehouse_id' => $ny->id,
+            'product_id' => $product->id,
+            'quantity_on_hand' => 20,
+            'quantity_reserved' => 0,
+        ]);
+        $this->lot($ny, $product, 20, '2026-02-11');
+
+        $alias = ProductSkuAlias::query()->create([
+            'product_id' => $product->id,
+            'alias_sku' => 'BY489A',
+            'match_key' => 'BY489A',
+            'source_type' => 'oms',
+            'source_reference' => 'test-overdue-oms',
+        ]);
+        DB::table('product_sku_aliases')->where('id', $alias->id)->update([
+            'is_active' => true,
+            'oms_verified_at' => '2026-11-04 01:00:00',
+            'oms_identity_evidence' => 'test verified provider SKU evidence',
+        ]);
+
+        $report = app(WarehouseOverdueInventoryService::class)->report(CarbonImmutable::parse('2026-11-04'));
+        $rows = array_values(array_filter($report['rows'], fn (array $row): bool => $row['product_id'] === $product->id));
+        self::assertCount(2, $rows);
+        $byWarehouse = array_column($rows, 'sku', 'warehouse_code');
+        self::assertSame('BY489A', $byWarehouse['US-LA']);
+        self::assertSame('BY489A-Lubes', $byWarehouse['US-NY']);
+        self::assertSame(30, array_sum(array_column($rows, 'quantity')));
     }
 }
