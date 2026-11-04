@@ -3,6 +3,8 @@
 namespace Tests\Feature\Inventory;
 
 use App\Modules\Audit\Application\Contracts\AuditRecorder;
+use App\Modules\Identity\Application\PermissionCatalog;
+use App\Modules\Identity\Application\RolePreset;
 use App\Modules\Identity\Infrastructure\Models\Permission;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
@@ -288,7 +290,7 @@ final class WarehouseOverdueInventoryTest extends TestCase
         [$de, $other] = $this->stock('DE', 'KEEP-PRODUCT', 4);
         $this->lot($de, $other, 4, '2026-01-01');
 
-        $operator = $this->userWith(['inventory.view', 'inventory.operate']);
+        $operator = $this->userWith(['inventory.view', 'inventory.overdue.manage']);
         $this->withoutVite();
         $this->actingAs($operator)->patch("/inventory/overdue/exclusions/{$p->id}", [
             'excluded' => true, 'reason' => '润滑油',
@@ -351,7 +353,7 @@ final class WarehouseOverdueInventoryTest extends TestCase
         CarbonImmutable::setTestNow('2026-11-04 12:00:00');
         [$wh, $p] = $this->stock('DE', 'GIFT-BOX-01', 10);
         $this->lot($wh, $p, 10, '2026-01-01');
-        $operator = $this->userWith(['inventory.view', 'inventory.operate']);
+        $operator = $this->userWith(['inventory.view', 'inventory.overdue.manage']);
         $this->withoutVite();
         $this->actingAs($operator)->get('/inventory/overdue?manage_search=GIFT-BOX')->assertOk()->assertInertia(
             fn (Assert $page) => $page->component('Inventory/Overdue')
@@ -373,7 +375,7 @@ final class WarehouseOverdueInventoryTest extends TestCase
     {
         [$wh, $p] = $this->stock('CA', 'TEST-LOGO-INVALID', 1);
         $this->lot($wh, $p, 1, '2026-01-01');
-        $actor = $this->userWith(['inventory.view', 'inventory.operate']);
+        $actor = $this->userWith(['inventory.view', 'inventory.overdue.manage']);
         $this->actingAs($actor)->patch("/inventory/overdue/exclusions/{$p->id}", [
             'excluded' => 'invalid',
         ])->assertSessionHasErrors('excluded');
@@ -391,7 +393,7 @@ final class WarehouseOverdueInventoryTest extends TestCase
         $this->lot($wh, $excluded, 3, '2026-01-01');
         [$wh2, $included] = $this->stock('US-LA', 'INCLUDE-DEVICE', 8);
         $this->lot($wh2, $included, 8, '2026-01-02');
-        $operator = $this->userWith(['inventory.view', 'inventory.operate']);
+        $operator = $this->userWith(['inventory.view', 'inventory.overdue.manage']);
         $this->actingAs($operator)->patch("/inventory/overdue/exclusions/{$excluded->id}", [
             'excluded' => true, 'reason' => 'Logo',
         ])->assertRedirect();
@@ -420,7 +422,7 @@ final class WarehouseOverdueInventoryTest extends TestCase
     {
         [$wh, $product] = $this->stock('US-NY', 'AUDIT-ROLLBACK-LOGO', 3);
         $this->lot($wh, $product, 3, '2026-01-01');
-        $actor = $this->userWith(['inventory.view', 'inventory.operate']);
+        $actor = $this->userWith(['inventory.view', 'inventory.overdue.manage']);
         $audit = \Mockery::mock(AuditRecorder::class);
         $audit->shouldReceive('record')->once()->andThrow(new \RuntimeException('AUDIT_WRITE_FAILED'));
         $service = new OverdueInventoryExclusionService($audit);
@@ -433,5 +435,36 @@ final class WarehouseOverdueInventoryTest extends TestCase
         $this->assertDatabaseCount('overdue_inventory_exclusions', 0);
         self::assertSame(3, WarehouseInventory::query()->where('product_id', $product->id)->value('quantity_on_hand'));
         self::assertSame(3, WarehouseInventoryLot::query()->where('product_id', $product->id)->sum('quantity'));
+    }
+
+    public function test_operations_preset_can_manage_overdue_exclusions_without_real_stock_edit_permission(): void
+    {
+        $permissions = RolePreset::Operations->permissions();
+        self::assertContains('inventory.overdue.manage', $permissions);
+        self::assertNotContains('inventory.operate', $permissions);
+        self::assertTrue(PermissionCatalog::isValid('inventory.overdue.manage'));
+        $this->assertDatabaseHas('permissions', ['key' => 'inventory.overdue.manage']);
+    }
+
+    public function test_permission_migration_assigns_only_operations_and_administrators(): void
+    {
+        $ops = Role::firstOrCreate(
+            ['key' => 'role_preset_operations'], ['label' => '运营'],
+        );
+        $admin = Role::firstOrCreate(
+            ['key' => 'role_preset_administrator'], ['label' => '管理员'],
+        );
+        $logistics = Role::firstOrCreate(
+            ['key' => 'role_preset_logistics'], ['label' => '物流'],
+        );
+        $migration = require base_path('database/migrations/2026_11_04_210010_register_overdue_inventory_manage_permission.php');
+        $migration->up();
+        $permissionId = Permission::query()
+            ->where('key', 'inventory.overdue.manage')->value('id');
+        self::assertNotNull($permissionId);
+        self::assertTrue($ops->permissions()->whereKey($permissionId)->exists());
+        self::assertTrue($admin->permissions()->whereKey($permissionId)->exists());
+        self::assertFalse($logistics->permissions()->whereKey($permissionId)->exists());
+        self::assertFalse($ops->permissions()->where('key', 'inventory.operate')->exists());
     }
 }

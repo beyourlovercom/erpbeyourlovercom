@@ -24,8 +24,10 @@
 
 - 页面查看 / XLSX 下载：`inventory.view`（保持原权限）。
 - 新增 `PATCH /inventory/overdue/exclusions/{product}`：需登录、
-  `inventory.operate`，Server 校验布尔 `excluded`
+  `inventory.overdue.manage`，Server 校验布尔 `excluded`
   和可选 ≤160 字原因，CSRF/Session 中间件保持。
+- 独立权限 `inventory.overdue.manage` 分配给现有管理员、运营预设角色，
+  **不**开放仓库真实库存编辑权限，也不授予物流、网红等只读角色。
 - 新增 `overdue_inventory_exclusions` 表：
   `id, product_id UNIQUE FK, is_excluded BOOLEAN DEFAULT false,
   reason VARCHAR(160), updated_by_user_id FK, created_at, updated_at`。
@@ -39,7 +41,7 @@
 
 ## 部署约束
 
-1. 新增独立 DB migration `2026_11_04_210000_create_overdue_inventory_exclusions.php`；
+1. 新增两条独立 DB migrations：`2026_11_04_210000_create_overdue_inventory_exclusions.php` 和 `2026_11_04_210010_register_overdue_inventory_manage_permission.php`；
    **不**修改旧表结构，也不进行任何数据回填。
 2. 通过 GitHub PR exact-head + CI、Owner `pass` 后才可 Production 发布。
 3. 受控发布先验证当前线上基线与相邻 ERP 支线，构建并验收
@@ -48,13 +50,13 @@
 4. 验证原表历史数据 hash/stock totals 不变，
    Stock/FIFO apply flags 仍 OFF，
    原超期件数保持最新实时计算值直到人工选择屏蔽项。
-5. 权限验证：库存查看人不能修改；库存操作人可屏蔽、搜索恢复。
+5. 权限验证：只有管理员/运营获得新的独立权限，可以屏蔽、搜索及恢复。
    提供 rollback；若已执行新表迁移，回滚代码可以保留空/已录规则表，
    不得以恢复旧代码为由自动删除规则数据。
 
 ## 本地 UAT
 
-- 84 相关 PHP 测试 PASS（533 assertions），
+- 86 相关 PHP 测试 PASS（542 assertions），
   16 Vue 页面测试 PASS；TypeScript / Vite / Pint 均 PASS。
 - 自动化覆盖：多仓产品同时排除与恢复；库存与 lot 数量保持；
   概览/网页/XLSX 三处同步过滤；权限拒绝；原因保存；

@@ -57,8 +57,11 @@ Route::middleware(['web','auth','can:inventory.warehouses.manage'])->group(funct
     Route::post('/inventory/{warehouse}/costs/reconciliation/{batch}/apply',[WarehouseController::class,'applyBillReconciliation'])->whereNumber('batch')->name('inventory.warehouse.costs.reconciliation.apply');
 });
 
-Route::middleware(['web','auth','can:inventory.operate'])->group(function (): void {
+Route::middleware(['web','auth','can:inventory.overdue.manage'])->group(function (): void {
     Route::patch('/inventory/overdue/exclusions/{product}',[WarehouseOverdueInventoryController::class,'setExcluded'])->whereNumber('product')->name('inventory.overdue.exclusions.update');
+});
+
+Route::middleware(['web','auth','can:inventory.operate'])->group(function (): void {
     Route::post('/inventory/{warehouse}/provider-stock/preview',[MorePlusInventorySyncController::class,'preview'])->name('inventory.moreplus-stock.preview');
     Route::post('/inventory/{warehouse}/provider-stock/apply',[MorePlusInventorySyncController::class,'apply'])->name('inventory.moreplus-stock.apply');
     Route::post('/inventory/{warehouse}/stock',[WarehouseController::class,'saveInventory'])->name('inventory.stock.store');

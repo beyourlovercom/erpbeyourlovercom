@@ -49,12 +49,12 @@ final class WarehouseOverdueInventoryController
             'filteredUnits' => array_sum(array_column($rows, 'quantity')),
             'filteredRows' => count($rows),
             'rows' => $paged->toArray(),
-            'canManageExclusions' => (bool) $request->user()?->can('inventory.operate'),
+            'canManageExclusions' => (bool) $request->user()?->can('inventory.overdue.manage'),
             'excludedProducts' => $this->excludedProducts(),
-            'manageSearch' => $request->user()?->can('inventory.operate')
+            'manageSearch' => $request->user()?->can('inventory.overdue.manage')
                 ? trim((string) $request->query('manage_search', ''))
                 : '',
-            'productMatches' => $request->user()?->can('inventory.operate')
+            'productMatches' => $request->user()?->can('inventory.overdue.manage')
                 ? $this->searchEligibleProducts(trim((string) $request->query('manage_search', '')))
                 : [],
         ]);
