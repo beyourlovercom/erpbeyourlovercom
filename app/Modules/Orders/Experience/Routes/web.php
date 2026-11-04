@@ -1,7 +1,6 @@
 <?php
 
 use App\Modules\Orders\Experience\Controllers\KolLogisticsController;
-use App\Modules\Kol\Experience\Controllers\KolFulfillmentApprovalController;
 use App\Modules\Orders\Experience\Controllers\KolOrderLinkPreviewController;
 use App\Modules\Orders\Experience\Controllers\OrderController;
 use App\Modules\Orders\Experience\Controllers\OrderSavedViewController;
@@ -42,8 +41,6 @@ Route::middleware(['web', 'auth'])->group(function (): void {
     Route::get('/kol/orders', [OrderController::class, 'index'])->middleware('can:orders.view')->name('kol.orders')->defaults('order_kind', 'kol_fulfillment');
     Route::get('/kol/orders/create', [OrderController::class, 'create'])->middleware('can:orders.create')->name('kol.orders.create')->defaults('order_kind', 'kol_fulfillment');
     Route::post('/kol/orders', [OrderController::class, 'store'])->middleware('can:orders.create')->name('orders.store')->defaults('order_kind', 'kol_fulfillment');
-    Route::post('/kol/orders/{order}/fulfillment-approval', KolFulfillmentApprovalController::class)
-        ->middleware('can:kol.approvals.manage')->whereNumber('order')->name('kol.orders.fulfillment.approve');
     Route::get('/kol/orders/{order}', [OrderController::class, 'show'])->middleware('can:orders.view')->where('order', '[A-Z]{3}-[0-9]{8}-[A-Z0-9]{6}|KOL[0-9]{8}-[0-9]{3}|[0-9]+')->name('kol.orders.show')->defaults('order_kind', 'kol_fulfillment');
     Route::patch('/kol/orders/{order}', [OrderController::class, 'update'])->middleware('can:orders.edit')->name('orders.update')->defaults('order_kind', 'kol_fulfillment');
 });

@@ -154,7 +154,6 @@ const props = withDefaults(defineProps<{
   workflowStatusOptions?: { code: string; en: string; zh: string; color: string; mutable: boolean }[]
   wooAdminEditUrl?: string | null
   kolProfile?: { id: number; display_name: string; url: string } | null
-  kolFulfillmentApproval?: { approved: boolean; can_approve: boolean } | null
 
 }>(), { canMarkOperational: false, canEditOrder: false, canManageProductPackaging: false, canViewPackagingEvidence: false, canCreateProcurement: false, canCreateReplacement: false, canOperateLogistics: false, canReopenFulfillment: false, canViewProfit: false })
 
@@ -181,15 +180,6 @@ const applyShipmentCarrierDefault = () => {
 
 const isKol = computed(() => props.order.order_kind === 'kol_fulfillment'
   || props.order.fulfillment_parent?.order_kind === 'kol_fulfillment')
-const kolApprovalPending = ref(false)
-const approveKolFulfillment = () => {
-  if (kolApprovalPending.value || !props.kolFulfillmentApproval?.can_approve) return
-  kolApprovalPending.value = true
-  router.post('/kol/orders/' + props.order.id + '/fulfillment-approval', {}, {
-    preserveScroll: true,
-    onFinish: () => { kolApprovalPending.value = false },
-  })
-}
 const adjacentNavigationPending = ref(false)
 const goToAdjacentOrder = (url: string | null | undefined) => {
   if (!url || editMode.value || adjacentNavigationPending.value) return
@@ -1052,8 +1042,6 @@ onBeforeUnmount(() => {
             <a v-if="wooAdminEditUrl && !isKol" :href="wooAdminEditUrl" target="_blank" rel="noopener noreferrer" class="erp-btn erp-btn-secondary" data-testid="woo-admin-order-link">网站 →</a>
             <a v-if="canCreateProcurement && !order.procurement_order" :href="`/purchase/orders/from-order/${order.id}/create`" class="erp-btn erp-btn-primary">创建采购订单</a>
             <a v-if="order.procurement_order" :href="`/purchase/orders/${order.procurement_order.id}`" class="erp-btn erp-btn-secondary">查看采购订单 · {{ order.procurement_order.procurement_number }}</a>
-            <span v-if="isKol && kolFulfillmentApproval?.approved" class="text-xs font-semibold text-emerald-700" data-testid="kol-fulfillment-approved">✓ 发货审核通过</span>
-            <button v-else-if="isKol && kolFulfillmentApproval?.can_approve" type="button" class="erp-btn erp-btn-primary" data-testid="kol-fulfillment-approve" :disabled="kolApprovalPending" @click="approveKolFulfillment">审核发货订单</button>
             <button v-if="!editMode && canEditOrder" type="button" class="erp-btn erp-btn-primary" data-testid="order-edit" aria-label="编辑订单" @click="enterEditMode">✍️编辑</button>
             <button v-else-if="editMode && canEditOrder" type="button" class="erp-btn erp-btn-primary" :disabled="form.processing" @click="submit">保存订单</button>
             <button v-if="editMode && canTrashOrder" type="button" class="erp-btn erp-btn-secondary text-red-700" data-testid="move-to-trash" @click="trashConfirmOpen = true">移至回收站</button>

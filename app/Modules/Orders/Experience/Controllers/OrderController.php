@@ -9,7 +9,6 @@ use App\Modules\Kol\Application\KolAffiliateIdentity;
 use App\Modules\Kol\Application\KolScope;
 use App\Modules\Kol\Application\SavedViewService;
 use App\Modules\Kol\Infrastructure\Models\Kol;
-use App\Modules\Kol\Application\KolFulfillmentApprovalService;
 use App\Modules\Logistics\Application\PendingAllocationEntryPolicy;
 use App\Modules\Kol\Infrastructure\Models\KolCollaboration;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
@@ -224,10 +223,6 @@ final class OrderController
             'carrierOptions' => $this->carrierServices->options(),
             'canViewProfit' => ! $isDerived && ($request->user()?->can('analysis.view') ?? false),
             'kolProfile' => $this->kolProfileForOrder($request, $order),
-            'kolFulfillmentApproval' => $order->order_kind === OrderKind::KolFulfillment ? [
-                'approved' => app(KolFulfillmentApprovalService::class)->isApproved($order),
-                'can_approve' => app(KolFulfillmentApprovalService::class)->canApprove($order, $request->user()),
-            ] : null,
             'canMarkOperational' => ! $isDerived && ($request->user()?->can('orders.edit') ?? false),
             'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())->map(fn (array $definition, string $code): array => ['code' => $code, ...$definition])->values()->all(),
             'canEditOrder' => ! $isDerived && ($request->user()?->can('orders.edit') ?? false),
