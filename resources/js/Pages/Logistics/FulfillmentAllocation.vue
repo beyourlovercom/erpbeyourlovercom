@@ -71,8 +71,6 @@ const counts = computed(() => ({
   gift: props.orders.data.filter(order => !processed(order) && hasGift(order)).length,
   processed: props.orders.data.filter(processed).length,
 }))
-const assistedRate = computed(() => counts.value.pending > 0
-  ? Math.round(counts.value.recommendation / counts.value.pending * 100) : 0)
 const filteredOrders = computed(() => props.orders.data.filter(order => {
   if (activeTab.value === 'processed') return processed(order)
   if (processed(order)) return false
@@ -265,8 +263,8 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
   <AuthenticatedLayout title="待分仓" :breadcrumbs="['BYL ERP','物流','待分仓']">
     <section class="allocation-page">
       <header class="page-heading">
-        <div><div class="title-row"><h1>待分仓</h1><span class="version">V1.2</span></div><p>系统根据区域、可信库存、仓库能力及承运商规则提供建议；Vita 最终确认分仓。</p></div>
-        <div class="principle"><div><span>System Assisted</span><strong>{{ counts.recommendation }}</strong><small>本页可操作建议 {{ assistedRate }}%</small></div><div><span>Human Confirmed</span><strong>{{ counts.processed }}</strong><small>本页已分仓</small></div></div>
+        <div class="title-row"><h1>待分仓</h1><span class="version">V1.2.1</span></div>
+        <div class="principle"><div><span>System Assisted</span><strong>{{ counts.recommendation }}</strong></div><div><span>Human Confirmed</span><strong>{{ counts.processed }}</strong></div></div>
       </header>
       <nav class="tabs">
         <button :class="{active:activeTab==='pending'}" @click="activeTab='pending'">全部 <span>{{ counts.pending }}</span></button>
@@ -276,21 +274,19 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
         <button :class="{active:activeTab==='gift'}" @click="activeTab='gift'">礼品待确认 <span>{{ counts.gift }}</span></button>
         <button :class="{active:activeTab==='processed'}" @click="activeTab='processed'">已处理 <span>{{ counts.processed }}</span></button>
       </nav>
-      <div class="allocation-info">系统建议区分「库存可履约」与「完整成本最优」。缺少包装或运费时仍展示可信的仓库候选；未验证库存绝不标为可直接分仓。分类统计仅针对当前页；所有判断以 ERP 返回的库存证据为准，最终由 Vita 确认。</div>
-      <div class="table-wrap"><table class="allocation-table"><thead><tr><th>#</th><th>订单号</th><th>SKU 摘要</th><th>收件信息摘要</th><th>区域 / 优先仓（不代表有货）</th><th>系统建议</th><th>状态</th><th class="sticky-action">操作</th></tr></thead><tbody>
+      <div class="table-wrap"><table class="allocation-table"><thead><tr><th>#</th><th>订单号</th><th>SKU 摘要</th><th>收件信息摘要</th><th>区域 / 优先仓</th><th>系统建议</th><th>状态</th><th class="sticky-action">操作</th></tr></thead><tbody>
         <tr v-for="(order,index) in filteredOrders" :key="order.id">
           <td>{{ index+1 }}</td>
           <td><Link v-if="order.order_url" class="order-link" :href="order.order_url">{{ order.erp_order_id ?? '—' }}</Link><span v-else>{{ order.erp_order_id ?? '—' }}</span><small v-if="order.domestic_reject_reason" class="domestic-rejection">商务驳回：{{ order.domestic_reject_reason }}</small></td>
           <td class="sku-list"><div v-for="item in order.items" :key="item.id"><strong>{{ item.sku ?? item.product_summary ?? '无 SKU' }} × {{ item.quantity }}</strong><span v-if="item.is_gift" :class="item.resolved_fulfillment_sku?'gift-done':'gift-pending'">{{ item.resolved_fulfillment_sku ? `→ ${item.resolved_fulfillment_sku}` : '待解析' }}</span></div></td>
           <td class="address-summary"><strong>{{ order.recipient_name ?? '—' }}</strong><span>{{ addressLine(order) || '—' }}</span><small v-if="order.phone">{{ order.phone }}</small></td>
           <td><template v-if="order.country==='US'"><span :class="['zone-chip',order.us_fulfillment_zone?.zone??'unknown']">{{ zoneShort(order) }}</span><div class="zone-priority">{{ zonePriorityLabel(order.us_fulfillment_zone) }}</div></template><span v-else>{{ order.country ?? '—' }}</span></td>
-          <td class="advice-cell"><span :class="['advice-heading',guidanceFor(order).kind]">{{ guidanceFor(order).title }}</span><small :title="(order.allocation_decision.manual_reasons ?? []).join('；')">{{ guidanceFor(order).detail }}</small><button v-if="!processed(order) && order.allocation_decision.manual_reasons?.length" class="reason-link" @click="openPlan(order)">查看判断依据</button></td>
+          <td class="advice-cell"><span :class="['advice-heading',guidanceFor(order).kind]">{{ guidanceFor(order).title }}</span></td>
           <td><span :class="['status-chip',guidanceFor(order).kind]">{{ guidanceFor(order).status }}</span></td>
-          <td class="sticky-action"><div class="row-actions"><button class="primary compact" @click="openPlan(order)">{{ processed(order)?'查看记录':'查看方案' }}</button><button v-if="guidanceFor(order).kind==='ready' && props.canOperate" class="secondary compact" @click="openPlan(order)">确认分仓</button></div></td>
+          <td class="sticky-action"><button class="primary compact" @click="openPlan(order)">{{ processed(order)?'查看记录':'查看方案' }}</button></td>
         </tr>
         <tr v-if="!filteredOrders.length"><td colspan="8" class="empty">当前分类暂无订单</td></tr>
       </tbody></table></div>
-      <footer class="page-foot">当前页 {{ props.orders.data.length }} 条 · 匹配总数 {{ props.orders.total }} 条 · 区域优先仓仅代表路由顺序，不是实际库存证明；仓库建议不自动分仓。</footer>
     </section>
 
     <Teleport to="body"><div v-if="selectedOrder" class="modal-backdrop" @click.self="closePlan"><section class="plan-modal" role="dialog" aria-modal="true">
@@ -352,10 +348,7 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
 .principle>div{display:grid;gap:3px;min-width:110px}.principle>div+div{border-left:1px solid #dbe7f5;padding-left:18px}
 .principle>div span{font-size:11px;font-weight:750;color:#41536c}
 .principle>div strong{font-size:20px;line-height:1.2;color:#172033}
-.principle>div small{font-size:10px;color:#64748b}
-.allocation-info{padding:10px 13px;border:1px solid #dbeafe;border-radius:8px;background:#eff6ff;color:#31557f;font-size:12px;line-height:1.6}
-.allocation-table{min-width:1440px}.advice-cell{min-width:260px;max-width:360px}
-.advice-cell small{display:block;margin-top:5px;line-height:1.5;color:#66758a}
+.allocation-table{min-width:1310px}.advice-cell{min-width:215px;max-width:310px}
 .advice-heading{display:inline-flex;padding:4px 9px;border-radius:6px;font-weight:750;line-height:1.4}
 .advice-heading.ready{background:#e7f8ed;color:#087c4c}
 .advice-heading.candidate{background:#e6f1ff;color:#1d5cb4}
@@ -365,13 +358,18 @@ async function submitPrimary(){ const order=selectedOrder.value; if(!order)retur
 .advice-heading.manual{background:#ffe9e9;color:#b42626}
 .advice-heading.gift{background:#fce7f3;color:#aa2266}
 .advice-heading.processed{background:#ecfdf3;color:#13834f}
-.reason-link{display:block;margin-top:5px;padding:0;border:0;background:transparent;color:#1261d7;font-size:11px;cursor:pointer;text-decoration:underline}
 .status-chip.ready,.status-chip.processed{background:#e7f8ed;color:#087c4c}
 .status-chip.candidate,.status-chip.compare{background:#ede9fe;color:#6241a4}
 .status-chip.stock_review{background:#fff3de;color:#9c5b00}
 .status-chip.stock_short{background:#fff0e8;color:#b45020}
 .status-chip.manual{background:#ffe9e9;color:#b42626}
-.row-actions{display:flex;align-items:center;gap:6px;white-space:nowrap}
-.secondary.compact{min-height:29px;padding:4px 10px}
+.allocation-table th,.allocation-table td{padding:8px 10px;vertical-align:middle}
+.allocation-table th:nth-child(5){min-width:170px}
+.allocation-table th:nth-child(7){min-width:85px}
+.allocation-table th.sticky-action{min-width:95px}
+.allocation-table td.sticky-action{white-space:nowrap}
+.sku-list>div{margin-bottom:3px}
+.sku-list>div:last-child{margin-bottom:0}
+.zone-priority{margin-top:3px}
 @media(max-width:800px){.page-heading{flex-wrap:wrap}.principle{width:100%;justify-content:flex-start}.tabs{overflow-x:auto;white-space:nowrap}}
 </style>
