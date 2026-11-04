@@ -9,6 +9,7 @@ use App\Modules\Kol\Application\KolAffiliateIdentity;
 use App\Modules\Kol\Application\KolScope;
 use App\Modules\Kol\Application\SavedViewService;
 use App\Modules\Kol\Infrastructure\Models\Kol;
+use App\Modules\Logistics\Application\PendingAllocationEntryPolicy;
 use App\Modules\Kol\Infrastructure\Models\KolCollaboration;
 use App\Modules\Logistics\Application\CarrierRoutingPolicy;
 use App\Modules\Logistics\Application\CarrierServiceCatalog;
@@ -407,6 +408,7 @@ final class OrderController
         });
         $requiresFullFlow = $order->items->contains(fn ($item): bool => strcasecmp(trim((string) $item->sku), 'gift') === 0);
         $allocationAllowed = $this->fulfillmentAllocationAccess->allows($request->user());
+        $entryAllowed = app(PendingAllocationEntryPolicy::class)->allows($order);
         $canReallocate = $order->order_status?->value === 'pending_shipment'
             && $allocationCommitted
             && ! $logisticsStarted
@@ -419,7 +421,7 @@ final class OrderController
 
         return [
             'status' => $allocationCommitted ? 'submitted' : ($order->order_status?->value === 'pending_shipment' ? 'pending' : 'locked'),
-            'can_operate' => $order->order_status?->value === 'pending_shipment' && ! $allocationCommitted && $allocationAllowed,
+            'can_operate' => $entryAllowed && $order->order_status?->value === 'pending_shipment' && ! $allocationCommitted && $allocationAllowed,
             'can_reallocate' => $canReallocate,
             'can_partial_reallocate' => $canPartialReallocate,
             'logistics_started' => $logisticsStarted,

@@ -24,6 +24,7 @@ final class FulfillmentAllocationSubmissionService
         private readonly WarehouseRoutingPolicy $warehouseRouting,
         private readonly CarrierRoutingPolicy $carrierRouting,
         private readonly FulfillmentPaymentGate $paymentGate,
+        private readonly PendingAllocationEntryPolicy $entryPolicy,
         private readonly FulfillmentAllocationStockGate $stockGate,
     ) {}
 
@@ -32,6 +33,7 @@ final class FulfillmentAllocationSubmissionService
         return DB::transaction(function () use ($order, $planKey, $note, $actor): FulfillmentAllocation {
             $locked = Order::query()->with(['address', 'items.product', 'fulfillmentAllocation'])->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->paymentGate->assertAllowed($locked);
+            $this->entryPolicy->assertAllowed($locked);
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以提交分仓');
 
             $presented = $this->decisionFor($locked);
@@ -55,6 +57,7 @@ final class FulfillmentAllocationSubmissionService
         return DB::transaction(function () use ($order, $assignments, $note, $actor, $stockExceptionAcknowledged): FulfillmentAllocation {
             $locked = Order::query()->with(['address', 'items.product', 'fulfillmentAllocation'])->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->paymentGate->assertAllowed($locked);
+            $this->entryPolicy->assertAllowed($locked);
             abort_unless($locked->order_status?->value === 'pending_shipment', 409, '只有待发货订单可以提交分仓');
 
             $normalized = collect($assignments)->map(fn (array $row): array => [
