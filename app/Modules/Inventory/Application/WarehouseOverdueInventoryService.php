@@ -2,6 +2,7 @@
 
 namespace App\Modules\Inventory\Application;
 
+use App\Modules\Inventory\Infrastructure\Models\OverdueInventoryExclusion;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLot;
@@ -37,9 +38,16 @@ final class WarehouseOverdueInventoryService
             ->get();
 
         $warehouseIds = $warehouses->pluck('id')->all();
+        // Report exclusions are global per product across all overseas warehouses.
+        // They affect only aged-stock reporting, never physical stock or P9 fees.
+        $excludedIds = OverdueInventoryExclusion::query()
+            ->where('is_excluded', true)
+            ->pluck('product_id')
+            ->all();
         $inventories = WarehouseInventory::query()
             ->with('product')
             ->whereIn('warehouse_id', $warehouseIds)
+            ->when($excludedIds !== [], fn ($query) => $query->whereNotIn('product_id', $excludedIds))
             ->where('quantity_on_hand', '>', 0)
             ->orderBy('warehouse_id')
             ->orderBy('product_id')
@@ -150,6 +158,7 @@ final class WarehouseOverdueInventoryService
             'cutoff_date' => $cutoff->toDateString(),
             'threshold_days' => self::DAYS,
             'summary' => [
+                'excluded_products' => count($excludedIds),
                 'overdue_units' => array_sum(array_column($rows, 'quantity')),
                 'overdue_products' => count($uniqueSku),
                 'overdue_warehouse_products' => count($uniqueWarehouseSku),

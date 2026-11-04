@@ -2,7 +2,11 @@
 
 namespace App\Modules\Inventory\Experience\Controllers;
 
+use App\Modules\Inventory\Application\OverdueInventoryExclusionService;
 use App\Modules\Inventory\Application\WarehouseOverdueInventoryService;
+use App\Modules\Inventory\Infrastructure\Models\OverdueInventoryExclusion;
+use App\Modules\Products\Infrastructure\Models\Product;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Inertia\Inertia;
@@ -17,7 +21,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class WarehouseOverdueInventoryController
 {
-    public function __construct(private readonly WarehouseOverdueInventoryService $overdue) {}
+    public function __construct(
+        private readonly WarehouseOverdueInventoryService $overdue,
+        private readonly OverdueInventoryExclusionService $exclusions,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -42,7 +49,31 @@ final class WarehouseOverdueInventoryController
             'filteredUnits' => array_sum(array_column($rows, 'quantity')),
             'filteredRows' => count($rows),
             'rows' => $paged->toArray(),
+            'canManageExclusions' => (bool) $request->user()?->can('inventory.operate'),
+            'excludedProducts' => $this->excludedProducts(),
+            'manageSearch' => $request->user()?->can('inventory.operate')
+                ? trim((string) $request->query('manage_search', ''))
+                : '',
+            'productMatches' => $request->user()?->can('inventory.operate')
+                ? $this->searchEligibleProducts(trim((string) $request->query('manage_search', '')))
+                : [],
         ]);
+    }
+
+    public function setExcluded(Request $request, Product $product): RedirectResponse
+    {
+        $payload = $request->validate([
+            'excluded' => ['required', 'boolean'],
+            'reason' => ['nullable', 'string', 'max:160'],
+        ]);
+
+        $this->exclusions->set(
+            $product, (bool) $payload['excluded'],
+            trim((string) ($payload['reason'] ?? '')) ?: null,
+            $request->user(),
+        );
+
+        return back()->with('success', (bool) $payload['excluded'] ? '已排除超期统计' : '已恢复超期统计');
     }
 
     public function export(Request $request): StreamedResponse
@@ -64,6 +95,59 @@ final class WarehouseOverdueInventoryController
         );
     }
 
+    /** @return list<array<string,mixed>> */
+    private function excludedProducts(): array
+    {
+        return OverdueInventoryExclusion::query()
+            ->with('product:id,sku,name')
+            ->where('is_excluded', true)
+            ->orderByDesc('updated_at')->orderByDesc('id')
+            ->get()
+            ->filter(fn (OverdueInventoryExclusion $row): bool => $row->product !== null)
+            ->map(fn (OverdueInventoryExclusion $row): array => [
+                'product_id' => (int) $row->product_id,
+                'sku' => (string) $row->product->sku,
+                'name' => (string) $row->product->name,
+                'reason' => (string) ($row->reason ?? ''),
+                'updated_at' => $row->updated_at?->toDateTimeString(),
+            ])->values()->all();
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function searchEligibleProducts(string $search): array
+    {
+        if ($search === '') {
+            return [];
+        }
+        $search = mb_substr($search, 0, 128);
+        $needle = '%'.$search.'%';
+        $products = Product::query()
+            ->whereExists(function ($query): void {
+                $query->selectRaw('1')->from('warehouse_inventory as wi')
+                    ->join('warehouses as wh', 'wh.id', '=', 'wi.warehouse_id')
+                    ->whereColumn('wi.product_id', 'products.id')
+                    ->whereNull('wi.deleted_at')
+                    ->where('wi.quantity_on_hand', '>', 0)
+                    ->whereRaw('UPPER(wh.country_code) <> ?', ['CN']);
+            })
+            ->where(function ($query) use ($needle): void {
+                $query->where('sku', 'like', $needle)
+                    ->orWhere('name', 'like', $needle)
+                    ->orWhereHas('skuAliases', fn ($aliases) => $aliases->where('alias_sku', 'like', $needle));
+            })
+            ->orderBy('sku')->limit(30)->get(['id', 'sku', 'name']);
+        $excludedIds = OverdueInventoryExclusion::query()
+            ->where('is_excluded', true)->whereIn('product_id', $products->pluck('id'))
+            ->pluck('product_id')->all();
+
+        return $products->map(fn (Product $p): array => [
+            'product_id' => (int) $p->id,
+            'sku' => (string) $p->sku,
+            'name' => (string) $p->name,
+            'is_excluded' => in_array($p->id, $excludedIds, true),
+        ])->all();
+    }
+
     /** @return array{warehouse:string,search:string} */
     private function filters(Request $request): array
     {
@@ -71,6 +155,7 @@ final class WarehouseOverdueInventoryController
             'warehouse' => ['nullable', 'string', 'max:32'],
             'search' => ['nullable', 'string', 'max:128'],
             'page' => ['sometimes', 'integer', 'min:1'],
+            'manage_search' => ['nullable', 'string', 'max:128'],
         ]);
 
         return [
