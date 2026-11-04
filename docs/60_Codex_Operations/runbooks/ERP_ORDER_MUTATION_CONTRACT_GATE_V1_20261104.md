@@ -36,6 +36,6 @@ Record **UI action → HTTP method + URI → controller → permission → prefl
 
 ## Current reference coverage
 
-`tests/Feature/Orders/OrderItemAmendmentPreflightTest.php` covers the #7870 amendment HTTP/permission/amount/reservation/save scenarios; `tests/Feature/Orders/OrderMutationContractGateTest.php` checks preview-route and UI integration; `resources/js/Pages/Orders/Show.test.ts` covers order editor interaction. These are minimum examples, not automatic coverage of every future action.
+`tests/Feature/Orders/OrderItemAmendmentPreflightTest.php` covers the #7870 amendment HTTP/route/permission/amount/reservation/save scenarios; `resources/js/Pages/Orders/Show.test.ts` covers order editor controls and interaction, and the same-head CI also runs `npm run typecheck` and `npm run build`. Together they provide the current layered gate. These are minimum examples, not automatic coverage of every future action; new mutation flows must add specific button-to-HTTP and write/readback tests.
 
 **Avoid expanding feature scope or changing Production as part of this governance-only gate.**
