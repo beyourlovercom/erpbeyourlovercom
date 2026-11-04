@@ -64,10 +64,12 @@ describe('MorePlus inventory stock sync in Warehouse 360', () => {
     const viewer = mount(WarehouseShow, { props: { ...props, canOperate: false } })
     expect(viewer.text()).not.toContain('同步仓库库存')
   })
-  it('shows safety summary and disables write until independent release flag is enabled', () => {
+  it('shows safety summary and disables write until independent release flag is enabled', async () => {
     const wrapper = mount(WarehouseShow, { props: { ...props, moreplusInventoryPreview: preview } })
     expect(wrapper.text()).toContain('仓库库存差异预览')
     expect(wrapper.text()).toContain('待复核')
+    expect(wrapper.find('button[aria-label="关闭库存预览"]').exists()).toBe(true)
+    await wrapper.findAll('button').find(button => button.text().includes('查看明细'))!.trigger('click')
     const apply = wrapper.findAll('button').find(button => button.text().includes('正式写入待授权'))
     expect(apply?.attributes('disabled')).toBeDefined()
   })
@@ -98,12 +100,13 @@ describe('MorePlus inventory stock sync in Warehouse 360', () => {
     formPost.mockClear()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const wrapper = mount(WarehouseShow, { props: { ...props, moreplusInventoryPreview: { ...preview, apply_enabled: true } } })
+    await wrapper.findAll('button').find(button => button.text().includes('查看明细'))!.trigger('click')
     await wrapper.findAll('button').find(button => button.text().includes('确认同步到 ERP'))!.trigger('click')
     expect(confirm).toHaveBeenCalledTimes(1)
     expect(formPost).toHaveBeenCalledWith('/inventory/us-la/provider-stock/apply', expect.objectContaining({ preserveScroll: true }))
     confirm.mockRestore()
   })
-  it('shows FIFO candidate unit totals and lot dates as a read-only drilldown', () => {
+  it('shows FIFO candidate unit totals and lot dates as a read-only drilldown', async () => {
     const fifo = {
       checksum: 'b'.repeat(64), ready_fifo: 1, ready_units: 3, blocked: 1, apply_enabled: false,
       rows: [{provider_sku:'MP-TEST',canonical_sku:'MP-TEST',qoh:10,physical:7,delta:3,
@@ -113,6 +116,8 @@ describe('MorePlus inventory stock sync in Warehouse 360', () => {
         aging_count:8,status:'blocked' as const,reason:'PROVIDER_AVAILABLE_BELOW_ERP_PROJECTED_AVAILABLE',lot_changes:[]}],
     }
     const wrapper = mount(WarehouseShow, { props: {...props, moreplusInventoryPreview: preview, moreplusFifoPreview:fifo} })
+    expect(wrapper.text()).toContain('FIFO 候选 1 款 / 3 件')
+    await wrapper.findAll('button').find(button => button.text().includes('查看明细'))!.trigger('click')
     expect(wrapper.text()).toContain('FIFO 批次核销 · 只读预检')
     expect(wrapper.text()).toContain('拟调整 3 件')
     expect(wrapper.text()).toContain('另有 1 个须单独复核')
@@ -120,5 +125,24 @@ describe('MorePlus inventory stock sync in Warehouse 360', () => {
     expect(wrapper.find('details').text()).toContain('6 → 3')
     expect(wrapper.text()).toContain('仓库占用与 ERP 预留不一致')
     expect(wrapper.findAll('button').some(b => b.text().includes('执行 FIFO'))).toBe(false)
+  })
+  it('uses a one-line summary and never shows the full 45-SKU table by default', async () => {
+    const wrapper = mount(WarehouseShow, { props: { ...props, moreplusInventoryPreview: preview } })
+    expect(wrapper.find('.moreplus-compact-bar').exists()).toBe(true)
+    expect(wrapper.find('.moreplus-compact-preview .table-shell').exists()).toBe(false)
+    expect(wrapper.find('.moreplus-compact-bar').text()).toContain('待复核')
+    await wrapper.findAll('button').find(b => b.text() === '查看明细')!.trigger('click')
+    expect(wrapper.find('.moreplus-compact-preview .table-shell').exists()).toBe(true)
+    await wrapper.findAll('button').find(b => b.text() === '收起明细')!.trigger('click')
+    expect(wrapper.find('.moreplus-compact-preview .table-shell').exists()).toBe(false)
+  })
+  it('closes the preview on demand and when switching warehouse tabs', async () => {
+    const wrapper = mount(WarehouseShow, { props: { ...props, moreplusInventoryPreview: preview } })
+    await wrapper.find('button[aria-label="关闭库存预览"]').trigger('click')
+    expect(wrapper.find('.moreplus-compact-preview').exists()).toBe(false)
+    await wrapper.findAll('button').find(b => b.text() === '同步仓库库存')!.trigger('click')
+    expect(wrapper.find('.moreplus-compact-preview').exists()).toBe(true)
+    await wrapper.findAll('.warehouse-tabs button').find(b => b.text() === '库存')!.trigger('click')
+    expect(wrapper.find('.moreplus-compact-preview').exists()).toBe(false)
   })
 })

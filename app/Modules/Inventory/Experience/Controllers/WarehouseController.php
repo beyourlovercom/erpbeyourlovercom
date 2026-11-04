@@ -58,10 +58,11 @@ final class WarehouseController
         $publicSlug=$this->inventory->warehousePublicSlug($w);
         if($warehouse!==$publicSlug) return redirect()->route('inventory.warehouse.show',$publicSlug);
         $latestRestockPlan=$this->restockPlans->latestForWarehouse($w);
+        $moreplusPreviewVisible=strtoupper((string) $w->code)==='US-LA' && (bool) session()->pull('inventory.moreplus_preview_visible.'.$w->id,false);
         return Inertia::render('Inventory/WarehouseShow',[
             'warehouse'=>$this->payload($w),
-            'moreplusInventoryPreview'=>strtoupper((string) $w->code)==='US-LA' ? session('inventory.moreplus_provider_preview.'.$w->id) : null,
-            'moreplusFifoPreview'=>strtoupper((string) $w->code)==='US-LA' ? session('inventory.moreplus_fifo_preview.'.$w->id) : null,
+            'moreplusInventoryPreview'=>$moreplusPreviewVisible ? session('inventory.moreplus_provider_preview.'.$w->id) : null,
+            'moreplusFifoPreview'=>$moreplusPreviewVisible ? session('inventory.moreplus_fifo_preview.'.$w->id) : null,
             'clearanceProducts'=>$this->clearance->listForWarehouse($w),
             'clearanceCandidates'=>$this->clearance->candidatesForWarehouse($w),
             'costCenter'=>$this->inventory->warehouseCostCenter($w),

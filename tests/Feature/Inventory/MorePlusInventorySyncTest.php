@@ -486,6 +486,16 @@ final class MorePlusInventorySyncTest extends TestCase
                 ->where('moreplusFifoPreview.ready_units', 3)
                 ->where('moreplusFifoPreview.apply_enabled', false)
         );
+        // The result is for the immediate redirected GET only, not a sticky
+        // Session panel on every future warehouse page visit.
+        $this->get('/inventory/us-la')->assertOk()->assertInertia(
+            fn (Assert $page) => $page->component('Inventory/WarehouseShow')
+                ->where('moreplusInventoryPreview', null)
+                ->where('moreplusFifoPreview', null)
+        );
+        self::assertSame(10, WarehouseInventory::query()->where('warehouse_id', $this->warehouse->id)
+            ->where('product_id', Product::query()->where('sku', 'MP-FIFO-HTTP')->value('id'))
+            ->value('quantity_on_hand'));
     }
 
     public function test_fifo_does_not_apply_even_with_flags_without_owner_approved_sku_scope(): void
@@ -555,5 +565,19 @@ final class MorePlusInventorySyncTest extends TestCase
             self::assertSame(10, WarehouseInventory::query()->where('product_id', $p->id)->value('quantity_on_hand'));
             self::assertSame(10, WarehouseInventoryLot::query()->where('product_id', $p->id)->sum('quantity'));
         }
+    }
+
+    public function test_previous_persistent_preview_session_is_not_shown_without_a_new_click(): void
+    {
+        $operator = $this->userWith(['inventory.view', 'inventory.operate']);
+        session([
+            'inventory.moreplus_provider_preview.'.$this->warehouse->id => ['ready' => 99],
+            'inventory.moreplus_fifo_preview.'.$this->warehouse->id => ['ready_fifo' => 99],
+        ]);
+        $this->actingAs($operator)->get('/inventory/us-la')->assertOk()->assertInertia(
+            fn (Assert $page) => $page->component('Inventory/WarehouseShow')
+                ->where('moreplusInventoryPreview', null)
+                ->where('moreplusFifoPreview', null)
+        );
     }
 }

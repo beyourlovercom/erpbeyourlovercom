@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AuthenticatedLayout from '../../Layouts/AuthenticatedLayout.vue'
 import InventorySkuCombobox from './components/InventorySkuCombobox.vue'
 import ColumnSettingsHeader from '../../Components/DataGrid/ColumnSettingsHeader.vue'
@@ -40,7 +40,13 @@ const isMorePlus=computed(()=>props.warehouse.code.toUpperCase()==='US-LA')
 const moreplusPreviewForm=useForm({})
 const moreplusApplyForm=useForm({expected_checksum:''})
 const moreplusError=computed(()=>String((moreplusPreviewForm.errors as Record<string,string>).moreplus_stock||(moreplusApplyForm.errors as Record<string,string>).moreplus_stock||''))
-const previewMorePlusStock=()=>moreplusPreviewForm.post(warehousePath+'/provider-stock/preview',{preserveScroll:true})
+const moreplusPreviewHidden=ref(false)
+const moreplusPreviewExpanded=ref(false)
+const previewMorePlusStock=()=>{
+  moreplusPreviewHidden.value=false
+  moreplusPreviewExpanded.value=false
+  moreplusPreviewForm.post(warehousePath+'/provider-stock/preview',{preserveScroll:true})
+}
 const applyMorePlusStock=()=>{
   const p=props.moreplusInventoryPreview
   if(!p||!p.apply_enabled||!p.ready)return
@@ -66,7 +72,9 @@ const fifoBlockLabel=(reason:string|null)=>({
 }[reason||'']||moreplusBlockLabel(reason))
 
 const breadcrumbs=[{label:'BYL ERP',href:'/dashboard'},{label:'库存',href:'/inventory'},{label:'仓库清单',href:'/inventory/list'},props.warehouse.name]
-const activeTab=ref<'overview'|'inventory'|'inbound'|'costs'|'shipping'|'exceptions'|'config'>('overview');const inventoryMode=ref<'stock'|'restock'|'clearance'>('stock');const query=ref('');const statusFilter=ref<'all'|'in_stock'|'low_stock'|'out_of_stock'>('all');const clearanceQuery=ref('');const clearanceAddingProductId=ref<number|null>(null);const selectedCostMonth=ref(props.costCenter.months[0]?.month||'');const shipmentQuery=ref(props.shipmentProjection?.filters.query||'');const shipmentStatus=ref<'all'|'shipped'|'exception'|'pending'|'completed'>(props.shipmentProjection?.filters.status||'all');const shipmentPerPage=ref<20|50|100>(props.shipmentProjection?.pagination.per_page||50)
+const activeTab=ref<'overview'|'inventory'|'inbound'|'costs'|'shipping'|'exceptions'|'config'>('overview');
+watch(activeTab,()=>{moreplusPreviewHidden.value=true;moreplusPreviewExpanded.value=false})
+const inventoryMode=ref<'stock'|'restock'|'clearance'>('stock');const query=ref('');const statusFilter=ref<'all'|'in_stock'|'low_stock'|'out_of_stock'>('all');const clearanceQuery=ref('');const clearanceAddingProductId=ref<number|null>(null);const selectedCostMonth=ref(props.costCenter.months[0]?.month||'');const shipmentQuery=ref(props.shipmentProjection?.filters.query||'');const shipmentStatus=ref<'all'|'shipped'|'exception'|'pending'|'completed'>(props.shipmentProjection?.filters.status||'all');const shipmentPerPage=ref<20|50|100>(props.shipmentProjection?.pagination.per_page||50)
 const meta=useForm({name:props.warehouse.name,code:props.warehouse.code,country_code:props.warehouse.country_code||'',address_line1:props.warehouse.address_line1||'',address_line2:props.warehouse.address_line2||'',city:props.warehouse.city||'',state_region:props.warehouse.state_region||'',postal_code:props.warehouse.postal_code||'',timezone:props.warehouse.timezone||'',type:props.warehouse.type,ownership_type:props.warehouse.ownership_type,is_domestic:props.warehouse.is_domestic,is_active:props.warehouse.is_active,priority:props.warehouse.priority,fulfillment_available_on:props.warehouse.fulfillment_available_on||'',replenishment_lead_time_days:props.warehouse.replenishment_lead_time_days,replenishment_safety_stock_days:props.warehouse.replenishment_safety_stock_days,replenishment_target_cover_days:props.warehouse.replenishment_target_cover_days})
 const billing=useForm({billing_markdown:props.warehouse.billing_markdown||''});const bill=useForm<{bill:File|null}>({bill:null});const billApply=useForm({});const reconciliationApply=useForm<ReconciliationApplyForm>({expected_source_checksum:'',expected_plan_checksum:''});const regions=useForm({country_codes:(props.warehouse.service_regions||[]).join(', ')} as any);const stock=useForm({product_id:null as number|null,sku:'',quantity_on_hand:0,quantity_reserved:0,inbound_at:'',location:'',standard_qoh:null as number|null,expected_restock_qty:0});const clearance=useForm({product_ids:[] as number[]});const cost=useForm({cost_month:props.costCenter.months[0]?.month||'',category:'shipping',amount:null as number|null,currency:'',note:''})
 const addVisible=ref(false);const addMode=ref<'existing'|'new'>('existing');const addInventoryForm=useForm({product_id:null as number|null,sku:'',new_sku:'',new_name:'',quantity_on_hand:0,quantity_reserved:0,inbound_at:'',location:'',standard_qoh:null as number|null,expected_restock_qty:0})
@@ -196,12 +204,18 @@ const saveCost=()=>cost.transform(d=>({...d,currency:String(d.currency||'').trim
   <button type="button" :class="{active:activeTab==='exceptions'}" @click="activeTab='exceptions'">异常<span v-if="inventoryWarnings.length+reconciliationReviews.length" class="tab-count">{{inventoryWarnings.length+reconciliationReviews.length}}</span></button>
   <button type="button" :class="{active:activeTab==='config'}" @click="activeTab='config'">配置</button>
 </nav>
-<section v-if="isMorePlus&&canOperate" class="primary-panel" aria-label="MorePlus 库存同步">
-  <div v-if="moreplusError" class="inventory-add-error" role="alert">{{moreplusError}}</div>
-  <template v-if="moreplusInventoryPreview">
-    <div class="section-heading"><div><p class="section-kicker">MOREPLUS OPENAPI · PREVIEW</p><h3>仓库库存差异预览</h3><p>读取仓库实物与可用库存；仅更新安全通过校验的 SKU，不将未返回的 SKU 清零，也不修改预留库存、物流订单或 Woo。</p></div><div class="section-actions"><button type="button" class="button primary" :disabled="!moreplusInventoryPreview.apply_enabled||!moreplusInventoryPreview.ready||moreplusApplyForm.processing" @click="applyMorePlusStock">{{moreplusApplyForm.processing?'正在确认…':moreplusInventoryPreview.apply_enabled?'确认同步到 ERP':'正式写入待授权'}}</button></div></div>
-    <p>仓库 SKU {{moreplusInventoryPreview.source_sku_count}} · 可同步 {{moreplusInventoryPreview.ready}} · 无变化 {{moreplusInventoryPreview.unchanged}} · 待复核 {{moreplusInventoryPreview.blocked}}</p>
-    <div v-if="moreplusFifoPreview" class="moreplus-fifo-preview">
+<div v-if="isMorePlus&&canOperate&&moreplusError" class="inventory-add-error" role="alert">{{moreplusError}}</div>
+<section v-if="isMorePlus&&canOperate&&moreplusInventoryPreview&&!moreplusPreviewHidden" aria-label="MorePlus 库存同步" class="moreplus-compact-preview">
+  <div class="moreplus-compact-bar" role="status" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 14px;border:1px solid #dce4ea;border-radius:10px">
+    <strong>仓库库存差异预览</strong>
+    <span>SKU {{moreplusInventoryPreview.source_sku_count}} · 一致 {{moreplusInventoryPreview.unchanged}} · 待复核 {{moreplusInventoryPreview.blocked}}</span>
+    <span v-if="moreplusFifoPreview">FIFO 候选 {{moreplusFifoPreview.ready_fifo}} 款 / {{moreplusFifoPreview.ready_units}} 件</span>
+    <button type="button" class="text-button" @click="moreplusPreviewExpanded=!moreplusPreviewExpanded">{{moreplusPreviewExpanded?'收起明细':'查看明细'}}</button>
+    <button type="button" class="text-button" aria-label="关闭库存预览" @click="moreplusPreviewHidden=true;moreplusPreviewExpanded=false">关闭</button>
+  </div>
+  <div v-if="moreplusPreviewExpanded" class="primary-panel" style="margin-top:8px">
+    <div class="section-heading"><div><strong>只读库存核对</strong></div><div class="section-actions"><button type="button" class="button primary" :disabled="!moreplusInventoryPreview.apply_enabled||!moreplusInventoryPreview.ready||moreplusApplyForm.processing" @click="applyMorePlusStock">{{moreplusApplyForm.processing?'正在确认…':moreplusInventoryPreview.apply_enabled?'确认同步到 ERP':'正式写入待授权'}}</button></div></div>
+<div v-if="moreplusFifoPreview" class="moreplus-fifo-preview">
       <p><strong>FIFO 批次核销 · 只读预检</strong>：可核销 {{moreplusFifoPreview.ready_fifo}} 个 SKU，拟调整 {{moreplusFifoPreview.ready_units}} 件；另有 {{moreplusFifoPreview.blocked}} 个须单独复核。</p>
       <small>只减少确认短缺的旧批次，不覆盖仓库出库占用、ERP 预留或历史库龄费用。批次写入受独立审批开关保护，本页面未提供写入操作。</small>
       <details v-if="moreplusFifoPreview.rows.length"><summary>查看拟调整的批次及受阻明细</summary>
@@ -213,7 +227,7 @@ const saveCost=()=>cost.transform(d=>({...d,currency:String(d.currency||'').trim
       <table><thead><tr><th>MorePlus SKU</th><th>ERP SKU</th><th>仓库实物</th><th>仓库可用</th><th>ERP 当前</th><th>ERP 预留</th><th>结论</th></tr></thead>
       <tbody><tr v-for="r in moreplusInventoryPreview.rows" :key="r.provider_sku"><td>{{r.provider_sku}}</td><td>{{r.canonical_sku||'未匹配'}}</td><td>{{r.provider_physical??'—'}}</td><td>{{r.provider_available}}</td><td>{{r.local_qoh}}</td><td>{{r.local_reserved}}</td><td>{{r.status==='ready'?'可同步':r.status==='unchanged'?'一致':moreplusBlockLabel(r.reason)}}</td></tr></tbody></table>
     </div>
-  </template>
+  </div>
 </section>
 <div v-if="activeTab==='overview'" class="kpi-grid">
   <article><span>库存 SKU</span><strong>{{kpis.skus}}</strong><small>当前仓库商品</small></article>
