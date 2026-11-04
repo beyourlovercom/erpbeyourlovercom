@@ -103,4 +103,22 @@ describe('MorePlus inventory stock sync in Warehouse 360', () => {
     expect(formPost).toHaveBeenCalledWith('/inventory/us-la/provider-stock/apply', expect.objectContaining({ preserveScroll: true }))
     confirm.mockRestore()
   })
+  it('shows FIFO candidate unit totals and lot dates as a read-only drilldown', () => {
+    const fifo = {
+      checksum: 'b'.repeat(64), ready_fifo: 1, ready_units: 3, blocked: 1, apply_enabled: false,
+      rows: [{provider_sku:'MP-TEST',canonical_sku:'MP-TEST',qoh:10,physical:7,delta:3,
+        aging_count:8,status:'ready_fifo' as const,reason:null,
+        lot_changes:[{date:'2026-01-06',before:6,after:3}]},
+        {provider_sku:'MP-HOLD',canonical_sku:'MP-HOLD',qoh:9,physical:1,delta:8,
+        aging_count:8,status:'blocked' as const,reason:'PROVIDER_AVAILABLE_BELOW_ERP_PROJECTED_AVAILABLE',lot_changes:[]}],
+    }
+    const wrapper = mount(WarehouseShow, { props: {...props, moreplusInventoryPreview: preview, moreplusFifoPreview:fifo} })
+    expect(wrapper.text()).toContain('FIFO 批次核销 · 只读预检')
+    expect(wrapper.text()).toContain('拟调整 3 件')
+    expect(wrapper.text()).toContain('另有 1 个须单独复核')
+    expect(wrapper.find('details').text()).toContain('2026-01-06')
+    expect(wrapper.find('details').text()).toContain('6 → 3')
+    expect(wrapper.text()).toContain('仓库占用与 ERP 预留不一致')
+    expect(wrapper.findAll('button').some(b => b.text().includes('执行 FIFO'))).toBe(false)
+  })
 })

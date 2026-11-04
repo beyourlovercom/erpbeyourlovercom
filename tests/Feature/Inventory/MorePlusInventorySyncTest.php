@@ -6,10 +6,12 @@ use App\Modules\Audit\Application\Contracts\AuditRecorder;
 use App\Modules\Identity\Infrastructure\Models\Permission;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Inventory\Application\MorePlusFifoReconciliationService;
 use App\Modules\Inventory\Application\MorePlusInventorySyncService;
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLot;
+use App\Modules\Inventory\Infrastructure\Models\WarehouseStorageAgingAccrual;
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutProductionInventoryAudit;
 use App\Modules\Products\Infrastructure\Models\Product;
 use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
@@ -38,6 +40,9 @@ final class MorePlusInventorySyncTest extends TestCase
         $this->app->instance('env', 'production');
         config()->set('shipout.production_read_enabled', true);
         config()->set('shipout.production_inventory_apply_enabled', false);
+        config()->set('shipout.production_fifo_apply_enabled', false);
+        config()->set('shipout.production_fifo_approved_skus', []);
+        config()->set('shipout.production_fifo_max_units', 0);
         config()->set('shipout.production_app_key', 'synthetic-key');
         config()->set('shipout.production_app_secret', 'synthetic-secret');
         config()->set('shipout.production_bearer', 'synthetic-bearer');
@@ -334,5 +339,221 @@ final class MorePlusInventorySyncTest extends TestCase
         ])->assertRedirect();
         self::assertSame(5, WarehouseInventory::query()->where('product_id', $p->id)->value('quantity_on_hand'));
         self::assertNull(session('inventory.moreplus_provider_preview.'.$this->warehouse->id));
+    }
+
+    private function fifoProduct(string $sku, int $current, int $physical, int $available, int $reserved = 0): Product
+    {
+        $product = $this->product($sku, $current, $reserved);
+        $this->provider[$sku] = [$physical, $available];
+        WarehouseInventoryLot::query()->create([
+            'warehouse_id' => $this->warehouse->id,
+            'product_id' => $product->id, 'stock_status' => 'sellable',
+            'putaway_date' => '2026-01-06', 'quantity' => $current - 4,
+        ]);
+        WarehouseInventoryLot::query()->create([
+            'warehouse_id' => $this->warehouse->id,
+            'product_id' => $product->id, 'stock_status' => 'sellable',
+            'putaway_date' => '2026-02-12', 'quantity' => 4,
+        ]);
+
+        return $product;
+    }
+
+    public function test_fifo_preview_plans_oldest_lot_only_and_does_not_write(): void
+    {
+        $p = $this->fifoProduct('MP-FIFO-01', 10, 7, 7);
+        $service = app(MorePlusFifoReconciliationService::class);
+        $preview = $service->preview($this->warehouse);
+        self::assertSame(1, $preview['ready_fifo']);
+        self::assertSame(3, $preview['ready_units']);
+        self::assertSame(0, $preview['blocked']);
+        self::assertFalse($preview['apply_enabled']);
+        self::assertSame('2026-01-06', $preview['rows'][0]['lot_changes'][0]['date']);
+        self::assertSame(3, $preview['rows'][0]['lot_changes'][0]['after']);
+        self::assertSame(10, WarehouseInventory::query()->where('product_id', $p->id)->value('quantity_on_hand'));
+        self::assertSame(10, WarehouseInventoryLot::query()->where('product_id', $p->id)->sum('quantity'));
+    }
+
+    public function test_fifo_reconciliation_requires_a_second_separate_apply_switch(): void
+    {
+        $this->fifoProduct('MP-FIFO-02', 10, 7, 7);
+        $service = app(MorePlusFifoReconciliationService::class);
+        $preview = $service->preview($this->warehouse);
+        config()->set('shipout.production_inventory_apply_enabled', true);
+        $this->expectExceptionMessage('MOREPLUS_FIFO_APPLY_DISABLED');
+        $service->apply($this->warehouse, $preview['checksum'], null);
+    }
+
+    public function test_fifo_apply_updates_lots_and_preserves_immutable_p9_history(): void
+    {
+        $p = $this->fifoProduct('MP-FIFO-03', 10, 7, 7);
+        $aging = WarehouseStorageAgingAccrual::query()->create([
+            'warehouse_id' => $this->warehouse->id, 'product_id' => $p->id,
+            'stock_status' => 'sellable', 'putaway_date' => '2026-01-06',
+            'aging_month_index' => 1, 'cycle_started_on' => '2026-04-07',
+            'quantity_snapshot' => 6, 'unit_rate_cny' => 1, 'amount_cny' => 6,
+            'source_reference' => 'fifo-uat-aging-03', 'accrual_as_of' => '2026-04-07',
+            'is_backfill' => true,
+        ]);
+        $ageBefore = $aging->fresh()->getAttributes();
+        $service = app(MorePlusFifoReconciliationService::class);
+        $preview = $service->preview($this->warehouse);
+        config()->set('shipout.production_inventory_apply_enabled', true);
+        config()->set('shipout.production_fifo_apply_enabled', true);
+        config()->set('shipout.production_fifo_approved_skus', ['MP-FIFO-03']);
+        config()->set('shipout.production_fifo_max_units', 3);
+        $result = $service->apply($this->warehouse, $preview['checksum'], null);
+        self::assertSame(1, $result['updated']);
+        self::assertSame(3, $result['units_decreased']);
+        self::assertSame(7, WarehouseInventory::query()->where('product_id', $p->id)->value('quantity_on_hand'));
+        self::assertSame([3, 4], WarehouseInventoryLot::query()->where('product_id', $p->id)->orderBy('putaway_date')->pluck('quantity')->all());
+        self::assertSame($ageBefore, $aging->fresh()->getAttributes());
+        $this->assertDatabaseHas('audit_records', ['action' => 'inventory.moreplus_fifo_reconciled']);
+    }
+
+    public function test_fifo_excludes_provider_holds_and_erp_reserved_rows(): void
+    {
+        $a = $this->fifoProduct('MP-FIFO-HOLD', 10, 7, 6);
+        $b = $this->fifoProduct('MP-FIFO-RESERVED', 10, 7, 6, 1);
+        $preview = app(MorePlusFifoReconciliationService::class)->preview($this->warehouse);
+        self::assertSame(0, $preview['ready_fifo']);
+        self::assertSame(2, $preview['blocked']);
+        self::assertSame(0, $preview['ready_units']);
+        self::assertSame(10, WarehouseInventory::query()->where('product_id', $a->id)->value('quantity_on_hand'));
+        self::assertSame(10, WarehouseInventory::query()->where('product_id', $b->id)->value('quantity_on_hand'));
+    }
+
+    public function test_fifo_refuses_provider_drift_after_preview_before_apply(): void
+    {
+        $p = $this->fifoProduct('MP-FIFO-DRIFT', 10, 7, 7);
+        $service = app(MorePlusFifoReconciliationService::class);
+        $preview = $service->preview($this->warehouse);
+        $this->provider['MP-FIFO-DRIFT'] = [6, 6];
+        config()->set('shipout.production_inventory_apply_enabled', true);
+        config()->set('shipout.production_fifo_apply_enabled', true);
+        $this->expectExceptionMessage('MOREPLUS_FIFO_SNAPSHOT_CHANGED_PREVIEW_AGAIN');
+        $service->apply($this->warehouse, $preview['checksum'], null);
+    }
+
+    public function test_fifo_refuses_lot_drift_after_preview_before_apply(): void
+    {
+        $p = $this->fifoProduct('MP-FIFO-LOT-DRIFT', 10, 7, 7);
+        $service = app(MorePlusFifoReconciliationService::class);
+        $preview = $service->preview($this->warehouse);
+        WarehouseInventoryLot::query()->where('product_id', $p->id)->orderBy('id')->firstOrFail()->update(['quantity' => 5]);
+        config()->set('shipout.production_inventory_apply_enabled', true);
+        config()->set('shipout.production_fifo_apply_enabled', true);
+        $this->expectExceptionMessage('MOREPLUS_FIFO_SNAPSHOT_CHANGED_PREVIEW_AGAIN');
+        $service->apply($this->warehouse, $preview['checksum'], null);
+    }
+
+    public function test_fifo_audit_failure_rolls_back_all_lots_and_qoh(): void
+    {
+        $p = $this->fifoProduct('MP-FIFO-ROLLBACK', 10, 7, 7);
+        $audit = \Mockery::mock(AuditRecorder::class);
+        $audit->shouldReceive('record')->once()->andThrow(new RuntimeException('SYNTHETIC_FIFO_AUDIT_FAILURE'));
+        $service = new MorePlusFifoReconciliationService(app(MorePlusInventorySyncService::class), $audit);
+        $preview = $service->preview($this->warehouse);
+        config()->set('shipout.production_inventory_apply_enabled', true);
+        config()->set('shipout.production_fifo_apply_enabled', true);
+        config()->set('shipout.production_fifo_approved_skus', ['MP-FIFO-ROLLBACK']);
+        config()->set('shipout.production_fifo_max_units', 3);
+        try {
+            $service->apply($this->warehouse, $preview['checksum'], null);
+            self::fail('Rollback expected');
+        } catch (RuntimeException $error) {
+            self::assertSame('SYNTHETIC_FIFO_AUDIT_FAILURE', $error->getMessage());
+        }
+        self::assertSame(10, WarehouseInventory::query()->where('product_id', $p->id)->value('quantity_on_hand'));
+        self::assertSame(10, WarehouseInventoryLot::query()->where('product_id', $p->id)->sum('quantity'));
+    }
+
+    public function test_authorized_warehouse_preview_includes_fifo_plan_without_extra_provider_calls(): void
+    {
+        $this->fifoProduct('MP-FIFO-HTTP', 10, 7, 7);
+        $operator = $this->userWith(['inventory.view', 'inventory.operate']);
+        $this->actingAs($operator)->withHeaders(['Sec-Fetch-Site' => 'same-origin'])
+            ->post('/inventory/us-la/provider-stock/preview')->assertRedirect();
+        $stock = session('inventory.moreplus_provider_preview.'.$this->warehouse->id);
+        $fifo = session('inventory.moreplus_fifo_preview.'.$this->warehouse->id);
+        self::assertSame(1, $stock['blocked']);
+        self::assertSame(1, $fifo['ready_fifo']);
+        self::assertSame(3, $fifo['ready_units']);
+        Http::assertSentCount(3);
+        $this->get('/inventory/us-la')->assertOk()->assertInertia(
+            fn (Assert $page) => $page->component('Inventory/WarehouseShow')
+                ->where('moreplusFifoPreview.ready_fifo', 1)
+                ->where('moreplusFifoPreview.ready_units', 3)
+                ->where('moreplusFifoPreview.apply_enabled', false)
+        );
+    }
+
+    public function test_fifo_does_not_apply_even_with_flags_without_owner_approved_sku_scope(): void
+    {
+        $p = $this->fifoProduct('MP-FIFO-NO-SCOPE', 10, 7, 7);
+        config()->set('shipout.production_inventory_apply_enabled', true);
+        config()->set('shipout.production_fifo_apply_enabled', true);
+        $service = app(MorePlusFifoReconciliationService::class);
+        $preview = $service->preview($this->warehouse);
+        self::assertFalse($preview['apply_enabled']);
+        $this->expectExceptionMessage('MOREPLUS_FIFO_OWNER_SCOPE_NOT_APPROVED');
+        $service->apply($this->warehouse, $preview['checksum'], null);
+    }
+
+    public function test_fifo_owner_sku_allowlist_and_max_unit_ceiling_are_enforced(): void
+    {
+        $this->fifoProduct('MP-FIFO-CAPPED', 10, 7, 7);
+        config()->set('shipout.production_inventory_apply_enabled', true);
+        config()->set('shipout.production_fifo_apply_enabled', true);
+        config()->set('shipout.production_fifo_approved_skus', ['MP-FIFO-CAPPED']);
+        config()->set('shipout.production_fifo_max_units', 2);
+        $service = app(MorePlusFifoReconciliationService::class);
+        $preview = $service->preview($this->warehouse);
+        self::assertFalse($preview['apply_enabled']);
+        $this->expectExceptionMessage('MOREPLUS_FIFO_UNITS_EXCEED_OWNER_SCOPE');
+        $service->apply($this->warehouse, $preview['checksum'], null);
+    }
+
+    public function test_fifo_owner_approved_sku_list_must_cover_every_candidate(): void
+    {
+        $this->fifoProduct('MP-FIFO-OUTSIDE-SCOPE', 10, 7, 7);
+        config()->set('shipout.production_inventory_apply_enabled', true);
+        config()->set('shipout.production_fifo_apply_enabled', true);
+        config()->set('shipout.production_fifo_approved_skus', ['DIFFERENT-SKU']);
+        config()->set('shipout.production_fifo_max_units', 100);
+        $service = app(MorePlusFifoReconciliationService::class);
+        $preview = $service->preview($this->warehouse);
+        self::assertFalse($preview['apply_enabled']);
+        $this->expectExceptionMessage('MOREPLUS_FIFO_SKU_OUTSIDE_OWNER_SCOPE');
+        $service->apply($this->warehouse, $preview['checksum'], null);
+    }
+
+    public function test_fifo_batch_is_atomic_when_second_sku_audit_fails(): void
+    {
+        $a = $this->fifoProduct('MP-FIFO-ATOMIC-A', 10, 7, 7);
+        $b = $this->fifoProduct('MP-FIFO-ATOMIC-B', 10, 7, 7);
+        $count = 0;
+        $audit = \Mockery::mock(AuditRecorder::class);
+        $audit->shouldReceive('record')->twice()->andReturnUsing(function () use (&$count): void {
+            if (++$count === 2) {
+                throw new RuntimeException('SECOND_SKU_AUDIT_FAILS');
+            }
+        });
+        $service = new MorePlusFifoReconciliationService(app(MorePlusInventorySyncService::class), $audit);
+        $preview = $service->preview($this->warehouse);
+        config()->set('shipout.production_inventory_apply_enabled', true);
+        config()->set('shipout.production_fifo_apply_enabled', true);
+        config()->set('shipout.production_fifo_approved_skus', ['MP-FIFO-ATOMIC-A', 'MP-FIFO-ATOMIC-B']);
+        config()->set('shipout.production_fifo_max_units', 6);
+        try {
+            $service->apply($this->warehouse, $preview['checksum'], null);
+            self::fail('Whole transaction must roll back');
+        } catch (RuntimeException $error) {
+            self::assertSame('SECOND_SKU_AUDIT_FAILS', $error->getMessage());
+        }
+        foreach ([$a, $b] as $p) {
+            self::assertSame(10, WarehouseInventory::query()->where('product_id', $p->id)->value('quantity_on_hand'));
+            self::assertSame(10, WarehouseInventoryLot::query()->where('product_id', $p->id)->sum('quantity'));
+        }
     }
 }

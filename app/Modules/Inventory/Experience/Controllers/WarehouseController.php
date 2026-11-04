@@ -61,6 +61,7 @@ final class WarehouseController
         return Inertia::render('Inventory/WarehouseShow',[
             'warehouse'=>$this->payload($w),
             'moreplusInventoryPreview'=>strtoupper((string) $w->code)==='US-LA' ? session('inventory.moreplus_provider_preview.'.$w->id) : null,
+            'moreplusFifoPreview'=>strtoupper((string) $w->code)==='US-LA' ? session('inventory.moreplus_fifo_preview.'.$w->id) : null,
             'clearanceProducts'=>$this->clearance->listForWarehouse($w),
             'clearanceCandidates'=>$this->clearance->candidatesForWarehouse($w),
             'costCenter'=>$this->inventory->warehouseCostCenter($w),

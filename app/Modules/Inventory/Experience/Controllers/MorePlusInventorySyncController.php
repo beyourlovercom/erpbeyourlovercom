@@ -3,6 +3,7 @@
 namespace App\Modules\Inventory\Experience\Controllers;
 
 use App\Modules\Inventory\Application\InventoryService;
+use App\Modules\Inventory\Application\MorePlusFifoReconciliationService;
 use App\Modules\Inventory\Application\MorePlusInventorySyncService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,6 +14,7 @@ final class MorePlusInventorySyncController
     public function __construct(
         private readonly InventoryService $inventory,
         private readonly MorePlusInventorySyncService $sync,
+        private readonly MorePlusFifoReconciliationService $fifo,
     ) {}
 
     public function preview(Request $request, string $warehouse): RedirectResponse
@@ -21,11 +23,13 @@ final class MorePlusInventorySyncController
         abort_unless(strtoupper((string) $w->code) === 'US-LA', 404);
         try {
             $preview = $this->sync->preview($w);
+            $fifo = $this->fifo->previewFromStock($w, $preview);
         } catch (\Throwable $error) {
             return back()->withErrors(['moreplus_stock' => $error instanceof RuntimeException
                 ? $error->getMessage() : 'MOREPLUS_INVENTORY_PREVIEW_UNAVAILABLE']);
         }
-        session([$this->key((int) $w->id) => $preview]);
+        session([$this->key((int) $w->id) => $preview,
+            $this->fifoKey((int) $w->id) => $fifo]);
 
         return back()->with('success', 'MorePlus 库存差异预览已刷新；尚未更改 ERP 库存');
     }
@@ -45,12 +49,17 @@ final class MorePlusInventorySyncController
             return back()->withErrors(['moreplus_stock' => $error instanceof RuntimeException
                 ? $error->getMessage() : 'MOREPLUS_INVENTORY_APPLY_UNAVAILABLE']);
         }
-        session()->forget($this->key((int) $w->id));
+        session()->forget([$this->key((int) $w->id), $this->fifoKey((int) $w->id)]);
 
         return back()->with('success', sprintf(
             'MorePlus 同步完成：更新 %d 个、新增 %d 个、未变 %d 个，%d 个待复核（未覆盖）。',
             $result['updated'], $result['created'], $result['unchanged'], $result['blocked']
         ));
+    }
+
+    private function fifoKey(int $warehouseId): string
+    {
+        return 'inventory.moreplus_fifo_preview.'.$warehouseId;
     }
 
     private function key(int $warehouseId): string
