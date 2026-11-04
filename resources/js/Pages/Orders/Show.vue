@@ -732,7 +732,9 @@ const reportShipmentErrors = (errors:Record<string,string>, action:string) => {
   shipmentEditorError.value = errors.fulfillment || '请修正红色提示的字段后重试。'
   publishGlobalFeedback({
     state:'BLOCKED', title:`${action}未完成`, message:first,
-    next:'请在当前弹窗修正红色提示字段，已填写的内容不会丢失。',
+    next:errors.fulfillment
+      ? '请核对分仓、审核及订单状态；当前填写内容不会丢失。'
+      : '请在当前弹窗修正红色提示字段，已填写的内容不会丢失。',
   })
 }
 const shipmentLocalErrors = (needsCompleteFields:boolean):Record<string,string> => {
@@ -759,14 +761,18 @@ const shipmentEditor = ref<ShipmentEditorDraft>({ warehouse_id: null, carrier: '
 const shipmentEditorReviewGate = computed(() => {
   const segment = props.order.fulfillment?.segments.find(row => row.order_id === shipmentEditorOrderId.value)
   const saved = segment?.shipment
-  if (!saved) return ''
-  if (saved.review_required && shipmentEditor.value.warehouse_id !== saved.warehouse_id) {
-    return '发货仓库已变更，需先保存分仓并重新审核，不能直接确认发货。'
+  const assignedWarehouseId = saved?.warehouse_id
+    ?? (shipmentEditorOrderId.value === props.order.id ? props.order.shipment?.warehouse_id : null)
+  if (!assignedWarehouseId) {
+    return '待分仓：请先完成正式分仓，不能在发货弹窗中直接选择仓库后确认发货。'
   }
-  if (saved.review_required && !saved.review_approved) {
+  if (shipmentEditor.value.warehouse_id !== assignedWarehouseId) {
+    return '发货仓库与已分配仓库不一致，请先完成重新分仓及对应审核。'
+  }
+  if (saved?.review_required && !saved.review_approved) {
     return saved.review_role === 'Dede'
-      ? '该订单尚未通过 Dede 海外仓审核，请先进入对应仓库的「待审核」列表。'
-      : '该订单尚未通过国内审核，请先进入中国工厂「待审核」列表。'
+      ? '等待 Dede 审核：请先进入对应海外仓的「待审核」列表。'
+      : '等待国内商务审核：请先进入中国工厂「待审核」列表。'
   }
   return ''
 })
@@ -809,20 +815,40 @@ const saveShipmentDraft = () => {
     onFinish: () => { shipmentEditorSaving.value = false },
   })
 }
-const confirmShipment = () => {
+const confirmShipment = async () => {
   if (!props.canOperateLogistics || !shipmentEditorOrderId.value || shipmentEditorSaving.value) return
+  // The persisted warehouse/review gate is also checked on the server.
+  if (shipmentEditorReviewGate.value) {
+    reportShipmentErrors({ fulfillment: shipmentEditorReviewGate.value }, '确认发货')
+    return
+  }
   const errors = shipmentLocalErrors(true)
   if (Object.keys(errors).length) { reportShipmentErrors(errors, '确认发货'); return }
   shipmentEditorSaving.value = true
   shipmentEditorError.value = ''
   shipmentFieldErrors.value = {}
-  router.post(`/logistics/orders/${shipmentEditorOrderId.value}/ship`, shipmentEditor.value, {
-    preserveScroll: true,
-    preserveState: true,
-    onSuccess: () => { shipmentEditorOpen.value = false },
-    onError: (errors) => reportShipmentErrors(errors, '确认发货'),
-    onFinish: () => { shipmentEditorSaving.value = false },
-  })
+  try {
+    // A JSON request keeps Laravel's HTTP 409 reason inside the modal.
+    await axios.post(`/logistics/orders/${shipmentEditorOrderId.value}/ship`,
+      shipmentEditor.value, { headers: { Accept: 'application/json' } })
+    shipmentEditorOpen.value = false
+    router.reload()
+  } catch (error) {
+    const response = axios.isAxiosError(error) ? error.response : undefined
+    const payload = response?.data as { message?:string; errors?:Record<string,string[]> } | undefined
+    const fieldErrors:Record<string,string> = {}
+    for (const [field, messages] of Object.entries(payload?.errors ?? {})) {
+      fieldErrors[field] = Array.isArray(messages) ? (messages[0] ?? '') : String(messages)
+    }
+    const message = typeof payload?.message === 'string' && payload.message.trim()
+      ? payload.message.trim()
+      : response?.status === 409 ? '发货状态或审核条件已发生变化，请核对后重试。'
+      : response?.status === 403 ? '当前账号没有执行此发货操作的权限。'
+      : '确认发货请求失败，请检查网络后重试。'
+    reportShipmentErrors(Object.keys(fieldErrors).length ? fieldErrors : { fulfillment: message }, '确认发货')
+  } finally {
+    shipmentEditorSaving.value = false
+  }
 }
 
 const replacementOpen = ref(false)
@@ -1734,7 +1760,7 @@ onBeforeUnmount(() => {
           <label class="ord-shipment-note">物流备注<textarea v-model="shipmentEditor.logistics_note" rows="3" class="erp-textarea" :class="{ 'ord-field-invalid': shipmentFieldErrors.logistics_note }" :aria-invalid="Boolean(shipmentFieldErrors.logistics_note)" :disabled="!canOperateLogistics" placeholder="可填写包裹、异常或操作备注" @input="clearShipmentFieldError('logistics_note')"></textarea><small v-if="shipmentFieldErrors.logistics_note" class="ord-shipment-field-error" role="alert">{{ shipmentFieldErrors.logistics_note }}</small></label>
         </div>
         <p v-if="shipmentEditorReviewGate" class="ord-shipment-error" role="alert">{{ shipmentEditorReviewGate }}</p>
-        <p v-if="shipmentEditorError" class="ord-shipment-error">{{ shipmentEditorError }}</p>
+        <p v-if="shipmentEditorError" class="ord-shipment-error" role="alert">{{ shipmentEditorError }}</p>
         <p v-if="!canOperateLogistics" class="ord-shipment-readonly">当前账号为物流执行只读模式；物流员可以在这里直接填写物流并确认发货。</p>
         <footer class="ord-replacement-actions">
           <button v-if="canOperateLogistics" type="button" class="erp-btn erp-btn-secondary" :disabled="shipmentEditorSaving" @click="saveShipmentDraft">保存草稿</button>
