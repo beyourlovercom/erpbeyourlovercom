@@ -277,7 +277,7 @@ describe('Orders/Show V2', () => {
     await button!.trigger('click')
     expect(wrapper.text()).toContain('填写物流并发货')
     expect(wrapper.find('.ord-shipment-form').exists()).toBe(true)
-    expect(wrapper.text()).toContain('所有发货、重发、补发操作统一在上方“履约状态”处理')
+    expect(wrapper.text()).toContain('发货、重发、补发仍在上方“履约状态”处理')
   })
 
   it('offers fulfillment execution per pending split segment without changing shipped siblings', async () => {
