@@ -35,13 +35,16 @@ final class PendingAllocationEntryPolicyTest extends TestCase
         $oldKol = $this->order('manual', 'kol_fulfillment', '2026-10-01');
         $oldWoo = $this->order('woocommerce', 'customer', '2026-10-01');
         $this->financials($oldWoo, 'processing');
+        $oldUnpaid = $this->order('woocommerce', 'customer', '2026-10-01');
+        $this->financials($oldUnpaid, 'pending');
 
         $policy = app(PendingAllocationEntryPolicy::class);
         $this->assertTrue($policy->allows($newKol));
         $this->assertTrue($policy->allows($oldKol));
-        $this->assertFalse($policy->allows($oldWoo));
+        $this->assertTrue($policy->allows($oldWoo));
+        $this->assertFalse($policy->allows($oldUnpaid));
         $this->assertEqualsCanonicalizing(
-            [$newKol->id, $oldKol->id],
+            [$newKol->id, $oldKol->id, $oldWoo->id],
             app(LogisticsStatusSummary::class)->pendingAllocationQuery()->pluck('id')->all(),
         );
     }
