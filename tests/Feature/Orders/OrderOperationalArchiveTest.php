@@ -57,20 +57,49 @@ final class OrderOperationalArchiveTest extends TestCase
         $this->assertSame(1, Order::query()->eligibleForOperations()->whereKey($order->id)->count());
     }
 
-    public function test_derived_fulfillment_inherits_parent_archive_and_must_not_be_archived_alone(): void
+    public function test_derived_fulfillment_can_be_archived_independently_and_restored_without_affecting_siblings(): void
     {
         $staff = $this->userWith(['orders.view', 'orders.edit']);
+        $admin = $this->userWith(['orders.view', 'orders.edit', 'system.permissions.manage']);
         $root = $this->makeOrder($staff, 'parent');
         $child = $this->makeOrder($staff, 'derived');
-        $child->forceFill(['order_kind' => 'fulfillment_derived', 'fulfillment_parent_id' => $root->id])->save();
+        $sibling = $this->makeOrder($staff, 'sibling');
+        foreach ([$child, $sibling] as $derived) {
+            $derived->forceFill(['order_kind' => 'fulfillment_derived', 'fulfillment_parent_id' => $root->id])->save();
+        }
 
-        $this->actingAs($staff)->post('/orders/'.$child->id.'/archive')->assertStatus(409);
-        $this->actingAs($staff)->post('/orders/'.$root->id.'/archive')->assertRedirect('/orders/archive');
-        $this->assertTrue($child->fresh()->isOperationallyArchived());
-        $this->assertSame(0, Order::query()->eligibleForOperations()->whereIn('id', [$root->id, $child->id])->count());
+        $this->actingAs($staff)->get('/customers/orders/'.$child->id)->assertOk()
+            ->assertInertia(fn ($page) => $page->where('canArchiveOrder', true));
+        $this->actingAs($staff)->post('/orders/'.$child->id.'/archive')->assertRedirect('/orders/archive');
+        $this->assertDatabaseHas('orders', ['id' => $root->id, 'operational_archived_at' => null]);
+        $this->assertDatabaseHas('orders', ['id' => $sibling->id, 'operational_archived_at' => null]);
+        $this->assertSame([$root->id, $sibling->id], Order::query()->eligibleForOperations()
+            ->whereIn('id', [$root->id, $child->id, $sibling->id])->orderBy('id')->pluck('id')->all());
         $this->actingAs($staff)->get('/orders/archive')->assertOk()
-            ->assertInertia(fn ($page) => $page->has('orders.data', 1));
-        $this->assertDatabaseHas('orders', ['id' => $child->id, 'operational_archived_at' => null]);
+            ->assertInertia(fn ($page) => $page->has('orders.data', 1)
+                ->where('orders.data.0.id', $child->id)
+                ->where('orders.data.0.direct_archive', true)
+                ->where('orders.data.0.fulfillment_parent_id', $root->id));
+        $this->actingAs($admin)->post('/orders/archive/'.$child->id.'/restore')->assertRedirect();
+        $this->assertSame(3, Order::query()->eligibleForOperations()->whereIn('id', [$root->id, $child->id, $sibling->id])->count());
+
+        $this->actingAs($staff)->post('/orders/'.$child->id.'/archive')->assertRedirect('/orders/archive');
+        $this->actingAs($staff)->post('/orders/'.$root->id.'/archive')->assertRedirect('/orders/archive');
+        $this->assertSame(0, Order::query()->eligibleForOperations()->whereIn('id', [$root->id, $child->id, $sibling->id])->count());
+        $this->actingAs($staff)->get('/orders/archive')->assertOk()
+            ->assertInertia(fn ($page) => $page->has('orders.data', 3));
+        $this->actingAs($staff)->get('/customers/orders/'.$sibling->id)->assertOk()
+            ->assertInertia(fn ($page) => $page->where('operationallyArchived', true)
+                ->where('canArchiveOrder', true)
+                ->where('directlyArchived', false));
+
+        $this->actingAs($admin)->post('/orders/archive/'.$sibling->id.'/restore')->assertStatus(409);
+        $this->actingAs($admin)->post('/orders/archive/'.$root->id.'/restore')->assertRedirect();
+        $this->assertSame(2, Order::query()->eligibleForOperations()->whereIn('id', [$root->id, $child->id, $sibling->id])->count());
+        $this->actingAs($staff)->get('/orders/archive')->assertOk()
+            ->assertInertia(fn ($page) => $page->has('orders.data', 1)->where('orders.data.0.id', $child->id));
+        $this->actingAs($admin)->post('/orders/archive/'.$child->id.'/restore')->assertRedirect();
+        $this->assertSame(3, Order::query()->eligibleForOperations()->whereIn('id', [$root->id, $child->id, $sibling->id])->count());
     }
 
     public function test_archive_requires_edit_permission_and_enforces_kol_owner_boundary(): void
