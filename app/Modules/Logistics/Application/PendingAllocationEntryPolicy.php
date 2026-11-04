@@ -14,9 +14,8 @@ final class PendingAllocationEntryPolicy
             // KOL fulfillment orders require no separate manager approval or date cutoff.
             $eligible->where('order_kind', 'kol_fulfillment')
                 ->orWhere(function (Builder $customer): void {
-                    // Customer cutoff stays as-is until a future backlog policy decision.
+                    // Pending allocation is based on eligibility, never an order-date cutoff.
                     $customer->where('order_kind', 'customer')
-                        ->where('order_date', '>=', (string) config('erp_fulfillment.allocation_eligible_from', '2026-11-04'))
                         ->where(function (Builder $sources): void {
                             $sources->where(function (Builder $woo): void {
                                 $woo->where('source_type', 'woocommerce')
