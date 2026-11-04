@@ -71,6 +71,29 @@ describe('MorePlus inventory stock sync in Warehouse 360', () => {
     const apply = wrapper.findAll('button').find(button => button.text().includes('正式写入待授权'))
     expect(apply?.attributes('disabled')).toBeDefined()
   })
+  it('shows MorePlus SKU as primary and preserves Woo canonical identity without SKU editing', async () => {
+    const migrated = { ...moreplus, inventories: [{
+      id: 101, product: { id: 1346, sku: 'BY489A-Lubes', provider_sku: 'BY489A', name: 'BEYOURLOVER LUBRICANT 35ML' },
+      quantity_on_hand: 701, quantity_reserved: 0, quantity_available: 701,
+      stock_status: 'in_stock' as const, stock_status_label: '有货',
+      inbound_at: '2026-01-06', stay_days: 300, location: null,
+      standard_qoh: null, expected_restock_qty: 0, updated_at: '2026-11-04T08:36:11Z',
+      product_updated_at: '2026-09-05T10:53:51Z',
+      replenishment: { policy_status: 'healthy' as const, policy_label: '正常', shipped_90d_qty: 0,
+        days_of_cover: null, recommended_restock_qty: 0 },
+    }] }
+    const wrapper = mount(WarehouseShow, { props: { ...props, warehouse: migrated, canEditProducts: true } })
+    await wrapper.findAll('button').find(button => button.text().trim().startsWith('库存'))!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text().trim().startsWith('当前库存'))!.trigger('click')
+    const row = wrapper.find('.inventory-table tbody tr')
+    expect(row.exists()).toBe(true)
+    expect(row.find('.identity-cell').text()).toContain('BY489A')
+    expect(row.find('.identity-cell').text()).toContain('Woo: BY489A-Lubes')
+    expect(row.find('button[aria-label="编辑 SKU"]').exists()).toBe(false)
+    await wrapper.find('input[placeholder="搜索 SKU、产品或库位"]').setValue('BY489A')
+    expect(wrapper.findAll('.inventory-table tbody tr')).toHaveLength(1)
+  })
+
   it('requires confirmation before applying the checksum-bound preview', async () => {
     formPost.mockClear()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)

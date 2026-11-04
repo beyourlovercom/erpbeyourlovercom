@@ -12,6 +12,7 @@ use App\Modules\Inventory\Infrastructure\Models\WarehouseInventory;
 use App\Modules\Inventory\Infrastructure\Models\WarehouseInventoryLot;
 use App\Modules\Logistics\Infrastructure\ShipOut\ShipOutProductionInventoryAudit;
 use App\Modules\Products\Infrastructure\Models\Product;
+use App\Modules\Products\Infrastructure\Models\ProductSkuAlias;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -245,6 +246,40 @@ final class MorePlusInventorySyncTest extends TestCase
         $preview = app(MorePlusInventorySyncService::class)->preview($this->warehouse);
         self::assertSame(1, $preview['blocked']);
         self::assertSame('ERP_REMOVED_INVENTORY_REVIEW_REQUIRED', $preview['rows'][0]['reason']);
+    }
+
+    public function test_warehouse_shows_verified_provider_sku_without_changing_woo_master_sku(): void
+    {
+        $product = $this->product('BY489A-Lubes', 701);
+        $alias = ProductSkuAlias::query()->create([
+            'product_id' => $product->id, 'alias_sku' => 'BY489A',
+            'match_key' => 'by489a', 'source_type' => 'inventory_batch',
+        ]);
+        $alias->forceFill(['oms_verified_at' => now(), 'oms_identity_evidence' => 'UAT signed provider identity approved'])->save();
+        $this->app->instance('env', 'testing');
+        $viewer = $this->userWith(['inventory.view']);
+        $this->actingAs($viewer)->get('/inventory/us-la')->assertOk()->assertInertia(
+            fn (Assert $page) => $page->component('Inventory/WarehouseShow')
+                ->where('warehouse.inventories.0.product.sku', 'BY489A-Lubes')
+                ->where('warehouse.inventories.0.product.provider_sku', 'BY489A')
+        );
+        self::assertSame('BY489A-Lubes', $product->fresh()->sku);
+    }
+
+    public function test_unverified_provider_sku_is_not_presented_as_confirmed_warehouse_identity(): void
+    {
+        $product = $this->product('OLD-SKU-UNVERIFIED', 7);
+        ProductSkuAlias::query()->create([
+            'product_id' => $product->id, 'alias_sku' => 'NEW-SKU-UNVERIFIED',
+            'match_key' => 'new-sku-unverified', 'source_type' => 'inventory_batch',
+        ]);
+        $this->app->instance('env', 'testing');
+        $viewer = $this->userWith(['inventory.view']);
+        $this->actingAs($viewer)->get('/inventory/us-la')->assertOk()->assertInertia(
+            fn (Assert $page) => $page->component('Inventory/WarehouseShow')
+                ->where('warehouse.inventories.0.product.sku', 'OLD-SKU-UNVERIFIED')
+                ->where('warehouse.inventories.0.product.provider_sku', null)
+        );
     }
 
     public function test_audit_failure_rolls_back_all_stock_changes_in_one_transaction(): void
