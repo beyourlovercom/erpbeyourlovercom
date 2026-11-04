@@ -221,7 +221,7 @@ final class FulfillmentAllocationV1Test extends TestCase
             'source_type' => 'manual',
             'order_kind' => 'customer',
             'external_order_number' => 'EXT-'.uniqid(),
-            'order_date' => '2026-09-11',
+            'order_date' => '2026-11-04',
             'order_status' => 'pending_shipment',
             'currency' => 'USD',
         ]);

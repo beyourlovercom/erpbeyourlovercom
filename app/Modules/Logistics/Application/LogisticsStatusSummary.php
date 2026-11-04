@@ -11,8 +11,10 @@ final class LogisticsStatusSummary
 {
     public function pendingAllocationQuery(): Builder
     {
-        return Order::query()
-            ->eligibleForOperations()
+        // Preserve the current Processing/KOL admission policy while excluding
+        // operationally archived roots and their fulfillment descendants.
+        return app(PendingAllocationEntryPolicy::class)
+            ->constrain(Order::query()->eligibleForOperations())
             ->where('order_status', 'pending_shipment')
             ->whereNull('fulfillment_parent_id')
             ->whereDoesntHave('externalReferences', fn ($q) => $q->where('provider', 'historical_logistics'))

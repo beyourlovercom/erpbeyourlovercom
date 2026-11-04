@@ -104,3 +104,12 @@ Environment: independent UAT SQLite database and loopback-only Laravel server on
 - Screenshots preserved on US Mac: /tmp/byl-erp-archive-uat-flags-desktop.png, /tmp/byl-erp-archive-uat-flags-mobile.png, /tmp/byl-erp-archive-uat-mobile-list.png, /tmp/byl-erp-archive-uat-desktop-list.png.
 
 Review gate remains: Owner visual PASS and a separately authorized controlled Production release/migration. The private localhost UAT address is not a public URL; an externally accessible preview has not been deployed.
+
+## Mainline reconciliation — 2026-11-04
+
+- While Draft PR #615 was in UAT, origin/main advanced to b685d03f (PR #616, preserving Woo Processing orders in pending allocation; preceded by PR #613).
+- Merge conflict limited to app/Modules/Logistics/Application/LogisticsStatusSummary.php. The final pending allocation query composes PendingAllocationEntryPolicy::constrain(Order::query()->eligibleForOperations()) so it preserves current admission semantics AND excludes operationally archived orders.
+- Same-SHA baseline comparison against untouched b685d03f: Logistics tests 550 / 37 failures on main versus 550 / 25 failures on this branch, **0 newly failing test names**, 12 baseline failures no longer reproducing.
+- Order feature tests 75 / 75 PASS, 925 assertions; TypeScript typecheck PASS; Vite production build PASS.
+- Real browser after mainline sync: archive/list/restore 15/15 PASS, derived-child inheritance PASS, China factory queue exclusion/restore PASS, JavaScript page errors 0.
+- Merge into Production/main and live migration remain NOT authorized. This is an isolated branch reconciliation only.

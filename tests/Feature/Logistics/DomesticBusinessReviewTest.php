@@ -120,7 +120,7 @@ final class DomesticBusinessReviewTest extends TestCase
                 'internal_order_number' => 'FULF-'.$parent->id.'-'.$suffix,
                 'source_type' => OrderSourceType::ManualOther,
                 'order_kind' => OrderKind::FulfillmentDerived,
-                'order_date' => '2026-11-03', 'order_status' => OrderStatus::PendingShipment,
+                'order_date' => '2026-11-04', 'order_status' => OrderStatus::PendingShipment,
                 'currency' => 'USD',
             ]);
             $child->shipment()->create(['warehouse_id' => $warehouse->id, 'shipment_status' => 'pending']);
@@ -169,7 +169,7 @@ final class DomesticBusinessReviewTest extends TestCase
         $order = Order::query()->create([
             'erp_order_id' => '007-1103-'.uniqid(), 'internal_order_number' => 'INT-'.uniqid(),
             'source_type' => OrderSourceType::Manual, 'order_kind' => OrderKind::Customer,
-            'external_order_number' => 'EXT-'.uniqid(), 'order_date' => '2026-11-03',
+            'external_order_number' => 'EXT-'.uniqid(), 'order_date' => '2026-11-04',
             'order_status' => OrderStatus::PendingShipment, 'currency' => 'USD',
         ]);
         $order->address()->create([
