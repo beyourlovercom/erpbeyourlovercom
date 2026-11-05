@@ -174,6 +174,60 @@ final class OrderSavedViewsTest extends TestCase
         $this->assertDatabaseMissing('order_operational_markers', ['order_id' => $order->id]);
     }
 
+    public function test_oms_grid_opt_in_preserves_legacy_default_and_server_paging_boundaries(): void
+    {
+        $user = $this->userWith(['orders.view']);
+        $this->order($user, 'OMS-ONE', 'pending_shipment');
+        $this->order($user, 'OMS-TWO', 'shipped');
+
+        $this->actingAs($user)->get('/orders')->assertInertia(fn (Assert $page) => $page
+            ->where('omsGridAvailable', true)
+            ->where('omsGridEnabled', false)
+            ->where('orders.total', 2));
+
+        $this->actingAs($user)->get('/orders?oms_grid=1&per_page=20&sort=order_number&direction=asc')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('omsGridEnabled', true)
+                ->where('filters.sort', 'order_number')
+                ->where('filters.direction', 'asc')
+                ->where('orders.per_page', 20)
+                ->where('orders.total', 2));
+
+        $this->actingAs($user)->get('/orders?oms_grid=1&per_page=all')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('omsGridEnabled', true)
+                ->where('filters.per_page', 'all')
+                ->where('orders.total', 2)
+                ->has('orders.data', 2));
+
+        $this->actingAs($user)->get('/orders?oms_grid=1&per_page=5000&sort=arbitrary_sql')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('filters.sort', 'date')
+                ->where('orders.per_page', 50));
+
+        $this->actingAs($user)->get('/customers/orders?oms_grid=1')->assertInertia(fn (Assert $page) => $page
+            ->where('omsGridEnabled', false));
+    }
+
+    public function test_oms_grid_all_option_cannot_bypass_server_limit_or_permissions(): void
+    {
+        $viewer = $this->userWith(['orders.view']);
+        for ($i = 0; $i < 201; $i++) {
+            $this->order($viewer, 'GRID-'.$i, 'pending_shipment');
+        }
+
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&per_page=all')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('omsGridEnabled', true)
+                ->where('filters.per_page', '50')
+                ->where('orders.per_page', 50)
+                ->where('orders.total', 201)
+                ->has('orders.data', 50));
+
+        $unauthorized = $this->userWith([]);
+        $this->actingAs($unauthorized)->get('/orders?oms_grid=1')->assertForbidden();
+    }
+
     private function assertViewContainsOnly(User $user, string $view, string $externalOrderNumber): void
     {
         $this->actingAs($user)->get('/orders?view='.$view)->assertInertia(fn (Assert $page) => $page
