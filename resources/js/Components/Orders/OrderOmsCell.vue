@@ -7,6 +7,7 @@ import OrderWorkflowStatusPill from '../../Components/Orders/OrderWorkflowStatus
 type Workflow = { code: string; en: string; zh: string; color: string; source: string; mutable?: boolean }
 type Option = { code: string; en: string; zh: string; color: string; mutable: boolean }
 type Order = {
+  _is_additional_item?: boolean;
   id: number; erp_order_id: string | null; order_kind?: string;
   source_label?: string; external_order_number?: string;
   workflow_status_projection?: Workflow; workflow_revision?: number
@@ -23,7 +24,8 @@ const sourceTitle = computed(() => order.value?.source_label === 'WooCommerce' &
 
 <template>
   <div class="oms-order-cell">
-    <template v-if="order && params.mode === 'status'">
+    <template v-if="order && order._is_additional_item && params.mode !== 'number'"><span aria-label="同订单附加SKU行" class="oms-item-followup">·</span></template>
+    <template v-else-if="order && params.mode === 'status'">
       <OrderWorkflowStatusPill
         v-if="order.workflow_status_projection"
         :order-id="order.id"
@@ -44,4 +46,5 @@ const sourceTitle = computed(() => order.value?.source_label === 'WooCommerce' &
 .oms-order-cell{display:flex;align-items:center;height:100%;min-width:0;overflow:hidden;white-space:nowrap}
 .oms-order-link{color:#155dfb;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .oms-order-link:hover{text-decoration:underline}
+.oms-item-followup{color:#cbd5e1}
 </style>

@@ -4,7 +4,7 @@ import type { ColDef } from 'ag-grid-community'
 import OmsGrid from '../../Components/DataGrid/OmsGrid.vue'
 import OrderOmsCell from './OrderOmsCell.vue'
 import OrderOmsTransfer from './OrderOmsTransfer.vue'
-import { toOrderOmsRow, type OrderGridOrder } from './orderOmsRows'
+import { toOrderOmsItemRows, type OrderGridOrder } from './orderOmsRows'
 
 type Option = { code: string; en: string; zh: string; color: string; mutable: boolean }
 type Pagination = {
@@ -31,17 +31,18 @@ const emit = defineEmits<{
   (event: 'column-search-change', filter: { colId: string; value: string }): void
 }>()
 
-const rows = computed<Record<string, unknown>[]>(() => props.orders.data.map(toOrderOmsRow))
+const rows = computed<Record<string, unknown>[]>(() => props.orders.data.flatMap(toOrderOmsItemRows))
 const basic = (id: string, field: string, title: string, width: number, visible = false, sortable = false): ColDef<Record<string, unknown>> => ({
   colId: id, field, headerName: title, width, hide: !visible, sortable,
   tooltipField: field,
 })
 const columns = computed<ColDef<Record<string, unknown>>[]>(() => [
-  // Frozen V1 default: high-frequency operations, one line per order.
+  // One AG Grid row per SKU line; server pagination and status remain per original order.
   { ...basic('order_number', 'erp_order_id', 'ERP订单号', 170, true, true),
     cellRenderer: OrderOmsCell, cellRendererParams: { mode: 'number' } },
   basic('sku', 'sku_list', 'SKU', 174, true),
-  basic('quantity', 'order_quantity', '下单数量', 94, true),
+  basic('quantity', 'order_quantity', 'SKU数量', 94, true),
+  basic('order_total_quantity', 'order_total_quantity', '订单总件数', 110),
   basic('source', 'source_label', '来源', 116, true, true),
   basic('date', 'order_date', '订单日期', 126, true, true),
   basic('recipient', 'recipient', '收件人', 135, true),
@@ -54,7 +55,9 @@ const columns = computed<ColDef<Record<string, unknown>>[]>(() => [
     } },
   basic('tracking', 'tracking_number', '物流单号', 158, true),
   // Optional: Product detail and revenue from authoritative order item lines.
-  basic('sku_qty_detail', 'sku_quantity_detail', 'SKU×数量明细', 210),
+  basic('sku_qty_detail', 'sku_quantity_detail', '整单SKU×数量', 210),
+  { ...basic('order_line_subtotal', 'order_line_subtotal', '整单商品行金额', 142),
+    valueFormatter: p => p.value === null || p.value === undefined ? '—' : String(p.data?.currency ?? 'USD') + ' ' + Number(p.value).toFixed(2) },
   basic('product_names', 'product_names', '产品名称', 190),
   basic('item_line_count', 'item_line_count', '商品行数', 92),
   basic('sku_type_count', 'sku_type_count', 'SKU种类数', 100),

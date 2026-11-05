@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { toOrderOmsRow, type OrderGridOrder } from './orderOmsRows'
+import { toOrderOmsRow, toOrderOmsItemRows, type OrderGridOrder } from './orderOmsRows'
 
 const base = (overrides: Partial<OrderGridOrder> = {}): OrderGridOrder => ({
   id: 7870,
@@ -25,6 +25,26 @@ describe('OMS order-column projection', () => {
     expect(row.product_names).toBe('Product One, Product Two')
     expect(row.item_subtotal).toBe(324)
   })
+  it('renders one visual row per SKU while the order ID and total units stay shared', () => {
+    const rows = toOrderOmsItemRows(base({ items: [
+      { sku: 'MF414A', product_summary: 'Main', quantity: 2, unit_price: '79.00', line_revenue: '158.00' },
+      { sku: 'A1', product_summary: 'Gift', quantity: 1, unit_price: '0', line_revenue: '0' },
+    ] }))
+    expect(rows).toHaveLength(2)
+    expect(rows.map(row => row.erp_order_id)).toEqual(['007-1105-40223', '007-1105-40223'])
+    expect(rows.map(row => row.sku_list)).toEqual(['MF414A', 'A1'])
+    expect(rows.map(row => row.order_quantity)).toEqual([2, 1])
+    expect(rows.map(row => row.order_total_quantity)).toEqual([3, 3])
+    expect(rows.map(row => row._is_additional_item)).toEqual([false, true])
+    expect(rows.map(row => row.item_subtotal)).toEqual([158, 0])
+  })
+  it('retains a single row for historic orders without SKU lines', () => {
+    const rows = toOrderOmsItemRows(base())
+    expect(rows).toHaveLength(1)
+    expect(rows[0].sku_list).toBe('—')
+    expect(rows[0].order_quantity).toBeNull()
+  })
+
   it('does not invent zero units or order totals when no order items are provided', () => {
     const row = toOrderOmsRow(base())
     expect(row.order_quantity).toBeNull()

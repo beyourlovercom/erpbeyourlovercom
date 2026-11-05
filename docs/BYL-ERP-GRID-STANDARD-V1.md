@@ -32,3 +32,10 @@ Scope: BYL ERP front-end list / table pages; this is the single standard for new
 ## 5. Change control
 - Changes to the shared grid require regression checks on existing adopted modules.
 - Exceptions must be documented with the business-specific reason; a page may customize cells/actions but must not duplicate the engine.
+
+
+
+## Order-line view mode — R3.5
+- Orders with multiple items render one visual row per SKU item. **No new ERP order is created** for extra lines; server pagination, totals, archived/fulfillment state and workflow identity remain order-scoped.
+- Keep the same clickable ERP order number on each line to communicate grouping. Duplicate status mutations and action controls must be hidden on continuation lines.
+- Import/export files express one SKU per row with an explicit repeated canonical grouping key (`external_order_number`), inherited and consistency-checked order-level fields, and a preview grouped into canonical orders. Preview must show both order count and line count.

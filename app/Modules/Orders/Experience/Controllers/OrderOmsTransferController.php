@@ -93,7 +93,7 @@ final class OrderOmsTransferController
         }
         $filters['oms_grid_columns'] = $columns;
         $headers = [
-            'ERP订单号', '来源订单号', '下单日期', '来源', 'SKU', '下单数量', 'SKU×数量明细',
+            'ERP订单号', '来源订单号', '下单日期', '来源', 'SKU', 'SKU数量', '订单总件数', '整单SKU×数量',
             '产品名称', '商品行金额', '币种', '收件人', '电话', '国家', '州/省', '城市', '邮编',
             '地址第1行', '地址第2行', '工作状态', '仓库', '物流商', '渠道', '物流单号', '发货时间', '负责人', '订单备注',
         ];
@@ -103,12 +103,14 @@ final class OrderOmsTransferController
                 fwrite($handle, "\xEF\xBB\xBF");
                 fputcsv($handle, $headers);
                 foreach ($this->orders->exportBatched($filters) as $order) {
-                    $line = array_map(function ($value): string {
-                        $text = (string) ($value ?? '');
-                        // Neutralize Excel formula injection in untrusted text cells.
-                        return preg_match('/^\s*[=+@-]/u', $text) ? "'".$text : $text;
-                    }, $this->exportRow($order));
-                    fputcsv($handle, $line);
+                    foreach ($this->exportRows($order) as $raw) {
+                        $line = array_map(function ($value): string {
+                            $text = (string) ($value ?? '');
+                            // Neutralize Excel formula injection in untrusted text cells.
+                            return preg_match('/^\s*[=+@-]/u', $text) ? "'".$text : $text;
+                        }, $raw);
+                        fputcsv($handle, $line);
+                    }
                 }
                 fclose($handle);
             }, 'BYL-ERP-Orders-'.now()->format('Ymd').'.csv', [
@@ -122,7 +124,12 @@ final class OrderOmsTransferController
             if (count($rows) >= 2000) {
                 throw ValidationException::withMessages(['export' => '单次 XLSX 导出最多 2000 单，请缩小筛选范围；大批量数据可使用原有 CSV 导出。']);
             }
-            $rows[] = $this->exportRow($order);
+            foreach ($this->exportRows($order) as $row) {
+                if (count($rows) >= 5000) {
+                    throw ValidationException::withMessages(['export' => 'XLSX 单次最多 5000 个 SKU 商品行，请缩小筛选范围或使用 CSV 导出。']);
+                }
+                $rows[] = $row;
+            }
         }
 
         return response($this->writer->write('ERP订单', $headers, $rows), 200, [
@@ -133,26 +140,31 @@ final class OrderOmsTransferController
     }
 
 
-    /** @return list<mixed> */
-    private function exportRow(Order $order): array
+    /** @return list<list<mixed>> */
+    private function exportRows(Order $order): array
     {
-        $items = $order->items;
-        $skus = $items->pluck('sku')->filter()->unique()->implode(', ');
-        $quantity = $items->sum('quantity');
-        $detail = $items->map(fn ($i) => $i->sku.' × '.$i->quantity)->implode('; ');
-        $names = $items->pluck('product_summary')->filter()->unique()->implode(', ');
-        $lineAmount = $items->sum(fn ($i) => (float) $i->line_revenue);
-    return [
-            $order->erp_order_id, $order->external_order_number, $order->order_date?->toDateString(),
-            $order->source_type->value, $skus, $quantity, $detail, $names,
-            $items->count() ? number_format($lineAmount, 2, '.', '') : null, $order->currency,
-            $order->address?->recipient_name, $order->address?->phone, $order->address?->country,
-            $order->address?->province_state, $order->address?->city, $order->address?->postal_code,
-            $order->address?->address_line_1, $order->address?->address_line_2,
-            $order->workflow_status ?: $order->order_status->value,
-            $order->shipment?->warehouse?->name, $order->shipment?->carrier, $order->shipment?->service,
-            $order->shipment?->tracking_number, $order->shipment?->shipped_at?->toDateTimeString(),
-            $order->owner?->name, $order->order_note,
-        ];
+        $items = $order->items->sortBy('id')->values();
+        $all = $items->map(fn ($item) => $item->sku.' × '.$item->quantity)->implode('; ');
+        $totalUnits = $items->sum('quantity');
+        $rows = [];
+        // Preserve one visible/export row even if the historic order has no item lines.
+        foreach (($items->isEmpty() ? [null] : $items) as $item) {
+            $rows[] = [
+                $order->erp_order_id, $order->external_order_number, $order->order_date?->toDateString(),
+                $order->source_type->value,
+                $item?->sku, $item?->quantity, $items->isEmpty() ? null : $totalUnits,
+                $all, $item?->product_summary,
+                $item?->line_revenue, $order->currency,
+                $order->address?->recipient_name, $order->address?->phone,
+                $order->address?->country, $order->address?->province_state, $order->address?->city,
+                $order->address?->postal_code, $order->address?->address_line_1, $order->address?->address_line_2,
+                $order->workflow_status ?: $order->order_status->value,
+                $order->shipment?->warehouse?->name, $order->shipment?->carrier,
+                $order->shipment?->service, $order->shipment?->tracking_number,
+                $order->shipment?->shipped_at?->toDateTimeString(), $order->owner?->name, $order->order_note,
+            ];
+        }
+
+        return $rows;
     }
 }

@@ -5,7 +5,7 @@ import { router } from '@inertiajs/vue3'
 
 type PreviewRow = { row: number; order_number: string; customer: string; country: string; sku_detail: string; total_quantity: number }
 type Problem = { row: number; message: string }
-type Preview = { count: number; valid_count: number; errors: Problem[]; preview: PreviewRow[]; token: string | null }
+type Preview = { count: number; row_count: number; valid_count: number; errors: Problem[]; preview: PreviewRow[]; token: string | null }
 const props = defineProps<{ exportUrl: string; canImport: boolean; total: number }>()
 const csvUrl = computed(() => props.exportUrl + (props.exportUrl.includes('?') ? '&' : '?') + 'format=csv')
 const open = ref(false)
@@ -42,7 +42,7 @@ async function inspect() {
     preview.value = data
     message.value = data.errors.length
       ? '预检发现 ' + data.errors.length + ' 项问题，请修改 XLSX 后重新上传。'
-      : '预检通过：' + data.count + ' 个客户订单、不会修改现有订单。'
+      : '预检通过：' + data.count + ' 个客户订单、共 ' + data.row_count + ' 个 SKU 行；不会修改现有订单。'
   } catch (error) { message.value = errorMessage(error) }
   finally { busy.value = false }
 }
@@ -85,8 +85,8 @@ async function confirm() {
         </header>
         <main class="oms-import-body">
           <div class="oms-template-panel">
-            <strong>模板 1 · 一行一个订单</strong>
-            <p>每行一个客户订单，最多横向填写 5 款 SKU。黄色表头为必填，灰色可选。使用 Excel XLSX 文件，最多 200 个订单。</p>
+            <strong>模板 1 · 一行一个 SKU</strong>
+            <p>同一个来源订单号的多行 SKU 归为一张订单；首行填写收件信息，后续行重复订单号、SKU、数量、单价即可。黄色表头为必填。XLSX 最多 200 单、2000 个 SKU 行。</p>
             <div class="oms-import-file">
               <label class="oms-file-button" for="oms-grid-import-file">选择文件</label>
               <input id="oms-grid-import-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" :disabled="busy" @change="chooseFile" />
@@ -97,7 +97,7 @@ async function confirm() {
           <p class="oms-import-disclaimer">上传后先预检：SKU 是否存在、商品数量、价格、地址、重复来源订单号均由 ERP 校验。<strong>预检不会创建订单。</strong></p>
           <div v-if="message" role="status" class="oms-import-status">{{ message }}</div>
           <div v-if="preview" class="oms-import-results">
-            <strong>预检：共 {{ preview.count }} 单 · 通过 {{ preview.valid_count }} 单 · 错误 {{ preview.errors.length }} 项</strong>
+            <strong>预检：共 {{ preview.count }} 单 / {{ preview.row_count }} 个 SKU 行 · 通过 {{ preview.valid_count }} 单 · 错误 {{ preview.errors.length }} 项</strong>
             <ul v-if="preview.errors.length" class="oms-import-errors">
               <li v-for="(issue, i) in preview.errors.slice(0, 40)" :key="i">第 {{ issue.row }} 行：{{ issue.message }}</li>
             </ul>
@@ -106,7 +106,7 @@ async function confirm() {
                 <thead><tr><th>Excel 行</th><th>来源订单号</th><th>收件人</th><th>国家</th><th>SKU×数量</th><th>件数</th></tr></thead>
                 <tbody><tr v-for="row in preview.preview.slice(0, 100)" :key="row.row"><td>{{ row.row }}</td><td>{{ row.order_number }}</td><td>{{ row.customer }}</td><td>{{ row.country }}</td><td>{{ row.sku_detail }}</td><td>{{ row.total_quantity }}</td></tr></tbody>
               </table>
-              <small v-if="preview.count > 100">页面仅预览前 100 条；服务器已校验全部 {{ preview.count }} 条。</small>
+              <small v-if="preview.row_count > 100">页面仅预览前 100 个商品行；服务器已校验全部 {{ preview.row_count }} 行。</small>
             </div>
           </div>
           <div v-if="committed" class="oms-import-finished">

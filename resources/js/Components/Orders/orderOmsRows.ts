@@ -1,4 +1,5 @@
 export type OrderItemSummary = {
+  id?: number | null
   sku?: string | null
   product_summary?: string | null
   quantity?: number | string | null
@@ -125,4 +126,35 @@ export function toOrderOmsRow(order: OrderGridOrder): Record<string, unknown> {
     domestic_reject_reason: order.domestic_reject_reason || '—',
     domestic_rejected_at: order.domestic_rejected_at || '—',
   }
+}
+
+
+/**
+ * One visible AG Grid row per order line item, without creating additional ERP orders.
+ * Server pages and totals continue to count canonical Orders, never item lines.
+ */
+export function toOrderOmsItemRows(order: OrderGridOrder): Record<string, unknown>[] {
+  const summary = toOrderOmsRow(order)
+  const items = Array.isArray(order.items) && order.items.length
+    ? [...order.items].sort((a,b) => (a.id ?? 0) - (b.id ?? 0)) : [null]
+  return items.map((item, index) => {
+    const sku = item?.sku?.trim() || item?.product_summary?.trim() || '—'
+    const price = item ? validNumber(item.unit_price) : null
+    const lineRevenue = item ? validNumber(item.line_revenue) : null
+    const quantity = item ? validNumber(item.quantity) : null
+    return {
+      ...summary,
+      _oms_line_key: String(order.id) + ':' + index,
+      _is_additional_item: index > 0,
+      _oms_item_number: index + 1,
+      _oms_item_count: items.length,
+      order_total_quantity: summary.order_quantity,
+      order_line_subtotal: summary.item_subtotal,
+      sku_list: sku,
+      order_quantity: quantity,
+      product_names: item?.product_summary?.trim() || '—',
+      item_subtotal: lineRevenue,
+      unit_price_detail: price === null ? '—' : String(order.currency || 'USD') + ' ' + price.toFixed(2),
+    }
+  })
 }

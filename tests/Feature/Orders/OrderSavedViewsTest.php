@@ -292,7 +292,7 @@ final class OrderSavedViewsTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
     }
 
-    public function test_oms_grid_sku_and_ordered_total_quantity_are_server_filterable_across_all_orders(): void
+    public function test_oms_grid_sku_and_individual_line_quantity_are_server_filterable_across_all_orders(): void
     {
         $viewer = $this->userWith(['orders.view']);
         $first = $this->order($viewer, 'R3-SKU-ALPHA', 'pending_shipment');
@@ -318,13 +318,13 @@ final class OrderSavedViewsTest extends TestCase
                 ->where('orders.data.0.id', $first->id)
                 ->has('orders.data.0.items', 2));
 
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_quantity=3')
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_quantity=2')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('orders.total', 1)
                 ->where('orders.data.0.id', $first->id));
 
-        // Sum(quantity) is per order, not number of SKU types or any one line quantity.
-        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_quantity=2')
+        // The filter must match one individual item line, never aggregate order-level units.
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_quantity=3')
             ->assertInertia(fn (Assert $page) => $page->where('orders.total', 0));
         $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_quantity=abc')
             ->assertInertia(fn (Assert $page) => $page->where('orders.total', 0));

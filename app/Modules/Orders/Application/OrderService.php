@@ -391,12 +391,8 @@ final class OrderService
                 if ($quantity === false) {
                     $query->whereRaw('1 = 0');
                 } else {
-                    // Matches the SUM of all order-item quantities shown in the grid.
-                    // A 0 only matches orders with an actual item line.
-                    $query->whereHas('items')->whereRaw(
-                        '(SELECT COALESCE(SUM(order_items.quantity), 0) FROM order_items WHERE order_items.order_id = orders.id) = ?',
-                        [$quantity],
-                    );
+                    // Grid SKU数量 is the per-SKU item-line quantity, not the order total.
+                    $query->whereHas('items', fn ($items) => $items->where('quantity', $quantity));
                 }
             }
             if (! empty($grid['grid_order_number'])) {

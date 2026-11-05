@@ -48,12 +48,111 @@ final class OrderOmsBatchImportTest extends TestCase
         $entry['address_line_1'] = '1 Test St';
         $entry['postal_code'] = '10001';
         $entry['currency'] = 'USD';
-        $entry['sku_1'] = $sku;
-        $entry['quantity_1'] = $qty;
-        $entry['unit_price_1'] = '79.50';
+        $entry['sku'] = $sku;
+        $entry['quantity'] = $qty;
+        $entry['unit_price'] = '79.50';
         $bytes = app(ProviderXlsxWriter::class)->write('批量订单', OrderOmsBatchImport::FIELDS, [array_values($entry)]);
 
         return UploadedFile::fake()->createWithContent('orders.xlsx', $bytes);
+    }
+
+
+    private function groupedXlsx(bool $conflict = false): UploadedFile
+    {
+        $parsed = app(ProviderXlsxTableReader::class)->read($this->xlsx());
+        $first = array_combine(OrderOmsBatchImport::FIELDS, $parsed['rows'][0]['cells']);
+        $second = array_fill_keys(OrderOmsBatchImport::FIELDS, '');
+        $second['external_order_number'] = $first['external_order_number'];
+        $second['sku'] = 'A1';
+        $second['quantity'] = '1';
+        $second['unit_price'] = '0.00';
+        if ($conflict) $second['city'] = 'Conflicting City';
+        $third = $first;
+        $third['external_order_number'] = 'R3-IMPORT-0002';
+        $third['sku'] = 'A1';
+        $third['quantity'] = '3';
+        $third['unit_price'] = '29.00';
+        return UploadedFile::fake()->createWithContent('order-lines.xlsx',
+            app(ProviderXlsxWriter::class)->write('批量订单', OrderOmsBatchImport::FIELDS,
+                [array_values($first), array_values($second), array_values($third)]));
+    }
+
+    public function test_multiple_sku_rows_with_same_order_number_create_one_canonical_order(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+        Product::query()->create(['sku' => 'MF414A', 'name' => 'Main']);
+        Product::query()->create(['sku' => 'A1', 'name' => 'Accessory']);
+        $preview = $this->actingAs($user)->post('/orders/oms/import/preview', [
+            'file' => $this->groupedXlsx(),
+        ])->assertOk()->json();
+        $this->assertSame(2, $preview['count']);
+        $this->assertSame(3, $preview['row_count']);
+        $this->assertSame(2, $preview['valid_count']);
+        $this->assertSame([], $preview['errors']);
+        $this->assertCount(3, $preview['preview']);
+        $this->assertSame('A1 × 1', $preview['preview'][1]['sku_detail']);
+        $this->assertSame(3, $preview['preview'][0]['order_total_quantity']);
+        $this->assertDatabaseCount('orders', 0);
+        $result = $this->actingAs($user)->post('/orders/oms/import/confirm', [
+            'file' => $this->groupedXlsx(), 'token' => $preview['token'], 'confirm' => '1',
+        ])->assertOk()->json();
+        $this->assertSame(2, $result['created']);
+        $first = Order::query()->where('external_order_number', 'R3-IMPORT-0001')->firstOrFail();
+        $second = Order::query()->where('external_order_number', 'R3-IMPORT-0002')->firstOrFail();
+        $this->assertSame(2, $first->items()->count());
+        $this->assertSame(3, (int) $first->items()->sum('quantity'));
+        $this->assertSame(1, $second->items()->count());
+        $this->assertDatabaseCount('oms_order_import_claims', 2);
+        $this->assertDatabaseCount('orders', 2);
+    }
+
+    public function test_conflicting_order_level_fields_in_sku_followup_line_reject_the_entire_file(): void
+    {
+        $user = $this->userWith(['orders.view', 'orders.create']);
+        Product::query()->create(['sku' => 'MF414A', 'name' => 'Main']);
+        Product::query()->create(['sku' => 'A1', 'name' => 'Accessory']);
+        $result = $this->actingAs($user)->post('/orders/oms/import/preview', [
+            'file' => $this->groupedXlsx(conflict: true),
+        ])->assertOk()->json();
+        $this->assertNull($result['token']);
+        $this->assertSame(2, $result['count']);
+        $this->assertSame(3, $result['row_count']);
+        $this->assertSame(1, $result['valid_count']);
+        $this->assertStringContainsString('与第 2 行不一致', $result['errors'][0]['message']);
+        $this->assertDatabaseCount('orders', 0);
+    }
+
+    public function test_one_order_with_two_skus_exports_two_rows_not_one_concatenated_cell(): void
+    {
+        $user = $this->userWith(['orders.view']);
+        $order = Order::query()->create([
+            'source_type' => 'manual', 'order_kind' => 'customer', 'internal_order_number' => 'EXP-LINE-1',
+            'external_order_number' => 'EXPORT-LINE-1', 'erp_order_id' => '007-1105-40223',
+            'order_date' => '2026-11-05', 'order_status' => 'pending_shipment', 'currency' => 'USD',
+            'owner_id' => $user->id,
+        ]);
+        $order->address()->create(['recipient_name'=>'Line Buyer','country'=>'US']);
+        $order->items()->create(['sku'=>'MF414A','product_summary'=>'Product One','quantity'=>2,'unit_price'=>'79.00','line_revenue'=>'158.00']);
+        $order->items()->create(['sku'=>'A1','product_summary'=>'Gift','quantity'=>1,'unit_price'=>'0.00','line_revenue'=>'0.00']);
+
+        $xlsx = $this->actingAs($user)->get('/orders/oms/export?grid_order_number=40223');
+        $xlsx->assertOk();
+        $data = app(ProviderXlsxTableReader::class)->read(
+            UploadedFile::fake()->createWithContent('export.xlsx', $xlsx->getContent()));
+        $this->assertCount(2, $data['rows']);
+        $this->assertSame('SKU数量', $data['headers'][5]);
+        $this->assertSame('订单总件数', $data['headers'][6]);
+        $this->assertSame('MF414A', $data['rows'][0]['cells'][4]);
+        $this->assertSame('2', $data['rows'][0]['cells'][5]);
+        $this->assertSame('3', $data['rows'][0]['cells'][6]);
+        $this->assertSame('A1', $data['rows'][1]['cells'][4]);
+        $this->assertSame('1', $data['rows'][1]['cells'][5]);
+        $this->assertSame('007-1105-40223', $data['rows'][1]['cells'][0]);
+
+        $csv = $this->actingAs($user)->get('/orders/oms/export?format=csv&grid_order_number=40223');
+        $csv->assertOk();
+        $lines = preg_split('/\r?\n/', trim($csv->streamedContent()));
+        $this->assertCount(3, $lines);
     }
 
     public function test_template_download_uses_xlsx_with_matching_header_and_help_sheet(): void
@@ -64,6 +163,15 @@ final class OrderOmsBatchImportTest extends TestCase
         $file = UploadedFile::fake()->createWithContent('template.xlsx', $result->getContent());
         $data = app(ProviderXlsxTableReader::class)->read($file);
         $this->assertSame(OrderOmsBatchImport::FIELDS, $data['headers']);
+        $book = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getRealPath());
+        $this->assertSame(['批量订单导入', '使用说明', '示例-勿上传'], $book->getSheetNames());
+        $example = $book->getSheetByName('示例-勿上传');
+        $this->assertSame('DEMO-1001', $example->getCell('A2')->getValue());
+        $this->assertSame('DEMO-1001', $example->getCell('A3')->getValue());
+        $this->assertSame('MF414A', $example->getCell('M2')->getValue());
+        $this->assertSame('A1', $example->getCell('M3')->getValue());
+        $this->assertSame('DEMO-1002', $example->getCell('A4')->getValue());
+        $book->disconnectWorksheets();
     }
 
     public function test_preflight_then_confirm_creates_audited_manual_customer_order_once(): void
@@ -160,7 +268,7 @@ final class OrderOmsBatchImportTest extends TestCase
         $response->assertOk()->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
         $content = $response->streamedContent();
         $this->assertStringContainsString('MF414A', $content);
-        $this->assertStringContainsString('下单数量', $content);
+        $this->assertStringContainsString('SKU数量', $content);
         $this->assertStringContainsString("'=HYPERLINK", $content);
         $this->assertStringNotContainsString('CSV-999', $content);
     }
@@ -182,7 +290,7 @@ final class OrderOmsBatchImportTest extends TestCase
         $bytes = $res->getContent();
         $data = app(ProviderXlsxTableReader::class)->read(UploadedFile::fake()->createWithContent('export.xlsx', $bytes));
         $this->assertSame('SKU', $data['headers'][4]);
-        $this->assertSame('下单数量', $data['headers'][5]);
+        $this->assertSame('SKU数量', $data['headers'][5]);
         $this->assertSame('A1', $data['rows'][0]['cells'][4]);
         $this->assertSame('3', $data['rows'][0]['cells'][5]);
     }
