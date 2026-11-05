@@ -19,7 +19,6 @@ use App\Modules\Logistics\Application\LogisticsExecutionAccess;
 use App\Modules\Logistics\Application\OverseaWarehouseReviewService;
 use App\Modules\Logistics\Application\PendingAllocationEntryPolicy;
 use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
-use App\Modules\Orders\Application\Inbound\WooOrderManualSyncAccess;
 use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\OrderItemAmendmentPreflight;
 use App\Modules\Orders\Application\OrderKind;
@@ -32,7 +31,6 @@ use App\Modules\Orders\Application\OrderWorkflowStatusProjection;
 use App\Modules\Orders\Application\OrderWorkflowStatusService;
 use App\Modules\Orders\Application\WooCommerceAdminOrderLink;
 use App\Modules\Orders\Infrastructure\Models\Order;
-use App\Modules\Sync\Application\WooOrderSyncHealthReader;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -132,15 +130,6 @@ final class OrderController
             'canEditWorkflowStatus' => $request->user()->can('orders.edit'),
             'canPreviewKolLinks' => $kind === OrderKind::KolFulfillment && $request->user()->can('kol.views.manage'),
             'canManageTrash' => $request->user()?->can('system.permissions.manage') ?? false,
-            'wooOrderSync' => $request->user()->can('sync.view') ? [
-                ...app(WooOrderSyncHealthReader::class)->snapshot(),
-                'can_import_today' => app(WooOrderManualSyncAccess::class)->allows($request->user()),
-            ] : [
-                'health' => 'disabled',
-                'last_success_at' => null,
-                'last_failure' => null,
-                'can_import_today' => false,
-            ],
         ]);
     }
 

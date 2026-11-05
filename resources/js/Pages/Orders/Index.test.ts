@@ -18,7 +18,6 @@ const props = {
   sourceTypes: [{ value: 'manual', label: '手动创建' }],
   savedViews: [{ id: 7, name: '我的待发', filters_json: { view: 'pending', source_type: 'manual' }, is_pinned: true, created_by: 1 }],
   canExport: true,
-  wooOrderSync: { health: 'ok' as const, last_success_at: '2026-10-28T02:00:00Z', last_failure: null, can_import_today: true },
 }
 
 describe('Orders Saved Views', () => {
@@ -44,13 +43,18 @@ describe('Orders Saved Views', () => {
     customer.unmount()
   })
 
-  it('shows manual Woo import on general orders but not procurement list', async () => {
-    const wrapper = mount(Index, { props })
-    expect(wrapper.text()).toContain('同步网站订单')
-    await wrapper.findAll('button').find(b => b.text() === '同步网站订单')!.trigger('click')
-    expect(post).toHaveBeenCalledWith('/sync/woocommerce/incremental', {}, expect.objectContaining({ preserveScroll: true, onFinish: expect.any(Function) }))
+  it('keeps all order lists free of website sync health notices and actions', () => {
+    for (const orderKind of ['all', 'customer', 'kol_fulfillment']) {
+      const wrapper = mount(Index, { props: { ...props, orderKind } })
+      expect(wrapper.text()).not.toContain('网站订单同步')
+      expect(wrapper.text()).not.toContain('最近成功任务启动')
+      expect(wrapper.text()).not.toContain('今日未同步')
+      expect(wrapper.text()).not.toContain('同步网站订单')
+      expect(wrapper.text()).not.toContain('核对网站未同步')
+      wrapper.unmount()
+    }
     const procurement = mount(Index, { props: { ...props, orderScope: 'external_warehouse' } })
-    expect(procurement.text()).not.toContain('同步网站订单')
+    expect(procurement.text()).not.toContain('网站订单同步')
   })
 
   it('renders the nine frozen business views plus custom view creation', () => {

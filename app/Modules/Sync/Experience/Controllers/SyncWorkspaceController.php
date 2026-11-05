@@ -3,7 +3,6 @@
 namespace App\Modules\Sync\Experience\Controllers;
 
 use App\Modules\Inventory\Infrastructure\Models\Warehouse;
-use App\Modules\Orders\Application\Inbound\WooOrderManualSyncAccess;
 use App\Modules\Kol\Application\AffiliateWp\AffiliateSnapshotSyncService;
 use App\Modules\Kol\Application\AffiliateWp\CouponSnapshotSyncService;
 use App\Modules\Kol\Application\AffiliateWp\PayoutSnapshotSyncService;
@@ -14,7 +13,6 @@ use App\Modules\Sync\Application\EmailTemplateSnapshotReader;
 use App\Modules\Sync\Application\SyncOrchestrationService;
 use App\Modules\Sync\Application\SyncRunItemStatus;
 use App\Modules\Sync\Application\SyncRunService;
-use App\Modules\Sync\Application\WooOrderSyncHealthReader;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -50,24 +48,9 @@ final class SyncWorkspaceController
         $connectorRuns = $runs->filter(fn (Model $run): bool => $this->isWordPressConnectorRun($run));
         $domains[] = $this->domainCard('wordpress', 'WordPress Connector', '连接、健康检查与 WordPress / AffiliateWP 数据同步', '/sync/wpapi', $connectorRuns);
 
-        $wooHealth = app(WooOrderSyncHealthReader::class)->snapshot();
-        $latestWooOrderAutomatic = $wooHealth['latest_run'];
-
         return Inertia::render('Sync/Index', [
             'domains' => $domains,
             'queueSummary' => $this->orchestration->queueSummary(),
-            'wooOrderSync' => [
-                'enabled' => $wooHealth['enabled'],
-                'frequency' => $wooHealth['frequency'],
-                'health' => $wooHealth['health'],
-                'last_success_at' => $wooHealth['last_success_at'],
-                'last_failure' => $wooHealth['last_failure'],
-                'unimported_count' => $wooHealth['unimported_count'],
-                'can_operate' => app(WooOrderManualSyncAccess::class)->allows($request->user()),
-                'manual_action' => '/sync/woocommerce/incremental',
-                'advanced_href' => '/sync/woocommerce',
-                'latest_run' => $latestWooOrderAutomatic ? $this->runData($latestWooOrderAutomatic) : null,
-            ],
             'manualRuns' => $runs->filter(fn (Model $run): bool => $run->initiated_by !== null)
                 ->take(15)->map(fn (Model $run): array => $this->runData($run))->values()->all(),
             'automaticRuns' => $runs->filter(fn (Model $run): bool => $run->initiated_by === null)

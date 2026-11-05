@@ -21,6 +21,12 @@ type QueueSummary = { retry_due: number; retry_waiting: number; processing: numb
 const props = withDefaults(defineProps<{
   orders: Order[]; filters: { status?: string; search?: string }
   syncRuns?: SyncRun[]; queueSummary?: QueueSummary
+  wooOrderSync?: {
+    health: 'ok' | 'stale' | 'failed' | 'disabled'
+    last_success_at: string | null
+    last_failure: { run_id: number; at: string | null; error_code: string | null; message: string | null } | null
+    can_import_today: boolean
+  }
 }>(), {
   syncRuns: () => [],
   queueSummary: () => ({ retry_due: 0, retry_waiting: 0, processing: 0, failed: 0, conflicts: 0 }),
@@ -43,6 +49,27 @@ const batchAllPending = () => router.post('/sync/orchestration/tracking/all-pend
 const retryPending = () => router.post('/sync/orchestration/retry', { limit: 100 })
 const recoverStale = () => router.post('/sync/orchestration/recover-stale', { age_seconds: 300, limit: 100 })
 const reconcileSelected = () => router.post('/sync/orchestration/reconcile', { order_ids: selected.value })
+const syncingWoo = ref(false)
+const checkingWoo = ref(false)
+const wooReconcile = ref<{ unimported_count: number | null; message?: string } | null>(null)
+const syncWooToday = () => {
+  if (!props.wooOrderSync?.can_import_today || syncingWoo.value) return
+  syncingWoo.value = true
+  router.post('/sync/woocommerce/incremental', {}, { preserveScroll: true, onFinish: () => { syncingWoo.value = false } })
+}
+const checkWooBacklog = async () => {
+  if (!props.wooOrderSync?.can_import_today || checkingWoo.value) return
+  checkingWoo.value = true
+  try {
+    const response = await fetch('/sync/woocommerce/reconcile-today', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+    const data = await response.json()
+    wooReconcile.value = { ...data, message: response.ok ? data.message : (data.message || '核对失败') }
+  } catch {
+    wooReconcile.value = { unimported_count: null, message: '网络异常，无法核对' }
+  } finally { checkingWoo.value = false }
+}
+const wooHealthLabel = (health: 'ok' | 'stale' | 'failed' | 'disabled') =>
+  ({ ok: '正常', failed: '最近执行失败', stale: '超时或无成功记录', disabled: '未启用' })[health]
 const outboundLabel = (order: Order) => {
   if (!order.tracking_outbound_status) return '未执行'
   if (order.tracking_outbound_status === 'pending') return (order.tracking_outbound_attempts ?? 0) > 0 ? '待重试' : '待执行'
@@ -70,6 +97,17 @@ const { columns, visibleColumns, syncState, toggle, startDrag, drop, reset } = u
           <p>统一处理 Tracking 写回、重试、冲突和远端核对；订单与 Shipment 仍是业务真相。</p>
         </div>
         <a class="mvp-button mvp-button-primary" href="/sync/woocommerce">WooCommerce 入站</a>
+      </div>
+
+      <div v-if="props.wooOrderSync" class="woo-sync-strip" aria-label="网站订单同步状态">
+        <strong>网站订单同步</strong>
+        <span>状态：{{ wooHealthLabel(props.wooOrderSync.health) }}</span>
+        <span>最近成功：{{ props.wooOrderSync.last_success_at ? new Date(props.wooOrderSync.last_success_at).toLocaleString('zh-CN', { hour12: false }) : '尚无记录' }}</span>
+        <a v-if="props.wooOrderSync.last_failure" :href="'/sync/runs/' + props.wooOrderSync.last_failure.run_id">查看最近失败</a>
+        <span v-if="wooReconcile">今日未同步：{{ wooReconcile.unimported_count === null ? (wooReconcile.message || '无法核对') : wooReconcile.unimported_count + ' 单' }}</span>
+        <span v-else>今日未同步：待核对</span>
+        <button v-if="props.wooOrderSync.can_import_today" class="mvp-button" type="button" :disabled="checkingWoo" @click="checkWooBacklog">{{ checkingWoo ? '核对中…' : '核对网站未同步' }}</button>
+        <button v-if="props.wooOrderSync.can_import_today" class="mvp-button" type="button" :disabled="syncingWoo" @click="syncWooToday">{{ syncingWoo ? '同步中…' : '同步网站订单' }}</button>
       </div>
 
       <div class="mvp-toolbar">
@@ -138,3 +176,8 @@ const { columns, visibleColumns, syncState, toggle, startDrag, drop, reset } = u
     </section>
   </AuthenticatedLayout>
 </template>
+
+<style scoped>
+.woo-sync-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 8px 12px; margin: 0 0 12px; border: 1px solid var(--byl-border-subtle, #d9e1e5); border-radius: 8px; background: var(--byl-surface, #fff); font-size: 13px; }
+.woo-sync-strip .mvp-button { padding: 5px 10px; }
+</style>

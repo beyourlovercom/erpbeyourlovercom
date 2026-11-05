@@ -27,12 +27,6 @@ const props = defineProps<{
   canPreviewKolLinks?: boolean
   canManageTrash?: boolean
   canEditWorkflowStatus?: boolean
-  wooOrderSync: {
-    health: 'ok' | 'stale' | 'failed' | 'disabled'
-    last_success_at: string | null
-    last_failure: { run_id: number; at: string | null; error_code: string | null; message: string | null } | null
-    can_import_today: boolean
-  }
   workflowStatusOptions?: { code: string; en: string; zh: string; color: string; mutable: boolean }[]
 }>()
 
@@ -59,26 +53,6 @@ const filters = reactive({
   grid_carrier: props.filters.grid_carrier ?? '',
   grid_external_number: props.filters.grid_external_number ?? '',
 })
-const syncingWoo = ref(false)
-const wooReconcileLoading = ref(false)
-const wooReconcile = ref<{ unimported_count: number | null; message?: string } | null>(null)
-const showWooSync = computed(() => props.orderScope !== 'external_warehouse' && (props.orderKind === 'all' || props.orderKind === 'customer'))
-const syncWooToday = () => {
-  if (syncingWoo.value || !props.wooOrderSync.can_import_today) return
-  syncingWoo.value = true
-  router.post('/sync/woocommerce/incremental', {}, { preserveScroll: true, onFinish: () => { syncingWoo.value = false } })
-}
-const checkWooBacklog = async () => {
-  if (wooReconcileLoading.value || !props.wooOrderSync.can_import_today) return
-  wooReconcileLoading.value = true
-  try {
-    const response = await fetch('/sync/woocommerce/reconcile-today', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-    const data = await response.json()
-    wooReconcile.value = { ...data, message: response.ok ? data.message : (data.message || '核对失败') }
-  } catch {
-    wooReconcile.value = { unimported_count: null, message: '网络异常，无法核对' }
-  } finally { wooReconcileLoading.value = false }
-}
 const showNewView = ref(false)
 const newViewName = ref('')
 
@@ -186,10 +160,6 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
       <div class="mvp-page-heading">
         <div><p class="mvp-kicker">订单核心</p><h2>{{ heading }}</h2><p>统一维护 Website、KOL 和 Manual Other 订单。</p></div>
         <div class="mvp-actions page-header-actions">
-          <template v-if="showWooSync && wooOrderSync.can_import_today">
-            <button class="mvp-button" type="button" :disabled="wooReconcileLoading" @click="checkWooBacklog">{{ wooReconcileLoading ? '核对中…' : '核对网站未同步' }}</button>
-            <button class="mvp-button mvp-button-primary" type="button" :disabled="syncingWoo" @click="syncWooToday">{{ syncingWoo ? '同步中…' : '同步网站订单' }}</button>
-          </template>
           <Link v-if="omsGridAvailable" class="mvp-button" :href="gridToggleUrl(!omsGridEnabled)">{{ omsGridEnabled ? '返回原列表' : '体验 OMS Grid' }}</Link>
           <Link v-if="canManageTrash" class="mvp-button" href="/orders/trash">回收站（管理员）</Link>
           <Link class="mvp-button" href="/orders/archive">归档清单</Link>
@@ -202,14 +172,6 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
           <Link v-else-if="orderKind !== 'all'" class="mvp-button mvp-button-primary" :href="`${basePath}/create`">新建订单</Link>
         </div>
       </div>
-      <p v-if="showWooSync" class="mvp-empty" role="status">
-        网站订单同步：{{ wooOrderSync.health === 'ok' ? '正常' : wooOrderSync.health === 'failed' ? '最近执行失败' : wooOrderSync.health === 'stale' ? '超时或无成功记录' : '未启用' }}
-        · 最近成功任务启动 {{ wooOrderSync.last_success_at ? new Date(wooOrderSync.last_success_at).toLocaleString('zh-CN', { hour12: false }) : '尚无记录' }}
-        <a v-if="wooOrderSync.last_failure" :href="'/sync/runs/' + wooOrderSync.last_failure.run_id">查看最近失败原因</a>
-        <span v-if="wooReconcile"> · 今日未同步 {{ wooReconcile.unimported_count === null ? (wooReconcile.message || '无法核对') : wooReconcile.unimported_count + ' 单' }}</span>
-        <span v-else> · 今日未同步量待核对</span>
-      </p>
-
       <div class="order-views-bar" aria-label="订单视图">
         <button v-for="view in systemViews" :key="view.key" type="button" class="view-tab" :class="{ active: filters.view === view.key }" @click="applySystemView(view.key)">{{ view.label }}</button>
         <span v-if="savedViews.length" class="views-divider" aria-hidden="true"></span>
