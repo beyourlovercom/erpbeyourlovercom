@@ -41,4 +41,12 @@ describe('OMS Grid preference normalization', () => {
     expect(value?.density).toBe('standard')
     expect(sanitizeOmsGridPreference({ columns: [] }, ['orderNumber'])).toBeNull()
   })
+  it('round-trips the all-rows pagination preference without treating it as NaN', () => {
+    const saved = sanitizeOmsGridPreference({
+      columns: [{ colId: 'orderNumber', hide: false }],
+      pinnedLeft: 0, pinnedRight: 0, density: 'compact', pageSize: 'all',
+    }, ['orderNumber'])
+    expect(saved?.pageSize).toBe('all')
+    expect(sanitizeOmsGridPreference(saved, ['orderNumber'])?.pageSize).toBe('all')
+  })
 })
