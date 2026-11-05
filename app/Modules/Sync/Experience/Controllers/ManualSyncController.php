@@ -2,9 +2,11 @@
 
 namespace App\Modules\Sync\Experience\Controllers;
 
+use App\Modules\Orders\Application\Inbound\WooOrderManualSyncAccess;
 use App\Modules\Orders\Infrastructure\Models\Order;
 use App\Modules\Sync\Application\ManualSyncService;
 use App\Modules\Sync\Application\SyncOrchestrationService;
+use App\Modules\Sync\Application\WooOrderSyncHealthReader;
 use App\Modules\Sync\Infrastructure\Models\SyncOutbox;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -43,6 +45,10 @@ final class ManualSyncController
         $recentRuns = $this->orchestration->recentRuns(10);
 
         return Inertia::render('Sync/Orders', [
+            'wooOrderSync' => [
+                ...app(WooOrderSyncHealthReader::class)->snapshot(),
+                'can_import_today' => app(WooOrderManualSyncAccess::class)->allows($request->user()),
+            ],
             'queueSummary' => $this->orchestration->queueSummary(),
             'syncRuns' => $recentRuns->map(fn ($run): array => [
                 'id' => $run->id,
