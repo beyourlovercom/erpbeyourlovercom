@@ -7,7 +7,7 @@ export type OmsGridPreference = {
   pinnedLeft: number
   pinnedRight: number
   density: OmsDensity
-  pageSize: number
+  pageSize: number | 'all'
 }
 
 const count = (n: unknown): number => Number.isFinite(Number(n)) ? Math.max(0, Math.floor(Number(n))) : 0
@@ -58,7 +58,7 @@ export function sanitizeOmsGridPreference(
     })
   }
   if (!columns.length) return null
-  const pageSize = [20, 50, 100].includes(Number(value.pageSize)) ? Number(value.pageSize) : 50
+  const pageSize = value.pageSize === 'all' ? 'all' : [20, 50, 100].includes(Number(value.pageSize)) ? Number(value.pageSize) : 50
   return {
     version: 1,
     columns,
