@@ -22,6 +22,7 @@ use App\Modules\Logistics\Application\ShipmentCompletionSemantics;
 use App\Modules\Orders\Application\KolOrderAccessScope;
 use App\Modules\Orders\Application\OrderItemAmendmentPreflight;
 use App\Modules\Orders\Application\OrderKind;
+use App\Modules\Orders\Application\OrderOmsAvailability;
 use App\Modules\Orders\Application\OrderPackagingReferenceProjection;
 use App\Modules\Orders\Application\OrderService;
 use App\Modules\Orders\Application\OrderSourceType;
@@ -74,7 +75,35 @@ final class OrderController
             $filters['order_kind'] = $kind->value;
         }
         $filters = KolOrderAccessScope::scopeFilters($request->user(), $filters);
-        $orders = $this->orders->list($filters);
+        // A Production canary must be explicitly enabled and individually allowlisted;
+        // all other users retain the existing Orders list unconditionally.
+        $omsGridAvailable = $kind === null && $scope !== 'external_warehouse'
+            && OrderOmsAvailability::grid($request->user());
+        $omsGridEnabled = $omsGridAvailable && $request->boolean('oms_grid');
+        $requestedPageSize = $omsGridEnabled ? (string) $request->query('per_page', '50') : '50';
+        $perPage = in_array($requestedPageSize, ['20', '50', '100'], true) ? (int) $requestedPageSize : 50;
+        $sort = $omsGridEnabled && in_array($request->query('sort'), ['order_number', 'date', 'source', 'status'], true)
+            ? (string) $request->query('sort') : 'date';
+        $direction = $omsGridEnabled && $request->query('direction') === 'asc' ? 'asc' : 'desc';
+        $gridColumnFilters = [];
+        if ($omsGridEnabled) {
+            $filters['oms_sort'] = $sort;
+            $filters['oms_direction'] = $direction;
+            $filters['oms_numeric_contains'] = true;
+            foreach (['grid_order_number', 'grid_sku', 'grid_quantity', 'grid_product_names', 'grid_source', 'grid_date', 'grid_recipient', 'grid_country', 'grid_warehouse', 'grid_status', 'grid_tracking', 'grid_owner', 'grid_city', 'grid_postal_code', 'grid_carrier', 'grid_external_number'] as $key) {
+                $raw = $request->query($key);
+                if (is_string($raw)) {
+                    $value = mb_substr(trim($raw), 0, 80);
+                    if ($value !== '') $gridColumnFilters[$key] = $value;
+                }
+            }
+            $filters['oms_grid_columns'] = $gridColumnFilters;
+        }
+        $orders = $this->orders->list($filters, $requestedPageSize === 'all' && $omsGridEnabled ? 200 : $perPage);
+        $allRowsAllowed = $omsGridEnabled && $requestedPageSize === 'all' && $orders->total() <= 200;
+        if ($requestedPageSize === 'all' && ! $allRowsAllowed) {
+            $orders = $this->orders->list($filters, 50);
+        }
 
         $isCustomerKind = $kind?->value === 'customer';
         $canExport = $isCustomerKind
@@ -85,7 +114,15 @@ final class OrderController
             'orderKind' => $kind?->value ?? 'all',
             'orderScope' => $scope === 'external_warehouse' ? 'external_warehouse' : 'all',
             'orders' => $orders->through(fn (Order $order): array => $this->orderData($order))->toArray(),
-            'filters' => $request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']),
+            'filters' => [
+                ...$request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']),
+                ...($omsGridEnabled ? ['sort' => $sort, 'direction' => $direction, 'per_page' => $allRowsAllowed ? 'all' : (string) $orders->perPage(), 'oms_grid' => '1', ...$gridColumnFilters] : []),
+            ],
+            'omsGridAvailable' => $omsGridAvailable,
+            'omsGridEnabled' => $omsGridEnabled,
+            'canExportOmsOrders' => $omsGridEnabled && OrderOmsAvailability::export($request->user()),
+            'canImportOmsOrders' => $omsGridEnabled && OrderOmsAvailability::import($request->user())
+                && $request->user()->can('orders.create') && ! KolOrderAccessScope::isKolOnly($request->user()),
             'workflowStatusOptions' => collect(OrderWorkflowStatus::registry())->map(fn (array $definition, string $code): array => ['code' => $code, ...$definition])->values()->all(),
             'savedViews' => $this->views->forUser('orders', (int) $request->user()->getAuthIdentifier(), false),
             'sourceTypes' => array_map(fn (OrderSourceType $source): array => ['value' => $source->value, 'label' => $this->sourceLabel($source)], OrderSourceType::cases()),

@@ -288,6 +288,15 @@ final class OrderService
             ->withQueryString();
     }
 
+    /**
+     * Bounded export adapter: eager-load relations per chunk rather than
+     * issuing one query per order from a plain Eloquent cursor.
+     */
+    public function exportBatched(array $filters, int $chunk = 100): LazyCollection
+    {
+        return $this->filteredQuery($filters)->lazy($chunk);
+    }
+
     public function exportCursor(array $filters): LazyCollection
     {
         return $this->filteredQuery($filters)->cursor();
@@ -302,7 +311,7 @@ final class OrderService
             ->when($filters['order_kind'] ?? null, fn ($query, string $kind) => $query->where('order_kind', $kind))
             ->when($filters['owner_id'] ?? null, fn ($query, int $ownerId) => $query->where('owner_id', $ownerId))
             ->when($filters['warehouse_ownership'] ?? null, fn ($query, string $ownership) => $query->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('ownership_type', $ownership)))
-            ->when($filters['search'] ?? null, function ($query, string $search): void {
+            ->when($filters['search'] ?? null, function ($query, string $search) use ($filters): void {
                 $search = trim($search);
 
                 if (preg_match('/^dbid:(\d+)$/i', $search, $match) === 1) {
@@ -311,7 +320,9 @@ final class OrderService
                     return;
                 }
 
-                if (ctype_digit($search)) {
+                // Preserve the legacy exact-numeric identity contract outside the opt-in OMS Grid.
+                // OMS mode explicitly opts into substring search, including ERP-facing numbers.
+                if (ctype_digit($search) && ! ($filters['oms_numeric_contains'] ?? false)) {
                     $query->where(function ($nested) use ($search): void {
                         $nested->where('external_order_number', $search)
                             ->orWhereHas('externalReferences', fn ($references) => $references->where('reference', $search))
@@ -321,13 +332,19 @@ final class OrderService
                     return;
                 }
 
-                $query->where(function ($nested) use ($search): void {
+                $query->where(function ($nested) use ($search, $filters): void {
                     $nested->where('internal_order_number', 'like', "%{$search}%")
                         ->orWhereHas('address', fn ($address) => $address->where('recipient_name', 'like', "%{$search}%"))
                         ->orWhere('external_order_number', 'like', "%{$search}%")
                         ->orWhere('erp_order_id', 'like', "%{$search}%")
                         ->orWhereHas('externalReferences', fn ($references) => $references->where('reference', 'like', "%{$search}%"))
                         ->orWhereHas('shipment', fn ($shipment) => $shipment->where('tracking_number', 'like', "%{$search}%"));
+                    // OMS Grid can search products from any page; preserve legacy text-search contract.
+                    if ($filters['oms_numeric_contains'] ?? false) {
+                        $nested->orWhereHas('items', fn ($items) => $items
+                            ->where('sku', 'like', "%{$search}%")
+                            ->orWhere('product_summary', 'like', "%{$search}%"));
+                    }
                 });
             })
             ->when($filters['source_type'] ?? null, fn ($query, string $source) => $query->where('source_type', $source))
@@ -345,9 +362,126 @@ final class OrderService
             });
         });
 
+        // OMS Grid column inputs are always server-authoritative, never browser-page filters.
+        $grid = $filters['oms_grid_columns'] ?? [];
+        if (is_array($grid)) {
+            // These queries are evaluated against the full filtered orders dataset,
+            // not the currently loaded AG Grid page. Only allowlisted relations/fields.
+            foreach ([
+                'grid_warehouse' => ['shipment.warehouse', 'name'],
+                'grid_tracking' => ['shipment', 'tracking_number'],
+                'grid_city' => ['address', 'city'],
+                'grid_postal_code' => ['address', 'postal_code'],
+                'grid_carrier' => ['shipment', 'carrier'],
+            ] as $key => [$relation, $column]) {
+                if (! empty($grid[$key])) {
+                    $value = $grid[$key];
+                    $query->whereHas($relation, fn ($related) => $related->where($column, 'like', "%{$value}%"));
+                }
+            }
+            // A single SKU item must satisfy *all* item-column filters.
+            // Separate whereHas clauses could falsely match different lines
+            // of the same multi-SKU order.
+            $sku = (string) ($grid['grid_sku'] ?? '');
+            $name = (string) ($grid['grid_product_names'] ?? '');
+            $qtyInput = (string) ($grid['grid_quantity'] ?? '');
+            if ($sku !== '' || $name !== '' || $qtyInput !== '') {
+                $quantity = $qtyInput === '' ? null : filter_var($qtyInput, FILTER_VALIDATE_INT, [
+                    'options' => ['min_range' => 0, 'max_range' => 99999],
+                ]);
+                if ($quantity === false) {
+                    $query->whereRaw('1 = 0');
+                } else {
+                    $query->whereHas('items', function ($items) use ($sku, $name, $quantity): void {
+                        if ($sku !== '') $items->where('sku', 'like', "%{$sku}%");
+                        if ($name !== '') $items->where('product_summary', 'like', "%{$name}%");
+                        if ($quantity !== null) $items->where('quantity', $quantity);
+                    });
+                }
+            }
+            if (! empty($grid['grid_external_number'])) {
+                $query->where('external_order_number', 'like', '%'.$grid['grid_external_number'].'%');
+            }
+            if (! empty($grid['grid_order_number'])) {
+                $v = $grid['grid_order_number'];
+                $query->where('erp_order_id', 'like', "%{$v}%");
+            }
+            if (! empty($grid['grid_source'])) {
+                $v = strtolower(str_replace(' ', '_', $grid['grid_source']));
+                $query->where('source_type', 'like', "%{$v}%");
+            }
+            if (! empty($grid['grid_date'])) {
+                $v = $grid['grid_date'];
+                $query->where('order_date', 'like', "%{$v}%");
+            }
+            if (! empty($grid['grid_recipient'])) {
+                $v = $grid['grid_recipient'];
+                $query->whereHas('address', fn ($address) => $address->where('recipient_name', 'like', "%{$v}%"));
+            }
+            if (! empty($grid['grid_country'])) {
+                $v = $grid['grid_country'];
+                $query->whereHas('address', fn ($address) => $address->where('country', 'like', "%{$v}%"));
+            }
+            if (! empty($grid['grid_owner'])) {
+                $v = $grid['grid_owner'];
+                $query->whereHas('owner', fn ($owner) => $owner->where('name', 'like', "%{$v}%"));
+            }
+            if (! empty($grid['grid_status'])) {
+                $needle = mb_strtolower($grid['grid_status']);
+                $codes = [];
+                foreach (OrderWorkflowStatus::registry() as $code => $definition) {
+                    $labels = mb_strtolower($code.' '.$definition['en'].' '.$definition['zh']);
+                    if (str_contains($labels, $needle)) {
+                        $codes[] = $code;
+                    }
+                }
+                if ($codes === []) {
+                    $query->whereRaw('1 = 0');
+                } else {
+                    // The canonical status overrides a pre-shipment work annotation.
+                    $query->where(function ($statusQuery) use ($codes): void {
+                        $statusQuery->where(function ($annotation) use ($codes): void {
+                            $annotation->whereIn('workflow_status', $codes)
+                                ->where(function ($valid): void {
+                                    $valid->whereNotIn('workflow_status', ['sending', 'sent'])
+                                        ->orWhere('order_status', 'pending_shipment');
+                                });
+                        });
+                        if (in_array('sending', $codes, true)) {
+                            $statusQuery->orWhere(function ($fallback): void {
+                                $fallback->whereNull('workflow_status')->where('order_status', 'pending_shipment');
+                            });
+                        }
+                        foreach (['shipped' => ['shipped'], 'completed' => ['completed', 'completed_delivered']] as $code => $statuses) {
+                            if (! in_array($code, $codes, true)) continue;
+                            $statusQuery->orWhere(function ($fallback) use ($statuses): void {
+                                $fallback->whereIn('order_status', $statuses)
+                                    ->where(function ($annotation): void {
+                                        $annotation->whereNull('workflow_status')
+                                            ->orWhereIn('workflow_status', ['sending', 'sent']);
+                                    });
+                            });
+                        }
+                        if (in_array('cancelled', $codes, true)) {
+                            $statusQuery->orWhere('order_status', 'cancelled');
+                        }
+                    });
+                }
+            }
+        }
+
         $this->applyBusinessView($query, (string) ($filters['view'] ?? 'all'));
 
-        return $query->latest('order_date')->latest('id');
+        $sortColumns = [
+            'order_number' => 'erp_order_id',
+            'date' => 'order_date',
+            'source' => 'source_type',
+            'status' => 'order_status',
+        ];
+        $sortColumn = $sortColumns[$filters['oms_sort'] ?? 'date'] ?? 'order_date';
+        $sortDirection = ($filters['oms_direction'] ?? 'desc') === 'asc' ? 'asc' : 'desc';
+
+        return $query->orderBy($sortColumn, $sortDirection)->orderByDesc('id');
     }
 
     private function applyBusinessView(Builder $query, string $view): void
