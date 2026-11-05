@@ -53,6 +53,8 @@ final class SyncWorkspaceTest extends TestCase
             ->has('orders')
             ->has('syncRuns')
             ->has('queueSummary')
+            ->where('wooOrderSync.can_import_today', false)
+            ->where('wooOrderSync.health', 'disabled')
         );
     }
 
@@ -68,6 +70,11 @@ final class SyncWorkspaceTest extends TestCase
             ->where('wooOrderSync.frequency', '每 30 分钟')
             ->where('wooOrderSync.can_operate', true)
             ->where('wooOrderSync.manual_action', '/sync/woocommerce/incremental')
+        );
+        $this->actingAs($user)->get('/sync/orders')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Sync/Orders')
+            ->where('wooOrderSync.can_import_today', true)
+            ->where('wooOrderSync.health', 'stale')
         );
     }
 
