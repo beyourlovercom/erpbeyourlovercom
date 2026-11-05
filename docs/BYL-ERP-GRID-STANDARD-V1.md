@@ -6,7 +6,7 @@ Scope: BYL ERP front-end list / table pages; this is the single standard for new
 ## 1. Core standard
 - Use `ag-grid-community` + `ag-grid-vue3`, Balham theme, via the shared `OmsGrid` component.
 - Do not create per-page standalone table frameworks. Domain pages supply column definitions, data adapters, authorized actions and links.
-- A single header-title row with optional inline filters; compact, one-record-per-row layout. Do not add a duplicate grouped-header row.
+- One flat column-title row and, for searchable data columns, a separate AG Grid Floating Filters input row; compact one-record-per-row layout. Do not add grouped headers or embed input boxes inside the title row.
 - Column resize, drag order, hide/show, persisted preferences, left/right pinned counts, maximize/Esc restore, sorting and filtering follow shared behavior.
 - Exactly one pagination/footer region. Page size 20 / 50 / 100 / 全部 where safe; prompt about browser cost before 全部.
 - Import/export are provided by the domain's existing backend authorities, not invented by the grid.
@@ -18,7 +18,7 @@ Scope: BYL ERP front-end list / table pages; this is the single standard for new
 - In-page editing must use the existing backend API, concurrency tokens, error handling and rollback.
 
 ## 3. Large datasets
-- For authoritative production lists, page, sort and filter on the server. Do not treat the current browser page as the entire dataset.
+- For authoritative production lists, page, sort and filter on the server. Do not treat the current browser page as the entire dataset. New OMS Grid global/column keyword search uses contains-match (including numeric fragments); explicitly named DB-ID syntax remains exact. Preserve documented legacy-search contracts on pages not yet migrated.
 - An "all rows" option must never silently fetch unlimited records. Support only bounded filtered results or provide an explicit refusal and instruction to narrow filters; export continues through authorized export endpoints.
 - Prefer existing server pagination and explicit allowlists for sort / filter fields. Keep total counts authoritative.
 

@@ -18,7 +18,7 @@ Related: Draft PR #628. Frozen standard: `docs/BYL-ERP-GRID-STANDARD-V1.md`.
 - Server pagination stays authoritative; source count is `orders.total`, never `orders.data.length`.
 
 ## Server-grid behaviors
-- Column title row only, no group titles; server-mode AG Grid header components provide six column search inputs (order number, source, date, recipient, country, owner), each backed by real ERP queries rather than client-page filtering.
+- Single column-title row plus a distinct **AG Grid floating-filter row**; seven business-data columns (order number, source, date, recipient, country, work status and owner) have server-backed partial-match inputs. The non-data action column is not searchable.
 - Server allowlist sorting: `order_number, date, source`; date desc default. Unsupported columns are not sortable in R3.
 - Page options 20, 50, 100, 全部. "全部" loads at most 200 filtered orders; if total > 200, UI refuses before navigating; backend also clamps direct URL attempts.
 - Server queries determine the final global sort/filter result. AG Grid may briefly reorder the loaded page during a header click before the server navigation completes; existing page form remains the authoritative search/filter interface.
@@ -67,10 +67,17 @@ Existing whole Vue suite result (isolated Windows): 731/736 PASS. Five failing t
 **Remaining approval gate:** Owner review of the R3 real Orders page in an accessible controlled Dev/staging deployment, ideally with a read-only or sanitized order dataset; confirm desired display of Woo external reference in one-line grid. Do not merge `main` or deploy Production until this visual UAT and exact-head authorization.
 ## R3 Search UX fix — 2026-11-05
 - Root cause: R3 switched to authoritative server pagination, which intentionally disabled the R2 client-only quick search and floating filters and left search in the legacy page toolbar.
-- Restored global quick search inside the OMS Grid toolbar with 450 ms debounced server navigation, Enter submit and explicit clear. Legacy top search input is hidden only when OMS Grid is enabled.
-- Added six AG Grid custom header filters for order number, source, order date, recipient, country and owner. They are in grid headers and call the existing server-side `OrderService` with a restricted list of criteria; no filtering of only the currently loaded 50 rows.
-- Server sanitizes input to text only (up to 80 chars), rejects invalid date strings and ignores array-shaped input; column filters are ignored on legacy views and Production where OMS pilot is disabled.
+- Restored global quick search inside the OMS Grid toolbar with 450 ms debounced server navigation, Enter submit and explicit clear. Legacy top search input is hidden only when OMS Grid is enabled. Fixed numeric-only search bypass: `40223` now matches `007-1105-40223` by substring, while explicit `dbid:<number>` remains exact.
+- Replaced the interim custom-header inputs with the original AG Grid floating-filter row: seven independent server-backed filters (order number, source, date, recipient, country, work status, owner). The action/checkbox columns do not have search meaning. No filtering of only the currently loaded page.
+- Server sanitizes input to text only (up to 80 chars), supports date substrings and ignores array-shaped input; column filters are ignored on legacy views and Production where OMS pilot is disabled.
 - Combined with the existing business views, search, export, sorting and pagination. Columns remain resizable, movable, pinnable, and grid can maximize.
-- **UAT evidence:** authenticated Chrome with 225 synthetic SQLite orders: global search `R3-UAT-0123` returned 1, order-number filter `40223` returned 1, source filter `manual` returned 112, clear reset to 225; six inputs visible, old duplicate search absent, 0 JS exceptions.
+- **UAT evidence:** authenticated Chrome with 225 synthetic SQLite orders: global search `R3-UAT-0123` returned 1, order-number filter `40223` returned 1, source filter `manual` returned 112, clear reset to 225; six inputs visible (before the seventh work-status filter was added), old duplicate search absent, 0 JS exceptions.
 - **Regression:** `npm run typecheck` PASS; `npm run build` PASS; Vue scoped tests PASS; Laravel Orders + User UI Preferences **86 tests, 1,169 assertions PASS**.
 - PR remains Draft and non-Production. Owner visual review is the last acceptance gate.
+
+## R3.2 numeric substring + AG Grid floating filters — isolated acceptance
+- Cause: OrderService explicitly treated numeric-only search as exact external order/reference/tracking lookup, bypassing the ordinary LIKE expression (including erp_order_id).
+- Fix: keep the legacy exact-numeric contract untouched, but enable substring search in the opt-in OMS Grid mode only; explicit `dbid:NNN` remains exact in both modes.
+- AG Grid server mode now uses its real floating-filter row (rather than title-inside-header inputs); seven data columns have per-column inputs routed to the server. The action column is not a data-search column.
+- Authenticated Chrome UAT on SQLite synthetic orders: 40223 finds the matching ERP order (1/225), column-order-number 40223 matches 1, source manual matches 112, work-status 待发 matches 168; 7 floating search fields detected; zero JS page errors.
+- Regression checks: PHP feature test covers OMS-only numeric substring, preserved legacy exact-number semantics, dbid exact, partial date input and status-column matching.

@@ -302,7 +302,7 @@ final class OrderService
             ->when($filters['order_kind'] ?? null, fn ($query, string $kind) => $query->where('order_kind', $kind))
             ->when($filters['owner_id'] ?? null, fn ($query, int $ownerId) => $query->where('owner_id', $ownerId))
             ->when($filters['warehouse_ownership'] ?? null, fn ($query, string $ownership) => $query->whereHas('shipment.warehouse', fn ($warehouse) => $warehouse->where('ownership_type', $ownership)))
-            ->when($filters['search'] ?? null, function ($query, string $search): void {
+            ->when($filters['search'] ?? null, function ($query, string $search) use ($filters): void {
                 $search = trim($search);
 
                 if (preg_match('/^dbid:(\d+)$/i', $search, $match) === 1) {
@@ -311,7 +311,9 @@ final class OrderService
                     return;
                 }
 
-                if (ctype_digit($search)) {
+                // Preserve the legacy exact-numeric identity contract outside the opt-in OMS Grid.
+                // OMS mode explicitly opts into substring search, including ERP-facing numbers.
+                if (ctype_digit($search) && ! ($filters['oms_numeric_contains'] ?? false)) {
                     $query->where(function ($nested) use ($search): void {
                         $nested->where('external_order_number', $search)
                             ->orWhereHas('externalReferences', fn ($references) => $references->where('reference', $search))
@@ -358,11 +360,7 @@ final class OrderService
             }
             if (! empty($grid['grid_date'])) {
                 $v = $grid['grid_date'];
-                if (preg_match('/^\\d{4}(?:-\\d{1,2})?(?:-\\d{1,2})?$/', $v) === 1) {
-                    $query->where('order_date', 'like', "{$v}%");
-                } else {
-                    $query->whereRaw('1 = 0');
-                }
+                $query->where('order_date', 'like', "%{$v}%");
             }
             if (! empty($grid['grid_recipient'])) {
                 $v = $grid['grid_recipient'];
@@ -375,6 +373,48 @@ final class OrderService
             if (! empty($grid['grid_owner'])) {
                 $v = $grid['grid_owner'];
                 $query->whereHas('owner', fn ($owner) => $owner->where('name', 'like', "%{$v}%"));
+            }
+            if (! empty($grid['grid_status'])) {
+                $needle = mb_strtolower($grid['grid_status']);
+                $codes = [];
+                foreach (OrderWorkflowStatus::registry() as $code => $definition) {
+                    $labels = mb_strtolower($code.' '.$definition['en'].' '.$definition['zh']);
+                    if (str_contains($labels, $needle)) {
+                        $codes[] = $code;
+                    }
+                }
+                if ($codes === []) {
+                    $query->whereRaw('1 = 0');
+                } else {
+                    // The canonical status overrides a pre-shipment work annotation.
+                    $query->where(function ($statusQuery) use ($codes): void {
+                        $statusQuery->where(function ($annotation) use ($codes): void {
+                            $annotation->whereIn('workflow_status', $codes)
+                                ->where(function ($valid): void {
+                                    $valid->whereNotIn('workflow_status', ['sending', 'sent'])
+                                        ->orWhere('order_status', 'pending_shipment');
+                                });
+                        });
+                        if (in_array('sending', $codes, true)) {
+                            $statusQuery->orWhere(function ($fallback): void {
+                                $fallback->whereNull('workflow_status')->where('order_status', 'pending_shipment');
+                            });
+                        }
+                        foreach (['shipped' => ['shipped'], 'completed' => ['completed', 'completed_delivered']] as $code => $statuses) {
+                            if (! in_array($code, $codes, true)) continue;
+                            $statusQuery->orWhere(function ($fallback) use ($statuses): void {
+                                $fallback->whereIn('order_status', $statuses)
+                                    ->where(function ($annotation): void {
+                                        $annotation->whereNull('workflow_status')
+                                            ->orWhereIn('workflow_status', ['sending', 'sent']);
+                                    });
+                            });
+                        }
+                        if (in_array('cancelled', $codes, true)) {
+                            $statusQuery->orWhere('order_status', 'cancelled');
+                        }
+                    });
+                }
             }
         }
 

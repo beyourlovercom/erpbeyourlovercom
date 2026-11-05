@@ -78,9 +78,10 @@ const pagination = computed(() => ({
       date: props.filters.grid_date ?? '',
       recipient: props.filters.grid_recipient ?? '',
       country: props.filters.grid_country ?? '',
+      status: props.filters.grid_status ?? '',
       owner: props.filters.grid_owner ?? '',
     }"
-    :server-filter-columns="['order_number', 'source', 'date', 'recipient', 'country', 'owner']"
+    :server-filter-columns="['order_number', 'source', 'date', 'recipient', 'country', 'status', 'owner']"
     preference-scope="account"
     :default-pinned-left="1"
     :default-pinned-right="1"

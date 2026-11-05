@@ -2,7 +2,7 @@
 import axios from 'axios'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { AgGridVue } from 'ag-grid-vue3'
-import OmsServerHeader from './OmsServerHeader.vue'
+import OmsServerFloatingFilter from './OmsServerFloatingFilter.vue'
 import {
   AllCommunityModule, ModuleRegistry, themeBalham,
   type ColDef, type ColGroupDef, type ColumnState, type GridApi, type GridReadyEvent, type SortChangedEvent,
@@ -48,13 +48,20 @@ const flatten = (definitions: GridColumn[]): ColDef<GridRow>[] =>
 const leafColumns = computed(() => flatten(props.columns).map(col => {
   if (!props.serverPagination) return col
   const key = col.colId ?? col.field ?? ''
-  return { ...col, filter: false, floatingFilter: false,
+  const filterEnabled = props.serverFilterColumns?.includes(key) ?? false
+  return {
+    ...col,
+    filter: filterEnabled,
+    floatingFilter: filterEnabled,
+    suppressHeaderFilterButton: true,
+    suppressHeaderMenuButton: true,
     sort: props.serverSort?.colId === key ? props.serverSort.direction : null,
-    ...(props.serverFilterColumns?.includes(key) ? {
-      headerComponent: OmsServerHeader,
-      headerComponentParams: {
+    ...(filterEnabled ? {
+      floatingFilterComponent: OmsServerFloatingFilter,
+      floatingFilterComponentParams: {
         filterValue: props.serverColumnFilters?.[key] ?? '',
         onServerFilter: (value: string) => emit('column-search-change', { colId: key, value }),
+        suppressFilterButton: true,
       },
     } : {}),
   }
@@ -83,8 +90,7 @@ const effectiveDefaultColDef = computed<ColDef<GridRow>>(() => props.serverPagin
 const rowSelection = { mode: 'multiRow' as const, selectAll: 'currentPage' as const }
 const localeText = { page: '页', to: '至', of: '共', nextPage: '下一页', previousPage: '上一页', firstPage: '首页', lastPage: '末页', pageSizeSelectorLabel: '每页', noRowsToShow: '暂无数据' }
 const rowHeight = computed(() => density.value === 'compact' ? 32 : 42)
-const headerHeight = computed(() => props.serverPagination && props.serverFilterColumns?.length
-  ? (density.value === 'compact' ? 57 : 64) : (density.value === 'compact' ? 31 : 38))
+const headerHeight = computed(() => density.value === 'compact' ? 31 : 38)
 const orderedColumns = computed(() => states.value.filter(state => ids.value.includes(state.colId)))
 const visibleColumns = computed(() => orderedColumns.value.filter(column => !column.hide))
 const resolvedPageSize = () => pageSize.value === 'all'

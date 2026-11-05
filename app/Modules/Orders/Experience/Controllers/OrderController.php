@@ -89,7 +89,8 @@ final class OrderController
         if ($omsGridEnabled) {
             $filters['oms_sort'] = $sort;
             $filters['oms_direction'] = $direction;
-            foreach (['grid_order_number', 'grid_source', 'grid_date', 'grid_recipient', 'grid_country', 'grid_owner'] as $key) {
+            $filters['oms_numeric_contains'] = true;
+            foreach (['grid_order_number', 'grid_source', 'grid_date', 'grid_recipient', 'grid_country', 'grid_status', 'grid_owner'] as $key) {
                 $raw = $request->query($key);
                 if (is_string($raw)) {
                     $value = mb_substr(trim($raw), 0, 80);

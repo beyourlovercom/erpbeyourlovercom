@@ -242,6 +242,21 @@ final class OrderSavedViewsTest extends TestCase
                 ->where('orders.total', 1)
                 ->where('orders.data.0.id', $second->id));
 
+        // A numeric fragment must search ERP order numbers too (not just exact external references).
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&search=40223')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('orders.total', 1)
+                ->where('orders.data.0.id', $first->id));
+        // Legacy numeric identity searches remain exact; only the opt-in OMS grid uses substring matching.
+        $this->actingAs($viewer)->get('/orders?search=40223')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('orders.total', 0));
+        // Explicit dbid syntax remains an exact database ID lookup.
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&search=dbid:'.$second->id)
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('orders.total', 1)
+                ->where('orders.data.0.id', $second->id));
+
         $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_order_number=40223')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('filters.grid_order_number', '40223')
@@ -258,8 +273,17 @@ final class OrderSavedViewsTest extends TestCase
                 ->where('orders.total', 1)
                 ->where('orders.data.0.id', $second->id));
 
+        // Even a partial month string is a contains-match in a column filter.
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_date=08')
+            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
+
         $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_owner='.urlencode($viewer->name))
             ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
+
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_status='.urlencode('待发'))
+            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_status='.urlencode('不存在的状态'))
+            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 0));
 
         // Malformed array input is ignored, and grid-only filters must not affect the legacy route.
         $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_order_number[]=bogus')

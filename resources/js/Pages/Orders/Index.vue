@@ -45,6 +45,7 @@ const filters = reactive({
   grid_date: props.filters.grid_date ?? '',
   grid_recipient: props.filters.grid_recipient ?? '',
   grid_country: props.filters.grid_country ?? '',
+  grid_status: props.filters.grid_status ?? '',
   grid_owner: props.filters.grid_owner ?? '',
 })
 const syncingWoo = ref(false)
@@ -98,7 +99,7 @@ const gridSearch = (value: string) => {
   router.get(basePath.value, { ...filters, ...gridParams(), page: 1 }, { preserveState: true, replace: true })
 }
 const gridColumnSearch = ({ colId, value }: { colId: string; value: string }) => {
-  const allowed = ['order_number', 'source', 'date', 'recipient', 'country', 'owner'] as const
+  const allowed = ['order_number', 'source', 'date', 'recipient', 'country', 'status', 'owner'] as const
   if (!allowed.includes(colId as typeof allowed[number])) return
   const key = ('grid_' + colId) as keyof typeof filters
   filters[key] = value
@@ -127,7 +128,7 @@ const applySystemView = (view: string) => {
   filters.order_status = ''
   filters.workflow_status = ''
   filters.view = view
-  for (const key of ['grid_order_number','grid_source','grid_date','grid_recipient','grid_country','grid_owner'] as const) filters[key] = ''
+  for (const key of ['grid_order_number','grid_source','grid_date','grid_recipient','grid_country','grid_status','grid_owner'] as const) filters[key] = ''
   submit()
 }
 const applySavedView = (saved: SavedView) => {
@@ -136,7 +137,7 @@ const applySavedView = (saved: SavedView) => {
   filters.order_status = saved.filters_json.order_status ?? ''
   filters.workflow_status = saved.filters_json.workflow_status ?? ''
   filters.view = saved.filters_json.view ?? 'all'
-  for (const key of ['grid_order_number','grid_source','grid_date','grid_recipient','grid_country','grid_owner'] as const) filters[key] = saved.filters_json[key] ?? ''
+  for (const key of ['grid_order_number','grid_source','grid_date','grid_recipient','grid_country','grid_status','grid_owner'] as const) filters[key] = saved.filters_json[key] ?? ''
   submit()
 }
 const saveCurrentView = () => {
