@@ -41,6 +41,14 @@ describe('Order OMS server adapter', () => {
     expect(grid.props('serverPagination')).toMatchObject({ current_page: 2, total: 580 })
     expect(grid.props('serverSort')).toEqual({ colId: 'date', direction: 'desc' })
     expect(grid.props('requiredColumnIds')).toEqual(['order_number', 'actions'])
+    // 46 data fields + 1 actions column. SKU and total quantity must not be hidden by default.
+    expect(columns).toHaveLength(47)
+    expect(columns.find(c => c.colId === 'sku')).toMatchObject({ hide: false, field: 'sku_list' })
+    expect(columns.find(c => c.colId === 'quantity')).toMatchObject({ hide: false, field: 'order_quantity' })
+    expect(columns.find(c => c.colId === 'product_names')).toMatchObject({ hide: true })
+    expect(grid.props('serverFilterColumns')).toEqual(expect.arrayContaining([
+      'sku', 'quantity', 'product_names', 'warehouse', 'tracking',
+    ]))
     expect(grid.props('serverSearch')).toBe('')
     expect(grid.props('serverFilterColumns')).toContain('recipient')
   })

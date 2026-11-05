@@ -323,13 +323,19 @@ final class OrderService
                     return;
                 }
 
-                $query->where(function ($nested) use ($search): void {
+                $query->where(function ($nested) use ($search, $filters): void {
                     $nested->where('internal_order_number', 'like', "%{$search}%")
                         ->orWhereHas('address', fn ($address) => $address->where('recipient_name', 'like', "%{$search}%"))
                         ->orWhere('external_order_number', 'like', "%{$search}%")
                         ->orWhere('erp_order_id', 'like', "%{$search}%")
                         ->orWhereHas('externalReferences', fn ($references) => $references->where('reference', 'like', "%{$search}%"))
                         ->orWhereHas('shipment', fn ($shipment) => $shipment->where('tracking_number', 'like', "%{$search}%"));
+                    // OMS Grid can search products from any page; preserve legacy text-search contract.
+                    if ($filters['oms_numeric_contains'] ?? false) {
+                        $nested->orWhereHas('items', fn ($items) => $items
+                            ->where('sku', 'like', "%{$search}%")
+                            ->orWhere('product_summary', 'like', "%{$search}%"));
+                    }
                 });
             })
             ->when($filters['source_type'] ?? null, fn ($query, string $source) => $query->where('source_type', $source))
@@ -350,6 +356,40 @@ final class OrderService
         // OMS Grid column inputs are always server-authoritative, never browser-page filters.
         $grid = $filters['oms_grid_columns'] ?? [];
         if (is_array($grid)) {
+            // These queries are evaluated against the full filtered orders dataset,
+            // not the currently loaded AG Grid page. Only allowlisted relations/fields.
+            foreach ([
+                'grid_sku' => ['items', 'sku'],
+                'grid_product_names' => ['items', 'product_summary'],
+                'grid_warehouse' => ['shipment.warehouse', 'name'],
+                'grid_tracking' => ['shipment', 'tracking_number'],
+                'grid_city' => ['address', 'city'],
+                'grid_postal_code' => ['address', 'postal_code'],
+                'grid_carrier' => ['shipment', 'carrier'],
+            ] as $key => [$relation, $column]) {
+                if (! empty($grid[$key])) {
+                    $value = $grid[$key];
+                    $query->whereHas($relation, fn ($related) => $related->where($column, 'like', "%{$value}%"));
+                }
+            }
+            if (! empty($grid['grid_external_number'])) {
+                $query->where('external_order_number', 'like', '%'.$grid['grid_external_number'].'%');
+            }
+            if (isset($grid['grid_quantity']) && $grid['grid_quantity'] !== '') {
+                $quantity = filter_var($grid['grid_quantity'], FILTER_VALIDATE_INT, [
+                    'options' => ['min_range' => 0, 'max_range' => 99999],
+                ]);
+                if ($quantity === false) {
+                    $query->whereRaw('1 = 0');
+                } else {
+                    // Matches the SUM of all order-item quantities shown in the grid.
+                    // A 0 only matches orders with an actual item line.
+                    $query->whereHas('items')->whereRaw(
+                        '(SELECT COALESCE(SUM(order_items.quantity), 0) FROM order_items WHERE order_items.order_id = orders.id) = ?',
+                        [$quantity],
+                    );
+                }
+            }
             if (! empty($grid['grid_order_number'])) {
                 $v = $grid['grid_order_number'];
                 $query->where('erp_order_id', 'like', "%{$v}%");

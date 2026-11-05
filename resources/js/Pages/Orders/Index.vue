@@ -47,6 +47,15 @@ const filters = reactive({
   grid_country: props.filters.grid_country ?? '',
   grid_status: props.filters.grid_status ?? '',
   grid_owner: props.filters.grid_owner ?? '',
+  grid_sku: props.filters.grid_sku ?? '',
+  grid_quantity: props.filters.grid_quantity ?? '',
+  grid_product_names: props.filters.grid_product_names ?? '',
+  grid_warehouse: props.filters.grid_warehouse ?? '',
+  grid_tracking: props.filters.grid_tracking ?? '',
+  grid_city: props.filters.grid_city ?? '',
+  grid_postal_code: props.filters.grid_postal_code ?? '',
+  grid_carrier: props.filters.grid_carrier ?? '',
+  grid_external_number: props.filters.grid_external_number ?? '',
 })
 const syncingWoo = ref(false)
 const wooReconcileLoading = ref(false)
@@ -99,7 +108,7 @@ const gridSearch = (value: string) => {
   router.get(basePath.value, { ...filters, ...gridParams(), page: 1 }, { preserveState: true, replace: true })
 }
 const gridColumnSearch = ({ colId, value }: { colId: string; value: string }) => {
-  const allowed = ['order_number', 'source', 'date', 'recipient', 'country', 'status', 'owner'] as const
+  const allowed = ['order_number', 'sku', 'quantity', 'product_names', 'source', 'date', 'recipient', 'country', 'warehouse', 'status', 'tracking', 'owner', 'city', 'postal_code', 'carrier', 'external_number'] as const
   if (!allowed.includes(colId as typeof allowed[number])) return
   const key = ('grid_' + colId) as keyof typeof filters
   filters[key] = value
@@ -128,7 +137,7 @@ const applySystemView = (view: string) => {
   filters.order_status = ''
   filters.workflow_status = ''
   filters.view = view
-  for (const key of ['grid_order_number','grid_source','grid_date','grid_recipient','grid_country','grid_status','grid_owner'] as const) filters[key] = ''
+  for (const key of ['grid_order_number','grid_sku','grid_quantity','grid_product_names','grid_source','grid_date','grid_recipient','grid_country','grid_warehouse','grid_status','grid_tracking','grid_owner','grid_city','grid_postal_code','grid_carrier','grid_external_number'] as const) filters[key] = ''
   submit()
 }
 const applySavedView = (saved: SavedView) => {
@@ -137,7 +146,7 @@ const applySavedView = (saved: SavedView) => {
   filters.order_status = saved.filters_json.order_status ?? ''
   filters.workflow_status = saved.filters_json.workflow_status ?? ''
   filters.view = saved.filters_json.view ?? 'all'
-  for (const key of ['grid_order_number','grid_source','grid_date','grid_recipient','grid_country','grid_status','grid_owner'] as const) filters[key] = saved.filters_json[key] ?? ''
+  for (const key of ['grid_order_number','grid_sku','grid_quantity','grid_product_names','grid_source','grid_date','grid_recipient','grid_country','grid_warehouse','grid_status','grid_tracking','grid_owner','grid_city','grid_postal_code','grid_carrier','grid_external_number'] as const) filters[key] = saved.filters_json[key] ?? ''
   submit()
 }
 const saveCurrentView = () => {

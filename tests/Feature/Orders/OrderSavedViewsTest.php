@@ -292,6 +292,54 @@ final class OrderSavedViewsTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
     }
 
+    public function test_oms_grid_sku_and_ordered_total_quantity_are_server_filterable_across_all_orders(): void
+    {
+        $viewer = $this->userWith(['orders.view']);
+        $first = $this->order($viewer, 'R3-SKU-ALPHA', 'pending_shipment');
+        $second = $this->order($viewer, 'R3-SKU-BETA', 'pending_shipment');
+
+        $first->items()->create([
+            'sku' => 'MF414A', 'product_summary' => 'Product One',
+            'quantity' => 2, 'unit_price' => '79.00', 'line_revenue' => '158.00',
+        ]);
+        $first->items()->create([
+            'sku' => 'A1', 'product_summary' => 'Gift Two',
+            'quantity' => 1, 'unit_price' => '0.00', 'line_revenue' => '0.00',
+        ]);
+        $second->items()->create([
+            'sku' => 'A1', 'product_summary' => 'Product Three',
+            'quantity' => 4, 'unit_price' => '20.00', 'line_revenue' => '80.00',
+        ]);
+        $first->address()->update(['city' => 'Austin', 'postal_code' => '78701']);
+
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_sku=MF414')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('orders.total', 1)
+                ->where('orders.data.0.id', $first->id)
+                ->has('orders.data.0.items', 2));
+
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_quantity=3')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('orders.total', 1)
+                ->where('orders.data.0.id', $first->id));
+
+        // Sum(quantity) is per order, not number of SKU types or any one line quantity.
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_quantity=2')
+            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 0));
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_quantity=abc')
+            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 0));
+
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_product_names=Product%20One&grid_city=Aus&grid_postal_code=787')
+            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 1));
+
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&search=MF414')
+            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 1));
+
+        // The old Orders route is not affected by the new filters.
+        $this->actingAs($viewer)->get('/orders?grid_sku=NO_MATCH&grid_quantity=77')
+            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
+    }
+
     private function assertViewContainsOnly(User $user, string $view, string $externalOrderNumber): void
     {
         $this->actingAs($user)->get('/orders?view='.$view)->assertInertia(fn (Assert $page) => $page
