@@ -5,8 +5,8 @@ import OrderOmsGrid from './OrderOmsGrid.vue'
 vi.mock('../../Components/DataGrid/OmsGrid.vue', () => ({
   default: {
     name: 'OmsGrid',
-    props: ['rows', 'columns', 'serverPagination', 'serverSort', 'namespace', 'requiredColumnIds'],
-    emits: ['page-change', 'page-size-change', 'sort-change'],
+    props: ['rows', 'columns', 'serverPagination', 'serverSort', 'serverSearch', 'serverColumnFilters', 'serverFilterColumns', 'namespace', 'requiredColumnIds'],
+    emits: ['page-change', 'page-size-change', 'sort-change', 'search-change', 'column-search-change'],
     template: '<div data-testid="oms-grid"><slot name="actions" /></div>',
   },
 }))
@@ -41,6 +41,8 @@ describe('Order OMS server adapter', () => {
     expect(grid.props('serverPagination')).toMatchObject({ current_page: 2, total: 580 })
     expect(grid.props('serverSort')).toEqual({ colId: 'date', direction: 'desc' })
     expect(grid.props('requiredColumnIds')).toEqual(['order_number', 'actions'])
+    expect(grid.props('serverSearch')).toBe('')
+    expect(grid.props('serverFilterColumns')).toContain('recipient')
   })
   it('forwards only pagination, page-size and sort intents to the parent router', () => {
     const wrapper = mount(OrderOmsGrid, { props })
@@ -48,8 +50,12 @@ describe('Order OMS server adapter', () => {
     grid.vm.$emit('page-change', 3)
     grid.vm.$emit('page-size-change', 'all')
     grid.vm.$emit('sort-change', { colId: 'order_number', direction: 'asc' })
+    grid.vm.$emit('search-change', '40223')
+    grid.vm.$emit('column-search-change', { colId: 'recipient', value: 'Tester' })
     expect(wrapper.emitted('page-change')?.[0]).toEqual([3])
     expect(wrapper.emitted('page-size-change')?.[0]).toEqual(['all'])
     expect(wrapper.emitted('sort-change')?.[0]).toEqual([{ colId: 'order_number', direction: 'asc' }])
+    expect(wrapper.emitted('search-change')?.[0]).toEqual(['40223'])
+    expect(wrapper.emitted('column-search-change')?.[0]).toEqual([{ colId: 'recipient', value: 'Tester' }])
   })
 })

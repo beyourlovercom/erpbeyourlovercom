@@ -25,6 +25,8 @@ const emit = defineEmits<{
   (event: 'page-change', page: number): void
   (event: 'page-size-change', size: number | 'all'): void
   (event: 'sort-change', sort: { colId: string; direction: 'asc' | 'desc' | null }): void
+  (event: 'search-change', value: string): void
+  (event: 'column-search-change', filter: { colId: string; value: string }): void
 }>()
 const rows = computed<Record<string, unknown>[]>(() => props.orders.data.map(order => ({
   ...order,
@@ -69,6 +71,16 @@ const pagination = computed(() => ({
     :rows="rows"
     :server-pagination="pagination"
     :server-sort="sort"
+    :server-search="props.filters.search ?? ''"
+    :server-column-filters="{
+      order_number: props.filters.grid_order_number ?? '',
+      source: props.filters.grid_source ?? '',
+      date: props.filters.grid_date ?? '',
+      recipient: props.filters.grid_recipient ?? '',
+      country: props.filters.grid_country ?? '',
+      owner: props.filters.grid_owner ?? '',
+    }"
+    :server-filter-columns="['order_number', 'source', 'date', 'recipient', 'country', 'owner']"
     preference-scope="account"
     :default-pinned-left="1"
     :default-pinned-right="1"
@@ -76,6 +88,8 @@ const pagination = computed(() => ({
     @page-change="emit('page-change', $event)"
     @page-size-change="emit('page-size-change', $event)"
     @sort-change="emit('sort-change', $event)"
+    @search-change="emit('search-change', $event)"
+    @column-search-change="emit('column-search-change', $event)"
   >
     <template #actions><span class="oms-orders-server-authority">订单查询和导出由 ERP 服务器处理</span></template>
   </OmsGrid>

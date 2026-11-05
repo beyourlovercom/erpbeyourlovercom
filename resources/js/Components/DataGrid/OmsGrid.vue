@@ -2,6 +2,7 @@
 import axios from 'axios'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { AgGridVue } from 'ag-grid-vue3'
+import OmsServerHeader from './OmsServerHeader.vue'
 import {
   AllCommunityModule, ModuleRegistry, themeBalham,
   type ColDef, type ColGroupDef, type ColumnState, type GridApi, type GridReadyEvent, type SortChangedEvent,
@@ -24,6 +25,9 @@ const props = withDefaults(defineProps<{
   requiredColumnIds?: string[]
   serverPagination?: ServerPagination
   serverSort?: ServerSort
+  serverSearch?: string
+  serverColumnFilters?: Record<string, string>
+  serverFilterColumns?: string[]
 }>(), {
   title: 'OMS Grid', preferenceScope: 'account', defaultPinnedLeft: 1,
   defaultPinnedRight: 1, requiredColumnIds: () => [],
@@ -34,6 +38,8 @@ const emit = defineEmits<{
   (event: 'page-change', page: number): void
   (event: 'page-size-change', size: number | 'all'): void
   (event: 'sort-change', sort: { colId: string; direction: 'asc' | 'desc' | null }): void
+  (event: 'search-change', value: string): void
+  (event: 'column-search-change', filter: { colId: string; value: string }): void
 }>()
 const flatten = (definitions: GridColumn[]): ColDef<GridRow>[] =>
   definitions.flatMap(column => 'children' in column && column.children
@@ -43,7 +49,15 @@ const leafColumns = computed(() => flatten(props.columns).map(col => {
   if (!props.serverPagination) return col
   const key = col.colId ?? col.field ?? ''
   return { ...col, filter: false, floatingFilter: false,
-    sort: props.serverSort?.colId === key ? props.serverSort.direction : null }
+    sort: props.serverSort?.colId === key ? props.serverSort.direction : null,
+    ...(props.serverFilterColumns?.includes(key) ? {
+      headerComponent: OmsServerHeader,
+      headerComponentParams: {
+        filterValue: props.serverColumnFilters?.[key] ?? '',
+        onServerFilter: (value: string) => emit('column-search-change', { colId: key, value }),
+      },
+    } : {}),
+  }
 }))
 const ids = computed(() => leafColumns.value.map(col => col.colId ?? col.field ?? '').filter(Boolean))
 const names = computed(() => new Map(leafColumns.value.map(col => [col.colId ?? col.field ?? '', col.headerName ?? col.field ?? ''])))
@@ -56,7 +70,7 @@ const density = ref<OmsDensity>('compact')
 const pageSize = ref<number | 'all'>(50)
 const pinnedLeft = ref(props.defaultPinnedLeft)
 const pinnedRight = ref(props.defaultPinnedRight)
-const query = ref('')
+const query = ref(props.serverSearch ?? '')
 const selectedCount = ref(0)
 const visibleCount = ref(0)
 const syncState = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -69,7 +83,8 @@ const effectiveDefaultColDef = computed<ColDef<GridRow>>(() => props.serverPagin
 const rowSelection = { mode: 'multiRow' as const, selectAll: 'currentPage' as const }
 const localeText = { page: '页', to: '至', of: '共', nextPage: '下一页', previousPage: '上一页', firstPage: '首页', lastPage: '末页', pageSizeSelectorLabel: '每页', noRowsToShow: '暂无数据' }
 const rowHeight = computed(() => density.value === 'compact' ? 32 : 42)
-const headerHeight = computed(() => density.value === 'compact' ? 31 : 38)
+const headerHeight = computed(() => props.serverPagination && props.serverFilterColumns?.length
+  ? (density.value === 'compact' ? 57 : 64) : (density.value === 'compact' ? 31 : 38))
 const orderedColumns = computed(() => states.value.filter(state => ids.value.includes(state.colId)))
 const visibleColumns = computed(() => orderedColumns.value.filter(column => !column.hide))
 const resolvedPageSize = () => pageSize.value === 'all'
@@ -85,6 +100,27 @@ const onFiltered = () => {
 }
 let restoring = false
 let timer: ReturnType<typeof setTimeout> | undefined
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+const submitSearch = () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  const value = query.value.trim()
+  if (props.serverPagination) {
+    if (value !== (props.serverSearch ?? '').trim()) emit('search-change', value)
+  } else api.value?.setGridOption('quickFilterText', value)
+}
+const searchInput = () => {
+  if (!props.serverPagination) return
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(submitSearch, 450)
+}
+const clearSearch = () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  query.value = ''
+  submitSearch()
+}
+watch(() => props.serverSearch, value => {
+  if (props.serverPagination && value !== undefined && value !== query.value) query.value = value
+})
 let dragged: string | null = null
 
 const refresh = () => {
@@ -278,6 +314,7 @@ const onKeydown = (event: KeyboardEvent) => {
 if (typeof window !== 'undefined') window.addEventListener('keydown', onKeydown)
 onBeforeUnmount(() => {
   if (timer) clearTimeout(timer)
+  if (searchTimer) clearTimeout(searchTimer)
   if (typeof window !== 'undefined') window.removeEventListener('keydown', onKeydown)
   if (maximized.value) document.body.style.overflow = ''
 })
@@ -289,8 +326,9 @@ onBeforeUnmount(() => {
       <div class="oms-title"><strong>{{ title }}</strong><small>共 {{ (serverPagination?.total ?? rows.length).toLocaleString('zh-CN') }} 条 · 已选 {{ selectedCount }} 条</small></div>
       <div class="oms-actions"><slot name="actions" /></div>
       <div class="oms-spacer" />
-      <input v-if="!serverPagination" v-model="query" class="oms-search" aria-label="搜索列表" placeholder="搜索当前列表..." />
-      <button v-if="!serverPagination" type="button" @click="api?.setGridOption('quickFilterText', query)">搜索</button>
+      <input v-model="query" class="oms-search" :aria-label="serverPagination ? '搜索全部订单' : '搜索列表'" :placeholder="serverPagination ? '搜索全部订单 / 收件人 / 来源单号...' : '搜索当前列表...'" @input="searchInput" @keydown.enter.prevent="submitSearch" />
+      <button type="button" @click="submitSearch">搜索</button>
+      <button v-if="query" type="button" aria-label="清空表格搜索" @click="clearSearch">×</button>
       <button v-if="!serverPagination" type="button" title="导出当前表格为 CSV" @click="api?.exportDataAsCsv()">导出 CSV</button>
       <button type="button" :aria-pressed="settingsOpen" @click="settingsOpen = !settingsOpen">⚙ 列设置</button>
       <button type="button" @click="changeDensity">密度：{{ density === 'compact' ? '紧凑' : '标准' }}</button>

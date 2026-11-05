@@ -18,7 +18,7 @@ Related: Draft PR #628. Frozen standard: `docs/BYL-ERP-GRID-STANDARD-V1.md`.
 - Server pagination stays authoritative; source count is `orders.total`, never `orders.data.length`.
 
 ## Server-grid behaviors
-- Column title row only, no group titles, no client floating filters in server mode.
+- Column title row only, no group titles; server-mode AG Grid header components provide six column search inputs (order number, source, date, recipient, country, owner), each backed by real ERP queries rather than client-page filtering.
 - Server allowlist sorting: `order_number, date, source`; date desc default. Unsupported columns are not sortable in R3.
 - Page options 20, 50, 100, 全部. "全部" loads at most 200 filtered orders; if total > 200, UI refuses before navigating; backend also clamps direct URL attempts.
 - Server queries determine the final global sort/filter result. AG Grid may briefly reorder the loaded page during a header click before the server navigation completes; existing page form remains the authoritative search/filter interface.
@@ -65,3 +65,12 @@ Executed:
 Existing whole Vue suite result (isolated Windows): 731/736 PASS. Five failing tests are unchanged legacy Inventory pages; the test files and `WarehouseShow.vue` SHA match `main`. No unrelated Inventory scope expansion.
 
 **Remaining approval gate:** Owner review of the R3 real Orders page in an accessible controlled Dev/staging deployment, ideally with a read-only or sanitized order dataset; confirm desired display of Woo external reference in one-line grid. Do not merge `main` or deploy Production until this visual UAT and exact-head authorization.
+## R3 Search UX fix — 2026-11-05
+- Root cause: R3 switched to authoritative server pagination, which intentionally disabled the R2 client-only quick search and floating filters and left search in the legacy page toolbar.
+- Restored global quick search inside the OMS Grid toolbar with 450 ms debounced server navigation, Enter submit and explicit clear. Legacy top search input is hidden only when OMS Grid is enabled.
+- Added six AG Grid custom header filters for order number, source, order date, recipient, country and owner. They are in grid headers and call the existing server-side `OrderService` with a restricted list of criteria; no filtering of only the currently loaded 50 rows.
+- Server sanitizes input to text only (up to 80 chars), rejects invalid date strings and ignores array-shaped input; column filters are ignored on legacy views and Production where OMS pilot is disabled.
+- Combined with the existing business views, search, export, sorting and pagination. Columns remain resizable, movable, pinnable, and grid can maximize.
+- **UAT evidence:** authenticated Chrome with 225 synthetic SQLite orders: global search `R3-UAT-0123` returned 1, order-number filter `40223` returned 1, source filter `manual` returned 112, clear reset to 225; six inputs visible, old duplicate search absent, 0 JS exceptions.
+- **Regression:** `npm run typecheck` PASS; `npm run build` PASS; Vue scoped tests PASS; Laravel Orders + User UI Preferences **86 tests, 1,169 assertions PASS**.
+- PR remains Draft and non-Production. Owner visual review is the last acceptance gate.

@@ -40,6 +40,12 @@ const filters = reactive({
   order_status: props.filters.order_status ?? '',
   workflow_status: props.filters.workflow_status ?? '',
   view: props.filters.view ?? 'all',
+  grid_order_number: props.filters.grid_order_number ?? '',
+  grid_source: props.filters.grid_source ?? '',
+  grid_date: props.filters.grid_date ?? '',
+  grid_recipient: props.filters.grid_recipient ?? '',
+  grid_country: props.filters.grid_country ?? '',
+  grid_owner: props.filters.grid_owner ?? '',
 })
 const syncingWoo = ref(false)
 const wooReconcileLoading = ref(false)
@@ -87,6 +93,17 @@ const gridParams = () => props.omsGridEnabled ? {
 const nav = (params: Record<string, unknown>) =>
   router.get(basePath.value, { ...params, ...gridParams() }, { preserveState: true, replace: true })
 const submit = () => nav({ ...filters, page: 1 })
+const gridSearch = (value: string) => {
+  filters.search = value
+  router.get(basePath.value, { ...filters, ...gridParams(), page: 1 }, { preserveState: true, replace: true })
+}
+const gridColumnSearch = ({ colId, value }: { colId: string; value: string }) => {
+  const allowed = ['order_number', 'source', 'date', 'recipient', 'country', 'owner'] as const
+  if (!allowed.includes(colId as typeof allowed[number])) return
+  const key = ('grid_' + colId) as keyof typeof filters
+  filters[key] = value
+  router.get(basePath.value, { ...filters, ...gridParams(), page: 1 }, { preserveState: true, replace: true })
+}
 const gridPageSize = (size: number | 'all') =>
   router.get(basePath.value, { ...filters, ...gridParams(), per_page: String(size), page: 1 }, { preserveState: true, replace: true })
 const gridSort = (sort: { colId: string; direction: 'asc' | 'desc' | null }) => {
@@ -110,6 +127,7 @@ const applySystemView = (view: string) => {
   filters.order_status = ''
   filters.workflow_status = ''
   filters.view = view
+  for (const key of ['grid_order_number','grid_source','grid_date','grid_recipient','grid_country','grid_owner'] as const) filters[key] = ''
   submit()
 }
 const applySavedView = (saved: SavedView) => {
@@ -118,6 +136,7 @@ const applySavedView = (saved: SavedView) => {
   filters.order_status = saved.filters_json.order_status ?? ''
   filters.workflow_status = saved.filters_json.workflow_status ?? ''
   filters.view = saved.filters_json.view ?? 'all'
+  for (const key of ['grid_order_number','grid_source','grid_date','grid_recipient','grid_country','grid_owner'] as const) filters[key] = saved.filters_json[key] ?? ''
   submit()
 }
 const saveCurrentView = () => {
@@ -195,7 +214,7 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
       </form>
 
       <form class="mvp-toolbar" @submit.prevent="submit">
-        <input v-model="filters.search" aria-label="搜索订单" placeholder="ERP订单号 / 来源单号 / 收件人；数据库ID请用 dbid:7008">
+        <input v-if="!omsGridEnabled" v-model="filters.search" aria-label="搜索订单" placeholder="ERP订单号 / 来源单号 / 收件人；数据库ID请用 dbid:7008">
         <select v-model="filters.source_type" aria-label="来源"><option value="">全部来源</option><option v-for="source in sourceTypes" :key="source.value" :value="source.value">{{ source.label }}</option></select>
           <select v-model="filters.order_status" aria-label="真实订单状态"><option value="">全部真实状态</option><option value="pending_shipment">待发货</option><option value="shipped">已发货</option><option value="completed">已完结</option><option value="completed_delivered">完结&送达</option><option value="cancelled">已取消</option></select><select v-model="filters.workflow_status" aria-label="员工工作进度"><option value="">全部工作进度</option><option v-for="option in workflowStatusOptions" :key="option.code" :value="option.code">{{ option.zh }}</option></select>
         <button class="mvp-button" type="submit">筛选</button>
@@ -212,6 +231,8 @@ const { columns, visibleColumns, toggle, startDrag, drop, reset, syncState } = u
         @page-change="goToPage"
         @page-size-change="gridPageSize"
         @sort-change="gridSort"
+        @search-change="gridSearch"
+        @column-search-change="gridColumnSearch"
       />
       <div v-if="!omsGridEnabled && orders.last_page > 1" class="mvp-pagination"><button class="mvp-button" type="button" :disabled="orders.current_page <= 1" @click="goToPage(orders.current_page - 1)">上一页</button><span>第 {{ orders.current_page }} / {{ orders.last_page }} 页 · 共 {{ orders.total }} 条</span><button class="mvp-button" type="button" :disabled="orders.current_page >= orders.last_page" @click="goToPage(orders.current_page + 1)">下一页</button></div>
     </section>

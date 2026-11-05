@@ -228,6 +228,46 @@ final class OrderSavedViewsTest extends TestCase
         $this->actingAs($unauthorized)->get('/orders?oms_grid=1')->assertForbidden();
     }
 
+    public function test_oms_grid_native_search_and_column_filters_query_full_server_dataset(): void
+    {
+        $viewer = $this->userWith(['orders.view']);
+        $first = $this->order($viewer, 'GRID-ALPHA', 'pending_shipment');
+        $first->update(['erp_order_id' => '007-1105-40223', 'source_type' => 'woocommerce']);
+        $second = $this->order($viewer, 'GRID-BETA', 'pending_shipment');
+        $second->update(['erp_order_id' => '007-1105-40224']);
+        $second->address()->update(['country' => 'CA']);
+
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&search=GRID-BETA')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('orders.total', 1)
+                ->where('orders.data.0.id', $second->id));
+
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_order_number=40223')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('filters.grid_order_number', '40223')
+                ->where('orders.total', 1)
+                ->where('orders.data.0.id', $first->id));
+
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_source=woo&grid_recipient=ALPHA&grid_country=US')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('orders.total', 1)
+                ->where('orders.data.0.id', $first->id));
+
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_country=CA&grid_date=2026-08')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('orders.total', 1)
+                ->where('orders.data.0.id', $second->id));
+
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_owner='.urlencode($viewer->name))
+            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
+
+        // Malformed array input is ignored, and grid-only filters must not affect the legacy route.
+        $this->actingAs($viewer)->get('/orders?oms_grid=1&grid_order_number[]=bogus')
+            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
+        $this->actingAs($viewer)->get('/orders?grid_order_number=NO-MATCH')
+            ->assertInertia(fn (Assert $page) => $page->where('orders.total', 2));
+    }
+
     private function assertViewContainsOnly(User $user, string $view, string $externalOrderNumber): void
     {
         $this->actingAs($user)->get('/orders?view='.$view)->assertInertia(fn (Assert $page) => $page

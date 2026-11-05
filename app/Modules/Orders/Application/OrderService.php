@@ -345,6 +345,39 @@ final class OrderService
             });
         });
 
+        // OMS Grid column inputs are always server-authoritative, never browser-page filters.
+        $grid = $filters['oms_grid_columns'] ?? [];
+        if (is_array($grid)) {
+            if (! empty($grid['grid_order_number'])) {
+                $v = $grid['grid_order_number'];
+                $query->where('erp_order_id', 'like', "%{$v}%");
+            }
+            if (! empty($grid['grid_source'])) {
+                $v = strtolower(str_replace(' ', '_', $grid['grid_source']));
+                $query->where('source_type', 'like', "%{$v}%");
+            }
+            if (! empty($grid['grid_date'])) {
+                $v = $grid['grid_date'];
+                if (preg_match('/^\\d{4}(?:-\\d{1,2})?(?:-\\d{1,2})?$/', $v) === 1) {
+                    $query->where('order_date', 'like', "{$v}%");
+                } else {
+                    $query->whereRaw('1 = 0');
+                }
+            }
+            if (! empty($grid['grid_recipient'])) {
+                $v = $grid['grid_recipient'];
+                $query->whereHas('address', fn ($address) => $address->where('recipient_name', 'like', "%{$v}%"));
+            }
+            if (! empty($grid['grid_country'])) {
+                $v = $grid['grid_country'];
+                $query->whereHas('address', fn ($address) => $address->where('country', 'like', "%{$v}%"));
+            }
+            if (! empty($grid['grid_owner'])) {
+                $v = $grid['grid_owner'];
+                $query->whereHas('owner', fn ($owner) => $owner->where('name', 'like', "%{$v}%"));
+            }
+        }
+
         $this->applyBusinessView($query, (string) ($filters['view'] ?? 'all'));
 
         $sortColumns = [

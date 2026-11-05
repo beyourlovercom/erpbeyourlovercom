@@ -85,9 +85,18 @@ final class OrderController
         $sort = $omsGridEnabled && in_array($request->query('sort'), ['order_number', 'date', 'source', 'status'], true)
             ? (string) $request->query('sort') : 'date';
         $direction = $omsGridEnabled && $request->query('direction') === 'asc' ? 'asc' : 'desc';
+        $gridColumnFilters = [];
         if ($omsGridEnabled) {
             $filters['oms_sort'] = $sort;
             $filters['oms_direction'] = $direction;
+            foreach (['grid_order_number', 'grid_source', 'grid_date', 'grid_recipient', 'grid_country', 'grid_owner'] as $key) {
+                $raw = $request->query($key);
+                if (is_string($raw)) {
+                    $value = mb_substr(trim($raw), 0, 80);
+                    if ($value !== '') $gridColumnFilters[$key] = $value;
+                }
+            }
+            $filters['oms_grid_columns'] = $gridColumnFilters;
         }
         $orders = $this->orders->list($filters, $requestedPageSize === 'all' && $omsGridEnabled ? 200 : $perPage);
         $allRowsAllowed = $omsGridEnabled && $requestedPageSize === 'all' && $orders->total() <= 200;
@@ -106,7 +115,7 @@ final class OrderController
             'orders' => $orders->through(fn (Order $order): array => $this->orderData($order))->toArray(),
             'filters' => [
                 ...$request->only(['search', 'source_type', 'order_status', 'workflow_status', 'view']),
-                ...($omsGridEnabled ? ['sort' => $sort, 'direction' => $direction, 'per_page' => $allRowsAllowed ? 'all' : (string) $orders->perPage(), 'oms_grid' => '1'] : []),
+                ...($omsGridEnabled ? ['sort' => $sort, 'direction' => $direction, 'per_page' => $allRowsAllowed ? 'all' : (string) $orders->perPage(), 'oms_grid' => '1', ...$gridColumnFilters] : []),
             ],
             'omsGridAvailable' => $omsGridAvailable,
             'omsGridEnabled' => $omsGridEnabled,
