@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import axios from 'axios'
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { AgGridVue } from 'ag-grid-vue3'
 import {
   AllCommunityModule, ModuleRegistry, themeBalham,
-  type ColDef, type ColGroupDef, type ColumnState, type GridApi, type GridReadyEvent,
+  type ColDef, type ColGroupDef, type ColumnState, type GridApi, type GridReadyEvent, type SortChangedEvent,
 } from 'ag-grid-community'
 import { clampPinnedCounts, pinnedStateForVisibleColumns, sanitizeOmsGridPreference, type OmsDensity, type OmsGridPreference } from './omsGridState'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 type GridRow = Record<string, unknown>
 type GridColumn = ColDef<GridRow> | ColGroupDef<GridRow>
+type ServerPagination = { current_page: number; last_page: number; per_page: number; total: number; page_size_mode?: number | 'all' }
+type ServerSort = { colId: string; direction: 'asc' | 'desc' }
 const props = withDefaults(defineProps<{
   namespace: string
   columns: GridColumn[]
@@ -20,17 +22,29 @@ const props = withDefaults(defineProps<{
   defaultPinnedLeft?: number
   defaultPinnedRight?: number
   requiredColumnIds?: string[]
+  serverPagination?: ServerPagination
+  serverSort?: ServerSort
 }>(), {
   title: 'OMS Grid', preferenceScope: 'account', defaultPinnedLeft: 1,
   defaultPinnedRight: 1, requiredColumnIds: () => [],
 })
 
-const emit = defineEmits<{ (event: 'selection-change', rows: GridRow[]): void }>()
+const emit = defineEmits<{
+  (event: 'selection-change', rows: GridRow[]): void
+  (event: 'page-change', page: number): void
+  (event: 'page-size-change', size: number | 'all'): void
+  (event: 'sort-change', sort: { colId: string; direction: 'asc' | 'desc' | null }): void
+}>()
 const flatten = (definitions: GridColumn[]): ColDef<GridRow>[] =>
   definitions.flatMap(column => 'children' in column && column.children
     ? flatten(column.children as GridColumn[]) : [column as ColDef<GridRow>])
 // Keep column definitions flat: no redundant first-level group header row.
-const leafColumns = computed(() => flatten(props.columns))
+const leafColumns = computed(() => flatten(props.columns).map(col => {
+  if (!props.serverPagination) return col
+  const key = col.colId ?? col.field ?? ''
+  return { ...col, filter: false, floatingFilter: false,
+    sort: props.serverSort?.colId === key ? props.serverSort.direction : null }
+}))
 const ids = computed(() => leafColumns.value.map(col => col.colId ?? col.field ?? '').filter(Boolean))
 const names = computed(() => new Map(leafColumns.value.map(col => [col.colId ?? col.field ?? '', col.headerName ?? col.field ?? ''])))
 const required = computed(() => new Set(props.requiredColumnIds))
@@ -49,6 +63,9 @@ const syncState = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
 const theme = themeBalham.withParams({ fontSize: 12, spacing: 5, headerFontSize: 12 })
 const storageKey = computed(() => 'oms-grid-pref:' + props.namespace)
 const defaultColDef: ColDef<GridRow> = { sortable: true, filter: true, floatingFilter: true, resizable: true, minWidth: 85 }
+const effectiveDefaultColDef = computed<ColDef<GridRow>>(() => props.serverPagination
+  ? { ...defaultColDef, sortable: false, filter: false, floatingFilter: false }
+  : defaultColDef)
 const rowSelection = { mode: 'multiRow' as const, selectAll: 'currentPage' as const }
 const localeText = { page: '页', to: '至', of: '共', nextPage: '下一页', previousPage: '上一页', firstPage: '首页', lastPage: '末页', pageSizeSelectorLabel: '每页', noRowsToShow: '暂无数据' }
 const rowHeight = computed(() => density.value === 'compact' ? 32 : 42)
@@ -60,7 +77,7 @@ const resolvedPageSize = () => pageSize.value === 'all'
   : pageSize.value
 // "全部" applies to the loaded and filtered rows only; R3+ must preserve server-side paging contracts.
 const onFiltered = () => {
-  if (pageSize.value === 'all' && api.value) {
+  if (!props.serverPagination && pageSize.value === 'all' && api.value) {
     const count = resolvedPageSize()
     if (api.value.paginationGetPageSize() !== count) api.value.setGridOption('paginationPageSize', count)
   }
@@ -73,7 +90,7 @@ let dragged: string | null = null
 const refresh = () => {
   if (!api.value) return
   states.value = api.value.getColumnState()
-  visibleCount.value = api.value.getDisplayedRowCount()
+  visibleCount.value = props.serverPagination?.total ?? api.value.getDisplayedRowCount()
   selectedCount.value = api.value.getSelectedRows().length
 }
 const snapshot = (): OmsGridPreference => ({
@@ -121,13 +138,19 @@ const restore = (value: OmsGridPreference) => {
   if (!api.value) return
   restoring = true
   density.value = value.density
-  pageSize.value = value.pageSize
+  if (!props.serverPagination) pageSize.value = value.pageSize
   pinnedLeft.value = value.pinnedLeft
   pinnedRight.value = value.pinnedRight
-  const state = value.columns.map(col => ({ ...col, hide: required.value.has(col.colId) ? false : col.hide }))
+  const state = value.columns.map(col => ({
+    ...col,
+    hide: required.value.has(col.colId) ? false : col.hide,
+    sort: props.serverPagination
+      ? (props.serverSort?.colId === col.colId ? props.serverSort.direction : null)
+      : col.sort,
+  }))
   api.value.applyColumnState({ state, applyOrder: true })
   applyPins()
-  api.value.setGridOption('paginationPageSize', resolvedPageSize())
+  if (!props.serverPagination) api.value.setGridOption('paginationPageSize', resolvedPageSize())
   restoring = false
   refresh()
 }
@@ -188,7 +211,8 @@ const resetGrid = () => {
   query.value = ''
   density.value = 'compact'
   pageSize.value = 50
-  api.value.setGridOption('paginationPageSize', 50)
+  if (!props.serverPagination) api.value.setGridOption('paginationPageSize', 50)
+  else emit('page-size-change', 50)
   pinnedLeft.value = props.defaultPinnedLeft
   pinnedRight.value = props.defaultPinnedRight
   applyPins()
@@ -211,12 +235,43 @@ const changePageSize = (event: Event) => {
   scheduleSave()
 }
 const changeDensity = () => { density.value = density.value === 'compact' ? 'standard' : 'compact'; scheduleSave() }
+const changeServerPageSize = (event: Event) => {
+  const selector = event.target as HTMLSelectElement
+  const previous = String(props.serverPagination?.page_size_mode ?? props.serverPagination?.per_page ?? 50)
+  if (selector.value === 'all') {
+    const total = props.serverPagination?.total ?? 0
+    if (total > 200) {
+      window.alert('当前筛选共有 ' + total + ' 条订单，超过 200 条安全上限。请先缩小筛选范围，再选择“全部”；导出仍可使用原有服务器导出功能。')
+      selector.value = previous
+      return
+    }
+    if (!window.confirm('将加载当前筛选的全部 ' + total + ' 条订单，可能增加浏览器压力。是否继续？')) {
+      selector.value = previous
+      return
+    }
+    emit('page-size-change', 'all')
+  } else {
+    const next = Number(selector.value)
+    if (![20, 50, 100].includes(next)) { selector.value = previous; return }
+    emit('page-size-change', next)
+  }
+}
+const onSortChanged = (event: SortChangedEvent<GridRow>) => {
+  scheduleSave()
+  if (!props.serverPagination || restoring || !api.value) return
+  const chosen = event.api.getColumnState().find(column => column.sort === 'asc' || column.sort === 'desc')
+  const colId = chosen?.colId ?? 'date'
+  const direction = chosen?.sort === 'asc' || chosen?.sort === 'desc' ? chosen.sort : null
+  if (props.serverSort?.colId === colId && props.serverSort.direction === (direction ?? 'desc')) return
+  emit('sort-change', { colId, direction })
+}
 const toggleMaximize = async () => {
   maximized.value = !maximized.value
   document.body.style.overflow = maximized.value ? 'hidden' : ''
   await nextTick()
   api.value?.refreshHeader()
 }
+watch(() => props.serverPagination, () => refresh(), { deep: true })
 const onKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Escape' && maximized.value) void toggleMaximize()
 }
@@ -231,12 +286,12 @@ onBeforeUnmount(() => {
 <template>
   <section class="oms-grid" :class="{ 'is-maximized': maximized }" aria-label="BYL ERP OMS 统一表格">
     <div class="oms-toolbar">
-      <div class="oms-title"><strong>{{ title }}</strong><small>共 {{ rows.length.toLocaleString('zh-CN') }} 条 · 当前筛选 {{ visibleCount }} 条 · 已选 {{ selectedCount }} 条</small></div>
+      <div class="oms-title"><strong>{{ title }}</strong><small>共 {{ (serverPagination?.total ?? rows.length).toLocaleString('zh-CN') }} 条 · 已选 {{ selectedCount }} 条</small></div>
       <div class="oms-actions"><slot name="actions" /></div>
       <div class="oms-spacer" />
-      <input v-model="query" class="oms-search" aria-label="搜索列表" placeholder="搜索当前列表..." />
-      <button type="button" @click="api?.setGridOption('quickFilterText', query)">搜索</button>
-      <button type="button" title="导出当前表格为 CSV" @click="api?.exportDataAsCsv()">导出 CSV</button>
+      <input v-if="!serverPagination" v-model="query" class="oms-search" aria-label="搜索列表" placeholder="搜索当前列表..." />
+      <button v-if="!serverPagination" type="button" @click="api?.setGridOption('quickFilterText', query)">搜索</button>
+      <button v-if="!serverPagination" type="button" title="导出当前表格为 CSV" @click="api?.exportDataAsCsv()">导出 CSV</button>
       <button type="button" :aria-pressed="settingsOpen" @click="settingsOpen = !settingsOpen">⚙ 列设置</button>
       <button type="button" @click="changeDensity">密度：{{ density === 'compact' ? '紧凑' : '标准' }}</button>
       <button type="button" :aria-label="maximized ? '退出最大化' : '最大化列表'" :title="maximized ? '退出最大化 (Esc)' : '最大化列表' " @click="toggleMaximize">{{ maximized ? '⤢ 退出' : '⛶ 最大化' }}</button>
@@ -248,12 +303,12 @@ onBeforeUnmount(() => {
           :theme="theme"
           :row-data="rows"
           :column-defs="leafColumns"
-          :default-col-def="defaultColDef"
+          :default-col-def="effectiveDefaultColDef"
           :row-selection="rowSelection"
           :row-height="rowHeight"
           :header-height="headerHeight"
           :floating-filters-height="headerHeight"
-          :pagination="true"
+          :pagination="!serverPagination"
           :pagination-page-size="50"
           :pagination-page-size-selector="false"
           :locale-text="localeText"
@@ -263,12 +318,18 @@ onBeforeUnmount(() => {
           @column-resized="scheduleSave"
           @column-visible="scheduleSave"
           @column-pinned="scheduleSave"
-          @sort-changed="scheduleSave"
+          @sort-changed="onSortChanged"
           @filter-changed="onFiltered"
           @model-updated="onFiltered"
           @selection-changed="(e: any) => { refresh(); emit('selection-change', e.api.getSelectedRows()) }"
         />
-        <div class="oms-pagination-size"><label for="oms-grid-page-size">每页</label><select id="oms-grid-page-size" :value="pageSize" aria-label="每页显示条数" @change="changePageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option><option value="all">全部</option></select></div>
+        <div v-if="!serverPagination" class="oms-pagination-size"><label for="oms-grid-page-size">每页</label><select id="oms-grid-page-size" :value="pageSize" aria-label="每页显示条数" @change="changePageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option><option value="all">全部</option></select></div>
+        <div v-if="serverPagination" class="oms-server-pagination">
+          <label>每页 <select aria-label="服务端每页条数" :value="serverPagination.page_size_mode ?? serverPagination.per_page" @change="changeServerPageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option><option value="all">全部</option></select></label>
+          <span>共 {{ serverPagination.total }} 条 · 第 {{ serverPagination.current_page }} / {{ Math.max(1, serverPagination.last_page) }} 页</span>
+          <button type="button" aria-label="上一页" :disabled="serverPagination.current_page <= 1" @click="emit('page-change', serverPagination.current_page - 1)">‹</button>
+          <button type="button" aria-label="下一页" :disabled="serverPagination.current_page >= serverPagination.last_page" @click="emit('page-change', serverPagination.current_page + 1)">›</button>
+        </div>
       </div>
       <aside v-if="settingsOpen" class="oms-side" aria-label="列设置">
         <div class="oms-side-head"><strong>列设置</strong><button type="button" aria-label="关闭列设置" @click="settingsOpen = false">×</button></div>
@@ -298,6 +359,9 @@ onBeforeUnmount(() => {
 .oms-spacer{flex:1}.oms-actions{display:flex;gap:6px}.oms-search{width:min(200px,35vw);height:30px;padding:5px 9px;border:1px solid #cbd5e1;border-radius:5px;font-size:12px}
 .oms-workspace{display:flex;min-height:0;flex:1}.oms-main{position:relative;display:flex;flex-direction:column;min-width:0;flex:1}.oms-ag-grid{min-height:0;flex:1;width:100%}
 .oms-pagination-size{position:absolute;left:12px;bottom:0;z-index:2;height:32px;display:flex;align-items:center;gap:6px;background:#fff;font-size:11px;color:#64748b}.oms-pagination-size select{padding:3px 5px;min-width:66px;font-size:12px}
+.oms-server-pagination{height:38px;display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:0 14px;border-top:1px solid #dbe1e9;font-size:12px;color:#526072;white-space:nowrap}
+.oms-server-pagination select,.oms-server-pagination button{padding:4px 8px;border:1px solid #cbd5e1;background:#fff;border-radius:5px;color:#1e293b}
+.oms-server-pagination button:disabled{opacity:.4;cursor:default}
 .oms-side{width:268px;flex:none;display:flex;flex-direction:column;min-height:0;border-left:1px solid #d6deea;background:#fff}
 .oms-side-head{padding:12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e2e8f0}.oms-side-head button{border:none;font-size:20px;padding:0 5px}
 .oms-side-help{font-size:11px;color:#64748b;margin:9px 12px}.oms-pin-settings{margin:0 10px 10px;padding:10px;background:#f1f5ff;border:1px solid #d4defa;border-radius:6px;font-size:12px}
